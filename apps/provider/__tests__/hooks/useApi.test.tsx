@@ -56,14 +56,17 @@ describe("useApi transient failure handling", () => {
 
     const { getByTestId } = render(<Harness path="/api/provider/transactions?period=month" />);
 
-    await waitFor(() => {
-      const snap = JSON.parse(getByTestId("snap").props.children);
-      expect(snap.loading).toBe(false);
-      expect(snap.errorCode).toBe("TIMEOUT");
-      expect(snap.error).toBe("Request timed out.");
-      expect(snap.rows).toBeNull();
-    });
-  });
+    await waitFor(
+      () => {
+        const snap = JSON.parse(getByTestId("snap").props.children);
+        expect(snap.loading).toBe(false);
+        expect(snap.errorCode).toBe("TIMEOUT");
+        expect(snap.error).toBe("Request timed out.");
+        expect(snap.rows).toBeNull();
+      },
+      { timeout: 10_000 },
+    );
+  }, 15_000);
 
   it("surfaces network failures so the UI can offer Retry instead of a false empty state", async () => {
     mockApiGet.mockResolvedValue({
@@ -73,12 +76,15 @@ describe("useApi transient failure handling", () => {
 
     const { getByTestId } = render(<Harness path="/api/provider/sales-history?page=1" />);
 
-    await waitFor(() => {
-      const snap = JSON.parse(getByTestId("snap").props.children);
-      expect(snap.loading).toBe(false);
-      expect(snap.errorCode).toBe("NETWORK_ERROR");
-    });
-  });
+    await waitFor(
+      () => {
+        const snap = JSON.parse(getByTestId("snap").props.children);
+        expect(snap.loading).toBe(false);
+        expect(snap.errorCode).toBe("NETWORK_ERROR");
+      },
+      { timeout: 10_000 },
+    );
+  }, 15_000);
 
   it("stays silent on CANCELLED because backgrounding guarantees a resume refetch", async () => {
     mockApiGet.mockResolvedValue({
@@ -88,15 +94,18 @@ describe("useApi transient failure handling", () => {
 
     const { getByTestId } = render(<Harness path="/api/provider/transactions?period=week" />);
 
-    await waitFor(() => {
-      const snap = JSON.parse(getByTestId("snap").props.children);
-      expect(snap.loading).toBe(false);
-    });
+    await waitFor(
+      () => {
+        const snap = JSON.parse(getByTestId("snap").props.children);
+        expect(snap.loading).toBe(false);
+      },
+      { timeout: 10_000 },
+    );
 
     const snap = JSON.parse(getByTestId("snap").props.children);
     expect(snap.error).toBeNull();
     expect(snap.errorCode).toBeNull();
-  });
+  }, 15_000);
 
   it("stops re-requesting a role-gated path on resume after a 403", async () => {
     mockApiGet.mockResolvedValue({

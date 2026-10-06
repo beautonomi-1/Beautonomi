@@ -42,6 +42,7 @@ export interface PersonalInfoInitialPayload {
   defaultCountryCode: string;
   defaultCountry: string;
   personalInfo: PersonalInfoDataDto | null;
+  dateOfBirth: string | null;
 }
 
 async function readJson(res: Response): Promise<unknown> {
@@ -115,6 +116,7 @@ export async function fetchPersonalInfoInitial(): Promise<PersonalInfoInitialPay
   }
 
   let personalInfo: PersonalInfoDataDto | null = null;
+  let dateOfBirth: string | null = null;
   if (resProfile.ok) {
     const data = (await readJson(resProfile)) as { data?: Record<string, unknown> } | null;
     const profile = data?.data;
@@ -125,6 +127,7 @@ export async function fetchPersonalInfoInitial(): Promise<PersonalInfoInitialPay
         first_name?: string;
         last_name?: string;
         preferred_name?: string | null;
+        date_of_birth?: string | null;
         government_id?: unknown;
         address?: {
           country?: string;
@@ -153,6 +156,9 @@ export async function fetchPersonalInfoInitial(): Promise<PersonalInfoInitialPay
       if (p.phone) {
         maskedPhone = maskPhone(p.phone);
       }
+
+      dateOfBirth =
+        typeof p.date_of_birth === "string" && p.date_of_birth.trim() ? p.date_of_birth.trim() : null;
 
       personalInfo = {
         legalName: {
@@ -198,5 +204,6 @@ export async function fetchPersonalInfoInitial(): Promise<PersonalInfoInitialPay
     defaultCountryCode,
     defaultCountry,
     personalInfo,
+    dateOfBirth,
   };
 }

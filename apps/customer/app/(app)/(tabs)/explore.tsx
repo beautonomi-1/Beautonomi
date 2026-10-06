@@ -671,7 +671,17 @@ export default function ExploreScreen() {
         return;
       }
       if (!socialInteractions.allowed) {
-        Alert.alert(t("customer.accountSettings.contentSafetyTitle"), t("customer.mobile.tabs.explore.socialInteractionsOff"));
+        Alert.alert(
+          t("customer.accountSettings.contentSafetyTitle"),
+          t("customer.mobile.tabs.explore.socialInteractionsOff"),
+          [
+            { text: t("common.cancel"), style: "cancel" },
+            {
+              text: t("customer.safety.socialRestricted.openControls"),
+              onPress: () => router.push("/(app)/account-settings/content-and-safety-controls"),
+            },
+          ],
+        );
         return;
       }
       haptic.light();
@@ -702,7 +712,17 @@ export default function ExploreScreen() {
         return;
       }
       if (!socialInteractions.allowed) {
-        Alert.alert(t("customer.accountSettings.contentSafetyTitle"), t("customer.mobile.tabs.explore.socialInteractionsOff"));
+        Alert.alert(
+          t("customer.accountSettings.contentSafetyTitle"),
+          t("customer.mobile.tabs.explore.socialInteractionsOff"),
+          [
+            { text: t("common.cancel"), style: "cancel" },
+            {
+              text: t("customer.safety.socialRestricted.openControls"),
+              onPress: () => router.push("/(app)/account-settings/content-and-safety-controls"),
+            },
+          ],
+        );
         return;
       }
       haptic.light();

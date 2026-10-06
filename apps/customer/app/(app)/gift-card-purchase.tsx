@@ -27,6 +27,7 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
 import { useTranslation } from "@beautonomi/i18n";
 import { useAuth } from "@/providers/AuthProvider";
+import { hasSupabaseAccessToken, pushLoginWithReturnTo, redirectLoginIfAuthRequired } from "@/lib/customer-auth-routing";
 import { useSavedCards } from "@/hooks/useSavedCards";
 import { usePaystackPayment } from "@/hooks/usePaystackPayment";
 import { PaymentProcessingOverlay } from "@/components/payment/PaymentProcessingOverlay";
@@ -169,6 +170,12 @@ export default function GiftCardPurchaseScreen() {
             ? ExpoLinking.createURL("gift-card-return")
             : getCustomerPaystackAuthReturnUrl(GIFT_CARD_SUCCESS_PATH);
         trackGiftCardPurchased(finalAmount);
+        const giftReturnTo = "/(app)/gift-card-purchase";
+        const hasToken = await hasSupabaseAccessToken();
+        if (!hasToken) {
+          pushLoginWithReturnTo(giftReturnTo);
+          return;
+        }
         const res = await api.post<{ order_id?: string; payment_url?: string; reference?: string; data?: { order_id?: string; payment_url?: string; reference?: string } }>(
           "/api/public/gift-cards/purchase",
           body,
@@ -180,6 +187,9 @@ export default function GiftCardPurchaseScreen() {
         if (res.error) {
           if (isTransientApiFailure(res.error)) {
             setSuccessState("pending");
+            return;
+          }
+          if (redirectLoginIfAuthRequired(giftReturnTo, res.error)) {
             return;
           }
           Alert.alert(errTitle, getApiErrorMessage(res.error, gc("startPurchaseError")));

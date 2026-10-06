@@ -54,6 +54,7 @@ export async function GET(request: NextRequest) {
         headers: {
           "User-Agent": "Beautonomi/1.0",
         },
+        signal: AbortSignal.timeout(4000),
       });
 
       if (!response.ok) {
@@ -109,6 +110,7 @@ async function getLocationFromIpApi(ip: string) {
       headers: {
         "User-Agent": "Beautonomi/1.0",
       },
+      signal: AbortSignal.timeout(4000),
     });
 
     if (!response.ok) {

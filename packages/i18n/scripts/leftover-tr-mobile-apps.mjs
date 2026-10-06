@@ -108,6 +108,12 @@ function loadCuratedPhraseMaps() {
     Object.assign(sa, fix);
     Object.assign(frar, fix);
   }
+  const ciLeftoverPath = path.join(root, "_maps/t-sa-mobile-ci-leftover.json");
+  if (fs.existsSync(ciLeftoverPath)) {
+    const ci = JSON.parse(fs.readFileSync(ciLeftoverPath, "utf8"));
+    Object.assign(sa, ci);
+    Object.assign(frar, ci);
+  }
   return { sa, frar };
 }
 

@@ -5,6 +5,7 @@ import type { ProductOrder } from "@/features/shop/useProductOrders";
 export type CreateOrderApiError = {
   message: string;
   code?: string;
+  status?: number;
 };
 
 export function createProductOrderIdempotencyKey(): string {

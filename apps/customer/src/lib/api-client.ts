@@ -78,9 +78,18 @@ async function resolveAccessToken(): Promise<string | null> {
   const expiresAtSec = session?.expires_at ?? 0;
   let expiresAtMs = expiresAtSec * 1000;
 
+  // A stored session that is near expiry is the only reason to hit the network.
+  // `!token` used to refresh as well, so every guest request called
+  // refreshSession(), failed with "Auth session missing", and a later 401
+  // signed the user out.
+  const hasSession = Boolean(token);
   const needsRefresh =
-    !token ||
-    (expiresAtMs > 0 && expiresAtMs - now <= REFRESH_LEEWAY_MS);
+    hasSession && expiresAtMs > 0 && expiresAtMs - now <= REFRESH_LEEWAY_MS;
+
+  if (!hasSession) {
+    cachedToken = null;
+    return null;
+  }
 
   if (needsRefresh) {
     if (isSentryEnabled()) {
@@ -165,6 +174,10 @@ const baseApi = createApiClient({
 function isSessionInvalidError(error: { message?: string } | null): boolean {
   if (!error?.message) return false;
   const msg = error.message.toLowerCase();
+  // No stored session. Signing out here fires SIGNED_OUT for a guest.
+  if (msg.includes("auth session missing") || msg.includes("session missing")) {
+    return false;
+  }
   // Network / infra problems are transient — do not treat as invalid session
   if (
     msg.includes("network") ||
@@ -202,6 +215,14 @@ async function withSessionRecovery<T>(
   const res = await fn();
   const status = (res.error as { status?: number } | undefined)?.status;
   if (status !== 401) return res;
+
+  const { data: existingSession } = await supabase.auth.getSession();
+  if (!existingSession.session?.access_token) {
+    if (isSentryEnabled()) {
+      authFlowBreadcrumb("session_recovery", { outcome: "skip_no_session" });
+    }
+    return res;
+  }
 
   clearCachedToken();
   const { error: refreshError } = await supabase.auth.refreshSession();

@@ -1093,7 +1093,7 @@ function CustomerOnboardingWizard() {
     );
   }
 
-  const canSkipCurrentStep = currentStep !== 1 && currentStep !== 4 && currentStep !== 6;
+  const canSkipCurrentStep = currentStep !== 1 && currentStep !== 3 && currentStep !== 4 && currentStep !== 6;
   const isLastStep = currentStep === TOTAL_STEPS;
   const continueLabel = isLastStep ? "Finish" : "Continue";
   const canGoBack = currentStep > 1;

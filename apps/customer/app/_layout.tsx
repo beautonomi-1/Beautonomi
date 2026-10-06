@@ -21,7 +21,6 @@ import { useForceUpdate } from "@/hooks/useForceUpdate";
 import { initSentry, setMobileAppTag, Sentry } from "@/lib/sentry";
 import { i18n, I18nextProvider, useTranslation } from "@beautonomi/i18n";
 import MarketAvailabilityGate from "@/components/MarketAvailabilityGate";
-import { ShopMarketChip } from "@/components/ShopMarketChip";
 import { AttTrackingBootstrap } from "@/components/AttTrackingBootstrap";
 import {
   initializeRuntimeMarketHost,
@@ -127,7 +126,6 @@ function ThemedApp() {
       </ForceUpdateGate>
       <StatusBar style={isDark ? "light" : "dark"} />
       <MarketAvailabilityGate />
-      <ShopMarketChip />
     </>
   );
 }

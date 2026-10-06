@@ -69,9 +69,10 @@
     "tryAgain": "Réessayer.",
     "duration": "Durée",
     "hints": {
-      "gotIt": "Got it",
-      "dismissA11y": "Dismiss tip"
-    }
+      "gotIt": "Compris",
+      "dismissA11y": "Ignorer l’astuce"
+    },
+    "change": "Modifier"
   },
   "authGate": {
     "checkingAccess": "Vérification de votre compte…",
@@ -236,7 +237,7 @@
       "finalAmountAtCheckout": "Final montant confirmé at checkout",
       "errorGeneric": "Impossible de get frais de déplacement estimate.",
       "outsideServiceArea": "Cette adresse est hors de la zone de service.",
-      "outsideServiceAreaNoSalon": "This provider doesn't travel to this address. Try another address."
+      "outsideServiceAreaNoSalon": "Ce prestataire ne se déplace pas à cette adresse. Essayez une autre adresse."
     },
     "houseCallPricing": {
       "venueStepHint": "Choisissez le lieu du rendez-vous. Les prix à l’étape suivante en tiennent compte.",
@@ -246,7 +247,7 @@
       "houseCallFeeLine": "House-call frais de service",
       "houseCallFeeSummary": "Frais de visite à domicile ({{count}} services)",
       "travelFeeSeparateNote": "Frais de déplacement is calculated from your adresse and shown separately.",
-      "atHomeVenueCombined": "At-home bookings can include a house-call fee on some services, plus a travel fee based on your address."
+      "atHomeVenueCombined": "Les réservations à domicile peuvent inclure des frais de visite pour certains services, plus des frais de trajet selon votre adresse."
     },
     "providerNotFound": "Prestataire introuvable",
     "providerUnavailableTitle": "This professional is no longer available",
@@ -294,7 +295,7 @@
     "loadingPackage": "Chargement package…",
     "packageNoLineItems": "Package details will appear here when available.",
     "contextualHints": {
-      "waitlistJoin": "Joining doesn't reserve a time. We'll let you know if one opens."
+      "waitlistJoin": "S’inscrire ne réserve pas un créneau. Nous vous préviendrons si l’un se libère."
     }
   },
   "provider": {
@@ -1380,7 +1381,9 @@
           "authRequired": "Unlock réglages",
           "ageBandNote": "Certaines options sont gérées automatiquement pour les comptes de 13 à 17 ans afin de garder une expérience adaptée à l’âge.",
           "lockedNote": "Les paramètres marqués comme gérés ne peuvent pas être modifiés pour votre tranche d’âge.",
-          "linkAgeSuitability": "En savoir plus sur l’âge et le contrôle parental"
+          "linkAgeSuitability": "En savoir plus sur l’âge et le contrôle parental",
+          "unknownAgeNotice": "Nous utilisons votre date de naissance pour les contrôles de sécurité. Ajoutez-la afin d’appliquer les bons réglages. Si vous avez 18 ans ou plus, vous pourrez modifier ces interrupteurs une fois la date enregistrée. Les 13–17 ans conservent des réglages gérés.",
+          "addDateOfBirth": "Ajouter date de naissance"
         },
         "emergencyContact": {
           "title": "Contact d’urgence",
@@ -1840,7 +1843,7 @@
           "chargeNotePaystack": "You are only charged after you confirm on the secure Paystack page. Your campaign goes live once payment is verified — never before.",
           "openingAppStore": "Ouverture App Store purchase…",
           "openingCheckout": "Ouverture secure checkout…",
-          "introHint": "Sponsored listings appear on the customer home screen and in search results."
+          "introHint": "Les annonces sponsorisées apparaissent sur l’accueil client et dans les résultats de recherche."
         },
         "waitingRoom": {
           "title": "Accueil",
@@ -1899,7 +1902,7 @@
           "serviceWithDuration": "{{name}} · {{minutes}} min",
           "runningLate": "En retard",
           "runningLateMinutes": "En retard {{minutes}}m",
-          "introHint": "Today at a glance: confirm new requests, check clients in when they arrive, and start their service."
+          "introHint": "Aujourd’hui en un coup d’œil : confirmez les nouvelles demandes, enregistrez les clients à l’arrivée et démarrez leur service."
         },
         "groupBookings": {
           "statusAll": "Tous",
@@ -2551,7 +2554,7 @@
           "savePaymentSettings": "Enregistrer Paiement Réglages",
           "saving": "Enregistrement…",
           "unsavedChanges": "You have unsaved changes",
-          "noShowFeeAmountHint": "Taken only from what the client has already paid online, up to this amount."
+          "noShowFeeAmountHint": "Prélevé uniquement sur ce que le client a déjà payé en ligne, jusqu’à ce montant."
         },
         "bookingsList": {
           "title": "Réservations",
@@ -3238,7 +3241,7 @@
           "appleProductNotMappedBody": "This plan is not disponible as an iPhone purchase yet. Contacter l’assistance.",
           "subscriptionCheckoutTitle": "Paiement de l’abonnement",
           "introPlansMatchRegion": "Choose Mensuel or Annuel to compare plans and prices for your région.",
-          "introMarketingLinesNote": "Marketing lines on the website (e.g. hero text on /pricing) are edited in Admin → Content, not here.",
+          "introMarketingLinesNote": "Les textes marketing du site (titre de la page tarifs) se modifient dans l’administration du contenu, pas ici.",
           "introIosAutoRenewable": "Les abonnements iOS sont des achats intégrés renouvelables facturés via Apple.",
           "termsOfUseA11y": "Conditions of Use (EULA)",
           "termsOfUse": "Conditions of Use (EULA)",
@@ -3425,9 +3428,9 @@
           "giftCardsSubtitle": "Accept plateforme gift cards",
           "terminalShopLabel": "Boutique terminaux",
           "terminalShopSubtitle": "Order card machines from the Beautonomi catalog",
-          "hintYoco": "Yoco: your Yoco card reader.",
-          "hintCardMachines": "Card machines: PayCloud terminals for in-person card payments.",
-          "hintPaystackTerminal": "Paystack Terminal: take payment on your phone with a QR code."
+          "hintYoco": "Yoco : votre lecteur de cartes Yoco.",
+          "hintCardMachines": "Terminaux cartes : terminaux PayCloud pour les paiements par carte en personne.",
+          "hintPaystackTerminal": "Paystack Terminal : encaissez sur votre téléphone avec un code QR."
         },
         "businessSettings": {
           "title": "Business details",
@@ -5148,7 +5151,18 @@
           "confirmCreateSeries": "Confirmer & Créer Series",
           "confirmCreateBooking": "Confirmer & Créer Réservation",
           "backToEditA11y": "Retour to modifier",
-          "backToEdit": "Retour to Modifier"
+          "backToEdit": "Retour to Modifier",
+          "groupBookingNoPermission": "Votre rôle ne peut pas créer de réservations de groupe. Demandez à un propriétaire les droits de rendez-vous.",
+          "groupBookingPermissionsFailed": "Impossible de vérifier les autorisations. Appuyez pour réessayer.",
+          "sendQuoteNeedsAccount": "Les devis sont envoyés aux clients disposant d’un compte Beautonomi. Utilisez un service personnalisé (en personne) pour réserver quelqu’un sans compte.",
+          "referralHowDidTheyFind": "Comment vous ont-ils trouvé ?",
+          "referralOptionalHint": "Facultatif — affiché sur les reçus et les rapports.",
+          "referralAddForVisit": "Ajoutez comment ils vous ont trouvé",
+          "chooseStaffRequired": "Choisissez qui s’en charge",
+          "staffOffersServiceHint": "Ces membres de l’équipe peuvent réaliser ce service.",
+          "categoryPickerTitle": "Catégorie",
+          "runningBehindSheetTitle": "En retard ?",
+          "staffFilteredByService": "Affichage des membres d’équipe assignés à ce service."
         },
         "expressBooking": {
           "invalidJson": "JSON invalide.",
@@ -5280,7 +5294,7 @@
           "productCartHint": "JSON array: product_id (UUID), quantité (1–999), facultatif product_variant_id.",
           "clearAllPrefillA11y": "Effacer all prefill",
           "clearAllPrefill": "Effacer all prefill",
-          "introHint": "Express links open booking with your chosen services, staff and location already filled in. You can set an expiry date or a usage limit."
+          "introHint": "Les liens Express ouvrent la réservation avec vos services, l’équipe et le lieu déjà remplis. Vous pouvez fixer une date d’expiration ou une limite d’utilisation."
         },
         "explorePosts": {
           "selectedPhotoPreviewA11y": "Sélectionné photo aperçu",
@@ -5930,7 +5944,7 @@
           "cancel": "Annuler",
           "delete": "Supprimer",
           "copySuffix": "{{name}} (copie)",
-          "introHint": "Members get their discount automatically when they book with you. They don't need a promo code."
+          "introHint": "Les membres reçoivent leur remise automatiquement quand ils réservent chez vous. Ils n’ont pas besoin de code promo."
         },
         "payoutAccounts": {
           "title": "Comptes de versement",
@@ -6344,7 +6358,7 @@
           "visits": "Visites",
           "bookings": "Réservations",
           "convRate": "Taux conv.",
-          "copyIframe": "Copy iframe code"
+          "copyIframe": "Copier le code iframe"
         },
         "closedPeriods": {
           "title": "Périodes de fermeture",
@@ -6924,7 +6938,7 @@
           "deleting": "Suppression…",
           "deleteService": "Supprimer service",
           "deleteHint": "Supprime définitivement ce service. Utilisez l’éditeur complet pour variantes et options.",
-          "homePriceAdjustmentHint": "Added to this service's price for home visits. The travel fee is charged separately."
+          "homePriceAdjustmentHint": "Ajouté au prix de ce service pour les visites à domicile. Les frais de trajet sont facturés séparément."
         },
         "daysOff": {
           "staffFallback": "Équipe",
@@ -7502,7 +7516,7 @@
           "notesOptional": "Notes (facultatif)",
           "notesPlaceholder": "Reference ou note",
           "submitting": "Envoi…",
-          "balanceHint": "Money from online payments, after Beautonomi's commission, any hold period, and payouts you've already requested. Cash and card-machine payments you took yourself aren't included. This covers your whole business, not one branch."
+          "balanceHint": "Argent des paiements en ligne, après la commission Beautonomi, toute période de retenue et les versements déjà demandés. Les espèces et paiements par terminal que vous avez encaissés vous-même ne sont pas inclus. Cela couvre toute l’activité, pas une seule succursale."
         },
         "team": {
           "title": "Équipe",
@@ -8011,10 +8025,10 @@
           "methodWallet": "Portefeuille",
           "methodOther": "Autre",
           "methodCashback": "Cashback",
-          "ledgerTruncatedTitle": "Large ledger — totals may be incomplete",
-          "ledgerTruncated": "More than {{max}} finance rows matched this range. Narrow the date range for full totals.",
-          "membershipEarnings": "Membership earnings (ledger)",
-          "providerCollectedByMethod": "Provider-collected (cash / EFT / card)"
+          "ledgerTruncatedTitle": "Grand livre volumineux — les totaux peuvent être incomplets",
+          "ledgerTruncated": "Plus de {{max}} lignes financières correspondent à cette période. Resserrez les dates pour des totaux complets.",
+          "membershipEarnings": "Revenus d’adhésion (grand livre)",
+          "providerCollectedByMethod": "Encaissé par le prestataire (espèces / EFT / carte)"
         },
         "performanceDashboardReport": {
           "factsDefinitions": "Facts & définitions",
@@ -8139,9 +8153,9 @@
           "toggleDefaultA11y": "Toggle par défaut politique",
           "saving": "Enregistrement…",
           "updatePolicy": "Mettre à jour Policy",
-          "hoursBeforeHint": "Cancellations closer to the appointment than this count as late.",
-          "refundPercentageHint": "How much of what the client paid is refunded for a late cancellation.",
-          "feeAmountHint": "Only used when the refund is 0%."
+          "hoursBeforeHint": "Les annulations plus proches du rendez-vous que ceci comptent comme tardives.",
+          "refundPercentageHint": "Quelle part de ce que le client a payé est remboursée en cas d’annulation tardive.",
+          "feeAmountHint": "Utilisé uniquement lorsque le remboursement est de 0 %."
         },
         "terminalMerchantApplication": {
           "statusSubmitted": "We reçu your application and will avis it shortly.",
@@ -8453,7 +8467,7 @@
           "summaryTierCount_one": "{{count}} distance palier",
           "summaryTierCount_other": "{{count}} distance paliers",
           "summaryTiersIncomplete": "Personnalisé paliers (incomplete)",
-          "summaryRateKm": "{{amount}}/km",
+          "summaryRateKm": "{{amount}}/km ",
           "summaryMin": "min {{amount}}",
           "summaryFreeLe": "free ≤ {{km}} km",
           "summaryMax": "max {{amount}}",
@@ -9217,9 +9231,9 @@
           "notesPlaceholder": "Facultatif notes...",
           "updateZone": "Mettre à jour Zone",
           "addZone": "Ajouter Zone",
-          "introHint": "Zones set where customers can book you at home. A zone with its own fee uses it instead of your travel fee.",
-          "actionTravelFees": "Travel fees",
-          "noZonesWarning": "Customers can't book you at home until you choose at least one service zone."
+          "introHint": "Les zones définissent où les clients peuvent vous réserver à domicile. Une zone avec ses propres frais les utilise à la place de vos frais de trajet.",
+          "actionTravelFees": "Frais de déplacement",
+          "noZonesWarning": "Les clients ne peuvent pas vous réserver à domicile tant que vous n’avez pas choisi au moins une zone de service."
         },
         "staffNotifications": {
           "saveFailedTitle": "Impossible de enregistrer",
@@ -9912,8 +9926,8 @@
           "signOutTitle": "Se déconnecter?",
           "signOutBody": "You can terminer configuration plus tard. Your progress is enregistré to your account.",
           "cancel": "Annuler",
-          "verificationRequiredTitle": "Identity verification required to go live",
-          "verificationRequiredBody": "Complete identity verification so we can approve your listing for public bookings."
+          "verificationRequiredTitle": "Vérification d’identité requise pour passer en ligne",
+          "verificationRequiredBody": "Terminez la vérification d’identité pour que nous puissions valider votre fiche pour les réservations publiques."
         },
         "packageSalesReport": {
           "factsDefinitions": "Facts & définitions",
@@ -10188,8 +10202,8 @@
           "avgFee": "Frais moy.",
           "trips": "Trajets",
           "saveSettings": "Enregistrer Réglages",
-          "noZonesWarning": "Customers can't book you at home until you choose at least one service zone.",
-          "actionChooseZones": "Choose zones"
+          "noZonesWarning": "Les clients ne peuvent pas vous réserver à domicile tant que vous n’avez pas choisi au moins une zone de service.",
+          "actionChooseZones": "Choisir les zones"
         },
         "revenueTrendsReport": {
           "basisIntro": "Ledger line uses finance_transactions (earnings, travel, tips) by recognition date. Visit counts use appointment dates (excl. cancelled & no-show). They are different bases — spread does not imply causation.",
@@ -10662,14 +10676,14 @@
           "getApp": "Get the Prestataire app",
           "downloadIos": "Télécharger for iPhone",
           "downloadAndroid": "Télécharger for Android",
-          "setPasswordTitle": "Create your password",
-          "passwordLabel": "Password",
-          "passwordConfirmLabel": "Confirm password",
-          "setPasswordSubmit": "Save password",
-          "setPasswordSuccess": "Password saved. Sign in to accept your invite.",
-          "setPasswordFailed": "Could not save password",
-          "passwordMismatch": "Passwords do not match",
-          "passwordTooShort": "Password must be at least 8 characters"
+          "setPasswordTitle": "Créer your mot de passe",
+          "passwordLabel": "Mot de passe",
+          "passwordConfirmLabel": "Confirmer le mot de passe",
+          "setPasswordSubmit": "Enregistrer mot de passe",
+          "setPasswordSuccess": "Mot de passe enregistré. Connectez-vous pour accepter l’invitation.",
+          "setPasswordFailed": "Impossible de Enregistrer mot de passe",
+          "passwordMismatch": "Les mots de passe ne correspondent pas",
+          "passwordTooShort": "Password must be à au moins 8 caractères"
         },
         "search": {
           "title": "Rechercher",
@@ -10926,7 +10940,7 @@
           "title": "Équipe et paie",
           "subtitleOwner": "Paie & équipe performance",
           "subtitleStaff": "Your pay stubs",
-          "freelancerUnavailable": "Upgrade to a salon account to run payroll and team pay."
+          "freelancerUnavailable": "Passez à un compte salon pour gérer la paie et la rémunération d’équipe."
         },
         "terminalPaymentReturn": {
           "confirmingTitle": "Confirming paiement",
@@ -11460,8 +11474,8 @@
           "typeNameRequired": "Saisir a type nom.",
           "deleteTypeTitle": "Supprimer blocked heure type",
           "deleteTypeBody": "Retirer \"{{name}}\"? Existing blocks using this type may lose their catégorie.",
-          "introHint": "Blocks close time on the calendar so clients can't book it. For staff leave, use Days off.",
-          "actionDaysOff": "Days off"
+          "introHint": "Les blocages ferment le créneau au calendrier pour que les clients ne puissent pas le réserver. Pour les congés du personnel, utilisez Jours de congé.",
+          "actionDaysOff": "Jours off"
         },
         "authLogin": {
           "accountSuspended": "Your account has been suspended. Contacter l’assistance if you believe this is an error.",
@@ -12030,7 +12044,7 @@
           "reviewsCount": "{{count}} avis",
           "rewardsA11y": "Ouvrir rewards and badges",
           "rewardPoints": "Reward points",
-          "pts": "{{count}} pts",
+          "pts": "{{count}} points",
           "badge": "Badge  : {{name}}",
           "pointsSeparate": "Les points sont distincts de la chronologie activité ci-dessous — touchez pour jalons et badges.",
           "viewRewards": "Voir rewards",
@@ -12510,7 +12524,7 @@
           "atHome": "À domicile",
           "atSalon": "Au salon",
           "budgetRange": " · Budget {{min}} – {{max}}",
-          "introHint": "Requests aren't on your calendar yet. Send an offer with a price and time; it's booked once the client pays."
+          "introHint": "Les demandes ne sont pas encore sur votre calendrier. Envoyez une offre avec un prix et un horaire ; la réservation est confirmée dès que le client paie."
         },
         "deleteAccount": {
           "pleaseWaitTitle": "Veuillez patienter",
@@ -13172,9 +13186,9 @@
       "medicalDisclaimer": "Content is shared by providers and does not constitute medical advice.",
       "reportCommentHint": "Touchez le drapeau d’un commentaire pour le signaler.",
       "justNow": "Just now",
-      "minutesAgo": "{{count}}m ago",
-      "hoursAgo": "{{count}}h ago",
-      "daysAgo": "{{count}}d ago",
+      "minutesAgo": "il y a {{count}} min",
+      "hoursAgo": "il y a {{count}} h",
+      "daysAgo": "il y a {{count}} j",
       "providerFallback": "Provider",
       "openProviderProfile": "Open {{name}} profile",
       "userFallback": "User",
@@ -13748,9 +13762,9 @@
           "loading": "Chargement…"
         },
         "groupBookingPayment": {
-          "youPaidForGroup": "You paid for the group",
-          "paidBy": "Paid by {{name}}",
-          "covered": "Covered"
+          "youPaidForGroup": "Vous avez payé pour le groupe",
+          "paidBy": "Payé par {{name}}",
+          "covered": "Inclus"
         }
       },
       "tabs": {
@@ -14411,7 +14425,9 @@
           "toggle_sensitive_content_filter_label": "Sensitive content filtrer",
           "toggle_sensitive_content_filter_desc": "Réduire les publications liées à la médecine ou aux traitements",
           "toggle_require_device_auth_label": "Exiger l’authentification de l’appareil",
-          "toggle_require_device_auth_desc": "Ask for Face ID, fingerprint, or passcode before changing these réglages"
+          "toggle_require_device_auth_desc": "Ask for Face ID, fingerprint, or passcode before changing these réglages",
+          "unknownAgeNotice": "Nous utilisons votre date de naissance pour les contrôles de sécurité. Ajoutez-la afin d’appliquer les bons réglages. Si vous avez 18 ans ou plus, vous pourrez modifier ces interrupteurs une fois la date enregistrée. Les 13–17 ans conservent des réglages gérés.",
+          "addDateOfBirth": "Ajouter date de naissance"
         },
         "notificationsCenter": {
           "screenTitle": "Notifications",
@@ -16104,7 +16120,12 @@
           "emergencyPhonePlaceholder": "Their numéro de télétéléphone",
           "emergencyRelationPlaceholder": "ex. Conjoint, parent",
           "newEmailPlaceholder": "Nouvelle adresse e-mail",
-          "newPhonePlaceholder": "Nouveau numéro de téléphone"
+          "newPhonePlaceholder": "Nouveau numéro de téléphone",
+          "dobLabel": "Date de naissance",
+          "dobEmptyHint": "Ajouter your date de naissance",
+          "dobSafetyHint": "Les contrôles de sécurité utilisent votre date de naissance. Les réglages adultes s’appliquent seulement si vous avez 18 ans ou plus.",
+          "addDobCta": "Ajouter",
+          "changeDobCta": "Mettre à jour"
         },
         "loginSecurity": {
           "enterCurrentPassword": "Saisir your current mot de passe",
@@ -16468,12 +16489,12 @@
           "back": "Retour",
           "retry": "Réessayer",
           "help": "Aide",
-          "waitingTitle": "Request sent",
-          "waitingHeadline": "Waiting for your provider",
-          "waitingProviderMessage": "This isn't confirmed yet. We'll book it as soon as {{provider}} accepts.",
-          "providerFallbackName": "your provider",
-          "waitingTimerLabel": "Time remaining",
-          "waitingCancelCta": "Cancel request"
+          "waitingTitle": "Demande envoyée",
+          "waitingHeadline": "Waiting for your prestataire",
+          "waitingProviderMessage": "Ce n’est pas encore confirmé. Nous le réserverons dès que {{provider}} acceptera.",
+          "providerFallbackName": "your prestataire",
+          "waitingTimerLabel": "Heure remaining",
+          "waitingCancelCta": "Annuler request"
         },
         "onDemandResult": {
           "loadBookingDetailsFailed": "Impossible de load réservation details. Vérifier your réservations list.",
@@ -16737,7 +16758,7 @@
           "budgetMaxLessThanMin": "Le budget max. doit être supérieur ou égal au budget min.",
           "durationOutOfRange": "La durée doit être entre {{min}} et {{max}} minutes.",
           "submittedPartialImages": "Certaines photos n’ont pas pu être enregistrées — ajoutez le reste depuis le chat.",
-          "hintOnce": "Nothing is booked yet. The provider replies with a price and time, and it's confirmed when you pay their offer. Requests close after {{days}} days."
+          "hintOnce": "Rien n’est encore réservé. Le prestataire répond avec un prix et un horaire ; c’est confirmé quand vous payez son offre. Les demandes se ferment après {{days}} jours."
         },
         "notificationPreferences": {
           "loadFailed": "Impossible de load preferences.",
@@ -17575,16 +17596,16 @@
     "packageCredit": "Crédit forfait",
     "prepaidSessionsRemaining": "{{count}} séance(s) restante(s)",
     "contextualHints": {
-      "dualFees": "Includes {{houseCall}} in house-call fees and a {{travel}} travel fee.",
-      "depositPayNow": "Pay {{deposit}} now. The remaining {{balance}} stays on your booking, and you can pay it from there.",
-      "depositLateCancel": "A late-cancellation fee comes out of what you've paid.",
-      "groupBooking": "You pay for everyone in one payment. Guests only need a name.",
-      "customOfferConfirm": "Paying this offer confirms your booking.",
-      "customOfferExpires": "Offer expires {{date}}.",
-      "groupSwitchOn": "On",
-      "groupSwitchOff": "Off",
-      "groupGuestsLimit_one": "Add up to {{count}} guest.",
-      "groupGuestsLimit_other": "Add up to {{count}} guests."
+      "dualFees": "Comprend {{houseCall}} de frais de déplacement à domicile et {{travel}} de frais de trajet.",
+      "depositPayNow": "Payez {{deposit}} maintenant. Les {{balance}} restants restent sur votre réservation ; vous pourrez les régler depuis celle-ci.",
+      "depositLateCancel": "Des frais d’annulation tardive sont prélevés sur ce que vous avez déjà payé.",
+      "groupBooking": "Vous payez pour tout le monde en un seul paiement. Les invités n’ont besoin que d’un nom.",
+      "customOfferConfirm": "Payer cette offre confirme votre réservation.",
+      "customOfferExpires": "L’offre expire le {{date}}.",
+      "groupSwitchOn": "Activé",
+      "groupSwitchOff": "Désactivé",
+      "groupGuestsLimit_one": "Ajouter up to {{count}} guest.",
+      "groupGuestsLimit_other": "Ajouter up to {{count}} guests."
     }
   },
   "payments": {
@@ -20506,7 +20527,7 @@
         "resetPassword": {
           "minLength": "Password must be at least {{min}} characters",
           "policyMix": "Password does not meet the required character mix for this platform",
-          "passwordsMismatch": "Passwords do not match",
+          "passwordsMismatch": "Les mots de passe ne correspondent pas",
           "updatedTitle": "Mot de passe Mis à jour",
           "updatedBody": "Your password has been reset successfully. Redirecting you…",
           "invalidLink": "Invalid or expired link",
@@ -21460,7 +21481,7 @@
         "emailRequired": "E-mail is obligatoire",
         "invalidEmail": "Veuillez saisir a valid adresse e-mail",
         "passwordRequired": "Mot de passe is obligatoire",
-        "passwordMinLength": "Mot de passe must be at least 8 characters",
+        "passwordMinLength": "Le mot de passe doit contenir au moins 8 caractères",
         "passwordTooWeak": "Use a stronger password (add uppercase, numbers, or symbols)",
         "agreeTermsRequired": "Please confirm you have read and agree to the Conditions d’utilisation and Politique de confidentialité (including product analytics and optional session replay while signed in).",
         "invalidPhoneOrClear": "Saisir a valid numéro de téléphone or clear the phone field.",
@@ -21669,7 +21690,7 @@
         "currentBadge": "Current: {{name}}",
         "nextBadge": "Suivant: {{name}}",
         "ptsToBadge": "{{count}} pts to {{name}}",
-        "pointsTotal": "{{count}} pts",
+        "pointsTotal": "{{count}} points",
         "congratsBadge": "🎉 Congratulations on earning this badge!",
         "earnUnlock": "Earn points and unlock badges",
         "topTierTitle": "Niveau supérieur débloqué",
@@ -22723,7 +22744,11 @@
           "retailProducts": "Retail produits",
           "selectProduct": "Sélectionner produit…",
           "selectVariant": "Sélectionner variant…",
-          "variantFallback": "Variante"
+          "variantFallback": "Variante",
+          "openGroupBooking": "Plan a group booking instead",
+          "sendQuote": "Send a quote instead",
+          "sendQuoteNeedsAccount": "Select a client with an account to send a quote.",
+          "uncategorized": "Uncategorized"
         },
         "blockedTimeTypeDialog": {
           "updated": "Blocked heure type mis à jour",
@@ -23000,7 +23025,11 @@
           "appointmentsOnly_one": "{{count}} rendez-vous",
           "appointmentsOnly_other": "{{count}} rendez-vouss",
           "blocksOnly_one": "{{count}} block",
-          "blocksOnly_other": "{{count}} blocks"
+          "blocksOnly_other": "{{count}} blocks",
+          "runningBehindTitle": "En retard ?",
+          "runningBehindBody": "We'll notify remaining confirmed clients today that you're delayed.",
+          "delay15": "15 minutes",
+          "delay30": "30 minutes"
         },
         "overview": {
           "all": "Tous",
@@ -24303,7 +24332,7 @@
           "enter": "Enter",
           "radius": "Radius",
           "polygon": "Polygon",
-          "ratePerKm": "{{amount}}/km",
+          "ratePerKm": "{{amount}}/km ",
           "minFee": "min {{amount}}",
           "freeWithinKm": "free within {{km}} km",
           "maxFee": "max {{amount}}",
@@ -24541,7 +24570,7 @@
           "allLocationsPrefix": "All lieux · "
         },
         "excellenceBanner": {
-          "dismissA11y": "Dismiss tip"
+          "dismissA11y": "Ignorer l’astuce"
         },
         "widgets": {
           "upcomingAppointments": "Upcoming Rendez-vous",
@@ -27871,7 +27900,7 @@
           }
         },
         "serviceZones": {
-          "introHint": "Zones set where customers can book you at home. A zone with its own fee uses it instead of your travel fee.",
+          "introHint": "Les zones définissent où les clients peuvent vous réserver à domicile. Une zone avec ses propres frais les utilise à la place de vos frais de trajet.",
           "actionTravelFees": "Travel fees"
         }
       },
@@ -28028,10 +28057,10 @@
           "passwordLabel": "Password",
           "passwordConfirmLabel": "Confirm password",
           "setPasswordSubmit": "Save password",
-          "setPasswordSuccess": "Password saved. Sign in to accept your invite.",
+          "setPasswordSuccess": "Mot de passe enregistré. Connectez-vous pour accepter l’invitation.",
           "setPasswordFailed": "Could not save password",
-          "passwordMismatch": "Passwords do not match",
-          "passwordTooShort": "Password must be at least 8 characters"
+          "passwordMismatch": "Les mots de passe ne correspondent pas",
+          "passwordTooShort": "Le mot de passe doit contenir au moins 8 caractères"
         },
         "notifications": {
           "subtitle": "Voir and gérer your notifications",
@@ -29442,11 +29471,11 @@
             "noPaymentStatusData": "No payment status data available for the selected period.",
             "cashStyle": "Cash Style",
             "transactionsCount": "{{count}} transactions",
-            "ledgerTruncatedTitle": "Large ledger — totals may be incomplete",
+            "ledgerTruncatedTitle": "Grand livre volumineux — les totaux peuvent être incomplets",
             "ledgerTruncated": "More than {{max}} finance rows matched this range. Narrow the date range for complete totals.",
-            "membershipEarnings": "Membership earnings (ledger)",
+            "membershipEarnings": "Revenus d’adhésion (grand livre)",
             "membershipEarningsHint": "membership_provider_earnings rows settled in this period (included in provider net activity).",
-            "providerCollectedByMethod": "Provider-collected (cash / EFT / card)",
+            "providerCollectedByMethod": "Encaissé par le prestataire (espèces / EFT / carte)",
             "methodEft": "Bank transfer (EFT)"
           },
           "payments/yoco-reconciliation": {
@@ -30537,7 +30566,7 @@
           "descriptionOptional": "Description (Facultatif)",
           "descriptionPlaceholder": "Ajouter a short summary that helps clients understand what types of services are included in this category",
           "descriptionHint": "Help clients understand what types of services are included in this category",
-          "homePriceAdjustmentHint": "Added to this service's price for home visits. The travel fee is charged separately."
+          "homePriceAdjustmentHint": "Ajouté au prix de ce service pour les visites à domicile. Les frais de trajet sont facturés séparément."
         },
         "serviceDialog": {
           "shortHair": "Short Hair",
@@ -32698,7 +32727,7 @@
         "completeLater": "Terminer later",
         "setUp": "Configurer",
         "stepsToGo": "Steps To Go",
-        "verificationRequiredToGoLive": "Identity verification required to go live",
+        "verificationRequiredToGoLive": "Vérification d’identité requise pour passer en ligne",
         "verificationRequiredBody": "Your checklist is complete, but we still need to verify your identity before you can accept public bookings."
       },
       "shiftsPage": {
@@ -34493,7 +34522,8 @@
     },
     "referralSource": {
       "label": "How did this client find you?",
-      "notSpecified": "Not specified"
+      "notSpecified": "Not specified",
+      "addForVisit": "Ajoutez comment ils vous ont trouvé"
     },
     "editProducts": {
       "label": "Produits",

@@ -317,9 +317,39 @@ export default function ExplorePostsScreen() {
   const ugcCreate = useSocialCapability("ugc_create");
   const commentCapability = useSocialCapability("comment");
   const hideSocialFeed = Boolean(safetySettings.hide_social_feed);
-  const canCreateExplorePosts =
-    permissionData?.permissions?.create_explore_posts === true && ugcCreate.allowed;
+  const canCreateByStaffPermission = permissionData?.permissions?.create_explore_posts === true;
+  const canCreateExplorePosts = canCreateByStaffPermission && ugcCreate.allowed;
   const canComment = commentCapability.allowed;
+  const openControlsLabel = t("customer.safety.socialRestricted.openControls");
+  const safetyControlsPath = "/(app)/(tabs)/more/settings/content-and-safety-controls" as const;
+
+  const alertSafetyControls = useCallback(
+    (body: string) => {
+      Alert.alert(t("customer.accountSettings.contentSafetyTitle"), body, [
+        { text: t("common.cancel"), style: "cancel" },
+        {
+          text: openControlsLabel,
+          onPress: () => router.push(safetyControlsPath as never),
+        },
+      ]);
+    },
+    [openControlsLabel, router, t],
+  );
+
+  const blockExploreUgcAction = useCallback(
+    (permissionDeniedMessage: string): boolean => {
+      if (!ugcCreate.allowed) {
+        alertSafetyControls(t("customer.explorePost.safetyInteractionsOff"));
+        return true;
+      }
+      if (!canCreateByStaffPermission) {
+        Alert.alert(ep("permissionTitle"), permissionDeniedMessage);
+        return true;
+      }
+      return false;
+    },
+    [alertSafetyControls, canCreateByStaffPermission, ep, t, ugcCreate.allowed],
+  );
   const { execute: deletePost } = useApiMutation("delete");
   const { execute: createPost, loading: creating } = useApiMutation<ExplorePost>("post");
   const { execute: updatePost, loading: updating } = useApiMutation<ExplorePost>("patch");
@@ -529,10 +559,7 @@ export default function ExplorePostsScreen() {
 
   const handleDelete = useCallback(
     (post: ExplorePost) => {
-      if (!canCreateExplorePosts) {
-        Alert.alert(ep("permissionTitle"), ep("noPermissionManage"));
-        return;
-      }
+      if (blockExploreUgcAction(ep("noPermissionManage"))) return;
       Alert.alert(
         ep("deletePostTitle"),
         ep("deletePostConfirm"),
@@ -555,17 +582,14 @@ export default function ExplorePostsScreen() {
         ]
       );
     },
-    [canCreateExplorePosts, deletePost, ep, refresh]
+    [blockExploreUgcAction, deletePost, ep, refresh]
   );
 
   const editMediaSlotsLeft = 5 - editRemoteUrls.length - editLocalAssets.length;
 
   const handleSaveEdit = useCallback(async (publish: boolean) => {
     if (!viewPost) return;
-    if (!canCreateExplorePosts) {
-      Alert.alert(ep("permissionTitle"), ep("noPermissionManage"));
-      return;
-    }
+    if (blockExploreUgcAction(ep("noPermissionManage"))) return;
     const totalMedia = editRemoteUrls.length + editLocalAssets.length;
     if (totalMedia === 0) {
       Alert.alert(ep("addMediaTitle"), ep("addMediaBody"));
@@ -650,7 +674,7 @@ export default function ExplorePostsScreen() {
     editLocalAssets,
     updatePost,
     refresh,
-    canCreateExplorePosts,
+    blockExploreUgcAction,
     ep,
   ]);
 
@@ -767,10 +791,7 @@ export default function ExplorePostsScreen() {
   }, []);
 
   const submitPost = useCallback(async (publish: boolean) => {
-    if (!canCreateExplorePosts) {
-      Alert.alert(ep("permissionTitle"), ep("noPermissionCreate"));
-      return;
-    }
+    if (blockExploreUgcAction(ep("noPermissionCreate"))) return;
     if (selectedAssets.length === 0) {
       Alert.alert(ep("addMediaTitle"), ep("addMediaBody"));
       return;
@@ -855,15 +876,12 @@ export default function ExplorePostsScreen() {
         e instanceof Error ? e.message : ep("somethingWentWrong"),
       );
     }
-  }, [canCreateExplorePosts, selectedAssets, caption, primaryCategorySlug, offeringId, alsoAddToGallery, preseedBookingId, params.bookingId, params.returnTo, tagInput, createPost, refresh, resetCreateForm, router, ep]);
+  }, [blockExploreUgcAction, selectedAssets, caption, primaryCategorySlug, offeringId, alsoAddToGallery, preseedBookingId, params.bookingId, params.returnTo, tagInput, createPost, refresh, resetCreateForm, router, ep]);
 
   const openCreateIfAllowed = useCallback(() => {
-    if (!canCreateExplorePosts) {
-      Alert.alert(ep("permissionTitle"), ep("noPermissionCreate"));
-      return;
-    }
+    if (blockExploreUgcAction(ep("noPermissionCreate"))) return;
     openCreate();
-  }, [canCreateExplorePosts, ep, openCreate]);
+  }, [blockExploreUgcAction, ep, openCreate]);
 
   const createHeaderAction = canCreateExplorePosts ? (
     <TouchableOpacity
@@ -1074,6 +1092,15 @@ export default function ExplorePostsScreen() {
             title={ep("socialHiddenTitle")}
             description={ep("socialHiddenBody")}
           />
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/(tabs)/more/settings/content-and-safety-controls" as never)}
+            style={twStyle("mt-4 self-center")}
+            accessibilityRole="button"
+          >
+            <Text style={twStyle("text-sm font-semibold text-primary")}>
+              {t("customer.safety.socialRestricted.openControls")}
+            </Text>
+          </TouchableOpacity>
         </View>
       </ScreenContainer>
     );
@@ -1828,9 +1855,18 @@ export default function ExplorePostsScreen() {
                 </TouchableOpacity>
                 </>
                 ) : (
-                  <Text style={twStyle("flex-1 text-sm text-gray-500 py-2")}>
-                    {ep("commentsDisabled")}
-                  </Text>
+                  <View style={twStyle("flex-1 py-2")}>
+                    <Text style={twStyle("text-sm text-gray-600 text-center leading-5")}>
+                      {t("customer.explorePost.safetyInteractionsOff")}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => router.push(safetyControlsPath as never)}
+                      style={twStyle("mt-2 self-center")}
+                      accessibilityRole="button"
+                    >
+                      <Text style={twStyle("text-sm font-semibold text-primary")}>{openControlsLabel}</Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
               </View>
               {commentBody.length > 0 && (

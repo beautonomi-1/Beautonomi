@@ -29,7 +29,8 @@ import {
   type ProviderBookingCreateValidationInput,
 } from "@beautonomi/provider-booking";
 import { BookingCreateReadinessStrip } from "../ui/BookingCreateReadinessStrip";
-import { useAppointmentSidebar } from "@/stores/appointment-sidebar-store";
+import { openGroupSheet, useAppointmentSidebar } from "@/stores/appointment-sidebar-store";
+import CustomOfferModal from "@/components/messaging/custom-offer-modal";
 import {
   BookingBottomSheet,
   BookingActionButton,
@@ -198,7 +199,8 @@ export function AppointmentCreateFlow({
 
   useProviderPortal();
   const { format: formatMoney } = useProviderMoneyFormat();
-  const { hasPermission, isOwner } = usePermissions();
+  const { hasPermission, isOwner, isLoading: permissionsLoading } = usePermissions();
+  const [showCustomOfferModal, setShowCustomOfferModal] = useState(false);
   const { t } = useTranslation();
   const ac = "web.provider.portal.appointmentCreate";
   const canCreateAppointments = isOwner || hasPermission("create_appointments");
@@ -833,15 +835,55 @@ export function AppointmentCreateFlow({
             ) : null}
 
             <div id="booking-create-section-services">
+              {!permissionsLoading && canCreateAppointments ? (
+                <button
+                  type="button"
+                  className="mb-3 text-sm font-semibold text-primary touch-manipulation min-h-[44px] px-1"
+                  onClick={() => openGroupSheet()}
+                >
+                  {t(`${ac}.openGroupBooking`)}
+                </button>
+              ) : null}
               <CreateServicesSection
                 catalog={services}
                 services={selectedServices}
                 teamMembers={teamMembers}
                 defaultStaffId={staffId}
+                customerId={clientId || undefined}
+                onSendQuote={() => {
+                  if (!clientId.trim()) {
+                    toast.error(t(`${ac}.sendQuoteNeedsAccount`));
+                    return;
+                  }
+                  setShowCustomOfferModal(true);
+                }}
                 onChange={setSelectedServices}
               />
 
               <ServiceAddonsSection services={selectedServices} onChange={setSelectedServices} />
+
+              {clientId.trim() ? (
+                <CustomOfferModal
+                  isOpen={showCustomOfferModal}
+                  onClose={() => setShowCustomOfferModal(false)}
+                  customerId={clientId}
+                  customerName={clientName || undefined}
+                  initialServiceName={
+                    selectedServices.find((s) => s.isCustom)?.customName ??
+                    selectedServices.find((s) => s.isCustom)?.serviceName
+                  }
+                  initialPrice={
+                    selectedServices.find((s) => s.isCustom)?.price != null
+                      ? String(selectedServices.find((s) => s.isCustom)!.price)
+                      : undefined
+                  }
+                  initialDuration={
+                    selectedServices.find((s) => s.isCustom)?.duration != null
+                      ? String(selectedServices.find((s) => s.isCustom)!.duration)
+                      : undefined
+                  }
+                />
+              ) : null}
             </div>
 
             <CreateProductsSection products={selectedProducts} onChange={setSelectedProducts} />
@@ -972,7 +1014,11 @@ export function AppointmentCreateFlow({
               />
             </BookingSectionCard>
 
-            <ReferralSourceSelect value={referralSourceId} onChange={setReferralSourceId} />
+            <ReferralSourceSelect
+              value={referralSourceId}
+              onChange={setReferralSourceId}
+              isExistingClient={Boolean(clientId.trim())}
+            />
 
             <div id="booking-create-section-recurring">
               <RecurrenceSection

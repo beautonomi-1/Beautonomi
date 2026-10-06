@@ -36,6 +36,11 @@ import * as ExpoLinking from "expo-linking";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearPendingExcludeHoldId } from "@/lib/booking-flow-hold";
 import { getGuestFingerprintHash } from "@/lib/guest-fingerprint";
+import {
+  hasSupabaseAccessToken,
+  pushLoginWithReturnTo,
+  redirectLoginIfAuthRequired,
+} from "@/lib/customer-auth-routing";
 import { useConfigBundle, useFeatureFlag, useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { getTenantDefaultCurrency, resolveCheckoutGateway } from "@/lib/config-bundle";
 import { getAppNativeVersion } from "@/lib/app-native-version";
@@ -2643,6 +2648,12 @@ export default function BookCheckoutScreen() {
 
     try {
       await refreshSession().catch(() => {});
+      const hasToken = await hasSupabaseAccessToken();
+      if (!hasToken) {
+        setError(null);
+        pushLoginWithReturnTo(bookContinueReturnTo);
+        return;
+      }
       const fingerprint = await getGuestFingerprintHash();
 
       const payload: Record<string, unknown> = {
@@ -2743,15 +2754,8 @@ export default function BookCheckoutScreen() {
         haptic.error();
         const errStatus = (res.error as { status?: number }).status;
         const errCode = (res.error as { code?: string }).code;
-        if (errStatus === 401) {
-          if (user) {
-            setError(t("checkout.sessionVerifyFailed"));
-            return;
-          }
-          router.replace({
-            pathname: "/(auth)/login",
-            params: { return_to: bookContinueReturnTo },
-          });
+        if (redirectLoginIfAuthRequired(bookContinueReturnTo, res.error)) {
+          setError(null);
           return;
         }
         if (errStatus === 403) {

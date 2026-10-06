@@ -90,8 +90,14 @@ async function resolveAccessToken(): Promise<string | null> {
   const expiresAtSec = session?.expires_at ?? 0;
   let expiresAtMs = expiresAtSec * 1000;
 
+  const hasSession = Boolean(token);
   const needsRefresh =
-    !token || (expiresAtMs > 0 && expiresAtMs - now <= REFRESH_LEEWAY_MS);
+    hasSession && expiresAtMs > 0 && expiresAtMs - now <= REFRESH_LEEWAY_MS;
+
+  if (!hasSession) {
+    cachedToken = null;
+    return null;
+  }
 
   if (needsRefresh) {
     if (isSentryEnabled()) {
@@ -174,6 +180,9 @@ if (__DEV__) {
 function isSessionInvalidError(error: { message?: string } | null): boolean {
   if (!error?.message) return false;
   const msg = error.message.toLowerCase();
+  if (msg.includes("auth session missing") || msg.includes("session missing")) {
+    return false;
+  }
   if (
     msg.includes("network") ||
     msg.includes("fetch failed") ||
@@ -211,6 +220,14 @@ async function withSessionRecovery<T>(
   const res = await fn();
   const status = getHttpErrorStatus(res.error);
   if (status !== 401) return res;
+
+  const { data: existingSession } = await supabase.auth.getSession();
+  if (!existingSession.session?.access_token) {
+    if (isSentryEnabled()) {
+      authFlowBreadcrumb("session_recovery", { outcome: "skip_no_session" });
+    }
+    return res;
+  }
 
   clearCachedToken();
   const { error: refreshError } = await supabase.auth.refreshSession();

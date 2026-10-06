@@ -16,6 +16,8 @@ export function getCompletionHref(itemId: string): string {
       return `${ACCOUNT}?focus=email#personal-info-section`;
     case "preferred_name":
       return `${ACCOUNT}?focus=preferredName#personal-info-section`;
+    case "date_of_birth":
+      return `${ACCOUNT}/personal-info#date-of-birth-section`;
     case "bio":
       return `${CREATE_PROFILE}?highlight=bio`;
     case "identity":
@@ -40,7 +42,7 @@ export function getCompletionHref(itemId: string): string {
 /** Valid `?focus=` values for PersonalInfoCard edit modals */
 export function isPersonalInfoFocusParam(
   v: string | null
-): v is "legalName" | "preferredName" | "email" | "phone" | "address" | "emergencyContact" | "identity" {
+): v is "legalName" | "preferredName" | "email" | "phone" | "address" | "emergencyContact" | "identity" | "dateOfBirth" {
   return (
     v === "legalName" ||
     v === "preferredName" ||
@@ -48,6 +50,7 @@ export function isPersonalInfoFocusParam(
     v === "phone" ||
     v === "address" ||
     v === "emergencyContact" ||
-    v === "identity"
+    v === "identity" ||
+    v === "dateOfBirth"
   );
 }

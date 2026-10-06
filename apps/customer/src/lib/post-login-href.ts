@@ -40,6 +40,25 @@ export function resolvePostLoginHref(returnTo: string | string[] | undefined): H
     const id = new URLSearchParams(q).get("id");
     if (id) return { pathname: "/(app)/product-detail", params: { id } };
   }
+  if (t.startsWith("/(app)/gift-card-purchase")) {
+    return "/(app)/gift-card-purchase" as Href;
+  }
+  if (t.startsWith("/(app)/account-settings/wallet")) {
+    return "/(app)/account-settings/wallet" as Href;
+  }
+  if (t.startsWith("/(app)/booking-detail")) {
+    const q = t.includes("?") ? t.split("?")[1] : "";
+    const id = new URLSearchParams(q).get("id");
+    if (id) return { pathname: "/(app)/booking-detail", params: { id } };
+  }
+  if (t.startsWith("/(app)/custom-offer-checkout")) {
+    const q = t.includes("?") ? t.split("?")[1] : "";
+    const sp = new URLSearchParams(q);
+    const offerId = sp.get("offer_id") ?? sp.get("id");
+    if (offerId) {
+      return { pathname: "/(app)/custom-offer-checkout", params: { offer_id: offerId } };
+    }
+  }
   if (t.startsWith("/(app)/explore-post")) {
     const q = t.includes("?") ? t.split("?")[1] : "";
     const id = new URLSearchParams(q).get("id");

@@ -755,9 +755,20 @@ export default function ExplorePostScreen() {
             {comments.length === 0 ? (
               <View style={{ paddingVertical: 20, alignItems: "center" }}>
                 <Ionicons name="chatbubbles-outline" size={28} color="#D1D5DB" />
-                <Text style={{ fontSize: 13, color: "#9CA3AF", marginTop: 8 }}>
+                <Text style={{ fontSize: 13, color: "#9CA3AF", marginTop: 8, textAlign: "center" }}>
                   {canInteract ? t("customer.explorePost.noCommentsYet") : t("customer.explorePost.safetyInteractionsOff")}
                 </Text>
+                {!canInteract ? (
+                  <TouchableOpacity
+                    onPress={() => router.push("/(app)/account-settings/content-and-safety-controls")}
+                    style={{ marginTop: 10 }}
+                    accessibilityRole="button"
+                  >
+                    <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 14 }}>
+                      {t("customer.safety.socialRestricted.openControls")}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             ) : (
               comments.map((c) => {
@@ -949,6 +960,15 @@ export default function ExplorePostScreen() {
             <Text style={{ color: "#6B7280", fontWeight: "500", fontSize: 14, textAlign: "center", lineHeight: 20 }}>
               {t("customer.explorePost.safetyInteractionsOff")}
             </Text>
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/account-settings/content-and-safety-controls")}
+              style={{ marginTop: 10 }}
+              accessibilityRole="button"
+            >
+              <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 14 }}>
+                {t("customer.safety.socialRestricted.openControls")}
+              </Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <Pressable

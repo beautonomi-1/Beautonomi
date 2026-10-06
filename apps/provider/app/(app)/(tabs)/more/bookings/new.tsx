@@ -29,7 +29,6 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { Avatar } from "@/components/ui/Avatar";
 import { BottomSheet } from "@/components/ui/BottomSheet";
-import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { formatDuration, formatCurrency } from "@/lib/format";
 import { normalizeProductsList } from "@/lib/unpack-provider-api";
 import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
@@ -43,7 +42,12 @@ import {
   buildSingleBookingCreateReadiness,
   validateProviderBookingCreateDetailed,
   type ProviderBookingCreateValidationField,
+  aggregateOfferingResources,
+  shouldUseCategoryPicker,
+  shouldGroupAllCatalogItems,
+  COLLAPSE_GROUP_MIN_ITEMS,
 } from "@beautonomi/provider-booking";
+import { CustomOfferSheet } from "@/components/CustomOfferSheet";
 import { buildNewBookingValidationInput } from "@/lib/build-new-booking-validation-input";
 import { BookingCreateReadinessStrip } from "@/components/bookings/BookingCreateReadinessStrip";
 import { useCreateFormSections } from "@/hooks/useCreateFormSections";
@@ -101,6 +105,7 @@ interface Service {
   provider_categories?: { id?: string | null; name?: string | null; title?: string | null } | null;
   add_ons?: AddOn[];
   resource_requirements?: ResourceRequirement[];
+  team_member_ids?: string[];
 }
 
 interface AddOn {
@@ -472,6 +477,19 @@ export default function NewBookingScreen() {
     ? `/api/provider/team?location_id=${encodeURIComponent(selectedLocationId)}`
     : "/api/provider/team";
   const { data: staffList, error: staffError, refresh: refreshStaffList } = useApi<StaffMember[]>(teamUrl);
+  const {
+    data: createPermissionData,
+    loading: createPermissionsLoading,
+    error: createPermissionsError,
+    refresh: refreshCreatePermissions,
+  } = useApi<{ isOwner?: boolean; permissions?: { create_appointments?: boolean } }>(
+    "/api/provider/permissions",
+    { staleTimeMs: 60_000 },
+  );
+  const canCreateAppointments =
+    !createPermissionsLoading &&
+    (createPermissionData?.isOwner === true ||
+      createPermissionData?.permissions?.create_appointments === true);
   const { data: paymentSettings } = useApi<PaymentSettings>("/api/provider/settings/payments");
   const { data: referralSourcesRaw } = useApi<{ id: string; name: string; is_active?: boolean }[]>("/api/provider/referral-sources");
   const referralSources = useMemo(
@@ -547,9 +565,23 @@ export default function NewBookingScreen() {
   const [customServicePrice, setCustomServicePrice] = useState("");
   const [customServiceDuration, setCustomServiceDuration] = useState("60");
   const [staffPickerService, setStaffPickerService] = useState<string | null>(null);
+  const [staffPickerFilteredHint, setStaffPickerFilteredHint] = useState(false);
   const [addOnPickerService, setAddOnPickerService] = useState<string | null>(null);
   const [selectedServiceCategory, setSelectedServiceCategory] = useState("all");
   const [selectedProductCategory, setSelectedProductCategory] = useState("all");
+  const [showServiceCategorySheet, setShowServiceCategorySheet] = useState(false);
+  const [showProductCategorySheet, setShowProductCategorySheet] = useState(false);
+  const [showReferralSourceSheet, setShowReferralSourceSheet] = useState(false);
+  const [showReferralExpanded, setShowReferralExpanded] = useState(false);
+  const [showCustomOfferSheet, setShowCustomOfferSheet] = useState(false);
+  const [customOfferInitials, setCustomOfferInitials] = useState<{
+    serviceName?: string;
+    price?: string;
+    duration?: string;
+  }>({});
+  const [collapsedServiceCategoryGroups, setCollapsedServiceCategoryGroups] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   // --- Products ---
   // §Provider-audit 2026-04 (round 4): /api/provider/products returns
@@ -1346,49 +1378,19 @@ export default function NewBookingScreen() {
   /** Deduped rooms/equipment linked to selected offerings (offering_resources). */
   const aggregatedBookingResources = useMemo(() => {
     if (!services || selectedServices.length === 0) return [];
-    type Agg = {
-      resource_id: string;
-      name: string;
-      required: boolean;
-      serviceTitles: string[];
-      inactive: boolean;
-      locationMismatch: boolean;
-    };
-    const byId = new Map<string, Agg>();
-    for (const sel of selectedServices) {
-      if (sel.isCustom) continue;
-      const svc = services.find((x) => x.id === sel.serviceId);
-      if (!svc) continue;
-      const title = svc.variant_name ? `${svc.title} · ${svc.variant_name}` : svc.title;
-      for (const r of svc.resource_requirements ?? []) {
-        const prev = byId.get(r.resource_id);
-        if (!prev) {
-          byId.set(r.resource_id, {
-            resource_id: r.resource_id,
-            name: r.name,
-            required: r.required,
-            serviceTitles: [title],
-            inactive: r.is_active === false,
-            locationMismatch:
-              Boolean(selectedLocationId) &&
-              Boolean(r.location_id) &&
-              r.location_id !== selectedLocationId,
-          });
-        } else {
-          prev.required = prev.required || r.required;
-          if (!prev.serviceTitles.includes(title)) prev.serviceTitles.push(title);
-          if (r.is_active === false) prev.inactive = true;
-          if (
-            Boolean(selectedLocationId) &&
-            Boolean(r.location_id) &&
-            r.location_id !== selectedLocationId
-          ) {
-            prev.locationMismatch = true;
-          }
-        }
-      }
-    }
-    return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+    const lines = selectedServices
+      .filter((sel) => !sel.isCustom)
+      .map((sel) => {
+        const svc = services.find((x) => x.id === sel.serviceId);
+        if (!svc) return null;
+        const title = svc.variant_name ? `${svc.title} · ${svc.variant_name}` : svc.title;
+        return {
+          serviceTitle: title,
+          requirements: svc.resource_requirements ?? [],
+        };
+      })
+      .filter((line): line is NonNullable<typeof line> => line != null);
+    return aggregateOfferingResources(lines, selectedLocationId);
   }, [services, selectedServices, selectedLocationId]);
 
   // Auto-clear promo code when cart items change so stale discount doesn't apply
@@ -1514,6 +1516,64 @@ export default function NewBookingScreen() {
     });
   }, [productsList, selectedProductCategory]);
 
+  const useServiceCategoryPickerSheet = shouldUseCategoryPicker(serviceCategoryOptions.length);
+  const useProductCategoryPickerSheet = shouldUseCategoryPicker(productCategoryOptions.length);
+
+  const staffEligibleForService = useCallback(
+    (serviceId: string): StaffMember[] => {
+      const list = staffList ?? [];
+      const svc = services?.find((s) => s.id === serviceId);
+      const allowed = svc?.team_member_ids?.filter(Boolean) ?? [];
+      if (allowed.length === 0) return list;
+      return list.filter((m) => allowed.includes(m.id));
+    },
+    [staffList, services],
+  );
+
+  const openStaffPickerForService = useCallback(
+    (serviceId: string) => {
+      const eligible = staffEligibleForService(serviceId);
+      setStaffPickerFilteredHint(
+        Boolean(staffList?.length) && eligible.length > 0 && eligible.length < (staffList?.length ?? 0),
+      );
+      setStaffPickerService(serviceId);
+    },
+    [staffEligibleForService, staffList?.length],
+  );
+
+  const isExistingClient = clientMode === "search" && selectedClient != null;
+  const showReferralBlock = !isExistingClient || showReferralExpanded;
+
+  const openSendQuote = useCallback(() => {
+    const customLine = selectedServices.find((s) => s.isCustom);
+    setCustomOfferInitials({
+      serviceName: customLine?.customName ?? "",
+      price: customLine?.customPrice != null ? String(customLine.customPrice) : "",
+      duration: customLine?.customDuration != null ? String(customLine.customDuration) : "",
+    });
+    if (selectedClient?.customer_id) {
+      setShowCustomOfferSheet(true);
+    } else {
+      Alert.alert(nb("sendQuote"), nb("sendQuoteNeedsAccount"));
+    }
+  }, [selectedServices, selectedClient?.customer_id, nb]);
+
+  useEffect(() => {
+    if (!services?.length) return;
+    const allParent = services.filter((s) => !s.parent_service_id && s.service_type !== "variant");
+    if (!shouldGroupAllCatalogItems(allParent.length)) return;
+    const counts = new Map<string, number>();
+    for (const svc of allParent) {
+      const id = getServiceCategoryInfo(svc, nb("otherCategory")).id;
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    const next = new Set<string>();
+    for (const [id, count] of counts) {
+      if (count >= COLLAPSE_GROUP_MIN_ITEMS) next.add(id);
+    }
+    setCollapsedServiceCategoryGroups(next);
+  }, [services, nb]);
+
   // §Provider-launch (audit 2026-04): when the user entered this screen
   // from a specific staff column or a filtered location on the calendar,
   // we receive `staff_id` / `location_id` query params. Pre-seed each
@@ -1573,14 +1633,18 @@ export default function NewBookingScreen() {
 
   // --- Helpers ---
   function toggleService(serviceId: string) {
+    const multiStaff = (staffList?.length ?? 0) > 1;
+    let shouldOpenStaffPicker = false;
     setSelectedServices((prev) => {
       const exists = prev.find((s) => s.serviceId === serviceId);
       if (exists) return prev.filter((s) => s.serviceId !== serviceId);
-      return [
-        ...prev,
-        { serviceId, addOnIds: [], ...(defaultStaffForNewLines ? { staffId: defaultStaffForNewLines } : {}) },
-      ];
+      const staffId = defaultStaffForNewLines;
+      shouldOpenStaffPicker = multiStaff && !staffId && !preselectedStaffId;
+      return [...prev, { serviceId, addOnIds: [], ...(staffId ? { staffId } : {}) }];
     });
+    if (shouldOpenStaffPicker) {
+      queueMicrotask(() => openStaffPickerForService(serviceId));
+    }
   }
 
   function addCustomServiceLine() {
@@ -1612,6 +1676,10 @@ export default function NewBookingScreen() {
     setCustomServicePrice("");
     setCustomServiceDuration("60");
     setShowCustomService(false);
+    const multiStaff = (staffList?.length ?? 0) > 1;
+    if (multiStaff && !defaultStaffForNewLines && !preselectedStaffId) {
+      queueMicrotask(() => openStaffPickerForService(serviceId));
+    }
   }
 
   function removeCustomService(serviceId: string) {
@@ -2309,6 +2377,30 @@ export default function NewBookingScreen() {
     }
   }
 
+  const handleGroupBookingPress = useCallback(() => {
+    if (createPermissionsLoading) return;
+    if (!canCreateAppointments) return;
+    const dateStr = selectedDate ? format(selectedDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
+    const q = new URLSearchParams({ openCreate: "true", default_date: dateStr });
+    if (selectedTime?.trim()) q.set("default_time", selectedTime.trim());
+    const staffFromLine = selectedServices.find((s) => s.staffId)?.staffId;
+    const staffParam =
+      staffFromLine ??
+      (typeof params.staff_id === "string" && params.staff_id.length > 0 ? params.staff_id : "");
+    if (staffParam) q.set("default_staff_id", staffParam);
+    if (selectedLocationId) q.set("default_location_id", selectedLocationId);
+    router.push(`/(app)/(tabs)/more/group-bookings?${q.toString()}` as never);
+  }, [
+    canCreateAppointments,
+    createPermissionsLoading,
+    params.staff_id,
+    router,
+    selectedDate,
+    selectedLocationId,
+    selectedServices,
+    selectedTime,
+  ]);
+
   /* ---------------------------------------------------------------- */
   /*  JSX                                                             */
   /* ---------------------------------------------------------------- */
@@ -2333,29 +2425,67 @@ export default function NewBookingScreen() {
 
         {!isWalkIn ? (
           <TouchableOpacity
-            onPress={() =>
-              router.push("/(app)/(tabs)/more/group-bookings?openCreate=true" as never)
-            }
+            onPress={() => {
+              if (createPermissionsError) {
+                void refreshCreatePermissions();
+                return;
+              }
+              handleGroupBookingPress();
+            }}
+            disabled={createPermissionsLoading}
             style={twStyle(
-              "mb-3 flex-row items-center rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3",
+              `mb-3 flex-row items-center rounded-2xl border px-4 py-3 ${
+                !createPermissionsLoading && !canCreateAppointments
+                  ? "border-gray-200 bg-gray-50 opacity-90"
+                  : "border-indigo-200 bg-indigo-50"
+              }`,
             )}
             accessibilityRole="button"
             accessibilityLabel={nb("createGroupA11y")}
+            accessibilityState={{ disabled: createPermissionsLoading }}
           >
             <View
               style={twStyle(
-                "me-3 h-10 w-10 items-center justify-center rounded-full bg-indigo-100",
+                `me-3 h-10 w-10 items-center justify-center rounded-full ${
+                  !createPermissionsLoading && !canCreateAppointments
+                    ? "bg-gray-100"
+                    : "bg-indigo-100"
+                }`,
               )}
             >
-              <Ionicons name="people-outline" size={20} color="#4338ca" />
+              {createPermissionsLoading ? (
+                <ActivityIndicator size="small" color="#4338ca" />
+              ) : (
+                <Ionicons
+                  name="people-outline"
+                  size={20}
+                  color={!canCreateAppointments ? "#6b7280" : "#4338ca"}
+                />
+              )}
             </View>
             <View style={twStyle("flex-1")}>
-              <Text style={twStyle("text-sm font-semibold text-indigo-900")}>{nb("groupBooking")}</Text>
-              <Text style={twStyle("mt-0.5 text-xs text-indigo-700")}>
-                {nb("groupBookingHint")}
+              <Text
+                style={twStyle(
+                  `text-sm font-semibold ${
+                    !createPermissionsLoading && !canCreateAppointments
+                      ? "text-gray-600"
+                      : "text-indigo-900"
+                  }`,
+                )}
+              >
+                {nb("groupBooking")}
+              </Text>
+              <Text style={twStyle("mt-0.5 text-xs text-gray-600")}>
+                {createPermissionsError
+                  ? nb("groupBookingPermissionsFailed")
+                  : !createPermissionsLoading && !canCreateAppointments
+                    ? nb("groupBookingNoPermission")
+                    : nb("groupBookingHint")}
               </Text>
             </View>
-            <DirectionalIcon name="chevron-forward" size={18} color="#6366f1" />
+            {createPermissionsLoading || !canCreateAppointments ? null : (
+              <DirectionalIcon name="chevron-forward" size={18} color="#6366f1" />
+            )}
           </TouchableOpacity>
         ) : null}
 
@@ -2716,18 +2846,14 @@ export default function NewBookingScreen() {
                 >
                   <Text style={twStyle("text-xs font-semibold text-primary")}>{nb("customServiceInPerson")}</Text>
                 </TouchableOpacity>
-                {selectedClient?.customer_id ? (
-                  <TouchableOpacity
-                    style={twStyle("rounded-full border border-gray-200 bg-gray-50 px-3 py-2")}
-                    onPress={() =>
-                      router.push(`/(app)/(tabs)/more/messaging/${selectedClient.customer_id}` as never)
-                    }
-                    accessibilityRole="button"
-                    accessibilityLabel={nb("sendQuoteA11y")}
-                  >
-                    <Text style={twStyle("text-xs font-semibold text-gray-700")}>{nb("sendQuote")}</Text>
-                  </TouchableOpacity>
-                ) : null}
+                <TouchableOpacity
+                  style={twStyle("rounded-full border border-gray-200 bg-gray-50 px-3 py-2")}
+                  onPress={openSendQuote}
+                  accessibilityRole="button"
+                  accessibilityLabel={nb("sendQuoteA11y")}
+                >
+                  <Text style={twStyle("text-xs font-semibold text-gray-700")}>{nb("sendQuote")}</Text>
+                </TouchableOpacity>
               </View>
               {selectedServices.some((s) => s.isCustom) ? (
                 <View style={twStyle("mb-3")}>
@@ -2736,25 +2862,44 @@ export default function NewBookingScreen() {
                     .map((sel) => (
                       <View
                         key={sel.serviceId}
-                        style={twStyle("mb-2 flex-row items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-3")}
+                        style={twStyle("mb-2 rounded-xl border border-amber-200 bg-amber-50 p-3")}
                       >
-                        <View style={twStyle("flex-1 pe-2")}>
-                          <Text style={twStyle("text-sm font-medium text-gray-900")}>{sel.customName}</Text>
-                          <Text style={twStyle("text-xs text-gray-600")}>
-                            {formatDuration(sel.customDuration ?? 60)} · {nb("customPrice")}
-                          </Text>
+                        <View style={twStyle("flex-row items-center justify-between")}>
+                          <View style={twStyle("flex-1 pe-2")}>
+                            <Text style={twStyle("text-sm font-medium text-gray-900")}>{sel.customName}</Text>
+                            <Text style={twStyle("text-xs text-gray-600")}>
+                              {formatDuration(sel.customDuration ?? 60)} · {nb("customPrice")}
+                            </Text>
+                          </View>
+                          <View style={twStyle("flex-row items-center")}>
+                            <Text style={twStyle("me-3 text-sm font-semibold text-gray-900")}>
+                              {formatCurrency(sel.customPrice ?? 0, getTenantDefaultCurrency())}
+                            </Text>
+                            <TouchableOpacity
+                              onPress={() => removeCustomService(sel.serviceId)}
+                              accessibilityLabel={nb("removeNamedA11y", { name: sel.customName })}
+                            >
+                              <Ionicons name="close-circle" size={22} color="#b45309" />
+                            </TouchableOpacity>
+                          </View>
                         </View>
-                        <View style={twStyle("flex-row items-center")}>
-                          <Text style={twStyle("me-3 text-sm font-semibold text-gray-900")}>
-                            {formatCurrency(sel.customPrice ?? 0, getTenantDefaultCurrency())}
-                          </Text>
+                        {(staffList?.length ?? 0) > 0 ? (
                           <TouchableOpacity
-                            onPress={() => removeCustomService(sel.serviceId)}
-                            accessibilityLabel={nb("removeNamedA11y", { name: sel.customName })}
+                            style={twStyle("mt-2 flex-row items-center rounded-lg border border-amber-200 bg-white px-3 py-2.5")}
+                            onPress={() => openStaffPickerForService(sel.serviceId)}
+                            accessibilityLabel={
+                              sel.staffId
+                                ? nb("assignStaffForA11y", { name: sel.customName ?? "" })
+                                : nb("chooseStaffRequired")
+                            }
                           >
-                            <Ionicons name="close-circle" size={22} color="#b45309" />
+                            <Ionicons name="person-outline" size={14} color="#6b7280" />
+                            <Text style={twStyle("ms-1 flex-1 text-xs text-gray-600")}>
+                              {staffList?.find((s) => s.id === sel.staffId)?.name ?? nb("chooseStaffRequired")}
+                            </Text>
+                            <Ionicons name="chevron-down" size={14} color="#9ca3af" />
                           </TouchableOpacity>
-                        </View>
+                        ) : null}
                       </View>
                     ))}
                 </View>
@@ -2767,49 +2912,73 @@ export default function NewBookingScreen() {
                 </View>
               ) : (
                 <View style={twStyle("mb-4")}>
-                  {serviceCategoryOptions.length > 1 && (
-                    <View style={twStyle("mb-3 rounded-2xl border border-gray-100 bg-gray-50 p-2")}>
-                      <Text style={twStyle("mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-{nb("filterByCategory")}
-                      </Text>
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                  {serviceCategoryOptions.length > 1 ? (
+                    useServiceCategoryPickerSheet ? (
+                      <View style={twStyle("mb-3")}>
+                        <Text style={twStyle("mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
+                          {nb("filterByCategory")}
+                        </Text>
                         <TouchableOpacity
-                          style={[
-                            twStyle(`me-2 rounded-full border px-3 py-2 ${
-                              selectedServiceCategory === "all" ? "border-gray-900 bg-gray-900" : "border-gray-200 bg-white"
-                            }`),
-                          ]}
-                          onPress={() => setSelectedServiceCategory("all")}
+                          style={twStyle(
+                            "flex-row items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3",
+                          )}
+                          onPress={() => setShowServiceCategorySheet(true)}
                           accessibilityRole="button"
-                          accessibilityLabel={nb("showAllServicesA11y")}
+                          accessibilityLabel={nb("filterByCategory")}
                         >
-                          <Text style={twStyle(`text-xs font-semibold ${selectedServiceCategory === "all" ? "text-white" : "text-gray-700"}`)}>
-                            {nb("all")}
+                          <Text style={twStyle("text-sm text-gray-900")}>
+                            {selectedServiceCategory === "all"
+                              ? nb("all")
+                              : (serviceCategoryOptions.find((c) => c.id === selectedServiceCategory)?.label ??
+                                nb("all"))}
                           </Text>
+                          <Ionicons name="chevron-down" size={18} color="#9ca3af" />
                         </TouchableOpacity>
-                        {serviceCategoryOptions.map((category) => {
-                          const active = selectedServiceCategory === category.id;
-                          return (
-                            <TouchableOpacity
-                              key={category.id}
-                              style={[
-                                twStyle(`me-2 rounded-full border px-3 py-2 ${
-                                  active ? "border-emerald-600 bg-emerald-600" : "border-emerald-200 bg-white"
-                                }`),
-                              ]}
-                              onPress={() => setSelectedServiceCategory(category.id)}
-                              accessibilityRole="button"
-                              accessibilityLabel={nb("showCategoryServicesA11y", { label: category.label })}
-                            >
-                              <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : "text-emerald-700"}`)}>
-                                {category.label} · {category.count}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </ScrollView>
-                    </View>
-                  )}
+                      </View>
+                    ) : (
+                      <View style={twStyle("mb-3 rounded-2xl border border-gray-100 bg-gray-50 p-2")}>
+                        <Text style={twStyle("mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
+                          {nb("filterByCategory")}
+                        </Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                          <TouchableOpacity
+                            style={[
+                              twStyle(`me-2 rounded-full border px-3 py-2 ${
+                                selectedServiceCategory === "all" ? "border-gray-900 bg-gray-900" : "border-gray-200 bg-white"
+                              }`),
+                            ]}
+                            onPress={() => setSelectedServiceCategory("all")}
+                            accessibilityRole="button"
+                            accessibilityLabel={nb("showAllServicesA11y")}
+                          >
+                            <Text style={twStyle(`text-xs font-semibold ${selectedServiceCategory === "all" ? "text-white" : "text-gray-700"}`)}>
+                              {nb("all")}
+                            </Text>
+                          </TouchableOpacity>
+                          {serviceCategoryOptions.map((category) => {
+                            const active = selectedServiceCategory === category.id;
+                            return (
+                              <TouchableOpacity
+                                key={category.id}
+                                style={[
+                                  twStyle(`me-2 rounded-full border px-3 py-2 ${
+                                    active ? "border-emerald-600 bg-emerald-600" : "border-emerald-200 bg-white"
+                                  }`),
+                                ]}
+                                onPress={() => setSelectedServiceCategory(category.id)}
+                                accessibilityRole="button"
+                                accessibilityLabel={nb("showCategoryServicesA11y", { label: category.label })}
+                              >
+                                <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : "text-emerald-700"}`)}>
+                                  {category.label} · {category.count}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </ScrollView>
+                      </View>
+                    )
+                  ) : null}
                   {(() => {
                     if (!services) return null;
                     const allParentSvcs = services.filter((s) => !s.parent_service_id && s.service_type !== "variant");
@@ -2860,27 +3029,34 @@ export default function NewBookingScreen() {
                               </View>
                             </View>
                           </TouchableOpacity>
-                          {isSelected && (
-                            <View style={[twStyle("mt-1 mb-1 flex-row"), indent ? { marginStart: 24 } : { marginStart: 12 }]}>
+                          {isSelected && (staffList?.length ?? 0) > 0 ? (
+                            <View style={[twStyle("mt-1 mb-1"), indent ? { marginStart: 24 } : { marginStart: 12 }]}>
                               <TouchableOpacity
-                                style={[twStyle("flex-row items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5"), { marginEnd: 8 }]}
-                                onPress={() => setStaffPickerService(service.id)}
-                                accessibilityLabel={nb("assignStaffForA11y", { name: displayName })}
+                                style={twStyle("flex-row items-center rounded-lg border border-gray-200 bg-white px-3 py-2.5")}
+                                onPress={() => openStaffPickerForService(service.id)}
+                                accessibilityLabel={
+                                  sel?.staffId
+                                    ? nb("assignStaffForA11y", { name: displayName })
+                                    : nb("chooseStaffRequired")
+                                }
                               >
                                 <Ionicons name="person-outline" size={14} color="#6b7280" />
-                                <Text style={twStyle("ms-1 text-xs text-gray-600")}>{staffName ?? nb("assignStaff")}</Text>
+                                <Text style={twStyle("ms-1 flex-1 text-xs text-gray-600")}>{staffName ?? nb("chooseStaffRequired")}</Text>
+                                <Ionicons name="chevron-down" size={14} color="#9ca3af" />
                               </TouchableOpacity>
-                              {service.add_ons && service.add_ons.length > 0 && (
-                                <TouchableOpacity
-                                  style={twStyle("flex-row items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5")}
-                                  onPress={() => setAddOnPickerService(service.id)}
-                                >
-                                  <Ionicons name="add-circle-outline" size={14} color="#6b7280" />
-                                  <Text style={twStyle("ms-1 text-xs text-gray-600")}>{nb("addonsCount", { count: sel?.addOnIds.length ?? 0 })}</Text>
-                                </TouchableOpacity>
-                              )}
                             </View>
-                          )}
+                          ) : null}
+                          {isSelected && service.add_ons && service.add_ons.length > 0 ? (
+                            <View style={[twStyle("mt-1 mb-1"), indent ? { marginStart: 24 } : { marginStart: 12 }]}>
+                              <TouchableOpacity
+                                style={twStyle("flex-row items-center rounded-lg border border-gray-200 bg-white px-3 py-2.5")}
+                                onPress={() => setAddOnPickerService(service.id)}
+                              >
+                                <Ionicons name="add-circle-outline" size={14} color="#6b7280" />
+                                <Text style={twStyle("ms-1 text-xs text-gray-600")}>{nb("addonsCount", { count: sel?.addOnIds.length ?? 0 })}</Text>
+                              </TouchableOpacity>
+                            </View>
+                          ) : null}
                           {isSelected && (
                             <View style={[twStyle("mt-1 mb-1"), indent ? { marginStart: 24 } : { marginStart: 12 }]}>
                               <TextInput
@@ -2911,26 +3087,72 @@ export default function NewBookingScreen() {
                       );
                     }
 
-                    return parentSvcs.map((service, svcIdx) => {
-                      const variants = variantsByParent.get(service.id) ?? [];
-                      if (variants.length > 0) {
-                        return (
-                          <View key={service.id} style={svcIdx > 0 ? { marginTop: 12 } : undefined}>
-                            <Text style={twStyle("text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 px-1")}>
-                              {service.title}
-                            </Text>
-                            <View style={twStyle("gap-y-2")}>
-                              {variants.map((v) => renderServiceRow(v, true))}
+                    const renderParentList = (list: Service[]) =>
+                      list.map((service, svcIdx) => {
+                        const variants = variantsByParent.get(service.id) ?? [];
+                        if (variants.length > 0) {
+                          return (
+                            <View key={service.id} style={svcIdx > 0 ? { marginTop: 12 } : undefined}>
+                              <Text style={twStyle("text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 px-1")}>
+                                {service.title}
+                              </Text>
+                              <View style={twStyle("gap-y-2")}>
+                                {variants.map((v) => renderServiceRow(v, true))}
+                              </View>
                             </View>
+                          );
+                        }
+                        return (
+                          <View key={service.id} style={svcIdx > 0 ? { marginTop: 8 } : undefined}>
+                            {renderServiceRow(service, false)}
                           </View>
                         );
+                      });
+
+                    if (
+                      selectedServiceCategory === "all" &&
+                      shouldGroupAllCatalogItems(allParentSvcs.length)
+                    ) {
+                      const groups = new Map<string, { label: string; services: Service[] }>();
+                      for (const svc of parentSvcs) {
+                        const info = getServiceCategoryInfo(svc, nb("otherCategory"));
+                        const prev = groups.get(info.id);
+                        if (prev) prev.services.push(svc);
+                        else groups.set(info.id, { label: info.label, services: [svc] });
                       }
-                      return (
-                        <View key={service.id} style={svcIdx > 0 ? { marginTop: 8 } : undefined}>
-                          {renderServiceRow(service, false)}
-                        </View>
-                      );
-                    });
+                      return Array.from(groups.entries()).map(([catId, group]) => {
+                        const collapsible = group.services.length >= COLLAPSE_GROUP_MIN_ITEMS;
+                        const collapsed = collapsible && collapsedServiceCategoryGroups.has(catId);
+                        return (
+                          <View key={catId} style={{ marginBottom: 8 }}>
+                            <TouchableOpacity
+                              disabled={!collapsible}
+                              onPress={() => {
+                                if (!collapsible) return;
+                                setCollapsedServiceCategoryGroups((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(catId)) next.delete(catId);
+                                  else next.add(catId);
+                                  return next;
+                                });
+                              }}
+                              style={twStyle("flex-row items-center justify-between px-1 py-2")}
+                              accessibilityRole={collapsible ? "button" : undefined}
+                            >
+                              <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>
+                                {group.label} · {group.services.length}
+                              </Text>
+                              {collapsible ? (
+                                <Ionicons name={collapsed ? "chevron-down" : "chevron-up"} size={16} color="#6b7280" />
+                              ) : null}
+                            </TouchableOpacity>
+                            {!collapsed ? renderParentList(group.services) : null}
+                          </View>
+                        );
+                      });
+                    }
+
+                    return renderParentList(parentSvcs);
                   })()}
                 </View>
               )}
@@ -3700,21 +3922,44 @@ export default function NewBookingScreen() {
               </View>
 
               {/* -------- REFERRAL SOURCE -------- */}
-              <SectionLabel label={nb("referralQuestion")} />
-              <View style={twStyle("mb-4")}>
-                <ChipCombobox
-                  singleSelect
-                  value={referralSourceId || null}
-                  onChange={(v) => setReferralSourceId(v ?? "")}
-                  staticSuggestions={[
-                    { value: "", label: nb("referralNone") },
-                    ...referralSources.map((s) => ({ value: s.id, label: s.name })),
-                  ]}
-                  allowFreeForm={false}
-                  placeholder={referralSources.length > 0 ? nb("selectReferral") : nb("noSources")}
-                  accessibilityLabel={nb("referralA11y")}
-                />
-              </View>
+              {referralSources.length > 0 && isExistingClient && !showReferralExpanded ? (
+                <TouchableOpacity
+                  style={twStyle("mb-4 py-1")}
+                  onPress={() => setShowReferralExpanded(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={nb("referralAddForVisit")}
+                >
+                  <Text style={twStyle("text-sm font-semibold text-primary")}>{nb("referralAddForVisit")}</Text>
+                </TouchableOpacity>
+              ) : null}
+              {referralSources.length > 0 && showReferralBlock ? (
+                <>
+                  <SectionLabel label={isExistingClient ? nb("referralQuestion") : nb("referralHowDidTheyFind")} />
+                  {!isExistingClient ? (
+                    <Text style={twStyle("mb-2 text-xs text-gray-500")}>{nb("referralOptionalHint")}</Text>
+                  ) : null}
+                  <View style={twStyle("mb-4")}>
+                    <TouchableOpacity
+                      style={twStyle(
+                        "flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3",
+                      )}
+                      onPress={() => setShowReferralSourceSheet(true)}
+                      disabled={referralSources.length === 0}
+                      accessibilityRole="button"
+                      accessibilityLabel={nb("referralA11y")}
+                    >
+                      <Text style={twStyle("text-base text-gray-900")}>
+                        {referralSourceId
+                          ? (referralSources.find((s) => s.id === referralSourceId)?.name ?? nb("selectReferral"))
+                          : referralSources.length > 0
+                            ? nb("selectReferral")
+                            : nb("noSources")}
+                      </Text>
+                      <Ionicons name="chevron-down" size={18} color="#9ca3af" />
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : null}
 
               {/* -------- PROVIDER INTAKE / CONSENT FORMS -------- */}
               {(formsLoading || formsError || activeProviderForms.length > 0) && (
@@ -3951,11 +4196,17 @@ export default function NewBookingScreen() {
         {/* -------- STAFF PICKER SHEET -------- */}
         <BottomSheet
           visible={!!staffPickerService}
-          onClose={() => setStaffPickerService(null)}
+          onClose={() => {
+            setStaffPickerService(null);
+            setStaffPickerFilteredHint(false);
+          }}
           title={nb("assignStaffTitle")}
         >
+          {staffPickerFilteredHint ? (
+            <Text style={twStyle("mb-3 text-xs text-gray-500")}>{nb("staffFilteredByService")}</Text>
+          ) : null}
           <View>
-            {staffList?.map((s, idx) => (
+            {(staffPickerService ? staffEligibleForService(staffPickerService) : staffList ?? []).map((s, idx) => (
               <TouchableOpacity
                 key={s.id}
                 style={[twStyle("flex-row items-center rounded-xl border border-gray-100 bg-white p-3"), idx > 0 ? { marginTop: 8 } : undefined]}
@@ -3981,49 +4232,67 @@ export default function NewBookingScreen() {
           onClose={() => setShowProductPicker(false)}
           title={nb("addProductTitle")}
         >
-          {productCategoryOptions.length > 1 && (
-            <View style={twStyle("mb-3 rounded-2xl border border-primary/20 bg-primary/10 p-2")}>
-              <Text style={twStyle("mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-{nb("filterByCategory")}
-              </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-                <TouchableOpacity
-                  style={[
-                    twStyle(`me-2 rounded-full border px-3 py-2 ${
-                      selectedProductCategory === "all" ? "border-primary bg-primary" : "border-primary/20 bg-white"
-                    }`),
-                  ]}
-                  onPress={() => setSelectedProductCategory("all")}
-                  accessibilityRole="button"
-                  accessibilityLabel={nb("showAllProductsA11y")}
-                >
-                  <Text style={twStyle(`text-xs font-semibold ${selectedProductCategory === "all" ? "text-white" : "text-gray-700"}`)}>
-                    {nb("all")}
-                  </Text>
-                </TouchableOpacity>
-                {productCategoryOptions.map((category) => {
-                  const active = selectedProductCategory === category.id;
-                  return (
-                    <TouchableOpacity
-                      key={category.id}
-                      style={[
-                        twStyle(`me-2 rounded-full border px-3 py-2 ${
-                          active ? "border-primary bg-primary" : "border-primary/20 bg-white"
-                        }`),
-                      ]}
-                      onPress={() => setSelectedProductCategory(category.id)}
-                      accessibilityRole="button"
-                      accessibilityLabel={nb("showCategoryProductsA11y", { label: category.label })}
-                    >
-                      <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : "text-primary"}`)}>
-                        {category.label} · {category.count}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-          )}
+          {productCategoryOptions.length > 1 ? (
+            useProductCategoryPickerSheet ? (
+              <TouchableOpacity
+                style={twStyle(
+                  "mb-3 flex-row items-center justify-between rounded-xl border border-primary/20 bg-white px-4 py-3",
+                )}
+                onPress={() => setShowProductCategorySheet(true)}
+                accessibilityRole="button"
+                accessibilityLabel={nb("filterByCategory")}
+              >
+                <Text style={twStyle("text-sm text-gray-900")}>
+                  {selectedProductCategory === "all"
+                    ? nb("all")
+                    : (productCategoryOptions.find((c) => c.id === selectedProductCategory)?.label ?? nb("all"))}
+                </Text>
+                <Ionicons name="chevron-down" size={18} color="#9ca3af" />
+              </TouchableOpacity>
+            ) : (
+              <View style={twStyle("mb-3 rounded-2xl border border-primary/20 bg-primary/10 p-2")}>
+                <Text style={twStyle("mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
+                  {nb("filterByCategory")}
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                  <TouchableOpacity
+                    style={[
+                      twStyle(`me-2 rounded-full border px-3 py-2 ${
+                        selectedProductCategory === "all" ? "border-primary bg-primary" : "border-primary/20 bg-white"
+                      }`),
+                    ]}
+                    onPress={() => setSelectedProductCategory("all")}
+                    accessibilityRole="button"
+                    accessibilityLabel={nb("showAllProductsA11y")}
+                  >
+                    <Text style={twStyle(`text-xs font-semibold ${selectedProductCategory === "all" ? "text-white" : "text-gray-700"}`)}>
+                      {nb("all")}
+                    </Text>
+                  </TouchableOpacity>
+                  {productCategoryOptions.map((category) => {
+                    const active = selectedProductCategory === category.id;
+                    return (
+                      <TouchableOpacity
+                        key={category.id}
+                        style={[
+                          twStyle(`me-2 rounded-full border px-3 py-2 ${
+                            active ? "border-primary bg-primary" : "border-primary/20 bg-white"
+                          }`),
+                        ]}
+                        onPress={() => setSelectedProductCategory(category.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={nb("showCategoryProductsA11y", { label: category.label })}
+                      >
+                        <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : "text-primary"}`)}>
+                          {category.label} · {category.count}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )
+          ) : null}
           <ScrollView style={{ maxHeight: 400 }}>
             {productsForPicker.length === 0 && (
               <Text style={twStyle("py-6 text-center text-sm text-gray-500")}>
@@ -4288,6 +4557,106 @@ export default function NewBookingScreen() {
             })()}
           </View>
         </BottomSheet>
+
+        <BottomSheet
+          visible={showServiceCategorySheet}
+          onClose={() => setShowServiceCategorySheet(false)}
+          title={nb("filterByCategory")}
+        >
+          <TouchableOpacity
+            style={twStyle("mb-2 rounded-xl border border-gray-100 bg-white px-4 py-3")}
+            onPress={() => {
+              setSelectedServiceCategory("all");
+              setShowServiceCategorySheet(false);
+            }}
+          >
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>{nb("all")}</Text>
+          </TouchableOpacity>
+          {serviceCategoryOptions.map((category) => (
+            <TouchableOpacity
+              key={category.id}
+              style={twStyle("mb-2 rounded-xl border border-gray-100 bg-white px-4 py-3")}
+              onPress={() => {
+                setSelectedServiceCategory(category.id);
+                setShowServiceCategorySheet(false);
+              }}
+            >
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                {category.label} · {category.count}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </BottomSheet>
+
+        <BottomSheet
+          visible={showProductCategorySheet}
+          onClose={() => setShowProductCategorySheet(false)}
+          title={nb("filterByCategory")}
+        >
+          <TouchableOpacity
+            style={twStyle("mb-2 rounded-xl border border-gray-100 bg-white px-4 py-3")}
+            onPress={() => {
+              setSelectedProductCategory("all");
+              setShowProductCategorySheet(false);
+            }}
+          >
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>{nb("all")}</Text>
+          </TouchableOpacity>
+          {productCategoryOptions.map((category) => (
+            <TouchableOpacity
+              key={category.id}
+              style={twStyle("mb-2 rounded-xl border border-gray-100 bg-white px-4 py-3")}
+              onPress={() => {
+                setSelectedProductCategory(category.id);
+                setShowProductCategorySheet(false);
+              }}
+            >
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                {category.label} · {category.count}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </BottomSheet>
+
+        <BottomSheet
+          visible={showReferralSourceSheet}
+          onClose={() => setShowReferralSourceSheet(false)}
+          title={isExistingClient ? nb("referralQuestion") : nb("referralHowDidTheyFind")}
+        >
+          <TouchableOpacity
+            style={twStyle("mb-2 rounded-xl border border-gray-100 bg-white px-4 py-3")}
+            onPress={() => {
+              setReferralSourceId("");
+              setShowReferralSourceSheet(false);
+            }}
+          >
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>{nb("referralNone")}</Text>
+          </TouchableOpacity>
+          {referralSources.map((source) => (
+            <TouchableOpacity
+              key={source.id}
+              style={twStyle("mb-2 rounded-xl border border-gray-100 bg-white px-4 py-3")}
+              onPress={() => {
+                setReferralSourceId(source.id);
+                setShowReferralSourceSheet(false);
+              }}
+            >
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>{source.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </BottomSheet>
+
+        {selectedClient?.customer_id ? (
+          <CustomOfferSheet
+            visible={showCustomOfferSheet}
+            onClose={() => setShowCustomOfferSheet(false)}
+            customerId={selectedClient.customer_id}
+            customerName={selectedClient.full_name}
+            initialServiceName={customOfferInitials.serviceName}
+            initialPrice={customOfferInitials.price}
+            initialDuration={customOfferInitials.duration}
+          />
+        ) : null}
 
         <AddressMapPinModal
           visible={addressMapPinOpen}

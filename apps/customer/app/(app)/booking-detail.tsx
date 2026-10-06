@@ -24,6 +24,7 @@ import { SafetyPanicButton } from "@/components/SafetyPanicButton";
 import { Skeleton } from "@/components/Skeleton";
 import { haptic } from "@/lib/haptics";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { hasSupabaseAccessToken, pushLoginWithReturnTo, redirectLoginIfAuthRequired } from "@/lib/customer-auth-routing";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { downloadPdf } from "@/lib/pdf-file";
@@ -1123,7 +1124,14 @@ export default function BookingDetailScreen() {
     if (!id || !booking) return;
     haptic.light();
     setPayRemainingLoading(true);
+    const payRemainingReturnTo = `/(app)/booking-detail?id=${encodeURIComponent(id)}`;
     try {
+      const hasToken = await hasSupabaseAccessToken();
+      if (!hasToken) {
+        setPayRemainingLoading(false);
+        pushLoginWithReturnTo(payRemainingReturnTo);
+        return;
+      }
       const res = await api.post<{
         authorization_url?: string;
         fully_settled?: boolean;
@@ -1148,6 +1156,10 @@ export default function BookingDetailScreen() {
         timeout: 120_000,
       });
       if (res.error) {
+        if (redirectLoginIfAuthRequired(payRemainingReturnTo, res.error)) {
+          setPayRemainingLoading(false);
+          return;
+        }
         Alert.alert(
           errTitle,
           getApiErrorMessage(res.error, bd("payRemainingBalanceFallback")),
@@ -1804,7 +1816,14 @@ export default function BookingDetailScreen() {
     if (!id || !booking) return;
     haptic.light();
     setAdditionalChargePayLoadingId(chargeId);
+    const chargeReturnTo = `/(app)/booking-detail?id=${encodeURIComponent(id)}`;
     try {
+      const hasToken = await hasSupabaseAccessToken();
+      if (!hasToken) {
+        setAdditionalChargePayLoadingId(null);
+        pushLoginWithReturnTo(chargeReturnTo);
+        return;
+      }
       const res = await api.post<{
         authorization_url?: string;
         fully_settled?: boolean;
@@ -1822,6 +1841,10 @@ export default function BookingDetailScreen() {
           : {}),
       }, { timeout: 120_000 });
       if (res.error) {
+        if (redirectLoginIfAuthRequired(chargeReturnTo, res.error)) {
+          setAdditionalChargePayLoadingId(null);
+          return;
+        }
         Alert.alert(errTitle, getApiErrorMessage(res.error, bd("couldNotStartAdditionalChargePayment")));
         return;
       }
@@ -1932,7 +1955,14 @@ export default function BookingDetailScreen() {
     if (!id || !booking) return;
     haptic.light();
     setAdditionalChargeCardLoadingId(chargeId);
+    const cardChargeReturnTo = `/(app)/booking-detail?id=${encodeURIComponent(id)}`;
     try {
+      const hasToken = await hasSupabaseAccessToken();
+      if (!hasToken) {
+        setAdditionalChargeCardLoadingId(null);
+        pushLoginWithReturnTo(cardChargeReturnTo);
+        return;
+      }
       const res = await api.post<{ reference?: string; status?: string }>(
         `/api/payments/charge-saved-card`,
         {
@@ -1947,6 +1977,10 @@ export default function BookingDetailScreen() {
         { timeout: 120_000 },
       );
       if (res.error) {
+        if (redirectLoginIfAuthRequired(cardChargeReturnTo, res.error)) {
+          setAdditionalChargeCardLoadingId(null);
+          return;
+        }
         Alert.alert(errTitle, getApiErrorMessage(res.error, bd("couldNotChargeSavedCard")));
         return;
       }

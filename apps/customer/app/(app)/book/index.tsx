@@ -635,7 +635,7 @@ export default function BookScreen() {
     error: savedAddressesError,
     reload: reloadSavedAddresses,
   } = useAddresses(!!user);
-  const { state: atHomePrefillState, tryAutoPrefill, prefillFromCurrentLocation } = useAtHomeAddressPrefill({
+  const { state: atHomePrefillState, prefillFromCurrentLocation } = useAtHomeAddressPrefill({
     defaultCountry: getShopCountryIsoForForms(),
   });
 
@@ -673,15 +673,32 @@ export default function BookScreen() {
     house_call_instructions: "",
   });
   const [atHomeCoords, setAtHomeCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [atHomeShowArrivalDetails, setAtHomeShowArrivalDetails] = useState(false);
 
-  /** Auto reverse-geocode GPS into address fields when at-home is selected (guests + users without saved addresses). */
-  useEffect(() => {
-    if (locationType !== "at_home") return;
-    if (atHomeAddress.line1.trim() || atHomeAddress.city.trim()) return;
-    if (user && savedAddresses.length > 0) return;
-    if (hasValidServiceCoordinates(primaryAddress)) return;
-    void tryAutoPrefill(true, atHomeAddress).then((result) => {
-      if (!result) return;
+  const atHomePlaceConfirmed = useMemo(() => {
+    const lat = atHomeCoords?.latitude;
+    const lng = atHomeCoords?.longitude;
+    return Boolean(
+      atHomeAddress.line1.trim() &&
+        atHomeAddress.city.trim() &&
+        lat != null &&
+        lng != null &&
+        Number.isFinite(lat) &&
+        Number.isFinite(lng),
+    );
+  }, [atHomeAddress.line1, atHomeAddress.city, atHomeCoords]);
+
+  const atHomePlaceDisplayName = useMemo(() => {
+    const parts = [atHomeAddress.line1.trim(), atHomeAddress.city.trim()].filter(Boolean);
+    return parts.join(", ");
+  }, [atHomeAddress.line1, atHomeAddress.city]);
+
+  const applyAtHomePlaceFromPrefill = useCallback(
+    (result: NonNullable<Awaited<ReturnType<typeof prefillFromCurrentLocation>>>) => {
+      if (!result.address.city?.trim()) {
+        Alert.alert(t("common.error"), t("booking.addressRequiredBody"));
+        return false;
+      }
       setAtHomeAddress((prev) => ({
         ...prev,
         line1: result.address.line1 || prev.line1,
@@ -691,8 +708,11 @@ export default function BookScreen() {
         postal_code: result.address.postal_code ?? prev.postal_code,
       }));
       setAtHomeCoords({ latitude: result.latitude, longitude: result.longitude });
-    });
-  }, [locationType, user, savedAddresses.length, primaryAddress]); // eslint-disable-line react-hooks/exhaustive-deps
+      setAtHomeShowArrivalDetails(false);
+      return true;
+    },
+    [t],
+  );
 
   const handleUseCurrentLocationForAtHome = useCallback(async () => {
     haptic.light();
@@ -703,16 +723,8 @@ export default function BookScreen() {
       }
       return;
     }
-    setAtHomeAddress((prev) => ({
-      ...prev,
-      line1: result.address.line1 || prev.line1,
-      line2: result.address.line2 ?? prev.line2,
-      city: result.address.city || prev.city,
-      country: result.address.country || prev.country,
-      postal_code: result.address.postal_code ?? prev.postal_code,
-    }));
-    setAtHomeCoords({ latitude: result.latitude, longitude: result.longitude });
-  }, [prefillFromCurrentLocation, atHomePrefillState, t]);
+    applyAtHomePlaceFromPrefill(result);
+  }, [prefillFromCurrentLocation, atHomePrefillState, t, applyAtHomePlaceFromPrefill]);
 
   const [addressPickerVisible, setAddressPickerVisible] = useState(false);
   const [travelFeePreview, setTravelFeePreview] = useState<TravelFeePreview>({ status: "idle" });
@@ -2024,7 +2036,7 @@ export default function BookScreen() {
     // be created. This happens when the user re-enters the date/time step from
     // checkout without having filled in an address on this mount (e.g. the
     // hold-snapshot restoration above is still pending or the user cleared it).
-    if (locationType === "at_home" && !atHomeAddress.line1.trim()) {
+    if (locationType === "at_home" && !atHomePlaceConfirmed) {
       Alert.alert(
         t("booking.addressRequired"),
         t("booking.addressRequiredBody"),
@@ -2232,7 +2244,7 @@ export default function BookScreen() {
     setCreatingHold(false);
   }
 // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [provider, selectedService, selectedServices, selectedStaff, selectedSlot, locationType, atHomeAddress, atHomeCoords, effectiveOfferingId, effectiveDuration, selectedLocation, selectedVariant, reschedule_booking_id, campaign_id, provider_id, selectedAddonIds, effectivePromoFromRoute, effectiveGiftCardFromRoute, productsParam, packageIdForCheckout, selectedPackageProducts, slug, t, user?.id, referralCodeFromRoute]);
+}, [provider, selectedService, selectedServices, selectedStaff, selectedSlot, locationType, atHomeAddress, atHomeCoords, atHomePlaceConfirmed, effectiveOfferingId, effectiveDuration, selectedLocation, selectedVariant, reschedule_booking_id, campaign_id, provider_id, selectedAddonIds, effectivePromoFromRoute, effectiveGiftCardFromRoute, productsParam, packageIdForCheckout, selectedPackageProducts, slug, t, user?.id, referralCodeFromRoute]);
 
   const goBack = useCallback(() => {
     haptic.light();
@@ -2982,27 +2994,6 @@ export default function BookScreen() {
                       haptic.light();
                       setLocationType("at_home");
                       if (user) void reloadSavedAddresses();
-                      if (primaryAddress) {
-                        setAtHomeAddress({
-                          line1: primaryAddress.displayName || primaryAddress.label || "",
-                          line2: "",
-                          city: "",
-                          country: getShopCountryIsoForForms(),
-                          postal_code: "",
-                          apartment_unit: "",
-                          building_name: "",
-                          floor_number: "",
-                          gate_code: "",
-                          buzzer_code: "",
-                          door_code: "",
-                          parking_instructions: "",
-                          location_landmarks: "",
-                          house_call_instructions: "",
-                        });
-                        setAtHomeCoords({ latitude: primaryAddress.latitude, longitude: primaryAddress.longitude });
-                      } else {
-                        setAtHomeCoords(coords ? { latitude: coords.latitude, longitude: coords.longitude } : null);
-                      }
                     }}
                     style={{
                       flexDirection: "row", alignItems: "center",
@@ -3027,6 +3018,8 @@ export default function BookScreen() {
                 )}
                 {locationType === "at_home" && (
                   <View style={{ marginTop: 8 }}>
+                    {!atHomePlaceConfirmed ? (
+                    <>
                     {user && savedAddressesLoading && (
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 12 }}>
                         <ActivityIndicator size="small" color={Colors.primary} />
@@ -3060,6 +3053,15 @@ export default function BookScreen() {
                               key={addr.id}
                               onPress={() => {
                                 haptic.light();
+                                if (
+                                  addr.latitude == null ||
+                                  addr.longitude == null ||
+                                  !Number.isFinite(addr.latitude) ||
+                                  !Number.isFinite(addr.longitude)
+                                ) {
+                                  setAddressPickerVisible(true);
+                                  return;
+                                }
                                 setAtHomeAddress((prev) => ({
                                   ...prev,
                                   line1: addr.address_line1,
@@ -3068,11 +3070,8 @@ export default function BookScreen() {
                                   country: addr.country || getShopCountryIsoForForms(),
                                   postal_code: addr.postal_code ?? "",
                                 }));
-                                setAtHomeCoords(
-                                  addr.latitude != null && addr.longitude != null
-                                    ? { latitude: addr.latitude, longitude: addr.longitude }
-                                    : null
-                                );
+                                setAtHomeCoords({ latitude: addr.latitude, longitude: addr.longitude });
+                                setAtHomeShowArrivalDetails(false);
                               }}
                               style={{
                                 flexDirection: "row", alignItems: "center",
@@ -3128,40 +3127,42 @@ export default function BookScreen() {
                     {atHomePrefillState.status === "error" ? (
                       <Text style={{ fontSize: 12, color: "#B45309", marginTop: 4 }}>{atHomePrefillState.message}</Text>
                     ) : null}
-                    <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 10 }}>{t("booking.orEnterManually")}</Text>
-                    <TextInput
-                      placeholder={t("booking.streetAddress")}
-                      value={atHomeAddress.line1}
-                      onChangeText={(text) => { setAtHomeAddress((a) => ({ ...a, line1: text })); if (!atHomeCoords && coords) setAtHomeCoords({ latitude: coords.latitude, longitude: coords.longitude }); }}
+                    </>
+                    ) : (
+                    <>
+                    <View
                       style={{
-                        borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12, paddingHorizontal: contentPadding, paddingVertical: 14,
-                        fontSize: 15, color: "#111827", backgroundColor: "#F9FAFB", marginTop: 10,
+                        padding: contentPadding,
+                        borderRadius: 16,
+                        borderWidth: 1.5,
+                        borderColor: Colors.primary,
+                        backgroundColor: Colors.primaryLight,
                       }}
-                      placeholderTextColor="#9CA3AF"
-                      accessibilityLabel={t("booking.streetAddress")}
-                    />
-                    <TextInput
-                      placeholder={t("booking.cityPlaceholder")}
-                      value={atHomeAddress.city}
-                      onChangeText={(text) => setAtHomeAddress((a) => ({ ...a, city: text }))}
-                      style={{
-                        borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12, paddingHorizontal: contentPadding, paddingVertical: 14,
-                        fontSize: 15, color: "#111827", backgroundColor: "#F9FAFB", marginTop: 10,
-                      }}
-                      placeholderTextColor="#9CA3AF"
-                      accessibilityLabel={t("booking.cityPlaceholder")}
-                    />
-                    <TextInput
-                      placeholder={t("booking.postalCodePlaceholder")}
-                      value={atHomeAddress.postal_code}
-                      onChangeText={(text) => setAtHomeAddress((a) => ({ ...a, postal_code: text }))}
-                      style={{
-                        borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12, paddingHorizontal: contentPadding, paddingVertical: 14,
-                        fontSize: 15, color: "#111827", backgroundColor: "#F9FAFB", marginTop: 10,
-                      }}
-                      placeholderTextColor="#9CA3AF"
-                      accessibilityLabel={t("booking.postalCodePlaceholder")}
-                    />
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[600], marginBottom: 4 }}>
+                            {t("booking.atHome")}
+                          </Text>
+                          <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{atHomePlaceDisplayName}</Text>
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => { haptic.light(); setAddressPickerVisible(true); }}
+                          accessibilityRole="button"
+                        >
+                          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{t("common.change", { defaultValue: "Change" })}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                    {!atHomeShowArrivalDetails ? (
+                      <TouchableOpacity
+                        onPress={() => setAtHomeShowArrivalDetails(true)}
+                        style={{ marginTop: 12, paddingVertical: 10 }}
+                        accessibilityRole="button"
+                      >
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{t("booking.additionalLocationTitle")}</Text>
+                      </TouchableOpacity>
+                    ) : (
                     <View
                       style={{
                         marginTop: 16,
@@ -3241,14 +3242,12 @@ export default function BookScreen() {
                         placeholderTextColor="#9CA3AF"
                       />
                     </View>
-                    {locationType === "at_home" ? (
-                      <ContextualHint
-                        id="customer.book.atHomeVenue"
-                        mode="persistent"
-                        message={t("booking.houseCallPricing.atHomeVenueCombined")}
-                      />
-                    ) : null}
-                    {/* Travel fee preview — shown when address is entered */}
+                    )}
+                    <ContextualHint
+                      id="customer.book.atHomeVenue"
+                      mode="persistent"
+                      message={t("booking.houseCallPricing.atHomeVenueCombined")}
+                    />
                     {travelFeePreview.status !== "idle" && (
                       <View
                         style={{
@@ -3345,6 +3344,8 @@ export default function BookScreen() {
                           </Text>
                         )}
                       </View>
+                    )}
+                    </>
                     )}
                   </View>
                 )}
@@ -4072,7 +4073,7 @@ export default function BookScreen() {
                 const venueValid =
                   locationType === "at_salon"
                     ? salonLocations.length === 0 || selectedLocation != null
-                    : Boolean(atHomeAddress.line1.trim()) && Boolean(atHomeAddress.city.trim());
+                    : atHomePlaceConfirmed;
                 return (
                   <TouchableOpacity
                     onPress={() => { haptic.medium(); setStep("service"); }}
@@ -4195,6 +4196,17 @@ accessibilityLabel={t("booking.nextAddExtras")}
         visible={addressPickerVisible}
         onClose={() => setAddressPickerVisible(false)}
         onSelect={(addr) => {
+          const city =
+            addr.structured?.city?.trim() ||
+            (() => {
+              const display = addr.displayName || addr.label || "";
+              const parts = display.split(",").map((s) => s.trim()).filter(Boolean);
+              return parts[1] || "";
+            })();
+          if (!city) {
+            Alert.alert(t("common.error"), t("booking.addressRequiredBody"));
+            return;
+          }
           if (addr.structured) {
             setAtHomeAddress((prev) => ({
               ...prev,
@@ -4210,19 +4222,21 @@ accessibilityLabel={t("booking.nextAddExtras")}
             setAtHomeAddress((prev) => ({
               ...prev,
               line1: parts[0] || display || "",
-              city: parts[1] || parts[0] || "",
+              city,
               country: getShopCountryIsoForForms(),
             }));
           }
           setAtHomeCoords({ latitude: addr.latitude, longitude: addr.longitude });
+          setAtHomeShowArrivalDetails(false);
           setAddressPickerVisible(false);
         }}
         onUseCurrentLocation={() => {
-          if (coords) {
-            setAtHomeCoords({ latitude: coords.latitude, longitude: coords.longitude });
-            setAtHomeAddress((a) => ({ ...a, line1: a.line1 || bf("currentLocation"), city: a.city || "" }));
-          }
-          setAddressPickerVisible(false);
+          void (async () => {
+            const result = await prefillFromCurrentLocation();
+            if (result && applyAtHomePlaceFromPrefill(result)) {
+              setAddressPickerVisible(false);
+            }
+          })();
         }}
       />
     </>

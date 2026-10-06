@@ -33,6 +33,7 @@ import { api } from "@/lib/api-client";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { markReferenceProcessing } from "@/lib/paystack-verify-guard";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { hasSupabaseAccessToken, pushLoginWithReturnTo, redirectLoginIfAuthRequired } from "@/lib/customer-auth-routing";
 import { useAuth } from "@/providers/AuthProvider";
 import { haptic } from "@/lib/haptics";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -334,6 +335,14 @@ export default function CustomOfferCheckoutScreen() {
           : coc("openingSecurePayment", undefined, "Opening secure payment…"),
       );
       try {
+        const offerReturnTo = `/(app)/custom-offer-checkout?offer_id=${encodeURIComponent(offerId)}`;
+        const hasToken = await hasSupabaseAccessToken();
+        if (!hasToken) {
+          setProcessingPayment(false);
+          payInFlightRef.current = false;
+          pushLoginWithReturnTo(offerReturnTo);
+          return;
+        }
         const res = await api.post<{
           charged?: boolean;
           paymentUrl?: string;
@@ -373,6 +382,10 @@ export default function CustomOfferCheckoutScreen() {
                 "Payment is still processing. Check Bookings in a moment or tap Pay to retry.",
               ),
             );
+            return;
+          }
+          const offerReturnTo = `/(app)/custom-offer-checkout?offer_id=${encodeURIComponent(offerId)}`;
+          if (redirectLoginIfAuthRequired(offerReturnTo, res.error)) {
             return;
           }
           const msg = getApiErrorMessage(

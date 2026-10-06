@@ -69,9 +69,10 @@
     "tryAgain": "حاول مرة أخرى.",
     "duration": "مدة",
     "hints": {
-      "gotIt": "Got it",
-      "dismissA11y": "Dismiss tip"
-    }
+      "gotIt": "حسنًا",
+      "dismissA11y": "إخفاء التلميحة"
+    },
+    "change": "تغيير"
   },
   "authGate": {
     "checkingAccess": "جاري التحقق من حسابك…",
@@ -236,7 +237,7 @@
       "finalAmountAtCheckout": "Final مبلغ مؤكد at checkout",
       "errorGeneric": "تعذر get رسوم التنقل estimate.",
       "outsideServiceArea": "هذا العنوان خارج منطقة الخدمة.",
-      "outsideServiceAreaNoSalon": "This provider doesn't travel to this address. Try another address."
+      "outsideServiceAreaNoSalon": "هذا المزود لا ينتقل إلى هذا العنوان. جرّب عنواناً آخر."
     },
     "houseCallPricing": {
       "venueStepHint": "اختر مكان الموعد. أسعار الخدمات في الخطوة التالية تعكس هذا الاختيار.",
@@ -246,7 +247,7 @@
       "houseCallFeeLine": "House-call رسوم الخدمة",
       "houseCallFeeSummary": "رسوم الزيارة المنزلية ({{count}} خدمات)",
       "travelFeeSeparateNote": "رسوم التنقل is calculated from your عنوان and shown separately.",
-      "atHomeVenueCombined": "At-home bookings can include a house-call fee on some services, plus a travel fee based on your address."
+      "atHomeVenueCombined": "حجوزات المنزل قد تشمل رسوم زيارة لبعض الخدمات، بالإضافة إلى رسوم تنقل حسب عنوانك."
     },
     "providerNotFound": "مزود الخدمة غير موجود",
     "providerUnavailableTitle": "This professional is لا longer متاح",
@@ -294,7 +295,7 @@
     "loadingPackage": "تحميل package…",
     "packageNoLineItems": "Package details will appear here when متاح.",
     "contextualHints": {
-      "waitlistJoin": "Joining doesn't reserve a time. We'll let you know if one opens."
+      "waitlistJoin": "الانضمام لا يحجز وقتاً. سنخبرك إذا توفر موعد."
     }
   },
   "provider": {
@@ -1380,7 +1381,9 @@
           "authRequired": "Unlock إعدادات",
           "ageBandNote": "تُدار بعض الخيارات تلقائياً للحسابات من 13 إلى 17 عاماً للحفاظ على تجربة مناسبة للعمر.",
           "lockedNote": "لا يمكن تغيير الإعدادات المُدارة تلقائياً لفئتك العمرية.",
-          "linkAgeSuitability": "تعرّف على الملاءمة العمرية والإرشاد الأبوي"
+          "linkAgeSuitability": "تعرّف على الملاءمة العمرية والإرشاد الأبوي",
+          "unknownAgeNotice": "نستخدم تاريخ ميلادك لأدوات السلامة. أضفه لنطبّق الإعدادات المناسبة. إن كان عمرك 18 عاماً أو أكثر يمكنك تغيير هذه المفاتيح بعد حفظ التاريخ. يستمر المراهقون 13–17 بإعدادات مُدارة.",
+          "addDateOfBirth": "إضافة تاريخ الميلاد"
         },
         "emergencyContact": {
           "title": "جهة اتصال للطوارئ",
@@ -1840,7 +1843,7 @@
           "chargeNotePaystack": "You are only charged after you confirm on the secure Paystack page. Your campaign goes live once payment is verified — never before.",
           "openingAppStore": "فتح App Store purchase…",
           "openingCheckout": "فتح secure checkout…",
-          "introHint": "Sponsored listings appear on the customer home screen and in search results."
+          "introHint": "تظهر القوائم المموّلة على الشاشة الرئيسية للعميل وفي نتائج البحث."
         },
         "waitingRoom": {
           "title": "الاستقبال",
@@ -1899,7 +1902,7 @@
           "serviceWithDuration": "{{name}} · {{minutes}} min",
           "runningLate": "متأخر",
           "runningLateMinutes": "متأخر {{minutes}}m",
-          "introHint": "Today at a glance: confirm new requests, check clients in when they arrive, and start their service."
+          "introHint": "اليوم بنظرة: أكّد الطلبات الجديدة، سجّل وصول العملاء، وابدأ خدمتهم."
         },
         "groupBookings": {
           "statusAll": "الكل",
@@ -2551,7 +2554,7 @@
           "savePaymentSettings": "حفظ دفع إعدادات",
           "saving": "جارٍ الحفظ…",
           "unsavedChanges": "You have unsaved changes",
-          "noShowFeeAmountHint": "Taken only from what the client has already paid online, up to this amount."
+          "noShowFeeAmountHint": "يُخصم فقط مما دفعه العميل عبر الإنترنت، حتى هذا المبلغ."
         },
         "bookingsList": {
           "title": "الحجوزات",
@@ -3238,7 +3241,7 @@
           "appleProductNotMappedBody": "This plan is not متاح as an iPhone purchase yet. التواصل مع الدعم.",
           "subscriptionCheckoutTitle": "دفع الاشتراك",
           "introPlansMatchRegion": "Choose شهري or سنوي to compare plans and prices for your منطقة.",
-          "introMarketingLinesNote": "Marketing lines on the website (e.g. hero text on /pricing) are edited in Admin → Content, not here.",
+          "introMarketingLinesNote": "نصوص التسويق في الموقع (العنوان في صفحة الأسعار) تُعدَّل في إدارة المحتوى وليس هنا.",
           "introIosAutoRenewable": "اشتراكات iOS مشتريات داخل التطبيق متجددة تُفوتر عبر Apple.",
           "termsOfUseA11y": "شروط of Use (EULA)",
           "termsOfUse": "شروط of Use (EULA)",
@@ -3425,9 +3428,9 @@
           "giftCardsSubtitle": "Accept منصة gift cards",
           "terminalShopLabel": "متجر الأجهزة",
           "terminalShopSubtitle": "طلب card machines from the Beautonomi كتalogue",
-          "hintYoco": "Yoco: your Yoco card reader.",
-          "hintCardMachines": "Card machines: PayCloud terminals for in-person card payments.",
-          "hintPaystackTerminal": "Paystack Terminal: take payment on your phone with a QR code."
+          "hintYoco": "Yoco: قارئ بطاقات Yoco الخاص بك.",
+          "hintCardMachines": "أجهزة البطاقات: أجهزة PayCloud للدفع بالبطاقة حضورياً.",
+          "hintPaystackTerminal": "Paystack Terminal: استلم الدفع على هاتفك عبر رمز QR."
         },
         "businessSettings": {
           "title": "Business details",
@@ -5148,7 +5151,18 @@
           "confirmCreateSeries": "تأكيد & إنشاء Series",
           "confirmCreateBooking": "تأكيد & إنشاء حجز",
           "backToEditA11y": "رجوع to تعديل",
-          "backToEdit": "رجوع to تعديل"
+          "backToEdit": "رجوع to تعديل",
+          "groupBookingNoPermission": "دورك لا يسمح بإنشاء حجوزات جماعية. اطلب من المالك صلاحيات المواعيد.",
+          "groupBookingPermissionsFailed": "تعذر التحقق من الصلاحيات. اضغط للمحاولة مرة أخرى.",
+          "sendQuoteNeedsAccount": "تُرسل العروض لعملاء لديهم حساب Beautonomi. استخدم خدمة مخصصة (حضورياً) لحجز شخص بلا حساب.",
+          "referralHowDidTheyFind": "كيف وجدوك؟",
+          "referralOptionalHint": "اختياري — يظهر في الإيصالات والتقارير.",
+          "referralAddForVisit": "أضف كيف وجدوك",
+          "chooseStaffRequired": "اختر من ينفّذ هذا",
+          "staffOffersServiceHint": "يمكن لأعضاء الفريق هؤلاء تنفيذ هذه الخدمة.",
+          "categoryPickerTitle": "الفئة",
+          "runningBehindSheetTitle": "متأخر عن الجدول؟",
+          "staffFilteredByService": "عرض أعضاء الفريق المعيّنين لهذه الخدمة."
         },
         "expressBooking": {
           "invalidJson": "JSON غير صالح.",
@@ -5280,7 +5294,7 @@
           "productCartHint": "JSON array: product_id (UUID), كمية (1–999), اختياري product_variant_id.",
           "clearAllPrefillA11y": "مسح all prefill",
           "clearAllPrefill": "مسح all prefill",
-          "introHint": "Express links open booking with your chosen services, staff and location already filled in. You can set an expiry date or a usage limit."
+          "introHint": "روابط Express تفتح الحجز مع الخدمات والفريق والموقع الذي اخترته معبّأ مسبقاً. يمكنك تعيين تاريخ انتهاء أو حد استخدام."
         },
         "explorePosts": {
           "selectedPhotoPreviewA11y": "محدّد photo معاينة",
@@ -5930,7 +5944,7 @@
           "cancel": "إلغاء",
           "delete": "حذف",
           "copySuffix": "{{name}} (نسخة)",
-          "introHint": "Members get their discount automatically when they book with you. They don't need a promo code."
+          "introHint": "يحصل الأعضاء على خصمهم تلقائياً عند الحجز معك. لا يحتاجون إلى رمز ترويجي."
         },
         "payoutAccounts": {
           "title": "حسابات الدفع",
@@ -6344,7 +6358,7 @@
           "visits": "الزيارات",
           "bookings": "الحجوزات",
           "convRate": "معدل التحويل",
-          "copyIframe": "Copy iframe code"
+          "copyIframe": "نسخ رمز iframe"
         },
         "closedPeriods": {
           "title": "فترات الإغلاق",
@@ -6924,7 +6938,7 @@
           "deleting": "جارٍ الحذف…",
           "deleteService": "حذف خدمة",
           "deleteHint": "يزيل هذه الخدمة نهائيًا. استخدم المحرر الكامل للمتغيرات والإضافات.",
-          "homePriceAdjustmentHint": "Added to this service's price for home visits. The travel fee is charged separately."
+          "homePriceAdjustmentHint": "يُضاف إلى سعر هذه الخدمة للزيارات المنزلية. تُحصَّل رسوم التنقل بشكل منفصل."
         },
         "daysOff": {
           "staffFallback": "الفريق",
@@ -7042,7 +7056,7 @@
           "newPromo": "جديد promo code",
           "percentOff": "خصم {{value}}%",
           "amountOff": "خصم {{amount}}",
-          "usedCount": "Used {{count}}",
+          "usedCount": "مستخدم {{count}}",
           "usedCountMax": "Used {{count}} / {{max}}",
           "hiddenOnProfile": "Hidden on public ملف شخصي",
           "visibleOnProfile": "Visible on public ملف شخصي",
@@ -7093,7 +7107,7 @@
           "enterFullName": "يرجى إدخال your الاسم الكامل",
           "enterEmail": "يرجى إدخال your بريد إلكتروني",
           "validEmail": "يرجى إدخال a valid عنوان البريد الإلكتروني",
-          "passwordMin8": "كلمة المرور must be at least 8 characters",
+          "passwordMin8": "يجب أن تتكون كلمة المرور من 8 أحرف على الأقل",
           "verificationFailedShort": "فشل التحقق",
           "oauthEnableHint": " Enable this provider in Supabase Dashboard → Authentication → Providers.",
           "verifyYourEmail": "Verify your بريد إلكتروني",
@@ -7502,7 +7516,7 @@
           "notesOptional": "Notes (اختياري)",
           "notesPlaceholder": "Reference or ملاحظة",
           "submitting": "جارٍ الإرسال…",
-          "balanceHint": "Money from online payments, after Beautonomi's commission, any hold period, and payouts you've already requested. Cash and card-machine payments you took yourself aren't included. This covers your whole business, not one branch."
+          "balanceHint": "أموال المدفوعات عبر الإنترنت بعد عمولة Beautonomi وأي فترة احتجاز والمدفوعات التي طلبتها. النقد ومدفوعات جهاز البطاقة التي استلمتها بنفسك غير مشمولة. يشمل ذلك نشاطك كله لا فرعاً واحداً."
         },
         "team": {
           "title": "الفريق",
@@ -7838,7 +7852,7 @@
           "optionalComment": "اختياري comment",
           "submitRating": "إرسال rating",
           "thanks": "شكرًا!",
-          "freshCaption": "Fresh {{name}}"
+          "freshCaption": "{{name}} جديد"
         },
         "advancedPricing": {
           "title": "متقدم pricing",
@@ -8011,10 +8025,10 @@
           "methodWallet": "المحفظة",
           "methodOther": "أخرى",
           "methodCashback": "استرداد نقدي",
-          "ledgerTruncatedTitle": "Large ledger — totals may be incomplete",
-          "ledgerTruncated": "More than {{max}} finance rows matched this range. Narrow the date range for full totals.",
-          "membershipEarnings": "Membership earnings (ledger)",
-          "providerCollectedByMethod": "Provider-collected (cash / EFT / card)"
+          "ledgerTruncatedTitle": "دفتر حسابات كبير — قد تكون الإجماليات غير مكتملة",
+          "ledgerTruncated": "أكثر من {{max}} صف مالي يطابق هذا النطاق. ضيّق نطاق التاريخ للحصول على إجماليات كاملة.",
+          "membershipEarnings": "أرباح العضوية (دفتر الحسابات)",
+          "providerCollectedByMethod": "حصلها مقدم الخدمة (نقد / EFT / بطاقة)"
         },
         "performanceDashboardReport": {
           "factsDefinitions": "Facts & تعريفات",
@@ -8139,9 +8153,9 @@
           "toggleDefaultA11y": "Toggle افتراضي سياسة",
           "saving": "جارٍ الحفظ…",
           "updatePolicy": "تحديث Policy",
-          "hoursBeforeHint": "Cancellations closer to the appointment than this count as late.",
-          "refundPercentageHint": "How much of what the client paid is refunded for a late cancellation.",
-          "feeAmountHint": "Only used when the refund is 0%."
+          "hoursBeforeHint": "الإلغاءات الأقرب إلى الموعد من هذا تُعد متأخرة.",
+          "refundPercentageHint": "كم يُسترد مما دفعه العميل عند الإلغاء المتأخر.",
+          "feeAmountHint": "يُستخدم فقط عندما يكون الاسترداد 0٪."
         },
         "terminalMerchantApplication": {
           "statusSubmitted": "We مستلم your application and will تقييم it shortly.",
@@ -8453,7 +8467,7 @@
           "summaryTierCount_one": "{{count}} مسافة مستوى",
           "summaryTierCount_other": "{{count}} مسافة مستويات",
           "summaryTiersIncomplete": "مخصص مستويات (incomplete)",
-          "summaryRateKm": "{{amount}}/km",
+          "summaryRateKm": "{{amount}}/كم",
           "summaryMin": "min {{amount}}",
           "summaryFreeLe": "free ≤ {{km}} km",
           "summaryMax": "max {{amount}}",
@@ -9217,9 +9231,9 @@
           "notesPlaceholder": "اختياري notes...",
           "updateZone": "تحديث Zone",
           "addZone": "إضافة Zone",
-          "introHint": "Zones set where customers can book you at home. A zone with its own fee uses it instead of your travel fee.",
-          "actionTravelFees": "Travel fees",
-          "noZonesWarning": "Customers can't book you at home until you choose at least one service zone."
+          "introHint": "تحدد المناطق أين يمكن للعملاء حجزك في المنزل. المنطقة ذات الرسم الخاص تستخدمه بدل رسوم تنقلك.",
+          "actionTravelFees": "رسوم التنقل",
+          "noZonesWarning": "لا يمكن للعملاء حجزك في المنزل حتى تختار منطقة خدمة واحدة على الأقل."
         },
         "staffNotifications": {
           "saveFailedTitle": "تعذر حفظ",
@@ -9912,8 +9926,8 @@
           "signOutTitle": "تسجيل الخروج?",
           "signOutBody": "You can إنهاء إعداد لاحقًا. Your progress is محفوظ to your account.",
           "cancel": "إلغاء",
-          "verificationRequiredTitle": "Identity verification required to go live",
-          "verificationRequiredBody": "Complete identity verification so we can approve your listing for public bookings."
+          "verificationRequiredTitle": "يلزم التحقق من الهوية للظهور للعملاء",
+          "verificationRequiredBody": "أكمل التحقق من الهوية حتى نوافق على ظهور قائمتك للحجز العام."
         },
         "packageSalesReport": {
           "factsDefinitions": "Facts & تعريفات",
@@ -10188,8 +10202,8 @@
           "avgFee": "رسوم متوسطة",
           "trips": "رحلات",
           "saveSettings": "حفظ الإعدادات",
-          "noZonesWarning": "Customers can't book you at home until you choose at least one service zone.",
-          "actionChooseZones": "Choose zones"
+          "noZonesWarning": "لا يمكن للعملاء حجزك في المنزل حتى تختار منطقة خدمة واحدة على الأقل.",
+          "actionChooseZones": "اختر المناطق"
         },
         "revenueTrendsReport": {
           "basisIntro": "Ledger line uses finance_transactions (earnings, travel, tips) by recognition date. Visit counts use appointment dates (excl. cancelled & no-show). They are different bases — spread does not imply causation.",
@@ -10650,7 +10664,7 @@
           "expired": "This invite has منتهٍ. Ask your manager to resend.",
           "acceptFailed": "تعذر accept invite",
           "teamFallback": "your فريق",
-          "joinTitle": "Join {{name}}",
+          "joinTitle": "انضم إلى {{name}}",
           "inviteNamed": "Hi {{name}}, you've been invited to join the فريق on Beautonomi.",
           "inviteGeneric": "You've been invited to join a فريق on Beautonomi.",
           "signInHint": "سجّل الدخول بالبريد الذي استلم هذه الدعوة. استخدم رابط تعيين كلمة المرور من بريد الدعوة، أو سجّل الدخول برمز OTP عبر البريد — لا حاجة لكلمة مرور موجودة.",
@@ -10662,14 +10676,14 @@
           "getApp": "Get the مزود الخدمة app",
           "downloadIos": "تنزيل for iPhone",
           "downloadAndroid": "تنزيل for Android",
-          "setPasswordTitle": "Create your password",
-          "passwordLabel": "Password",
-          "passwordConfirmLabel": "Confirm password",
-          "setPasswordSubmit": "Save password",
-          "setPasswordSuccess": "Password saved. Sign in to accept your invite.",
-          "setPasswordFailed": "Could not save password",
-          "passwordMismatch": "Passwords do not match",
-          "passwordTooShort": "Password must be at least 8 characters"
+          "setPasswordTitle": "إنشاء your كلمة المرور",
+          "passwordLabel": "كلمة المرور",
+          "passwordConfirmLabel": "تأكيد كلمة المرور",
+          "setPasswordSubmit": "حفظ كلمة المرور",
+          "setPasswordSuccess": "تم حفظ كلمة المرور. سجّل الدخول لقبول دعوتك.",
+          "setPasswordFailed": "تعذر حفظ كلمة المرور",
+          "passwordMismatch": "كلمتا المرور غير متطابقتين",
+          "passwordTooShort": "يجب أن تتكون كلمة المرور من 8 أحرف على الأقل"
         },
         "search": {
           "title": "بحث",
@@ -10926,7 +10940,7 @@
           "title": "الفريق والرواتب",
           "subtitleOwner": "رواتب & فريق performance",
           "subtitleStaff": "Your pay stubs",
-          "freelancerUnavailable": "Upgrade to a salon account to run payroll and team pay."
+          "freelancerUnavailable": "رقِّ إلى حساب صالون لإدارة الرواتب ودفع الفريق."
         },
         "terminalPaymentReturn": {
           "confirmingTitle": "Confirming دفع",
@@ -11460,8 +11474,8 @@
           "typeNameRequired": "أدخل a type اسم.",
           "deleteTypeTitle": "حذف blocked وقت type",
           "deleteTypeBody": "إزالة \"{{name}}\"? Existing blocks using this type may lose their فئة.",
-          "introHint": "Blocks close time on the calendar so clients can't book it. For staff leave, use Days off.",
-          "actionDaysOff": "Days off"
+          "introHint": "تحجب الفترات الوقت في التقويم حتى لا يحجزه العملاء. لإجازات الفريق استخدم أيام العطلة.",
+          "actionDaysOff": "أيام off"
         },
         "authLogin": {
           "accountSuspended": "Your account has been suspended. التواصل مع الدعم if you believe this is an error.",
@@ -11482,7 +11496,7 @@
           "oauthFailed": "OAuth sign-in فشل. يرجى المحاولة مرة أخرى.",
           "enterEmail": "يرجى إدخال your بريد إلكتروني",
           "enterPassword": "يرجى إدخال your كلمة المرور",
-          "passwordMin8": "كلمة المرور must be at least 8 characters",
+          "passwordMin8": "يجب أن تتكون كلمة المرور من 8 أحرف على الأقل",
           "enterFullName": "يرجى إدخال your الاسم الكامل",
           "validEmail": "يرجى إدخال a valid عنوان البريد الإلكتروني",
           "emailCodeSent": "أرسلنا رمزًا من {{digits}} أرقام إلى بريدك (صالح حوالي {{minutes}} دقيقة).",
@@ -12510,7 +12524,7 @@
           "atHome": "في المنزل",
           "atSalon": "في الصالون",
           "budgetRange": " · Budget {{min}} – {{max}}",
-          "introHint": "Requests aren't on your calendar yet. Send an offer with a price and time; it's booked once the client pays."
+          "introHint": "الطلبات ليست على تقويمك بعد. أرسل عرضاً بسعر ووقت؛ يُحجز فور دفع العميل."
         },
         "deleteAccount": {
           "pleaseWaitTitle": "يرجى الانتظار",
@@ -13172,9 +13186,9 @@
       "medicalDisclaimer": "Content is shared by providers and does not constitute medical advice.",
       "reportCommentHint": "انقر على العلم في تعليق للإبلاغ عنه.",
       "justNow": "Just now",
-      "minutesAgo": "{{count}}m ago",
-      "hoursAgo": "{{count}}h ago",
-      "daysAgo": "{{count}}d ago",
+      "minutesAgo": "منذ {{count}} د",
+      "hoursAgo": "منذ {{count}} س",
+      "daysAgo": "منذ {{count}} يوم",
       "providerFallback": "Provider",
       "openProviderProfile": "Open {{name}} profile",
       "userFallback": "User",
@@ -13748,9 +13762,9 @@
           "loading": "جاري التحميل…"
         },
         "groupBookingPayment": {
-          "youPaidForGroup": "You paid for the group",
-          "paidBy": "Paid by {{name}}",
-          "covered": "Covered"
+          "youPaidForGroup": "لقد دفعت للمجموعة",
+          "paidBy": "دفعه {{name}}",
+          "covered": "مغطى"
         }
       },
       "tabs": {
@@ -14051,7 +14065,7 @@
           "enterEmail": "يرجى إدخال your بريد إلكتروني",
           "validEmail": "يرجى إدخال a valid عنوان البريد الإلكتروني",
           "enterPassword": "يرجى إدخال your كلمة المرور",
-          "passwordMin8": "كلمة المرور must be at least 8 characters",
+          "passwordMin8": "يجب أن تتكون كلمة المرور من 8 أحرف على الأقل",
           "enterFullName": "يرجى إدخال your الاسم الكامل",
           "checkEmailTitle": "Check your بريد إلكتروني",
           "checkEmailBody": "We sent you a confirmation link. Click it to activate your account, then تسجيل الدخول below.",
@@ -14411,7 +14425,9 @@
           "toggle_sensitive_content_filter_label": "Sensitive content تصفية",
           "toggle_sensitive_content_filter_desc": "تقليل المنشورات ذات المواضيع الطبية أو العلاجية",
           "toggle_require_device_auth_label": "طلب مصادقة الجهاز",
-          "toggle_require_device_auth_desc": "Ask for Face ID, fingerprint, or passcode before changing these إعدادات"
+          "toggle_require_device_auth_desc": "Ask for Face ID, fingerprint, or passcode before changing these إعدادات",
+          "unknownAgeNotice": "نستخدم تاريخ ميلادك لأدوات السلامة. أضفه لنطبّق الإعدادات المناسبة. إن كان عمرك 18 عاماً أو أكثر يمكنك تغيير هذه المفاتيح بعد حفظ التاريخ. يستمر المراهقون 13–17 بإعدادات مُدارة.",
+          "addDateOfBirth": "إضافة تاريخ الميلاد"
         },
         "notificationsCenter": {
           "screenTitle": "الإشعارات",
@@ -16104,7 +16120,12 @@
           "emergencyPhonePlaceholder": "Their رقم الهاتف",
           "emergencyRelationPlaceholder": "مثال: زوج، والد",
           "newEmailPlaceholder": "عنوان بريد إلكتروني جديد",
-          "newPhonePlaceholder": "رقم هاتف جديد"
+          "newPhonePlaceholder": "رقم هاتف جديد",
+          "dobLabel": "تاريخ الميلاد",
+          "dobEmptyHint": "إضافة your تاريخ الميلاد",
+          "dobSafetyHint": "تستخدم أدوات السلامة تاريخ ميلادك. إعدادات البالغين تنطبق فقط إن كان عمرك 18 عاماً أو أكثر.",
+          "addDobCta": "إضافة",
+          "changeDobCta": "تحديث"
         },
         "loginSecurity": {
           "enterCurrentPassword": "أدخل your current كلمة المرور",
@@ -16468,12 +16489,12 @@
           "back": "رجوع",
           "retry": "إعادة المحاولة",
           "help": "مساعدة",
-          "waitingTitle": "Request sent",
-          "waitingHeadline": "Waiting for your provider",
-          "waitingProviderMessage": "This isn't confirmed yet. We'll book it as soon as {{provider}} accepts.",
-          "providerFallbackName": "your provider",
-          "waitingTimerLabel": "Time remaining",
-          "waitingCancelCta": "Cancel request"
+          "waitingTitle": "تم إرسال الطلب",
+          "waitingHeadline": "Waiting for your مزود الخدمة",
+          "waitingProviderMessage": "هذا غير مؤكد بعد. سنحجزه فور قبول {{provider}}.",
+          "providerFallbackName": "your مزود الخدمة",
+          "waitingTimerLabel": "وقت remaining",
+          "waitingCancelCta": "إلغاء request"
         },
         "onDemandResult": {
           "loadBookingDetailsFailed": "تعذر load حجز details. تحقق your حجوزات list.",
@@ -16737,7 +16758,7 @@
           "budgetMaxLessThanMin": "يجب أن تكون الميزانية القصوى أكبر من أو تساوي الدنيا.",
           "durationOutOfRange": "يجب أن تكون المدة بين {{min}} و{{max}} دقيقة.",
           "submittedPartialImages": "تعذر حفظ بعض الصور — يمكنك إضافة الباقي من المحادثة.",
-          "hintOnce": "Nothing is booked yet. The provider replies with a price and time, and it's confirmed when you pay their offer. Requests close after {{days}} days."
+          "hintOnce": "لا شيء محجوز بعد. يرد المزود بسعر ووقت، ويُؤكد عند دفع عرضه. تُغلق الطلبات بعد {{days}} أيام."
         },
         "notificationPreferences": {
           "loadFailed": "تعذر load preferences.",
@@ -17575,16 +17596,16 @@
     "packageCredit": "رصيد الباقة",
     "prepaidSessionsRemaining": "تبقّى {{count}} جلسة",
     "contextualHints": {
-      "dualFees": "Includes {{houseCall}} in house-call fees and a {{travel}} travel fee.",
-      "depositPayNow": "Pay {{deposit}} now. The remaining {{balance}} stays on your booking, and you can pay it from there.",
-      "depositLateCancel": "A late-cancellation fee comes out of what you've paid.",
-      "groupBooking": "You pay for everyone in one payment. Guests only need a name.",
-      "customOfferConfirm": "Paying this offer confirms your booking.",
-      "customOfferExpires": "Offer expires {{date}}.",
-      "groupSwitchOn": "On",
-      "groupSwitchOff": "Off",
-      "groupGuestsLimit_one": "Add up to {{count}} guest.",
-      "groupGuestsLimit_other": "Add up to {{count}} guests."
+      "dualFees": "يشمل {{houseCall}} من رسوم الزيارة المنزلية ورسوم تنقل {{travel}}.",
+      "depositPayNow": "ادفع {{deposit}} الآن. يتبقى {{balance}} على حجزك ويمكنك سداده من هناك.",
+      "depositLateCancel": "يُخصم رسم الإلغاء المتأخر مما دفعته.",
+      "groupBooking": "تدفع عن الجميع دفعة واحدة. يكفي أن يكون للضيوف اسم.",
+      "customOfferConfirm": "دفع هذا العرض يؤكد حجزك.",
+      "customOfferExpires": "ينتهي العرض في {{date}}.",
+      "groupSwitchOn": "تشغيل",
+      "groupSwitchOff": "إيقاف",
+      "groupGuestsLimit_one": "إضافة up to {{count}} guest.",
+      "groupGuestsLimit_other": "إضافة up to {{count}} guests."
     }
   },
   "payments": {
@@ -20506,7 +20527,7 @@
         "resetPassword": {
           "minLength": "Password must be at least {{min}} characters",
           "policyMix": "Password does not meet the required character mix for this platform",
-          "passwordsMismatch": "Passwords do not match",
+          "passwordsMismatch": "كلمتا المرور غير متطابقتين",
           "updatedTitle": "كلمة المرور محدّث",
           "updatedBody": "Your password has been reset successfully. Redirecting you…",
           "invalidLink": "Invalid or expired link",
@@ -21460,7 +21481,7 @@
         "emailRequired": "بريد إلكتروني is مطلوب",
         "invalidEmail": "يرجى إدخال a valid عنوان البريد الإلكتروني",
         "passwordRequired": "كلمة المرور is مطلوب",
-        "passwordMinLength": "كلمة المرور must be at least 8 characters",
+        "passwordMinLength": "يجب أن تتكون كلمة المرور من 8 أحرف على الأقل",
         "passwordTooWeak": "Use a stronger password (add uppercase, numbers, or symbols)",
         "agreeTermsRequired": "Please confirm you have read and agree to the شروط الخدمة and سياسة الخصوصية (including product analytics and optional session replay while signed in).",
         "invalidPhoneOrClear": "أدخل a valid رقم الهاتف or clear the phone field.",
@@ -22723,7 +22744,11 @@
           "retailProducts": "Retail منتجات",
           "selectProduct": "اختيار منتج…",
           "selectVariant": "اختيار variant…",
-          "variantFallback": "متغير"
+          "variantFallback": "متغير",
+          "openGroupBooking": "Plan a group booking instead",
+          "sendQuote": "Send a quote instead",
+          "sendQuoteNeedsAccount": "Select a client with an account to send a quote.",
+          "uncategorized": "Uncategorized"
         },
         "blockedTimeTypeDialog": {
           "updated": "Blocked وقت type محدّث",
@@ -23000,7 +23025,11 @@
           "appointmentsOnly_one": "{{count}} موعد",
           "appointmentsOnly_other": "{{count}} موعدs",
           "blocksOnly_one": "{{count}} block",
-          "blocksOnly_other": "{{count}} blocks"
+          "blocksOnly_other": "{{count}} blocks",
+          "runningBehindTitle": "متأخر عن الجدول؟",
+          "runningBehindBody": "We'll notify remaining confirmed clients today that you're delayed.",
+          "delay15": "15 minutes",
+          "delay30": "30 minutes"
         },
         "overview": {
           "all": "الكل",
@@ -24303,7 +24332,7 @@
           "enter": "Enter",
           "radius": "Radius",
           "polygon": "Polygon",
-          "ratePerKm": "{{amount}}/km",
+          "ratePerKm": "{{amount}}/كم",
           "minFee": "min {{amount}}",
           "freeWithinKm": "free within {{km}} km",
           "maxFee": "max {{amount}}",
@@ -24541,7 +24570,7 @@
           "allLocationsPrefix": "All مواقع · "
         },
         "excellenceBanner": {
-          "dismissA11y": "Dismiss tip"
+          "dismissA11y": "إخفاء التلميحة"
         },
         "widgets": {
           "upcomingAppointments": "Upcoming مواعيد",
@@ -27871,7 +27900,7 @@
           }
         },
         "serviceZones": {
-          "introHint": "Zones set where customers can book you at home. A zone with its own fee uses it instead of your travel fee.",
+          "introHint": "تحدد المناطق أين يمكن للعملاء حجزك في المنزل. المنطقة ذات الرسم الخاص تستخدمه بدل رسوم تنقلك.",
           "actionTravelFees": "Travel fees"
         }
       },
@@ -28009,7 +28038,7 @@
           "loadFailed": "تعذر load invite",
           "acceptFailed": "تعذر accept invite",
           "teamFallback": "your فريق",
-          "joinTitle": "Join {{name}}",
+          "joinTitle": "انضم إلى {{name}}",
           "inviteNamed": "Hi {{name}}, you've been invited to join the team on Beautonomi.",
           "inviteGeneric": "You've been invited to join a team on Beautonomi.",
           "signInWithEmail": "تسجيل الدخول or create an account with",
@@ -28028,10 +28057,10 @@
           "passwordLabel": "Password",
           "passwordConfirmLabel": "Confirm password",
           "setPasswordSubmit": "Save password",
-          "setPasswordSuccess": "Password saved. Sign in to accept your invite.",
+          "setPasswordSuccess": "تم حفظ كلمة المرور. سجّل الدخول لقبول دعوتك.",
           "setPasswordFailed": "Could not save password",
-          "passwordMismatch": "Passwords do not match",
-          "passwordTooShort": "Password must be at least 8 characters"
+          "passwordMismatch": "كلمتا المرور غير متطابقتين",
+          "passwordTooShort": "يجب أن تتكون كلمة المرور من 8 أحرف على الأقل"
         },
         "notifications": {
           "subtitle": "عرض and إدارة your إشعارات",
@@ -29442,11 +29471,11 @@
             "noPaymentStatusData": "No payment status data available for the selected period.",
             "cashStyle": "Cash Style",
             "transactionsCount": "{{count}} معاملات",
-            "ledgerTruncatedTitle": "Large ledger — totals may be incomplete",
+            "ledgerTruncatedTitle": "دفتر حسابات كبير — قد تكون الإجماليات غير مكتملة",
             "ledgerTruncated": "More than {{max}} finance rows matched this range. Narrow the date range for complete totals.",
-            "membershipEarnings": "Membership earnings (ledger)",
+            "membershipEarnings": "أرباح العضوية (دفتر الحسابات)",
             "membershipEarningsHint": "membership_provider_earnings rows settled in this period (included in provider net activity).",
-            "providerCollectedByMethod": "Provider-collected (cash / EFT / card)",
+            "providerCollectedByMethod": "حصلها مقدم الخدمة (نقد / EFT / بطاقة)",
             "methodEft": "Bank transfer (EFT)"
           },
           "payments/yoco-reconciliation": {
@@ -30537,7 +30566,7 @@
           "descriptionOptional": "Description (اختياري)",
           "descriptionPlaceholder": "إضافة a short summary that helps clients understand what types of services are included in this category",
           "descriptionHint": "Help clients understand what types of services are included in this category",
-          "homePriceAdjustmentHint": "Added to this service's price for home visits. The travel fee is charged separately."
+          "homePriceAdjustmentHint": "يُضاف إلى سعر هذه الخدمة للزيارات المنزلية. تُحصَّل رسوم التنقل بشكل منفصل."
         },
         "serviceDialog": {
           "shortHair": "Short Hair",
@@ -32698,7 +32727,7 @@
         "completeLater": "إكمال later",
         "setUp": "إعداد",
         "stepsToGo": "Steps To Go",
-        "verificationRequiredToGoLive": "Identity verification required to go live",
+        "verificationRequiredToGoLive": "يلزم التحقق من الهوية للظهور للعملاء",
         "verificationRequiredBody": "Your checklist is complete, but we still need to verify your identity before you can accept public bookings."
       },
       "shiftsPage": {
@@ -34493,7 +34522,8 @@
     },
     "referralSource": {
       "label": "How did this client find you?",
-      "notSpecified": "Not specified"
+      "notSpecified": "Not specified",
+      "addForVisit": "أضف كيف وجدوك"
     },
     "editProducts": {
       "label": "المنتجات",

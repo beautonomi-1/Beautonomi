@@ -7,7 +7,7 @@ export type NativeAppKey = (typeof NATIVE_APP_KEYS)[number];
 
 export type NativeAppCodebaseVersions = Record<NativeAppKey, string | null>;
 
-const VERSION_PATTERN = /version:\s*["']([^"']+)["']/;
+const VERSION_PATTERN = /(?:APP_MARKETING_VERSION|version)\s*[:=]\s*["']([^"']+)["']/;
 
 /** Resolve apps/{customer,provider} whether cwd is apps/web or the monorepo root. */
 function nativeAppsRoot(): string {

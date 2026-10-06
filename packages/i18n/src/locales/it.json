@@ -71,7 +71,8 @@
     "hints": {
       "gotIt": "Got it",
       "dismissA11y": "Dismiss tip"
-    }
+    },
+    "change": "Change"
   },
   "authGate": {
     "checkingAccess": "Verifica del tuo account…",
@@ -1380,7 +1381,9 @@
           "authRequired": "Unlock mipangilio",
           "ageBandNote": "Some options are managed automatically for accounts aged 13–17 to help keep your experience age-appropriate.",
           "lockedNote": "Settings marked as managed cannot be changed for your age group.",
-          "linkAgeSuitability": "Learn about age suitability & parental guidance"
+          "linkAgeSuitability": "Learn about age suitability & parental guidance",
+          "unknownAgeNotice": "We use your date of birth for safety controls. Add it so we can apply the right settings. If you are 18 or older, you can change these switches after your date is saved. Teens aged 13–17 keep managed settings.",
+          "addDateOfBirth": "Add date of birth"
         },
         "emergencyContact": {
           "title": "Emergency contact",
@@ -5148,7 +5151,18 @@
           "confirmCreateSeries": "Confirm & Create Series",
           "confirmCreateBooking": "Confirm & Create Booking",
           "backToEditA11y": "Back to edit",
-          "backToEdit": "Back to Edit"
+          "backToEdit": "Back to Edit",
+          "groupBookingNoPermission": "Your role cannot create group bookings. Ask an owner for appointment permissions.",
+          "groupBookingPermissionsFailed": "Could not verify permissions. Tap to try again.",
+          "sendQuoteNeedsAccount": "Quotes are sent to clients with a Beautonomi account. Use custom service (in person) to book someone without an account.",
+          "referralHowDidTheyFind": "How did they find you?",
+          "referralOptionalHint": "Optional — shown on receipts and reports.",
+          "referralAddForVisit": "Add how they found you",
+          "chooseStaffRequired": "Choose who does this",
+          "staffOffersServiceHint": "These team members can perform this service.",
+          "categoryPickerTitle": "Category",
+          "runningBehindSheetTitle": "Running behind?",
+          "staffFilteredByService": "Showing team members assigned to this service."
         },
         "expressBooking": {
           "invalidJson": "Invalid JSON.",
@@ -14411,7 +14425,9 @@
           "toggle_sensitive_content_filter_label": "Sensitive content filter",
           "toggle_sensitive_content_filter_desc": "Reduce posts tagged with medical or treatment-related topics",
           "toggle_require_device_auth_label": "Require device authentication",
-          "toggle_require_device_auth_desc": "Ask for Face ID, fingerprint, or passcode before changing these settings"
+          "toggle_require_device_auth_desc": "Ask for Face ID, fingerprint, or passcode before changing these settings",
+          "unknownAgeNotice": "We use your date of birth for safety controls. Add it so we can apply the right settings. If you are 18 or older, you can change these switches after your date is saved. Teens aged 13–17 keep managed settings.",
+          "addDateOfBirth": "Add date of birth"
         },
         "notificationsCenter": {
           "screenTitle": "Notifications",
@@ -16104,7 +16120,12 @@
           "emergencyPhonePlaceholder": "Their phone number",
           "emergencyRelationPlaceholder": "e.g. Spouse, Parent",
           "newEmailPlaceholder": "New email address",
-          "newPhonePlaceholder": "New phone number"
+          "newPhonePlaceholder": "New phone number",
+          "dobLabel": "Date of birth",
+          "dobEmptyHint": "Add your date of birth",
+          "dobSafetyHint": "Safety controls use your date of birth. Adult settings apply only if you are 18 or older.",
+          "addDobCta": "Add",
+          "changeDobCta": "Update"
         },
         "loginSecurity": {
           "enterCurrentPassword": "Enter your current password",
@@ -22723,7 +22744,11 @@
           "retailProducts": "Retail products",
           "selectProduct": "Select product…",
           "selectVariant": "Select variant…",
-          "variantFallback": "Variant"
+          "variantFallback": "Variant",
+          "openGroupBooking": "Plan a group booking instead",
+          "sendQuote": "Send a quote instead",
+          "sendQuoteNeedsAccount": "Select a client with an account to send a quote.",
+          "uncategorized": "Uncategorized"
         },
         "blockedTimeTypeDialog": {
           "updated": "Blocked time type updated",
@@ -23000,7 +23025,11 @@
           "appointmentsOnly_one": "{{count}} appointment",
           "appointmentsOnly_other": "{{count}} appointments",
           "blocksOnly_one": "{{count}} block",
-          "blocksOnly_other": "{{count}} blocks"
+          "blocksOnly_other": "{{count}} blocks",
+          "runningBehindTitle": "Running behind?",
+          "runningBehindBody": "We'll notify remaining confirmed clients today that you're delayed.",
+          "delay15": "15 minutes",
+          "delay30": "30 minutes"
         },
         "overview": {
           "all": "All",
@@ -34493,7 +34522,8 @@
     },
     "referralSource": {
       "label": "How did this client find you?",
-      "notSpecified": "Not specified"
+      "notSpecified": "Not specified",
+      "addForVisit": "Add how they found you"
     },
     "editProducts": {
       "label": "Products",

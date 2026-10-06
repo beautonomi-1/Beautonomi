@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "@beautonomi/i18n";
 import { View, Text, TextInput, TouchableOpacity, Alert, Pressable, ScrollView, Modal, ActivityIndicator, Platform } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -23,7 +23,7 @@ import {
   isCompleteSupabaseSmsOtp,
   SUPABASE_AUTH_OTP_LENGTH,
 } from "@/lib/supabase-sms-otp";
-import { appendFormDataFileNative } from "@beautonomi/utils";
+import { appendFormDataFileNative, formatLegalDobDisplay } from "@beautonomi/utils";
 import { useEmailChangeOtp } from "@/lib/auth/useEmailChangeOtp";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
@@ -119,9 +119,11 @@ export default function PersonalInfoScreen() {
     }
   }, [ls]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   useEffect(() => {
     if (phoneResendCooldown <= 0) {
@@ -337,6 +339,48 @@ export default function PersonalInfoScreen() {
           {/* Basic info card */}
           <View style={cardStyle}>
             <Text style={{ fontSize: 17, fontWeight: "600", color: Colors.gray[900], marginBottom: 16 }}>{pi("basicInfoSection")}</Text>
+            {!profile.date_of_birth ? (
+              <TouchableOpacity
+                onPress={() => router.push("/(app)/safety/age-assurance" as never)}
+                style={{
+                  marginBottom: 16,
+                  padding: 14,
+                  borderRadius: RADIUS_INPUT,
+                  borderWidth: 1,
+                  borderColor: Colors.primaryLight || Colors.primary + "33",
+                  backgroundColor: Colors.primaryLight || "#fdf2f8",
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={pi("dobEmptyHint")}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <View style={{ flex: 1, marginEnd: 8 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{pi("dobLabel")}</Text>
+                    <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 4, lineHeight: 18 }}>
+                      {pi("dobSafetyHint")}
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{pi("addDobCta")}</Text>
+                </View>
+              </TouchableOpacity>
+            ) : (
+              <View style={{ marginBottom: 16 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{pi("dobLabel")}</Text>
+                  <TouchableOpacity
+                    onPress={() => router.push("/(app)/safety/age-assurance" as never)}
+                    accessibilityRole="button"
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{pi("changeDobCta")}</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={{ borderRadius: RADIUS_INPUT, backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 14 }}>
+                  <Text style={{ fontSize: 16, color: Colors.gray[600] }}>
+                    {formatLegalDobDisplay(String(profile.date_of_birth))}
+                  </Text>
+                </View>
+              </View>
+            )}
             <View style={{ marginBottom: 16 }}>
               <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 8 }}>{pi("fullNameLabel")}</Text>
               <TextInput

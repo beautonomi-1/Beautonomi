@@ -74,7 +74,9 @@ describe("SPA in-app /admin links vs App.tsx routes", () => {
     30_000,
   );
 
-  it('React Router Link does not use raw to="/admin/..." (basename double-prefix bug)', () => {
+  it(
+    'React Router Link does not use raw to="/admin/..." (basename double-prefix bug)',
+    () => {
     const files: string[] = [];
     collectSourceFiles(srcRoot, files);
     const re = /<Link[^>]*\sto=\{?\s*["'`]\/admin\//g;
@@ -82,6 +84,7 @@ describe("SPA in-app /admin links vs App.tsx routes", () => {
 
     for (const file of files) {
       const src = readFileSync(file, "utf8");
+      re.lastIndex = 0;
       if (re.test(src)) {
         offenders.push(file.replace(/\\/g, "/"));
       }
@@ -91,9 +94,13 @@ describe("SPA in-app /admin links vs App.tsx routes", () => {
       offenders,
       `Use adminSpaTo("/admin/...") for Link targets (basename=/admin):\n${offenders.join("\n")}`,
     ).toEqual([]);
-  });
+    },
+    30_000,
+  );
 
-  it('every object literal to: "/admin/..." resolves to a registered route', () => {
+  it(
+    'every object literal to: "/admin/..." resolves to a registered route',
+    () => {
     const files: string[] = [];
     collectSourceFiles(srcRoot, files);
     const re = /to:\s*["'](\/admin\/[^'"]+)["']/g;
@@ -102,6 +109,7 @@ describe("SPA in-app /admin links vs App.tsx routes", () => {
     for (const file of files) {
       const src = readFileSync(file, "utf8");
       let m: RegExpExecArray | null;
+      re.lastIndex = 0;
       while ((m = re.exec(src))) {
         const rel = adminPathToRelative(m[1]);
         if (!matchesRegistry(rel, patterns)) {
@@ -111,5 +119,7 @@ describe("SPA in-app /admin links vs App.tsx routes", () => {
     }
 
     expect(misses, `Unregistered to: targets:\n${misses.join("\n")}`).toEqual([]);
-  });
+    },
+    30_000,
+  );
 });

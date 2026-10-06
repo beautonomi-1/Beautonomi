@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
+import { DateOfBirthSection } from "@/app/account-settings/personal-info/DateOfBirthSection";
 
 const SOFT_LIMIT = 200;
 const HARD_LIMIT = 1000;
@@ -21,6 +22,7 @@ type MeProfile = {
   preferred_name?: string | null;
   about?: string | null;
   biography_title?: string | null;
+  date_of_birth?: string | null;
 };
 
 export default function ProviderPersonalProfilePage() {
@@ -34,6 +36,7 @@ export default function ProviderPersonalProfilePage() {
   const [about, setAbout] = useState("");
   const [biographyTitle, setBiographyTitle] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,6 +53,11 @@ export default function ProviderPersonalProfilePage() {
           profile.preferred_name?.trim() ||
             profile.full_name?.trim() ||
             t("web.provider.pages.account/personal-profile.fallbackName"),
+        );
+        setDateOfBirth(
+          typeof profile.date_of_birth === "string" && profile.date_of_birth.trim()
+            ? profile.date_of_birth.trim()
+            : null,
         );
       } catch (err) {
         if (!cancelled) {
@@ -121,6 +129,7 @@ export default function ProviderPersonalProfilePage() {
       ]}
     >
       <div className="max-w-2xl space-y-6">
+        <DateOfBirthSection initialIso={dateOfBirth} />
 <SectionCard title={displayName || t("web.provider.pages.account/personal-profile.fallbackName")} description={t("web.provider.pages.account/personal-profile.subtitle")}>
           <div className="space-y-4">
             <div>

@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { BookingSectionCard, BookingSectionLabel } from "../ui";
+import { isCustomServicePlaceholderId } from "@/lib/bookings/walk-in-custom-service";
 
 type ServiceWithResources = {
   id: string;
@@ -21,7 +22,11 @@ export function ResourceRequirementsPreview({ serviceIds }: ResourceRequirements
   const { t } = useTranslation();
   const [services, setServices] = useState<ServiceWithResources[]>([]);
 
-  const key = useMemo(() => serviceIds.filter(Boolean).sort().join(","), [serviceIds]);
+  const filteredIds = useMemo(
+    () => serviceIds.filter((id) => Boolean(id) && !isCustomServicePlaceholderId(id)),
+    [serviceIds],
+  );
+  const key = useMemo(() => filteredIds.sort().join(","), [filteredIds]);
 
   useEffect(() => {
     if (!key) {
@@ -36,7 +41,7 @@ export function ResourceRequirementsPreview({ serviceIds }: ResourceRequirements
         );
         if (cancelled) return;
         const all = res?.data ?? [];
-        setServices(all.filter((s) => serviceIds.includes(s.id)));
+        setServices(all.filter((s) => filteredIds.includes(s.id)));
       } catch {
         if (!cancelled) setServices([]);
       }
@@ -44,7 +49,7 @@ export function ResourceRequirementsPreview({ serviceIds }: ResourceRequirements
     return () => {
       cancelled = true;
     };
-  }, [key, serviceIds]);
+  }, [key, filteredIds]);
 
   const requirements = services.flatMap((s) =>
     (s.resource_requirements ?? []).map((r) => ({

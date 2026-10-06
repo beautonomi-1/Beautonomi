@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { ServiceItem, TeamMember } from "@/lib/provider-portal/types";
 import type { AppointmentService } from "@/components/appointments/types";
@@ -8,7 +8,9 @@ import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -21,6 +23,8 @@ interface CreateServicesSectionProps {
   services: AppointmentService[];
   teamMembers?: TeamMember[];
   defaultStaffId?: string;
+  customerId?: string;
+  onSendQuote?: () => void;
   onChange: (next: AppointmentService[]) => void;
 }
 
@@ -42,6 +46,8 @@ export function CreateServicesSection({
   services,
   teamMembers = [],
   defaultStaffId,
+  customerId,
+  onSendQuote,
   onChange,
 }: CreateServicesSectionProps) {
   const { t } = useTranslation();
@@ -108,7 +114,12 @@ export function CreateServicesSection({
     onChange(services.filter((s) => s.id !== lineId));
   };
 
+  const uncategorizedLabel = t("web.provider.portal.appointmentCreate.uncategorized");
+
   const flatOptions = catalog.flatMap((svc) => {
+    const categoryLabel =
+      (svc.category_id && catalog.find((c) => c.id === svc.category_id)?.name) ||
+      uncategorizedLabel;
     if (svc.variants?.length) {
       return svc.variants.map((v) => ({
         key: `${svc.id}:${v.id}`,
@@ -117,6 +128,7 @@ export function CreateServicesSection({
         label: `${svc.name} · ${v.variant_name ?? v.name}`,
         price: v.price,
         duration: v.duration_minutes,
+        categoryLabel,
       }));
     }
     return [
@@ -127,9 +139,27 @@ export function CreateServicesSection({
         label: svc.name,
         price: svc.price,
         duration: svc.duration_minutes,
+        categoryLabel,
       },
     ];
   });
+
+  const optionsByCategory = useMemo(() => {
+    const groups = new Map<string, typeof flatOptions>();
+    for (const opt of flatOptions) {
+      const list = groups.get(opt.categoryLabel) ?? [];
+      list.push(opt);
+      groups.set(opt.categoryLabel, list);
+    }
+    return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [flatOptions]);
+
+  const staffForService = (serviceId: string): TeamMember[] => {
+    const meta = resolveCatalogEntry(catalog, serviceId);
+    const allowed = meta?.team_member_ids?.filter(Boolean) ?? [];
+    if (allowed.length === 0) return teamMembers;
+    return teamMembers.filter((m) => allowed.includes(m.id));
+  };
 
   return (
     <BookingSectionCard>
@@ -163,7 +193,7 @@ export function CreateServicesSection({
                         <SelectValue placeholder={t("web.provider.portal.appointmentCreate.assignStaff")} />
                       </SelectTrigger>
                       <SelectContent>
-                        {teamMembers.map((m) => (
+                        {staffForService(line.serviceId).map((m) => (
                           <SelectItem key={m.id} value={m.id}>
                             {m.name}
                           </SelectItem>
@@ -198,17 +228,28 @@ export function CreateServicesSection({
           <SelectValue placeholder={t("web.provider.portal.appointmentCreate.addService")} />
         </SelectTrigger>
         <SelectContent>
-          {flatOptions.map((opt) => (
-            <SelectItem key={opt.key} value={opt.key}>
-              {t("web.provider.portal.appointmentCreate.optionLine", {
-                label: opt.label,
-                duration: opt.duration,
-                price: formatMoney(opt.price),
-              })}
-            </SelectItem>
+          {optionsByCategory.map(([categoryLabel, opts]) => (
+            <SelectGroup key={categoryLabel}>
+              <SelectLabel>{categoryLabel}</SelectLabel>
+              {opts.map((opt) => (
+                <SelectItem key={opt.key} value={opt.key}>
+                  {t("web.provider.portal.appointmentCreate.optionLine", {
+                    label: opt.label,
+                    duration: opt.duration,
+                    price: formatMoney(opt.price),
+                  })}
+                </SelectItem>
+              ))}
+            </SelectGroup>
           ))}
         </SelectContent>
       </Select>
+
+      {onSendQuote ? (
+        <BookingActionButton type="button" variant="outline" className="mt-2" onClick={onSendQuote}>
+          {t("web.provider.portal.appointmentCreate.sendQuote")}
+        </BookingActionButton>
+      ) : null}
 
       {services.length === 0 ? (
         <BookingActionButton

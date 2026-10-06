@@ -15,11 +15,21 @@ import { BookingSectionCard, BookingSectionLabel } from "../ui";
 interface ReferralSourceSelectProps {
   value: string;
   onChange: (id: string) => void;
+  isExistingClient?: boolean;
 }
 
-export function ReferralSourceSelect({ value, onChange }: ReferralSourceSelectProps) {
+export function ReferralSourceSelect({
+  value,
+  onChange,
+  isExistingClient = false,
+}: ReferralSourceSelectProps) {
   const { t } = useTranslation();
   const [sources, setSources] = useState<Array<{ id: string; name: string }>>([]);
+  const [expanded, setExpanded] = useState(!isExistingClient);
+
+  useEffect(() => {
+    if (!isExistingClient) setExpanded(true);
+  }, [isExistingClient]);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,6 +50,20 @@ export function ReferralSourceSelect({ value, onChange }: ReferralSourceSelectPr
   }, []);
 
   if (sources.length === 0) return null;
+
+  if (isExistingClient && !expanded) {
+    return (
+      <BookingSectionCard>
+        <button
+          type="button"
+          className="text-sm font-semibold text-primary touch-manipulation min-h-[44px] px-1 text-start"
+          onClick={() => setExpanded(true)}
+        >
+          {t("web.referralSource.addForVisit")}
+        </button>
+      </BookingSectionCard>
+    );
+  }
 
   return (
     <BookingSectionCard>

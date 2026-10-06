@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, handleApiError } from "@/lib/supabase/api-helpers";
 import { resolveIdentityVerificationDisplay } from "@/lib/verification/resolve-identity-verification-display";
-import { resolveProfileEmailVerificationState } from "@beautonomi/utils";
+import { buildProfileCompletion } from "@/lib/profile/build-profile-completion";
+import { resolveVerificationPolicy } from "@/lib/verification/verification-policy";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { resolveEffectiveVerificationDisplayStatus } from "@/lib/identity-verification/resolve-effective-verification-display-status";
 
 /**
  * GET /api/me/profile-bundle
@@ -35,13 +38,16 @@ export async function GET(request: NextRequest) {
       userResult,
       profileResult,
       addressResult,
+      anyAddressResult,
       verificationResult,
       loyaltyResult,
     ] = await Promise.allSettled([
       supabase.from("users").select("*").eq("id", user.id).single(),
       supabase
         .from("user_profiles")
-        .select("beauty_preferences, privacy_settings, business_preferences, about, interests")
+        .select(
+          "beauty_preferences, privacy_settings, business_preferences, about, interests, school, work, location, decade_born, favorite_song, obsessed_with, fun_fact, useless_skill, biography_title, spend_time, pets",
+        )
         .eq("user_id", user.id)
         .maybeSingle(),
       supabase
@@ -49,6 +55,12 @@ export async function GET(request: NextRequest) {
         .select("*")
         .eq("user_id", user.id)
         .eq("is_default", true)
+        .maybeSingle(),
+      supabase
+        .from("user_addresses")
+        .select("id")
+        .eq("user_id", user.id)
+        .limit(1)
         .maybeSingle(),
       supabase
         .from("user_verifications")
@@ -76,6 +88,10 @@ export async function GET(request: NextRequest) {
     const defaultAddress = addressResult.status === "fulfilled" && "value" in addressResult
       ? addressResult.value.data
       : null;
+    const anyAddressRow =
+      anyAddressResult.status === "fulfilled" && "value" in anyAddressResult
+        ? anyAddressResult.value.data
+        : null;
     const verification = verificationResult.status === "fulfilled" && "value" in verificationResult
       ? verificationResult.value.data
       : null;
@@ -169,41 +185,37 @@ export async function GET(request: NextRequest) {
       password_changed_at: (userData as any).password_changed_at ?? null,
     };
 
-    // ── Completion (same logic as /api/me/profile-completion) ─────────────────
-    const emailVerification = resolveProfileEmailVerificationState({
-      profileEmail: (userData as { email?: string | null }).email,
-      authEmail: authUser?.email,
-      emailVerifiedFlag: (userData as { email_verified?: boolean }).email_verified,
-      emailConfirmedAt: (authUser as { email_confirmed_at?: string } | undefined)?.email_confirmed_at,
+    const isCustomer = user.role === "customer";
+    const { searchParams } = new URL(request.url);
+    const env = searchParams.get("environment") ?? "production";
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const verificationPolicy = await resolveVerificationPolicy(tenantId, env);
+    const identityRequiredForCustomer = isCustomer && verificationPolicy.requiredForCustomers;
+    const sessionIdentityStatus = isCustomer
+      ? await resolveEffectiveVerificationDisplayStatus(user.id, "customer")
+      : null;
+    const identityChecklistComplete =
+      userData.identity_verified === true ||
+      userData.identity_verification_status === "approved" ||
+      verification?.status === "approved" ||
+      sessionIdentityStatus === "approved";
+
+    const built = buildProfileCompletion({
+      userData: { ...userData, role: user.role },
+      profileData: profileData,
+      authUser: authUser ?? null,
+      hasAnyAddress: !!anyAddressRow,
+      identityChecklistComplete,
+      identityRequiredForCustomer,
     });
-    const hasPreferredOrFullName = !!((userData as any).preferred_name || (userData as any).full_name);
-    const authPhone =
-      (authUser as { phone?: string; user_metadata?: { phone?: string } })?.phone ||
-      (authUser as { user_metadata?: { phone?: string } })?.user_metadata?.phone;
-    const hasPhone = !!((userData as any).phone || authPhone);
-    const hasPhoto = !!(userData as any).avatar_url;
-    const hasAbout = !!(profileData as any)?.about;
-    const hasAddress = !!defaultAddress;
-    const hasBeautyPrefs = Object.keys((profileData as any)?.beauty_preferences || {}).length > 0;
-    const hasEmergencyContact = !!(userData as any).emergency_contact_name && !!(userData as any).emergency_contact_phone;
 
-    const completionItems = [
-      { id: "name", label: "Add your name", completed: hasPreferredOrFullName, weight: 15 },
-      { id: "photo", label: "Add a profile photo", completed: hasPhoto, weight: 15 },
-      { id: "email", label: "Verify your email", completed: emailVerification.verificationSatisfied, weight: 15 },
-      { id: "phone", label: "Add your phone number", completed: hasPhone, weight: 15 },
-      { id: "address", label: "Add your address", completed: hasAddress, weight: 10 },
-      { id: "about", label: "Write a short bio", completed: hasAbout, weight: 10 },
-      { id: "beauty_preferences", label: "Set beauty preferences", completed: hasBeautyPrefs, weight: 10 },
-      { id: "emergency_contact", label: "Add emergency contact", completed: hasEmergencyContact, weight: 10 },
-    ];
-
-    const completed = completionItems.filter((i) => i.completed).length;
-    const total = completionItems.length;
-    const percentage = Math.round((completed / total) * 100);
-    const topItems = completionItems.filter((i) => !i.completed).slice(0, 3);
-
-    const completion = { completed, total, percentage, topItems };
+    const completion = {
+      completed: built.completed,
+      total: built.total,
+      percentage: built.percentage,
+      topItems: built.topItems,
+      checklistItems: built.checklistItems,
+    };
 
     const response = NextResponse.json({
       data: {

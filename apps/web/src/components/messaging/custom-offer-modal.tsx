@@ -25,6 +25,9 @@ interface CustomOfferModalProps {
   conversationId?: string | null;
   editOfferId?: string | null;
   onSuccess?: () => void;
+  initialServiceName?: string;
+  initialPrice?: string;
+  initialDuration?: string;
 }
 
 interface AvailableSlotRow {
@@ -53,6 +56,9 @@ export default function CustomOfferModal({
   conversationId,
   editOfferId,
   onSuccess,
+  initialServiceName,
+  initialPrice,
+  initialDuration,
 }: CustomOfferModalProps) {
   const { t } = useTranslation();
   const { bundle } = useConfigBundle();
@@ -99,9 +105,12 @@ export default function CustomOfferModal({
         loadOfferForEdit(editOfferId);
       } else {
         setCurrency(tenantCurrency);
+        if (initialServiceName) setServiceName(initialServiceName);
+        if (initialPrice) setPrice(initialPrice);
+        if (initialDuration) setDurationMinutes(initialDuration);
       }
     }
-  }, [isOpen, editOfferId, tenantCurrency]);
+  }, [isOpen, editOfferId, tenantCurrency, initialServiceName, initialPrice, initialDuration]);
 
   const loadOfferForEdit = async (offerId: string) => {
     try {

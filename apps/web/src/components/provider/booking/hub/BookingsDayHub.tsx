@@ -19,6 +19,16 @@ import { BookingsOverviewTab } from "./BookingsOverviewTab";
 import { WaitlistQuickBookSheet } from "./WaitlistQuickBookSheet";
 import { BOOKING_BG, MIN_TAP } from "../tokens";
 import { useTranslation } from "@beautonomi/i18n";
+import { anyEligibleForRunningBehindNotify } from "@beautonomi/provider-booking";
+import { isTodayInTz, resolveTz } from "@/lib/dates/provider-tz";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 type HubTab = "day" | "overview";
 
@@ -52,6 +62,9 @@ interface BookingsDayHubProps {
   onBookingsRefresh?: () => void;
   stalePendingCount?: number;
   openCloseOutQueue?: boolean;
+  canEditAppointments?: boolean;
+  /** Salon IANA timezone — running-behind banner uses business "today", not browser local. */
+  providerTimezone?: string | null;
 }
 
 function bookingOnDate(booking: HubScheduleBooking, day: Date): boolean {
@@ -86,13 +99,17 @@ export function BookingsDayHub({
   onBookingsRefresh,
   stalePendingCount = 0,
   openCloseOutQueue = false,
+  canEditAppointments = true,
+  providerTimezone = null,
 }: BookingsDayHubProps) {
   const { t } = useTranslation();
+  const businessTz = resolveTz(providerTimezone);
   const [tab, setTab] = useState<HubTab>(openCloseOutQueue ? "overview" : "day");
   const [selectedDate, setSelectedDate] = useState(() => startOfDay(new Date()));
   const [timeBlocks, setTimeBlocks] = useState<TimeBlockItem[]>([]);
   const [waitlistOpen, setWaitlistOpen] = useState(false);
   const [behindBusy, setBehindBusy] = useState(false);
+  const [runningBehindOpen, setRunningBehindOpen] = useState(false);
 
   useEffect(() => {
     if (openCloseOutQueue) setTab("overview");
@@ -153,6 +170,39 @@ export function BookingsDayHub({
     });
     return upcoming?.id ?? null;
   }, [dayBookings]);
+
+  const showRunningBehindBanner =
+    isTodayInTz(selectedDate, businessTz) &&
+    canEditAppointments &&
+    anyEligibleForRunningBehindNotify(
+      dayBookings.map((b) => ({
+        status: b.status,
+        scheduled_at: b.scheduled_at ?? undefined,
+      })),
+    );
+
+  const notifyRunningBehind = async (delayMinutes: number) => {
+    setBehindBusy(true);
+    try {
+      const res = await fetcher.post<{ data?: { notified?: number } }>(
+        "/api/provider/bookings/running-behind",
+        {
+          delay_minutes: delayMinutes,
+          location_id: locationId,
+        },
+      );
+      setRunningBehindOpen(false);
+      toast.success(
+        t("web.provider.bookings.dayHub.runningBehindNotify", {
+          count: res.data?.notified ?? 0,
+        }),
+      );
+    } catch {
+      toast.error(t("web.provider.bookings.dayHub.runningBehindFailed"));
+    } finally {
+      setBehindBusy(false);
+    }
+  };
 
   return (
     <div className={cn("flex flex-col", className)} style={{ backgroundColor: BOOKING_BG }}>
@@ -215,35 +265,13 @@ export function BookingsDayHub({
             onWaitlistQuickBook={() => setWaitlistOpen(true)}
           />
 
-          {isSameDay(selectedDate, new Date()) ? (
+          {showRunningBehindBanner ? (
             <div className="mx-4 mb-3">
               <button
                 type="button"
                 disabled={behindBusy}
                 className="w-full rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-950 touch-manipulation disabled:opacity-60"
-                onClick={async () => {
-                  const delay = Number(window.prompt(t("web.provider.bookings.dayHub.runningBehindPrompt"), "15"));
-                  if (!Number.isFinite(delay) || delay <= 0) return;
-                  setBehindBusy(true);
-                  try {
-                    const res = await fetcher.post<{ data?: { notified?: number } }>(
-                      "/api/provider/bookings/running-behind",
-                      {
-                        delay_minutes: delay,
-                        location_id: locationId,
-                      },
-                    );
-                    toast.success(
-                      t("web.provider.bookings.dayHub.runningBehindNotify", {
-                        count: res.data?.notified ?? 0,
-                      }),
-                    );
-                  } catch {
-                    toast.error(t("web.provider.bookings.dayHub.runningBehindFailed"));
-                  } finally {
-                    setBehindBusy(false);
-                  }
-                }}
+                onClick={() => setRunningBehindOpen(true)}
               >
                 {behindBusy
                   ? t("web.provider.bookings.dayHub.runningBehindBusy")
@@ -251,6 +279,34 @@ export function BookingsDayHub({
               </button>
             </div>
           ) : null}
+
+          <Dialog open={runningBehindOpen} onOpenChange={(open) => !behindBusy && setRunningBehindOpen(open)}>
+            <DialogContent className="rounded-2xl">
+              <DialogHeader>
+                <DialogTitle>{t("web.provider.bookings.dayHub.runningBehindTitle")}</DialogTitle>
+                <DialogDescription>{t("web.provider.bookings.dayHub.runningBehindBody")}</DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-col gap-2 pt-2">
+                <Button
+                  type="button"
+                  disabled={behindBusy}
+                  className="min-h-[44px] rounded-xl"
+                  onClick={() => void notifyRunningBehind(15)}
+                >
+                  {t("web.provider.bookings.dayHub.delay15")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={behindBusy}
+                  className="min-h-[44px] rounded-xl"
+                  onClick={() => void notifyRunningBehind(30)}
+                >
+                  {t("web.provider.bookings.dayHub.delay30")}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           {(stats?.waitingRoomCount ?? 0) > 0 ? (
             <div className="mx-4 mb-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900 flex items-center gap-2">

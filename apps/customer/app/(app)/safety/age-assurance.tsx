@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   ActivityIndicator,
   Alert,
@@ -77,6 +78,9 @@ function BandCard({
 
 export default function AgeAssuranceScreen() {
   useScreenTracking("Age assurance");
+  const router = useRouter();
+  const { return_after_save: returnAfterSave } = useLocalSearchParams<{ return_after_save?: string }>();
+  const shouldReturnAfterSave = returnAfterSave === "1" || returnAfterSave === "true";
   const { t } = useTranslation();
   const aa = useCallback(
     (key: string, opts?: Record<string, string | number>) =>
@@ -136,6 +140,10 @@ export default function AgeAssuranceScreen() {
       if (res.error) throw new Error(res.error.message || aa("saveFailedTitle"));
       setDateOfBirth(draftIso);
       await refresh();
+      if (shouldReturnAfterSave) {
+        router.back();
+        return;
+      }
       Alert.alert(aa("savedTitle"), aa("savedBody"));
     } catch (e) {
       Alert.alert(
@@ -145,7 +153,7 @@ export default function AgeAssuranceScreen() {
     } finally {
       setSaving(false);
     }
-  }, [aa, dobError, draftIso, refresh, t]);
+  }, [aa, dobError, draftIso, refresh, router, shouldReturnAfterSave, t]);
 
   const currentBandLabel = t(`customer.mobile.screens.safetyHub.ageBand.${age_band}`, {
     defaultValue: age_band,

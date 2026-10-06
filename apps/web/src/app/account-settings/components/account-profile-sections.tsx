@@ -78,6 +78,7 @@ const SECTION_QUERY_TO_ID: Record<string, string> = {
   photo: "profile-header",
   email: "personal-info-section",
   preferred_name: "personal-info-section",
+  date_of_birth: "personal-info-section",
   bio: "about-section",
   identity: "personal-info-section",
   phone: "personal-info-section",

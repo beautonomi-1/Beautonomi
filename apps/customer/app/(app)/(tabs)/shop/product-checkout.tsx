@@ -28,6 +28,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { hasSupabaseAccessToken, pushLoginWithReturnTo, redirectLoginIfAuthRequired } from "@/lib/customer-auth-routing";
 import {
   createProductOrderIdempotencyKey,
   isCreateOrderTransientError,
@@ -555,8 +556,18 @@ export default function ProductCheckoutScreen() {
     setProcessingPayment(true);
     setProcessingMessage(pc("placingOrder", undefined, "Placing your order…"));
 
+    const checkoutReturnTo = `/(app)/(tabs)/shop/product-checkout?provider_id=${encodeURIComponent(provider_id ?? "")}`;
+
     try {
     await refreshSession().catch(() => {});
+    const hasToken = await hasSupabaseAccessToken();
+    if (!hasToken) {
+      placingRef.current = false;
+      setPlacing(false);
+      setProcessingPayment(false);
+      pushLoginWithReturnTo(checkoutReturnTo);
+      return;
+    }
 
     // 1. Create the order (payment_status = "pending" until wallet/card settles)
     const result = await orders.createOrder(
@@ -641,6 +652,9 @@ export default function ProductCheckoutScreen() {
         placingRef.current = false;
         setPlacing(false);
         setProcessingPayment(false);
+        if (redirectLoginIfAuthRequired(checkoutReturnTo, result.error)) {
+          return;
+        }
         Alert.alert(pc("orderFailedTitle"), result.error.message || pc("orderFailedBody"));
         return;
       }

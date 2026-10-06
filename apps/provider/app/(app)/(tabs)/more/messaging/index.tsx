@@ -72,8 +72,8 @@ export default function MessagingListScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const directMessaging = useSocialCapability("direct_message");
-  const { settings: safetySettings } = useSafetySettings();
-  const messagingDisabled = !directMessaging.allowed || safetySettings.restricted_mode;
+  const messagingDisabled = !directMessaging.allowed;
+  const openControlsLabel = t("customer.safety.socialRestricted.openControls");
   const { data, loading, error, refresh } = useApi<Conversation[]>("/api/provider/conversations", {
     staleTimeMs: 0,
   });
@@ -254,6 +254,13 @@ export default function MessagingListScreen() {
           <Text style={{ fontSize: 14, color: Colors.gray[600], lineHeight: 20, textAlign: "center" }}>
             {ml("messagingDisabled")}
           </Text>
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/(tabs)/more/settings/content-and-safety-controls" as never)}
+            style={{ marginTop: 10, alignSelf: "center" }}
+            accessibilityRole="button"
+          >
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{openControlsLabel}</Text>
+          </TouchableOpacity>
         </View>
       ) : null}
       <View

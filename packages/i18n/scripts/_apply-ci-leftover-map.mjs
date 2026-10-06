@@ -3,11 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { safeWriteJson } from "./_safe-write-json.mjs";
+import { stillMostlyEnglish } from "./_wave-a-translate.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const map = JSON.parse(fs.readFileSync(path.join(root, "_maps/t-sa-mobile-ci-leftover.json"), "utf8"));
 const localesDir = path.join(root, "src/locales");
-const locales = ["af", "zu", "xh", "st", "nso", "tn", "ts", "ve", "ss"];
+const locales = ["af", "zu", "xh", "st", "nso", "tn", "ts", "ve", "ss", "fr", "ar"];
 
 function flatten(obj, prefix = "", out = new Map()) {
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) return out;
@@ -39,7 +40,8 @@ for (const locale of locales) {
   let patched = 0;
   for (const [key, enVal] of en) {
     const locVal = loc.get(key);
-    if (locVal !== enVal) continue;
+    if (typeof locVal !== "string") continue;
+    if (locVal !== enVal && !stillMostlyEnglish(enVal, locVal)) continue;
     const row = map[enVal];
     const next = row?.[locale];
     if (!next || next === enVal) continue;

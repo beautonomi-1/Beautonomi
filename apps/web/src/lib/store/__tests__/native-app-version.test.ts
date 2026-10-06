@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getNativeAppCodebaseVersions } from "../native-app-version";
 
-const VERSION_PATTERN = /version:\s*["']([^"']+)["']/;
+const VERSION_PATTERN = /(?:APP_MARKETING_VERSION|version)\s*[:=]\s*["']([^"']+)["']/;
 
 function readExpoVersionFromAppConfig(app: "customer" | "provider"): string {
   const configPath = join(__dirname, "../../../../../", app, "app.config.js");

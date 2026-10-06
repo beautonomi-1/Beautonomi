@@ -13,7 +13,7 @@ const appsRoot = join(webRoot, "..");
 const outPath = join(webRoot, "src", "lib", "store", "native-app-versions.generated.json");
 
 const APP_KEYS = ["customer", "provider"];
-const VERSION_PATTERN = /version:\s*["']([^"']+)["']/;
+const VERSION_PATTERN = /(?:APP_MARKETING_VERSION|version)\s*[:=]\s*["']([^"']+)["']/;
 
 function readVersion(app) {
   const configPath = join(appsRoot, app, "app.config.js");

@@ -10,6 +10,7 @@ import { APP_URL } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
 import { api } from "@/lib/api-client";
+import { firstIncompleteRequiredRoute } from "@/lib/profile-completion-routes";
 import { trackReferralShared, trackSafetyHubNav } from "@/lib/analytics";
 import { openNativeStoreReview } from "@/lib/open-store-review";
 import { recordManualStoreReview } from "@/lib/store-review-prompt";
@@ -19,7 +20,7 @@ import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 interface ProfileCompletion {
   percentage?: number;
   completionPercentage?: number;
-  checklistItems?: { id: string; label: string; completed: boolean }[];
+  checklistItems?: { id: string; label: string; completed: boolean; required?: boolean }[];
 }
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -192,7 +193,9 @@ export default function AccountSettingsScreen() {
 
       {showCompletionBanner && (
         <TouchableOpacity
-          onPress={() => router.push("/(app)/account-settings/profile-details" as any)}
+          onPress={() =>
+            router.push(firstIncompleteRequiredRoute(profileCompletion?.checklistItems) as any)
+          }
           style={{
             marginBottom: 20,
             borderRadius: 16,

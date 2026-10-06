@@ -6,6 +6,7 @@ import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { useTranslation } from "@beautonomi/i18n";
 import { formatMoney } from "@beautonomi/utils";
 import { api } from "@/lib/api-client";
+import { hasSupabaseAccessToken, pushLoginWithReturnTo, redirectLoginIfAuthRequired } from "@/lib/customer-auth-routing";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { safeWarn } from "@/lib/payments/safeLog";
 import { isTransientApiFailure } from "@/lib/api-error";
@@ -216,7 +217,14 @@ export default function WalletScreen() {
 
     setToppingUp(true);
     setTopupStatus(t("customer.walletScreen.statusStarting", "Starting secure payment…") as string);
+    const walletReturnTo = "/(app)/account-settings/wallet";
     try {
+      const hasToken = await hasSupabaseAccessToken();
+      if (!hasToken) {
+        setToppingUp(false);
+        pushLoginWithReturnTo(walletReturnTo);
+        return;
+      }
       const returnUrl = getWalletTopupPaystackAuthPrefix();
       const res = await api.post<{
         payment_url?: string;
@@ -241,6 +249,9 @@ export default function WalletScreen() {
             t("customer.walletScreen.paymentPendingTitle"),
             t("customer.walletScreen.paymentPendingBody"),
           );
+          return;
+        }
+        if (redirectLoginIfAuthRequired(walletReturnTo, res.error)) {
           return;
         }
         Alert.alert(t("common.error"), res.error.message || t("customer.walletScreen.failedStartTopup"));
@@ -384,12 +395,22 @@ export default function WalletScreen() {
       return;
     }
     setToppingUp(true);
+    const walletReturnTo = "/(app)/account-settings/wallet";
     try {
+      const hasToken = await hasSupabaseAccessToken();
+      if (!hasToken) {
+        setToppingUp(false);
+        pushLoginWithReturnTo(walletReturnTo);
+        return;
+      }
       const res = await api.post<{ amount: number; currency: string; message: string }>(
         "/api/me/wallet/redeem-gift-card",
         { code: giftCardCode }
       );
       if (res.error) {
+        if (redirectLoginIfAuthRequired(walletReturnTo, res.error)) {
+          return;
+        }
         Alert.alert(t("common.error"), res.error.message || t("customer.walletScreen.failedRedeemGiftCard"));
       } else {
         Alert.alert(t("customer.walletScreen.successTitle"), res.data?.message || t("customer.walletScreen.giftCardRedeemedDefault"));

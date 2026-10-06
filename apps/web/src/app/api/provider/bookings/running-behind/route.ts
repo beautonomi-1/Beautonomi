@@ -14,6 +14,8 @@ import {
   dashboardBookingLocationOrFilter,
   normalizeDashboardLocationId,
 } from "@/lib/server/provider/dashboard-booking-location-filter";
+import { dateRangeBoundsUtc, formatDateYmd, resolveTz } from "@/lib/dates/provider-tz";
+import { anyEligibleForRunningBehindNotify } from "@beautonomi/provider-booking";
 
 /**
  * POST /api/provider/bookings/running-behind
@@ -41,18 +43,23 @@ export async function POST(request: NextRequest) {
       return errorResponse("Invalid delay_minutes", "VALIDATION_ERROR", 400);
     }
 
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(startOfDay);
-    endOfDay.setHours(23, 59, 59, 999);
+    const { data: providerRow } = await supabase
+      .from("providers")
+      .select("timezone")
+      .eq("id", providerId)
+      .maybeSingle();
+    const tz = resolveTz((providerRow as { timezone?: string | null } | null)?.timezone);
+    const todayYmd = formatDateYmd(new Date(), tz);
+    const { fromIso, toIso } = dateRangeBoundsUtc(todayYmd, todayYmd, tz);
+    const nowMs = Date.now();
 
     let query = supabase
       .from("bookings")
-      .select("id, scheduled_at")
+      .select("id, scheduled_at, status")
       .eq("provider_id", providerId)
       .eq("status", "confirmed")
-      .gte("scheduled_at", startOfDay.toISOString())
-      .lte("scheduled_at", endOfDay.toISOString());
+      .gte("scheduled_at", fromIso)
+      .lte("scheduled_at", toIso);
 
     if (locationId) {
       query = query.or(dashboardBookingLocationOrFilter(locationId));
@@ -63,6 +70,14 @@ export async function POST(request: NextRequest) {
 
     let notified = 0;
     for (const booking of bookings ?? []) {
+      if (
+        !anyEligibleForRunningBehindNotify(
+          [{ status: booking.status, scheduled_at: booking.scheduled_at }],
+          nowMs,
+        )
+      ) {
+        continue;
+      }
       const newArrival = addMinutes(new Date(String(booking.scheduled_at)), delayMinutes);
       await notifyProviderRunningLate(String(booking.id), delayMinutes, newArrival);
       notified += 1;

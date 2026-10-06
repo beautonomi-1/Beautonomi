@@ -1418,10 +1418,21 @@ export default function ChatScreen() {
               </TouchableOpacity>
               </>
               ) : (
-                <View style={twStyle("flex-1 py-2")}>
+                <View style={twStyle("flex-1 py-2 items-center")}>
                   <Text style={twStyle("text-sm text-gray-600 text-center leading-5")}>
                     {t("customer.chatScreen.safetyMessagingOff")}
                   </Text>
+                  <TouchableOpacity
+                    onPress={() =>
+                      router.push("/(app)/(tabs)/more/settings/content-and-safety-controls" as never)
+                    }
+                    style={twStyle("mt-2")}
+                    accessibilityRole="button"
+                  >
+                    <Text style={twStyle("text-sm font-semibold text-primary")}>
+                      {t("customer.safety.socialRestricted.openControls")}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               )}
             </View>

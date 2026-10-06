@@ -46,6 +46,8 @@ export function isIdentity(s) {
   if (s === "") return true;
   if (s === "Beautonomi") return true;
   if (/^[\s\-—.·…,/:+*#&%<>[\]()0-9]+$/.test(s)) return true;
+  if (/^(?:\{\{\w+\}\}|[\s\-—.·…,/:+*#&%<>[\]()0-9×=])+$/.test(s)) return true;
+  if (/^\{\{\w+\}\}h$/.test(s)) return true;
   if (/^\d{1,2}:\d{2}$/.test(s)) return true;
   if (/^[A-Z]{2} \+\d+$/.test(s)) return true;
   if (/^\+\d+\.\.\.$/.test(s)) return true;
