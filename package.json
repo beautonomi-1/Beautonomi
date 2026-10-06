@@ -128,6 +128,7 @@
     "audit:expo-doctor": "node tooling/audit/check-expo-doctor.mjs",
     "verify:mobile-store-versions": "node tooling/audit/verify-mobile-store-versions.mjs",
     "release:eas-preflight": "node scripts/release/eas-build-preflight.mjs",
+    "release:wait-and-submit": "node scripts/release/wait-eas-builds-and-submit.mjs",
     "audit:multi-tenant": "pnpm audit:tenant-admin && pnpm audit:tenant-api-hints",
     "audit:multi-tenant:strict": "pnpm audit:tenant-admin && pnpm audit:tenant-api-hints:strict",
     "verify:cron-schedule": "node docs/scripts/verify-cron-schedule.mjs",
