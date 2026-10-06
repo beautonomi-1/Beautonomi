@@ -39,6 +39,14 @@ for (const c of checks) {
   console.log(c.ok ? "PASS" : "WARN/FAIL", c.name, "-", c.detail);
   if (!c.ok) failed++;
 }
+const providerAndroid = path.join(ROOT, "apps", "provider", "android");
+if (fs.existsSync(providerAndroid)) {
+  console.log(
+    "\nWARN: apps/provider/android exists — EAS may treat provider as bare workflow and Android builds can fail.",
+  );
+  console.log("       Rename/stash android/ before `eas build --platform android`, or rely on .easignore + empty archive.");
+}
+
 console.log("\nDocs: docs/DEPLOYMENT_EAS.md, docs/mobile/PUSH_NOTIFICATIONS_CHECKLIST.md");
 console.log("Build: pnpm run build:customer:ios | build:customer:android | build:provider:ios | build:provider:android");
 process.exit(failed > 0 ? 1 : 0);
