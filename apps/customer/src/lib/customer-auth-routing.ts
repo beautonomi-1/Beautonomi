@@ -4,7 +4,34 @@ import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
 import { resolvePostLoginHref } from "@/lib/post-login-href";
 import { stashPostOnboardingHref } from "@/lib/post-onboarding-redirect";
+import { getApiErrorCode, getHttpErrorStatus } from "@/lib/api-error";
 import { authFlowBreadcrumb, isSentryEnabled, withAuthNavigationSpan } from "@/lib/sentry";
+
+export function isAuthRequiredApiError(err: unknown): boolean {
+  const status = getHttpErrorStatus(err);
+  if (status === 401) return true;
+  return getApiErrorCode(err) === "AUTH_REQUIRED";
+}
+
+export async function hasSupabaseAccessToken(): Promise<boolean> {
+  const { data } = await supabase.auth.getSession();
+  return Boolean(data.session?.access_token);
+}
+
+/** Send the user to login and resume at `return_to` after auth (same path as checkout / shop). */
+export function pushLoginWithReturnTo(returnTo: string): void {
+  router.replace({
+    pathname: "/(auth)/login",
+    params: { return_to: returnTo },
+  } as Href);
+}
+
+/** When a payment/booking API rejects the session, send the user to sign in and resume. */
+export function redirectLoginIfAuthRequired(returnTo: string, err: unknown): boolean {
+  if (!isAuthRequiredApiError(err)) return false;
+  pushLoginWithReturnTo(returnTo);
+  return true;
+}
 
 /**
  * After phone / email OTP / OAuth sign-in:

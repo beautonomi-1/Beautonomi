@@ -15,8 +15,12 @@ import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import {
   extractPaystackReferenceFromUrl,
   isCancelledPaystackUrl,
-  matchesExpoReturnUrl,
 } from "@/lib/paystack-webview-utils";
+import {
+  getBookingCheckoutPaystackAuthPrefix,
+  matchesCheckoutSuccessReturnUrl,
+  matchesPaystackAuthSessionReturn,
+} from "@/lib/payments/customerPaystackReturn";
 import { markReferenceProcessing } from "@/lib/paystack-verify-guard";
 
 interface PaystackInitResponse {
@@ -99,14 +103,14 @@ export function usePaystackPayment() {
       setError(null);
 
       try {
-        // Unified callback route for all in-app Paystack flows.
-        const returnUrl = ExpoLinking.createURL("paystack-callback");
+        const returnUrl = getBookingCheckoutPaystackAuthPrefix();
+        const schemeHint = ExpoLinking.createURL("paystack-callback");
         const res = await api.post<PaystackInitResponse>("/api/payments/initialize", {
           booking_id: params.booking_id,
           amount: params.amount,
           email: params.email,
           currency: params.currency || getTenantDefaultCurrency(),
-          callback_url: returnUrl,
+          callback_url: schemeHint,
           metadata: {
             save_card: params.save_card ?? false,
             customer_id: params.customer_id,
@@ -140,7 +144,10 @@ export function usePaystackPayment() {
         const pr = await checkout.waitForCheckout(data.authorization_url, {
           title: "Pay booking",
           returnUrl,
-          matchSuccess: (u) => matchesExpoReturnUrl(u, returnUrl) && !isCancelledPaystackUrl(u),
+          matchSuccess: (u) =>
+            (matchesPaystackAuthSessionReturn(u, returnUrl) ||
+              matchesCheckoutSuccessReturnUrl(u, { bookingId: params.booking_id })) &&
+            !isCancelledPaystackUrl(u),
           matchCancel: (u) => isCancelledPaystackUrl(u),
         });
 

@@ -63,6 +63,8 @@ import {
   type ProviderBookingAction,
 } from "@/lib/provider-booking-action-policy";
 import { useBusinessToday } from "@/hooks/useBusinessToday";
+import { anyEligibleForRunningBehindNotify } from "@beautonomi/provider-booking";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { useTranslation } from "@beautonomi/i18n";
 import {
   appendBookingsQueryParts,
@@ -386,6 +388,8 @@ export default function BookingsListScreen() {
     successMessage: string;
   } | null>(null);
   const [journeyEtaMinutes, setJourneyEtaMinutes] = useState<number | null>(null);
+  const [showRunningBehindSheet, setShowRunningBehindSheet] = useState(false);
+  const [runningBehindBusy, setRunningBehindBusy] = useState(false);
   const prevBusinessTodayKeyRef = useRef(businessTodayKey);
   const userPickedDateRef = useRef(false);
 
@@ -1035,6 +1039,40 @@ export default function BookingsListScreen() {
     return dayRows.filter((b) => bookingMatchesStatusFilter(b, statusFilter));
   }, [viewMode, daySearchFiltered, selectedDateKey, providerTimezone, statusFilter]);
 
+  const showRunningBehindBanner = useMemo(() => {
+    if (viewMode !== "day") return false;
+    if (selectedDateKey !== businessTodayKey) return false;
+    if (!canEditAppointments) return false;
+    return anyEligibleForRunningBehindNotify(
+      dayBookings.map((b) => ({
+        status: b.status,
+        scheduled_at: b.scheduled_at ?? undefined,
+      })),
+    );
+  }, [viewMode, selectedDateKey, businessTodayKey, canEditAppointments, dayBookings]);
+
+  const notifyRunningBehind = useCallback(
+    async (delayMinutes: number) => {
+      setRunningBehindBusy(true);
+      try {
+        const res = await api.post<{ notified?: number }>("/api/provider/bookings/running-behind", {
+          delay_minutes: delayMinutes,
+          location_id: selectedLocationId,
+        });
+        setShowRunningBehindSheet(false);
+        setToast({
+          message: bl("notifySuccess", { count: res.data?.notified ?? 0 }),
+          type: "success",
+        });
+      } catch {
+        setToast({ message: bl("notifyFailed"), type: "error" });
+      } finally {
+        setRunningBehindBusy(false);
+      }
+    },
+    [bl, selectedLocationId],
+  );
+
   const dayBlocksForSelected = useMemo(() => {
     return timeBlocks.filter((t) => t.date === selectedDateKey && t.is_active);
   }, [timeBlocks, selectedDateKey]);
@@ -1670,67 +1708,9 @@ export default function BookingsListScreen() {
                 <Text style={twStyle("ms-2 text-xs font-bold text-red-800")}>{bl("review")}</Text>
               </TouchableOpacity>
             ) : null}
-            {viewMode === "day" ? (
+            {showRunningBehindBanner ? (
               <TouchableOpacity
-                onPress={() => {
-                  Alert.alert(
-                    bl("runningBehindTitle"),
-                    bl("runningBehindBody"),
-                    [
-                      { text: t("common.cancel"), style: "cancel" },
-                      {
-                        text: bl("delay15"),
-                        onPress: () => {
-                          void (async () => {
-                            try {
-                              const res = await api.post<{ notified?: number }>(
-                                "/api/provider/bookings/running-behind",
-                                {
-                                  delay_minutes: 15,
-                                  location_id: selectedLocationId,
-                                },
-                              );
-                              setToast({
-                                message: bl("notifySuccess", { count: res.data?.notified ?? 0 }),
-                                type: "success",
-                              });
-                            } catch {
-                              setToast({
-                                message: bl("notifyFailed"),
-                                type: "error",
-                              });
-                            }
-                          })();
-                        },
-                      },
-                      {
-                        text: bl("delay30"),
-                        onPress: () => {
-                          void (async () => {
-                            try {
-                              const res = await api.post<{ notified?: number }>(
-                                "/api/provider/bookings/running-behind",
-                                {
-                                  delay_minutes: 30,
-                                  location_id: selectedLocationId,
-                                },
-                              );
-                              setToast({
-                                message: bl("notifySuccess", { count: res.data?.notified ?? 0 }),
-                                type: "success",
-                              });
-                            } catch {
-                              setToast({
-                                message: bl("notifyFailed"),
-                                type: "error",
-                              });
-                            }
-                          })();
-                        },
-                      },
-                    ],
-                  );
-                }}
+                onPress={() => setShowRunningBehindSheet(true)}
                 activeOpacity={0.85}
                 style={[
                   twStyle("mx-4 mb-2 flex-row items-center rounded-xl border px-3 py-3"),
@@ -2383,6 +2363,28 @@ export default function BookingsListScreen() {
           </View>
         </View>
       </Modal>
+
+      <BottomSheet
+        visible={showRunningBehindSheet}
+        onClose={() => {
+          if (!runningBehindBusy) setShowRunningBehindSheet(false);
+        }}
+        title={bl("runningBehindTitle")}
+      >
+        <Text style={twStyle("mb-4 text-sm text-gray-600")}>{bl("runningBehindBody")}</Text>
+        <ActionButton
+          label={bl("delay15")}
+          onPress={() => void notifyRunningBehind(15)}
+          loading={runningBehindBusy}
+          style={twStyle("mb-2")}
+        />
+        <ActionButton
+          label={bl("delay30")}
+          onPress={() => void notifyRunningBehind(30)}
+          loading={runningBehindBusy}
+          variant="secondary"
+        />
+      </BottomSheet>
     </ScreenContainer>
   );
 }

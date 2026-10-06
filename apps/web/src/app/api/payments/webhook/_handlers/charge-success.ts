@@ -240,7 +240,9 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
       metaObj.custom_offer_id ||
       metaObj.booking_id ||
       metaObj.bookingId ||
-      metaObj.kind === "card_verification",
+      metaObj.kind === "card_verification" ||
+      metaObj.marketing_credit_topup === true ||
+      metaObj.marketing_credit_topup === "true",
   );
   if (reference && !metaObj.ads_budget_order_id && !hasNonAdsRoutingMetadata) {
     const { data: adsByRef } = await supabase
@@ -271,6 +273,12 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
         metaObj.provider_subscription_order_id = idStr;
       }
     }
+  }
+  if (reference && !metaObj.wallet_topup_id) {
+    const { enrichWalletTopupMetadataFromReference } = await import(
+      "@/lib/wallet/enrich-wallet-topup-metadata-from-reference"
+    );
+    await enrichWalletTopupMetadataFromReference(supabase, String(reference), metaObj);
   }
   data.metadata = metaObj as PaystackChargeData["metadata"];
   if (isPaystackTerminalCharge(data as any)) {
@@ -1339,7 +1347,17 @@ async function handleSubscriptionRenewalChargeFailed(
 }
 
 async function processFailedPayment(data: PaystackChargeData, supabase: SupabaseClient) {
-  const { reference, metadata, message, gateway_response } = data;
+  const { reference, message, gateway_response } = data;
+  const metadata: Record<string, unknown> =
+    data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata)
+      ? { ...(data.metadata as Record<string, unknown>) }
+      : {};
+  if (reference && !metadata.wallet_topup_id) {
+    const { enrichWalletTopupMetadataFromReference } = await import(
+      "@/lib/wallet/enrich-wallet-topup-metadata-from-reference"
+    );
+    await enrichWalletTopupMetadataFromReference(supabase, String(reference), metadata);
+  }
 
   if (!reference || !metadata?.booking_id) {
     if (metadata?.product_order_id) {
@@ -1464,7 +1482,9 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
     } catch (notifError) {
       console.error("Error sending booking_remaining failure notification:", notifError);
     }
-    emitPaystackPaymentFailedSlack(data, { bookingId: metadata.booking_id });
+    emitPaystackPaymentFailedSlack(data, {
+      bookingId: typeof metadata.booking_id === "string" ? metadata.booking_id : null,
+    });
     return;
   }
 
@@ -1518,7 +1538,9 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
     return;
   }
 
-  emitPaystackPaymentFailedSlack(data, { bookingId: metadata.booking_id });
+  emitPaystackPaymentFailedSlack(data, {
+    bookingId: typeof metadata.booking_id === "string" ? metadata.booking_id : null,
+  });
 
   const lastResortFailed = await lastResortCurrencyFromTenantId(bookingData.tenant_id, {
     supabase,
@@ -1591,7 +1613,8 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
     try {
       const { refundRedeemedLoyaltyPoints } = await import("@/lib/loyalty/refund-redeemed-points");
       await refundRedeemedLoyaltyPoints(supabase, {
-        bookingId: metadata.booking_id,
+        bookingId:
+          typeof metadata.booking_id === "string" ? metadata.booking_id : String(bookingData.id),
         customerId: bookingData.customer_id as string,
         reason: "payment_failed",
       });

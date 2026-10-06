@@ -78,6 +78,7 @@ function extractVerifyPayload(res: unknown): { type?: string; giftCardOrderId?: 
 function GiftCardPurchaseSuccessInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const nativeAppContext = searchParams.get("context") === "app";
   const reference =
     searchParams.get("reference")?.trim() ||
     searchParams.get("trxref")?.trim() ||
@@ -93,6 +94,12 @@ function GiftCardPurchaseSuccessInner() {
   // If verification ends in a hard error we keep the recovery message but
   // auto-route to Payments after a short delay so the user always lands on a
   // page where their codes (or refund) will appear.
+  useEffect(() => {
+    if (nativeAppContext && typeof document !== "undefined") {
+      document.title = "Payment";
+    }
+  }, [nativeAppContext]);
+
   useEffect(() => {
     if (phase !== "error") return;
     const t = setTimeout(() => {

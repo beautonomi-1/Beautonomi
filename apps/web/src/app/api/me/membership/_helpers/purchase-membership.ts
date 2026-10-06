@@ -2,6 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import {
+  paystackChannelsForInitialize,
+  resolveHostedCheckoutCallbacks,
+} from "@/lib/payments/resolve-paystack-hosted-callback";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
@@ -241,16 +245,16 @@ export async function createMembershipPurchase(input: PurchaseMembershipInput): 
   }
 
   const reference = generateTransactionReference("membership", order.id);
-  const membershipAppUrl = process.env.NEXT_PUBLIC_APP_URL || "";
-
-  // Use caller-provided callback URL (mobile app scheme) when available, else web success page.
-  const isMobileCallback =
-    typeof input.callbackUrl === "string" &&
-    (input.callbackUrl.startsWith("customer://") || input.callbackUrl.startsWith("exp://"));
-  const callbackUrl = isMobileCallback ? input.callbackUrl! : `${membershipAppUrl}/checkout/success`;
-  const membershipCancelAction = isMobileCallback
-    ? `${callbackUrl}${callbackUrl.includes("?") ? "&" : "?"}cancelled=1`
-    : `${membershipAppUrl}/explore?membership_cancelled=1`;
+  const membershipAppUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com").replace(/\/$/, "");
+  const hostedMembership = resolveHostedCheckoutCallbacks({
+    baseUrl: membershipAppUrl,
+    clientCallbackUrl: input.callbackUrl,
+    defaultSuccessPath: "/checkout/success",
+    defaultCancelPath: "/explore",
+    query: { payment_type: "membership" },
+  });
+  const callbackUrl = hostedMembership.successUrl;
+  const membershipCancelAction = `${membershipAppUrl}/explore?membership_cancelled=1${hostedMembership.inApp ? "&context=app" : ""}`;
 
   let paystackData: Awaited<ReturnType<typeof initializePaystackTransaction>>;
   try {
@@ -273,6 +277,7 @@ export async function createMembershipPurchase(input: PurchaseMembershipInput): 
         enable_auto_renew: true,
       },
       tenantId: input.tenantId,
+      channels: paystackChannelsForInitialize({ saveCard: true }).channels,
     });
   } catch (error) {
     await (supabase.from("membership_orders") as any)

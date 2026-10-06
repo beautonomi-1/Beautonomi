@@ -6,6 +6,7 @@
  */
 
 import { getSupabaseClient } from './client';
+import { AuthRateLimitError, parseRetryAfterSeconds } from '@/lib/auth/auth-errors';
 import type { UserRole } from '@/types/beautonomi';
 
 export interface SignUpData {
@@ -143,6 +144,9 @@ export async function signIn(data: SignInData) {
         message: json?.error,
         email: trimmedEmail,
       });
+    }
+    if (res.status === 429) {
+      throw new AuthRateLimitError(parseRetryAfterSeconds(res) ?? 60, message);
     }
     const err = new Error(message) as Error & { captchaRequired?: boolean };
     if (json?.captcha_required === true) err.captchaRequired = true;

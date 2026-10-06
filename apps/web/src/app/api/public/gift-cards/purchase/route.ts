@@ -5,6 +5,7 @@ import { handleApiError, successResponse, errorResponse, requireRoleInApi } from
 import { getPaymentFeatureFlagsForTenant } from "@/lib/subscriptions/entitlements";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { resolveHostedCheckoutCallbacks } from "@/lib/payments/resolve-paystack-hosted-callback";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -261,19 +262,18 @@ export async function POST(request: NextRequest) {
     if (orderError || !order) throw orderError || new Error("Failed to create order");
 
     const reference = generateTransactionReference("giftcard", order.id);
-    const appBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
-    const callbackUrl =
-      parsed.data.callback_url?.trim() ||
-      (appBase ? `${appBase}/gift-card/purchase/success` : `${process.env.NEXT_PUBLIC_APP_URL || ""}/checkout/success`);
+    const appBase = (process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com").replace(/\/$/, "");
+    const hostedGift = resolveHostedCheckoutCallbacks({
+      baseUrl: appBase,
+      clientCallbackUrl: parsed.data.callback_url?.trim(),
+      defaultSuccessPath: "/gift-card/purchase/success",
+      defaultCancelPath: "/gift-card/purchase/cancelled",
+    });
+    const callbackUrl = hostedGift.successUrl;
+    const giftCancelAction = hostedGift.cancelUrl;
 
     let paystackData: Awaited<ReturnType<typeof initializePaystackTransaction>>;
     try {
-      const isMobileGiftCallback =
-        callbackUrl.startsWith("customer://") || callbackUrl.startsWith("exp://");
-      const giftCancelAction = isMobileGiftCallback
-        ? `${callbackUrl}${callbackUrl.includes("?") ? "&" : "?"}cancelled=1`
-        : `${appBase}/gift-card/purchase/cancelled`;
-
       paystackData = await initializePaystackTransaction({
         email,
         amountInSmallestUnit: convertToSmallestUnit(totalAmount, currency),

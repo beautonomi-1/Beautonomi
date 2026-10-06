@@ -67,7 +67,12 @@
     },
     "discard": "Discard",
     "tryAgain": "Try again.",
-    "duration": "Duration"
+    "duration": "Duration",
+    "hints": {
+      "gotIt": "Got it",
+      "dismissA11y": "Dismiss tip"
+    },
+    "change": "Change"
   },
   "authGate": {
     "checkingAccess": "Checking your conta…",
@@ -231,7 +236,8 @@
       "loading": "Loading travel fee estimate",
       "finalAmountAtCheckout": "Final amount confirmed at checkout",
       "errorGeneric": "Could not get travel fee estimate.",
-      "outsideServiceArea": "This address is outside the service area."
+      "outsideServiceArea": "This address is outside the service area.",
+      "outsideServiceAreaNoSalon": "This provider doesn't travel to this address. Try another address."
     },
     "houseCallPricing": {
       "venueStepHint": "Choose where your appointment happens. Service prices on the next step reflect this choice.",
@@ -240,7 +246,8 @@
       "includesHouseCallFee": "Includes {{currency}} {{amount}} house-call fee",
       "houseCallFeeLine": "House-call service fee",
       "houseCallFeeSummary": "House-call fees ({{count}} services)",
-      "travelFeeSeparateNote": "Travel fee is calculated from your address and shown separately."
+      "travelFeeSeparateNote": "Travel fee is calculated from your address and shown separately.",
+      "atHomeVenueCombined": "At-home bookings can include a house-call fee on some services, plus a travel fee based on your address."
     },
     "providerNotFound": "Provider not found",
     "providerUnavailableTitle": "This professional is no longer available",
@@ -286,7 +293,10 @@
     "addressRequired": "Address required",
     "addressRequiredBody": "Please enter your address for this at-home appointment before continuing.",
     "loadingPackage": "Loading package…",
-    "packageNoLineItems": "Package details will appear here when available."
+    "packageNoLineItems": "Package details will appear here when available.",
+    "contextualHints": {
+      "waitlistJoin": "Joining doesn't reserve a time. We'll let you know if one opens."
+    }
   },
   "provider": {
     "dashboard": "Dashboard",
@@ -1371,7 +1381,9 @@
           "authRequired": "Unlock mipangilio",
           "ageBandNote": "Some options are managed automatically for accounts aged 13–17 to help keep your experience age-appropriate.",
           "lockedNote": "Settings marked as managed cannot be changed for your age group.",
-          "linkAgeSuitability": "Learn about age suitability & parental guidance"
+          "linkAgeSuitability": "Learn about age suitability & parental guidance",
+          "unknownAgeNotice": "We use your date of birth for safety controls. Add it so we can apply the right settings. If you are 18 or older, you can change these switches after your date is saved. Teens aged 13–17 keep managed settings.",
+          "addDateOfBirth": "Add date of birth"
         },
         "emergencyContact": {
           "title": "Emergency contact",
@@ -1830,7 +1842,8 @@
           "chargeNoteApple": "You are only charged after you confirm with Face ID, Touch ID, or your App Store password. Your campaign goes live once Apple verifies the purchase — never before.",
           "chargeNotePaystack": "You are only charged after you confirm on the secure Paystack page. Your campaign goes live once payment is verified — never before.",
           "openingAppStore": "Opening App Store purchase…",
-          "openingCheckout": "Opening secure finalizar compra…"
+          "openingCheckout": "Opening secure finalizar compra…",
+          "introHint": "Sponsored listings appear on the customer home screen and in search results."
         },
         "waitingRoom": {
           "title": "Front Desk",
@@ -1888,7 +1901,8 @@
           "serviceFallback": "Service",
           "serviceWithDuration": "{{name}} · {{minutes}} min",
           "runningLate": "Running late",
-          "runningLateMinutes": "Running late {{minutes}}m"
+          "runningLateMinutes": "Running late {{minutes}}m",
+          "introHint": "Today at a glance: confirm new requests, check clients in when they arrive, and start their service."
         },
         "groupBookings": {
           "statusAll": "Tudo",
@@ -2539,7 +2553,8 @@
           "selectCurrencyA11y": "Select currency {{code}}",
           "savePaymentSettings": "Save Payment Settings",
           "saving": "Saving…",
-          "unsavedChanges": "You have unsaved changes"
+          "unsavedChanges": "You have unsaved changes",
+          "noShowFeeAmountHint": "Taken only from what the client has already paid online, up to this amount."
         },
         "bookingsList": {
           "title": "Bookings",
@@ -3412,7 +3427,10 @@
           "giftCardsLabel": "cartões de oferta",
           "giftCardsSubtitle": "Accept platform cartões de oferta",
           "terminalShopLabel": "terminal Loja",
-          "terminalShopSubtitle": "encomenda terminais de cartão from the Beautonomi catalog"
+          "terminalShopSubtitle": "encomenda terminais de cartão from the Beautonomi catalog",
+          "hintYoco": "Yoco: your Yoco card reader.",
+          "hintCardMachines": "Card machines: PayCloud terminals for in-person card payments.",
+          "hintPaystackTerminal": "Paystack Terminal: take payment on your phone with a QR code."
         },
         "businessSettings": {
           "title": "Business details",
@@ -5133,7 +5151,18 @@
           "confirmCreateSeries": "Confirmar & criar Series",
           "confirmCreateBooking": "Confirmar & criar marcação",
           "backToEditA11y": "voltar to editar",
-          "backToEdit": "voltar to editar"
+          "backToEdit": "voltar to editar",
+          "groupBookingNoPermission": "Your role cannot create group bookings. Ask an owner for appointment permissions.",
+          "groupBookingPermissionsFailed": "Could not verify permissions. Tap to try again.",
+          "sendQuoteNeedsAccount": "Quotes are sent to clients with a Beautonomi account. Use custom service (in person) to book someone without an account.",
+          "referralHowDidTheyFind": "How did they find you?",
+          "referralOptionalHint": "Optional — shown on receipts and reports.",
+          "referralAddForVisit": "Add how they found you",
+          "chooseStaffRequired": "Choose who does this",
+          "staffOffersServiceHint": "These team members can perform this service.",
+          "categoryPickerTitle": "Category",
+          "runningBehindSheetTitle": "Running behind?",
+          "staffFilteredByService": "Showing team members assigned to this service."
         },
         "expressBooking": {
           "invalidJson": "JSON. inválido.",
@@ -5264,7 +5293,8 @@
           "productCartJson": "produto Carrinho (JSON)",
           "productCartHint": "JSON array: product_id (UUID), quantity (1–999), optional product_variant_id.",
           "clearAllPrefillA11y": "limpar all prefill",
-          "clearAllPrefill": "limpar all prefill"
+          "clearAllPrefill": "limpar all prefill",
+          "introHint": "Express links open booking with your chosen services, staff and location already filled in. You can set an expiry date or a usage limit."
         },
         "explorePosts": {
           "selectedPhotoPreviewA11y": "Selecionado foto pavaliação",
@@ -5913,7 +5943,8 @@
           "deleteBody": "Remover \"{{name}}\"?",
           "cancel": "Cancelar",
           "delete": "Eliminar",
-          "copySuffix": "{{name}} (copiar)"
+          "copySuffix": "{{name}} (copiar)",
+          "introHint": "Members get their discount automatically when they book with you. They don't need a promo code."
         },
         "payoutAccounts": {
           "title": "Payout Contas",
@@ -6326,7 +6357,8 @@
           "expressLinks": "Express short links & checkout prefill",
           "visits": "Visits",
           "bookings": "Marcações",
-          "convRate": "Conv. Rate"
+          "convRate": "Conv. Rate",
+          "copyIframe": "Copy iframe code"
         },
         "closedPeriods": {
           "title": "Fechard Periods",
@@ -6905,7 +6937,8 @@
           "deleteServiceA11y": "Eliminar serviço",
           "deleting": "A eliminar…",
           "deleteService": "Eliminar serviço",
-          "deleteHint": "Permanently removes this service. Use the full editor to manage variants and add-ons."
+          "deleteHint": "Permanently removes this service. Use the full editor to manage variants and add-ons.",
+          "homePriceAdjustmentHint": "Added to this service's price for home visits. The travel fee is charged separately."
         },
         "daysOff": {
           "staffFallback": "Equipa",
@@ -7991,7 +8024,11 @@
           "methodGiftCard": "Cartão de oferta",
           "methodWallet": "Carteira",
           "methodOther": "Outro",
-          "methodCashback": "Numeráriovoltar"
+          "methodCashback": "Numeráriovoltar",
+          "ledgerTruncatedTitle": "Large ledger — totals may be incomplete",
+          "ledgerTruncated": "More than {{max}} finance rows matched this range. Narrow the date range for full totals.",
+          "membershipEarnings": "Membership earnings (ledger)",
+          "providerCollectedByMethod": "Provider-collected (cash / EFT / card)"
         },
         "performanceDashboardReport": {
           "factsDefinitions": "Facts & definitions",
@@ -8115,7 +8152,10 @@
           "setAsDefault": "Set as predefinido política",
           "toggleDefaultA11y": "Toggle predefinido política",
           "saving": "A guardar…",
-          "updatePolicy": "Atualizar política"
+          "updatePolicy": "Atualizar política",
+          "hoursBeforeHint": "Cancellations closer to the appointment than this count as late.",
+          "refundPercentageHint": "How much of what the client paid is refunded for a late cancellation.",
+          "feeAmountHint": "Only used when the refund is 0%."
         },
         "terminalMerchantApplication": {
           "statusSubmitted": "We received your application and will review it shortly.",
@@ -9190,7 +9230,10 @@
           "notes": "Notas",
           "notesPlaceholder": "opcional notas...",
           "updateZone": "Atualizar Zone",
-          "addZone": "Adicionar Zone"
+          "addZone": "Adicionar Zone",
+          "introHint": "Zones set where customers can book you at home. A zone with its own fee uses it instead of your travel fee.",
+          "actionTravelFees": "Travel fees",
+          "noZonesWarning": "Customers can't book you at home until you choose at least one service zone."
         },
         "staffNotifications": {
           "saveFailedTitle": "Não foi possível guardar",
@@ -9882,7 +9925,9 @@
           "signOut": "Terminar sessão",
           "signOutTitle": "terminar sessão?",
           "signOutBody": "You can finish setup later. Your progress is saved to your account.",
-          "cancel": "Cancelar"
+          "cancel": "Cancelar",
+          "verificationRequiredTitle": "Identity verification required to go live",
+          "verificationRequiredBody": "Complete identity verification so we can approve your listing for public bookings."
         },
         "packageSalesReport": {
           "factsDefinitions": "Facts & definitions",
@@ -10156,7 +10201,9 @@
           "thisMonth": "This mês",
           "avgFee": "Avg Fee",
           "trips": "Trips",
-          "saveSettings": "Guardar Definições"
+          "saveSettings": "Guardar Definições",
+          "noZonesWarning": "Customers can't book you at home until you choose at least one service zone.",
+          "actionChooseZones": "Choose zones"
         },
         "revenueTrendsReport": {
           "basisIntro": "Ledger line uses finance_transactions (earnings, travel, tips) by recognition date. Visit counts use appointment dates (excl. cancelled & no-show). They are different bases — spread does not imply causation.",
@@ -10628,7 +10675,15 @@
           "acceptInvite": "Accept convite",
           "getApp": "Get the profissional app",
           "downloadIos": "transferir for iPhone",
-          "downloadAndroid": "transferir for Android"
+          "downloadAndroid": "transferir for Android",
+          "setPasswordTitle": "Create your password",
+          "passwordLabel": "Password",
+          "passwordConfirmLabel": "Confirm password",
+          "setPasswordSubmit": "Save password",
+          "setPasswordSuccess": "Password saved. Sign in to accept your invite.",
+          "setPasswordFailed": "Could not save password",
+          "passwordMismatch": "Passwords do not match",
+          "passwordTooShort": "Password must be at least 8 characters"
         },
         "search": {
           "title": "Pesquisar",
@@ -10884,7 +10939,8 @@
           "myEarnings": "My earnings",
           "title": "equipa & pagar",
           "subtitleOwner": "Payroll & equipa performance",
-          "subtitleStaff": "O seu pagar stubs"
+          "subtitleStaff": "O seu pagar stubs",
+          "freelancerUnavailable": "Upgrade to a salon account to run payroll and team pay."
         },
         "terminalPaymentReturn": {
           "confirmingTitle": "A confirmar o pagamento",
@@ -11417,7 +11473,9 @@
           "delete": "Eliminar",
           "typeNameRequired": "Introduzir a Tipo nome.",
           "deleteTypeTitle": "Eliminar blocked hora Tipo",
-          "deleteTypeBody": "Remove \"{{name}}\"? Existing blocks using this type may lose their category."
+          "deleteTypeBody": "Remove \"{{name}}\"? Existing blocks using this type may lose their category.",
+          "introHint": "Blocks close time on the calendar so clients can't book it. For staff leave, use Days off.",
+          "actionDaysOff": "Days off"
         },
         "authLogin": {
           "accountSuspended": "Your account has been suspended. Contact support if you believe this is an error.",
@@ -12465,7 +12523,8 @@
           "customerFallback": "Cliente",
           "atHome": "Ao domicílio",
           "atSalon": "No salão",
-          "budgetRange": " · Budget {{min}} – {{max}}"
+          "budgetRange": " · Budget {{min}} – {{max}}",
+          "introHint": "Requests aren't on your calendar yet. Send an offer with a price and time; it's booked once the client pays."
         },
         "deleteAccount": {
           "pleaseWaitTitle": "Por favor, wait",
@@ -13701,6 +13760,11 @@
         },
         "chipCombobox": {
           "loading": "A carregar…"
+        },
+        "groupBookingPayment": {
+          "youPaidForGroup": "You paid for the group",
+          "paidBy": "Paid by {{name}}",
+          "covered": "Covered"
         }
       },
       "tabs": {
@@ -14361,7 +14425,9 @@
           "toggle_sensitive_content_filter_label": "Sensitive content filter",
           "toggle_sensitive_content_filter_desc": "Reduce posts tagged with medical or treatment-related topics",
           "toggle_require_device_auth_label": "Require device authentication",
-          "toggle_require_device_auth_desc": "Ask for Face ID, fingerprint, or passcode before changing these settings"
+          "toggle_require_device_auth_desc": "Ask for Face ID, fingerprint, or passcode before changing these settings",
+          "unknownAgeNotice": "We use your date of birth for safety controls. Add it so we can apply the right settings. If you are 18 or older, you can change these switches after your date is saved. Teens aged 13–17 keep managed settings.",
+          "addDateOfBirth": "Add date of birth"
         },
         "notificationsCenter": {
           "screenTitle": "Notifications",
@@ -16054,7 +16120,12 @@
           "emergencyPhonePlaceholder": "Their phone number",
           "emergencyRelationPlaceholder": "e.g. Spouse, Parent",
           "newEmailPlaceholder": "New email address",
-          "newPhonePlaceholder": "New phone number"
+          "newPhonePlaceholder": "New phone number",
+          "dobLabel": "Date of birth",
+          "dobEmptyHint": "Add your date of birth",
+          "dobSafetyHint": "Safety controls use your date of birth. Adult settings apply only if you are 18 or older.",
+          "addDobCta": "Add",
+          "changeDobCta": "Update"
         },
         "loginSecurity": {
           "enterCurrentPassword": "Enter your current password",
@@ -16417,7 +16488,13 @@
           "missingRequestId": "Missing pedido ID",
           "back": "Voltar",
           "retry": "Tentar novamente",
-          "help": "Ajuda"
+          "help": "Ajuda",
+          "waitingTitle": "Request sent",
+          "waitingHeadline": "Waiting for your provider",
+          "waitingProviderMessage": "This isn't confirmed yet. We'll book it as soon as {{provider}} accepts.",
+          "providerFallbackName": "your provider",
+          "waitingTimerLabel": "Time remaining",
+          "waitingCancelCta": "Cancel request"
         },
         "onDemandResult": {
           "loadBookingDetailsFailed": "Could not load booking details. Check your bookings list.",
@@ -16680,7 +16757,8 @@
           "budgetInvalid": "Budget must be a positive number.",
           "budgetMaxLessThanMin": "Maximum budget must be greater than or equal to minimum budget.",
           "durationOutOfRange": "Duration must be between {{min}} and {{max}} minutes.",
-          "submittedPartialImages": "Some photos couldn't be saved — you can add the rest from the chat."
+          "submittedPartialImages": "Some photos couldn't be saved — you can add the rest from the chat.",
+          "hintOnce": "Nothing is booked yet. The provider replies with a price and time, and it's confirmed when you pay their offer. Requests close after {{days}} days."
         },
         "notificationPreferences": {
           "loadFailed": "Failed to load preferences.",
@@ -17511,7 +17589,24 @@
     "platformFeeInclusive": " (incl. platform fee {{amount}})",
     "securePaymentTitle": "Secure payment",
     "paymentCancelledTitle": "Payment cancelled",
-    "paymentCancelledBody": "You cancelled the payment. Your booking has not been confirmed."
+    "paymentCancelledBody": "You cancelled the payment. Your booking has not been confirmed.",
+    "packageDiscount": "Package discount",
+    "packageApplied": "Package applied",
+    "redeemPackage": "Redeem a prepaid package (optional)",
+    "packageCredit": "Package credit",
+    "prepaidSessionsRemaining": "{{count}} session(s) remaining",
+    "contextualHints": {
+      "dualFees": "Includes {{houseCall}} in house-call fees and a {{travel}} travel fee.",
+      "depositPayNow": "Pay {{deposit}} now. The remaining {{balance}} stays on your booking, and you can pay it from there.",
+      "depositLateCancel": "A late-cancellation fee comes out of what you've paid.",
+      "groupBooking": "You pay for everyone in one payment. Guests only need a name.",
+      "customOfferConfirm": "Paying this offer confirms your booking.",
+      "customOfferExpires": "Offer expires {{date}}.",
+      "groupSwitchOn": "On",
+      "groupSwitchOff": "Off",
+      "groupGuestsLimit_one": "Add up to {{count}} guest.",
+      "groupGuestsLimit_other": "Add up to {{count}} guests."
+    }
   },
   "payments": {
     "pay": "Pay",
@@ -17883,7 +17978,9 @@
         "loadingBooking": "A carregar marcação...",
         "onlineBookingUnavailable": "Online marcação is not disponível",
         "onlineBookingDisabled": "{{name}} has not enabled online booking. Please contact them directly to book.",
-        "findAnotherProvider": "Find anoutro profissional"
+        "findAnotherProvider": "Find anoutro profissional",
+        "onlineBookingDisabledGeneric": "This provider has not enabled online booking.",
+        "providerNotFound": "Provider not found"
       },
       "continue": {
         "slotExpiredToast": "Your reserved slot has expired. Please go back and pick a new time.",
@@ -18038,7 +18135,11 @@
         "enterSmsCode": "Introduza o código de {{digits}} dígitos do SMS",
         "invalidCode": "Código inválido",
         "emailOtpSentToast": "Check your email for the {{digits}}-digit code (valid about {{minutes}} minutes).",
-        "smsOtpSentToast": "Check your phone for the {{digits}}-digit code (valid about {{minutes}} {{minuteLabel}})."
+        "smsOtpSentToast": "Check your phone for the {{digits}}-digit code (valid about {{minutes}} {{minuteLabel}}).",
+        "passwordSignInPrompt": "Prefer email and password?",
+        "passwordSignInLink": "Sign in with password",
+        "noAccountPrompt": "New to Beautonomi?",
+        "createAccountLink": "Create an account"
       },
       "legacyFlow": {
         "bookWith": "marcar with {{providerName}}",
@@ -18148,7 +18249,8 @@
         "tip": "Gorjeta",
         "total": "Total",
         "continue": "Continuar",
-        "continueAriaLabel": "continuar to seguinte step"
+        "continueAriaLabel": "continuar to seguinte step",
+        "packageDiscount": "Package discount"
       },
       "confirmation": {
         "loadingMessage": "A carregar Confirmação da marcação...",
@@ -18538,7 +18640,10 @@
         "payWithCardEnding": "Pay {{amount}} with •••• {{last4}}",
         "payDeposit": "Pay Sinal {{amount}}",
         "completeBooking": "concluir marcação",
-        "payAmount": "Pagar {{amount}}"
+        "payAmount": "Pagar {{amount}}",
+        "slotConflictTitle": "That time is no longer available",
+        "slotConflictBody": "Pick another time on the calendar or jump to the next open slot.",
+        "pickNextAvailable": "Find next available time"
       },
       "addToWaitlist": {
         "enterName": "Por favor, enter your nome",
@@ -18723,7 +18828,9 @@
         "capacity": "Capacidade: {{count}}",
         "notAvailable": "Not disponível at this hora",
         "selected_one": "{{count}} resource Selecionado",
-        "selected_other": "{{count}} resources Selecionado"
+        "selected_other": "{{count}} resources Selecionado",
+        "stepTitle": "Choose resources",
+        "stepSubtitle": "Select any rooms or equipment needed for your appointment."
       },
       "virtualWaitingRoom": {
         "title": "Virtual sala de espera",
@@ -18757,6 +18864,16 @@
         "cancelledDescription": "This marcação has been cancelado",
         "unknownTitle": "desconhecido estado",
         "unknownDescription": "Unable to determine marcação estado"
+      },
+      "journey": {
+        "stepOf": "Step {{current}} of {{total}}",
+        "bucket": {
+          "services": "Services",
+          "venue": "Location",
+          "time": "Date & time",
+          "details": "Your details",
+          "pay": "Payment"
+        }
       }
     },
     "search": {
@@ -20875,7 +20992,11 @@
           "secureBody": "All payment information is encrypted and processed securely. We never store your full card details.",
           "addCardNow": "Adicionar Cartão agora",
           "browseServices": "Browse serviços"
-        }
+        },
+        "cardVerifiedSuccess": "Your card was saved successfully.",
+        "cardVerificationFailed": "We could not confirm your card. Try again or use another card.",
+        "cardVerificationPending": "Verification is still processing. Refresh this page in a moment if your card does not appear.",
+        "cardVerificationCancelled": "Card verification was cancelled."
       },
       "referrals": {
         "loadFailed": "Não foi possível carregar recomendação informação",
@@ -21470,7 +21591,19 @@
         "checkNeeded": "conta check needed"
       },
       "marketingConsent": "Enviar me gorjetas, Ofertas, and produto atualizars. You can unsubscribe anyhora.",
-      "passkeyComingSoon": "Passkey (em breve)"
+      "passkeyComingSoon": "Passkey (em breve)",
+      "bookingReturn": {
+        "titleLogin": "You're signing in to finish your booking",
+        "titleSignup": "Create an account to finish your booking",
+        "continueBooking": "Continue booking",
+        "stepDefault": "Sign in to pick up where you left off.",
+        "stepTime": "Sign in to choose a date and time.",
+        "stepPay": "Sign in to review details and pay.",
+        "stepDetails": "Sign in to add your details and continue.",
+        "stepServices": "Sign in to choose services and continue.",
+        "stepVenue": "Sign in to confirm where you'll be served.",
+        "rateLimitWait": "Too many attempts. Try again in {{seconds}}s."
+      }
     },
     "provider": {
       "locationTracker": {
@@ -22611,7 +22744,11 @@
           "retailProducts": "Retalho produtos",
           "selectProduct": "Selecionar produto…",
           "selectVariant": "Selecionar variant…",
-          "variantFallback": "Variant"
+          "variantFallback": "Variant",
+          "openGroupBooking": "Plan a group booking instead",
+          "sendQuote": "Send a quote instead",
+          "sendQuoteNeedsAccount": "Select a client with an account to send a quote.",
+          "uncategorized": "Uncategorized"
         },
         "blockedTimeTypeDialog": {
           "updated": "Blocked hora Tipo atualizard",
@@ -22888,7 +23025,11 @@
           "appointmentsOnly_one": "{{count}} consulta",
           "appointmentsOnly_other": "{{count}} consultas",
           "blocksOnly_one": "{{count}} block",
-          "blocksOnly_other": "{{count}} blocks"
+          "blocksOnly_other": "{{count}} blocks",
+          "runningBehindTitle": "Running behind?",
+          "runningBehindBody": "We'll notify remaining confirmed clients today that you're delayed.",
+          "delay15": "15 minutes",
+          "delay30": "30 minutes"
         },
         "overview": {
           "all": "Tudo",
@@ -23863,6 +24004,10 @@
           "plan": {
             "title": "Escolher Your Plano",
             "description": "Selecionar a subscrição Plano"
+          },
+          "travelFees": {
+            "title": "Travel Fees",
+            "description": "House-call travel fee rules and live fee preview"
           }
         },
         "toast": {
@@ -23929,7 +24074,8 @@
           "setHours": "Por favor, set your opeclassificação horas",
           "oneDayOpen": "At least one dia must be abrir",
           "selectPlan": "Por favor, selecionar a subscrição Plano",
-          "andMoreSeeConsole": " (and {{count}} mais - see console)"
+          "andMoreSeeConsole": " (and {{count}} mais - see console)",
+          "dobRequired": "Date of birth is required for identity verification"
         },
         "successHeadline": "You're all set!",
         "continueVerification": "continuar to verification",
@@ -23980,7 +24126,8 @@
           "ownerContactTitle": "proprietário and Contacto detalhes",
           "ownerContactBody": "We verify both your email and mobile number to protect your account.",
           "yourName": "O seu Nome",
-          "emailAddress": "Endereço de e-mail"
+          "emailAddress": "Endereço de e-mail",
+          "dateOfBirth": "Date of birth"
         },
         "photos": {
           "yourPhoto": "O seu foto",
@@ -24216,7 +24363,9 @@
           "preselectedCategories": "We've pre-selected {{count}} common categories. You can change them!",
           "categoriesTipBody": "categorias ajuda clientes discover you in pesquisar and filtrars.",
           "categoriesDraftHint": "If you skip services for now, we can draft simple services from the categories you pick.",
-          "noCategoriesAvailable": "No categorias disponível. Please Contacto apoio."
+          "noCategoriesAvailable": "No categorias disponível. Please Contacto apoio.",
+          "menuCategoryNames": "Names on your menu (you can rename these)",
+          "categoryNamePlaceholder": "Category name"
         },
         "catalog": {
           "atSalon": "No salão",
@@ -24337,6 +24486,9 @@
           "locationBookingWindowTitle": "localização marcação Window:",
           "locationBookingWindowBody": "Clients only see slots inside these hours for the salon. You can set individual staff schedules later under Settings.",
           "hoursTo": "to"
+        },
+        "travelFees": {
+          "usePlatformDefault": "Use platform default travel fees"
         }
       },
       "dashboard": {
@@ -25330,7 +25482,10 @@
             "depositPercent": "Sinal % (alternate)",
             "useAmountOrPct": "Use either montante or %",
             "saveBookingFlow": "Guardar marcação flow definições",
-            "onlineBookingDisabled": "Online booking is currently disabled. Clients will not be able to book appointments online."
+            "onlineBookingDisabled": "Online booking is currently disabled. Clients will not be able to book appointments online.",
+            "shareWhatsApp": "WhatsApp",
+            "shareEmail": "Email",
+            "shareNative": "Share"
           },
           "appointment-activity/resources": {
             "resources": "Resources",
@@ -26193,7 +26348,9 @@
             "topUpViaPaystack": "Carregar via Paystack",
             "refresh": "Atualizar",
             "ownIntegrations": "Own integrations",
-            "ownIntegrationsHint": "Connect your SendGrid/Mailchimp or Twilio account. Sends on your credentials are not debited from platform credits."
+            "ownIntegrationsHint": "Connect your SendGrid/Mailchimp or Twilio account. Sends on your credentials are not debited from platform credits.",
+            "topUpSuccess": "Marketing credits topped up successfully.",
+            "topUpPending": "Payment is still processing. Refresh in a moment if your balance has not updated."
           },
           "note-templates": {
             "noteTemplates": "Note Templates",
@@ -27741,6 +27898,10 @@
             "nativeCancelled": "You cancelado the pagamento. No cobrar was made.",
             "nativeInvalid": "This pagamento return ligação is inválido or inconcluir."
           }
+        },
+        "serviceZones": {
+          "introHint": "Zones set where customers can book you at home. A zone with its own fee uses it instead of your travel fee.",
+          "actionTravelFees": "Travel fees"
         }
       },
       "pages": {
@@ -27890,7 +28051,16 @@
           "getApp": "Get the profissional app",
           "downloadIos": "transferir for iPhone",
           "downloadAndroid": "transferir for Android",
-          "logoAlt": "Beautonomi"
+          "logoAlt": "Beautonomi",
+          "setPasswordTitle": "Create your password",
+          "setPasswordHint": "Choose a password (at least 8 characters), then sign in with your invite email.",
+          "passwordLabel": "Password",
+          "passwordConfirmLabel": "Confirm password",
+          "setPasswordSubmit": "Save password",
+          "setPasswordSuccess": "Password saved. Sign in to accept your invite.",
+          "setPasswordFailed": "Could not save password",
+          "passwordMismatch": "Passwords do not match",
+          "passwordTooShort": "Password must be at least 8 characters"
         },
         "notifications": {
           "subtitle": "Ver and manage your notificações",
@@ -29300,7 +29470,13 @@
             "paymentsByStatus": "pagamentos by estado",
             "noPaymentStatusData": "No pagamento estado Dados disponível for the Selecionado period.",
             "cashStyle": "Cash Style",
-            "transactionsCount": "{{count}} transactions"
+            "transactionsCount": "{{count}} transactions",
+            "ledgerTruncatedTitle": "Large ledger — totals may be incomplete",
+            "ledgerTruncated": "More than {{max}} finance rows matched this range. Narrow the date range for complete totals.",
+            "membershipEarnings": "Membership earnings (ledger)",
+            "membershipEarningsHint": "membership_provider_earnings rows settled in this period (included in provider net activity).",
+            "providerCollectedByMethod": "Provider-collected (cash / EFT / card)",
+            "methodEft": "Bank transfer (EFT)"
           },
           "payments/yoco-reconciliation": {
             "title": "Yoco reconciliation",
@@ -30389,7 +30565,8 @@
           "appointmentColorHint": "Choose a color to visually identify services in this category",
           "descriptionOptional": "descrição (opcional)",
           "descriptionPlaceholder": "Add a short summary that helps clients understand what types of services are included in this category",
-          "descriptionHint": "Help clients understand what types of services are included in this category"
+          "descriptionHint": "Help clients understand what types of services are included in this category",
+          "homePriceAdjustmentHint": "Added to this service's price for home visits. The travel fee is charged separately."
         },
         "serviceDialog": {
           "shortHair": "Short Cabelo",
@@ -32232,7 +32409,8 @@
         "services": "Serviços",
         "expiresCol": "Expira",
         "clicks": "Clicks",
-        "itemsSelected": "Items Selected"
+        "itemsSelected": "Items Selected",
+        "copyEmbedSnippet": "Copy embed snippet"
       },
       "calendarPage": {
         "serviceFallback": "Serviço",
@@ -32548,7 +32726,9 @@
         "boostProfile": "Boost your perfil",
         "completeLater": "concluir mais tarde",
         "setUp": "Configurar",
-        "stepsToGo": "Steps To Go"
+        "stepsToGo": "Steps To Go",
+        "verificationRequiredToGoLive": "Identity verification required to go live",
+        "verificationRequiredBody": "Your checklist is complete, but we still need to verify your identity before you can accept public bookings."
       },
       "shiftsPage": {
         "failedToLoad": "Não foi possível carregar turnos",
@@ -33152,6 +33332,22 @@
         "optionalParen": "(opcional)",
         "nameRequired": "nome *",
         "other": "Outro"
+      },
+      "scheduling": {
+        "calendarIconLegendTitle": "What these icons mean",
+        "calendarIcons": {
+          "isNewClient": "New client",
+          "hasNotes": "Has notes",
+          "isRepeating": "Repeating appointment",
+          "hasMembership": "Member",
+          "hasFormsIncomplete": "Forms incomplete",
+          "hasPhotos": "Has photos",
+          "hasConversation": "Has messages",
+          "isGroup": "Group booking",
+          "hasCustomization": "Service customization",
+          "isWalkIn": "Walk-in",
+          "isAtHome": "At-home service"
+        }
       }
     },
     "global": {
@@ -34326,7 +34522,8 @@
     },
     "referralSource": {
       "label": "How did this cliente find you?",
-      "notSpecified": "Not specified"
+      "notSpecified": "Not specified",
+      "addForVisit": "Add how they found you"
     },
     "editProducts": {
       "label": "Produtos",

@@ -1,5 +1,5 @@
 /**
- * Provider app: ringtone playback via signed URL + expo-av.
+ * Provider app: ringtone playback via signed URL + expo-audio.
  * On-demand requires module enabled + path; normal booking alerts only require normal_booking path.
  */
 
@@ -45,38 +45,40 @@ async function fetchSignedRingtoneUrl(scope: RingtoneUrlScope): Promise<string |
   }
 }
 
-async function playUrlWithExpoAv(
+async function playUrlWithExpoAudio(
   url: string,
   ringDurationSeconds: number,
   ringRepeat: boolean,
 ): Promise<RingtoneController> {
-  let sound: import("expo-av").Audio.Sound | null = null;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let player: ReturnType<typeof import("expo-audio").createAudioPlayer> | null = null;
 
   const stop = () => {
     if (timeoutId != null) {
       clearTimeout(timeoutId);
       timeoutId = null;
     }
-    if (sound) {
-      sound.stopAsync().catch(() => {});
-      sound.unloadAsync().catch(() => {});
-      sound = null;
+    if (player) {
+      try {
+        player.pause();
+        player.remove();
+      } catch {
+        // ignore
+      }
+      player = null;
     }
   };
 
   try {
-    const { Audio } = await import("expo-av");
-    await Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
+    const { createAudioPlayer, setAudioModeAsync } = await import("expo-audio");
+    await setAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: false,
+      interruptionMode: "duckOthers",
     });
-    sound = new Audio.Sound();
-    await sound.loadAsync({ uri: url });
-    await sound.setIsLoopingAsync(ringRepeat);
-    await sound.playAsync();
+    player = createAudioPlayer({ uri: url });
+    player.loop = ringRepeat;
+    player.play();
   } catch {
     stop();
     return { stop: () => {} };
@@ -104,7 +106,7 @@ export async function playRingtone(
   }
   if (!url) return { stop: () => {} };
 
-  return playUrlWithExpoAv(url, config.ring_duration_seconds ?? 20, config.ring_repeat ?? true);
+  return playUrlWithExpoAudio(url, config.ring_duration_seconds ?? 20, config.ring_repeat ?? true);
 }
 
 /**
@@ -125,7 +127,7 @@ export async function playNormalBookingRingtone(
   }
   if (!url) return { stop: () => {} };
 
-  return playUrlWithExpoAv(
+  return playUrlWithExpoAudio(
     url,
     config.normal_booking_ring_duration_seconds ?? 20,
     config.normal_booking_ring_repeat ?? true,

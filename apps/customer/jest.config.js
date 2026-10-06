@@ -15,6 +15,10 @@ const expoModulesCore = path.dirname(
 /** @type {import('jest').Config} */
 module.exports = {
   preset: "jest-expo",
+  setupFiles: [
+    "<rootDir>/../../tooling/mobile/jest-expo-winter-stub.js",
+    "<rootDir>/../../tooling/mobile/jest-reanimated-mock.js",
+  ],
   setupFilesAfterEnv: ["<rootDir>/jest.setup-after-env.js"],
   testMatch: ["<rootDir>/__tests__/**/*.test.{ts,tsx}"],
   moduleNameMapper: {

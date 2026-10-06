@@ -1,10 +1,10 @@
-import { Tabs, useRouter, usePathname, type Router } from "expo-router";
+import { Tabs, useRouter, usePathname } from "expo-router";
+import type { ExpoRouter } from "@/types/expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useRef } from "react";
-import { View, Platform, AppState, InteractionManager, type ViewStyle } from "react-native";
+import { View, Platform, AppState, InteractionManager, type ColorValue, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import { StackActions, type NavigationProp, type ParamListBase } from "@react-navigation/native";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
@@ -38,15 +38,17 @@ const formatTabBadge = (count: number): string | undefined => {
 function makeHubTabListener(
   tabName: HubTab,
   hubHref: `/(app)/(tabs)/${HubTab}`,
-  exoRouter: Router,
+  exoRouter: ExpoRouter,
   pathname: string | null | undefined,
 ) {
-  return ({ navigation }: { navigation: NavigationProp<ParamListBase> }) => ({
+  return ({
+    navigation,
+  }: {
+    navigation: { getState: () => { routes: { name: string; state?: { index?: number } }[]; index: number } };
+  }) => ({
     tabPress: (e: { preventDefault: () => void }) => {
-      const state = navigation.getState() as { routes: { name: string; state?: { index?: number; key?: string } }[]; index: number };
-      const tabRoute = state.routes.find((r) => r.name === tabName) as
-        | { name: string; state?: { index?: number; key?: string } }
-        | undefined;
+      const state = navigation.getState();
+      const tabRoute = state.routes.find((r) => r.name === tabName);
       const st = tabRoute?.state;
       const alreadyOnThisTab = state.routes[state.index]?.name === tabName;
       const moreNestedByPath = tabName === "more" && isMoreTabNestedScreen(pathname);
@@ -60,14 +62,7 @@ function makeHubTabListener(
       const stackNested = typeof st?.index === "number" && st.index > 0;
       if (stackNested || moreNestedByPath) {
         e.preventDefault();
-        if (stackNested && st.key) {
-          navigation.dispatch({
-            ...StackActions.popToTop(),
-            target: st.key,
-          });
-        } else {
-          exoRouter.replace(hubHref as never);
-        }
+        exoRouter.replace(hubHref as never);
       }
     },
   });
@@ -301,7 +296,15 @@ export default function TabsLayout() {
             } as unknown as ViewStyle)
           : {}),
       },
-      tabBarLabel: ({ color, children }: { color: string; children: string }) => (
+      tabBarLabel: ({
+        color,
+        children,
+      }: {
+        focused: boolean;
+        color: ColorValue;
+        position: "beside-icon" | "below-icon";
+        children: string;
+      }) => (
         <TabLabel
           style={{
             color: typeof color === "string" ? color : Colors.gray[400],

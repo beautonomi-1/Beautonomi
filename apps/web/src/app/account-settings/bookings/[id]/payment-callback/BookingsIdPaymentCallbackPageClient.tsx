@@ -34,6 +34,7 @@ export default function BookingPaymentCallbackPage() {
   const prefix = "web.accountSettings.bookingPaymentCallback";
   const bookingId = params.id as string;
   const payRemaining = searchParams.get("pay_remaining") === "1";
+  const nativeAppContext = searchParams.get("context") === "app";
   const reference = searchParams.get("reference") || searchParams.get("trxref");
 
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
@@ -86,6 +87,12 @@ export default function BookingPaymentCallbackPage() {
   useEffect(() => {
     verify();
   }, [verify]);
+
+  useEffect(() => {
+    if (nativeAppContext && typeof document !== "undefined") {
+      document.title = "Payment";
+    }
+  }, [nativeAppContext]);
 
   // Notify the customer app WebView with the resolved outcome so the native
   // shell can swap to the right result card (instead of only firing on

@@ -380,7 +380,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[900],
   },
   centerMessage: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: "center",
     alignItems: "center",
     padding: 24,

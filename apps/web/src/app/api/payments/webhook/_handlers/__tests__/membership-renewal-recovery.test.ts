@@ -136,7 +136,7 @@ describe("membership renewal webhook recovery", () => {
             insert: vi.fn(() => Promise.resolve({ error: null })),
           };
         }
-        if (table === "ads_budget_orders" || table === "provider_subscription_orders") {
+        if (table === "ads_budget_orders" || table === "provider_subscription_orders" || table === "wallet_topups") {
           return {
             select: vi.fn(() => ({
               eq: vi.fn(() => ({

@@ -1,4 +1,4 @@
-import type { Router } from "expo-router";
+import type { ExpoRouter } from "@/types/expo-router";
 import { Alert } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "@/lib/api-client";
@@ -103,7 +103,7 @@ async function completeCheckoutAfterReturn(options: {
   result: InAppPaystackResult;
   reference?: string | null;
   orderId?: string | null;
-  router: Router;
+  router: ExpoRouter;
 }): Promise<boolean> {
   const { result, reference: initialReference, orderId, router } = options;
 
@@ -187,7 +187,7 @@ async function completeCheckoutAfterReturn(options: {
   return true;
 }
 
-export async function resumePendingOnboardingCheckout(router: Router): Promise<boolean> {
+export async function resumePendingOnboardingCheckout(router: ExpoRouter): Promise<boolean> {
   const pending = await readPendingOnboardingCheckout();
   if (!pending?.reference?.trim()) return false;
   if (Date.now() - (pending.createdAt ?? 0) > ONBOARDING_CHECKOUT_PENDING_TTL_MS) {
@@ -307,7 +307,7 @@ export async function resolveCheckoutFlagsForRecovery(
 export async function finalizeOnboardingSuccess(options: {
   data: OnboardingCompletionData | null;
   formData: Partial<OnboardingFormData>;
-  router: Router;
+  router: ExpoRouter;
   refreshProvider: () => Promise<void>;
   userId?: string | null;
   showSuccessAlert?: boolean;

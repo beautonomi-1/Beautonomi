@@ -5,8 +5,8 @@
 import { useState, useCallback } from "react";
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, Platform } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
-import type { Router } from "expo-router";
 import { useRouter } from "expo-router";
+import type { ExpoRouter } from "@/types/expo-router";
 import * as Haptics from "expo-haptics";
 import { useTranslation } from "@beautonomi/i18n";
 import { useApiMutation } from "@/hooks/useApi";
@@ -41,7 +41,7 @@ const ACTION_TYPES = [
   { labelKey: "actionWhatsapp", value: "whatsapp" },
 ] as const;
 
-function alertCreateError(message: string, errorCode: string | null, router: Router, errorTitle: string) {
+function alertCreateError(message: string, errorCode: string | null, router: ExpoRouter, errorTitle: string) {
   if (isPlanGateErrorCode(errorCode)) {
     showPlanGateAlert({ message, errorCode, router });
     return;

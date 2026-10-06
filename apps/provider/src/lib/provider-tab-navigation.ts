@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { BackHandler, Platform } from "react-native";
-import { useFocusEffect, useLocalSearchParams, useRouter, type Router } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import type { ExpoRouter } from "@/types/expo-router";
 
 export const MORE_TAB_HREF = "/(app)/(tabs)/more" as const;
 export const TRANSACTIONS_HUB_HREF = "/(app)/(tabs)/more/transactions-hub" as const;
@@ -54,11 +55,11 @@ export function isMoreTabNestedScreen(pathname: string | null | undefined): bool
   return !isMoreTabMenuHub(pathname);
 }
 
-export function navigateToMoreHub(router: Router): void {
+export function navigateToMoreHub(router: ExpoRouter): void {
   router.replace(MORE_TAB_HREF as never);
 }
 
-export function navigateToTransactionsHub(router: Router): void {
+export function navigateToTransactionsHub(router: ExpoRouter): void {
   router.replace(TRANSACTIONS_HUB_HREF as never);
 }
 
@@ -67,7 +68,7 @@ export function navigateToTransactionsHub(router: Router): void {
  * target or the More menu hub.
  */
 export function performProviderStackBack(
-  router: Router,
+  router: ExpoRouter,
   returnHref?: string,
 ): void {
   if (returnHref) {
@@ -93,7 +94,7 @@ export function useFromSafetyHub(): boolean {
 
 /** Push from Trust & Safety hub — child screens return via useSafetyStackBack. */
 export function navigateFromSafetyHub(
-  router: Router,
+  router: ExpoRouter,
   pathname: string,
   params?: Record<string, string | undefined>,
 ): void {
@@ -143,7 +144,7 @@ export function useSafetyStackBack() {
  * route while another tab stays selected).
  */
 export function navigateToMoreScreen(
-  router: Router,
+  router: ExpoRouter,
   pathname: string,
   params?: Record<string, string | undefined>,
 ): void {

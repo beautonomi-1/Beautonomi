@@ -33,6 +33,15 @@ function makeGiftCardOrderFailedSupabase(claimedRows: Array<{ id: string }>) {
           }),
         };
       }
+      if (table === "wallet_topups") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+            })),
+          })),
+        };
+      }
       throw new Error(`unexpected table in gift card charge-failed test: ${table}`);
     }),
     rpc: vi.fn(async () => ({ data: null, error: null })),

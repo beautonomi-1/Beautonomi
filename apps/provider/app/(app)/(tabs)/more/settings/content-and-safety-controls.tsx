@@ -159,6 +159,7 @@ export default function ContentAndSafetyControlsScreen() {
   const toggleDesc = (key: SafetySettingKey) => cs(`toggle_${key}_desc`);
 
   const showAgeBandNote = age_band === "13_17";
+  const showUnknownAgeNotice = age_band === "unknown";
 
   if (loading) {
     return (
@@ -232,6 +233,35 @@ export default function ContentAndSafetyControlsScreen() {
       <TrustScreenShell title={screenTitle} subtitle={screenDesc} breadcrumbSegment={breadcrumbSegment} />
       <View>
 
+        {showUnknownAgeNotice ? (
+          <View
+            style={{
+              marginTop: 16,
+              backgroundColor: Colors.primaryLight,
+              borderRadius: 12,
+              padding: 14,
+            }}
+          >
+            <Text style={{ fontSize: 14, color: Colors.gray[700], lineHeight: 20 }}>{cs("unknownAgeNotice")}</Text>
+            <TouchableOpacity
+              onPress={() =>
+                router.push("/(app)/(tabs)/more/safety/age-assurance?return_after_save=1" as never)
+              }
+              style={{
+                marginTop: 12,
+                backgroundColor: Colors.primary,
+                borderRadius: 10,
+                paddingVertical: 10,
+                paddingHorizontal: 16,
+                alignSelf: "flex-start",
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={cs("addDateOfBirth")}
+            >
+              <Text style={{ color: Colors.white, fontWeight: "600" }}>{cs("addDateOfBirth")}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
         {showAgeBandNote ? (
           <View
             style={{

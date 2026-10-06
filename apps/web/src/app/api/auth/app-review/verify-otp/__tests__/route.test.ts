@@ -7,12 +7,12 @@ import {
   APP_REVIEW_DEMO_UID,
 } from "@/lib/auth/app-review-demo";
 
-const mockCheckSignInRateLimit = vi.fn();
+const mockCheckAppReviewVerifyRateLimit = vi.fn();
 const mockGenerateLink = vi.fn();
 const mockVerifyOtp = vi.fn();
 
-vi.mock("@/lib/rate-limit/sign-in", () => ({
-  checkSignInRateLimit: (...args: unknown[]) => mockCheckSignInRateLimit(...args),
+vi.mock("@/lib/rate-limit/app-review-verify", () => ({
+  checkAppReviewVerifyRateLimit: (...args: unknown[]) => mockCheckAppReviewVerifyRateLimit(...args),
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -33,7 +33,7 @@ describe("POST /api/auth/app-review/verify-otp", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockCheckSignInRateLimit.mockResolvedValue({ allowed: true, retryAfterSeconds: 60 });
+    mockCheckAppReviewVerifyRateLimit.mockResolvedValue({ allowed: true, retryAfterSeconds: 60 });
     mockGenerateLink.mockImplementation(({ email }: { email: string }) =>
       Promise.resolve({
         data: { properties: { hashed_token: `hash-${email}` } },

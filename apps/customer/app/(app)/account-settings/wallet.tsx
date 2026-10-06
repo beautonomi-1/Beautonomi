@@ -6,13 +6,16 @@ import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { useTranslation } from "@beautonomi/i18n";
 import { formatMoney } from "@beautonomi/utils";
 import { api } from "@/lib/api-client";
+import { hasSupabaseAccessToken, pushLoginWithReturnTo, redirectLoginIfAuthRequired } from "@/lib/customer-auth-routing";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { safeWarn } from "@/lib/payments/safeLog";
 import { isTransientApiFailure } from "@/lib/api-error";
+import { extractPaystackReferenceFromUrl, isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
 import {
-  matchesExpoReturnUrl,
-  isCancelledPaystackUrl,
-} from "@/lib/paystack-webview-utils";
+  getWalletTopupPaystackAuthPrefix,
+  matchesCheckoutSuccessReturnUrl,
+  matchesPaystackAuthSessionReturn,
+} from "@/lib/payments/customerPaystackReturn";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Skeleton } from "@/components/Skeleton";
 import { Colors } from "@/constants/colors";
@@ -214,15 +217,26 @@ export default function WalletScreen() {
 
     setToppingUp(true);
     setTopupStatus(t("customer.walletScreen.statusStarting", "Starting secure payment…") as string);
+    const walletReturnTo = "/(app)/account-settings/wallet";
     try {
-      const returnUrl = ExpoLinking.createURL("wallet-return");
+      const hasToken = await hasSupabaseAccessToken();
+      if (!hasToken) {
+        setToppingUp(false);
+        pushLoginWithReturnTo(walletReturnTo);
+        return;
+      }
+      const returnUrl = getWalletTopupPaystackAuthPrefix();
       const res = await api.post<{
         payment_url?: string;
         topup_id?: string;
         paystack_reference?: string;
       }>(
         "/api/me/wallet/topup",
-        { amount, callback_url: returnUrl, idempotency_key: topupIdempotencyKeyRef.current },
+        {
+          amount,
+          callback_url: ExpoLinking.createURL("wallet-return"),
+          idempotency_key: topupIdempotencyKeyRef.current,
+        },
         {
           timeout: 120_000,
           headers: { "Idempotency-Key": topupIdempotencyKeyRef.current },
@@ -235,6 +249,9 @@ export default function WalletScreen() {
             t("customer.walletScreen.paymentPendingTitle"),
             t("customer.walletScreen.paymentPendingBody"),
           );
+          return;
+        }
+        if (redirectLoginIfAuthRequired(walletReturnTo, res.error)) {
           return;
         }
         Alert.alert(t("common.error"), res.error.message || t("customer.walletScreen.failedStartTopup"));
@@ -280,10 +297,16 @@ export default function WalletScreen() {
           title: t("customer.walletScreen.topUpSecureTitle", "Wallet top-up") as string,
           returnUrl,
           matchSuccess: (rawUrl) =>
-            matchesExpoReturnUrl(rawUrl, returnUrl) && !isCancelledPaystackUrl(rawUrl),
+            (matchesPaystackAuthSessionReturn(rawUrl, returnUrl) ||
+              matchesCheckoutSuccessReturnUrl(rawUrl, { paymentType: "wallet_topup" })) &&
+            !isCancelledPaystackUrl(rawUrl),
           matchCancel: (rawUrl) => isCancelledPaystackUrl(rawUrl),
         });
         cancelled = outcome?.outcome === "cancel";
+        if (outcome?.outcome === "success" && outcome.url && !isCancelledPaystackUrl(outcome.url)) {
+          const extracted = extractPaystackReferenceFromUrl(outcome.url);
+          if (extracted) finalPaystackRef = extracted;
+        }
       }
 
       if (cancelled) {
@@ -372,12 +395,22 @@ export default function WalletScreen() {
       return;
     }
     setToppingUp(true);
+    const walletReturnTo = "/(app)/account-settings/wallet";
     try {
+      const hasToken = await hasSupabaseAccessToken();
+      if (!hasToken) {
+        setToppingUp(false);
+        pushLoginWithReturnTo(walletReturnTo);
+        return;
+      }
       const res = await api.post<{ amount: number; currency: string; message: string }>(
         "/api/me/wallet/redeem-gift-card",
         { code: giftCardCode }
       );
       if (res.error) {
+        if (redirectLoginIfAuthRequired(walletReturnTo, res.error)) {
+          return;
+        }
         Alert.alert(t("common.error"), res.error.message || t("customer.walletScreen.failedRedeemGiftCard"));
       } else {
         Alert.alert(t("customer.walletScreen.successTitle"), res.data?.message || t("customer.walletScreen.giftCardRedeemedDefault"));

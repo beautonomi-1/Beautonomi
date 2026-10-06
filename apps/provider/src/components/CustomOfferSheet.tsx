@@ -28,6 +28,9 @@ export interface CustomOfferSheetProps {
   customerName?: string | null;
   conversationId?: string | null;
   onSuccess?: () => void;
+  initialServiceName?: string;
+  initialPrice?: string;
+  initialDuration?: string;
 }
 
 const LOCATION_OPTIONS: { value: "at_salon" | "at_home"; label: string }[] = [
@@ -65,6 +68,9 @@ export function CustomOfferSheet({
   customerName,
   conversationId,
   onSuccess,
+  initialServiceName,
+  initialPrice,
+  initialDuration,
 }: CustomOfferSheetProps) {
   const { t } = useTranslation();
   const co = useCallback(
@@ -126,6 +132,13 @@ export function CustomOfferSheet({
     if (!visible || locationType !== "at_salon" || locationId || locations.length === 0) return;
     setLocationId(locations[0]!.id);
   }, [visible, locationType, locationId, locations]);
+
+  useEffect(() => {
+    if (!visible) return;
+    if (initialServiceName?.trim()) setServiceName(initialServiceName.trim());
+    if (initialPrice?.trim()) setPrice(initialPrice.trim());
+    if (initialDuration?.trim()) setDuration(initialDuration.trim());
+  }, [visible, initialServiceName, initialPrice, initialDuration]);
   const tenantCurrency = getTenantDefaultCurrency();
   const selectedDateKey = dateKey(scheduledAt);
   const selectedTimeKey = timeKey(scheduledAt);

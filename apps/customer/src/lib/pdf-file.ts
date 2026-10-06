@@ -1,5 +1,5 @@
 import { Alert, Platform, ToastAndroid } from "react-native";
-import type { Router } from "expo-router";
+import type { ExpoRouter } from "@/types/expo-router";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import * as IntentLauncher from "expo-intent-launcher";
@@ -34,7 +34,7 @@ export const PDF_PREVIEW_PATH = "/(app)/pdf-preview" as const;
 export type PdfFetchResult = { ok: true; fileUri: string } | { ok: false; error: string };
 
 export interface PdfFlowParams {
-  router: Router;
+  router: ExpoRouter;
   /** Bearer-authenticated GET endpoint returning `application/pdf`. */
   pdfPath: string;
   /** POST endpoint minting a short-lived signed URL fallback. Omit if none exists. */
@@ -214,7 +214,7 @@ async function saveToDeviceAndroid(cacheFileUri: string, filename: string, label
   }
 }
 
-function pushPdfPreview(router: Router, fileUri: string, title: string): void {
+function pushPdfPreview(router: ExpoRouter, fileUri: string, title: string): void {
   router.push({
     pathname: PDF_PREVIEW_PATH,
     params: { uri: encodeURIComponent(fileUri), title: encodeURIComponent(title) },

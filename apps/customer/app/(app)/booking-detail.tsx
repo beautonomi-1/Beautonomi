@@ -24,6 +24,7 @@ import { SafetyPanicButton } from "@/components/SafetyPanicButton";
 import { Skeleton } from "@/components/Skeleton";
 import { haptic } from "@/lib/haptics";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { hasSupabaseAccessToken, pushLoginWithReturnTo, redirectLoginIfAuthRequired } from "@/lib/customer-auth-routing";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { downloadPdf } from "@/lib/pdf-file";
@@ -54,11 +55,13 @@ import {
 import { pendingConfirmationSlaDisplay } from "@/lib/pending-confirmation-sla-copy";
 import QRCode from "react-native-qrcode-svg";
 import { useTranslation } from "@beautonomi/i18n";
+import { isCancelledPaystackUrl, extractPaystackReferenceFromUrl } from "@/lib/paystack-webview-utils";
 import {
-  matchesExpoReturnUrl,
-  isCancelledPaystackUrl,
-  extractPaystackReferenceFromUrl,
-} from "@/lib/paystack-webview-utils";
+  getBookingPaymentCallbackAuthPrefix,
+  getCustomerPaystackAuthReturnUrl,
+  matchesBookingPaymentCallbackReturnUrl,
+  matchesPaystackAuthSessionReturn,
+} from "@/lib/payments/customerPaystackReturn";
 import { markReferenceProcessing } from "@/lib/paystack-verify-guard";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { useSavedCards } from "@/hooks/useSavedCards";
@@ -1121,7 +1124,14 @@ export default function BookingDetailScreen() {
     if (!id || !booking) return;
     haptic.light();
     setPayRemainingLoading(true);
+    const payRemainingReturnTo = `/(app)/booking-detail?id=${encodeURIComponent(id)}`;
     try {
+      const hasToken = await hasSupabaseAccessToken();
+      if (!hasToken) {
+        setPayRemainingLoading(false);
+        pushLoginWithReturnTo(payRemainingReturnTo);
+        return;
+      }
       const res = await api.post<{
         authorization_url?: string;
         fully_settled?: boolean;
@@ -1130,7 +1140,12 @@ export default function BookingDetailScreen() {
         gift_card_amount_applied?: number;
         reference?: string;
       }>(`/api/me/bookings/${id}/pay-remaining`, {
-        callback_url: Platform.OS === "web" ? undefined : ExpoLinking.createURL("book/paystack"),
+        callback_url:
+          Platform.OS === "web"
+            ? getCustomerPaystackAuthReturnUrl(
+                `/account-settings/bookings/${encodeURIComponent(id)}/payment-callback`,
+              )
+            : ExpoLinking.createURL("book/paystack"),
         use_wallet: payRemainingUseWallet,
         ...(payRemainingGiftCode.trim()
           ? { gift_card_code: payRemainingGiftCode.trim().toUpperCase() }
@@ -1141,6 +1156,10 @@ export default function BookingDetailScreen() {
         timeout: 120_000,
       });
       if (res.error) {
+        if (redirectLoginIfAuthRequired(payRemainingReturnTo, res.error)) {
+          setPayRemainingLoading(false);
+          return;
+        }
         Alert.alert(
           errTitle,
           getApiErrorMessage(res.error, bd("payRemainingBalanceFallback")),
@@ -1161,15 +1180,12 @@ export default function BookingDetailScreen() {
         return;
       }
 
-      // Native: open Paystack in an in-app browser; intercept the deep-link return.
+      // Expo Web: full redirect → Next.js booking payment-callback verifies.
       if (Platform.OS === "web") {
-        try {
-          window.open(url, "_blank", "noopener,noreferrer");
-        } catch {
-          Linking.openURL(url).catch(() => {});
-        }
+        window.location.assign(url);
+        return;
       } else {
-        const returnUrl = ExpoLinking.createURL("book/paystack");
+        const returnUrl = getBookingPaymentCallbackAuthPrefix(id);
         let paymentReference = res.data?.reference ?? null;
         if (paymentReference) {
           markReferenceProcessing(paymentReference);
@@ -1178,7 +1194,9 @@ export default function BookingDetailScreen() {
           title: bd("payRemainingBalanceTitle"),
           returnUrl,
           matchSuccess: (rawUrl) =>
-            matchesExpoReturnUrl(rawUrl, returnUrl) && !isCancelledPaystackUrl(rawUrl),
+            (matchesPaystackAuthSessionReturn(rawUrl, returnUrl) ||
+              matchesBookingPaymentCallbackReturnUrl(rawUrl, id)) &&
+            !isCancelledPaystackUrl(rawUrl),
           matchCancel: (rawUrl) => isCancelledPaystackUrl(rawUrl),
         });
         if (checkoutResult.outcome === "cancel") {
@@ -1798,19 +1816,35 @@ export default function BookingDetailScreen() {
     if (!id || !booking) return;
     haptic.light();
     setAdditionalChargePayLoadingId(chargeId);
+    const chargeReturnTo = `/(app)/booking-detail?id=${encodeURIComponent(id)}`;
     try {
+      const hasToken = await hasSupabaseAccessToken();
+      if (!hasToken) {
+        setAdditionalChargePayLoadingId(null);
+        pushLoginWithReturnTo(chargeReturnTo);
+        return;
+      }
       const res = await api.post<{
         authorization_url?: string;
         fully_settled?: boolean;
         reference?: string;
       }>(`/api/me/bookings/${id}/additional-charges/${chargeId}/pay`, {
-        callback_url: Platform.OS === "web" ? undefined : ExpoLinking.createURL("book/paystack"),
+        callback_url:
+          Platform.OS === "web"
+            ? getCustomerPaystackAuthReturnUrl(
+                `/account-settings/bookings/${encodeURIComponent(id)}/payment-callback`,
+              )
+            : ExpoLinking.createURL("book/paystack"),
         use_wallet: additionalPayUseWallet,
         ...(additionalPayGiftCode.trim()
           ? { gift_card_code: additionalPayGiftCode.trim().toUpperCase() }
           : {}),
       }, { timeout: 120_000 });
       if (res.error) {
+        if (redirectLoginIfAuthRequired(chargeReturnTo, res.error)) {
+          setAdditionalChargePayLoadingId(null);
+          return;
+        }
         Alert.alert(errTitle, getApiErrorMessage(res.error, bd("couldNotStartAdditionalChargePayment")));
         return;
       }
@@ -1826,9 +1860,10 @@ export default function BookingDetailScreen() {
         return;
       }
       if (Platform.OS === "web") {
-        window.open(url, "_blank", "noopener,noreferrer");
+        window.location.assign(url);
+        return;
       } else {
-        const returnUrl = ExpoLinking.createURL("book/paystack");
+        const returnUrl = getBookingPaymentCallbackAuthPrefix(id);
         let paymentReference = res.data?.reference ?? null;
         if (paymentReference) {
           markReferenceProcessing(paymentReference);
@@ -1837,7 +1872,9 @@ export default function BookingDetailScreen() {
           title: bd("payAdditionalChargeTitle"),
           returnUrl,
           matchSuccess: (rawUrl) =>
-            matchesExpoReturnUrl(rawUrl, returnUrl) && !isCancelledPaystackUrl(rawUrl),
+            (matchesPaystackAuthSessionReturn(rawUrl, returnUrl) ||
+              matchesBookingPaymentCallbackReturnUrl(rawUrl, id)) &&
+            !isCancelledPaystackUrl(rawUrl),
           matchCancel: (rawUrl) => isCancelledPaystackUrl(rawUrl),
         });
         if (checkoutResult.outcome === "cancel") {
@@ -1918,7 +1955,14 @@ export default function BookingDetailScreen() {
     if (!id || !booking) return;
     haptic.light();
     setAdditionalChargeCardLoadingId(chargeId);
+    const cardChargeReturnTo = `/(app)/booking-detail?id=${encodeURIComponent(id)}`;
     try {
+      const hasToken = await hasSupabaseAccessToken();
+      if (!hasToken) {
+        setAdditionalChargeCardLoadingId(null);
+        pushLoginWithReturnTo(cardChargeReturnTo);
+        return;
+      }
       const res = await api.post<{ reference?: string; status?: string }>(
         `/api/payments/charge-saved-card`,
         {
@@ -1933,6 +1977,10 @@ export default function BookingDetailScreen() {
         { timeout: 120_000 },
       );
       if (res.error) {
+        if (redirectLoginIfAuthRequired(cardChargeReturnTo, res.error)) {
+          setAdditionalChargeCardLoadingId(null);
+          return;
+        }
         Alert.alert(errTitle, getApiErrorMessage(res.error, bd("couldNotChargeSavedCard")));
         return;
       }

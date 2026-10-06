@@ -67,7 +67,12 @@
     },
     "discard": "Lahla",
     "tryAgain": "Zama kwakhona.",
-    "duration": "Ubude"
+    "duration": "Ubude",
+    "hints": {
+      "gotIt": "Ndiyeva",
+      "dismissA11y": "Cima ithiphu"
+    },
+    "change": "Tshintsha"
   },
   "authGate": {
     "checkingAccess": "Checking your iakhawunti…",
@@ -231,7 +236,8 @@
       "loading": "Iyalayisha intlawulo yokuhamba estimate",
       "finalAmountAtCheckout": "Final isixa qinisekisaed at ukuhlawula",
       "errorGeneric": "Ayikwazanga uku-get intlawulo yokuhamba estimate.",
-      "outsideServiceArea": "Le dilesi likwindawo yeenkonzo."
+      "outsideServiceArea": "Le dilesi likwindawo yeenkonzo.",
+      "outsideServiceAreaNoSalon": "Lo mboneleli akahambi kule dilesi. Zama enye idilesi."
     },
     "houseCallPricing": {
       "venueStepHint": "Khetha apho idinga lakho lenzeka khona. Amaxabiso enkonzo kwinyathelo elilandelayo abonisa olu khetho.",
@@ -240,7 +246,8 @@
       "includesHouseCallFee": "Kuquka imali yokutyelela ekhaya engu-{{currency}} {{amount}}",
       "houseCallFeeLine": "House-tsalela intlawulo yenkonzo",
       "houseCallFeeSummary": "House-tsalela iintlawulo ({{count}} iinkonzo)",
-      "travelFeeSeparateNote": "Umrhumo wokuhamba ubalwa kwidilesi yakho kwaye uboniswe ngokwahlukileyo."
+      "travelFeeSeparateNote": "Umrhumo wokuhamba ubalwa kwidilesi yakho kwaye uboniswe ngokwahlukileyo.",
+      "atHomeVenueCombined": "Ukubhukisha ekhaya kunokubandakanya intlawulo yokundwendwela ekhaya kwiinkonzo ezithile, kunye nentlawulo yokuhamba ngokwedilesi yakho."
     },
     "providerNotFound": "umboneleli ayifunyanwa",
     "providerUnavailableTitle": "Lo gqirha akasekho",
@@ -286,7 +293,10 @@
     "addressRequired": "idilesi kuyafuneka",
     "addressRequiredBody": "Sicela ufake ikheli lakho lalokhu kuqokwa kwasekhaya ngaphambi kokuqhubeka.",
     "loadingPackage": "Iyalayisha ipakethi…",
-    "packageNoLineItems": "ipakethi iinkcukacha will appear apha when iyafumaneka."
+    "packageNoLineItems": "ipakethi iinkcukacha will appear apha when iyafumaneka.",
+    "contextualHints": {
+      "waitlistJoin": "Ukujoyina akubekeli xesha. Siza kukwazisa xa kuvuleka."
+    }
   },
   "provider": {
     "dashboard": "Dashboard",
@@ -1371,7 +1381,9 @@
           "authRequired": "Vula isitshixo iisetingi",
           "ageBandNote": "Ezinye iinketho zilawulwa ngokuzenzekelayo kwiakhawunti zeminyaka engama-13–17 ukuze amava akho ahambelane neminyaka.",
           "lockedNote": "Iisetingi eziphawulwe njengezilawulwayo azinakutshintshwa kwiqela lakho lobudala.",
-          "linkAgeSuitability": "Funda ngokufanelekanga kweminyaka nokuqondiswa kwabazali"
+          "linkAgeSuitability": "Funda ngokufanelekanga kweminyaka nokuqondiswa kwabazali",
+          "unknownAgeNotice": "Sisebenzisa umhla wakho wokuzalwa kwiilawuli zokhuseleko. Yongeza ukuze sikwazi ukusebenzisa iisetingi ezifanelekileyo. Ukuba uneminyaka engama-18 nangaphezulu, ungaziguqula ezi zivitshi emva kokuba umhla ugciniwe. Ulutsha oluleminyaka eli-13–17 lugcina iisetingi ezilawulwayo.",
+          "addDateOfBirth": "Yongeza umhla wokuzalwa"
         },
         "emergencyContact": {
           "title": "Emergency Qhagamshelana",
@@ -1736,7 +1748,7 @@
           "timeBoost": "Ukukhulisa ngexesha",
           "day_one": "Usuku olungu-{{count}}",
           "day_other": "Iintsuku ezingu-{{count}}",
-          "boostTitle": "{{days}} boost",
+          "boostTitle": "{{days}} ukonyusa",
           "timeBoostSubtitle": "Imali engaguqukiyo — ukubekwa okuxhasiweyo ixesha elingu-{{days}}.",
           "timeBoostBenefit1": "Ukubekwa okuxhasiweyo ixesha elipheleleyo elingu-{{days}}",
           "timeBoostBenefit2": "Ixabiso elingaguqukiyo elaziwayo — akukho mrhumo ngokucofa",
@@ -1830,7 +1842,8 @@
           "chargeNoteApple": "Ukhokhiswa kuphela uma usuqinisekisile nge-Face ID, Touch ID, noma iphasiwedi yesitolo se-App. Ikhampeni yakho iqala kuphela lapho i-Apple isiqinisekise ukuthenga — hhayi ngaphambilini.",
           "chargeNotePaystack": "You are only hlawulisad after you qinisekisa on the secure Paystack page. Your iphulo goes live once intlawulo is kuqinisekisiwe — soze before.",
           "openingAppStore": "Kuvula ukuthenga ku-App Store…",
-          "openingCheckout": "Opening secure ukuhlawula…"
+          "openingCheckout": "Opening secure ukuhlawula…",
+          "introHint": "Uluhlu oluxhaswayo luvela kwisikrini sasekhaya somthengi nakwiziphumo zokukhangela."
         },
         "waitingRoom": {
           "title": "Ngaphambili Desk",
@@ -1888,7 +1901,8 @@
           "serviceFallback": "Inkonzo",
           "serviceWithDuration": "{{name}} · {{minutes}} im",
           "runningLate": "ufika emva kwexesha",
-          "runningLateMinutes": "ufika emva kwexesha {{minutes}}m"
+          "runningLateMinutes": "ufika emva kwexesha {{minutes}}m",
+          "introHint": "Namhlanje ngeso elinye: qinisekisa izicelo ezitsha, bhalisa abathengi xa befika, uze uqalise inkonzo yabo."
         },
         "groupBookings": {
           "statusAll": "Konke",
@@ -2038,7 +2052,7 @@
           "perPerson": "Umntu ngamnye",
           "participantsLabel": "abathathi-nxaxheba",
           "full": "kugcwele",
-          "spotsLeft": "{{count}} left",
+          "spotsLeft": "{{count}} kusele",
           "checkedIn": "Ungenile",
           "financials": "Ezezimali",
           "participantServices": "umthathi-nxaxheba iinkonzo",
@@ -2539,7 +2553,8 @@
           "selectCurrencyA11y": "Khetha Imali {{code}}",
           "savePaymentSettings": "Gcina intlawulo iisetingi",
           "saving": "Ivagcina…",
-          "unsavedChanges": "You have ungcinad tshintshas"
+          "unsavedChanges": "You have ungcinad tshintshas",
+          "noShowFeeAmountHint": "Kuthathwa kuphela koko umthengi sele ehlawule kwi-intanethi, ukuya kule nani."
         },
         "bookingsList": {
           "title": "Iibhukisho",
@@ -3226,7 +3241,7 @@
           "appleProductNotMappedBody": "Lolu hlelo alutholakali njengokuthenga kwe-iPhone okwamanje. Xhumana nokwesekwa.",
           "subscriptionCheckoutTitle": "umrhumo ukuhlawula",
           "introPlansMatchRegion": "Khetha Nyangazonke noma Ngonyaka ukuze uqhathanise amaphula nezintengo zesifunda sakho.",
-          "introMarketingLinesNote": "Iilayini zokurhweba kwiwebhusayithi (umz. isicatshulwa se-hero kwi-/pricing) zihlelwa ku-Admin → Content, hayi apha.",
+          "introMarketingLinesNote": "Imigca yokuthengisa kwiwebhusayithi (umbhalo omkhulu kwiphepha lamaxabiso) ihlelwa kumhleli wokuqulethweyo, hayi apha.",
           "introIosAutoRenewable": "Okubhalisileyo ku-iOS zi-In-App Purchases ezizivuselelayo ezihlawulwa nge-Apple.",
           "termsOfUseA11y": "Imiqathango of Use (EULA)",
           "termsOfUse": "Imiqathango of Use (EULA)",
@@ -3412,7 +3427,10 @@
           "giftCardsLabel": "amakhadi ezipho",
           "giftCardsSubtitle": "Accept platform amakhadi ezipho",
           "terminalShopLabel": "itheminali Ivenkile",
-          "terminalShopSubtitle": "iodolo oomatshini bamakhadi from the Beautonomi catalog"
+          "terminalShopSubtitle": "iodolo oomatshini bamakhadi from the Beautonomi catalog",
+          "hintYoco": "Yoco: your Yoco Ikhadi reader.",
+          "hintCardMachines": "oomatshini bamakhadi: PayCloud itheminalis for in-person Ikhadi iintlawulo.",
+          "hintPaystackTerminal": "Paystack Terminal: thatha intlawulo kwifowuni yakho ngekhowudi ye-QR."
         },
         "businessSettings": {
           "title": "Ishishini iinkcukacha",
@@ -3778,9 +3796,9 @@
           },
           "lastUsedRecent": "kutshanje",
           "lastUsedJustNow": "just ngoku",
-          "lastUsedMinutes": "{{count}}m ago",
-          "lastUsedHours": "{{count}}h ago",
-          "lastUsedDays": "{{count}}d ago",
+          "lastUsedMinutes": "kwimizuzu engu-{{count}} edlulileyo",
+          "lastUsedHours": "kwiiyure ezingu-{{count}} ezidlulileyo",
+          "lastUsedDays": "kwiintsuku ezingu-{{count}} ezidlulileyo",
           "lastUsedMonths": "{{count}} inyanga edlule",
           "defaultActivationName": "Umatshini wekhadi",
           "defaultActivationNameWithSerial": "umatshini wekhadi {{serial}}"
@@ -3950,9 +3968,9 @@
           "title": "Yoco izixhobo",
           "lastUsedRecent": "kutshanje",
           "lastUsedJustNow": "just ngoku",
-          "lastUsedMinutes": "{{count}}m ago",
-          "lastUsedHours": "{{count}}h ago",
-          "lastUsedDays": "{{count}}d ago",
+          "lastUsedMinutes": "kwimizuzu engu-{{count}} edlulileyo",
+          "lastUsedHours": "kwiiyure ezingu-{{count}} ezidlulileyo",
+          "lastUsedDays": "kwiintsuku ezingu-{{count}} ezidlulileyo",
           "lastUsedMonths": "{{count}} inyanga edlule",
           "requiredTitle": "Kuyafuneka",
           "deviceNameRequired": "isixhobo igama is kuyafuneka.",
@@ -4119,9 +4137,9 @@
         "payCloudPaymentSheet": {
           "lastUsedRecent": "kutshanje",
           "lastUsedJustNow": "just ngoku",
-          "lastUsedMinutes": "{{count}}m ago",
-          "lastUsedHours": "{{count}}h ago",
-          "lastUsedDays": "{{count}}d ago",
+          "lastUsedMinutes": "kwimizuzu engu-{{count}} edlulileyo",
+          "lastUsedHours": "kwiiyure ezingu-{{count}} ezidlulileyo",
+          "lastUsedDays": "kwiintsuku ezingu-{{count}} ezidlulileyo",
           "lastUsedMonths": "{{count}} inyanga edlule",
           "paymentFailedTitle": "Intlawulo isilele",
           "paymentFailedBody": "Inkokhelo yekhadi ayiphumelelang. Sicela uzame futhi.",
@@ -5037,7 +5055,7 @@
           "fixedDiscountA11y": "Fixed isixa isaphulelo",
           "promoCode": "ikhowudi yephromoshini",
           "percentOff": "{{value}}% Kuvaliwe",
-          "amountOff": "{{amount}} off",
+          "amountOff": "{{amount}} sehlisiwe",
           "savedAmount": "({{amount}} gcinad)",
           "removePromoA11y": "Susa ikhowudi yephromoshini",
           "enterPromoPlaceholder": "Faka ikhowudi yephromoshini",
@@ -5133,7 +5151,18 @@
           "confirmCreateSeries": "Qinisekisa & yila Series",
           "confirmCreateBooking": "Qinisekisa & yila ukubhukisha",
           "backToEditA11y": "emva to hlela",
-          "backToEdit": "emva to hlela"
+          "backToEdit": "emva to hlela",
+          "groupBookingNoPermission": "Indima yakho ayinakwenza ukubhukisha kweqela. Cela umnini ngemvume yokuqoka.",
+          "groupBookingPermissionsFailed": "Ayikwazanga ukuqinisekisa iimvume. Cofa ukuze uzame kwakhona.",
+          "sendQuoteNeedsAccount": "Iingqikelelo zithunyelwa kubathengi abaneakhawunti ye-Beautonomi. Sebenzisa inkonzo eyenzelwe wena (ubuso ngobuso) ukubhukisha umntu ongenayo iakhawunti.",
+          "referralHowDidTheyFind": "Bakufumene njani?",
+          "referralOptionalHint": "Ayinyanzelekanga — ibonakala kwiirisidi nakwiingxelo.",
+          "referralAddForVisit": "Yongeza indlela abakufumene ngayo",
+          "chooseStaffRequired": "Khetha ukuba ngubani owenze oku",
+          "staffOffersServiceHint": "La malungu eqela angenza le nkonzo.",
+          "categoryPickerTitle": "Udidi",
+          "runningBehindSheetTitle": "Usalele ngasemva?",
+          "staffFilteredByService": "Kuboniswa amalungu eqela anikwe le nkonzo."
         },
         "expressBooking": {
           "invalidJson": "JSON. engasebenziyo.",
@@ -5264,7 +5293,8 @@
           "productCartJson": "imveliso Inqwelo (JSON)",
           "productCartHint": "JSON array: imveliso_id (UUID), ubungakanani (1–999), okukhethiweyo imveliso_variant_id.",
           "clearAllPrefillA11y": "cima all prefill",
-          "clearAllPrefill": "cima all prefill"
+          "clearAllPrefill": "cima all prefill",
+          "introHint": "Amakhonkco e-Express avula ukubhukisha ngeenkonzo, abasebenzi nendawo ekhethiweyo sele izaliswe. Ungaseta umhla wokuphela okanye umda wokusebenzisa."
         },
         "explorePosts": {
           "selectedPhotoPreviewA11y": "Kukhethiwe ifoto puluvo",
@@ -5411,7 +5441,7 @@
           "identityStripA11y": "inqanaba {{rating}}, {{reviews}} izimvo. Level: {{level}}. {{services}} {{distance}}",
           "gettingStarted": "Getting qalaed",
           "ratingFromReviewsA11y": "Inqunulo {{rating}} ukusuka kwiingxelo ezi-{{reviews}}",
-          "levelA11y": "Level {{name}}",
+          "levelA11y": "Ileveli {{name}}",
           "viewRewardsA11y": "Jonga umvuzos",
           "atHome": "At-ikhaya",
           "atSalon": "At-isaloni",
@@ -5913,7 +5943,8 @@
           "deleteBody": "Susa \"{{name}}\"?",
           "cancel": "Rhoxisa",
           "delete": "Cima",
-          "copySuffix": "{{name}} (khuphela)"
+          "copySuffix": "{{name}} (khuphela)",
+          "introHint": "Amalungu afumana isaphulelo ngokuzenzekelayo xa eBhukisha nawe. Akafuni khowudi yephromoshini."
         },
         "payoutAccounts": {
           "title": "Payout Iakhawuntis",
@@ -6326,7 +6357,8 @@
           "expressLinks": "Amakhonkco amafutshane e-Express nokugcwalisa ku-checkout",
           "visits": "Ukundwendwela",
           "bookings": "Iibhukisho",
-          "convRate": "Conv. Inqanaba"
+          "convRate": "Conv. Inqanaba",
+          "copyIframe": "Khuphela iframe ikhowudi"
         },
         "closedPeriods": {
           "title": "Valad Periods",
@@ -6905,7 +6937,8 @@
           "deleteServiceA11y": "Cima inkonzo",
           "deleting": "Iyacima…",
           "deleteService": "Cima inkonzo",
-          "deleteHint": "Iyayisusa ngokusisigxina le nkonzo. Sebenzisa umhleli opheleleyo ukulawula ukwahluka kunye nezongezo."
+          "deleteHint": "Iyayisusa ngokusisigxina le nkonzo. Sebenzisa umhleli opheleleyo ukulawula ukwahluka kunye nezongezo.",
+          "homePriceAdjustmentHint": "Kongeziwe kwixabiso lale nkonzo yotyelelo lwasekhaya. Intlawulo yokuhamba ihlawuliswa ngokwahlukeneyo."
         },
         "daysOff": {
           "staffFallback": "Abasebenzi",
@@ -7022,8 +7055,8 @@
           "emptyDesc": "Yila ikhowudi yephromoshinis for percentage or fixed-isixa isaphulelos.",
           "newPromo": "ikhowudi yephromoshini entsha",
           "percentOff": "{{value}}% Kuvaliwe",
-          "amountOff": "{{amount}} off",
-          "usedCount": "Used {{count}}",
+          "amountOff": "{{amount}} sehlisiwe",
+          "usedCount": "Kusetyenziswe {{count}}",
           "usedCountMax": "Kusetyenziswe {{count}} / {{max}}",
           "hiddenOnProfile": "Kufihliwe on public iprofayile",
           "visibleOnProfile": "Visible on public iprofayile",
@@ -7819,7 +7852,7 @@
           "optionalComment": "okukhethiweyo izimvo",
           "submitRating": "ngenisa inqanaba",
           "thanks": "Enkosi!",
-          "freshCaption": "Fresh {{name}}"
+          "freshCaption": "{{name}} entsha"
         },
         "advancedPricing": {
           "title": "Okuphambili amaxabiso",
@@ -7991,7 +8024,11 @@
           "methodGiftCard": "Ikhadi lesipho",
           "methodWallet": "Isipaji",
           "methodOther": "Okunye",
-          "methodCashback": "Imaliemva"
+          "methodCashback": "Imaliemva",
+          "ledgerTruncatedTitle": "Large ledger — iyonkes may be ingqiba",
+          "ledgerTruncated": "Imigca yezemali engaphezu kuka-{{max}} ihambelana nolu luhlu. Nciphisa uluhlu lwemihla ukuze ufumane iitotali ezipheleleyo.",
+          "membershipEarnings": "ubulungu earnings (ledger)",
+          "providerCollectedByMethod": "umboneleli-collected (Imali / EFT / Ikhadi)"
         },
         "performanceDashboardReport": {
           "factsDefinitions": "Iqinisekiso nezichasiselo",
@@ -8115,7 +8152,10 @@
           "setAsDefault": "Set as okumisiweyo umgaqo-nkqubo",
           "toggleDefaultA11y": "Toggle okumisiweyo umgaqo-nkqubo",
           "saving": "Ivagcina…",
-          "updatePolicy": "Hlaziya umgaqo-nkqubo"
+          "updatePolicy": "Hlaziya umgaqo-nkqubo",
+          "hoursBeforeHint": "Ukurhoxisa okusondeleyo kwixa kunoku kubalwa njengokulibazisekileyo.",
+          "refundPercentageHint": "Ingakanani yoko kuhlawulwe ngumthengi okubuyiselwa ngokurhoxisa ngexesha eliphezulu.",
+          "feeAmountHint": "Isetyenziswa kuphela xa imbuyekezo ingu-0%."
         },
         "terminalMerchantApplication": {
           "statusSubmitted": "We received your application and will uluvo it shortly.",
@@ -8427,7 +8467,7 @@
           "summaryTierCount_one": "{{count}} Umgama tier",
           "summaryTierCount_other": "{{count}} Umgama tiers",
           "summaryTiersIncomplete": "Okwezifiso tiers (ingqiba)",
-          "summaryRateKm": "{{amount}}/km",
+          "summaryRateKm": "{{amount}}/km ",
           "summaryMin": "Okuncinci {{amount}}",
           "summaryFreeLe": "simahla ≤ {{km}} km",
           "summaryMax": "Okuphezulu {{amount}}",
@@ -8669,9 +8709,9 @@
         "yocoPaymentSheet": {
           "lastUsedRecent": "kutshanje",
           "lastUsedJustNow": "just ngoku",
-          "lastUsedMinutes": "{{count}}m ago",
-          "lastUsedHours": "{{count}}h ago",
-          "lastUsedDays": "{{count}}d ago",
+          "lastUsedMinutes": "kwimizuzu engu-{{count}} edlulileyo",
+          "lastUsedHours": "kwiiyure ezingu-{{count}} ezidlulileyo",
+          "lastUsedDays": "kwiintsuku ezingu-{{count}} ezidlulileyo",
           "lastUsedMonths": "{{count}} inyanga edlule",
           "selectDeviceTitle": "Khetha isixhobo",
           "selectDeviceBody": "Nceda khetha a Yoco isixhobo to process the intlawulo.",
@@ -9190,7 +9230,10 @@
           "notes": "Amanqaku",
           "notesPlaceholder": "okukhethiweyo amanqaku...",
           "updateZone": "Hlaziya Zone",
-          "addZone": "Yongeza Zone"
+          "addZone": "Yongeza Zone",
+          "introHint": "Iindawo zibeka apho abathengi bangakubhukisha khona ekhaya. Indawo enentlawulo yayo iyisebenzisa endaweni yentlawulo yakho yokuhamba.",
+          "actionTravelFees": "Ukuhamba iintlawulo",
+          "noZonesWarning": "Abathengi abakwazi ukukubhukisha ekhaya de ukhethe indawo enye yesebe nencinci."
         },
         "staffNotifications": {
           "saveFailedTitle": "Ayikwazanga uku-gcina",
@@ -9573,7 +9616,7 @@
           "unitsSold": "{{count}} selidala",
           "unitsSoldInStock": "{{count}} selidala · {{stock}} esitokini",
           "lowStockAlerts": "Izilumkiso zesitokhwe esiphantsi",
-          "stockLeft": "{{count}} left",
+          "stockLeft": "{{count}} kusele",
           "packageUsage": "ipakethi Usage",
           "activeLabel": "Iyasebenza:",
           "redeemedLabel": "Kusetyenziswe:",
@@ -9882,7 +9925,9 @@
           "signOut": "Phuma",
           "signOutTitle": "phuma?",
           "signOutBody": "Ungaqeda ukusetha kamuva. Inqubekela phambili yakho ilondolozwe ku-akhawunti yakho.",
-          "cancel": "Rhoxisa"
+          "cancel": "Rhoxisa",
+          "verificationRequiredTitle": "ukuqinisekisa ubuntu kuyafuneka to go Bukhoma",
+          "verificationRequiredBody": "Gqibezela ukuqinisekiswa kwesazisi ukuze sivume uluhlu lwakho lweebhukisho zoluntu."
         },
         "packageSalesReport": {
           "factsDefinitions": "Iqinisekiso nezichasiselo",
@@ -10156,7 +10201,9 @@
           "thisMonth": "This inyanga",
           "avgFee": "Isiling. intlawulo",
           "trips": "Uhambo",
-          "saveSettings": "Gcina Iisetingi"
+          "saveSettings": "Gcina Iisetingi",
+          "noZonesWarning": "Abathengi abakwazi ukukubhukisha ekhaya de ukhethe indawo enye yesebe nencinci.",
+          "actionChooseZones": "Khetha zones"
         },
         "revenueTrendsReport": {
           "basisIntro": "Umugqa wencwadi usebenzisa i-finance_transactions (imiholo, ukuhamba, amathiphu) ngosuku lokuvunywa. Ukubala ukuvakasha kusebenzisa izinsuku zama-aphoyintment (ngaphandle kokukhanseliwe nokungafiki). Yizisekelo ezihlukile — ukuhlukana akusho ukubangela.",
@@ -10617,7 +10664,7 @@
           "expired": "Lesi simemo siphelelwe yisikhathi. Cela umphathi wakho aphinde athumele.",
           "acceptFailed": "Ayikwazanga uku-accept isimemo",
           "teamFallback": "iqela yakho",
-          "joinTitle": "Join {{name}}",
+          "joinTitle": "Joyina {{name}}",
           "inviteNamed": "Molo {{name}}, umenyiwe ukuba uzibandakanye neqela kwi- Beautonomi.",
           "inviteGeneric": "You've been isimemod to join a iqela on Beautonomi.",
           "signInHint": "Ngena nge-imeyili ethole lesi simemo. Sebenzisa isixhumanisi sokusetha iphasiwedi kusuka ku-imeyili yesimemo, noma ungene nge-imeyili ye-OTP — awudingi iphasiwedi ekhona.",
@@ -10628,7 +10675,15 @@
           "acceptInvite": "Accept isimemo",
           "getApp": "Get the umboneleli app",
           "downloadIos": "khuphela for iPhone",
-          "downloadAndroid": "khuphela for Android"
+          "downloadAndroid": "khuphela for Android",
+          "setPasswordTitle": "Yila your iphasiwedi",
+          "passwordLabel": "Iphasiwedi",
+          "passwordConfirmLabel": "Qinisekisa iphasiwedi",
+          "setPasswordSubmit": "Gcina iphasiwedi",
+          "setPasswordSuccess": "iphasiwedi gcinad. ngena to accept your isimemo.",
+          "setPasswordFailed": "Ayikwazanga uku-gcina iphasiwedi",
+          "passwordMismatch": "Iphasiwedis do not match",
+          "passwordTooShort": "Iphasiwedi kufuneka ibe ubuncinane iileta eziyi-8"
         },
         "search": {
           "title": "Khangela",
@@ -10884,7 +10939,8 @@
           "myEarnings": "My Iimvuzo",
           "title": "iqela & hlawula",
           "subtitleOwner": "Payroll & abasebenzi performance",
-          "subtitleStaff": "hlawula stubs yakho"
+          "subtitleStaff": "hlawula stubs yakho",
+          "freelancerUnavailable": "Phucula to a isaloni iakhawunti to run payroll and iqela hlawula."
         },
         "terminalPaymentReturn": {
           "confirmingTitle": "Iqinisekisa intlawulo",
@@ -11013,7 +11069,7 @@
           "typeCustom": "Okwezifiso",
           "typeProducts": "Iimveliso",
           "typeWalkIn": "Ukungena nje",
-          "withStaff": "with {{name}}",
+          "withStaff": "no-{{name}}",
           "orderLabel": "iodolo",
           "editDetailsTitle": "Hlela umxhasi iinkcukacha",
           "editDetailsSubtitle": "These fields are gcinad on the umthengi's iprofayile.",
@@ -11417,7 +11473,9 @@
           "delete": "Cima",
           "typeNameRequired": "Faka a Uhlobo igama.",
           "deleteTypeTitle": "Cima blocked ixesha Uhlobo",
-          "deleteTypeBody": "Remove \"{{name}}\"? Existing blocks using this type may lose their udidi."
+          "deleteTypeBody": "Remove \"{{name}}\"? Existing blocks using this type may lose their udidi.",
+          "introHint": "Iibhlokhi zivala ixesha kwikhalenda ukuze abathengi bangakwazi ukubhukisha. Ngokhefu lwabasebenzi, sebenzisa Iintsuku zokuphumla.",
+          "actionDaysOff": "iintsuku off"
         },
         "authLogin": {
           "accountSuspended": "Iakhawunti yakho imisiwe. Qhagamshelana nenkxaso ukuba ukholelwa ukuba le yimpazamo.",
@@ -11986,7 +12044,7 @@
           "reviewsCount": "{{count}} izimvo",
           "rewardsA11y": "Vula umvuzos and badges",
           "rewardPoints": "umvuzo amanqaku",
-          "pts": "{{count}} pts",
+          "pts": "{{count}} amanqaku",
           "badge": "Ibheji: {{name}}",
           "pointsSeparate": "Amanqaku ahlukene kuluhlu lwexesha leshishini elingezantsi — cofa imilestones & neebheji.",
           "viewRewards": "Jonga umvuzos",
@@ -12465,7 +12523,8 @@
           "customerFallback": "Umthengi",
           "atHome": "Ekhaya",
           "atSalon": "Esaloni",
-          "budgetRange": " · Ibhajethi {{min}} – {{max}}"
+          "budgetRange": " · Ibhajethi {{min}} – {{max}}",
+          "introHint": "Izicelo azikabi khona kwikhalenda yakho. Thumela isinikezelo nexabiso nexesha; kuyabhukishwa xa umthengi ehlawula."
         },
         "deleteAccount": {
           "pleaseWaitTitle": "Nceda wait",
@@ -13127,9 +13186,9 @@
       "medicalDisclaimer": "Content is shared by providers and does not constitute medical advice.",
       "reportCommentHint": "Tap the flag on a comment to report it.",
       "justNow": "Just now",
-      "minutesAgo": "{{count}}m ago",
-      "hoursAgo": "{{count}}h ago",
-      "daysAgo": "{{count}}d ago",
+      "minutesAgo": "kwimizuzu engu-{{count}} edlulileyo",
+      "hoursAgo": "kwiiyure ezingu-{{count}} ezidlulileyo",
+      "daysAgo": "kwiintsuku ezingu-{{count}} ezidlulileyo",
       "providerFallback": "Provider",
       "openProviderProfile": "Open {{name}} profile",
       "userFallback": "User",
@@ -13701,6 +13760,11 @@
         },
         "chipCombobox": {
           "loading": "Iyalayisha…"
+        },
+        "groupBookingPayment": {
+          "youPaidForGroup": "You kuhlawulwe for the Iqela",
+          "paidBy": "kuhlawulwe by {{name}}",
+          "covered": "Kuhlanganisiwe"
         }
       },
       "tabs": {
@@ -14361,7 +14425,9 @@
           "toggle_sensitive_content_filter_label": "Sensitive content hluza",
           "toggle_sensitive_content_filter_desc": "Nciphisa izithunywa ezineetegi zezonyango okanye ukwelapha",
           "toggle_require_device_auth_label": "Require isixhobo authentication",
-          "toggle_require_device_auth_desc": "Cela i-Face ID, izigxivizo zeminwe, noma ikhodi yokudlula ngaphambi kokushintsha lezi zilungiselelo"
+          "toggle_require_device_auth_desc": "Cela i-Face ID, izigxivizo zeminwe, noma ikhodi yokudlula ngaphambi kokushintsha lezi zilungiselelo",
+          "unknownAgeNotice": "Sisebenzisa umhla wakho wokuzalwa kwiilawuli zokhuseleko. Yongeza ukuze sikwazi ukusebenzisa iisetingi ezifanelekileyo. Ukuba uneminyaka engama-18 nangaphezulu, ungaziguqula ezi zivitshi emva kokuba umhla ugciniwe. Ulutsha oluleminyaka eli-13–17 lugcina iisetingi ezilawulwayo.",
+          "addDateOfBirth": "Yongeza umhla wokuzalwa"
         },
         "notificationsCenter": {
           "screenTitle": "Izaziso",
@@ -14606,7 +14672,7 @@
           "orderLabel": "iodolo {{number}}",
           "openOrderA11y": "Vula iodolo {{number}}",
           "viewOrderCta": "Jonga iodolo",
-          "qtyLabel": "Qty {{count}}",
+          "qtyLabel": "Inani {{count}}",
           "statusPending": "kulindile",
           "statusApproved": "kuvunyiwe",
           "statusItemReceived": "Into received",
@@ -14712,7 +14778,7 @@
           "labelFrequency": "Qho Kangaphi:",
           "labelNextAppointment": "okulandelayo idinga",
           "preferredTimeLine": "Preferred ixesha · {{time}}",
-          "endsOn": "Ends {{date}}",
+          "endsOn": "Iphela {{date}}",
           "noEndDateRuns": "No fixed phelisa umhla — runs until you nqumama or rhoxisa.",
           "viewSalon": "Jonga isaloni",
           "editSchedule": "Hlela ishedyuli",
@@ -15258,7 +15324,7 @@
           "servicesSection": "Iinkonzo",
           "serviceFallback": "Inkonzo",
           "serviceLineFallback": "inkonzo {{index}}",
-          "withStaff": "with {{name}}",
+          "withStaff": "no-{{name}}",
           "durationMinShort": "{{minutes}} imiz",
           "customOfferDetails": "Okwezifiso Offer iinkcukacha",
           "yourRequest": "isicelo: yakho",
@@ -16054,7 +16120,12 @@
           "emergencyPhonePlaceholder": "Their inombolo yefowuni",
           "emergencyRelationPlaceholder": "umz. umlingane, umzali",
           "newEmailPlaceholder": "Idilesi ye-imeyile entsha",
-          "newPhonePlaceholder": "Inombolo yefowuni entsha"
+          "newPhonePlaceholder": "Inombolo yefowuni entsha",
+          "dobLabel": "Umhla wokuzalwa",
+          "dobEmptyHint": "Yongeza your umhla wokuzalwa",
+          "dobSafetyHint": "Iilawuli zokhuseleko zisebenzisa umhla wakho wokuzalwa. Iisetingi zabantu abadala zisebenza kuphela xa uneminyaka engama-18 nangaphezulu.",
+          "addDobCta": "Yongeza",
+          "changeDobCta": "hlaziya"
         },
         "loginSecurity": {
           "enterCurrentPassword": "Faka your okwangoku iphasiwedi",
@@ -16417,7 +16488,13 @@
           "missingRequestId": "Missing isicelo ID",
           "back": "Emva",
           "retry": "Zama kwakhona",
-          "help": "Uncedo"
+          "help": "Uncedo",
+          "waitingTitle": "isicelo Kuthunyelwe",
+          "waitingHeadline": "Kulindile for your umboneleli",
+          "waitingProviderMessage": "Oku akuqinisekiswanga. Siza kubhukisha xa {{provider}} evuma.",
+          "providerFallbackName": "umboneleli yakho",
+          "waitingTimerLabel": "ixesha remaining",
+          "waitingCancelCta": "Rhoxisa isicelo"
         },
         "onDemandResult": {
           "loadBookingDetailsFailed": "Ayikwazanga uku-ulayisha iinkcukacha zokubhukisha. Check your iibhukisho list.",
@@ -16425,7 +16502,7 @@
           "pickAnotherTime": "Pick anokunye ixesha",
           "viewMyBookings": "Jonga my iibhukisho",
           "backToHome": "Buyela ekhaya",
-          "withProvider": "with {{name}}"
+          "withProvider": "no-{{name}}"
         },
         "inAppBrowser": {
           "invalidLink": "or missing ikhonkco. engasebenziyo.",
@@ -16680,7 +16757,8 @@
           "budgetInvalid": "Ibhajethi kufuneka ibe linani elihle.",
           "budgetMaxLessThanMin": "Ibhajethi ephezulu kufanele ibe nkulu okanye ilingane nencinci.",
           "durationOutOfRange": "Ubude kufanele bube phakathi kwemizuzu engu-{{min}} no-{{max}}.",
-          "submittedPartialImages": "Ezinye izithombe azikwazanga ukulondolozwa — ungangeza okusele kusuka engxoxweni."
+          "submittedPartialImages": "Ezinye izithombe azikwazanga ukulondolozwa — ungangeza okusele kusuka engxoxweni.",
+          "hintOnce": "Akukho kubhukishiwe okwangoku. Umboneleli uphendula ngexabiso nexesha, kuqinisekiswa xa uhlawula isinikezelo sakhe. Izicelo zivala emva kweentsuku ezingu-{{days}}."
         },
         "notificationPreferences": {
           "loadFailed": "Kusilele uku-ulayisha preferences.",
@@ -17402,7 +17480,7 @@
     "atYourLocation": "At your indawo",
     "atSalon": "Esaloni",
     "provider": "Umboneleli",
-    "withStaff": "with {{name}}",
+    "withStaff": "no-{{name}}",
     "date": "Umhla",
     "time": "Ixesha",
     "couldNotSetDefaultCard": "Ayikwazanga uku-set okumisiweyo Ikhadi. nceda uzame kwakhona.",
@@ -17516,7 +17594,19 @@
     "packageApplied": "ipakethi applied",
     "redeemPackage": "Redeem a prekuhlawulwe ipakethi (okukhethiweyo)",
     "packageCredit": "ipakethi crhlela",
-    "prepaidSessionsRemaining": "{{count}} Iseshoni(s) remaining"
+    "prepaidSessionsRemaining": "{{count}} Iseshoni(s) remaining",
+    "contextualHints": {
+      "dualFees": "Kubandakanya {{houseCall}} kwiintlawulo zokundwendwela ekhaya kunye nentlawulo yokuhamba engu-{{travel}}.",
+      "depositPayNow": "Hlawula {{deposit}} ngoku. Okuseleyo {{balance}} kuhlala kwibhukisho yakho, kwaye ungakuhlawula apho.",
+      "depositLateCancel": "Intlawulo yokurhoxisa ngexesha eliphezulu iphuma koko sele uhlawulile.",
+      "groupBooking": "Uhlawulela wonke umntu ngentlawulo enye. Iindwendwe zifuna igama kuphela.",
+      "customOfferConfirm": "Ukuhlawula esi sinikezelo kuqinisekisa ukubhukisha kwakho.",
+      "customOfferExpires": "Offer Kuphela {{date}}.",
+      "groupSwitchOn": "Ivuliwe",
+      "groupSwitchOff": "Kuvaliwe",
+      "groupGuestsLimit_one": "Yongeza up to {{count}} Undwendwe.",
+      "groupGuestsLimit_other": "Yongeza up to {{count}} guests."
+    }
   },
   "payments": {
     "pay": "Hlawula",
@@ -17888,7 +17978,9 @@
         "loadingBooking": "Iyalayisha ukubhuka...",
         "onlineBookingUnavailable": "Ukubhuka ku-inthanethi akutholakali",
         "onlineBookingDisabled": "{{name}} akaqalisi ukubhuka ku-inthanethi. Baxhumane ngqo ukuze ubhuke.",
-        "findAnotherProvider": "Fumana omnye umboneleli"
+        "findAnotherProvider": "Fumana omnye umboneleli",
+        "onlineBookingDisabledGeneric": "This provider has not enabled online booking.",
+        "providerNotFound": "Provider not found"
       },
       "continue": {
         "slotExpiredToast": "Your reserved slot has expired. Please go back and pick a new time.",
@@ -18043,7 +18135,11 @@
         "enterSmsCode": "Faka ikhowudi yamadijithi angu-{{digits}} evela kwi-SMS",
         "invalidCode": "ikhowudi engasebenziyo",
         "emailOtpSentToast": "Check your email for the {{digits}}-digit code (valid about {{minutes}} minutes).",
-        "smsOtpSentToast": "Check your phone for the {{digits}}-digit code (valid about {{minutes}} {{minuteLabel}})."
+        "smsOtpSentToast": "Check your phone for the {{digits}}-digit code (valid about {{minutes}} {{minuteLabel}}).",
+        "passwordSignInPrompt": "Prefer email and password?",
+        "passwordSignInLink": "Sign in with password",
+        "noAccountPrompt": "New to Beautonomi?",
+        "createAccountLink": "Create an account"
       },
       "legacyFlow": {
         "bookWith": "bhukisha with {{providerName}}",
@@ -18153,7 +18249,8 @@
         "tip": "Ithiphu",
         "total": "Iyonke",
         "continue": "Qhubeka",
-        "continueAriaLabel": "qhubeka to okulandelayo step"
+        "continueAriaLabel": "qhubeka to okulandelayo step",
+        "packageDiscount": "Package discount"
       },
       "confirmation": {
         "loadingMessage": "Iyalayisha Ukuqinisekisa ukubhukisha...",
@@ -18193,7 +18290,7 @@
         "dateAndTime": "umhla & ixesha",
         "services": "Iinkonzo",
         "guest": "Undwendwe: {{name}}",
-        "withStaff": "with {{name}}",
+        "withStaff": "no-{{name}}",
         "durationMin": "{{count}} min",
         "additionalCharges": "Iintlawulo ezongezelelweyo",
         "paidOn": "kuhlawulwe on {{date}}",
@@ -18543,7 +18640,10 @@
         "payWithCardEnding": "Pay {{amount}} with •••• {{last4}}",
         "payDeposit": "Pay Idiphozithi {{amount}}",
         "completeBooking": "gqiba ukubhukisha",
-        "payAmount": "Hlawula {{amount}}"
+        "payAmount": "Hlawula {{amount}}",
+        "slotConflictTitle": "That time is no longer available",
+        "slotConflictBody": "Pick another time on the calendar or jump to the next open slot.",
+        "pickNextAvailable": "Find next available time"
       },
       "addToWaitlist": {
         "enterName": "Nceda enter your igama",
@@ -18728,7 +18828,9 @@
         "capacity": "Capaisixeko: {{count}}",
         "notAvailable": "Not iyafumaneka at this ixesha",
         "selected_one": "{{count}} resource Kukhethiwe",
-        "selected_other": "{{count}} resources Kukhethiwe"
+        "selected_other": "{{count}} resources Kukhethiwe",
+        "stepTitle": "Choose resources",
+        "stepSubtitle": "Select any rooms or equipment needed for your appointment."
       },
       "virtualWaitingRoom": {
         "title": "Virtual igumbi lokulinda",
@@ -18762,6 +18864,16 @@
         "cancelledDescription": "This ukubhukisha has been kurhoxisiwe",
         "unknownTitle": "akwaziwa imo",
         "unknownDescription": "Unable to determine ukubhukisha imo"
+      },
+      "journey": {
+        "stepOf": "Step {{current}} of {{total}}",
+        "bucket": {
+          "services": "Services",
+          "venue": "Location",
+          "time": "Date & time",
+          "details": "Your details",
+          "pay": "Payment"
+        }
       }
     },
     "search": {
@@ -19469,9 +19581,9 @@
           "openInbox": "Vula inbox",
           "notificationSettings": "isaziso iisetingi",
           "justNow": "Just ngoku",
-          "minutesAgo": "{{count}}m ago",
-          "hoursAgo": "{{count}}h ago",
-          "daysAgo": "{{count}}d ago"
+          "minutesAgo": "kwimizuzu engu-{{count}} edlulileyo",
+          "hoursAgo": "kwiiyure ezingu-{{count}} ezidlulileyo",
+          "daysAgo": "kwiintsuku ezingu-{{count}} ezidlulileyo"
         }
       },
       "loyalty": {
@@ -20880,7 +20992,11 @@
           "secureBody": "All payment information is encrypted and processed securely. We never store your full card details.",
           "addCardNow": "Yongeza Ikhadi ngoku",
           "browseServices": "Browse iinkonzo"
-        }
+        },
+        "cardVerifiedSuccess": "Your card was saved successfully.",
+        "cardVerificationFailed": "We could not confirm your card. Try again or use another card.",
+        "cardVerificationPending": "Verification is still processing. Refresh this page in a moment if your card does not appear.",
+        "cardVerificationCancelled": "Card verification was cancelled."
       },
       "referrals": {
         "loadFailed": "Kusilele uku-ulayisha ukudlulisela ulwazi",
@@ -21165,9 +21281,9 @@
         "webTip": "Tip: pull to refresh isn’t available on web — use the refresh button.",
         "preferencesLink": "isaziso preferences →",
         "justNow": "Just ngoku",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago"
+        "minutesAgo": "kwimizuzu engu-{{count}} edlulileyo",
+        "hoursAgo": "kwiiyure ezingu-{{count}} ezidlulileyo",
+        "daysAgo": "kwiintsuku ezingu-{{count}} ezidlulileyo"
       },
       "addresses": {
         "deleteConfirm": "Are you sure you want to delete \"{{label}}\"?",
@@ -21365,7 +21481,7 @@
         "emailRequired": "i-imeyile is kuyafuneka",
         "invalidEmail": "Nceda enter a kusemthethweni idilesi ye-imeyile",
         "passwordRequired": "iphasiwedi is kuyafuneka",
-        "passwordMinLength": "Password must be at least 8 characters",
+        "passwordMinLength": "Iphasiwedi kufuneka ibe noonobumba abasi-8 ubuncinane",
         "passwordTooWeak": "Use a stronger password (add uppercase, numbers, or symbols)",
         "agreeTermsRequired": "Please confirm you have read and agree to the Terms of Service and Privacy Policy (including product analytics and optional session replay while signed in).",
         "invalidPhoneOrClear": "Faka a kusemthethweni inombolo yefowuni or cima the ifowuni field.",
@@ -21475,7 +21591,19 @@
         "checkNeeded": "iakhawunti check needed"
       },
       "marketingConsent": "Thumela me iithiphu, Izithembiso, and imveliso hlaziyas. You can unsubscribe anyixesha.",
-      "passkeyComingSoon": "Passkey (kuzakuza kungekudala)"
+      "passkeyComingSoon": "Passkey (kuzakuza kungekudala)",
+      "bookingReturn": {
+        "titleLogin": "You're signing in to finish your booking",
+        "titleSignup": "Create an account to finish your booking",
+        "continueBooking": "Continue booking",
+        "stepDefault": "Sign in to pick up where you left off.",
+        "stepTime": "Sign in to choose a date and time.",
+        "stepPay": "Sign in to review details and pay.",
+        "stepDetails": "Sign in to add your details and continue.",
+        "stepServices": "Sign in to choose services and continue.",
+        "stepVenue": "Sign in to confirm where you'll be served.",
+        "rateLimitWait": "Too many attempts. Try again in {{seconds}}s."
+      }
     },
     "provider": {
       "locationTracker": {
@@ -21562,7 +21690,7 @@
         "currentBadge": "Okwangoku: {{name}}",
         "nextBadge": "okulandelayo: {{name}}",
         "ptsToBadge": "{{count}} pts to {{name}}",
-        "pointsTotal": "{{count}} pts",
+        "pointsTotal": "{{count}} amanqaku",
         "congratsBadge": "🎉 Congratulations on earning this badge!",
         "earnUnlock": "Earn amanqaku and Vula isitshixo badges",
         "topTierTitle": "Inqanaba eliphezulu livuliwe",
@@ -22373,9 +22501,9 @@
         "yocoPaymentDialog": {
           "recently": "kutshanje",
           "justNow": "just ngoku",
-          "minutesAgo": "{{count}}m ago",
-          "hoursAgo": "{{count}}h ago",
-          "daysAgo": "{{count}}d ago",
+          "minutesAgo": "kwimizuzu engu-{{count}} edlulileyo",
+          "hoursAgo": "kwiiyure ezingu-{{count}} ezidlulileyo",
+          "daysAgo": "kwiintsuku ezingu-{{count}} ezidlulileyo",
           "monthsAgo": "{{count}} inyanga edlule",
           "loadDevicesFailed": "Kusilele uku-ulayisha intlawulo izixhobo",
           "selectDevice": "Nceda khetha a intlawulo isixhobo",
@@ -22616,7 +22744,11 @@
           "retailProducts": "Intengiso iimveliso",
           "selectProduct": "Khetha imveliso…",
           "selectVariant": "Khetha variant…",
-          "variantFallback": "Uhlobo"
+          "variantFallback": "Uhlobo",
+          "openGroupBooking": "Plan a group booking instead",
+          "sendQuote": "Send a quote instead",
+          "sendQuoteNeedsAccount": "Select a client with an account to send a quote.",
+          "uncategorized": "Uncategorized"
         },
         "blockedTimeTypeDialog": {
           "updated": "Blocked ixesha Uhlobo hlaziyad",
@@ -22873,7 +23005,7 @@
           "label": "Bukhoma · hlaziyad {{relative}}",
           "justNow": "just ngoku",
           "secondsAgo": "{{count}}s ago",
-          "minutesAgo": "{{count}}m ago"
+          "minutesAgo": "kwimizuzu engu-{{count}} edlulileyo"
         },
         "dayHub": {
           "tabDay": "Usuku",
@@ -22893,7 +23025,11 @@
           "appointmentsOnly_one": "{{count}} idinga",
           "appointmentsOnly_other": "{{count}} amadinga",
           "blocksOnly_one": "{{count}} block",
-          "blocksOnly_other": "{{count}} blocks"
+          "blocksOnly_other": "{{count}} blocks",
+          "runningBehindTitle": "Usalele ngasemva?",
+          "runningBehindBody": "We'll notify remaining confirmed clients today that you're delayed.",
+          "delay15": "15 minutes",
+          "delay30": "30 minutes"
         },
         "overview": {
           "all": "Konke",
@@ -23868,6 +24004,10 @@
           "plan": {
             "title": "Khetha Your Isicwangciso",
             "description": "Khetha a umrhumo Isicwangciso"
+          },
+          "travelFees": {
+            "title": "Travel Fees",
+            "description": "House-call travel fee rules and live fee preview"
           }
         },
         "toast": {
@@ -23934,7 +24074,8 @@
           "setHours": "Nceda set your opeinqanaba iiyure",
           "oneDayOpen": "At least one usuku must be vula",
           "selectPlan": "Nceda khetha a umrhumo Isicwangciso",
-          "andMoreSeeConsole": " (and {{count}} okungakumbi - see console)"
+          "andMoreSeeConsole": " (and {{count}} okungakumbi - see console)",
+          "dobRequired": "Date of birth is required for identity verification"
         },
         "successHeadline": "You're all set!",
         "continueVerification": "qhubeka to verification",
@@ -23985,7 +24126,8 @@
           "ownerContactTitle": "umnini and Qhagamshelana iinkcukacha",
           "ownerContactBody": "We verify both your email and mobile number to protect your account.",
           "yourName": "Igama yakho",
-          "emailAddress": "Idilesi ye-imeyile"
+          "emailAddress": "Idilesi ye-imeyile",
+          "dateOfBirth": "Date of birth"
         },
         "photos": {
           "yourPhoto": "ifoto yakho",
@@ -24190,7 +24332,7 @@
           "enter": "Enter",
           "radius": "Radius",
           "polygon": "Polygon",
-          "ratePerKm": "{{amount}}/km",
+          "ratePerKm": "{{amount}}/km ",
           "minFee": "Okuncinci {{amount}}",
           "freeWithinKm": "simahla within {{km}} km",
           "maxFee": "Okuphezulu {{amount}}",
@@ -24221,7 +24363,9 @@
           "preselectedCategories": "We've pre-selected {{count}} common categories. You can change them!",
           "categoriesTipBody": "iindidi uncedo abaxhasi discover you in khangela and hluzas.",
           "categoriesDraftHint": "If you skip services for now, we can draft simple services from the categories you pick.",
-          "noCategoriesAvailable": "No iindidi iyafumaneka. Please Qhagamshelana inkxaso."
+          "noCategoriesAvailable": "No iindidi iyafumaneka. Please Qhagamshelana inkxaso.",
+          "menuCategoryNames": "Names on your menu (you can rename these)",
+          "categoryNamePlaceholder": "Category name"
         },
         "catalog": {
           "atSalon": "Esaloni",
@@ -24342,6 +24486,9 @@
           "locationBookingWindowTitle": "indawo ukubhukisha Window:",
           "locationBookingWindowBody": "Clients only see slots inside these hours for the salon. You can set individual staff schedules later under Settings.",
           "hoursTo": "ku"
+        },
+        "travelFees": {
+          "usePlatformDefault": "Use platform default travel fees"
         }
       },
       "dashboard": {
@@ -24987,7 +25134,7 @@
             "dayCount_one": "1 usuku",
             "dayCount_other": "Iintsuku ezingu-{{count}}",
             "timeBoost": "Ukukhulisa ngexesha",
-            "daysBoost": "{{days}} boost",
+            "daysBoost": "{{days}} ukonyusa",
             "timeBoostSubtitle": "Imali engaguqukiyo — ukubekwa okuxhasiweyo ixesha elingu-{{days}}.",
             "benefitSponsoredDuration": "Ukubekwa okuxhasiweyo ixesha elipheleleyo elingu-{{days}}",
             "benefitFlatPrice": "Ixabiso elingaguqukiyo elaziwayo — akukho mrhumo ngokucofa",
@@ -25053,7 +25200,7 @@
             "budgetFullyUsed": "Budget kugcweley used",
             "budgetRemaining": "{{amount}} ibhajethi eshiyekileyo",
             "dayBoostPaid": "{{days}} usuku boost · {{amount}} kuhlawulwe",
-            "endsOn": "Ends {{date}}",
+            "endsOn": "Iphela {{date}}",
             "impressionsPaidSpent": "{{count}} Ukubonakala · {{paid}} kuhlawulwe · {{spent}} spent",
             "totalBudgetSpent": "iyonke budget {{budget}} · Spent {{spent}}",
             "dailyCapLine": "Umkhawulo wemihla ngemihla {{amount}}",
@@ -25335,7 +25482,10 @@
             "depositPercent": "Idiphozithi % (alternate)",
             "useAmountOrPct": "Use either isixa or %",
             "saveBookingFlow": "Gcina ukubhukisha flow iisetingi",
-            "onlineBookingDisabled": "Online booking is currently disabled. Clients will not be able to book appointments online."
+            "onlineBookingDisabled": "Online booking is currently disabled. Clients will not be able to book appointments online.",
+            "shareWhatsApp": "WhatsApp",
+            "shareEmail": "Email",
+            "shareNative": "Share"
           },
           "appointment-activity/resources": {
             "resources": "Imithombo",
@@ -26198,7 +26348,9 @@
             "topUpViaPaystack": "Gcwalisa via Paystack",
             "refresh": "Hlaziya",
             "ownIntegrations": "Own integrations",
-            "ownIntegrationsHint": "Connect your SendGrid/Mailchimp or Twilio account. Sends on your credentials are not debited from platform credits."
+            "ownIntegrationsHint": "Connect your SendGrid/Mailchimp or Twilio account. Sends on your credentials are not debited from platform credits.",
+            "topUpSuccess": "Marketing credits topped up successfully.",
+            "topUpPending": "Payment is still processing. Refresh in a moment if your balance has not updated."
           },
           "note-templates": {
             "noteTemplates": "Iithempleyithi Zamanqaku",
@@ -27746,6 +27898,10 @@
             "nativeCancelled": "You kurhoxisiwe the intlawulo. No hlawulisa was made.",
             "nativeInvalid": "This intlawulo return ikhonkco is okungasebenziyo or ingqiba."
           }
+        },
+        "serviceZones": {
+          "introHint": "Iindawo zibeka apho abathengi bangakubhukisha khona ekhaya. Indawo enentlawulo yayo iyisebenzisa endaweni yentlawulo yakho yokuhamba.",
+          "actionTravelFees": "Travel fees"
         }
       },
       "pages": {
@@ -27882,7 +28038,7 @@
           "loadFailed": "Ayikwazanga uku-ulayisha isimemo",
           "acceptFailed": "Ayikwazanga uku-accept isimemo",
           "teamFallback": "iqela yakho",
-          "joinTitle": "Join {{name}}",
+          "joinTitle": "Joyina {{name}}",
           "inviteNamed": "Molo {{name}}, umenyiwe ukuba uzibandakanye neqela kwi- Beautonomi.",
           "inviteGeneric": "You've been isimemod to join a iqela on Beautonomi.",
           "signInWithEmail": "ngena or yila an iakhawunti with",
@@ -27895,7 +28051,16 @@
           "getApp": "Get the umboneleli app",
           "downloadIos": "khuphela for iPhone",
           "downloadAndroid": "khuphela for Android",
-          "logoAlt": "Beautonomi"
+          "logoAlt": "Beautonomi",
+          "setPasswordTitle": "Create your password",
+          "setPasswordHint": "Choose a password (at least 8 characters), then sign in with your invite email.",
+          "passwordLabel": "Password",
+          "passwordConfirmLabel": "Confirm password",
+          "setPasswordSubmit": "Save password",
+          "setPasswordSuccess": "Iphasiwedi igciniwe. Ngena ukuze wamkele isimemo sakho.",
+          "setPasswordFailed": "Could not save password",
+          "passwordMismatch": "Iiphasiwedi azifani",
+          "passwordTooShort": "Iphasiwedi kufuneka ibe noonobumba abasi-8 ubuncinane"
         },
         "notifications": {
           "subtitle": "Jonga and manage your izaziso",
@@ -29305,7 +29470,13 @@
             "paymentsByStatus": "iintlawulo by imo",
             "noPaymentStatusData": "No intlawulo imo Idatha iyafumaneka for the Kukhethiwe period.",
             "cashStyle": "Imali Style",
-            "transactionsCount": "Iintengiselwano ezingu-{{count}}"
+            "transactionsCount": "Iintengiselwano ezingu-{{count}}",
+            "ledgerTruncatedTitle": "Ilejá enkulu — iitotali zisenokungapheleli",
+            "ledgerTruncated": "More than {{max}} finance rows matched this range. Narrow the date range for complete totals.",
+            "membershipEarnings": "Ingeniso yobulungu (ileja)",
+            "membershipEarningsHint": "membership_provider_earnings rows settled in this period (included in provider net activity).",
+            "providerCollectedByMethod": "Okuqokelelwe ngumboneleli (imali / EFT / ikhadi)",
+            "methodEft": "Bank transfer (EFT)"
           },
           "payments/yoco-reconciliation": {
             "title": "Yoco reconciliation",
@@ -30394,7 +30565,8 @@
           "appointmentColorHint": "Choose a color to visually identify services in this category",
           "descriptionOptional": "inkcazo (okukhethiweyo)",
           "descriptionPlaceholder": "Add a short summary that helps clients understand what types of services are included in this category",
-          "descriptionHint": "Help clients understand what types of services are included in this category"
+          "descriptionHint": "Help clients understand what types of services are included in this category",
+          "homePriceAdjustmentHint": "Kongeziwe kwixabiso lale nkonzo yotyelelo lwasekhaya. Intlawulo yokuhamba ihlawuliswa ngokwahlukeneyo."
         },
         "serviceDialog": {
           "shortHair": "Short Iinwele",
@@ -31863,9 +32035,9 @@
       },
       "notificationsDropdown": {
         "justNow": "Just ngoku",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
+        "minutesAgo": "kwimizuzu engu-{{count}} edlulileyo",
+        "hoursAgo": "kwiiyure ezingu-{{count}} ezidlulileyo",
+        "daysAgo": "kwiintsuku ezingu-{{count}} ezidlulileyo",
         "loadFailed": "Kusilele uku-ulayisha izaziso",
         "markReadFailed": "Ayikwazanga uku-mark isaziso as read",
         "openFailed": "Ayikwazanga uku-Vula ikhonkco for this isaziso",
@@ -32237,7 +32409,8 @@
         "services": "Iinkonzo",
         "expiresCol": "Kuphela",
         "clicks": "Ukucofa",
-        "itemsSelected": "Izinto Kukhethiwe"
+        "itemsSelected": "Izinto Kukhethiwe",
+        "copyEmbedSnippet": "Copy embed snippet"
       },
       "calendarPage": {
         "serviceFallback": "Inkonzo",
@@ -32553,7 +32726,9 @@
         "boostProfile": "Boost your iprofayile",
         "completeLater": "gqiba emva kwexesha",
         "setUp": "Seta",
-        "stepsToGo": "Steps To Go"
+        "stepsToGo": "Steps To Go",
+        "verificationRequiredToGoLive": "Ukuqinisekiswa kwesazisi kuyafuneka ukuze uqalise ukusebenza",
+        "verificationRequiredBody": "Your checklist is complete, but we still need to verify your identity before you can accept public bookings."
       },
       "shiftsPage": {
         "failedToLoad": "Kusilele uku-ulayisha iishifu",
@@ -33157,6 +33332,22 @@
         "optionalParen": "(okukhethiweyo)",
         "nameRequired": "igama *",
         "other": "Okunye"
+      },
+      "scheduling": {
+        "calendarIconLegendTitle": "What these icons mean",
+        "calendarIcons": {
+          "isNewClient": "New client",
+          "hasNotes": "Has notes",
+          "isRepeating": "Repeating appointment",
+          "hasMembership": "Member",
+          "hasFormsIncomplete": "Forms incomplete",
+          "hasPhotos": "Has photos",
+          "hasConversation": "Has messages",
+          "isGroup": "Group booking",
+          "hasCustomization": "Service customization",
+          "isWalkIn": "Walk-in",
+          "isAtHome": "At-home service"
+        }
       }
     },
     "global": {
@@ -34331,7 +34522,8 @@
     },
     "referralSource": {
       "label": "How did this umxhasi find you?",
-      "notSpecified": "Akuchazwanga"
+      "notSpecified": "Akuchazwanga",
+      "addForVisit": "Yongeza indlela abakufumene ngayo"
     },
     "editProducts": {
       "label": "Iimveliso",

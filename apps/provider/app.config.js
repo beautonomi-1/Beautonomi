@@ -54,8 +54,9 @@ if (
   );
 }
 if (process.env.EAS_BUILD === "true" || easBuildProfile) {
+  // stderr only: expo-doctor parses `expo install --check --json` from stdout; object logs break JSON extraction.
   // eslint-disable-next-line no-console
-  console.log("[Beautonomi provider push-env]", {
+  console.error("[Beautonomi provider push-env]", {
     appEnv,
     easBuildProfile: easBuildProfile ?? "(local)",
     oneSignalMode,
@@ -63,6 +64,8 @@ if (process.env.EAS_BUILD === "true" || easBuildProfile) {
     pushUsesProduction,
   });
 }
+
+const APP_MARKETING_VERSION = "1.0.99";
 
 /** Base Expo config. Single source of truth (previously duplicated in app.json). */
 const BASE_EXPO_CONFIG = {
@@ -72,17 +75,13 @@ const BASE_EXPO_CONFIG = {
   updates: {
     url: "https://u.expo.dev/dc17e4b9-e7c6-4ab4-b52d-3d807e5d9ad7",
   },
-  // appVersion (not fingerprint): pnpm peer-hash paths and CNG ios/ created
-  // during EAS prebuild otherwise make local vs EAS runtime hashes diverge
-  // and fail production builds. OTA still targets this expo.version.
-  runtimeVersion: {
-    policy: "appVersion",
-  },
-  version: "1.0.96",
+  // Explicit runtime (not policy): local `android/` triggers bare workflow on EAS CLI;
+  // policy is fine on customer (no android/). Keep equal to `version` for OTA targeting.
+  runtimeVersion: APP_MARKETING_VERSION,
+  version: APP_MARKETING_VERSION,
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
-  newArchEnabled: true,
   plugins: [
     [
       "./plugins/android-sibling-app-queries/app.plugin.js",
@@ -96,7 +95,7 @@ const BASE_EXPO_CONFIG = {
       "expo-build-properties",
       {
         ios: {
-          deploymentTarget: "15.1",
+          deploymentTarget: "16.4",
           privacyManifestAggregationEnabled: true,
         },
         android: {
@@ -129,6 +128,7 @@ const BASE_EXPO_CONFIG = {
     "expo-iap",
     "expo-apple-authentication",
     "expo-font",
+    "expo-asset",
     [
       "expo-tracking-transparency",
       {
@@ -199,7 +199,7 @@ const BASE_EXPO_CONFIG = {
     bundleIdentifier: "com.beautonomi.partner",
     appleTeamId: "QW33CYPQX5",
     usesAppleSignIn: true,
-    buildNumber: "289",
+    buildNumber: "293",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       ITSAppUsesNonExemptEncryption: false,
@@ -274,8 +274,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.RECORD_AUDIO",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 289,
-    edgeToEdgeEnabled: true,
+    versionCode: 293,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",
     intentFilters: [

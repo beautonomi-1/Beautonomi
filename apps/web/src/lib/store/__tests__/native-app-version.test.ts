@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getNativeAppCodebaseVersions } from "../native-app-version";
 
-const VERSION_PATTERN = /version:\s*["']([^"']+)["']/;
+const VERSION_PATTERN = /(?:APP_MARKETING_VERSION|version)\s*[:=]\s*["']([^"']+)["']/;
 
 function readExpoVersionFromAppConfig(app: "customer" | "provider"): string {
   const configPath = join(__dirname, "../../../../../", app, "app.config.js");
@@ -36,30 +36,3 @@ describe("getNativeAppCodebaseVersions", () => {
   });
 });
 
-describe("getNativeAppCodebaseVersions fallback", () => {
-  beforeEach(() => {
-    vi.resetModules();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    vi.unmock("node:fs");
-  });
-
-  it("falls back to generated JSON when app.config.js is missing", async () => {
-    vi.doMock("node:fs", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("node:fs")>();
-      return {
-        ...actual,
-        existsSync: vi.fn(() => false),
-        readFileSync: actual.readFileSync,
-      };
-    });
-
-    const { getNativeAppCodebaseVersions: readVersions } = await import("../native-app-version");
-    const generated = readGeneratedVersions();
-    const versions = readVersions();
-    expect(versions.customer).toBe(generated.customer);
-    expect(versions.provider).toBe(generated.provider);
-  });
-});

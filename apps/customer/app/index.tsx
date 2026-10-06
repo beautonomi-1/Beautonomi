@@ -8,6 +8,7 @@ import { GateLoadingScreen } from "@/components/GateLoadingScreen";
 import { Colors } from "@/constants/colors";
 import { onboardingDoneKey } from "./(app)/onboarding/index";
 import { api } from "@/lib/api-client";
+import { routeForProfileCompletionItem } from "@/lib/profile-completion-routes";
 import { WrongAppScreen } from "@/components/WrongAppScreen";
 import { APP_URL, isScreenshotMode } from "@/config/public-env";
 import { getCachedPortal, getPersistedPortal, setCachedPortal, clearPortalCache } from "@/lib/portal-cache";
@@ -74,8 +75,8 @@ function hasIncompleteRequired(data: ProfileCompletion | null): boolean {
 function getIncompleteRedirectRoute(data: ProfileCompletion | null): string {
   const items = data?.checklistItems ?? [];
   const first = items.find((item) => item.required === true && !item.completed);
-  if (first?.id === "address") return "/(app)/account-settings/addresses";
-  return "/(app)/account-settings/personal-info";
+  if (!first) return "/(app)/account-settings/personal-info";
+  return routeForProfileCompletionItem(first.id);
 }
 
 /** Single derived “gate” label for redirect / loading branches (matches render order). */

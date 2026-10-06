@@ -2,6 +2,8 @@
 
 Use this checklist before manual QA rows **A1–E2**, **D1–D3**, and **F1–F5** on `https://staging.beautonomi.com`.
 
+Auth rate limits and Upstash: [`AUTH_RATE_LIMITS.md`](./AUTH_RATE_LIMITS.md). Enterprise release checklist: [`AUTH_ENTERPRISE_CHECKLIST.md`](./AUTH_ENTERPRISE_CHECKLIST.md).
+
 ## Seeded providers (`scripts/e2e/seed-staging.mjs`)
 
 | Slug | Offering ID (verify script) | Matrix rows | Notes |

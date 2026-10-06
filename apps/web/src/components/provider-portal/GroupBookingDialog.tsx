@@ -72,6 +72,7 @@ import {
   type GroupBookingCreateValidationField,
 } from "@beautonomi/provider-booking";
 import { BookingCreateReadinessStrip } from "@/components/provider/booking/ui/BookingCreateReadinessStrip";
+import { ResourceRequirementsPreview } from "@/components/provider/booking/create/ResourceRequirementsPreview";
 
 // ─── Participant addon shape ────────────────────────────────────────────────
 interface ParticipantAddon {
@@ -381,11 +382,21 @@ export function GroupBookingDialog({
 
   const loadData = useCallback(async () => {
     try {
-      const [categories, members] = await Promise.all([
-        providerApi.listServiceCategories(),
+      const [servicesRes, members] = await Promise.all([
+        fetcher.get<{ data?: ServiceItem[] }>(
+          "/api/provider/services?include_variants=true&include_offering_resources=true",
+        ),
         providerApi.listTeamMembers(),
       ]);
-      setServices(categories.flatMap((cat) => cat.services));
+      const raw = servicesRes?.data ?? [];
+      setServices(
+        raw.map((svc: ServiceItem & { title?: string }) => ({
+          ...svc,
+          id: svc.id,
+          name: (svc as { name?: string; title?: string }).name ?? (svc as { title?: string }).title ?? "",
+          team_member_ids: svc.team_member_ids ?? [],
+        })),
+      );
       setTeamMembers(members);
 
       try {
@@ -1395,6 +1406,9 @@ export function GroupBookingDialog({
                   {selectedService && <Badge variant="secondary" className="text-xs">{selectedService.name}{selectedService.price > 0 && ` · ${formatMoney(selectedService.price)}`}</Badge>}
                 </div>
               )}
+              {formData.service_id ? (
+                <ResourceRequirementsPreview serviceIds={[formData.service_id]} />
+              ) : null}
             </div>
 
             <Separator />

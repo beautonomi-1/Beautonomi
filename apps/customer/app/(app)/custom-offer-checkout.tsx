@@ -17,8 +17,14 @@ import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import {
   extractPaystackReferenceFromUrl,
   isCancelledPaystackUrl,
-  matchesExpoReturnUrl,
 } from "@/lib/paystack-webview-utils";
+import {
+  CHECKOUT_SUCCESS_PATH,
+  getBookingCheckoutPaystackAuthPrefix,
+  getCustomerPaystackAuthReturnUrl,
+  matchesCheckoutSuccessReturnUrl,
+  matchesPaystackAuthSessionReturn,
+} from "@/lib/payments/customerPaystackReturn";
 import * as ExpoLinking from "expo-linking";
 import { Colors } from "@/constants/colors";
 import { tabBarBottomInset } from "@/constants/layout";
@@ -27,6 +33,7 @@ import { api } from "@/lib/api-client";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { markReferenceProcessing } from "@/lib/paystack-verify-guard";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { hasSupabaseAccessToken, pushLoginWithReturnTo, redirectLoginIfAuthRequired } from "@/lib/customer-auth-routing";
 import { useAuth } from "@/providers/AuthProvider";
 import { haptic } from "@/lib/haptics";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -328,6 +335,14 @@ export default function CustomOfferCheckoutScreen() {
           : coc("openingSecurePayment", undefined, "Opening secure payment…"),
       );
       try {
+        const offerReturnTo = `/(app)/custom-offer-checkout?offer_id=${encodeURIComponent(offerId)}`;
+        const hasToken = await hasSupabaseAccessToken();
+        if (!hasToken) {
+          setProcessingPayment(false);
+          payInFlightRef.current = false;
+          pushLoginWithReturnTo(offerReturnTo);
+          return;
+        }
         const res = await api.post<{
           charged?: boolean;
           paymentUrl?: string;
@@ -367,6 +382,10 @@ export default function CustomOfferCheckoutScreen() {
                 "Payment is still processing. Check Bookings in a moment or tap Pay to retry.",
               ),
             );
+            return;
+          }
+          const offerReturnTo = `/(app)/custom-offer-checkout?offer_id=${encodeURIComponent(offerId)}`;
+          if (redirectLoginIfAuthRequired(offerReturnTo, res.error)) {
             return;
           }
           const msg = getApiErrorMessage(
@@ -420,7 +439,7 @@ export default function CustomOfferCheckoutScreen() {
         }
 
         const paystackReturnPath =
-          Platform.OS === "web" ? undefined : ExpoLinking.createURL("custom-offer-paystack");
+          Platform.OS === "web" ? undefined : getBookingCheckoutPaystackAuthPrefix();
 
         if (Platform.OS === "web") {
           setProcessingPayment(false);
@@ -436,7 +455,8 @@ export default function CustomOfferCheckoutScreen() {
           returnUrl: paystackReturnPath ?? undefined,
           matchSuccess: (u) =>
             !!paystackReturnPath &&
-            matchesExpoReturnUrl(u, paystackReturnPath) &&
+            (matchesPaystackAuthSessionReturn(u, paystackReturnPath) ||
+              matchesCheckoutSuccessReturnUrl(u)) &&
             !isCancelledPaystackUrl(u),
           matchCancel: (u) => isCancelledPaystackUrl(u),
         });
@@ -615,10 +635,15 @@ export default function CustomOfferCheckoutScreen() {
     }
 
     const callbackUrl =
-      Platform.OS === "web" ? undefined : ExpoLinking.createURL("custom-offer-paystack");
+      Platform.OS === "web"
+        ? getCustomerPaystackAuthReturnUrl(CHECKOUT_SUCCESS_PATH, {
+            payment_type: "custom_offer",
+            offer_id: offerId,
+          })
+        : ExpoLinking.createURL("custom-offer-paystack");
     await runAcceptThenNavigate({
       payment_option: opt,
-      ...(callbackUrl ? { callback_url: callbackUrl } : {}),
+      callback_url: callbackUrl,
       ...splitTenderBody,
       // §custom-offer-save-card: only opt into card tokenization when the
       // customer is paying with a new card. Existing saved-card charges

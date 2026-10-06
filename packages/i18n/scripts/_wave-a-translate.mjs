@@ -11,6 +11,9 @@ export function isIdentity(s) {
   if (typeof s !== "string") return false;
   if (s === "" || s === "Beautonomi") return true;
   if (/^[\s\-—.·…,/:+*#&%<>[\]()0-9×=]+$/.test(s)) return true;
+  // Interpolation tokens plus numbers/punctuation, e.g. "{{count}}/200", "({{growth}}%)"
+  if (/^(?:\{\{\w+\}\}|[\s\-—.·…,/:+*#&%<>[\]()0-9×=])+$/.test(s)) return true;
+  if (/^\{\{\w+\}\}h$/.test(s)) return true;
   if (/^\d{1,2}:\d{2}$/.test(s)) return true;
   if (/^[A-Z]{2} \+\d+$/.test(s)) return true;
   if (/^\+\d+\.\.\.$/.test(s)) return true;
@@ -579,7 +582,7 @@ export function assertVars(en, translated, locale, pathKey, errors) {
 const ENGLISH_MARKERS = /\b(the|your|this|that|will|could|would|please|failed|cannot|before|after|when|where|which|have|has|been|was|were|not|and|for|are|can|with|from|into|onto)\b/i;
 
 export function stillMostlyEnglish(en, out) {
-  if (out === en) return true;
+  if (typeof out !== "string" || out === en) return true;
   if (isIdentity(en)) return false;
   if (en.length < 28) return false;
   const brands = new Set(BRANDS.map((b) => b.toLowerCase()));

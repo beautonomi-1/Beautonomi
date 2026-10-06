@@ -1,5 +1,6 @@
 import { Alert } from "react-native";
-import { router as expoRouter, type Router } from "expo-router";
+import { router as expoRouter } from "expo-router";
+import type { ExpoRouter } from "@/types/expo-router";
 
 export const PLAN_GATE_ERROR_CODES = [
   "SUBSCRIPTION_REQUIRED",
@@ -17,7 +18,7 @@ export function isPlanGateErrorCode(code: string | null | undefined): code is Pl
 
 export const PROVIDER_SUBSCRIPTION_ROUTE = "/(app)/(tabs)/more/settings/subscription" as const;
 
-export function openProviderPlans(router?: Router): void {
+export function openProviderPlans(router?: ExpoRouter): void {
   (router ?? expoRouter).push(PROVIDER_SUBSCRIPTION_ROUTE as never);
 }
 
@@ -25,7 +26,7 @@ export type PlanGateAlertOptions = {
   title?: string;
   message: string;
   errorCode?: string | null;
-  router?: Router;
+  router?: ExpoRouter;
   onDismiss?: () => void;
 };
 

@@ -12,6 +12,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { convertToSmallestUnit } from "@/lib/payments/paystack";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { resolveHostedCheckoutCallbacks } from "@/lib/payments/resolve-paystack-hosted-callback";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { checkMarketingFeatureAccess } from "@/lib/subscriptions/feature-access";
@@ -61,12 +62,16 @@ export async function POST(request: NextRequest) {
 
     const amountZar = Number(body.amount_zar);
     const reference = `marketing_topup_${providerId}_${Date.now()}`;
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com").replace(/\/$/, "");
     const callbackFromClient = body.callback_url?.trim();
-    const callbackUrl =
-      callbackFromClient && (callbackFromClient.startsWith("provider://") || callbackFromClient.startsWith("exp://"))
-        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}payment_type=marketing_topup`
-        : `${appUrl}/provider/settings/marketing-integrations?topup=success`;
+    const hosted = resolveHostedCheckoutCallbacks({
+      baseUrl: appUrl,
+      clientCallbackUrl: callbackFromClient,
+      defaultSuccessPath: "/provider/settings/marketing-integrations",
+      defaultCancelPath: "/provider/settings/marketing-integrations",
+      query: { topup: "success", payment_type: "marketing_topup" },
+    });
+    const callbackUrl = hosted.successUrl;
 
     const paystackData = await initializePaystackTransaction({
       email,

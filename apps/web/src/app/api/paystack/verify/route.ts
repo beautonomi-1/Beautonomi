@@ -19,6 +19,8 @@ import { recordProductOrderPayment } from "@/lib/orders/record-product-order-pay
 import { applyWalletTopupFromSuccessfulPaystackCharge } from "@/lib/wallet/apply-wallet-topup-from-paystack-success";
 import { processSuccessfulPayment } from "@/app/api/payments/webhook/_handlers/charge-success";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
+import { applyMarketingTopupFromPaystackSuccess } from "@/lib/marketing/apply-marketing-topup-from-paystack";
+import { enrichWalletTopupMetadataFromReference } from "@/lib/wallet/enrich-wallet-topup-metadata-from-reference";
 
 /**
  * GET /api/paystack/verify
@@ -82,7 +84,9 @@ export async function GET(request: NextRequest) {
           metadata.custom_offer_id ||
           metadata.bookingId ||
           metadata.booking_id ||
-          metadata.kind === "card_verification",
+          metadata.kind === "card_verification" ||
+          metadata.marketing_credit_topup === true ||
+          metadata.marketing_credit_topup === "true",
       );
       if (reference && !metadata.ads_budget_order_id && !hasNonAdsRoutingMetadata) {
         const adminLookup = getSupabaseAdmin();
@@ -126,18 +130,9 @@ export async function GET(request: NextRequest) {
       // to recover the wallet_topup_id and credit synchronously on verify.
       if (reference && !metadata.wallet_topup_id) {
         const adminWt = getSupabaseAdmin();
-        const { data: topupByRef } = await adminWt
-          .from("wallet_topups")
-          .select("id")
-          .eq("paystack_reference", reference)
-          .maybeSingle();
-        if (topupByRef) {
-          const wid = (topupByRef as { id?: unknown }).id;
-          const widStr = wid != null && wid !== "" ? String(wid) : "";
-          if (widStr) {
-            metadata = { ...metadata, wallet_topup_id: widStr };
-          }
-        }
+        const enriched = { ...metadata };
+        await enrichWalletTopupMetadataFromReference(adminWt as never, reference, enriched);
+        metadata = enriched;
       }
       const verifiedChargeData = { ...data.data, metadata };
       // Keep server/client refs for role-aware lookups + service-role writes.
@@ -281,9 +276,24 @@ export async function GET(request: NextRequest) {
             reference: String(reference),
             metadata,
             amount: data.data.amount,
+            fees: data.data.fees,
           },
           admin as any,
         );
+        const { data: creditedRow } = await admin
+          .from("wallet_transactions")
+          .select("id")
+          .eq("reference_id", String(walletTopupId))
+          .eq("reference_type", "wallet_topup")
+          .limit(1)
+          .maybeSingle();
+        if (!creditedRow) {
+          return errorResponse(
+            "Wallet balance could not be credited for this payment.",
+            "WALLET_TOPUP_NOT_CREDITED",
+            409,
+          );
+        }
         return successResponse({
           status: "success",
           type: "wallet_topup",
@@ -349,6 +359,56 @@ export async function GET(request: NextRequest) {
           status: "success",
           type: "card_verification",
           message: "Card verification confirmed",
+        });
+      }
+
+      if (
+        metadata?.marketing_credit_topup === true ||
+        metadata?.marketing_credit_topup === "true"
+      ) {
+        const providerId = String(metadata?.provider_id ?? "").trim();
+        if (!providerId) {
+          return errorResponse(
+            "Marketing top-up is missing provider context.",
+            "INVALID_METADATA",
+            400,
+          );
+        }
+        if (user?.id) {
+          const authProviderId = await getProviderIdForUser(user.id, admin as never, { request });
+          if (!authProviderId || authProviderId !== providerId) {
+            return errorResponse(
+              "You can only confirm marketing top-ups for your own provider account.",
+              "FORBIDDEN",
+              403,
+            );
+          }
+        }
+        const amountZar = Number(
+          metadata?.amount_zar ?? convertFromSmallestUnit(Number(data.data.amount || 0), paidCurrency),
+        );
+        const feesZar = convertFromSmallestUnit(Number(data.data.fees || 0), paidCurrency);
+        const topupResult = await applyMarketingTopupFromPaystackSuccess({
+          supabase: admin as any,
+          providerId,
+          amountZar,
+          feesZar,
+          paystackReference: String(reference),
+          currency: typeof metadata?.currency === "string" ? metadata.currency : null,
+          metadata: metadata as Record<string, unknown>,
+        });
+        if (!topupResult.credited) {
+          return errorResponse(
+            "Marketing credits could not be applied for this payment.",
+            "TOPUP_NOT_CREDITED",
+            409,
+          );
+        }
+        return successResponse({
+          status: "success",
+          type: "marketing_credit_topup",
+          balance_after: topupResult.balance_after,
+          message: "Marketing credits topped up",
         });
       }
 

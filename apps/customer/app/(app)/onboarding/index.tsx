@@ -429,10 +429,24 @@ export default function CustomerOnboarding() {
           if (p?.phone_verified) setPhoneVerified(true);
         }
 
+        if (!isApplePrimaryIdentity(user)) {
+          const metaName = (user?.user_metadata as { full_name?: string } | undefined)?.full_name?.trim();
+          if (metaName && metaName !== "Apple user") {
+            setFullName((prev) => prev.trim() || metaName);
+            setPreferredName((prev) => prev.trim() || metaName.split(/\s+/)[0] || metaName);
+          }
+        }
+
         if (isApplePrimaryIdentity(user)) {
           const fallback = appleDisplayNameFallback(user);
-          setFullName((prev) => prev.trim() || fallback);
-          setPreferredName((prev) => prev.trim() || fallback.split(/\s+/)[0] || fallback);
+          const metaName = (user?.user_metadata as { full_name?: string } | undefined)?.full_name?.trim();
+          if (metaName && metaName !== "Apple user") {
+            setFullName((prev) => prev.trim() || metaName);
+            setPreferredName((prev) => prev.trim() || metaName.split(/\s+/)[0] || metaName);
+          } else if (fallback !== "Apple user") {
+            setFullName((prev) => prev.trim() || fallback);
+            setPreferredName((prev) => prev.trim() || fallback.split(/\s+/)[0] || fallback);
+          }
           if (user?.email && isMailableEmail(user.email)) {
             setEmail(user.email);
             setEmailVerified(true);
@@ -974,7 +988,7 @@ export default function CustomerOnboarding() {
     );
   }
 
-  const canSkip = step === 5;
+  const canSkip = step === 2 || step === 5;
   const isLastStep = step === TOTAL_STEPS;
   const canGoBack = step > 1;
 

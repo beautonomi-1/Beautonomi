@@ -94,7 +94,14 @@ function warnMissingUpstashInProduction(config: RateLimitConfig): void {
 
 function shouldFailClosedWithoutUpstash(config: RateLimitConfig): boolean {
   if (process.env.VERCEL_ENV !== "production" || getRedis()) return false;
-  if (config.prefix === "sign-in" || config.prefix === "payment-init") return true;
+  if (
+    config.prefix === "sign-in" ||
+    config.prefix === "sign-in-password" ||
+    config.prefix === "sign-in-password-fail" ||
+    config.prefix === "payment-init"
+  ) {
+    return true;
+  }
   if (config.prefix.startsWith("otp-verify")) return true;
   return config.prefix.startsWith("payout-request");
 }

@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Image } from "expo-image";
-import { Video, ResizeMode } from "expo-av";
+import { ExpoVideoPreview } from "@/components/ExpoVideoPreview";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -154,11 +154,12 @@ export default function ProviderAnnouncementDetailScreen() {
           {mediaUrl ? (
             <View style={{ marginTop: 20, borderRadius: 14, overflow: "hidden", backgroundColor: Colors.gray[100] }}>
               {mediaType === "video" ? (
-                <Video
-                  source={{ uri: mediaUrl }}
+                <ExpoVideoPreview
+                  uri={mediaUrl}
                   style={{ width: "100%", height: 220 }}
-                  resizeMode={ResizeMode.CONTAIN}
-                  useNativeControls
+                  contentFit="contain"
+                  nativeControls
+                  paused={false}
                 />
               ) : (
                 <Image source={{ uri: mediaUrl }} style={{ width: "100%", height: 220 }} contentFit="contain" />

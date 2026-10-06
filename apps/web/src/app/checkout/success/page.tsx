@@ -80,8 +80,13 @@ function postProviderCheckoutMessage(branch: ProviderPaymentBranch | null) {
   }
 }
 
+function isNativeAppContext(context: string | null): boolean {
+  return context === "app";
+}
+
 function CheckoutSuccessContent() {
   const searchParams = useSearchParams();
+  const nativeAppContext = isNativeAppContext(searchParams?.get("context") ?? null);
   const { t } = useTranslation();
   const { track } = useAmplitude();
   const paymentSuccessTracked = useRef(false);
@@ -126,6 +131,12 @@ function CheckoutSuccessContent() {
   useEffect(() => {
     clearBeautonomiHoldClientMarkers();
   }, []);
+
+  useEffect(() => {
+    if (nativeAppContext && typeof document !== "undefined") {
+      document.title = "Payment";
+    }
+  }, [nativeAppContext]);
 
   useEffect(() => {
     if (isWaitlist || isCustomOffer) return;
@@ -345,7 +356,8 @@ function CheckoutSuccessContent() {
 
   useEffect(() => {
     if (!resolvedBookingId || isWaitlist) {
-      if (!paystackReference) setBookingPollComplete(true);
+      // Non-booking Paystack returns (wallet top-up, etc.) must not wait on booking poll.
+      setBookingPollComplete(true);
       return;
     }
     let cancelled = false;

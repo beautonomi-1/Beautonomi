@@ -1,14 +1,20 @@
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { parseRetryAfterSeconds } from "@/lib/auth/auth-errors";
 
 export class AuthOtpError extends Error {
   captchaRequired: boolean;
   status: number;
+  retryAfterSeconds?: number;
 
-  constructor(message: string, options?: { captchaRequired?: boolean; status?: number }) {
+  constructor(
+    message: string,
+    options?: { captchaRequired?: boolean; status?: number; retryAfterSeconds?: number },
+  ) {
     super(message);
     this.name = "AuthOtpError";
     this.captchaRequired = options?.captchaRequired === true;
     this.status = options?.status ?? 400;
+    this.retryAfterSeconds = options?.retryAfterSeconds;
   }
 }
 
@@ -52,7 +58,11 @@ export async function sendAuthOtp(params: {
   if (res.ok === false) {
     throw new AuthOtpError(
       typeof json?.error === "string" ? json.error : "Unable to send a verification code. Please try again.",
-      { captchaRequired: json?.captcha_required === true, status: res.status },
+      {
+        captchaRequired: json?.captcha_required === true,
+        status: res.status,
+        retryAfterSeconds: res.status === 429 ? parseRetryAfterSeconds(res) : undefined,
+      },
     );
   }
 }
@@ -78,7 +88,10 @@ export async function verifyAuthOtp(params: {
   if (res.ok === false) {
     throw new AuthOtpError(
       typeof json?.error === "string" ? json.error : "Invalid or expired code.",
-      { status: res.status },
+      {
+        status: res.status,
+        retryAfterSeconds: res.status === 429 ? parseRetryAfterSeconds(res) : undefined,
+      },
     );
   }
   await applySessionFromPayload(json);

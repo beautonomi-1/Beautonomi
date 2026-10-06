@@ -67,7 +67,12 @@
     },
     "discard": "Gooi weg",
     "tryAgain": "Probeer weer.",
-    "duration": "Duur"
+    "duration": "Duur",
+    "hints": {
+      "gotIt": "Reg so",
+      "dismissA11y": "Ignoreer fooitjie"
+    },
+    "change": "Verander"
   },
   "authGate": {
     "checkingAccess": "Checking your rekening…",
@@ -231,7 +236,8 @@
       "loading": "Laai tans reisfooi estimate",
       "finalAmountAtCheckout": "Final bedrag bevestiged at afhandeling",
       "errorGeneric": "Kon nie get reisfooi estimate nie.",
-      "outsideServiceArea": "Hierdie adres is buite die diensarea."
+      "outsideServiceArea": "Hierdie adres is buite die diensarea.",
+      "outsideServiceAreaNoSalon": "Hierdie verskaffer reis nie na hierdie adres nie. Probeer ’n ander adres."
     },
     "houseCallPricing": {
       "venueStepHint": "Kies waar jou afspraak plaasvind. Dienspryse op die volgende stap weerspieël hierdie keuse.",
@@ -240,7 +246,8 @@
       "includesHouseCallFee": "Sluit {{currency}} {{amount}} huisbesoekfooi in",
       "houseCallFeeLine": "House-bel diensfooi",
       "houseCallFeeSummary": "House-bel fooie ({{count}} dienste)",
-      "travelFeeSeparateNote": "Reisfooi word vanaf jou adres bereken en afsonderlik getoon."
+      "travelFeeSeparateNote": "Reisfooi word vanaf jou adres bereken en afsonderlik getoon.",
+      "atHomeVenueCombined": "Huisbesprekings kan ’n huisbesoekfooi op sommige dienste insluit, plus ’n reisfooi volgens jou adres."
     },
     "providerNotFound": "diensverskaffer nie gevind nie",
     "providerUnavailableTitle": "Hierdie professioneel is nie meer beskikbaar nie",
@@ -286,7 +293,10 @@
     "addressRequired": "adres vereis",
     "addressRequiredBody": "Voer asseblief jou adres vir hierdie tuisafspraak in voordat jy voortgaan.",
     "loadingPackage": "Laai tans pakket…",
-    "packageNoLineItems": "pakket besonderhede will appear hier when beskikbaar."
+    "packageNoLineItems": "pakket besonderhede will appear hier when beskikbaar.",
+    "contextualHints": {
+      "waitlistJoin": "Aansluit bespreek nie ’n tyd nie. Ons sal jou laat weet as een oopgaan."
+    }
   },
   "provider": {
     "dashboard": "Dashboard",
@@ -1371,7 +1381,9 @@
           "authRequired": "Ontsluit instellings",
           "ageBandNote": "Sommige opsies word outomaties bestuur vir rekeninge ouderdom 13–17 om jou ervaring ouderdomstoepaslik te hou.",
           "lockedNote": "Instellings wat as bestuur gemerk is, kan nie vir jou ouderdomsgroep verander word nie.",
-          "linkAgeSuitability": "Leer oor ouderdomsgeskiktheid en ouergids"
+          "linkAgeSuitability": "Leer oor ouderdomsgeskiktheid en ouergids",
+          "unknownAgeNotice": "Ons gebruik jou geboortedatum vir veiligheidskontroles. Voeg dit by sodat ons die regte instellings kan toepas. As jy 18 of ouer is, kan jy hierdie skakelaars verander nadat jou datum gestoor is. Tieners van 13–17 hou bestuurde instellings.",
+          "addDateOfBirth": "Voeg geboortedatum by"
         },
         "emergencyContact": {
           "title": "Emergency Kontak",
@@ -1736,7 +1748,7 @@
           "timeBoost": "Tydhupstoot",
           "day_one": "{{count}} dag",
           "day_other": "{{count}} dae",
-          "boostTitle": "{{days}} boost",
+          "boostTitle": "{{days}} hupstoot",
           "timeBoostSubtitle": "Vaste fooi — geborgde plasing vir {{days}}.",
           "timeBoostBenefit1": "Geborgde plasing vir die volle {{days}}",
           "timeBoostBenefit2": "Voorspelbare vaste prys — geen per-klik heffings nie",
@@ -1830,7 +1842,8 @@
           "chargeNoteApple": "Jy word eers gehef nadat jy met Face ID, Touch ID of jou App Store-wagwoord bevestig. Jou veldtog gaan live sodra Apple die aankoop verifieer — nooit voor nie.",
           "chargeNotePaystack": "You are only hefd after you bevestig on the secure Paystack page. Your veldtog goes live once betaling is geverifieer — nooit before.",
           "openingAppStore": "Maak App Store-aankoop oop…",
-          "openingCheckout": "Opening secure afhandeling…"
+          "openingCheckout": "Opening secure afhandeling…",
+          "introHint": "Geborgde lyste verskyn op die kliënt se tuisskerm en in soekresultate."
         },
         "waitingRoom": {
           "title": "Voorkant Desk",
@@ -1888,7 +1901,8 @@
           "serviceFallback": "Diens",
           "serviceWithDuration": "{{name}} · {{minutes}} min",
           "runningLate": "hardloop laat",
-          "runningLateMinutes": "hardloop laat {{minutes}}m"
+          "runningLateMinutes": "hardloop laat {{minutes}}m",
+          "introHint": "Vandag in een oogopslag: bevestig nuwe versoeke, meld kliënte in wanneer hulle aankom, en begin hul diens."
         },
         "groupBookings": {
           "statusAll": "Alles",
@@ -2038,7 +2052,7 @@
           "perPerson": "Per persoon",
           "participantsLabel": "deelnemers",
           "full": "vol",
-          "spotsLeft": "{{count}} left",
+          "spotsLeft": "{{count}} oor",
           "checkedIn": "Gekontroleer in",
           "financials": "Finansies",
           "participantServices": "deelnemer dienste",
@@ -2539,7 +2553,8 @@
           "selectCurrencyA11y": "Kies Geldeenheid {{code}}",
           "savePaymentSettings": "Stoor betaling instellings",
           "saving": "Stoor tans…",
-          "unsavedChanges": "You have unstoord veranders"
+          "unsavedChanges": "You have unstoord veranders",
+          "noShowFeeAmountHint": "Slegs geneem uit wat die kliënt reeds aanlyn betaal het, tot hierdie bedrag."
         },
         "bookingsList": {
           "title": "Besprekings",
@@ -3412,7 +3427,10 @@
           "giftCardsLabel": "geskenkkaarte",
           "giftCardsSubtitle": "Accept platform geskenkkaarte",
           "terminalShopLabel": "terminaal Winkel",
-          "terminalShopSubtitle": "bestelling kaartmasjiene from the Beautonomi catalog"
+          "terminalShopSubtitle": "bestelling kaartmasjiene from the Beautonomi catalog",
+          "hintYoco": "Yoco: your Yoco Kaart reader.",
+          "hintCardMachines": "kaartmasjiene: PayCloud terminaals for in-person Kaart betalings.",
+          "hintPaystackTerminal": "Paystack Terminal: neem betaling op jou foon met ’n QR-kode."
         },
         "businessSettings": {
           "title": "Besigheid besonderhede",
@@ -3778,9 +3796,9 @@
           },
           "lastUsedRecent": "onlangs",
           "lastUsedJustNow": "just nou",
-          "lastUsedMinutes": "{{count}}m ago",
-          "lastUsedHours": "{{count}}h ago",
-          "lastUsedDays": "{{count}}d ago",
+          "lastUsedMinutes": "{{count}}m gelede",
+          "lastUsedHours": "{{count}}u gelede",
+          "lastUsedDays": "{{count}}d gelede",
           "lastUsedMonths": "{{count}} md gelede",
           "defaultActivationName": "Kaartmasjien",
           "defaultActivationNameWithSerial": "kaartmasjien {{serial}}"
@@ -3950,9 +3968,9 @@
           "title": "Yoco toestelle",
           "lastUsedRecent": "onlangs",
           "lastUsedJustNow": "just nou",
-          "lastUsedMinutes": "{{count}}m ago",
-          "lastUsedHours": "{{count}}h ago",
-          "lastUsedDays": "{{count}}d ago",
+          "lastUsedMinutes": "{{count}}m gelede",
+          "lastUsedHours": "{{count}}u gelede",
+          "lastUsedDays": "{{count}}d gelede",
           "lastUsedMonths": "{{count}} md gelede",
           "requiredTitle": "Vereis",
           "deviceNameRequired": "toestel naam is vereis.",
@@ -4119,9 +4137,9 @@
         "payCloudPaymentSheet": {
           "lastUsedRecent": "onlangs",
           "lastUsedJustNow": "just nou",
-          "lastUsedMinutes": "{{count}}m ago",
-          "lastUsedHours": "{{count}}h ago",
-          "lastUsedDays": "{{count}}d ago",
+          "lastUsedMinutes": "{{count}}m gelede",
+          "lastUsedHours": "{{count}}u gelede",
+          "lastUsedDays": "{{count}}d gelede",
           "lastUsedMonths": "{{count}} md gelede",
           "paymentFailedTitle": "Betaling het misluk",
           "paymentFailedBody": "Die kaartbetaling het nie deurgegaan nie. Probeer asseblief weer.",
@@ -5037,7 +5055,7 @@
           "fixedDiscountA11y": "Fixed bedrag afslag",
           "promoCode": "promosiekode",
           "percentOff": "{{value}}% Af",
-          "amountOff": "{{amount}} off",
+          "amountOff": "{{amount}} afslag",
           "savedAmount": "({{amount}} stoord)",
           "removePromoA11y": "Verwyder promosiekode",
           "enterPromoPlaceholder": "Voer promosiekode in",
@@ -5133,7 +5151,18 @@
           "confirmCreateSeries": "Bevestig & skep Series",
           "confirmCreateBooking": "Bevestig & skep bespreking",
           "backToEditA11y": "terug to wysig",
-          "backToEdit": "terug to wysig"
+          "backToEdit": "terug to wysig",
+          "groupBookingNoPermission": "Jou rol kan nie groepbesprekings skep nie. Vra ’n eienaar vir afspraaktoestemmings.",
+          "groupBookingPermissionsFailed": "Kon nie toestemmings bevestig nie. Tik om weer te probeer.",
+          "sendQuoteNeedsAccount": "Kwotasies word gestuur na kliënte met ’n Beautonomi-rekening. Gebruik pasgemaakte diens (persoonlik) om iemand sonder ’n rekening te bespreek.",
+          "referralHowDidTheyFind": "Hoe het hulle jou gevind?",
+          "referralOptionalHint": "Opsioneel — verskyn op kwitansies en verslae.",
+          "referralAddForVisit": "Voeg by hoe hulle jou gevind het",
+          "chooseStaffRequired": "Kies wie dit doen",
+          "staffOffersServiceHint": "Hierdie spanlede kan hierdie diens lewer.",
+          "categoryPickerTitle": "Kategorie",
+          "runningBehindSheetTitle": "Agter die skedule?",
+          "staffFilteredByService": "Wys spanlede wat aan hierdie diens toegeken is."
         },
         "expressBooking": {
           "invalidJson": "Ongeldige JSON.",
@@ -5264,7 +5293,8 @@
           "productCartJson": "produk Mandjie (JSON)",
           "productCartHint": "JSON array: produk_id (UUID), hoeveelheid (1–999), opsioneel produk_variant_id.",
           "clearAllPrefillA11y": "vee uit all prefill",
-          "clearAllPrefill": "vee uit all prefill"
+          "clearAllPrefill": "vee uit all prefill",
+          "introHint": "Ekspres-skakels open bespreking met jou gekose dienste, personeel en ligging reeds ingevul. Jy kan ’n vervaldatum of gebruikslimiet stel."
         },
         "explorePosts": {
           "selectedPhotoPreviewA11y": "Gekies foto presensie",
@@ -5411,7 +5441,7 @@
           "identityStripA11y": "gradering {{rating}}, {{reviews}} resensies. Level: {{level}}. {{services}} {{distance}}",
           "gettingStarted": "Getting begined",
           "ratingFromReviewsA11y": "Gradering {{rating}} uit {{reviews}} resensies",
-          "levelA11y": "Level {{name}}",
+          "levelA11y": "Vlak {{name}}",
           "viewRewardsA11y": "Sien belonings",
           "atHome": "At-tuis",
           "atSalon": "By salon",
@@ -5913,7 +5943,8 @@
           "deleteBody": "Verwyder \"{{name}}\"?",
           "cancel": "Kanselleer",
           "delete": "Skrap",
-          "copySuffix": "{{name}} (kopieer)"
+          "copySuffix": "{{name}} (kopieer)",
+          "introHint": "Lede kry hul afslag outomaties wanneer hulle by jou bespreek. Hulle het nie ’n promosiekode nodig nie."
         },
         "payoutAccounts": {
           "title": "Payout Rekenings",
@@ -6326,7 +6357,8 @@
           "expressLinks": "Express kort skakels en betaalpunt-voorinvul",
           "visits": "Besoeke",
           "bookings": "Besprekings",
-          "convRate": "Conv. Koers"
+          "convRate": "Conv. Koers",
+          "copyIframe": "Kopieer iframe kode"
         },
         "closedPeriods": {
           "title": "Sluitd Periods",
@@ -6905,7 +6937,8 @@
           "deleteServiceA11y": "Skrap diens",
           "deleting": "Skrap tans…",
           "deleteService": "Skrap diens",
-          "deleteHint": "Verwyder hierdie diens permanent. Gebruik die volledige redigeerder om variante en byvoegings te bestuur."
+          "deleteHint": "Verwyder hierdie diens permanent. Gebruik die volledige redigeerder om variante en byvoegings te bestuur.",
+          "homePriceAdjustmentHint": "Bygevoeg tot hierdie diens se prys vir huisbesoeke. Die reisfooi word apart gehef."
         },
         "daysOff": {
           "staffFallback": "Personeel",
@@ -7022,8 +7055,8 @@
           "emptyDesc": "Skep promosiekodes for percentage or fixed-bedrag afslags.",
           "newPromo": "Nuwe promosiekode",
           "percentOff": "{{value}}% Af",
-          "amountOff": "{{amount}} off",
-          "usedCount": "Used {{count}}",
+          "amountOff": "{{amount}} afslag",
+          "usedCount": "Gebruik {{count}}",
           "usedCountMax": "Gebruik {{count}} / {{max}}",
           "hiddenOnProfile": "Versteek on public profiel",
           "visibleOnProfile": "Visible on public profiel",
@@ -7819,7 +7852,7 @@
           "optionalComment": "opsioneel opmerking",
           "submitRating": "dien in gradering",
           "thanks": "Dankie!",
-          "freshCaption": "Fresh {{name}}"
+          "freshCaption": "Vars {{name}}"
         },
         "advancedPricing": {
           "title": "Gevorderd pryse",
@@ -7991,7 +8024,11 @@
           "methodGiftCard": "Geskenkkaart",
           "methodWallet": "Beursie",
           "methodOther": "Ander",
-          "methodCashback": "Kontantterug"
+          "methodCashback": "Kontantterug",
+          "ledgerTruncatedTitle": "Large ledger — totaals may be involtooi",
+          "ledgerTruncated": "Meer as {{max}} finansieryë pas by hierdie reeks. Maak die datumreeks smaller vir volledige totale.",
+          "membershipEarnings": "lidmaatskap earnings (ledger)",
+          "providerCollectedByMethod": "diensverskaffer-collected (Kontant / EFT / Kaart)"
         },
         "performanceDashboardReport": {
           "factsDefinitions": "Feite & definisies",
@@ -8115,7 +8152,10 @@
           "setAsDefault": "Set as verstek beleid",
           "toggleDefaultA11y": "Toggle verstek beleid",
           "saving": "Stoor tans…",
-          "updatePolicy": "Dateer beleid op"
+          "updatePolicy": "Dateer beleid op",
+          "hoursBeforeHint": "Kansellasies nader aan die afspraak as hierdie tel as laat.",
+          "refundPercentageHint": "Hoeveel van wat die kliënt betaal het, word terugbetaal vir ’n laat kansellasie.",
+          "feeAmountHint": "Word slegs gebruik wanneer die terugbetaling 0% is."
         },
         "terminalMerchantApplication": {
           "statusSubmitted": "We received your application and will resensie it shortly.",
@@ -8427,7 +8467,7 @@
           "summaryTierCount_one": "{{count}} Afstand tier",
           "summaryTierCount_other": "{{count}} Afstand tiers",
           "summaryTiersIncomplete": "Pasgemaak tiers (involtooi)",
-          "summaryRateKm": "{{amount}}/km",
+          "summaryRateKm": "{{amount}}/km ",
           "summaryMin": "Min {{amount}}",
           "summaryFreeLe": "gratis ≤ {{km}} km",
           "summaryMax": "Maks {{amount}}",
@@ -8669,9 +8709,9 @@
         "yocoPaymentSheet": {
           "lastUsedRecent": "onlangs",
           "lastUsedJustNow": "just nou",
-          "lastUsedMinutes": "{{count}}m ago",
-          "lastUsedHours": "{{count}}h ago",
-          "lastUsedDays": "{{count}}d ago",
+          "lastUsedMinutes": "{{count}}m gelede",
+          "lastUsedHours": "{{count}}u gelede",
+          "lastUsedDays": "{{count}}d gelede",
           "lastUsedMonths": "{{count}} md gelede",
           "selectDeviceTitle": "Kies toestel",
           "selectDeviceBody": "Kies a Yoco toestel to process the betaling asseblief.",
@@ -9190,7 +9230,10 @@
           "notes": "Notas",
           "notesPlaceholder": "opsioneel notas...",
           "updateZone": "Dateer Zone op",
-          "addZone": "Voeg Zone by"
+          "addZone": "Voeg Zone by",
+          "introHint": "Sones bepaal waar kliënte jou by die huis kan bespreek. ’n Sone met sy eie fooi gebruik dit in plaas van jou reisfooi.",
+          "actionTravelFees": "Reis fooie",
+          "noZonesWarning": "Kliënte kan jou nie by die huis bespreek voordat jy ten minste een dienssone kies nie."
         },
         "staffNotifications": {
           "saveFailedTitle": "Kon nie stoor nie",
@@ -9573,7 +9616,7 @@
           "unitsSold": "{{count}} sou",
           "unitsSoldInStock": "{{count}} sou · {{stock}} in voorraad",
           "lowStockAlerts": "Lae-voorraadwaarskuwings",
-          "stockLeft": "{{count}} left",
+          "stockLeft": "{{count}} oor",
           "packageUsage": "pakket Usage",
           "activeLabel": "Aktief:",
           "redeemedLabel": "Verlos:",
@@ -9882,7 +9925,9 @@
           "signOut": "Meld af",
           "signOutTitle": "meld af?",
           "signOutBody": "Jy kan opstelling later voltooi. Jou vordering word op jou rekening gestoor.",
-          "cancel": "Kanselleer"
+          "cancel": "Kanselleer",
+          "verificationRequiredTitle": "identiteitsverifikasie vereis to go Regstreeks",
+          "verificationRequiredBody": "Voltooi identiteitsverifikasie sodat ons jou lys vir openbare besprekings kan goedkeur."
         },
         "packageSalesReport": {
           "factsDefinitions": "Feite & definisies",
@@ -10156,7 +10201,9 @@
           "thisMonth": "This maand",
           "avgFee": "Gem. fooi",
           "trips": "Reise",
-          "saveSettings": "Stoor Instellings"
+          "saveSettings": "Stoor Instellings",
+          "noZonesWarning": "Kliënte kan jou nie by die huis bespreek voordat jy ten minste een dienssone kies nie.",
+          "actionChooseZones": "Kies zones"
         },
         "revenueTrendsReport": {
           "basisIntro": "Grootboeklyn gebruik finance_transactions (verdienste, reis, fooie) volgens erkenningsdatum. Besoektellings gebruik afspraakdatums (uitg. gekanselleer en no-show). Dit is verskillende basisse — verspreiding impliseer nie oorsaaklikheid nie.",
@@ -10617,7 +10664,7 @@
           "expired": "Hierdie uitnodiging het verval. Vra jou bestuurder om weer te stuur.",
           "acceptFailed": "Kon nie accept uitnodiging nie",
           "teamFallback": "Jou span",
-          "joinTitle": "Join {{name}}",
+          "joinTitle": "Sluit by {{name}} aan",
           "inviteNamed": "Hallo {{name}}, jy is genooi om by die span aan te sluit op Beautonomi.",
           "inviteGeneric": "You've been uitnodigingd to join a span on Beautonomi.",
           "signInHint": "Meld aan met die e-pos wat hierdie uitnodiging ontvang het. Gebruik die stel-wagwoord-skakel uit jou uitnodigings-e-pos, of meld aan met e-pos OTP — jy het nie 'n bestaande wagwoord nodig nie.",
@@ -10628,7 +10675,15 @@
           "acceptInvite": "Accept uitnodiging",
           "getApp": "Get the diensverskaffer app",
           "downloadIos": "aflaai for iPhone",
-          "downloadAndroid": "aflaai for Android"
+          "downloadAndroid": "aflaai for Android",
+          "setPasswordTitle": "Skep your wagwoord",
+          "passwordLabel": "Wagwoord",
+          "passwordConfirmLabel": "Bevestig wagwoord",
+          "setPasswordSubmit": "Stoor wagwoord",
+          "setPasswordSuccess": "wagwoord stoord. meld aan to accept your uitnodiging.",
+          "setPasswordFailed": "Kon nie stoor wagwoord nie",
+          "passwordMismatch": "Wagwoords do not match",
+          "passwordTooShort": "Wagwoord moet ten minste 8 karakters wees"
         },
         "search": {
           "title": "Soek",
@@ -10884,7 +10939,8 @@
           "myEarnings": "My Verdienste",
           "title": "span & betaal",
           "subtitleOwner": "Payroll & personeel performance",
-          "subtitleStaff": "Jou betaal stubs"
+          "subtitleStaff": "Jou betaal stubs",
+          "freelancerUnavailable": "Gradeer op na ’n salonrekening om salarisse en spanbetaling te bestuur."
         },
         "terminalPaymentReturn": {
           "confirmingTitle": "Bevestig tans betaling",
@@ -11013,7 +11069,7 @@
           "typeCustom": "Pasgemaak",
           "typeProducts": "Produkte",
           "typeWalkIn": "Inloop",
-          "withStaff": "with {{name}}",
+          "withStaff": "met {{name}}",
           "orderLabel": "bestelling",
           "editDetailsTitle": "Wysig kliënt besonderhede",
           "editDetailsSubtitle": "These fields are stoord on the kliënt's profiel.",
@@ -11417,7 +11473,9 @@
           "delete": "Skrap",
           "typeNameRequired": "Voer a Tipe naam. in.",
           "deleteTypeTitle": "Skrap blocked tyd Tipe",
-          "deleteTypeBody": "Remove \"{{name}}\"? Existing blocks using this type may lose their kategorie."
+          "deleteTypeBody": "Remove \"{{name}}\"? Existing blocks using this type may lose their kategorie.",
+          "introHint": "Blokke sluit tyd op die kalender sodat kliënte dit nie kan bespreek nie. Vir personeelverlof, gebruik Afdrae.",
+          "actionDaysOff": "dae off"
         },
         "authLogin": {
           "accountSuspended": "Jou rekening is opgeskort. Kontak ondersteuning as jy glo dat dit 'n fout is.",
@@ -11986,7 +12044,7 @@
           "reviewsCount": "{{count}} resensies",
           "rewardsA11y": "Open belonings and badges",
           "rewardPoints": "beloning punte",
-          "pts": "{{count}} pts",
+          "pts": "{{count}} pnt",
           "badge": "Kenteken: {{name}}",
           "pointsSeparate": "Punte is apart van die besigheidtydlyn hieronder – tik vir mylpale en kentekens.",
           "viewRewards": "Sien belonings",
@@ -12465,7 +12523,8 @@
           "customerFallback": "Kliënt",
           "atHome": "By die huis",
           "atSalon": "By die salon",
-          "budgetRange": " · Begroting {{min}} – {{max}}"
+          "budgetRange": " · Begroting {{min}} – {{max}}",
+          "introHint": "Versoeke is nog nie op jou kalender nie. Stuur ’n aanbod met ’n prys en tyd; dit word bespreek sodra die kliënt betaal."
         },
         "deleteAccount": {
           "pleaseWaitTitle": "Wait asseblief",
@@ -13127,9 +13186,9 @@
       "medicalDisclaimer": "Content is shared by providers and does not constitute medical advice.",
       "reportCommentHint": "Tap the flag on a comment to report it.",
       "justNow": "Just now",
-      "minutesAgo": "{{count}}m ago",
-      "hoursAgo": "{{count}}h ago",
-      "daysAgo": "{{count}}d ago",
+      "minutesAgo": "{{count}}m gelede",
+      "hoursAgo": "{{count}}u gelede",
+      "daysAgo": "{{count}}d gelede",
       "providerFallback": "Provider",
       "openProviderProfile": "Open {{name}} profile",
       "userFallback": "User",
@@ -13701,6 +13760,11 @@
         },
         "chipCombobox": {
           "loading": "Laai tans…"
+        },
+        "groupBookingPayment": {
+          "youPaidForGroup": "You betaal for the Groep",
+          "paidBy": "betaal by {{name}}",
+          "covered": "Gedek"
         }
       },
       "tabs": {
@@ -14361,7 +14425,9 @@
           "toggle_sensitive_content_filter_label": "Sensitiewe inhoudfilter",
           "toggle_sensitive_content_filter_desc": "Verminder plasings met mediese of behandelingsverwante onderwerpe",
           "toggle_require_device_auth_label": "Require toestel authentication",
-          "toggle_require_device_auth_desc": "Vra vir Face ID, vingerafdruk of wagwoord voordat jy hierdie instellings verander"
+          "toggle_require_device_auth_desc": "Vra vir Face ID, vingerafdruk of wagwoord voordat jy hierdie instellings verander",
+          "unknownAgeNotice": "Ons gebruik jou geboortedatum vir veiligheidskontroles. Voeg dit by sodat ons die regte instellings kan toepas. As jy 18 of ouer is, kan jy hierdie skakelaars verander nadat jou datum gestoor is. Tieners van 13–17 hou bestuurde instellings.",
+          "addDateOfBirth": "Voeg geboortedatum by"
         },
         "notificationsCenter": {
           "screenTitle": "Kennisgewings",
@@ -14606,7 +14672,7 @@
           "orderLabel": "bestelling {{number}}",
           "openOrderA11y": "Open bestelling {{number}}",
           "viewOrderCta": "Sien bestelling",
-          "qtyLabel": "Qty {{count}}",
+          "qtyLabel": "Hvl {{count}}",
           "statusPending": "hangende",
           "statusApproved": "goedgekeur",
           "statusItemReceived": "Item Ontvang",
@@ -14712,7 +14778,7 @@
           "labelFrequency": "Gereeldheid",
           "labelNextAppointment": "volgende afspraak",
           "preferredTimeLine": "Preferred tyd · {{time}}",
-          "endsOn": "Ends {{date}}",
+          "endsOn": "Eindig {{date}}",
           "noEndDateRuns": "No fixed beëindig datum — runs until you onderbreek or kanselleer.",
           "viewSalon": "Sien salon",
           "editSchedule": "Wysig skedule",
@@ -15258,7 +15324,7 @@
           "servicesSection": "Dienste",
           "serviceFallback": "Diens",
           "serviceLineFallback": "diens {{index}}",
-          "withStaff": "with {{name}}",
+          "withStaff": "met {{name}}",
           "durationMinShort": "{{minutes}} min",
           "customOfferDetails": "Pasgemaak Offer besonderhede",
           "yourRequest": "Jou versoek:",
@@ -16054,7 +16120,12 @@
           "emergencyPhonePlaceholder": "Their telefoonnommer",
           "emergencyRelationPlaceholder": "bv. Gade, ouer",
           "newEmailPlaceholder": "Nuwe e-posadres",
-          "newPhonePlaceholder": "Nuwe telefoonnommer"
+          "newPhonePlaceholder": "Nuwe telefoonnommer",
+          "dobLabel": "Geboortedatum",
+          "dobEmptyHint": "Voeg your geboortedatum by",
+          "dobSafetyHint": "Veiligheidskontroles gebruik jou geboortedatum. Volwasse instellings geld slegs as jy 18 of ouer is.",
+          "addDobCta": "Voeg by",
+          "changeDobCta": "dateer op"
         },
         "loginSecurity": {
           "enterCurrentPassword": "Voer your huidig wagwoord in",
@@ -16417,7 +16488,13 @@
           "missingRequestId": "Missing versoek ID",
           "back": "Terug",
           "retry": "Probeer weer",
-          "help": "Hulp"
+          "help": "Hulp",
+          "waitingTitle": "versoek Gestuur",
+          "waitingHeadline": "Wag tans for your diensverskaffer",
+          "waitingProviderMessage": "Dit is nog nie bevestig nie. Ons bespreek dit sodra {{provider}} aanvaar.",
+          "providerFallbackName": "Jou diensverskaffer",
+          "waitingTimerLabel": "tyd remaining",
+          "waitingCancelCta": "Kanselleer versoek"
         },
         "onDemandResult": {
           "loadBookingDetailsFailed": "Kon nie laai besprekingsbesonderhede. Check your besprekings list nie.",
@@ -16425,7 +16502,7 @@
           "pickAnotherTime": "Pick anander tyd",
           "viewMyBookings": "Sien my besprekings",
           "backToHome": "Terug huis toe",
-          "withProvider": "with {{name}}"
+          "withProvider": "met {{name}}"
         },
         "inAppBrowser": {
           "invalidLink": "Ongeldige or missing skakel.",
@@ -16680,7 +16757,8 @@
           "budgetInvalid": "Begroting moet 'n positiewe getal wees.",
           "budgetMaxLessThanMin": "Maksimumbegroting moet groter as of gelyk aan minimumbegroting wees.",
           "durationOutOfRange": "Duur moet tussen {{min}} en {{max}} minute wees.",
-          "submittedPartialImages": "Sommige foto's kon nie gestoor word nie — jy kan die res byvoeg vanaf die klets."
+          "submittedPartialImages": "Sommige foto's kon nie gestoor word nie — jy kan die res byvoeg vanaf die klets.",
+          "hintOnce": "Nog niks is bespreek nie. Die verskaffer antwoord met ’n prys en tyd, en dit word bevestig wanneer jy hul aanbod betaal. Versoeke sluit ná {{days}} dae."
         },
         "notificationPreferences": {
           "loadFailed": "Kon nie laai preferences nie.",
@@ -17402,7 +17480,7 @@
     "atYourLocation": "At your ligging",
     "atSalon": "By die salon",
     "provider": "Diensverskaffer",
-    "withStaff": "with {{name}}",
+    "withStaff": "met {{name}}",
     "date": "Datum",
     "time": "Tyd",
     "couldNotSetDefaultCard": "Kon nie set verstek Kaart. probeer asseblief weer nie.",
@@ -17516,7 +17594,19 @@
     "packageApplied": "pakket applied",
     "redeemPackage": "Redeem a prebetaal pakket (opsioneel)",
     "packageCredit": "pakket crwysig",
-    "prepaidSessionsRemaining": "{{count}} Sessie(s) remaining"
+    "prepaidSessionsRemaining": "{{count}} Sessie(s) remaining",
+    "contextualHints": {
+      "dualFees": "Sluit {{houseCall}} in huisbesoekfooie en ’n {{travel}} reisfooi in.",
+      "depositPayNow": "Betaal {{deposit}} nou. Die oorblywende {{balance}} bly op jou bespreking, en jy kan dit daarvandaan betaal.",
+      "depositLateCancel": "’n Laat-kansellasietoelae kom uit wat jy reeds betaal het.",
+      "groupBooking": "Jy betaal vir almal in een betaling. Gaste het net ’n naam nodig.",
+      "customOfferConfirm": "As jy hierdie aanbod betaal, bevestig jy jou bespreking.",
+      "customOfferExpires": "Offer Verval {{date}}.",
+      "groupSwitchOn": "Aan",
+      "groupSwitchOff": "Af",
+      "groupGuestsLimit_one": "Voeg up to {{count}} Gas. by.",
+      "groupGuestsLimit_other": "Voeg up to {{count}} guests. by."
+    }
   },
   "payments": {
     "pay": "Betaal",
@@ -17888,7 +17978,9 @@
         "loadingBooking": "Laai tans bespreking...",
         "onlineBookingUnavailable": "Aanlyn bespreking is nie beskikbaar nie",
         "onlineBookingDisabled": "{{name}} het nie aanlyn bespreking aangeskakel nie. Kontak hulle direk om te bespreek.",
-        "findAnotherProvider": "Vind 'n ander verskaffer"
+        "findAnotherProvider": "Vind 'n ander verskaffer",
+        "onlineBookingDisabledGeneric": "This provider has not enabled online booking.",
+        "providerNotFound": "Provider not found"
       },
       "continue": {
         "slotExpiredToast": "Your reserved slot has expired. Please go back and pick a new time.",
@@ -18043,7 +18135,11 @@
         "enterSmsCode": "Voer die {{digits}}-syferkode uit jou SMS in",
         "invalidCode": "Ongeldige kode",
         "emailOtpSentToast": "Check your email for the {{digits}}-digit code (valid about {{minutes}} minutes).",
-        "smsOtpSentToast": "Check your phone for the {{digits}}-digit code (valid about {{minutes}} {{minuteLabel}})."
+        "smsOtpSentToast": "Check your phone for the {{digits}}-digit code (valid about {{minutes}} {{minuteLabel}}).",
+        "passwordSignInPrompt": "Prefer email and password?",
+        "passwordSignInLink": "Sign in with password",
+        "noAccountPrompt": "New to Beautonomi?",
+        "createAccountLink": "Create an account"
       },
       "legacyFlow": {
         "bookWith": "bespreek with {{providerName}}",
@@ -18153,7 +18249,8 @@
         "tip": "Fooitjie",
         "total": "Totaal",
         "continue": "Gaan voort",
-        "continueAriaLabel": "gaan voort to volgende step"
+        "continueAriaLabel": "gaan voort to volgende step",
+        "packageDiscount": "Package discount"
       },
       "confirmation": {
         "loadingMessage": "Laai tans Besprekingsbevestiging...",
@@ -18193,7 +18290,7 @@
         "dateAndTime": "datum & tyd",
         "services": "Dienste",
         "guest": "Gas: {{name}}",
-        "withStaff": "with {{name}}",
+        "withStaff": "met {{name}}",
         "durationMin": "{{count}} min",
         "additionalCharges": "Bykomende heffings",
         "paidOn": "betaal on {{date}}",
@@ -18543,7 +18640,10 @@
         "payWithCardEnding": "Pay {{amount}} with •••• {{last4}}",
         "payDeposit": "Pay Deposito {{amount}}",
         "completeBooking": "voltooi bespreking",
-        "payAmount": "Betaal {{amount}}"
+        "payAmount": "Betaal {{amount}}",
+        "slotConflictTitle": "That time is no longer available",
+        "slotConflictBody": "Pick another time on the calendar or jump to the next open slot.",
+        "pickNextAvailable": "Find next available time"
       },
       "addToWaitlist": {
         "enterName": "Enter your naam asseblief",
@@ -18728,7 +18828,9 @@
         "capacity": "Capastad: {{count}}",
         "notAvailable": "Not beskikbaar at this tyd",
         "selected_one": "{{count}} resource Gekies",
-        "selected_other": "{{count}} resources Gekies"
+        "selected_other": "{{count}} resources Gekies",
+        "stepTitle": "Choose resources",
+        "stepSubtitle": "Select any rooms or equipment needed for your appointment."
       },
       "virtualWaitingRoom": {
         "title": "Virtual wagkamer",
@@ -18762,6 +18864,16 @@
         "cancelledDescription": "This bespreking has been gekanselleer",
         "unknownTitle": "onbekend status",
         "unknownDescription": "Unable to determine booking status"
+      },
+      "journey": {
+        "stepOf": "Step {{current}} of {{total}}",
+        "bucket": {
+          "services": "Services",
+          "venue": "Location",
+          "time": "Date & time",
+          "details": "Your details",
+          "pay": "Payment"
+        }
       }
     },
     "search": {
@@ -19469,9 +19581,9 @@
           "openInbox": "open inbox",
           "notificationSettings": "kennisgewing instellings",
           "justNow": "Just nou",
-          "minutesAgo": "{{count}}m ago",
-          "hoursAgo": "{{count}}h ago",
-          "daysAgo": "{{count}}d ago"
+          "minutesAgo": "{{count}}m gelede",
+          "hoursAgo": "{{count}}u gelede",
+          "daysAgo": "{{count}}d gelede"
         }
       },
       "loyalty": {
@@ -20880,7 +20992,11 @@
           "secureBody": "All payment information is encrypted and processed securely. We never store your full card details.",
           "addCardNow": "Voeg Kaart nou by",
           "browseServices": "Browse dienste"
-        }
+        },
+        "cardVerifiedSuccess": "Your card was saved successfully.",
+        "cardVerificationFailed": "We could not confirm your card. Try again or use another card.",
+        "cardVerificationPending": "Verification is still processing. Refresh this page in a moment if your card does not appear.",
+        "cardVerificationCancelled": "Card verification was cancelled."
       },
       "referrals": {
         "loadFailed": "Kon nie laai verwysing inligting nie",
@@ -21165,9 +21281,9 @@
         "webTip": "Tip: pull to refresh isn’t available on web — use the refresh button.",
         "preferencesLink": "kennisgewing preferences →",
         "justNow": "Just nou",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago"
+        "minutesAgo": "{{count}}m gelede",
+        "hoursAgo": "{{count}}u gelede",
+        "daysAgo": "{{count}}d gelede"
       },
       "addresses": {
         "deleteConfirm": "Are you sure you want to delete \"{{label}}\"?",
@@ -21365,7 +21481,7 @@
         "emailRequired": "e-pos is vereis",
         "invalidEmail": "Enter a geldig e-posadres asseblief",
         "passwordRequired": "wagwoord is vereis",
-        "passwordMinLength": "Password must be at least 8 characters",
+        "passwordMinLength": "Wagwoord moet minstens 8 karakters wees",
         "passwordTooWeak": "Use a stronger password (add uppercase, numbers, or symbols)",
         "agreeTermsRequired": "Please confirm you have read and agree to the Terms of Service and Privacy Policy (including product analytics and optional session replay while signed in).",
         "invalidPhoneOrClear": "Voer a geldig telefoonnommer or vee uit the foon field. in.",
@@ -21475,7 +21591,19 @@
         "checkNeeded": "rekening check needed"
       },
       "marketingConsent": "Stuur me fooitjies, Aanbiedinge, and produk dateer ops. You can unsubscribe anytyd.",
-      "passkeyComingSoon": "Passkey (binnekort)"
+      "passkeyComingSoon": "Passkey (binnekort)",
+      "bookingReturn": {
+        "titleLogin": "You're signing in to finish your booking",
+        "titleSignup": "Create an account to finish your booking",
+        "continueBooking": "Continue booking",
+        "stepDefault": "Sign in to pick up where you left off.",
+        "stepTime": "Sign in to choose a date and time.",
+        "stepPay": "Sign in to review details and pay.",
+        "stepDetails": "Sign in to add your details and continue.",
+        "stepServices": "Sign in to choose services and continue.",
+        "stepVenue": "Sign in to confirm where you'll be served.",
+        "rateLimitWait": "Too many attempts. Try again in {{seconds}}s."
+      }
     },
     "provider": {
       "locationTracker": {
@@ -21562,7 +21690,7 @@
         "currentBadge": "Huidig: {{name}}",
         "nextBadge": "volgende: {{name}}",
         "ptsToBadge": "{{count}} pts to {{name}}",
-        "pointsTotal": "{{count}} pts",
+        "pointsTotal": "{{count}} pnt",
         "congratsBadge": "🎉 Congratulations on earning this badge!",
         "earnUnlock": "Earn punte and Ontsluit badges",
         "topTierTitle": "Topvlak ontsluit",
@@ -22373,9 +22501,9 @@
         "yocoPaymentDialog": {
           "recently": "onlangs",
           "justNow": "just nou",
-          "minutesAgo": "{{count}}m ago",
-          "hoursAgo": "{{count}}h ago",
-          "daysAgo": "{{count}}d ago",
+          "minutesAgo": "{{count}}m gelede",
+          "hoursAgo": "{{count}}u gelede",
+          "daysAgo": "{{count}}d gelede",
           "monthsAgo": "{{count}} md gelede",
           "loadDevicesFailed": "Kon nie laai betaling toestelle nie",
           "selectDevice": "Kies a betaling toestel asseblief",
@@ -22616,7 +22744,11 @@
           "retailProducts": "Kleinhandel produkte",
           "selectProduct": "Kies produk…",
           "selectVariant": "Kies variant…",
-          "variantFallback": "Variant"
+          "variantFallback": "Variant",
+          "openGroupBooking": "Plan a group booking instead",
+          "sendQuote": "Send a quote instead",
+          "sendQuoteNeedsAccount": "Select a client with an account to send a quote.",
+          "uncategorized": "Uncategorized"
         },
         "blockedTimeTypeDialog": {
           "updated": "Blocked tyd Tipe dateer opd",
@@ -22873,7 +23005,7 @@
           "label": "Regstreeks · dateer opd {{relative}}",
           "justNow": "just nou",
           "secondsAgo": "{{count}}s ago",
-          "minutesAgo": "{{count}}m ago"
+          "minutesAgo": "{{count}}m gelede"
         },
         "dayHub": {
           "tabDay": "Dag",
@@ -22893,7 +23025,11 @@
           "appointmentsOnly_one": "{{count}} afspraak",
           "appointmentsOnly_other": "{{count}} afsprake",
           "blocksOnly_one": "{{count}} block",
-          "blocksOnly_other": "{{count}} blocks"
+          "blocksOnly_other": "{{count}} blocks",
+          "runningBehindTitle": "Agter die skedule?",
+          "runningBehindBody": "We'll notify remaining confirmed clients today that you're delayed.",
+          "delay15": "15 minutes",
+          "delay30": "30 minutes"
         },
         "overview": {
           "all": "Alles",
@@ -23868,6 +24004,10 @@
           "plan": {
             "title": "Kies Your Plan",
             "description": "Kies a intekening Plan"
+          },
+          "travelFees": {
+            "title": "Travel Fees",
+            "description": "House-call travel fee rules and live fee preview"
           }
         },
         "toast": {
@@ -23934,7 +24074,8 @@
           "setHours": "Set your opegradering ure asseblief",
           "oneDayOpen": "At least one day must be open",
           "selectPlan": "Kies a intekening Plan asseblief",
-          "andMoreSeeConsole": " (and {{count}} meer - see console)"
+          "andMoreSeeConsole": " (and {{count}} meer - see console)",
+          "dobRequired": "Date of birth is required for identity verification"
         },
         "successHeadline": "You're all set!",
         "continueVerification": "gaan voort to verification",
@@ -23985,7 +24126,8 @@
           "ownerContactTitle": "eienaar and Kontak besonderhede",
           "ownerContactBody": "We verify both your email and mobile number to protect your account.",
           "yourName": "Jou Naam",
-          "emailAddress": "E-posadres"
+          "emailAddress": "E-posadres",
+          "dateOfBirth": "Date of birth"
         },
         "photos": {
           "yourPhoto": "Jou foto",
@@ -24190,7 +24332,7 @@
           "enter": "Enter",
           "radius": "Radius",
           "polygon": "Polygon",
-          "ratePerKm": "{{amount}}/km",
+          "ratePerKm": "{{amount}}/km ",
           "minFee": "Min {{amount}}",
           "freeWithinKm": "gratis within {{km}} km",
           "maxFee": "Maks {{amount}}",
@@ -24221,7 +24363,9 @@
           "preselectedCategories": "We've pre-selected {{count}} common categories. You can change them!",
           "categoriesTipBody": "Categories help clients discover you in search and filters.",
           "categoriesDraftHint": "If you skip services for now, we can draft simple services from the categories you pick.",
-          "noCategoriesAvailable": "No kategorieë beskikbaar. Please Kontak ondersteuning."
+          "noCategoriesAvailable": "No kategorieë beskikbaar. Please Kontak ondersteuning.",
+          "menuCategoryNames": "Names on your menu (you can rename these)",
+          "categoryNamePlaceholder": "Category name"
         },
         "catalog": {
           "atSalon": "By die salon",
@@ -24342,6 +24486,9 @@
           "locationBookingWindowTitle": "ligging bespreking Window:",
           "locationBookingWindowBody": "Clients only see slots inside these hours for the salon. You can set individual staff schedules later under Settings.",
           "hoursTo": "na"
+        },
+        "travelFees": {
+          "usePlatformDefault": "Use platform default travel fees"
         }
       },
       "dashboard": {
@@ -24987,7 +25134,7 @@
             "dayCount_one": "1 dag",
             "dayCount_other": "{{count}} dae",
             "timeBoost": "Tydhupstoot",
-            "daysBoost": "{{days}} boost",
+            "daysBoost": "{{days}} hupstoot",
             "timeBoostSubtitle": "Vaste fooi — geborgde plasing vir {{days}}.",
             "benefitSponsoredDuration": "Geborgde plasing vir die volle {{days}}",
             "benefitFlatPrice": "Voorspelbare vaste prys — geen per-klik heffings nie",
@@ -25053,7 +25200,7 @@
             "budgetFullyUsed": "Budget voly used",
             "budgetRemaining": "{{amount}} begroting oor",
             "dayBoostPaid": "{{days}} dag boost · {{amount}} betaal",
-            "endsOn": "Ends {{date}}",
+            "endsOn": "Eindig {{date}}",
             "impressionsPaidSpent": "{{count}} Vertonings · {{paid}} betaal · {{spent}} spent",
             "totalBudgetSpent": "totaal budget {{budget}} · Spent {{spent}}",
             "dailyCapLine": "Daaglikse limiet {{amount}}",
@@ -25335,7 +25482,10 @@
             "depositPercent": "Deposito % (alternate)",
             "useAmountOrPct": "Use either bedrag or %",
             "saveBookingFlow": "Stoor bespreking flow instellings",
-            "onlineBookingDisabled": "Online booking is currently disabled. Clients will not be able to book appointments online."
+            "onlineBookingDisabled": "Online booking is currently disabled. Clients will not be able to book appointments online.",
+            "shareWhatsApp": "WhatsApp",
+            "shareEmail": "Email",
+            "shareNative": "Share"
           },
           "appointment-activity/resources": {
             "resources": "Hulpbronne",
@@ -26198,7 +26348,9 @@
             "topUpViaPaystack": "Vul aan via Paystack",
             "refresh": "Verfris",
             "ownIntegrations": "Own integrations",
-            "ownIntegrationsHint": "Connect your SendGrid/Mailchimp or Twilio account. Sends on your credentials are not debited from platform credits."
+            "ownIntegrationsHint": "Connect your SendGrid/Mailchimp or Twilio account. Sends on your credentials are not debited from platform credits.",
+            "topUpSuccess": "Marketing credits topped up successfully.",
+            "topUpPending": "Payment is still processing. Refresh in a moment if your balance has not updated."
           },
           "note-templates": {
             "noteTemplates": "Nota Sjablone",
@@ -27746,6 +27898,10 @@
             "nativeCancelled": "You gekanselleer the betaling. No hef was made.",
             "nativeInvalid": "This betaling return skakel is ongeldig or involtooi."
           }
+        },
+        "serviceZones": {
+          "introHint": "Sones bepaal waar kliënte jou by die huis kan bespreek. ’n Sone met sy eie fooi gebruik dit in plaas van jou reisfooi.",
+          "actionTravelFees": "Travel fees"
         }
       },
       "pages": {
@@ -27882,7 +28038,7 @@
           "loadFailed": "Kon nie laai uitnodiging nie",
           "acceptFailed": "Kon nie accept uitnodiging nie",
           "teamFallback": "Jou span",
-          "joinTitle": "Join {{name}}",
+          "joinTitle": "Sluit by {{name}} aan",
           "inviteNamed": "Hallo {{name}}, jy is genooi om by die span aan te sluit op Beautonomi.",
           "inviteGeneric": "You've been uitnodigingd to join a span on Beautonomi.",
           "signInWithEmail": "meld aan or skep an rekening with",
@@ -27895,7 +28051,16 @@
           "getApp": "Get the diensverskaffer app",
           "downloadIos": "aflaai for iPhone",
           "downloadAndroid": "aflaai for Android",
-          "logoAlt": "Beautonomi"
+          "logoAlt": "Beautonomi",
+          "setPasswordTitle": "Create your password",
+          "setPasswordHint": "Choose a password (at least 8 characters), then sign in with your invite email.",
+          "passwordLabel": "Password",
+          "passwordConfirmLabel": "Confirm password",
+          "setPasswordSubmit": "Save password",
+          "setPasswordSuccess": "Wagwoord gestoor. Meld aan om jou uitnodiging te aanvaar.",
+          "setPasswordFailed": "Could not save password",
+          "passwordMismatch": "Wagwoorde stem nie ooreen nie",
+          "passwordTooShort": "Wagwoord moet minstens 8 karakters wees"
         },
         "notifications": {
           "subtitle": "Sien and manage your kennisgewings",
@@ -29305,7 +29470,13 @@
             "paymentsByStatus": "betalings by status",
             "noPaymentStatusData": "No payment status data available for the selected period.",
             "cashStyle": "Kontant Style",
-            "transactionsCount": "{{count}} transaksies"
+            "transactionsCount": "{{count}} transaksies",
+            "ledgerTruncatedTitle": "Groot grootboek — totale mag onvolledig wees",
+            "ledgerTruncated": "More than {{max}} finance rows matched this range. Narrow the date range for complete totals.",
+            "membershipEarnings": "Lidmaatskapverdienste (grootboek)",
+            "membershipEarningsHint": "membership_provider_earnings rows settled in this period (included in provider net activity).",
+            "providerCollectedByMethod": "Deur verskaffer ingesamel (kontant / EFT / kaart)",
+            "methodEft": "Bank transfer (EFT)"
           },
           "payments/yoco-reconciliation": {
             "title": "Yoco reconciliation",
@@ -30394,7 +30565,8 @@
           "appointmentColorHint": "Choose a color to visually identify services in this category",
           "descriptionOptional": "beskrywing (opsioneel)",
           "descriptionPlaceholder": "Add a short summary that helps clients understand what types of services are included in this category",
-          "descriptionHint": "Help clients understand what types of services are included in this category"
+          "descriptionHint": "Help clients understand what types of services are included in this category",
+          "homePriceAdjustmentHint": "Bygevoeg tot hierdie diens se prys vir huisbesoeke. Die reisfooi word apart gehef."
         },
         "serviceDialog": {
           "shortHair": "Short Haar",
@@ -31863,9 +32035,9 @@
       },
       "notificationsDropdown": {
         "justNow": "Just nou",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
+        "minutesAgo": "{{count}}m gelede",
+        "hoursAgo": "{{count}}u gelede",
+        "daysAgo": "{{count}}d gelede",
         "loadFailed": "Kon nie laai kennisgewings nie",
         "markReadFailed": "Kon nie mark kennisgewing as read nie",
         "openFailed": "Kon nie Open skakel for this kennisgewing nie",
@@ -32237,7 +32409,8 @@
         "services": "Dienste",
         "expiresCol": "Verval",
         "clicks": "Klikke",
-        "itemsSelected": "Items Gekies"
+        "itemsSelected": "Items Gekies",
+        "copyEmbedSnippet": "Copy embed snippet"
       },
       "calendarPage": {
         "serviceFallback": "Diens",
@@ -32553,7 +32726,9 @@
         "boostProfile": "Boost your profiel",
         "completeLater": "voltooi later",
         "setUp": "Stel in",
-        "stepsToGo": "Steps To Go"
+        "stepsToGo": "Steps To Go",
+        "verificationRequiredToGoLive": "Identiteitsverifikasie word vereis om live te gaan",
+        "verificationRequiredBody": "Your checklist is complete, but we still need to verify your identity before you can accept public bookings."
       },
       "shiftsPage": {
         "failedToLoad": "Kon nie laai skofte nie",
@@ -33157,6 +33332,22 @@
         "optionalParen": "(opsioneel)",
         "nameRequired": "naam *",
         "other": "Ander"
+      },
+      "scheduling": {
+        "calendarIconLegendTitle": "What these icons mean",
+        "calendarIcons": {
+          "isNewClient": "New client",
+          "hasNotes": "Has notes",
+          "isRepeating": "Repeating appointment",
+          "hasMembership": "Member",
+          "hasFormsIncomplete": "Forms incomplete",
+          "hasPhotos": "Has photos",
+          "hasConversation": "Has messages",
+          "isGroup": "Group booking",
+          "hasCustomization": "Service customization",
+          "isWalkIn": "Walk-in",
+          "isAtHome": "At-home service"
+        }
       }
     },
     "global": {
@@ -34331,7 +34522,8 @@
     },
     "referralSource": {
       "label": "How did this kliënt find you?",
-      "notSpecified": "Nie gespesifiseer nie"
+      "notSpecified": "Nie gespesifiseer nie",
+      "addForVisit": "Voeg by hoe hulle jou gevind het"
     },
     "editProducts": {
       "label": "Produkte",

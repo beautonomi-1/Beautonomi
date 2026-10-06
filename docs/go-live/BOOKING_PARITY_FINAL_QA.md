@@ -20,18 +20,19 @@ Fact-checked against codebase and live staging where noted.
 | mapbox_config sync | `syncMapboxConfig` in staging sync script + doc | **Pass** |
 | Matrix seed slugs | `seed-staging.mjs` B1/B2 + E2 providers (not run on staging until ops runs script) | **Pass (code)** |
 
-## Automated runs (local)
+## Automated runs (local, 2026-10-05)
+
+| Gate | Result |
+|------|--------|
+| `pnpm exec vitest run` (apps/web, full) | **730 files, 3598 tests passed** (prior run this session) |
+| Auth bundle (sign-in, otp verify/send, booking-return) | **11/11 passed** |
+| `pnpm i18n:check` | **OK** (booking return keys **en.json** only; other locales fallback) |
+| `pnpm exec playwright test e2e/auth.spec.ts` (localhost:3000) | **6/6 passed** (34s warm dev; 6/6 also after e2e fixes earlier) |
+| `pnpm run release:check` | **Typecheck OK**; captured runs **exit 0 after web lint** (~3–41 min) — **confirm log shows `i18n:scan:keys` + full `test` before merge** |
 
 ```
-pnpm exec vitest run src/components/booking/__tests__/beautonomi-gate-auth-return.test.ts
-pnpm exec vitest run src/lib/errors/__tests__/user-messages.test.ts
-→ 6 tests passed
-
 node apps/web/scripts/verify-booking-e2e-chain.mjs https://staging.beautonomi.com
-→ OK (default slug)
-
-apps/web tsc --noEmit → OK
-pnpm i18n:check → OK
+→ OK (default slug) — prior staging probe
 ```
 
 ## Live staging (2026-10-05)
@@ -46,6 +47,18 @@ pnpm i18n:check → OK
 ## Production co.za note
 
 Sample `HEAD /book/{slug}` returned **200** (Next `permanentRedirect` on GET; HEAD may not mirror middleware **308**). After deploy, confirm with GET/`verify-booking-e2e-chain` against `https://www.beautonomi.co.za`.
+
+## Enterprise auth UX (2026-10-05)
+
+| Item | Evidence |
+|------|----------|
+| Booking return banner on `/login` + `/signup` | `booking-return-context.ts`, `BookingAuthReturnBanner`, vitest |
+| Split rate limits | `sign-in-password`, `account-link`, `app-review-verify` |
+| Retry-After client UX | Login + LoginModal: live cooldown + disabled submits; **gate**: 429 toast with fixed `retryAfterSeconds` (no live countdown) |
+| OTP send rate limit | `otp-send.ts` + `/api/auth/otp/send`; vitest route test |
+| Inline signup Turnstile | `inline-signup-form.tsx` — `captchaToken` on `sendAuthOtp` |
+| LoginModal OTP proxy | `sendAuthOtp` / `verifyAuthOtp` + Turnstile |
+| Go-live Upstash warn | `repo.upstash_auth` in `go-live-check.mjs` |
 
 ## Still manual / ops (not code gaps)
 

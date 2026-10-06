@@ -1,20 +1,13 @@
-import { checkRateLimit, getClientIp, type RateLimitResult } from "./store";
+import type { RateLimitResult } from "./store";
+import { checkSignInPasswordRateLimit } from "./sign-in-password";
 
-const SIGN_IN_CONFIG = {
-  prefix: "sign-in",
-  limit: 10,
-  windowSeconds: 15 * 60,
-} as const;
-
-export { getClientIp };
+export { getClientIp } from "./sign-in-password";
 
 export type SignInRateLimitResult = RateLimitResult;
 
-export async function checkSignInRateLimit(
-  request: Request,
-): Promise<SignInRateLimitResult> {
-  const ip = getClientIp(request);
-  return checkRateLimit(SIGN_IN_CONFIG, ip);
+/** @deprecated Use checkSignInPasswordRateLimit — kept for tests/mocks. */
+export async function checkSignInRateLimit(request: Request): Promise<SignInRateLimitResult> {
+  return checkSignInPasswordRateLimit(request);
 }
 
 /** @deprecated No longer needed — the store increments on check. Kept for call-site compatibility. */

@@ -11,6 +11,10 @@ import {
   generateTransactionReference,
 } from "@/lib/payments/paystack";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import {
+  paystackChannelsForInitialize,
+  resolveHostedCheckoutCallbacks,
+} from "@/lib/payments/resolve-paystack-hosted-callback";
 import { chargeAuthorization } from "@/lib/payments/paystack-complete";
 import { getAppointmentSettingsFromDB } from "@/lib/provider-portal/appointment-settings";
 import type { PublicBookingValidatedBody } from "@/lib/public-booking/booking-draft-schema";
@@ -494,19 +498,21 @@ export async function processPayment(
     );
     const webSuccessUrl = `${baseUrl}${webSuccessPath}`;
     const clientCb = validatedDraft.paystack_callback_url?.trim();
+    const hostedBooking = resolveHostedCheckoutCallbacks({
+      baseUrl,
+      clientCallbackUrl: clientCb || undefined,
+      defaultSuccessPath: webSuccessPath.startsWith("/") ? webSuccessPath.split("?")[0]! : "/checkout/success",
+      defaultCancelPath: `/checkout/cancelled?booking_id=${encodeURIComponent(booking.id)}`,
+      query: {
+        booking_id: booking.id,
+        booking_number: booking.booking_number || undefined,
+      },
+    });
     const callbackUrl =
-      clientCb &&
-      (clientCb.startsWith("customer://") ||
-        clientCb.startsWith("exp://") ||
-        clientCb.startsWith("https://"))
-        ? clientCb
-        : webSuccessUrl;
-
-    const isMobileBookingCallback =
-      callbackUrl.startsWith("customer://") || callbackUrl.startsWith("exp://");
-    const bookingCancelAction = isMobileBookingCallback
-      ? `${callbackUrl}${callbackUrl.includes("?") ? "&" : "?"}cancelled=1`
-      : `${baseUrl}/checkout/cancelled?booking_id=${encodeURIComponent(booking.id)}`;
+      validatedDraft.embed === true && embedReturn
+        ? webSuccessUrl
+        : hostedBooking.successUrl;
+    const bookingCancelAction = hostedBooking.cancelUrl;
 
     const savedPaymentMethodId = validatedDraft.payment_method_id ?? null;
     const saveCard = validatedDraft.save_card === true;
@@ -918,6 +924,10 @@ export async function processPayment(
               : {}),
           },
           tenantId: flagTenantId,
+          ...(() => {
+            const ch = paystackChannelsForInitialize({ saveCard });
+            return ch.channels ? { channels: ch.channels } : {};
+          })(),
         });
       } catch (initErr) {
         // §Risk-hardening 2026-04: initialize failed before Paystack issued a

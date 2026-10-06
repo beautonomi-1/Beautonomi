@@ -67,7 +67,12 @@
     },
     "discard": "Lahla",
     "tryAgain": "Lingedza hafhu.",
-    "duration": "Tshifhinga"
+    "duration": "Tshifhinga",
+    "hints": {
+      "gotIt": "Ndo pfa",
+      "dismissA11y": "Bvisa thiphu"
+    },
+    "change": "Shandukisa"
   },
   "authGate": {
     "checkingAccess": "Checking your akhaunte…",
@@ -231,7 +236,8 @@
       "loading": "I khou ḽoḓa mbadelo wa lwendo estimate",
       "finalAmountAtCheckout": "Final tshivhalo khwaṱhisedzaed at u badela",
       "errorGeneric": "A zwo koni u get mbadelo wa lwendo estimate.",
-      "outsideServiceArea": "Adirese iyi i kha ntle ha vhupo ha tshumelo."
+      "outsideServiceArea": "Adirese iyi i kha ntle ha vhupo ha tshumelo.",
+      "outsideServiceAreaNoSalon": "Muthusi uyu ha tshimbili kha ḓiresi iyi. Lingedzani ḓiresi iṅwe."
     },
     "houseCallPricing": {
       "venueStepHint": "Khethani hune u vhewa haṋu ha itea hone. Mitengo ya tshumelo kha vhukando vhu tevhelaho i sumbedza khetho iyi.",
@@ -240,7 +246,8 @@
       "includesHouseCallFee": "U katshe mali ya u vha kha hayani ya {{currency}} {{amount}}",
       "houseCallFeeLine": "House-fonela mbadelo wa tshumelo",
       "houseCallFeeSummary": "House-fonela mbadelo ({{count}} tshumelo)",
-      "travelFeeSeparateNote": "Mbadelo ya lwendo i vhalelwa u bva kha ḓiresi yaṋu nahone i sumbedzwa nga yoṱhe."
+      "travelFeeSeparateNote": "Mbadelo ya lwendo i vhalelwa u bva kha ḓiresi yaṋu nahone i sumbedzwa nga yoṱhe.",
+      "atHomeVenueCombined": "U buka ha haya zwi nga dzheneisa mbadelo wa u dalela haya kha tshumelo dziṅwe, na mbadelo wa lwendo nga ḓiresi yau."
     },
     "providerNotFound": "muneḓi a tsho wanala",
     "providerUnavailableTitle": "Mushumisi uyu a si sa wanala",
@@ -286,7 +293,10 @@
     "addressRequired": "ḓiresi zwi a ṱoḓea",
     "addressRequiredBody": "Hi kombela u nghenisa adirese ya wena ya nkarhi lowu wa le kaya u nga si ya emahlweni.",
     "loadingPackage": "I khou ḽoḓa tshiphuthelwa…",
-    "packageNoLineItems": "tshiphuthelwa zwidodombedzwa will appear hafha when i hone."
+    "packageNoLineItems": "tshiphuthelwa zwidodombedzwa will appear hafha when i hone.",
+    "contextualHints": {
+      "waitlistJoin": "U dzhenela a hu vheki tshifhinga. Ri ḓo u ḓivhadza musi hu tshi vula."
+    }
   },
   "provider": {
     "dashboard": "Dashboard",
@@ -1371,7 +1381,9 @@
           "authRequired": "Vula lotho nzudzanyo",
           "ageBandNote": "Zwiitwa zwiṅwe zwi langwa nga u ita kha dzi-account dza miaka ya 13–17 u thusa u vhulunga nḓila yawe yo fanelaho miaka.",
           "lockedNote": "Zwiṱirathedzhi zwo swaiwaho sa zwo langwaho a zwi nga shandukiswa kha tshigwada tsha miṅwaha yaṋu.",
-          "linkAgeSuitability": "Dzidzani nga u faneleka ha miṅwaha na u holofha ha vhabebe"
+          "linkAgeSuitability": "Dzidzani nga u faneleka ha miṅwaha na u holofha ha vhabebe",
+          "unknownAgeNotice": "Ri shumisa ḓuvha ḽau ḽa u bebwa kha zwilawuli zwa tsireledzo. Zwi engedzeni uri ri kone u shumisa nzudzanyo yo tea. Musi ni na miaka ya 18 kana u fhira, ni nga shandukisa zwiswitshi izwi nga murahu ha u vhulunga ḓuvha. Vhaswa vha miaka ya 13–17 vha vhulunga nzudzanyo i tshi langwa.",
+          "addDateOfBirth": "Engedza ḓuvha ḽa u bebwa"
         },
         "emergencyContact": {
           "title": "Emergency Ikwane",
@@ -1736,7 +1748,7 @@
           "timeBoost": "Khwiniso nga tshifhinga",
           "day_one": "Ḓuvha ḽa {{count}}",
           "day_other": "Maḓuvha a {{count}}",
-          "boostTitle": "{{days}} boost",
+          "boostTitle": "{{days}} u khwinisa",
           "timeBoostSubtitle": "Mali i re tshimbile — u vhulungwa ho hoxiwaho tsha {{days}}.",
           "timeBoostBenefit1": "U vhulungwa ho hoxiwaho tshifhinga tsho fhela tsha {{days}}",
           "timeBoostBenefit2": "Ndali i re tshimbile i re zwi ṱhonifha — a hu na mali nga u kopa",
@@ -1830,7 +1842,8 @@
           "chargeNoteApple": "U hakeriwa ntsena endzhaku ka ku tiyisisa hi Face ID, Touch ID, kumbe password ya wena ya App Store. Kampeni ya wena yi sungula loko Apple yi tiyisisa ku xava — a ku na ku endla emahlweni.",
           "chargeNotePaystack": "You are only badelisad after you khwaṱhisedza on the secure Paystack page. Your phurogireme goes live once mbadedzo is yo khwaṱhisedzwa — a hu ngo before.",
           "openingAppStore": "U vula u renga ha App Store…",
-          "openingCheckout": "Opening secure u badela…"
+          "openingCheckout": "Opening secure u badela…",
+          "introHint": "Mutevhe wo tikedzwa u vhonala kha tshikirini tsha haya tsha mushumi na kha mvelelo dza u ṱoḓa."
         },
         "waitingRoom": {
           "title": "Phanḓa Desk",
@@ -1888,7 +1901,8 @@
           "serviceFallback": "Tshumelo",
           "serviceWithDuration": "{{name}} · {{minutes}} min",
           "runningLate": "u swika tshifhinga tsho fhela",
-          "runningLateMinutes": "u swika tshifhinga tsho fhela {{minutes}}m"
+          "runningLateMinutes": "u swika tshifhinga tsho fhela {{minutes}}m",
+          "introHint": "Ṋamusi nga ise ḽithihi: khwaṱhisedzani khumbelo ntswa, ṅwalisa vhashumi musi vha tshi swika, u thome tshumelo yavho."
         },
         "groupBookings": {
           "statusAll": "Zwoṱhe",
@@ -2038,7 +2052,7 @@
           "perPerson": "Umuntu ngamunye",
           "participantsLabel": "vathei",
           "full": "yo ḓala",
-          "spotsLeft": "{{count}} left",
+          "spotsLeft": "{{count}} zwo sala",
           "checkedIn": "Ku Kambisisa Eka",
           "financials": "Ezezimali",
           "participantServices": "muthei tshumelo",
@@ -2539,7 +2553,8 @@
           "selectCurrencyA11y": "Nanga Masheleni {{code}}",
           "savePaymentSettings": "Vhulunga mbadedzo nzudzanyo",
           "saving": "I khou vhulunga…",
-          "unsavedChanges": "You have unvhulungad shandukisas"
+          "unsavedChanges": "You have unvhulungad shandukisas",
+          "noShowFeeAmountHint": "I dzhiiwa fhedzi kha zwo badelwa nga mushumi kha inthanete, u swika tshivhalo itshi."
         },
         "bookingsList": {
           "title": "U buka",
@@ -2562,9 +2577,9 @@
           "statusCancelled": "Yo khanselwa",
           "statusNoShow": "No sumbedza",
           "blockedFallback": "Yo tshibiw",
-          "runningBehindTitle": "Running behind?",
+          "runningBehindTitle": "Ni salelwa nga tshifhinga?",
           "runningBehindBody": "Ri ḓo ḓivhadza vharengi vho salaho vho khwaṱhisedzwaho ṋamusi uri vho lenga.",
-          "runningBehindBannerTitle": "Running behind?",
+          "runningBehindBannerTitle": "Ni salelwa nga tshifhinga?",
           "runningBehindBannerBody": "Notify remaining khwaṱhisedzaed vhashumi namusi in one tap.",
           "runningBehindA11y": "Vhigani vha rengi vha sa athu uri u khou famba murahu",
           "delay15": "15 miminete",
@@ -3226,7 +3241,7 @@
           "appleProductNotMappedBody": "Plani leyi a yi kumeki tanihi ku xava ka iPhone sweswi. Tihlanganisa na nseketelo.",
           "subscriptionCheckoutTitle": "ṅwaliso u badela",
           "introPlansMatchRegion": "Hlawula N'weti kumbe Lembe ku ringeta tipulani na nxaviso eka vandla ra wena.",
-          "introMarketingLinesNote": "Marketing lines on the webusayiti (e.g. hero Maṅwalo on /mitengo) are lulamisisaed in Admin → Content, not hafha.",
+          "introMarketingLinesNote": "Milayo ya khangiso kha webhusaiti (linwalo ḽihulwane kha siaṱari ḽa mutengo) i khwiniswa kha mulanguli wa zwo dzhenaho, hu si henefha.",
           "introIosAutoRenewable": "U ṱanganedza kha iOS ndi In-App Purchases dzi pfuxaho nga Apple.",
           "termsOfUseA11y": "Milayo of Use (EULA)",
           "termsOfUse": "Milayo of Use (EULA)",
@@ -3412,7 +3427,10 @@
           "giftCardsLabel": "khadi dza nyiko",
           "giftCardsSubtitle": "Accept platform khadi dza nyiko",
           "terminalShopLabel": "theminali Vhengele",
-          "terminalShopSubtitle": "odara mitshini ya khadi from the Beautonomi catalog"
+          "terminalShopSubtitle": "odara mitshini ya khadi from the Beautonomi catalog",
+          "hintYoco": "Yoco: your Yoco Khadi reader.",
+          "hintCardMachines": "mitshini ya khadi: PayCloud theminalis for in-person Khadi mbadedzo.",
+          "hintPaystackTerminal": "Paystack Terminal: dzhia mbadedzo kha luṱingoni lwau nga khoudu ya QR."
         },
         "businessSettings": {
           "title": "Bindu zwidodombedzwa",
@@ -3778,9 +3796,9 @@
           },
           "lastUsedRecent": "tshifhinganyana",
           "lastUsedJustNow": "just zwazwino",
-          "lastUsedMinutes": "{{count}}m ago",
-          "lastUsedHours": "{{count}}h ago",
-          "lastUsedDays": "{{count}}d ago",
+          "lastUsedMinutes": "minete {{count}} yo fhiraho",
+          "lastUsedHours": "awara {{count}} dzo fhiraho",
+          "lastUsedDays": "maḓuvha {{count}} o fhiraho",
           "lastUsedMonths": "{{count}}mo ago",
           "defaultActivationName": "Mutshini wa khadi",
           "defaultActivationNameWithSerial": "mutshini wa khadi {{serial}}"
@@ -3950,9 +3968,9 @@
           "title": "Yoco zwishumiswa",
           "lastUsedRecent": "tshifhinganyana",
           "lastUsedJustNow": "just zwazwino",
-          "lastUsedMinutes": "{{count}}m ago",
-          "lastUsedHours": "{{count}}h ago",
-          "lastUsedDays": "{{count}}d ago",
+          "lastUsedMinutes": "minete {{count}} yo fhiraho",
+          "lastUsedHours": "awara {{count}} dzo fhiraho",
+          "lastUsedDays": "maḓuvha {{count}} o fhiraho",
           "lastUsedMonths": "{{count}}mo ago",
           "requiredTitle": "Zwi a ṱoḓea",
           "deviceNameRequired": "tshishumiswa dzina is zwi a ṱoḓea.",
@@ -4119,9 +4137,9 @@
         "payCloudPaymentSheet": {
           "lastUsedRecent": "tshifhinganyana",
           "lastUsedJustNow": "just zwazwino",
-          "lastUsedMinutes": "{{count}}m ago",
-          "lastUsedHours": "{{count}}h ago",
-          "lastUsedDays": "{{count}}d ago",
+          "lastUsedMinutes": "minete {{count}} yo fhiraho",
+          "lastUsedHours": "awara {{count}} dzo fhiraho",
+          "lastUsedDays": "maḓuvha {{count}} o fhiraho",
           "lastUsedMonths": "{{count}}mo ago",
           "paymentFailedTitle": "Mbadedzo wo kundelwa",
           "paymentFailedBody": "Xihakelo xa khadi a xi nga fambi. Hi kombela u ringeta nakambe.",
@@ -5037,7 +5055,7 @@
           "fixedDiscountA11y": "Fixed tshivhalo theolelo",
           "promoCode": "khoudu ya khangiso",
           "percentOff": "{{value}}% Yo valiwa",
-          "amountOff": "{{amount}} off",
+          "amountOff": "{{amount}} u hungudza",
           "savedAmount": "({{amount}} vhulungad)",
           "removePromoA11y": "Bvisa khoudu ya khangiso",
           "enterPromoPlaceholder": "Ṅwališa khoudu ya khangiso",
@@ -5133,7 +5151,18 @@
           "confirmCreateSeries": "Khwaṱhisedza & vumba Series",
           "confirmCreateBooking": "Khwaṱhisedza & vumba u buka",
           "backToEditA11y": "murahu to lulamisisa",
-          "backToEdit": "murahu to lulamisisa"
+          "backToEdit": "murahu to lulamisisa",
+          "groupBookingNoPermission": "Tshimo tshau a tshi koni u vumba u buka ha tshigwada. Vhudzisani mune nga thendelo ya ndingo.",
+          "groupBookingPermissionsFailed": "A zwo ngo kona u khwaṱhisedza thendelo. Tobedzani u lingedza hafhu.",
+          "sendQuoteNeedsAccount": "Nyambo dzo rumelwa kha vhashumi vhane vha vha na akhaunte ya Beautonomi. Shumisani tshumelo yo itelwa (nga u ḓiima) u buka muthu a si na akhaunte.",
+          "referralHowDidTheyFind": "Vha ni wana hani?",
+          "referralOptionalHint": "A zwo ngo tea — zwi vhonala kha zwirisiti na muvhigo.",
+          "referralAddForVisit": "Engedza nḓila ye vha ni wana ngayo",
+          "chooseStaffRequired": "Nanga ane a ita izwi",
+          "staffOffersServiceHint": "Miri avha tshigwada vha nga ita tshumelo iyi.",
+          "categoryPickerTitle": "Tshigwada",
+          "runningBehindSheetTitle": "Ni salelwa nga tshifhinga?",
+          "staffFilteredByService": "U sumbedza miri vha tshigwada vho ṋewa tshumelo iyi."
         },
         "expressBooking": {
           "invalidJson": "JSON. i siho yone.",
@@ -5264,7 +5293,8 @@
           "productCartJson": "tshithu Nngola (JSON)",
           "productCartHint": "JSON array: tshithu_id (UUID), tshivhalo (1–999), zwo khethea tshithu_variant_id.",
           "clearAllPrefillA11y": "thutha all prefill",
-          "clearAllPrefill": "thutha all prefill"
+          "clearAllPrefill": "thutha all prefill",
+          "introHint": "Zwitshimbidzi zwa Express zwi vula u buka nga tshumelo, vhashumi na tshifhethu tshe na nanga zwo ḓadzwa. Ni nga vhea ḓuvha ḽa u fhela kana mukano wa u shumisa."
         },
         "explorePosts": {
           "selectedPhotoPreviewA11y": "Yo nangwa tshifanyiso pmbono",
@@ -5411,7 +5441,7 @@
           "identityStripA11y": "linga {{rating}}, {{reviews}} mbono. Level: {{level}}. {{services}} {{distance}}",
           "gettingStarted": "Getting thomaed",
           "ratingFromReviewsA11y": "U linganisa {{rating}} u bva kha u vhiga ha {{reviews}}",
-          "levelA11y": "Level {{name}}",
+          "levelA11y": "Tshimo {{name}}",
           "viewRewardsA11y": "Vhona mubuyelos",
           "atHome": "At-haya",
           "atSalon": "At-saloni",
@@ -5913,7 +5943,8 @@
           "deleteBody": "Bvisa \"{{name}}\"?",
           "cancel": "Khansela",
           "delete": "Thutha",
-          "copySuffix": "{{name}} (kopa)"
+          "copySuffix": "{{name}} (kopa)",
+          "introHint": "Miri vha wana hungudzo nga u ḓiitela musi vha tshi buka na inwi. A vha ṱoḓi khoudu ya khangiso."
         },
         "payoutAccounts": {
           "title": "Payout Akhauntes",
@@ -6326,7 +6357,8 @@
           "expressLinks": "Zwi linki zwi pfufhifhadzwa zwa Express na u dzhenisa u lifha",
           "visits": "U endzela",
           "bookings": "U buka",
-          "convRate": "Conv. Linga"
+          "convRate": "Conv. Linga",
+          "copyIframe": "Kopa iframe khoudu"
         },
         "closedPeriods": {
           "title": "Valad Periods",
@@ -6905,7 +6937,8 @@
           "deleteServiceA11y": "Thutha tshumelo",
           "deleting": "I khou thutha…",
           "deleteService": "Thutha tshumelo",
-          "deleteHint": "U bvisa tshumelo iyi lwa tshoṱhe. Shumisani editha yo fhelelaho u langa dzivarianthi na zwiengedzedzwa."
+          "deleteHint": "U bvisa tshumelo iyi lwa tshoṱhe. Shumisani editha yo fhelelaho u langa dzivarianthi na zwiengedzedzwa.",
+          "homePriceAdjustmentHint": "Yo engedzwa kha mutengo wa tshumelo iyi ya u dalela haya. Mbadelo wa lwendo u badelwa nga u fhambanya."
         },
         "daysOff": {
           "staffFallback": "Vhashumi",
@@ -7022,8 +7055,8 @@
           "emptyDesc": "Vumba khoudu ya khangisos for percentage or fixed-tshivhalo theolelos.",
           "newPromo": "khoudu ya khangiso ntswa",
           "percentOff": "{{value}}% Yo valiwa",
-          "amountOff": "{{amount}} off",
-          "usedCount": "Used {{count}}",
+          "amountOff": "{{amount}} u hungudza",
+          "usedCount": "Yo shumiswa {{count}}",
           "usedCountMax": "Zwo shumiswa {{count}} / {{max}}",
           "hiddenOnProfile": "Yo dzumba on public phurofaily",
           "visibleOnProfile": "Visible on public phurofaily",
@@ -7819,7 +7852,7 @@
           "optionalComment": "zwo khethea mbono",
           "submitRating": "ruma linga",
           "thanks": "Ndo livhuwa!",
-          "freshCaption": "Fresh {{name}}"
+          "freshCaption": "{{name}} ntswa"
         },
         "advancedPricing": {
           "title": "Zwo bvelelaho mitengo",
@@ -7991,7 +8024,11 @@
           "methodGiftCard": "Khadi ḽa nyiko",
           "methodWallet": "Sipaji",
           "methodOther": "Zwiṅwe",
-          "methodCashback": "Mashelenimurahu"
+          "methodCashback": "Mashelenimurahu",
+          "ledgerTruncatedTitle": "Large ledger — yoṱhes may be infhedza",
+          "ledgerTruncated": "Milayo ya masheleni i fhira {{max}} i fana na tshifhinga itshi. Hungudza tshifhinga tsha maḓuvha u wana zwitatale zwo fhelela.",
+          "membershipEarnings": "vhuleme earnings (ledger)",
+          "providerCollectedByMethod": "muneḓi-collected (Masheleni / EFT / Khadi)"
         },
         "performanceDashboardReport": {
           "factsDefinitions": "Facts & definitions",
@@ -8115,7 +8152,10 @@
           "setAsDefault": "Set as tsho ḓoweleaho pholisi",
           "toggleDefaultA11y": "Toggle tsho ḓoweleaho pholisi",
           "saving": "I khou vhulunga…",
-          "updatePolicy": "Khwinisa pholisi"
+          "updatePolicy": "Khwinisa pholisi",
+          "hoursBeforeHint": "U khansela hu tsini na ndingo u fhira izwi zwi vhidzwa u fhela tshifhinga.",
+          "refundPercentageHint": "Ndi mini tshivhalo tsha zwo badelwa nga mushumi zwi tshi vhuedzedzwa kha u khansela tshifhinga tsho fhela.",
+          "feeAmountHint": "I shumiswa fhedzi musi mbuyiso i 0%."
         },
         "terminalMerchantApplication": {
           "statusSubmitted": "We received your application and will mbono it shortly.",
@@ -8427,7 +8467,7 @@
           "summaryTierCount_one": "{{count}} Vhukole tier",
           "summaryTierCount_other": "{{count}} Vhukole tiers",
           "summaryTiersIncomplete": "Zwo itelwa tiers (infhedza)",
-          "summaryRateKm": "{{amount}}/km",
+          "summaryRateKm": "{{amount}}/km ",
           "summaryMin": "Ṱuku {{amount}}",
           "summaryFreeLe": "mahala ≤ {{km}} km",
           "summaryMax": "Zwin'wana {{amount}}",
@@ -8669,9 +8709,9 @@
         "yocoPaymentSheet": {
           "lastUsedRecent": "tshifhinganyana",
           "lastUsedJustNow": "just zwazwino",
-          "lastUsedMinutes": "{{count}}m ago",
-          "lastUsedHours": "{{count}}h ago",
-          "lastUsedDays": "{{count}}d ago",
+          "lastUsedMinutes": "minete {{count}} yo fhiraho",
+          "lastUsedHours": "awara {{count}} dzo fhiraho",
+          "lastUsedDays": "maḓuvha {{count}} o fhiraho",
           "lastUsedMonths": "{{count}}mo ago",
           "selectDeviceTitle": "Nanga tshishumiswa",
           "selectDeviceBody": "Nanga a Yoco tshishumiswa to process the mbadedzo.",
@@ -9190,7 +9230,10 @@
           "notes": "Noṱe",
           "notesPlaceholder": "zwo khethea noṱe...",
           "updateZone": "Khwinisa Zone",
-          "addZone": "Engedza Zone"
+          "addZone": "Engedza Zone",
+          "introHint": "Zwifhethu zwi vhea hune vhashumi vha nga u buka hayani. Tshifhethu tshine tsha vha na mbadelo tshatsho tshi tshi shumisa fhano ndi hone wa mbadelo wau wa lwendo.",
+          "actionTravelFees": "Lwendo mbadelo",
+          "noZonesWarning": "Vhashumi a vha koni u u buka hayani u swika ni tshi nanga tshifhethu tshithihi tsha tshumelo."
         },
         "staffNotifications": {
           "saveFailedTitle": "A zwo koni u vhulunga",
@@ -9573,7 +9616,7 @@
           "unitsSold": "{{count}} skha kale",
           "unitsSoldInStock": "{{count}} skha kale · {{stock}} kha sitoko",
           "lowStockAlerts": "Zwiṱalutshedzo zwa sitoko tsha fhasi",
-          "stockLeft": "{{count}} left",
+          "stockLeft": "{{count}} zwo sala",
           "packageUsage": "tshiphuthelwa Usage",
           "activeLabel": "I a shuma:",
           "redeemedLabel": "Yo shumiswa:",
@@ -9882,7 +9925,9 @@
           "signOut": "Bva",
           "signOutTitle": "bva?",
           "signOutBody": "U nga hetisa ku veka endzhaku. Ndzima ya wena yi hlayisiwile eka akhawunti ya wena.",
-          "cancel": "Khansela"
+          "cancel": "Khansela",
+          "verificationRequiredTitle": "u khwaṱhisedza vhune zwi a ṱoḓea to go Ya vhukuma",
+          "verificationRequiredBody": "Fhedza u khwaṱhisedza vhuthihi uri ri kone u tenda mutevhe wau wa u buka ha tshitshavha."
         },
         "packageSalesReport": {
           "factsDefinitions": "Facts & definitions",
@@ -10156,7 +10201,9 @@
           "thisMonth": "This ṅwaha",
           "avgFee": "Ling. mbadelo",
           "trips": "Mihambo",
-          "saveSettings": "Vhulunga Nzudzanyo"
+          "saveSettings": "Vhulunga Nzudzanyo",
+          "noZonesWarning": "Vhashumi a vha koni u u buka hayani u swika ni tshi nanga tshifhethu tshithihi tsha tshumelo.",
+          "actionChooseZones": "Nanga zones"
         },
         "revenueTrendsReport": {
           "basisIntro": "Layini ya buku yi tirhisa finance_transactions (miholo, ku famba, tip) hi siku ro amukeriwa. Ku tala tinyiko swi tirhisa masiku ya miha (handle ka swi khanseliweke na swi nga fiki). Ti ndlela leti hambanaka — ku avanyisiwa a ku vuli ku vanga.",
@@ -10617,7 +10664,7 @@
           "expired": "Xitimelo lexi xi herile. Kombela mulanguti wa wena a xi rhumela nakambe.",
           "acceptFailed": "A zwo koni u accept khuḓedzo",
           "teamFallback": "tshigwada yau",
-          "joinTitle": "Join {{name}}",
+          "joinTitle": "Dzhenela {{name}}",
           "inviteNamed": "Hurini {{name}}, no rambiwa u dzhena kha thimu kha Beautonomi.",
           "inviteGeneric": "You've been khuḓedzod to join a tshigwada on Beautonomi.",
           "signInHint": "Nghena hi imeyili leyi amukelerile xitimelo lexi. Tirhisa xixaka xo veka password ku suka eka imeyili ya xitimelo, kumbe u nghena hi email OTP — a wu lavi password leyi nga kona.",
@@ -10628,7 +10675,15 @@
           "acceptInvite": "Accept khuḓedzo",
           "getApp": "Get the muneḓi app",
           "downloadIos": "ḓaowniloda for iPhone",
-          "downloadAndroid": "ḓaowniloda for Android"
+          "downloadAndroid": "ḓaowniloda for Android",
+          "setPasswordTitle": "Vumba your phasiwede",
+          "passwordLabel": "Phasiwede",
+          "passwordConfirmLabel": "Khwaṱhisedza phasiwede",
+          "setPasswordSubmit": "Vhulunga phasiwede",
+          "setPasswordSuccess": "phasiwede vhulungad. dzhena to accept your khuḓedzo.",
+          "setPasswordFailed": "A zwo koni u vhulunga phasiwede",
+          "passwordMismatch": "Phasiwedes do not match",
+          "passwordTooShort": "Password i fanela u vha na mafhungo a 8"
         },
         "search": {
           "title": "Ṱoḓa",
@@ -10884,7 +10939,8 @@
           "myEarnings": "My Muholo",
           "title": "tshigwada & badela",
           "subtitleOwner": "Payroll & vhashumi performance",
-          "subtitleStaff": "badela stubs yau"
+          "subtitleStaff": "badela stubs yau",
+          "freelancerUnavailable": "Khwinisa to a saloni akhaunte to run payroll and tshigwada badela."
         },
         "terminalPaymentReturn": {
           "confirmingTitle": "I khou khwaṱhisedza mbadedzo",
@@ -11013,7 +11069,7 @@
           "typeCustom": "Zwo itelwa",
           "typeProducts": "Zwithu",
           "typeWalkIn": "U dzhena fhedzi",
-          "withStaff": "with {{name}}",
+          "withStaff": "na {{name}}",
           "orderLabel": "odara",
           "editDetailsTitle": "Lulamisisa mushumi zwidodombedzwa",
           "editDetailsSubtitle": "These fields are vhulungad on the mushumi's phurofaily.",
@@ -11417,7 +11473,9 @@
           "delete": "Thutha",
           "typeNameRequired": "Ṅwališa a Lushaka dzina.",
           "deleteTypeTitle": "Thutha blocked tshifhinga Lushaka",
-          "deleteTypeBody": "Remove \"{{name}}\"? Existing blocks using this type may lose their tshigwada."
+          "deleteTypeBody": "Remove \"{{name}}\"? Existing blocks using this type may lose their tshigwada.",
+          "introHint": "Zwibuloko zwi vala tshifhinga kha khalendara uri vhashumi vha nga si kone u zwi buka. Kha u wisa ha vhashumi, shumisani Maḓuvha a u wisa.",
+          "actionDaysOff": "maḓuvha off"
         },
         "authLogin": {
           "accountSuspended": "Akhaunthu yavho yo imiswa. Kha vha kwame thikhedzo arali vha tshi tenda uri hezwi ndi vhukhakhi.",
@@ -11986,7 +12044,7 @@
           "reviewsCount": "{{count}} mbono",
           "rewardsA11y": "Vula mubuyelos and badges",
           "rewardPoints": "mubuyelo phointhi",
-          "pts": "{{count}} pts",
+          "pts": "{{count}} phointhi",
           "badge": "Badge: {{name}}",
           "pointsSeparate": "Mbuno dzo fhambana na tshifhinga tsha bindu tshi re afho fhasi — ṱoḓani zwipikwa & bege.",
           "viewRewards": "Vhona mubuyelos",
@@ -12465,7 +12523,8 @@
           "customerFallback": "Mushumi",
           "atHome": "Hayani",
           "atSalon": "Kha saloni",
-          "budgetRange": " · Mali {{min}} – {{max}}"
+          "budgetRange": " · Mali {{min}} – {{max}}",
+          "introHint": "Khumbelo a dzo ngo kha khalendara yau. Ruma nyikedzo ine ya vha na mutengo na tshifhinga; zwi bukiwa musi mushumi a tshi badela."
         },
         "deleteAccount": {
           "pleaseWaitTitle": "Wait",
@@ -13127,9 +13186,9 @@
       "medicalDisclaimer": "Content is shared by providers and does not constitute medical advice.",
       "reportCommentHint": "Tap the flag on a comment to report it.",
       "justNow": "Just now",
-      "minutesAgo": "{{count}}m ago",
-      "hoursAgo": "{{count}}h ago",
-      "daysAgo": "{{count}}d ago",
+      "minutesAgo": "minete {{count}} yo fhiraho",
+      "hoursAgo": "awara {{count}} dzo fhiraho",
+      "daysAgo": "maḓuvha {{count}} o fhiraho",
       "providerFallback": "Provider",
       "openProviderProfile": "Open {{name}} profile",
       "userFallback": "User",
@@ -13701,6 +13760,11 @@
         },
         "chipCombobox": {
           "loading": "I khou ḽoḓa…"
+        },
+        "groupBookingPayment": {
+          "youPaidForGroup": "You yo badelwa for the Tshigwada",
+          "paidBy": "yo badelwa by {{name}}",
+          "covered": "Yo fungelela"
         }
       },
       "tabs": {
@@ -14361,7 +14425,9 @@
           "toggle_sensitive_content_filter_label": "Sensitive content hlawulela",
           "toggle_sensitive_content_filter_desc": "Fhedza zwi re kha zwipapati zwi re na zwithu zwa u shandula",
           "toggle_require_device_auth_label": "Require tshishumiswa authentication",
-          "toggle_require_device_auth_desc": "Kombela Face ID, fingerprint, kumbe passcode u nga si cinca swiyimiso leswi"
+          "toggle_require_device_auth_desc": "Kombela Face ID, fingerprint, kumbe passcode u nga si cinca swiyimiso leswi",
+          "unknownAgeNotice": "Ri shumisa ḓuvha ḽau ḽa u bebwa kha zwilawuli zwa tsireledzo. Zwi engedzeni uri ri kone u shumisa nzudzanyo yo tea. Musi ni na miaka ya 18 kana u fhira, ni nga shandukisa zwiswitshi izwi nga murahu ha u vhulunga ḓuvha. Vhaswa vha miaka ya 13–17 vha vhulunga nzudzanyo i tshi langwa.",
+          "addDateOfBirth": "Engedza ḓuvha ḽa u bebwa"
         },
         "notificationsCenter": {
           "screenTitle": "Zwiṱivhadzo",
@@ -14606,7 +14672,7 @@
           "orderLabel": "odara {{number}}",
           "openOrderA11y": "Vula odara {{number}}",
           "viewOrderCta": "Vhona odara",
-          "qtyLabel": "Qty {{count}}",
+          "qtyLabel": "Tshivhalo {{count}}",
           "statusPending": "yo linda",
           "statusApproved": "yo tendehwa",
           "statusItemReceived": "Tshithu received",
@@ -14712,7 +14778,7 @@
           "labelFrequency": "Hi ku phindha-phindha",
           "labelNextAppointment": "zwi teaho ndingo",
           "preferredTimeLine": "Preferred tshifhinga · {{time}}",
-          "endsOn": "Ends {{date}}",
+          "endsOn": "I fhela {{date}}",
           "noEndDateRuns": "No fixed fhedza ḓuvha — runs until you ima or khansela.",
           "viewSalon": "Vhona saloni",
           "editSchedule": "Lulamisisa shedulu",
@@ -15258,7 +15324,7 @@
           "servicesSection": "Tshumelo",
           "serviceFallback": "Tshumelo",
           "serviceLineFallback": "tshumelo {{index}}",
-          "withStaff": "with {{name}}",
+          "withStaff": "na {{name}}",
           "durationMinShort": "{{minutes}} min",
           "customOfferDetails": "Zwo itelwa Offer zwidodombedzwa",
           "yourRequest": "khumbelo: yau",
@@ -16054,7 +16120,12 @@
           "emergencyPhonePlaceholder": "Their nombolo ya luṱingoni",
           "emergencyRelationPlaceholder": "e.g. Spouse, Parent",
           "newEmailPlaceholder": "Ḓiresi ntswa ya imeili",
-          "newPhonePlaceholder": "Nombolo ntswa ya luṱingoni"
+          "newPhonePlaceholder": "Nombolo ntswa ya luṱingoni",
+          "dobLabel": "Ḓuvha ḽa u bebwa",
+          "dobEmptyHint": "Engedza your ḓuvha ḽa u bebwa",
+          "dobSafetyHint": "Zwilawuli zwa tsireledzo zwi shumisa ḓuvha ḽau ḽa u bebwa. Nzudzanyo ya vhathu vhahulwane i shuma fhedzi musi ni na miaka ya 18 kana u fhira.",
+          "addDobCta": "Engedza",
+          "changeDobCta": "khwinisa"
         },
         "loginSecurity": {
           "enterCurrentPassword": "Ṅwališa your zwa zwino phasiwede",
@@ -16417,7 +16488,13 @@
           "missingRequestId": "Missing khumbelo ID",
           "back": "Murahu",
           "retry": "Lingedza hafhu",
-          "help": "Thuso"
+          "help": "Thuso",
+          "waitingTitle": "khumbelo Yo rumelwa",
+          "waitingHeadline": "I khou linda for your muneḓi",
+          "waitingProviderMessage": "Izwi a zwo ngo khwaṱhisedzwa. Ri ḓo zwi buka musi {{provider}} a tshi tanganedza.",
+          "providerFallbackName": "muneḓi yau",
+          "waitingTimerLabel": "tshifhinga remaining",
+          "waitingCancelCta": "Khansela khumbelo"
         },
         "onDemandResult": {
           "loadBookingDetailsFailed": "A zwo koni u ḽoḓa zwidodombedzwa zwa u buka. Check your u buka list.",
@@ -16425,7 +16502,7 @@
           "pickAnotherTime": "Pick anzwiṅwe tshifhinga",
           "viewMyBookings": "Vhona my u buka",
           "backToHome": "Humela haya",
-          "withProvider": "with {{name}}"
+          "withProvider": "na {{name}}"
         },
         "inAppBrowser": {
           "invalidLink": "or missing thumanyo. i siho yone.",
@@ -16680,7 +16757,8 @@
           "budgetInvalid": "Bajete i fanela u vha nomboro yavhudi.",
           "budgetMaxLessThanMin": "Bajete ya u fhiraho i fanela u vha khulwane kana i lingane na ya fusha.",
           "durationOutOfRange": "Nkarhi wu fanele wu va exikarhi ka timinete ta {{min}} na {{max}}.",
-          "submittedPartialImages": "Swifaniso swin'wana a swi kotanga ku hlayisiwa — u nga engetela leswi saleke ku suka eka chat."
+          "submittedPartialImages": "Swifaniso swin'wana a swi kotanga ku hlayisiwa — u nga engetela leswi saleke ku suka eka chat.",
+          "hintOnce": "A huna tshithu tsho bukiwa zwazwino. Muthusi u fhindula nga mutengo na tshifhinga, zwi khwaṱhisedzwa musi ni tshi badela nyikedzo yawe. Khumbelo dzi vala nga murahu ha maḓuvha a {{days}}."
         },
         "notificationPreferences": {
           "loadFailed": "Zwo kundelwa u ḽoḓa preferences.",
@@ -17402,7 +17480,7 @@
     "atYourLocation": "At your fhethu",
     "atSalon": "Kha saloni",
     "provider": "Muneḓi",
-    "withStaff": "with {{name}}",
+    "withStaff": "na {{name}}",
     "date": "Ḓuvha",
     "time": "Tshifhinga",
     "couldNotSetDefaultCard": "A zwo koni u set tsho ḓoweleaho Khadi. lingedzani hafhu.",
@@ -17516,7 +17594,19 @@
     "packageApplied": "tshiphuthelwa applied",
     "redeemPackage": "Redeem a preyo badelwa tshiphuthelwa (zwo khethea)",
     "packageCredit": "tshiphuthelwa crlulamisisa",
-    "prepaidSessionsRemaining": "{{count}} Seshene(s) remaining"
+    "prepaidSessionsRemaining": "{{count}} Seshene(s) remaining",
+    "contextualHints": {
+      "dualFees": "I dzheneisa {{houseCall}} kha mbadedzo dza u dalela haya na mbadelo wa lwendo wa {{travel}}.",
+      "depositPayNow": "Badela {{deposit}} zwazwino. {{balance}} zwo sala zwi dzula kha u buka hau, nahone ni nga zwi badela u bva henefho.",
+      "depositLateCancel": "Mbadelo wa u khansela tshifhinga tsho fhela i bva kha zwo badelwa.",
+      "groupBooking": "Ni badela vhathu vhoṱhe nga mbadedzo nthihi. Vhueni vha ṱoḓa dzina fhedzi.",
+      "customOfferConfirm": "U badela nyikedzo iyi zwi khwaṱhisedza u buka hau.",
+      "customOfferExpires": "Offer I a fhela {{date}}.",
+      "groupSwitchOn": "Yo ṋetshedzwa",
+      "groupSwitchOff": "Yo valiwa",
+      "groupGuestsLimit_one": "Engedza up to {{count}} Muendi.",
+      "groupGuestsLimit_other": "Engedza up to {{count}} guests."
+    }
   },
   "payments": {
     "pay": "Badela",
@@ -17888,7 +17978,9 @@
         "loadingBooking": "E jarisa reserveshene...",
         "onlineBookingUnavailable": "Ho beha ka inthanete ha ho yo",
         "onlineBookingDisabled": "{{name}} ha a bule ho beha ka inthanete. Ikwamananye le bona ka ho toba.",
-        "findAnotherProvider": "Fumana mofani e mong"
+        "findAnotherProvider": "Fumana mofani e mong",
+        "onlineBookingDisabledGeneric": "This provider has not enabled online booking.",
+        "providerNotFound": "Provider not found"
       },
       "continue": {
         "slotExpiredToast": "Your reserved slot has expired. Please go back and pick a new time.",
@@ -18043,7 +18135,11 @@
         "enterSmsCode": "Ṅwališa khoudu ya dzi-digit dza {{digits}} u bva kha SMS",
         "invalidCode": "khoudu i siho yone",
         "emailOtpSentToast": "Check your email for the {{digits}}-digit code (valid about {{minutes}} minutes).",
-        "smsOtpSentToast": "Check your phone for the {{digits}}-digit code (valid about {{minutes}} {{minuteLabel}})."
+        "smsOtpSentToast": "Check your phone for the {{digits}}-digit code (valid about {{minutes}} {{minuteLabel}}).",
+        "passwordSignInPrompt": "Prefer email and password?",
+        "passwordSignInLink": "Sign in with password",
+        "noAccountPrompt": "New to Beautonomi?",
+        "createAccountLink": "Create an account"
       },
       "legacyFlow": {
         "bookWith": "buka with {{providerName}}",
@@ -18153,7 +18249,8 @@
         "tip": "Thiphu",
         "total": "Yoṱhe",
         "continue": "Bvela phanḓa",
-        "continueAriaLabel": "bvela phanḓa to zwi teaho step"
+        "continueAriaLabel": "bvela phanḓa to zwi teaho step",
+        "packageDiscount": "Package discount"
       },
       "confirmation": {
         "loadingMessage": "I khou ḽoḓa U khwaṱhisedza ha u buka...",
@@ -18193,7 +18290,7 @@
         "dateAndTime": "ḓuvha & tshifhinga",
         "services": "Tshumelo",
         "guest": "Muendi: {{name}}",
-        "withStaff": "with {{name}}",
+        "withStaff": "na {{name}}",
         "durationMin": "{{count}} min",
         "additionalCharges": "Mbadedzo dzo engedzea",
         "paidOn": "yo badelwa on {{date}}",
@@ -18543,7 +18640,10 @@
         "payWithCardEnding": "Pay {{amount}} with •••• {{last4}}",
         "payDeposit": "Pay Diphositi {{amount}}",
         "completeBooking": "fhedza u buka",
-        "payAmount": "Badela {{amount}}"
+        "payAmount": "Badela {{amount}}",
+        "slotConflictTitle": "That time is no longer available",
+        "slotConflictBody": "Pick another time on the calendar or jump to the next open slot.",
+        "pickNextAvailable": "Find next available time"
       },
       "addToWaitlist": {
         "enterName": "Enter your dzina",
@@ -18728,7 +18828,9 @@
         "capacity": "Capaḓorobo: {{count}}",
         "notAvailable": "Not i hone at this tshifhinga",
         "selected_one": "{{count}} resource Yo nangwa",
-        "selected_other": "{{count}} resources Yo nangwa"
+        "selected_other": "{{count}} resources Yo nangwa",
+        "stepTitle": "Choose resources",
+        "stepSubtitle": "Select any rooms or equipment needed for your appointment."
       },
       "virtualWaitingRoom": {
         "title": "Virtual kamara ya u linda",
@@ -18762,6 +18864,16 @@
         "cancelledDescription": "This u buka has been yo khanselwa",
         "unknownTitle": "a zwi ḓivhei mutevhe",
         "unknownDescription": "Unable to determine u buka mutevhe"
+      },
+      "journey": {
+        "stepOf": "Step {{current}} of {{total}}",
+        "bucket": {
+          "services": "Services",
+          "venue": "Location",
+          "time": "Date & time",
+          "details": "Your details",
+          "pay": "Payment"
+        }
       }
     },
     "search": {
@@ -19469,9 +19581,9 @@
           "openInbox": "Vula inbox",
           "notificationSettings": "tshiṱivhadzo nzudzanyo",
           "justNow": "Just zwazwino",
-          "minutesAgo": "{{count}}m ago",
-          "hoursAgo": "{{count}}h ago",
-          "daysAgo": "{{count}}d ago"
+          "minutesAgo": "minete {{count}} yo fhiraho",
+          "hoursAgo": "awara {{count}} dzo fhiraho",
+          "daysAgo": "maḓuvha {{count}} o fhiraho"
         }
       },
       "loyalty": {
@@ -20880,7 +20992,11 @@
           "secureBody": "All payment information is encrypted and processed securely. We never store your full card details.",
           "addCardNow": "Engedza Khadi zwazwino",
           "browseServices": "Browse tshumelo"
-        }
+        },
+        "cardVerifiedSuccess": "Your card was saved successfully.",
+        "cardVerificationFailed": "We could not confirm your card. Try again or use another card.",
+        "cardVerificationPending": "Verification is still processing. Refresh this page in a moment if your card does not appear.",
+        "cardVerificationCancelled": "Card verification was cancelled."
       },
       "referrals": {
         "loadFailed": "Zwo kundelwa u ḽoḓa u rumela vhuḓivhi",
@@ -21165,9 +21281,9 @@
         "webTip": "Tip: pull to refresh isn’t available on web — use the refresh button.",
         "preferencesLink": "tshiṱivhadzo preferences →",
         "justNow": "Just zwazwino",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago"
+        "minutesAgo": "minete {{count}} yo fhiraho",
+        "hoursAgo": "awara {{count}} dzo fhiraho",
+        "daysAgo": "maḓuvha {{count}} o fhiraho"
       },
       "addresses": {
         "deleteConfirm": "Are you sure you want to delete \"{{label}}\"?",
@@ -21365,7 +21481,7 @@
         "emailRequired": "imeili is zwi a ṱoḓea",
         "invalidEmail": "Enter a i tshi khwaṱhisea ḓiresi ya imeili",
         "passwordRequired": "phasiwede is zwi a ṱoḓea",
-        "passwordMinLength": "Password must be at least 8 characters",
+        "passwordMinLength": "Phasiwede i tea u vha na zwivhili zwa 8 kha u fhira",
         "passwordTooWeak": "Use a stronger password (add uppercase, numbers, or symbols)",
         "agreeTermsRequired": "Please confirm you have read and agree to the Terms of Service and Privacy Policy (including product analytics and optional session replay while signed in).",
         "invalidPhoneOrClear": "Ṅwališa a i tshi khwaṱhisea nombolo ya luṱingoni or thutha the luṱingoni field.",
@@ -21475,7 +21591,19 @@
         "checkNeeded": "akhaunte check needed"
       },
       "marketingConsent": "Ruma me thiphu, Nyikedzo, and tshithu khwinisas. You can unsubscribe anytshifhinga.",
-      "passkeyComingSoon": "Passkey (zwi ḓo swika tshifhinganyana)"
+      "passkeyComingSoon": "Passkey (zwi ḓo swika tshifhinganyana)",
+      "bookingReturn": {
+        "titleLogin": "You're signing in to finish your booking",
+        "titleSignup": "Create an account to finish your booking",
+        "continueBooking": "Continue booking",
+        "stepDefault": "Sign in to pick up where you left off.",
+        "stepTime": "Sign in to choose a date and time.",
+        "stepPay": "Sign in to review details and pay.",
+        "stepDetails": "Sign in to add your details and continue.",
+        "stepServices": "Sign in to choose services and continue.",
+        "stepVenue": "Sign in to confirm where you'll be served.",
+        "rateLimitWait": "Too many attempts. Try again in {{seconds}}s."
+      }
     },
     "provider": {
       "locationTracker": {
@@ -21562,7 +21690,7 @@
         "currentBadge": "Zwazwino: {{name}}",
         "nextBadge": "zwi teaho: {{name}}",
         "ptsToBadge": "{{count}} pts to {{name}}",
-        "pointsTotal": "{{count}} pts",
+        "pointsTotal": "{{count}} phointhi",
         "congratsBadge": "🎉 Congratulations on earning this badge!",
         "earnUnlock": "Earn phointhi and Vula lotho badges",
         "topTierTitle": "Top tier unlocked",
@@ -22373,9 +22501,9 @@
         "yocoPaymentDialog": {
           "recently": "tshifhinganyana",
           "justNow": "just zwazwino",
-          "minutesAgo": "{{count}}m ago",
-          "hoursAgo": "{{count}}h ago",
-          "daysAgo": "{{count}}d ago",
+          "minutesAgo": "minete {{count}} yo fhiraho",
+          "hoursAgo": "awara {{count}} dzo fhiraho",
+          "daysAgo": "maḓuvha {{count}} o fhiraho",
           "monthsAgo": "{{count}}mo ago",
           "loadDevicesFailed": "Zwo kundelwa u ḽoḓa mbadedzo zwishumiswa",
           "selectDevice": "Nanga a mbadedzo tshishumiswa",
@@ -22616,7 +22744,11 @@
           "retailProducts": "Thengiso zwithu",
           "selectProduct": "Nanga tshithu…",
           "selectVariant": "Nanga variant…",
-          "variantFallback": "Xiyenge"
+          "variantFallback": "Xiyenge",
+          "openGroupBooking": "Plan a group booking instead",
+          "sendQuote": "Send a quote instead",
+          "sendQuoteNeedsAccount": "Select a client with an account to send a quote.",
+          "uncategorized": "Uncategorized"
         },
         "blockedTimeTypeDialog": {
           "updated": "Blocked tshifhinga Lushaka khwinisad",
@@ -22873,7 +23005,7 @@
           "label": "Ya vhukuma · khwinisad {{relative}}",
           "justNow": "just zwazwino",
           "secondsAgo": "{{count}}s ago",
-          "minutesAgo": "{{count}}m ago"
+          "minutesAgo": "minete {{count}} yo fhiraho"
         },
         "dayHub": {
           "tabDay": "Ḓuvha",
@@ -22893,7 +23025,11 @@
           "appointmentsOnly_one": "{{count}} ndingo",
           "appointmentsOnly_other": "{{count}} ndingo",
           "blocksOnly_one": "{{count}} block",
-          "blocksOnly_other": "{{count}} blocks"
+          "blocksOnly_other": "{{count}} blocks",
+          "runningBehindTitle": "Ni salelwa nga tshifhinga?",
+          "runningBehindBody": "We'll notify remaining confirmed clients today that you're delayed.",
+          "delay15": "15 minutes",
+          "delay30": "30 minutes"
         },
         "overview": {
           "all": "Zwoṱhe",
@@ -23868,6 +24004,10 @@
           "plan": {
             "title": "Nanga Your Pulane",
             "description": "Nanga a ṅwaliso Pulane"
+          },
+          "travelFees": {
+            "title": "Travel Fees",
+            "description": "House-call travel fee rules and live fee preview"
           }
         },
         "toast": {
@@ -23934,7 +24074,8 @@
           "setHours": "Set your opelinga uwara",
           "oneDayOpen": "At least one ḓuvha must be vula",
           "selectPlan": "Nanga a ṅwaliso Pulane",
-          "andMoreSeeConsole": " (and {{count}} zwo engedzea - see console)"
+          "andMoreSeeConsole": " (and {{count}} zwo engedzea - see console)",
+          "dobRequired": "Date of birth is required for identity verification"
         },
         "successHeadline": "You're all set!",
         "continueVerification": "bvela phanḓa to verification",
@@ -23985,7 +24126,8 @@
           "ownerContactTitle": "mune and Ikwane zwidodombedzwa",
           "ownerContactBody": "We verify both your email and mobile number to protect your account.",
           "yourName": "Dzina yau",
-          "emailAddress": "Ḓiresi ya imeili"
+          "emailAddress": "Ḓiresi ya imeili",
+          "dateOfBirth": "Date of birth"
         },
         "photos": {
           "yourPhoto": "tshifanyiso yau",
@@ -24190,7 +24332,7 @@
           "enter": "Enter",
           "radius": "Radius",
           "polygon": "Polygon",
-          "ratePerKm": "{{amount}}/km",
+          "ratePerKm": "{{amount}}/km ",
           "minFee": "Ṱuku {{amount}}",
           "freeWithinKm": "mahala within {{km}} km",
           "maxFee": "Zwin'wana {{amount}}",
@@ -24221,7 +24363,9 @@
           "preselectedCategories": "We've pre-selected {{count}} common categories. You can change them!",
           "categoriesTipBody": "zwigwada thuso vhashumi discover you in ṱoḓa and hlawulelas.",
           "categoriesDraftHint": "If you skip services for now, we can draft simple services from the categories you pick.",
-          "noCategoriesAvailable": "No zwigwada i hone. Please Ikwane thusedzo."
+          "noCategoriesAvailable": "No zwigwada i hone. Please Ikwane thusedzo.",
+          "menuCategoryNames": "Names on your menu (you can rename these)",
+          "categoryNamePlaceholder": "Category name"
         },
         "catalog": {
           "atSalon": "Kha saloni",
@@ -24342,6 +24486,9 @@
           "locationBookingWindowTitle": "fhethu u buka Window:",
           "locationBookingWindowBody": "Clients only see slots inside these hours for the salon. You can set individual staff schedules later under Settings.",
           "hoursTo": "kha"
+        },
+        "travelFees": {
+          "usePlatformDefault": "Use platform default travel fees"
         }
       },
       "dashboard": {
@@ -24987,7 +25134,7 @@
             "dayCount_one": "1 ḓuvha",
             "dayCount_other": "Maḓuvha a {{count}}",
             "timeBoost": "Khwiniso nga tshifhinga",
-            "daysBoost": "{{days}} boost",
+            "daysBoost": "{{days}} u khwinisa",
             "timeBoostSubtitle": "Mali i re tshimbile — u vhulungwa ho hoxiwaho tsha {{days}}.",
             "benefitSponsoredDuration": "U vhulungwa ho hoxiwaho tshifhinga tsho fhela tsha {{days}}",
             "benefitFlatPrice": "Ndali i re tshimbile i re zwi ṱhonifha — a hu na mali nga u kopa",
@@ -25053,7 +25200,7 @@
             "budgetFullyUsed": "Budget yo ḓalay used",
             "budgetRemaining": "{{amount}} mali i re hone",
             "dayBoostPaid": "{{days}} ḓuvha boost · {{amount}} yo badelwa",
-            "endsOn": "Ends {{date}}",
+            "endsOn": "I fhela {{date}}",
             "impressionsPaidSpent": "{{count}} U vhonala · {{paid}} yo badelwa · {{spent}} spent",
             "totalBudgetSpent": "yoṱhe budget {{budget}} · Spent {{spent}}",
             "dailyCapLine": "Mutevhe wa ḓuvha na ḓuvha {{amount}}",
@@ -25335,7 +25482,10 @@
             "depositPercent": "Diphositi % (alternate)",
             "useAmountOrPct": "Use either tshivhalo or %",
             "saveBookingFlow": "Vhulunga u buka flow nzudzanyo",
-            "onlineBookingDisabled": "Online booking is currently disabled. Clients will not be able to book appointments online."
+            "onlineBookingDisabled": "Online booking is currently disabled. Clients will not be able to book appointments online.",
+            "shareWhatsApp": "WhatsApp",
+            "shareEmail": "Email",
+            "shareNative": "Share"
           },
           "appointment-activity/resources": {
             "resources": "Swipfuno",
@@ -26198,7 +26348,9 @@
             "topUpViaPaystack": "Ṱadza via Paystack",
             "refresh": "Khwinisa",
             "ownIntegrations": "Own integrations",
-            "ownIntegrationsHint": "Connect your SendGrid/Mailchimp or Twilio account. Sends on your credentials are not debited from platform credits."
+            "ownIntegrationsHint": "Connect your SendGrid/Mailchimp or Twilio account. Sends on your credentials are not debited from platform credits.",
+            "topUpSuccess": "Marketing credits topped up successfully.",
+            "topUpPending": "Payment is still processing. Refresh in a moment if your balance has not updated."
           },
           "note-templates": {
             "noteTemplates": "Xiya ti-template",
@@ -27746,6 +27898,10 @@
             "nativeCancelled": "You yo khanselwa the mbadedzo. No badelisa was made.",
             "nativeInvalid": "This mbadedzo return thumanyo is i siho yone or infhedza."
           }
+        },
+        "serviceZones": {
+          "introHint": "Zwifhethu zwi vhea hune vhashumi vha nga u buka hayani. Tshifhethu tshine tsha vha na mbadelo tshatsho tshi tshi shumisa fhano ndi hone wa mbadelo wau wa lwendo.",
+          "actionTravelFees": "Travel fees"
         }
       },
       "pages": {
@@ -27882,7 +28038,7 @@
           "loadFailed": "A zwo koni u ḽoḓa khuḓedzo",
           "acceptFailed": "A zwo koni u accept khuḓedzo",
           "teamFallback": "tshigwada yau",
-          "joinTitle": "Join {{name}}",
+          "joinTitle": "Dzhenela {{name}}",
           "inviteNamed": "Hurini {{name}}, no rambiwa u dzhena kha thimu kha Beautonomi.",
           "inviteGeneric": "You've been khuḓedzod to join a tshigwada on Beautonomi.",
           "signInWithEmail": "dzhena or vumba an akhaunte with",
@@ -27895,7 +28051,16 @@
           "getApp": "Get the muneḓi app",
           "downloadIos": "ḓaowniloda for iPhone",
           "downloadAndroid": "ḓaowniloda for Android",
-          "logoAlt": "Beautonomi"
+          "logoAlt": "Beautonomi",
+          "setPasswordTitle": "Create your password",
+          "setPasswordHint": "Choose a password (at least 8 characters), then sign in with your invite email.",
+          "passwordLabel": "Password",
+          "passwordConfirmLabel": "Confirm password",
+          "setPasswordSubmit": "Save password",
+          "setPasswordSuccess": "Phasiwede yo vhulungiwa. Dzhena u tanganedza khumbelo yau.",
+          "setPasswordFailed": "Could not save password",
+          "passwordMismatch": "Phasiwede a dzi tshimbileani",
+          "passwordTooShort": "Phasiwede i tea u vha na zwivhili zwa 8 kha u fhira"
         },
         "notifications": {
           "subtitle": "Vhona and manage your zwiṱivhadzo",
@@ -29305,7 +29470,13 @@
             "paymentsByStatus": "mbadedzo by mutevhe",
             "noPaymentStatusData": "No mbadedzo mutevhe Datha i hone for the Yo nangwa period.",
             "cashStyle": "Masheleni Style",
-            "transactionsCount": "Vhushumisi ha {{count}}"
+            "transactionsCount": "Vhushumisi ha {{count}}",
+            "ledgerTruncatedTitle": "Ledger khulwane — zwitatale zwi nga si fhelele",
+            "ledgerTruncated": "More than {{max}} finance rows matched this range. Narrow the date range for complete totals.",
+            "membershipEarnings": "Mbadelo dza vhuleme (ledger)",
+            "membershipEarningsHint": "membership_provider_earnings rows settled in this period (included in provider net activity).",
+            "providerCollectedByMethod": "Yo kuvhanganywa nga muthusi (tshelede / EFT / khadi)",
+            "methodEft": "Bank transfer (EFT)"
           },
           "payments/yoco-reconciliation": {
             "title": "Yoco reconciliation",
@@ -30394,7 +30565,8 @@
           "appointmentColorHint": "Choose a color to visually identify services in this category",
           "descriptionOptional": "ṱhaluso (zwo khethea)",
           "descriptionPlaceholder": "Add a short summary that helps clients understand what types of services are included in this category",
-          "descriptionHint": "Help clients understand what types of services are included in this category"
+          "descriptionHint": "Help clients understand what types of services are included in this category",
+          "homePriceAdjustmentHint": "Yo engedzwa kha mutengo wa tshumelo iyi ya u dalela haya. Mbadelo wa lwendo u badelwa nga u fhambanya."
         },
         "serviceDialog": {
           "shortHair": "Short Mavhudzi",
@@ -31863,9 +32035,9 @@
       },
       "notificationsDropdown": {
         "justNow": "Just zwazwino",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
+        "minutesAgo": "minete {{count}} yo fhiraho",
+        "hoursAgo": "awara {{count}} dzo fhiraho",
+        "daysAgo": "maḓuvha {{count}} o fhiraho",
         "loadFailed": "Zwo kundelwa u ḽoḓa zwiṱivhadzo",
         "markReadFailed": "A zwo koni u mark tshiṱivhadzo as read",
         "openFailed": "A zwo koni u Vula thumanyo for this tshiṱivhadzo",
@@ -32237,7 +32409,8 @@
         "services": "Tshumelo",
         "expiresCol": "I a fhela",
         "clicks": "U tobetela",
-        "itemsSelected": "Zwithu Yo nangwa"
+        "itemsSelected": "Zwithu Yo nangwa",
+        "copyEmbedSnippet": "Copy embed snippet"
       },
       "calendarPage": {
         "serviceFallback": "Tshumelo",
@@ -32553,7 +32726,9 @@
         "boostProfile": "Boost your phurofaily",
         "completeLater": "fhedza nga murahu",
         "setUp": "Vhea",
-        "stepsToGo": "Steps To Go"
+        "stepsToGo": "Steps To Go",
+        "verificationRequiredToGoLive": "U khwaṱhisedza vhuthihi hu tea u thoma u shuma",
+        "verificationRequiredBody": "Your checklist is complete, but we still need to verify your identity before you can accept public bookings."
       },
       "shiftsPage": {
         "failedToLoad": "Zwo kundelwa u ḽoḓa shift",
@@ -33157,6 +33332,22 @@
         "optionalParen": "(zwo khethea)",
         "nameRequired": "dzina *",
         "other": "Zwiṅwe"
+      },
+      "scheduling": {
+        "calendarIconLegendTitle": "What these icons mean",
+        "calendarIcons": {
+          "isNewClient": "New client",
+          "hasNotes": "Has notes",
+          "isRepeating": "Repeating appointment",
+          "hasMembership": "Member",
+          "hasFormsIncomplete": "Forms incomplete",
+          "hasPhotos": "Has photos",
+          "hasConversation": "Has messages",
+          "isGroup": "Group booking",
+          "hasCustomization": "Service customization",
+          "isWalkIn": "Walk-in",
+          "isAtHome": "At-home service"
+        }
       }
     },
     "global": {
@@ -34331,7 +34522,8 @@
     },
     "referralSource": {
       "label": "How did this mushumi find you?",
-      "notSpecified": "A zwo ṱaluswi"
+      "notSpecified": "A zwo ṱaluswi",
+      "addForVisit": "Engedza nḓila ye vha ni wana ngayo"
     },
     "editProducts": {
       "label": "Zwithu",

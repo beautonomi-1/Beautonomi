@@ -63,7 +63,6 @@ export const paystackProvider: PaymentProvider = {
       callback_url: params.callbackUrl,
       metadata: params.metadata as Record<string, unknown>,
       tenantId: params.tenantId,
-      ...(params.connectedAccountId ? { subaccount: params.connectedAccountId } : {}),
     });
     return {
       provider: "paystack",

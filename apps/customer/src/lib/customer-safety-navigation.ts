@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { BackHandler, Platform } from "react-native";
-import { useFocusEffect, useLocalSearchParams, useRouter, type Router } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import type { ExpoRouter } from "@/types/expo-router";
 
 export const SAFETY_HUB_HREF = "/(app)/safety" as const;
 export const FROM_SAFETY_HUB = "safety" as const;
@@ -34,7 +35,7 @@ export function resolveFromReturnHref(fromParam: string | string[] | undefined):
 }
 
 export function performCustomerStackBack(
-  router: Router,
+  router: ExpoRouter,
   returnHref?: string,
 ): void {
   if (returnHref) {
@@ -55,7 +56,7 @@ export function useFromSafetyHub(): boolean {
 
 /** Push from Trust & Safety hub — child screens return via useSafetyStackBack. */
 export function navigateFromSafetyHub(
-  router: Router,
+  router: ExpoRouter,
   pathname: string,
   params?: Record<string, string | undefined>,
 ): void {

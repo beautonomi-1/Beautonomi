@@ -37,6 +37,7 @@ describe("POST /api/auth/otp/verify", () => {
     const { POST } = await import("../route");
     const res = await POST(post({ email: "a@b.com", token: "123456", type: "email" }));
     expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("30");
     const json = await res.json();
     expect(json.error).toBe("Too many attempts. Please try again later.");
     expect(mockVerifyOtp).not.toHaveBeenCalled();

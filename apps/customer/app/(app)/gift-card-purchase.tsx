@@ -7,8 +7,14 @@ import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import {
   extractPaystackReferenceFromUrl,
   isCancelledPaystackUrl,
-  matchesExpoReturnUrl,
 } from "@/lib/paystack-webview-utils";
+import {
+  GIFT_CARD_SUCCESS_PATH,
+  getCustomerPaystackAuthReturnUrl,
+  getGiftCardPurchasePaystackAuthPrefix,
+  matchesGiftCardPurchaseSuccessReturnUrl,
+  matchesPaystackAuthSessionReturn,
+} from "@/lib/payments/customerPaystackReturn";
 import * as ExpoLinking from "expo-linking";
 import { api } from "@/lib/api-client";
 import { trackGiftCardPurchased } from "@/lib/analytics";
@@ -21,6 +27,7 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
 import { useTranslation } from "@beautonomi/i18n";
 import { useAuth } from "@/providers/AuthProvider";
+import { hasSupabaseAccessToken, pushLoginWithReturnTo, redirectLoginIfAuthRequired } from "@/lib/customer-auth-routing";
 import { useSavedCards } from "@/hooks/useSavedCards";
 import { usePaystackPayment } from "@/hooks/usePaystackPayment";
 import { PaymentProcessingOverlay } from "@/components/payment/PaymentProcessingOverlay";
@@ -158,10 +165,17 @@ export default function GiftCardPurchaseScreen() {
             if (Number.isFinite(parsed.getTime())) body.deliver_at = parsed.toISOString();
           }
         }
-        if (Platform.OS !== "web") {
-          body.callback_url = ExpoLinking.createURL("gift-card-return");
-        }
+        body.callback_url =
+          Platform.OS !== "web"
+            ? ExpoLinking.createURL("gift-card-return")
+            : getCustomerPaystackAuthReturnUrl(GIFT_CARD_SUCCESS_PATH);
         trackGiftCardPurchased(finalAmount);
+        const giftReturnTo = "/(app)/gift-card-purchase";
+        const hasToken = await hasSupabaseAccessToken();
+        if (!hasToken) {
+          pushLoginWithReturnTo(giftReturnTo);
+          return;
+        }
         const res = await api.post<{ order_id?: string; payment_url?: string; reference?: string; data?: { order_id?: string; payment_url?: string; reference?: string } }>(
           "/api/public/gift-cards/purchase",
           body,
@@ -173,6 +187,9 @@ export default function GiftCardPurchaseScreen() {
         if (res.error) {
           if (isTransientApiFailure(res.error)) {
             setSuccessState("pending");
+            return;
+          }
+          if (redirectLoginIfAuthRequired(giftReturnTo, res.error)) {
             return;
           }
           Alert.alert(errTitle, getApiErrorMessage(res.error, gc("startPurchaseError")));
@@ -235,14 +252,17 @@ export default function GiftCardPurchaseScreen() {
 
         setProcessingMessage(gc("openingPaymentPage") || "Opening payment page…");
         if (Platform.OS !== "web") {
-          const returnUrl = ExpoLinking.createURL("gift-card-return");
+          const returnUrl = getGiftCardPurchasePaystackAuthPrefix();
           // Important: close blocking overlay before opening Paystack WebView.
           // Concurrent RN modals can prevent checkout from appearing.
           setProcessingPayment(false);
           const pr = await paystackHostedCheckout.waitForCheckout(paymentUrl, {
             title: gc("securePaymentTitle") || "Secure payment",
             returnUrl,
-            matchSuccess: (u) => matchesExpoReturnUrl(u, returnUrl) && !isCancelledPaystackUrl(u),
+            matchSuccess: (u) =>
+              (matchesPaystackAuthSessionReturn(u, returnUrl) ||
+                matchesGiftCardPurchaseSuccessReturnUrl(u)) &&
+              !isCancelledPaystackUrl(u),
             matchCancel: (u) => isCancelledPaystackUrl(u),
           });
           if (pr.outcome === "cancel") {
@@ -253,7 +273,9 @@ export default function GiftCardPurchaseScreen() {
             if (extracted) reference = extracted;
           }
         } else {
-          await Linking.openURL(paymentUrl);
+          // Expo Web: full redirect to Paystack → Next.js gift-card success page verifies.
+          window.location.assign(paymentUrl);
+          return;
         }
 
         setProcessingPayment(true);

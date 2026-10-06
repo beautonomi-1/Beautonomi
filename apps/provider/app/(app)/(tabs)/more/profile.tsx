@@ -50,7 +50,7 @@ import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { formatPhone } from "@/lib/format";
 import { useProvider } from "@/providers/ProviderContext";
 import { getApiErrorMessage, getApiErrorCode } from "@/lib/api-error";
-import { isMailableEmail } from "@beautonomi/utils";
+import { formatLegalDobDisplay, isMailableEmail } from "@beautonomi/utils";
 import { appendFormDataFileNative, countryFilterIso2FromStorage } from "@beautonomi/utils";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { AddressMapPinModal } from "@/components/AddressMapPinModal";
@@ -118,6 +118,7 @@ export default function ProfileScreen() {
   const [phoneFieldError, setPhoneFieldError] = useState<string | null>(null);
   /** Last loaded phone from server (for “on file” line; updates after save / OTP). */
   const [savedPhoneForDisplay, setSavedPhoneForDisplay] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState<string | null>(null);
   const [savedEmailForDisplay, setSavedEmailForDisplay] = useState("");
   const initialProfileRef = useRef<{ email: string; phone: string }>({ email: "", phone: "" });
   const canUseQuietRefresh = useRef(false);
@@ -297,6 +298,9 @@ export default function ProfileScreen() {
       setPhoneFieldError(null);
       setSavedPhoneForDisplay(loadedPhone || "");
       setSavedEmailForDisplay(loadedEmail || "");
+      setDateOfBirth(
+        typeof data.date_of_birth === "string" && data.date_of_birth.trim() ? data.date_of_birth.trim() : null,
+      );
 
       setProfile({
         email: loadedEmail,
@@ -694,6 +698,43 @@ export default function ProfileScreen() {
           <View style={twStyle("mb-6 rounded-2xl border border-gray-200 bg-white p-4")}>
             <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>{pf("personalInformation")}</Text>
             <View>
+              {!dateOfBirth ? (
+                <TouchableOpacity
+                  onPress={() => router.push("/(app)/(tabs)/more/safety/age-assurance" as never)}
+                  style={twStyle("mb-4 rounded-xl border border-primary/20 bg-primary/5 p-3")}
+                  accessibilityRole="button"
+                >
+                  <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                    {t("customer.mobile.screens.personalInfo.dobLabel", { defaultValue: "Date of birth" })}
+                  </Text>
+                  <Text style={twStyle("mt-1 text-xs text-gray-600 leading-5")}>
+                    {t("customer.mobile.screens.personalInfo.dobSafetyHint", {
+                      defaultValue:
+                        "Safety controls use your date of birth. Adult settings apply only if you are 18 or older.",
+                    })}
+                  </Text>
+                  <Text style={twStyle("mt-2 text-sm font-semibold text-primary")}>
+                    {t("customer.mobile.screens.personalInfo.addDobCta", { defaultValue: "Add" })}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={twStyle("mb-4")}>
+                  <View style={twStyle("flex-row items-center justify-between mb-1")}>
+                    <Text style={twStyle("text-xs font-medium text-gray-500")}>
+                      {t("customer.mobile.screens.personalInfo.dobLabel", { defaultValue: "Date of birth" })}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => router.push("/(app)/(tabs)/more/safety/age-assurance" as never)}
+                      accessibilityRole="button"
+                    >
+                      <Text style={twStyle("text-xs font-semibold text-primary")}>
+                        {t("customer.mobile.screens.personalInfo.changeDobCta", { defaultValue: "Update" })}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={twStyle("text-sm text-gray-700")}>{formatLegalDobDisplay(dateOfBirth)}</Text>
+                </View>
+              )}
               <View>
                 <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>{pf("email")}</Text>
                 {savedEmailForDisplay.trim() ? (

@@ -103,6 +103,15 @@ describe("subscription renewal success-then-failed race", () => {
             }),
           };
         }
+        if (table === "wallet_topups") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+              })),
+            })),
+          };
+        }
         throw new Error(`unexpected table: ${table}`);
       }),
       rpc: vi.fn(async () => ({ data: null, error: null })),

@@ -1,4 +1,4 @@
-import type { Router } from "expo-router";
+import type { ExpoRouter } from "@/types/expo-router";
 import { downloadPdf } from "@/lib/pdf-file";
 
 /**
@@ -7,7 +7,7 @@ import { downloadPdf } from "@/lib/pdf-file";
  */
 export async function downloadTerminalOrderReceipt(
   orderId: string,
-  router: Router,
+  router: ExpoRouter,
   opts?: { productName?: string },
 ): Promise<void> {
   await downloadPdf({

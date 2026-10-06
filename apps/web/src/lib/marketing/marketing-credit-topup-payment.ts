@@ -48,21 +48,6 @@ export async function recordMarketingCreditTopupPayment(params: {
     return { recorded: false, alreadyRecorded: false };
   }
 
-  // Idempotency: a payment_transactions row for this reference + kind means we
-  // already recorded the platform finance side.
-  const { data: existing } = await supabase
-    .from("payment_transactions")
-    .select("id")
-    .eq("reference", reference)
-    .contains("metadata", { kind: "marketing_credit_topup" })
-    .maybeSingle();
-  if (existing) {
-    return { recorded: false, alreadyRecorded: true };
-  }
-
-  const nowIso = new Date().toISOString();
-  const netAmount = amountMajor - feesMajor;
-
   const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
     tenant_id: typeof params.metadata?.tenant_id === "string" ? (params.metadata.tenant_id as string) : null,
     provider_id: providerId,
@@ -80,24 +65,47 @@ export async function recordMarketingCreditTopupPayment(params: {
       return (tenantRow as { default_currency?: string | null } | null)?.default_currency ?? LAST_RESORT_CURRENCY;
     })());
 
-  await supabase.from("payment_transactions").insert({
-    booking_id: null,
-    reference,
-    amount: amountMajor,
-    fees: feesMajor,
-    net_amount: netAmount,
-    status: "success",
-    provider: "paystack",
-    transaction_type: "charge",
-    metadata: {
-      kind: "marketing_credit_topup",
-      provider_id: providerId,
-      currency: params.currency ?? null,
-    },
-    created_at: nowIso,
-  });
+  const { data: existingFinance } = await supabase
+    .from("finance_transactions")
+    .select("id")
+    .eq("provider_id", providerId)
+    .eq("transaction_type", "provider_marketing_credit_topup")
+    .contains("metadata", { paystack_reference: reference })
+    .maybeSingle();
+  if (existingFinance) {
+    return { recorded: false, alreadyRecorded: true };
+  }
 
-  await supabase.from("finance_transactions").insert({
+  const nowIso = new Date().toISOString();
+  const netAmount = amountMajor - feesMajor;
+
+  const { data: existingPaymentTx } = await supabase
+    .from("payment_transactions")
+    .select("id")
+    .eq("reference", reference)
+    .contains("metadata", { kind: "marketing_credit_topup" })
+    .maybeSingle();
+
+  if (!existingPaymentTx) {
+    await supabase.from("payment_transactions").insert({
+      booking_id: null,
+      reference,
+      amount: amountMajor,
+      fees: feesMajor,
+      net_amount: netAmount,
+      status: "success",
+      provider: "paystack",
+      transaction_type: "charge",
+      metadata: {
+        kind: "marketing_credit_topup",
+        provider_id: providerId,
+        currency: params.currency ?? null,
+      },
+      created_at: nowIso,
+    });
+  }
+
+  const { error: financeErr } = await supabase.from("finance_transactions").insert({
     booking_id: null,
     provider_id: providerId,
     tenant_id: financeTenantId,
@@ -115,6 +123,14 @@ export async function recordMarketingCreditTopupPayment(params: {
     },
     created_at: nowIso,
   });
+
+  if (financeErr) {
+    const code = String((financeErr as { code?: string }).code || "");
+    if (code === "23505") {
+      return { recorded: false, alreadyRecorded: true };
+    }
+    throw financeErr;
+  }
 
   return { recorded: true, alreadyRecorded: false };
 }

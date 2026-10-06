@@ -11,6 +11,7 @@ import {
   Platform,
   Appearance,
   View,
+  type ColorSchemeName,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -42,6 +43,10 @@ const ThemeContext = createContext<ThemeContextValue>({
 
 const THEME_KEY = "beautonomi_theme_mode";
 
+function resolveColorScheme(scheme: ColorSchemeName | null | undefined): "light" | "dark" {
+  return scheme === "dark" ? "dark" : "light";
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const deviceScheme = useDeviceColorScheme();
   const [themeMode, setThemeModeState] = useState<ThemeMode>("system");
@@ -67,13 +72,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setThemeModeState(mode);
     AsyncStorage.setItem(THEME_KEY, mode);
     // Also tell the system about our preference for status bar etc.
-    if (Platform.OS !== "web") {
-      Appearance.setColorScheme(mode === "system" ? null : mode);
+    if (Platform.OS !== "web" && mode !== "system") {
+      Appearance.setColorScheme(mode);
     }
   }, []);
 
-  const colorScheme = useMemo(() => {
-    if (themeMode === "system") return deviceScheme ?? "light";
+  const colorScheme = useMemo((): "light" | "dark" => {
+    if (themeMode === "system") return resolveColorScheme(deviceScheme);
     return themeMode;
   }, [themeMode, deviceScheme]);
 

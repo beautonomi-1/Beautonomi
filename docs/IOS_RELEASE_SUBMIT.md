@@ -1,11 +1,11 @@
 # Submitting a new release (Customer & Provider, iOS & Android)
 
-Use this when you want to ship new builds to TestFlight / App Store and Google Play. **GitHub already runs production builds** when you push to `main`.
+Use this when you want to ship new builds to TestFlight / App Store and Google Play. **This repo does not run EAS production builds on push to `main`** — GitHub CI only typechecks and validates Expo config (see `.github/workflows/ci.yml`). Run production builds manually (`pnpm run build:customer:ios`, etc.) or from each app directory with `eas build --profile production`.
 
 ## iOS version support & App Store expectations
 
-- **Minimum iOS:** **15.1+** (required by [Expo SDK 54](https://docs.expo.dev/versions/latest/); enforced via `expo-build-properties` → `deploymentTarget` in both apps). Older iOS releases cannot run these binaries; Apple also stops supporting very old OS versions for *new submissions* over time—check [Apple’s current requirements](https://developer.apple.com/news/upcoming-requirements/).
-- **Xcode / SDK:** Build with the **Xcode version EAS “latest”** expects for SDK 54 (see Expo’s compatibility table).
+- **Minimum iOS:** **16.4+** (required by [Expo SDK 57](https://docs.expo.dev/versions/latest/); enforced via `expo-build-properties` → `deploymentTarget` in both apps). Older iOS releases cannot run these binaries; Apple also stops supporting very old OS versions for *new submissions* over time—check [Apple’s current requirements](https://developer.apple.com/news/upcoming-requirements/).
+- **Xcode / SDK:** Build with the **Xcode version EAS “latest”** expects for SDK 57 (see Expo’s compatibility table).
 - **Encryption export:** `ITSAppUsesNonExemptEncryption` is **false** (standard HTTPS only). Answer App Store Connect’s export-compliance questions to match.
 - **Privacy:** Usage descriptions are set for location, photos, camera, tracking (ATT), push background mode, and **Face ID / Touch ID** (`expo-local-authentication`). Complete **Privacy Nutrition Labels** and any **Privacy Manifest** follow-ups in App Store Connect when Apple prompts.
 - **Age rating:** Before each submission, confirm answers against [APP_STORE_AGE_RATING.md](./APP_STORE_AGE_RATING.md) (parental controls, age assurance, UGC, social, messaging, medical/wellness frequency, and the public **Age Suitability URL** `https://www.beautonomi.com/age-suitability`). Social enforcement defaults to audit-only (`log` mode) until flipped in Admin feature flags — see the rollout section in that doc.

@@ -32,9 +32,9 @@ Salon sites use `/booking?slug=&embed=1` (see `docs/EMBED.md`). Only URLs with `
 |------|------------|------------|-------------------|
 | **Gate OTP** (in flow) | `BeautonomiGateModal` | `completeCustomerOnboardingQuietly` after verify | Reload with `auth_return=1` on `next` |
 | **Gate OAuth** | Same modal | Quiet-complete when `/booking` loads with session | `/auth/callback?next=` → booking URL |
-| **`/login?next=/booking…`** | Login page | Quiet-complete when `next` is `/booking` | `router.replace(next)` |
-| **`/signup?next=`** | Inline signup | `redirectUrl` when customer persona | Push/replace to booking |
-| **Password / LoginModal** | Global login | Wizard unless `redirectUrl` / `next` set | User-supplied return path |
+| **`/login?next=/booking…`** | Login page + booking return banner | Quiet-complete when `next` is `/booking` | `router.replace(next)` |
+| **`/signup?next=`** | Inline signup + booking return banner | `redirectUrl` when customer persona | Push/replace to booking |
+| **LoginModal** | Global modal | OTP via `/api/auth/otp/*` + Turnstile; password via `/api/auth/sign-in` | User-supplied return path |
 | **Customer app** | Native login | Stash `return_to` if onboarding incomplete | `book-checkout` / consume |
 
 Checkout always requires auth for **`POST /api/public/bookings`**. Holds and browse may proceed as guest until pay or `require_auth_step=before_time_selection`.

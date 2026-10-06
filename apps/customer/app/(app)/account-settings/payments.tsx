@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
+import { extractPaystackReferenceFromUrl, isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
 import {
-  extractPaystackReferenceFromUrl,
-  isCancelledPaystackUrl,
-  matchesExpoReturnUrl,
-} from "@/lib/paystack-webview-utils";
+  getCardVerificationPaystackAuthPrefix,
+  matchesAccountPaymentsReturnUrl,
+  matchesPaystackAuthSessionReturn,
+} from "@/lib/payments/customerPaystackReturn";
 import * as ExpoLinking from "expo-linking";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "@beautonomi/i18n";
@@ -197,6 +198,7 @@ export default function PaymentsScreen() {
     setAddingCard(true);
     const countBefore = methods.length;
     try {
+      const returnUrl = getCardVerificationPaystackAuthPrefix();
       const callbackUrl = ExpoLinking.createURL("payments-return");
       const res = await api.post<{
         authorization_url?: string;
@@ -230,8 +232,10 @@ export default function PaymentsScreen() {
       }
       const pr = await paystackHostedCheckout.waitForCheckout(url, {
         title: t("customer.paymentsScreen.addCard", "Add card") as string,
-        returnUrl: callbackUrl,
-        matchSuccess: (u) => matchesExpoReturnUrl(u, callbackUrl) && !isCancelledPaystackUrl(u),
+        returnUrl,
+        matchSuccess: (u) =>
+          (matchesPaystackAuthSessionReturn(u, returnUrl) || matchesAccountPaymentsReturnUrl(u)) &&
+          !isCancelledPaystackUrl(u),
         matchCancel: (u) => isCancelledPaystackUrl(u),
       });
       if (pr.outcome === "cancel") {

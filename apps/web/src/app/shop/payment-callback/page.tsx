@@ -8,10 +8,17 @@ import Link from "next/link";
 
 function ProductPaymentCallbackInner() {
   const searchParams = useSearchParams();
+  const nativeAppContext = searchParams.get("context") === "app";
   const router = useRouter();
   const [status, setStatus] = useState<"loading" | "success" | "error" | "pending">("loading");
   const [message, setMessage] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
+
+  useEffect(() => {
+    if (nativeAppContext && typeof document !== "undefined") {
+      document.title = "Payment";
+    }
+  }, [nativeAppContext]);
 
   useEffect(() => {
     let cancelled = false;

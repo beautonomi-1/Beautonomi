@@ -49,6 +49,10 @@ import {
   validateGroupBookingCreateStepDetailed,
   type GroupBookingCreateValidationField,
 } from "@/features/group-bookings/validateGroupBookingCreate";
+import {
+  aggregateOfferingResources,
+  shouldUseCategoryPicker,
+} from "@beautonomi/provider-booking";
 import { BookingCreateReadinessStrip } from "@/components/bookings/BookingCreateReadinessStrip";
 import { useCreateFormSections } from "@/hooks/useCreateFormSections";
 import {
@@ -367,6 +371,13 @@ type ServiceRow = {
   global_category?: { id?: string | null; name?: string | null; title?: string | null } | null;
   provider_categories?: { id?: string | null; name?: string | null; title?: string | null } | null;
   add_ons?: AddOnRow[];
+  resource_requirements?: Array<{
+    resource_id: string;
+    name: string;
+    required?: boolean;
+    is_active?: boolean;
+    location_id?: string | null;
+  }>;
 };
 type TeamRow = { id: string; name?: string };
 type AddOnRow = { id: string; name: string; price?: number; duration_minutes?: number };
@@ -394,6 +405,7 @@ type ProductRow = {
   id: string;
   name: string;
   price: number;
+  category?: string | null;
   variants?: { id: string; name: string; price: number }[];
 };
 type SelectedGroupProduct = {
@@ -690,6 +702,7 @@ function getParticipantLine(
 }
 
 export default function GroupBookingsScreen() {
+  const { t } = useTranslation();
   const gb = useGroupBookingsI18n();
   const sl = useCallback((svc: ServiceRow) => serviceLabel(svc, gb("variant")), [gb]);
   useResponsive();
@@ -724,12 +737,17 @@ export default function GroupBookingsScreen() {
   } = usePaycloudCollectAvailability();
   const providerTz = provider?.timezone ?? null;
   const locations = provider?.locations ?? [];
-  const { data: permissionData } = useApi<{
+  const {
+    data: permissionData,
+    loading: permissionsLoading,
+  } = useApi<{
     isOwner?: boolean;
     permissions?: Record<string, boolean>;
   }>("/api/provider/permissions", { staleTimeMs: 60_000 });
   const isOwner = permissionData?.isOwner === true;
-  const canCreateGroups = isOwner || permissionData?.permissions?.create_appointments === true;
+  const canCreateGroups =
+    !permissionsLoading &&
+    (isOwner || permissionData?.permissions?.create_appointments === true);
   const canEditGroups = isOwner || permissionData?.permissions?.edit_appointments === true;
   const canCancelGroups =
     isOwner ||
@@ -739,7 +757,7 @@ export default function GroupBookingsScreen() {
     isOwner || permissionData?.permissions?.process_payments === true;
 
   const { data: servicesRaw, refresh: refreshServices } = useApi<ServiceRow[]>(
-    "/api/provider/services?include_variants=true"
+    "/api/provider/services?include_variants=true&include_offering_resources=true"
   );
   const { data: productsRaw, refresh: refreshProducts } = useApi<unknown>(
     "/api/provider/products?limit=200"
@@ -780,6 +798,8 @@ export default function GroupBookingsScreen() {
 
   const teamMembers = useMemo(() => (Array.isArray(teamRaw) ? teamRaw : []), [teamRaw]);
   const [selectedServiceCategory, setSelectedServiceCategory] = useState("all");
+  const [showServiceCategorySheet, setShowServiceCategorySheet] = useState(false);
+  const [selectedProductCategory, setSelectedProductCategory] = useState("all");
   const packagesList = useMemo<PackageRow[]>(
     () =>
       (packagesRaw?.packages ?? []).filter(
@@ -809,6 +829,7 @@ export default function GroupBookingsScreen() {
     });
     return Array.from(categories.values()).sort((a, b) => a.label.localeCompare(b.label));
   }, [parentServices, gb]);
+  const useServiceCategoryPickerSheet = shouldUseCategoryPicker(serviceCategoryOptions.length);
   const visibleParentServices = useMemo(
     () =>
       selectedServiceCategory === "all"
@@ -889,6 +910,36 @@ export default function GroupBookingsScreen() {
     travelPreviewDistanceKm: null as number | null,
     packageId: "" as string,
   });
+  const createFormServiceResources = useMemo(() => {
+    if (!createForm.serviceId) return [];
+    const svc = services.find((s) => s.id === createForm.serviceId);
+    if (!svc?.resource_requirements?.length) return [];
+    const title = serviceLabel(svc, gb("variant"));
+    return aggregateOfferingResources(
+      [{ serviceTitle: title, requirements: svc.resource_requirements }],
+      createForm.locationId || selectedLocationId,
+    );
+  }, [createForm.serviceId, createForm.locationId, services, selectedLocationId, gb]);
+
+  const productCategoryOptions = useMemo(() => {
+    const categories = new Map<string, string>();
+    for (const product of productsList) {
+      const raw = (product.category ?? "").trim();
+      const id = raw.length > 0 ? raw : "__uncategorized__";
+      categories.set(id, raw.length > 0 ? raw : gb("otherCategory"));
+    }
+    return Array.from(categories.entries()).map(([id, label]) => ({ id, label }));
+  }, [productsList, gb]);
+
+  const productsForPicker = useMemo(() => {
+    if (selectedProductCategory === "all") return productsList;
+    return productsList.filter((product) => {
+      const raw = (product.category ?? "").trim();
+      const id = raw.length > 0 ? raw : "__uncategorized__";
+      return id === selectedProductCategory;
+    });
+  }, [productsList, selectedProductCategory]);
+
   const [createParticipants, setCreateParticipants] = useState<ParticipantFormRow[]>([]);
   const [createParticipantProgress, setCreateParticipantProgress] = useState<{
     current: number;
@@ -1768,11 +1819,7 @@ export default function GroupBookingsScreen() {
   // B10: create a new group booking from the mobile provider app. Minimal
   // required fields (date/time/duration). Service/staff/location can be
   // filled in later via the edit sheet or the web portal.
-  function openCreate() {
-    if (!canCreateGroups) {
-      Alert.alert(gb("permissionRequired"), gb("noPermissionCreate"));
-      return;
-    }
+  function openCreateSheetFromParams() {
     const now = new Date();
     const hh = String(Math.min(23, now.getHours() + 1)).padStart(2, "0");
     const requestedDate =
@@ -1828,18 +1875,28 @@ export default function GroupBookingsScreen() {
     setShowCreate(true);
   }
 
+  function openCreate() {
+    if (permissionsLoading) return;
+    if (!canCreateGroups) {
+      Alert.alert(gb("permissionRequired"), gb("noPermissionCreate"));
+      return;
+    }
+    openCreateSheetFromParams();
+  }
+
   const openCreateHandledRef = useRef(false);
-  const openCreateRef = useRef(openCreate);
-  openCreateRef.current = openCreate;
   useEffect(() => {
     const raw = params.openCreate;
     const want =
       raw === "true" || (Array.isArray(raw) && raw[0] === "true");
     if (!want || openCreateHandledRef.current) return;
+    if (permissionsLoading) return;
     openCreateHandledRef.current = true;
-    openCreateRef.current();
     router.setParams({ openCreate: "" } as never);
-  }, [params.openCreate, router]);
+    if (canCreateGroups) {
+      openCreateSheetFromParams();
+    }
+  }, [params.openCreate, router, permissionsLoading, canCreateGroups]);
 
   function buildCreateValidationInput() {
     return {
@@ -3162,7 +3219,9 @@ export default function GroupBookingsScreen() {
     [gb]
   );
 
-  const handleOpenCreate = useCallback(() => openCreateRef.current(), []);
+  const openCreateUiRef = useRef(openCreate);
+  openCreateUiRef.current = openCreate;
+  const handleOpenCreate = useCallback(() => openCreateUiRef.current(), []);
 
   const groupListHeader = useMemo(
     () => (
@@ -5116,25 +5175,43 @@ export default function GroupBookingsScreen() {
                 {gb("defaultServiceHint")}
               </Text>
               {serviceCategoryOptions.length > 1 ? (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={twStyle("mb-2")}
-                >
-                  <SelectChip
-                    label={gb("statusAll")}
-                    selected={selectedServiceCategory === "all"}
-                    onPress={() => setSelectedServiceCategory("all")}
-                  />
-                  {serviceCategoryOptions.map((category) => (
+                useServiceCategoryPickerSheet ? (
+                  <TouchableOpacity
+                    style={twStyle(
+                      "mb-2 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5",
+                    )}
+                    onPress={() => setShowServiceCategorySheet(true)}
+                    accessibilityRole="button"
+                  >
+                    <Text style={twStyle("text-sm text-gray-800")}>
+                      {selectedServiceCategory === "all"
+                        ? gb("statusAll")
+                        : (serviceCategoryOptions.find((c) => c.id === selectedServiceCategory)?.label ??
+                          gb("statusAll"))}
+                    </Text>
+                    <Ionicons name="chevron-down" size={16} color="#9ca3af" />
+                  </TouchableOpacity>
+                ) : (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={twStyle("mb-2")}
+                  >
                     <SelectChip
-                      key={category.id}
-                      label={gb("categoryWithCount", { label: category.label, count: category.count })}
-                      selected={selectedServiceCategory === category.id}
-                      onPress={() => setSelectedServiceCategory(category.id)}
+                      label={gb("statusAll")}
+                      selected={selectedServiceCategory === "all"}
+                      onPress={() => setSelectedServiceCategory("all")}
                     />
-                  ))}
-                </ScrollView>
+                    {serviceCategoryOptions.map((category) => (
+                      <SelectChip
+                        key={category.id}
+                        label={gb("categoryWithCount", { label: category.label, count: category.count })}
+                        selected={selectedServiceCategory === category.id}
+                        onPress={() => setSelectedServiceCategory(category.id)}
+                      />
+                    ))}
+                  </ScrollView>
+                )
               ) : null}
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <SelectChip
@@ -5175,6 +5252,22 @@ export default function GroupBookingsScreen() {
                 <Text style={twStyle("mt-2 text-xs font-medium text-red-600")}>
                   {gb("selectDefaultService")}
                 </Text>
+              ) : null}
+              {createFormServiceResources.length > 0 ? (
+                <View style={twStyle("mt-3 rounded-2xl border border-teal-100 bg-teal-50/90 px-3 py-2")}>
+                  <Text style={twStyle("mb-1 text-xs font-semibold text-teal-900")}>
+                    {t("provider.mobile.screens.newBooking.roomsEquipment")}
+                  </Text>
+                  <Text style={twStyle("mb-2 text-[11px] leading-4 text-teal-900/90")}>
+                    {t("provider.mobile.screens.newBooking.resourcesHint")}
+                  </Text>
+                  {createFormServiceResources.map((r) => (
+                    <Text key={r.resource_id} style={twStyle("text-xs text-gray-800")}>
+                      {r.name}
+                      {r.required ? ` · ${t("provider.mobile.screens.newBooking.required")}` : ""}
+                    </Text>
+                  ))}
+                </View>
               ) : null}
             </View>
           ) : null}
@@ -6047,6 +6140,36 @@ export default function GroupBookingsScreen() {
         )}
       </BottomSheet>
 
+      <BottomSheet
+        visible={showServiceCategorySheet}
+        onClose={() => setShowServiceCategorySheet(false)}
+        title={t("provider.mobile.screens.newBooking.filterByCategory")}
+      >
+        <TouchableOpacity
+          style={twStyle("mb-2 rounded-xl border border-gray-100 bg-white px-4 py-3")}
+          onPress={() => {
+            setSelectedServiceCategory("all");
+            setShowServiceCategorySheet(false);
+          }}
+        >
+          <Text style={twStyle("text-sm font-medium text-gray-900")}>{gb("statusAll")}</Text>
+        </TouchableOpacity>
+        {serviceCategoryOptions.map((category) => (
+          <TouchableOpacity
+            key={category.id}
+            style={twStyle("mb-2 rounded-xl border border-gray-100 bg-white px-4 py-3")}
+            onPress={() => {
+              setSelectedServiceCategory(category.id);
+              setShowServiceCategorySheet(false);
+            }}
+          >
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>
+              {gb("categoryWithCount", { label: category.label, count: category.count })}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </BottomSheet>
+
       <AddressMapPinModal
         visible={createMapPinOpen}
         onClose={() => setCreateMapPinOpen(false)}
@@ -6073,7 +6196,24 @@ export default function GroupBookingsScreen() {
           />
         ) : (
           <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 420 }}>
-            {productsList.map((product) => {
+            {productCategoryOptions.length > 1 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-2 px-2")}>
+                <SelectChip
+                  label={gb("statusAll")}
+                  selected={selectedProductCategory === "all"}
+                  onPress={() => setSelectedProductCategory("all")}
+                />
+                {productCategoryOptions.map((category) => (
+                  <SelectChip
+                    key={category.id}
+                    label={category.label}
+                    selected={selectedProductCategory === category.id}
+                    onPress={() => setSelectedProductCategory(category.id)}
+                  />
+                ))}
+              </ScrollView>
+            ) : null}
+            {productsForPicker.map((product) => {
               if (product.variants && product.variants.length > 0) {
                 return (
                   <View key={product.id}>

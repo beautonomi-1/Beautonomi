@@ -34,7 +34,11 @@ import {
   buildEmailConfirmationRedirectUrl,
   verifySignupEmailOtp,
 } from "@/lib/supabase/auth";
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { sendAuthOtp, verifyAuthOtp, AuthOtpError } from "@/lib/auth/auth-otp-client";
+import { AuthTurnstile } from "@/components/auth/AuthTurnstile";
+import { AuthRateLimitError } from "@/lib/auth/auth-errors";
+import { rateLimitUntilFromError, useRateLimitCooldown } from "@/lib/auth/use-rate-limit-cooldown";
+import { friendlyAuthErrorMessage } from "@/lib/auth/friendly-auth-errors";
 import { writeSignupPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
 import { toast } from "sonner";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -187,6 +191,20 @@ export default function LoginModal({
   const [otpResendCooldown, setOtpResendCooldown] = useState(0);
   const [emailOtpResendCooldown, setEmailOtpResendCooldown] = useState(0);
   const [emailOtpResending, setEmailOtpResending] = useState(false);
+  const [captchaRequired, setCaptchaRequired] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | undefined>();
+  const [rateLimitUntil, setRateLimitUntil] = useState<number | null>(null);
+  const rateLimitSecondsLeft = useRateLimitCooldown(rateLimitUntil);
+  const authSubmitBlocked = rateLimitSecondsLeft > 0;
+
+  const noteModalAuthFailure = (err: unknown) => {
+    const until = rateLimitUntilFromError(err);
+    if (until) setRateLimitUntil(until);
+    if (err instanceof AuthOtpError && err.captchaRequired) setCaptchaRequired(true);
+    if (err instanceof AuthRateLimitError) {
+      setRateLimitUntil(Date.now() + err.retryAfterSeconds * 1000);
+    }
+  };
   const [emailOtpExpiresAt, setEmailOtpExpiresAt] = useState<number | null>(null);
   const [emailOtpSecondsLeft, setEmailOtpSecondsLeft] = useState(0);
   const [preferredLanguage, setPreferredLanguage] = useState(() =>
@@ -470,6 +488,7 @@ export default function LoginModal({
             const loginResult = await signInAuth({
               email: trimmedEmail,
               password: trimmedPassword,
+              captchaToken,
             });
 
             // Check if login actually created a session
@@ -533,6 +552,7 @@ export default function LoginModal({
           email: trimmedEmail,
           password: trimmedPassword,
           rememberMe,
+          captchaToken,
         });
 
         // Clear any errors on successful sign in
@@ -626,8 +646,17 @@ export default function LoginModal({
       }
     } catch (error: unknown) {
       console.error("Auth error:", error);
+      noteModalAuthFailure(error);
       const errorMessage =
         error instanceof Error ? error.message : t("web.global.loginModal.errorAuthFailed");
+      if (
+        error &&
+        typeof error === "object" &&
+        "captchaRequired" in error &&
+        (error as { captchaRequired?: boolean }).captchaRequired
+      ) {
+        setCaptchaRequired(true);
+      }
 
       // Check for specific error types
       const lowerErrorMessage = errorMessage.toLowerCase();
@@ -922,13 +951,11 @@ export default function LoginModal({
     setIsLoading(true);
     setError(null);
     try {
-      const supabase = getSupabaseClient();
-      // Unified auth: shouldCreateUser: true regardless of `isSignup` toggle so both modes work.
-      const { error: otpError } = await supabase.auth.signInWithOtp({
+      await sendAuthOtp({
         phone: normalizeSupabaseAuthPhone(fullPhoneE164),
-        options: { channel: "sms", shouldCreateUser: true },
+        captchaToken,
       });
-      if (otpError) throw otpError;
+      setCaptchaRequired(false);
       setSentPhoneE164(normalizeSupabaseAuthPhone(fullPhoneE164));
       setOtpSent(true);
       setOtpCode("");
@@ -937,9 +964,10 @@ export default function LoginModal({
       setOtpResendCooldown(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
       toast.success(t("web.global.loginModal.toastCheckPhoneForCode"));
     } catch (err: unknown) {
+      noteModalAuthFailure(err);
       const msg = err instanceof Error ? err.message : t("web.global.loginModal.errorFailedSendCode");
-      setError(msg);
-      toast.error(msg);
+      setError(friendlyAuthErrorMessage(msg, "phone", t));
+      toast.error(friendlyAuthErrorMessage(msg, "phone", t));
     } finally {
       setIsLoading(false);
     }
@@ -950,21 +978,20 @@ export default function LoginModal({
     setOtpResending(true);
     setError(null);
     try {
-      const supabase = getSupabaseClient();
-      const { error: otpError } = await supabase.auth.signInWithOtp({
+      await sendAuthOtp({
         phone: normalizeSupabaseAuthPhone(sentPhoneE164),
-        options: { channel: "sms", shouldCreateUser: true },
+        captchaToken,
       });
-      if (otpError) throw otpError;
       setOtpCode("");
       const expiresAt = Date.now() + authPolicy.sms_otp_expiration_seconds * 1000;
       setOtpExpiresAt(expiresAt);
       setOtpResendCooldown(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
       toast.success(t("web.global.loginModal.toastNewCodeSent"));
     } catch (err: unknown) {
+      noteModalAuthFailure(err);
       const msg = err instanceof Error ? err.message : t("web.global.loginModal.errorFailedResendCode");
-      setError(msg);
-      toast.error(msg);
+      setError(friendlyAuthErrorMessage(msg, "phone", t));
+      toast.error(friendlyAuthErrorMessage(msg, "phone", t));
     } finally {
       setOtpResending(false);
     }
@@ -976,13 +1003,11 @@ export default function LoginModal({
     setIsLoading(true);
     setError(null);
     try {
-      const supabase = getSupabaseClient();
-      const { error: verifyError } = await supabase.auth.verifyOtp({
+      await verifyAuthOtp({
         phone: normalizeSupabaseAuthPhone(sentPhoneE164),
         token,
         type: "sms",
       });
-      if (verifyError) throw verifyError;
       writeSignupPhoneHandoff(normalizeSupabaseAuthPhone(sentPhoneE164));
       if (isReady) track(EVENT_LOGIN_SUCCESS, { method: "phone" });
       await refreshUser();
@@ -991,9 +1016,10 @@ export default function LoginModal({
       await routeAfterOtpAuth();
       toast.success(t("web.global.loginModal.toastSignedIn"));
     } catch (err: unknown) {
+      noteModalAuthFailure(err);
       const msg = err instanceof Error ? err.message : t("web.global.loginModal.errorInvalidCode");
-      setError(msg);
-      toast.error(msg);
+      setError(friendlyAuthErrorMessage(msg, "phone", t));
+      toast.error(friendlyAuthErrorMessage(msg, "phone", t));
     } finally {
       setIsLoading(false);
     }
@@ -1012,14 +1038,8 @@ export default function LoginModal({
     setIsLoading(true);
     setError(null);
     try {
-      const supabase = getSupabaseClient();
-      // Passwordless email: no emailRedirectTo. Numeric code vs magic link is determined by the
-      // Supabase "Magic Link" email template (`{{ .Token }}`); see supabase/email-templates/README.md.
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email: trimmed,
-        options: { shouldCreateUser: true },
-      });
-      if (otpError) throw otpError;
+      await sendAuthOtp({ email: trimmed, captchaToken });
+      setCaptchaRequired(false);
       setPendingEmailOtp(trimmed);
       setEmailOtpSent(true);
       setEmailOtpCode("");
@@ -1027,9 +1047,10 @@ export default function LoginModal({
       setEmailOtpResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
       toast.success(t("web.global.loginModal.toastEmailOtpSent", { length: emailOtpLen, minutes: emailOtpExpiryMin }));
     } catch (err: unknown) {
+      noteModalAuthFailure(err);
       const msg = err instanceof Error ? err.message : t("web.global.loginModal.errorFailedSendCode");
-      setError(msg);
-      toast.error(msg);
+      setError(friendlyAuthErrorMessage(msg, "email", t));
+      toast.error(friendlyAuthErrorMessage(msg, "email", t));
     } finally {
       setIsLoading(false);
     }
@@ -1041,20 +1062,16 @@ export default function LoginModal({
     setEmailOtpResending(true);
     setError(null);
     try {
-      const supabase = getSupabaseClient();
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email: addr,
-        options: { shouldCreateUser: true },
-      });
-      if (otpError) throw otpError;
+      await sendAuthOtp({ email: addr, captchaToken });
       setEmailOtpCode("");
       setEmailOtpExpiresAt(Date.now() + authPolicy.email_otp_expiration_seconds * 1000);
       setEmailOtpResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
       toast.success(t("web.global.loginModal.toastNewCodeSent"));
     } catch (err: unknown) {
+      noteModalAuthFailure(err);
       const msg = err instanceof Error ? err.message : t("web.global.loginModal.errorFailedResendCode");
-      setError(msg);
-      toast.error(msg);
+      setError(friendlyAuthErrorMessage(msg, "email", t));
+      toast.error(friendlyAuthErrorMessage(msg, "email", t));
     } finally {
       setEmailOtpResending(false);
     }
@@ -1067,13 +1084,7 @@ export default function LoginModal({
     setIsLoading(true);
     setError(null);
     try {
-      const supabase = getSupabaseClient();
-      const { error: verifyError } = await supabase.auth.verifyOtp({
-        email: addr.trim(),
-        token,
-        type: "email",
-      });
-      if (verifyError) throw verifyError;
+      await verifyAuthOtp({ email: addr.trim(), token, type: "email" });
       if (isReady) track(EVENT_LOGIN_SUCCESS, { method: "email" });
       await refreshUser();
       setOpen(false);
@@ -1081,9 +1092,10 @@ export default function LoginModal({
       await routeAfterOtpAuth();
       toast.success(t("web.global.loginModal.toastSignedIn"));
     } catch (err: unknown) {
+      noteModalAuthFailure(err);
       const msg = err instanceof Error ? err.message : t("web.global.loginModal.errorInvalidCode");
-      setError(msg);
-      toast.error(msg);
+      setError(friendlyAuthErrorMessage(msg, "email", t));
+      toast.error(friendlyAuthErrorMessage(msg, "email", t));
     } finally {
       setIsLoading(false);
     }
@@ -1211,6 +1223,16 @@ export default function LoginModal({
               </div>
             )}
 
+          {rateLimitSecondsLeft > 0 ? (
+            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              {t("web.auth.bookingReturn.rateLimitWait", { seconds: rateLimitSecondsLeft })}
+            </div>
+          ) : null}
+          {captchaRequired ? (
+            <div className="mb-4">
+              <AuthTurnstile onToken={setCaptchaToken} />
+            </div>
+          ) : null}
           {/* Error Message */}
           {error && !awaitingEmailVerification && (
             <div className="mb-5 p-4 bg-red-50/90 border border-red-100 rounded-2xl">
@@ -1277,7 +1299,7 @@ export default function LoginModal({
               <Button
                 className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-6 touch-manipulation shadow-lg shadow-pink-200/40 gap-2"
                 onClick={handlePhoneSendOtp}
-                disabled={isLoading || !isValidE164}
+                disabled={isLoading || authSubmitBlocked || !isValidE164}
                 aria-busy={isLoading}
               >
                 {isLoading ? (
@@ -1316,7 +1338,7 @@ export default function LoginModal({
                   if (!isLoading && isCompleteOtpForLength(code, smsOtpLen))
                     void handleVerifyOtp(code);
                 }}
-                disabled={isLoading}
+                disabled={isLoading || authSubmitBlocked}
                 autoFocus
                 label={t("web.global.loginModal.phoneVerificationCodeLabel")}
                 className="mb-5"
@@ -1332,7 +1354,7 @@ export default function LoginModal({
                 <button
                   type="button"
                   onClick={() => void handleResendPhoneOtp()}
-                  disabled={otpResending || isLoading || otpResendCooldown > 0}
+                  disabled={otpResending || isLoading || authSubmitBlocked || otpResendCooldown > 0}
                   className="font-medium text-primary hover:underline disabled:opacity-50 disabled:no-underline"
                 >
                   {otpResending
@@ -1345,7 +1367,7 @@ export default function LoginModal({
               <Button
                 className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-4 touch-manipulation shadow-lg shadow-pink-200/40 gap-2"
                 onClick={() => void handleVerifyOtp()}
-                disabled={isLoading || !isCompleteOtpForLength(otpCode, smsOtpLen)}
+                disabled={isLoading || authSubmitBlocked || !isCompleteOtpForLength(otpCode, smsOtpLen)}
                 aria-busy={isLoading}
               >
                 {isLoading ? (
@@ -1591,7 +1613,7 @@ export default function LoginModal({
                           if (!isLoading && isCompleteOtpForLength(code, emailOtpLen))
                             void handleVerifyEmailOtp(code);
                         }}
-                        disabled={isLoading}
+                        disabled={isLoading || authSubmitBlocked}
                         autoFocus
                         label={t("web.global.loginModal.emailVerificationCodeLabel")}
                         className="mb-5"
@@ -1607,7 +1629,7 @@ export default function LoginModal({
                         <button
                           type="button"
                           onClick={() => void handleResendEmailOtp()}
-                          disabled={emailOtpResending || isLoading || emailOtpResendCooldown > 0}
+                          disabled={emailOtpResending || isLoading || authSubmitBlocked || emailOtpResendCooldown > 0}
                           className="font-medium text-primary hover:underline disabled:opacity-50 disabled:no-underline"
                         >
                           {emailOtpResending
@@ -1620,7 +1642,7 @@ export default function LoginModal({
                       <Button
                         className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-4 touch-manipulation shadow-lg shadow-pink-200/40 gap-2"
                         onClick={() => void handleVerifyEmailOtp()}
-                        disabled={isLoading || !isCompleteOtpForLength(emailOtpCode, emailOtpLen)}
+                        disabled={isLoading || authSubmitBlocked || !isCompleteOtpForLength(emailOtpCode, emailOtpLen)}
                         aria-busy={isLoading}
                       >
                         {isLoading ? (
@@ -1754,7 +1776,7 @@ export default function LoginModal({
                     <Button
                       className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-6 touch-manipulation shadow-lg shadow-pink-200/40"
                       onClick={handleEmailContinue}
-                      disabled={isLoading || !email}
+                      disabled={isLoading || authSubmitBlocked || !email}
                     >
                       {t("web.global.loginModal.continue")}
                     </Button>
@@ -1763,7 +1785,7 @@ export default function LoginModal({
                     <Button
                       className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-6 touch-manipulation shadow-lg shadow-pink-200/40 gap-2"
                       onClick={handleEmailAuth}
-                      disabled={isLoading || !email || !password}
+                      disabled={isLoading || authSubmitBlocked || !email || !password}
                       aria-busy={isLoading}
                     >
                       {isLoading ? (
@@ -1780,7 +1802,7 @@ export default function LoginModal({
                     <Button
                       className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-6 touch-manipulation shadow-lg shadow-pink-200/40 gap-2"
                       onClick={() => void handleSendEmailOtp()}
-                      disabled={isLoading || !email.trim()}
+                      disabled={isLoading || authSubmitBlocked || !email.trim()}
                       aria-busy={isLoading}
                     >
                       {isLoading ? (
@@ -1813,7 +1835,7 @@ export default function LoginModal({
                               variant="outline"
                               className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
                               onClick={() => void handleSocialOAuth("google")}
-                              disabled={isLoading}
+                              disabled={isLoading || authSubmitBlocked}
                             >
                               <FaGoogle className="text-lg shrink-0" />
                               <span>{t("auth.continueWithGoogle")}</span>
@@ -1825,7 +1847,7 @@ export default function LoginModal({
                               variant="outline"
                               className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
                               onClick={() => void handleSocialOAuth("apple")}
-                              disabled={isLoading}
+                              disabled={isLoading || authSubmitBlocked}
                             >
                               <FaApple className="text-lg shrink-0" />
                               <span>{t("auth.continueWithApple")}</span>
@@ -1847,7 +1869,7 @@ export default function LoginModal({
                             setEmailOtpCode("");
                             setPendingEmailOtp("");
                           }}
-                          disabled={isLoading}
+                          disabled={isLoading || authSubmitBlocked}
                         >
                           <Smartphone className="w-5 h-5 shrink-0" aria-hidden />
                           <span>{t("web.global.loginModal.continueWithPhone")}</span>
@@ -1978,7 +2000,7 @@ export default function LoginModal({
                   )}
                   <AccountLinkOffer
                     offer={accountLinkOffer}
-                    disabled={isLoading}
+                    disabled={isLoading || authSubmitBlocked}
                     onGoogle={() => void handleSocialOAuth("google")}
                     onEmailCode={() => {
                       setEmailOtpMode(true);
@@ -1990,7 +2012,7 @@ export default function LoginModal({
                   <Button
                     className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-5 touch-manipulation shadow-lg shadow-pink-200/40 gap-2"
                     onClick={handleEmailAuth}
-                    disabled={isLoading || !password}
+                    disabled={isLoading || authSubmitBlocked || !password}
                     aria-busy={isLoading}
                   >
                     {isLoading ? (
@@ -2061,7 +2083,7 @@ export default function LoginModal({
                   variant="outline"
                   className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
                   onClick={() => void handleSocialOAuth("google")}
-                  disabled={isLoading}
+                  disabled={isLoading || authSubmitBlocked}
                 >
                   <FaGoogle className="text-lg shrink-0" />
                   <span>{t("auth.continueWithGoogle")}</span>
@@ -2073,7 +2095,7 @@ export default function LoginModal({
                   variant="outline"
                   className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
                   onClick={() => void handleSocialOAuth("apple")}
-                  disabled={isLoading}
+                  disabled={isLoading || authSubmitBlocked}
                 >
                   <FaApple className="text-lg shrink-0" />
                   <span>{t("auth.continueWithApple")}</span>
@@ -2086,7 +2108,7 @@ export default function LoginModal({
                   variant="outline"
                   className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
                   onClick={handleEmailButtonClick}
-                  disabled={isLoading}
+                  disabled={isLoading || authSubmitBlocked}
                 >
                   <CiMail className="text-lg shrink-0" />
                   <span>{t("web.global.loginModal.continueWithEmail")}</span>

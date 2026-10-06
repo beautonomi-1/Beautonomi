@@ -9,6 +9,7 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { resolveHostedCheckoutCallbacks } from "@/lib/payments/resolve-paystack-hosted-callback";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -196,17 +197,18 @@ export async function POST(
       }
     }
 
-    const chargeAppUrl = process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com";
+    const chargeAppUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com").replace(/\/$/, "");
     const callbackFromClient =
       typeof body.callback_url === "string" ? body.callback_url.trim() : "";
-    const chargeCallbackUrl =
-      callbackFromClient && (callbackFromClient.startsWith("customer://") || callbackFromClient.startsWith("exp://"))
-        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}charge_id=${encodeURIComponent(chargeId)}`
-        : `${chargeAppUrl}/account-settings/bookings/${bookingId}/payment-callback?charge_id=${encodeURIComponent(chargeId)}`;
-    const chargeCancelAction =
-      callbackFromClient && (callbackFromClient.startsWith("customer://") || callbackFromClient.startsWith("exp://"))
-        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}charge_cancelled=1&charge_id=${encodeURIComponent(chargeId)}`
-        : `${chargeAppUrl}/account-settings/bookings/${bookingId}?charge_cancelled=1&charge_id=${encodeURIComponent(chargeId)}`;
+    const hostedCharge = resolveHostedCheckoutCallbacks({
+      baseUrl: chargeAppUrl,
+      clientCallbackUrl: callbackFromClient || undefined,
+      defaultSuccessPath: `/account-settings/bookings/${bookingId}/payment-callback`,
+      defaultCancelPath: `/account-settings/bookings/${bookingId}`,
+      query: { charge_id: chargeId },
+    });
+    const chargeCallbackUrl = hostedCharge.successUrl;
+    const chargeCancelAction = `${hostedCharge.cancelUrl}${hostedCharge.cancelUrl.includes("?") ? "&" : "?"}charge_cancelled=1&charge_id=${encodeURIComponent(chargeId)}`;
 
     let paystackResponse: Awaited<ReturnType<typeof initializePaystackTransaction>>;
     try {

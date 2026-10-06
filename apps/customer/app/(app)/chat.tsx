@@ -1997,6 +1997,15 @@ export default function ChatScreen() {
                 <Text style={{ fontSize: 14, color: Colors.gray[600], textAlign: "center", lineHeight: 20 }}>
                   {t("customer.chatScreen.safetyMessagingOff")}
                 </Text>
+                <TouchableOpacity
+                  onPress={() => router.push("/(app)/account-settings/content-and-safety-controls")}
+                  style={{ marginTop: 10, alignSelf: "center" }}
+                  accessibilityRole="button"
+                >
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>
+                    {t("customer.safety.socialRestricted.openControls")}
+                  </Text>
+                </TouchableOpacity>
               </View>
             )}
           </>

@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Keyboard, Platform, useWindowDimensions, Animated, FlatList, Pressable } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { Image } from "expo-image";
-import { Video, ResizeMode } from "expo-av";
+import { ExpoVideoPreview } from "@/components/ExpoVideoPreview";
 import { useLocalSearchParams, Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
@@ -420,15 +420,15 @@ export default function ExplorePostScreen() {
                 showsHorizontalScrollIndicator={false}
                 onMomentumScrollEnd={(e) => setMediaIndex(Math.round(e.nativeEvent.contentOffset.x / screenWidth))}
                 keyExtractor={(_, i) => String(i)}
-                renderItem={({ item }) =>
+                renderItem={({ item, index }) =>
                   isExploreVideoUrl(item) ? (
-                    <Video
-                      source={{ uri: item }}
+                    <ExpoVideoPreview
+                      uri={item}
                       style={{ width: screenWidth, aspectRatio: 4 / 5 }}
-                      resizeMode={ResizeMode.COVER}
-                      useNativeControls
-                      isLooping
-                      shouldPlay={false}
+                      contentFit="cover"
+                      nativeControls
+                      loop
+                      paused={mediaIndex !== index}
                     />
                   ) : (
                     <Image
@@ -755,9 +755,20 @@ export default function ExplorePostScreen() {
             {comments.length === 0 ? (
               <View style={{ paddingVertical: 20, alignItems: "center" }}>
                 <Ionicons name="chatbubbles-outline" size={28} color="#D1D5DB" />
-                <Text style={{ fontSize: 13, color: "#9CA3AF", marginTop: 8 }}>
+                <Text style={{ fontSize: 13, color: "#9CA3AF", marginTop: 8, textAlign: "center" }}>
                   {canInteract ? t("customer.explorePost.noCommentsYet") : t("customer.explorePost.safetyInteractionsOff")}
                 </Text>
+                {!canInteract ? (
+                  <TouchableOpacity
+                    onPress={() => router.push("/(app)/account-settings/content-and-safety-controls")}
+                    style={{ marginTop: 10 }}
+                    accessibilityRole="button"
+                  >
+                    <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 14 }}>
+                      {t("customer.safety.socialRestricted.openControls")}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             ) : (
               comments.map((c) => {
@@ -949,6 +960,15 @@ export default function ExplorePostScreen() {
             <Text style={{ color: "#6B7280", fontWeight: "500", fontSize: 14, textAlign: "center", lineHeight: 20 }}>
               {t("customer.explorePost.safetyInteractionsOff")}
             </Text>
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/account-settings/content-and-safety-controls")}
+              style={{ marginTop: 10 }}
+              accessibilityRole="button"
+            >
+              <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 14 }}>
+                {t("customer.safety.socialRestricted.openControls")}
+              </Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <Pressable

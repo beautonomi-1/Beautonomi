@@ -119,6 +119,15 @@ function makeBookingChargeFailedSupabase(options: {
           })),
         };
       }
+      if (table === "wallet_topups") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+            })),
+          })),
+        };
+      }
       throw new Error(`unexpected table in charge-failed booking test: ${table}`);
     }),
     rpc: vi.fn(async (fn: string, args: unknown) => {

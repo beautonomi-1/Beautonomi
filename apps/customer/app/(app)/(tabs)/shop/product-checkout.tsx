@@ -14,17 +14,21 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
+import { extractPaystackReferenceFromUrl, isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
 import {
-  extractPaystackReferenceFromUrl,
-  isCancelledPaystackUrl,
-  matchesExpoReturnUrl,
-} from "@/lib/paystack-webview-utils";
+  getCustomerPaystackAuthReturnUrl,
+  getShopProductPaystackAuthPrefix,
+  matchesPaystackAuthSessionReturn,
+  matchesShopPaymentCallbackReturnUrl,
+  SHOP_PAYMENT_CALLBACK_PATH,
+} from "@/lib/payments/customerPaystackReturn";
 import * as ExpoLinking from "expo-linking";
 import { Colors, Shadows } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { hasSupabaseAccessToken, pushLoginWithReturnTo, redirectLoginIfAuthRequired } from "@/lib/customer-auth-routing";
 import {
   createProductOrderIdempotencyKey,
   isCreateOrderTransientError,
@@ -552,8 +556,18 @@ export default function ProductCheckoutScreen() {
     setProcessingPayment(true);
     setProcessingMessage(pc("placingOrder", undefined, "Placing your order…"));
 
+    const checkoutReturnTo = `/(app)/(tabs)/shop/product-checkout?provider_id=${encodeURIComponent(provider_id ?? "")}`;
+
     try {
     await refreshSession().catch(() => {});
+    const hasToken = await hasSupabaseAccessToken();
+    if (!hasToken) {
+      placingRef.current = false;
+      setPlacing(false);
+      setProcessingPayment(false);
+      pushLoginWithReturnTo(checkoutReturnTo);
+      return;
+    }
 
     // 1. Create the order (payment_status = "pending" until wallet/card settles)
     const result = await orders.createOrder(
@@ -638,6 +652,9 @@ export default function ProductCheckoutScreen() {
         placingRef.current = false;
         setPlacing(false);
         setProcessingPayment(false);
+        if (redirectLoginIfAuthRequired(checkoutReturnTo, result.error)) {
+          return;
+        }
         Alert.alert(pc("orderFailedTitle"), result.error.message || pc("orderFailedBody"));
         return;
       }
@@ -807,13 +824,17 @@ export default function ProductCheckoutScreen() {
 
     // 2. Initialize Paystack payment for remaining amount (amount in kobo/cents)
     const paystackReturnPath =
-      Platform.OS === "web" ? undefined : ExpoLinking.createURL("shop/paystack");
+      Platform.OS === "web" ? undefined : getShopProductPaystackAuthPrefix();
+    const paystackCallbackUrl =
+      Platform.OS === "web"
+        ? getCustomerPaystackAuthReturnUrl(SHOP_PAYMENT_CALLBACK_PATH)
+        : ExpoLinking.createURL("shop/paystack");
     const paystackRes = await api.post<{ authorization_url: string; reference: string }>(
       "/api/paystack/initialize",
       {
         email: customerEmail,
         amount: Math.round(amountDue * 100),
-        ...(paystackReturnPath ? { callback_url: paystackReturnPath } : {}),
+        callback_url: paystackCallbackUrl,
         metadata: {
           product_order_id: order.id,
           order_number: order.order_number,
@@ -841,12 +862,13 @@ export default function ProductCheckoutScreen() {
       return;
     }
 
-    // 3. In-app Paystack WebView; return URL matches `callback_url` above.
+    // 3. In-app Paystack auth session; returnUrl prefix matches server HTTPS callback path.
     const url = paystackRes.data.authorization_url;
     setProcessingMessage(pc("openingPaymentPage", undefined, "Opening payment page…"));
     if (Platform.OS === "web") {
       setProcessingPayment(false);
-      window.location.href = url;
+      window.location.assign(url);
+      return;
     } else {
       if (!paystackReturnPath) {
         setProcessingPayment(false);
@@ -863,7 +885,9 @@ export default function ProductCheckoutScreen() {
         title: pc("securePaymentTitle", undefined, "Secure payment"),
         returnUrl: paystackReturnPath,
         matchSuccess: (u) =>
-          matchesExpoReturnUrl(u, paystackReturnPath) && !isCancelledPaystackUrl(u),
+          (matchesPaystackAuthSessionReturn(u, paystackReturnPath) ||
+            matchesShopPaymentCallbackReturnUrl(u)) &&
+          !isCancelledPaystackUrl(u),
         matchCancel: (u) => isCancelledPaystackUrl(u),
       });
 

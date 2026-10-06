@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { XCircle } from "lucide-react";
@@ -9,11 +9,35 @@ const ACCENT = "var(--primary, #FF0077)";
 const TEXT_PRIMARY = "#111827";
 const TEXT_SECONDARY = "#6B7280";
 
+function isNativeAppContext(context: string | null): boolean {
+  return context === "app";
+}
+
 function CancelledContent() {
   const params = useSearchParams();
   const bookingId = params.get("booking_id");
   const paymentType = params.get("payment_type");
   const offerId = params.get("offer_id");
+  const nativeContext = isNativeAppContext(params.get("context"));
+
+  useEffect(() => {
+    if (!nativeContext || typeof window === "undefined") return;
+    const w = window as Window & { ReactNativeWebView?: { postMessage: (msg: string) => void } };
+    if (!w.ReactNativeWebView?.postMessage) return;
+    try {
+      w.ReactNativeWebView.postMessage(
+        JSON.stringify({
+          type: "checkout_failed",
+          status: "cancelled",
+          payment_type: paymentType ?? "",
+          booking_id: bookingId ?? undefined,
+          offer_id: offerId ?? undefined,
+        }),
+      );
+    } catch {
+      // ignore
+    }
+  }, [nativeContext, paymentType, bookingId, offerId]);
 
   let backHref = "/";
   let backLabel = "Go home";

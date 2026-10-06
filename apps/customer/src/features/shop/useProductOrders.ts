@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { api } from "@/lib/api-client";
-import { getApiErrorMessage, getApiErrorCode } from "@/lib/api-error";
+import { getApiErrorMessage, getApiErrorCode, getHttpErrorStatus } from "@/lib/api-error";
 import type { CreateOrderApiError } from "@/features/shop/productOrderCheckoutHelpers";
 
 export type { CreateOrderApiError };
@@ -180,6 +180,7 @@ export function useProductOrders() {
           error: {
             message: getApiErrorMessage(res.error, "Your order could not be placed."),
             code: getApiErrorCode(res.error),
+            status: getHttpErrorStatus(res.error),
           } satisfies CreateOrderApiError,
         };
       }

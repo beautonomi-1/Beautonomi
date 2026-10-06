@@ -32,7 +32,7 @@ On-demand UX covers ringtone and waiting screen behaviour for provider-side flow
 - **Ringtone** (provider-side only; customer has no ringtone):
   - **Signed URL**: `GET /api/public/on-demand/ringtone-url?environment=production` returns `{ signed_url, expires_in_seconds, path }`. Query params: `environment` (production|staging|development), optional `expires_in` (seconds, 60–3600, default 300).
   - **Web provider**: `OnDemandIncomingOverlay` plays ringtone when a new on-demand request appears; stops on accept/decline/close.
-  - **Provider Expo**: Incoming screen `on-demand/incoming/[id]` plays ringtone when showing a `requested` request; stops on accept, decline, or expiry. Front Desk waiting room plays ringtone when waiting count increases (separate flow). Uses `expo-av` via `playRingtone()` in `apps/provider/src/lib/on-demand/ringtone.ts`.
+  - **Provider Expo**: Incoming screen `on-demand/incoming/[id]` plays ringtone when showing a `requested` request; stops on accept, decline, or expiry. Front Desk waiting room plays ringtone when waiting count increases (separate flow). Uses `expo-audio` via `playRingtone()` in `apps/provider/src/lib/on-demand/ringtone.ts`.
   - **Customer**: No ringtone; customer sees waiting screen with illustration and countdown only.
 
 ## Provider vs customer screens

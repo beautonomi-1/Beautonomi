@@ -35,6 +35,10 @@ import { getTenantLocaleTag } from "@/lib/locale";
 import { openNativeStoreReview } from "@/lib/open-store-review";
 import { recordManualStoreReview } from "@/lib/store-review-prompt";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+import {
+  firstIncompleteRequiredRoute,
+  routeForProfileCompletionItem,
+} from "@/lib/profile-completion-routes";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -292,35 +296,12 @@ export default function ProfileScreen() {
   const completionPct = profileData?.completion ?? 0;
   const checklistItems = profileData?.checklistItems ?? [];
   const hasIncompleteChecklist =
-    (checklistItems.length > 0 && checklistItems.some((item) => !item.completed)) ||
-    (checklistItems.length === 0 && completionPct < 100);
+    completionPct < 100 ||
+    checklistItems.some((item) => item.required === true && !item.completed);
   const loyaltyPoints = profileData?.loyaltyPoints ?? 0;
 
   const memberSince = formatMemberSince(user.created_at);
 
-  const getCompletionItemRoute = (id: string): string | null => {
-    switch (id) {
-      case "photo":
-      case "preferred_name":
-      case "bio":
-        return "/(app)/account-settings/personal-info";
-      case "emergency_contact":
-        return "/(app)/account-settings/emergency-contact";
-      case "email":
-      case "phone":
-        return "/(app)/account-settings/login-and-security";
-      case "address":
-        return "/(app)/account-settings/addresses";
-      case "identity":
-        return "/(app)/account-settings/identity-verification";
-      case "profile_questions":
-      case "interests":
-      case "beauty_preferences":
-        return "/(app)/account-settings/profile-details";
-      default:
-        return null;
-    }
-  };
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.gray[50] }} accessibilityLabel={pt("screenA11y")} accessibilityRole="none">
@@ -487,7 +468,7 @@ export default function ProfileScreen() {
         <View style={{ paddingHorizontal: 16, marginTop: 16 }}>
           <View style={{ backgroundColor: Colors.white, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.gray[100] }}>
             <TouchableOpacity
-              onPress={() => router.push("/(app)/account-settings/personal-info")}
+              onPress={() => router.push(firstIncompleteRequiredRoute(checklistItems) as any)}
               activeOpacity={0.8}
               style={{ flexDirection: "row", alignItems: "flex-start" }}
             >
@@ -550,7 +531,7 @@ export default function ProfileScreen() {
                       ? "close-circle"
                       : "ellipse-outline";
                   const iconColor = done ? "#16A34A" : mandatoryMissing ? "#ef4444" : "#9ca3af";
-                  const route = getCompletionItemRoute(item.id);
+                  const route = routeForProfileCompletionItem(item.id);
                   const rowContent = (
                     <>
                       <Ionicons

@@ -22,6 +22,8 @@ vi.mock("@/lib/bookings/pending-confirmation-nudges", () => ({
   countExpiringSoonPendingForProvider: vi.fn().mockResolvedValue(0),
 }));
 
+import { GET } from "../route";
+
 interface ChainState {
   filters: Record<string, unknown[]>;
   orFilters: string[];
@@ -131,7 +133,6 @@ describe("GET /api/provider/nav-counts", () => {
     mockGetProviderIdForUser.mockResolvedValue(null);
     mockGetSupabaseAdmin.mockReturnValue(makeAdmin(DEFAULT_COUNTS));
 
-    const { GET } = await import("../route");
     const res = await GET(new NextRequest("http://localhost/api/provider/nav-counts"));
     expect(res.status).toBe(404);
   });
@@ -147,7 +148,6 @@ describe("GET /api/provider/nav-counts", () => {
       }),
     );
 
-    const { GET } = await import("../route");
     const res = await GET(new NextRequest("http://localhost/api/provider/nav-counts"));
     const body = await res.json();
 
@@ -171,7 +171,6 @@ describe("GET /api/provider/nav-counts", () => {
       makeAdmin({ ...DEFAULT_COUNTS, pendingBookings: 3, pendingGroupBookings: 0 }),
     );
 
-    const { GET } = await import("../route");
     const res = await GET(new NextRequest("http://localhost/api/provider/nav-counts"));
     const body = await res.json();
 
@@ -198,7 +197,6 @@ describe("GET /api/provider/nav-counts", () => {
       },
     });
 
-    const { GET } = await import("../route");
     const res = await GET(
       new NextRequest("http://localhost/api/provider/nav-counts?location_id=loc-branch-1"),
     );
@@ -228,7 +226,6 @@ describe("GET /api/provider/nav-counts", () => {
       },
     });
 
-    const { GET } = await import("../route");
     await GET(new NextRequest("http://localhost/api/provider/nav-counts"));
 
     const pendingBookingQueries = bookingStates.filter(

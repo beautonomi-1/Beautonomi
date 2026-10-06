@@ -10,7 +10,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const envPath = join(root, "apps", "web", ".env.local");
-const VERSION_PATTERN = /version:\s*["']([^"']+)["']/;
+const VERSION_PATTERN = /(?:APP_MARKETING_VERSION|version)\s*[:=]\s*["']([^"']+)["']/;
 
 function loadEnv(path) {
   const out = {};

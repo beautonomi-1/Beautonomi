@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { errorResponse, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
-import { checkSignInRateLimit } from "@/lib/rate-limit/sign-in";
+import { checkAccountLinkRateLimit } from "@/lib/rate-limit/account-link";
+import { jsonRateLimited } from "@/lib/rate-limit/rate-limit-response";
 import {
   detectAccountLinkMethods,
   primaryAccountLinkOffer,
@@ -19,9 +20,13 @@ const GENERIC_OK = {
  * Missing users return empty methods (no extra enumeration beyond the signup error).
  */
 export async function POST(request: NextRequest) {
-  const rateLimit = await checkSignInRateLimit(request);
+  const rateLimit = await checkAccountLinkRateLimit(request);
   if (rateLimit.allowed === false) {
-    return errorResponse("Too many attempts. Please try again later.", "RATE_LIMITED", 429);
+    return jsonRateLimited(
+      "Too many attempts. Please try again later.",
+      rateLimit.retryAfterSeconds ?? 60,
+      "account-link",
+    );
   }
 
   try {

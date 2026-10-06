@@ -1,6 +1,6 @@
 {
   "name": "web",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "private": true,
   "scripts": {
     "dev": "cross-env NODE_OPTIONS=--max-old-space-size=8192 next dev --webpack -p 3000",
@@ -113,7 +113,7 @@
     "react-remove-scroll": "^2.7.2",
     "recharts": "^2.15.4",
     "sanitize-html": "^2.17.4",
-    "sharp": "^0.35.4",
+    "sharp": "^0.35.5",
     "sonner": "^2.0.7",
     "stripe": "^17.7.0",
     "tailwind-merge": "^2.6.1",

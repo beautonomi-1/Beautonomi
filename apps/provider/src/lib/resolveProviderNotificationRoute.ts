@@ -2,7 +2,7 @@
  * Shared provider notification routing for push taps and in-app bell rows.
  */
 import { Linking } from "react-native";
-import type { Router } from "expo-router";
+import type { ExpoRouter } from "@/types/expo-router";
 import { captureError } from "@/lib/sentry";
 import type { ProviderNotificationNavPayload } from "@/lib/provider-notification-navigation";
 
@@ -81,7 +81,7 @@ export function notificationPayloadToRouteData(
   };
 }
 
-export function applyProviderNotificationRoute(router: Router, data: Record<string, unknown>): boolean {
+export function applyProviderNotificationRoute(router: ExpoRouter, data: Record<string, unknown>): boolean {
   try {
     const templateKey = String(data.template_key ?? "");
     const type = String(data.type ?? data.notification_type ?? "");

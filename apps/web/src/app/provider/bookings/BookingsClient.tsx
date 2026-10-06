@@ -1375,6 +1375,8 @@ export function BookingsClient({
             stalePendingCount={stalePendingCount}
             pendingActionIds={pendingActionIds}
             openCloseOutQueue={openCloseOutQueue}
+            canEditAppointments={canEditAppointments}
+            providerTimezone={provider?.timezone ?? null}
           />
         ) : (
           <>
