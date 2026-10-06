@@ -36,8 +36,12 @@ function listStatus(appDir) {
 console.log("Waiting for builds:", ids.join(", "));
 for (;;) {
   const status = { ...listStatus("customer"), ...listStatus("provider") };
-  const pending = ids.filter((id) => status[id] && status[id] !== "finished");
-  const failed = ids.filter((id) => status[id] === "errored" || status[id] === "canceled");
+  const norm = (s) => String(s ?? "").toLowerCase();
+  const pending = ids.filter((id) => status[id] && norm(status[id]) !== "finished");
+  const failed = ids.filter((id) => {
+    const s = norm(status[id]);
+    return s === "errored" || s === "canceled" || s === "error";
+  });
   const unknown = ids.filter((id) => !status[id]);
   if (failed.length) {
     console.error("Build failed/canceled:", failed.map((id) => `${id}=${status[id]}`).join(", "));
