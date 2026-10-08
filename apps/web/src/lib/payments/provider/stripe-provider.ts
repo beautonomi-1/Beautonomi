@@ -1,4 +1,5 @@
 import { getStripeClient } from "@/lib/payments/stripe-server";
+import { stringifyStripeMetadata } from "@/lib/payments/provider/stripe-metadata";
 import type {
   PaymentInitParams,
   PaymentInitResult,
@@ -9,12 +10,18 @@ import type {
 } from "./types";
 import { resolveSettlementModel } from "./settlement-model";
 
+function appendCheckoutSessionPlaceholder(successUrl: string): string {
+  const sep = successUrl.includes("?") ? "&" : "?";
+  if (successUrl.includes("{CHECKOUT_SESSION_ID}")) return successUrl;
+  return `${successUrl}${sep}session_id={CHECKOUT_SESSION_ID}`;
+}
+
 export const stripeProvider: PaymentProvider = {
   id: "stripe",
   capabilities: {
     supportsSavedCards: true,
     supportsSubscriptions: true,
-    supportsNativeMobileSdk: true,
+    supportsNativeMobileSdk: false,
     supportsRefunds: true,
     supportsConnectPayouts: true,
   },
@@ -23,88 +30,95 @@ export const stripeProvider: PaymentProvider = {
   },
   async initializePayment(params: PaymentInitParams): Promise<PaymentInitResult> {
     const stripe = await getStripeClient(params.tenantId);
-    const settlement = params.settlementModel ?? "connected_mor_destination";
+    const settlement = params.settlementModel ?? "platform_mor_transfer";
 
-    if (settlement === "separate_charges_transfers" || settlement === "platform_mor_transfer") {
+    if (settlement === "connected_mor_destination" || settlement === "separate_charges_transfers") {
       throw new Error(
-        `Stripe settlement model "${settlement}" is not implemented yet. Configure connected_mor_destination for this region.`,
+        `Stripe settlement model "${settlement}" is not supported for customer checkout. Use platform_mor_transfer.`,
       );
     }
 
-    const intentParams: Record<string, unknown> = {
-      amount: params.amountInSmallestUnit,
-      currency: params.currency.toLowerCase(),
-      metadata: {
-        ...(params.metadata ?? {}),
-        reference: params.reference,
-      },
-      receipt_email: params.email,
-    };
+    const meta = stringifyStripeMetadata({
+      ...(params.metadata ?? {}),
+      reference: params.reference,
+      ...(params.tenantId ? { tenant_id: params.tenantId } : {}),
+    });
 
-    if (settlement === "connected_mor_destination" && params.connectedAccountId) {
-      intentParams.on_behalf_of = params.connectedAccountId;
-      intentParams.transfer_data = { destination: params.connectedAccountId };
-    } else if (settlement === "connected_mor_destination" && !params.connectedAccountId) {
-      throw new Error(
-        "Stripe Connect account required for destination charges in this region. Complete payout onboarding first.",
-      );
-    }
+    const mode = params.mode ?? "payment";
+    const lineName = params.lineItemName?.trim() || "Beautonomi payment";
 
-    // Hosted Checkout Session for mobile/web redirect flows (parity with Paystack authorization_url).
     if (params.callbackUrl) {
       const cancelUrl =
         typeof params.metadata?.cancel_action === "string"
-          ? params.metadata.cancel_action
+          ? String(params.metadata.cancel_action)
           : params.callbackUrl;
-      const session = await stripe.checkout.sessions.create(
-        {
-          mode: "payment",
-          success_url: params.callbackUrl,
-          cancel_url: cancelUrl,
-          customer_email: params.email,
-          client_reference_id: params.reference,
-          metadata: {
-            reference: params.reference,
-            ...(params.metadata ?? {}),
-          },
-          payment_intent_data: {
-            metadata: {
-              reference: params.reference,
-              ...(params.metadata ?? {}),
+      const successUrl = appendCheckoutSessionPlaceholder(params.callbackUrl);
+
+      const sessionParams: Record<string, unknown> = {
+        mode,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        client_reference_id: params.reference,
+        metadata: meta,
+        payment_method_types: ["card"],
+      };
+
+      if (params.stripeCustomerId?.trim()) {
+        sessionParams.customer = params.stripeCustomerId.trim();
+      } else if (params.email?.trim()) {
+        sessionParams.customer_email = params.email.trim();
+      }
+
+      if (mode === "payment") {
+        sessionParams.line_items = [
+          {
+            quantity: 1,
+            price_data: {
+              currency: params.currency.toLowerCase(),
+              unit_amount: params.amountInSmallestUnit,
+              product_data: { name: lineName },
             },
-            ...(settlement === "connected_mor_destination" && params.connectedAccountId
-              ? {
-                  on_behalf_of: params.connectedAccountId,
-                  transfer_data: { destination: params.connectedAccountId },
-                }
-              : {}),
           },
-          line_items: [
-            {
-              quantity: 1,
-              price_data: {
-                currency: params.currency.toLowerCase(),
-                unit_amount: params.amountInSmallestUnit,
-                product_data: { name: "Beautonomi booking payment" },
-              },
-            },
-          ],
-        },
-        { idempotencyKey: `checkout:${params.reference}` },
-      );
+        ];
+        sessionParams.payment_intent_data = {
+          metadata: meta,
+          ...(params.saveCard ? { setup_future_usage: "off_session" as const } : {}),
+        };
+      } else if (mode === "setup") {
+        sessionParams.currency = params.currency.toLowerCase();
+      }
+
+      const session = await stripe.checkout.sessions.create(sessionParams as any, {
+        idempotencyKey: `checkout:${params.reference}`,
+      });
+
+      const pi =
+        typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : session.payment_intent && typeof session.payment_intent === "object"
+            ? (session.payment_intent as { id?: string }).id
+            : undefined;
 
       return {
         provider: "stripe",
         reference: params.reference,
         authorizationUrl: session.url ?? undefined,
-        paymentIntentId:
-          typeof session.payment_intent === "string" ? session.payment_intent : undefined,
+        checkoutSessionId: session.id,
+        paymentIntentId: pi,
       };
     }
 
-    const intent = await stripe.paymentIntents.create(intentParams as any, {
-      idempotencyKey: params.reference,
-    });
+    const intent = await stripe.paymentIntents.create(
+      {
+        amount: params.amountInSmallestUnit,
+        currency: params.currency.toLowerCase(),
+        metadata: meta,
+        receipt_email: params.email,
+        ...(params.stripeCustomerId ? { customer: params.stripeCustomerId } : {}),
+        ...(params.saveCard ? { setup_future_usage: "off_session" as const } : {}),
+      },
+      { idempotencyKey: params.reference },
+    );
 
     return {
       provider: "stripe",
@@ -114,13 +128,25 @@ export const stripeProvider: PaymentProvider = {
     };
   },
   async verifyPayment(reference, tenantId) {
-    const stripe = await getStripeClient(tenantId);
-    const intents = await stripe.paymentIntents.search({
-      query: `metadata['reference']:'${reference}'`,
-      limit: 1,
-    });
-    const intent = intents.data[0];
-    return { paid: intent?.status === "succeeded", raw: intent };
+    const { getOnlinePaymentCheckoutByReference } = await import(
+      "@/lib/payments/online-payment-checkouts"
+    );
+    const row = await getOnlinePaymentCheckoutByReference(reference);
+    const stripe = await getStripeClient(tenantId ?? row?.tenant_id ?? null);
+    if (row?.checkout_session_id) {
+      const session = await stripe.checkout.sessions.retrieve(row.checkout_session_id, {
+        expand: ["payment_intent"],
+      });
+      const paid =
+        session.payment_status === "paid" ||
+        (session.mode === "setup" && session.status === "complete");
+      return { paid, raw: session };
+    }
+    if (row?.payment_intent_id) {
+      const intent = await stripe.paymentIntents.retrieve(row.payment_intent_id);
+      return { paid: intent.status === "succeeded", raw: intent };
+    }
+    return { paid: false, raw: null };
   },
   async refund(params: PaymentRefundParams): Promise<PaymentRefundResult> {
     const stripe = await getStripeClient(params.tenantId);

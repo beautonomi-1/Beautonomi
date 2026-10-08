@@ -33,9 +33,11 @@ export default function TerminalPaymentReturnScreen() {
     payment_cancelled?: string;
     reference?: string;
     trxref?: string;
+    session_id?: string;
     order_id?: string;
   }>();
   const reference = useMemo(() => pickStr(params.reference) || pickStr(params.trxref), [params]);
+  const sessionId = useMemo(() => pickStr(params.session_id), [params]);
   const successFlag = pickStr(params.payment_success);
   const cancelFlag = pickStr(params.payment_cancelled);
   const orderId = pickStr(params.order_id);
@@ -75,7 +77,7 @@ export default function TerminalPaymentReturnScreen() {
 
     let cancelled = false;
     const run = async () => {
-      const verifyResult = await verifyPaystackWithRetry(reference);
+      const verifyResult = await verifyPaystackWithRetry(reference, { sessionId });
       if (cancelled) return;
       if (verifyResult.status === "failed") {
         setStatus("failed");

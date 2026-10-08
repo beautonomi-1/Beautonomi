@@ -44,9 +44,11 @@ vi.mock("@/lib/rate-limit/public-mutation", () => ({
   checkPublicMutationRateLimit: (...args: unknown[]) => mockCheckPublicMutationRateLimit(...args),
 }));
 
-const mockInitializePaystackTransaction = vi.fn();
-vi.mock("@/lib/payments/paystack-server", () => ({
-  initializePaystackTransaction: (...args: unknown[]) => mockInitializePaystackTransaction(...args),
+const mockInitializeOnlinePayment = vi.fn();
+const mockIsOnlineCardEnabledForTenant = vi.fn();
+vi.mock("@/lib/payments/online-payment", () => ({
+  initializeOnlinePayment: (...args: unknown[]) => mockInitializeOnlinePayment(...args),
+  isOnlineCardEnabledForTenant: (...args: unknown[]) => mockIsOnlineCardEnabledForTenant(...args),
 }));
 
 const mockEnforceGiftCardPurchaseCaps = vi.fn();
@@ -108,8 +110,11 @@ describe("POST /api/public/gift-cards/purchase", () => {
     mockRequireRoleInApi.mockResolvedValue({
       user: { id: "buyer-1", email: "buyer@example.com" },
     });
-    mockInitializePaystackTransaction.mockResolvedValue({
-      data: { authorization_url: "https://paystack.com/pay/abc", access_code: "ac", reference: "ref" },
+    mockIsOnlineCardEnabledForTenant.mockResolvedValue(true);
+    mockInitializeOnlinePayment.mockResolvedValue({
+      authorizationUrl: "https://paystack.com/pay/abc",
+      accessCode: "ac",
+      provider: "paystack",
     });
     mockEnforceGiftCardPurchaseCaps.mockResolvedValue({ ok: true, caps: DEFAULT_CAPS });
     process.env.NEXT_PUBLIC_APP_URL = "https://beautonomi.co.za";
@@ -133,7 +138,7 @@ describe("POST /api/public/gift-cards/purchase", () => {
     expect(body.error?.code).toBe("AMOUNT_ABOVE_MAX");
     expect(body.error?.limit).toBe(5000);
     expect(inserted).toHaveLength(0);
-    expect(mockInitializePaystackTransaction).not.toHaveBeenCalled();
+    expect(mockInitializeOnlinePayment).not.toHaveBeenCalled();
   });
 
   it("requires a phone number when the delivery channel includes sms", async () => {
@@ -174,7 +179,7 @@ describe("POST /api/public/gift-cards/purchase", () => {
     expect(inserted[0].recipient_phone).toBe("+27821234567");
     expect(inserted[0].metadata.scheduled_recipient_email).toBe("friend@example.com");
     // Paystack metadata must not carry the recipient either (webhook would deliver at pay time).
-    expect(mockInitializePaystackTransaction.mock.calls[0][0].metadata.recipient_email).toBeNull();
+    expect(mockInitializeOnlinePayment.mock.calls[0][0].metadata.recipient_email).toBeNull();
   });
 
   it("delivers immediately (recipient email on the column) when deliver_at is in the past", async () => {

@@ -36,6 +36,7 @@ export default function BookingPaymentCallbackPage() {
   const payRemaining = searchParams.get("pay_remaining") === "1";
   const nativeAppContext = searchParams.get("context") === "app";
   const reference = searchParams.get("reference") || searchParams.get("trxref");
+  const sessionId = searchParams.get("session_id");
 
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [message, setMessage] = useState("");
@@ -52,6 +53,7 @@ export default function BookingPaymentCallbackPage() {
         endpoint: `/api/paystack/verify-reference?booking_id=${encodeURIComponent(bookingId)}`,
         maxAttempts: 5,
         delayMs: 1500,
+        sessionId,
       });
       const data = res.data;
       if (res.status === "success" || data?.verified) {
@@ -82,7 +84,7 @@ export default function BookingPaymentCallbackPage() {
       setStatus("success");
       setMessage(t(`${prefix}.finalizing`));
     }
-  }, [reference, bookingId, payRemaining, t]);
+  }, [reference, sessionId, bookingId, payRemaining, t]);
 
   useEffect(() => {
     verify();

@@ -48,13 +48,20 @@ describe("Launch readiness regressions", () => {
     ).toBe(false);
   });
 
-  it("stripe-charge throws when booking payment record fails", () => {
-    const src = readFileSync(
+  it("stripe webhook PI success settles via shared dispatcher (Paystack parity)", () => {
+    const handlerSrc = readFileSync(
       join(repoRoot, "apps/web/src/app/api/payments/stripe/webhook/_handlers/stripe-charge.ts"),
       "utf8",
     );
-    expect(src).toContain("throw new Error(`Failed to record Stripe booking payment");
-    expect(src).toContain("recordBookingOnlineChargeLedger");
+    expect(handlerSrc).toContain("settleStripePaymentIntentSucceeded");
+    expect(handlerSrc).not.toMatch(/recordBookingStripePayment\s*\(/);
+
+    const settleSrc = readFileSync(
+      join(repoRoot, "apps/web/src/lib/payments/settle-stripe-online-payment.ts"),
+      "utf8",
+    );
+    expect(settleSrc).toContain("processSuccessfulPayment");
+    expect(settleSrc).toContain('paymentProvider: "stripe"');
   });
 
   it("settle-paycloud-payment caps group allocations to captured amount", () => {

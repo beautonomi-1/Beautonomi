@@ -89,6 +89,12 @@ const cards: { title: string; description: string; to: string; icon: typeof BarC
     icon: Rocket,
   },
   {
+    title: "Region online gateway",
+    description: "Primary Paystack or Stripe checkout + region secrets",
+    to: adminSpaTo("/admin/control-plane/region-online-gateway"),
+    icon: CreditCard,
+  },
+  {
     title: "Yoco",
     description: "OAuth Web POS and hosted-checkout support",
     to: adminSpaTo("/admin/integrations/yoco"),

@@ -143,7 +143,7 @@ const BIRTH_YEARS = Array.from({ length: 88 }, (_, i) => String(currentYear - 13
 
 function StepDots({ total, current }: { total: number; current: number }) {
   return (
-    <div className="flex items-center justify-center gap-2">
+    <div className="flex items-center justify-center gap-2" aria-hidden="true">
       {Array.from({ length: total }).map((_, i) => (
         <div
           key={i}
@@ -170,14 +170,17 @@ function StepShell({
   title,
   subtitle,
   children,
+  motionKey,
 }: {
   icon: React.ReactNode;
   title: string;
   subtitle: string;
   children: React.ReactNode;
+  motionKey?: number;
 }) {
   return (
     <motion.div
+      key={motionKey}
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -16 }}
@@ -206,13 +209,16 @@ function Step1Name({
   value,
   onChange,
   email,
+  motionKey,
 }: {
   value: string;
   onChange: (v: string) => void;
   email: string;
+  motionKey?: number;
 }) {
   return (
     <StepShell
+      motionKey={motionKey}
       icon={<User className="h-7 w-7" />}
       title="What should we call you?"
       subtitle="If you signed up with phone, email code, or Google, tell us your preferred name here — this is how you'll appear to beauty providers."
@@ -250,10 +256,12 @@ function Step2Photo({
   avatarUrl,
   onAvatarChange,
   onFileChange,
+  motionKey,
 }: {
   avatarUrl: string;
   onAvatarChange: (url: string) => void;
   onFileChange: (file: File | null) => void;
+  motionKey?: number;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -277,6 +285,7 @@ function Step2Photo({
 
   return (
     <StepShell
+      motionKey={motionKey}
       icon={<Camera className="h-7 w-7" />}
       title="Add a profile photo"
       subtitle="Help providers recognise you. You can always update this later."
@@ -331,6 +340,7 @@ function Step3Birthday({
   onYearChange,
   onMonthChange,
   onDayChange,
+  motionKey,
 }: {
   dobYear: string;
   dobMonth: string;
@@ -338,12 +348,14 @@ function Step3Birthday({
   onYearChange: (v: string) => void;
   onMonthChange: (v: string) => void;
   onDayChange: (v: string) => void;
+  motionKey?: number;
 }) {
   const maxDay = daysInMonth(dobMonth, dobYear);
   const days = Array.from({ length: maxDay }, (_, i) => String(i + 1));
 
   return (
     <StepShell
+      motionKey={motionKey}
       icon={<Sparkles className="h-7 w-7" />}
       title="When's your birthday?"
       subtitle="Used for birthday perks and age-appropriate recommendations"
@@ -404,7 +416,7 @@ function Step3Birthday({
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Step 4 — Phone + OTP (required unless already verified)
+   Step 6 — Phone + OTP (wizard step 6; required unless already verified)
 ───────────────────────────────────────────────────────────────────────────── */
 
 function Step4Phone({
@@ -412,18 +424,20 @@ function Step4Phone({
   onPhoneChange,
   alreadyVerified,
   onVerified,
+  motionKey,
 }: {
   phoneE164: string;
   onPhoneChange: (e164: string) => void;
   alreadyVerified: boolean;
   onVerified: () => void;
+  motionKey?: number;
 }) {
   const [codeSent, setCodeSent] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [pendingPhoneE164, setPendingPhoneE164] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
-  // §UX-audit 2026-05: 30s resend cooldown — consistent with login screen.
+  // ┬ºUX-audit 2026-05: 30s resend cooldown ΓÇö consistent with login screen.
   // Previously used the full OTP expiry (SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
   // ~5 min) which disabled the button for 5 minutes after the first send.
   const RESEND_COOLDOWN_SECS = 30;
@@ -434,7 +448,7 @@ function Step4Phone({
     if (alreadyVerified) setLocalVerified(true);
   }, [alreadyVerified]);
 
-  // Phone confirmed at signup/login — skip redundant OTP.
+  // Phone confirmed at signup/login ΓÇö skip redundant OTP.
   useEffect(() => {
     if (localVerified) return;
     let cancelled = false;
@@ -532,7 +546,7 @@ function Step4Phone({
       });
       if (error) throw error;
       // Use the dedicated server endpoint that validates Supabase's phone_confirmed_at
-      // before writing phone_verified=true — prevents client-side spoofing.
+      // before writing phone_verified=true ΓÇö prevents client-side spoofing.
       await fetcher.post("/api/me/phone/verify", { phone: pendingPhoneE164 });
       setLocalVerified(true);
       onVerified();
@@ -546,6 +560,7 @@ function Step4Phone({
 
   return (
     <StepShell
+      motionKey={motionKey}
       icon={<Phone className="h-7 w-7" />}
       title="Add your phone number"
       subtitle="Required for booking confirmations and house-call services"
@@ -643,7 +658,7 @@ function Step4Phone({
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Step 5 — Location (required unless address exists)
+   Step 4 — Location (wizard step 4; required unless address exists)
 ───────────────────────────────────────────────────────────────────────────── */
 
 function Step5Location({
@@ -651,14 +666,17 @@ function Step5Location({
   addressDisplay,
   onAddressChange,
   alreadyHasAddress,
+  motionKey,
 }: {
   address: AddressPayload | null;
   addressDisplay: string;
   onAddressChange: (a: AddressPayload, display: string) => void;
   alreadyHasAddress: boolean;
+  motionKey?: number;
 }) {
   return (
     <StepShell
+      motionKey={motionKey}
       icon={<MapPin className="h-7 w-7" />}
       title="Where are you based?"
       subtitle="Used for house-call bookings and showing you nearby services"
@@ -717,7 +735,7 @@ function Step5Location({
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Step 6 — Beauty preferences
+   Step 5 — Beauty preferences (wizard step 5)
 ───────────────────────────────────────────────────────────────────────────── */
 
 function Step6Beauty({
@@ -725,14 +743,17 @@ function Step6Beauty({
   skinType,
   onHairToggle,
   onSkinChange,
+  motionKey,
 }: {
   hairTypes: string[];
   skinType: string;
   onHairToggle: (h: string) => void;
   onSkinChange: (s: string) => void;
+  motionKey?: number;
 }) {
   return (
     <StepShell
+      motionKey={motionKey}
       icon={<Sparkles className="h-7 w-7" />}
       title="Your beauty profile"
       subtitle="We'll personalise service recommendations just for you"
@@ -817,6 +838,11 @@ function CustomerOnboardingWizard() {
 
   const [hairTypes, setHairTypes] = useState<string[]>([]);
   const [skinType, setSkinType] = useState("");
+  const [inlineStepError, setInlineStepError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setInlineStepError(null);
+  }, [currentStep]);
 
   // ── On mount: redirect if not logged in, prefill, restore draft ──
   useEffect(() => {
@@ -1039,9 +1065,10 @@ function CustomerOnboardingWizard() {
   const handleContinue = async () => {
     const err = validateStep();
     if (err) {
-      toast.error(err);
+      setInlineStepError(err);
       return;
     }
+    setInlineStepError(null);
     setIsLoading(true);
     const ok = await saveCurrentStep();
     setIsLoading(false);
@@ -1055,6 +1082,7 @@ function CustomerOnboardingWizard() {
   };
 
   const handleSkip = async () => {
+    setInlineStepError(null);
     if (currentStep < TOTAL_STEPS) {
       setCurrentStep((s) => s + 1);
     } else {
@@ -1064,6 +1092,7 @@ function CustomerOnboardingWizard() {
 
   // §UX-audit 2026-05: back navigation so users can correct earlier steps
   const handleBack = () => {
+    setInlineStepError(null);
     if (currentStep > 1) setCurrentStep((s) => s - 1);
   };
 
@@ -1116,15 +1145,7 @@ function CustomerOnboardingWizard() {
         ) : (
           <span className="text-lg font-bold tracking-tight text-primary">Beautonomi</span>
         )}
-        {canSkipCurrentStep && (
-          <button
-            type="button"
-            onClick={handleSkip}
-            className="text-sm text-slate-400 hover:text-slate-600"
-          >
-            Skip
-          </button>
-        )}
+        {canGoBack ? null : <span className="w-[52px]" aria-hidden="true" />}
       </header>
 
       {/* Progress */}
@@ -1139,64 +1160,77 @@ function CustomerOnboardingWizard() {
       <main className="flex flex-1 flex-col items-center px-4 pb-8 sm:px-8">
         <div className="w-full max-w-md">
           <AnimatePresence mode="wait">
-            <div key={currentStep}>
-              {currentStep === 1 && (
-                <Step1Name
-                  value={preferredName}
-                  onChange={setPreferredName}
-                  email={(user as unknown as Record<string, unknown>)?.email as string || ""}
-                />
-              )}
-              {currentStep === 2 && (
-                <Step2Photo
-                  avatarUrl={avatarUrl}
-                  onAvatarChange={setAvatarUrl}
-                  onFileChange={setPhotoFile}
-                />
-              )}
-              {currentStep === 3 && (
-                <Step3Birthday
-                  dobYear={dobYear}
-                  dobMonth={dobMonth}
-                  dobDay={dobDay}
-                  onYearChange={setDobYear}
-                  onMonthChange={setDobMonth}
-                  onDayChange={setDobDay}
-                />
-              )}
-              {currentStep === 4 && (
-                <Step5Location
-                  address={address}
-                  addressDisplay={addressDisplay}
-                  onAddressChange={(a, display) => { setAddress(a); setAddressDisplay(display); }}
-                  alreadyHasAddress={alreadyHasAddress}
-                />
-              )}
-              {currentStep === 5 && (
-                <Step6Beauty
-                  hairTypes={hairTypes}
-                  skinType={skinType}
-                  onHairToggle={(h) =>
-                    setHairTypes((prev) =>
-                      prev.includes(h) ? prev.filter((x) => x !== h) : [...prev, h]
-                    )
-                  }
-                  onSkinChange={setSkinType}
-                />
-              )}
-              {currentStep === 6 && (
-                <Step4Phone
-                  phoneE164={phoneE164}
-                  onPhoneChange={setPhoneE164}
-                  alreadyVerified={phoneVerified}
-                  onVerified={() => setPhoneVerified(true)}
-                />
-              )}
-            </div>
+            {currentStep === 1 && (
+              <Step1Name
+                motionKey={currentStep}
+                value={preferredName}
+                onChange={setPreferredName}
+                email={(user as unknown as Record<string, unknown>)?.email as string || ""}
+              />
+            )}
+            {currentStep === 2 && (
+              <Step2Photo
+                motionKey={currentStep}
+                avatarUrl={avatarUrl}
+                onAvatarChange={setAvatarUrl}
+                onFileChange={setPhotoFile}
+              />
+            )}
+            {currentStep === 3 && (
+              <Step3Birthday
+                motionKey={currentStep}
+                dobYear={dobYear}
+                dobMonth={dobMonth}
+                dobDay={dobDay}
+                onYearChange={setDobYear}
+                onMonthChange={setDobMonth}
+                onDayChange={setDobDay}
+              />
+            )}
+            {currentStep === 4 && (
+              <Step5Location
+                motionKey={currentStep}
+                address={address}
+                addressDisplay={addressDisplay}
+                onAddressChange={(a, display) => { setAddress(a); setAddressDisplay(display); }}
+                alreadyHasAddress={alreadyHasAddress}
+              />
+            )}
+            {currentStep === 5 && (
+              <Step6Beauty
+                motionKey={currentStep}
+                hairTypes={hairTypes}
+                skinType={skinType}
+                onHairToggle={(h) =>
+                  setHairTypes((prev) =>
+                    prev.includes(h) ? prev.filter((x) => x !== h) : [...prev, h]
+                  )
+                }
+                onSkinChange={setSkinType}
+              />
+            )}
+            {currentStep === 6 && (
+              <Step4Phone
+                motionKey={currentStep}
+                phoneE164={phoneE164}
+                onPhoneChange={setPhoneE164}
+                alreadyVerified={phoneVerified}
+                onVerified={() => setPhoneVerified(true)}
+              />
+            )}
           </AnimatePresence>
 
           {/* Actions */}
           <div className="mt-8 space-y-3">
+            {inlineStepError && (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-3"
+              >
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden />
+                <p className="text-xs text-amber-700">{inlineStepError}</p>
+              </div>
+            )}
             <Button
               type="button"
               onClick={handleContinue}
@@ -1220,28 +1254,8 @@ function CustomerOnboardingWizard() {
                 disabled={isLoading}
                 className="w-full text-center text-sm text-slate-400 hover:text-slate-600 disabled:opacity-50"
               >
-                {isLastStep ? "Skip and finish" : "Skip for now"}
+                Skip for now
               </button>
-            )}
-
-            {/* Step 4 required notice */}
-            {currentStep === 4 && !phoneVerified && (
-              <div className="flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-3">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-                <p className="text-xs text-amber-700">
-                  Phone verification is required to make bookings. You must verify your number to continue.
-                </p>
-              </div>
-            )}
-
-            {/* Step 5 required notice */}
-            {currentStep === 5 && !alreadyHasAddress && !address && (
-              <div className="flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-3">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-                <p className="text-xs text-amber-700">
-                  An address is required for house-call bookings. Please search for and confirm your location.
-                </p>
-              </div>
             )}
           </div>
         </div>

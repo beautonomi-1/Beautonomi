@@ -209,7 +209,18 @@ export async function replayInboundWebhookEvent(
       if (!object) return { ok: false, code: "INVALID_PAYLOAD", reason: "stripe payload missing data.object" };
       const h = await loaders.stripe();
       let run: (() => Promise<void>) | null = null;
-      if (eventType === "payment_intent.succeeded") {
+      if (
+        eventType === "checkout.session.completed" ||
+        eventType === "checkout.session.async_payment_succeeded"
+      ) {
+        run = async () => {
+          const { settleStripeCheckoutSession } = await import(
+            "@/lib/payments/settle-stripe-online-payment"
+          );
+          await settleStripeCheckoutSession(object as Parameters<typeof settleStripeCheckoutSession>[0]);
+        };
+        handlerName = "settleStripeCheckoutSession";
+      } else if (eventType === "payment_intent.succeeded") {
         run = () => h.handleStripePaymentIntentSucceeded(object);
         handlerName = "handleStripePaymentIntentSucceeded";
       } else if (eventType === "charge.refunded") {

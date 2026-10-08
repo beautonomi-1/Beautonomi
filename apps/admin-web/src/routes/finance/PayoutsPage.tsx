@@ -697,11 +697,12 @@ export function PayoutsPage() {
             <strong>Approve</strong> moves a request to processing so finance can pay out (notifies the provider).
           </li>
           <li>
-            <strong>Transfer</strong> sends the Paystack transfer when the recipient is set up (use when you pay via Paystack).
+            <strong>Transfer</strong> initiates the payout rail for this market (Paystack transfer or Stripe Connect transfer,
+            depending on region configuration).
           </li>
           <li>
-            <strong>Mark paid</strong> use when money has actually left the platform (bank / Paystack settled). This writes the
-            payout to the finance ledger and is idempotent.
+            <strong>Mark paid</strong> use when money has actually left the platform (bank settled). This writes the payout to
+            the finance ledger and is idempotent.
           </li>
           <li>
             <strong>Reject / Mark failed</strong> frees the provider&apos;s balance for a new request (requires a reason).

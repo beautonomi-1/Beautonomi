@@ -80,7 +80,8 @@ export async function POST(request: NextRequest) {
     if (
       isSubscriptionProduct &&
       !eligibility.eligible &&
-      eligibility.billing_provider === "paystack"
+      (eligibility.billing_provider === "paystack" ||
+        eligibility.billing_provider === "stripe")
     ) {
       return errorResponse(
         eligibility.reason ?? "In-app purchase not available for this account",

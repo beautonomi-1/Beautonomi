@@ -19,6 +19,7 @@ import * as ExpoLinking from "expo-linking";
 import { api } from "@/lib/api-client";
 import { trackGiftCardPurchased } from "@/lib/analytics";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
+import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import { getApiErrorMessage, isTransientApiFailure } from "@/lib/api-error";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -251,6 +252,7 @@ export default function GiftCardPurchaseScreen() {
         }
 
         setProcessingMessage(gc("openingPaymentPage") || "Opening payment page…");
+        let checkoutSessionId: string | null = null;
         if (Platform.OS !== "web") {
           const returnUrl = getGiftCardPurchasePaystackAuthPrefix();
           // Important: close blocking overlay before opening Paystack WebView.
@@ -269,8 +271,9 @@ export default function GiftCardPurchaseScreen() {
             return;
           }
           if (pr.outcome === "success" && pr.url && !isCancelledPaystackUrl(pr.url)) {
-            const extracted = extractPaystackReferenceFromUrl(pr.url);
-            if (extracted) reference = extracted;
+            const parsed = parseOnlineCheckoutReturnUrl(pr.url);
+            if (parsed.reference) reference = parsed.reference;
+            checkoutSessionId = parsed.sessionId;
           }
         } else {
           // Expo Web: full redirect to Paystack → Next.js gift-card success page verifies.
@@ -281,7 +284,7 @@ export default function GiftCardPurchaseScreen() {
         setProcessingPayment(true);
         setProcessingMessage(gc("confirmingPayment") || "Confirming your payment…");
         if (reference) {
-          await verifyPaystackWithRetry(reference);
+          await verifyPaystackWithRetry(reference, { sessionId: checkoutSessionId });
         }
         const pollResult = await pollNewGiftCards(existingGiftCardIds);
         setIssuedGiftCardCodes(pollResult.codes);

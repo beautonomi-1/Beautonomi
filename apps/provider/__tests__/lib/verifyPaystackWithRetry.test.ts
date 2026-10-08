@@ -79,4 +79,16 @@ describe("verifyPaystackWithRetry (provider)", () => {
     expect(res.attempts).toBe(0);
     expect(apiGetMock).not.toHaveBeenCalled();
   });
+
+  it("appends session_id when provided (Stripe Checkout)", async () => {
+    apiGetMock.mockResolvedValueOnce(ok({ verified: true }));
+    await verifyPaystackWithRetry("ref-stripe", {
+      maxAttempts: 1,
+      delayMs: 0,
+      sessionId: "cs_live_xyz",
+    });
+    const call = apiGetMock.mock.calls[0]?.[0] ?? "";
+    expect(call).toContain("reference=ref-stripe");
+    expect(call).toContain("session_id=cs_live_xyz");
+  });
 });

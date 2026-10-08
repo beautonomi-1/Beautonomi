@@ -1,6 +1,24 @@
 import * as ExpoLinking from "expo-linking";
 
 /** Extract Paystack `reference` / `trxref` from a return URL (app scheme or https). */
+/** Stripe Checkout success URLs include `session_id=cs_…`. */
+export function extractStripeCheckoutSessionIdFromUrl(url: string): string | null {
+  try {
+    const parsed = ExpoLinking.parse(url);
+    const q = parsed.queryParams ?? {};
+    const sid = q.session_id;
+    if (Array.isArray(sid)) return (sid[0] ?? "").trim() || null;
+    if (typeof sid === "string" && sid.trim()) return sid.trim();
+  } catch {
+    /* fall through */
+  }
+  try {
+    return new URL(url).searchParams.get("session_id")?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 export function extractPaystackReferenceFromUrl(url: string): string | null {
   try {
     const parsed = ExpoLinking.parse(url);

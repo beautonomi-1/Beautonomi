@@ -39,6 +39,7 @@ import {
   reportProviderUnavailable,
 } from "@/lib/provider-availability";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
+import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { APP_URL } from "@/config/public-env";
@@ -63,7 +64,6 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import {
-  extractPaystackReferenceFromUrl,
   isCancelledPaystackUrl,
 } from "@/lib/paystack-webview-utils";
 import {
@@ -1801,17 +1801,18 @@ export default function PartnerProfileScreen() {
                   Alert.alert(pp("paymentCancelledTitle"), pp("paymentCancelledBody"));
                   return;
                 }
+                let checkoutSessionId: string | null = null;
                 if (pr.outcome === "success" && pr.url && !isCancelledPaystackUrl(pr.url)) {
-                  const extracted = extractPaystackReferenceFromUrl(pr.url);
-                  if (extracted) paystackRef = extracted;
+                  const parsed = parseOnlineCheckoutReturnUrl(pr.url);
+                  if (parsed.reference) paystackRef = parsed.reference;
+                  checkoutSessionId = parsed.sessionId;
+                }
+                if (paystackRef) {
+                  await verifyPaystackWithRetry(paystackRef, { sessionId: checkoutSessionId });
                 }
               } else {
                 window.location.assign(url);
                 return;
-              }
-
-              if (paystackRef) {
-                await verifyPaystackWithRetry(paystackRef);
               }
 
               const activated = await pollSalonMembership();

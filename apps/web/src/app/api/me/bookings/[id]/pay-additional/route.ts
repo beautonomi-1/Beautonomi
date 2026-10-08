@@ -12,7 +12,7 @@ import {
 import { z } from "zod";
 import type { Booking } from "@/types/beautonomi";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
-import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { initializeOnlinePayment } from "@/lib/payments/online-payment";
 import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 
@@ -117,25 +117,25 @@ export async function POST(
     const callbackUrl = `${addlAppUrl}/account-settings/bookings/${encodeURIComponent(id)}/payment-callback?charge_id=${encodeURIComponent(charge_id)}`;
     const addlCancelAction = `${addlAppUrl}/account-settings/bookings/${encodeURIComponent(id)}?charge_cancelled=1&charge_id=${encodeURIComponent(charge_id)}`;
 
-    const paystackData = await initializePaystackTransaction({
+    const chargeCurrency =
+      (charge as any).currency || bookingData.currency || lastResortCurrency;
+    const onlineInit = await initializeOnlinePayment({
+      tenantId: paymentTenantId,
       email,
-      amountInSmallestUnit: convertToSmallestUnit(
-        Number((charge as any).amount || 0),
-        (charge as any).currency || bookingData.currency || lastResortCurrency,
-      ),
-      currency: (charge as any).currency || bookingData.currency || lastResortCurrency,
+      amountInSmallestUnit: convertToSmallestUnit(Number((charge as any).amount || 0), chargeCurrency),
+      currency: chargeCurrency,
       reference,
-      callback_url: callbackUrl,
+      callbackUrl,
+      lineItemName: `Additional charge — booking ${bookingData.booking_number || id}`,
       metadata: {
         booking_id: id,
         additional_charge_id: charge_id,
         customer_id: bookingData.customer_id,
         cancel_action: addlCancelAction,
       },
-      tenantId: paymentTenantId,
     });
 
-    const paymentUrl = paystackData?.data?.authorization_url || null;
+    const paymentUrl = onlineInit.authorizationUrl || null;
 
     const admin = getSupabaseAdmin();
     if (chargeStatus === "pending") {
@@ -154,9 +154,9 @@ export async function POST(
       amount: Number((charge as any).amount || 0),
       currency: (charge as any).currency || bookingData.currency || lastResortCurrency,
       status: "pending",
-      payment_provider: "paystack",
+      payment_provider: onlineInit.provider,
       payment_provider_transaction_id: reference,
-      payment_provider_response: paystackData,
+      payment_provider_response: onlineInit,
       description: `Additional charge for booking ${bookingData.booking_number}`,
       metadata: {
         type: "additional_charge",

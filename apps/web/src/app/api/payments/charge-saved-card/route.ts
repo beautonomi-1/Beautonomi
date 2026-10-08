@@ -11,6 +11,8 @@ import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-
 import { recordBookingPaystackPayment } from "@/lib/bookings/record-booking-paystack-payment";
 import { recordPaystackBookingSettlement } from "@/lib/bookings/record-paystack-booking-settlement";
 import { chargeAuthorization, convertToSmallestUnit } from "@/lib/payments/paystack-complete";
+import { getPaymentProviderForTenant } from "@/lib/payments/provider/registry";
+import { chargeStripeOffSession } from "@/lib/payments/charge-stripe-off-session";
 import { convertFromSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
@@ -111,6 +113,8 @@ export async function POST(request: NextRequest) {
     const currency = body.currency ?? lastResortCurrency;
 
     const supabase = await getSupabaseServer(request);
+    const psp = await getPaymentProviderForTenant(tenantId);
+    const cardProvider = (psp?.provider.id ?? "paystack").toLowerCase();
 
     // Get the payment method
     const { data: paymentMethod, error: pmError } = await (supabase.from("payment_methods") as any)
@@ -118,7 +122,7 @@ export async function POST(request: NextRequest) {
       .eq("id", body.payment_method_id)
       .eq("user_id", user.id)
       .eq("is_active", true)
-      .eq("provider", "paystack")
+      .eq("provider", cardProvider)
       .single();
 
     if (pmError || !paymentMethod) {
@@ -140,16 +144,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get authorization code
-    const authorizationCode = paymentMethod.provider_payment_method_id;
+    const authorizationCode = paymentMethod.provider_payment_method_id as string | null | undefined;
 
-    if (!authorizationCode || !authorizationCode.startsWith("AUTH_")) {
-      return handleApiError(
-        new Error("Invalid payment method"),
-        "This payment method is not a valid Paystack authorization",
-        "INVALID_METHOD",
-        400
-      );
+    if (cardProvider === "paystack") {
+      if (!authorizationCode || !authorizationCode.startsWith("AUTH_")) {
+        return handleApiError(
+          new Error("Invalid payment method"),
+          "This payment method is not a valid Paystack authorization",
+          "INVALID_METHOD",
+          400
+        );
+      }
+    } else if (cardProvider === "stripe") {
+      if (!authorizationCode || !String(authorizationCode).startsWith("pm_")) {
+        return handleApiError(
+          new Error("Invalid payment method"),
+          "This payment method is not a valid Stripe saved card",
+          "INVALID_METHOD",
+          400
+        );
+      }
     }
 
     if (isPaymentMethodExpired(paymentMethod.expiry_month, paymentMethod.expiry_year)) {
@@ -411,17 +425,58 @@ export async function POST(request: NextRequest) {
         user.id
     );
 
-    const chargeResult = await chargeAuthorization(
-      authorizationCode,
-      body.email,
-      amountInSmallestUnit,
-      {
-        ...body.metadata,
-        payment_method_id: body.payment_method_id,
-        user_id: user.id,
-      },
-      { tenantId, reference: chargeReference, currency: chargeCurrency }
-    );
+    let chargeResult: Awaited<ReturnType<typeof chargeAuthorization>>;
+    if (cardProvider === "stripe") {
+      const stripeCharge = await chargeStripeOffSession({
+        tenantId,
+        reference: chargeReference,
+        email: body.email,
+        amountInSmallestUnit,
+        currency: chargeCurrency,
+        stripePaymentMethodId: String(authorizationCode),
+        metadata: {
+          ...(body.metadata ?? {}),
+          payment_method_id: body.payment_method_id,
+          user_id: user.id,
+        },
+      });
+      if (stripeCharge.ok === false) {
+        return handleApiError(
+          new Error(stripeCharge.message),
+          stripeCharge.message || "Failed to charge card",
+          "CHARGE_FAILED",
+          400,
+        );
+      }
+      const { getStripeClient } = await import("@/lib/payments/stripe-server");
+      const { settleStripePaymentIntentSucceeded } = await import(
+        "@/lib/payments/settle-stripe-online-payment"
+      );
+      const stripe = await getStripeClient(tenantId);
+      const intent = await stripe.paymentIntents.retrieve(stripeCharge.paymentIntentId, {
+        expand: ["latest_charge.balance_transaction"],
+      });
+      await settleStripePaymentIntentSucceeded(
+        intent as Parameters<typeof settleStripePaymentIntentSucceeded>[0],
+        supabaseAdmin,
+      );
+      chargeResult = {
+        status: true,
+        data: { status: "success", reference: chargeReference, currency: chargeCurrency },
+      } as Awaited<ReturnType<typeof chargeAuthorization>>;
+    } else {
+      chargeResult = await chargeAuthorization(
+        authorizationCode!,
+        body.email,
+        amountInSmallestUnit,
+        {
+          ...body.metadata,
+          payment_method_id: body.payment_method_id,
+          user_id: user.id,
+        },
+        { tenantId, reference: chargeReference, currency: chargeCurrency },
+      );
+    }
 
     if (!chargeResult.status) {
       const { slackNotifyPaymentFailed } = await import("@/lib/integrations/slack/ops-triggers");

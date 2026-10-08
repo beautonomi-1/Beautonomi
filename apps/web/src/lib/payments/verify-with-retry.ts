@@ -11,7 +11,17 @@ type VerifyWithRetryOptions = {
   endpoint?: string;
   maxAttempts?: number;
   delayMs?: number;
+  /** Stripe Checkout success URL query param — enables verify before registry lookup. */
+  sessionId?: string | null;
 };
+
+export function buildOnlineVerifyQuery(reference: string, sessionId?: string | null): string {
+  const params = new URLSearchParams();
+  params.set("reference", reference);
+  const sid = sessionId?.trim();
+  if (sid) params.set("session_id", sid);
+  return params.toString();
+}
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -50,6 +60,7 @@ export async function verifyWithRetry<T = Record<string, unknown>>(
   const endpoint = options.endpoint ?? "/api/paystack/verify";
   const maxAttempts = options.maxAttempts ?? 5;
   const delayMs = options.delayMs ?? 1500;
+  const sessionId = options.sessionId ?? null;
 
   let attempts = 0;
   let lastData: Record<string, unknown> | null = null;
@@ -58,10 +69,9 @@ export async function verifyWithRetry<T = Record<string, unknown>>(
   while (attempts < maxAttempts) {
     attempts += 1;
     try {
-      const res = await fetcher.get<{ data?: T }>(
-        `${endpoint}${endpoint.includes("?") ? "&" : "?"}reference=${encodeURIComponent(reference)}`,
-        { staleTimeMs: 0 },
-      );
+      const q = buildOnlineVerifyQuery(reference, sessionId);
+      const sep = endpoint.includes("?") ? "&" : "?";
+      const res = await fetcher.get<{ data?: T }>(`${endpoint}${sep}${q}`, { staleTimeMs: 0 });
       const payload = (res?.data ?? null) as Record<string, unknown> | null;
       lastData = payload;
       const status = readStatus(payload);

@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
-import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { initializeOnlinePayment } from "@/lib/payments/online-payment";
 import {
   paystackChannelsForInitialize,
   resolveHostedCheckoutCallbacks,
@@ -256,14 +256,18 @@ export async function createMembershipPurchase(input: PurchaseMembershipInput): 
   const callbackUrl = hostedMembership.successUrl;
   const membershipCancelAction = `${membershipAppUrl}/explore?membership_cancelled=1${hostedMembership.inApp ? "&context=app" : ""}`;
 
-  let paystackData: Awaited<ReturnType<typeof initializePaystackTransaction>>;
+  const membershipChannelExtras = paystackChannelsForInitialize({ saveCard: true });
+  let onlineInit: Awaited<ReturnType<typeof initializeOnlinePayment>>;
   try {
-    paystackData = await initializePaystackTransaction({
+    onlineInit = await initializeOnlinePayment({
+      tenantId: input.tenantId,
       email: email!,
       amountInSmallestUnit: convertToSmallestUnit(amount, currency),
       currency,
       reference,
-      callback_url: callbackUrl,
+      callbackUrl,
+      lineItemName: "Membership",
+      saveCard: true,
       metadata: {
         membership_order_id: order.id,
         user_id: input.userId,
@@ -276,8 +280,9 @@ export async function createMembershipPurchase(input: PurchaseMembershipInput): 
         set_as_default: false,
         enable_auto_renew: true,
       },
-      tenantId: input.tenantId,
-      channels: paystackChannelsForInitialize({ saveCard: true }).channels,
+      ...(membershipChannelExtras.channels
+        ? { channels: membershipChannelExtras.channels }
+        : {}),
     });
   } catch (error) {
     await (supabase.from("membership_orders") as any)
@@ -286,7 +291,7 @@ export async function createMembershipPurchase(input: PurchaseMembershipInput): 
     throw error;
   }
 
-  const paymentUrl = paystackData?.data?.authorization_url || null;
+  const paymentUrl = onlineInit.authorizationUrl || null;
   const { error: updateError } = await (supabase.from("membership_orders") as any)
     .update({ paystack_reference: reference, metadata: orderMetadata })
     .eq("id", order.id);

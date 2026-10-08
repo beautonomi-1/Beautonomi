@@ -84,6 +84,9 @@ describe("finalizeOnboardingSuccess iOS IAP", () => {
           error: null,
         };
       }
+      if (path.includes("/provider/subscription") && !path.includes("/plans")) {
+        return { data: { ios_purchase_eligible: true }, error: null };
+      }
       if (path.includes("/provider/profile")) {
         return { data: { id: "provider-1" }, error: null };
       }
@@ -153,6 +156,127 @@ describe("finalizeOnboardingSuccess iOS IAP", () => {
     expect(mockAlert).toHaveBeenCalledWith(
       "Checkout failed",
       expect.stringMatching(/App Store purchase/),
+      expect.any(Array),
+    );
+  });
+
+  it("shows cancel alert when the user dismisses the App Store sheet", async () => {
+    startAppleSubscriptionCheckout.mockResolvedValue({ ok: false, cancelled: true });
+
+    await finalizeOnboardingSuccess({
+      data: {
+        provider: { id: "provider-1" },
+        selected_plan_id: "paid-plan",
+        selected_subscription_plan_id: "subscription-plan-paid",
+        requires_checkout: true,
+      },
+      formData: { selected_billing_period: "monthly" },
+      router: { replace: mockReplace } as never,
+      refreshProvider: mockRefresh,
+      userId: "user-1",
+      showSuccessAlert: false,
+      waitForCheckout,
+    });
+
+    expect(mockAlert).toHaveBeenCalledWith(
+      "Payment cancelled",
+      expect.stringMatching(/No charge was made/),
+      expect.any(Array),
+    );
+    expect(startPaidSubscriptionCheckout).not.toHaveBeenCalled();
+  });
+
+  it("still starts StoreKit when eligibility GET fails (does not treat as ineligible)", async () => {
+    api.get.mockImplementation(async (path: string) => {
+      if (path === "/api/provider/subscription") {
+        return { data: null, error: { message: "timeout", code: "TIMEOUT" } };
+      }
+      if (path.includes("/subscription/plans")) {
+        return {
+          data: [
+            {
+              plan_id: "subscription-plan-paid",
+              billing_period: "monthly",
+              apple_product_id: "com.beautonomi.partner.sub.growth.monthly",
+            },
+          ],
+          error: null,
+        };
+      }
+      if (path.includes("/provider/profile")) {
+        return { data: { id: "provider-1" }, error: null };
+      }
+      return { data: { portal: "provider" }, error: null };
+    });
+    startAppleSubscriptionCheckout.mockResolvedValue({ ok: true });
+
+    await finalizeOnboardingSuccess({
+      data: {
+        provider: { id: "provider-1" },
+        selected_plan_id: "paid-plan",
+        selected_subscription_plan_id: "subscription-plan-paid",
+        requires_checkout: true,
+      },
+      formData: { selected_billing_period: "monthly" },
+      router: { replace: mockReplace } as never,
+      refreshProvider: mockRefresh,
+      userId: "user-1",
+      showSuccessAlert: false,
+      waitForCheckout,
+    });
+
+    expect(startAppleSubscriptionCheckout).toHaveBeenCalled();
+    expect(mockAlert).not.toHaveBeenCalledWith("Checkout unavailable", expect.anything(), expect.anything());
+  });
+
+  it("does not start StoreKit when ios_purchase_eligible is false", async () => {
+    api.get.mockImplementation(async (path: string) => {
+      if (path.includes("/subscription/plans")) {
+        return {
+          data: [
+            {
+              plan_id: "subscription-plan-paid",
+              billing_period: "monthly",
+              apple_product_id: "com.beautonomi.partner.sub.growth.monthly",
+            },
+          ],
+          error: null,
+        };
+      }
+      if (path.includes("/provider/subscription") && !path.includes("/plans")) {
+        return {
+          data: {
+            ios_purchase_eligible: false,
+            ios_purchase_eligible_reason: "Billed on the website.",
+          },
+          error: null,
+        };
+      }
+      if (path.includes("/provider/profile")) {
+        return { data: { id: "provider-1" }, error: null };
+      }
+      return { data: { portal: "provider" }, error: null };
+    });
+
+    await finalizeOnboardingSuccess({
+      data: {
+        provider: { id: "provider-1" },
+        selected_plan_id: "paid-plan",
+        selected_subscription_plan_id: "subscription-plan-paid",
+        requires_checkout: true,
+      },
+      formData: { selected_billing_period: "monthly" },
+      router: { replace: mockReplace } as never,
+      refreshProvider: mockRefresh,
+      userId: "user-1",
+      showSuccessAlert: false,
+      waitForCheckout,
+    });
+
+    expect(startAppleSubscriptionCheckout).not.toHaveBeenCalled();
+    expect(mockAlert).toHaveBeenCalledWith(
+      "Checkout unavailable",
+      "Billed on the website.",
       expect.any(Array),
     );
   });

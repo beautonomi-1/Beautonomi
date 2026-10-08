@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
-import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { useFeatureFlag, useMultipleFeatureFlags } from "@/hooks/useFeatureFlag";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { toast } from "sonner";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 import LoginModal from "@/components/global/login-modal";
@@ -53,7 +54,16 @@ export default function GiftCardPurchasePage() {
   const [templates, setTemplates] = useState<GiftCardTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(true);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
-  const { enabled: giftCardsEnabled, loading: flagsLoading } = useFeatureFlag("gift_cards");
+  const { enabled: giftCardsEnabled, loading: giftCardsFlagLoading } = useFeatureFlag("gift_cards");
+  const { features: paymentFeatures, loading: paymentFlagsLoading } = useMultipleFeatureFlags([
+    "payment_paystack",
+  ]);
+  const { bundle } = useConfigBundle();
+  const primaryGateway = bundle?.meta?.tenant_region?.payment_gateway?.toLowerCase();
+  const flagsLoading = giftCardsFlagLoading || paymentFlagsLoading;
+  const onlineCardEnabled =
+    flagsLoading ? true : (paymentFeatures.payment_paystack ?? false) || primaryGateway === "stripe";
+  const purchaseEnabled = giftCardsEnabled && onlineCardEnabled;
 
   // Check if coming from bulk purchase link
   useEffect(() => {
@@ -189,14 +199,18 @@ export default function GiftCardPurchasePage() {
 
   const totalAmount = Number(amount) * Number(quantity) || 0;
 
-  if (!flagsLoading && !giftCardsEnabled) {
+  if (!flagsLoading && !purchaseEnabled) {
     return (
       <div className="min-h-screen bg-white">
         <Navbar4 />
         <div className="max-w-2xl mx-auto px-4 py-10">
           <div className="border border-amber-200 bg-amber-50 rounded-lg p-6 text-center">
             <h2 className="text-xl font-semibold text-gray-900 mb-2">Gift cards are currently unavailable</h2>
-            <p className="text-gray-600 mb-4">This feature is temporarily disabled. Please check back later.</p>
+            <p className="text-gray-600 mb-4">
+              {!giftCardsEnabled
+                ? "This feature is temporarily disabled. Please check back later."
+                : "Online card checkout is not available in this market right now. Please check back later."}
+            </p>
             <Button asChild variant="outline">
               <Link href="/">Return home</Link>
             </Button>

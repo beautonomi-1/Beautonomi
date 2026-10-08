@@ -25,7 +25,15 @@ export type RecordProductOrderPaymentInput = {
     | "walk_in_pos"
     | "paycloud_terminal"
     | "yoco_terminal";
-  provider: "paystack" | "wallet" | "gift_card" | "cash" | "yoco" | "card_on_delivery" | "paycloud";
+  provider:
+    | "paystack"
+    | "stripe"
+    | "wallet"
+    | "gift_card"
+    | "cash"
+    | "yoco"
+    | "card_on_delivery"
+    | "paycloud";
   /** True when Beautonomi/gateway holds money that can become provider payout balance. */
   platformHeld?: boolean;
   /** Backdate ledger rows for already-paid repairs (defaults to now on fresh settlement). */
@@ -197,7 +205,11 @@ async function recordProductOrderPaymentInner(
   const grossForProvider = Math.max(0, subtractMoney(orderTotal, platformFee));
   const providerEarnings = grossForProvider;
   const isPlatformHeld =
-    input.platformHeld ?? (provider === "paystack" || provider === "wallet" || provider === "gift_card");
+    input.platformHeld ??
+    (provider === "paystack" ||
+      provider === "stripe" ||
+      provider === "wallet" ||
+      provider === "gift_card");
   const giftCardAmount = Math.max(0, Number((order as any).gift_card_amount ?? 0));
   const promotionDiscount = Math.max(0, Number((order as any).promotion_discount_amount ?? 0));
   const orderReferenceForLedger = orderNumber;

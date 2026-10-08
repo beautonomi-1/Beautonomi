@@ -8,7 +8,7 @@ import {
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
-import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { initializeOnlinePayment } from "@/lib/payments/online-payment";
 import { resolveHostedCheckoutCallbacks } from "@/lib/payments/resolve-paystack-hosted-callback";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
@@ -210,13 +210,16 @@ export async function POST(
     const chargeCallbackUrl = hostedCharge.successUrl;
     const chargeCancelAction = `${hostedCharge.cancelUrl}${hostedCharge.cancelUrl.includes("?") ? "&" : "?"}charge_cancelled=1&charge_id=${encodeURIComponent(chargeId)}`;
 
-    let paystackResponse: Awaited<ReturnType<typeof initializePaystackTransaction>>;
+    let onlineInit: Awaited<ReturnType<typeof initializeOnlinePayment>>;
     try {
-      paystackResponse = await initializePaystackTransaction({
+      onlineInit = await initializeOnlinePayment({
+        tenantId: paymentTenantId,
         email: customer.email,
         amountInSmallestUnit: convertToSmallestUnit(paystackAmount, currency),
         currency,
         reference,
+        callbackUrl: chargeCallbackUrl,
+        lineItemName: charge.description || `Additional charge — booking ${bookingNumber || bookingId}`,
         metadata: {
           booking_id: bookingId,
           booking_number: bookingNumber,
@@ -229,8 +232,6 @@ export async function POST(
           wallet_amount_applied: walletAmountApplied,
           gift_card_amount_applied: giftCardAmountApplied,
         },
-        callback_url: chargeCallbackUrl,
-        tenantId: paymentTenantId,
       });
     } catch (initErr) {
       if (walletAmountApplied > 0 || giftCardAmountApplied > 0) {
@@ -249,7 +250,7 @@ export async function POST(
       throw initErr;
     }
 
-    if (!paystackResponse.data?.authorization_url) {
+    if (!onlineInit.authorizationUrl) {
       if (walletAmountApplied > 0 || giftCardAmountApplied > 0) {
         await rollbackCollectibleSplitLeg(admin, {
           bookingId,
@@ -289,8 +290,8 @@ export async function POST(
     });
 
     return successResponse({
-      authorization_url: paystackResponse.data?.authorization_url ?? "",
-      access_code: paystackResponse.data?.access_code ?? "",
+      authorization_url: onlineInit.authorizationUrl ?? "",
+      access_code: onlineInit.accessCode ?? "",
       reference,
       wallet_amount_applied: walletAmountApplied,
       gift_card_amount_applied: giftCardAmountApplied,

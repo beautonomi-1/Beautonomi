@@ -15,7 +15,7 @@ import {
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
-import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { initializeOnlinePayment } from "@/lib/payments/online-payment";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { z } from "zod";
@@ -130,22 +130,24 @@ export async function POST(
           ? `${terminalReturnBase}?payment_cancelled=1&order_id=${orderId}${inAppParam}`
           : `${appUrl}/provider/settings/sales/terminal-payment-return?payment_cancelled=1&order_id=${orderId}`;
 
-    const paystackData = await initializePaystackTransaction({
+    const terminalCurrency = o.currency ?? LAST_RESORT_CURRENCY;
+    const onlineInit = await initializeOnlinePayment({
+      tenantId,
       email,
-      amountInSmallestUnit: convertToSmallestUnit(amount, o.currency ?? LAST_RESORT_CURRENCY),
-      currency: o.currency ?? LAST_RESORT_CURRENCY,
+      amountInSmallestUnit: convertToSmallestUnit(amount, terminalCurrency),
+      currency: terminalCurrency,
       reference,
-      callback_url: callbackUrl,
+      callbackUrl,
+      lineItemName: "Terminal order",
       metadata: {
         terminal_order_id: orderId,
         provider_id: providerId,
         kind: "terminal_order_payment",
         cancel_action: cancelAction,
       },
-      tenantId,
     });
 
-    const paymentUrl = paystackData?.data?.authorization_url ?? null;
+    const paymentUrl = onlineInit.authorizationUrl ?? null;
     if (!paymentUrl) {
       return errorResponse("Paystack did not return a payment URL.", "PAYSTACK_ERROR", 502);
     }

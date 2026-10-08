@@ -121,6 +121,8 @@ export default function ProductCheckoutPage() {
   const { enabled: paystackEnabled } = useFeatureFlag("payment_paystack");
   const { enabled: walletEnabled } = useFeatureFlag("payment_wallet");
   const { bundle } = useConfigBundle();
+  const primaryOnlineGateway = bundle?.meta?.tenant_region?.payment_gateway?.toLowerCase();
+  const onlineCardEnabled = paystackEnabled || primaryOnlineGateway === "stripe";
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const providerTimezone = bundle?.meta?.tenant_region?.timezone ?? "Africa/Johannesburg";
 
@@ -344,12 +346,12 @@ export default function ProductCheckoutPage() {
 
   // When Paystack is disabled, default to pay on delivery
   useEffect(() => {
-    if (!paystackEnabled && paymentMethod === "paystack") {
+    if (!onlineCardEnabled && paymentMethod === "paystack") {
       if (cashEnabledOnPlatform) {
         setPaymentMethod("card_on_delivery");
       }
     }
-  }, [paystackEnabled, paymentMethod, cashEnabledOnPlatform]);
+  }, [onlineCardEnabled, paymentMethod, cashEnabledOnPlatform]);
 
   useEffect(() => {
     if (!cashEnabledOnPlatform && paymentMethod === "card_on_delivery") {
@@ -429,7 +431,7 @@ export default function ProductCheckoutPage() {
         : Math.round(subtotal * platformFeeConfig.percentage) / 100
       : 0;
   const total = subtotal + taxAmount + deliveryFee + platformFee;
-  const hasAnyEnabledPaymentMethod = paystackEnabled || cashEnabledOnPlatform;
+  const hasAnyEnabledPaymentMethod = onlineCardEnabled || cashEnabledOnPlatform;
 
   const hasOutOfStock = items.some((i) => i.in_stock === false);
 
@@ -603,7 +605,7 @@ export default function ProductCheckoutPage() {
 
       const usingSavedCard =
         paymentMethod === "paystack" &&
-        paystackEnabled &&
+        onlineCardEnabled &&
         !useNewCard &&
         Boolean(selectedCardId) &&
         savedCards.some((c) => c.id === selectedCardId) &&
@@ -706,7 +708,7 @@ export default function ProductCheckoutPage() {
     user,
     total,
     router,
-    paystackEnabled,
+    onlineCardEnabled,
     savedCards,
     useNewCard,
     selectedCardId,
@@ -997,14 +999,14 @@ export default function ProductCheckoutPage() {
           {/* Payment method */}
           <div className="bg-white rounded-xl border p-6">
             <h3 className="font-semibold text-gray-900 mb-4">Payment Method</h3>
-            {!paystackEnabled && (
+            {!onlineCardEnabled && (
               <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
                 Online payment is currently unavailable. Please pay when you receive your order.
               </p>
             )}
             {/* Pay-on-delivery availability is reflected by showing/hiding the cash option below — no need to expose internal platform policy to customers */}
             <div className="space-y-3">
-              {paystackEnabled && (
+              {onlineCardEnabled && (
                 <label
                   className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
                     paymentMethod === "paystack"
@@ -1029,7 +1031,7 @@ export default function ProductCheckoutPage() {
               )}
               {paymentMethod === "paystack" &&
                 user &&
-                paystackEnabled &&
+                onlineCardEnabled &&
                 !useWallet &&
                 cardsLoading && (
                   <div className="space-y-2 ps-1">
@@ -1039,7 +1041,7 @@ export default function ProductCheckoutPage() {
                 )}
               {paymentMethod === "paystack" &&
                 user &&
-                paystackEnabled &&
+                onlineCardEnabled &&
                 !useWallet &&
                 !cardsLoading &&
                 savedCards.length > 0 && (

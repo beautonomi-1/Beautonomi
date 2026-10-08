@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
+import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import { getApiErrorMessage, getHttpErrorStatus, isTransientApiFailure } from "@/lib/api-error";
 import { trackCheckoutStarted, trackBookingConfirmed, trackPaymentSuccess } from "@/lib/analytics";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
@@ -23,6 +24,7 @@ import { useSavedCards } from "@/hooks/useSavedCards";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import {
   extractPaystackReferenceFromUrl,
+  extractStripeCheckoutSessionIdFromUrl,
   isCancelledPaystackUrl,
 } from "@/lib/paystack-webview-utils";
 import {
@@ -157,6 +159,7 @@ interface HoldData {
   package_id?: string;
   /** Tenant feature_flags — same as GET booking-holds + consume */
   payment_paystack?: boolean;
+  payment_gateway?: string;
   payment_wallet?: boolean;
   gift_cards?: boolean;
   cash_enabled_on_platform?: boolean;
@@ -1185,6 +1188,7 @@ export default function BookCheckoutScreen() {
           deposit_percentage: data.deposit_percentage as number | undefined,
           deposit_amount: data.deposit_amount as number | undefined,
           payment_paystack: (data as { payment_paystack?: boolean }).payment_paystack,
+          payment_gateway: (data as { payment_gateway?: string }).payment_gateway,
           payment_wallet: (data as { payment_wallet?: boolean }).payment_wallet,
           gift_cards: (data as { gift_cards?: boolean }).gift_cards,
           cash_enabled_on_platform: (data as { cash_enabled_on_platform?: boolean })
@@ -1965,13 +1969,17 @@ export default function BookCheckoutScreen() {
   }, [hold, hold_id, total]);
 
   const checkoutGateway = resolveCheckoutGateway(getAppNativeVersion());
+  const marketGateway =
+    typeof hold?.payment_gateway === "string" && hold.payment_gateway.trim()
+      ? hold.payment_gateway.trim().toLowerCase()
+      : checkoutGateway.gateway;
   const paystackEnabled = hold ? hold.payment_paystack !== false : paystackFlagBundle;
   const cardOnlineEnabled =
-    checkoutGateway.gateway === "stripe"
-      ? true
-      : checkoutGateway.gateway === "paystack"
-        ? paystackEnabled
-        : paystackEnabled;
+    marketGateway === "stripe" ||
+    (marketGateway === "paystack" && paystackEnabled) ||
+    (marketGateway !== "paystack" &&
+      marketGateway !== "stripe" &&
+      (paystackEnabled || checkoutGateway.useHostedWebFallback));
   const walletEnabled = hold ? hold.payment_wallet !== false : walletFlagBundle;
   const giftCardsEnabled = hold ? hold.gift_cards !== false : giftCardsFlagBundle;
   const cashEnabled = hold?.cash_enabled_on_platform === true || cashEnabledOnPlatform;
@@ -2891,6 +2899,7 @@ export default function BookCheckoutScreen() {
         setProcessingStep(2);
         setProcessingMessage(t("checkout.openingPaymentPage"));
         let returnedPaymentReference: string | null = data?.payment_reference ?? null;
+        let returnedCheckoutSessionId: string | null = null;
         if (Platform.OS !== "web") {
           // Important: close the blocking overlay before opening Paystack WebView.
           // Two RN modals competing can leave users stuck on "opening payment page".
@@ -2958,8 +2967,9 @@ export default function BookCheckoutScreen() {
               }
               return;
             }
-            const extracted = extractPaystackReferenceFromUrl(authResult.url);
-            if (extracted) returnedPaymentReference = extracted;
+            const parsedReturn = parseOnlineCheckoutReturnUrl(authResult.url);
+            if (parsedReturn.reference) returnedPaymentReference = parsedReturn.reference;
+            if (parsedReturn.sessionId) returnedCheckoutSessionId = parsedReturn.sessionId;
           }
         } else {
           // Full redirect on Expo Web — matches the working pattern in custom-offer-checkout.tsx
@@ -2975,7 +2985,9 @@ export default function BookCheckoutScreen() {
 
         let paymentConfirmed = false;
         if (returnedPaymentReference) {
-          const verifyResult = await verifyPaystackWithRetry(returnedPaymentReference);
+          const verifyResult = await verifyPaystackWithRetry(returnedPaymentReference, {
+            sessionId: returnedCheckoutSessionId,
+          });
           if (verifyResult.status === "success") {
             paymentConfirmed = true;
           } else if (verifyResult.data && bookingPaidFromPaystackVerifyBody(verifyResult.data)) {
@@ -5166,7 +5178,7 @@ export default function BookCheckoutScreen() {
                 {t("checkout.paymentMethod")}
               </Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 12, gap: 8 }}>
-                {paystackEnabled && (
+                {cardOnlineEnabled && (
                   <Pressable
                     onPress={() => {
                       haptic.light();

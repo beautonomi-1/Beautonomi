@@ -10,7 +10,7 @@ import {
 } from '@/lib/supabase/api-helpers';
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
-import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { initializeOnlinePayment } from "@/lib/payments/online-payment";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -170,22 +170,26 @@ export async function POST(request: NextRequest) {
       typeof callbackFromClient === "string" &&
       /^https?:\/\//i.test(callbackFromClient);
     const inAppParam = in_app ? "&in_app=1" : "";
+    const refQuery = `reference=${encodeURIComponent(reference)}`;
     const callbackUrl =
       in_app && isHttpsClientCallback
-        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}payment_success=true&order_id=${order.id}`
-        : `${baseUrl}/provider/subscription?payment_success=true&order_id=${order.id}${inAppParam}`;
+        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}payment_success=true&order_id=${order.id}&${refQuery}`
+        : `${baseUrl}/provider/subscription?payment_success=true&order_id=${order.id}&${refQuery}${inAppParam}`;
 
     const renewCancelAction =
       in_app && isHttpsClientCallback
         ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}payment_cancelled=1`
         : `${baseUrl}/provider/subscription?payment_cancelled=1${inAppParam}`;
 
-    const paystackData = await initializePaystackTransaction({
+    const renewCurrency = planData.currency ?? lastResortCurrency;
+    const onlineInit = await initializeOnlinePayment({
+      tenantId,
       email,
-      amountInSmallestUnit: convertToSmallestUnit(amount, planData.currency ?? lastResortCurrency),
-      currency: planData.currency ?? lastResortCurrency,
+      amountInSmallestUnit: convertToSmallestUnit(amount, renewCurrency),
+      currency: renewCurrency,
       reference,
-      callback_url: callbackUrl,
+      callbackUrl,
+      lineItemName: "Provider subscription renewal",
       metadata: {
         provider_subscription_order_id: order.id,
         provider_id: providerId,
@@ -193,10 +197,9 @@ export async function POST(request: NextRequest) {
         billing_period: billingPeriod,
         cancel_action: renewCancelAction,
       },
-      tenantId,
     });
 
-    const paymentUrl = paystackData?.data?.authorization_url || null;
+    const paymentUrl = onlineInit.authorizationUrl || null;
 
     await supabase
       .from("provider_subscription_orders")

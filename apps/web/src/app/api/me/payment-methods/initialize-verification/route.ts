@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
-import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { initializeOnlinePayment } from "@/lib/payments/online-payment";
 import {
   paystackChannelsForInitialize,
   resolveHostedCheckoutCallbacks,
@@ -11,6 +11,7 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { z } from "zod";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { getPaymentProviderForTenant } from "@/lib/payments/provider/registry";
 
 const callbackUrlSchema = z
   .string()
@@ -29,8 +30,7 @@ const bodySchema = z.object({
  * POST /api/me/payment-methods/initialize-verification
  *
  * Start a small temporary charge (e.g. R1) to verify and save a card without a booking.
- * Customer pays on Paystack; we save the card on charge.success. The small amount can be
- * refunded separately or used as per product policy.
+ * Paystack: small verification charge; Stripe: Checkout in setup mode (no charge).
  */
 export async function POST(request: NextRequest) {
   try {
@@ -70,27 +70,36 @@ export async function POST(request: NextRequest) {
     });
     const cardCancelAction = `${baseUrl}/account-settings/payments?card_verification_cancelled=1${hosted.inApp ? "&context=app" : ""}`;
 
-    const paystackData = await initializePaystackTransaction({
+    const psp = await getPaymentProviderForTenant(tenantId);
+    const gateway = (psp?.provider.id ?? "paystack").toLowerCase();
+    const channelExtras = paystackChannelsForInitialize({ saveCard: true });
+    const onlineInit = await initializeOnlinePayment({
+      tenantId,
       email,
-      amountInSmallestUnit,
+      amountInSmallestUnit: gateway === "stripe" ? 0 : amountInSmallestUnit,
       currency,
       reference,
-      callback_url: hosted.successUrl,
+      callbackUrl: hosted.successUrl,
+      lineItemName: "Card verification",
+      saveCard: true,
+      mode: gateway === "stripe" ? "setup" : "payment",
       metadata: {
         customer_id: user.id,
         save_card: true,
         set_as_default: set_as_default ?? false,
         kind: "card_verification",
         cancel_action: cardCancelAction,
+        ...(tenantId ? { tenant_id: tenantId } : {}),
       },
-      tenantId,
-      channels: paystackChannelsForInitialize({ saveCard: true }).channels,
+      ...(gateway === "paystack" && channelExtras.channels
+        ? { channels: channelExtras.channels }
+        : {}),
     });
 
     return successResponse({
-      authorization_url: paystackData.data.authorization_url,
-      access_code: paystackData.data.access_code,
-      reference: paystackData.data.reference,
+      authorization_url: onlineInit.authorizationUrl ?? "",
+      access_code: onlineInit.accessCode ?? "",
+      reference: onlineInit.reference,
     });
   } catch (error) {
     return handleApiError(error, "Failed to start card verification");

@@ -65,6 +65,7 @@ async function runJob(request: NextRequest) {
       `)
       .eq("status", "past_due")
       .neq("billing_provider", "apple")
+      .neq("billing_provider", "stripe")
       .not("paystack_authorization_code", "is", null)
       .lt("dunning_retry_count", MAX_RETRIES);
 

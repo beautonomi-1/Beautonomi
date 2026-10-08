@@ -3250,6 +3250,10 @@
           "privacyPolicy": "Privacy Policy",
           "billedThroughAppleTitle": "Billed through Apple",
           "billedThroughAppleBody": "Your plan renews via the App Store. Manage, cancel, or accept a price change in Apple ID → Subscriptions.",
+          "billedThroughStripeTitle": "Billed through Stripe",
+          "billedThroughStripeBody": "Update your card or view invoices in the secure Stripe billing portal. Tap Manage billing below.",
+          "stripeManageUnavailable": "Stripe billing is not set up yet. Complete checkout first, then try again.",
+          "paystackManageUnavailable": "This plan is not on Paystack recurring billing. Complete checkout or contact support.",
           "priceIncreaseConsentTitle": "Price increase needs your consent",
           "priceIncreaseConsentBody": "Apple is asking you to accept a new price before this plan can renew. Open App Store subscriptions to consent or change plans.",
           "openAppStoreSubscriptions": "Open App Store subscriptions",
@@ -18218,6 +18222,28 @@
         }
       }
     },
+    "giftCard": {
+      "purchaseSuccess": {
+        "noRefTitle": "Gift card purchase",
+        "noRefBody": "If you completed a payment, use the return link from secure checkout or open Payments & gift cards to see your codes.",
+        "paymentsLink": "Payments & gift cards",
+        "confirmingPayment": "Confirming payment…",
+        "issuingCodes": "Issuing your gift card codes…",
+        "usuallySeconds": "This usually takes a few seconds.",
+        "viewPayments": "View payments",
+        "successTitle": "You're set!",
+        "successBody": "Save these codes. At checkout, choose Gift card and enter your code (or pick a saved card when you're signed in).",
+        "codeLabel": "Gift card code",
+        "copyCode": "Copy code",
+        "codeCopied": "Gift card code copied",
+        "balance": "Balance: {{currency}} {{amount}}",
+        "codesPending": "Codes are still being issued. Find them anytime under Payments & gift cards.",
+        "openPayments": "Open Payments & gift cards",
+        "backToGiftCards": "Back to gift cards",
+        "verifyFailed": "We could not confirm this gift card payment. If your bank was debited, check Payments & gift cards in a minute.",
+        "wrongReceipt": "This receipt is not for a gift card purchase. If you paid for a gift card, check Payments & gift cards — your codes may already be there."
+      }
+    },
     "booking": {
       "callback": {
         "referenceNotFound": "Payment reference not found",
@@ -18594,6 +18620,7 @@
         "servicesAddonsProducts": "Services, add-ons & products",
         "bookingSubtotalBeforeDiscounts": "Booking subtotal (before discounts)",
         "walletCreditApplied": "Wallet credit applied",
+        "youPayOnline": "You pay online",
         "youPayViaPaystack": "You pay via Paystack",
         "walletCoversAll": "Wallet fully covers this booking — no card charge needed",
         "addTipOptional": "Add a tip (optional)",
@@ -25599,7 +25626,17 @@
             "paymentHistory": "Payment History",
             "reference": "Reference",
             "backToBilling": "Back to Billing",
-            "download": "Download"
+            "download": "Download",
+            "payOnline": "Pay online",
+            "paying": "Starting payment…",
+            "paymentUnavailable": "Online payment is not available for this invoice.",
+            "paymentStartFailed": "Could not start payment. Please try again.",
+            "paymentSuccessful": "Payment successful",
+            "paymentPendingTitle": "Payment pending",
+            "paymentPendingBody": "Your payment is still processing. Refresh this page in a moment.",
+            "paymentFailedDefault": "Payment was not completed. Please try again or use another card.",
+            "paymentCancelled": "Payment cancelled",
+            "verifyingPayment": "Confirming your payment…"
           },
           "billing": {
             "billingDetailsAndInvoices": "Billing details and Invoices",
@@ -31359,6 +31396,10 @@
         "billingIssueDefault": "Billing action needed",
         "appleBillingTitle": "Billed through the App Store",
         "appleBillingBody": "Apple is the seller of record for this plan. Change, cancel, or update payment in Apple ID → Subscriptions. Web and Android checkout stay closed until this Apple subscription ends, so you are not charged twice.",
+        "stripeBillingTitle": "Billed through Stripe",
+        "stripeBillingBody": "Update your card or view invoices in the secure Stripe billing portal. Use Manage billing below — the same flow as Paystack regions, but hosted by Stripe for your market.",
+        "stripeManageUnavailable": "Stripe billing is not set up for this subscription yet. Complete checkout first, then try again.",
+        "paystackManageUnavailable": "This plan is not on Paystack recurring billing. Pay any due invoice from checkout or contact support.",
         "manageInAppStore": "Manage in App Store",
         "whatsIncluded": "What's included",
         "choosePlan": "Choose Plan",
@@ -31387,7 +31428,7 @@
         "monthlyPlan": "Monthly plan",
         "totalDueNow": "Total due now",
         "renewNote": "This plan renews automatically each billing period. You can cancel anytime and keep access until the end of the period you paid for.",
-        "paystackNote": "You're only charged after you confirm on the secure Paystack page. Your plan activates once payment is verified — never before.",
+        "paystackNote": "You're only charged after you confirm on the secure payment page. Your plan activates once payment is verified — never before.",
         "notNow": "Not now",
         "openingCheckout": "Opening secure checkout…",
         "payAmount": "Pay {{amount}}",

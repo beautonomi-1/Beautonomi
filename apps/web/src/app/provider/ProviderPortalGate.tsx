@@ -120,14 +120,21 @@ const { t } = useTranslation();
           return;
         }
 
-        // Hard deny: the server says this user shouldn't be in the provider portal.
-        if (portal === "admin" || portal === "suspended") {
-          clearGateCache();
-          if (portal === "suspended") {
-            router.replace("/account-suspended");
-          } else {
-            router.replace("/");
+        // Superadmin / platform admin: allow onboarding-funnel routes only (QA + test businesses).
+        if (portal === "admin") {
+          const onSetupRoute = pathname ? isProviderOnboardingRouteAllowed(pathname) : false;
+          if (onSetupRoute) {
+            setState({ kind: "ready" });
+            return;
           }
+          clearGateCache();
+          router.replace("/");
+          return;
+        }
+
+        if (portal === "suspended") {
+          clearGateCache();
+          router.replace("/account-suspended");
           return;
         }
 

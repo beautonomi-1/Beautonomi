@@ -7,6 +7,7 @@
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminApi } from "@/lib/adminClient";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -150,9 +151,17 @@ export function CpCountryLaunchChecklistPage() {
                   {item.detail && (
                     <p className="text-xs text-muted-foreground font-mono">{item.detail}</p>
                   )}
-                  {item.href && !item.ok ? (
-                    <Link to={item.href} className="text-xs text-indigo-600 hover:underline">
+                  {!item.ok && item.id === "fx_reporting_rate" && item.href ? (
+                    <Link to={adminSpaTo(item.href)} className="text-xs text-indigo-600 hover:underline">
                       Open FX rates desk
+                    </Link>
+                  ) : null}
+                  {!item.ok && (item.id === "gateway" || item.id.startsWith("secret_")) ? (
+                    <Link
+                      to={adminSpaTo("/admin/control-plane/region-online-gateway")}
+                      className="text-xs text-indigo-600 hover:underline"
+                    >
+                      Configure region online gateway
                     </Link>
                   ) : null}
                 </div>

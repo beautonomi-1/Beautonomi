@@ -11,7 +11,7 @@ import {
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { convertToSmallestUnit } from "@/lib/payments/paystack";
-import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { initializeOnlinePayment } from "@/lib/payments/online-payment";
 import { resolveHostedCheckoutCallbacks } from "@/lib/payments/resolve-paystack-hosted-callback";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -73,12 +73,14 @@ export async function POST(request: NextRequest) {
     });
     const callbackUrl = hosted.successUrl;
 
-    const paystackData = await initializePaystackTransaction({
+    const onlineInit = await initializeOnlinePayment({
+      tenantId,
       email,
       amountInSmallestUnit: convertToSmallestUnit(amountZar, currency),
       currency,
       reference,
-      callback_url: callbackUrl,
+      callbackUrl,
+      lineItemName: "Marketing credits",
       metadata: {
         marketing_credit_topup: true,
         provider_id: providerId,
@@ -86,10 +88,9 @@ export async function POST(request: NextRequest) {
         currency,
         tenant_id: tenantId,
       },
-      tenantId,
     });
 
-    const paymentUrl = paystackData?.data?.authorization_url || null;
+    const paymentUrl = onlineInit.authorizationUrl || null;
     if (!paymentUrl) {
       return errorResponse("Failed to initialize Paystack payment", "PAYSTACK_ERROR", 502);
     }

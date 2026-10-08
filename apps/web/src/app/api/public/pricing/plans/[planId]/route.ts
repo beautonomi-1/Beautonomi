@@ -1,6 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
+import {
+  buildPublicPricingBillingPeriods,
+  loadLinkedSubscriptionPlanPrices,
+} from "@/lib/pricing/public-pricing-billing-periods";
+
+function derivePricingPlanIsFree(plan: {
+  price: string;
+  paystack_plan_code_monthly?: string | null;
+  paystack_plan_code_yearly?: string | null;
+}): boolean {
+  const hasAnyPaystackCode = Boolean(
+    plan.paystack_plan_code_monthly || plan.paystack_plan_code_yearly,
+  );
+  const priceStr = String(plan.price ?? "").replace(/[^0-9.]/g, "");
+  const isFreeByPrice =
+    !priceStr || parseFloat(priceStr) === 0 || /free/i.test(String(plan.price ?? ""));
+  return isFreeByPrice && !hasAnyPaystackCode;
+}
 
 /**
  * GET /api/public/pricing/plans/[planId]
@@ -80,15 +98,23 @@ export async function GET(
           .eq("tenant_id", tenantId)
           .maybeSingle();
         if (overrideByName) {
-          const overridePeriods: ("monthly" | "yearly")[] = [
-            ...(overrideByName.paystack_plan_code_monthly ? ["monthly" as const] : []),
-            ...(overrideByName.paystack_plan_code_yearly ? ["yearly" as const] : []),
-          ];
           const { data: overrideLink } = await supabase
             .from("pricing_plans")
             .select("subscription_plan_id")
             .eq("id", overrideByName.id)
             .maybeSingle();
+          const subscriptionPlanId =
+            (overrideLink as { subscription_plan_id?: string | null } | null)?.subscription_plan_id ??
+            null;
+          const linked = await loadLinkedSubscriptionPlanPrices(supabase, subscriptionPlanId);
+          const isFree = derivePricingPlanIsFree(overrideByName);
+          const available_billing_periods = buildPublicPricingBillingPeriods({
+            isFree,
+            paystackPlanCodeMonthly: overrideByName.paystack_plan_code_monthly,
+            paystackPlanCodeYearly: overrideByName.paystack_plan_code_yearly,
+            linkedPriceMonthly: linked.price_monthly,
+            linkedPriceYearly: linked.price_yearly,
+          });
           return NextResponse.json({
             data: {
               id: overrideByName.id,
@@ -98,13 +124,13 @@ export async function GET(
               description: overrideByName.description,
               cta_text: overrideByName.cta_text,
               is_popular: overrideByName.is_popular,
-              currency: (overrideByName as { currency?: string | null }).currency ?? null,
+              currency: linked.currency ?? (overrideByName as { currency?: string | null }).currency ?? null,
               features: [],
-              available_billing_periods: overridePeriods,
-              is_free: false,
-              subscription_plan_id:
-                (overrideLink as { subscription_plan_id?: string | null } | null)?.subscription_plan_id ??
-                null,
+              available_billing_periods,
+              is_free: isFree,
+              subscription_plan_id: subscriptionPlanId,
+              price_monthly: linked.price_monthly,
+              price_yearly: linked.price_yearly,
             },
           });
         }
@@ -124,30 +150,30 @@ export async function GET(
       .eq("plan_id", plan.id)
       .order("display_order", { ascending: true });
 
-    const available_billing_periods: ("monthly" | "yearly")[] = [];
-    if ((plan as any).paystack_plan_code_monthly) {
-      available_billing_periods.push("monthly");
-    }
-    if ((plan as any).paystack_plan_code_yearly) {
-      available_billing_periods.push("yearly");
-    }
+    const isFree = derivePricingPlanIsFree(
+      plan as {
+        price: string;
+        paystack_plan_code_monthly?: string | null;
+        paystack_plan_code_yearly?: string | null;
+      },
+    );
 
-    // Detect free plans: no Paystack codes, and price is "0", "Free", or empty
-    const priceStr = String(plan.price ?? "").replace(/[^0-9.]/g, "");
-    const isFreeByPrice = !priceStr || parseFloat(priceStr) === 0 || /free/i.test(String(plan.price ?? ""));
-    const isFree = isFreeByPrice && available_billing_periods.length === 0;
-    if (!isFree && available_billing_periods.length === 0) {
-      available_billing_periods.push("monthly");
-    }
-
-    // Resolve linked subscription_plans row for checkout (free and paid).
-    let subscriptionPlanId: string | null = null;
     const { data: fullPlan } = await supabase
       .from("pricing_plans")
       .select("subscription_plan_id")
       .eq("id", plan.id)
       .maybeSingle();
-    subscriptionPlanId = (fullPlan as { subscription_plan_id?: string | null } | null)?.subscription_plan_id ?? null;
+    const subscriptionPlanId =
+      (fullPlan as { subscription_plan_id?: string | null } | null)?.subscription_plan_id ?? null;
+    const linked = await loadLinkedSubscriptionPlanPrices(supabase, subscriptionPlanId);
+
+    const available_billing_periods = buildPublicPricingBillingPeriods({
+      isFree,
+      paystackPlanCodeMonthly: (plan as { paystack_plan_code_monthly?: string | null }).paystack_plan_code_monthly,
+      paystackPlanCodeYearly: (plan as { paystack_plan_code_yearly?: string | null }).paystack_plan_code_yearly,
+      linkedPriceMonthly: linked.price_monthly,
+      linkedPriceYearly: linked.price_yearly,
+    });
 
     return NextResponse.json({
       data: {
@@ -158,11 +184,13 @@ export async function GET(
         description: plan.description,
         cta_text: plan.cta_text,
         is_popular: plan.is_popular,
-        currency: (plan as { currency?: string | null }).currency ?? null,
+        currency: linked.currency ?? (plan as { currency?: string | null }).currency ?? null,
         features: features?.map((f) => f.feature_text) ?? [],
         available_billing_periods,
         is_free: isFree,
         subscription_plan_id: subscriptionPlanId,
+        price_monthly: linked.price_monthly,
+        price_yearly: linked.price_yearly,
       },
     });
   } catch (error) {

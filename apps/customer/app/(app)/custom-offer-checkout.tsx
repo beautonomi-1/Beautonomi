@@ -14,10 +14,8 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
-import {
-  extractPaystackReferenceFromUrl,
-  isCancelledPaystackUrl,
-} from "@/lib/paystack-webview-utils";
+import { isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
+import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
   CHECKOUT_SUCCESS_PATH,
   getBookingCheckoutPaystackAuthPrefix,
@@ -504,6 +502,7 @@ export default function CustomOfferCheckoutScreen() {
         }
 
         let reference: string | null = null;
+        let checkoutSessionId: string | null = null;
         if (pr.outcome === "success" && pr.url) {
           if (isCancelledPaystackUrl(pr.url)) {
             setProcessingPayment(false);
@@ -512,11 +511,13 @@ export default function CustomOfferCheckoutScreen() {
             );
             return;
           }
-          reference = extractPaystackReferenceFromUrl(pr.url);
+          const parsed = parseOnlineCheckoutReturnUrl(pr.url);
+          reference = parsed.reference;
+          checkoutSessionId = parsed.sessionId;
         }
         if (reference) {
           markReferenceProcessing(reference);
-          await verifyPaystackWithRetry(reference);
+          await verifyPaystackWithRetry(reference, { sessionId: checkoutSessionId });
         }
 
         setProcessingPayment(true);

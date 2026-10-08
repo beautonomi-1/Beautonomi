@@ -10,7 +10,8 @@ import { hasSupabaseAccessToken, pushLoginWithReturnTo, redirectLoginIfAuthRequi
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { safeWarn } from "@/lib/payments/safeLog";
 import { isTransientApiFailure } from "@/lib/api-error";
-import { extractPaystackReferenceFromUrl, isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
+import { isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
+import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
   getWalletTopupPaystackAuthPrefix,
   matchesCheckoutSuccessReturnUrl,
@@ -265,6 +266,7 @@ export default function WalletScreen() {
 
       let finalPaystackRef = paystackRef;
       let cancelled = false;
+      let checkoutSessionId: string | null = null;
 
       if (paymentOption === "saved_card") {
         setTopupStatus(t("customer.walletScreen.statusCharging", "Charging your saved card…") as string);
@@ -304,8 +306,9 @@ export default function WalletScreen() {
         });
         cancelled = outcome?.outcome === "cancel";
         if (outcome?.outcome === "success" && outcome.url && !isCancelledPaystackUrl(outcome.url)) {
-          const extracted = extractPaystackReferenceFromUrl(outcome.url);
-          if (extracted) finalPaystackRef = extracted;
+          const parsed = parseOnlineCheckoutReturnUrl(outcome.url);
+          if (parsed.reference) finalPaystackRef = parsed.reference;
+          checkoutSessionId = parsed.sessionId;
         }
       }
 
@@ -323,7 +326,9 @@ export default function WalletScreen() {
 
       let verifiedSuccess = false;
       if (finalPaystackRef) {
-        const verifyResult = await verifyPaystackWithRetry(finalPaystackRef);
+        const verifyResult = await verifyPaystackWithRetry(finalPaystackRef, {
+          sessionId: checkoutSessionId,
+        });
         verifiedSuccess = verifyResult.status === "success";
         if (verifyResult.status === "failed") {
           safeWarn("Wallet top-up verify reported failed", { message: verifyResult.errorMessage });

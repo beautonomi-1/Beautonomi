@@ -31,6 +31,7 @@ function TerminalPaymentReturnInner() {
   const orderId = sp.get("order_id") ?? "";
   const context = sp.get("context") ?? "web";
   const reference = sp.get("reference") || sp.get("trxref") || "";
+  const sessionId = sp.get("session_id");
   const confirmed = sp.get("confirmed") === "1";
   const nativeContext = isNativeAppContext(context) || sp.get("in_app") === "1";
 
@@ -102,7 +103,7 @@ function TerminalPaymentReturnInner() {
 
         const verifyResult = await verifyWithRetry<{ status?: string; message?: string }>(
           reference,
-          { maxAttempts: 5, delayMs: 1500 },
+          { maxAttempts: 5, delayMs: 1500, sessionId },
         );
         if (verifyResult.status === "failed") {
           throw new Error(verifyResult.errorMessage || pr("confirmFailed"));

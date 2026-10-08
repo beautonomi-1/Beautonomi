@@ -299,7 +299,7 @@ export async function recordProviderSubscriptionPayment(params: {
   kind: string;
   description?: string;
   tenantIdHint?: string | null;
-  paymentProvider?: "paystack" | "apple";
+  paymentProvider?: "paystack" | "apple" | "stripe";
   paymentMetadata?: Record<string, unknown>;
   /** Billing term for recognition (defaults to monthly from paid-at). */
   billingPeriod?: "monthly" | "yearly" | null;

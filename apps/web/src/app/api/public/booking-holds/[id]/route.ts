@@ -13,6 +13,7 @@ import { getCancellationPolicy } from "@/lib/bookings/cancellation-policy";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getPaymentFeatureFlagsForTenant } from "@/lib/subscriptions/entitlements";
+import { getPaymentProviderForTenant } from "@/lib/payments/provider/registry";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { getRequestNowAvailability } from "@/lib/on-demand/request-now-availability";
 import { withNoStore } from "@/lib/http/no-store";
@@ -291,6 +292,7 @@ async function handleGet(
       deposit_required: requiresDeposit,
       deposit_percentage: depositPercentage,
       payment_paystack: paymentFlags.payment_paystack,
+      payment_gateway: (await getPaymentProviderForTenant(tenantId))?.provider.id ?? "paystack",
       payment_wallet: paymentFlags.payment_wallet,
       gift_cards: paymentFlags.gift_cards,
       tax_rate_percent: providerTaxRate,

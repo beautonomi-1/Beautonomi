@@ -88,6 +88,7 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
     cardReturnVerifyStarted.current = true;
 
     const reference = paystackReferenceFromSearchParams(searchParams);
+    const sessionId = searchParams.get("session_id");
     if (!reference) {
       toast.info(t("web.accountSettings.payments.cardVerificationPending"));
       postCardVerificationToNativeApp("pending");
@@ -100,6 +101,7 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
         const verifyResult = await verifyWithRetry<{ type?: string }>(reference, {
           maxAttempts: 5,
           delayMs: 1500,
+          sessionId,
         });
         if (verifyResult.status === "success") {
           toast.success(t("web.accountSettings.payments.cardVerifiedSuccess"));

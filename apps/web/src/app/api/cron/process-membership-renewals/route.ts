@@ -8,7 +8,7 @@
  *     grace window and whose expires_at has passed.
  *  2. Claim rows due for renewal (next_billing_at <= now).
  *  3. Skip if plan is inactive; skip + notify if card is expired.
- *  4. chargeAuthorization; on synchronous success record ledger + advance term.
+ *  4. Charge saved card (Paystack authorization or Stripe off-session); on success record ledger + advance term.
  *  5. On failure: past_due transition with retry scheduling + dunning notification.
  *
  * Idempotency: advance next_billing_at before charging so overlapping cron runs
@@ -20,7 +20,9 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { chargeAuthorization } from "@/lib/payments/paystack-complete";
-import { convertToSmallestUnit, convertFromSmallestUnit } from "@/lib/payments/paystack";
+import { convertToSmallestUnit, convertFromSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
+import { getStripeClient } from "@/lib/payments/stripe-server";
+import { upsertOnlinePaymentCheckout } from "@/lib/payments/online-payment-checkouts";
 import { isPaymentMethodExpired } from "@/lib/payments/payment-method-expiry";
 import { recordMembershipPayment } from "@/lib/memberships/membership-payment";
 import { applyScheduledMembershipPlanChange } from "@/lib/memberships/apply-scheduled-plan-change";
@@ -135,7 +137,6 @@ async function runJob(request: NextRequest) {
       .in("status", ["active", "past_due"])
       .or("paused_until.is.null,paused_until.lt." + nowIso)
       .not("payment_method_id", "is", null)
-      .not("paystack_authorization_code", "is", null)
       .lte("next_billing_at", nowIso)
       .order("next_billing_at", { ascending: true })
       .limit(50);
@@ -184,7 +185,7 @@ async function runJob(request: NextRequest) {
 
         // Load payment method to check expiry + get email.
         const { data: pmRow } = await (supabase.from("payment_methods") as any)
-          .select("id, expiry_month, expiry_year, provider_payment_method_id")
+          .select("id, expiry_month, expiry_year, provider, provider_payment_method_id, metadata")
           .eq("id", paymentMethodId)
           .eq("is_active", true)
           .maybeSingle();
@@ -232,6 +233,8 @@ async function runJob(request: NextRequest) {
           await notifyMembershipCardExpiredSafe(supabase, userId, providerId, planId, plan?.name, membershipId);
           continue;
         }
+
+        const pmProvider = String((pmRow as { provider?: string }).provider ?? "paystack").toLowerCase();
 
         // Get customer email for chargeAuthorization.
         const { data: userRow } = await (supabase.from("users") as any)
@@ -307,75 +310,152 @@ async function runJob(request: NextRequest) {
           continue;
         }
 
-        // Charge the saved card. A thrown error (network, Paystack 4xx/5xx) is
-        // treated as a synchronous failure so the row still enters dunning —
-        // if the charge actually settled, the charge.success webhook repairs
-        // the membership and the failed order idempotently.
-        let chargeResult: Awaited<ReturnType<typeof chargeAuthorization>> | null = null;
-        try {
-          chargeResult = await chargeAuthorization(
-            authCode,
-            customerEmail,
-            amountSmallest,
-            {
-              membership_order_id: renewalOrder.id,
-              user_id: userId,
-              provider_id: providerId,
-              plan_id: planId,
-              kind: "membership_renewal",
-            },
-            { tenantId, reference: renewalReference, currency: plan.currency ?? "ZAR" },
-          );
-        } catch (chargeErr) {
-          console.error(`[membership-renewals] chargeAuthorization threw for ${membershipId}:`, chargeErr);
-        }
+        let chargeSucceeded = false;
+        let chargePending = false;
+        let paymentProvider: "paystack" | "stripe" = "paystack";
+        let settledReference = renewalReference;
+        let grossAmountSuccess = priceMonthly;
+        let feeAmountSuccess = 0;
 
-        // Paystack returns HTTP 200 with envelope status:true even for declined
-        // charges (data.status === "failed"), so BOTH must be checked. A truthy
-        // envelope alone must never be treated as payment success.
-        const envelopeOk = chargeResult?.status === true;
-        const dataStatus: string | undefined = chargeResult?.data?.status;
-        const chargeSucceeded = envelopeOk && dataStatus === "success";
-        const chargePending =
-          envelopeOk && ["pending", "processing", "queued", "ongoing"].includes(dataStatus ?? "");
+        if (pmProvider === "stripe") {
+          paymentProvider = "stripe";
+          const stripePmId = String(pmRow.provider_payment_method_id ?? "").trim();
+          settledReference = generateTransactionReference("mem_stripe_renew", membershipId);
+          if (!stripePmId.startsWith("pm_")) {
+            results.errors.push(`${membershipId}: invalid Stripe saved card`);
+          } else {
+            try {
+              await upsertOnlinePaymentCheckout({
+                reference: settledReference,
+                provider: "stripe",
+                tenantId,
+                metadata: {
+                  membership_order_id: renewalOrder.id,
+                  user_id: userId,
+                  provider_id: providerId,
+                  plan_id: planId,
+                  kind: "membership_renewal",
+                  tenant_id: tenantId ?? "",
+                },
+              });
+              const stripe = await getStripeClient(tenantId);
+              const pm = await stripe.paymentMethods.retrieve(stripePmId);
+              const customerId =
+                typeof pm.customer === "string"
+                  ? pm.customer
+                  : pm.customer && typeof pm.customer === "object"
+                    ? pm.customer.id
+                    : null;
+              if (!customerId) {
+                throw new Error("Stripe payment method is not linked to a customer");
+              }
+              const currency = (plan.currency ?? "ZAR").toUpperCase();
+              const intent = await stripe.paymentIntents.create(
+                {
+                  amount: amountSmallest,
+                  currency: currency.toLowerCase(),
+                  customer: customerId,
+                  payment_method: stripePmId,
+                  confirm: true,
+                  off_session: true,
+                  receipt_email: customerEmail,
+                  metadata: {
+                    reference: settledReference,
+                    membership_order_id: renewalOrder.id,
+                    user_id: userId,
+                    provider_id: providerId,
+                    plan_id: planId,
+                    kind: "membership_renewal",
+                    tenant_id: tenantId ?? "",
+                  },
+                },
+                { idempotencyKey: settledReference },
+              );
+              chargeSucceeded = intent.status === "succeeded";
+              if (!chargeSucceeded) {
+                console.warn(
+                  `[membership-renewals] Stripe PI not succeeded for ${membershipId}: ${intent.status}`,
+                );
+              }
+            } catch (stripeErr) {
+              console.error(`[membership-renewals] Stripe charge failed for ${membershipId}:`, stripeErr);
+            }
+          }
+        } else {
+          if (!authCode || !String(authCode).startsWith("AUTH_")) {
+            results.errors.push(`${membershipId}: missing Paystack authorization`);
+            continue;
+          }
+
+          // Charge the saved card. A thrown error (network, Paystack 4xx/5xx) is
+          // treated as a synchronous failure so the row still enters dunning —
+          // if the charge actually settled, the charge.success webhook repairs
+          // the membership and the failed order idempotently.
+          let chargeResult: Awaited<ReturnType<typeof chargeAuthorization>> | null = null;
+          try {
+            chargeResult = await chargeAuthorization(
+              authCode,
+              customerEmail,
+              amountSmallest,
+              {
+                membership_order_id: renewalOrder.id,
+                user_id: userId,
+                provider_id: providerId,
+                plan_id: planId,
+                kind: "membership_renewal",
+              },
+              { tenantId, reference: renewalReference, currency: plan.currency ?? "ZAR" },
+            );
+          } catch (chargeErr) {
+            console.error(`[membership-renewals] chargeAuthorization threw for ${membershipId}:`, chargeErr);
+          }
+
+          const envelopeOk = chargeResult?.status === true;
+          const dataStatus: string | undefined = chargeResult?.data?.status;
+          chargeSucceeded = envelopeOk && dataStatus === "success";
+          chargePending =
+            envelopeOk && ["pending", "processing", "queued", "ongoing"].includes(dataStatus ?? "");
+          if (chargeSucceeded && chargeResult?.data) {
+            grossAmountSuccess = convertFromSmallestUnit(
+              chargeResult.data?.amount ?? amountSmallest,
+              chargeResult.data?.currency || plan.currency || "ZAR",
+            );
+            feeAmountSuccess = convertFromSmallestUnit(
+              chargeResult.data?.fees ?? 0,
+              chargeResult.data?.currency || plan.currency || "ZAR",
+            );
+          }
+        }
 
         if (chargePending) {
           // Charge is in flight — neither success nor failure. Store the
           // reference and let the webhook settle the order; do not retry
           // (a retry would risk a double charge).
           await (supabase.from("membership_orders") as any)
-            .update({ paystack_reference: renewalReference, updated_at: nowIso })
+            .update({ paystack_reference: settledReference, updated_at: nowIso })
             .eq("id", renewalOrder.id);
-          console.log(`[membership-renewals] charge pending for ${membershipId}, awaiting webhook (${renewalReference})`);
+          console.log(`[membership-renewals] charge pending for ${membershipId}, awaiting webhook (${settledReference})`);
           continue;
         }
 
         if (chargeSucceeded) {
           // ── Synchronous success ──────────────────────────────────────────
-          const grossAmount = convertFromSmallestUnit(
-            chargeResult.data?.amount ?? amountSmallest,
-            chargeResult.data?.currency || plan.currency || "ZAR",
-          );
-          const feeAmount = convertFromSmallestUnit(
-            chargeResult.data?.fees ?? 0,
-            chargeResult.data?.currency || plan.currency || "ZAR",
-          );
-
           await (supabase.from("membership_orders") as any)
-            .update({ status: "paid", paystack_reference: renewalReference, updated_at: nowIso })
+            .update({ status: "paid", paystack_reference: settledReference, updated_at: nowIso })
             .eq("id", renewalOrder.id);
 
           await recordMembershipPayment({
             supabase,
-            reference: renewalReference,
+            reference: settledReference,
             orderId: renewalOrder.id,
             userId,
             providerId,
             planId,
-            grossAmount,
-            feeAmount,
+            grossAmount: grossAmountSuccess,
+            feeAmount: feeAmountSuccess,
             kind: "membership_renewal",
             tenantIdHint: tenantId,
+            paymentProvider,
           });
 
           await (supabase.from("user_memberships") as any)
@@ -396,7 +476,7 @@ async function runJob(request: NextRequest) {
           // ── Synchronous failure ──────────────────────────────────────────
           // Webhook will retry idempotently; we only transition state here.
           await (supabase.from("membership_orders") as any)
-            .update({ status: "failed", paystack_reference: renewalReference, updated_at: nowIso })
+            .update({ status: "failed", paystack_reference: settledReference, updated_at: nowIso })
             .eq("id", renewalOrder.id);
 
           const priorFailureCount: number = row.renewal_failure_count ?? 0;

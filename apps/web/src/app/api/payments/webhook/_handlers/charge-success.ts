@@ -22,7 +22,11 @@ import {
 import { trackServer } from "@/lib/analytics/amplitude/server";
 import { EVENT_PAYMENT_SUCCESS, EVENT_PAYMENT_FAILED } from "@/lib/analytics/amplitude/types";
 import type { PaystackEvent, SupabaseClient } from "./shared";
-import { savePaystackAuthorization, generateGiftCardCode } from "./shared";
+import {
+  savePaystackAuthorization,
+  saveStripePaymentMethod,
+  generateGiftCardCode,
+} from "./shared";
 import { recordLoyaltyRedemption } from "@/lib/loyalty/record-redemption";
 import { recordPromotionUsage } from "@/lib/promotions/record-promotion-usage";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -40,6 +44,7 @@ import {
 import { tryCreateCustomerRecurringFromPaystackChargeMetadata } from "@/lib/recurring/try-create-recurring-from-paystack-metadata";
 import { applyWalletTopupFromSuccessfulPaystackCharge } from "@/lib/wallet/apply-wallet-topup-from-paystack-success";
 import { recordBookingPaystackPayment } from "@/lib/bookings/record-booking-paystack-payment";
+import { recordBookingStripePayment } from "@/lib/bookings/record-booking-stripe-payment";
 import { recordBookingOnlineChargeLedger } from "@/lib/bookings/record-booking-online-charge-ledger";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import {
@@ -106,6 +111,57 @@ function paystackChargeCurrency(
   ).toUpperCase();
 }
 
+type RecordGatewayBookingPaymentInput = {
+  bookingId: string;
+  tenantId: string | null;
+  reference: string;
+  amountMajor: number;
+  source: string;
+  paymentOption?: string | null;
+  requiresDeposit?: boolean;
+  saveCard?: boolean;
+  notes?: string;
+  currency?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+/** Paystack reference vs Stripe PaymentIntent id — keeps booking_payments aligned with the rail. */
+async function recordGatewayBookingPayment(
+  supabase: SupabaseClient,
+  paymentProvider: "paystack" | "stripe",
+  input: RecordGatewayBookingPaymentInput,
+) {
+  if (paymentProvider === "stripe") {
+    const meta = input.metadata ?? {};
+    const paymentIntentId =
+      typeof meta.stripe_payment_intent_id === "string"
+        ? meta.stripe_payment_intent_id.trim()
+        : "";
+    return recordBookingStripePayment(supabase, {
+      bookingId: input.bookingId,
+      tenantId: input.tenantId,
+      paymentIntentId: paymentIntentId || null,
+      reference: input.reference,
+      amountMajor: input.amountMajor,
+      currency: input.currency,
+      source: input.source,
+      notes: input.notes,
+    });
+  }
+  return recordBookingPaystackPayment(supabase, {
+    bookingId: input.bookingId,
+    tenantId: input.tenantId,
+    reference: input.reference,
+    transactionId: null,
+    amountMajor: input.amountMajor,
+    source: input.source,
+    paymentOption: input.paymentOption,
+    requiresDeposit: input.requiresDeposit,
+    saveCard: input.saveCard,
+    notes: input.notes,
+  });
+}
+
 async function resolvePaystackChargeFees(
   supabase: SupabaseClient,
   amount: number | undefined,
@@ -140,7 +196,17 @@ type PaystackChargeData = {
   /** Present on some subscription renewal charges (Paystack object shape varies by event). */
   subscription?: { subscription_code?: string };
   plan?: { subscription?: { subscription_code?: string } };
+  /** Stripe settlement sets this so ledger rows use provider stripe. */
+  __paymentProvider?: "paystack" | "stripe";
 };
+
+export type ProcessSuccessfulPaymentOptions = {
+  paymentProvider?: "paystack" | "stripe";
+};
+
+function resolveChargePaymentProvider(data: PaystackChargeData): "paystack" | "stripe" {
+  return data.__paymentProvider ?? "paystack";
+}
 
 /**
  * Resolve Paystack subscription code from a charge.failed / charge payload.
@@ -225,7 +291,13 @@ export async function handleChargeFailed(
 
 // ─── charge.success internals ────────────────────────────────────────────────
 
-export async function processSuccessfulPayment(data: PaystackChargeData, supabase: SupabaseClient) {
+export async function processSuccessfulPayment(
+  data: PaystackChargeData,
+  supabase: SupabaseClient,
+  options?: ProcessSuccessfulPaymentOptions,
+) {
+  const paymentProvider =
+    options?.paymentProvider ?? data.__paymentProvider ?? "paystack";
   const reference = data.reference;
   const metaObj: Record<string, unknown> =
     data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata)
@@ -331,7 +403,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
         amountMajor: convertFromSmallestUnit(amount || 0, paystackCurrency),
         feesMajor: convertFromSmallestUnit(fees || 0, paystackCurrency),
         source: "paystack_webhook",
-        provider: "paystack",
+        provider: paymentProvider,
       });
       if (!payRecord.ok) {
         console.error("[charge-success] product order payment not recorded (order may be non-payable)", {
@@ -397,7 +469,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
         feesMajor: convertFromSmallestUnit(fees || 0, paystackCurrency),
         commercialModel,
         source: "paystack_webhook",
-        provider: "paystack",
+        provider: paymentProvider,
       });
       const { notifyTerminalOrderPaidIfTransitioned } = await import(
         "@/lib/terminal/notify-terminal-order-paid"
@@ -410,7 +482,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     // Non-booking flows (gift cards, subscriptions, etc.)
     if (metadata?.custom_offer_id) {
       await handleCustomOfferSuccess(
-        { reference, metadata, amount, fees, currency, customer, authorization },
+        { reference, metadata, amount, fees, currency, customer, authorization, paymentProvider },
         supabase,
       );
       return;
@@ -433,33 +505,52 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
         currency: typeof metadata?.currency === "string" ? metadata.currency : null,
         paystackReference: reference,
         metadata: metadata as Record<string, unknown>,
+        paymentProvider,
       });
       return;
     }
     if (metadata?.gift_card_order_id) {
-      await handleGiftCardOrderSuccess({ reference, metadata, amount, fees, currency }, supabase);
+      await handleGiftCardOrderSuccess(
+        { reference, metadata, amount, fees, currency, paymentProvider },
+        supabase,
+      );
       return;
     }
     if (metadata?.membership_order_id) {
-      await handleMembershipOrderSuccess({ reference, metadata, amount, fees, currency, authorization, customer }, supabase);
+      await handleMembershipOrderSuccess(
+        { reference, metadata, amount, fees, currency, authorization, customer, paymentProvider },
+        supabase,
+      );
       return;
     }
     if (metadata?.provider_subscription_order_id) {
       if (metadata?.kind === "subscription_authorization") {
         await handleSubscriptionAuthorizationSuccess(
-          { reference, metadata, amount, fees, currency, customer, authorization: data.authorization },
+          {
+            reference,
+            metadata,
+            amount,
+            fees,
+            currency,
+            customer,
+            authorization: data.authorization,
+            paymentProvider,
+          },
           supabase,
         );
       } else {
         await handleProviderSubscriptionOrderSuccess(
-          { reference, metadata, amount, fees, currency, customer },
+          { reference, metadata, amount, fees, currency, customer, paymentProvider },
           supabase,
         );
       }
       return;
     }
     if (metadata?.ads_budget_order_id) {
-      await handleAdsBudgetOrderSuccess({ reference, metadata, amount, fees, currency }, supabase);
+      await handleAdsBudgetOrderSuccess(
+        { reference, metadata, amount, fees, currency, paymentProvider },
+        supabase,
+      );
       return;
     }
     if (metadata?.provider_invoice_id) {
@@ -476,6 +567,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
           currency,
           customer,
           authorization,
+          paymentProvider,
         },
         supabase,
       );
@@ -513,13 +605,19 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
       ...metadata,
       additional_charge_id: metadata.additional_charge_id || metadata.charge_id,
     };
-    await handleAdditionalChargeSuccess({ reference, metadata: merged, amount, fees, currency, customer }, supabase);
+    await handleAdditionalChargeSuccess(
+      { reference, metadata: merged, amount, fees, currency, customer, paymentProvider },
+      supabase,
+    );
     return;
   }
 
   // Pay remaining balance (deposit-only bookings)
   if (metadata?.payment_type === "booking_remaining") {
-    await handleBookingRemainingSuccess({ reference, metadata, amount, fees, currency, customer }, supabase);
+    await handleBookingRemainingSuccess(
+      { reference, metadata, amount, fees, currency, customer, paymentProvider },
+      supabase,
+    );
     return;
   }
 
@@ -555,60 +653,73 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   const { data: alreadySettledPaymentTx } = await supabase
     .from("payment_transactions")
     .select("id")
-    .eq("provider", "paystack")
+    .eq("provider", paymentProvider)
     .eq("reference", reference)
     .maybeSingle();
 
+  const bookingMetaRecord =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? (metadata as Record<string, unknown>)
+      : null;
+
   let verifiedPendingPayment: Record<string, unknown> | null = null;
   if (!alreadySettledPaymentTx) {
-    const verified = await verifyPaystackBookingCharge({
-      supabase,
-      bookingId: metadata.booking_id,
-      reference: String(reference),
-      paystackAmountSmallest: amount || 0,
-      paystackCurrency:
-        typeof (data as { currency?: string }).currency === "string"
-          ? (data as { currency: string }).currency
-          : null,
-      tenantId: financeTenantId,
-      bookingPaymentReference:
-        typeof bookingData.payment_reference === "string" ? bookingData.payment_reference : null,
-      bookingCurrency: typeof bookingData.currency === "string" ? bookingData.currency : null,
-    });
-    if (verified.ok === false) {
-      console.error("[charge-success] booking Paystack charge rejected:", {
+    if (paymentProvider === "paystack") {
+      const verified = await verifyPaystackBookingCharge({
+        supabase,
         bookingId: metadata.booking_id,
-        reference,
-        reason: verified.reason,
-      });
-      slackNotifyUnrecognizedPayments({
+        reference: String(reference),
+        paystackAmountSmallest: amount || 0,
+        paystackCurrency:
+          typeof (data as { currency?: string }).currency === "string"
+            ? (data as { currency: string }).currency
+            : null,
         tenantId: financeTenantId,
-        count: 1,
-        amountMajor: convertFromSmallestUnit(amount || 0, bookingPaystackCurrency),
-        currency:
-          typeof bookingData.currency === "string" ? bookingData.currency : null,
-        source: `paystack_webhook:${verified.reason}`,
+        bookingPaymentReference:
+          typeof bookingData.payment_reference === "string" ? bookingData.payment_reference : null,
+        bookingCurrency: typeof bookingData.currency === "string" ? bookingData.currency : null,
       });
-      return;
+      if (verified.ok === false) {
+        console.error("[charge-success] booking Paystack charge rejected:", {
+          bookingId: metadata.booking_id,
+          reference,
+          reason: verified.reason,
+        });
+        slackNotifyUnrecognizedPayments({
+          tenantId: financeTenantId,
+          count: 1,
+          amountMajor: convertFromSmallestUnit(amount || 0, bookingPaystackCurrency),
+          currency:
+            typeof bookingData.currency === "string" ? bookingData.currency : null,
+          source: `paystack_webhook:${verified.reason}`,
+        });
+        return;
+      }
+      verifiedPendingPayment = verified.pendingPayment as Record<string, unknown>;
     }
-    verifiedPendingPayment = verified.pendingPayment as Record<string, unknown>;
   }
 
   if (alreadySettledPaymentTx) {
-    console.log(`[charge-success] Paystack ref ${reference} already settled — checking ledger (idempotent retry).`);
+    console.log(
+      `[charge-success] ${paymentProvider} ref ${reference} already settled — checking ledger (idempotent retry).`,
+    );
     const amountInCurrency = convertFromSmallestUnit(amount || 0, bookingPaystackCurrency);
     if (amountInCurrency > 0) {
-      const recordedPayment = await recordBookingPaystackPayment(supabase, {
+      const recordedPayment = await recordGatewayBookingPayment(supabase, paymentProvider, {
         bookingId: metadata.booking_id,
         tenantId: bookingData.tenant_id ?? financeTenantId ?? null,
         reference,
-        transactionId: null,
         amountMajor: amountInCurrency,
-        source: "paystack_webhook_idempotent_repair",
+        source: `${paymentProvider}_webhook_idempotent_repair`,
         paymentOption: typeof metadata?.payment_option === "string" ? metadata.payment_option : null,
         requiresDeposit: Boolean(metadata?.requires_deposit),
         saveCard: Boolean(metadata?.save_card),
-        notes: `Payment received via Paystack webhook retry. Ref: ${reference}`,
+        notes:
+          paymentProvider === "stripe"
+            ? `Payment received via Stripe webhook retry. Ref: ${reference}`
+            : `Payment received via Paystack webhook retry. Ref: ${reference}`,
+        currency: bookingPaystackCurrency,
+        metadata: bookingMetaRecord,
       });
       if (recordedPayment.ok === false) {
         console.error("[charge-success] idempotent booking_payments repair failed:", recordedPayment);
@@ -623,7 +734,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     if (existingFinanceOnRetry) {
       await syncBookingAfterPaystackSuccess(supabase, metadata.booking_id, {
         paymentReference: reference,
-        paymentProvider: "paystack",
+        paymentProvider,
       });
       try {
         await tryCreateCustomerRecurringFromPaystackChargeMetadata(
@@ -649,7 +760,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
 
   const dbFinancials = bookingFinancialsFromDb(
     bookingData as Record<string, unknown>,
-    verifiedPendingPayment as Parameters<typeof bookingFinancialsFromDb>[1],
+    verifiedPendingPayment as Parameters<typeof bookingFinancialsFromDb>[1] | undefined,
   );
   const tipAmount = dbFinancials.tipAmount;
   const taxAmount = dbFinancials.taxAmount;
@@ -670,19 +781,21 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   // Idempotency is enforced by migration 380 unique index on (payment_provider, payment_provider_id).
   let sourcePaymentId: string | null = null;
   if (amountInCurrency > 0) {
-    const recordedPayment = await recordBookingPaystackPayment(supabase, {
+    const railLabel = paymentProvider === "stripe" ? "Stripe" : "Paystack";
+    const recordedPayment = await recordGatewayBookingPayment(supabase, paymentProvider, {
       bookingId: metadata.booking_id,
       tenantId: financeTenantId,
       reference,
-      transactionId: null,
       amountMajor: amountInCurrency,
-      source: "paystack_webhook",
+      source: `${paymentProvider}_webhook`,
       paymentOption: stdPaymentOption,
       requiresDeposit: stdRequiresDeposit,
       saveCard: Boolean(metadata?.save_card),
       notes: stdIsDeposit
-        ? `Deposit payment received via Paystack webhook. Ref: ${reference}`
-        : `Payment received via Paystack webhook. Ref: ${reference}`,
+        ? `Deposit payment received via ${railLabel} webhook. Ref: ${reference}`
+        : `Payment received via ${railLabel} webhook. Ref: ${reference}`,
+      currency: bookingPaystackCurrency,
+      metadata: bookingMetaRecord,
     });
     if (recordedPayment.ok === false) {
       console.error("[charge-success] booking_payments insert failed:", recordedPayment);
@@ -696,7 +809,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     .update({
       payment_reference: reference,
       payment_date: new Date().toISOString(),
-      payment_provider: "paystack",
+      payment_provider: paymentProvider,
     })
     .eq("id", metadata.booking_id);
 
@@ -751,7 +864,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
 
   await syncBookingAfterPaystackSuccess(supabase, metadata.booking_id, {
     paymentReference: reference,
-    paymentProvider: "paystack",
+    paymentProvider,
   });
 
   // Loyalty points: deduct if used (idempotent; same as verify so only one path applies)
@@ -824,7 +937,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   const ledger = await recordBookingOnlineChargeLedger(supabase, {
     bookingId: metadata.booking_id,
     reference,
-    provider: "paystack",
+    provider: paymentProvider,
     amountMajor: amountInCurrency,
     feesMajor: feesInCurrency,
     feeSource: paystackFeeSource,
@@ -867,7 +980,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     .from("payments")
     .update({
       status: "paid",
-      payment_provider: "paystack",
+      payment_provider: paymentProvider,
       payment_provider_transaction_id: reference,
       processed_at: webhookNow,
       payment_provider_response: data,
@@ -1101,7 +1214,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
         amount: amountInCurrency,
         currency: metadata?.currency || bookingData.currency || lastResortSuccess,
         payment_method: metadata?.save_card ? "saved_card" : "new_card",
-        payment_provider: "paystack",
+        payment_provider: paymentProvider,
         transaction_id: reference,
       },
       bookingData.customer_id,
@@ -1212,6 +1325,7 @@ async function handleSubscriptionRenewalChargeFailed(
   subscriptionCode: string,
   supabase: SupabaseClient,
 ) {
+  const paymentProvider = resolveChargePaymentProvider(data);
   const { reference, amount, fees, message, gateway_response } = data;
   // Stable fallback (no random UUID) so duplicate charge.failed deliveries for
   // the same failing renewal dedupe. Bucket by day so a genuine failure in a
@@ -1302,7 +1416,7 @@ async function handleSubscriptionRenewalChargeFailed(
     fees: convertFromSmallestUnit(feesSmallest, paystackCurrency),
     net_amount: convertFromSmallestUnit(amountSmallest - feesSmallest, paystackCurrency),
     status: "failed",
-    provider: "paystack",
+    provider: paymentProvider,
     transaction_type: "provider_subscription_payment",
     metadata: failureMeta,
     created_at: new Date().toISOString(),
@@ -1346,7 +1460,8 @@ async function handleSubscriptionRenewalChargeFailed(
   }
 }
 
-async function processFailedPayment(data: PaystackChargeData, supabase: SupabaseClient) {
+export async function processFailedPayment(data: PaystackChargeData, supabase: SupabaseClient) {
+  const paymentProvider = resolveChargePaymentProvider(data);
   const { reference, message, gateway_response } = data;
   const metadata: Record<string, unknown> =
     data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata)
@@ -1421,7 +1536,7 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
       bookingId: typeof metadata.booking_id === "string" ? metadata.booking_id : null,
     });
     await handleAdditionalChargeFailed(
-      { reference, metadata, message, gateway_response },
+      { reference, metadata, message, gateway_response, paymentProvider },
       supabase,
     );
     return;
@@ -1449,7 +1564,7 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
       .update({
         payment_status: nextPaymentStatus,
         payment_reference: reference,
-        payment_provider: "paystack",
+        payment_provider: paymentProvider,
         updated_at: new Date().toISOString(),
       })
       .eq("id", metadata.booking_id);
@@ -1522,7 +1637,7 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
     .update({
       payment_status: "failed",
       payment_reference: reference,
-      payment_provider: "paystack",
+      payment_provider: paymentProvider,
       status: "cancelled",
       cancellation_reason: "Payment failed",
       cancelled_at: new Date().toISOString(),
@@ -1644,7 +1759,7 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
     fees: 0,
     net_amount: 0,
     status: "failed",
-    provider: "paystack",
+    provider: paymentProvider,
     metadata: {
       paystack_reference: reference,
       failure_reason: message,
@@ -1655,7 +1770,7 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
   await supabase.from("payments")
     .update({
       status: "failed",
-      payment_provider: "paystack",
+      payment_provider: paymentProvider,
       payment_provider_transaction_id: reference,
       failed_at: new Date().toISOString(),
       failure_reason: message || gateway_response || "paystack_charge_failed",
@@ -1697,7 +1812,7 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
         amount: amt,
         currency: metadata?.currency || lastResortFailed,
         payment_method: metadata?.save_card ? "saved_card" : "new_card",
-        payment_provider: "paystack",
+        payment_provider: paymentProvider,
         error_code: message || gateway_response || "unknown",
       },
       bookingData.customer_id,
@@ -1730,6 +1845,7 @@ async function handleCustomOfferSuccess(
     currency?: string;
     customer?: any;
     authorization?: any;
+    paymentProvider?: "paystack" | "stripe";
   },
   _supabase: SupabaseClient,
 ) {
@@ -1950,9 +2066,17 @@ async function handleWalletTopupFailed(
 // ─── Gift Card Order ─────────────────────────────────────────────────────────
 
 async function handleGiftCardOrderSuccess(
-  payload: { reference: string; metadata: any; amount: any; fees?: any; currency?: string },
+  payload: {
+    reference: string;
+    metadata: any;
+    amount: any;
+    fees?: any;
+    currency?: string;
+    paymentProvider?: "paystack" | "stripe";
+  },
   supabase: SupabaseClient,
 ) {
+  const paymentProvider = payload.paymentProvider ?? "paystack";
   const { reference, metadata, amount: _amount, fees: _fees } = payload;
   const orderId = metadata.gift_card_order_id as string;
 
@@ -2037,7 +2161,7 @@ async function handleGiftCardOrderSuccess(
     fees: convertFromSmallestUnit(_fees || 0, paystackCurrency),
     net_amount: totalAmount,
     status: "success",
-    provider: "paystack",
+    provider: paymentProvider,
     transaction_type: "charge",
     metadata: {
       kind: "gift_card_order",
@@ -2300,6 +2424,7 @@ async function handleMembershipOrderSuccess(
     currency?: string;
     authorization?: { authorization_code?: string; reusable?: boolean; last4?: string; exp_month?: string; exp_year?: string; brand?: string; card_type?: string } | null;
     customer?: { email?: string } | null;
+    paymentProvider?: "paystack" | "stripe";
   },
   supabase: SupabaseClient,
 ) {
@@ -2617,7 +2742,15 @@ async function handleMembershipOrderFailed(
 // ─── Provider Subscription Order ─────────────────────────────────────────────
 
 async function handleProviderSubscriptionOrderSuccess(
-  payload: { reference: string; metadata: any; amount: any; fees: any; currency?: string; customer: any },
+  payload: {
+    reference: string;
+    metadata: any;
+    amount: any;
+    fees: any;
+    currency?: string;
+    customer: any;
+    paymentProvider?: "paystack" | "stripe";
+  },
   supabase: SupabaseClient,
 ) {
   const { reference, metadata, amount, fees } = payload;
@@ -2816,7 +2949,14 @@ async function handleProviderSubscriptionOrderFailed(
 // ─── Ads budget order (pre-pay for campaign) ──────────────────────────────────
 
 async function handleAdsBudgetOrderSuccess(
-  payload: { reference: string; metadata: any; amount: number; fees: number; currency?: string },
+  payload: {
+    reference: string;
+    metadata: any;
+    amount: number;
+    fees: number;
+    currency?: string;
+    paymentProvider?: "paystack" | "stripe";
+  },
   supabase: SupabaseClient,
 ) {
   const orderId = String(payload.metadata?.ads_budget_order_id ?? "").trim();
@@ -2836,6 +2976,7 @@ async function handleAdsBudgetOrderSuccess(
     feesMajor: convertFromSmallestUnit(Number(payload.fees || 0), paystackCurrency),
     providerIdHint: payload.metadata?.provider_id ? String(payload.metadata.provider_id) : null,
     campaignIdHint: payload.metadata?.campaign_id ? String(payload.metadata.campaign_id) : null,
+    paymentProvider: payload.paymentProvider ?? "paystack",
   });
 }
 
@@ -2882,11 +3023,13 @@ async function handleCustomerCardVerificationSuccess(
     amount: number;
     fees: number;
     currency?: string;
+    paymentProvider?: "paystack" | "stripe";
     customer: PaystackChargeData["customer"];
     authorization?: PaystackChargeData["authorization"];
   },
   supabase: SupabaseClient,
 ): Promise<void> {
+  const paymentProvider = payload.paymentProvider ?? "paystack";
   const { reference, metadata, amount, fees, customer, authorization } = payload;
   const customerId = typeof metadata.customer_id === "string" ? metadata.customer_id : null;
   if (!customerId) {
@@ -2897,7 +3040,7 @@ async function handleCustomerCardVerificationSuccess(
   const { data: existingTx } = await supabase
     .from("payment_transactions")
     .select("id")
-    .eq("provider", "paystack")
+    .eq("provider", paymentProvider)
     .eq("reference", reference)
     .maybeSingle();
   if (existingTx) {
@@ -2921,8 +3064,41 @@ async function handleCustomerCardVerificationSuccess(
   const email = customer?.email;
   const authCode = authorization?.authorization_code;
   const reusable = authorization?.reusable === true;
+  const stripePmFromMeta =
+    typeof metadata.stripe_payment_method_id === "string"
+      ? metadata.stripe_payment_method_id.trim()
+      : "";
+  const stripeCustomerFromMeta =
+    typeof metadata.stripe_customer_id === "string" ? metadata.stripe_customer_id.trim() : "";
 
-  if (saveCardRequested && authCode && reusable && email) {
+  let savedCard = false;
+
+  if (saveCardRequested && paymentProvider === "stripe" && stripePmFromMeta.startsWith("pm_") && email) {
+    try {
+      await saveStripePaymentMethod({
+        userId: customerId,
+        email,
+        stripePaymentMethodId: stripePmFromMeta,
+        stripeCustomerId: stripeCustomerFromMeta || undefined,
+        lastFour: String(metadata.stripe_card_last4 ?? authorization?.last4 ?? "0000"),
+        expiryMonth: parseInt(
+          String(metadata.stripe_card_exp_month ?? authorization?.exp_month ?? "0"),
+          10,
+        ),
+        expiryYear: parseInt(
+          String(metadata.stripe_card_exp_year ?? authorization?.exp_year ?? "0"),
+          10,
+        ),
+        cardBrand: String(metadata.stripe_card_brand ?? authorization?.brand ?? "unknown"),
+        isDefault: setAsDefault,
+        supabase,
+      });
+      savedCard = true;
+    } catch (e) {
+      console.error("[card_verification] saveStripePaymentMethod failed:", e);
+      throw e instanceof Error ? e : new Error(String(e));
+    }
+  } else if (saveCardRequested && authCode && reusable && email) {
     try {
       await savePaystackAuthorization({
         userId: customerId,
@@ -2935,6 +3111,7 @@ async function handleCustomerCardVerificationSuccess(
         isDefault: setAsDefault,
         supabase,
       });
+      savedCard = true;
     } catch (e) {
       console.error("[card_verification] savePaystackAuthorization failed:", e);
       throw e instanceof Error ? e : new Error(String(e));
@@ -2942,7 +3119,7 @@ async function handleCustomerCardVerificationSuccess(
   } else if (saveCardRequested) {
     console.warn(
       "[card_verification] charge succeeded but card not saved (missing reusable auth or email)",
-      { reference, hasAuth: Boolean(authCode), reusable, hasEmail: Boolean(email) },
+      { reference, hasAuth: Boolean(authCode), reusable, hasEmail: Boolean(email), paymentProvider },
     );
   }
 
@@ -2953,12 +3130,12 @@ async function handleCustomerCardVerificationSuccess(
     fees: feesInCurrency,
     net_amount: netAmount,
     status: "success",
-    provider: "paystack",
+    provider: paymentProvider,
     transaction_type: "charge",
     metadata: {
       kind: "card_verification",
       customer_id: customerId,
-      saved_card: Boolean(saveCardRequested && authCode && reusable && email),
+      saved_card: savedCard,
     },
     created_at: new Date().toISOString(),
   });
@@ -2982,9 +3159,11 @@ async function handleSubscriptionAuthorizationSuccess(
     currency?: string;
     customer: any;
     authorization?: any;
+    paymentProvider?: "paystack" | "stripe";
   },
   supabase: SupabaseClient,
 ) {
+  const paymentProvider = payload.paymentProvider ?? "paystack";
   const { reference, metadata, amount, fees, authorization } = payload;
   const paystackCurrency = paystackChargeCurrency(payload);
   const orderId = metadata.provider_subscription_order_id as string;
@@ -3209,7 +3388,7 @@ async function handleSubscriptionAuthorizationSuccess(
         status: "active",
         paystack_sync_pending: true,
         paystack_sync_note: message,
-        billing_provider: "paystack",
+        billing_provider: paymentProvider,
         updated_at: new Date().toISOString(),
       })
       .eq("id", subscriptionRowId);
@@ -3268,7 +3447,27 @@ async function handleSubscriptionAuthorizationSuccess(
     kind: "subscription_authorization",
     description: "Provider subscription payment",
     tenantIdHint: subscriptionAuthTenantId,
+    paymentProvider,
   });
+
+  if (paymentProvider === "stripe") {
+    const stripeCustomerId =
+      typeof metadata.stripe_customer_id === "string" ? metadata.stripe_customer_id : null;
+    const stripePaymentMethodId =
+      typeof metadata.stripe_payment_method_id === "string"
+        ? metadata.stripe_payment_method_id
+        : null;
+    await applyActiveSubscriptionUpdate({
+      billing_provider: "stripe",
+      auto_renew: Boolean(stripePaymentMethodId),
+      started_at: new Date().toISOString(),
+      expires_at: computePaidPeriodExpiresAt(billingPeriod),
+      ...(stripeCustomerId ? { stripe_customer_id: stripeCustomerId } : {}),
+      ...(stripePaymentMethodId ? { stripe_payment_method_id: stripePaymentMethodId } : {}),
+    });
+    await notifySubscriptionActivated();
+    return;
+  }
 
   if (!isReusableAuth) {
     console.warn(
@@ -3356,9 +3555,18 @@ async function handleSubscriptionAuthorizationSuccess(
 // ─── Pay remaining balance (deposit-only bookings) ───────────────────────────
 
 async function handleBookingRemainingSuccess(
-  payload: { reference: string; metadata: any; amount: any; fees: any; currency?: string; customer: any },
+  payload: {
+    reference: string;
+    metadata: any;
+    amount: any;
+    fees: any;
+    currency?: string;
+    customer: any;
+    paymentProvider?: "paystack" | "stripe";
+  },
   supabase: SupabaseClient,
 ) {
+  const paymentProvider = payload.paymentProvider ?? "paystack";
   const { reference, metadata, amount, fees, customer } = payload;
   const bookingId = metadata.booking_id as string;
 
@@ -3395,34 +3603,50 @@ async function handleBookingRemainingSuccess(
     paystackChargeCurrency(payload, bookingData.currency),
   );
 
-  const payRemainVerified = await verifyPaystackBookingCharge({
-    supabase,
-    bookingId,
-    reference: String(reference),
-    paystackAmountSmallest: amount || 0,
-    paystackCurrency: null,
-    tenantId: payRemainingFinanceTenantId,
-    bookingPaymentReference:
-      typeof bookingData.payment_reference === "string" ? bookingData.payment_reference : null,
-    bookingCurrency: typeof bookingData.currency === "string" ? bookingData.currency : null,
-  });
-  if (payRemainVerified.ok === false) {
-    console.error("[pay-remaining] charge rejected:", payRemainVerified.reason, reference);
-    slackNotifyUnrecognizedPayments({
+  let payRemainVerifiedPending: Record<string, unknown> | null = null;
+  if (paymentProvider === "paystack") {
+    const payRemainVerified = await verifyPaystackBookingCharge({
+      supabase,
+      bookingId,
+      reference: String(reference),
+      paystackAmountSmallest: amount || 0,
+      paystackCurrency: null,
       tenantId: payRemainingFinanceTenantId,
-      count: 1,
-      amountMajor: amountInCurrency,
-      currency: typeof bookingData.currency === "string" ? bookingData.currency : null,
-      source: `paystack_webhook:booking_remaining:${payRemainVerified.reason}`,
+      bookingPaymentReference:
+        typeof bookingData.payment_reference === "string" ? bookingData.payment_reference : null,
+      bookingCurrency: typeof bookingData.currency === "string" ? bookingData.currency : null,
     });
-    return;
+    if (payRemainVerified.ok === false) {
+      console.error("[pay-remaining] charge rejected:", payRemainVerified.reason, reference);
+      slackNotifyUnrecognizedPayments({
+        tenantId: payRemainingFinanceTenantId,
+        count: 1,
+        amountMajor: amountInCurrency,
+        currency: typeof bookingData.currency === "string" ? bookingData.currency : null,
+        source: `paystack_webhook:booking_remaining:${payRemainVerified.reason}`,
+      });
+      return;
+    }
+    payRemainVerifiedPending = payRemainVerified.pendingPayment as Record<string, unknown>;
   }
+
+  const payRemainMeta =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? (metadata as Record<string, unknown>)
+      : null;
+  const stripePiId =
+    paymentProvider === "stripe" &&
+    typeof payRemainMeta?.stripe_payment_intent_id === "string"
+      ? payRemainMeta.stripe_payment_intent_id.trim()
+      : "";
+  const bookingPaymentProviderId =
+    paymentProvider === "stripe" && stripePiId ? stripePiId : reference;
 
   const { data: existingBookingPayment } = await supabase
     .from("booking_payments")
     .select("id")
-    .eq("payment_provider", "paystack")
-    .eq("payment_provider_id", reference)
+    .eq("payment_provider", paymentProvider)
+    .eq("payment_provider_id", bookingPaymentProviderId)
     .maybeSingle();
 
   let payRemainingSourcePaymentId: string | null = existingBookingPayment?.id
@@ -3430,49 +3654,30 @@ async function handleBookingRemainingSuccess(
     : null;
 
   if (!existingBookingPayment) {
-    const { data: insertedPayRemainingPayment, error: bookingPaymentInsertError } = await supabase
-      .from("booking_payments")
-      .insert({
-        booking_id: bookingId,
-        tenant_id: payRemainingFinanceTenantId,
-        amount: amountInCurrency,
-        payment_method: "card",
-        payment_provider: "paystack",
-        payment_provider_id: reference,
-        payment_provider_data: { metadata, customer_email: customer?.email },
-        status: "completed",
-        notes: `Remaining balance paid via Paystack. Ref: ${reference}`,
-      })
-      .select("id")
-      .maybeSingle();
-    if (bookingPaymentInsertError) {
-      if (bookingPaymentInsertError.code === "23505") {
-        console.log(
-          `Pay-remaining payment ${reference} already recorded (unique index / concurrent webhook)`,
-        );
-        const { data: racedPayment } = await supabase
-          .from("booking_payments")
-          .select("id")
-          .eq("payment_provider", "paystack")
-          .eq("payment_provider_id", reference)
-          .maybeSingle();
-        payRemainingSourcePaymentId = racedPayment?.id ? String(racedPayment.id) : null;
-      } else {
-        console.error("Pay-remaining: booking_payments insert failed", bookingPaymentInsertError);
-        return;
-      }
-    } else {
-      payRemainingSourcePaymentId = insertedPayRemainingPayment?.id
-        ? String(insertedPayRemainingPayment.id)
-        : null;
+    const railLabel = paymentProvider === "stripe" ? "Stripe" : "Paystack";
+    const recordedRemain = await recordGatewayBookingPayment(supabase, paymentProvider, {
+      bookingId,
+      tenantId: payRemainingFinanceTenantId,
+      reference,
+      amountMajor: amountInCurrency,
+      source: `${paymentProvider}_webhook_pay_remaining`,
+      notes: `Remaining balance paid via ${railLabel}. Ref: ${reference}`,
+      currency:
+        typeof bookingData.currency === "string" ? bookingData.currency : paystackChargeCurrency(payload),
+      metadata: payRemainMeta,
+    });
+    if (recordedRemain.ok === false) {
+      console.error("Pay-remaining: booking_payments insert failed", recordedRemain);
+      return;
     }
+    payRemainingSourcePaymentId = recordedRemain.bookingPaymentId;
   } else {
     console.log(`Pay-remaining payment ${reference} already recorded — checking ledger (idempotent retry).`);
   }
 
   const payRemainFinancials = bookingFinancialsFromDb(
     bookingData as Record<string, unknown>,
-    payRemainVerified.pendingPayment,
+    payRemainVerifiedPending as Parameters<typeof bookingFinancialsFromDb>[1] | undefined,
   );
   const walletAmountFromMeta = payRemainFinancials.walletAmountFromMeta;
   const giftCardAmountFromMeta = payRemainFinancials.giftCardAmountFromMeta;
@@ -3494,7 +3699,7 @@ async function handleBookingRemainingSuccess(
   const ledger = await recordBookingOnlineChargeLedger(supabase, {
     bookingId,
     reference,
-    provider: "paystack",
+    provider: paymentProvider,
     amountMajor: amountInCurrency,
     feesMajor: feesInCurrency,
     feeSource: payRemainingFeeSource,
@@ -3526,14 +3731,14 @@ async function handleBookingRemainingSuccess(
   if (ledger.skipped) {
     await syncBookingAfterPaystackSuccess(supabase, bookingId, {
       paymentReference: reference,
-      paymentProvider: "paystack",
+      paymentProvider,
     });
     return;
   }
 
   await syncBookingAfterPaystackSuccess(supabase, bookingId, {
     paymentReference: reference,
-    paymentProvider: "paystack",
+    paymentProvider,
   });
 
   const payRemainRegion = payRemainingFinanceTenantId
@@ -3603,9 +3808,18 @@ async function handleBookingRemainingSuccess(
 // ─── Additional Charges ──────────────────────────────────────────────────────
 
 async function handleAdditionalChargeSuccess(
-  payload: { reference: string; metadata: any; amount: any; fees: any; currency?: string; customer: any },
+  payload: {
+    reference: string;
+    metadata: any;
+    amount: any;
+    fees: any;
+    currency?: string;
+    customer: any;
+    paymentProvider?: "paystack" | "stripe";
+  },
   supabase: SupabaseClient,
 ) {
+  const paymentProvider = payload.paymentProvider ?? "paystack";
   const { reference, metadata, amount, fees, customer } = payload;
 
   const bookingId = metadata.booking_id as string;
@@ -3721,7 +3935,7 @@ async function handleAdditionalChargeSuccess(
     fees: feesInCurrency,
     net_amount: netAmount,
     status: "success",
-    provider: "paystack",
+    provider: paymentProvider,
     transaction_type: "additional_charge",
     metadata: {
       additional_charge_id: chargeId,
@@ -3831,7 +4045,7 @@ async function handleAdditionalChargeSuccess(
   await supabase.from("payments")
     .update({
       status: "paid",
-      payment_provider: "paystack",
+      payment_provider: paymentProvider,
       payment_provider_transaction_id: reference,
       processed_at: new Date().toISOString(),
       payment_provider_response: { ...payload },
@@ -3846,7 +4060,7 @@ async function handleAdditionalChargeSuccess(
       booking_id: bookingId,
       amount: amountInCurrency,
       payment_method: "card",
-      payment_provider: "paystack",
+      payment_provider: paymentProvider,
       payment_provider_id: reference,
       payment_provider_data: {
         additional_charge_id: chargeId,
@@ -3898,9 +4112,16 @@ async function handleAdditionalChargeSuccess(
 }
 
 async function handleAdditionalChargeFailed(
-  payload: { reference: string; metadata: any; message: any; gateway_response: any },
+  payload: {
+    reference: string;
+    metadata: any;
+    message: any;
+    gateway_response: any;
+    paymentProvider?: "paystack" | "stripe";
+  },
   supabase: SupabaseClient,
 ) {
+  const paymentProvider = payload.paymentProvider ?? "paystack";
   const { reference, metadata, message, gateway_response } = payload;
   const bookingId = metadata.booking_id as string;
   const chargeId = metadata.additional_charge_id as string;
@@ -3920,7 +4141,7 @@ async function handleAdditionalChargeFailed(
     fees: 0,
     net_amount: 0,
     status: "failed",
-    provider: "paystack",
+    provider: paymentProvider,
     transaction_type: "additional_charge",
     metadata: {
       additional_charge_id: chargeId,
@@ -3932,7 +4153,7 @@ async function handleAdditionalChargeFailed(
   await supabase.from("payments")
     .update({
       status: "failed",
-      payment_provider: "paystack",
+      payment_provider: paymentProvider,
       payment_provider_transaction_id: reference,
       failed_at: new Date().toISOString(),
       failure_reason: message || gateway_response || "paystack_charge_failed",

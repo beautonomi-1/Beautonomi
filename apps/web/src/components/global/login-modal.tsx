@@ -612,7 +612,24 @@ export default function LoginModal({
 
           // Role-based redirect after login - immediate redirect
           // Use replace instead of push to avoid back button issues
-          if (finalRole === "superadmin") {
+          if (providerContext) {
+            if (finalRole === "provider_owner" || finalRole === "provider_staff") {
+              router.replace("/provider/dashboard");
+            } else if (redirectUrl) {
+              try {
+                const u = new URL(redirectUrl, window.location.origin);
+                if (u.pathname.startsWith("/provider")) {
+                  router.replace(redirectUrl);
+                } else {
+                  router.replace("/provider/onboarding");
+                }
+              } catch {
+                router.replace("/provider/onboarding");
+              }
+            } else {
+              router.replace("/provider/onboarding");
+            }
+          } else if (finalRole === "superadmin") {
             router.replace("/admin/dashboard");
           } else if (finalRole === "provider_owner" || finalRole === "provider_staff") {
             router.replace("/provider/dashboard");
@@ -841,11 +858,6 @@ export default function LoginModal({
       const role = (await resolveRoleFast(true)) ?? contextRole;
       if (!role) {
         router.replace("/provider/dashboard");
-        void refreshUser().catch(() => {});
-        return;
-      }
-      if (role === "superadmin") {
-        router.replace("/admin/dashboard");
         void refreshUser().catch(() => {});
         return;
       }

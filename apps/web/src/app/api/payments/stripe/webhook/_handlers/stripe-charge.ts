@@ -49,91 +49,18 @@ async function resolveBookingTenantId(
 }
 
 /**
- * Handle Stripe `payment_intent.succeeded` for booking payments.
- * Mirrors the Paystack booking charge path: record payment → settle wallet/gift → sync lifecycle.
+ * Handle Stripe `payment_intent.succeeded` through the shared settlement dispatcher
+ * (same products as Paystack charge.success).
  */
 export async function handleStripePaymentIntentSucceeded(
   intent: StripePaymentIntentLike,
 ): Promise<void> {
-  const supabase: SupabaseClient = getSupabaseAdmin();
-  const bookingId =
-    typeof intent.metadata?.booking_id === "string" ? intent.metadata.booking_id.trim() : "";
-  if (!bookingId) {
-    // Non-booking PaymentIntent (wallet top-up, order, etc.) — not handled here yet.
-    return;
-  }
-
-  const currency = (intent.currency || "ZAR").toUpperCase();
-  const amountMajor = stripeMinorToMajor(intent.amount_received ?? intent.amount, currency);
-  const tenantId = await resolveBookingTenantId(supabase, bookingId);
-  const reference =
-    typeof intent.metadata?.reference === "string" ? intent.metadata.reference : intent.id ?? null;
-
-  const walletAmount = Number(intent.metadata?.wallet_amount_applied ?? 0) || 0;
-  const giftCardAmount = Number(intent.metadata?.gift_card_amount_applied ?? 0) || 0;
-  const stripeExchangeRate = extractStripeExchangeRate(intent as Record<string, unknown>);
-
-  const recorded = await recordBookingStripePayment(supabase, {
-    bookingId,
-    tenantId,
-    paymentIntentId: intent.id ?? null,
-    reference,
-    amountMajor,
-    currency,
-    source: "stripe_webhook",
-    stripeExchangeRate,
-  });
-
-  if (!recorded.ok) {
-    const reason = "reason" in recorded ? recorded.reason : "unknown";
-    console.error("[stripe-charge] failed to record booking payment", bookingId, reason);
-    throw new Error(`Failed to record Stripe booking payment for ${bookingId}: ${reason}`);
-  }
-
-  const ledgerReference =
-    typeof intent.metadata?.reference === "string" && intent.metadata.reference.trim()
-      ? intent.metadata.reference.trim()
-      : intent.id ?? "";
-
-  const paymentOption = String(intent.metadata?.payment_option || "full");
-  const requiresDeposit =
-    intent.metadata?.requires_deposit === true ||
-    intent.metadata?.requires_deposit === "true";
-  const isDeposit = requiresDeposit && paymentOption === "deposit";
-
-  const ledger = await recordBookingOnlineChargeLedger(supabase, {
-    bookingId,
-    reference: ledgerReference,
-    provider: "stripe",
-    amountMajor,
-    feesMajor: 0,
-    walletAmountApplied: walletAmount,
-    giftCardAmountApplied: giftCardAmount,
-    isDeposit,
-    sourcePaymentId: recorded.bookingPaymentId,
-    metadata: {
-      stripe_payment_intent_id: intent.id ?? null,
-      source: "stripe_webhook",
-    },
-  });
-  if (ledger.ok === false) {
-    throw new Error(`Failed to record Stripe finance ledger for ${bookingId}: ${ledger.reason}`);
-  }
-
-  if (walletAmount > 0 || giftCardAmount > 0) {
-    await ensureWalletGiftBookingPayments(supabase, {
-      bookingId,
-      tenantId,
-      walletAmount,
-      giftCardAmount,
-      initialStatus: "completed",
-    });
-  }
-
-  await syncBookingAfterPaystackSuccess(supabase, bookingId, {
-    paymentReference: reference ?? undefined,
-    paymentProvider: "stripe",
-  });
+  const { settleStripePaymentIntentSucceeded } = await import(
+    "@/lib/payments/settle-stripe-online-payment"
+  );
+  await settleStripePaymentIntentSucceeded(intent as Parameters<
+    typeof settleStripePaymentIntentSucceeded
+  >[0]);
 }
 
 /**

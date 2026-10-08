@@ -11,7 +11,7 @@ export { APPLE_BILLING_ACTIVE_STATUSES, isAppleBillingActive } from "@/lib/iap/a
 export type IosPurchaseEligibility = {
   eligible: boolean;
   reason: string | null;
-  billing_provider: "paystack" | "apple" | "manual" | null;
+  billing_provider: "paystack" | "stripe" | "apple" | "manual" | null;
 };
 
 const WEBSITE_BILLED_MESSAGE =

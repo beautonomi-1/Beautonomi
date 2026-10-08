@@ -20,7 +20,7 @@ import {
   userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { initializeOnlinePayment } from "@/lib/payments/online-payment";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -213,27 +213,32 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const callbackUrl = `${baseUrl}/provider/settings/ads/payment-return?success=1&order_id=${encodeURIComponent(order.id)}&campaign_id=${encodeURIComponent(campaignId)}&context=${adsContext}`;
     const cancelAction = `${baseUrl}/provider/settings/ads/payment-return?cancelled=1&order_id=${encodeURIComponent(order.id)}&campaign_id=${encodeURIComponent(campaignId)}&context=${adsContext}`;
 
-    const paystackData = await initializePaystackTransaction({
+    const onlineInit = await initializeOnlinePayment({
+      tenantId,
       email,
       amountInSmallestUnit: Math.max(100, convertToSmallestUnit(amountDue, currency)),
       currency,
       reference,
-      callback_url: callbackUrl,
+      callbackUrl,
+      lineItemName: "Ads campaign budget",
       metadata: {
         ads_budget_order_id: order.id,
         provider_id: campaignProviderId,
         campaign_id: campaignId,
         cancel_action: cancelAction,
       },
-      tenantId,
     });
 
     await supabase
       .from("ads_budget_orders")
-      .update({ paystack_reference: reference, updated_at: new Date().toISOString() })
+      .update({
+        paystack_reference: reference,
+        payment_provider: onlineInit.provider,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", order.id);
 
-    const paymentUrl = paystackData?.data?.authorization_url || null;
+    const paymentUrl = onlineInit.authorizationUrl || null;
     return successResponse({
       requires_payment: true,
       payment_url: paymentUrl,

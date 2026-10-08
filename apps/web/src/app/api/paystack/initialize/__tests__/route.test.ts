@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockRequireRoleInApi = vi.fn();
-const mockInitializePaystackTransaction = vi.fn();
+const mockInitializeOnlinePayment = vi.fn();
 const mockResolveProductOrderPaystackAmount = vi.fn();
 const mockAssertReportingCurrencyReady = vi.fn();
 const mockIsPaystackEnabledForTenant = vi.fn();
@@ -87,8 +87,9 @@ vi.mock("@/lib/fx/assert-reporting-currency-ready", () => ({
   assertReportingCurrencyReady: (...args: unknown[]) => mockAssertReportingCurrencyReady(...args),
 }));
 
-vi.mock("@/lib/payments/paystack-server", () => ({
-  initializePaystackTransaction: (...args: unknown[]) => mockInitializePaystackTransaction(...args),
+vi.mock("@/lib/payments/online-payment", () => ({
+  initializeOnlinePayment: (...args: unknown[]) => mockInitializeOnlinePayment(...args),
+  isOnlineCardEnabledForTenant: vi.fn(async () => true),
 }));
 
 describe("POST /api/paystack/initialize", () => {
@@ -101,11 +102,11 @@ describe("POST /api/paystack/initialize", () => {
       ok: true,
       amountSmallestUnit: 50000,
     });
-    mockInitializePaystackTransaction.mockResolvedValue({
-      data: {
-        authorization_url: "https://checkout.paystack.com/x",
-        reference: "ref_123",
-      },
+    mockInitializeOnlinePayment.mockResolvedValue({
+      provider: "paystack",
+      authorizationUrl: "https://checkout.paystack.com/x",
+      reference: "ref_123",
+      accessCode: "code_1",
     });
   });
 
@@ -122,10 +123,10 @@ describe("POST /api/paystack/initialize", () => {
 
     const res = await POST(req);
     expect(res.status).toBe(200);
-    expect(mockInitializePaystackTransaction).toHaveBeenCalledTimes(1);
-    const arg = mockInitializePaystackTransaction.mock.calls[0][0] as Record<string, unknown>;
+    expect(mockInitializeOnlinePayment).toHaveBeenCalledTimes(1);
+    const arg = mockInitializeOnlinePayment.mock.calls[0][0] as Record<string, unknown>;
     expect(arg.currency).toBe("ZAR");
-    expect(String(arg.callback_url)).toMatch(/^https:\/\//);
+    expect(String(arg.callbackUrl ?? arg.callback_url)).toMatch(/^https:\/\//);
     expect(arg.channels).toBeUndefined();
     expect(arg.split_code).toBeUndefined();
     expect(arg.subaccount).toBeUndefined();
@@ -148,7 +149,7 @@ describe("POST /api/paystack/initialize", () => {
 
     const res = await POST(req);
     expect(res.status).toBe(200);
-    const arg = mockInitializePaystackTransaction.mock.calls[0][0] as Record<string, unknown>;
+    const arg = mockInitializeOnlinePayment.mock.calls[0][0] as Record<string, unknown>;
     expect(arg.channels).toEqual(["card"]);
   });
 });

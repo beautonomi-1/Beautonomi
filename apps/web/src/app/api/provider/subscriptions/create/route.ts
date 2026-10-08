@@ -6,7 +6,7 @@ import {
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
-import { initializePaystackTransactionWithPlan } from "@/lib/payments/paystack-server";
+import { initializeOnlinePaymentWithPlan } from "@/lib/payments/online-payment";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
@@ -165,10 +165,11 @@ export async function POST(request: NextRequest) {
       .trim()
       .toUpperCase();
 
-    const init = await initializePaystackTransactionWithPlan({
+    const init = await initializeOnlinePaymentWithPlan({
+      tenantId,
       email: customerEmail,
       plan: paystackPlanCode,
-      callback_url: callbackUrl,
+      callbackUrl,
       metadata: {
         provider_id: providerId,
         pricing_plan_id: plan_id,
@@ -178,7 +179,6 @@ export async function POST(request: NextRequest) {
         cancel_action: cancelAction,
       },
       currency: tenantDefaultCurrency,
-      tenantId,
     });
 
     const authorizationUrl = init?.data?.authorization_url || null;

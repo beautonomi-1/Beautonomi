@@ -13,6 +13,7 @@ import {
 } from "@/lib/tenant/scoped-overrides";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
+import { getPrimaryOnlinePaymentGatewayForRegion } from "@/lib/regions/payment-gateways";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { planFeaturesSchema } from "@beautonomi/subscription-features";
 
@@ -53,6 +54,15 @@ const updatePlanSchema = createPlanSchema.partial().extend({
 
 function applyScopeFilter(query: any, scopeTenantId: string | null) {
   return scopeTenantId ? query.or(`tenant_id.eq.${scopeTenantId},tenant_id.is.null`) : query.is("tenant_id", null);
+}
+
+/** Paystack plan codes are only needed when the scoped tenant's region bills via Paystack. */
+async function shouldSyncPaystackSubscriptionPlans(scopeTenantId: string | null): Promise<boolean> {
+  if (!scopeTenantId) return true;
+  const regionConfig = await getTenantRegionConfig(scopeTenantId);
+  if (!regionConfig?.regionId) return true;
+  const primary = await getPrimaryOnlinePaymentGatewayForRegion(regionConfig.regionId);
+  return primary?.gateway.trim().toLowerCase() !== "stripe";
 }
 
 /**
@@ -104,7 +114,9 @@ export async function POST(request: NextRequest) {
     let paystackPlanCodeMonthly: string | null = null;
     let paystackPlanCodeYearly: string | null = null;
 
-    if (!data.is_free) {
+    const syncPaystack = await shouldSyncPaystackSubscriptionPlans(scopeTenantId);
+
+    if (!data.is_free && syncPaystack) {
       const _secretKey = await getPaystackSecretKey({ tenantId: scopeTenantId });
 
       // Create monthly plan in Paystack if price is set
@@ -235,8 +247,10 @@ export async function PUT(request: NextRequest) {
 
     const updateExisting = data.update_existing_subscriptions;
 
+    const syncPaystack = await shouldSyncPaystackSubscriptionPlans(scopeTenantId);
+
     // Update Paystack plans if prices changed and plan is not free
-    if (!data.is_free && !existingPlan.is_free) {
+    if (!data.is_free && !existingPlan.is_free && syncPaystack) {
       const commonOpts = updateExisting !== undefined ? { update_existing_subscriptions: updateExisting } : {};
       // Update monthly plan
       if (data.price_monthly !== undefined && existingPlan.paystack_plan_code_monthly) {

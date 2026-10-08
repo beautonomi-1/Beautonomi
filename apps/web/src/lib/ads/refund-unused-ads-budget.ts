@@ -8,6 +8,8 @@ import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id
 import { creditMarketingBalance } from "@/lib/marketing/credits";
 import { createRefund } from "@/lib/payments/paystack-complete";
 import { convertToSmallestUnit } from "@/lib/payments/paystack";
+import { refundOnlinePayment } from "@/lib/payments/online-payment";
+import { getOnlinePaymentCheckoutByReference } from "@/lib/payments/online-payment-checkouts";
 
 export type RefundUnusedAdsBudgetResult = {
   refunded: boolean;
@@ -121,15 +123,30 @@ export async function refundUnusedAdsBudget(params: {
     });
   } else if (order?.paystack_reference && tender !== "apple") {
     try {
-      await createRefund({
-        transaction: order.paystack_reference,
-        amount: convertToSmallestUnit(unspent, order.currency ?? undefined),
-        currency: order.currency ?? undefined,
-        customer_note: "Unused ad campaign budget",
-        merchant_note: `Campaign ${campaignId}: ${reason}`,
-      });
+      const checkoutRow = await getOnlinePaymentCheckoutByReference(order.paystack_reference);
+      if (checkoutRow?.provider === "stripe") {
+        const piId = checkoutRow.payment_intent_id;
+        if (piId) {
+          await refundOnlinePayment({
+            reference: order.paystack_reference,
+            providerPaymentId: piId,
+            amountInSmallestUnit: convertToSmallestUnit(unspent, order.currency ?? undefined),
+            currency: order.currency ?? "ZAR",
+            reason: "requested_by_customer",
+            idempotencyKey: idempotencyKey,
+          });
+        }
+      } else {
+        await createRefund({
+          transaction: order.paystack_reference,
+          amount: convertToSmallestUnit(unspent, order.currency ?? undefined),
+          currency: order.currency ?? undefined,
+          customer_note: "Unused ad campaign budget",
+          merchant_note: `Campaign ${campaignId}: ${reason}`,
+        });
+      }
     } catch (refundErr) {
-      console.warn("[ads_unused_refund] Paystack refund failed (ledger posted):", refundErr);
+      console.warn("[ads_unused_refund] Gateway refund failed (ledger posted):", refundErr);
     }
   }
 

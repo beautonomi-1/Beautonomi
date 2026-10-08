@@ -493,6 +493,8 @@ path,class,note
 /api/admin/refunds/reconciliation,T,"uses resolveAdminApiTenantId"
 /api/admin/refunds,T,"uses resolveAdminApiTenantId"
 /api/admin/regions/[tenantId]/launch-checklist,T,"review: likely tenant-scoped ops"
+/api/admin/regions/[regionId]/online-gateway,U,"superadmin; region online payment gateway config"
+/api/admin/regions,U,"superadmin; list regions for control-plane tooling"
 /api/admin/reports/bookings,T,"uses resolveAdminApiTenantId"
 /api/admin/reports/customers,T,"uses resolveAdminApiTenantId"
 /api/admin/reports/gift-cards,T,"uses resolveAdminApiTenantId"

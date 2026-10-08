@@ -4,6 +4,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { createTransfer, convertToSmallestUnit } from "@/lib/payments/paystack-complete";
+import { getPaymentProviderForTenant } from "@/lib/payments/provider/registry";
+import { getStripeClient } from "@/lib/payments/stripe-server";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
@@ -140,6 +142,105 @@ export async function POST(
 
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+    const payoutCurrency = p.currency || acct.currency || lastResortCurrency;
+    const payoutAmountMinor = convertToSmallestUnit(Number(p.amount || 0), payoutCurrency);
+
+    const psp = await getPaymentProviderForTenant(tenantId);
+    if (psp?.provider.id === "stripe") {
+      const { data: providerStripe } = await supabase
+        .from("providers")
+        .select("stripe_connect_account_id")
+        .eq("id", p.provider_id)
+        .maybeSingle();
+      const destination = (
+        providerStripe as { stripe_connect_account_id?: string | null } | null
+      )?.stripe_connect_account_id;
+      if (!destination || !String(destination).trim()) {
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: "Provider has not completed Stripe Connect onboarding",
+              code: "STRIPE_CONNECT_REQUIRED",
+            },
+          },
+          { status: 400 },
+        );
+      }
+
+      const { data: claimedStripe, error: claimStripeErr } = await supabase
+        .from("payouts")
+        .update({
+          payout_provider: "stripe",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .eq("status", "processing")
+        .is("transfer_code", null)
+        .is("payout_provider", null)
+        .select("id")
+        .maybeSingle();
+
+      if (claimStripeErr) throw claimStripeErr;
+      if (!claimedStripe) {
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: "Payout was already claimed or processed by another admin",
+              code: "STATE_CONFLICT",
+            },
+          },
+          { status: 409 },
+        );
+      }
+
+      const stripe = await getStripeClient(tenantId);
+      let transfer: { id: string };
+      try {
+        transfer = await stripe.transfers.create(
+          {
+            amount: payoutAmountMinor,
+            currency: payoutCurrency.toLowerCase(),
+            destination: String(destination).trim(),
+            metadata: { payout_id: id, payout_number: p.payout_number ?? "" },
+          },
+          { idempotencyKey: `payout_transfer_${id}` },
+        );
+      } catch (transferErr) {
+        await supabase
+          .from("payouts")
+          .update({ payout_provider: null, updated_at: new Date().toISOString() })
+          .eq("id", id)
+          .eq("status", "processing")
+          .is("transfer_code", null)
+          .eq("payout_provider", "stripe");
+        throw transferErr;
+      }
+
+      await supabase
+        .from("payouts")
+        .update({
+          transfer_code: transfer.id,
+          status: "completed",
+          paid_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+
+      await writeAuditLog({
+        action: "payout_transfer_initiated",
+        entity_type: "payout",
+        entity_id: id,
+        metadata: { provider: "stripe", transfer_id: transfer.id },
+        actor_user_id: user.id,
+      });
+
+      return NextResponse.json({
+        data: { payout_id: id, transfer_code: transfer.id, provider: "stripe" },
+        error: null,
+      });
+    }
 
     // Claim payout before calling Paystack to prevent concurrent double-send.
     const { data: claimedPayout, error: claimErr } = await supabase

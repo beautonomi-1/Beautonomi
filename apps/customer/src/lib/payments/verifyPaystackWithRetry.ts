@@ -28,7 +28,16 @@ type Options = {
   endpoint?: string;
   maxAttempts?: number;
   delayMs?: number;
+  sessionId?: string | null;
 };
+
+function buildQuery(reference: string, sessionId?: string | null): string {
+  const params = new URLSearchParams();
+  params.set("reference", reference);
+  const sid = sessionId?.trim();
+  if (sid) params.set("session_id", sid);
+  return params.toString();
+}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -60,6 +69,7 @@ export async function verifyPaystackWithRetry<T = Record<string, unknown>>(
   const endpoint = opts.endpoint ?? "/api/paystack/verify";
   const maxAttempts = Math.max(1, opts.maxAttempts ?? 5);
   const delayMs = Math.max(0, opts.delayMs ?? 1500);
+  const sessionId = opts.sessionId ?? null;
   const trimmedRef = reference.trim();
 
   if (!trimmedRef) {
@@ -78,9 +88,9 @@ export async function verifyPaystackWithRetry<T = Record<string, unknown>>(
   while (attempts < maxAttempts) {
     attempts += 1;
     try {
-      const res = await api.get<T>(
-        `${endpoint}${endpoint.includes("?") ? "&" : "?"}reference=${encodeURIComponent(trimmedRef)}`,
-      );
+      const q = buildQuery(trimmedRef, sessionId);
+      const sep = endpoint.includes("?") ? "&" : "?";
+      const res = await api.get<T>(`${endpoint}${sep}${q}`);
       if (res.error) {
         lastErr = res.error.message ?? "Payment verification failed";
         safeWarn("verify attempt error", { attempts, error: res.error });

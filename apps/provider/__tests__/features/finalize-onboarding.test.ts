@@ -40,6 +40,14 @@ jest.mock("@/lib/biometric-setup-prompt", () => ({
 
 jest.mock("@/lib/payments/paystackRefFromUrl", () => ({
   extractPaystackReferenceFromUrl: jest.fn(() => "ref-test"),
+  extractStripeCheckoutSessionIdFromUrl: jest.fn(() => null),
+}));
+
+jest.mock("@/lib/payments/onlineCheckoutReturn", () => ({
+  parseOnlineCheckoutReturnUrl: jest.fn((url: string) => ({
+    reference: url.includes("checkout_ref_1") ? "checkout_ref_1" : "ref-test",
+    sessionId: url.includes("session_id=") ? "cs_test" : null,
+  })),
 }));
 
 jest.mock("@/lib/payments/verifyPaystackWithRetry", () => ({
@@ -123,12 +131,13 @@ describe("finalizeOnboardingSuccess", () => {
   it("uses upgrade + initialize-payment checkout when waitForCheckout is provided", async () => {
     const waitForCheckout = jest.fn().mockResolvedValue({
       outcome: "success",
-      url: "https://app.test/provider/subscription?payment_success=true",
+      url: "https://app.test/provider/subscription?reference=checkout_ref_1&payment_success=true",
     });
     startPaidSubscriptionCheckout.mockResolvedValue({
       ok: true,
       authorizationUrl: "https://checkout.paystack.com/test",
       orderId: "order-1",
+      reference: "checkout_ref_1",
     });
 
     await finalizeOnboardingSuccess({
@@ -183,7 +192,9 @@ describe("finalizeOnboardingSuccess", () => {
       waitForCheckout,
     });
 
-    expect(verifyPaystackWithRetry).toHaveBeenCalledWith("provider_subscription_auth_test");
+    expect(verifyPaystackWithRetry).toHaveBeenCalledWith("provider_subscription_auth_test", {
+      sessionId: null,
+    });
     expect(mockReplace).toHaveBeenCalledWith("/(app)/onboarding");
   });
 
@@ -266,6 +277,32 @@ describe("resolveCheckoutFlagsForRecovery", () => {
 
   beforeEach(() => {
     api.get.mockReset();
+  });
+
+  it("returns requires_checkout false when formData marks free plan", async () => {
+    api.get.mockResolvedValueOnce({ data: null, error: { message: "none" } });
+
+    const flags = await resolveCheckoutFlagsForRecovery({
+      selected_plan_id: "free-id",
+      selected_plan_is_free: true,
+      selected_billing_period: "monthly",
+    });
+    expect(flags.requires_checkout).toBe(false);
+    expect(flags.selected_plan_is_free).toBe(true);
+  });
+
+  it("returns requires_checkout true when catalog miss but paid billing period is set", async () => {
+    api.get
+      .mockResolvedValueOnce({ data: null, error: { message: "none" } })
+      .mockResolvedValueOnce({ data: { data: [] }, error: null });
+
+    const flags = await resolveCheckoutFlagsForRecovery({
+      selected_plan_id: "paid-id",
+      selected_plan_is_free: false,
+      selected_billing_period: "yearly",
+    });
+    expect(flags.requires_checkout).toBe(true);
+    expect(flags.selected_plan_is_free).toBe(false);
   });
 
   it("returns requires_checkout false when active subscription exists", async () => {

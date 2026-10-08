@@ -38,6 +38,7 @@ function ProductPaymentCallbackInner() {
 
     const verifyPayment = async () => {
       const reference = searchParams.get("reference");
+      const sessionId = searchParams.get("session_id");
       if (!reference) {
         if (!cancelled) {
           setStatus("error");
@@ -60,7 +61,7 @@ function ProductPaymentCallbackInner() {
           productOrderId?: string;
           orderNumber?: string;
           message?: string;
-        }>(reference, { maxAttempts: 5, delayMs: 1500 });
+        }>(reference, { maxAttempts: 5, delayMs: 1500, sessionId });
 
         if (cancelled) return;
 

@@ -15,7 +15,7 @@ const mockRecordCollectibleSettlementLedger = vi.fn();
 const mockCompleteWalletGiftSyntheticPayments = vi.fn();
 const mockSyncBookingAfterPaystackSuccess = vi.fn();
 const mockRollbackCollectibleSplitLeg = vi.fn();
-const mockInitializePaystackTransaction = vi.fn();
+const mockInitializeOnlinePayment = vi.fn();
 const mockGenerateTransactionReference = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
@@ -65,8 +65,9 @@ vi.mock("@/lib/bookings/rollback-collectible-split-leg", () => ({
   rollbackCollectibleSplitLeg: (...args: unknown[]) => mockRollbackCollectibleSplitLeg(...args),
 }));
 
-vi.mock("@/lib/payments/paystack-server", () => ({
-  initializePaystackTransaction: (...args: unknown[]) => mockInitializePaystackTransaction(...args),
+vi.mock("@/lib/payments/online-payment", () => ({
+  initializeOnlinePayment: (...args: unknown[]) => mockInitializeOnlinePayment(...args),
+  isOnlineCardEnabledForTenant: vi.fn(async () => true),
 }));
 
 vi.mock("@/lib/payments/paystack", () => ({
@@ -175,11 +176,10 @@ describe("POST /api/me/bookings/[id]/pay-remaining", () => {
 
   it("happy path: Paystack-only for full remaining balance (no split)", async () => {
     mockGetSupabaseServer.mockResolvedValue(makeSupabaseMock(bookingRow()));
-    mockInitializePaystackTransaction.mockResolvedValue({
-      data: {
-        authorization_url: "https://checkout.paystack.com/abc",
-        access_code: "access_abc",
-      },
+    mockInitializeOnlinePayment.mockResolvedValue({
+      authorizationUrl: "https://checkout.paystack.com/abc",
+      accessCode: "access_abc",
+      provider: "paystack",
     });
 
     const req = new NextRequest(`http://localhost/api/me/bookings/${BOOKING_ID}/pay-remaining`, {
@@ -195,7 +195,7 @@ describe("POST /api/me/bookings/[id]/pay-remaining", () => {
     expect(body?.data?.paystack_amount).toBe(700);
     expect(body?.data?.wallet_amount_applied).toBe(0);
     expect(mockApplyCollectibleGiftAndWallet).not.toHaveBeenCalled();
-    expect(mockInitializePaystackTransaction).toHaveBeenCalledWith(
+    expect(mockInitializeOnlinePayment).toHaveBeenCalledWith(
       expect.objectContaining({
         amountInSmallestUnit: 70_000,
         metadata: expect.objectContaining({
@@ -219,11 +219,10 @@ describe("POST /api/me/bookings/[id]/pay-remaining", () => {
       warnings: [],
       fullySettled: false,
     });
-    mockInitializePaystackTransaction.mockResolvedValue({
-      data: {
-        authorization_url: "https://checkout.paystack.com/split",
-        access_code: "access_split",
-      },
+    mockInitializeOnlinePayment.mockResolvedValue({
+      authorizationUrl: "https://checkout.paystack.com/split",
+      accessCode: "access_split",
+      provider: "paystack",
     });
 
     const req = new NextRequest(`http://localhost/api/me/bookings/${BOOKING_ID}/pay-remaining`, {
@@ -244,7 +243,7 @@ describe("POST /api/me/bookings/[id]/pay-remaining", () => {
         paymentLegSuffix: ":remaining:remaining_test_ref",
       }),
     );
-    expect(mockInitializePaystackTransaction).toHaveBeenCalledWith(
+    expect(mockInitializeOnlinePayment).toHaveBeenCalledWith(
       expect.objectContaining({
         amountInSmallestUnit: 50_000,
         metadata: expect.objectContaining({
@@ -281,7 +280,7 @@ describe("POST /api/me/bookings/[id]/pay-remaining", () => {
     expect(body?.data?.paystack_amount).toBe(0);
     expect(body?.data?.wallet_amount_applied).toBe(150);
     expect(body?.data?.gift_card_amount_applied).toBe(550);
-    expect(mockInitializePaystackTransaction).not.toHaveBeenCalled();
+    expect(mockInitializeOnlinePayment).not.toHaveBeenCalled();
     expect(mockRecordCollectibleSettlementLedger).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({

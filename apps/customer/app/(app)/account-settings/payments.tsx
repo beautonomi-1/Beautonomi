@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
-import { extractPaystackReferenceFromUrl, isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
+import { isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
+import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
   getCardVerificationPaystackAuthPrefix,
   matchesAccountPaymentsReturnUrl,
@@ -241,12 +242,14 @@ export default function PaymentsScreen() {
       if (pr.outcome === "cancel") {
         return;
       }
+      let checkoutSessionId: string | null = null;
       if (pr.outcome === "success" && pr.url && !isCancelledPaystackUrl(pr.url)) {
-        const extracted = extractPaystackReferenceFromUrl(pr.url);
-        if (extracted) reference = extracted;
+        const parsed = parseOnlineCheckoutReturnUrl(pr.url);
+        if (parsed.reference) reference = parsed.reference;
+        checkoutSessionId = parsed.sessionId;
       }
       if (reference) {
-        await verifyPaystackWithRetry(reference);
+        await verifyPaystackWithRetry(reference, { sessionId: checkoutSessionId });
       }
 
       const MAX_POLL = 12;

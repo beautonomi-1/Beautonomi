@@ -5,9 +5,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { generateTransactionReference } from "@/lib/payments/paystack";
-import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
-import { getPaymentProviderForTenant } from "@/lib/payments/provider/registry";
-import { resolveSettlementModel } from "@/lib/payments/provider/settlement-model";
+import { initializeOnlinePayment } from "@/lib/payments/online-payment";
 import { assertReportingCurrencyReady } from "@/lib/fx/assert-reporting-currency-ready";
 import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -201,53 +199,13 @@ export async function POST(request: Request) {
     const cancelAction = hosted.cancelUrl;
     const channelExtras = paystackChannelsForInitialize({ saveCard });
 
-    // Initialize transaction with split if configured (Paystack) or PaymentIntent (Stripe).
-    const psp = await getPaymentProviderForTenant(paymentTenantId);
-    if (psp?.provider.id === "stripe") {
-      const settlementModel = resolveSettlementModel(psp.gateway.config);
-      const stripeInit = await psp.provider.initializePayment({
-        email,
-        amountInSmallestUnit,
-        currency: currency || lastResortCurrency,
-        reference: transactionReference,
-        callbackUrl: resolvedCallbackUrl,
-        metadata: {
-          booking_id,
-          customer_id: auth.user.id,
-          save_card: saveCard,
-          set_as_default: setAsDefault,
-          cancel_action: cancelAction,
-        },
-        tenantId: paymentTenantId,
-        connectedAccountId: stripeConnectAccountId,
-        settlementModel,
-      });
-
-      await (supabaseAdmin.from("bookings") as any)
-        .update({
-          payment_reference: stripeInit.reference,
-          payment_status: "pending",
-        })
-        .eq("id", booking_id)
-        .eq("customer_id", auth.user.id);
-
-      return NextResponse.json({
-        data: {
-          provider: "stripe",
-          client_secret: stripeInit.clientSecret,
-          payment_intent_id: stripeInit.paymentIntentId,
-          reference: stripeInit.reference,
-        },
-        error: null,
-      });
-    }
-
-    const paystackData = await initializePaystackTransaction({
+    const onlineInit = await initializeOnlinePayment({
+      tenantId: paymentTenantId,
       email,
       amountInSmallestUnit,
-      currency: currency || lastResortCurrency,
+      currency: chargeCurrency,
       reference: transactionReference,
-      callback_url: resolvedCallbackUrl,
+      callbackUrl: resolvedCallbackUrl,
       metadata: {
         booking_id,
         customer_id: auth.user.id,
@@ -263,14 +221,13 @@ export async function POST(request: Request) {
         ],
       },
       ...(channelExtras.channels ? { channels: channelExtras.channels } : {}),
-      tenantId: paymentTenantId,
+      lineItemName: "Booking payment",
+      saveCard,
     });
 
-    // Store payment reference in booking
-    await (supabaseAdmin
-      .from("bookings") as any)
+    await (supabaseAdmin.from("bookings") as any)
       .update({
-        payment_reference: paystackData.data.reference,
+        payment_reference: onlineInit.reference,
         payment_status: "pending",
       })
       .eq("id", booking_id)
@@ -278,9 +235,13 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       data: {
-        authorization_url: paystackData.data.authorization_url,
-        access_code: paystackData.data.access_code,
-        reference: paystackData.data.reference,
+        provider: onlineInit.provider,
+        authorization_url: onlineInit.authorizationUrl,
+        access_code: onlineInit.accessCode,
+        reference: onlineInit.reference,
+        checkout_session_id: onlineInit.checkoutSessionId,
+        payment_intent_id: onlineInit.paymentIntentId,
+        client_secret: onlineInit.clientSecret,
       },
       error: null,
     });

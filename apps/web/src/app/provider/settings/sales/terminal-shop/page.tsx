@@ -367,12 +367,23 @@ export default function TerminalShopPage() {
   useEffect(() => {
     const paymentSuccess = searchParams.get("payment_success");
     const reference = searchParams.get("reference") || searchParams.get("trxref");
+    const sessionId = searchParams.get("session_id");
     if (paymentSuccess === "1" && reference) {
       void (async () => {
         try {
-          await fetcher.get(`/api/paystack/verify-reference?reference=${encodeURIComponent(reference)}`);
-          setPaymentBanner("confirmed");
-          toast.success(t("web.provider.settings.pages.sales/terminal-shop.paymentConfirmed"));
+          const { verifyWithRetry } = await import("@/lib/payments/verify-with-retry");
+          const result = await verifyWithRetry(reference, {
+            maxAttempts: 5,
+            delayMs: 1500,
+            sessionId,
+          });
+          if (result.status === "failed") {
+            setPaymentBanner("processing");
+            toast.message(t("web.provider.settings.pages.sales/terminal-shop.paymentSubmittedMoment"));
+          } else {
+            setPaymentBanner("confirmed");
+            toast.success(t("web.provider.settings.pages.sales/terminal-shop.paymentConfirmed"));
+          }
         } catch {
           setPaymentBanner("processing");
           toast.message(t("web.provider.settings.pages.sales/terminal-shop.paymentSubmittedMoment"));

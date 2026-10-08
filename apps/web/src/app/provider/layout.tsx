@@ -6,9 +6,18 @@ import { ProviderPortalProvider } from "@/providers/provider-portal/ProviderPort
 import { ProviderShell } from "@/components/provider/ProviderShell";
 import { ProviderSidebarProvider } from "@/contexts/ProviderSidebarContext";
 import RoleGuard from "@/components/auth/RoleGuard";
+import type { UsersRoleFromDb } from "@/lib/auth/role";
 import { ProviderPortalGate } from "./ProviderPortalGate";
 import { ProviderPortalConfigBundle } from "@/components/provider/ProviderPortalConfigBundle";
 import { useRouteTracking } from "@/lib/analytics/amplitude/route-tracker";
+
+/** Web provider setup funnel (onboarding wizard, get-started, subscription during checkout). */
+const PROVIDER_SETUP_ROLES: UsersRoleFromDb[] = [
+  "provider_owner",
+  "provider_staff",
+  "provider_onboarding",
+  "superadmin",
+];
 
 function RouteTracker() {
   useRouteTracking();
@@ -29,6 +38,9 @@ export default function ProviderLayout({ children }: { children: React.ReactNode
   const isGetStartedPage =
     pathname === "/provider/get-started" ||
     (pathname?.startsWith("/provider/get-started/") ?? false);
+  const isSubscriptionPage =
+    pathname === "/provider/subscription" ||
+    (pathname?.startsWith("/provider/subscription/") ?? false);
 
   // Onboarding allows customers; embed is for WebView; subscription-checkout is minimal layout (no shell)
   // Partner EULA / public signup are entry pages — no RoleGuard or portal shell
@@ -45,9 +57,9 @@ export default function ProviderLayout({ children }: { children: React.ReactNode
   }
 
   // Setup wizard: authenticated provider role but no ProviderPortalProvider (no providers row yet — profile API 404s)
-  if (isGetStartedPage) {
+  if (isGetStartedPage || isSubscriptionPage) {
     return (
-      <RoleGuard allowedRoles={["provider_owner", "provider_staff", "provider_onboarding"]}>
+      <RoleGuard allowedRoles={PROVIDER_SETUP_ROLES}>
         <ProviderPortalConfigBundle>
           <ProviderPortalGate>
             <RouteTracker />

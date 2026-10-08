@@ -9,7 +9,7 @@ import {
 } from '@/lib/supabase/api-helpers';
 import { z } from 'zod';
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
-import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { initializeOnlinePayment } from "@/lib/payments/online-payment";
 import { createCustomer, fetchCustomer } from '@/lib/payments/paystack-complete';
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -21,6 +21,10 @@ import { assertReportingCurrencyReady } from "@/lib/fx/assert-reporting-currency
 import { failPendingProviderSubscriptionOrders } from "@/lib/subscriptions/provider-billing-merchant";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
+import {
+  resolveSubscriptionOnlineGatewayId,
+  subscriptionGatewayUsesPaystackCustomer,
+} from "@/lib/subscriptions/resolve-subscription-online-gateway";
 
 const initializePaymentSchema = z.object({
   plan_id: z.string().min(1, 'Plan ID is required'),
@@ -128,23 +132,30 @@ export async function POST(request: NextRequest) {
     const email = userEmailRow?.email || user.email;
     if (!email) throw new Error("User email is required for payment");
 
-    let customerCode: string;
-    try {
-      // Try to fetch existing customer
-      const customerResponse = await fetchCustomer(email, { tenantId });
-      customerCode = customerResponse.data?.customer_code || email;
-    } catch {
-      // Create new customer if doesn't exist
+    const onlineGateway = await resolveSubscriptionOnlineGatewayId(tenantId);
+    const usesPaystackCustomer = subscriptionGatewayUsesPaystackCustomer(onlineGateway);
+
+    let customerCode: string = email;
+    if (usesPaystackCustomer) {
       try {
-        const customerResponse = await createCustomer({
-          email,
-          first_name: userEmailRow?.first_name || undefined,
-          last_name: userEmailRow?.last_name || undefined,
-          phone: userEmailRow?.phone || undefined,
-        }, { tenantId });
+        const customerResponse = await fetchCustomer(email, { tenantId });
         customerCode = customerResponse.data?.customer_code || email;
-      } catch (err: any) {
-        throw new Error(`Failed to create Paystack customer: ${err.message}`);
+      } catch {
+        try {
+          const customerResponse = await createCustomer(
+            {
+              email,
+              first_name: userEmailRow?.first_name || undefined,
+              last_name: userEmailRow?.last_name || undefined,
+              phone: userEmailRow?.phone || undefined,
+            },
+            { tenantId },
+          );
+          customerCode = customerResponse.data?.customer_code || email;
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : "Unknown error";
+          throw new Error(`Failed to create Paystack customer: ${msg}`);
+        }
       }
     }
 
@@ -187,22 +198,26 @@ export async function POST(request: NextRequest) {
       typeof callbackFromClient === "string" &&
       /^https?:\/\//i.test(callbackFromClient);
     const inAppParam = in_app ? "&in_app=1" : "";
+    const refQuery = `reference=${encodeURIComponent(reference)}`;
     const callbackUrl =
       in_app && isHttpsClientCallback
-        ? `${callbackFromClient}${callbackFromClient!.includes("?") ? "&" : "?"}payment_success=true&order_id=${order.id}`
-        : `${subAppUrl}/provider/subscription?payment_success=true&order_id=${order.id}${inAppParam}`;
+        ? `${callbackFromClient}${callbackFromClient!.includes("?") ? "&" : "?"}payment_success=true&order_id=${order.id}&${refQuery}`
+        : `${subAppUrl}/provider/subscription?payment_success=true&order_id=${order.id}&${refQuery}${inAppParam}`;
 
     const subCancelAction =
       in_app && isHttpsClientCallback
         ? `${callbackFromClient}${callbackFromClient!.includes("?") ? "&" : "?"}payment_cancelled=1`
         : `${subAppUrl}/provider/subscription?payment_cancelled=1${inAppParam}`;
 
-    const paystackData = await initializePaystackTransaction({
+    const planCurrency = (plan as any).currency || lastResortCurrency;
+    const onlineInit = await initializeOnlinePayment({
+      tenantId,
       email,
-      amountInSmallestUnit: convertToSmallestUnit(amount, (plan as any).currency || lastResortCurrency),
-      currency: (plan as any).currency || lastResortCurrency,
+      amountInSmallestUnit: convertToSmallestUnit(amount, planCurrency),
+      currency: planCurrency,
       reference,
-      callback_url: callbackUrl,
+      callbackUrl,
+      lineItemName: "Provider subscription",
       metadata: {
         provider_subscription_order_id: order.id,
         provider_id: providerId,
@@ -212,10 +227,9 @@ export async function POST(request: NextRequest) {
         kind: "subscription_authorization",
         cancel_action: subCancelAction,
       },
-      tenantId,
     });
 
-    const paymentUrl = paystackData?.data?.authorization_url || null;
+    const paymentUrl = onlineInit.authorizationUrl || null;
 
     if (!paymentUrl) {
       // Mark the order as failed immediately so it never leaks as a perpetual
@@ -223,11 +237,11 @@ export async function POST(request: NextRequest) {
       await (supabase.from("provider_subscription_orders") as any)
         .update({ status: "failed", updated_at: new Date().toISOString() })
         .eq("id", order.id);
-      return errorResponse(
-        "Paystack did not return a payment URL. Check that your Paystack credentials are valid and the plan amount is set.",
-        "PAYSTACK_ERROR",
-        502,
-      );
+      const noUrlMessage =
+        onlineGateway === "paystack"
+          ? "Paystack did not return a payment URL. Check that your Paystack credentials are valid and the plan amount is set."
+          : "The payment provider did not return a payment URL. Check gateway configuration and the plan amount.";
+      return errorResponse(noUrlMessage, "PAYMENT_INIT_ERROR", 502);
     }
 
     await (supabase.from("provider_subscription_orders") as any)

@@ -267,6 +267,11 @@ export const CpIntegrationStripePage = lazy(() =>
 export const CpCountryLaunchChecklistPage = lazy(() =>
   import("@/routes/control-plane/CpCountryLaunchChecklistPage").then((m) => ({ default: m.CpCountryLaunchChecklistPage }))
 );
+export const CpRegionOnlineGatewayPage = lazy(() =>
+  import("@/routes/control-plane/CpRegionOnlineGatewayPage").then((m) => ({
+    default: m.CpRegionOnlineGatewayPage,
+  }))
+);
 export const VerificationSessionsPage = lazy(() =>
   import("@/routes/identity-trust/VerificationSessionsPage").then((m) => ({ default: m.VerificationSessionsPage }))
 );

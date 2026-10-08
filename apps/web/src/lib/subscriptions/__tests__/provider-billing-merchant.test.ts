@@ -15,12 +15,31 @@ describe("provider-billing-merchant", () => {
     ).toBe(true);
   });
 
+  it("shouldIgnorePaystackEventForRow when Stripe is merchant of record", () => {
+    expect(
+      shouldIgnorePaystackEventForRow({
+        billing_provider: "stripe",
+        status: "active",
+      }),
+    ).toBe(true);
+  });
+
   it("isLivePaystackSubscription includes past_due", () => {
     expect(
       isLivePaystackSubscription({
         billing_provider: "paystack",
         status: "past_due",
         paystack_subscription_code: "SUB_1",
+        plan: { is_free: false },
+      }),
+    ).toBe(true);
+  });
+
+  it("isLivePaystackSubscription treats active Stripe billing like Paystack for IAP block", () => {
+    expect(
+      isLivePaystackSubscription({
+        billing_provider: "stripe",
+        status: "active",
         plan: { is_free: false },
       }),
     ).toBe(true);

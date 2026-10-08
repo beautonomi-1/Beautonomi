@@ -14,7 +14,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
-import { extractPaystackReferenceFromUrl, isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
+import { isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
+import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
   getCustomerPaystackAuthReturnUrl,
   getShopProductPaystackAuthPrefix,
@@ -370,12 +371,14 @@ export default function ProductOrderDetailScreen() {
       }
 
       let reference = paystackRes.data.reference;
+      let checkoutSessionId: string | null = null;
       if (pr.outcome === "success" && pr.url && !isCancelledPaystackUrl(pr.url)) {
-        const extracted = extractPaystackReferenceFromUrl(pr.url);
-        if (extracted) reference = extracted;
+        const parsed = parseOnlineCheckoutReturnUrl(pr.url);
+        if (parsed.reference) reference = parsed.reference;
+        checkoutSessionId = parsed.sessionId;
       }
       if (reference) {
-        await verifyPaystackWithRetry(reference);
+        await verifyPaystackWithRetry(reference, { sessionId: checkoutSessionId });
       }
 
       let paid = false;

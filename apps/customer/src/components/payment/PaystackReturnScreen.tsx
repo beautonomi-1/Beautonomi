@@ -117,6 +117,10 @@ function pickRef(params: Record<string, string | string[] | undefined>): string 
   return pickStr(params.reference) || pickStr(params.trxref);
 }
 
+function pickSessionId(params: Record<string, string | string[] | undefined>): string {
+  return pickStr(params.session_id);
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function PaystackReturnScreen({
@@ -137,8 +141,10 @@ export function PaystackReturnScreen({
   const routerRef = useRef(router);
   routerRef.current = router;
 
-  const reference = pickRef(params as Record<string, string | string[] | undefined>);
-  const cancelled = pickStr((params as Record<string, string | string[] | undefined>).cancelled);
+  const paramRecord = params as Record<string, string | string[] | undefined>;
+  const reference = pickRef(paramRecord);
+  const checkoutSessionId = pickSessionId(paramRecord);
+  const cancelled = pickStr(paramRecord.cancelled);
 
   const [mode, setMode] = useState<ReturnMode>(reference ? "verifying" : "returning");
   const [resolvedTarget, setResolvedTarget] = useState<RouteTarget | null>(null);
@@ -242,6 +248,7 @@ export function PaystackReturnScreen({
     void (async () => {
       const result = await verifyPaystackWithRetry(reference, {
         endpoint: verifyEndpoint,
+        sessionId: checkoutSessionId || null,
       });
       if (aborted || verifySettled) return;
       verifySettled = true;

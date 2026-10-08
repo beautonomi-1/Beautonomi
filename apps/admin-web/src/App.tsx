@@ -293,6 +293,7 @@ export default function App() {
             <Route path="integrations/didit" element={<P.CpIntegrationDiditPage />} />
             <Route path="integrations/stripe" element={<P.CpIntegrationStripePage />} />
             <Route path="country-launch-checklist" element={<P.CpCountryLaunchChecklistPage />} />
+            <Route path="region-online-gateway" element={<P.CpRegionOnlineGatewayPage />} />
             <Route path="integrations/ai" element={<P.CpIntegrationAiPage />} />
             <Route path="integrations/gemini" element={<Navigate to="../ai" replace />} />
             <Route path="integrations/aura" element={<P.CpIntegrationAuraPage />} />

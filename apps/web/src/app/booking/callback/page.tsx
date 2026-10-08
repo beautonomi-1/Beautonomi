@@ -18,6 +18,7 @@ export default function PaymentCallback() {
   useEffect(() => {
     const verifyPayment = async () => {
       const reference = searchParams.get("reference") || searchParams.get("trxref");
+      const sessionId = searchParams.get("session_id");
 
       if (!reference) {
         setStatus("error");
@@ -28,7 +29,7 @@ export default function PaymentCallback() {
       try {
         const response = await verifyWithRetry<{ status?: string; bookingId?: string }>(
           reference,
-          { maxAttempts: 5, delayMs: 1500 },
+          { maxAttempts: 5, delayMs: 1500, sessionId },
         );
 
         if (response.status === "success") {

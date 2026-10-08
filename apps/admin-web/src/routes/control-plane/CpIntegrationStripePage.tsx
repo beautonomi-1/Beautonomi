@@ -8,11 +8,13 @@
  * Mirrors the Didit control-plane page pattern.
  */
 import { useEffect, useState } from "react";
+import { Link } from "react-router";
 import { adminApi } from "@/lib/adminClient";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
-import { CpBack, CpField, EnvSelect } from "./cpShared";
+import { CpBack, CpField } from "./cpShared";
 
 type StripeHealthData = {
   secret_key_set: boolean;
@@ -31,9 +33,19 @@ type StripeTestResult = {
   message?: string;
 };
 
+const STRIPE_WEBHOOK_EVENTS = [
+  "checkout.session.completed",
+  "checkout.session.async_payment_succeeded",
+  "checkout.session.async_payment_failed",
+  "payment_intent.succeeded",
+  "payment_intent.payment_failed",
+  "charge.refunded",
+  "charge.dispute.created",
+  "charge.dispute.closed",
+] as const;
+
 export function CpIntegrationStripePage() {
   const { allowed, denied } = useSuperadminPage("Control plane is superadmin-only.");
-  const [_env, setEnv] = useState("production");
   const [loading, setLoading] = useState(true);
   const [health, setHealth] = useState<StripeHealthData | null>(null);
   const [testing, setTesting] = useState(false);
@@ -78,14 +90,42 @@ export function CpIntegrationStripePage() {
 
   if (denied) return null;
 
+  const showMissingEnvList =
+    !health?.env_complete &&
+    (health?.missing_env_vars?.length ?? 0) > 0 &&
+    (!health?.secret_key_set || !health?.webhook_secret_set);
+
   return (
     <div className="space-y-6">
       <CpBack />
       <AdminPageHeader
         title="Stripe Payments"
-        description="Configure Stripe for non-Paystack markets: secret keys, webhook, and Connect payouts."
+        description="Platform merchant-of-record card checkout (hosted Stripe Checkout) and Connect for provider payouts only."
       />
-      <EnvSelect value={_env} onChange={setEnv} />
+
+      <AdminPanel className="border-slate-200 bg-slate-50/80">
+        <p className="text-sm text-gray-800">
+          This page is a <strong>deployment-level</strong> probe: platform{" "}
+          <code className="rounded bg-white px-1 font-mono text-xs">stripe_secret_key</code> row when present, else{" "}
+          <code className="rounded bg-white px-1 font-mono text-xs">STRIPE_SECRET_KEY</code> env; webhook secret from{" "}
+          <code className="rounded bg-white px-1 font-mono text-xs">STRIPE_WEBHOOK_SECRET</code> env only for this
+          endpoint. Live checkout for a market uses tenant → region secrets — configure per region on{" "}
+          <Link
+            to={adminSpaTo("/admin/control-plane/region-online-gateway")}
+            className="font-medium text-indigo-700 underline"
+          >
+            Region online gateway
+          </Link>{" "}
+          and validate readiness on{" "}
+          <Link
+            to={adminSpaTo("/admin/control-plane/country-launch-checklist")}
+            className="font-medium text-indigo-700 underline"
+          >
+            Country launch checklist
+          </Link>
+          .
+        </p>
+      </AdminPanel>
 
       {msg && (
         <div className="rounded-md bg-blue-50 border border-blue-200 px-4 py-2 text-sm text-blue-800">
@@ -104,8 +144,7 @@ export function CpIntegrationStripePage() {
             <div className="mb-4">
               <h3 className="text-base font-semibold text-gray-900">Environment health</h3>
               <p className="text-sm text-muted-foreground">
-                Server-side Stripe configuration. Secrets resolve from region_secrets → tenant_secrets
-                → platform_secrets → env (never shown here).
+                What this deployment can resolve without a tenant context (not per-region market keys).
               </p>
             </div>
             <div className="grid gap-3">
@@ -121,15 +160,19 @@ export function CpIntegrationStripePage() {
               </CpField>
               <CpField label="Webhook URL">
                 <span className="text-sm font-mono break-all">{health?.webhook_url ?? "—"}</span>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Register this endpoint in Stripe Dashboard → Developers → Webhooks. Subscribe to{" "}
-                  <code className="font-mono">payment_intent.succeeded</code>,{" "}
-                  <code className="font-mono">charge.refunded</code>, and dispute events.
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Register this endpoint in Stripe Dashboard → Developers → Webhooks. Subscribe to:
                 </p>
+                <ul className="mt-1 list-disc pl-5 text-xs font-mono text-muted-foreground">
+                  {STRIPE_WEBHOOK_EVENTS.map((ev) => (
+                    <li key={ev}>{ev}</li>
+                  ))}
+                </ul>
               </CpField>
               <CpField label="Connect payouts">
-                <span className={health?.connect_supported ? "text-green-700" : "text-amber-600"}>
-                  {health?.connect_supported ? "✓ Supported (Express destination charges)" : "Unavailable"}
+                <span className="text-sm text-gray-700">
+                  Connect account capabilities are shown only after you run the connectivity test below (not inferred
+                  from config flags).
                 </span>
               </CpField>
               <CpField label="Overall">
@@ -140,9 +183,9 @@ export function CpIntegrationStripePage() {
                 >
                   {health?.env_complete ? "READY" : "NOT READY"}
                 </span>
-                {health?.missing_env_vars?.length ? (
+                {showMissingEnvList ? (
                   <p className="mt-2 text-sm text-amber-700">
-                    Missing: {health.missing_env_vars.join(", ")}
+                    Missing: {health!.missing_env_vars!.join(", ")}
                   </p>
                 ) : null}
               </CpField>
