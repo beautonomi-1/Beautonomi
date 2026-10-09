@@ -42,6 +42,28 @@ export function paystackActivationFields(
   };
 }
 
+/** Fields applied when Stripe (not Paystack) activates paid provider subscription access. */
+export function stripeActivationFields(
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    billing_provider: "stripe",
+    paystack_sync_pending: false,
+    paystack_sync_note: null,
+    updated_at: new Date().toISOString(),
+    ...extra,
+  };
+}
+
+export function subscriptionActivationFields(
+  paymentProvider: "paystack" | "stripe",
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return paymentProvider === "stripe"
+    ? stripeActivationFields(extra)
+    : paystackActivationFields(extra);
+}
+
 /** After Apple expiry, refund, or downgrade to free — allow Android/web Paystack again. */
 export function clearAppleMerchantOnFree(
   extra: Record<string, unknown> = {},

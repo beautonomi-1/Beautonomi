@@ -7,8 +7,12 @@ import { sanitizeWebhookPayload } from "@/lib/payment/webhook-payload-sanitizer"
 import { persistFailedWebhookSignature } from "@/lib/payment/persist-failed-webhook-signature";
 import type { VerifiedWebhookEvent } from "@/lib/payments/provider/types";
 import {
-  handleStripeChargeRefunded,
+  handleStripeChargeRefundedBackstop,
+  handleStripeChargeUpdated,
+  handleStripeDisputeFundsWithdrawn,
   handleStripePaymentIntentSucceeded,
+  handleStripeRefundCreated,
+  handleStripeTransferReversed,
 } from "./_handlers/stripe-charge";
 import { handleStripeChargeDisputeCreated } from "./_handlers/stripe-dispute";
 
@@ -270,8 +274,20 @@ export async function POST(request: Request) {
       case "payment_intent.succeeded":
         await handleStripePaymentIntentSucceeded(eventObject);
         break;
+      case "charge.updated":
+        await handleStripeChargeUpdated(eventObject);
+        break;
+      case "refund.created":
+        await handleStripeRefundCreated(eventObject);
+        break;
       case "charge.refunded":
-        await handleStripeChargeRefunded(eventObject);
+        await handleStripeChargeRefundedBackstop(eventObject);
+        break;
+      case "charge.dispute.funds_withdrawn":
+        await handleStripeDisputeFundsWithdrawn(eventObject, eventId);
+        break;
+      case "transfer.reversed":
+        await handleStripeTransferReversed(eventObject);
         break;
       case "payment_intent.payment_failed": {
         console.info("[stripe/webhook] received", eventType, eventId);

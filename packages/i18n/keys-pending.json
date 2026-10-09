@@ -1,5 +1,50 @@
 {
-  "scannedAt": "2026-09-20T16:42:53.122Z",
-  "count": 0,
-  "sample": []
+  "scannedAt": "2026-10-09T15:00:16.433Z",
+  "count": 11,
+  "sample": [
+    {
+      "file": "apps\\provider\\app\\(app)\\(tabs)\\more\\product-orders.tsx",
+      "snippet": "placeholder=\"YYYY-MM-DD\""
+    },
+    {
+      "file": "apps\\web\\src\\app\\booking\\components\\booking-flow.tsx",
+      "snippet": "> Partial<"
+    },
+    {
+      "file": "apps\\web\\src\\app\\account-settings\\orders\\[id]\\OrdersIdPageClient.tsx",
+      "snippet": ">Building:<"
+    },
+    {
+      "file": "apps\\web\\src\\app\\account-settings\\orders\\[id]\\OrdersIdPageClient.tsx",
+      "snippet": ">Unit:<"
+    },
+    {
+      "file": "apps\\web\\src\\app\\account-settings\\orders\\[id]\\OrdersIdPageClient.tsx",
+      "snippet": ">Access:<"
+    },
+    {
+      "file": "apps\\web\\src\\app\\account-settings\\orders\\[id]\\OrdersIdPageClient.tsx",
+      "snippet": ">Parking:<"
+    },
+    {
+      "file": "apps\\web\\src\\app\\account-settings\\orders\\[id]\\OrdersIdPageClient.tsx",
+      "snippet": ">Landmarks:<"
+    },
+    {
+      "file": "apps\\web\\src\\app\\account-settings\\personal-info\\DateOfBirthSection.tsx",
+      "snippet": ">Date of birth<"
+    },
+    {
+      "file": "apps\\web\\src\\app\\account-settings\\personal-info\\DateOfBirthSection.tsx",
+      "snippet": ">Day<"
+    },
+    {
+      "file": "apps\\web\\src\\app\\account-settings\\personal-info\\DateOfBirthSection.tsx",
+      "snippet": ">Month<"
+    },
+    {
+      "file": "apps\\web\\src\\app\\account-settings\\personal-info\\DateOfBirthSection.tsx",
+      "snippet": ">Year<"
+    }
+  ]
 }

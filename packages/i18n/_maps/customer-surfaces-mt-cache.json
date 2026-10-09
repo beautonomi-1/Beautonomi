@@ -1,0 +1,2145 @@
+{
+  "Unveil your radiance. It's time to pamper yourself with our expert care.": {
+    "af": "Ontsluit jou uitstraling. Dit is tyd om jouself te bederf met ons kundige sorg.",
+    "zu": "Vula ukukhanya kwakho. Sekuyisikhathi sokuzithoba ngokunakekelwa kwethu kochwepheshe."
+  },
+  "Completed visits will appear here once you've attended them.": {
+    "af": "Voltooide besoeke sal hier verskyn sodra jy dit bygewoon het.",
+    "zu": "Ukuvakasha okuphothuliwe kuzovela lapha uma usuya khona."
+  },
+  "When you cancel an appointment, it will show in this list.": {
+    "af": "Wanneer jy 'n afspraak kanselleer, sal dit in hierdie lys verskyn.",
+    "zu": "Uma ukhansela i-aphoyintimenti, izovela kulolu hlu."
+  },
+  "In-store collection required. No delivery for this provider.": {
+    "af": "In-winkel versameling benodig. Geen aflewering vir hierdie verskaffer nie.",
+    "zu": "Iqoqo elisesitolo liyadingeka. Akudingeki ukulethwa kwalo mhlinzeki."
+  },
+  "Your content & safety settings hide the social feed. You can change this in Account → Content & safety controls.": {
+    "af": "U inhouds- en veiligheidsinstellings verberg die sosiale voer. U kan dit verander in → rekeninginhoud- en veiligheidskontroles.",
+    "zu": "Amasethingi akho okusunguliwe nokuphepha afihla i-feed yomphakathi. Ungakushintsha lokhu kokuthi → Okuqukethwe kwe-Akhawunti nezilawuli zokuphepha."
+  },
+  "Sign in to see your saved providers, products and posts": {
+    "af": "Teken in om jou gestoorde verskaffers, produkte en plasings te sien",
+    "zu": "Ngena ngemvume ukuze ubone abahlinzeki bakho abagciniwe, imikhiqizo namaphosti"
+  },
+  "Your rating has been saved and this ticket is now closed.": {
+    "af": "Jou gradering is gestoor en hierdie kaartjie is nou gesluit.",
+    "zu": "Isilinganiso sakho sigciniwe futhi leli thikithi selivaliwe manje."
+  },
+  "This ticket is closed. We appreciate you taking a moment to rate support.": {
+    "af": "Dit ticket is gesloten. Ons waardeer dit dat jy 'n oomblik neem om ondersteuning te evalueer.",
+    "zu": "Leli thikithi livaliwe. Siyakwazisa ukuthi uthatha isikhashana ulinganise usizo."
+  },
+  "Tap “Submit rating” below to send your {{score}}/5 rating.": {
+    "af": "Tik \"Dien gradering in\" hieronder om jou {{score}}/5-gradering te stuur.",
+    "zu": "Thepha okuthi “Hambisa isilinganiso” ngezansi ukuze uthumele isilinganiso sakho {{score}}/5."
+  },
+  "Ask for Face ID, fingerprint, or passcode before changing these settings": {
+    "af": "Vra vir Face ID, vingerafdruk, of wagwoord voor die verandering van hierdie instellings",
+    "zu": "Cela i-ID Yobuso, ukuphrinta iminwe, noma ikhodi yephasiwedi ngaphambi kokushintsha la masethingi"
+  },
+  "Your emergency contact is shared with our trust & safety team during panic requests and urgent tickets — never for marketing.": {
+    "af": "U noodkontak word met ons vertrouens- en veiligheidspan gedeel tydens paniekversoeke en dringende kaartjies — nooit vir bemarking nie.",
+    "zu": "Ukuxhumana kwakho kwezimo eziphuthumayo kwabiwa nethimba lethu lokwethembana nokuphepha phakathi nezicelo zokwethuka namathikithi aphuthumayo — hhayi ukumaketha."
+  },
+  "Emergency guidance, reporting, and your safety controls": {
+    "af": "Noodvoorligting, verslagdoening en u veiligheidskontroles",
+    "zu": "Isiqondiso sezimo eziphuthumayo, ukubika, nezilawuli zakho zokuphepha"
+  },
+  "Opens the store (or download page) so you can leave a review.": {
+    "af": "Maak die winkel oop (of laai bladsy) sodat jy 'n resensie kan verlaat.",
+    "zu": "Ivula isitolo (noma ikhasi lokudawuniloda) ukuze ukwazi ukushiya ukuphawula."
+  },
+  "Language changed locally but could not sync to your account.": {
+    "af": "Taal het plaaslik verander, maar kon nie met jou rekening sinkroniseer nie.",
+    "zu": "Ulimi lushintshile endaweni yangakini kodwa alukwazanga ukuvumelanisa ne-akhawunti yakho."
+  },
+  "Some content from service providers may remain in its original language.": {
+    "af": "Sommige inhoud van diensverskaffers kan in sy oorspronklike taal bly.",
+    "zu": "Okunye okusunguliwe okuvela kubahlinzeki bamasevisi kungahlala ngolimi lwako lokuqala."
+  },
+  "Choose which push alerts you receive on this device. Critical alerts (like payment and safety) are always delivered.": {
+    "af": "Kies watter stoot waarskuwings jy ontvang op hierdie toestel. Kritieke waarskuwings (soos betaling en veiligheid) word altyd afgelewer.",
+    "zu": "Khetha ukuthi iyiphi imiyalezo ye-app oyitholayo kule divayisi. Izixwayiso ezibucayi (njengokukhokha nokuphepha) zihanjiswa njalo."
+  },
+  "Allow other users to view your profile and basic information": {
+    "af": "Laat ander gebruikers toe om jou profiel en basiese inligting te sien",
+    "zu": "Vumela abanye abasebenzisi ukuba babuke iphrofayili yakho nemininingwane eyisisekelo"
+  },
+  "Help improve the app with usage analytics and optional session diagnostics while you are signed in. You can turn this off anytime.": {
+    "af": "Help om die app te verbeter met gebruiksanalise en opsionele sessie-diagnostiek terwyl jy aangemeld is. Jy kan dit op enige tyd afskakel.",
+    "zu": "Siza ukuthuthukisa i-app ngokuhlaziywa kokusetshenziswa kanye nokuxilongwa kweseshini ongayikhetha ngenkathi ungena ngemvume. Ungakucisha lokhu noma nini."
+  },
+  "Permanently delete your account and personal data. You will confirm with your password and by typing DELETE.": {
+    "af": "Skrap jou rekening en persoonlike data permanent. Jy sal bevestig met jou wagwoord en deur te tik verwyder.",
+    "zu": "Susa i-akhawunti yakho nedatha yakho unomphela. Uzoqinisekisa ngephasiwedi yakho nangokuthayipha UKUSUSA."
+  },
+  "Set EXPO_PUBLIC_APP_URL in your build to open the web tax settings screen.": {
+    "af": "Stel EXPO_PUBLIC_APP_URL in jou bou om die webbelastinginstellingsskerm oop te maak.",
+    "zu": "Setha I-EXPO_PUBLIC_APP_URL esakhiweni sakho ukuze uvule isikrini samasethingi entela yewebhu."
+  },
+  "Not yet issued — download appears when a file is available.": {
+    "af": "Nog nie uitgereik nie — aflaai verskyn wanneer 'n lêer beskikbaar is.",
+    "zu": "Ayikakhishwa okwamanje - ukudawuniloda kuyavela uma ifayela litholakala."
+  },
+  "Remove \"{{serviceName}}\" at {{providerName}} from your list?": {
+    "af": "Verwyder \"{{serviceName}}\" by {{providerName}} van jou lys?",
+    "zu": "Susa okuthi \"{{serviceName}}\" kokuthi {{providerName}} ohlwini lwakho?"
+  },
+  "Please enter your address for this at-home appointment before continuing.": {
+    "af": "Voer asseblief jou adres in vir hierdie tuis afspraak voordat jy verder gaan.",
+    "zu": "Sicela ufake ikheli lakho lalokhu kuqokwa ekhaya ngaphambi kokuqhubeka."
+  },
+  "Some package details were adjusted to match the provider's current menu.": {
+    "af": "Sommige pakketbesonderhede is aangepas om by die huidige spyskaart van die verskaffer te pas.",
+    "zu": "Eminye imininingwane yephakheji ilungisiwe ukuze ihambisane nemenyu yamanje yomhlinzeki."
+  },
+  "This package can't be booked online right now. Please choose services individually or contact the provider.": {
+    "af": "Dit pakket is NIET online te bestellen. Kies asseblief dienste individueel of kontak die verskaffer.",
+    "zu": "Le phakheji ayikwazi ukubhukhwa ku-inthanethi njengamanje. Sicela ukhethe amasevisi ngawodwana noma uxhumane nomhlinzeki."
+  },
+  "This package is not available. Please go back and choose another package.": {
+    "af": "Dit pakket is NIET bereikbaar. Gaan asseblief terug en kies 'n ander pakket.",
+    "zu": "Le phakheji ayitholakali. Sicela ubuyele emuva bese ukhetha enye iphakethe."
+  },
+  "They may have left the platform or paused their profile. Discover other great professionals near you.": {
+    "af": "Hulle het moontlik die platform verlaat of hul profiel onderbreek. Vind ander groot professionele mense naby jou.",
+    "zu": "Kungenzeka bashiye inkundla noma bamisa iphrofayili yabo okwesikhashana. Thola amanye amaphrofeshinali amahle eduze nawe."
+  },
+  "+{{minutes}} min • {{currency}} {{price}}": {},
+  "~{{count}} min": {},
+  "This time slot has expired. Please select a new date and time to continue.": {
+    "af": "Dit keer is het slot afgerond. Kies asseblief 'n nuwe datum en tyd om voort te gaan.",
+    "zu": "Lesi sikhathi sesiphelelwe yisikhathi. Sicela ukhethe usuku olusha nesikhathi ukuze uqhubeke."
+  },
+  "That time slot is no longer available. Go back to the calendar and try again — or pick a different time.": {
+    "af": "Die tydsberekening is nie meer beskikbaar nie. Gaan terug na die kalender en probeer weer — of kies 'n ander tyd.",
+    "zu": "Leso sikhathi asisatholakali. Buyela ekhalendeni bese uzama futhi — noma ukhethe isikhathi esihlukile."
+  },
+  "After your payment succeeds, your repeating schedule will appear under Account settings → Recurring bookings.": {
+    "af": "Nadat u betaling geslaag het, sal u herhalende skedule onder rekeninginstellings verskyn → Herhalende besprekings.",
+    "zu": "Ngemva kokuba inkokhelo yakho iphumelele, ishejuli yakho yokuphindaphinda izovela ngaphansi kokuthi Amasethingi e-akhawunti → Ukubhukha okuphindaphindayo."
+  },
+  "We haven't confirmed your payment yet. If you completed the payment, it may take a moment to process. Check your bookings shortly.": {
+    "af": "Ons het nog nie jou betaling bevestig nie. As u die betaling voltooi het, kan dit 'n oomblik neem om te verwerk. Kontroleer jou besprekings spoedig.",
+    "zu": "Asikakuqinisekisi ukukhokha kwakho okwamanje. Uma uqedile ukukhokha, kungathatha isikhashana ukuphrosesa. Hlola ukubhukha kwakho maduzane."
+  },
+  "Booking updates, messages, and offers will appear here.": {
+    "af": "Besprekingsopdaterings, boodskappe en aanbiedings sal hier verskyn.",
+    "zu": "Izilungiso zokubhukha, imiyalezo, nezaphulelo kuzovela lapha."
+  },
+  "{{count}} items": {},
+  "Full access to booking, messaging, and social features. Identity verification may be required for certain payments.": {
+    "af": "Volle toegang tot besprekings, boodskappe en sosiale funksies. Identiteitsverifikasie kan nodig wees vir sekere betalings.",
+    "zu": "Ukufinyelela okugcwele ekubhukheni, ekuthumeleni imiyalezo, nasezicini zomphakathi. Ukuqinisekiswa kukamazisi kungadingeka ezinkokhelweni ezithile."
+  },
+  "Beautonomi is not an emergency service. In immediate danger, call 112 (South Africa) or your local emergency number first.": {
+    "af": "0 is nie 'n nooddiens nie. In onmiddellike gevaar, skakel 112 (Suid-Afrika) of jou plaaslike noodnommer eerste.",
+    "zu": "U-0 akayona isevisi yezimo eziphuthumayo. Usengozini esheshayo, shayela u-112 (South Africa) noma inombolo yendawo yakho yezimo eziphuthumayo kuqala."
+  },
+  "Age assurance uses your date of birth. Under 13 cannot use the app; 13–17 can use it with teen safety defaults.": {
+    "af": "Ouderdomsversekering gebruik jou geboortedatum. Onder 13 kan die app nie gebruik word nie; 13–17 kan dit gebruik met tienerveiligheidstandaarde.",
+    "zu": "Isiqinisekiso sobudala sisebenzisa usuku lwakho lokuzalwa. Ngaphansi kuka-13 abakwazi ukusebenzisa i-app; 13–17 bangayisebenzisa ngephutha lokuphepha kwentsha."
+  },
+  "Don't know their handle? Open a support ticket instead": {
+    "af": "Ken jy nie sy handeling nie? Maak eerder 'n ondersteuningskaartjie oop",
+    "zu": "Awazi isibambo sabo? Kunalokho vula ithikithi lokusekela"
+  },
+  "Phone should be {{digits}} digits for {{country}} (leading 0 is optional)": {
+    "af": "Telefoon moet {{digits}} syfers wees vir {{country}} (voorste 0 is opsioneel)",
+    "zu": "Ucingo kufanele lube amadijithi {{digits}} ka-{{country}} (oholayo ongu-0 uyazikhethela)"
+  },
+  " Enable this provider in Supabase Dashboard → Authentication → Providers.": {
+    "af": "Aktiveer hierdie verskaffer in Supabase → → Dashboard-verifikasieverskaffers.",
+    "zu": "Vumela lo mhlinzeki Kwabahlinzeki Bokuqinisekisa → Wedeshibhodi → Ye-Supabase."
+  },
+  "Your account is scheduled for permanent deletion. Check your email for a link to cancel, or contact support.": {
+    "af": "Jou rekening is geskeduleer vir permanente verwydering. Gaan jou e-pos na vir 'n skakel om te kanselleer, of kontak ondersteuning.",
+    "zu": "I-akhawunti yakho ihlelelwe ukudilithwa unomphela. Hlola i-imeyili yakho ukuze uthole ilinki yokukhansela, noma uxhumane nosizo."
+  },
+  "Confirm you agree to the Terms of Service, Privacy Policy, and Cookie Policy (including product analytics while signed in).": {
+    "af": "Bevestig dat u instem tot die diensbepalings, privaatheidsbeleid en koekiebeleid (insluitend produkanalise terwyl u aangemeld is).",
+    "zu": "Qinisekisa ukuthi uyavumelana Nemigomo Yesevisi, Inqubomgomo Yobumfihlo, kanye Nenqubomgomo Yamakhukhi (okuhlanganisa ukuhlaziywa komkhiqizo ngenkathi ungena ngemvume)."
+  },
+  "We found bookings under this email. Check your inbox to claim your account.": {
+    "af": "Ons het besprekings onder hierdie e-pos gevind. Kontroleer jou inkassie om jou rekening te eis.",
+    "zu": "Sithole ukubhukha ngaphansi kwale imeyili. Hlola i-inbox yakho ukuze ukleyime i-akhawunti yakho."
+  },
+  "Your session expired while we were checking your account.": {
+    "af": "Jou sessie het verstryk terwyl ons jou rekening nagegaan het.",
+    "zu": "Iseshini yakho iphelelwe yisikhathi ngenkathi sihlola i-akhawunti yakho."
+  },
+  "We couldn't reach our servers in time. Check your connection and try again.": {
+    "af": "Ons kon nie ons bedieners betyds bereik nie. Kontroleer jou verbinding en probeer weer.",
+    "zu": "Asikwazanga ukufinyelela amaseva ethu ngesikhathi. Hlola ukuxhumana kwakho bese uzama futhi."
+  },
+  "Your account is signed in but we couldn't confirm a customer role. Retry or sign out and back in.": {
+    "af": "Jou rekening is aangemeld, maar ons kon nie 'n kliëntrol bevestig nie. Probeer weer of teken uit en kom terug.",
+    "zu": "I-akhawunti yakho ingene ngemvume kodwa asikwazanga ukuqinisekisa indima yekhasimende. Zama futhi noma uphume ngemvume uphinde ungene."
+  },
+  "A newer version of Beautonomi is required to keep bookings, payments, and account features working correctly.": {
+    "af": "'N Nuwer weergawe van 0 is nodig om besprekings, betalings en rekeningfunksies korrek te laat werk.",
+    "zu": "Uhlobo olusha luka-0 luyadingeka ukuze ugcine ukubhukha, izinkokhelo, nezici ze-akhawunti zisebenza kahle."
+  },
+  "This address doesn't have coordinates. Drop a pin on the map, or delete and add this address again.": {
+    "af": "Hierdie adres het geen koördinate nie. Drop 'n PIN op die kaart, of verwyder en voeg hierdie adres weer.",
+    "zu": "Leli kheli alinazo izixhumanisi. Faka iphini ebalazweni, noma ususe bese ufaka leli kheli futhi."
+  },
+  "Add a public Mapbox token in admin (Mapbox settings). You can still set your address using search or current location.": {
+    "af": "Voeg 'n publieke 0 teken in admin (0 instellings). Jy kan steeds jou adres instel deur soek of huidige ligging te gebruik.",
+    "zu": "Faka ithokheni engu-0 yomphakathi kubaqondisi (amasethingi angu-0). Usengasetha ikheli lakho usebenzisa usesho noma indawo yamanje."
+  },
+  "Use Face ID, fingerprint, or your device passcode to unlock.": {
+    "af": "Gebruik Face ID, vingerafdruk, of jou toestel wagwoord te ontsluit.",
+    "zu": "Sebenzisa i-ID Yobuso, ukuphrinta iminwe, noma ikhodi yakho yedivayisi ukuze uvule."
+  },
+  "{{currency}} {{salonPrice}} in salon · {{currency}} {{homePrice}} at your location": {
+    "af": "{{currency}} {{salonPrice}} in salon · {{currency}} {{homePrice}} by jou ligging"
+  },
+  "I'm a building owner interested in making my property Beautonomi-friendly": {
+    "af": "Ek is 'n huiseienaar wat belangstel om my eiendom 0-vriendelik te maak",
+    "zu": "Ngingumnikazi wesakhiwo onentshisekelo yokwenza indlu yami ibe nobungane obungu-0"
+  },
+  "Identity verification is required before your first booking. It only takes a few minutes and unlocks the Verified badge.": {
+    "af": "Identiteitsverifikasie is nodig voor jou eerste bespreking. Dit neem net 'n paar minute en ontsluit die geverifieerde kenteken.",
+    "zu": "Ukuqinisekiswa kukamazisi kuyadingeka ngaphambi kokubhukha kwakho kokuqala. Kuthatha imizuzu embalwa kuphela futhi kuvula ibheji eliqinisekisiwe."
+  },
+  "Verify your identity to earn a Verified badge, build trust with providers, and use Beautonomi to its fullest.": {
+    "af": "Verifieer jou identiteit om 'n geverifieerde kenteken te verdien, vertroue by verskaffers op te bou en 0 ten volle te gebruik.",
+    "zu": "Qinisekisa ubuwena ukuze uthole ibheji eliqinisekisiwe, wakhe ukwethembana nabahlinzeki, futhi usebenzise u-0 ngokugcwele."
+  },
+  "Please use the right Beautonomi portal for your account or contact support.": {
+    "af": "Gebruik asseblief die regte 0-portaal vir u rekening of kontakondersteuning.",
+    "zu": "Sicela usebenzise iphothali efanele engu-0 ye-akhawunti yakho noma uthintane nosizo."
+  },
+  "Your session may have expired — sign in again to load saved explore posts.": {
+    "af": "Jou sessie het dalk verstryk — teken weer aan om gestoorde verkenningsposte te laai.",
+    "zu": "Iseshini yakho kungenzeka iphelelwe yisikhathi — ngena ngemvume futhi ukuze ulayishe amaphosti okuhlola agciniwe."
+  },
+  "This account has admin access. Open the web admin console to manage the platform — customer-app features are limited for safety.": {
+    "af": "Hierdie rekening het administratiewe toegang. Maak die webadministrasiekonsole oop om die platform te bestuur — kliënt-app-funksies is beperk tot veiligheid.",
+    "zu": "Le akhawunti inokufinyelela komlawuli. Vula ikhonsoli yomqondisi wewebhu ukuze uphathe inkundla — izici zohlelo lokusebenza lwekhasimende zikhawulelwe ukuphepha."
+  },
+  "This account can't be used in the Customer app. Please sign in with your customer account, or open the app that matches your role.": {
+    "af": "Hierdie rekening kan nie gebruik word in die kliënt app. Teken asseblief in met jou kliënt rekening, of maak die app wat ooreenstem met jou rol.",
+    "zu": "Le akhawunti ayikwazi ukusetshenziswa kuhlelo lokusebenza Lwekhasimende. Sicela ungene ngemvume nge-akhawunti yakho yekhasimende, noma uvule uhlelo lokusebenza olufana nendima yakho."
+  },
+  "Outlook (web)": {},
+  "You earned {{points}} loyalty points. They've been added to your balance.": {
+    "af": "Jy het {{points}} lojaliteitspunte verdien. Hulle is by jou saldo gevoeg.",
+    "zu": "Uzuze amaphuzu okwethembeka angu-{{points}}. Zengezwe kubhalansi yakho."
+  },
+  "Start offering your beauty services on Beautonomi. Manage bookings, payments, and grow your business all in one place.": {
+    "af": "Begin met die aanbied van jou skoonheid dienste op 0. Bestuur besprekings, betalings en groei jou besigheid op een plek.",
+    "zu": "Qala ukunikeza izinsiza zakho zobuhle ku-Beautonomi. Phatha ukubhukha, izinkokhelo, futhi ukhulise ibhizinisi lakho konke endaweni eyodwa."
+  },
+  "Enter the verification code before setting a password": {
+    "af": "Voer die verifikasiekode in voordat u 'n wagwoord instel",
+    "zu": "Faka ikhodi yokuqinisekisa ngaphambi kokusetha iphasiwedi"
+  },
+  "Sign out from this app and every other phone, tablet or browser where your Beautonomi account is signed in.": {
+    "af": "Teken uit van hierdie inligting en elke ander selfoon, tablet of leser waar jou 0 rekening is aangemeld.",
+    "zu": "Phuma kulolu hlelo lokusebenza kanye nayo yonke enye ifoni, ithebhulethi noma isiphequluli lapho Beautonomi i-akhawunti yakho ingene khona ngemvume."
+  },
+  "{{brand}} •••• {{last4}} · exp. {{exp}}": {},
+  "WhatsApp": {},
+  "We could not start payment for this order. Please try again.": {
+    "af": "Ons kon nie met die betaling begin nie. Probeer asseblief weer.",
+    "zu": "Asikwazanga ukuqala inkokhelo yaleli oda. Sicela uzame futhi."
+  },
+  "{{quantity}} x {{currency}} {{price}}": {},
+  "Building:": {
+    "af": "Gebou",
+    "zu": "Isakhiwo:"
+  },
+  "Landmarks:": {
+    "af": "Landmerk",
+    "zu": "Izimpawu zomhlaba:"
+  },
+  "Tel: {{phone}}": {},
+  "{{quantity}} × R{{price}}": {},
+  "R{{price}}": {},
+  "App Store": {},
+  "+{{duration}} min": {},
+  "September": {},
+  "November": {},
+  "{{km}} km": {},
+  "{{name}} | Beautonomi": {},
+  "R100–R500": {},
+  "{{duration}} min": {},
+  "{{duration}} min • {{price}}": {},
+  "{{minutes}} min": {},
+  "ETA: {{eta}}": {
+    "zu": "I-ETA: {{eta}}"
+  },
+  "Beautonomi Logo": {
+    "af": "0 Logo"
+  },
+  "Pinterest": {
+    "zu": "I-Pinterest"
+  },
+  "Instagram": {},
+  "Huawei AppGallery": {
+    "zu": "I-Huawei AppGallery"
+  },
+  "BEAUTONOMI Logo": {
+    "af": "BEAUTONOMI LOGO"
+  },
+  "Apple App Store": {
+    "af": "0 App Store"
+  },
+  "LinkedIn": {
+    "af": "LinkedIn ",
+    "zu": "I-LinkedIn"
+  },
+  "Radius: {{km}}km": {},
+  "Add at least {{count}} more characters to the description.": {
+    "af": "Voeg ten minste {{count}} meer karakters by die beskrywing.",
+    "zu": "Engeza okungenani izinhlamvu ezingu-{{count}} ngaphezulu encazelweni."
+  },
+  "Custom offers are turned off for this workspace or market. Ask your admin to enable commerce.provider_custom_offers, or contact support.": {
+    "af": "Aangepaste aanbiedinge word afgeskakel vir hierdie werkruimte of mark. Vra jou administrateur om trade.provider_custom_offers te aktiveer, of kontak ondersteuning."
+  },
+  "{{size}}KB": {
+    "zu": "{{size}} KB"
+  },
+  "Parabens": {
+    "zu": "Ama-Parabens"
+  },
+  "Help has been requested. Our team will reach out shortly.": {
+    "af": "Hulp is aangevraagd. Ons team is binnenkort op voorraad.",
+    "zu": "Usizo luceliwe. Ithimba lethu lizofinyelela maduze."
+  },
+  "This will notify our safety team. If you are in immediate danger, please call emergency services (e.g. 112 or 911) first.": {
+    "af": "Dit sal ons veiligheidspan in kennis stel. As jy in onmiddellike gevaar verkeer, skakel eers die nooddienste (bv. 112 of 911).",
+    "zu": "Lokhu kuzokwazisa ithimba lethu lezokuphepha. Uma usengozini esheshayo, sicela ushayele abezimo eziphuthumayo (isb. 112 noma 911) kuqala."
+  },
+  "Mark as read": {
+    "zu": "Maka njengokufundiwe"
+  },
+  "No ratings yet. After providers rate completed visits, your average will show here — great bookings help build your score.": {
+    "zu": "Azikho izilinganiso okwamanje. Ngemva kokuba abahlinzeki belinganise ukuvakashelwa okuqediwe, isilinganiso sakho sizovela lapha — ukubhukha okuhle kakhulu kusiza ekwakheni amaphuzu akho."
+  },
+  "Join me on Beautonomi — we can both earn rewards! {{link}}": {
+    "zu": "Ngijoyine ku-Beautonomi — sobabili singazuza imiklomelo! {{link}}"
+  },
+  "Join Beautonomi": {
+    "zu": "Joyina u-0"
+  },
+  "Earn {{amount}} wallet credit when a friend completes their first qualifying booking.": {
+    "zu": "Zuza {{amount}} ikhredithi yesikhwama uma umngane eqeda ukubhuka kwakhe kokuqala okufanelekile."
+  },
+  "Share Beautonomi and earn rewards when friends book.": {
+    "zu": "Yabelana ngo-0 futhi uthole imiklomelo lapho abangane bebhukha."
+  },
+  "Become a partner": {
+    "zu": "Yiba umlingani"
+  },
+  "No matches for \"{{query}}\"": {
+    "zu": "Akukho okufanayo kokuthi \"{{query}}\""
+  },
+  "Search for providers matching your query and filters": {
+    "zu": "Sesha abahlinzeki abafanelana nombuzo wakho nezihlungi"
+  },
+  "(attachment)": {
+    "zu": "ReplyForward"
+  },
+  "Harassment": {
+    "zu": "Ukuhlukunyezwa"
+  },
+  "Social feed, messaging & age-appropriate settings": {
+    "zu": "Ukuphakelwa komphakathi, ukuthumela imiyalezo namasethingi afanele ubudala"
+  },
+  "Personal info": {
+    "zu": "_Isixhumi siqwema:"
+  },
+  "Questions, interests and beauty preferences": {
+    "zu": "Imibuzo, izinto ozithandayo nobuhle obuthandwayo"
+  },
+  "Track purchases and deliveries": {
+    "zu": "Landelela ukuthenga nokulethwa"
+  },
+  "Preferences": {
+    "zu": "Okuthandayo"
+  },
+  "Rate Beautonomi on the app store or Google Play": {
+    "zu": "Isilinganiso esingu-0 esitolo se-app noma ku-1 Play"
+  },
+  "Our mission and story": {
+    "zu": "Inhloso yethu nendaba"
+  },
+  "Offer your beauty services on Beautonomi": {
+    "zu": "Nikeza amasevisi akho obuhle ku-0"
+  },
+  "/api/me/preferences": {
+    "zu": "/api/mina/izinto ozithandayo"
+  },
+  "We'll save your card securely when you pay. To verify your card, a small temporary charge (e.g. {{example}}) may be placed and reversed—this confirms your card for future use.": {
+    "zu": "Sizolondoloza ikhadi lakho ngokuphephile uma ukhokha. Ukuze uqinisekise ikhadi lakho, inkokhiso yesikhashana encane (isb. {{example}}) ingase ibekwe futhi ihlehliswe—lokhu kuqinisekisa ikhadi lakho ukuze ulisebenzise esikhathini esizayo."
+  },
+  "Remove this gift card from your wallet? This won't affect your balance history.": {
+    "zu": "Susa leli khadi lesipho esikhwameni sakho semali? Lokhu ngeke kuthinte umlando wakho webhalansi."
+  },
+  "If you completed verification, your card can take a moment to appear. Pull down to refresh this screen.": {
+    "zu": "Uma uqedile ukuqinisekisa, ikhadi lakho lingathatha isikhashana ukuvela. Yehla ukuze uvuselele lesi sikrini."
+  },
+  "Have a promo or referral code? Redeem it here and we'll apply it to your next eligible order.": {
+    "zu": "Unekhodi yephromoshini noma yokuxoxela abanye? Yisebenzise lapha futhi sizoyisebenzisa ku-oda lakho elilandelayo elifanelekayo."
+  },
+  "Dark mode is on. New screens will adopt the dark surface as you navigate.": {
+    "zu": "Imodi emnyama ivuliwe. Izikrini ezintsha zizokwamukela indawo emnyama njengoba uzulazula."
+  },
+  "Light mode is on.": {
+    "zu": "Imodi yokukhanya ivuliwe."
+  },
+  "Your language was switched to {{language}} because {{previousLanguage}} is not supported in this market.": {
+    "zu": "Ulimi lwakho lushintshelwe ku-{{language}} ngoba {{previousLanguage}} ayisekelwe kule makethe."
+  },
+  "App Preferences": {
+    "zu": "Izintandokazi Ze-app"
+  },
+  "Choose which market host the app uses for tenant routing": {
+    "zu": "Khetha ukuthi i-app isebenzisa muphi umbungazi wemakethe ekunikezeni abaqashi"
+  },
+  "Referrals are paused. You can still share your code; rewards apply when the program is on again.": {
+    "zu": "Abaxoxelwayo bamisiwe okwesikhashana. Usengabelana ngekhodi yakho; imiklomelo iyasebenza uma uhlelo luvuliwe futhi."
+  },
+  "Share your code or link. When a friend signs up and completes their first qualifying booking, you earn {{amount}}.": {
+    "zu": "Yabelana ngekhodi yakho noma isixhumanisi. Uma umngane ebhalisa futhi aqedele ukubhukha kwakhe kokuqala, uzuza u-{{amount}}."
+  },
+  "Not provided": {
+    "zu": "Akunikeziwe"
+  },
+  "If you completed payment, your balance may take a minute to update. Pull to refresh or check back shortly.": {
+    "zu": "Uma uqedile ukukhokha, ibhalansi yakho ingathatha umzuzu ukuba ibuyekezwe. Hudula ukuze uvuselele noma uphinde uhlole maduzane."
+  },
+  "We couldn't charge your saved card. Please try another card.": {
+    "zu": "Asikwazanga ukukhokhisa ikhadi lakho elilondoloziwe. Sicela uzame elinye ikhadi."
+  },
+  "Payment confirmed. Your balance will update momentarily — pull to refresh if needed.": {
+    "zu": "Ukukhokha kuqinisekisiwe. Ibhalansi yakho izobuyekeza okwesikhashana — donsela ekuvuseleleni uma kudingeka."
+  },
+  "Enter a code you bought or that someone shared with you — the full balance is added to your wallet instantly.": {
+    "zu": "Faka ikhodi oyithengile noma othile akuthumelele yona — ibhalansi ephelele ifakwa esikhwameni sakho semali ngokushesha."
+  },
+  "Recent transactions": {
+    "zu": "Ukuthengiselana kwakamuva"
+  },
+  "Transaction": {
+    "zu": "Imali engenayo nephumayo"
+  },
+  "Reserving...": {
+    "zu": "Ukubhukha..."
+  },
+  "Awaiting provider confirmation — usually within 8 hours": {
+    "zu": "Ilinde isiqinisekiso somhlinzeki — ngokuvamile phakathi namahora angu-8"
+  },
+  "This link could not be opened on your device.": {
+    "zu": "Le linki ayikwazanga ukuvulwa kudivayisi yakho."
+  },
+  "Attachment": {
+    "zu": "ReplyForward"
+  },
+  "📎 Attachment": {
+    "zu": "ReplyForward"
+  },
+  "Image uploaded but could not be attached. Please try again.": {
+    "zu": "Isithombe sifakiwe kodwa asikwazanga ukunamathiselwa. Sicela uzame futhi."
+  },
+  "The provider will be notified. You can’t undo this.": {
+    "zu": "Umhlinzeki uzokwaziswa. Awukwazi ukuhlehlisa lokhu."
+  },
+  "Tell the provider what you'd like adjusted.": {
+    "zu": "Tshela umhlinzeki ukuthi yini ongathanda ilungiswe."
+  },
+  "Unpin chat": {
+    "zu": "Vula ingxoxo"
+  },
+  "{{name}} — File no longer available (retention policy).": {
+    "zu": "{{name}} — Ifayela alisatholakali (inqubomgomo yokugcinwa)."
+  },
+  "File no longer available (retention policy).": {
+    "zu": "Ifayela alisatholakali (inqubomgomo yokugcina)."
+  },
+  "Direct messaging is turned off in your content & safety settings. You can still read messages from providers.": {
+    "zu": "Imiyalezo eqondile ivaliwe kumasethingi akho okusunguliwe nokuphepha. Usengayifunda imilayezo evela kubahlinzeki."
+  },
+  "This offer was withdrawn.": {
+    "zu": "Lesi saphulelo sihoxisiwe."
+  },
+  "No posts in this board yet. Save posts from Explore and add them from your Saved tab.": {
+    "zu": "Awekho amaphosti kuleli bhodi okwamanje. Londoloza amaphosti kokuthi Hlola bese uwafaka kuthebhu yakho egciniwe."
+  },
+  "Content is shared by providers and does not constitute medical advice.": {
+    "zu": "Okuqukethwe kwabiwa abahlinzeki futhi akusona iseluleko sezokwelapha."
+  },
+  "Age assurance": {
+    "zu": "Isiqinisekiso sobudala"
+  },
+  "Continue with phone, email, Google, or Apple.": {
+    "zu": "Qhubeka ngocingo, i-imeyili, 0, noma 1."
+  },
+  "Access is unavailable due to legal or regulatory restrictions.": {
+    "zu": "Imvume ayitholakali ngenxa yemingcele esemthethweni noma elawulayo."
+  },
+  "Opens in Apple or Google Maps": {
+    "zu": "Ivula kokuthi Apple noma Google Amamephu"
+  },
+  "{{name}} won't be able to message you and their content will be hidden from your feed.": {
+    "zu": "{{name}} ngeke ikwazi ukukuthumela umlayezo futhi okuqukethwe kwayo kuzofihlwa kokuphakelayo kwakho."
+  },
+  "Coordinates: {{lat}}, {{lng}}": {
+    "zu": "Izixhumanisi: {{lat}}, {{lng}}"
+  },
+  "Manage your appointments and view your booking history": {
+    "zu": "Phatha ama-aphoyintimenti akho futhi ubuke umlando wakho wokubhuka"
+  },
+  "Unveil your radiance and step into a world of luxury. It's time to pamper yourself and embrace your true beauty with our expert care.": {
+    "zu": "Yembula ukukhazimula kwakho ungene emhlabeni wokunethezeka. Isikhathi sokuzitotosa futhi wamukele ubuhle bakho bangempela ngokunakekela kwethu kochwepheshe."
+  },
+  "This booking was modified by another user. Please refresh and try again.": {
+    "zu": "Lokhu kubhuka kulungiswe omunye umsebenzisi. Sicela uvuselele bese uzama futhi."
+  },
+  "The booking you're looking for doesn't exist": {
+    "zu": "Ukubhukha okufunayo akukho"
+  },
+  "On your way?": {
+    "zu": "Usendleleni?"
+  },
+  "Let {{provider}} know if you're running late so they can adjust.": {
+    "zu": "Yazisa {{provider}} uma ushiywa yisikhathi ukuze bakwazi ukuzijwayeza."
+  },
+  " ({{minutes}} min)": {},
+  "This booking is still open on the provider's side. Contact {{provider}} if you need help or the service ran longer than expected.": {
+    "zu": "Lokhu kubhuka kusavuliwe ngasohlangothini lomhlinzeki. Thinta {{provider}} uma udinga usizo noma isevisi ihambe isikhathi eside kunalokho obulindelwe."
+  },
+  "Professional": {
+    "zu": "Uchwepheshe"
+  },
+  "Use ": {
+    "zu": "Sebenzisa"
+  },
+  ") for Apple Calendar, the Outlook desktop app, and anything else that imports events.": {
+    "zu": ") Apple Ikhalenda, uhlelo lokusebenza lwedeskithophu ye-Outlook, nanoma yini enye engenisa imicimbi."
+  },
+  "{{minutes}} mins": {},
+  "Approving…": {
+    "zu": "Iyagunyaza..."
+  },
+  "Secure payment via Paystack. You will return here after paying.": {
+    "zu": "Vikela inkokhelo nge-Paystack. Uzobuyela lapha ngemva kokukhokha."
+  },
+  "+{{points}} pts": {
+    "zu": "+{{points}} amaphuzu"
+  },
+  "The additional charge you're looking for doesn't exist or has already been paid": {
+    "zu": "Inkokhelo eyengeziwe oyifunayo ayikho noma isivele ikhokhiwe"
+  },
+  "Complete payment for this additional charge from your booking": {
+    "zu": "Qedela inkokhelo yale mali eyengeziwe ekubhukheni kwakho"
+  },
+  "This charge is awaiting your payment. Please complete payment to proceed.": {
+    "zu": "Le nkokhelo ilinde inkokhelo yakho. Sicela ugcwalise inkokhelo ukuze uqhubeke."
+  },
+  "This charge has been approved. Please complete payment.": {
+    "zu": "Le nkokhelo igunyaziwe. Sicela ugcwalise inkokhelo."
+  },
+  "Pay {{currency}} {{amount}} Now": {
+    "zu": "Khokha {{currency}} {{amount}} Manje"
+  },
+  "Receipt not found. The booking may not exist or has been removed.": {
+    "zu": "Isiliphu asitholakali. Ukubhukha kungenzeka akukho noma kususiwe."
+  },
+  "This receipt is generated from Beautonomi booking and payment records. Keep it for your personal payment history.": {
+    "zu": "Le residi ikhiqizwa Beautonomi ukubhukha kanye namarekhodi okukhokha. Yigcine kumlando wakho wokukhokha womuntu siqu."
+  },
+  "Rescheduling...": {
+    "zu": "Ihlela kabusha..."
+  },
+  "How would you rate your experience? *": {
+    "zu": "Ungakukala kanjani ukuzizwisa kwakho? *"
+  },
+  "Excellent!": {
+    "zu": "Kuhle kakhulu!"
+  },
+  "{{count}}/1000 characters": {
+    "zu": "{{count}}/1000 izinhlamvu"
+  },
+  "Unable to load your profile. Please refresh the page.": {
+    "zu": "Ayikwazi ukulayisha iphrofayela yakho. Sicela uvuselele ikhasi."
+  },
+  "Optional fields the platform may use (e.g. skin type, accessibility).": {
+    "zu": "Izinkambu ozikhethelayo iplathifomu ingase isebenzise (isb. uhlobo lwesikhumba, ukufinyeleleka)."
+  },
+  "Decline this custom offer? The provider will be notified.": {
+    "zu": "Yenqaba lokhu okunikezwayo ngokwezifiso? Umhlinzeki uzokwaziswa."
+  },
+  "Cancel this custom request? Any pending offers will be withdrawn.": {
+    "zu": "Khansela lesi sicelo sangokwezifiso? Noma yikuphi ukunikezwa okulindile kuzohoxiswa."
+  },
+  "Set venue, staff, and appointment time when creating offers so the booking appears on the calendar and is assigned correctly once the customer pays.": {
+    "zu": "Setha indawo, abasebenzi, nesikhathi sokuqokwa lapho udala okunikezwayo ukuze ukubhuka kuvele ekhalendeni futhi kunikezwe ngendlela efanele uma ikhasimende selikhokhe."
+  },
+  "Request a custom service from a provider to receive a tailored offer.": {
+    "zu": "Cela isevisi yangokwezifiso kumhlinzeki ukuze uthole ukunikezwa okuhambisanayo."
+  },
+  "Budget: {{min}} - {{max}}": {
+    "zu": "Isabelomali: {{min}} - {{max}}"
+  },
+  "{{currency}} {{price}} • {{minutes}} mins": {
+    "zu": "{{currency}} {{price}} • {{minutes}} imiz"
+  },
+  "Declining…": {
+    "zu": "Yenqaba..."
+  },
+  "All your offers have been withdrawn or expired. You can send a new offer below.": {
+    "zu": "Konke okunikezwayo kwakho kuhoxisiwe noma kuphelelwe yisikhathi. Ungathumela okunikezwayo okusha ngezansi."
+  },
+  "Send a tailored service offer to a client. They can review and accept it to create a booking.": {
+    "zu": "Thumela umnikelo wesevisi ofanelana nawe kuklayenti. Bangabuyekeza futhi bakwamukele ukuze badale ukubhukha."
+  },
+  "{{count}}/4000 characters": {
+    "zu": "{{count}}/4000 izinhlamvu"
+  },
+  "Add any additional information about this offer...": {
+    "zu": "Engeza noma yiluphi ulwazi olwengeziwe mayelana nalokhu kunikezwa..."
+  },
+  "Create a custom offer for this request. The customer will be notified and can accept it.": {
+    "zu": "Dala okunikezwayo ngokwezifiso kwalesi sicelo. Ikhasimende lizokwaziswa futhi lingakwamukela."
+  },
+  "When the customer pays, the booking will show on the calendar at this time.": {
+    "zu": "Lapho ikhasimende likhokha, ukubhukha kuzobonakala ekhalendeni ngalesi sikhathi."
+  },
+  "Creating...": {
+    "zu": "Iyadala..."
+  },
+  "Confirm your booking by completing payment below.": {
+    "zu": "Qinisekisa ukubhukha kwakho ngokugcwalisa inkokhelo ngezansi."
+  },
+  "This offer has expired. The provider may send a new one.": {
+    "zu": "Lokhu okunikezwayo kuphelelwe yisikhathi. Umhlinzeki angathumela entsha."
+  },
+  "This offer has been withdrawn. The provider may send a new one.": {
+    "zu": "Lokhu kunikezwa kuhoxisiwe. Umhlinzeki angathumela entsha."
+  },
+  "You declined this offer. The provider may send a new one if your request is still open.": {
+    "zu": "Unqabile lesi sipho. Umhlinzeki angathumela entsha uma isicelo sakho sisavuliwe."
+  },
+  "Payment was received but booking setup failed. Please contact support{{reference}}.": {
+    "zu": "Inkokhelo yamukelwe kodwa ukusethwa kokubhukha kwehlulekile. Sicela uthinte abosekelo{{reference}}."
+  },
+  "Offer withdrawn": {
+    "zu": "Umnikelo uhoxisiwe"
+  },
+  "Tell the provider what you would like adjusted on this offer.": {
+    "zu": "Tshela umhlinzeki ukuthi yini ongathanda ilungiswe kulo mnikelo."
+  },
+  "e.g. Can you adjust the price or move the appointment to Saturday afternoon?": {
+    "zu": "isib. Ungakwazi yini ukulungisa intengo noma uhambise isikhathi esimisiwe sibe ngoMgqibelo ntambama?"
+  },
+  "We encountered an error loading your account settings. Please try again.": {
+    "zu": "Sihlangabezane nephutha ekulayisheni izilungiselelo ze-akhawunti yakho. Sicela uzame futhi."
+  },
+  "New password must be at least {{min}} characters long": {
+    "zu": "Iphasiwedi entsha kufanele okungenani ibe nezinhlamvu ezingu-{{min}} ubude"
+  },
+  "Password reset email sent. Please check your inbox.": {
+    "zu": "I-imeyili yokusetha kabusha iphasiwedi ithunyelwe. Sicela uhlole ibhokisi lakho lokungenayo."
+  },
+  "Add a verified email or phone number before setting a password.": {
+    "zu": "Engeza i-imeyili eqinisekisiwe noma inombolo yocingo ngaphambi kokusetha iphasiwedi."
+  },
+  "Verification code sent. Enter it below to set your password.": {
+    "zu": "Ikhodi yokuqinisekisa ithunyelwe. Ifake ngezansi ukuze usethe iphasiwedi yakho."
+  },
+  "Add a verified email or phone number before deactivating this account.": {
+    "zu": "Engeza i-imeyili eqinisekisiwe noma inombolo yocingo ngaphambi kokuvala le akhawunti."
+  },
+  "This will end every active session across all your phones, tablets and browsers. You'll need to log in again everywhere. Are you sure?": {
+    "zu": "Lokhu kuzoqeda yonke isikhathi esisebenzayo kuwo wonke amafoni akho, amaphilisi neziphequluli. Uzodinga ukungena ngemvume futhi yonke indawo. Uqinisekile?"
+  },
+  "Manage your password, email, phone, and login preferences": {
+    "zu": "Phatha iphasiwedi yakho, i-imeyili, ifoni, kanye nezintandokazi zokungena ngemvume"
+  },
+  "This account uses one-time codes or social login. Send a verification code to your verified email or phone, then choose a password.": {
+    "zu": "Le akhawunti isebenzisa amakhodi esikhathi esisodwa noma ukungena ngemvume komphakathi. Thumela ikhodi yokuqinisekisa ku-imeyili yakho eqinisekisiwe noma ocingweni, bese ukhetha iphasiwedi."
+  },
+  "Must be at least {{min}} characters long": {
+    "zu": "Kufanele okungenani kube nezinhlamvu ezingu-{{min}} ubude"
+  },
+  "Setting...": {
+    "zu": "Iyasetha..."
+  },
+  "Updating...": {
+    "zu": "Iyabuyekeza..."
+  },
+  "Signing out...": {
+    "zu": "Iyaphuma..."
+  },
+  "Deactivate your account if you no longer want to use Beautonomi": {
+    "zu": "Vala i-akhawunti yakho ingasebenzi uma ungasafuni ukusebenzisa Beautonomi"
+  },
+  "We regularly review accounts to make sure they're as secure as possible. We'll also let you know if there's more we can do to increase the security of your account.": {
+    "zu": "Sihlala sibuyekeza ama-akhawunti ukuze senze isiqiniseko sokuthi aphephe ngangokunokwenzeka. Sizokwazisa futhi uma kukhona okwengeziwe esingakwenza ukuze sikhulise ukuphepha kwe-akhawunti yakho."
+  },
+  "Enter your new email. We'll send a {{digits}}-digit verification code.": {},
+  "Enter the {{digits}}-digit code we sent to your email.": {},
+  "Enter your new phone number. We'll SMS a {{digits}}-digit code (valid about {{minutes}} {{minuteLabel}}).": {
+    "zu": "Faka inombolo yakho yocingo entsha. Sizothumela i-SMS ikhodi enamadijithi {{digits}} (evumelekile mayelana {{minutes}} {{minuteLabel}})."
+  },
+  "Enter the {{digits}}-digit code we sent to your phone.": {},
+  "This will deactivate your account. You can reactivate later by": {
+    "zu": "Lokhu kuzovala i-akhawunti yakho. Ungaphinda wenze kusebenze ngokuhamba kwesikhathi"
+  },
+  "Confirm this sensitive action with a one-time code. {{hint}}.": {
+    "zu": "Qinisekisa lesi senzo esibucayi ngekhodi yesikhathi esisodwa. {{hint}}."
+  },
+  "Tell us why you're deactivating your account (optional)": {
+    "zu": "Sitshele ukuthi kungani uyenza i-akhawunti yakho isebenze (kuyakhetheka)"
+  },
+  "Your account will be deactivated immediately. To reactivate, go to the": {
+    "zu": "I-akhawunti yakho izovalwa ukusebenza ngokushesha. Ukuze wenze kusebenze futhi, hamba ku-"
+  },
+  "Password must be at least {{min}} characters": {
+    "zu": "Iphasiwedi kumele okungenani ibe nezinhlamvu ezingu-{{min}}"
+  },
+  "Password does not meet the required character mix for this platform": {
+    "zu": "Iphasiwedi ayihlangabezani nengxube yezinhlamvu edingekayo yale nkundla"
+  },
+  "Your password has been reset successfully. Redirecting you…": {
+    "zu": "Iphasiwedi yakho isethwe kabusha ngempumelelo. Ikuqondisa kabusha..."
+  },
+  "Strength: {{label}}": {
+    "zu": "Amandla: {{label}}"
+  },
+  "How you earn": {
+    "zu": "Uhola kanjani"
+  },
+  "You earn {{count}} point for every {{currency}} 1 you spend on completed bookings. Points are credited after your appointment is completed.": {
+    "zu": "Uzuza {{count}} iphoyinti ngakho konke {{currency}} 1 oyichitha ekubhukheni okuqediwe. Amaphuzu afakwa ngemva kokuqedwa kwe-aphoyintimenti yakho."
+  },
+  "You earn {{count}} points for every {{currency}} 1 you spend on completed bookings. Points are credited after your appointment is completed.": {
+    "zu": "Uzuza {{count}} amaphuzu ngakho konke {{currency}} 1 oyichitha ekubhukheni okuqediwe. Amaphuzu afakwa ngemva kokuqedwa kwe-aphoyintimenti yakho."
+  },
+  "How you redeem": {
+    "zu": "Ukuhlenga kanjani"
+  },
+  "{{rate}} points = 1 {{currency}}. Redeem on this page or at checkout — points become wallet credit for future bookings.": {
+    "zu": "{{rate}} amaphuzu = 1 {{currency}}. Sebenzisa kuleli khasi noma ekuphumeni - amaphuzu aba ikhredithi yesikhwama sokubhukha esikhathini esizayo."
+  },
+  "Earn points with every booking and redeem them for rewards": {
+    "zu": "Zuza amaphoyinti ngakho konke ukubhuka futhi uwakhulule ukuze uthole imiklomelo"
+  },
+  "Redemption Value": {
+    "zu": "Inani Lokuhlengwa"
+  },
+  "Book and complete an appointment to start earning points — they're added automatically.": {
+    "zu": "Bhukha futhi uqedele i-aphoyintimenti ukuze uqale ukuzuza amaphuzu — engezwa ngokuzenzakalelayo."
+  },
+  "Convert your points into wallet credit for future bookings": {
+    "zu": "Guqula amaphuzu akho abe ikhredithi yesikhwama ukuze ubhukhe esikhathini esizayo"
+  },
+  "Your points transactions will appear here once you start earning or redeeming points.": {
+    "zu": "Ukuthenga kwakho amaphuzu kuzovela lapha uma usuqalile ukuzuza noma ukuhlenga amaphuzu."
+  },
+  "{{points}} pts": {
+    "zu": "{{points}} amaphoyinti"
+  },
+  "Worth approximately {{amount}}": {
+    "zu": "Ibiza cishe {{amount}}"
+  },
+  "You will receive:": {
+    "zu": "Uzothola:"
+  },
+  "Redeeming…": {
+    "zu": "Isebenzisa..."
+  },
+  "Earn points with every booking and redeem them for discounts": {
+    "zu": "Zuza amaphoyinti ngakho konke ukubhuka futhi uwakhulule ukuze uthole izaphulelo"
+  },
+  "Conversion Rate": {
+    "zu": "Izinga Lokuguqulwa"
+  },
+  "Earn {{rate}} point per {{amount}} spent": {
+    "zu": "Zuza {{rate}} iphoyinti {{amount}} ngayinye esetshenzisiwe"
+  },
+  "Maximum: {{percent}}% of booking can be paid with points": {
+    "zu": "Umkhawulo: {{percent}}% wokubhukha ungakhokhwa ngamaphoyinti"
+  },
+  "Get 100 bonus points for each friend who signs up and completes their first booking": {
+    "zu": "Thola amaphoyinti ebhonasi angu-100 kumngane ngamunye obhalisa futhi oqedele ukubhukha kwakhe kokuqala"
+  },
+  "Make your first booking to start earning points!": {
+    "zu": "Yenza ukubhuka kwakho kokuqala ukuze uqale ukuzuza amaphuzu!"
+  },
+  "Book regularly to maximize your point earning potential": {
+    "zu": "Bhukha njalo ukuze wandise amathuba akho okuzuza amaphuzu"
+  },
+  "Combine points with membership discounts and promo codes for maximum savings": {
+    "zu": "Hlanganisa amaphuzu nezaphulelo zobulungu namakhodi ephromo ukuze wonge kakhulu"
+  },
+  "Don't let your points expire! Use them within {{days}} days": {
+    "zu": "Ungavumeli amaphuzu akho aphelelwe yisikhathi! Zisebenzise zingakapheli izinsuku {{days}}"
+  },
+  "Share your referral link on social media to earn bonus points": {
+    "zu": "Yabelana ngesixhumanisi sakho sokudlulisela ezinkundleni zokuxhumana ukuze uthole amaphuzu ebhonasi"
+  },
+  "(initial)": {
+    "zu": "(owokuqala)"
+  },
+  "Cancel your {{planName}} membership with {{providerName}}?": {
+    "zu": "Khansela {{planName}} ubulungu bakho {{providerName}}?"
+  },
+  "Add a payment card in Payments before enabling auto-renew.": {
+    "zu": "Engeza ikhadi lokukhokha ku-Payments ngaphambi kokunika amandla ukuvuselela ngokuzenzakalela."
+  },
+  "Pause your {{planName}} membership with {{providerName}}? Auto-renew will turn off.": {
+    "zu": "Misa ubulungu bakho {{planName}} nge {{providerName}}? Ukuvuselela ngokuzenzakalela kuzocisha."
+  },
+  "No platform membership. Your active salon memberships are listed below.": {
+    "zu": "Abukho ubulungu benkundla. Ubulungu bakho be-salon obusebenzayo bubhalwe ngezansi."
+  },
+  "Active memberships with providers. Discounts apply automatically when you book.": {
+    "zu": "Ubulungu obusebenzayo nabahlinzeki. Izaphulelo zisebenza ngokuzenzakalelayo uma ubhukha."
+  },
+  "We couldn't renew your {{planName}} membership. Update your card within the grace period to keep your benefits.": {
+    "zu": "Asikwazanga ukuvuselela ubulungu bakho {{planName}}. Buyekeza ikhadi lakho phakathi nesikhathi somusa ukuze ugcine izinzuzo zakho."
+  },
+  "Your {{planName}} membership is active, but we couldn't save a card for renewals. Add a payment method": {
+    "zu": "Ubulungu bakho be-{{planName}} buyasebenza, kodwa asikwazanga ukulondoloza ikhadi ukuze silivuselele. Engeza indlela yokukhokha"
+  },
+  "before {{date}}": {
+    "zu": "ngaphambi {{date}}"
+  },
+  "No saved cards. Add one in Payments, then return here.": {
+    "zu": "Awekho amakhadi alondoloziwe. Engeza eyodwa kokuthi Izinkokhelo, bese ubuyela lapha."
+  },
+  "Takes effect at the end of the current period. Same plan clears a pending change.": {
+    "zu": "Iqala ukusebenza ekupheleni kwesikhathi samanje. Uhlelo olufanayo lususa ushintsho olulindile."
+  },
+  "Request timed out. Please check your connection and try again.": {
+    "zu": "Isicelo siphelelwe yisikhathi. Sicela uhlole uxhumo lwakho bese uzama futhi."
+  },
+  "Network error: Unable to reach server. Please check your connection.": {
+    "zu": "Iphutha lenethiwekhi: Ayikwazi ukufinyelela iseva. Sicela uhlole ukuxhumana kwakho."
+  },
+  "Choose a conversation from the list to start messaging": {
+    "zu": "Khetha ingxoxo ohlwini ukuze uqale ukuthumelana imiyalezo"
+  },
+  "Push notifications are off. To enable this feature, turn on notifications.": {
+    "zu": "Izaziso zohlelo lokusebenza zivaliwe. Ukuze unike lesi sici amandla, vula izaziso."
+  },
+  "Opt in to receive updates on WhatsApp. You can reply STOP to opt out anytime.": {
+    "zu": "Khetha ukungena ukuze uthole izibuyekezo ku-WhatsApp. Ungaphendula okuthi MISA ukuze uphume noma nini."
+  },
+  "We will send push alerts for this category when your device allows notifications from Beautonomi.": {
+    "zu": "Sizothumela izexwayiso zohlelo lokusebenza zalesi sigaba uma idivayisi yakho ivumela izaziso ezivela ku-Beautonomi."
+  },
+  "Turn this on to allow push alerts for this category. You may also need to allow notifications in your browser or device settings.": {
+    "zu": "Vula lokhu ukuze uvumele izexwayiso zohlelo lokusebenza kulesi sigaba. Ungase futhi udinge ukuvumela izaziso kusiphequluli sakho noma izilungiselelo zedivayisi."
+  },
+  "On: {{channels}}": {
+    "zu": "Ku: {{channels}}"
+  },
+  "Stay up to date on the latest news from Beautonomi, and let us know how we can improve.": {
+    "zu": "Hlala unolwazi lwakamuva ngezindaba zakamuva ezivela ku-Beautonomi, futhi usazise ukuthi singathuthuka kanjani."
+  },
+  "Stop receiving promotional emails from Beautonomi": {
+    "zu": "Yeka ukuthola ama-imeyili okukhangisa avela ku-Beautonomi"
+  },
+  "Confirm your booking and account activity, and learn about important Beautonomi policies.": {
+    "zu": "Qinisekisa ukubhukha kwakho nomsebenzi we-akhawunti, futhi ufunde mayelana nezinqubomgomo ezibalulekile Beautonomi."
+  },
+  "Reminders": {
+    "zu": "Izikhumbuzi"
+  },
+  "Get important reminders about your bookings, reservations, and account activity.": {
+    "zu": "Thola izikhumbuzi ezibalulekile mayelana nokubhukha kwakho, ukubhukha, nomsebenzi we-akhawunti."
+  },
+  "Keep in touch with your Beauty Partner before and during your appointment.": {
+    "zu": "Xhumana Nobuhle Uzakwethu ngaphambi nangesikhathi sokuqokwa kwakho."
+  },
+  "Get answers to questions about notifications in our Help Center.": {
+    "zu": "Thola izimpendulo zemibuzo mayelana nezaziso Esikhungweni sethu Sosizo."
+  },
+  "Stay in the know about brand new programs and announcements.": {
+    "zu": "Hlala unolwazi mayelana nezinhlelo ezintsha nezimemezelo."
+  },
+  "Confirm your account activity and learn about important Beautonomi policies.": {
+    "zu": "Qinisekisa umsebenzi we-akhawunti yakho futhi ufunde mayelana nezinqubomgomo ezibalulekile Beautonomi."
+  },
+  "Get important reminders about your upcoming bookings.": {
+    "zu": "Thola izikhumbuzi ezibalulekile mayelana nokubhukha kwakho okuzayo."
+  },
+  "Get notified before your subscription expires.": {
+    "zu": "Thola isaziso ngaphambi kokuphelelwa yisikhathi okubhalisele."
+  },
+  "Keep in touch with your beauty partner or clients.": {
+    "zu": "Xhumana nobuhle bakho noma amakhasimende akho."
+  },
+  "Delete this notification? It will be removed from your list.": {
+    "zu": "Susa lesi saziso? Izosuswa ohlwini lwakho."
+  },
+  "No quick link for this notification — it stays in your inbox.": {},
+  "{{count}} unread — tap a row to open · trash removes an item": {
+    "zu": "{{count}} engafundiwe — thepha umugqa ukuze uvule · udoti ukhipha into"
+  },
+  "One moment": {
+    "zu": "Umzuzu owodwa"
+  },
+  "Tip: pull to refresh isn’t available on web — use the refresh button.": {
+    "zu": "Ithiphu: ukudonsa ukuze uvuselele akutholakali kuwebhu — sebenzisa inkinobho yokuvuselela."
+  },
+  "escalated": {
+    "zu": "kwenyuka"
+  },
+  "Unable to connect. Please check your network and try again.": {
+    "zu": "Ayikwazi ukuxhuma. Sicela uhlole inethiwekhi yakho bese uzama futhi."
+  },
+  "We could not verify this request. Refresh the page and try again.": {
+    "zu": "Asikwazanga ukuqinisekisa lesi sicelo. Vuselela ikhasi bese uzama futhi."
+  },
+  "Unable to start payment. Please check your network and try again.": {
+    "zu": "Ayikwazi ukuqala inkokhelo. Sicela uhlole inethiwekhi yakho bese uzama futhi."
+  },
+  "Escalated {{date}}": {
+    "zu": "Kukhushulwe {{date}}"
+  },
+  "You can request a return within {{days}} days of delivery. Items must be unused and in original condition.": {},
+  "The {{days}}-day return window from delivery has passed. For help, contact support from your profile.": {},
+  "Delivered / Collected": {
+    "zu": "Kulethiwe / Kuqoqiwe"
+  },
+  "This item is not eligible for a new return.": {
+    "zu": "Le nto ayifaneleki ukubuyiselwa okusha."
+  },
+  "We've notified the provider. You'll receive an update on your return soon.": {
+    "zu": "Simazisile umhlinzeki. Uzothola isibuyekezo ekubuyeni kwakho maduze."
+  },
+  "Returns can only be requested after your order is delivered or ready for collection.": {
+    "zu": "Ukubuyisela kungacelwa kuphela ngemva kokuba i-oda lakho lilethiwe noma selilungele ukuqoqwa."
+  },
+  "The {{days}}-day return window from delivery has passed.": {},
+  "Every item in this order already has an active or completed return, or the full order is in a return.": {
+    "zu": "Yonke into kuleli oda isivele inembuyiselo esebenzayo noma eqediwe, noma i-oda eligcwele liyimbuyiselo."
+  },
+  "Already in a return": {
+    "zu": "Kakade kuyimbuyiselo"
+  },
+  "Returns must be requested within {{days}} days of delivery": {
+    "zu": "Izimbuyiselo kumele zicelwe phakathi {{days}} izinsuku zokulethwa"
+  },
+  "Items must be unused and in their original packaging": {
+    "zu": "Izinto kumele zingasetshenziswa futhi nasemaphaketheni azo asekuqaleni"
+  },
+  "The provider will review your request and respond": {
+    "zu": "Umhlinzeki uzobuyekeza isicelo sakho futhi aphendule"
+  },
+  "Damaged or defective": {
+    "zu": "Ilimele noma inesici"
+  },
+  "Arrived late": {
+    "zu": "Ifike emva kwesikhathi"
+  },
+  "We'll save your card securely when you pay. To verify your card, a small temporary charge (e.g. R1) may be placed and reversed—this confirms your card for future use.": {
+    "zu": "Sizolondoloza ikhadi lakho ngokuphephile uma ukhokha. Ukuze uqinisekise ikhadi lakho, inkokhiso yesikhashana encane (isb. U-R1) ingase ibekwe futhi ibuyiselwe emuva—lokhu kuqinisekisa ikhadi lakho ukuze ulisebenzise esikhathini esizayo."
+  },
+  "You can also save a card during checkout by selecting \"Save this card for future payments\".": {
+    "zu": "Ungakwazi nokulondoloza ikhadi ngesikhathi sokukhokha ngokukhetha okuthi \"Londoloza leli khadi ukuze uthole izinkokhelo zesikhathi esizayo\"."
+  },
+  "All payment information is encrypted and processed securely. We never store your full card details.": {
+    "zu": "Lonke ulwazi lwenkokhelo lubethelwe futhi lucutshungulwe ngokuphephile. Asilokothi sigcine imininingwane yekhadi lakho eligcwele."
+  },
+  "Opening...": {
+    "zu": "Iyavula..."
+  },
+  "Couldn't copy automatically — long-press the code to copy it": {
+    "zu": "Ayikwazanga ukukopisha ngokuzenzakalelayo — cindezela isikhathi eside ikhodi ukuze uyikopishe"
+  },
+  "Fully redeemed": {
+    "zu": "Isetshenziswe ngokugcwele"
+  },
+  "of {{amount}}": {
+    "zu": "kwe {{amount}}"
+  },
+  "{{percent}}% remaining": {
+    "zu": "{{percent}}% esele"
+  },
+  "For {{name}}": {
+    "zu": "Kwa {{name}}"
+  },
+  "Saved gift cards appear automatically in the Promotions & rewards step of any booking — just tap Apply. You can also paste the copied code there.": {
+    "zu": "Amakhadi esipho alondoloziwe avela ngokuzenzakalelayo esinyathelweni samaphromoshini nemiklomelo sanoma yikuphi ukubhukha — vele uthephe okuthi Faka. Ungakwazi futhi ukunamathisela ikhodi ekopishiwe lapho."
+  },
+  "Verification is still processing. Refresh this page in a moment if your card does not appear.": {
+    "zu": "Ukuqinisekisa kusacutshungulwa. Vuselela leli khasi ngokushesha uma ikhadi lakho lingaveli."
+  },
+  "We could not confirm your card. Try again or use another card.": {
+    "zu": "Asikwazanga ukuqinisekisa ikhadi lakho. Zama futhi noma sebenzisa elinye ikhadi."
+  },
+  "Failed to redeem coupon. Please check the code and try again.": {
+    "zu": "Yehlulekile ukusebenzisa ikhuphoni. Sicela uhlole ikhodi bese uzama futhi."
+  },
+  "Are you sure you want to remove this payment method?": {
+    "zu": "Uqinisekile ukuthi ufuna ukususa le ndlela yokukhokha?"
+  },
+  "Cards are saved automatically when you pay with a card": {
+    "zu": "Amakhadi agcinwa ngokuzenzakalelayo uma ukhokha ngekhadi"
+  },
+  "Redeeming...": {
+    "zu": "Isebenzisa..."
+  },
+  "Always pay and communicate through Beautonomi to ensure you're protected under our Terms of Service, Payments Terms of Service, cancellation, and other safeguards.": {
+    "zu": "Khokha njalo futhi uxhumane Beautonomi ukuze uqinisekise ukuthi uvikelekile ngaphansi Kwemigomo Yesevisi, Imigomo Yesevisi Yezinkokhelo, ukukhansela, nezinye izivikelo."
+  },
+  "Add at least one payout method so we know where to send your money via Paystack.": {
+    "zu": "Engeza okungenani indlela yokukhokha eyodwa ukuze sazi ukuthi ungayithumela kuphi imali yakho nge-Paystack."
+  },
+  "Government ID uploaded successfully! It will be reviewed by our team.": {
+    "zu": "I-ID kahulumeni ilayishwe ngempumelelo! Izobuyekezwa ithimba lethu."
+  },
+  "We sent confirmation links to your current email and your new address. Open each link to finish the change (both may be required).": {
+    "zu": "Sithumele izixhumanisi zokuqinisekisa ku-imeyili yakho yamanje kanye nekheli lakho elisha. Vula isixhumanisi ngasinye ukuze uqedele ushintsho (kungase kudingeke kokubili)."
+  },
+  "Provided": {
+    "zu": "Kuhlinzekiwe"
+  },
+  "Government ID": {
+    "zu": "Umazisi kahulumeni"
+  },
+  "We're hiding some account details to protect your identity.": {
+    "zu": "Sifihla imininingwane ethile ye-akhawunti ukuze sivikele ubuwena."
+  },
+  "Contact info and personal details can be edited. If this info was used to verify your identity, you'll need to get verified again the next time you book—or to continue beauty partner.": {
+    "zu": "Imininingwane yokuxhumana nemininingwane yomuntu siqu ingahlelwa. Uma lolu lwazi lusetshenziselwe ukuqinisekisa ubuwena, uzodinga ukuqinisekiswa futhi ngesikhathi esilandelayo lapho ubhukha—noma ukuze uqhubeke uzakwethu wobuhle."
+  },
+  "Beautonomi only releases contact information for Providers and clients after a reservation is confirmed.": {
+    "zu": "Beautonomi ikhipha imininingwane yokuxhumana yabahlinzeki kanye namakhasimende kuphela ngemva kokuqinisekiswa kokubhukha."
+  },
+  "We'll email a {{digits}}-digit code. Your address only updates after you verify.": {},
+  "e.g. 82 123 4567": {
+    "zu": "isib. 82 123 4567"
+  },
+  "We'll SMS a {{digits}}-digit code (valid for about {{minutes}} {{minuteLabel}}). Your number only updates after you verify.": {
+    "zu": "Sizothumela i-SMS ikhodi enamadijithi {{digits}} (ivumelekile cishe ku- {{minutes}} {{minuteLabel}}). Inombolo yakho ibuyekeza kuphela ngemva kokuqinisekisa."
+  },
+  "Use our automated ID check — takes about 2 minutes.": {
+    "zu": "Sebenzisa ukuhlola kwethu kwe-ID okuzenzakalelayo — kuthatha imizuzu emi-2."
+  },
+  "Accepted formats: JPEG, PNG, WebP, PDF (Max 10MB)": {
+    "zu": "Amafomethi amukelwayo: i-JPEG, i-PNG, i-WebP, i-PDF (Ubukhulu obungu-10MB)"
+  },
+  "National ID": {
+    "zu": "Umazisi kazwelonke"
+  },
+  "Make sure this matches the name on your government ID.": {
+    "zu": "Qiniseka ukuthi lokhu kufana negama eliku-ID yakho kahulumeni."
+  },
+  "This is how your first name will appear to Providers and clients. Learn more": {
+    "zu": "Lena yindlela igama lakho lokuqala elizovela ngayo kubahlinzeki nakumakhasimende. Funda kabanzi"
+  },
+  "Use an address you'll always have access to. We'll email a {{digits}}-digit verification code.": {},
+  "South Africa (+27)": {
+    "zu": "INingizimu Afrika (+27)"
+  },
+  "Use a permanent address where you can receive mail.": {
+    "zu": "Sebenzisa ikheli elihlala njalo lapho ungathola khona i-imeyili."
+  },
+  "State / Province / County / Region": {
+    "zu": "Isifunda / Isifunda / Isifunda / Isifunda"
+  },
+  "A trusted contact we can alert in an urgent situation.": {
+    "zu": "Oxhumana naye omethembayo esingamexwayisa esimweni esiphuthumayo."
+  },
+  "Upload a government-issued ID for identity verification. This helps keep our community safe. Your document will be reviewed by our team.": {
+    "zu": "Layisha i-ID ekhishwe uhulumeni ukuze kuqinisekiswe ubuwena. Lokhu kusiza ukugcina umphakathi wethu uphephile. Idokhumenti yakho izobuyekezwa ithimba lethu."
+  },
+  "Global preferences": {
+    "zu": "Izintandokazi zomhlaba wonke"
+  },
+  "Language and timezone apply to your account. Payout currency follows your provider payout settings.": {
+    "zu": "Ulimi nendawo yesikhathi kuyasebenza ku-akhawunti yakho. Imali yokukhokha ilandela izilungiselelo zakho zokukhokha zomhlinzeki."
+  },
+  "Changing your currency updates how you see prices. You can change how you get payments in your payments & payouts preferences.": {
+    "zu": "Ukushintsha uhlobo lwakho lwemali lubuyekeza indlela ozibona ngayo izintengo. Ungashintsha indlela ozithola ngayo izinkokhelo ezinkokhelweni zakho nasezinkokhelweni zakho."
+  },
+  "Download URL not available. Please request your data again.": {
+    "zu": "I-URL yokulanda ayitholakali. Sicela ucele idatha yakho futhi."
+  },
+  "Your account has been deleted. You will be signed out.": {
+    "zu": "I-akhawunti yakho isusiwe. Uzokhishwa."
+  },
+  "Manage your privacy settings and how your information is shared.": {
+    "zu": "Phatha izilungiselelo zakho zobumfihlo nokuthi ulwazi lwakho lwabiwa kanjani."
+  },
+  "Control who can see your profile and account information.": {
+    "zu": "Lawula ukuthi ubani ongabona iphrofayela yakho nolwazi lwe-akhawunti."
+  },
+  "Manage what information is visible on your public profile.": {
+    "zu": "Phatha ukuthi yiluphi ulwazi olubonakalayo kuphrofayela yakho yomphakathi."
+  },
+  "Allow Beautonomi to use analytics to improve the product (e.g. usage and performance). You can disable this at any time.": {
+    "zu": "Vumela Beautonomi ukusebenzisa izibalo ukuthuthukisa umkhiqizo (isb. ukusetshenziswa nokusebenza). Ungakwazi ukukhubaza lokhu noma kunini."
+  },
+  "Account-level analytics above applies to your profile. Cookies and similar storage on ": {
+    "zu": "Izibalo zeleveli ye-akhawunti ngenhla zisebenza kuphrofayela yakho. Amakhukhi nesitoreji esifanayo kuvuliwe"
+  },
+  " are managed separately—use ": {
+    "zu": "ziphathwa ngokwehlukana-ukusetshenziswa"
+  },
+  " to adjust optional cookies on this browser.": {
+    "zu": "ukulungisa amakhukhi ongawakhetha kulesi siphequluli."
+  },
+  "Beautonomi is committed to keeping your data protected. See details in our ": {
+    "zu": "Beautonomi uzibophezele ekugcineni idatha yakho ivikelekile. Bona imininingwane kwethi"
+  },
+  "We'll create a file for you to download your personal data.": {
+    "zu": "Sizokwenzela ifayela ukuze ulande idatha yakho yomuntu siqu."
+  },
+  "⏳ Your data export is being processed...": {
+    "zu": "⏳ Ukuthunyelwa kwedatha yakho kuyacutshungulwa..."
+  },
+  "Requesting...": {
+    "zu": "Icela..."
+  },
+  "Share feedback on requesting your personal data to help us improve your experience": {
+    "zu": "Yabelana ngempendulo ekuceleni idatha yakho yomuntu siqu ukuze usisize sithuthukise ulwazi lwakho"
+  },
+  "To permanently delete your account we require your password or a verification code, and typing ": {
+    "zu": "Ukuze ususe unaphakade i-akhawunti yakho sidinga iphasiwedi yakho noma ikhodi yokuqinisekisa, nokuthayipha"
+  },
+  " to confirm. When enabled, deletion is scheduled for 30 days (account locked); cancel via the email link or support — not by logging in. Prefer a break first? Use ": {
+    "zu": "ukuqinisekisa. Uma kunikwe amandla, ukususwa kuhlelelwe izinsuku ezingu-30 (i-akhawunti ikhiyiwe); khansela ngesixhumanisi se-imeyili noma ngokusekela — hhayi ngokungena ngemvume. Uncamela ukuphumula kuqala? Sebenzisa"
+  },
+  "Decide how your profile and activity are shown to others.": {
+    "zu": "Nquma ukuthi iphrofayela yakho nomsebenzi wakho kuboniswa kanjani kwabanye."
+  },
+  "When this is on, we'll show people that you've read their messages. ": {
+    "zu": "Uma lokhu kuvuliwe, sizobonisa abantu ukuthi uyifundile imilayezo yabo."
+  },
+  "Turning this on means search engines, like Google, will display your listing page(s) in search results.": {
+    "zu": "Ukuvula lokhu kusho izinjini zokusesha, njenge Google, zizoveza amakhasi akho ohlu emiphumeleni yosesho."
+  },
+  "Choose what's shared when you write a review. Updating this setting will change what's displayed for all past reviews. ": {
+    "zu": "Khetha okwabiwe uma ubhala isibuyekezo. Ukubuyekeza lesi silungiselelo kuzoshintsha okuboniswa kuzo zonke izibuyekezo ezedlule."
+  },
+  "When this is on, your home location (ex: city and country) may be included with your reviews.": {
+    "zu": "Uma lokhu kuvuliwe, indawo yakho yasekhaya (isb: idolobha nezwe) ingase ifakwe ezibuyekezweni zakho."
+  },
+  "When this is on, your booking type (ex: individual appointment, group booking, event booking, or special occasion) may be included with your reviews.": {
+    "zu": "Uma lokhu kuvuliwe, uhlobo lwakho lokubhukha (isb: i-aphoyintimenti yomuntu ngamunye, ukubhukha iqembu, ukubhukha umcimbi, noma umcimbi okhethekile) kungase kufakwe ezibuyekezweni zakho."
+  },
+  "When this is on, an approximate service duration (ex: quick service, standard appointment, or extended session) may be included with your reviews.": {
+    "zu": "Uma lokhu kuvuliwe, cishe ubude besikhathi besevisi (isb: isevisi esheshayo, i-aphoyintimenti evamile, noma iseshini enwetshiwe) ingase ifakwe ekubuyekezweni kwakho."
+  },
+  "Share feedback on requesting your personal data to help us improve your experience. ": {
+    "zu": "Yabelana ngempendulo ekuceleni idatha yakho yomuntu siqu ukuze usisize sithuthukise ulwazi lwakho."
+  },
+  "View services that you've connected to your Beautonomi account": {
+    "zu": "Buka izinsiza ozixhume ku-akhawunti yakho ye-Beautonomi"
+  },
+  "This will ": {
+    "zu": "Lokhu kuzokwenza"
+  },
+  "permanently": {
+    "zu": "unomphela"
+  },
+  " remove your account and all associated data, including bookings, messages, preferences, and profile. This action ": {
+    "zu": "susa i-akhawunti yakho nayo yonke idatha ehlotshaniswayo, okuhlanganisa ukubhukha, imilayezo, izintandokazi, nephrofayela. Lesi senzo"
+  },
+  "If you prefer to take a break, use \"Deactivate account\" in Login & security instead.": {
+    "zu": "Uma ukhetha ukuthatha ikhefu, sebenzisa okuthi \"Yenza kungasebenzi i-akhawunti\" Ekungeneni nasekuvikelekeni esikhundleni salokho."
+  },
+  "Are you sure you want to cancel this recurring booking?": {
+    "zu": "Uqinisekile ukuthi ufuna ukukhansela lokhu kubhukha okuphindelelayo?"
+  },
+  "Book a salon and turn on \"Repeat this booking\" at checkout (web or app, signed in), or ask your provider to set up a series for you.": {
+    "zu": "Bhukha isaluni bese uvule okuthi \"Phinda lokhu kubhuka\" ekuphumeni (iwebhu noma uhlelo lokusebenza, ungene ngemvume), noma ucele umhlinzeki wakho ukuthi akusethele uchungechunge."
+  },
+  "Update cadence, preferred time, and optional end date. Auto-bookings follow these settings.": {
+    "zu": "Buyekeza i-cadence, isikhathi esincanyelwayo, kanye nedethi yokuphela ongayikhetha. Ukubhukha okuzenzakalelayo kulandela lezi zilungiselelo."
+  },
+  "How often": {
+    "zu": "Kangakanani"
+  },
+  "Uncheck to stop the series after a specific date.": {
+    "zu": "Susa ukumaka ukuze umise uchungechunge ngemva kwedethi ethile."
+  },
+  "Share your unique referral link with friends and family.": {
+    "zu": "Yabelana ngesixhumanisi sakho esiyingqayizivele sokudlulisela nabangani nomndeni."
+  },
+  "When someone signs up using your link and completes their first eligible booking, you earn wallet credit and loyalty points.": {
+    "zu": "Uma othile ebhalisa esebenzisa isixhumanisi sakho futhi eqeda ukubhuka kwakhe kokuqala okufanelekile, uzuza ikhredithi yesikhwama kanye namaphoyinti okwethembeka."
+  },
+  "Your referral must complete a booking to qualify for rewards.": {
+    "zu": "Othunyelwayo kufanele aqedele ukubhukha ukuze ufanelekele ukuthola imiklomelo."
+  },
+  "Rewards are credited to your wallet after the referred user's first completed booking.": {
+    "zu": "Imiklomelo ifakwa esikhwameni sakho ngemuva kokuqedwa kokubhuka kokuqala komsebenzisi."
+  },
+  "You earn {{amount}} {{currency}} for each successful referral. The amount may vary based on current promotions. Check your referral dashboard for the latest reward amounts.": {
+    "zu": "Uzuza {{amount}} {{currency}} ngokuthunyelwa ngakunye okuyimpumelelo. Inani lingahluka ngokuya ngezinyuso zamanje. Hlola ideshibhodi yakho yokudlulisela amanani akamuva omklomelo."
+  },
+  "You receive your referral reward after the person you referred completes their first booking on Beautonomi. The reward is credited to your wallet and can be used for future bookings or withdrawn according to our payout policy.": {
+    "zu": "Uthola umklomelo wakho wokuthumela ngemva kokuba umuntu omthumele eqede ukubhukha kwakhe kokuqala ku-Beautonomi. Umklomelo ufakwa esikhwameni sakho futhi ungasetshenziselwa ukubhukha esikhathini esizayo noma ukhishwe ngokuvumelana nenqubomgomo yethu yokukhokha."
+  },
+  "Can I refer the same person multiple times?": {
+    "zu": "Ngingakwazi ukubhekisela kumuntu ofanayo izikhathi eziningi?"
+  },
+  "No, each person can only be referred once. If someone has already signed up for Beautonomi, they cannot use your referral link to earn rewards.": {
+    "zu": "Cha, umuntu ngamunye angathunyelwa kanye kuphela. Uma umuntu esebhalisele Beautonomi, akakwazi ukusebenzisa isixhumanisi sakho sokudlulisela ukuzuza imiklomelo."
+  },
+  "You can track all your referrals, earnings, and pending rewards on this page. The dashboard shows your total referrals, successful referrals, and total earnings.": {
+    "zu": "Ungakwazi ukulandelela konke ukudluliselwa kwakho, izinzuzo, kanye nemiklomelo elindile kuleli khasi. Ideshibhodi ibonisa isamba sokudluliselwa kwakho, ukudluliselwa okuphumelelayo, kanye nesamba semali oyitholayo."
+  },
+  "Referrals are currently disabled. You can still see your code; rewards will apply when the program is enabled again.": {
+    "zu": "Ukudluliselwa kukhutshaziwe okwamanje. Usengabona ikhodi yakho; imiklomelo izosebenza uma uhlelo lunikwa amandla futhi."
+  },
+  "Share your code and earn rewards when friends book services": {
+    "zu": "Yabelana ngekhodi yakho futhi uzuze imiklomelo lapho abangani babhukha amasevisi"
+  },
+  "Check out these answers to common questions and review other program information in the": {
+    "zu": "Bheka lezi zimpendulo zemibuzo evamile futhi ubuyekeze olunye ulwazi lohlelo ku"
+  },
+  "My Returns": {
+    "zu": "Ukubuya Kwami"
+  },
+  "Qty: {{count}}": {
+    "zu": "Ubuningi: {{count}}"
+  },
+  "arrived late": {
+    "zu": "wafika sekwephuzile"
+  },
+  "Are you sure you want to delete this review?": {
+    "zu": "Uqinisekile ukuthi ufuna ukususa lesi sibuyekezo?"
+  },
+  "Your reviews will appear here once you submit them for completed bookings.": {
+    "zu": "Izibuyekezo zakho zizovela lapha uma usuzithumele ukuze ziqedelwe ukubhukha."
+  },
+  "Tax ID / SSN / TIN *": {
+    "zu": "I-ID Yentela / SSN / TIN *"
+  },
+  "Apartment, suite, etc.": {
+    "zu": "Ifulethi, i-suite, njll."
+  },
+  "If you are registered with the European Commission, verification may take up to 48 hours. We'll send you an email when it's finished.": {
+    "zu": "Uma ubhalisiwe ne-European Commission, ukuqinisekiswa kungase kuthathe amahora angu-48. Sizokuthumelela i-imeyili uma isiqedile."
+  },
+  "Province or region": {
+    "zu": "Isifundazwe noma isifunda"
+  },
+  "deeper tax filing helpers and automated document delivery. You can still save taxpayer details and download documents below when they are available for your account.": {
+    "zu": "abasizi bokugcwalisa intela okujulile kanye nokulethwa kwedokhumenti okuzenzakalelayo. Usengagcina imininingwane yomkhokhintela futhi ulande amadokhumenti ngezansi uma esetholakalela i-akhawunti yakho."
+  },
+  "Tax info is required for most countries/regions.": {
+    "zu": "Ulwazi lwentela luyadingeka emazweni/izifunda eziningi."
+  },
+  "Tax ID:": {
+    "zu": "I-ID yentela:"
+  },
+  "Value Added Tax (VAT)": {
+    "zu": "I-Value Added Tax (VAT)"
+  },
+  "If you are VAT-registered, please add your VAT ID.": {
+    "zu": "Uma ubhalisele i-VAT, sicela wengeze i-ID yakho ye-VAT."
+  },
+  "VAT ID: {{id}}": {
+    "zu": "I-ID ye-VAT: {{id}}"
+  },
+  "Get answers to questions about taxes in our Help Center.": {
+    "zu": "Thola izimpendulo zemibuzo emayelana nezintela Esikhungweni sethu Sosizo."
+  },
+  "Tax documents required for filing taxes are available to review and download here.": {
+    "zu": "Amadokhumenti entela adingekayo ekugcwaliseni izintela ayatholakala ukuze abuyekezwe futhi alandwe lapha."
+  },
+  "You can also file taxes using detailed earnings info, available in the earnings summary.": {
+    "zu": "Ungakwazi futhi ukufayela izintela usebenzisa ulwazi lwemali eningiliziwe, olutholakala esifinyezweni sezinzuzo."
+  },
+  "Issued on {{date}}": {
+    "zu": "Ikhishwe ngo-{{date}}"
+  },
+  "For tax documents issued prior to {{year}}, contact us.": {
+    "zu": "Ukuze uthole imibhalo yentela ekhishwe ngaphambi kuka-{{year}}, xhumana nathi."
+  },
+  "Are you sure you want to remove yourself from the waitlist?": {
+    "zu": "Uqinisekile ukuthi ufuna ukuzikhipha ohlwini lokulinda?"
+  },
+  "Join a waitlist when a service is fully booked to be notified when slots become available": {
+    "zu": "Joyina uhlu lokulinda uma isevisi ibhukhwe ngokugcwele ukuze waziswe uma izikhala zitholakala"
+  },
+  "Joined {{date}}": {
+    "zu": "Ujoyine {{date}}"
+  },
+  "Someone sent this to your email. Add it to your wallet to spend.": {
+    "zu": "Othile uthumele lokhu ku-imeyili yakho. Yengeze esikhwameni sakho ukuze usebenzise."
+  },
+  "Someone sent these to your email. Add them to your wallet to spend.": {
+    "zu": "Othile uthumele lokhu ku-imeyili yakho. Bangeze esikhwameni sakho ukuze usebenzise."
+  },
+  "Enter a code you bought or that someone shared with you. The full balance is added to your wallet instantly.": {
+    "zu": "Faka ikhodi oyithengile noma omunye owabelane ngayo. Ibhalansi egcwele yengezwa esikhwameni sakho ngokushesha."
+  },
+  "Your transaction history will appear here once you make a top up or use your wallet balance.": {
+    "zu": "Umlando wakho wokwenziwe uzovela lapha uma usuqedile noma usebenzisa ibhalansi yakho yesikhwama."
+  },
+  "Browse providers and they will appear here.": {
+    "zu": "Phequlula abahlinzeki futhi bazovela lapha."
+  },
+  "Wishlists": {
+    "zu": "Uhlu lwezifiso"
+  },
+  "You haven't viewed any providers recently. Start browsing to see them here.": {
+    "zu": "Awubukanga noma yibaphi abahlinzeki kamuva nje. Qala ukuphequlula ukuze uzibone lapha."
+  },
+  "You can create, view, or edit wishlists once you've logged in.": {
+    "zu": "Ungakha, ubuke, noma uhlele uhlu lwezifiso uma usungenile."
+  },
+  "wishlist": {
+    "zu": "uhlu lwezifiso"
+  },
+  "wishlists": {
+    "zu": "uhlu lwezifiso"
+  },
+  "Save products, posts, and providers to see them here.": {
+    "zu": "Londoloza imikhiqizo, okuthunyelwe, nabahlinzeki ukuze ukubone lapha."
+  },
+  "Create boards to organize saved posts (e.g. Summer looks).": {
+    "zu": "Dala amabhodi ukuze uhlele okuthunyelwe okulondoloziwe (isb. Ukubukeka kwehlobo)."
+  },
+  "In board": {
+    "zu": "Ebhodini"
+  },
+  "No saved providers yet. Save providers from posts or search.": {
+    "zu": "Abekho abahlinzeki abalondoloziwe okwamanje. Londoloza abahlinzeki kokuthunyelwe noma usesho."
+  },
+  "Download the Beautonomi app for instant bookings, notifications & easy rescheduling.": {
+    "zu": "Landa uhlelo lokusebenza Beautonomi ukuze ubhukhe ngokushesha, izaziso nokuhlela kabusha okulula."
+  },
+  "Get the app on {{store}}": {
+    "zu": "Thola uhlelo lokusebenza kokuthi {{store}}"
+  },
+  "Payment received. We are finalizing your booking now.": {
+    "zu": "Inkokhelo yamukelwe. Siqedela ukubhukha kwakho manje."
+  },
+  "Slot held for ": {
+    "zu": "Isikhala ebanjelwe"
+  },
+  "Tax {{rate}}%": {
+    "zu": "Intela {{rate}}%"
+  },
+  "Platform Fee ({{pct}}%)": {
+    "zu": "Imali Yenkundla ({{pct}}%)"
+  },
+  "Platform Fee": {
+    "zu": "Imali Yenkundla"
+  },
+  "This slot hold has expired. Close and choose another time.": {
+    "zu": "Lokhu kubanjwa kwesikhala kuphelelwe yisikhathi. Vala bese ukhetha esinye isikhathi."
+  },
+  "Promotions & Rewards": {
+    "zu": "Amaphromoshini Nemiklomelo"
+  },
+  "Purchase products to take home with your service": {
+    "zu": "Thenga imikhiqizo ozoya nayo ekhaya nesevisi yakho"
+  },
+  "A {{minutes}}-minute travel buffer is included around your appointment": {},
+  "Added to waitlist! We'll notify you when slots open up.": {
+    "zu": "Kwengezwe ohlwini lokulinda! Sizokwazisa uma kuvulwa izikhala."
+  },
+  "Please complete all required fields (marked with *).": {
+    "zu": "Sicela ugcwalise zonke izinkambu ezidingekayo (ezimakwe ngokuthi *)."
+  },
+  "Please complete the following forms as required by the provider.": {
+    "zu": "Sicela ugcwalise amafomu alandelayo njengoba kudingwa umhlinzeki."
+  },
+  "Some required fields are not complete. You won’t be able to continue until every required field (marked with *) has a value.": {
+    "zu": "Ezinye izinkambu ezidingekayo aziqediwe. Ngeke ukwazi ukuqhubeka kuze kube yilapho yonke inkambu edingekayo (emakwe ngokuthi *) inevelu."
+  },
+  "Your reserved slot has expired. Go back and pick a new time to continue.": {
+    "zu": "Isikhala sakho ebesigodliwe siphelelwe yisikhathi. Buyela emuva bese ukhetha isikhathi esisha ukuze uqhubeke."
+  },
+  "Remove this card from your saved cards? You can always re-add it during your next payment.": {
+    "zu": "Susa leli khadi emakhadini akho alondoloziwe? Ungakwazi ukuyengeza futhi ngesikhathi sokukhokha kwakho okulandelayo."
+  },
+  "Cancellations must be made at least 24 hours before your appointment. Late cancellations are non-refundable.": {
+    "zu": "Ukukhansela kufanele kwenziwe okungenani amahora angama-24 ngaphambi kokuqokwa kwakho. Ukukhansela sekwephuzile akubuyiseli."
+  },
+  "Please provide an address for your home service booking": {
+    "zu": "Sicela unikeze ikheli ukuze ubhukhe isevisi yasekhaya"
+  },
+  "Your hold expired. Please select your time slot again.": {
+    "zu": "Ukubamba kwakho kuphelelwe yisikhathi. Sicela ukhethe indawo yakho yesikhathi futhi."
+  },
+  "Please enter a gift card code in the promotions step": {
+    "zu": "Sicela ufake ikhodi yekhadi lesipho esinyathelweni samaphromoshini"
+  },
+  "This gift card does not cover the full amount. Select Card, enter your gift card code on this step, and pay the remainder with your card or wallet.": {
+    "zu": "Leli khadi lesipho alifaki inani eliphelele. Khetha Ikhadi, faka ikhodi yekhadi lakho lesipho kulesi sinyathelo, bese ukhokha okusele ngekhadi noma ngesikhwama sakho semali."
+  },
+  "Your time slot is not reserved yet. Please choose an available time.": {
+    "zu": "Isikhathi sakho asigodliwe okwamanje. Sicela ukhethe isikhathi esitholakalayo."
+  },
+  "Could not verify your reserved time slot. Please choose another time.": {
+    "zu": "Ayikwazanga ukuqinisekisa indawo yakho ebesiyibekile. Sicela ukhethe esinye isikhathi."
+  },
+  "Repeating schedule saved. Manage it under Account settings → Recurring bookings.": {
+    "zu": "Ishejuli ephindayo ilondoloziwe. Iphathe ngaphansi kwezilungiselelo ze-Akhawunti → Ukubhukha okuphindelelayo."
+  },
+  "Complete payment to save your repeating schedule. It will appear under Account settings → Recurring bookings after payment succeeds.": {
+    "zu": "Qedela inkokhelo ukuze ulondoloze uhlelo lwakho oluphindayo. Izovela ngaphansi kwezilungiselelo ze-Akhawunti → Ukubhukha okuphindelelayo ngemva kokuphumelela kwenkokhelo."
+  },
+  "This slot is no longer available. Please choose another time.": {
+    "zu": "Lesi sikhala asisatholakali. Sicela ukhethe esinye isikhathi."
+  },
+  "That time slot was just taken. Please choose another time.": {
+    "zu": "Leso sikhathi esibekiwe sathathwa nje. Sicela ukhethe esinye isikhathi."
+  },
+  "Booking confirmed! You'll pay when your provider arrives.": {
+    "zu": "Ukubhukha kuqinisekisiwe! Uzokhokha uma umhlinzeki wakho efika."
+  },
+  "Booking created! Payment processed from wallet and gift card.": {
+    "zu": "Ukubhukha kudaliwe! Inkokhelo icutshungulwe ngesikhwama semali nekhadi lesipho."
+  },
+  "Booking draft created. You can retry payment from your bookings page.": {
+    "zu": "Okusalungiswa kokubhuka kudaliwe. Ungaphinda uzame inkokhelo ekhasini lakho lokubhukha."
+  },
+  "Your time slot still needs to be reserved.": {
+    "zu": "Isikhathi sakho sisadinga ukugodlwa."
+  },
+  "Go back to the calendar and choose an available slot before checkout.": {
+    "zu": "Buyela emuva ekhalendeni bese ukhetha indawo etholakalayo ngaphambi kokuphuma."
+  },
+  "Pick another time on the calendar or jump to the next open slot.": {
+    "zu": "Khetha esinye isikhathi ekhalendeni noma weqele endaweni evulekile elandelayo."
+  },
+  "Only packages that include your selected service(s) are shown. Bundle pricing applies when you pick one.": {
+    "zu": "Amaphakheji kuphela afaka phakathi i(izi)nkonzo ozikhethile ayaboniswa. Intengo yenqwaba iyasebenza uma ukhetha eyodwa."
+  },
+  "If you bought this package online and have prepaid sessions left, apply one to this booking.": {
+    "zu": "Uma uthenge le phakheji ku-inthanethi futhi unezikhathi ezisele ezikhokhwa kusengaphambili, sebenzisa eyodwa kulokhu kubhukha."
+  },
+  " (until {{date}})": {
+    "zu": "(kuze kube {{date}})"
+  },
+  "No prepaid sessions found for this package.": {
+    "zu": "Awekho amaseshini akhokhelwa ngaphambili atholakele ale phakheji."
+  },
+  "Wallet fully covers this booking — no card charge needed": {
+    "zu": "I-Wallet ikufaka ngokugcwele lokhu kubhukha - akukho nkokhelo yekhadi edingekayo"
+  },
+  " (before tax and platform fees). They update automatically if your booking total changes. 100% of tips go to your provider and are charged with your booking total.": {
+    "zu": "(ngaphambi kwentela nezimali zenkundla). Zibuyekeza ngokuzenzakalela uma isamba sakho sokubhukha sishintsha. Amathiphu angu-100% aya kumhlinzeki wakho futhi akhokhiswe isamba sakho sokubhukha."
+  },
+  "Tip by percentage": {
+    "zu": "Ithiphu ngamaphesenti"
+  },
+  "{{percent}}% of {{amount}}": {
+    "zu": "{{percent}}% ye- {{amount}}"
+  },
+  "Quick amounts from this provider (fixed currency).": {
+    "zu": "Amanani asheshayo asuka kulo mhlinzeki (uhlobo lwemali olungaguquki)."
+  },
+  "Save the same services on a repeating schedule. If you pay online, the schedule is created after payment succeeds. Manage repeats under Account settings → Recurring bookings.": {
+    "zu": "Londoloza izinsizakalo ezifanayo kushejuli ephindayo. Uma ukhokha ku-inthanethi, ishejuli iyakhiwa ngemva kokuphumelela kwenkokhelo. Phatha izimpinda ngaphansi kwezilungiselelo ze-Akhawunti → Ukubhukha okuphindelelayo."
+  },
+  "Pay {{amount}} with •••• {{last4}}": {
+    "zu": "Khokha {{amount}} nge •••• {{last4}}"
+  },
+  "Select any rooms or equipment needed for your appointment.": {
+    "zu": "Khetha noma yimaphi amagumbi noma okokusebenza okudingekayo ngesikhathi sakho sokuqokwa."
+  },
+  "We don't service this area yet! Would you like to book at our Salon instead?": {
+    "zu": "Asiyisebenzisi le ndawo okwamanje! Ungathanda ukubhukha esaluni yethu esikhundleni salokho?"
+  },
+  "Unable to get your location. Please enable location permissions or enter your address manually.": {
+    "zu": "Ayikwazi ukuthola indawo yakho. Sicela unike amandla izimvume zendawo noma ufake ikheli lakho mathupha."
+  },
+  "Could not resolve street address. Enter it manually.": {
+    "zu": "Ayikwazanga ukuxazulula ikheli lomgwaqo. Ifake mathupha."
+  },
+  "Choose between visiting our salon or having us come to you": {
+    "zu": "Khetha phakathi kokuvakashela salon yethu noma usenze size kuwe"
+  },
+  "Start typing your address and select from suggestions. We'll calculate travel fees based on your location.": {
+    "zu": "Qala ukuthayipha ikheli lakho bese ukhetha eziphakamisweni. Sizobala izindleko zokuhamba ngokusekelwe endaweni okuyo."
+  },
+  "Help your provider find you easily by providing these details": {
+    "zu": "Siza umhlinzeki wakho ukuthi akuthole kalula ngokunikeza le mininingwane"
+  },
+  "e.g., 3rd Floor": {
+    "zu": "isb., Isitezi sesi-3"
+  },
+  "Landmarks/Directions": {
+    "zu": "Izimpawu zendawo/izikhombisi-ndlela"
+  },
+  "e.g., Next to the blue mailbox, red door": {
+    "zu": "isb. Eduze kwebhokisi leposi eliluhlaza okwesibhakabhaka, umnyango obomvu"
+  },
+  "Any allergies, preferences, or special instructions...": {
+    "zu": "Noma yimiphi i-allergies, izintandokazi, noma imiyalelo ekhethekile..."
+  },
+  "Equipment needed, accessibility requirements, pet information, or other house call specific instructions...": {
+    "zu": "Izisetshenziswa ezidingekayo, izidingo zokufinyeleleka, ulwazi lwesilwane esifuywayo, noma eminye imiyalelo eqondile yekholi yendlu..."
+  },
+  "This booking belongs to a different account. Sign in with the email you used to book, or head back home.": {
+    "zu": "Lokhu kubhukha okwe-akhawunti ehlukile. Ngena ngemvume nge-imeyili oyisebenzisele ukuyibhukha, noma ubuyele ekhaya."
+  },
+  "Your booking was created successfully. We could not load the full details right now — check your email, or view your bookings below.": {
+    "zu": "Ukubhukha kwakho kudalwe ngempumelelo. Asikwazanga ukulayisha imininingwane egcwele njengamanje — hlola i-imeyili yakho, noma ubuke ukubhuka kwakho ngezansi."
+  },
+  "We are still confirming your payment. You will be notified once it is complete.": {
+    "zu": "Sisaqinisekisa inkokhelo yakho. Uzokwaziswa uma sekuqediwe."
+  },
+  "Payment: Cash on arrival — you'll pay when your provider arrives.": {
+    "zu": "Inkokhelo: Imali lapho ufika — uzokhokha lapho umhlinzeki wakho efika."
+  },
+  "Payment: Cash at the salon — you'll pay when you arrive.": {
+    "zu": "Inkokhelo: Imali esaluni — uzokhokha uma ufika."
+  },
+  ".ICS file": {
+    "zu": ".ICS ifayela"
+  },
+  "Your provider will be on their way at the scheduled time. Have your cash ready for when they arrive.": {
+    "zu": "Umhlinzeki wakho uzobe esendleleni ngesikhathi esihleliwe. Lungiselela imali yakho uma befika."
+  },
+  "Simply arrive at the salon at your scheduled time and pay cash at the counter.": {
+    "zu": "Vele ufike esaluni ngesikhathi sakho esihleliwe futhi ukhokhe ukheshi ekhawuntani."
+  },
+  "Your booking is waiting for the provider to confirm. You'll receive a notification once it's confirmed — this usually happens within 8 hours. If you need to make changes, visit your bookings page.": {
+    "zu": "Ukubhukha kwakho kulinde umhlinzeki ukuthi akuqinisekise. Uzothola isaziso uma sesiqinisekisiwe — lokhu ngokuvamile kwenzeka phakathi namahora angu-8. Uma udinga ukwenza izinguquko, vakashela ikhasi lakho lokubhukha."
+  },
+  "You'll receive a confirmation email with all the details.": {
+    "zu": "Uzothola i-imeyili yokuqinisekisa nayo yonke imininingwane."
+  },
+  "See our": {
+    "zu": "Bona wethu"
+  },
+  "Not accepted": {
+    "zu": "Akwamukelwe"
+  },
+  "The provider was unable to accept. Try another time or book a scheduled appointment.": {
+    "zu": "Umhlinzeki akakwazanga ukwamukela. Zama esinye isikhathi noma bhukha i-aphoyintimenti eshejuliwe."
+  },
+  "You can close this window or book again from the salon website.": {
+    "zu": "Ungavala leli windi noma ubhukhe futhi kuwebhusayithi yesaluni."
+  },
+  "We'll confirm your booking as soon as we hear back from {{providerName}}.": {
+    "zu": "Sizoqinisekisa ukubhukha kwakho ngokushesha uma sesizwa okuvela ku-{{providerName}}."
+  },
+  "Find {{name}} services from verified salons and professionals near you. Book on Beautonomi.": {
+    "zu": "Thola {{name}} izinsiza kumasaluni aqinisekisiwe nezingcweti eziseduze nawe. Bhukha kokuthi Beautonomi."
+  },
+  "If you completed a payment, use the return link from secure checkout or open Payments & gift cards to see your codes.": {
+    "zu": "Uma uqedele ukukhokha, sebenzisa isixhumanisi sokubuyisela ekuphumeni okuphephile noma vula Izinkokhelo namakhadi esipho ukuze ubone amakhodi akho."
+  },
+  "This usually takes a few seconds.": {
+    "zu": "Lokhu ngokuvamile kuthatha imizuzwana embalwa."
+  },
+  "You're set!": {
+    "zu": "Usulungile!"
+  },
+  "Save these codes. At checkout, choose Gift card and enter your code (or pick a saved card when you're signed in).": {
+    "zu": "Londoloza lawa makhodi. Ekuphumeni, khetha ikhadi lesipho bese ufaka ikhodi yakho (noma khetha ikhadi elilondoloziwe uma ungene ngemvume)."
+  },
+  "Codes are still being issued. Find them anytime under Payments & gift cards.": {
+    "zu": "Amakhodi asakhishwa. Wathole noma nini ngaphansi Kwezinkokhelo namakhadi esipho."
+  },
+  "We could not confirm this gift card payment. If your bank was debited, check Payments & gift cards in a minute.": {
+    "zu": "Asikwazanga ukuqinisekisa inkokhelo yekhadi lesipho. Uma ibhange lakho lidonswe imali, hlola Izinkokhelo namakhadi esipho ngomzuzu."
+  },
+  "This receipt is not for a gift card purchase. If you paid for a gift card, check Payments & gift cards — your codes may already be there.": {
+    "zu": "Le residi ayiyona eyokuthenga ikhadi lesipho. Uma ukhokhele ikhadi lesipho, hlola Izinkokhelo namakhadi esipho — amakhodi akho kungenzeka ukuthi asevele akhona."
+  },
+  "Beautonomi | Book Beauty Services, Salons & Mobile Pros": {
+    "zu": "0 | Bhukha Amasevisi Obuhle, Amasaluni Nezinsiza Zeselula"
+  },
+  "Book trusted beauty services near you. Compare verified salons, spas, barbers, nail techs, makeup artists, and mobile beauty professionals on Beautonomi.": {
+    "zu": "Bhuka izinsiza zobuhle ezithenjwayo eduze nawe. Qhathanisa amasaluni aqinisekisiwe, ama-spa, abagundi, ubuchwepheshe bezinzipho, abaculi bezimonyo, nezingcweti zobuhle beselula ku-Beautonomi."
+  },
+  "The article you're looking for doesn't exist.": {
+    "zu": "Isihloko osifunayo asikho."
+  },
+  "· Learning Center": {
+    "zu": "· Isikhungo Sokufunda"
+  },
+  "Read {{title}} on the Beautonomi Learning Center.": {
+    "zu": "Funda {{title}} Beautonomi Isikhungo Sokufunda."
+  },
+  "Discover top-rated beauty and salon providers in {{city}}. Book services from verified professionals on Beautonomi.": {
+    "zu": "Zitholele abahlinzeki bezinga eliphezulu bobuhle namasaluni e-{{city}}. Bhuka izinsiza ezivela kochwepheshe abaqinisekisiwe ku-Beautonomi."
+  },
+  "{{category}} across {{country}} — verified beauty professionals | Beautonomi": {
+    "zu": "{{category}} ngaphesheya {{country}} — ochwepheshe bobuhle abaqinisekisiwe | Beautonomi"
+  },
+  "Find top-rated {{category}} freelancers and salons in {{city}}. Compare reviews, book verified beauty professionals on Beautonomi.": {
+    "zu": "Thola {{category}} abazimele kanye namasaluni anezinga eliphezulu {{city}}. Qhathanisa ukubuyekezwa, ochwepheshe bobuhle abaqinisekisiwe bezincwadi ku-Beautonomi."
+  },
+  "Discover salons and mobile beauty freelancers in {{city}}, {{country}}. Book verified professionals on Beautonomi.": {
+    "zu": "Zitholele izindawo zokucwala izinwele nezizimele zobuhle beselula e-{{city}}, {{country}}. Bhuka ochwepheshe abaqinisekisiwe ku-Beautonomi."
+  },
+  "Browse {{category}} services from verified freelancers and salons across {{country}} on Beautonomi.": {
+    "zu": "Phequlula {{category}} izinsiza ezivela kuma-freelancers aqinisekisiwe namasaluni kuwo wonke {{country}} ku Beautonomi."
+  },
+  "Explore beauty freelancers and salons across {{country}}. Book hair, nails, spa, and more on Beautonomi.": {
+    "zu": "Hlola ama-freelancers wobuhle namasaluni kuwo wonke {{country}}. Bhukha izinwele, izinzipho, i-spa, nokunye okwengeziwe ku-Beautonomi."
+  },
+  "Browse verified beauty freelancers and salons by country. Find hair, nails, spa, and more on Beautonomi.": {
+    "zu": "Phequlula ama-freelancers obuhle aqinisekisiwe namasaluni ngezwe. Thola izinwele, izinzipho, i-spa, nokuningi ku-Beautonomi."
+  },
+  "Find beauty freelancers & salons near you": {
+    "zu": "Thola abasebenza ngobuhle namasaluni eduze nawe"
+  },
+  "Choose a country to explore cities with verified salons and mobile beauty professionals. Book hair, nails, makeup, spa services, and more on Beautonomi.": {
+    "zu": "Khetha izwe ozohlola amadolobha anamasaluni aqinisekisiwe nezingcweti zobuhle beselula. Bhukha izinwele, izinzipho, izimonyo, izinsiza ze-spa, nokuningi ku-Beautonomi."
+  },
+  "Auto-renews monthly at {{currency}} {{amount}}. Cancel anytime from your account.": {
+    "zu": "Ivuselelwa ngokuzenzakalelayo nyanga zonke ku-{{currency}} {{amount}}. Khansela noma nini ku-akhawunti yakho."
+  },
+  "Discover beauty services from verified providers on Beautonomi": {
+    "zu": "Zitholele izinsiza zobuhle ezivela kubahlinzeki abaqinisekisiwe ku-Beautonomi"
+  },
+  "The provider you're looking for doesn't exist on Beautonomi.": {
+    "zu": "Umhlinzeki omfunayo akekho ku-Beautonomi."
+  },
+  "Use slot picker": {
+    "zu": "Sebenzisa isikhethi slot"
+  },
+  "Bill To:": {
+    "zu": "Ibhile ku:"
+  },
+  "Platform Fee{{pct}}:": {
+    "zu": "Imali Yenkundla {{pct}}:"
+  },
+  "You need to be logged in to access this page.": {
+    "zu": "Udinga ukungena ngemvume ukuze ufinyelele leli khasi."
+  },
+  "Added to waitlist! We'll notify you when a spot becomes available.": {
+    "zu": "Kwengezwe ohlwini lokulinda! Sizokwazisa uma indawo isitholakala."
+  },
+  "We'll notify you when a spot becomes available for this service.": {
+    "zu": "Sizokwazisa uma indawo isitholakala kule sevisi."
+  },
+  "Adding...": {
+    "zu": "Iyangeza..."
+  },
+  "Email sign-in is not available for this platform.": {
+    "zu": "Ukungena ngemvume nge-imeyili akutholakali kule nkundla."
+  },
+  "Phone sign-in is not available for this platform.": {
+    "zu": "Ukungena ngemvume kwefoni akutholakali kule nkundla."
+  },
+  "Please enter a valid phone number with country code.": {
+    "zu": "Sicela ufake inombolo yocingo evumelekile enekhodi yezwe."
+  },
+  "Check your phone for the {{digits}}-digit code (valid about {{minutes}} {{minuteLabel}}).": {
+    "zu": "Hlola ifoni yakho ukuze uthole ikhodi enamadijithi {{digits}} (evumelekile mayelana {{minutes}} {{minuteLabel}})."
+  },
+  "Secure your slot": {
+    "zu": "Vikela indawo yakho"
+  },
+  "Great choice! To secure this slot and save your booking history, please sign in or create your Beautonomi profile.": {
+    "zu": "Ukukhetha okuhle! Ukuze uvikele lesi sikhala futhi ulondoloze umlando wakho wokubhukha, sicela ungene ngemvume noma udale Beautonomi iphrofayela yakho."
+  },
+  "Slot held for": {
+    "zu": "Isikhala ebanjelwe"
+  },
+  "Pick country, then enter national digits (hint under the field). We'll SMS a {{digits}}-digit code (valid about {{minutes}} {{minuteLabel}}).": {
+    "zu": "Khetha izwe, bese ufaka amadijithi kazwelonke (ukusikisela ngaphansi kwenkundla). Sizothumela i-SMS ikhodi enamadijithi {{digits}} (evumelekile mayelana {{minutes}} {{minuteLabel}})."
+  },
+  "Use different method": {
+    "zu": "Sebenzisa indlela ehlukile"
+  },
+  "Maximum {{count}} guests allowed per group booking": {
+    "zu": "Izihambeli ezingu-{{count}} eziphezulu ezivunyelwe ngokubhukha kweqembu ngalinye"
+  },
+  "No Repeat": {
+    "zu": "Akukho Ukuphinda"
+  },
+  "Required resources for this service are marked below": {
+    "zu": "Izinsiza ezidingekayo zale sevisi zimakwe ngezansi"
+  },
+  "Choose any additional resources needed for your booking": {
+    "zu": "Khetha noma yiziphi izinsiza ezengeziwe ezidingekayo ekubhukheni kwakho"
+  },
+  "Estimated arrival: {{time}}": {
+    "zu": "Ukufika okulinganiselwe: {{time}}"
+  },
+  "Queue Position: #{{position}}": {
+    "zu": "Isikhundla Somugqa: #{{position}}"
+  },
+  "Estimated Wait": {
+    "zu": "Ukulinda okulinganiselwe"
+  },
+  "Provider is on the way. You can track their location in real-time.": {
+    "zu": "Umhlinzeki usendleleni. Ungakwazi ukulandelela indawo yabo ngesikhathi sangempela."
+  },
+  "Enable notifications to receive updates when your provider confirms or arrives. You can also enable a ringtone for booking updates in your settings.": {
+    "zu": "Nika amandla izaziso ukuze uthole izibuyekezo uma umhlinzeki wakho eqinisekisa noma efika. Ungakwazi futhi ukunika amandla iringithoni ukuze ubhukhe izibuyekezo kuzilungiselelo zakho."
+  },
+  "Getting started with Beautonomi for Work": {
+    "zu": "Ukuqalisa nge Beautonomi Yomsebenzi"
+  },
+  "Using your dashboard": {
+    "zu": "Ukusebenzisa ideshibhodi yakho"
+  },
+  "Getting protected through AirCover for Hosts": {
+    "zu": "Ukuvikeleka nge-AirCover yabasingathi"
+  },
+  "Arrow icon": {
+    "zu": "Isithonjana somcibisholo"
+  },
+  "Browse all topics": {
+    "zu": "Phequlula zonke izihloko"
+  },
+  "Managing your experience": {
+    "zu": "Ukuphatha ulwazi lwakho"
+  },
+  "Working with collaborators on an experience": {
+    "zu": "Ukusebenza nabahlanganyeli kokuhlangenwe nakho"
+  },
+  "Save posts you like by tapping the bookmark icon. They'll appear here.": {
+    "zu": "Londoloza okuthunyelwe okuthandayo ngokuthepha isithonjana sebhukhimakhi. Bazovela lapha."
+  },
+  "What are you into?": {
+    "zu": "Ungenwe yini?"
+  },
+  "Pick some interests you enjoy that you want to show on your profile.": {
+    "zu": "Khetha izinto ozithakaselayo ozithandayo ofuna ukuzibonisa kuphrofayela yakho."
+  },
+  "Don't worry, other people won't be able to see your exact birthday.": {
+    "zu": "Ungakhathazeki, abanye abantu ngeke bakwazi ukubona usuku lwakho lokuzalwa olunembile."
+  },
+  "Born in the {{decade}}": {
+    "zu": "Wazalelwa {{decade}}"
+  },
+  "Verification email sent! Please check your inbox.": {
+    "zu": "I-imeyili yokuqinisekisa ithunyelwe! Sicela uhlole ibhokisi lakho lokungenayo."
+  },
+  "We've sent a verification email to {{email}}. Please check your inbox and click the verification link to activate your account.": {
+    "zu": "Sithumele i-imeyili yokuqinisekisa ku-{{email}}. Sicela uhlole ibhokisi lakho lokungenayo bese uchofoza isixhumanisi sokuqinisekisa ukuze uvule i-akhawunti yakho."
+  },
+  "Google Play Store": {
+    "zu": "Google I-Google Play Isitolo"
+  },
+  "A new version of Beautonomi is available. Please update to continue using the app.": {
+    "zu": "Inguqulo entsha ye-Beautonomi iyatholakala. Sicela ubuyekeze ukuze uqhubeke usebenzisa uhlelo lokusebenza."
+  },
+  "{{version}} or higher": {
+    "zu": "{{version}} noma ngaphezulu"
+  },
+  "Example: {{charge}} → {{approx}}": {
+    "zu": "Isibonelo: {{charge}} → {{approx}}"
+  },
+  "Ages 13 or above": {
+    "zu": "Iminyaka engu-13 noma ngaphezulu"
+  },
+  "Under 2": {
+    "zu": "Ngaphansi kuka-2"
+  },
+  "Use a stronger password (add uppercase, numbers, or symbols)": {
+    "zu": "Sebenzisa iphasiwedi eqinile (engeza osonhlamvukazi, izinombolo, noma izimpawu)"
+  },
+  "Please confirm you have read and agree to the Terms of Service and Privacy Policy (including product analytics and optional session replay while signed in).": {
+    "zu": "Sicela uqinisekise ukuthi ufundile futhi uyavumelana Nemigomo Yesevisi kanye Nenqubomgomo Yobumfihlo (kuhlanganise nokuhlaziywa komkhiqizo kanye nokudlalwa kabusha kweseshini oyinketho ngenkathi ungene ngemvume)."
+  },
+  "Please verify your email address before logging in. Check your inbox for the verification email.": {
+    "zu": "Sicela uqinisekise ikheli lakho le-imeyili ngaphambi kokungena ngemvume. Hlola ibhokisi lakho lokungenayo ukuze uthole i-imeyili yokuqinisekisa."
+  },
+  "Invalid login credentials. Please check your email and password.": {
+    "zu": "Ukuqinisekisa kokungena okungavumelekile. Sicela uhlole i-imeyili yakho nephasiwedi."
+  },
+  "This email is already registered. Sign in with the method below.": {
+    "zu": "Lomlayezo sewubhalisiwe kakade. Ngena ngemvume ngale ndlela engezansi."
+  },
+  "Verification email sent! Please check your inbox and spam folder.": {
+    "zu": "I-imeyili yokuqinisekisa ithunyelwe! Sicela uhlole ibhokisi lakho lokungenayo nefolda yogaxekile."
+  },
+  "No account found with this email address. Please check your email or sign up.": {
+    "zu": "Ayikho i-akhawunti etholakele naleli kheli le-imeyili. Sicela uhlole i-imeyili yakho noma ubhalise."
+  },
+  "This email is already verified. Please check your password or try signing in again.": {
+    "zu": "Le imeyili isivele iqinisekisiwe. Sicela uhlole iphasiwedi yakho noma uzame ukungena ngemvume futhi."
+  },
+  "Redirecting to Google...": {
+    "zu": "Iqondisa kabusha ku- Google..."
+  },
+  "Redirecting to Apple...": {
+    "zu": "Iqondisa kabusha ku- Apple..."
+  },
+  "Create your account with phone, email code, Google, or Apple — add your full name later in onboarding if you like.": {
+    "zu": "Dala i-akhawunti yakho ngefoni, ikhodi ye-imeyili, Google, noma Apple — engeza igama lakho eligcwele kamuva ekungeneni uma uthanda."
+  },
+  "Enter the code below to finish creating your provider account.": {
+    "zu": "Faka ikhodi ngezansi ukuze uqedele ukudala i-akhawunti yakho yomhlinzeki."
+  },
+  "Enter the code below to finish creating your account.": {
+    "zu": "Faka ikhodi ngezansi ukuze uqedele ukudala i-akhawunti yakho."
+  },
+  "No code in your inbox? The Supabase \"Confirm signup\" template must include": {
+    "zu": "Ayikho ikhodi ebhokisini lakho lokungenayo? Isifanekiso se-Supabase \"Qinisekisa ukubhalisa\" kufanele sihlanganise"
+  },
+  ". You can also": {
+    "zu": ". Ungakwazi futhi"
+  },
+  "We'll send a {{digits}}-digit code to your inbox (not a magic link).": {
+    "zu": "Sizothumela ikhodi enamadijithi {{digits}} ebhokisini lakho lokungenayo (hhayi isixhumanisi esiwumlingo)."
+  },
+  "Armenian": {
+    "zu": "Isi-Armenian"
+  },
+  "We sent a verification code to your email — enter it below to finish signing up.": {
+    "zu": "Sithumele ikhodi yokuqinisekisa ku-imeyili yakho — yifake ngezansi ukuze uqedele ukubhalisa."
+  },
+  "An account with this email already exists. If a provider booked for you, check your inbox for a link to claim your account — otherwise log in instead.": {
+    "zu": "I-akhawunti enale imeyili isivele ikhona. Uma umhlinzeki ekubhukhele, hlola ibhokisi lakho lokungenayo ukuze uthole isixhumanisi sokufuna i-akhawunti yakho — uma kungenjalo ngena esikhundleni."
+  },
+  "Verification code sent! Please check your inbox and spam folder.": {
+    "zu": "Ikhodi yokuqinisekisa ithunyelwe! Sicela uhlole ibhokisi lakho lokungenayo nefolda yogaxekile."
+  },
+  "Please enter a valid phone number with country code (e.g. +27 82 345 6789)": {
+    "zu": "Sicela ufake inombolo yocingo evumelekile enekhodi yezwe (isb. +27 82 345 6789)"
+  },
+  "You're signed in": {
+    "zu": "Ungene ngemvume"
+  },
+  "We'll text a {{length}}-digit code (about {{minutes}} {{minuteLabel}}). Msg & data rates may apply. By continuing you agree to our": {
+    "zu": "Sizobhala ikhodi enamadijithi {{length}} (mayelana {{minutes}} {{minuteLabel}}). Izilinganiso zomlayezo nedatha zingasebenza. Ngokuqhubeka uyavumelana nokwethu"
+  },
+  "(incl. communications & analytics; optional session replay when signed in — adjust in account settings).": {
+    "zu": "(okuhlanganisa ezokuxhumana nezibalo; ukudlalwa kabusha kweseshini ongakukhetha lapho ungene ngemvume — lungisa izilungiselelo ze-akhawunti)."
+  },
+  "No code in your inbox? Check your spam folder, or resend the code above.": {
+    "zu": "Ayikho ikhodi ebhokisini lakho lokungenayo? Hlola ifolda yakho yogaxekile, noma uphinde uthumele ikhodi engenhla."
+  },
+  "Sidebar Icon": {
+    "zu": "Isithonjana sebha eseceleni"
+  },
+  "Beauty partner": {
+    "zu": "Uzakwethu wobuhle"
+  },
+  "Global Icon": {
+    "zu": "Isithonjana Somhlaba"
+  },
+  "Beauty partner resources": {
+    "zu": "Izinsiza zozakwethu bobuhle"
+  },
+  "Media Assets": {
+    "zu": "Izimpahla Zemidiya"
+  },
+  "Japanese": {
+    "zu": "IsiJapane"
+  },
+  "What are you looking for?": {
+    "zu": "Ufunani?"
+  },
+  "Rate on App Store": {
+    "zu": "Linganisela ku-App Store"
+  },
+  "Rate on AppGallery": {
+    "zu": "Linganisa ku-AppGallery"
+  },
+  "Rate on Google Play": {
+    "zu": "Linganisela Google Dlala"
+  },
+  "Your feedback helps us improve! Please take a moment to rate us on the {{store}}.": {
+    "zu": "Impendulo yakho isisiza ukuthi sithuthuke! Sicela uthathe isikhashana usilinganisele ku-{{store}}."
+  },
+  "Getting protected through Beautonomi Coverage for Providers": {
+    "zu": "Ukuvikelwa Beautonomi Ngokuhlinzekwa Kwabahlinzeki"
+  },
+  "Indicative rate may be stale": {
+    "zu": "Isilinganiso esiyinkomba singase sidala"
+  },
+  "No countries found": {
+    "zu": "Awekho amazwe atholiwe"
+  },
+  "For Partners": {
+    "zu": "Kwabalingani"
+  },
+  "Find us on social": {
+    "zu": "Sithole kwezokuxhumana"
+  },
+  "Become a Partner": {
+    "zu": "Yiba Uzakwethu"
+  },
+  "Apt 4B": {
+    "zu": "Isiqephu 4B"
+  },
+  "Help service providers find you easily by providing these details": {
+    "zu": "Abahlinzeki besevisi yosizo bakuthole kalula ngokukunikeza le mininingwane"
+  },
+  "Could not resolve that spot to an address. Move the pin or use address search.": {
+    "zu": "Ayikwazanga ukuxazulula leyo ndawo ekhelini. Hambisa iphinikhodi noma usebenzise usesho lwekheli."
+  },
+  "Could not look up that location. Check Mapbox setup or try again.": {
+    "zu": "Ayikwazanga ukubheka leyo ndawo. Hlola Mapbox ukumisa noma zama futhi."
+  },
+  "Drag the pin to your door or gate, then confirm. We'll fill street, city, and coordinates—same as choosing a search result.": {
+    "zu": "Hudulela iphinikhodi emnyango noma esangweni lakho, bese uyaqinisekisa. Sizogcwalisa umgwaqo, idolobha, nezixhumanisi—okufana nokukhetha umphumela wosesho."
+  },
+  "Add a public Mapbox token in admin (Mapbox settings) or set {{envVar}} for local dev. You can still confirm your location using address search above.": {
+    "zu": "Engeza ithokheni Mapbox yomphakathi ekulawuleni (Mapbox izilungiselelo) noma usethe {{envVar}} ye-dev yendawo. Usengaqinisekisa indawo yakho usebenzisa ukusesha ikheli ngenhla."
+  },
+  "Add at least 3 points to create a polygon. You can add points by address or manually enter coordinates.": {
+    "zu": "Engeza okungenani amaphuzu angu-3 ukuze wakhe ipholigoni. Ungangeza amaphuzu ngekheli noma ufake izixhumanisi ngokwenza."
+  },
+  "Map visualization is not available. You can still create polygon zones by adding points manually or using address search.": {
+    "zu": "Ukubonwa kwemephu akutholakali. Usengadala izindawo ze-polygon ngokwengeza amaphuzu ngokwenza noma ngokusebenzisa ukusesha ikheli."
+  },
+  "Platform coverage area": {
+    "zu": "Indawo yokumboza inkundla"
+  },
+  "Failed to load map. Please check Mapbox configuration.": {
+    "zu": "Yehlulekile ukulayisha imephu. Sicela uhlole Mapbox ukucushwa."
+  },
+  "Joined zones": {
+    "zu": "Izindawo ezihlanganisiwe"
+  },
+  "{{count}} zones joined": {
+    "zu": "{{count}} izindawo ezihlanganisiwe"
+  },
+  "Joining zone…": {
+    "zu": "Ijoyina indawo..."
+  },
+  "Check back once markets have been published.": {
+    "zu": "Phinda uhlole uma izimakethe sezishicilelwe."
+  },
+  "Polygon Zone": {
+    "zu": "I-Polygon Zone"
+  },
+  "No conversations": {
+    "zu": "Azikho izingxoxo"
+  },
+  "I'd like to offer you a complete wedding package including hair, makeup, and nails. This includes a trial session before the wedding day. Perfect for your special day!": {
+    "zu": "Ngingathanda ukukunikeza iphakethe lomshado eliphelele elihlanganisa izinwele, izimonyo, nezinzipho. Lokhu kubandakanya iseshini yesilingo ngaphambi kosuku lomshado. Ilungele usuku lwakho olukhethekile!"
+  },
+  "I have a special offer for your upcoming occasion. This includes full styling and makeup services tailored to your needs.": {
+    "zu": "Nginomnikelo okhethekile womcimbi wakho ozayo. Lokhu kuhlanganisa nezinsiza ezigcwele zesitayela nezimonyo ezihambisana nezidingo zakho."
+  },
+  "I'm offering you a discounted package deal for multiple services. This is a great value opportunity!": {},
+  "I can offer you a group booking discount for multiple people. Perfect for events, parties, or special occasions!": {
+    "zu": "Ngingakunikeza isaphulelo sokubhukha seqembu sabantu abaningi. Ilungele imicimbi, amaphathi, noma imicimbi ekhethekile!"
+  },
+  "Update the offer in place. The customer will be notified of the revised quote.": {
+    "zu": "Buyekeza okunikezwayo endaweni. Ikhasimende lizokwaziswa ngekhwothi ebuyekeziwe."
+  },
+  "Create a personalized service offer for this customer. The offer will be sent as a message in your conversation.": {
+    "zu": "Dala isevisi yomuntu siqu yaleli khasimende. Ukunikezwa kuzothunyelwa njengomlayezo engxoxweni yakho."
+  },
+  "Quick Templates": {
+    "zu": "Izifanekiso Ezisheshayo"
+  },
+  "Special Occasion": {
+    "zu": "Isenzakalo Esikhethekile"
+  },
+  "Describe the service you're offering. Include details about what's included, style preferences, special features, etc.": {
+    "zu": "Chaza isevisi oyinikezayo. Faka imininingwane mayelana nokuthi yini efakiwe, izintandokazi zesitayela, izici ezikhethekile, njll."
+  },
+  "{{count}} / {{min}}-4000 characters": {
+    "zu": "{{count}} / {{min}}-4000 izinhlamvu"
+  },
+  "Slots are loaded from the same availability engine used for new appointments.": {
+    "zu": "Izikhala zilayishwa ngenjini efanayo yokutholakala esetshenziselwa ama-aphoyintimenti amasha."
+  },
+  "No available slots for this date. Try another day, staff member, or duration.": {
+    "zu": "Azikho izikhala ezitholakalayo zale dethi. Zama olunye usuku, isisebenzi, noma ubude besikhathi."
+  },
+  "e.g. 50": {
+    "zu": "isib. 50"
+  },
+  "Add a travel fee for this house call. Leave empty for no fee.": {
+    "zu": "Engeza imali yokuhamba yale kholi yasendlini. Shiya ungenalutho ngaphandle kwenkokhelo."
+  },
+  "No specific assignment": {
+    "zu": "Awukho umsebenzi ozokwenziwa"
+  },
+  "If assigned, this staff member will be assigned to the booking when the offer is accepted": {
+    "zu": "Uma labelwe, lesi sisebenzi sizobelwa ekubhukheni lapho ukunikezwa kwamukelwe"
+  },
+  "Any additional information, terms, or special conditions...": {
+    "zu": "Noma yiluphi ulwazi olwengeziwe, imigomo, noma izimo ezikhethekile..."
+  },
+  "Max 4000 characters": {
+    "zu": "Ubuningi bezinhlamvu ezingu-4000"
+  },
+  "Chat pinned": {
+    "zu": "Ingxoxo iphiniwe"
+  },
+  "Chat unpinned": {
+    "zu": "Ingxoxo isuswe ukuphina"
+  },
+  "What would you like changed on this offer?": {
+    "zu": "Yini ongathanda ishintshwe kulo mnikelo?"
+  },
+  "{{name}}: File too large (max {{sizeMB}}MB)": {
+    "zu": "{{name}}: Ifayela likhulu kakhulu (ubukhulu {{sizeMB}}MB)"
+  },
+  "Are you sure you want to delete this conversation? This action cannot be undone and all messages will be permanently deleted.": {
+    "zu": "Uqinisekile ukuthi ufuna ukususa le ngxoxo? Lesi senzo asikwazi ukuhlehliswa futhi yonke imilayezo izosuswa unomphela."
+  },
+  "Track it in": {
+    "zu": "Ilandelele"
+  },
+  "Attach file": {
+    "zu": "Namathisela ifayela"
+  },
+  "You declined this offer. The provider has been notified.": {
+    "zu": "Unqabile lesi sipho. Umhlinzeki wazisiwe."
+  },
+  "Provides data when you book. Helps them prepare for your appointment.": {
+    "zu": "Ihlinzeka ngedatha uma ubhukha. Ibasiza ukuthi balungiselele isikhathi sakho sokuqokwa."
+  },
+  "List any products, ingredients, or techniques to avoid": {
+    "zu": "Faka ohlwini noma yimiphi imikhiqizo, izithako, noma amasu okufanele uwagweme"
+  },
+  "Describe your preference": {
+    "zu": "Chaza okuncamelayo"
+  },
+  "Combination": {
+    "zu": "Inhlanganisela"
+  },
+  "Sulfates": {
+    "zu": "Ama-sulfate"
+  },
+  "Formaldehyde": {
+    "zu": "I-formaldehyde"
+  },
+  "Providers see this when you book. Helps them prepare for your appointment.": {
+    "zu": "Abahlinzeki babona lokhu uma ubhukha. Ibasiza ukuthi balungiselele isikhathi sakho sokuqokwa."
+  },
+  "Any specific product preferences or brands you prefer": {
+    "zu": "Noma yiziphi izintandokazi zomkhiqizo othize noma izinhlobo ozikhethayo"
+  },
+  "Go to: {{label}}": {
+    "zu": "Iya ku: {{label}}"
+  },
+  "Upload a government-issued ID for identity verification. This helps keep our community safe.": {
+    "zu": "Layisha i-ID ekhishwe uhulumeni ukuze kuqinisekiswe ubuwena. Lokhu kusiza ukugcina umphakathi wethu uphephile."
+  },
+  "Email updated. Please check your inbox to verify.": {
+    "zu": "I-imeyili ibuyekeziwe. Sicela uhlole ibhokisi lakho lokungenayo ukuze uqinisekise."
+  },
+  "Storage not configured. Please contact support.": {
+    "zu": "Isitoreji asilungiselelwe. Sicela uthinte abosekelo."
+  },
+  "Handle must be 3-50 characters and contain only letters, numbers, and underscores": {
+    "zu": "Isibambo kufanele sibe nezinhlamvu ezingu-3-50 futhi siqukathe izinhlamvu, izinombolo, nama-underscore kuphela"
+  },
+  "Choose a unique username. This will be visible to others.": {
+    "zu": "Khetha igama lomsebenzisi elihlukile. Lokhu kuzobonakala kwabanye."
+  },
+  "3-50 characters, letters, numbers, and underscores only": {
+    "zu": "3-50 izinhlamvu, izinhlamvu, izinombolo, kanye underscores kuphela"
+  },
+  "Providers can see your booking history to understand your preferences": {
+    "zu": "Abahlinzeki bangabona umlando wakho wokubhukha ukuze baqonde okuncamelayo"
+  },
+  "Providers will be able to see your booking history. This helps them understand your preferences and provide better service. You can change this setting anytime.": {
+    "zu": "Abahlinzeki bazokwazi ukubona umlando wakho wokubhukha. Lokhu kubasiza baqonde okuncamelayo futhi bakunikeze isevisi engcono. Ungakwazi ukushintsha lesi silungiselelo noma nini."
+  },
+  "Make Public": {
+    "zu": "Yenza Obala"
+  },
+  "Your identity has been verified. You can now book services and become a Beauty Partner.": {
+    "zu": "Ubuwena buqinisekisiwe. Manje usungakwazi ukubhukha amasevisi futhi ube uzakwethu Wobuhle."
+  },
+  "Your verification is under review. We'll notify you once it's processed.": {
+    "zu": "Ukuqinisekisa kwakho kuyabuyekezwa. Sizokwazisa uma isicubunguliwe."
+  },
+  "Upload a government-issued ID to verify your identity. If you were asked to re-verify, use the button below.": {
+    "zu": "Layisha i-ID ekhishwe uhulumeni ukuze uqinisekise ubuwena. Uma ucelwe ukuthi uqinisekise kabusha, sebenzisa inkinobho engezansi."
+  },
+  "Report \"{{name}}\". Your report will be reviewed by our team. Please provide a clear description of your concern.": {
+    "zu": "Bika \"{{name}}\". Umbiko wakho uzobuyekezwa ithimba lethu. Sicela unikeze incazelo ecacile yokukhathazeka kwakho."
+  },
+  "Describe your concern (e.g. no-show, inappropriate behaviour...)": {
+    "zu": "Chaza ukukhathazeka kwakho (isb. ukungabonisi, ukuziphatha okungafanele...)"
+  },
+  "Describe your concern (e.g. misleading services, unprofessional behaviour...)": {
+    "zu": "Chaza okukukhathazayo (isb. izinsizakalo ezidukisayo, ukuziphatha okungafanele...)"
+  },
+  "Rate {{name}}": {
+    "zu": "Isilinganiso {{name}}"
+  },
+  "Share your experience with this customer to help other providers.": {
+    "zu": "Yabelana ngomuzwa wakho naleli khasimende ukuze usize abanye abahlinzeki."
+  },
+  "Very Good": {
+    "zu": "Kuhle kakhulu"
+  },
+  "Excellent": {
+    "zu": "Kuhle kakhulu"
+  },
+  "Share details about your experience with this customer...": {
+    "zu": "Yabelana ngemininingwane mayelana nomuzwa wakho naleli khasimende..."
+  },
+  "{{count}}/500 characters": {
+    "zu": "{{count}}/500 izinhlamvu"
+  },
+  "Are you sure you want to delete this review? This action cannot be undone.": {
+    "zu": "Uqinisekile ukuthi ufuna ukususa lesi sibuyekezo? Lesi senzo asikwazi ukuhlehliswa."
+  },
+  "Please provide a reason for reporting this review. Our team will review it.": {
+    "zu": "Sicela unikeze isizathu sokubika lesi sibuyekezo. Ithimba lethu lizoyibuyekeza."
+  },
+  "Write a response to this review. Your response will be visible to all customers.": {
+    "zu": "Bhala impendulo yalesi sibuyekezo. Impendulo yakho izobonakala kuwo wonke amakhasimende."
+  },
+  "You've reached your monthly {{feature}} limit ({{current}}/{{limit}}) on the {{plan}} plan.": {
+    "zu": "Usufinyelele umkhawulo wakho {{feature}} wanyanga zonke ({{current}}/{{limit}}) ohlelweni {{plan}}."
+  },
+  "You've used {{current}} of {{limit}} {{feature}} this month ({{percent}}%).": {
+    "zu": "Usebenzise {{current}} of {{limit}} {{feature}} kule nyanga ({{percent}}%)."
+  },
+  "Track your current usage against plan limits": {
+    "zu": "Landelela ukusebenzisa kwakho kwamanje ngokumelene nemikhawulo yohlelo"
+  },
+  "No matches": {
+    "zu": "Akukho okufanayo"
+  },
+  "Format: 10 digits, area code first — omit {{dial}}.": {
+    "zu": "Ifomethi: amadijithi ayi-10, ikhodi yendawo kuqala - yeka u-{{dial}}."
+  },
+  "Format: UK number without {{dial}}. Example: 7700 900123.": {
+    "zu": "Ifomethi: Inombolo yase-UK ngaphandle kwe-{{dial}}. Isibonelo: 7700 900123."
+  },
+  "Format: national number only — omit {{dial}}. Spaces optional.": {
+    "zu": "Ifomethi: inombolo kazwelonke kuphela - yeka {{dial}}. Izikhala ozikhethela zona."
+  },
+  "Format: 10-digit mobile without {{dial}}.": {
+    "zu": "Ifomethi: Iselula enamadijithi ayi-10 ngaphandle kwe-{{dial}}."
+  },
+  "Format: national mobile digits only — omit {{dial}}.": {
+    "zu": "Ifomethi: amadijithi eselula kazwelonke kuphela — yeka {{dial}}."
+  },
+  "Format: national number without {{dial}}. Drop any leading 0 if your country uses one.": {
+    "zu": "Ifomethi: inombolo kazwelonke ngaphandle kokuthi {{dial}}. Dedela noma yikuphi oku-0 okuholayo uma izwe lakini lisebenzisa eyodwa."
+  },
+  "Format: enter your number without the country code ({{dial}}). Digits and spaces only.": {
+    "zu": "Ifomethi: faka inombolo yakho ngaphandle kwekhodi yezwe ({{dial}}). Amadijithi nezikhala kuphela."
+  },
+  "Countries": {
+    "zu": "Amazwe"
+  },
+  "No countries match “{{query}}”.": {
+    "zu": "Awekho amazwe afana ne-“{{query}}”."
+  },
+  "Enable functional cookies to remember your choice.": {
+    "zu": "Nika amandla amakhukhi asebenzayo ukuze ukhumbule ukukhetha kwakho."
+  },
+  "Hi {{name}},": {},
+  "Because of the nature of your request, a member of our support team is personally reviewing it and will follow up with you shortly.": {
+    "zu": "Ngenxa yohlobo lwesicelo sakho, ilungu lethimba lethu labasekeli liyasibuyekeza mathupha futhi lizolandelela nawe maduzane."
+  },
+  "Our support team is looking into this and will get back to you as soon as possible.": {
+    "zu": "Ithimba lethu labasekeli libheka lokhu futhi lizobuyela kuwe ngokushesha okukhulu."
+  },
+  "{{greeting}}\n\nThank you for contacting Beautonomi support about \"{{subject}}\" (ticket {{ticketNumber}}).\n\n{{escalationLine}}\n\nIf you have any additional details or screenshots that could help, just reply to this ticket.\n\nWarm regards,\nBeautonomi Support": {},
+  "Hi there,\n\nJust checking in on ticket {{ticketNumber}} — we replied {{daysSinceReply}} day(s) ago and want to make sure you saw it.\nIf our answer solved the problem, no action is needed. If you still need help, reply here and we'll pick it right back up.\n\nWarm regards,\nBeautonomi Support": {
+    "zu": "Sawubona,\n\nNjengoba singena ithikithi {{ticketNumber}} — siphendule {{daysSinceReply}} izinsuku ezidlule futhi sifuna ukwenza isiqiniseko sokuthi ukubonile.\nUma impendulo yethu iyixazulule inkinga, asikho isinyathelo esidingekayo. Uma usadinga usizo, phendula lapha futhi sizokucosha khona manje."
+  },
+  "{{greeting}}\n\nThank you for your honest feedback on ticket {{ticketNumber}}. I'm sorry the experience fell short.\nA senior member of our support team is personally reviewing what happened.\n\nWarm regards,\nBeautonomi Support": {
+    "zu": "{{greeting}}\n\nSiyabonga ngempendulo yakho eqotho ngethikithi {{ticketNumber}}. Ngiyaxolisa ukuthi ulwazi aluphumelelanga.\nIlungu eliphezulu lethimba lethu labasekeli libuyekeza ngokwalo okwenzekile.\n\nSinibingelela ngokufudumele, \nBeautonomi Sekela"
+  }
+}

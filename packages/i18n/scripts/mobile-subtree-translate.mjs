@@ -10,14 +10,15 @@ import { translateTree } from "./_wave-a-translate.mjs";
 import { loadExternalMaps, translate as translateFrArSw } from "./_wave-a-fr-ar-sw.mjs";
 import { safeWriteJson } from "./_safe-write-json.mjs";
 import { loadSaExternalMaps } from "./_wave-a-translate.mjs";
+import { TARGET_LOCALES } from "./_customer-surfaces-scope.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
 const localesDir = path.join(root, "src/locales");
 
-const SA = ["af", "zu", "xh", "st", "nso", "tn", "ts", "ve", "ss"];
 const FRAR = ["fr", "ar"];
-const TARGET = [...SA, ...FRAR];
+const WAVE_B = ["de", "hi", "id", "tr", "am", "rw", "nl", "it"];
+const TARGET = TARGET_LOCALES;
 
 const SUBTREES = [
   "checkout",
@@ -31,9 +32,23 @@ const SUBTREES = [
   "time",
   "bookingLifecycle",
   "customer.mobile",
-  "provider.mobile",
+  "customer",
   "web.global.cityWaitlist",
   "web.global.marketAvailability",
+  "web.accountSettings",
+  "web.book",
+  "web.booking",
+  "web.layout",
+  "web.login",
+  "web.search",
+  "web.seo",
+  "web.giftCard",
+  "web.home",
+  "web.categories",
+  "web.messaging",
+  "web.auth",
+  "web.appointments",
+  "web.global",
 ];
 
 loadExternalMaps(path.join(root, "_maps"), fs, path);
@@ -82,7 +97,11 @@ function translateSubtreeFrAr(enNode, locale) {
 }
 
 function translateSubtree(enNode, locale, prefix) {
-  if (FRAR.includes(locale)) return translateSubtreeFrAr(enNode, locale);
+  if (FRAR.includes(locale) || locale === "sw") return translateSubtreeFrAr(enNode, locale);
+  if (WAVE_B.includes(locale)) {
+    /** Wave B: borrow French subtree when no Wave A engine exists for this locale. */
+    return translateSubtreeFrAr(enNode, "fr");
+  }
   const stats = { total: 0, translated: 0, identity: 0, untranslated: 0, varErrors: [] };
   return translateTree(enNode, locale, stats, prefix);
 }

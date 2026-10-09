@@ -590,7 +590,6 @@ export async function POST(
             bookingId,
             customerId: booking.customer_id,
             bookingNumber: (booking as { booking_number?: string | null }).booking_number,
-            metadataSource: "provider_refund_earn_clawback",
           });
         }
       } catch (loyaltyErr) {

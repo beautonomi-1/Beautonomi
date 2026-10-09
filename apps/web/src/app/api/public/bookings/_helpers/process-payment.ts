@@ -46,7 +46,6 @@ import { chargeStripeOffSession } from "@/lib/payments/charge-stripe-off-session
 import { assertReportingCurrencyReady } from "@/lib/fx/assert-reporting-currency-ready";
 import { insertCustomerRecurringSeriesFromPaidBooking } from "@/lib/recurring/insert-customer-recurring-from-paid-booking";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
-import { recordLoyaltyRedemption } from "@/lib/loyalty/record-redemption";
 import {
   appendSignedEmbedReturnToSuccessUrl,
   validateHttpsReturnUrl,

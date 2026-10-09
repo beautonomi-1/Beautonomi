@@ -6,7 +6,7 @@
  * 
  * API References:
  * - SendGrid: https://docs.sendgrid.com/api-reference/mail-send/mail-send
- * - Mailchimp: https://mailchimp.com/developer/transactional/api/messages/send-new-message/
+ * - Mailchimp Transactional: https://mailchimp.com/developer/transactional/api/messages/send.md
  * - Twilio: https://www.twilio.com/docs/usage/api
  */
 
@@ -308,7 +308,7 @@ async function sendViaPushNotification(
  * Send via SendGrid v3 API
  * Documentation: https://docs.sendgrid.com/api-reference/mail-send/mail-send
  */
-async function sendViaSendGrid(
+export async function sendViaSendGrid(
   integration: EmailIntegration,
   options: SendCampaignOptions
 ): Promise<SendCampaignResult> {
@@ -387,184 +387,12 @@ async function sendViaSendGrid(
   }
 }
 
-/**
- * Send via Mailchimp Marketing API
- * For marketing campaigns, we use the Mailchimp Marketing API (v3.0)
- * Documentation: https://mailchimp.com/developer/marketing/api/campaigns/
- * 
- * Note: This creates and sends a campaign via Mailchimp's Marketing API.
- * Mailchimp Transactional (Mandrill) should only be used for transactional emails
- * (order confirmations, password resets, etc.), not marketing campaigns.
- */
 async function sendViaMailchimp(
   integration: EmailIntegration,
-  options: SendCampaignOptions
+  options: SendCampaignOptions,
 ): Promise<SendCampaignResult> {
-  try {
-    const apiKey = integration.api_key || integration.api_secret;
-    if (!apiKey) {
-      return { success: false, error: "Mailchimp API key not configured" };
-    }
-
-    if (!options.subject) {
-      return { success: false, error: "Email subject is required" };
-    }
-
-    // Extract datacenter from API key (format: xxxxx-us1)
-    // Mailchimp API keys contain the datacenter suffix
-    const parts = apiKey.split("-");
-    const datacenter = parts.length > 1 ? parts[parts.length - 1] : "us1";
-    const recipients = Array.isArray(options.to) ? options.to : [options.to];
-    const fromEmail = options.from || integration.from_email;
-    const fromName = options.fromName || integration.from_name || "Beautonomi";
-    
-    // For marketing campaigns, we need to:
-    // 1. Create a temporary list/segment with recipients
-    // 2. Create a campaign
-    // 3. Send the campaign
-    // 
-    // Note: This is a simplified implementation. For production, you should:
-    // - Maintain a permanent audience list
-    // - Use segments or tags for targeting
-    // - Schedule campaigns rather than immediate send
-    
-    const baseUrl = `https://${datacenter}.api.mailchimp.com/3.0`;
-    const authHeader = `Basic ${Buffer.from(`anystring:${apiKey}`).toString('base64')}`;
-    
-    // Step 1: Create a temporary list for this campaign
-    const listPayload = {
-      name: `Campaign ${Date.now()}`,
-      permission_reminder: "You're receiving this because you opted in.",
-      email_type_option: false,
-      contact: {
-        company: fromName,
-        address1: "",
-        city: "",
-        state: "",
-        zip: "",
-        country: "ZA",
-      },
-      campaign_defaults: {
-        from_name: fromName,
-        from_email: fromEmail,
-        subject: options.subject,
-        language: "en",
-      },
-    };
-    
-    const listResponse = await fetch(`${baseUrl}/lists`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": authHeader,
-      },
-      body: JSON.stringify(listPayload),
-    });
-    
-    if (!listResponse.ok) {
-      const errorText = await listResponse.text();
-      return {
-        success: false,
-        error: `Failed to create audience list: ${errorText}`,
-      };
-    }
-    
-    const listData = await listResponse.json();
-    const listId = listData.id;
-    
-    // Step 2: Add recipients to the list
-    const membersPayload = {
-      members: recipients.map(email => ({
-        email_address: email,
-        status: "subscribed",
-      })),
-      update_existing: false,
-    };
-    
-    await fetch(`${baseUrl}/lists/${listId}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": authHeader,
-      },
-      body: JSON.stringify(membersPayload),
-    });
-    
-    // Step 3: Create a campaign
-    const campaignPayload = {
-      type: "regular",
-      recipients: {
-        list_id: listId,
-      },
-      settings: {
-        subject_line: options.subject,
-        from_name: fromName,
-        reply_to: fromEmail,
-        title: `Campaign ${Date.now()}`,
-      },
-    };
-    
-    const campaignResponse = await fetch(`${baseUrl}/campaigns`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": authHeader,
-      },
-      body: JSON.stringify(campaignPayload),
-    });
-    
-    if (!campaignResponse.ok) {
-      const errorText = await campaignResponse.text();
-      return {
-        success: false,
-        error: `Failed to create campaign: ${errorText}`,
-      };
-    }
-    
-    const campaignData = await campaignResponse.json();
-    const campaignId = campaignData.id;
-    
-    // Step 4: Set campaign content
-    const contentPayload = {
-      html: options.content,
-    };
-    
-    await fetch(`${baseUrl}/campaigns/${campaignId}/content`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": authHeader,
-      },
-      body: JSON.stringify(contentPayload),
-    });
-    
-    // Step 5: Send the campaign
-    const sendResponse = await fetch(`${baseUrl}/campaigns/${campaignId}/actions/send`, {
-      method: "POST",
-      headers: {
-        "Authorization": authHeader,
-      },
-    });
-    
-    if (!sendResponse.ok) {
-      const errorText = await sendResponse.text();
-      return {
-        success: false,
-        error: `Failed to send campaign: ${errorText}`,
-      };
-    }
-
-    return {
-      success: true,
-      messageId: campaignId,
-      provider: "mailchimp",
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    };
-  }
+  const { sendViaMailchimpTransactional } = await import("./send-via-mailchimp");
+  return sendViaMailchimpTransactional(integration, options);
 }
 
 // SMS Provider Implementations

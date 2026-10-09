@@ -21,6 +21,7 @@
     "i18n:scan:keys": "node scripts/scan-missing-keys.mjs",
     "i18n:check:leftover-ns": "node scripts/check-leftover-namespaces.mjs",
     "i18n:merge": "node scripts/merge-en-into-locales.mjs",
+    "i18n:apply:sa-integration-batch": "node scripts/apply-sa-integration-batch.mjs",
     "i18n:mobile-leftover:report": "node scripts/leftover-tr-mobile-apps.mjs --report",
     "i18n:mobile-leftover:apply": "node scripts/leftover-tr-mobile-apps.mjs --apply",
     "i18n:mobile-subtree": "node scripts/mobile-subtree-translate.mjs",
@@ -28,6 +29,19 @@
     "i18n:mobile:apply-exact": "node scripts/apply-exact-mobile-maps.mjs",
     "i18n:mobile:bootstrap-sa": "node scripts/export-mobile-leftover-en.mjs && node scripts/bootstrap-sa-mobile-maps.mjs",
     "i18n:mobile:apply-maps": "node scripts/repair-mobile-calques.mjs && node scripts/apply-sa-mobile-maps-direct.mjs && node scripts/apply-fr-ar-mobile-maps-direct.mjs",
+    "i18n:audit:customer": "node scripts/audit-customer-surfaces.mjs",
+    "i18n:apply:customer-surfaces": "node scripts/apply-customer-surfaces-translations.mjs",
+    "i18n:apply:customer-surfaces:remote-all": "node scripts/run-customer-surfaces-remote-all.mjs",
+    "i18n:apply:customer-surfaces:overlays": "node scripts/apply-customer-surfaces-overlays.mjs",
+    "i18n:apply:customer-surfaces:maps": "node scripts/apply-customer-surfaces-from-maps.mjs",
+    "i18n:apply:customer-surfaces:deltas": "node scripts/apply-customer-surfaces-from-deltas.mjs",
+    "i18n:fill:customer-surfaces:mymemory": "node scripts/fill-customer-surfaces-mymemory.mjs",
+    "i18n:fill:customer-surfaces:local": "node scripts/fill-customer-surfaces-local.mjs",
+    "i18n:apply:customer-surfaces:all-maps": "node scripts/apply-customer-surfaces-all-maps.mjs",
+    "i18n:bootstrap:customer-surfaces": "node scripts/bootstrap-customer-surfaces-maps.mjs && node scripts/apply-customer-surfaces-bootstrap.mjs",
+    "i18n:apply:customer-surfaces:mt-cache": "node scripts/apply-customer-surfaces-mt-cache.mjs",
+    "i18n:repair:customer-interpolation": "node scripts/repair-customer-interpolation-vars.mjs",
+    "i18n:pipeline:customer-surfaces": "node scripts/apply-customer-surfaces-all-maps.mjs && node scripts/apply-customer-surfaces-from-maps.mjs && node scripts/bootstrap-customer-surfaces-maps.mjs && node scripts/apply-customer-surfaces-bootstrap.mjs && node scripts/fill-customer-surfaces-local.mjs && node scripts/fill-customer-surfaces-mymemory.mjs && node scripts/repair-customer-surfaces-calques-mymemory.mjs && node scripts/apply-customer-surfaces-overlays.mjs && node scripts/audit-customer-surfaces.mjs",
     "i18n:mobile:gate": "node scripts/mobile-locale-gate.mjs",
     "i18n:mobile:qa-e2e": "node scripts/qa-mobile-locales-e2e.mjs",
     "i18n:sync:provider-common": "node scripts/sync-provider-common-and-prune.mjs",
@@ -43,6 +57,7 @@
     "react": ">=18"
   },
   "devDependencies": {
+    "@vitalets/google-translate-api": "^9.2.1",
     "vitest": "^4.1.8"
   }
 }

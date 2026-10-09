@@ -16,6 +16,7 @@ import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import { slackNotifyPayoutRequested } from "@/lib/integrations/slack/finance-triggers";
 import { resolveVerificationPolicy, isProviderVerificationApproved } from "@/lib/verification/verification-policy";
 import { getActiveProviderPayoutHold } from "@/lib/fraud/provider-payout-hold";
+import { loadProviderPayoutRailContext } from "@/lib/payments/payout-rail";
 
 export const maxDuration = 60;
 
@@ -248,48 +249,77 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Resolve payout account: use bank_account_id from body if valid, else primary (is_primary then latest)
-    const { data: accounts } = await supabase
-      .from("provider_payout_accounts")
-      .select("id, recipient_code, account_name, account_number_last4, bank_name, currency")
-      .eq("provider_id", providerId)
-      .eq("active", true)
-      .is("deleted_at", null)
-      .order("is_primary", { ascending: false })
-      .order("created_at", { ascending: false });
-
-    const accountList = accounts || [];
-    if (accountList.length === 0) {
-      return errorResponse(
-        "Add at least one bank account in Settings → Payout Accounts to request a payout.",
-        "NO_PAYOUT_ACCOUNT",
-        400
-      );
-    }
-
-    const chosenAccount = bank_account_id
-      ? accountList.find((a: any) => a.id === bank_account_id)
-      : accountList[0];
-    if (bank_account_id && !chosenAccount) {
-      return errorResponse("Selected bank account not found or inactive.", "INVALID_ACCOUNT", 400);
-    }
-    const accountCurrency = (chosenAccount as { currency?: string | null } | undefined)?.currency?.trim().toUpperCase();
-    if (accountCurrency && accountCurrency !== payoutCurrency.trim().toUpperCase()) {
-      return errorResponse(
-        `Selected payout account currency (${accountCurrency}) does not match payout currency (${payoutCurrency}).`,
-        "CURRENCY_MISMATCH",
-        400,
-      );
-    }
-    const payoutAccountId = chosenAccount?.id ?? accountList[0].id;
-
-    // Insert into payouts table (service role bypasses RLS)
     const supabaseAdmin = getSupabaseAdmin();
+    const railContext = await loadProviderPayoutRailContext(supabaseAdmin, providerId, effectiveTenantId);
+    const payoutRail = railContext?.payout_rail ?? "paystack";
 
-    const payoutAccountDetails = {
+    let payoutAccountDetails: Record<string, unknown> = {
       ...(notes && { notes }),
-      bank_account_id: payoutAccountId,
+      payout_rail: payoutRail,
     };
+
+    if (payoutRail === "stripe") {
+      const connect = railContext?.stripe_connect;
+      if (!connect?.connect_account_id?.trim()) {
+        return errorResponse(
+          "Complete Stripe Connect payout setup in Settings → Payout accounts before requesting a payout.",
+          "STRIPE_CONNECT_REQUIRED",
+          403,
+        );
+      }
+      if (!connect.onboarding_complete) {
+        return errorResponse(
+          "Your Stripe Connect account is not ready for payouts yet. Finish onboarding in Stripe, then try again.",
+          "STRIPE_CONNECT_NOT_READY",
+          403,
+        );
+      }
+      payoutAccountDetails = {
+        ...payoutAccountDetails,
+        stripe_connect_account_id: connect.connect_account_id,
+      };
+    } else {
+      // Resolve payout account: use bank_account_id from body if valid, else primary (is_primary then latest)
+      const { data: accounts } = await supabase
+        .from("provider_payout_accounts")
+        .select("id, recipient_code, account_name, account_number_last4, bank_name, currency")
+        .eq("provider_id", providerId)
+        .eq("active", true)
+        .is("deleted_at", null)
+        .order("is_primary", { ascending: false })
+        .order("created_at", { ascending: false });
+
+      const accountList = accounts || [];
+      if (accountList.length === 0) {
+        return errorResponse(
+          "Add at least one bank account in Settings → Payout Accounts to request a payout.",
+          "NO_PAYOUT_ACCOUNT",
+          400,
+        );
+      }
+
+      const chosenAccount = bank_account_id
+        ? accountList.find((a: { id: string }) => a.id === bank_account_id)
+        : accountList[0];
+      if (bank_account_id && !chosenAccount) {
+        return errorResponse("Selected bank account not found or inactive.", "INVALID_ACCOUNT", 400);
+      }
+      const accountCurrency = (chosenAccount as { currency?: string | null } | undefined)?.currency
+        ?.trim()
+        .toUpperCase();
+      if (accountCurrency && accountCurrency !== payoutCurrency.trim().toUpperCase()) {
+        return errorResponse(
+          `Selected payout account currency (${accountCurrency}) does not match payout currency (${payoutCurrency}).`,
+          "CURRENCY_MISMATCH",
+          400,
+        );
+      }
+      const payoutAccountId = chosenAccount?.id ?? accountList[0].id;
+      payoutAccountDetails = {
+        ...payoutAccountDetails,
+        bank_account_id: payoutAccountId,
+      };
+    }
 
     // Generate a human-readable payout number: PAY-YYYYMMDD-XXXXX (business calendar date)
     const now = new Date();

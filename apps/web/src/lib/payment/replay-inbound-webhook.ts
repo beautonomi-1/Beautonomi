@@ -50,7 +50,11 @@ type PaystackHandlers = {
 
 type StripeHandlers = {
   handleStripePaymentIntentSucceeded: (intent: Record<string, unknown>) => Promise<void>;
-  handleStripeChargeRefunded: (charge: Record<string, unknown>) => Promise<void>;
+  handleStripeChargeUpdated: (charge: Record<string, unknown>) => Promise<void>;
+  handleStripeRefundCreated: (refund: Record<string, unknown>) => Promise<void>;
+  handleStripeChargeRefundedBackstop: (charge: Record<string, unknown>) => Promise<void>;
+  handleStripeDisputeFundsWithdrawn: (dispute: Record<string, unknown>, eventId?: string) => Promise<void>;
+  handleStripeTransferReversed: (transfer: Record<string, unknown>) => Promise<void>;
   handleStripeChargeDisputeCreated: (dispute: Record<string, unknown>, eventId?: string) => Promise<void>;
   handleStripeChargeDisputeClosed: (dispute: Record<string, unknown>, eventId?: string) => Promise<void>;
 };
@@ -91,7 +95,11 @@ export const defaultReplayHandlerLoaders: ReplayHandlerLoaders = {
     ]);
     return {
       handleStripePaymentIntentSucceeded: charge.handleStripePaymentIntentSucceeded as StripeHandlers["handleStripePaymentIntentSucceeded"],
-      handleStripeChargeRefunded: charge.handleStripeChargeRefunded as StripeHandlers["handleStripeChargeRefunded"],
+      handleStripeChargeUpdated: charge.handleStripeChargeUpdated as StripeHandlers["handleStripeChargeUpdated"],
+      handleStripeRefundCreated: charge.handleStripeRefundCreated as StripeHandlers["handleStripeRefundCreated"],
+      handleStripeChargeRefundedBackstop: charge.handleStripeChargeRefundedBackstop as StripeHandlers["handleStripeChargeRefundedBackstop"],
+      handleStripeDisputeFundsWithdrawn: charge.handleStripeDisputeFundsWithdrawn as StripeHandlers["handleStripeDisputeFundsWithdrawn"],
+      handleStripeTransferReversed: charge.handleStripeTransferReversed as StripeHandlers["handleStripeTransferReversed"],
       handleStripeChargeDisputeCreated: dispute.handleStripeChargeDisputeCreated as StripeHandlers["handleStripeChargeDisputeCreated"],
       handleStripeChargeDisputeClosed: dispute.handleStripeChargeDisputeClosed as StripeHandlers["handleStripeChargeDisputeClosed"],
     };
@@ -223,9 +231,21 @@ export async function replayInboundWebhookEvent(
       } else if (eventType === "payment_intent.succeeded") {
         run = () => h.handleStripePaymentIntentSucceeded(object);
         handlerName = "handleStripePaymentIntentSucceeded";
+      } else if (eventType === "charge.updated") {
+        run = () => h.handleStripeChargeUpdated(object);
+        handlerName = "handleStripeChargeUpdated";
+      } else if (eventType === "refund.created") {
+        run = () => h.handleStripeRefundCreated(object);
+        handlerName = "handleStripeRefundCreated";
       } else if (eventType === "charge.refunded") {
-        run = () => h.handleStripeChargeRefunded(object);
-        handlerName = "handleStripeChargeRefunded";
+        run = () => h.handleStripeChargeRefundedBackstop(object);
+        handlerName = "handleStripeChargeRefundedBackstop";
+      } else if (eventType === "charge.dispute.funds_withdrawn") {
+        run = () => h.handleStripeDisputeFundsWithdrawn(object, row.event_id);
+        handlerName = "handleStripeDisputeFundsWithdrawn";
+      } else if (eventType === "transfer.reversed") {
+        run = () => h.handleStripeTransferReversed(object);
+        handlerName = "handleStripeTransferReversed";
       } else if (eventType === "charge.dispute.created") {
         run = () => h.handleStripeChargeDisputeCreated(object, row.event_id);
         handlerName = "handleStripeChargeDisputeCreated";

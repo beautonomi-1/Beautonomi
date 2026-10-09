@@ -19,6 +19,7 @@ export type RecordProductOrderPaymentInput = {
   source:
     | "paystack_verify"
     | "paystack_webhook"
+    | "stripe_webhook"
     | "paystack_virtual_terminal_allocation"
     | "wallet_checkout"
     | "provider_mark_collected"

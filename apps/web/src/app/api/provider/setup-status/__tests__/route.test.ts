@@ -52,6 +52,13 @@ vi.mock("@/lib/verification/verification-policy", () => ({
   resolveVerificationPolicy: (...args: unknown[]) => mockResolveVerificationPolicy(...args),
 }));
 
+vi.mock("@/lib/payments/payout-rail", () => ({
+  loadProviderPayoutRailContext: vi.fn(async () => ({
+    payout_rail: "paystack",
+    stripe_connect: null,
+  })),
+}));
+
 type Fixture = {
   provider: Record<string, unknown> | null;
   accountUser: Record<string, unknown> | null;

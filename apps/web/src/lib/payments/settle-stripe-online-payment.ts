@@ -154,10 +154,22 @@ async function resolveCheckoutSessionForSettlement(
   if (!session.id) return session;
   const tenantId =
     typeof session.metadata?.tenant_id === "string" ? session.metadata.tenant_id : null;
+  const pi = session.payment_intent;
+  const paymentNeedsExpand =
+    session.mode === "payment" &&
+    (typeof pi === "string" ||
+      !pi ||
+      typeof pi.latest_charge === "string" ||
+      (pi &&
+        typeof pi === "object" &&
+        pi.latest_charge &&
+        typeof pi.latest_charge === "object" &&
+        typeof pi.latest_charge.balance_transaction === "string"));
   const needsExpand =
-    session.mode === "setup" &&
-    (!session.setup_intent || typeof session.setup_intent === "string");
-  if (!needsExpand && session.mode !== "setup") return session;
+    paymentNeedsExpand ||
+    (session.mode === "setup" &&
+      (!session.setup_intent || typeof session.setup_intent === "string"));
+  if (!needsExpand) return session;
   if (session.mode === "setup" && session.status !== "complete") return session;
   try {
     const stripe = await getStripeClient(tenantId);

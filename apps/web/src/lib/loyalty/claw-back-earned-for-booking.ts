@@ -1,8 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  hasBookingEarnClawback,
+  LOYALTY_EARN_CLAWBACK_SOURCE,
+} from "@/lib/loyalty/earn-clawback";
 
 /**
  * Reverse loyalty points earned for a booking when cancelled or fully refunded.
  * Requires an existing `earned` ledger row (does not trust booking column alone).
+ * Idempotent across DB trigger and app paths (978).
  */
 export async function clawBackEarnedLoyaltyForBooking(
   admin: SupabaseClient,
@@ -10,21 +15,15 @@ export async function clawBackEarnedLoyaltyForBooking(
     bookingId: string;
     customerId: string;
     bookingNumber?: string | null;
+    /** @deprecated Ignored; always uses {@link LOYALTY_EARN_CLAWBACK_SOURCE}. */
     metadataSource?: string;
   },
 ): Promise<boolean> {
-  const source = args.metadataSource ?? "booking_cancel_earn_clawback";
   const { bookingId, customerId } = args;
 
-  const { data: existingClaw } = await admin
-    .from("loyalty_points_ledger")
-    .select("id")
-    .eq("booking_id", bookingId)
-    .eq("customer_id", customerId)
-    .contains("metadata", { source })
-    .maybeSingle();
-
-  if (existingClaw) return false;
+  if (await hasBookingEarnClawback(admin, bookingId, customerId)) {
+    return false;
+  }
 
   const { data: earnedRow } = await admin
     .from("loyalty_points_ledger")
@@ -46,7 +45,7 @@ export async function clawBackEarnedLoyaltyForBooking(
     p_points_amount: -points,
     p_booking_id: bookingId,
     p_description: `Points reversed for booking ${args.bookingNumber || bookingId}`,
-    p_metadata: { source },
+    p_metadata: { source: LOYALTY_EARN_CLAWBACK_SOURCE },
     p_expires_at: null,
   });
 

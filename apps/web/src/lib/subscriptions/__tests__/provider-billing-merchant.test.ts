@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   isLivePaystackSubscription,
   paystackActivationFields,
+  stripeActivationFields,
+  subscriptionActivationFields,
   shouldIgnorePaystackEventForRow,
 } from "@/lib/subscriptions/provider-billing-merchant";
 
@@ -50,5 +52,11 @@ describe("provider-billing-merchant", () => {
       billing_provider: "paystack",
       paystack_sync_pending: false,
     });
+  });
+
+  it("stripeActivationFields sets billing_provider stripe", () => {
+    expect(stripeActivationFields()).toMatchObject({ billing_provider: "stripe" });
+    expect(subscriptionActivationFields("stripe")).toMatchObject({ billing_provider: "stripe" });
+    expect(subscriptionActivationFields("paystack")).toMatchObject({ billing_provider: "paystack" });
   });
 });

@@ -40,6 +40,23 @@ describe("buildProgressToNextBadge", () => {
     expect(progress?.badge.id).toBe("b1");
     expect(progress?.progress_percentage).toBe(0);
   });
+
+  it("caps progress at the weakest requirement (points vs reviews)", () => {
+    const tierBadges = [
+      {
+        id: "b2",
+        name: "Bronze",
+        tier: 2,
+        requirements: { points: 500, min_reviews: 10 },
+      },
+    ];
+    const progress = buildProgressToNextBadge(tierBadges, null, 500, {
+      totalBookings: 100,
+      reviewCount: 2,
+      ratingAverage: 5,
+    });
+    expect(progress?.progress_percentage).toBe(20);
+  });
 });
 
 describe("buildBadgeLadder", () => {

@@ -8,6 +8,7 @@ import { requireRoleInApi, successResponse, handleApiError, errorResponse, getPr
 import { getStripeClient } from "@/lib/payments/stripe-server";
 import { getPaymentProviderForTenant } from "@/lib/payments/provider/registry";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getTenantRegionConfig } from "@/lib/regions/config";
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,8 +39,11 @@ export async function POST(request: NextRequest) {
     let accountId = (provider as { stripe_connect_account_id?: string | null }).stripe_connect_account_id;
 
     if (!accountId) {
+      const regionConfig = await getTenantRegionConfig(provider.tenant_id);
+      const countryCode = regionConfig?.regionCode?.trim().toLowerCase();
       const account = await stripe.accounts.create({
         type: "express",
+        ...(countryCode ? { country: countryCode } : {}),
         capabilities: {
           card_payments: { requested: true },
           transfers: { requested: true },

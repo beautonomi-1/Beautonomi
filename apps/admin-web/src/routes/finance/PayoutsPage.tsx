@@ -454,9 +454,15 @@ export function PayoutsPage() {
         header: "Destination",
         cell: (r) => (
           <div className="text-sm">
+            {r.payout_provider ? (
+              <div className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                {String(r.payout_provider)}
+              </div>
+            ) : null}
             <div>{r.bank_account?.bank_name ?? "—"}</div>
             <div className="text-xs text-gray-500">
-              {r.bank_account?.account_name ?? ""} {r.bank_account?.account_number_last4 ? `•••• ${r.bank_account.account_number_last4}` : ""}
+              {r.bank_account?.account_name ?? ""}{" "}
+              {r.bank_account?.account_number_last4 ? `•••• ${r.bank_account.account_number_last4}` : ""}
             </div>
           </div>
         ),

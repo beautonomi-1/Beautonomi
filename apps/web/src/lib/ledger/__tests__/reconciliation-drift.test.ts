@@ -90,6 +90,8 @@ const SHADOW_LEDGER_ALLOWLIST = [
   "membership_recognition",
   // 880: unspent gift-card order refund (DR 2400 / CR cash).
   "gift_card_refund",
+  // 977: locked-period gateway fee correction rows.
+  "gateway_fee_adjustment",
 ] as const;
 
 /**
@@ -128,6 +130,7 @@ const POST_510_ALLOWLIST_MIGRATIONS: Record<string, string[]> = {
   ],
   "863_accrual_recognition_ledger_consistency.sql": ["membership_recognition"],
   "880_memberships_gift_cards_followups.sql": ["gift_card_refund"],
+  "977_gateway_fee_delta_and_adjustment.sql": ["gateway_fee_adjustment"],
 };
 
 const LIVE_SHADOW_FUNCTION_MIGRATION = "870_ledger_consistency_followups.sql";

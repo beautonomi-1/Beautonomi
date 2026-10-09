@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useTranslation } from "@beautonomi/i18n";
 import Link from "next/link";
+import { fetcher } from "@/lib/http/fetcher";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { ArrowUpRight, ChevronRight, CreditCard, FileText, Gift, QrCode, Smartphone, Wallet } from "lucide-react";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
@@ -9,11 +11,31 @@ import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 
 export default function PaymentSetupPage() {
   const { t } = useTranslation();
+  const [payoutRail, setPayoutRail] = useState<"paystack" | "stripe">("paystack");
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetcher.get<{ data: { payout_rail?: "paystack" | "stripe" } }>(
+          "/api/provider/payout-accounts/options",
+        );
+        setPayoutRail(res.data?.payout_rail === "stripe" ? "stripe" : "paystack");
+      } catch {
+        setPayoutRail("paystack");
+      }
+    })();
+  }, []);
+
+  const payoutAccountsSubtitle =
+    payoutRail === "stripe"
+      ? t("web.provider.pages.payment-setup.payoutAccountsDescStripe")
+      : t("web.provider.pages.payment-setup.payoutAccountsDescPaystack");
+
   const setupItems = [
     {
       icon: Wallet,
       label: t("web.provider.pages.payment-setup.payoutAccounts"),
-      subtitle: t("web.provider.pages.payment-setup.payoutAccountsDesc"),
+      subtitle: payoutAccountsSubtitle,
       href: "/provider/settings/payout-accounts",
       flag: null as string | null,
     },

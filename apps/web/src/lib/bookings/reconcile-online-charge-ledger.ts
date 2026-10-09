@@ -14,7 +14,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getPaystackSecretKey } from "@/lib/payments/paystack-server";
 import { recordPaystackBookingSettlement } from "./record-paystack-booking-settlement";
+import { recordStripeBookingSettlement } from "./record-stripe-booking-settlement";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
+import { retrieveStripeFeeMinorForPaymentIntent } from "@/lib/payments/stripe-balance-fee";
 import { tryNotifySlackEvent } from "@/lib/integrations/slack/dispatch";
 import { SLACK_EVENT_KEYS } from "@/lib/integrations/slack/event-keys";
 
@@ -284,6 +286,115 @@ async function reconcilePaystackMissingLedger(
   return { scannedPaymentIds };
 }
 
+// ─── Pass 1b: Stripe missing ledger ───────────────────────────────────────────
+
+async function reconcileStripeMissingLedger(
+  supabase: SupabaseClient,
+  summary: ReconcileOnlineChargeLedgerSummary,
+  cutoffIso: string,
+): Promise<{ scannedPaymentIds: string[] }> {
+  const scannedPaymentIds: string[] = [];
+
+  const { data: rows, error } = await supabase
+    .from("booking_payments")
+    .select(
+      "id, booking_id, amount, payment_provider, payment_provider_id, payment_provider_data, created_at, bookings(id, status, tenant_id, currency, total_amount, payment_option)",
+    )
+    .eq("payment_provider", "stripe")
+    .eq("status", "completed")
+    .lt("created_at", cutoffIso)
+    .order("created_at", { ascending: true })
+    .limit(OTHER_GATEWAY_SCAN_LIMIT);
+
+  if (error) {
+    console.error("[reconcile-online-charge-ledger] stripe query failed:", error);
+    return { scannedPaymentIds };
+  }
+
+  for (const raw of rows ?? []) {
+    const row = normaliseBookingPaymentRow(raw);
+    summary.scanned += 1;
+    scannedPaymentIds.push(row.id);
+
+    const reference = row.payment_provider_id?.trim();
+    if (!reference) {
+      summary.skipped += 1;
+      continue;
+    }
+
+    if (await bookingPredatesSourceAttribution(supabase, row.booking_id)) {
+      summary.skipped += 1;
+      continue;
+    }
+
+    if (await bookingHasLedgerForPayment(supabase, row.booking_id, row.id)) {
+      summary.skipped += 1;
+      continue;
+    }
+
+    const reviewBase: ReconcileNeedsReviewItem = {
+      bookingPaymentId: row.id,
+      bookingId: row.booking_id,
+      reason: "unknown",
+      tenantId: row.bookings?.tenant_id ?? null,
+      currency: row.bookings?.currency ?? null,
+      amount: Number(row.amount ?? 0),
+    };
+
+    const review = await bookingNeedsReview(supabase, row.booking_id, row.bookings?.status);
+    if (review.needsReview) {
+      summary.needsReview.push({ ...reviewBase, reason: review.reason ?? "unknown" });
+      continue;
+    }
+
+    try {
+      const { getStripeClient } = await import("@/lib/payments/stripe-server");
+      const stripe = await getStripeClient(row.bookings?.tenant_id ?? null);
+      const intent = await stripe.paymentIntents.retrieve(reference, {
+        expand: ["latest_charge.balance_transaction"],
+      });
+      if (intent.status !== "succeeded") {
+        summary.needsReview.push({ ...reviewBase, reason: "stripe_not_success" });
+        continue;
+      }
+
+      const currency = (intent.currency || row.bookings?.currency || "ZAR").toUpperCase();
+      const amountMajor = convertFromSmallestUnit(intent.amount_received ?? intent.amount ?? 0, currency);
+      const feeMinor = await retrieveStripeFeeMinorForPaymentIntent(
+        reference,
+        row.bookings?.tenant_id ?? null,
+      );
+
+      const settlement = await recordStripeBookingSettlement(supabase, {
+        bookingId: row.booking_id,
+        reference,
+        paymentIntentId: reference,
+        amountMajor,
+        feesSmallestOrMajor: feeMinor,
+        bookingPaymentId: row.id,
+        isDeposit: resolveIsDeposit(row),
+        feeSource: "stripe_verify_reconcile",
+        metadata: { source: RECONCILE_ONLINE_CHARGE_LEDGER_SOURCE },
+      });
+
+      if (settlement.ok === false) {
+        summary.errors.push({ bookingPaymentId: row.id, reason: settlement.reason });
+        continue;
+      }
+
+      if (settlement.ledger.skipped) summary.skipped += 1;
+      else summary.posted += 1;
+    } catch (err) {
+      summary.errors.push({
+        bookingPaymentId: row.id,
+        reason: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  return { scannedPaymentIds };
+}
+
 // ─── Pass 2: fee patch for already-posted backfills ───────────────────────────
 
 /**
@@ -368,14 +479,25 @@ async function patchBackfilledFees(
     const bookingPaymentId = (bp as { id?: string } | null)?.id ?? null;
 
     if (bookingPaymentId) {
-      // `net` on the payment leg is the platform commission and is independent of
-      // gateway fees in the writer, so only `fees` is patched here.
-      await supabase
+      const { data: ftRow } = await supabase
         .from("finance_transactions")
-        .update({ fees: feesMajor })
+        .select("id, tenant_id, provider_id")
         .eq("booking_id", pt.booking_id)
         .eq("transaction_type", "payment")
-        .eq("source_payment_id", bookingPaymentId);
+        .eq("source_payment_id", bookingPaymentId)
+        .maybeSingle();
+      if (ftRow?.id) {
+        const { applyGatewayFeeCorrection } = await import("@/lib/payments/gateway-fee-correction");
+        await applyGatewayFeeCorrection(supabase, {
+          financeTxId: String(ftRow.id),
+          newFeeMajor: feesMajor,
+          feeSource: "paystack",
+          chargeReference: reference,
+          tenantId: (ftRow as { tenant_id?: string | null }).tenant_id ?? tenantId,
+          providerId: (ftRow as { provider_id?: string | null }).provider_id ?? null,
+          bookingId: pt.booking_id,
+        });
+      }
     } else {
       console.warn(
         "[reconcile-online-charge-ledger] fee patched on payment_transactions but no booking_payments row for reference; finance_transactions left as-is",
@@ -397,7 +519,7 @@ async function scanOtherGatewaysMissingLedger(
   const { data: rows, error } = await supabase
     .from("booking_payments")
     .select("id, booking_id, payment_provider, created_at")
-    .in("payment_provider", ["stripe", "flutterwave"])
+    .in("payment_provider", ["flutterwave"])
     .eq("status", "completed")
     .lt("created_at", cutoffIso)
     .order("created_at", { ascending: true })
@@ -589,7 +711,17 @@ export async function reconcileOnlineChargeLedger(
     reviewAlertSent: false,
   };
 
-  const { scannedPaymentIds } = await reconcilePaystackMissingLedger(supabase, summary, cutoffIso);
+  const { scannedPaymentIds: paystackIds } = await reconcilePaystackMissingLedger(
+    supabase,
+    summary,
+    cutoffIso,
+  );
+  const { scannedPaymentIds: stripeIds } = await reconcileStripeMissingLedger(
+    supabase,
+    summary,
+    cutoffIso,
+  );
+  const scannedPaymentIds = [...paystackIds, ...stripeIds];
 
   try {
     await patchBackfilledFees(supabase, summary, nowIso);

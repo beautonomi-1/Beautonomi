@@ -3,13 +3,25 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, errorResponse, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
 
-const testSchema = z.object({
-  test_email: z.string().email("Invalid email address"),
-});
+export const emailIntegrationTestBodySchema = z
+  .object({
+    ping: z.literal(true).optional(),
+    test_email: z.string().email("Invalid email address").optional(),
+  })
+  .superRefine((data, ctx) => {
+    const hasPing = data.ping === true;
+    const hasEmail = Boolean(data.test_email);
+    if (hasPing === hasEmail) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Provide either ping: true or test_email, not both",
+      });
+    }
+  });
 
 /**
  * POST /api/provider/email-integration/test
- * Test the email integration by sending a test email
+ * Ping Mailchimp Transactional credentials or send a test email
  */
 export async function POST(request: NextRequest) {
   try {
@@ -17,14 +29,12 @@ export async function POST(request: NextRequest) {
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
-    // Validate input
-    const validated = testSchema.parse(body);
-    const { test_email } = validated;
+    const validated = emailIntegrationTestBodySchema.parse(body);
+    const isPing = validated.ping === true;
+    const testEmail = validated.test_email;
 
-    // For superadmin, allow testing any provider's integration
     let providerId: string | null = null;
     if (user.role === "superadmin") {
-      // Get provider_id from query param if provided
       const { searchParams } = new URL(request.url);
       const providerIdParam = searchParams.get("provider_id");
       if (providerIdParam) {
@@ -39,7 +49,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Get integration
     const { data: integration, error: fetchError } = await supabase
       .from("provider_email_integrations")
       .select("*")
@@ -50,27 +59,53 @@ export async function POST(request: NextRequest) {
       return errorResponse("Email integration not configured", "NOT_FOUND", 404);
     }
 
+    if (isPing) {
+      if (integration.provider_name !== "mailchimp") {
+        return errorResponse(
+          "Connection ping is only available for Mailchimp Transactional. Send a test email instead.",
+          "VALIDATION_ERROR",
+          400,
+        );
+      }
+      const apiKey = integration.api_key || integration.api_secret;
+      if (!apiKey) {
+        return errorResponse("Mailchimp Transactional API key not configured", "NOT_FOUND", 404);
+      }
+      const { pingMailchimpTransactional } = await import("@/lib/marketing/send-via-mailchimp");
+      const ping = await pingMailchimpTransactional(apiKey);
+
+      const testError = ping.ok === false ? ping.error : null;
+      await supabase
+        .from("provider_email_integrations")
+        .update({
+          test_status: ping.ok ? "success" : "failed",
+          test_error: testError,
+          last_tested_at: new Date().toISOString(),
+        })
+        .eq("id", integration.id);
+
+      if (ping.ok === false) {
+        return errorResponse(ping.error, "TEST_FAILED", 400);
+      }
+      return successResponse({ message: "Mailchimp Transactional connection successful" });
+    }
+
     if (!integration.is_enabled) {
       return errorResponse("Email integration is not enabled", "INTEGRATION_DISABLED", 400);
     }
 
-    // Import unified marketing service
     const { sendMessage } = await import("@/lib/marketing/unified-service");
 
-    // Send test email
-    const result = await sendMessage(
-      providerId,
-      "email",
-      {
-        to: test_email,
-        subject: "Test Email from Beautonomi",
-        content: "<h1>Test Email</h1><p>This is a test email from your Beautonomi email integration.</p><p>If you received this, your integration is working correctly!</p>",
-        from: integration.from_email,
-        fromName: integration.from_name,
-      }
-    );
+    const result = await sendMessage(providerId, "email", {
+      to: testEmail!,
+      subject: "Test Email from Beautonomi",
+      content:
+        "<h1>Test Email</h1><p>This is a test email from your Beautonomi email integration.</p><p>If you received this, your integration is working correctly!</p>",
+      from: integration.from_email,
+      fromName: integration.from_name,
+      supabase,
+    });
 
-    // Update test status
     await supabase
       .from("provider_email_integrations")
       .update({
@@ -82,17 +117,11 @@ export async function POST(request: NextRequest) {
 
     if (result.success) {
       return successResponse({ message: "Test email sent successfully" });
-    } else {
-      return errorResponse(result.error || "Failed to send test email", "TEST_FAILED", 400);
     }
-  } catch (error: any) {
+    return errorResponse(result.error || "Failed to send test email", "TEST_FAILED", 400);
+  } catch (error: unknown) {
     if (error instanceof z.ZodError) {
-      return errorResponse(
-        "Validation failed",
-        "VALIDATION_ERROR",
-        400,
-        error.issues
-      );
+      return errorResponse("Validation failed", "VALIDATION_ERROR", 400, error.issues);
     }
     console.error("Error testing email integration:", error);
     return handleApiError(error, "Failed to test email integration");

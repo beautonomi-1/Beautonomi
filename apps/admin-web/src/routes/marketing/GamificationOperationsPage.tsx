@@ -90,7 +90,8 @@ export function GamificationOperationsPage() {
       <AdminPanel>
         <h2 className="text-sm font-semibold text-gray-900">Recalculate one provider</h2>
         <p className="mt-1 text-sm text-gray-600">
-          Re-runs gamification scoring for a single provider (badges / points). Use after rule changes or data fixes.
+          Re-sums points from the provider points ledger, refreshes badges, and syncs booking/review stats.
+          Changing point rules affects future awards only — recalculate does not rewrite historical ledger rows.
         </p>
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <label className="text-sm">

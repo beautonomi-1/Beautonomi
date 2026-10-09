@@ -136,6 +136,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         reason,
         idempotencyKey: `product_order_self_cancel:${id}`,
       });
+      if (online.attempted && online.error) {
+        return errorResponse(
+          "We could not refund your card payment. Your order was cancelled but please contact support to complete the refund.",
+          "ONLINE_REFUND_FAILED",
+          502,
+        );
+      }
       await applyProductOrderCancelRefundSideEffects(admin, admin, order, {
         newStatus: "cancelled",
         cancellationReason: reason,

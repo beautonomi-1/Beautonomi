@@ -11,7 +11,7 @@ export type ResolvedLoyaltyConfig = {
 
 /**
  * Platform loyalty configuration: earn rate from loyalty_rules, redemption caps
- * from loyalty_point_config with loyalty_rules fallback.
+ * from active `loyalty_point_config` (same query shape as validate-booking / admin config).
  */
 export async function resolveLoyaltyConfig(
   admin: SupabaseClient,
@@ -40,12 +40,9 @@ export async function resolveLoyaltyConfig(
 
   const { data: pointConfig } = await admin
     .from("loyalty_point_config")
-    .select(
-      "redemption_rate, min_redemption_points, max_redemption_percentage, points_expiry_days, currency",
-    )
+    .select("redemption_rate, min_redemption_points, max_redemption_percentage, points_expiry_days")
     .eq("is_active", true)
-    .eq("currency", currency)
-    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 

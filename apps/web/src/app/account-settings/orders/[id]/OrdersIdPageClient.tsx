@@ -748,27 +748,32 @@ export default function OrderDetailPage() {
                   </p>
                   {addr.building_name ? (
                     <p className="mt-2 text-gray-600">
-                      <span className="font-medium text-gray-700">Building:</span> {addr.building_name}
+                      <span className="font-medium text-gray-700">{t("web.accountSettings.orderDetail.addressBuilding")}</span>{" "}
+                      {addr.building_name}
                     </p>
                   ) : null}
                   {addr.apartment_unit ? (
                     <p className="mt-1 text-gray-600">
-                      <span className="font-medium text-gray-700">Unit:</span> {addr.apartment_unit}
+                      <span className="font-medium text-gray-700">{t("web.accountSettings.orderDetail.addressUnit")}</span>{" "}
+                      {addr.apartment_unit}
                     </p>
                   ) : null}
                   {formatAccessCodes(addr.access_codes) ? (
                     <p className="mt-1 text-gray-600">
-                      <span className="font-medium text-gray-700">Access:</span> {formatAccessCodes(addr.access_codes)}
+                      <span className="font-medium text-gray-700">{t("web.accountSettings.orderDetail.addressAccess")}</span>{" "}
+                      {formatAccessCodes(addr.access_codes)}
                     </p>
                   ) : null}
                   {addr.parking_instructions ? (
                     <p className="mt-1 text-gray-600">
-                      <span className="font-medium text-gray-700">Parking:</span> {addr.parking_instructions}
+                      <span className="font-medium text-gray-700">{t("web.accountSettings.orderDetail.addressParking")}</span>{" "}
+                      {addr.parking_instructions}
                     </p>
                   ) : null}
                   {addr.location_landmarks ? (
                     <p className="mt-1 text-gray-600">
-                      <span className="font-medium text-gray-700">Landmarks:</span> {addr.location_landmarks}
+                      <span className="font-medium text-gray-700">{t("web.accountSettings.orderDetail.addressLandmarks")}</span>{" "}
+                      {addr.location_landmarks}
                     </p>
                   ) : null}
                 </div>

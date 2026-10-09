@@ -277,44 +277,14 @@ async function clawBackEarnedLoyalty(
   if (!customerId) return false;
 
   try {
-    const { data: existingClaw } = await admin
-      .from("loyalty_points_ledger")
-      .select("id")
-      .eq("booking_id", booking.id)
-      .eq("customer_id", customerId)
-      .contains("metadata", { source: "booking_cancel_earn_clawback" })
-      .maybeSingle();
-
-    if (existingClaw) return false;
-
-    const { data: earnedRow } = await admin
-      .from("loyalty_points_ledger")
-      .select("id, points_amount")
-      .eq("booking_id", booking.id)
-      .eq("customer_id", customerId)
-      .eq("transaction_type", "earned")
-      .limit(1)
-      .maybeSingle();
-
-    if (!earnedRow) return false;
-
-    const loyaltyPointsEarned = Number((earnedRow as { points_amount?: number }).points_amount ?? 0);
-    if (loyaltyPointsEarned <= 0) return false;
-
-    const { error: clawErr } = await (admin.rpc as any)("append_loyalty_ledger_entry", {
-      p_customer_id: customerId,
-      p_transaction_type: "adjusted",
-      p_points_amount: -loyaltyPointsEarned,
-      p_booking_id: booking.id,
-      p_description: `Points reversed for cancelled booking ${booking.booking_number || booking.id}`,
-      p_metadata: { source: "booking_cancel_earn_clawback" },
-      p_expires_at: null,
+    const { clawBackEarnedLoyaltyForBooking } = await import(
+      "@/lib/loyalty/claw-back-earned-for-booking"
+    );
+    return await clawBackEarnedLoyaltyForBooking(admin, {
+      bookingId: booking.id,
+      customerId,
+      bookingNumber: booking.booking_number,
     });
-    if (clawErr) {
-      console.error("[settleBookingCancellation] loyalty earn clawback failed:", clawErr);
-      return false;
-    }
-    return true;
   } catch (err) {
     console.error("[settleBookingCancellation] loyalty earn clawback failed:", err);
     return false;

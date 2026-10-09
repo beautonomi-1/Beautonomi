@@ -69,8 +69,8 @@ export interface FinalizeCustomOfferPaymentInput {
    */
   pricingMetadata?: Record<string, unknown>;
   customerEmail?: string | null;
-  /** "paystack" | "wallet" | "gift_card" | "split". Used for booking row & receipts. */
-  paymentProvider?: "paystack" | "wallet" | "gift_card" | "split";
+  /** "paystack" | "stripe" | "wallet" | "gift_card" | "split". Used for booking row & receipts. */
+  paymentProvider?: "paystack" | "stripe" | "wallet" | "gift_card" | "split";
 }
 
 export interface FinalizeCustomOfferPaymentResult {
@@ -1495,6 +1495,10 @@ export async function finalizeCustomOfferPaymentFromPaystackEvent(
     loyaltyDiscountAmount: Number(payload.metadata?.loyalty_discount_amount ?? 0),
     pricingMetadata: payload.metadata,
     customerEmail: payload.customer?.email ?? null,
-    paymentProvider: "paystack",
+    paymentProvider:
+      payload.metadata?.payment_provider === "stripe" ||
+      String(payload.metadata?.stripe_payment_intent_id ?? "").startsWith("pi_")
+        ? "stripe"
+        : "paystack",
   });
 }

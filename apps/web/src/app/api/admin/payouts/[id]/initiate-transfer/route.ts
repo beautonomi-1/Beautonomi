@@ -20,7 +20,7 @@ const bodySchema = z.object({
 /**
  * POST /api/admin/payouts/[id]/initiate-transfer
  *
- * Initiate a Paystack transfer for a payout using the provider's active recipient_code.
+ * Initiate a payout transfer (Paystack recipient or Stripe Connect destination).
  */
 export async function POST(
   request: NextRequest,
@@ -116,7 +116,7 @@ export async function POST(
         {
           data: null,
           error: {
-            message: `Cannot initiate transfer for payout in status "${p.status}". The payout must first be approved (which moves it to "processing") before a Paystack transfer can be initiated.`,
+            message: `Cannot initiate transfer for payout in status "${p.status}". The payout must first be approved (which moves it to "processing") before a transfer can be initiated.`,
             code: "INVALID_STATE",
           },
         },
@@ -138,11 +138,12 @@ export async function POST(
         { status: readiness.status }
       );
     }
-    const acct = readiness.account!;
 
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
-    const payoutCurrency = p.currency || acct.currency || lastResortCurrency;
+    const acct = readiness.account;
+    const payoutCurrency =
+      p.currency || acct?.currency || lastResortCurrency;
     const payoutAmountMinor = convertToSmallestUnit(Number(p.amount || 0), payoutCurrency);
 
     const psp = await getPaymentProviderForTenant(tenantId);
@@ -196,6 +197,38 @@ export async function POST(
       }
 
       const stripe = await getStripeClient(tenantId);
+      const { recordPayoutLedger } = await import("@/lib/provider/record-payout-ledger");
+      try {
+        await recordPayoutLedger(supabase, {
+          id: p.id,
+          provider_id: p.provider_id,
+          net_amount: (payout as { net_amount?: number }).net_amount ?? p.amount,
+          amount: p.amount,
+          payout_number: p.payout_number,
+          currency: payoutCurrency,
+          transferFeeMajor: 0,
+        });
+      } catch (ledgerErr) {
+        console.error("[initiate-transfer/stripe] payout ledger failed:", ledgerErr);
+        await supabase
+          .from("payouts")
+          .update({ payout_provider: null, updated_at: new Date().toISOString() })
+          .eq("id", id)
+          .eq("status", "processing")
+          .is("transfer_code", null)
+          .eq("payout_provider", "stripe");
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: "Failed to record payout in the finance ledger",
+              code: "LEDGER_WRITE_FAILED",
+            },
+          },
+          { status: 500 },
+        );
+      }
+
       let transfer: { id: string };
       try {
         transfer = await stripe.transfers.create(
@@ -267,6 +300,19 @@ export async function POST(
           },
         },
         { status: 409 }
+      );
+    }
+
+    if (!acct?.recipient_code) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: "Provider payout account not set for Paystack transfer.",
+            code: "PAYOUT_ACCOUNT_NOT_READY",
+          },
+        },
+        { status: 409 },
       );
     }
 

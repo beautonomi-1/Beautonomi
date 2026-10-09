@@ -110,22 +110,45 @@ export async function PUT(request: NextRequest) {
     const validated = putSchema.parse(body);
     const { provider_name, api_key, api_secret, from_email, from_name, is_enabled } = validated;
 
-    // Validate SendGrid API key format (starts with SG.)
-    if (provider_name === "sendgrid" && !api_key.startsWith("SG.")) {
-      return errorResponse("Invalid SendGrid API key format. Should start with 'SG.'", "VALIDATION_ERROR", 400);
-    }
-
-    // Validate Mailchimp API key format (contains datacenter like -us1)
-    if (provider_name === "mailchimp" && !api_key.includes("-")) {
-      return errorResponse("Invalid Mailchimp API key format. Should include datacenter (e.g., xxxxx-us1)", "VALIDATION_ERROR", 400);
-    }
+    const keyIsMasked = api_key === "••••••••";
 
     // Check if integration exists
     const { data: existing } = await supabase
       .from("provider_email_integrations")
-      .select("id, api_key, api_secret, connected_date")
+      .select("id, api_key, api_secret, connected_date, provider_name")
       .eq("provider_id", providerId)
       .maybeSingle();
+
+    if (
+      existing &&
+      provider_name !== existing.provider_name &&
+      keyIsMasked
+    ) {
+      return errorResponse(
+        "Enter a new API key when switching email providers.",
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+
+    const resolvedApiKey =
+      api_key && api_key !== "••••••••" ? api_key : existing?.api_key ?? "";
+
+    const { validateEmailApiKeyForProvider, pingMailchimpTransactional } = await import(
+      "@/lib/marketing/send-via-mailchimp"
+    );
+
+    const keyValidationError = validateEmailApiKeyForProvider(provider_name, resolvedApiKey);
+    if (keyValidationError) {
+      return errorResponse(keyValidationError, "VALIDATION_ERROR", 400);
+    }
+
+    if (provider_name === "mailchimp" && !keyIsMasked) {
+      const ping = await pingMailchimpTransactional(api_key);
+      if (ping.ok === false) {
+        return errorResponse(ping.error, "VALIDATION_ERROR", 400);
+      }
+    }
 
     // If API key is masked (••••••••), keep the existing value
     const integrationData: any = {

@@ -6,6 +6,7 @@ import {
   TextInput,
   Alert,
   FlatList,
+  Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -71,11 +72,20 @@ export default function PayoutAccountsScreen() {
   const { data: accounts, loading, error: accountsError, refresh } = useApi<PayoutAccount[]>(
     "/api/provider/payout-accounts"
   );
-  const { data: payoutUiOptions } = useApi<{ show_verify_account_button: boolean }>(
-    "/api/provider/payout-accounts/options",
-    { staleTimeMs: 60_000 },
-  );
+  const { data: payoutUiOptions, refresh: refreshPayoutOptions } = useApi<{
+    show_verify_account_button: boolean;
+    payout_rail?: "paystack" | "stripe";
+    stripe_connect?: {
+      connect_account_id?: string | null;
+      onboarding_complete?: boolean;
+      external_account_last4?: string | null;
+    } | null;
+  }>("/api/provider/payout-accounts/options", { staleTimeMs: 60_000 });
   const showVerifyAccountButton = payoutUiOptions?.show_verify_account_button !== false;
+  const payoutRail = payoutUiOptions?.payout_rail === "stripe" ? "stripe" : "paystack";
+  const stripeConnect = payoutUiOptions?.stripe_connect;
+  const stripePayoutReady = Boolean(stripeConnect?.onboarding_complete);
+  const [connectingStripe, setConnectingStripe] = useState(false);
   const { data: banksData, loading: banksLoading, refresh: refreshBanks } = useApi<{
     banks: BankOption[];
     country: string;
@@ -97,11 +107,28 @@ export default function PayoutAccountsScreen() {
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await refresh();
+      await Promise.all([refresh(), refreshPayoutOptions()]);
     } finally {
       setRefreshing(false);
     }
-  }, [refresh]);
+  }, [refresh, refreshPayoutOptions]);
+
+  async function handleStripeConnect() {
+    try {
+      setConnectingStripe(true);
+      const result = await api.post<{ url: string }>("/api/provider/stripe-connect/onboard", {});
+      const url = result.data?.url;
+      if (url) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert(pa("errorTitle"), pa("stripeConnectFailed"));
+      }
+    } catch {
+      Alert.alert(pa("errorTitle"), pa("stripeConnectFailed"));
+    } finally {
+      setConnectingStripe(false);
+    }
+  }
 
   const activeCount = useMemo(
     () => accounts?.filter((a) => a.active).length ?? 0,
@@ -322,12 +349,43 @@ export default function PayoutAccountsScreen() {
     resetVerifyState();
   }
 
-  if (loading && !accounts && !accountsError) return <LoadingState />;
-  if (accountsError && !accounts) {
+  if (loading && !accounts && !accountsError && !payoutUiOptions) return <LoadingState />;
+  if (accountsError && !accounts && payoutRail !== "stripe") {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title={pa("title")} showBack subtitle={pa("subtitle")} />
         <ErrorState message={accountsError} onRetry={refresh} />
+      </ScreenContainer>
+    );
+  }
+
+  if (payoutRail === "stripe") {
+    return (
+      <ScreenContainer scrollable>
+        <ScreenHeader
+          title={pa("stripeConnectTitle")}
+          showBack
+          subtitle={pa("stripeConnectSubtitle")}
+        />
+        <View style={twStyle("mt-4 rounded-2xl border border-gray-200 bg-white p-4")}>
+          <Text style={twStyle("text-base font-semibold text-gray-900")}>
+            {stripePayoutReady ? pa("stripeConnectReady") : pa("stripeConnectIncomplete")}
+          </Text>
+          {stripeConnect?.external_account_last4 ? (
+            <Text style={twStyle("mt-2 text-sm text-gray-600")}>
+              {pa("stripeConnectBankLast4", { last4: stripeConnect.external_account_last4 })}
+            </Text>
+          ) : null}
+          {!stripePayoutReady ? (
+            <View style={twStyle("mt-4")}>
+              <ActionButton
+                label={stripeConnect?.connect_account_id ? pa("stripeConnectContinue") : pa("stripeConnectStart")}
+                onPress={() => void handleStripeConnect()}
+                loading={connectingStripe}
+              />
+            </View>
+          ) : null}
+        </View>
       </ScreenContainer>
     );
   }
@@ -341,7 +399,7 @@ export default function PayoutAccountsScreen() {
         rightAction={
           <TouchableOpacity
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")}
-onPress={() => {
+            onPress={() => {
               setForm((p) => ({
                 ...p,
                 account_number: "",
