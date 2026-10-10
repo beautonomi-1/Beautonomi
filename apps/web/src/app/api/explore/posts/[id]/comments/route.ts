@@ -12,6 +12,7 @@ import type { ExploreComment } from "@/types/explore";
 import { requireSocialAccess } from "@/lib/safety/require-social-access";
 import { getBlockedUserIds, getMutedUserIds, assertNotBlocked, UserBlockedError } from "@/lib/safety/user-blocks";
 import { filterBlockedCommentAuthors } from "@/lib/safety/filter-explore-posts";
+import { isExploreEnabled } from "@/lib/explore/explore-feature-gates";
 
 /** Returns true if the post is publicly visible (published + not hidden). */
 function isPostPublic(post: { status: string; is_hidden: boolean }) {
@@ -34,6 +35,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!(await isExploreEnabled(null))) {
+      return errorResponse("Post not found", "NOT_FOUND", 404);
+    }
     const { id: postId } = await params;
     const { searchParams } = new URL(request.url);
     const limit = Math.min(Math.max(parseInt(searchParams.get("limit") ?? "50", 10), 1), 100);
@@ -80,6 +84,7 @@ export async function GET(
         id,
         post_id,
         user_id,
+        parent_id,
         body,
         mentioned_user_ids,
         created_at,
@@ -105,13 +110,15 @@ export async function GET(
       updated_at?: string;
       users?: { id: string; full_name?: string | null; avatar_url?: string | null } | { id: string; full_name?: string | null; avatar_url?: string | null }[];
     };
-    const comments: ExploreComment[] = (rows ?? []).map((r: unknown) => {
-      const row = r as CommentRow;
+    type CommentRowExt = CommentRow & { parent_id?: string | null };
+    const flat: ExploreComment[] = (rows ?? []).map((r: unknown) => {
+      const row = r as CommentRowExt;
       const u = Array.isArray(row.users) ? row.users[0] : row.users;
       return {
         id: row.id,
         post_id: row.post_id,
         user_id: row.user_id,
+        parent_id: row.parent_id ?? null,
         author: u ? { id: u.id, full_name: u.full_name ?? null, avatar_url: u.avatar_url ?? null } : { id: row.user_id, full_name: null, avatar_url: null },
         body: row.body ?? "",
         mentioned_user_ids: row.mentioned_user_ids ?? [],
@@ -119,6 +126,18 @@ export async function GET(
         updated_at: row.updated_at ?? "",
       };
     });
+    const topLevel = flat.filter((c) => !c.parent_id);
+    const repliesByParent = new Map<string, ExploreComment[]>();
+    for (const c of flat) {
+      if (!c.parent_id) continue;
+      const list = repliesByParent.get(c.parent_id) ?? [];
+      list.push(c);
+      repliesByParent.set(c.parent_id, list);
+    }
+    const comments = topLevel.map((c) => ({
+      ...c,
+      replies: repliesByParent.get(c.id) ?? [],
+    }));
 
     let visibleComments = comments;
     if (viewer) {
@@ -152,6 +171,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!(await isExploreEnabled(null))) {
+      return errorResponse("Post not found", "NOT_FOUND", 404);
+    }
     const { user } = await requireAuthInApi(request);
     await requireSocialAccess(user.id, "comment", request);
     const { id: postId } = await params;
@@ -197,11 +219,28 @@ export async function POST(
       await assertNotBlocked(user.id, authorId, supabaseAdmin);
     }
 
+    let parentId: string | null = null;
+    if (body.parent_id != null && body.parent_id !== "") {
+      if (typeof body.parent_id !== "string") {
+        return errorResponse("parent_id must be a string", "VALIDATION_ERROR", 400);
+      }
+      const { data: parentRow } = await supabaseAdmin
+        .from("explore_comments")
+        .select("id, post_id, parent_id")
+        .eq("id", body.parent_id)
+        .maybeSingle();
+      if (!parentRow || parentRow.post_id !== postId || parentRow.parent_id) {
+        return errorResponse("Invalid parent comment", "VALIDATION_ERROR", 400);
+      }
+      parentId = body.parent_id;
+    }
+
     const { data: row, error } = await supabaseAdmin
       .from("explore_comments")
       .insert({
         post_id: postId,
         user_id: user.id,
+        parent_id: parentId,
         body: text,
         mentioned_user_ids: mentionUserIds,
       })
@@ -210,6 +249,7 @@ export async function POST(
         id,
         post_id,
         user_id,
+        parent_id,
         body,
         mentioned_user_ids,
         created_at,
@@ -225,6 +265,7 @@ export async function POST(
       id: row.id,
       post_id: row.post_id,
       user_id: row.user_id,
+      parent_id: (row as { parent_id?: string | null }).parent_id ?? null,
       author: row.users
         ? (() => {
             type UserRow = { id?: string; full_name?: string | null; avatar_url?: string | null };

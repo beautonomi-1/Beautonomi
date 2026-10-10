@@ -150,7 +150,11 @@ export default function ExploreCollectionScreen() {
       ) : (
         <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
           {collection.posts.map((post, index) => {
-            const img = post.media_urls?.[0];
+            const img = post.display_url ?? post.media_urls?.[0];
+            const aspect =
+              post.media_width && post.media_height && post.media_height > 0
+                ? Math.min(1.5, Math.max(0.6, post.media_width / post.media_height))
+                : 4 / 5;
             return (
               <TouchableOpacity
                 key={post.id}
@@ -166,7 +170,7 @@ export default function ExploreCollectionScreen() {
                 <View style={{ borderRadius: 12, overflow: "hidden", backgroundColor: Colors.gray[100] }}>
                   <Image
                     source={{ uri: img || "https://placehold.co/400x500/f5f5f5/999?text=Beauty" }}
-                    style={{ width: "100%", aspectRatio: 4 / 5 }}
+                    style={{ width: "100%", aspectRatio: aspect }}
                     contentFit="cover"
                     cachePolicy="memory-disk"
                   />

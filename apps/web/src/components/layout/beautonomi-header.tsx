@@ -38,6 +38,9 @@ import { useTranslation } from "@beautonomi/i18n";
 import { PreferencesTrigger } from "@/components/global/PreferencesTrigger";
 import { useOpenGlobalPreferences } from "@/components/global/GlobalPreferencesDialog";
 import { translatePublicCategory } from "@/lib/i18n/translate-public-category";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
+import { EXPLORE_CUSTOMER_WEB_PATH } from "@/lib/explore/explore-customer-entry";
 
 interface Category {
   id: string;
@@ -69,7 +72,8 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const isHomePage = pathname === "/" || pathname === "";
-  const isExplorePage = pathname?.startsWith("/explore");
+  const exploreEnabled = useFeatureFlag(FEATURE_FLAG_KEYS.EXPLORE_ENABLED);
+  const isExplorePage = pathname?.startsWith(EXPLORE_CUSTOMER_WEB_PATH);
   
   // Get active category from URL if not provided
   const urlCategory = searchParams.get("category") || "all";
@@ -970,24 +974,26 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                 <div className="absolute bottom-0 left-1 right-1 md:left-2 md:right-2 h-1 bg-[#FF007F] rounded-full" aria-hidden />
               )}
             </Link>
-            <Link
-              href="/explore"
-              className={cn(
-                "relative flex flex-col items-center gap-0.5 px-2 py-2 sm:px-3 md:px-5 md:gap-1 rounded-lg transition-colors min-w-[44px] sm:min-w-[56px] md:min-w-[72px] touch-manipulation select-none",
-                isExplorePage ? "text-[#FF007F] font-bold" : "text-gray-600 hover:text-gray-900 active:text-gray-900",
-              )}
-            >
-              <ExploreNavIcon active={isExplorePage} size={24} />
-              <span className="flex items-center gap-1 text-[10px] md:text-xs font-medium leading-none">
-                {t("web.layout.explore")}
-                <span className="hidden sm:inline px-1 py-0.5 text-[8px] md:text-[9px] font-bold uppercase bg-[#FF007F] text-white rounded leading-none">
-                  {t("web.layout.newBadge")}
+            {exploreEnabled ? (
+              <Link
+                href={EXPLORE_CUSTOMER_WEB_PATH}
+                className={cn(
+                  "relative flex flex-col items-center gap-0.5 px-2 py-2 sm:px-3 md:px-5 md:gap-1 rounded-lg transition-colors min-w-[44px] sm:min-w-[56px] md:min-w-[72px] touch-manipulation select-none",
+                  isExplorePage ? "text-[#FF007F] font-bold" : "text-gray-600 hover:text-gray-900 active:text-gray-900",
+                )}
+              >
+                <ExploreNavIcon active={isExplorePage} size={24} />
+                <span className="flex items-center gap-1 text-[10px] md:text-xs font-medium leading-none">
+                  {t("web.layout.explore")}
+                  <span className="hidden sm:inline px-1 py-0.5 text-[8px] md:text-[9px] font-bold uppercase bg-[#FF007F] text-white rounded leading-none">
+                    {t("web.layout.newBadge")}
+                  </span>
                 </span>
-              </span>
-              {isExplorePage && (
-                <div className="absolute bottom-0 left-1 right-1 md:left-2 md:right-2 h-1 bg-[#FF007F] rounded-full" aria-hidden />
-              )}
-            </Link>
+                {isExplorePage && (
+                  <div className="absolute bottom-0 left-1 right-1 md:left-2 md:right-2 h-1 bg-[#FF007F] rounded-full" aria-hidden />
+                )}
+              </Link>
+            ) : null}
           </nav>
 
           {/* Right: globe aligned with menu; search + partner stay md+ */}
@@ -1046,7 +1052,12 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                       </SheetDescription>
                     </SheetHeader>
                     <div className="flex flex-col p-2">
-                      <div className="grid grid-cols-3 gap-2 px-4 py-2 border-b border-gray-100 md:hidden">
+                      <div
+                        className={cn(
+                          "grid gap-2 px-4 py-2 border-b border-gray-100 md:hidden",
+                          exploreEnabled ? "grid-cols-3" : "grid-cols-2",
+                        )}
+                      >
                         <Link
                           href="/"
                           className={`py-2 text-center text-sm font-medium rounded-lg ${
@@ -1056,15 +1067,17 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                         >
                           {t("web.layout.header.home")}
                         </Link>
-                        <Link
-                          href="/explore"
-                          className={`py-2 text-center text-sm font-medium rounded-lg ${
-                            isExplorePage ? "bg-[#FF007F]/10 text-[#FF007F]" : "text-gray-600 hover:bg-gray-50"
-                          }`}
-                          onClick={() => setIsUserMenuOpen(false)}
-                        >
-                          {t("web.layout.explore")}
-                        </Link>
+                        {exploreEnabled ? (
+                          <Link
+                            href={EXPLORE_CUSTOMER_WEB_PATH}
+                            className={`py-2 text-center text-sm font-medium rounded-lg ${
+                              isExplorePage ? "bg-[#FF007F]/10 text-[#FF007F]" : "text-gray-600 hover:bg-gray-50"
+                            }`}
+                            onClick={() => setIsUserMenuOpen(false)}
+                          >
+                            {t("web.layout.explore")}
+                          </Link>
+                        ) : null}
                         <Link
                           href="/search"
                           className={`py-2 text-center text-sm font-medium rounded-lg ${

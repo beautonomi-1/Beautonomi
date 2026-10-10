@@ -13214,7 +13214,10 @@
       "providerFallback": "Mtoa huduma",
       "openProviderProfile": "Fungua {{name}} wasifu",
       "userFallback": "Mtumiaji",
-      "postByProvider": "Publicación by {{name}}"
+      "postByProvider": "Publicación by {{name}}",
+      "reply": "Jibu",
+      "replying": "Unajibu maoni",
+      "replyPlaceholder": "Andika jibu…"
     },
     "searchScreen": {
       "title": "Tafuta",
@@ -13823,7 +13826,8 @@
           "categoryLashes": "Kopeco",
           "categoryBarber": "Kinyozi",
           "categorySpa": "Spa",
-          "categoryBody": "Mwili"
+          "categoryBody": "Mwili",
+          "categoryFollowing": "Unaofuata"
         },
         "shop": {
           "searchPlaceholder": "Tafuta bidhaa…",
@@ -17420,7 +17424,11 @@
         }
       }
     },
-    "cart": "Kikapu"
+    "cart": "Kikapu",
+    "exploreVideo": {
+      "unmute": "Washa sauti",
+      "mute": "Zima sauti"
+    }
   },
   "checkout": {
     "title": "Maliza ununuzi",
@@ -34473,7 +34481,10 @@
         "noSavedPostsHint": "Londoloza okuthunyelwe okuthandayo ngokuthepha isithonjana sebhukhimakhi. Bazovela lapha.",
         "exploreTheFeed": "Explorar the feed",
         "noPostsYet": "Hakuna posts bado",
-        "noPostsHint": "profissionais haven't partilhard any posts. Check voltar em breve!"
+        "noPostsHint": "profissionais haven't partilhard any posts. Check voltar em breve!",
+        "following": "Unaofuata",
+        "disabledTitle": "Gundua haipatikani",
+        "disabledHint": "Kipengele hiki kimezimwa kwa soko lako."
       }
     },
     "profile": {

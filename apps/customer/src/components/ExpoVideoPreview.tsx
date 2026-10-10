@@ -13,6 +13,8 @@ type ExpoVideoPreviewProps = {
   /** When true, playback is paused (e.g. off-screen carousel slide). */
   paused?: boolean;
   muted?: boolean;
+  /** Fired ~5×/s while playing (for timed on-media text overlays). */
+  onPlaybackTimeUpdate?: (timeMs: number) => void;
 };
 
 export function ExpoVideoPreview({
@@ -23,6 +25,7 @@ export function ExpoVideoPreview({
   loop = false,
   paused = true,
   muted = false,
+  onPlaybackTimeUpdate,
 }: ExpoVideoPreviewProps) {
   const player = useVideoPlayer(uri, (p) => {
     p.loop = loop;
@@ -35,12 +38,21 @@ export function ExpoVideoPreview({
   });
 
   useEffect(() => {
+    player.muted = muted;
     if (paused) {
       player.pause();
     } else {
       player.play();
     }
-  }, [paused, player]);
+  }, [paused, muted, player]);
+
+  useEffect(() => {
+    if (paused || !onPlaybackTimeUpdate) return;
+    const timer = setInterval(() => {
+      onPlaybackTimeUpdate(Math.floor((player.currentTime || 0) * 1000));
+    }, 200);
+    return () => clearInterval(timer);
+  }, [paused, player, onPlaybackTimeUpdate]);
 
   return (
     <VideoView

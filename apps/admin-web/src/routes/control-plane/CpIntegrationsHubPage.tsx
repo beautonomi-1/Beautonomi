@@ -101,6 +101,12 @@ const cards: { title: string; description: string; to: string; icon: typeof BarC
     icon: Smartphone,
   },
   {
+    title: "Rendobar",
+    description: "Explore video probe, encode, and poster callbacks",
+    to: adminSpaTo("/admin/integrations/rendobar"),
+    icon: Radio,
+  },
+  {
     title: "Aura",
     description: "Identity and trust",
     to: adminSpaTo("/admin/control-plane/integrations/aura"),

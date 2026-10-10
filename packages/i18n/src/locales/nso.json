@@ -13214,7 +13214,10 @@
       "providerFallback": "Mophakeri",
       "openProviderProfile": "Bula {{name}} profaele",
       "userFallback": "Modiriši",
-      "postByProvider": "Poso by {{name}}"
+      "postByProvider": "Poso by {{name}}",
+      "reply": "Fetola",
+      "replying": "O fetola tshwaelo",
+      "replyPlaceholder": "Ngwala phetolo…"
     },
     "searchScreen": {
       "title": "Nyaka",
@@ -13823,7 +13826,8 @@
           "categoryLashes": "Mashesho",
           "categoryBarber": "Mogoli",
           "categorySpa": "Spa",
-          "categoryBody": "Mmele"
+          "categoryBody": "Mmele",
+          "categoryFollowing": "Go latela"
         },
         "shop": {
           "searchPlaceholder": "Nyaka ditšweletšwa…",
@@ -17420,7 +17424,11 @@
         }
       }
     },
-    "cart": "Koloi"
+    "cart": "Koloi",
+    "exploreVideo": {
+      "unmute": "Bula modumo",
+      "mute": "Homotša"
+    }
   },
   "checkout": {
     "title": "Go lefa",
@@ -34473,7 +34481,10 @@
         "noSavedPostsHint": "Stoor plasings waarvan jy hou deur op die boekmerkikoon te tik. Hulle sal hier verskyn.",
         "exploreTheFeed": "Hlahloba the feed",
         "noPostsYet": "Ga go na posts gabjale",
-        "noPostsHint": "baphakeri haven't abelanad any posts. Check morago kgauswinyane!"
+        "noPostsHint": "baphakeri haven't abelanad any posts. Check morago kgauswinyane!",
+        "following": "Go latela",
+        "disabledTitle": "Go nyakišiša ga go hwetšagale",
+        "disabledHint": "Karolo ye e tswaletšwe mmarakeng wa gago."
       }
     },
     "profile": {

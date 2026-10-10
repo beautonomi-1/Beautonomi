@@ -9,7 +9,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import type { ExplorePost } from "@/types/explore";
 import { useTranslation } from "@beautonomi/i18n";
 
-type SortMode = "chronological" | "trending" | "nearby" | "for_you";
+type SortMode = "chronological" | "trending" | "nearby" | "for_you" | "following";
 
 interface ExploreFeedProps {
   initialPosts?: ExplorePost[];
@@ -78,6 +78,7 @@ export function ExploreFeed({
         const loc = overrideLoc !== undefined ? overrideLoc : location;
         if (sort === "trending") params.set("sort", "trending");
         if (sort === "for_you") params.set("sort", "for_you");
+        if (sort === "following") params.set("sort", "following");
         if (sort === "nearby" && loc) {
           params.set("sort", "nearby");
           params.set("lat", String(loc.lat));
@@ -230,7 +231,7 @@ export function ExploreFeed({
         handleNearMe();
         return;
       }
-      if (mode === "for_you" && !user) return; // For You requires auth
+      if ((mode === "for_you" || mode === "following") && !user) return;
       if (sortMode === mode) return;
       refetchWithSort(mode);
     },
@@ -384,17 +385,30 @@ export function ExploreFeed({
             {locationLoading ? t("web.explore.feed.gettingLocation") : t("web.explore.feed.nearMe")}
           </button>
           {user && (
-            <button
-              type="button"
-              onClick={() => onSortChip("for_you")}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                sortMode === "for_you"
-                  ? "bg-[#FF0077] text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-            >
-              {t("web.explore.feed.forYou")}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => onSortChip("following")}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  sortMode === "following"
+                    ? "bg-[#FF0077] text-white"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                {t("web.explore.feed.following", "Following")}
+              </button>
+              <button
+                type="button"
+                onClick={() => onSortChip("for_you")}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  sortMode === "for_you"
+                    ? "bg-[#FF0077] text-white"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                {t("web.explore.feed.forYou")}
+              </button>
+            </>
           )}
         </div>
       )}

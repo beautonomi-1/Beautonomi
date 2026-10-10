@@ -7,13 +7,25 @@ import { useTranslation } from "@beautonomi/i18n";
 
 interface ExploreEmptyStateProps {
   saved?: boolean;
+  /** Platform feature flag explore.enabled is off */
+  disabled?: boolean;
 }
 
-export function ExploreEmptyState({ saved = false }: ExploreEmptyStateProps) {
+export function ExploreEmptyState({ saved = false, disabled = false }: ExploreEmptyStateProps) {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-      {saved ? (
+      {disabled ? (
+        <>
+          <ImageIcon className="w-16 h-16 text-gray-300 mb-4" />
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            {t("web.explore.feed.disabledTitle", "Explore is unavailable")}
+          </h3>
+          <p className="text-gray-500 max-w-sm">
+            {t("web.explore.feed.disabledHint", "This feature is turned off for your market.")}
+          </p>
+        </>
+      ) : saved ? (
         <>
           <Bookmark className="w-16 h-16 text-gray-300 mb-4" />
           <h3 className="text-lg font-semibold text-gray-900 mb-2">

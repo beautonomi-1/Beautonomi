@@ -11,10 +11,36 @@ import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { hasPermission } from "@/lib/auth/permissions";
 import type { ExplorePost, ExplorePostsCursorResponse } from "@/types/explore";
 import { toPublicMediaUrl, toStoragePath } from "@/lib/explore/media-urls";
+import { mapExplorePostRow } from "@/lib/explore/post-mapper";
+import { EXPLORE_POST_SELECT_WITH_PROVIDER } from "@/lib/explore/post-select";
+import {
+  denormalizeFirstSlideFromMeta,
+  validateProviderMediaPaths,
+} from "@/lib/explore/media-meta";
+import {
+  isExploreEnabled,
+  isExploreProviderPostsEnabled,
+  isExploreSoundCatalogEnabled,
+} from "@/lib/explore/explore-feature-gates";
+import {
+  enrichExplorePostWithSoundUrl,
+  enrichExplorePostsWithSoundUrls,
+} from "@/lib/explore/sound-enrich";
+import { runExplorePublishSideEffects } from "@/lib/explore/publish-side-effects";
+import { resolveExplorePostSoundIdForWrite } from "@/lib/explore/validate-explore-sound-id";
+import { firstSlideIsVideo } from "@/lib/explore/video-media";
 import { haversineDistanceKmFromCoords } from "@/lib/geo/distance";
 import { getViewerSafetyContext } from "@/lib/safety/viewer-safety-context";
 import { requireSocialAccess } from "@/lib/safety/require-social-access";
 import { applyExploreViewerContentFilters, type ExplorePostFilterable } from "@/lib/safety/filter-explore-posts";
+import {
+  buildExploreFeedFilterFingerprint,
+  cursorFingerprintMatches,
+  decodeExplorePostsCursor,
+  encodeExplorePostsCursor,
+} from "@/lib/explore/explore-feed-cursor";
+import { burnExplorePhotoOverlaysForPublish } from "@/lib/explore/explore-photo-burn";
+export const maxDuration = 60;
 
 const supabaseUrl = () => process.env.NEXT_PUBLIC_SUPABASE_URL;
 
@@ -48,37 +74,14 @@ function mapToExplorePost(
   row: any,
   savedIds: Set<string>,
   likedIds: Set<string>,
-  offering?: { id: string; name: string; price?: number; duration_minutes?: number } | null
+  offering?: { id: string; name: string; price?: number; duration_minutes?: number } | null,
 ): ExplorePost {
-  const mediaUrls = (row.media_urls || []).map((p: string) =>
-    toPublicMediaUrl(p, supabaseUrl())
-  );
-  const provider = row.providers
-    ? { business_name: row.providers.business_name, slug: row.providers.slug }
-    : row.provider_business_name
-      ? { business_name: row.provider_business_name, slug: row.provider_slug }
-      : { business_name: "", slug: "" };
-  return {
-    id: row.id,
-    provider_id: row.provider_id,
-    provider,
-    created_by_user_id: row.created_by_user_id,
-    caption: row.caption,
-    media_urls: mediaUrls,
-    status: row.status,
-    published_at: row.published_at,
-    like_count: row.like_count ?? 0,
-    comment_count: row.comment_count ?? 0,
-    view_count: row.view_count ?? 0,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-    is_saved: savedIds.has(row.id),
-    is_liked: likedIds.has(row.id),
-    tags: row.tags ?? [],
-    primary_category_id: row.primary_category_id ?? null,
-    offering_id: row.offering_id ?? null,
-    offering: offering ?? null,
-  };
+  return mapExplorePostRow(row, {
+    supabaseUrl: supabaseUrl(),
+    savedIds,
+    likedIds,
+    offering,
+  });
 }
 
 function applyViewerContentFilters<T extends ExplorePostFilterable>(
@@ -97,16 +100,18 @@ function calculateTrendingScore(post: {
   comment_count: number;
   save_count?: number;
   view_count?: number;
+  completion_count?: number;
   published_at: string;
 }): number {
   const likes = post.like_count ?? 0;
   const comments = post.comment_count ?? 0;
   const saves = post.save_count ?? 0;
   const views = post.view_count ?? 0;
+  const completions = post.completion_count ?? 0;
   const hoursSincePost =
     (Date.now() - new Date(post.published_at).getTime()) / (1000 * 60 * 60);
 
-  return likes * 2 + comments * 3 + saves * 5 + views * 0.5 - hoursSincePost * 0.5;
+  return likes * 2 + comments * 3 + saves * 5 + views * 0.5 + completions * 4 - hoursSincePost * 0.5;
 }
 
 /**
@@ -126,6 +131,9 @@ function calculateTrendingScore(post: {
  */
 export async function GET(request: NextRequest) {
   try {
+    if (!(await isExploreEnabled(null))) {
+      return successResponse({ data: [], next_cursor: undefined, has_more: false });
+    }
     const supabaseAdmin = await getSupabaseAdmin();
     const supabase = await getSupabaseServer(request);
     const { data: { user } } = await supabase.auth.getUser();
@@ -138,10 +146,15 @@ export async function GET(request: NextRequest) {
     const cursorEncoded = searchParams.get("cursor");
     const limit = Math.min(parseInt(searchParams.get("limit") || "20", 10), 50);
     const sortParam = searchParams.get("sort")?.toLowerCase();
+    const followingOnly =
+      sortParam === "following" ||
+      searchParams.get("following") === "1" ||
+      searchParams.get("following") === "true";
     const sortMode =
       sortParam === "trending" ? "trending" :
       sortParam === "nearby" ? "nearby" :
-      sortParam === "for_you" ? "for_you" : "chronological";
+      sortParam === "for_you" ? "for_you" :
+      sortParam === "following" ? "following" : "chronological";
     const latParam = searchParams.get("lat");
     const lngParam = searchParams.get("lng");
     const cityParam = searchParams.get("city")?.trim() || null;
@@ -155,42 +168,73 @@ export async function GET(request: NextRequest) {
     const tagsParam = searchParams.get("tags")?.trim() || null;
     const filterTags = tagsParam ? tagsParam.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean) : null;
 
+    const filterFp = buildExploreFeedFilterFingerprint({
+      sortMode,
+      followingOnly,
+      categorySlug,
+      filterTags,
+      searchQuery: sanitizedSearch,
+      lat: latParam,
+      lng: lngParam,
+      radiusKm,
+      city: cityParam,
+    });
+
+    let followingProviderIds: string[] | null = null;
+    if (sortMode === "following" || (sortMode === "nearby" && followingOnly)) {
+      if (!user) {
+        return successResponse({ data: [], next_cursor: undefined, has_more: false });
+      }
+      const { data: wishlists } = await supabaseAdmin
+        .from("wishlists")
+        .select("id")
+        .eq("user_id", user.id);
+      const wishlistIds = (wishlists ?? []).map((w: { id: string }) => w.id);
+      if (!wishlistIds.length) {
+        return successResponse({ data: [], next_cursor: undefined, has_more: false });
+      }
+      const { data: wishItems } = await supabaseAdmin
+        .from("wishlist_items")
+        .select("item_id")
+        .in("wishlist_id", wishlistIds)
+        .eq("item_type", "provider");
+      followingProviderIds = [...new Set((wishItems ?? []).map((i: { item_id: string }) => i.item_id))];
+      if (!followingProviderIds.length) {
+        return successResponse({ data: [], next_cursor: undefined, has_more: false });
+      }
+    }
+
     let cursorPublishedAt: string | null = null;
     let cursorId: string | null = null;
     let cursorNearby: NearbyCursor | null = null;
     let cursorSearch: SearchCursor | null = null;
     let cursorSearchSkip: number | null = null;
     if (cursorEncoded) {
-      try {
-        const cursor = JSON.parse(
-          Buffer.from(cursorEncoded, "base64url").toString()
-        ) as {
-          published_at?: string;
-          id?: string;
-          distance_km?: number;
-          search_rank?: number;
-          search_skip?: number;
-        };
-        if (typeof cursor.search_skip === "number" && cursor.search_skip >= 0) {
-          cursorSearchSkip = cursor.search_skip;
-        } else if (cursor.search_rank != null && cursor.published_at && cursor.id) {
-          cursorSearch = {
-            search_rank: cursor.search_rank,
-            published_at: cursor.published_at,
-            id: cursor.id,
-          };
-        } else if (cursor.distance_km != null && cursor.published_at && cursor.id) {
-          cursorNearby = {
-            distance_km: cursor.distance_km,
-            published_at: cursor.published_at,
-            id: cursor.id,
-          };
-        } else {
-          cursorPublishedAt = cursor.published_at ?? null;
-          cursorId = cursor.id ?? null;
-        }
-      } catch {
+      const cursor = decodeExplorePostsCursor(cursorEncoded);
+      if (!cursor) {
         return errorResponse("Invalid cursor", "BAD_REQUEST", 400);
+      }
+      const cursorFp = typeof cursor.fp === "string" ? cursor.fp : undefined;
+      if (!cursorFp || !cursorFingerprintMatches(cursorFp, filterFp)) {
+        return errorResponse("Cursor does not match current filters", "BAD_REQUEST", 400);
+      }
+      if (typeof cursor.search_skip === "number" && cursor.search_skip >= 0) {
+        cursorSearchSkip = cursor.search_skip;
+      } else if (cursor.search_rank != null && cursor.published_at && cursor.id) {
+        cursorSearch = {
+          search_rank: Number(cursor.search_rank),
+          published_at: String(cursor.published_at),
+          id: String(cursor.id),
+        };
+      } else if (cursor.distance_km != null && cursor.published_at && cursor.id) {
+        cursorNearby = {
+          distance_km: Number(cursor.distance_km),
+          published_at: String(cursor.published_at),
+          id: String(cursor.id),
+        };
+      } else {
+        cursorPublishedAt = cursor.published_at != null ? String(cursor.published_at) : null;
+        cursorId = cursor.id != null ? String(cursor.id) : null;
       }
     }
 
@@ -421,36 +465,42 @@ export async function GET(request: NextRequest) {
       const dataSearch: ExplorePost[] = sliceSearch.map((r: any) =>
         mapToExplorePost(r, savedIdsSearch, likedIdsSearch, offeringMapSearch.get(r.offering_id) ?? null),
       );
+      const dataSearchEnriched = await enrichExplorePostsWithSoundUrls(
+        supabaseAdmin,
+        dataSearch,
+        supabaseUrl(),
+      );
 
       let nextCursorSearch: string | undefined;
       if (hasMoreSearch && lastSearch) {
         if (sortMode === "nearby" && lastSearch.distance_km != null) {
-          nextCursorSearch = Buffer.from(
-            JSON.stringify({
+          nextCursorSearch = encodeExplorePostsCursor(
+            {
               distance_km: lastSearch.distance_km,
               published_at: lastSearch.published_at,
               id: lastSearch.id,
-            }),
-          ).toString("base64url");
+            },
+            filterFp,
+          );
         } else if (clientSortedSearch) {
-          nextCursorSearch = Buffer.from(
-            JSON.stringify({
-              search_skip: (cursorSearchSkip ?? 0) + limit,
-            }),
-          ).toString("base64url");
+          nextCursorSearch = encodeExplorePostsCursor(
+            { search_skip: (cursorSearchSkip ?? 0) + limit },
+            filterFp,
+          );
         } else {
-          nextCursorSearch = Buffer.from(
-            JSON.stringify({
+          nextCursorSearch = encodeExplorePostsCursor(
+            {
               search_rank: lastSearch.search_rank,
               published_at: lastSearch.published_at,
               id: lastSearch.id,
-            }),
-          ).toString("base64url");
+            },
+            filterFp,
+          );
         }
       }
 
       return successResponse({
-        data: applyViewerContentFilters(dataSearch, viewerSafety),
+        data: applyViewerContentFilters(dataSearchEnriched, viewerSafety),
         next_cursor: nextCursorSearch,
         has_more: hasMoreSearch,
       });
@@ -501,12 +551,21 @@ export async function GET(request: NextRequest) {
       }
 
       const nearbyFetchLimit = Math.min(200, Math.max(limit * 4, 100));
+      let nearbyProviderIds = providerIdsInRadius;
+      if (followingProviderIds?.length) {
+        const followSet = new Set(followingProviderIds);
+        nearbyProviderIds = nearbyProviderIds.filter((pid) => followSet.has(pid));
+        if (nearbyProviderIds.length === 0) {
+          return successResponse({ data: [], next_cursor: undefined, has_more: false });
+        }
+      }
+
       let nearbyQuery = supabaseAdmin
         .from("explore_posts")
-        .select("id, provider_id, created_by_user_id, caption, media_urls, tags, status, published_at, like_count, comment_count, view_count, primary_category_id, offering_id, created_at, updated_at")
+        .select(EXPLORE_POST_SELECT_WITH_PROVIDER)
         .eq("status", "published")
         .eq("is_hidden", false)
-        .in("provider_id", providerIdsInRadius)
+        .in("provider_id", nearbyProviderIds)
         .order("published_at", { ascending: false })
         .order("id", { ascending: false })
         .limit(nearbyFetchLimit);
@@ -591,20 +650,26 @@ export async function GET(request: NextRequest) {
           offeringMapNearby.get(r.offering_id) ?? null
         )
       );
+      const dataNearbyEnriched = await enrichExplorePostsWithSoundUrls(
+        supabaseAdmin,
+        dataNearby,
+        supabaseUrl(),
+      );
 
       let nextCursorNearby: string | undefined;
       if (hasMoreNearby && lastNearby) {
-        nextCursorNearby = Buffer.from(
-          JSON.stringify({
+        nextCursorNearby = encodeExplorePostsCursor(
+          {
             distance_km: lastNearby.distance_km,
             published_at: lastNearby.published_at,
             id: lastNearby.id,
-          })
-        ).toString("base64url");
+          },
+          filterFp,
+        );
       }
 
       return successResponse({
-        data: applyViewerContentFilters(dataNearby, viewerSafety),
+        data: applyViewerContentFilters(dataNearbyEnriched, viewerSafety),
         next_cursor: nextCursorNearby,
         has_more: hasMoreNearby,
       });
@@ -615,14 +680,16 @@ export async function GET(request: NextRequest) {
 
     let query = supabaseAdmin
       .from("explore_posts")
-      .select(
-        "id, provider_id, created_by_user_id, caption, media_urls, tags, status, published_at, like_count, comment_count, view_count, primary_category_id, offering_id, created_at, updated_at"
-      )
+      .select(EXPLORE_POST_SELECT_WITH_PROVIDER)
       .eq("status", "published")
       .eq("is_hidden", false)
       .order("published_at", { ascending: false })
       .order("id", { ascending: false })
       .limit(fetchLimit);
+
+    if (followingProviderIds?.length) {
+      query = query.in("provider_id", followingProviderIds);
+    }
 
     if (cursorPublishedAt && cursorId) {
       query = query.lt("published_at", cursorPublishedAt);
@@ -699,6 +766,24 @@ export async function GET(request: NextRequest) {
       }));
     }
 
+    const windowPostIds = items.map((r: { id: string }) => r.id);
+    const completionCountByPost = new Map<string, number>();
+    if (windowPostIds.length > 0 && (sortMode === "trending" || sortMode === "for_you")) {
+      const { data: completedRows } = await supabaseAdmin
+        .from("explore_watch_progress")
+        .select("post_id")
+        .eq("completed", true)
+        .in("post_id", windowPostIds);
+      for (const row of completedRows ?? []) {
+        const pid = (row as { post_id: string }).post_id;
+        completionCountByPost.set(pid, (completionCountByPost.get(pid) ?? 0) + 1);
+      }
+      items = items.map((r: any) => ({
+        ...r,
+        completion_count: completionCountByPost.get(r.id) ?? 0,
+      }));
+    }
+
     // Apply trending sort when requested
     if (sortMode === "trending") {
       items.sort(
@@ -709,9 +794,10 @@ export async function GET(request: NextRequest) {
 
     // For You: personalize by preferred providers/categories from user's likes and saves
     if (sortMode === "for_you" && user && items.length > 0) {
-      const [savedRes, likedRes] = await Promise.all([
+      const [savedRes, likedRes, wishlistRes] = await Promise.all([
         supabaseAdmin.from("explore_saved").select("post_id").eq("user_id", user.id),
         supabaseAdmin.from("explore_events").select("post_id").eq("actor_type", "authed").eq("actor_key", user.id).eq("event_type", "like"),
+        supabaseAdmin.from("wishlists").select("id").eq("user_id", user.id),
       ]);
       const preferredPostIds = [
         ...(savedRes.data || []).map((r: any) => r.post_id),
@@ -719,6 +805,17 @@ export async function GET(request: NextRequest) {
       ].filter(Boolean);
       const preferredProviderIds = new Set<string>();
       const preferredCategoryIds = new Set<string>();
+      const wishlistIds = (wishlistRes.data ?? []).map((w: { id: string }) => w.id);
+      if (wishlistIds.length > 0) {
+        const { data: wishProviders } = await supabaseAdmin
+          .from("wishlist_items")
+          .select("item_id")
+          .in("wishlist_id", wishlistIds)
+          .eq("item_type", "provider");
+        for (const w of wishProviders ?? []) {
+          preferredProviderIds.add((w as { item_id: string }).item_id);
+        }
+      }
       if (preferredPostIds.length > 0) {
         const { data: prefPosts } = await supabaseAdmin
           .from("explore_posts")
@@ -729,12 +826,32 @@ export async function GET(request: NextRequest) {
           if (p.primary_category_id) preferredCategoryIds.add(p.primary_category_id);
         });
       }
+      if (windowPostIds.length > 0) {
+        const { data: completedPosts } = await supabaseAdmin
+          .from("explore_watch_progress")
+          .select("post_id")
+          .eq("actor_type", "authed")
+          .eq("actor_key", user.id)
+          .eq("completed", true)
+          .in("post_id", windowPostIds);
+        const completedIds = (completedPosts ?? []).map((r: { post_id: string }) => r.post_id);
+        if (completedIds.length > 0) {
+          const { data: catRows } = await supabaseAdmin
+            .from("explore_posts")
+            .select("primary_category_id")
+            .in("id", completedIds);
+          for (const c of catRows ?? []) {
+            const cid = (c as { primary_category_id?: string | null }).primary_category_id;
+            if (cid) preferredCategoryIds.add(cid);
+          }
+        }
+      }
       const now = Date.now();
       items.sort((a: any, b: any) => {
         const score = (r: any) => {
-          let s = 0;
-          if (preferredProviderIds.has(r.provider_id)) s += 2;
-          if (r.primary_category_id && preferredCategoryIds.has(r.primary_category_id)) s += 1;
+          let s = calculateTrendingScore(r);
+          if (preferredProviderIds.has(r.provider_id)) s += 3;
+          if (r.primary_category_id && preferredCategoryIds.has(r.primary_category_id)) s += 1.5;
           const hours = (now - new Date(r.published_at).getTime()) / (1000 * 60 * 60);
           s += 1 / (1 + hours / 24);
           return s;
@@ -786,16 +903,18 @@ export async function GET(request: NextRequest) {
     const data: ExplorePost[] = slice.map((r: any) =>
       mapToExplorePost(r, savedIds, likedIds, offeringMap.get(r.offering_id) ?? null)
     );
+    const dataEnriched = await enrichExplorePostsWithSoundUrls(supabaseAdmin, data, supabaseUrl());
 
     let nextCursor: string | undefined;
     if (hasMore && last) {
-      nextCursor = Buffer.from(
-        JSON.stringify({ published_at: last.published_at, id: last.id })
-      ).toString("base64url");
+      nextCursor = encodeExplorePostsCursor(
+        { published_at: last.published_at, id: last.id },
+        filterFp,
+      );
     }
 
     const response: ExplorePostsCursorResponse = {
-      data: applyViewerContentFilters(data, viewerSafety),
+      data: applyViewerContentFilters(dataEnriched, viewerSafety),
       next_cursor: nextCursor,
       has_more: hasMore,
     };
@@ -812,6 +931,9 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    if (!(await isExploreProviderPostsEnabled(null))) {
+      return errorResponse("Explore posts are disabled", "FORBIDDEN", 403);
+    }
     const { user } = await requireRoleInApi(
       ["provider_owner", "provider_staff", "superadmin"],
       request
@@ -864,6 +986,21 @@ export async function POST(request: NextRequest) {
     }
 
     const media_urls = rawMediaUrls.map((u: string) => toStoragePath(String(u)));
+    const mediaValidated = validateProviderMediaPaths(providerId, media_urls, body.media_meta);
+    if (!mediaValidated.ok) {
+      return errorResponse("message" in mediaValidated ? mediaValidated.message : "Invalid media", "VALIDATION_ERROR", 400);
+    }
+    let mediaMetaForRow = mediaValidated.mediaMeta;
+    if (status === "published") {
+      mediaMetaForRow = await burnExplorePhotoOverlaysForPublish(
+        supabaseAdmin,
+        providerId,
+        media_urls,
+        mediaMetaForRow,
+        { forceAllImageSlides: false },
+      );
+    }
+    const denorm = denormalizeFirstSlideFromMeta(media_urls, mediaMetaForRow);
 
     const sanitizedTags = Array.isArray(tags)
       ? [...new Set(tags.map((t: string) => String(t).trim().toLowerCase()).filter(Boolean))].slice(0, 20)
@@ -920,6 +1057,19 @@ export async function POST(request: NextRequest) {
 
     const publishedAt = status === "published" ? new Date().toISOString() : null;
 
+    const soundCatalogEnabled = await isExploreSoundCatalogEnabled(null);
+    const hasVideoMedia = firstSlideIsVideo(media_urls, mediaMetaForRow);
+    const soundCheck = await resolveExplorePostSoundIdForWrite(
+      supabaseAdmin,
+      body.sound_id != null && body.sound_id !== "" ? String(body.sound_id) : null,
+      providerId,
+      { catalogEnabled: soundCatalogEnabled, hasVideoMedia },
+    );
+    if (soundCheck.ok === false) {
+      return errorResponse(soundCheck.message, "VALIDATION_ERROR", 400);
+    }
+    const soundIdForRow = hasVideoMedia ? soundCheck.id : null;
+
     const { data: post, error } = await supabaseAdmin
       .from("explore_posts")
       .insert({
@@ -932,27 +1082,15 @@ export async function POST(request: NextRequest) {
         offering_id: offering_id || null,
         status: status === "published" ? "published" : "draft",
         published_at: publishedAt,
+        media_meta: mediaMetaForRow,
+        display_path: denorm.display_path,
+        media_width: denorm.media_width,
+        media_height: denorm.media_height,
+        duration_ms: denorm.duration_ms,
+        playback_path: denorm.playback_path,
+        sound_id: soundIdForRow,
       })
-      .select(
-        `
-        id,
-        provider_id,
-        created_by_user_id,
-        caption,
-        media_urls,
-        tags,
-        status,
-        published_at,
-        like_count,
-        comment_count,
-        view_count,
-        primary_category_id,
-        offering_id,
-        created_at,
-        updated_at,
-        providers:provider_id(business_name, slug)
-      `
-      )
+      .select(EXPLORE_POST_SELECT_WITH_PROVIDER)
       .single();
 
     if (error) {
@@ -961,44 +1099,12 @@ export async function POST(request: NextRequest) {
 
     const postStatus = (post as any).status;
     if (postStatus === "published") {
-      try {
-        await supabaseAdmin.rpc("award_provider_points_for_explore_post", {
-          p_provider_id: providerId,
-          p_post_id: (post as any).id,
-        });
-      } catch (pointsError) {
-        console.warn("[explore/posts] Award points for post after booking:", pointsError);
-      }
-
-      if (alsoAddToGallery === true && media_urls.length > 0) {
-        try {
-          const galleryUrl = toPublicMediaUrl(media_urls[0], supabaseUrl());
-          await supabaseAdmin.rpc("append_provider_gallery", {
-            p_provider_id: providerId,
-            p_url: galleryUrl,
-          });
-        } catch (galleryError) {
-          console.warn("[explore/posts] Also-add-to-gallery failed:", {
-            providerId,
-            postId: (post as any).id,
-            bookingId,
-            error: galleryError,
-          });
-        }
-      }
-
-      try {
-        const { upsertPostEmbedding } = await import("@/lib/ai/embeddings");
-        const env = process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "production";
-        const environment = env === "production" ? "production" : env === "staging" ? "staging" : "development";
-        void upsertPostEmbedding(
-          (post as { id: string }).id,
-          String((post as { caption?: string | null }).caption ?? ""),
-          environment,
-        ).catch((err) => console.warn("[explore/posts] embedding upsert failed:", err));
-      } catch {
-        // embeddings optional
-      }
+      await runExplorePublishSideEffects({
+        postId: (post as { id: string }).id,
+        providerId,
+        alsoAddToGallery: alsoAddToGallery === true,
+        isFirstPublish: true,
+      });
     }
 
     let createdOffering: { id: string; name: string; price?: number; duration_minutes?: number } | null = null;
@@ -1012,7 +1118,12 @@ export async function POST(request: NextRequest) {
         createdOffering = { id: offRow.id, name: offRow.title ?? "", price: offRow.price != null ? Number(offRow.price) : undefined, duration_minutes: offRow.duration_minutes ?? undefined };
       }
     }
-    const explorePost = mapToExplorePost(post, new Set(), new Set(), createdOffering);
+    let explorePost = mapToExplorePost(post, new Set(), new Set(), createdOffering);
+    explorePost = await enrichExplorePostWithSoundUrl(
+      supabaseAdmin,
+      explorePost,
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+    );
     return successResponse(explorePost, 201);
   } catch (error) {
     return handleApiError(error, "Failed to create post");

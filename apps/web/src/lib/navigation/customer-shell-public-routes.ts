@@ -1,3 +1,5 @@
+import { EXPLORE_CUSTOMER_WEB_PATH } from "@/lib/explore/explore-customer-entry";
+
 /**
  * Routes where we render the page shell immediately (no full-tree block on auth / account-status).
  * Fixes iOS Safari / WebKit cases where a loading gate or overlay prevented taps from reaching content.
@@ -11,7 +13,7 @@ const PREFIXES = [
   "/forgot-password",
   "/partner-profile",
   "/category",
-  "/explore",
+  EXPLORE_CUSTOMER_WEB_PATH,
   "/gift-card",
   "/privacy-policy",
   "/terms-and-condition",

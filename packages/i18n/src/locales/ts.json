@@ -13214,7 +13214,10 @@
       "providerFallback": "Mupfuneti",
       "openProviderProfile": "Pfula {{name}} phurofayili",
       "userFallback": "Mutirhisi",
-      "postByProvider": "Poso by {{name}}"
+      "postByProvider": "Poso by {{name}}",
+      "reply": "Hlamula",
+      "replying": "U hlamula nhlamulo",
+      "replyPlaceholder": "Tsala nhlamulo…"
     },
     "searchScreen": {
       "title": "Lavisisa",
@@ -13823,7 +13826,8 @@
           "categoryLashes": "Swishesho",
           "categoryBarber": "Mogoli",
           "categorySpa": "Spa",
-          "categoryBody": "Miri"
+          "categoryBody": "Miri",
+          "categoryFollowing": "Ku landzelela"
         },
         "shop": {
           "searchPlaceholder": "Lavisisa switirhisiwa…",
@@ -17420,7 +17424,11 @@
         }
       }
     },
-    "cart": "Ngola"
+    "cart": "Ngola",
+    "exploreVideo": {
+      "unmute": "Pfula mpfumawulo",
+      "mute": "Tshula"
+    }
   },
   "checkout": {
     "title": "Ku hakela",
@@ -34473,7 +34481,10 @@
         "noSavedPostsHint": "Stoor plasings waarvan jy hou deur op die boekmerkikoon te tik. Hulle sal hier verskyn.",
         "exploreTheFeed": "Lavisisa the feed",
         "noPostsYet": "A ku na posts sweswi",
-        "noPostsHint": "vapfuneti haven't avelanad any posts. Check endzhaku ku nga ri khale!"
+        "noPostsHint": "vapfuneti haven't avelanad any posts. Check endzhaku ku nga ri khale!",
+        "following": "Ku landzelela",
+        "disabledTitle": "Ku kambisisa a ku kumeki",
+        "disabledHint": "Ntirho lowu wu timiwe emaketeni ya wena."
       }
     },
     "profile": {

@@ -13214,7 +13214,10 @@
       "providerFallback": "Umboneleli",
       "openProviderProfile": "Vula {{name}} iprofayile",
       "userFallback": "Umsebenzisi",
-      "postByProvider": "Isihloko by {{name}}"
+      "postByProvider": "Isihloko by {{name}}",
+      "reply": "Phendula",
+      "replying": "Uphendula uluvo",
+      "replyPlaceholder": "Bhala impendulo…"
     },
     "searchScreen": {
       "title": "Khangela",
@@ -13823,7 +13826,8 @@
           "categoryLashes": "Imigca",
           "categoryBarber": "Umgcini",
           "categorySpa": "I-spa",
-          "categoryBody": "Umzimba"
+          "categoryBody": "Umzimba",
+          "categoryFollowing": "Ukulandela"
         },
         "shop": {
           "searchPlaceholder": "Khangela iimveliso…",
@@ -17420,7 +17424,11 @@
         }
       }
     },
-    "cart": "Inqwelo"
+    "cart": "Inqwelo",
+    "exploreVideo": {
+      "unmute": "Vula isandi",
+      "mute": "Thulisa"
+    }
   },
   "checkout": {
     "title": "Ukuhlawula",
@@ -34473,7 +34481,10 @@
         "noSavedPostsHint": "Stoor plasings waarvan jy hou deur op die boekmerkikoon te tik. Hulle sal hier verskyn.",
         "exploreTheFeed": "Hlola the feed",
         "noPostsYet": "Akukho posts okwangoku",
-        "noPostsHint": "ababoneleli haven't yabelanad any posts. Check emva kungekudala!"
+        "noPostsHint": "ababoneleli haven't yabelanad any posts. Check emva kungekudala!",
+        "following": "Ukulandela",
+        "disabledTitle": "Ukuphonononga akufumaneki",
+        "disabledHint": "Eli nqaku licinyiwe kwimarike yakho."
       }
     },
     "profile": {

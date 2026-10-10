@@ -32,6 +32,9 @@ tags = ["jwt", "supabase"]
 # intentionally committed as examples in docs; they must never match a real Paystack key format.
 # The Apple JWS fixture is a throwaway test CA (scripts/generate-apple-jws-test-chain.mjs)
 # that authenticates nothing; gitleaks flags the PEM armor of the leaf key.
+# The all-zero Mailchimp Marketing key is a shape-only fixture used in unit tests
+# (32 hex + datacenter suffix). It authenticates nothing. The sequential hex
+# variant was an earlier fixture that gitleaks flagged as generic-api-key.
 [allowlist]
 description = "Documentation / example placeholders / throwaway test fixtures"
 paths = [
@@ -44,4 +47,6 @@ paths = [
 regexes = [
   '''sk_test_placeholder[a-z0-9]*''',
   '''pk_test_placeholder[a-z0-9]*''',
+  '''00000000000000000000000000000000-us0''',
+  '''a1b2c3d4e5f6789012345678abcdef01-xx1''',
 ]

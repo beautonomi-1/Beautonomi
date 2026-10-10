@@ -97,7 +97,7 @@ describe("PUT /api/provider/email-integration", () => {
 
   it("rejects Mailchimp Marketing API key shape on create", async () => {
     const { PUT } = await import("../route");
-    const marketingKey = "a1b2c3d4e5f6789012345678abcdef01-xx1";
+    const marketingKey = "00000000000000000000000000000000-us0";
     const res = await PUT(
       putRequest({
         provider_name: "mailchimp",

@@ -21,6 +21,7 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useExploreFeed } from "@/features/explore/useExploreFeed";
 import { useAuth } from "@/providers/AuthProvider";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { api } from "@/lib/api-client";
 import { haptic } from "@/lib/haptics";
 import { pushCustomerLogin } from "@/lib/guest-browse-policy";
@@ -38,12 +39,16 @@ import { ensureForegroundLocationPermission } from "@/lib/native-permissions";
 import { APP_URL } from "@/config/public-env";
 import {
   copyExplorePostLink,
-  isExploreVideoUrl,
   presentExplorePostShareActions,
   shareExplorePostLink,
   shareExplorePostMedia,
   type ExploreShareAction,
 } from "@/lib/share-explore-post";
+import {
+  explorePostGridImageUrl,
+  firstSlideIsVideo,
+  getExplorePostAspect,
+} from "@/lib/explore-media";
 
 const GAP = 10;
 
@@ -51,6 +56,7 @@ const BEAUTY_CATEGORY_DEFS = [
   { key: "all", labelKey: "categoryForYou", icon: "sparkles" as const },
   { key: "trending", labelKey: "categoryTrending", icon: "trending-up" as const },
   { key: "nearby", labelKey: "categoryNearMe", icon: "location-outline" as const },
+  { key: "following", labelKey: "categoryFollowing", icon: "people-outline" as const },
   { key: "hair", labelKey: "categoryHair", icon: "cut-outline" as const },
   { key: "nails", labelKey: "categoryNails", icon: "color-palette-outline" as const },
   { key: "makeup", labelKey: "categoryMakeup", icon: "brush-outline" as const },
@@ -60,20 +66,6 @@ const BEAUTY_CATEGORY_DEFS = [
   { key: "spa", labelKey: "categorySpa", icon: "water-outline" as const },
   { key: "body", labelKey: "categoryBody", icon: "body-outline" as const },
 ] as const;
-
-function hashCode(str: string): number {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) {
-    h = ((h << 5) - h + str.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h);
-}
-
-const ASPECT_RATIOS = [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3];
-
-function getPostAspect(post: ExplorePost): number {
-  return ASPECT_RATIOS[hashCode(post.id) % ASPECT_RATIOS.length];
-}
 
 /* ─── Pinterest-style Post Card ─── */
 const PinCard = React.memo(function PinCard({
@@ -94,14 +86,15 @@ const PinCard = React.memo(function PinCard({
   onMore?: (post: ExplorePost) => void;
 }) {
   const { t } = useTranslation();
-  const img = post.media_urls?.[0] || "https://placehold.co/400x500/f5f5f5/999?text=Beauty";
-  const isVideo = isExploreVideoUrl(img);
-  const aspect = getPostAspect(post);
+  const img = explorePostGridImageUrl(post) || "https://placehold.co/400x500/f5f5f5/999?text=Beauty";
+  const isVideo = firstSlideIsVideo(post.media_urls, post.media_meta);
+  const aspect = getExplorePostAspect(post);
   const imgHeight = cardWidth * aspect;
   const providerInitial = (post.provider?.business_name || "B").charAt(0).toUpperCase();
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const heartAnim = useRef(new Animated.Value(0)).current;
   const lastTap = useRef(0);
+  const singleTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const useNativeDriver = Platform.OS !== "web";
   const handlePressIn = () => {
@@ -135,9 +128,14 @@ const PinCard = React.memo(function PinCard({
   const handlePress = useCallback(() => {
     const now = Date.now();
     if (now - lastTap.current < 300) {
+      if (singleTapTimer.current) {
+        clearTimeout(singleTapTimer.current);
+        singleTapTimer.current = null;
+      }
       handleDoubleTap();
     } else {
-      setTimeout(() => {
+      singleTapTimer.current = setTimeout(() => {
+        singleTapTimer.current = null;
         if (Date.now() - lastTap.current >= 280) {
           onPress();
         }
@@ -145,6 +143,13 @@ const PinCard = React.memo(function PinCard({
     }
     lastTap.current = now;
   }, [onPress, handleDoubleTap]);
+
+  useEffect(
+    () => () => {
+      if (singleTapTimer.current) clearTimeout(singleTapTimer.current);
+    },
+    [],
+  );
 
   return (
     <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
@@ -233,23 +238,38 @@ const PinCard = React.memo(function PinCard({
               }}
               pointerEvents="none"
             >
-              <View
-                style={{
-                  width: 24,
-                  height: 24,
-                  marginEnd: 6,
-                  borderRadius: 12,
-                  backgroundColor: Colors.primary,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderWidth: 1.5,
-                  borderColor: "rgba(255,255,255,0.8)",
-                }}
-              >
-                <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>
-                  {providerInitial}
-                </Text>
-              </View>
+              {post.provider?.avatar_url ? (
+                <Image
+                  source={{ uri: post.provider.avatar_url }}
+                  style={{
+                    width: 24,
+                    height: 24,
+                    marginEnd: 6,
+                    borderRadius: 12,
+                    borderWidth: 1.5,
+                    borderColor: "rgba(255,255,255,0.8)",
+                  }}
+                  contentFit="cover"
+                />
+              ) : (
+                <View
+                  style={{
+                    width: 24,
+                    height: 24,
+                    marginEnd: 6,
+                    borderRadius: 12,
+                    backgroundColor: Colors.primary,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderWidth: 1.5,
+                    borderColor: "rgba(255,255,255,0.8)",
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>
+                    {providerInitial}
+                  </Text>
+                </View>
+              )}
               <Text
                 style={{
                   color: "#fff",
@@ -592,10 +612,11 @@ export default function ExploreScreen() {
   const { t } = useTranslation();
   const tx = useCallback((key: string) => t(`customer.mobile.tabs.explore.${key}`), [t]);
   const { user } = useAuth();
+  const exploreEnabled = useFeatureFlag("explore.enabled");
   const { confirmBlockUser } = useUserBlocks();
   const { settings: safetySettings } = useSafetySettings();
   const socialInteractions = useSocialCapability("like_or_save");
-  const hideSocialFeed = Boolean(user && safetySettings.hide_social_feed);
+  const hideSocialFeed = !exploreEnabled || Boolean(user && safetySettings.hide_social_feed);
   const [reportTarget, setReportTarget] = useState<{
     type: ContentReportTargetType;
     id: string;
@@ -624,6 +645,7 @@ export default function ExploreScreen() {
     loadMore,
     initialLoad,
     applyFilters,
+    getFilters,
     setPostSaved,
     setPostLiked,
     removePost,
@@ -648,13 +670,16 @@ export default function ExploreScreen() {
         });
         return;
       }
-      const sort: "chronological" | "trending" | "for_you" =
+      const sort: "chronological" | "trending" | "for_you" | "following" =
         cat === "trending"
           ? "trending"
+          : cat === "following"
+            ? "following"
           : cat === "all" && user
             ? "for_you"
             : "chronological";
-      const category = cat === "all" || cat === "trending" || cat === "nearby" ? null : cat;
+      const category =
+        cat === "all" || cat === "trending" || cat === "nearby" || cat === "following" ? null : cat;
       applyFilters({
         category,
         search: search.trim() || null,
@@ -750,6 +775,9 @@ export default function ExploreScreen() {
         providerName: post.provider?.business_name || "Beautonomi",
         providerSlug: post.provider?.slug,
         mediaUrls: post.media_urls,
+        displayUrl: post.display_url,
+        playbackPath: post.playback_path,
+        mediaMeta: post.media_meta,
         webBaseUrl: APP_URL,
         mediaIndex: 0,
       };
@@ -774,6 +802,9 @@ export default function ExploreScreen() {
           providerName: post.provider?.business_name || "Beautonomi",
           providerSlug: post.provider?.slug,
           mediaUrls: post.media_urls,
+        displayUrl: post.display_url,
+        playbackPath: post.playback_path,
+        mediaMeta: post.media_meta,
           webBaseUrl: APP_URL,
           mediaIndex: 0,
         },
@@ -852,8 +883,19 @@ export default function ExploreScreen() {
   );
 
   const onPostPress = useCallback((post: ExplorePost) => {
+    const f = getFilters();
+    const videoParams: Record<string, string> = { id: post.id };
+    if (f.sort) videoParams.feedSort = f.sort;
+    if (f.sort === "nearby" && f.lat != null && f.lng != null) {
+      videoParams.lat = String(f.lat);
+      videoParams.lng = String(f.lng);
+    }
+    if (firstSlideIsVideo(post.media_urls, post.media_meta)) {
+      router.push({ pathname: "/(app)/explore-video", params: videoParams });
+      return;
+    }
     router.push({ pathname: "/(app)/explore-post", params: { id: post.id } });
-  }, []);
+  }, [getFilters, router]);
 
   const onEndReached = useCallback(() => {
     if (hasMore && !loadingMore) loadMore();
@@ -929,7 +971,7 @@ export default function ExploreScreen() {
 
   const getItemHeight = useCallback(
     (item: ExplorePost, colWidth: number) => {
-      const aspect = getPostAspect(item);
+      const aspect = getExplorePostAspect(item);
       const imgH = colWidth * aspect;
       const textH = item.caption ? 62 : 36;
       return imgH + textH;
@@ -1041,7 +1083,9 @@ export default function ExploreScreen() {
                   {/* Category chips */}
                   <View style={{ marginBottom: 14 }}>
                     <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-                      {BEAUTY_CATEGORY_DEFS.map((cat) => (
+                      {BEAUTY_CATEGORY_DEFS.filter(
+                        (cat) => cat.key !== "following" || !!user,
+                      ).map((cat) => (
                         <CategoryChip
                           key={cat.key}
                           label={cat.key === "nearby" && nearbyLoading ? "…" : tx(cat.labelKey)}

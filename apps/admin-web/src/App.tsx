@@ -191,6 +191,7 @@ export default function App() {
           <Route path="integrations/calls" element={<P.CallsIntegrationPage />} />
           <Route path="integrations/paystack" element={<P.PaystackConfigPage />} />
           <Route path="integrations/yoco" element={<P.YocoIntegrationPage />} />
+          <Route path="integrations/rendobar" element={<P.RendobarIntegrationPage />} />
           <Route path="integrations/paycloud" element={<P.PayCloudIntegrationPage />} />
           <Route path="integrations/paycloud-operations" element={<P.PayCloudOperationsPage />} />
           <Route path="integrations/apple" element={<P.AppleIntegrationPage />} />
@@ -281,6 +282,7 @@ export default function App() {
           <Route path="content/featured-cities" element={<P.ContentFeaturedCitiesPage />} />
           <Route path="content/app-links" element={<P.ContentAppLinksPage />} />
           <Route path="content" element={<P.ContentHubPage />} />
+          <Route path="explore/sounds" element={<P.ExploreSoundsPage />} />
           <Route path="explore/:id" element={<P.ExplorePostDetailPage />} />
           <Route path="explore" element={<P.ExplorePostsPage />} />
           <Route path="catalog/global-categories" element={<P.GlobalCategoriesPage />} />

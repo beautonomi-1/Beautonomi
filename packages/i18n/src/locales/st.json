@@ -13214,7 +13214,10 @@
       "providerFallback": "Mofani",
       "openProviderProfile": "Bula {{name}} profaele",
       "userFallback": "Mosebelisi",
-      "postByProvider": "Poso by {{name}}"
+      "postByProvider": "Poso by {{name}}",
+      "reply": "Araba",
+      "replying": "O araba maikutlo",
+      "replyPlaceholder": "Ngola karabo…"
     },
     "searchScreen": {
       "title": "Batla",
@@ -13823,7 +13826,8 @@
           "categoryLashes": "Mashesho",
           "categoryBarber": "Mogoli",
           "categorySpa": "Spa",
-          "categoryBody": "Mmele"
+          "categoryBody": "Mmele",
+          "categoryFollowing": "Ho latela"
         },
         "shop": {
           "searchPlaceholder": "Batla lihlahisoa…",
@@ -17420,7 +17424,11 @@
         }
       }
     },
-    "cart": "Kariki"
+    "cart": "Kariki",
+    "exploreVideo": {
+      "unmute": "Bula modumo",
+      "mute": "Thulisa"
+    }
   },
   "checkout": {
     "title": "Ho lefa",
@@ -34473,7 +34481,10 @@
         "noSavedPostsHint": "Stoor plasings waarvan jy hou deur op die boekmerkikoon te tik. Hulle sal hier verskyn.",
         "exploreTheFeed": "Hlahla the feed",
         "noPostsYet": "Ha ho posts hona joale",
-        "noPostsHint": "bafani haven't arolelanad any posts. Check morao haufinyane!"
+        "noPostsHint": "bafani haven't arolelanad any posts. Check morao haufinyane!",
+        "following": "Ho latela",
+        "disabledTitle": "Ho hlahloba ha ho fumanehe",
+        "disabledHint": "Tshebetso ena e timilwe 'marakeng oa hau."
       }
     },
     "profile": {

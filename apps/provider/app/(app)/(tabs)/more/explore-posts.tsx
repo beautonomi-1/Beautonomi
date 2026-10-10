@@ -12,6 +12,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import Svg, { Circle } from "react-native-svg";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ExpoVideoPreview } from "@/components/ExpoVideoPreview";
@@ -28,20 +29,44 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
 import { appendFormDataFileNative } from "@beautonomi/utils";
+import { localUriSizeBytes, putLocalUriToSignedUrl } from "@/lib/explore-upload-uri";
 import { Image, type ImageStyle as ExpoImageStyle } from "expo-image";
 import { getWebProviderBaseUrl } from "@/lib/web-url";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { tabScreenScrollBottomPadding } from "@/constants/layout";
 import {
-  launchCameraWithPermission,
   launchImageLibraryWithPermission,
   PERMISSION_COPY,
 } from "@/lib/native-permissions";
 import { useTranslation } from "@beautonomi/i18n";
 import { ContentReportSheet, type ContentReportTargetType } from "@/components/safety/ContentReportSheet";
+import { ExploreSlideOverlayComposer } from "@/components/explore/ExploreSlideOverlayComposer";
+import {
+  ExploreVideoTrimSheet,
+  type ExploreVideoTrimResult,
+} from "@/components/explore/ExploreVideoTrimSheet";
+import {
+  ExploreCameraCaptureSheet,
+  type ExploreCameraCaptureResult,
+} from "@/components/explore/ExploreCameraCaptureSheet";
+import {
+  ExploreSoundPicker,
+  type ExploreSoundPickerItem,
+  type ExploreSoundPickerLabels,
+} from "@/components/explore/ExploreSoundPicker";
+import { trimWindowDurationMs } from "@/lib/explore-video-trim";
 import { useSocialCapability, useSafetySettings } from "@/hooks/useSafetySettings";
 import { useUserBlocks } from "@/hooks/useUserBlocks";
 import { useAuth } from "@/providers/AuthProvider";
+
+type SlideTextOverlay = {
+  text: string;
+  x: number;
+  y: number;
+  font_size: number;
+  color: string;
+  align: "center";
+};
 
 interface ExplorePost {
   id: string;
@@ -49,6 +74,7 @@ interface ExplorePost {
   provider: { business_name: string; slug: string };
   caption: string | null;
   media_urls: string[];
+  display_url?: string | null;
   status: "draft" | "published";
   published_at: string;
   like_count: number;
@@ -60,6 +86,7 @@ interface ExplorePost {
   offering?: { id: string; name: string; price?: number; duration_minutes?: number } | null;
   created_at: string;
   updated_at: string;
+  media_meta?: Array<{ kind?: string; text_overlays?: SlideTextOverlay[] }>;
 }
 
 interface GlobalCategory {
@@ -102,10 +129,31 @@ function isVideoUrl(url: string): boolean {
   return lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mov") || lower.endsWith(".m4v");
 }
 
-type PickedAsset = { uri: string; mimeType?: string; fileName?: string; isVideo?: boolean };
+type PickedAsset = {
+  uri: string;
+  mimeType?: string;
+  fileName?: string;
+  isVideo?: boolean;
+  fileSize?: number;
+  /** Source file duration in ms (from picker or trim sheet). */
+  source_duration_ms?: number;
+  duration_ms?: number;
+  trim_start_ms?: number;
+  trim_end_ms?: number;
+};
 
 function isVideoAsset(asset: PickedAsset): boolean {
   return asset.isVideo === true || (asset.mimeType?.startsWith("video/") ?? false);
+}
+
+function splitPickedImageVideo(assets: PickedAsset[]) {
+  const images: PickedAsset[] = [];
+  const videos: PickedAsset[] = [];
+  for (const a of assets) {
+    if (isVideoAsset(a)) videos.push(a);
+    else images.push(a);
+  }
+  return { images, videos };
 }
 
 function mapPickerAsset(a: {
@@ -113,14 +161,264 @@ function mapPickerAsset(a: {
   type?: string | null;
   mimeType?: string | null;
   fileName?: string | null;
+  duration?: number | null;
 }): PickedAsset {
   const isVideo = a.type === "video" || a.type === "pairedVideo" || (a.mimeType?.startsWith("video/") ?? false);
+  const durationSec = typeof a.duration === "number" && Number.isFinite(a.duration) && a.duration > 0 ? a.duration : undefined;
   return {
     uri: a.uri,
     mimeType: a.mimeType ?? (isVideo ? "video/mp4" : "image/jpeg"),
     fileName: a.fileName ?? (isVideo ? "video.mp4" : "image.jpg"),
     isVideo,
+    fileSize: typeof (a as { fileSize?: number }).fileSize === "number" ? (a as { fileSize?: number }).fileSize : undefined,
+    ...(durationSec != null ? { source_duration_ms: Math.round(durationSec * 1000) } : {}),
   };
+}
+
+type UploadSlotResult = {
+  path?: string;
+  display_path?: string;
+  width?: number;
+  height?: number;
+  kind: "image" | "video";
+  duration_ms?: number;
+  source_duration_ms?: number;
+  trim_start_ms?: number;
+  trim_end_ms?: number;
+  error?: string;
+};
+
+async function uploadExploreMediaAsset(asset: PickedAsset, index: number): Promise<UploadSlotResult> {
+  const video = isVideoAsset(asset);
+  const fallbackName =
+    asset.fileName ?? (video ? `video-${index}.mp4` : `image-${index}.jpg`);
+  const safeType = asset.mimeType ?? (video ? "video/mp4" : "image/jpeg");
+  let sizeBytes = asset.fileSize ?? 0;
+  if (sizeBytes <= 0) {
+    const probed = await localUriSizeBytes(asset.uri);
+    if (probed != null) sizeBytes = probed;
+  }
+
+  if (video) {
+    const capsRes = await api.fetch<{ max_duration_ms?: number; max_video_bytes?: number }>(
+      "/api/explore/upload",
+      { method: "GET" },
+    );
+    const maxVideoBytes = capsRes.data?.max_video_bytes;
+    if (maxVideoBytes != null && sizeBytes > maxVideoBytes) {
+      return { kind: "video", error: "Video file is too large" };
+    }
+    const maxDurationMs = capsRes.data?.max_duration_ms ?? 60_000;
+    const sourceDurationMs =
+      asset.source_duration_ms != null && asset.source_duration_ms > 0
+        ? asset.source_duration_ms
+        : maxDurationMs;
+    const segmentMs =
+      asset.duration_ms != null && asset.duration_ms > 0
+        ? asset.duration_ms
+        : asset.trim_start_ms != null && asset.trim_end_ms != null
+          ? trimWindowDurationMs({
+              trim_start_ms: asset.trim_start_ms,
+              trim_end_ms: asset.trim_end_ms,
+            })
+          : Math.min(sourceDurationMs, maxDurationMs);
+    const slotRes = await api.fetch<{ path: string; signed_url?: string | null }>("/api/explore/upload", {
+      method: "POST",
+      body: {
+        kind: "video",
+        size_bytes: sizeBytes || undefined,
+        mime_type: safeType,
+        duration_ms: sourceDurationMs,
+      },
+    });
+    if (slotRes.error || !slotRes.data?.path) {
+      return { kind: "video", error: slotRes.error?.message ?? "Upload failed" };
+    }
+    if (slotRes.data.signed_url) {
+      const ok = await putLocalUriToSignedUrl(asset.uri, slotRes.data.signed_url, safeType);
+      if (!ok) return { kind: "video", error: "Video upload failed" };
+    }
+    return {
+      path: slotRes.data.path,
+      kind: "video",
+      duration_ms: segmentMs,
+      source_duration_ms: sourceDurationMs,
+      trim_start_ms: asset.trim_start_ms ?? 0,
+      trim_end_ms: asset.trim_end_ms ?? segmentMs,
+    };
+  }
+
+  const capsRes = await api.fetch<{
+    max_image_bytes?: number;
+    max_multipart_image_bytes?: number;
+  }>("/api/explore/upload", { method: "GET" });
+  const maxMultipart =
+    capsRes.data?.max_multipart_image_bytes ?? Math.floor(4.5 * 1024 * 1024);
+  const maxImage = capsRes.data?.max_image_bytes ?? 15 * 1024 * 1024;
+
+  if (sizeBytes > maxImage) {
+    return { kind: "image", error: "Image file is too large" };
+  }
+
+  if (sizeBytes > maxMultipart) {
+    const slotRes = await api.fetch<{ path: string; signed_url?: string | null }>("/api/explore/upload", {
+      method: "POST",
+      body: {
+        kind: "image",
+        size_bytes: sizeBytes,
+        mime_type: safeType,
+      },
+    });
+    if (slotRes.error || !slotRes.data?.path) {
+      return { kind: "image", error: slotRes.error?.message ?? "Upload failed" };
+    }
+    if (slotRes.data.signed_url) {
+      const ok = await putLocalUriToSignedUrl(asset.uri, slotRes.data.signed_url, safeType);
+      if (!ok) return { kind: "image", error: "Image upload failed" };
+    }
+    const fin = await api.fetch<{ path: string; display_path: string; width: number; height: number }>(
+      "/api/explore/upload/finalize",
+      {
+        method: "POST",
+        body: { path: slotRes.data.path },
+      },
+    );
+    if (fin.error || !fin.data?.path) {
+      return { kind: "image", error: fin.error?.message ?? "Finalize failed" };
+    }
+    return {
+      path: fin.data.path,
+      display_path: fin.data.display_path,
+      width: fin.data.width,
+      height: fin.data.height,
+      kind: "image",
+    };
+  }
+
+  const formData = new FormData();
+  appendFormDataFileNative(formData, "file", {
+    uri: asset.uri,
+    type: safeType,
+    name: fallbackName,
+  });
+  const res = await api.fetch<{ path: string; display_path?: string; width?: number; height?: number }>(
+    "/api/explore/upload",
+    { method: "POST", body: formData },
+  );
+  if (res.error || !res.data?.path) {
+    return { kind: "image", error: res.error?.message ?? "Upload failed" };
+  }
+  return {
+    path: res.data.path,
+    display_path: res.data.display_path,
+    width: res.data.width,
+    height: res.data.height,
+    kind: "image",
+  };
+}
+
+function mediaMetaFromUploads(slots: UploadSlotResult[]) {
+  return slots.map((s) => ({
+    kind: s.kind,
+    display_path: s.display_path ?? null,
+    width: s.width ?? null,
+    height: s.height ?? null,
+    ...(s.kind === "video"
+      ? {
+          duration_ms: s.duration_ms ?? null,
+          source_duration_ms: s.source_duration_ms ?? null,
+          trim_start_ms: s.trim_start_ms ?? null,
+          trim_end_ms: s.trim_end_ms ?? null,
+        }
+      : {}),
+  }));
+}
+
+const MAX_TEXT_OVERLAYS_PER_SLIDE = 8;
+
+function overlayFromDraft(text: string): SlideTextOverlay | null {
+  const trimmed = text.trim().slice(0, 80);
+  if (!trimmed) return null;
+  return { text: trimmed, x: 0.5, y: 0.5, font_size: 0.06, color: "#FFFFFF", align: "center" };
+}
+
+function applySlideOverlaysToMediaMeta<T extends Record<string, unknown>>(
+  base: T[],
+  overlaysByIndex: Record<number, SlideTextOverlay[]>,
+): Array<T & { text_overlays?: SlideTextOverlay[] }> {
+  return base.map((m, i) => {
+    const layers = overlaysByIndex[i];
+    return layers?.length ? { ...m, text_overlays: layers } : m;
+  });
+}
+
+function overlaysFromPostMeta(meta: unknown[] | undefined): Record<number, SlideTextOverlay[]> {
+  const map: Record<number, SlideTextOverlay[]> = {};
+  if (!Array.isArray(meta)) return map;
+  meta.forEach((row, i) => {
+    const layers = (row as { text_overlays?: SlideTextOverlay[] })?.text_overlays;
+    if (layers?.length) map[i] = layers;
+  });
+  return map;
+}
+
+function reindexSlideOverlaysAfterRemove(
+  prev: Record<number, SlideTextOverlay[]>,
+  removedIndex: number,
+): Record<number, SlideTextOverlay[]> {
+  const next: Record<number, SlideTextOverlay[]> = {};
+  for (const key of Object.keys(prev)) {
+    const i = Number(key);
+    if (Number.isNaN(i) || i === removedIndex) continue;
+    next[i > removedIndex ? i - 1 : i] = prev[i]!;
+  }
+  return next;
+}
+
+/** Arc showing the kept clip (trim start → end) around a library video preview. */
+function LibraryClipRing({
+  size,
+  trimStartMs,
+  trimEndMs,
+  sourceMs,
+}: {
+  size: number;
+  trimStartMs?: number;
+  trimEndMs?: number;
+  sourceMs?: number;
+}) {
+  const { t } = useTranslation();
+  const stroke = Math.max(2, Math.round(size * 0.045));
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const source = sourceMs && sourceMs > 0 ? sourceMs : trimEndMs && trimEndMs > 0 ? trimEndMs : 1;
+  const start = Math.min(1, Math.max(0, (trimStartMs ?? 0) / source));
+  const end = Math.min(1, Math.max(start, (trimEndMs ?? source) / source));
+  const visible = Math.max(c * (end - start), stroke);
+  return (
+    <Svg
+      width={size}
+      height={size}
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+      accessibilityLabel={t("provider.mobile.screens.explorePosts.clipWindowA11y")}
+    >
+      <Circle cx={size / 2} cy={size / 2} r={r} stroke="rgba(255,255,255,0.35)" strokeWidth={stroke} fill="none" />
+      <Circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        stroke="#ffffff"
+        strokeWidth={stroke}
+        fill="none"
+        strokeDasharray={`${visible} ${c}`}
+        strokeDashoffset={-c * start}
+        strokeLinecap="round"
+        rotation="-90"
+        origin={`${size / 2}, ${size / 2}`}
+      />
+    </Svg>
+  );
 }
 
 /** Local file preview for create/edit strips — uses expo-video for video, expo-image for photos. */
@@ -148,6 +446,12 @@ function LocalMediaPreview({ asset, size }: { asset: PickedAsset; size: number }
             <Ionicons name="play-circle" size={Math.round(size * 0.42)} color="rgba(255,255,255,0.95)" />
           </View>
         </View>
+        <LibraryClipRing
+          size={size}
+          trimStartMs={asset.trim_start_ms}
+          trimEndMs={asset.trim_end_ms}
+          sourceMs={asset.source_duration_ms}
+        />
       </View>
     );
   }
@@ -270,6 +574,13 @@ export default function ExplorePostsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedAssets, setSelectedAssets] = useState<PickedAsset[]>([]);
+  const [soundId, setSoundId] = useState<string | null>(null);
+  const [editSoundId, setEditSoundId] = useState<string | null>(null);
+  const [providerSounds, setProviderSounds] = useState<ExploreSoundPickerItem[]>([]);
+  const [soundCatalogEnabled, setSoundCatalogEnabled] = useState(false);
+  const hasVideoInSelection = selectedAssets.some((a) => isVideoAsset(a));
+  /** Customer full-screen player + sound bed require video as first slide. */
+  const hasVideoFirstForSound = Boolean(selectedAssets[0] && isVideoAsset(selectedAssets[0]));
   const [caption, setCaption] = useState("");
   const [submittingMode, setSubmittingMode] = useState<"publish" | "draft" | null>(null);
   const [primaryCategorySlug, setPrimaryCategorySlug] = useState<string | null>(null);
@@ -278,6 +589,12 @@ export default function ExplorePostsScreen() {
   const [preseedBookingId, setPreseedBookingId] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [overlaySlideIndex, setOverlaySlideIndex] = useState(0);
+  const [overlayDraft, setOverlayDraft] = useState("");
+  const [slideOverlays, setSlideOverlays] = useState<Record<number, SlideTextOverlay[]>>({});
+  const [editOverlaySlideIndex, setEditOverlaySlideIndex] = useState(0);
+  const [editOverlayDraft, setEditOverlayDraft] = useState("");
+  const [editSlideOverlays, setEditSlideOverlays] = useState<Record<number, SlideTextOverlay[]>>({});
 
   const [categories, setCategories] = useState<GlobalCategory[]>([]);
   const [offerings, setOfferings] = useState<{ id: string; title: string }[]>([]);
@@ -291,9 +608,16 @@ export default function ExplorePostsScreen() {
   const [editOfferingId, setEditOfferingId] = useState<string | null>(null);
   /** Existing media URLs (from API); user can remove before save */
   const [editRemoteUrls, setEditRemoteUrls] = useState<string[]>([]);
+  const [editRemoteMeta, setEditRemoteMeta] = useState<Record<string, unknown>[]>([]);
   /** New library/camera picks — uploaded on save */
   const [editLocalAssets, setEditLocalAssets] = useState<PickedAsset[]>([]);
   const [editUploading, setEditUploading] = useState(false);
+  const [maxVideoClipMs, setMaxVideoClipMs] = useState(60_000);
+  const [trimSheetAsset, setTrimSheetAsset] = useState<PickedAsset | null>(null);
+  const [trimRemainder, setTrimRemainder] = useState<PickedAsset[]>([]);
+  const [trimTarget, setTrimTarget] = useState<"create" | "edit">("create");
+  const [cameraCaptureOpen, setCameraCaptureOpen] = useState(false);
+  const [cameraCaptureTarget, setCameraCaptureTarget] = useState<"create" | "edit">("create");
   const [extraPosts, setExtraPosts] = useState<ExplorePost[]>([]);
   const [loadingMorePosts, setLoadingMorePosts] = useState(false);
   const [reportTarget, setReportTarget] = useState<{
@@ -307,6 +631,19 @@ export default function ExplorePostsScreen() {
     (key: string, opts?: Record<string, unknown>) =>
       t(`provider.mobile.screens.explorePosts.${key}`, opts) as string,
     [t],
+  );
+  const soundPickerLabels = useMemo<ExploreSoundPickerLabels>(
+    () => ({
+      addMusic: ep("addMusic"),
+      originalAudio: ep("originalAudio"),
+      viewerHint: ep("soundViewerHint"),
+      soundsEmpty: ep("soundsEmpty"),
+      sectionPlatform: ep("soundsSectionPlatform"),
+      sectionYours: ep("soundsSectionYours"),
+      previewPlay: ep("soundPreviewPlay"),
+      previewStop: ep("soundPreviewStop"),
+    }),
+    [ep],
   );
   const { user } = useAuth();
   const { confirmBlockUser, isBlocked } = useUserBlocks();
@@ -540,6 +877,13 @@ export default function ExplorePostsScreen() {
     return ep("diversityTip", { topName, otherName: other.name });
   }, [ep, posts, categories]);
 
+  useEffect(() => {
+    if (!editMode || !viewPost) return;
+    setEditSlideOverlays(overlaysFromPostMeta(viewPost.media_meta as unknown[] | undefined));
+    setEditOverlayDraft("");
+    setEditOverlaySlideIndex(0);
+  }, [editMode, viewPost?.id, viewPost?.media_meta]);
+
   const openView = useCallback((post: ExplorePost) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setViewPost(post);
@@ -555,6 +899,7 @@ export default function ExplorePostsScreen() {
     setEditOfferingId(post.offering_id ?? null);
     setEditRemoteUrls([...(post.media_urls ?? [])]);
     setEditLocalAssets([]);
+    setEditSoundId((post as ExplorePost & { sound_id?: string | null }).sound_id ?? null);
   }, [categories]);
 
   const handleDelete = useCallback(
@@ -586,10 +931,23 @@ export default function ExplorePostsScreen() {
   );
 
   const editMediaSlotsLeft = 5 - editRemoteUrls.length - editLocalAssets.length;
+  const hasVideoInEdit = useMemo(
+    () => editRemoteUrls.some((url) => isVideoUrl(url)) || editLocalAssets.some((a) => isVideoAsset(a)),
+    [editRemoteUrls, editLocalAssets],
+  );
+  const hasVideoFirstInEditForSound = useMemo(() => {
+    if (editRemoteUrls.length > 0) return isVideoUrl(editRemoteUrls[0]);
+    if (editLocalAssets.length > 0) return isVideoAsset(editLocalAssets[0]);
+    return false;
+  }, [editRemoteUrls, editLocalAssets]);
 
   const handleSaveEdit = useCallback(async (publish: boolean) => {
     if (!viewPost) return;
     if (blockExploreUgcAction(ep("noPermissionManage"))) return;
+    if (trimSheetAsset) {
+      Alert.alert(ep("trimVideoTitle"), ep("trimVideoFinishFirst"));
+      return;
+    }
     const totalMedia = editRemoteUrls.length + editLocalAssets.length;
     if (totalMedia === 0) {
       Alert.alert(ep("addMediaTitle"), ep("addMediaBody"));
@@ -603,32 +961,27 @@ export default function ExplorePostsScreen() {
     setEditSubmittingMode(publish ? "publish" : "draft");
     setEditUploading(true);
     try {
-      const uploadedPaths: string[] = [];
+      const uploadSlots: UploadSlotResult[] = [];
       for (let i = 0; i < editLocalAssets.length; i++) {
         const asset = editLocalAssets[i];
-        const formData = new FormData();
-        const fallbackName =
-          asset.fileName ??
-          (isVideoAsset(asset) ? `video-${i}.mp4` : `image-${i}.jpg`);
-        const safeType =
-          asset.mimeType ??
-          (isVideoAsset(asset) ? "video/mp4" : "image/jpeg");
-        appendFormDataFileNative(formData, "file", {
-          uri: asset.uri,
-          type: safeType,
-          name: fallbackName,
-        });
-        const res = await api.fetch<{ path: string }>("/api/explore/upload", {
-          method: "POST",
-          body: formData,
-        });
-        if (res.error || !res.data?.path) {
-          Alert.alert(ep("uploadFailedTitle"), res.error?.message ?? ep("uploadFailedBody"));
+        const res = await uploadExploreMediaAsset(asset, i);
+        if (res.error || !res.path) {
+          Alert.alert(ep("uploadFailedTitle"), res.error ?? ep("uploadFailedBody"));
           return;
         }
-        uploadedPaths.push(res.data.path);
+        uploadSlots.push(res);
       }
-      const media_urls = [...editRemoteUrls, ...uploadedPaths];
+      const media_urls = [...editRemoteUrls, ...uploadSlots.map((s) => s.path!)];
+      const media_meta = applySlideOverlaysToMediaMeta(
+        [
+          ...editRemoteUrls.map((url, i) => {
+            const prev = editRemoteMeta[i];
+            return (prev ?? { kind: isVideoUrl(url) ? "video" : "image" }) as Record<string, unknown>;
+          }),
+          ...mediaMetaFromUploads(uploadSlots),
+        ],
+        editSlideOverlays,
+      );
       const tags = [
         ...new Set(
           editTagInput
@@ -638,14 +991,27 @@ export default function ExplorePostsScreen() {
         ),
       ].slice(0, 20);
 
+      const originalUrls = viewPost.media_urls ?? [];
+      const mediaUrlsUnchanged =
+        editLocalAssets.length === 0 &&
+        editRemoteUrls.length === originalUrls.length &&
+        editRemoteUrls.every((u, i) => u === originalUrls[i]);
+
       const payload: Record<string, unknown> = {
         caption: editCaption.trim() || null,
         status: publish ? "published" : "draft",
         primary_category_slug: editPrimaryCategorySlug ?? null,
         tags,
-        media_urls,
         offering_id: editOfferingId,
+        ...(publish && alsoAddToGallery ? { also_add_to_gallery: true } : {}),
+        ...(hasVideoFirstInEditForSound ? { sound_id: editSoundId } : { sound_id: null }),
       };
+      if (mediaUrlsUnchanged) {
+        payload.media_meta = media_meta;
+      } else {
+        payload.media_urls = media_urls;
+        payload.media_meta = media_meta;
+      }
 
       const { data: updated, error: err } = await updatePost(
         `/api/explore/posts/${viewPost.id}`,
@@ -671,66 +1037,168 @@ export default function ExplorePostsScreen() {
     editTagInput,
     editOfferingId,
     editRemoteUrls,
+    editRemoteMeta,
     editLocalAssets,
+    editSlideOverlays,
+    hasVideoInEdit,
+    editSoundId,
+    trimSheetAsset,
     updatePost,
     refresh,
     blockExploreUgcAction,
+    alsoAddToGallery,
     ep,
   ]);
 
+  useEffect(() => {
+    if (!createOpen && !editMode && !trimSheetAsset) return;
+    void api
+      .fetch<{ max_duration_ms?: number; sound_catalog_enabled?: boolean }>("/api/explore/upload", {
+        method: "GET",
+      })
+      .then((res) => {
+        if (res.data?.max_duration_ms) setMaxVideoClipMs(res.data.max_duration_ms);
+        setSoundCatalogEnabled(res.data?.sound_catalog_enabled === true);
+      });
+  }, [createOpen, editMode, trimSheetAsset]);
+
+  const ingestNewAssets = useCallback(
+    (target: "create" | "edit", incoming: PickedAsset[]) => {
+      const room =
+        target === "create"
+          ? 5 - selectedAssets.length
+          : 5 - editRemoteUrls.length - editLocalAssets.length;
+      if (room <= 0) {
+        Alert.alert(ep("limitReachedTitle"), ep("limitReachedBody"));
+        return;
+      }
+      const batch = incoming.slice(0, room);
+      const { images, videos } = splitPickedImageVideo(batch);
+      if (target === "create") {
+        if (images.length) setSelectedAssets((prev) => [...prev, ...images].slice(0, 5));
+      } else if (images.length) {
+        setEditLocalAssets((prev) => [...prev, ...images]);
+      }
+      if (videos.length) {
+        setTrimTarget(target);
+        if (trimSheetAsset) {
+          setTrimRemainder((prev) => [...prev, ...videos]);
+        } else {
+          setTrimRemainder(videos.slice(1));
+          setTrimSheetAsset(videos[0]!);
+        }
+      }
+    },
+    [selectedAssets.length, editRemoteUrls.length, editLocalAssets.length, trimSheetAsset, ep],
+  );
+
+  const confirmTrimSheet = useCallback(
+    (result: ExploreVideoTrimResult) => {
+      if (!trimSheetAsset) return;
+      const trimmed: PickedAsset = {
+        ...trimSheetAsset,
+        source_duration_ms: result.source_duration_ms,
+        trim_start_ms: result.trim_start_ms,
+        trim_end_ms: result.trim_end_ms,
+        duration_ms: trimWindowDurationMs(result),
+      };
+      if (trimTarget === "create") {
+        setSelectedAssets((prev) => [...prev, trimmed].slice(0, 5));
+      } else {
+        setEditLocalAssets((prev) => [...prev, trimmed]);
+      }
+      if (trimRemainder.length > 0) {
+        setTrimSheetAsset(trimRemainder[0]!);
+        setTrimRemainder(trimRemainder.slice(1));
+      } else {
+        setTrimSheetAsset(null);
+        setTrimRemainder([]);
+      }
+    },
+    [trimSheetAsset, trimRemainder, trimTarget],
+  );
+
+  const cancelTrimSheet = useCallback(() => {
+    if (trimRemainder.length > 0) {
+      setTrimSheetAsset(trimRemainder[0]!);
+      setTrimRemainder(trimRemainder.slice(1));
+    } else {
+      setTrimSheetAsset(null);
+      setTrimRemainder([]);
+    }
+  }, [trimRemainder]);
+
+  const mapCameraCaptureToAsset = useCallback((result: ExploreCameraCaptureResult): PickedAsset => {
+    return {
+      uri: result.uri,
+      mimeType: result.mimeType,
+      fileName: result.fileName,
+      isVideo: result.isVideo,
+      ...(result.source_duration_ms ? { source_duration_ms: result.source_duration_ms } : {}),
+    };
+  }, []);
+
+  const onCameraCapture = useCallback(
+    (result: ExploreCameraCaptureResult) => {
+      setCameraCaptureOpen(false);
+      ingestNewAssets(cameraCaptureTarget, [mapCameraCaptureToAsset(result)]);
+    },
+    [cameraCaptureTarget, ingestNewAssets, mapCameraCaptureToAsset],
+  );
+
+  const openCameraCapture = useCallback(
+    (target: "create" | "edit") => {
+      if (trimSheetAsset) {
+        Alert.alert(ep("trimVideoTitle"), ep("trimVideoFinishFirst"));
+        return;
+      }
+      setCameraCaptureTarget(target);
+      setCameraCaptureOpen(true);
+    },
+    [trimSheetAsset, ep],
+  );
+
   const pickMediaForEdit = useCallback(async () => {
+    if (trimSheetAsset) {
+      Alert.alert(ep("trimVideoTitle"), ep("trimVideoFinishFirst"));
+      return;
+    }
     const result = await launchImageLibraryWithPermission(
       {
         mediaTypes: ["images", "videos"],
         allowsMultipleSelection: true,
         quality: 0.9,
-        videoMaxDuration: 60,
       },
       PERMISSION_COPY.photosPost,
     );
     if (!result) return;
     if (result.canceled) return;
     const newAssets: PickedAsset[] = result.assets.map((a) => mapPickerAsset(a));
-    setEditLocalAssets((prev) => {
-      const room = 5 - editRemoteUrls.length - prev.length;
-      if (room <= 0) {
-        Alert.alert(ep("limitReachedTitle"), ep("limitReachedBody"));
-        return prev;
-      }
-      return [...prev, ...newAssets.slice(0, room)];
-    });
-  }, [editRemoteUrls.length, ep]);
+    ingestNewAssets("edit", newAssets);
+  }, [ingestNewAssets, trimSheetAsset, ep]);
 
-  const pickFromCameraForEdit = useCallback(async () => {
-    const result = await launchCameraWithPermission(
-      {
-        mediaTypes: ["images", "videos"],
-        quality: 0.9,
-        videoMaxDuration: 60,
-      },
-      PERMISSION_COPY.cameraPost,
-    );
-    if (!result) return;
-    if (result.canceled || !result.assets?.[0]) return;
-    const a = result.assets[0];
-    const asset = mapPickerAsset(a);
-    setEditLocalAssets((prev) => {
-      const room = 5 - editRemoteUrls.length - prev.length;
-      if (room <= 0) {
-        Alert.alert(ep("limitReachedTitle"), ep("limitReachedBody"));
-        return prev;
-      }
-      return [...prev, asset];
-    });
-  }, [editRemoteUrls.length, ep]);
+  const pickFromCameraForEdit = useCallback(() => {
+    openCameraCapture("edit");
+  }, [openCameraCapture]);
 
   const removeEditRemote = useCallback((index: number) => {
     setEditRemoteUrls((prev) => prev.filter((_, i) => i !== index));
+    setEditRemoteMeta((prev) => prev.filter((_, i) => i !== index));
+    setEditSlideOverlays((prev) => reindexSlideOverlaysAfterRemove(prev, index));
+    setEditOverlaySlideIndex((prev) => (prev > index ? prev - 1 : prev === index ? Math.max(0, prev - 1) : prev));
   }, []);
 
-  const removeEditLocal = useCallback((index: number) => {
-    setEditLocalAssets((prev) => prev.filter((_, i) => i !== index));
-  }, []);
+  const removeEditLocal = useCallback(
+    (index: number) => {
+      const removedSlideIndex = editRemoteUrls.length + index;
+      setEditLocalAssets((prev) => prev.filter((_, i) => i !== index));
+      setEditSlideOverlays((prev) => reindexSlideOverlaysAfterRemove(prev, removedSlideIndex));
+      setEditOverlaySlideIndex((prev) =>
+        prev > removedSlideIndex ? prev - 1 : prev === removedSlideIndex ? Math.max(0, prev - 1) : prev,
+      );
+    },
+    [editRemoteUrls.length],
+  );
 
   const resetCreateForm = useCallback(() => {
     setSelectedAssets([]);
@@ -741,7 +1209,29 @@ export default function ExplorePostsScreen() {
     setAlsoAddToGallery(true);
     setPreseedBookingId(null);
     setTagInput("");
+    setSoundId(null);
+    setOverlayDraft("");
+    setSlideOverlays({});
+    setOverlaySlideIndex(0);
+    setTrimSheetAsset(null);
+    setTrimRemainder([]);
+    setCameraCaptureOpen(false);
   }, []);
+
+  useEffect(() => {
+    const needsSounds =
+      soundCatalogEnabled &&
+      ((createOpen && hasVideoFirstForSound) || (editMode && hasVideoFirstInEditForSound));
+    if (!needsSounds) {
+      if (!hasVideoFirstForSound) setSoundId(null);
+      return;
+    }
+    void api.get<{ data: ExploreSoundPickerItem[] }>("/api/explore/sounds/mine").then((res) => {
+      const raw = (res.data as { data?: unknown })?.data ?? res.data;
+      const list = Array.isArray(raw) ? raw : Array.isArray((raw as { data?: unknown })?.data) ? (raw as { data: ExploreSoundPickerItem[] }).data : [];
+      setProviderSounds(list as ExploreSoundPickerItem[]);
+    }).catch(() => setProviderSounds([]));
+  }, [hasVideoFirstForSound, hasVideoFirstInEditForSound, createOpen, editMode, soundCatalogEnabled]);
 
   const openCreate = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -750,48 +1240,46 @@ export default function ExplorePostsScreen() {
   }, [resetCreateForm]);
 
   const closeCreate = useCallback(() => {
-    if (uploading || creating) return;
+    if (uploading || creating || trimSheetAsset) return;
     resetCreateForm();
     setCreateOpen(false);
-  }, [uploading, creating, resetCreateForm]);
+  }, [uploading, creating, resetCreateForm, trimSheetAsset]);
 
   const pickMedia = useCallback(async () => {
+    if (trimSheetAsset) {
+      Alert.alert(ep("trimVideoTitle"), ep("trimVideoFinishFirst"));
+      return;
+    }
     const result = await launchImageLibraryWithPermission(
       {
         mediaTypes: ["images", "videos"],
         allowsMultipleSelection: true,
         quality: 0.9,
-        videoMaxDuration: 60,
       },
       PERMISSION_COPY.photosPost,
     );
     if (!result) return;
     if (result.canceled) return;
     const newAssets: PickedAsset[] = result.assets.map((a) => mapPickerAsset(a));
-    setSelectedAssets((prev) => [...prev, ...newAssets].slice(0, 5));
-  }, []);
+    ingestNewAssets("create", newAssets);
+  }, [ingestNewAssets, trimSheetAsset, ep]);
 
-  const pickFromCamera = useCallback(async () => {
-    const result = await launchCameraWithPermission(
-      {
-        mediaTypes: ["images", "videos"],
-        quality: 0.9,
-        videoMaxDuration: 60,
-      },
-      PERMISSION_COPY.cameraPost,
-    );
-    if (!result) return;
-    if (result.canceled || !result.assets?.[0]) return;
-    const a = result.assets[0];
-    setSelectedAssets((prev) => [...prev, mapPickerAsset(a)].slice(0, 5));
-  }, []);
+  const pickFromCamera = useCallback(() => {
+    openCameraCapture("create");
+  }, [openCameraCapture]);
 
   const removeAsset = useCallback((index: number) => {
     setSelectedAssets((prev) => prev.filter((_, i) => i !== index));
+    setSlideOverlays((prev) => reindexSlideOverlaysAfterRemove(prev, index));
+    setOverlaySlideIndex((prev) => (prev > index ? prev - 1 : prev === index ? Math.max(0, prev - 1) : prev));
   }, []);
 
   const submitPost = useCallback(async (publish: boolean) => {
     if (blockExploreUgcAction(ep("noPermissionCreate"))) return;
+    if (trimSheetAsset) {
+      Alert.alert(ep("trimVideoTitle"), ep("trimVideoFinishFirst"));
+      return;
+    }
     if (selectedAssets.length === 0) {
       Alert.alert(ep("addMediaTitle"), ep("addMediaBody"));
       return;
@@ -799,41 +1287,28 @@ export default function ExplorePostsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setSubmittingMode(publish ? "publish" : "draft");
     setUploading(true);
-    const paths: string[] = [];
+    const uploadSlots: UploadSlotResult[] = [];
     try {
       for (let i = 0; i < selectedAssets.length; i++) {
         const asset = selectedAssets[i];
-        const formData = new FormData();
-        const fallbackName =
-          asset.fileName ??
-          (isVideoAsset(asset) ? `video-${i}.mp4` : `image-${i}.jpg`);
-        const safeType =
-          asset.mimeType ??
-          (isVideoAsset(asset) ? "video/mp4" : "image/jpeg");
-        appendFormDataFileNative(formData, "file", {
-          uri: asset.uri,
-          type: safeType,
-          name: fallbackName,
-        });
-        const res = await api.fetch<{ path: string }>("/api/explore/upload", {
-          method: "POST",
-          body: formData,
-        });
-        if (res.error || !res.data?.path) {
-          const msg =
-            (res.error && typeof res.error === "object" && "message" in res.error
-              ? (res.error as { message?: string }).message
-              : null) ?? ep("uploadFailedBody");
+        const res = await uploadExploreMediaAsset(asset, i);
+        if (res.error || !res.path) {
           Alert.alert(
             ep("uploadFailedTitle"),
-            ep("uploadFailedItem", { message: msg, current: i + 1, total: selectedAssets.length }),
+            ep("uploadFailedItem", {
+              message: res.error ?? ep("uploadFailedBody"),
+              current: i + 1,
+              total: selectedAssets.length,
+            }),
           );
           setUploading(false);
           setSubmittingMode(null);
           return;
         }
-        paths.push(res.data.path);
+        uploadSlots.push(res);
       }
+      const paths = uploadSlots.map((s) => s.path!);
+      const media_meta = applySlideOverlaysToMediaMeta(mediaMetaFromUploads(uploadSlots), slideOverlays);
       const tags = [...new Set(tagInput.split(/[,]+/).map((t) => t.trim().toLowerCase()).filter(Boolean))].slice(
         0,
         20,
@@ -841,11 +1316,13 @@ export default function ExplorePostsScreen() {
       const { error: createErr } = await createPost("/api/explore/posts", {
         caption: caption.trim() || null,
         media_urls: paths,
+        media_meta,
         status: publish ? "published" : "draft",
         ...(primaryCategorySlug ? { primary_category_slug: primaryCategorySlug } : {}),
         ...(tags.length ? { tags } : {}),
         ...(offeringId ? { offering_id: offeringId } : {}),
         ...(alsoAddToGallery ? { also_add_to_gallery: true } : {}),
+        ...(hasVideoFirstForSound && soundId ? { sound_id: soundId } : {}),
         ...(preseedBookingId ? { booking_id: preseedBookingId } : {}),
       });
       setUploading(false);
@@ -876,7 +1353,7 @@ export default function ExplorePostsScreen() {
         e instanceof Error ? e.message : ep("somethingWentWrong"),
       );
     }
-  }, [blockExploreUgcAction, selectedAssets, caption, primaryCategorySlug, offeringId, alsoAddToGallery, preseedBookingId, params.bookingId, params.returnTo, tagInput, createPost, refresh, resetCreateForm, router, ep]);
+  }, [blockExploreUgcAction, trimSheetAsset, selectedAssets, caption, primaryCategorySlug, offeringId, alsoAddToGallery, hasVideoInSelection, soundId, preseedBookingId, params.bookingId, params.returnTo, tagInput, slideOverlays, createPost, refresh, resetCreateForm, router, ep]);
 
   const openCreateIfAllowed = useCallback(() => {
     if (blockExploreUgcAction(ep("noPermissionCreate"))) return;
@@ -910,7 +1387,7 @@ export default function ExplorePostsScreen() {
 
   const renderExploreGridItem = useCallback(
     ({ item: post, index }: { item: ExplorePost; index: number }) => {
-      const thumb = post.media_urls?.[0];
+      const thumb = post.display_url ?? post.media_urls?.[0];
       const col = index % exploreGridColumns;
       return (
         <TouchableOpacity
@@ -1178,7 +1655,10 @@ export default function ExplorePostsScreen() {
         <View style={twStyle("mb-4 flex-row gap-2")}>
           <TouchableOpacity
             onPress={pickMedia}
-            style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-5 px-2")}
+            disabled={!!trimSheetAsset}
+            style={twStyle(
+              `flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-5 px-2 ${trimSheetAsset ? "opacity-50" : ""}`,
+            )}
           >
             <Ionicons name="images-outline" size={24} color="#9ca3af" />
             <Text style={twStyle("ms-2 text-center text-xs font-medium text-gray-600")}>
@@ -1187,7 +1667,10 @@ export default function ExplorePostsScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             onPress={pickFromCamera}
-            style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-5 px-2")}
+            disabled={!!trimSheetAsset}
+            style={twStyle(
+              `flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-5 px-2 ${trimSheetAsset ? "opacity-50" : ""}`,
+            )}
           >
             <Ionicons name="camera-outline" size={24} color="#9ca3af" />
             <Text style={twStyle("ms-2 text-center text-xs font-medium text-gray-600")}>{ep("camera")}</Text>
@@ -1200,8 +1683,20 @@ export default function ExplorePostsScreen() {
             style={twStyle("-mx-1 mb-4")}
           >
             {selectedAssets.map((asset, i) => (
-              <View key={`${asset.uri}-${i}`} style={twStyle("me-2 h-20 w-20 overflow-hidden rounded-lg bg-gray-100")}>
+              <TouchableOpacity
+                key={`${asset.uri}-${i}`}
+                activeOpacity={0.85}
+                onPress={() => setOverlaySlideIndex(i)}
+                style={twStyle(
+                  `me-2 h-20 w-20 overflow-hidden rounded-lg bg-gray-100 ${overlaySlideIndex === i ? "border-2 border-violet-600" : ""}`,
+                )}
+              >
                 <LocalMediaPreview asset={asset} size={80} />
+                {(slideOverlays[i]?.length ?? 0) > 0 ? (
+                  <View style={twStyle("absolute bottom-1 left-1 rounded bg-violet-600 px-1")}>
+                    <Text style={twStyle("text-[10px] font-medium text-white")}>Aa</Text>
+                  </View>
+                ) : null}
                 <TouchableOpacity
                   onPress={() => removeAsset(i)}
                   style={twStyle("absolute right-1 top-1 h-6 w-6 items-center justify-center rounded-full bg-black/60")}
@@ -1209,9 +1704,52 @@ export default function ExplorePostsScreen() {
                 >
                   <Ionicons name="close" size={14} color="#fff" />
                 </TouchableOpacity>
-              </View>
+              </TouchableOpacity>
             ))}
           </ScrollView>
+        ) : null}
+        {selectedAssets.length > 0 ? (
+          <View style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 p-3")}>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-800")}>{ep("onMediaText")}</Text>
+            <Text style={twStyle("mb-2 text-xs text-gray-500")}>{ep("onMediaTextHint")}</Text>
+            <View style={twStyle("flex-row items-end gap-2")}>
+              <TextInput
+                style={twStyle("min-h-[44px] flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-base text-gray-900")}
+                placeholder={ep("onMediaTextPlaceholder")}
+                placeholderTextColor="#9ca3af"
+                value={overlayDraft}
+                onChangeText={setOverlayDraft}
+              />
+              <TouchableOpacity
+                onPress={() => {
+                  const layer = overlayFromDraft(overlayDraft);
+                  if (!layer) return;
+                  const idx = Math.min(overlaySlideIndex, selectedAssets.length - 1);
+                  setSlideOverlays((prev) => {
+                    const cur = prev[idx] ?? [];
+                    if (cur.length >= MAX_TEXT_OVERLAYS_PER_SLIDE) return prev;
+                    return { ...prev, [idx]: [...cur, layer] };
+                  });
+                  setOverlayDraft("");
+                }}
+                style={twStyle("rounded-lg bg-violet-600 px-4 py-3")}
+              >
+                <Text style={twStyle("text-sm font-medium text-white")}>{ep("addTextLayer")}</Text>
+              </TouchableOpacity>
+            </View>
+            {(slideOverlays[overlaySlideIndex]?.length ?? 0) > 0 && selectedAssets[overlaySlideIndex] ? (
+              <ExploreSlideOverlayComposer
+                dragHint={ep("onMediaTextDragHint")}
+                preview={
+                  <LocalMediaPreview asset={selectedAssets[overlaySlideIndex]!} size={280} />
+                }
+                overlays={slideOverlays[overlaySlideIndex] ?? []}
+                onChangeOverlays={(layers) =>
+                  setSlideOverlays((prev) => ({ ...prev, [overlaySlideIndex]: layers }))
+                }
+              />
+            ) : null}
+          </View>
         ) : null}
         {diversityTip ? (
           <View style={twStyle("mb-3 rounded-xl bg-amber-50 border border-amber-200 p-3")}>
@@ -1294,6 +1832,15 @@ export default function ExplorePostsScreen() {
             </ScrollView>
           </>
         ) : null}
+        {hasVideoFirstForSound && soundCatalogEnabled ? (
+          <ExploreSoundPicker
+            sounds={providerSounds}
+            value={soundId}
+            onChange={setSoundId}
+            disabled={uploading || submittingMode !== null}
+            labels={soundPickerLabels}
+          />
+        ) : null}
         <TouchableOpacity
           onPress={() => setAlsoAddToGallery((v) => !v)}
           style={twStyle("mb-4 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
@@ -1323,7 +1870,7 @@ export default function ExplorePostsScreen() {
               }
               onPress={() => void submitPost(true)}
               loading={(uploading || creating) && submittingMode === "publish"}
-              disabled={(uploading || creating) && submittingMode !== "publish"}
+              disabled={!!trimSheetAsset || ((uploading || creating) && submittingMode !== "publish")}
               fullWidth
             />
           </View>
@@ -1336,7 +1883,7 @@ export default function ExplorePostsScreen() {
               }
               onPress={() => void submitPost(false)}
               loading={(uploading || creating) && submittingMode === "draft"}
-              disabled={(uploading || creating) && submittingMode !== "draft"}
+              disabled={!!trimSheetAsset || ((uploading || creating) && submittingMode !== "draft")}
               variant="secondary"
               fullWidth
             />
@@ -1377,9 +1924,9 @@ export default function ExplorePostsScreen() {
               <View style={twStyle("mb-3 flex-row gap-2")}>
                 <TouchableOpacity
                   onPress={pickMediaForEdit}
-                  disabled={editMediaSlotsLeft <= 0 || editUploading}
+                  disabled={editMediaSlotsLeft <= 0 || editUploading || !!trimSheetAsset}
                   style={twStyle(
-                    `flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-4 px-2 ${editMediaSlotsLeft <= 0 ? "opacity-50" : ""}`,
+                    `flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-4 px-2 ${editMediaSlotsLeft <= 0 || trimSheetAsset ? "opacity-50" : ""}`,
                   )}
                 >
                   <Ionicons name="images-outline" size={22} color="#9ca3af" />
@@ -1387,9 +1934,9 @@ export default function ExplorePostsScreen() {
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={pickFromCameraForEdit}
-                  disabled={editMediaSlotsLeft <= 0 || editUploading}
+                  disabled={editMediaSlotsLeft <= 0 || editUploading || !!trimSheetAsset}
                   style={twStyle(
-                    `flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-4 px-2 ${editMediaSlotsLeft <= 0 ? "opacity-50" : ""}`,
+                    `flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-4 px-2 ${editMediaSlotsLeft <= 0 || trimSheetAsset ? "opacity-50" : ""}`,
                   )}
                 >
                   <Ionicons name="camera-outline" size={22} color="#9ca3af" />
@@ -1405,11 +1952,33 @@ export default function ExplorePostsScreen() {
                   showsHorizontalScrollIndicator={false}
                   style={twStyle("-mx-1 mb-4")}
                 >
-                  {editRemoteUrls.map((url, i) => (
-                    <View key={`r-${url}-${i}`} style={twStyle("me-2 h-20 w-20 overflow-hidden rounded-lg bg-gray-100")}>
+                  {editRemoteUrls.map((url, i) => {
+                    const remoteMeta = editRemoteMeta[i] as
+                      | {
+                          trim_start_ms?: number | null;
+                          trim_end_ms?: number | null;
+                          source_duration_ms?: number | null;
+                          duration_ms?: number | null;
+                        }
+                      | undefined;
+                    return (
+                    <TouchableOpacity
+                      key={`r-${url}-${i}`}
+                      activeOpacity={0.85}
+                      onPress={() => setEditOverlaySlideIndex(i)}
+                      style={twStyle(
+                        `me-2 h-20 w-20 overflow-hidden rounded-lg bg-gray-100 ${editOverlaySlideIndex === i ? "border-2 border-violet-600" : ""}`,
+                      )}
+                    >
                       {isVideoUrl(url) ? (
                         <View style={twStyle("h-full w-full")}>
                           <ExploreFeedMediaThumb uri={url} height={80} />
+                          <LibraryClipRing
+                            size={80}
+                            trimStartMs={remoteMeta?.trim_start_ms ?? undefined}
+                            trimEndMs={remoteMeta?.trim_end_ms ?? undefined}
+                            sourceMs={remoteMeta?.source_duration_ms ?? remoteMeta?.duration_ms ?? undefined}
+                          />
                         </View>
                       ) : (
                         <Image
@@ -1418,6 +1987,11 @@ export default function ExplorePostsScreen() {
                           contentFit="cover"
                         />
                       )}
+                      {(editSlideOverlays[i]?.length ?? 0) > 0 ? (
+                        <View style={twStyle("absolute bottom-1 left-1 rounded bg-violet-600 px-1")}>
+                          <Text style={twStyle("text-[10px] font-medium text-white")}>Aa</Text>
+                        </View>
+                      ) : null}
                       <TouchableOpacity
                         onPress={() => removeEditRemote(i)}
                         style={twStyle("absolute right-1 top-1 h-6 w-6 items-center justify-center rounded-full bg-black/60")}
@@ -1425,21 +1999,108 @@ export default function ExplorePostsScreen() {
                       >
                         <Ionicons name="close" size={14} color="#fff" />
                       </TouchableOpacity>
-                    </View>
-                  ))}
-                  {editLocalAssets.map((asset, i) => (
-                    <View key={`l-${asset.uri}-${i}`} style={twStyle("me-2 h-20 w-20 overflow-hidden rounded-lg bg-gray-100")}>
-                      <LocalMediaPreview asset={asset} size={80} />
+                    </TouchableOpacity>
+                    );
+                  })}
+                  {editLocalAssets.map((asset, i) => {
+                    const slideIdx = editRemoteUrls.length + i;
+                    return (
                       <TouchableOpacity
-                        onPress={() => removeEditLocal(i)}
-                        style={twStyle("absolute right-1 top-1 h-6 w-6 items-center justify-center rounded-full bg-black/60")}
-                        accessibilityLabel={ep("removeNewUploadA11y")}
+                        key={`l-${asset.uri}-${i}`}
+                        activeOpacity={0.85}
+                        onPress={() => setEditOverlaySlideIndex(slideIdx)}
+                        style={twStyle(
+                          `me-2 h-20 w-20 overflow-hidden rounded-lg bg-gray-100 ${editOverlaySlideIndex === slideIdx ? "border-2 border-violet-600" : ""}`,
+                        )}
                       >
-                        <Ionicons name="close" size={14} color="#fff" />
+                        <LocalMediaPreview asset={asset} size={80} />
+                        {(editSlideOverlays[slideIdx]?.length ?? 0) > 0 ? (
+                          <View style={twStyle("absolute bottom-1 left-1 rounded bg-violet-600 px-1")}>
+                            <Text style={twStyle("text-[10px] font-medium text-white")}>Aa</Text>
+                          </View>
+                        ) : null}
+                        <TouchableOpacity
+                          onPress={() => removeEditLocal(i)}
+                          style={twStyle("absolute right-1 top-1 h-6 w-6 items-center justify-center rounded-full bg-black/60")}
+                          accessibilityLabel={ep("removeNewUploadA11y")}
+                        >
+                          <Ionicons name="close" size={14} color="#fff" />
+                        </TouchableOpacity>
                       </TouchableOpacity>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </ScrollView>
+              ) : null}
+
+              {editRemoteUrls.length + editLocalAssets.length > 0 ? (
+                <View style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 p-3")}>
+                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-800")}>{ep("onMediaText")}</Text>
+                  <Text style={twStyle("mb-2 text-xs text-gray-500")}>{ep("onMediaTextHint")}</Text>
+                  <View style={twStyle("flex-row items-end gap-2")}>
+                    <TextInput
+                      style={twStyle("min-h-[44px] flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-base text-gray-900")}
+                      placeholder={ep("onMediaTextPlaceholder")}
+                      placeholderTextColor="#9ca3af"
+                      value={editOverlayDraft}
+                      onChangeText={setEditOverlayDraft}
+                    />
+                    <TouchableOpacity
+                      onPress={() => {
+                        const layer = overlayFromDraft(editOverlayDraft);
+                        if (!layer) return;
+                        const total = editRemoteUrls.length + editLocalAssets.length;
+                        const idx = Math.min(editOverlaySlideIndex, total - 1);
+                        setEditSlideOverlays((prev) => {
+                          const cur = prev[idx] ?? [];
+                          if (cur.length >= MAX_TEXT_OVERLAYS_PER_SLIDE) return prev;
+                          return { ...prev, [idx]: [...cur, layer] };
+                        });
+                        setEditOverlayDraft("");
+                      }}
+                      style={twStyle("rounded-lg bg-violet-600 px-4 py-3")}
+                    >
+                      <Text style={twStyle("text-sm font-medium text-white")}>{ep("addTextLayer")}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {(() => {
+                    const idx = Math.min(
+                      editOverlaySlideIndex,
+                      editRemoteUrls.length + editLocalAssets.length - 1,
+                    );
+                    const layers = editSlideOverlays[idx] ?? [];
+                    if (!layers.length) return null;
+                    const preview =
+                      idx < editRemoteUrls.length ? (
+                        isVideoUrl(editRemoteUrls[idx]!) ? (
+                          <View style={{ width: 280, height: 280 }}>
+                            <ExploreFeedMediaThumb uri={editRemoteUrls[idx]!} height={280} />
+                          </View>
+                        ) : (
+                          <Image
+                            source={{ uri: editRemoteUrls[idx]! }}
+                            style={{ width: 280, height: 280 } as ExpoImageStyle}
+                            contentFit="cover"
+                          />
+                        )
+                      ) : editLocalAssets[idx - editRemoteUrls.length] ? (
+                        <LocalMediaPreview
+                          asset={editLocalAssets[idx - editRemoteUrls.length]!}
+                          size={280}
+                        />
+                      ) : null;
+                    if (!preview) return null;
+                    return (
+                      <ExploreSlideOverlayComposer
+                        dragHint={ep("onMediaTextDragHint")}
+                        preview={preview}
+                        overlays={layers}
+                        onChangeOverlays={(next) =>
+                          setEditSlideOverlays((prev) => ({ ...prev, [idx]: next }))
+                        }
+                      />
+                    );
+                  })()}
+                </View>
               ) : null}
 
               <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{ep("caption")}</Text>
@@ -1542,6 +2203,34 @@ export default function ExplorePostsScreen() {
                   </ScrollView>
                 </>
               ) : null}
+              {hasVideoFirstInEditForSound && soundCatalogEnabled ? (
+                <ExploreSoundPicker
+                  sounds={providerSounds}
+                  value={editSoundId}
+                  onChange={setEditSoundId}
+                  disabled={editUploading || editSubmittingMode !== null}
+                  labels={soundPickerLabels}
+                />
+              ) : null}
+              {hasVideoInEdit ? (
+                <TouchableOpacity
+                  onPress={() => setAlsoAddToGallery((v) => !v)}
+                  style={twStyle("mb-4 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
+                  activeOpacity={0.8}
+                >
+                  <View style={twStyle("flex-1 pe-3")}>
+                    <Text style={twStyle("text-sm font-medium text-gray-800")}>{ep("alsoAddToPortfolio")}</Text>
+                    <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>{ep("alsoAddToPortfolioHint")}</Text>
+                  </View>
+                  <View
+                    style={twStyle(
+                      `h-6 w-11 rounded-full ${alsoAddToGallery ? "bg-violet-600" : "bg-gray-300"} items-${alsoAddToGallery ? "end" : "start"} justify-center px-0.5`,
+                    )}
+                  >
+                    <View style={twStyle("h-5 w-5 rounded-full bg-white shadow-sm")} />
+                  </View>
+                </TouchableOpacity>
+              ) : null}
               <View style={twStyle("mb-2 flex-row gap-3")}>
                 <View style={twStyle("flex-1")}>
                   <ActionButton
@@ -1552,7 +2241,7 @@ export default function ExplorePostsScreen() {
                     }
                     onPress={() => void handleSaveEdit(true)}
                     loading={(editUploading || updating) && editSubmittingMode === "publish"}
-                    disabled={(editUploading || updating) && editSubmittingMode !== "publish"}
+                    disabled={!!trimSheetAsset || ((editUploading || updating) && editSubmittingMode !== "publish")}
                     fullWidth
                   />
                 </View>
@@ -1565,7 +2254,7 @@ export default function ExplorePostsScreen() {
                     }
                     onPress={() => void handleSaveEdit(false)}
                     loading={(editUploading || updating) && editSubmittingMode === "draft"}
-                    disabled={(editUploading || updating) && editSubmittingMode !== "draft"}
+                    disabled={!!trimSheetAsset || ((editUploading || updating) && editSubmittingMode !== "draft")}
                     variant="secondary"
                     fullWidth
                   />
@@ -1769,6 +2458,11 @@ export default function ExplorePostsScreen() {
                       );
                       setEditOfferingId(viewPost.offering_id ?? null);
                       setEditRemoteUrls([...(viewPost.media_urls ?? [])]);
+                      setEditRemoteMeta(
+                        Array.isArray(viewPost.media_meta)
+                          ? (viewPost.media_meta as Record<string, unknown>[]).map((row) => ({ ...row }))
+                          : [],
+                      );
                       setEditLocalAssets([]);
                       setEditMode(true);
                     }}
@@ -1885,6 +2579,22 @@ export default function ExplorePostsScreen() {
           title={reportTarget.title}
         />
       ) : null}
+      {trimSheetAsset ? (
+        <ExploreVideoTrimSheet
+          visible
+          videoUri={trimSheetAsset.uri}
+          fullDurationMs={trimSheetAsset.source_duration_ms ?? 0}
+          maxClipMs={maxVideoClipMs}
+          onConfirm={confirmTrimSheet}
+          onCancel={cancelTrimSheet}
+        />
+      ) : null}
+      <ExploreCameraCaptureSheet
+        visible={cameraCaptureOpen}
+        maxVideoDurationMs={maxVideoClipMs}
+        onClose={() => setCameraCaptureOpen(false)}
+        onCapture={onCameraCapture}
+      />
     </ScreenContainer>
   );
 }

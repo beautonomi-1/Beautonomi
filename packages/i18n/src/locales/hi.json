@@ -13214,7 +13214,10 @@
       "providerFallback": "Prestataire",
       "openProviderProfile": "Ouvrir {{name}} profil",
       "userFallback": "Utilisateur",
-      "postByProvider": "Publicación by {{name}}"
+      "postByProvider": "Publicación by {{name}}",
+      "reply": "जवाब दें",
+      "replying": "टिप्पणी का जवाब",
+      "replyPlaceholder": "जवाब लिखें…"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -13823,7 +13826,8 @@
           "categoryLashes": "Cils",
           "categoryBarber": "Barbier",
           "categorySpa": "Spa",
-          "categoryBody": "Corps"
+          "categoryBody": "Corps",
+          "categoryFollowing": "फ़ॉलोइंग"
         },
         "shop": {
           "searchPlaceholder": "Rechercher des produits…",
@@ -17420,7 +17424,11 @@
         }
       }
     },
-    "cart": "Panier"
+    "cart": "Panier",
+    "exploreVideo": {
+      "unmute": "आवाज़ चालू करें",
+      "mute": "आवाज़ बंद करें"
+    }
   },
   "checkout": {
     "title": "Paiement",
@@ -34473,7 +34481,10 @@
         "noSavedPostsHint": "Londoloza okuthunyelwe okuthandayo ngokuthepha isithonjana sebhukhimakhi. Bazovela lapha.",
         "exploreTheFeed": "Explorar the feed",
         "noPostsYet": "Pas encore de posts",
-        "noPostsHint": "profissionais haven't partilhard any posts. Check voltar em breve!"
+        "noPostsHint": "profissionais haven't partilhard any posts. Check voltar em breve!",
+        "following": "फ़ॉलोइंग",
+        "disabledTitle": "एक्सप्लोर उपलब्ध नहीं है",
+        "disabledHint": "यह सुविधा आपके बाज़ार के लिए बंद है।"
       }
     },
     "profile": {

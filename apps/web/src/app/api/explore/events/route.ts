@@ -10,6 +10,7 @@ import { checkExploreEventsRateLimit } from "@/lib/rate-limit/explore-events";
 import { requireSocialAccess } from "@/lib/safety/require-social-access";
 import { assertNotBlocked, UserBlockedError } from "@/lib/safety/user-blocks";
 import { createHash } from "crypto";
+import { isExploreEnabled } from "@/lib/explore/explore-feature-gates";
 
 function getAnonHash(request: Request): string {
   const forwarded = request.headers.get("x-forwarded-for");
@@ -27,20 +28,19 @@ function getAnonHash(request: Request): string {
  */
 export async function POST(request: NextRequest) {
   try {
+    if (!(await isExploreEnabled(null))) {
+      return errorResponse("Not found", "NOT_FOUND", 404);
+    }
     const { allowed } = await checkExploreEventsRateLimit(request);
     if (!allowed) {
       return errorResponse("Too many requests", "RATE_LIMITED", 429);
     }
 
     const body = await request.json();
-    const { post_id, event_type, idempotency_key } = body;
+    const { post_id, event_type, idempotency_key: clientIdempotencyKey } = body;
 
-    if (!post_id || !event_type || !idempotency_key) {
-      return errorResponse(
-        "post_id, event_type, and idempotency_key are required",
-        "VALIDATION_ERROR",
-        400
-      );
+    if (!post_id || !event_type) {
+      return errorResponse("post_id and event_type are required", "VALIDATION_ERROR", 400);
     }
 
     if (event_type !== "view" && event_type !== "like") {
@@ -72,6 +72,17 @@ export async function POST(request: NextRequest) {
     } else {
       actorType = "anon";
       actorKey = getAnonHash(request);
+    }
+
+    const utcDate = new Date().toISOString().slice(0, 10);
+    let idempotency_key: string;
+    if (event_type === "view") {
+      idempotency_key = `view:${post_id}:${actorKey}:${utcDate}`;
+    } else {
+      if (!clientIdempotencyKey) {
+        return errorResponse("idempotency_key is required for likes", "VALIDATION_ERROR", 400);
+      }
+      idempotency_key = clientIdempotencyKey;
     }
 
     const { error } = await supabaseAdmin.from("explore_events").insert({

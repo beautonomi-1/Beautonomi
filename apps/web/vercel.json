@@ -78,6 +78,7 @@
     { "path": "/api/cron/purge-notification-delivery-queue", "schedule": "10 3 * * *" },
     { "path": "/api/cron/purge-ads-events", "schedule": "20 3 * * *" },
     { "path": "/api/cron/explore-embeddings-backfill", "schedule": "30 4 * * *" },
+    { "path": "/api/cron/explore-media-backfill", "schedule": "45 4 * * *" },
     { "path": "/api/cron/payroll-rules-monitor", "schedule": "0 9 * * *" },
     { "path": "/api/cron/brand-period-snapshot", "schedule": "15 1 * * *" },
     { "path": "/api/cron/brand-evidence-pack-assemble", "schedule": "*/10 * * * *" },

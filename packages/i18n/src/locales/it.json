@@ -13214,7 +13214,10 @@
       "providerFallback": "Prestataire",
       "openProviderProfile": "Ouvrir {{name}} profil",
       "userFallback": "Utilisateur",
-      "postByProvider": "Publicación by {{name}}"
+      "postByProvider": "Publicación by {{name}}",
+      "reply": "Rispondi",
+      "replying": "Risposta a un commento",
+      "replyPlaceholder": "Scrivi una risposta…"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -13823,7 +13826,8 @@
           "categoryLashes": "Cils",
           "categoryBarber": "Barbier",
           "categorySpa": "Spa",
-          "categoryBody": "Corps"
+          "categoryBody": "Corps",
+          "categoryFollowing": "Seguiti"
         },
         "shop": {
           "searchPlaceholder": "Rechercher des produits…",
@@ -17420,7 +17424,11 @@
         }
       }
     },
-    "cart": "Panier"
+    "cart": "Panier",
+    "exploreVideo": {
+      "unmute": "Attiva audio",
+      "mute": "Disattiva audio"
+    }
   },
   "checkout": {
     "title": "Paiement",
@@ -34473,7 +34481,10 @@
         "noSavedPostsHint": "Londoloza okuthunyelwe okuthandayo ngokuthepha isithonjana sebhukhimakhi. Bazovela lapha.",
         "exploreTheFeed": "Explorar the feed",
         "noPostsYet": "Aún no hay posts",
-        "noPostsHint": "profissionais haven't partilhard any posts. Check voltar em breve!"
+        "noPostsHint": "profissionais haven't partilhard any posts. Check voltar em breve!",
+        "following": "Seguiti",
+        "disabledTitle": "Esplora non è disponibile",
+        "disabledHint": "Questa funzione è disattivata per il tuo mercato."
       }
     },
     "profile": {

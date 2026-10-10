@@ -13214,7 +13214,10 @@
       "providerFallback": "Umniketi",
       "openProviderProfile": "Vula {{name}} liphrofayili",
       "userFallback": "Umsebentisi",
-      "postByProvider": "Siposo by {{name}}"
+      "postByProvider": "Siposo by {{name}}",
+      "reply": "Phendvula",
+      "replying": "Uphendvula umbono",
+      "replyPlaceholder": "Bhala impendvulo…"
     },
     "searchScreen": {
       "title": "Sesha",
@@ -13823,7 +13826,8 @@
           "categoryLashes": "Emashesho",
           "categoryBarber": "Umgcini",
           "categorySpa": "I-spa",
-          "categoryBody": "Umzimba"
+          "categoryBody": "Umzimba",
+          "categoryFollowing": "Kulandzela"
         },
         "shop": {
           "searchPlaceholder": "Sesha imikhicito…",
@@ -17420,7 +17424,11 @@
         }
       }
     },
-    "cart": "Inqola"
+    "cart": "Inqola",
+    "exploreVideo": {
+      "unmute": "Vula umsindvo",
+      "mute": "Thulisa"
+    }
   },
   "checkout": {
     "title": "Kukhokha",
@@ -34473,7 +34481,10 @@
         "noSavedPostsHint": "Stoor plasings waarvan jy hou deur op die boekmerkikoon te tik. Hulle sal hier verskyn.",
         "exploreTheFeed": "Hlola the feed",
         "noPostsYet": "Awekho posts kwanyalo",
-        "noPostsHint": "baniketi haven't yabelanad any posts. Check emuva maduze!"
+        "noPostsHint": "baniketi haven't yabelanad any posts. Check emuva maduze!",
+        "following": "Kulandzela",
+        "disabledTitle": "Kuhlola akukho",
+        "disabledHint": "Lomsebenti ucishiwe emakethe yakho."
       }
     },
     "profile": {

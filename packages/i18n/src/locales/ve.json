@@ -13214,7 +13214,10 @@
       "providerFallback": "Muneḓi",
       "openProviderProfile": "Vula {{name}} phurofaily",
       "userFallback": "Mushumisi",
-      "postByProvider": "Poso by {{name}}"
+      "postByProvider": "Poso by {{name}}",
+      "reply": "Fhindula",
+      "replying": "U fhindula muhumbulo",
+      "replyPlaceholder": "Nwale phindulo…"
     },
     "searchScreen": {
       "title": "Ṱoḓa",
@@ -13823,7 +13826,8 @@
           "categoryLashes": "Zwishesho",
           "categoryBarber": "Mogoli",
           "categorySpa": "Spa",
-          "categoryBody": "Miri"
+          "categoryBody": "Miri",
+          "categoryFollowing": "U tevhela"
         },
         "shop": {
           "searchPlaceholder": "Ṱoḓa zwithu…",
@@ -17420,7 +17424,11 @@
         }
       }
     },
-    "cart": "Nngola"
+    "cart": "Nngola",
+    "exploreVideo": {
+      "unmute": "Vula mubvumo",
+      "mute": "Thulisa"
+    }
   },
   "checkout": {
     "title": "U badela",
@@ -34473,7 +34481,10 @@
         "noSavedPostsHint": "Stoor plasings waarvan jy hou deur op die boekmerkikoon te tik. Hulle sal hier verskyn.",
         "exploreTheFeed": "Ṱoḓisisa the feed",
         "noPostsYet": "A huna posts zwazwino",
-        "noPostsHint": "vaneḓi haven't kovhelad any posts. Check murahu tshifhinganyana!"
+        "noPostsHint": "vaneḓi haven't kovhelad any posts. Check murahu tshifhinganyana!",
+        "following": "U tevhela",
+        "disabledTitle": "U ṱola a hu wanali",
+        "disabledHint": "Mushumo uwo wo valiwa kha mbaraka yavho."
       }
     },
     "profile": {

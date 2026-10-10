@@ -8,7 +8,10 @@ import {
 import { requireAuthInApi } from "@/lib/supabase/api-helpers";
 import { requireSocialAccess } from "@/lib/safety/require-social-access";
 import type { ExplorePost } from "@/types/explore";
-import { toPublicMediaUrl } from "@/lib/explore/media-urls";
+import { EXPLORE_POST_SELECT_WITH_PROVIDER } from "@/lib/explore/post-select";
+import { mapExplorePostRow } from "@/lib/explore/post-mapper";
+import { enrichExplorePostsWithSoundUrls } from "@/lib/explore/sound-enrich";
+import { isExploreEnabled } from "@/lib/explore/explore-feature-gates";
 
 /**
  * GET /api/explore/collections/[id]
@@ -19,6 +22,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!(await isExploreEnabled(null))) {
+      return errorResponse("Collection not found", "NOT_FOUND", 404);
+    }
     const { id } = await params;
     const { user } = await requireAuthInApi(request);
     const supabaseAdmin = await getSupabaseAdmin();
@@ -51,19 +57,13 @@ export async function GET(
 
     const { data: postRows } = await supabaseAdmin
       .from("explore_posts")
-      .select("id, provider_id, created_by_user_id, caption, media_urls, status, published_at, like_count, comment_count, tags, primary_category_id, offering_id, created_at, updated_at")
+      .select(EXPLORE_POST_SELECT_WITH_PROVIDER)
       .in("id", postIds)
       .eq("status", "published")
       .eq("is_hidden", false);
 
     const order = postIds;
     const postMap = new Map((postRows || []).map((p: any) => [p.id, p]));
-    const providerIds = [...new Set((postRows || []).map((p: any) => p.provider_id))];
-    const { data: provData } = await supabaseAdmin
-      .from("providers")
-      .select("id, business_name, slug")
-      .in("id", providerIds);
-    const provMap = new Map((provData || []).map((p: any) => [p.id, p]));
     const offeringIds = [...new Set((postRows || []).map((p: any) => p.offering_id).filter(Boolean))];
     const offeringMap = new Map<string, { id: string; name: string; price?: number; duration_minutes?: number }>();
     if (offeringIds.length > 0) {
@@ -84,34 +84,24 @@ export async function GET(
       .in("post_id", postIds);
     const likedIds = new Set((likedRes.data || []).map((r: any) => r.post_id));
 
-    const posts: ExplorePost[] = order
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const mapped: ExplorePost[] = order
       .map((postId) => {
         const row = postMap.get(postId);
         if (!row) return null;
-        const p = provMap.get(row.provider_id);
         const offering = row.offering_id ? offeringMap.get(row.offering_id) : null;
         return {
-          id: row.id,
-          provider_id: row.provider_id,
-          provider: p ? { business_name: p.business_name, slug: p.slug } : { business_name: "", slug: "" },
-          created_by_user_id: row.created_by_user_id,
-          caption: row.caption,
-          media_urls: (row.media_urls || []).map((u: string) => toPublicMediaUrl(u, process.env.NEXT_PUBLIC_SUPABASE_URL)),
-          status: row.status,
-          published_at: row.published_at,
-          like_count: row.like_count ?? 0,
-          comment_count: row.comment_count ?? 0,
-          created_at: row.created_at,
-          updated_at: row.updated_at,
+          ...mapExplorePostRow(row, {
+            supabaseUrl,
+            savedIds: new Set([row.id]),
+            likedIds,
+            offering: offering ?? null,
+          }),
           is_saved: true,
-          is_liked: likedIds.has(row.id),
-          tags: row.tags ?? [],
-          primary_category_id: row.primary_category_id ?? null,
-          offering_id: row.offering_id ?? null,
-          offering: offering ?? null,
         };
       })
       .filter(Boolean) as ExplorePost[];
+    const posts = await enrichExplorePostsWithSoundUrls(supabaseAdmin, mapped, supabaseUrl);
 
     return successResponse({
       ...collection,

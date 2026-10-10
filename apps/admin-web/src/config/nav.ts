@@ -391,6 +391,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "CMS Resources", href: "/admin/content/resources", icon: Layers, section: ADMIN_SECTION_CONTENT_CATALOG },
       { title: "FAQs", href: "/admin/content/faqs", icon: MessageCircle, section: ADMIN_SECTION_CONTENT_CATALOG },
       { title: "Explore Feed", href: "/admin/explore", icon: ImageIcon, section: ADMIN_SECTION_CONTENT_CATALOG },
+      { title: "Explore Sounds", href: "/admin/explore/sounds", icon: ImageIcon, section: ADMIN_SECTION_CONTENT_CATALOG },
     ],
   },
 

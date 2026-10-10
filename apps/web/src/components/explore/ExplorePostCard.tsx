@@ -2,14 +2,10 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
-
-function isVideoUrl(url: string): boolean {
-  const lower = url.toLowerCase();
-  return lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mov");
-}
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Heart, Bookmark, MessageCircle } from "lucide-react";
+import { Heart, Bookmark, MessageCircle, Play } from "lucide-react";
+import { firstSlideIsVideo } from "@/lib/explore/video-media";
 import { useAuth } from "@/providers/AuthProvider";
 import LoginModal from "@/components/global/login-modal";
 import { fetcher } from "@/lib/http/fetcher";
@@ -149,7 +145,12 @@ export function ExplorePostCard({
     }
   };
 
-  const primaryImage = post.media_urls?.[0];
+  const primaryImage = post.display_url ?? post.media_urls?.[0];
+  const isVideo = firstSlideIsVideo(post.media_urls, post.media_meta);
+  const aspectStyle =
+    post.media_width && post.media_height && post.media_height > 0
+      ? { aspectRatio: Math.min(1.5, Math.max(0.6, post.media_width / post.media_height)) }
+      : { aspectRatio: 4 / 5 };
   const postDetailUrl = `/explore/${post.id}`;
 
   return (
@@ -160,27 +161,22 @@ export function ExplorePostCard({
       <Link href={postDetailUrl} className="block">
         {primaryImage && (
           <div className="relative w-full bg-gray-100 overflow-hidden">
-            <div className="relative aspect-[4/5] w-full bg-gray-100">
-              {isVideoUrl(primaryImage) ? (
-                <video
-                  src={primaryImage}
-                  controls
-                  playsInline
-                  muted
-                  loop
-                  className="w-full h-full object-cover"
-                  onClick={(e) => e.stopPropagation()}
-                />
-              ) : (
-                <Image
-                  src={primaryImage}
-                  alt={post.caption || "Post"}
-                  fill
-                  className="object-cover"
-                  sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                  priority={priority}
-                />
-              )}
+            <div className="relative w-full bg-gray-100" style={aspectStyle}>
+              <Image
+                src={primaryImage}
+                alt={post.caption || "Post"}
+                fill
+                className="object-cover"
+                sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                priority={priority}
+              />
+              {isVideo ? (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="rounded-full bg-black/45 p-3">
+                    <Play className="w-7 h-7 text-white fill-white" />
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         )}

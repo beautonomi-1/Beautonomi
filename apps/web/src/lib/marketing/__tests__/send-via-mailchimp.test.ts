@@ -19,7 +19,7 @@ describe("send-via-mailchimp (Mandrill)", () => {
   });
 
   it("detects Mailchimp Marketing API key shape", () => {
-    expect(isMailchimpMarketingApiKey("a1b2c3d4e5f6789012345678abcdef01-xx1")).toBe(true);
+    expect(isMailchimpMarketingApiKey("00000000000000000000000000000000-us0")).toBe(true);
     expect(isMailchimpMarketingApiKey("mandrill-plain-key")).toBe(false);
   });
 
@@ -72,7 +72,7 @@ describe("send-via-mailchimp (Mandrill)", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const result = await sendViaMailchimpTransactional(
-      { ...integration, api_key: "a1b2c3d4e5f6789012345678abcdef01-xx1" },
+      { ...integration, api_key: "00000000000000000000000000000000-us0" },
       { to: "a@b.com", subject: "Hi", content: "<p>x</p>" },
     );
     expect(result.success).toBe(false);

@@ -167,6 +167,7 @@ export const BREADCRUMB_MAP: Record<string, BreadcrumbRoute> = {
   "content/featured-cities": { label: "Featured Cities", parentHref: "/admin/content" },
   "content/app-links": { label: "App Links", parentHref: "/admin/content" },
   explore: { label: "Explore Feed", parentHref: null },
+  "explore/sounds": { label: "Explore sounds", parentHref: "/admin/explore" },
   "explore/[id]": { label: "Post", parentHref: "/admin/explore" },
 
   // Integrations

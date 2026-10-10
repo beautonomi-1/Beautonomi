@@ -9,6 +9,12 @@ import LoginModal from "@/components/global/login-modal";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import type { ExplorePost, ExploreComment } from "@/types/explore";
+import { firstSlideIsVideo, resolveExploreVideoSrc } from "@/lib/explore/video-media";
+import {
+  filterOverlaysForPlaybackTime,
+  shouldDrawVideoTextOverlays,
+} from "@/lib/explore/explore-overlay-playback";
+import { ExploreTextOverlayLayer } from "@/components/explore/ExploreTextOverlayLayer";
 import { useTranslation, type TFunction } from "@beautonomi/i18n";
 
 /** Renders comment body with @username segments highlighted */
@@ -45,8 +51,22 @@ function formatCommentTime(iso: string, t: TFunction): string {
 }
 
 function isVideoUrl(url: string): boolean {
-  const lower = url.toLowerCase();
-  return lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mov");
+  const lower = url.toLowerCase().split("?")[0] ?? "";
+  return (
+    lower.endsWith(".mp4") ||
+    lower.endsWith(".webm") ||
+    lower.endsWith(".mov") ||
+    lower.endsWith(".m4v")
+  );
+}
+
+function buildPhotoSlides(post: ExplorePost): string[] {
+  const urls = post.media_urls ?? [];
+  return urls.map((url, index) => {
+    const meta = post.media_meta?.[index];
+    if (meta?.display_path?.trim()) return meta.display_path;
+    return url;
+  });
 }
 
 interface ExplorePostDetailProps {
@@ -66,6 +86,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
   const [commentsLoading, setCommentsLoading] = useState(true);
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [commentInput, setCommentInput] = useState("");
+  const [replyToCommentId, setReplyToCommentId] = useState<string | null>(null);
   const [commentsOffset, setCommentsOffset] = useState(0);
   const [hasMoreComments, setHasMoreComments] = useState(true);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -73,7 +94,10 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showZoomModal, setShowZoomModal] = useState(false);
+  const [lightboxZoom, setLightboxZoom] = useState(1);
   const [captionExpanded, setCaptionExpanded] = useState(false);
+  const [mediaIndex, setMediaIndex] = useState(0);
+  const [videoTimeMs, setVideoTimeMs] = useState(0);
   const viewTrackedRef = useRef(false);
   const commentsFetchedRef = useRef(false);
 
@@ -103,6 +127,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
     setCommentCount(post.comment_count ?? 0);
     setCommentsOffset(0);
     setHasMoreComments(true);
+    setMediaIndex(0);
   }, [post.id, post.comment_count]);
 
   useEffect(() => {
@@ -120,8 +145,12 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
     if (!text || !user) return;
     setCommentSubmitting(true);
     try {
-      await fetcher.post(`/api/explore/posts/${post.id}/comments`, { body: text });
+      await fetcher.post(`/api/explore/posts/${post.id}/comments`, {
+        body: text,
+        ...(replyToCommentId ? { parent_id: replyToCommentId } : {}),
+      });
       setCommentInput("");
+      setReplyToCommentId(null);
       setCommentCount((c) => c + 1);
       await fetchComments(0, false);
     } catch {
@@ -135,7 +164,14 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
     try {
       await fetcher.delete(`/api/explore/posts/${post.id}/comments/${commentId}`);
       setCommentCount((c) => Math.max(0, c - 1));
-      setComments((prev) => prev.filter((c) => c.id !== commentId));
+      setComments((prev) =>
+        prev
+          .filter((c) => c.id !== commentId)
+          .map((c) => ({
+            ...c,
+            replies: (c.replies ?? []).filter((r) => r.id !== commentId),
+          })),
+      );
     } catch {
       toast.error(t(`${pd}.deleteCommentFailed`));
     }
@@ -160,6 +196,10 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, [showZoomModal]);
+
+  useEffect(() => {
+    if (!showZoomModal) setLightboxZoom(1);
   }, [showZoomModal]);
 
   const handleLike = async () => {
@@ -287,12 +327,30 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
     }
   };
 
-  const primaryMedia = post.media_urls?.[0];
+  const videoFirst = firstSlideIsVideo(post.media_urls, post.media_meta);
+  const activeSlideMeta = post.media_meta?.[mediaIndex] ?? post.media_meta?.[0];
+  const videoOverlayLayers =
+    videoFirst && shouldDrawVideoTextOverlays(activeSlideMeta)
+      ? filterOverlaysForPlaybackTime(activeSlideMeta?.text_overlays, videoTimeMs)
+      : [];
+  const photoSlides = videoFirst ? [] : buildPhotoSlides(post);
+  const primaryMedia = videoFirst
+    ? resolveExploreVideoSrc({
+        mediaUrls: post.media_urls ?? [],
+        playbackPath: post.playback_path,
+        mediaMeta: post.media_meta,
+      })
+    : photoSlides[mediaIndex] ?? post.display_url ?? post.media_urls?.[0];
+  const primaryPoster = post.display_url ?? photoSlides[mediaIndex] ?? post.media_urls?.[0];
   const firstRelated = relatedPosts[0];
   const moreRelated = relatedPosts.slice(1, 13);
   const caption = post.caption ?? "";
   const captionShort = caption.length > 120 ? caption.slice(0, 120) + "..." : caption;
   const hasMoreCaption = caption.length > 120;
+
+  const openPhotoLightbox = useCallback(() => {
+    if (!videoFirst && primaryMedia) setShowZoomModal(true);
+  }, [videoFirst, primaryMedia]);
 
   return (
     <div className="min-h-screen bg-white">
@@ -303,22 +361,34 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
           {primaryMedia && (
             <>
               <div className="absolute inset-0 z-0">
-              {isVideoUrl(primaryMedia) ? (
-                <video
-                  src={primaryMedia}
-                  controls
-                  playsInline
-                  className="w-full h-full object-cover"
-                />
+              {videoFirst ? (
+                <>
+                  <video
+                    src={primaryMedia ?? undefined}
+                    poster={primaryPoster ?? undefined}
+                    controls
+                    playsInline
+                    className="w-full h-full object-cover"
+                    onTimeUpdate={(e) => setVideoTimeMs(Math.floor(e.currentTarget.currentTime * 1000))}
+                  />
+                  <ExploreTextOverlayLayer overlays={videoOverlayLayers} />
+                </>
               ) : (
-                <Image
-                  src={primaryMedia}
-                  alt={post.caption || t(`${pd}.altPost`)}
-                  fill
-                  className="object-cover"
-                  sizes="(max-width: 768px) 100vw, 50vw"
-                  priority
-                />
+                <button
+                  type="button"
+                  className="absolute inset-0 z-0 cursor-zoom-in"
+                  onClick={openPhotoLightbox}
+                  aria-label={t(`${pd}.zoom`)}
+                >
+                  <Image
+                    src={primaryMedia ?? ""}
+                    alt={post.caption || t(`${pd}.altPost`)}
+                    fill
+                    className="object-cover pointer-events-none"
+                    sizes="(max-width: 768px) 100vw, 50vw"
+                    priority
+                  />
+                </button>
               )}
               </div>
               {/* Action bar - absolute so it sticks to the image container only */}
@@ -387,15 +457,29 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                   )}
                 </div>
               </div>
-              {/* Zoom - sticks to image; opens lightbox */}
-              <button
-                type="button"
-                onClick={() => primaryMedia && setShowZoomModal(true)}
-                className="absolute bottom-4 left-1/2 -translate-x-1/2 p-2.5 bg-white/90 backdrop-blur-sm rounded-full shadow hover:bg-white z-10"
-                aria-label={t(`${pd}.zoom`)}
-              >
-                <ZoomIn className="w-5 h-5 text-gray-700" />
-              </button>
+              {!videoFirst ? (
+                <button
+                  type="button"
+                  onClick={openPhotoLightbox}
+                  className="absolute bottom-4 left-1/2 -translate-x-1/2 p-2.5 bg-white/90 backdrop-blur-sm rounded-full shadow hover:bg-white z-10"
+                  aria-label={t(`${pd}.zoom`)}
+                >
+                  <ZoomIn className="w-5 h-5 text-gray-700" />
+                </button>
+              ) : null}
+              {!videoFirst && photoSlides.length > 1 ? (
+                <div className="absolute bottom-16 left-0 right-0 flex justify-center gap-2 z-10">
+                  {photoSlides.map((_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setMediaIndex(i)}
+                      className={`h-2 rounded-full transition-all ${i === mediaIndex ? "w-6 bg-white" : "w-2 bg-white/50"}`}
+                      aria-label={t(`${pd}.altPost`)}
+                    />
+                  ))}
+                </div>
+              ) : null}
             </>
           )}
         </div>
@@ -444,31 +528,74 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
               ) : (
                 <ul className="space-y-3 max-h-64 overflow-y-auto mb-3">
                   {comments.map((c) => (
-                    <li key={c.id} className="flex gap-3 group/comment">
-                      <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold text-xs shrink-0 overflow-hidden">
-                        {c.author?.avatar_url ? (
-                          <Image src={c.author.avatar_url} alt="" width={32} height={32} className="w-full h-full object-cover" />
-                        ) : (
-                          (c.author?.full_name || "?").charAt(0)
+                    <li key={c.id}>
+                      <div className="flex gap-3 group/comment">
+                        <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold text-xs shrink-0 overflow-hidden">
+                          {c.author?.avatar_url ? (
+                            <Image src={c.author.avatar_url} alt="" width={32} height={32} className="w-full h-full object-cover" />
+                          ) : (
+                            (c.author?.full_name || "?").charAt(0)
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm text-gray-900 font-medium">
+                            {c.author?.full_name || t(`${pd}.someone`)}
+                            <span className="text-gray-400 font-normal ms-1.5">{formatCommentTime(c.created_at, t)}</span>
+                          </p>
+                          <CommentBody body={c.body} />
+                          {user && !c.parent_id ? (
+                            <button
+                              type="button"
+                              className="mt-1 text-xs font-medium text-gray-500 hover:text-[#FF0077]"
+                              onClick={() => setReplyToCommentId(c.id)}
+                            >
+                              {t(`${pd}.reply`, "Reply")}
+                            </button>
+                          ) : null}
+                        </div>
+                        {user?.id === c.user_id && (
+                          <button
+                            type="button"
+                            onClick={() => deleteComment(c.id)}
+                            className="shrink-0 p-1.5 rounded-full text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover/comment:opacity-100 transition-opacity"
+                            aria-label={t(`${pd}.deleteComment`)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         )}
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm text-gray-900 font-medium">
-                          {c.author?.full_name || t(`${pd}.someone`)}
-                          <span className="text-gray-400 font-normal ms-1.5">{formatCommentTime(c.created_at, t)}</span>
-                        </p>
-                        <CommentBody body={c.body} />
-                      </div>
-                      {user?.id === c.user_id && (
-                        <button
-                          type="button"
-                          onClick={() => deleteComment(c.id)}
-                          className="shrink-0 p-1.5 rounded-full text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover/comment:opacity-100 transition-opacity"
-                          aria-label={t(`${pd}.deleteComment`)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
+                      {(c.replies ?? []).length > 0 ? (
+                        <ul className="mt-2 ms-11 space-y-2 border-s border-gray-100 ps-3">
+                          {(c.replies ?? []).map((r) => (
+                            <li key={r.id} className="flex gap-2 group/reply">
+                              <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 font-semibold text-[10px] shrink-0 overflow-hidden">
+                                {r.author?.avatar_url ? (
+                                  <Image src={r.author.avatar_url} alt="" width={28} height={28} className="w-full h-full object-cover" />
+                                ) : (
+                                  (r.author?.full_name || "?").charAt(0)
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs text-gray-900 font-medium">
+                                  {r.author?.full_name || t(`${pd}.someone`)}
+                                  <span className="text-gray-400 font-normal ms-1">{formatCommentTime(r.created_at, t)}</span>
+                                </p>
+                                <CommentBody body={r.body} />
+                              </div>
+                              {user?.id === r.user_id && (
+                                <button
+                                  type="button"
+                                  onClick={() => deleteComment(r.id)}
+                                  className="shrink-0 p-1 rounded-full text-gray-400 hover:text-red-600 opacity-0 group-hover/reply:opacity-100"
+                                  aria-label={t(`${pd}.deleteComment`)}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -491,9 +618,24 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                     ((user as any)?.user_metadata?.full_name || user?.email || "?").toString().charAt(0)
                   )}
                 </div>
+                {replyToCommentId ? (
+                  <button
+                    type="button"
+                    className="mb-2 text-xs text-gray-500 hover:text-gray-800"
+                    onClick={() => setReplyToCommentId(null)}
+                  >
+                    {t(`${pd}.cancelReply`, "Cancel reply")}
+                  </button>
+                ) : null}
                 <input
                   type="text"
-                  placeholder={user ? t(`${pd}.addCommentMention`) : t(`${pd}.signInToComment`)}
+                  placeholder={
+                    user
+                      ? replyToCommentId
+                        ? t(`${pd}.replyPlaceholder`, "Write a reply…")
+                        : t(`${pd}.addCommentMention`)
+                      : t(`${pd}.signInToComment`)
+                  }
                   value={commentInput}
                   onChange={(e) => setCommentInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -573,17 +715,34 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
               <div className="w-full max-w-xl aspect-square max-h-[80vh] bg-white rounded-2xl overflow-hidden shadow-lg relative group">
                 {primaryMedia && (
                   <>
-                    {isVideoUrl(primaryMedia) ? (
-                      <video src={primaryMedia} controls playsInline className="w-full h-full object-cover" />
+                    {videoFirst ? (
+                      <>
+                        <video
+                          src={primaryMedia ?? undefined}
+                          poster={primaryPoster ?? undefined}
+                          controls
+                          playsInline
+                          className="w-full h-full object-cover"
+                          onTimeUpdate={(e) => setVideoTimeMs(Math.floor(e.currentTarget.currentTime * 1000))}
+                        />
+                        <ExploreTextOverlayLayer overlays={videoOverlayLayers} />
+                      </>
                     ) : (
-                      <Image
-                        src={primaryMedia}
-                        alt={post.caption || t(`${pd}.altPost`)}
-                        fill
-                        className="object-contain"
-                        sizes="50vw"
-                        priority
-                      />
+                      <button
+                        type="button"
+                        className="absolute inset-0 z-0 cursor-zoom-in"
+                        onClick={openPhotoLightbox}
+                        aria-label={t(`${pd}.zoom`)}
+                      >
+                        <Image
+                          src={primaryMedia ?? ""}
+                          alt={post.caption || t(`${pd}.altPost`)}
+                          fill
+                          className="object-contain pointer-events-none"
+                          sizes="50vw"
+                          priority
+                        />
+                      </button>
                     )}
                     {/* Action bar - sticks to image */}
                     <div className="absolute top-3 right-3 p-2 flex items-center gap-1 bg-white/95 backdrop-blur-sm rounded-full shadow-lg border border-gray-100 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -622,14 +781,16 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                         )}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowZoomModal(true)}
-                      className="absolute bottom-3 right-3 p-2.5 bg-white/90 backdrop-blur-sm rounded-full shadow hover:bg-white z-10 opacity-0 group-hover:opacity-100 transition-opacity"
-                      aria-label={t(`${pd}.zoom`)}
-                    >
-                      <ZoomIn className="w-5 h-5 text-gray-700" />
-                    </button>
+                    {!videoFirst ? (
+                      <button
+                        type="button"
+                        onClick={openPhotoLightbox}
+                        className="absolute bottom-3 right-3 p-2.5 bg-white/90 backdrop-blur-sm rounded-full shadow hover:bg-white z-10 opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label={t(`${pd}.zoom`)}
+                      >
+                        <ZoomIn className="w-5 h-5 text-gray-700" />
+                      </button>
+                    ) : null}
                   </>
                 )}
               </div>
@@ -764,7 +925,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
       </div>
 
       {/* Zoom lightbox */}
-      {showZoomModal && primaryMedia && (
+      {showZoomModal && primaryMedia && !videoFirst && (
         <>
           <div
             className="fixed inset-0 bg-black/90 z-[602]"
@@ -775,7 +936,15 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
             aria-label={t(`${pd}.closeZoom`)}
           />
           <div className="fixed inset-4 md:inset-8 z-[603] flex items-center justify-center pointer-events-none">
-            <div className="relative w-full h-full max-w-5xl max-h-[90vh] pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+            <div
+              className="relative w-full h-full max-w-5xl max-h-[90vh] pointer-events-auto overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+              onWheel={(e) => {
+                if (isVideoUrl(primaryMedia)) return;
+                e.preventDefault();
+                setLightboxZoom((z) => Math.min(4, Math.max(1, z - e.deltaY * 0.002)));
+              }}
+            >
               <button
                 type="button"
                 onClick={() => setShowZoomModal(false)}
@@ -784,15 +953,17 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
               >
                 <X className="w-6 h-6" />
               </button>
-              {isVideoUrl(primaryMedia) ? (
-                <video
-                  src={primaryMedia}
-                  controls
-                  playsInline
-                  autoPlay
-                  className="w-full h-full object-contain rounded-lg"
-                />
-              ) : (
+              <p className="absolute -bottom-8 left-0 right-0 text-center text-xs text-white/60 pointer-events-none">
+                {t(`${pd}.zoomHint`, {
+                  defaultValue: "Scroll or pinch to zoom · Double-click to expand · Esc to close",
+                })}
+              </p>
+              <div
+                className="relative w-full h-full transition-transform duration-100 ease-out cursor-zoom-in"
+                style={{ transform: `scale(${lightboxZoom})` }}
+                onDoubleClick={() => setLightboxZoom((z) => (z > 1.05 ? 1 : 2))}
+                role="presentation"
+              >
                 <Image
                   src={primaryMedia}
                   alt={post.caption || t(`${pd}.altPost`)}
@@ -800,8 +971,9 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                   className="object-contain"
                   sizes="(max-width: 768px) 100vw, 80vw"
                   onClick={(e) => e.stopPropagation()}
+                  draggable={false}
                 />
-              )}
+              </div>
             </div>
           </div>
         </>

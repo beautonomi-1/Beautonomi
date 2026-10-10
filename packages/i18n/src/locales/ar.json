@@ -13214,7 +13214,10 @@
       "providerFallback": "مزود الخدمة",
       "openProviderProfile": "فتح {{name}} ملف شخصي",
       "userFallback": "مستخدم",
-      "postByProvider": "Publicación by {{name}}"
+      "postByProvider": "Publicación by {{name}}",
+      "reply": "رد",
+      "replying": "الرد على تعليق",
+      "replyPlaceholder": "اكتب رداً…"
     },
     "searchScreen": {
       "title": "بحث",
@@ -13823,7 +13826,8 @@
           "categoryLashes": "الرموش",
           "categoryBarber": "حلاق",
           "categorySpa": "سبا",
-          "categoryBody": "الجسم"
+          "categoryBody": "الجسم",
+          "categoryFollowing": "المتابَعون"
         },
         "shop": {
           "searchPlaceholder": "ابحث عن منتجات…",
@@ -17420,7 +17424,11 @@
         }
       }
     },
-    "cart": "السلة"
+    "cart": "السلة",
+    "exploreVideo": {
+      "unmute": "إلغاء كتم الصوت",
+      "mute": "كتم الصوت"
+    }
   },
   "checkout": {
     "title": "إتمام الشراء",
@@ -34473,7 +34481,10 @@
         "noSavedPostsHint": "Londoloza okuthunyelwe okuthandayo ngokuthepha isithonjana sebhukhimakhi. Bazovela lapha.",
         "exploreTheFeed": "Explorar the feed",
         "noPostsYet": "لا يوجد posts بعد",
-        "noPostsHint": "profissionais haven't partilhard any posts. Check voltar em breve!"
+        "noPostsHint": "profissionais haven't partilhard any posts. Check voltar em breve!",
+        "following": "المتابَعون",
+        "disabledTitle": "الاستكشاف غير متاح",
+        "disabledHint": "هذه الميزة متوقفة لسوقك."
       }
     },
     "profile": {

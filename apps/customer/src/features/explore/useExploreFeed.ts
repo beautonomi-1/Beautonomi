@@ -19,7 +19,7 @@ export interface ExploreFeedFilters {
   category?: string | null;
   search?: string | null;
   tags?: string[] | null;
-  sort?: "chronological" | "trending" | "nearby" | "for_you";
+  sort?: "chronological" | "trending" | "nearby" | "for_you" | "following";
   lat?: number | null;
   lng?: number | null;
   radius_km?: number;
@@ -73,6 +73,7 @@ export function useExploreFeed() {
       if (f.tags && f.tags.length > 0) params.set("tags", f.tags.join(","));
       if (f.sort === "trending") params.set("sort", "trending");
       if (f.sort === "for_you") params.set("sort", "for_you");
+      if (f.sort === "following") params.set("sort", "following");
       if (f.sort === "nearby" && f.lat != null && f.lng != null) {
         params.set("sort", "nearby");
         params.set("lat", String(f.lat));
@@ -170,8 +171,11 @@ export function useExploreFeed() {
     load({ refresh: true });
   }, [load]);
 
+  const getFilters = useCallback(() => ({ ...filtersRef.current }), []);
+
   return {
     posts,
+    getFilters,
     loading,
     refreshing,
     loadingMore,
