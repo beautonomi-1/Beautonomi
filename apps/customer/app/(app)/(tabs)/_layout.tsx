@@ -361,7 +361,7 @@ export default function TabsLayout() {
           }}
         />
 
-        {/* Hidden tabs (reachable from home top nav / deep links) */}
+        {/* Hidden tabs (reachable from home top nav / deep links). Explore: no bottom-bar icon — Home header only (web uses /explore in site nav). */}
         <Tabs.Screen name="shop" options={{ href: null }} />
         <Tabs.Screen name="explore" options={{ href: null }} />
         <Tabs.Screen name="saved" options={{ href: null }} />

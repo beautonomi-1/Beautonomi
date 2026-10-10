@@ -8,7 +8,7 @@ import type { OnboardingFormData } from "./types";
 import { setBiometricPromptPending } from "@/lib/biometric-setup-prompt";
 import type { InAppPaystackResult } from "@/hooks/useInAppPaystackCheckout";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
-import { extractPaystackReferenceFromUrl } from "@/lib/payments/paystackRefFromUrl";
+import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
   getSubscriptionPaystackReturnUrl,
   matchesSubscriptionPaystackReturnUrl,
@@ -133,6 +133,7 @@ async function completeCheckoutAfterReturn(options: {
   }
 
   let reference = initialReference?.trim() || null;
+  let checkoutSessionId: string | null = null;
   if (result.outcome === "success" && result.url) {
     if (matchesSubscriptionPaystackReturnUrl(result.url, { cancelled: true })) {
       await clearPendingOnboardingCheckout();
@@ -153,11 +154,14 @@ async function completeCheckoutAfterReturn(options: {
       );
       return false;
     }
-    const extracted = extractPaystackReferenceFromUrl(result.url);
-    if (extracted) reference = extracted;
+    const parsed = parseOnlineCheckoutReturnUrl(result.url);
+    if (parsed.reference) reference = parsed.reference;
+    checkoutSessionId = parsed.sessionId;
   }
 
-  const verifyResult = reference ? await verifyPaystackWithRetry(reference) : null;
+  const verifyResult = reference
+    ? await verifyPaystackWithRetry(reference, { sessionId: checkoutSessionId })
+    : null;
   if (verifyResult?.status === "failed") {
     Alert.alert(
       "Payment not completed",
@@ -272,14 +276,26 @@ export async function resolveCheckoutFlagsForRecovery(
     };
   }
 
+  if (formData.selected_plan_is_free === true) {
+    return {
+      selected_plan_id: selectedPlanId,
+      selected_plan_is_free: true,
+      requires_checkout: false,
+    };
+  }
+
   if (selectedPlanId) {
-    const plansRes = await api.get<PlanRow[] | { plans?: PlanRow[] }>("/api/public/pricing/plans");
+    const plansRes = await api.get<PlanRow[] | { data?: PlanRow[]; plans?: PlanRow[] }>(
+      "/api/public/pricing/plans",
+    );
     const raw = plansRes.data;
     const list = Array.isArray(raw)
       ? raw
-      : raw && typeof raw === "object" && Array.isArray((raw as { plans?: PlanRow[] }).plans)
-        ? (raw as { plans: PlanRow[] }).plans
-        : [];
+      : raw && typeof raw === "object" && Array.isArray((raw as { data?: PlanRow[] }).data)
+        ? (raw as { data: PlanRow[] }).data
+        : raw && typeof raw === "object" && Array.isArray((raw as { plans?: PlanRow[] }).plans)
+          ? (raw as { plans: PlanRow[] }).plans
+          : [];
     const match = list.find((p) => p.id === selectedPlanId);
     if (match?.is_free) {
       return {
@@ -295,6 +311,16 @@ export async function resolveCheckoutFlagsForRecovery(
         requires_checkout: true,
       };
     }
+  }
+
+  const billingPeriod = formData.selected_billing_period;
+  const paidPeriodSelected = billingPeriod === "monthly" || billingPeriod === "yearly";
+  if (formData.selected_plan_is_free === false || paidPeriodSelected) {
+    return {
+      selected_plan_id: selectedPlanId,
+      selected_plan_is_free: false,
+      requires_checkout: true,
+    };
   }
 
   return {
@@ -343,7 +369,9 @@ export async function finalizeOnboardingSuccess(options: {
 
   // Only enter Paystack checkout for paid plans. Free plans have requiresCheckout=false
   // from the server, but guard explicitly on selected_plan_is_free as a safety net.
-  if (planId && requiresCheckout && !data?.selected_plan_is_free) {
+  const selectedPlanIsFree =
+    data?.selected_plan_is_free ?? formData.selected_plan_is_free ?? false;
+  if (planId && requiresCheckout && !selectedPlanIsFree) {
     // Native path: call the API directly with the provider's Bearer token.
     // This replaces the old unauthenticated WebView which caused a 401 → login redirect.
     if (waitForCheckout) {
@@ -371,6 +399,34 @@ export async function finalizeOnboardingSuccess(options: {
         }
 
         if (shouldUseAppleIap()) {
+          const subEligibility = await api.get<{
+            ios_purchase_eligible?: boolean;
+            ios_purchase_eligible_reason?: string | null;
+          }>("/api/provider/subscription");
+          if (
+            !subEligibility.error &&
+            subEligibility.data?.ios_purchase_eligible === false
+          ) {
+            Alert.alert(
+              "Checkout unavailable",
+              subEligibility.data.ios_purchase_eligible_reason?.trim() ||
+                "This subscription must be managed outside the App Store for your account.",
+              [
+                {
+                  text: "Open subscription",
+                  onPress: () =>
+                    router.replace("/(app)/(tabs)/more/settings/subscription" as never),
+                },
+                {
+                  text: "Skip for now",
+                  style: "cancel",
+                  onPress: () => router.replace(POST_ONBOARDING_ROUTE as never),
+                },
+              ],
+            );
+            return;
+          }
+
           const plansRes = await api.get<
             Array<{ plan_id: string; billing_period: string; apple_product_id?: string | null }>
           >("/api/provider/subscription/plans");
@@ -411,7 +467,26 @@ export async function finalizeOnboardingSuccess(options: {
             router.replace(POST_ONBOARDING_ROUTE as never);
             return;
           }
-          if (!appleCheckout.cancelled) {
+          if (appleCheckout.cancelled) {
+            Alert.alert(
+              "Payment cancelled",
+              "No charge was made. Complete your subscription any time from Settings.",
+              [
+                {
+                  text: "Open subscription",
+                  onPress: () =>
+                    router.replace("/(app)/(tabs)/more/settings/subscription" as never),
+                },
+                {
+                  text: "Continue to app",
+                  style: "cancel",
+                  onPress: () => router.replace(POST_ONBOARDING_ROUTE as never),
+                },
+              ],
+            );
+            return;
+          }
+          if (!appleCheckout.ok) {
             Alert.alert(
               "Checkout failed",
               appleCheckout.error || "Unable to complete App Store subscription.",

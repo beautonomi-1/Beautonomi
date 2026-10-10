@@ -14,65 +14,46 @@ import { postHasSensitiveContent } from "@/lib/safety/filter-explore-posts";
 import type { ExplorePost } from "@/types/explore";
 import { toPublicMediaUrl, toStoragePath } from "@/lib/explore/media-urls";
 import { requireSocialAccess } from "@/lib/safety/require-social-access";
+import { mapExplorePostRow } from "@/lib/explore/post-mapper";
+import { EXPLORE_POST_SELECT_WITH_PROVIDER } from "@/lib/explore/post-select";
+import {
+  denormalizeFirstSlideFromMeta,
+  mergeExploreMediaMetaPatch,
+  validateProviderMediaPaths,
+} from "@/lib/explore/media-meta";
+import {
+  collectExplorePostStoragePaths,
+  removeExplorePostsStoragePaths,
+} from "@/lib/explore/storage-paths";
+import {
+  isExploreEnabled,
+  isExploreProviderPostsEnabled,
+  isExploreSoundCatalogEnabled,
+} from "@/lib/explore/explore-feature-gates";
+import { runExplorePublishSideEffects } from "@/lib/explore/publish-side-effects";
+import { enqueueExploreVideoProcessing } from "@/lib/explore/enqueue-video-processing";
+import { enrichExplorePostWithSoundUrl } from "@/lib/explore/sound-enrich";
+import { burnExplorePhotoOverlaysForPublish } from "@/lib/explore/explore-photo-burn";
+import { resolveExplorePostSoundIdForWrite } from "@/lib/explore/validate-explore-sound-id";
+import { firstSlideIsVideo } from "@/lib/explore/video-media";
+
+export const maxDuration = 60;
 
 const supabaseUrl = () => process.env.NEXT_PUBLIC_SUPABASE_URL;
 const MAX_EXPLORE_MEDIA = 5;
 
-type ExplorePostRow = {
-  id: string;
-  provider_id?: string;
-  created_by_user_id?: string;
-  caption?: string;
-  media_urls?: string[];
-  status?: string;
-  published_at?: string;
-  like_count?: number;
-  comment_count?: number;
-  view_count?: number;
-  created_at?: string;
-  updated_at?: string;
-  tags?: string[];
-  primary_category_id?: string | null;
-  offering_id?: string | null;
-  providers?: { business_name?: string; slug?: string };
-  provider_business_name?: string;
-  provider_slug?: string;
-};
 function mapToExplorePost(
-  row: ExplorePostRow,
+  row: Parameters<typeof mapExplorePostRow>[0],
   savedIds: Set<string>,
   likedIds: Set<string>,
-  offering?: { id: string; name: string; price?: number; duration_minutes?: number } | null
+  offering?: { id: string; name: string; price?: number; duration_minutes?: number } | null,
 ): ExplorePost {
-  const mediaUrls = (row.media_urls ?? []).map((p: string) =>
-    toPublicMediaUrl(p, supabaseUrl())
-  );
-  const provider = row.providers
-    ? { business_name: row.providers.business_name, slug: row.providers.slug }
-    : row.provider_business_name
-      ? { business_name: row.provider_business_name, slug: row.provider_slug }
-      : { business_name: "", slug: "" };
-  return {
-    id: row.id,
-    provider_id: row.provider_id,
-    provider,
-    created_by_user_id: row.created_by_user_id,
-    caption: row.caption,
-    media_urls: mediaUrls,
-    status: (row.status === "draft" || row.status === "published" ? row.status : "published"),
-    published_at: row.published_at,
-    like_count: row.like_count ?? 0,
-    comment_count: row.comment_count ?? 0,
-    view_count: row.view_count ?? 0,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-    is_saved: savedIds.has(row.id),
-    is_liked: likedIds.has(row.id),
-    tags: row.tags ?? [],
-    primary_category_id: row.primary_category_id ?? null,
-    offering_id: row.offering_id ?? null,
-    offering: offering ?? null,
-  };
+  return mapExplorePostRow(row, {
+    supabaseUrl: supabaseUrl(),
+    savedIds,
+    likedIds,
+    offering,
+  });
 }
 
 /**
@@ -84,6 +65,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!(await isExploreEnabled(null))) {
+      return errorResponse("Post not found", "NOT_FOUND", 404);
+    }
     const { id } = await params;
     const supabaseAdmin = await getSupabaseAdmin();
     const supabase = await getSupabaseServer(request);
@@ -91,9 +75,7 @@ export async function GET(
 
     const { data: row, error } = await supabaseAdmin
       .from("explore_posts")
-      .select(
-        "id, provider_id, created_by_user_id, caption, media_urls, status, published_at, like_count, comment_count, view_count, tags, primary_category_id, offering_id, created_at, updated_at"
-      )
+      .select(EXPLORE_POST_SELECT_WITH_PROVIDER)
       .eq("id", id)
       .eq("status", "published")
       .eq("is_hidden", false)
@@ -117,18 +99,6 @@ export async function GET(
     ) {
       return errorResponse("Post not found", "NOT_FOUND", 404);
     }
-
-    const { data: provData } = await supabaseAdmin
-      .from("providers")
-      .select("id, business_name, slug")
-      .eq("id", row.provider_id)
-      .single();
-
-    const enriched = {
-      ...row,
-      provider_business_name: provData?.business_name ?? "",
-      provider_slug: provData?.slug ?? "",
-    };
 
     let offering: { id: string; name: string; price?: number; duration_minutes?: number } | null = null;
     if (row.offering_id) {
@@ -159,7 +129,8 @@ export async function GET(
       if (likedRes.data?.length) likedIds.add(id);
     }
 
-    const post = mapToExplorePost(enriched, savedIds, likedIds, offering);
+    let post = mapToExplorePost(row, savedIds, likedIds, offering);
+    post = await enrichExplorePostWithSoundUrl(supabaseAdmin, post, supabaseUrl());
     return successResponse(post);
   } catch (error) {
     return handleApiError(error, "Failed to fetch post");
@@ -210,9 +181,15 @@ export async function PATCH(
       }
     }
 
+    if (!(await isExploreProviderPostsEnabled(null))) {
+      return errorResponse("Explore posts are disabled", "FORBIDDEN", 403);
+    }
+
     const { data: existing } = await supabaseAdmin
       .from("explore_posts")
-      .select("provider_id")
+      .select(
+        "provider_id, status, media_urls, display_path, playback_path, media_meta",
+      )
       .eq("id", id)
       .single();
 
@@ -227,7 +204,103 @@ export async function PATCH(
       if (!Array.isArray(body.media_urls) || body.media_urls.length > MAX_EXPLORE_MEDIA) {
         return errorResponse(`Explore posts can include up to ${MAX_EXPLORE_MEDIA} media files`, "VALIDATION_ERROR", 400);
       }
-      updates.media_urls = (body.media_urls as string[]).map((u: string) => toStoragePath(String(u)));
+      const nextUrls = (body.media_urls as string[]).map((u: string) => toStoragePath(String(u)));
+      const validated = validateProviderMediaPaths(providerId, nextUrls, body.media_meta);
+      if (!validated.ok) {
+        return errorResponse("message" in validated ? validated.message : "Invalid media", "VALIDATION_ERROR", 400);
+      }
+      const willBePublished =
+        body.status === "published" ||
+        (body.status === undefined && existing.status === "published");
+      let mediaMeta = validated.mediaMeta;
+      if (willBePublished) {
+        mediaMeta = await burnExplorePhotoOverlaysForPublish(
+          supabaseAdmin,
+          providerId,
+          nextUrls,
+          mediaMeta,
+          { forceAllImageSlides: false },
+        );
+      }
+      const oldPaths = new Set(collectExplorePostStoragePaths(existing));
+      const newPaths = new Set(collectExplorePostStoragePaths({
+        media_urls: nextUrls,
+        media_meta: mediaMeta,
+        display_path: denormalizeFirstSlideFromMeta(nextUrls, mediaMeta).display_path,
+        playback_path: denormalizeFirstSlideFromMeta(nextUrls, mediaMeta).playback_path,
+      }));
+      const toRemove = [...oldPaths].filter((p) => !newPaths.has(p));
+      if (toRemove.length) {
+        await removeExplorePostsStoragePaths(supabaseAdmin.storage, toRemove);
+      }
+      updates.media_urls = nextUrls;
+      updates.media_meta = mediaMeta;
+      const denorm = denormalizeFirstSlideFromMeta(nextUrls, mediaMeta);
+      updates.display_path = denorm.display_path;
+      updates.media_width = denorm.media_width;
+      updates.media_height = denorm.media_height;
+      updates.duration_ms = denorm.duration_ms;
+      updates.playback_path = denorm.playback_path;
+    } else if (body.media_meta !== undefined) {
+      const existingUrls = (existing.media_urls ?? []) as string[];
+      if (!existingUrls.length) {
+        return errorResponse("Post has no media", "VALIDATION_ERROR", 400);
+      }
+      if (!Array.isArray(body.media_meta)) {
+        return errorResponse("media_meta must be an array", "VALIDATION_ERROR", 400);
+      }
+      const existingMeta = (existing.media_meta ?? []) as import("@/lib/explore/media-types").ExploreMediaSlideMeta[];
+      const mergedInput = mergeExploreMediaMetaPatch(
+        existingMeta,
+        existingUrls,
+        body.media_meta as import("@/lib/explore/media-types").ExploreMediaSlideMeta[],
+      );
+      const validated = validateProviderMediaPaths(providerId, existingUrls, mergedInput);
+      if (!validated.ok) {
+        return errorResponse("message" in validated ? validated.message : "Invalid media", "VALIDATION_ERROR", 400);
+      }
+      const willBePublished =
+        body.status === "published" ||
+        (body.status === undefined && existing.status === "published");
+      let mediaMeta = validated.mediaMeta;
+      if (willBePublished) {
+        mediaMeta = await burnExplorePhotoOverlaysForPublish(
+          supabaseAdmin,
+          providerId,
+          existingUrls,
+          mediaMeta,
+          { forceAllImageSlides: false },
+        );
+      }
+      updates.media_meta = mediaMeta;
+      const denorm = denormalizeFirstSlideFromMeta(existingUrls, mediaMeta);
+      updates.display_path = denorm.display_path;
+      updates.media_width = denorm.media_width;
+      updates.media_height = denorm.media_height;
+      updates.duration_ms = denorm.duration_ms;
+      updates.playback_path = denorm.playback_path;
+    }
+    const soundCatalogEnabled = await isExploreSoundCatalogEnabled(null);
+    const effectiveUrls = (updates.media_urls ?? existing.media_urls ?? []) as string[];
+    const effectiveMeta = (updates.media_meta ?? existing.media_meta ?? []) as import("@/lib/explore/media-types").ExploreMediaSlideMeta[];
+    const hasVideoMedia = firstSlideIsVideo(effectiveUrls, effectiveMeta);
+
+    if (body.sound_id !== undefined) {
+      const soundCheck = await resolveExplorePostSoundIdForWrite(
+        supabaseAdmin,
+        body.sound_id ? String(body.sound_id) : null,
+        providerId,
+        { catalogEnabled: soundCatalogEnabled, hasVideoMedia },
+      );
+      if (soundCheck.ok === false) {
+        return errorResponse(soundCheck.message, "VALIDATION_ERROR", 400);
+      }
+      updates.sound_id = hasVideoMedia ? soundCheck.id : null;
+    } else if (
+      (body.media_urls !== undefined || body.media_meta !== undefined) &&
+      !hasVideoMedia
+    ) {
+      updates.sound_id = null;
     }
     if (body.tags !== undefined) {
       updates.tags = Array.isArray(body.tags)
@@ -239,6 +312,29 @@ export async function PATCH(
       if (body.status === "published") {
         updates.published_at = new Date().toISOString();
       }
+    }
+
+    if (
+      body.status === "published" &&
+      existing.status !== "published" &&
+      body.media_urls === undefined
+    ) {
+      const urls = (existing.media_urls ?? []) as string[];
+      const meta = ((existing.media_meta ?? []) as import("@/lib/explore/media-types").ExploreMediaSlideMeta[]);
+      const burned = await burnExplorePhotoOverlaysForPublish(
+        supabaseAdmin,
+        providerId,
+        urls,
+        meta,
+        { forceAllImageSlides: false },
+      );
+      updates.media_meta = burned;
+      const denorm = denormalizeFirstSlideFromMeta(urls, burned);
+      updates.display_path = denorm.display_path;
+      updates.media_width = denorm.media_width;
+      updates.media_height = denorm.media_height;
+      updates.duration_ms = denorm.duration_ms;
+      updates.playback_path = denorm.playback_path;
     }
     if (body.primary_category_slug !== undefined || body.primary_category_id !== undefined) {
       let primary_category_id: string | null = null;
@@ -279,51 +375,22 @@ export async function PATCH(
       .from("explore_posts")
       .update(updates)
       .eq("id", id)
-      .select(
-        `
-        id,
-        provider_id,
-        created_by_user_id,
-        caption,
-        media_urls,
-        status,
-        published_at,
-        like_count,
-        comment_count,
-        view_count,
-        tags,
-        primary_category_id,
-        offering_id,
-        created_at,
-        updated_at,
-        providers:provider_id(business_name, slug)
-      `
-      )
+      .select(EXPLORE_POST_SELECT_WITH_PROVIDER)
       .single();
 
     if (error) return handleApiError(error, "Failed to update post");
 
-    // Award reward points when post is published (idempotent: no double award)
-    if (updates.status === "published") {
-      try {
-        await supabaseAdmin.rpc("award_provider_points_for_explore_post", {
-          p_provider_id: existing.provider_id,
-          p_post_id: post.id,
-        });
-      } catch (pointsErr) {
-        console.warn("[explore/posts PATCH] Award points for publish:", pointsErr);
-      }
-      try {
-        const { upsertPostEmbedding } = await import("@/lib/ai/embeddings");
-        const env = process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "production";
-        const environment =
-          env === "production" ? "production" : env === "staging" ? "staging" : "development";
-        void upsertPostEmbedding(post.id, String(post.caption ?? ""), environment).catch((err) => {
-          console.warn("[explore/posts PATCH] embedding upsert:", err);
-        });
-      } catch {
-        // embeddings optional
-      }
+    const wasDraft = existing.status !== "published";
+    const nowPublished = post.status === "published";
+    if (nowPublished && (wasDraft || updates.media_urls)) {
+      await runExplorePublishSideEffects({
+        postId: post.id,
+        providerId: existing.provider_id,
+        alsoAddToGallery: body.also_add_to_gallery === true,
+        isFirstPublish: wasDraft && updates.status === "published",
+      });
+    } else if ((updates.media_urls || updates.media_meta) && nowPublished) {
+      await enqueueExploreVideoProcessing(post.id);
     }
 
     let offering: { id: string; name: string; price?: number; duration_minutes?: number } | null = null;
@@ -337,24 +404,9 @@ export async function PATCH(
         offering = { id: offRow.id, name: offRow.title ?? "", price: offRow.price != null ? Number(offRow.price) : undefined, duration_minutes: offRow.duration_minutes ?? undefined };
       }
     }
-    const explorePost: ExplorePost = {
-      ...post,
-      provider: post.providers
-        ? (() => {
-            type Prov = { business_name?: string; slug?: string };
-            const p = Array.isArray(post.providers) ? (post.providers as Prov[])[0] : (post.providers as Prov);
-            return { business_name: p?.business_name ?? "", slug: p?.slug ?? "" };
-          })()
-        : { business_name: "", slug: "" },
-      media_urls: (post.media_urls || []).map((p: string) =>
-        toPublicMediaUrl(p, supabaseUrl())
-      ),
-      view_count: post.view_count ?? 0,
-      tags: post.tags ?? [],
-      primary_category_id: post.primary_category_id ?? null,
-      offering: offering ?? null,
-    };
-    return successResponse(explorePost);
+    let updated = mapToExplorePost(post, new Set(), new Set(), offering);
+    updated = await enrichExplorePostWithSoundUrl(supabaseAdmin, updated, supabaseUrl());
+    return successResponse(updated);
   } catch (error) {
     return handleApiError(error, "Failed to update post");
   }
@@ -406,13 +458,18 @@ export async function DELETE(
 
     const { data: existing } = await supabaseAdmin
       .from("explore_posts")
-      .select("provider_id, media_urls")
+      .select(
+        "provider_id, media_urls, display_path, playback_path, media_meta",
+      )
       .eq("id", id)
       .single();
 
     if (!existing || existing.provider_id !== providerId) {
       return errorResponse("Post not found", "NOT_FOUND", 404);
     }
+
+    const paths = collectExplorePostStoragePaths(existing);
+    await removeExplorePostsStoragePaths(supabaseAdmin.storage, paths);
 
     const { error } = await supabaseAdmin.from("explore_posts").delete().eq("id", id);
 

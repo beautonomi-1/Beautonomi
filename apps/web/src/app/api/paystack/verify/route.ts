@@ -44,6 +44,36 @@ export async function GET(request: NextRequest) {
       return successResponse({ status: "error", message: "Reference required" });
     }
 
+    const sessionId = searchParams.get("session_id");
+    const adminEarly = getSupabaseAdmin();
+    const { getOnlinePaymentCheckoutByReference } = await import(
+      "@/lib/payments/online-payment-checkouts"
+    );
+    const checkoutRow = await getOnlinePaymentCheckoutByReference(reference);
+    const { shouldUseStripeOnlineVerify, verifyAndSettleOnlinePayment } = await import(
+      "@/lib/payments/resolve-online-verify"
+    );
+    if (shouldUseStripeOnlineVerify(checkoutRow?.provider, sessionId)) {
+      const stripeResult = await verifyAndSettleOnlinePayment(
+        { reference, tenantId, sessionId },
+        adminEarly,
+      );
+      if (stripeResult.paid) {
+        return successResponse({
+          status: "success",
+          provider: "stripe",
+          reference,
+          message: "Payment verified",
+        });
+      }
+      return successResponse({
+        status: stripeResult.provider === "stripe" ? "pending" : "error",
+        provider: stripeResult.provider,
+        reference,
+        message: "Payment not completed yet",
+      });
+    }
+
     const PAYSTACK_SECRET_KEY = await getPaystackSecretKey({ tenantId });
 
     if (!PAYSTACK_SECRET_KEY) {

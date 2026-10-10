@@ -16,6 +16,7 @@ import {
   notifyProductOrderPlacedPendingPayment,
 } from "@/lib/notifications/notify-product-order-paid";
 import { getPaymentFeatureFlagsForTenant } from "@/lib/subscriptions/entitlements";
+import { isOnlineCardEnabledForTenant } from "@/lib/payments/online-payment";
 import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-payment-types";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import {
@@ -209,7 +210,8 @@ export async function POST(request: NextRequest) {
     const paymentFlags = await getPaymentFeatureFlagsForTenant(orderTenantId);
     const paymentTypes = await getPlatformPaymentTypesForTenant(supabase as any, orderTenantId);
     if (paymentMethod === "paystack") {
-      if (!paymentFlags.payment_paystack) {
+      const onlineCardEnabled = await isOnlineCardEnabledForTenant(orderTenantId);
+      if (!onlineCardEnabled) {
         return errorResponse(
           "Online card payment is currently unavailable. Please choose pay on delivery or another method.",
           "FEATURE_DISABLED",

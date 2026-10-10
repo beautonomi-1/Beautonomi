@@ -2,7 +2,8 @@
 
 import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -46,16 +47,61 @@ export default function InvoiceDetailPage() {
   const { t } = useTranslation();
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const locale = useTenantLocaleTag();
   const { bundle } = useConfigBundle();
   const invoiceCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const invoiceId = params.id as string;
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [paying, setPaying] = useState(false);
+  const [verifyingReturn, setVerifyingReturn] = useState(false);
 
   useEffect(() => {
     loadInvoice();
   }, [invoiceId]);
+
+  useEffect(() => {
+    const paymentSuccess = searchParams.get("payment_success") === "true";
+    const paymentCancelled = searchParams.get("payment_cancelled") === "1";
+    const reference =
+      searchParams.get("reference")?.trim() || searchParams.get("trxref")?.trim() || "";
+    const sessionId = searchParams.get("session_id");
+
+    if (paymentCancelled) {
+      router.replace(`/provider/settings/billing/invoices/${invoiceId}`);
+      toast.info(t("web.provider.settings.pages.billing/invoices/[id].paymentCancelled"));
+      void loadInvoice();
+      return;
+    }
+
+    if (!paymentSuccess || !reference) return;
+
+    void (async () => {
+      setVerifyingReturn(true);
+      try {
+        const verify = await verifyWithRetry(reference, {
+          maxAttempts: 5,
+          delayMs: 1500,
+          sessionId,
+        });
+        if (verify.status === "success") {
+          toast.success(t("web.provider.settings.pages.billing/invoices/[id].paymentSuccessful"));
+        } else if (verify.status === "pending") {
+          toast.info(t("web.provider.settings.pages.billing/invoices/[id].paymentPendingTitle"));
+        } else if (verify.status === "failed") {
+          toast.error(
+            verify.errorMessage ??
+              t("web.provider.settings.pages.billing/invoices/[id].paymentFailedDefault"),
+          );
+        }
+        await loadInvoice();
+      } finally {
+        setVerifyingReturn(false);
+        router.replace(`/provider/settings/billing/invoices/${invoiceId}`);
+      }
+    })();
+  }, [searchParams, invoiceId, router, t]);
 
   const loadInvoice = async () => {
     try {
@@ -87,6 +133,37 @@ export default function InvoiceDetailPage() {
     });
   };
 
+  const amountDue = invoice
+    ? Math.max(0, Number(invoice.total_amount ?? 0) - Number(invoice.amount_paid ?? 0))
+    : 0;
+
+  const handlePayInvoice = async () => {
+    if (!invoice || amountDue <= 0) return;
+    setPaying(true);
+    try {
+      const returnUrl = `${window.location.origin}/provider/settings/billing/invoices/${invoiceId}?payment_success=true`;
+      const res = await fetcher.post<{
+        data: { payment_url?: string; authorization_url?: string };
+      }>(`/api/provider/invoices/${invoiceId}/initialize-payment`, {
+        callback_url: returnUrl,
+      });
+      const url = res.data?.payment_url ?? res.data?.authorization_url;
+      if (!url) {
+        toast.error(t("web.provider.settings.pages.billing/invoices/[id].paymentUnavailable"));
+        return;
+      }
+      window.location.href = url;
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t("web.provider.settings.pages.billing/invoices/[id].paymentStartFailed"),
+      );
+    } finally {
+      setPaying(false);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const variants: Record<string, { variant: "default" | "secondary" | "outline"; icon: any }> = {
       paid: { variant: "default", icon: CheckCircle2 },
@@ -115,14 +192,20 @@ export default function InvoiceDetailPage() {
     { label: t("web.provider.settings.pages.billing/invoices/[id].invoice") },
   ];
 
-  if (isLoading) {
+  if (isLoading || verifyingReturn) {
     return (
       <SettingsDetailLayout
         title={t("web.provider.settings.pages.billing/invoices/[id].invoiceDetails")}
         subtitle={t("web.provider.settings.pages.billing/invoices/[id].viewInvoiceInformation")}
         breadcrumbs={breadcrumbs}
       >
-        <LoadingTimeout loadingMessage={t("web.provider.settings.pages.billing/invoices/[id].loadingInvoice")} />
+        <LoadingTimeout
+          loadingMessage={
+            verifyingReturn
+              ? t("web.provider.settings.pages.billing/invoices/[id].verifyingPayment")
+              : t("web.provider.settings.pages.billing/invoices/[id].loadingInvoice")
+          }
+        />
       </SettingsDetailLayout>
     );
   }
@@ -164,8 +247,18 @@ export default function InvoiceDetailPage() {
               {formatDate(invoice.issue_date)}
             </p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             {getStatusBadge(invoice.status)}
+            {amountDue > 0 &&
+              invoice.status !== "cancelled" &&
+              invoice.status !== "refunded" &&
+              invoice.status !== "paid" && (
+                <Button onClick={() => void handlePayInvoice()} disabled={paying}>
+                  {paying
+                    ? t("web.provider.settings.pages.billing/invoices/[id].paying")
+                    : t("web.provider.settings.pages.billing/invoices/[id].payOnline")}
+                </Button>
+              )}
             <Button
               variant="outline"
               onClick={() => window.open(`/api/provider/invoices/${invoiceId}/download`, "_blank")}

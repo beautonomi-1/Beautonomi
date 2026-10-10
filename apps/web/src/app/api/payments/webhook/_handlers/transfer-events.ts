@@ -204,6 +204,18 @@ export async function handleTransferEvent(
   }
 
   if (isTransferSuccess) {
+    const payoutCurrencyForFee =
+      typeof data?.currency === "string"
+        ? data.currency
+        : typeof payoutData.currency === "string"
+          ? payoutData.currency
+          : "ZAR";
+    const feeChargedRaw = data?.fee_charged ?? data?.fees;
+    const transferFeeMajor =
+      feeChargedRaw != null && Number(feeChargedRaw) >= 0
+        ? convertFromSmallestUnit(Number(feeChargedRaw), payoutCurrencyForFee)
+        : undefined;
+
     // Write the payout ledger BEFORE marking the payout completed.
     // If the ledger write fails, the payout stays in processing so
     // getAvailablePayoutBalance won't under-count the reserve.
@@ -216,6 +228,7 @@ export async function handleTransferEvent(
         amount: payoutData.amount,
         payout_number: payoutData.payout_number,
         currency: typeof payoutData.currency === "string" ? payoutData.currency : null,
+        transferFeeMajor,
       });
     } catch (ledgerErr) {
       console.error("Transfer success: failed to record payout ledger, leaving payout in processing:", ledgerErr);

@@ -55,7 +55,8 @@ import {
 import { pendingConfirmationSlaDisplay } from "@/lib/pending-confirmation-sla-copy";
 import QRCode from "react-native-qrcode-svg";
 import { useTranslation } from "@beautonomi/i18n";
-import { isCancelledPaystackUrl, extractPaystackReferenceFromUrl } from "@/lib/paystack-webview-utils";
+import { isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
+import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
   getBookingPaymentCallbackAuthPrefix,
   getCustomerPaystackAuthReturnUrl,
@@ -1206,12 +1207,14 @@ export default function BookingDetailScreen() {
           );
           return;
         }
+        let checkoutSessionId: string | null = null;
         if (checkoutResult.outcome === "success" && checkoutResult.url) {
-          const extracted = extractPaystackReferenceFromUrl(checkoutResult.url);
-          if (extracted) paymentReference = extracted;
+          const parsed = parseOnlineCheckoutReturnUrl(checkoutResult.url);
+          if (parsed.reference) paymentReference = parsed.reference;
+          checkoutSessionId = parsed.sessionId;
         }
         if (paymentReference) {
-          await verifyPaystackWithRetry(paymentReference);
+          await verifyPaystackWithRetry(paymentReference, { sessionId: checkoutSessionId });
         }
       }
 
@@ -1884,12 +1887,14 @@ export default function BookingDetailScreen() {
           );
           return;
         }
+        let checkoutSessionId: string | null = null;
         if (checkoutResult.outcome === "success" && checkoutResult.url) {
-          const extracted = extractPaystackReferenceFromUrl(checkoutResult.url);
-          if (extracted) paymentReference = extracted;
+          const parsed = parseOnlineCheckoutReturnUrl(checkoutResult.url);
+          if (parsed.reference) paymentReference = parsed.reference;
+          checkoutSessionId = parsed.sessionId;
         }
         if (paymentReference) {
-          await verifyPaystackWithRetry(paymentReference);
+          await verifyPaystackWithRetry(paymentReference, { sessionId: checkoutSessionId });
         }
       }
 

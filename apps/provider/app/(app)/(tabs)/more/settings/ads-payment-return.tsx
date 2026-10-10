@@ -28,10 +28,12 @@ export default function AdsPaymentReturnScreen() {
     cancelled?: string;
     reference?: string;
     trxref?: string;
+    session_id?: string;
     order_id?: string;
     campaign_id?: string;
   }>();
   const reference = useMemo(() => pickStr(params.reference) || pickStr(params.trxref), [params]);
+  const sessionId = useMemo(() => pickStr(params.session_id), [params]);
   const successFlag = pickStr(params.success);
   const cancelFlag = pickStr(params.cancelled);
   const campaignId = pickStr(params.campaign_id);
@@ -111,7 +113,7 @@ export default function AdsPaymentReturnScreen() {
       const verifyResult = await verifyPaystackWithRetry<{
         adsBudgetOrderId?: string;
         campaignId?: string;
-      }>(reference);
+      }>(reference, { sessionId });
       if (aborted) return;
       if (verifyResult.status === "success") setStatus("success");
       else if (verifyResult.status === "failed") setStatus("failed");

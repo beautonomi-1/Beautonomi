@@ -184,6 +184,7 @@ const PUBLIC_REGION_SETTING_KEYS = new Set([
   "play_store_url",
   /** Public key only; never put secret keys in region_settings. */
   "paystack_public_key",
+  "stripe_publishable_key",
 ]);
 
 function pickPublicRegionSettings(
@@ -365,6 +366,23 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
           ...(regionSettingsPublic ?? {}),
           paystack_public_key: envPublic,
         };
+      }
+      if (gatewayName === "stripe" && tenantRegionConfig.regionId) {
+        try {
+          const { getStripePublishableKey } = await import("@/lib/payments/stripe-server");
+          const stripePk = await getStripePublishableKey({
+            tenantId,
+            regionId: tenantRegionConfig.regionId,
+          });
+          if (stripePk && !regionSettingsPublic?.stripe_publishable_key) {
+            regionSettingsPublic = {
+              ...(regionSettingsPublic ?? {}),
+              stripe_publishable_key: stripePk,
+            };
+          }
+        } catch {
+          // Non-fatal: clients fall back to hosted Checkout redirect.
+        }
       }
     }
   }

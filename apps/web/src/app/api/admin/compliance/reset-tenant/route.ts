@@ -12,6 +12,7 @@ import {
   type CompliancePurgeReportV2,
 } from "@/lib/account/compliance-purge-audit";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { purgeExploreStorageForTenant } from "@/lib/explore/tenant-reset-storage";
 
 /**
  * POST /api/admin/compliance/reset-tenant
@@ -134,6 +135,7 @@ export async function POST(request: NextRequest) {
     }
 
     const startedAt = new Date().toISOString();
+    const exploreStorage = await purgeExploreStorageForTenant(admin, tenant_id, dry_run);
     if (!dry_run) {
       const { error: brandResetErr } = await admin.rpc("brand_reset_tenant_data", {
         p_tenant_id: tenant_id,
@@ -203,7 +205,9 @@ export async function POST(request: NextRequest) {
         tenant_reset_counts: result.counts,
         tenant_reset_dry_run: dry_run,
         tenant_reset_allowed_default_tenant: allow_default_tenant,
-      },
+        explore_post_storage_objects_removed: exploreStorage.postPaths,
+        explore_sound_storage_objects_removed: exploreStorage.soundPaths,
+      } as CompliancePurgeReportV2["operations"],
       snapshot: {
         tenant_id: result.tenant_id,
         tenant_slug: result.tenant_slug,

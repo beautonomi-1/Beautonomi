@@ -47,7 +47,7 @@ export async function resolveSubscriptionPlanIdForCheckout(options: {
 
 /**
  * Start paid subscription checkout — same sequence as Settings → Plan & Billing → Upgrade:
- * `subscription/upgrade` (no saved card auth) → `initialize-payment` (amount-based Paystack init).
+ * `subscription/upgrade` (no saved card auth) → `initialize-payment` (tenant online gateway checkout).
  */
 export async function startPaidSubscriptionCheckout(options: {
   subscriptionPlanId: string;

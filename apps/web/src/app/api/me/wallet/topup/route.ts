@@ -4,7 +4,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { convertToSmallestUnit } from "@/lib/payments/paystack";
-import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { initializeOnlinePayment } from "@/lib/payments/online-payment";
 import { resolveHostedCheckoutCallbacks } from "@/lib/payments/resolve-paystack-hosted-callback";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -72,12 +72,14 @@ export async function POST(request: NextRequest) {
     const callbackUrl = hosted.successUrl;
     const cancelAction = `${hosted.cancelUrl}${hosted.cancelUrl.includes("?") ? "&" : "?"}topup_cancelled=1`;
 
-    const paystackData = await initializePaystackTransaction({
+    const onlineInit = await initializeOnlinePayment({
+      tenantId,
       email,
       amountInSmallestUnit: convertToSmallestUnit(Number(body.amount), currency),
       currency,
       reference,
-      callback_url: callbackUrl,
+      callbackUrl,
+      lineItemName: "Wallet top-up",
       metadata: {
         wallet_topup_id: (topup as any).id,
         user_id: user.id,
@@ -86,10 +88,9 @@ export async function POST(request: NextRequest) {
         tenant_id: tenantId,
         cancel_action: cancelAction,
       },
-      tenantId,
     });
 
-    const paymentUrl = paystackData?.data?.authorization_url || null;
+    const paymentUrl = onlineInit.authorizationUrl || null;
 
     await (supabase.from("wallet_topups") as any)
       .update({

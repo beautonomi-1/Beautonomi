@@ -7,6 +7,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { recordLoyaltyRedemption } from "@/lib/loyalty/record-redemption";
+import { resolveLoyaltyConfig } from "@/lib/loyalty/resolve-loyalty-config";
 
 const redeemSchema = z.object({
   points: z.number().min(1, "Points must be at least 1"),
@@ -56,38 +57,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get redemption rate
-    let activeRule = null;
-    let redemptionRate = 100;
-    let currencyConfig = null;
-
-    const { data: newConfig } = await supabase
-      .from("loyalty_point_config")
-      .select("redemption_rate")
-      .eq("is_active", true)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (newConfig) {
-      redemptionRate = Number(newConfig.redemption_rate) || 100;
-    } else {
-      const { data: legacyRule } = await supabase
-        .from("loyalty_rules")
-        .select("redemption_rate, currency")
-        .eq("is_active", true)
-        .order("effective_from", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      
-      activeRule = legacyRule;
-      redemptionRate = Number(legacyRule?.redemption_rate) || 100;
-      currencyConfig = legacyRule?.currency;
-    }
-
     const tenantFallback =
       redeemTenantId ? (await getTenantRegionConfig(redeemTenantId))?.defaultCurrency : null;
-    const currency = currencyConfig || tenantFallback || LAST_RESORT_CURRENCY;
+    const currency = tenantFallback || LAST_RESORT_CURRENCY;
+    const loyaltyCfg = await resolveLoyaltyConfig(adminSupabase, currency);
+
+    if (validated.points < loyaltyCfg.minRedemptionPoints) {
+      return handleApiError(
+        new Error(`Minimum ${loyaltyCfg.minRedemptionPoints} loyalty points required`),
+        `You need at least ${loyaltyCfg.minRedemptionPoints} points to redeem.`,
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+
+    const redemptionRate = loyaltyCfg.redemptionRate;
     const redemptionValue = validated.points / redemptionRate;
 
     const redeemWalletTenantId = await resolveTenantIdForFinanceLedger(adminSupabase, {

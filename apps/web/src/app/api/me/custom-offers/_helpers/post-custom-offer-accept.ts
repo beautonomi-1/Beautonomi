@@ -9,7 +9,7 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
-import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { initializeOnlinePayment } from "@/lib/payments/online-payment";
 import {
   paystackChannelsForInitialize,
   resolveHostedCheckoutCallbacks,
@@ -725,14 +725,16 @@ export async function postCustomOfferAccept(
 
     let init;
     try {
-      init = await initializePaystackTransaction({
+      init = await initializeOnlinePayment({
+        tenantId,
         email,
         amountInSmallestUnit: amountKobo,
         currency: offer.currency || lastResortCurrency,
         reference,
-        callback_url: callbackUrl,
+        callbackUrl,
+        lineItemName: "Custom offer",
+        saveCard: saveCardRequested,
         metadata: { ...pricingMetadata, cancel_action: cancelAction },
-        tenantId,
         ...(() => {
           const ch = paystackChannelsForInitialize({ saveCard: saveCardRequested });
           return ch.channels ? { channels: ch.channels } : {};
@@ -740,7 +742,7 @@ export async function postCustomOfferAccept(
       });
     } catch (initErr) {
       for (const rb of reservedRollbacks) await rb();
-      console.error("[custom-offers/pay] initializePaystackTransaction failed:", initErr);
+      console.error("[custom-offers/pay] initializeOnlinePayment failed:", initErr);
       return errorResponse(
         "Payment provider is temporarily unavailable. Please try again in a moment.",
         "PAYMENT_INIT_FAILED",
@@ -748,7 +750,7 @@ export async function postCustomOfferAccept(
       );
     }
 
-    const paymentUrl = init.data.authorization_url;
+    const paymentUrl = init.authorizationUrl ?? null;
 
     const { error: updateError } = await adminSupabase
       .from("custom_offers")

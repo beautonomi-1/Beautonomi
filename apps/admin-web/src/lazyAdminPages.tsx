@@ -141,6 +141,9 @@ export const CallsIntegrationPage = lazy(() =>
 export const PaystackConfigPage = lazy(() =>
   import("@/routes/integrations/PaystackConfigPage").then((m) => ({ default: m.PaystackConfigPage }))
 );
+export const RendobarIntegrationPage = lazy(() =>
+  import("@/routes/integrations/RendobarIntegrationPage").then((m) => ({ default: m.RendobarIntegrationPage }))
+);
 export const YocoIntegrationPage = lazy(() =>
   import("@/routes/integrations/YocoIntegrationPage").then((m) => ({ default: m.YocoIntegrationPage }))
 );
@@ -266,6 +269,11 @@ export const CpIntegrationStripePage = lazy(() =>
 );
 export const CpCountryLaunchChecklistPage = lazy(() =>
   import("@/routes/control-plane/CpCountryLaunchChecklistPage").then((m) => ({ default: m.CpCountryLaunchChecklistPage }))
+);
+export const CpRegionOnlineGatewayPage = lazy(() =>
+  import("@/routes/control-plane/CpRegionOnlineGatewayPage").then((m) => ({
+    default: m.CpRegionOnlineGatewayPage,
+  }))
 );
 export const VerificationSessionsPage = lazy(() =>
   import("@/routes/identity-trust/VerificationSessionsPage").then((m) => ({ default: m.VerificationSessionsPage }))
@@ -491,6 +499,9 @@ export const KnowledgeBaseArticlePage = lazy(() =>
 );
 export const ExplorePostsPage = lazy(() =>
   import("@/routes/content/ExplorePostsPage").then((m) => ({ default: m.ExplorePostsPage }))
+);
+export const ExploreSoundsPage = lazy(() =>
+  import("@/routes/content/ExploreSoundsPage").then((m) => ({ default: m.ExploreSoundsPage }))
 );
 export const ExplorePostDetailPage = lazy(() =>
   import("@/routes/content/ExplorePostDetailPage").then((m) => ({ default: m.ExplorePostDetailPage }))

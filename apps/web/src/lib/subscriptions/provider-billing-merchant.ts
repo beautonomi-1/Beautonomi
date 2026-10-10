@@ -24,7 +24,9 @@ export function shouldIgnorePaystackEventForRow(
   row: ProviderSubscriptionRow | null | undefined,
 ): boolean {
   if (!row) return false;
-  return isAppleBillingActive(row.billing_provider, row.status);
+  if (isAppleBillingActive(row.billing_provider, row.status)) return true;
+  const bp = String(row.billing_provider ?? "").toLowerCase();
+  return bp === "stripe";
 }
 
 /** Fields applied whenever Paystack activates or renews paid access locally. */
@@ -38,6 +40,28 @@ export function paystackActivationFields(
     updated_at: new Date().toISOString(),
     ...extra,
   };
+}
+
+/** Fields applied when Stripe (not Paystack) activates paid provider subscription access. */
+export function stripeActivationFields(
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    billing_provider: "stripe",
+    paystack_sync_pending: false,
+    paystack_sync_note: null,
+    updated_at: new Date().toISOString(),
+    ...extra,
+  };
+}
+
+export function subscriptionActivationFields(
+  paymentProvider: "paystack" | "stripe",
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return paymentProvider === "stripe"
+    ? stripeActivationFields(extra)
+    : paystackActivationFields(extra);
 }
 
 /** After Apple expiry, refund, or downgrade to free — allow Android/web Paystack again. */
@@ -138,12 +162,14 @@ export function isLivePaystackSubscription(row: ProviderSubscriptionRow | null):
   if (row.billing_provider === "apple") return false;
   const isFree = row.plan?.is_free === true;
   if (isFree) return false;
+  const status = row.status ?? "";
+  const liveStatus =
+    LIVE_PAYSTACK_STATUSES.has(status) || (status === "active" && Boolean(row.cancelled_at));
+  if (!liveStatus) return false;
+  if (row.billing_provider === "stripe") return true;
   const code = row.paystack_subscription_code?.trim();
   if (!code) return false;
-  const status = row.status ?? "";
-  if (LIVE_PAYSTACK_STATUSES.has(status)) return true;
-  if (status === "active" && row.cancelled_at) return true;
-  return false;
+  return true;
 }
 
 export async function loadProviderSubscriptionByProviderId(

@@ -4,7 +4,7 @@ import { NextRequest } from "next/server";
 const mockRequireRoleInApi = vi.fn();
 const mockResolveTenantIdWithZaFallback = vi.fn();
 const mockFetchScopedSingle = vi.fn();
-const mockInitializePaystackTransactionWithPlan = vi.fn();
+const mockInitializeOnlinePaymentWithPlan = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 const mockCreateClient = vi.fn();
 
@@ -25,9 +25,9 @@ vi.mock("@/lib/tenant/scoped-overrides", () => ({
   fetchScopedSingle: (...args: unknown[]) => mockFetchScopedSingle(...args),
 }));
 
-vi.mock("@/lib/payments/paystack-server", () => ({
-  initializePaystackTransactionWithPlan: (...args: unknown[]) =>
-    mockInitializePaystackTransactionWithPlan(...args),
+vi.mock("@/lib/payments/online-payment", () => ({
+  initializeOnlinePaymentWithPlan: (...args: unknown[]) =>
+    mockInitializeOnlinePaymentWithPlan(...args),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -106,7 +106,7 @@ describe("POST /api/provider/subscriptions/create", () => {
       }),
     };
     mockCreateClient.mockReturnValue(mockSupabaseAdmin);
-    mockInitializePaystackTransactionWithPlan.mockResolvedValue({
+    mockInitializeOnlinePaymentWithPlan.mockResolvedValue({
       data: {
         authorization_url: "https://paystack.test/auth",
         access_code: "acc_123",
@@ -134,7 +134,7 @@ describe("POST /api/provider/subscriptions/create", () => {
         tenantId: "tenant-uk",
       }),
     );
-    expect(mockInitializePaystackTransactionWithPlan).toHaveBeenCalledWith(
+    expect(mockInitializeOnlinePaymentWithPlan).toHaveBeenCalledWith(
       expect.objectContaining({
         currency: "GBP",
         tenantId: "tenant-uk",
@@ -213,7 +213,7 @@ describe("POST /api/provider/subscriptions/create", () => {
       }),
     };
     mockCreateClient.mockReturnValue(mockSupabaseAdmin);
-    mockInitializePaystackTransactionWithPlan.mockResolvedValue({
+    mockInitializeOnlinePaymentWithPlan.mockResolvedValue({
       data: {
         authorization_url: "https://paystack.test/auth-paid-upgrade",
         access_code: "acc_paid",

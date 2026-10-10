@@ -9,7 +9,10 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 import type { ExplorePost } from "@/types/explore";
-import { toPublicMediaUrl } from "@/lib/explore/media-urls";
+import { EXPLORE_POST_SELECT_WITH_PROVIDER } from "@/lib/explore/post-select";
+import { mapExplorePostRow } from "@/lib/explore/post-mapper";
+import { enrichExplorePostsWithSoundUrls } from "@/lib/explore/sound-enrich";
+import { isExploreProviderPostsEnabled } from "@/lib/explore/explore-feature-gates";
 
 /**
  * GET /api/explore/posts/mine
@@ -18,6 +21,9 @@ import { toPublicMediaUrl } from "@/lib/explore/media-urls";
  */
 export async function GET(request: NextRequest) {
   try {
+    if (!(await isExploreProviderPostsEnabled(null))) {
+      return errorResponse("Explore posts are disabled", "FORBIDDEN", 403);
+    }
     const { user } = await requireRoleInApi(
       ["provider_owner", "provider_staff", "superadmin"],
       request
@@ -30,6 +36,26 @@ export async function GET(request: NextRequest) {
 
     const supabaseAdmin = await getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
+    const postId = searchParams.get("id")?.trim();
+    if (postId) {
+      const { data: row, error: oneErr } = await supabaseAdmin
+        .from("explore_posts")
+        .select(EXPLORE_POST_SELECT_WITH_PROVIDER)
+        .eq("id", postId)
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      if (oneErr) return handleApiError(oneErr, "Failed to fetch post");
+      if (!row) return errorResponse("Post not found", "NOT_FOUND", 404);
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const mapped: ExplorePost = {
+        ...mapExplorePostRow(row, { supabaseUrl, savedIds: new Set(), likedIds: new Set() }),
+        view_count: 0,
+        offering: null,
+      };
+      const [enriched] = await enrichExplorePostsWithSoundUrls(supabaseAdmin, [mapped], supabaseUrl);
+      return successResponse(enriched ?? mapped);
+    }
+
     const rawLimit = parseInt(searchParams.get("limit") || "100", 10);
     const rawOffset = parseInt(searchParams.get("offset") || "0", 10);
     const limit = Math.min(100, Math.max(1, Number.isFinite(rawLimit) ? rawLimit : 100));
@@ -38,26 +64,7 @@ export async function GET(request: NextRequest) {
 
     const { data: rows, error, count } = await supabaseAdmin
       .from("explore_posts")
-      .select(
-        `
-        id,
-        provider_id,
-        created_by_user_id,
-        caption,
-        media_urls,
-        status,
-        published_at,
-        like_count,
-        comment_count,
-        tags,
-        primary_category_id,
-        offering_id,
-        created_at,
-        updated_at,
-        providers:provider_id(business_name, slug)
-      `,
-        { count: "exact" },
-      )
+      .select(EXPLORE_POST_SELECT_WITH_PROVIDER, { count: "exact" })
       .eq("provider_id", providerId)
       .order("published_at", { ascending: false })
       .order("id", { ascending: false })
@@ -91,29 +98,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const data: ExplorePost[] = (rows || []).map((r: any) => ({
-      id: r.id,
-      provider_id: r.provider_id,
-      provider: r.providers
-        ? { business_name: r.providers.business_name, slug: r.providers.slug }
-        : { business_name: "", slug: "" },
-      created_by_user_id: r.created_by_user_id,
-      caption: r.caption,
-      media_urls: (r.media_urls || []).map((p: string) =>
-        toPublicMediaUrl(p, process.env.NEXT_PUBLIC_SUPABASE_URL)
-      ),
-      status: r.status,
-      published_at: r.published_at,
-      like_count: r.like_count ?? 0,
-      comment_count: r.comment_count ?? 0,
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const mapped: ExplorePost[] = (rows || []).map((r: any) => ({
+      ...mapExplorePostRow(r, { supabaseUrl, savedIds: new Set(), likedIds: new Set() }),
       view_count: viewCounts[r.id] ?? 0,
-      primary_category_id: r.primary_category_id ?? null,
-      offering_id: r.offering_id ?? null,
       offering: (r.offering_id ? offeringMap.get(r.offering_id) : null) ?? null,
-      tags: r.tags ?? [],
-      created_at: r.created_at,
-      updated_at: r.updated_at,
     }));
+    const data = await enrichExplorePostsWithSoundUrls(supabaseAdmin, mapped, supabaseUrl);
 
     if (wantsPaginated) {
       return successResponse({

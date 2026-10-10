@@ -1,0 +1,524 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  View,
+  Text,
+  Modal,
+  TouchableOpacity,
+  Pressable,
+  StyleSheet,
+  ActivityIndicator,
+} from "react-native";
+import { CameraView, useCameraPermissions, useMicrophonePermissions } from "expo-camera";
+import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Circle } from "react-native-svg";
+import * as Haptics from "expo-haptics";
+import { twStyle } from "@/lib/twStyle";
+import { useTranslation } from "@beautonomi/i18n";
+import { PERMISSION_COPY } from "@/lib/native-permissions";
+
+const MIN_RECORD_MS = 450;
+
+export type ExploreCameraCaptureResult = {
+  uri: string;
+  mimeType: string;
+  fileName: string;
+  isVideo: boolean;
+  source_duration_ms?: number;
+};
+
+type Props = {
+  visible: boolean;
+  maxVideoDurationMs: number;
+  onClose: () => void;
+  onCapture: (result: ExploreCameraCaptureResult) => void;
+};
+
+function RecordProgressRing({
+  size,
+  progress,
+  recording,
+}: {
+  size: number;
+  progress: number;
+  recording: boolean;
+}) {
+  const stroke = 4;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const clamped = Math.min(1, Math.max(0, progress));
+  const offset = c * (1 - clamped);
+  return (
+    <Svg width={size} height={size} style={{ position: "absolute" }}>
+      <Circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        stroke="rgba(255,255,255,0.35)"
+        strokeWidth={stroke}
+        fill="none"
+      />
+      <Circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        stroke={recording ? "#ef4444" : "#ffffff"}
+        strokeWidth={stroke}
+        fill="none"
+        strokeDasharray={`${c} ${c}`}
+        strokeDashoffset={offset}
+        strokeLinecap="round"
+        rotation="-90"
+        origin={`${size / 2}, ${size / 2}`}
+      />
+    </Svg>
+  );
+}
+
+export function ExploreCameraCaptureSheet({ visible, maxVideoDurationMs, onClose, onCapture }: Props) {
+  const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
+  const ep = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.explorePosts.${key}`, opts) as string;
+
+  const cameraRef = useRef<CameraView>(null);
+  const recordPromiseRef = useRef<Promise<{ uri: string } | undefined> | null>(null);
+  const recordStartedAtRef = useRef(0);
+  const finishingRef = useRef(false);
+
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [micPermission, requestMicPermission] = useMicrophonePermissions();
+
+  const [facing, setFacing] = useState<"front" | "back">("front");
+  const [mode, setMode] = useState<"photo" | "video">("photo");
+  const [cameraReady, setCameraReady] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordMs, setRecordMs] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [mountError, setMountError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!visible) return;
+    setMode("photo");
+    setFacing("front");
+    setRecording(false);
+    setRecordMs(0);
+    setCameraReady(false);
+    setMountError(null);
+    finishingRef.current = false;
+    recordPromiseRef.current = null;
+    void requestCameraPermission();
+    // Request once when the sheet opens; the permission hook identity must not reset the session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible || mode !== "video") return;
+    void requestMicPermission();
+  }, [visible, mode, requestMicPermission]);
+
+  const finishRecording = useCallback(async () => {
+    if (finishingRef.current || !recordPromiseRef.current) return;
+    finishingRef.current = true;
+    setRecording(false);
+    const elapsed = Date.now() - recordStartedAtRef.current;
+    const pending = recordPromiseRef.current;
+    try {
+      cameraRef.current?.stopRecording();
+      const out = await pending;
+      if (elapsed < MIN_RECORD_MS || !out?.uri) {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        return;
+      }
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      onCapture({
+        uri: out.uri,
+        mimeType: "video/mp4",
+        fileName: `explore-record-${Date.now()}.mp4`,
+        isVideo: true,
+        source_duration_ms: Math.min(elapsed, maxVideoDurationMs),
+      });
+    } catch {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      recordPromiseRef.current = null;
+      finishingRef.current = false;
+    }
+  }, [maxVideoDurationMs, onCapture]);
+
+  const finishRecordingRef = useRef(finishRecording);
+  useEffect(() => {
+    finishRecordingRef.current = finishRecording;
+  }, [finishRecording]);
+
+  useEffect(() => {
+    if (!recording) {
+      setRecordMs(0);
+      return;
+    }
+    const timer = setInterval(() => {
+      const elapsed = Date.now() - recordStartedAtRef.current;
+      setRecordMs(elapsed);
+      if (elapsed >= maxVideoDurationMs) {
+        void finishRecordingRef.current();
+      }
+    }, 50);
+    return () => clearInterval(timer);
+  }, [recording, maxVideoDurationMs]);
+
+  const startRecording = useCallback(() => {
+    if (mode !== "video" || !cameraReady || recording || busy) return;
+    if (!cameraPermission?.granted) return;
+    if (!micPermission?.granted) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      void requestMicPermission();
+      return;
+    }
+    const cam = cameraRef.current;
+    if (!cam) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    recordStartedAtRef.current = Date.now();
+    const pending = cam.recordAsync({
+      maxDuration: maxVideoDurationMs / 1000,
+    });
+    if (!pending) return;
+    recordPromiseRef.current = pending;
+    setRecording(true);
+  }, [
+    mode,
+    cameraReady,
+    recording,
+    busy,
+    cameraPermission?.granted,
+    micPermission?.granted,
+    maxVideoDurationMs,
+    requestMicPermission,
+  ]);
+
+  const canTakePhoto = cameraPermission?.granted === true;
+
+  const takePhoto = useCallback(async () => {
+    if (mode !== "photo" || !cameraReady || busy || !canTakePhoto) return;
+    setBusy(true);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const photo = await cameraRef.current?.takePictureAsync({ quality: 0.9 });
+      if (!photo?.uri) return;
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      onCapture({
+        uri: photo.uri,
+        mimeType: "image/jpeg",
+        fileName: `explore-photo-${Date.now()}.jpg`,
+        isVideo: false,
+      });
+    } finally {
+      setBusy(false);
+    }
+  }, [mode, cameraReady, busy, canTakePhoto, onCapture]);
+
+  const shutterSize = 84;
+  const progress = recordMs / maxVideoDurationMs;
+
+  if (!visible) return null;
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      onRequestClose={() => {
+        if (recording) return;
+        onClose();
+      }}
+    >
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: "#000" }]}>
+        {cameraPermission == null ? (
+          <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]}>
+            <ActivityIndicator size="large" color="#fff" />
+            <Text style={twStyle("text-white mt-3")}>{ep("openingCamera")}</Text>
+          </View>
+        ) : cameraPermission.granted ? (
+          <CameraView
+            key={`${facing}-${mode}`}
+            ref={cameraRef}
+            style={StyleSheet.absoluteFill}
+            facing={facing}
+            mirror={facing === "front"}
+            mode={mode === "video" ? "video" : "picture"}
+            mute={false}
+            onCameraReady={() => {
+              setMountError(null);
+              setCameraReady(true);
+            }}
+            onMountError={(event) => {
+              const raw = event as { message?: string; nativeEvent?: { message?: string } };
+              setCameraReady(false);
+              setMountError(raw.message || raw.nativeEvent?.message || ep("cameraOpenFailed"));
+            }}
+          />
+        ) : (
+          <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center", padding: 24 }]}>
+            <Text style={twStyle("text-center text-white mb-4")}>{PERMISSION_COPY.cameraPost.message}</Text>
+            <TouchableOpacity
+              onPress={() => void requestCameraPermission()}
+              style={twStyle("rounded-full bg-white px-6 py-3")}
+            >
+              <Text style={twStyle("font-semibold text-gray-900")}>{ep("cameraPermissionContinue")}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <View
+          style={{
+            position: "absolute",
+            top: insets.top + 8,
+            left: 16,
+            right: 16,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+          pointerEvents="box-none"
+        >
+          <TouchableOpacity
+            onPress={() => {
+              if (recording) return;
+              onClose();
+            }}
+            style={styles.iconBtn}
+            accessibilityLabel={ep("cancel")}
+          >
+            <Ionicons name="close" size={26} color="#fff" />
+          </TouchableOpacity>
+          <View style={styles.modePill}>
+            <TouchableOpacity
+              disabled={recording}
+              onPress={() => {
+                setCameraReady(false);
+                setMode("photo");
+              }}
+              style={[styles.modeBtn, mode === "photo" && styles.modeBtnActive]}
+            >
+              <Text style={[styles.modeText, mode === "photo" && styles.modeTextActive]}>{ep("capturePhoto")}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              disabled={recording}
+              onPress={() => {
+                setCameraReady(false);
+                setMode("video");
+              }}
+              style={[styles.modeBtn, mode === "video" && styles.modeBtnActive]}
+            >
+              <Text style={[styles.modeText, mode === "video" && styles.modeTextActive]}>{ep("captureVideo")}</Text>
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity
+            disabled={recording || !cameraReady || !cameraPermission?.granted}
+            onPress={() => {
+              if (!cameraReady || recording) return;
+              setMountError(null);
+              setCameraReady(false);
+              setFacing((f) => (f === "back" ? "front" : "back"));
+            }}
+            style={styles.iconBtn}
+            accessibilityLabel={facing === "front" ? ep("switchToBack") : ep("switchToFront")}
+          >
+            <Ionicons name="camera-reverse-outline" size={26} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        {mode === "video" && recording ? (
+          <View
+            pointerEvents="none"
+            style={{ position: "absolute", top: insets.top + 64, left: 0, right: 0, alignItems: "center" }}
+          >
+            <View style={styles.recPill}>
+              <View style={styles.recDot} />
+              <Text style={styles.recPillText}>
+                {ep("releaseToFinish")} · {Math.max(0, Math.ceil((maxVideoDurationMs - recordMs) / 1000))}s
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        <View
+          style={{
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            alignItems: "center",
+            paddingTop: 48,
+            paddingBottom: insets.bottom + 28,
+            paddingHorizontal: 24,
+            backgroundColor: "rgba(0,0,0,0.28)",
+          }}
+          pointerEvents="box-none"
+        >
+          <View style={styles.lensChip}>
+            <Text style={styles.lensChipText}>{facing === "front" ? ep("lensFront") : ep("lensBack")}</Text>
+          </View>
+          <Text style={styles.hintText}>
+            {mountError
+              ? mountError
+              : !cameraReady
+                ? ep("openingCamera")
+                : mode === "video"
+                  ? ep("holdToRecord")
+                  : ep("tapForPhoto")}
+          </Text>
+
+          {mode === "photo" ? (
+            <TouchableOpacity
+              disabled={busy || !canTakePhoto || !cameraReady}
+              onPress={() => void takePhoto()}
+              style={[styles.shutterHit, (!cameraReady || busy) && styles.shutterDisabled]}
+              activeOpacity={0.85}
+              accessibilityLabel={ep("tapForPhoto")}
+            >
+              <View style={styles.photoRing} />
+              <View style={styles.shutterInnerPhoto} />
+            </TouchableOpacity>
+          ) : (
+            <Pressable
+              disabled={busy || !canTakePhoto || !cameraReady}
+              onPressIn={startRecording}
+              onPressOut={() => void finishRecording()}
+              accessibilityLabel={ep("holdToRecord")}
+              style={({ pressed }) => [
+                styles.shutterHit,
+                (!cameraReady || busy) && styles.shutterDisabled,
+                pressed && { transform: [{ scale: 0.96 }] },
+              ]}
+            >
+              <RecordProgressRing size={shutterSize} progress={progress} recording={recording} />
+              <View style={[styles.shutterInnerVideo, recording && styles.shutterInnerRecording]} />
+            </Pressable>
+          )}
+
+          {mode === "video" && !micPermission?.granted && cameraPermission?.granted ? (
+            <Text style={twStyle("text-amber-200/90 text-xs mt-4 text-center px-8")}>
+              {ep("micPermissionForVideo")}
+            </Text>
+          ) : null}
+          {busy ? <ActivityIndicator color="#fff" style={{ marginTop: 12 }} /> : null}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  iconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modePill: {
+    flexDirection: "row",
+    backgroundColor: "rgba(0,0,0,0.45)",
+    borderRadius: 999,
+    padding: 4,
+  },
+  modeBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  modeBtnActive: {
+    backgroundColor: "#fff",
+  },
+  modeText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  modeTextActive: {
+    color: "#111",
+  },
+  lensChip: {
+    backgroundColor: "rgba(0,0,0,0.45)",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginBottom: 8,
+  },
+  lensChipText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+  },
+  hintText: {
+    color: "rgba(255,255,255,0.95)",
+    fontSize: 15,
+    fontWeight: "600",
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  recPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(220,38,38,0.95)",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  recDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#fff",
+  },
+  recPillText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  shutterHit: {
+    width: 84,
+    height: 84,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  shutterDisabled: {
+    opacity: 0.4,
+  },
+  photoRing: {
+    position: "absolute",
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    borderWidth: 4,
+    borderColor: "#fff",
+  },
+  shutterOuter: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  shutterInnerPhoto: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: "#fff",
+  },
+  shutterInnerVideo: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: "#fff",
+  },
+  shutterInnerRecording: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: "#ef4444",
+  },
+});

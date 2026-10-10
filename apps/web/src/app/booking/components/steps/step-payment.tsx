@@ -360,6 +360,10 @@ export default function StepPayment({
     "payment_wallet",
   ]);
   const paystackEnabled = flagsLoading ? true : (featureFlags["payment_paystack"] ?? false);
+  const primaryOnlineGateway = bundle?.meta?.tenant_region?.payment_gateway?.toLowerCase();
+  /** Card checkout: Paystack flag for Paystack regions, or Stripe primary gateway (API also gates). */
+  const onlineCardEnabled =
+    flagsLoading ? true : paystackEnabled || primaryOnlineGateway === "stripe";
   const giftCardsEnabled = flagsLoading ? true : (featureFlags["gift_cards"] ?? false);
   const walletEnabled = flagsLoading ? true : (featureFlags["payment_wallet"] ?? false);
   const [cashEnabledOnPlatform, setCashEnabledOnPlatform] = useState(false);
@@ -463,14 +467,14 @@ export default function StepPayment({
 
   // When Paystack / gift cards / cash are disabled, switch away from that method
   useEffect(() => {
-    if (paymentMethod === "card" && !paystackEnabled) {
+    if (paymentMethod === "card" && !onlineCardEnabled) {
       setPaymentMethod(giftCardsEnabled ? "giftcard" : cashEnabledOnPlatform ? "cash" : "card");
     } else if (paymentMethod === "giftcard" && !giftCardsEnabled) {
-      setPaymentMethod(paystackEnabled ? "card" : cashEnabledOnPlatform ? "cash" : "giftcard");
+      setPaymentMethod(onlineCardEnabled ? "card" : cashEnabledOnPlatform ? "cash" : "giftcard");
     } else if (paymentMethod === "cash" && !cashEnabledOnPlatform) {
-      setPaymentMethod(paystackEnabled ? "card" : giftCardsEnabled ? "giftcard" : "cash");
+      setPaymentMethod(onlineCardEnabled ? "card" : giftCardsEnabled ? "giftcard" : "cash");
     }
-  }, [paystackEnabled, giftCardsEnabled, paymentMethod, cashEnabledOnPlatform]);
+  }, [onlineCardEnabled, giftCardsEnabled, paymentMethod, cashEnabledOnPlatform]);
 
   // Fetch platform fees only to determine cash availability.
   // Tax and Platform Fee amounts are computed by booking-flow.tsx from the same API and stored in
@@ -2014,7 +2018,7 @@ export default function StepPayment({
               );
             })()}
 
-          {/* Wallet split — show breakdown of what wallet covers vs what Paystack charges */}
+          {/* Wallet split — wallet/gift applied vs remainder charged online (Paystack or Stripe) */}
           {paymentMethod === "card" &&
             useWallet &&
             walletBalance > 0 &&
@@ -2042,7 +2046,11 @@ export default function StepPayment({
                     </span>
                   </div>
                   <div className="flex justify-between text-sm font-semibold text-gray-900 bg-gray-100 rounded-lg px-3 py-2">
-                    <span>{t("web.booking.stepPayment.youPayViaPaystack")}</span>
+                    <span>
+                      {primaryOnlineGateway === "stripe"
+                        ? t("web.booking.stepPayment.youPayOnline")
+                        : t("web.booking.stepPayment.youPayViaPaystack")}
+                    </span>
                     <span>
                       {paystackRemainder <= 0
                         ? formatCurrency(0, totals.currency)
@@ -2203,9 +2211,9 @@ export default function StepPayment({
 
         {/* Method toggle: Card / Cash / Gift Card (each gated by feature flags) */}
         <div
-          className={`grid gap-3 ${paystackEnabled && giftCardsEnabled && cashEnabledOnPlatform ? "grid-cols-3" : paystackEnabled || giftCardsEnabled || cashEnabledOnPlatform ? "grid-cols-2" : "grid-cols-1"}`}
+          className={`grid gap-3 ${onlineCardEnabled && giftCardsEnabled && cashEnabledOnPlatform ? "grid-cols-3" : onlineCardEnabled || giftCardsEnabled || cashEnabledOnPlatform ? "grid-cols-2" : "grid-cols-1"}`}
         >
-          {paystackEnabled && (
+          {onlineCardEnabled && (
             <button
               type="button"
               onClick={() => setPaymentMethod("card")}

@@ -14,6 +14,7 @@ import {
   deleteTransferRecipient,
 } from "@/lib/payments/paystack-complete";
 import { z } from "zod";
+import { loadProviderPayoutRailContext } from "@/lib/payments/payout-rail";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PAYSTACK_RECIPIENT_TYPES = ["nuban", "basa", "ghipss", "mobile_money"] as const;
@@ -90,7 +91,13 @@ export async function GET(
       throw error;
     }
 
-    return successResponse(accounts || []);
+    const railContext = await loadProviderPayoutRailContext(supabase, providerId, tenantId);
+
+    return successResponse({
+      accounts: accounts || [],
+      payout_rail: railContext?.payout_rail ?? "paystack",
+      stripe_connect: railContext?.stripe_connect ?? null,
+    });
   } catch (error) {
     return handleApiError(error, "Failed to fetch payout accounts");
   }

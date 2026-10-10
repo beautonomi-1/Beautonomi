@@ -320,6 +320,9 @@ export default function TwilioIntegrationPage() {
               <p className="text-sm text-gray-600">
                 {t("web.provider.settings.pages.integrations/twilio.enableWhatsappCampaigns")}
               </p>
+              <p className="text-xs text-amber-800 mt-2 bg-amber-50 border border-amber-200 rounded-md p-2">
+                {t("web.provider.settings.pages.integrations/twilio.whatsappCampaignLimitHint")}
+              </p>
             </div>
             <div className="flex items-center gap-3">
               {integration?.is_whatsapp_enabled ? (

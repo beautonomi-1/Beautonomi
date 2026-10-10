@@ -13,6 +13,7 @@ import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { resolveVerificationPolicy } from "@/lib/verification/verification-policy";
 import { loadProviderVerificationState } from "@/lib/verification/provider-verification-state";
 import { planRequiresBusinessVerification } from "@/lib/verification/verification-plan";
+import { loadProviderPayoutRailContext } from "@/lib/payments/payout-rail";
 
 export interface SetupStatusStep {
   id: string;
@@ -255,7 +256,23 @@ export async function GET(request: NextRequest) {
       (travelFeeSettingsResult.count ?? 0) > 0 ||
       (zoneSelectionsResult.count ?? 0) > 0;
     const hasPaymentSetup = (yocoResult.count ?? 0) > 0;
-    const hasPayoutSetup = (bankAccountResult.count ?? 0) > 0;
+    const providerTenantIdForPayout =
+      (provider as { tenant_id?: string | null }).tenant_id ?? tenantId;
+    const payoutRailContext = await loadProviderPayoutRailContext(
+      supabaseAdmin,
+      providerId,
+      providerTenantIdForPayout,
+    );
+    const hasPayoutSetup =
+      payoutRailContext?.payout_rail === "stripe"
+        ? Boolean(payoutRailContext.stripe_connect?.onboarding_complete)
+        : (bankAccountResult.count ?? 0) > 0;
+    const payoutStepTitle =
+      payoutRailContext?.payout_rail === "stripe" ? "Stripe Connect payouts" : "Payout Account";
+    const payoutStepDescription =
+      payoutRailContext?.payout_rail === "stripe"
+        ? "Complete Stripe Connect onboarding to receive payouts"
+        : "Add your bank account to receive earnings";
     const platformSalesDefaults = await getPlatformSalesDefaults();
     const effectiveGiftCardsEnabled = platformSalesDefaults.gift_cards_enabled ?? false;
     const yocoEnabled = await isFeatureEnabledServer(
@@ -455,8 +472,8 @@ export async function GET(request: NextRequest) {
       },
       {
         id: "payout",
-        title: "Payout Account",
-        description: "Add your bank account to receive earnings",
+        title: payoutStepTitle,
+        description: payoutStepDescription,
         completed: hasPayoutSetup,
         required: true,
         link: "/provider/settings/payout-accounts",

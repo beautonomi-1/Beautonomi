@@ -5,13 +5,9 @@ import { hreflangForPath } from "@/lib/seo/metadata-hreflang";
 import { getServerT } from "@/lib/i18n/server";
 import { resolveRequestLanguage } from "@/lib/locale/resolve-request-language";
 import ExplorePostPageClient from "./ExplorePostPageClient";
+import { firstSlideIsVideo, resolveExploreVideoSrc } from "@/lib/explore/video-media";
 
 export const revalidate = 300;
-
-function isVideoUrl(url: string): boolean {
-  const lower = url.toLowerCase().split("?")[0] ?? "";
-  return lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mov");
-}
 
 export async function generateMetadata({
   params,
@@ -42,26 +38,36 @@ export async function generateMetadata({
     : `${providerName} on Beautonomi Explore`;
   const description = `${captionSnippet} — Discover on Beautonomi Explore.`;
   const pageUrl = `${origin}${canonical}`;
-  const primaryMedia = post.media_urls?.[0];
+  const videoFirst = firstSlideIsVideo(post.media_urls, post.media_meta);
+  const ogImageUrl = post.display_url ?? post.media_urls?.[0];
+  const ogWidth = post.media_width ?? 1200;
+  const ogHeight = post.media_height ?? 1500;
   const ogImages =
-    primaryMedia && !isVideoUrl(primaryMedia)
-      ? [{ url: primaryMedia, width: 1200, height: 1500, alt: post.caption || `${providerName} on Beautonomi` }]
-      : undefined;
+    ogImageUrl && !videoFirst
+      ? [{ url: ogImageUrl, width: ogWidth, height: ogHeight, alt: post.caption || `${providerName} on Beautonomi` }]
+      : ogImageUrl
+        ? [{ url: ogImageUrl, width: ogWidth, height: ogHeight, alt: post.caption || `${providerName} on Beautonomi` }]
+        : undefined;
+  const ogVideoUrl = videoFirst
+    ? resolveExploreVideoSrc({
+        mediaUrls: post.media_urls ?? [],
+        playbackPath: post.playback_path,
+        mediaMeta: post.media_meta,
+      })
+    : null;
 
   return {
     title,
     description,
     alternates: { canonical, languages: await hreflangForPath(canonical) },
     openGraph: {
-      type: primaryMedia && isVideoUrl(primaryMedia) ? "video.other" : "article",
+      type: videoFirst ? "video.other" : "article",
       title,
       description,
       url: pageUrl,
       siteName: "Beautonomi",
       images: ogImages,
-      ...(primaryMedia && isVideoUrl(primaryMedia)
-        ? { videos: [{ url: primaryMedia }] }
-        : {}),
+      ...(ogVideoUrl ? { videos: [{ url: ogVideoUrl, width: ogWidth, height: ogHeight }] } : {}),
     },
     twitter: {
       card: ogImages ? "summary_large_image" : "summary",

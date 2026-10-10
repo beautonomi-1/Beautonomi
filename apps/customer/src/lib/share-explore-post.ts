@@ -3,9 +3,10 @@ import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { haptic } from "@/lib/haptics";
+import { isExploreVideoPathOrUrl, resolveExploreVideoSrc } from "@/lib/explore-media";
+import type { ExploreMediaSlideMeta } from "@/types/api";
 
 const BRAND_NAME = "Beautonomi";
-const CUSTOMER_SCHEME = "customer://";
 
 export type ShareExplorePostInput = {
   postId: string;
@@ -13,6 +14,9 @@ export type ShareExplorePostInput = {
   providerName: string;
   providerSlug?: string;
   mediaUrls?: string[];
+  displayUrl?: string | null;
+  playbackPath?: string | null;
+  mediaMeta?: ExploreMediaSlideMeta[] | null;
   /** Tenant-aware marketing site base, e.g. https://beautonomi.com */
   webBaseUrl: string;
   /** Which carousel item is active when sharing media (default 0). */
@@ -20,17 +24,12 @@ export type ShareExplorePostInput = {
 };
 
 export function isExploreVideoUrl(url: string): boolean {
-  const lower = url.toLowerCase().split("?")[0] ?? "";
-  return lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mov") || lower.endsWith(".m4v");
+  return isExploreVideoPathOrUrl(url);
 }
 
 function buildWebUrl(base: string, postId: string): string {
-  const b = base.replace(/\/$/, "");
+  const b = base.replace(/^http:\/\//i, "https://").replace(/\/$/, "");
   return `${b}/explore/${postId}`;
-}
-
-function buildAppUrl(postId: string): string {
-  return `${CUSTOMER_SCHEME}explore-post?id=${encodeURIComponent(postId)}`;
 }
 
 function truncateCaption(caption: string, max = 140): string {
@@ -53,11 +52,29 @@ export function buildExplorePostShareMessage(opts: ShareExplorePostInput): strin
   lines.push(`@${providerName} on ${BRAND_NAME}`);
   lines.push(web);
 
-  if (Platform.OS !== "web") {
-    lines.push(`Open in app: ${buildAppUrl(postId)}`);
-  }
-
   return lines.join("\n");
+}
+
+function resolveShareMediaUrl(opts: ShareExplorePostInput, index: number): string | null {
+  const mediaUrls = opts.mediaUrls ?? [];
+  const slideMeta = opts.mediaMeta?.[index];
+  const isVideo =
+    slideMeta?.kind === "video" ||
+    (slideMeta?.kind !== "image" && mediaUrls[index] && isExploreVideoUrl(mediaUrls[index]!));
+  if (isVideo) {
+    return (
+      resolveExploreVideoSrc({
+        mediaUrls,
+        playbackPath: opts.playbackPath,
+        slideIndex: index,
+        mediaMeta: opts.mediaMeta,
+      }) ?? mediaUrls[index] ??
+      null
+    );
+  }
+  if (index === 0 && opts.displayUrl?.trim()) return opts.displayUrl;
+  if (slideMeta?.display_path?.trim()) return slideMeta.display_path;
+  return mediaUrls[index] ?? null;
 }
 
 export async function copyExplorePostLink(opts: ShareExplorePostInput): Promise<void> {
@@ -97,6 +114,7 @@ function mimeForMedia(isVideo: boolean, ext: string): string {
   if (isVideo) {
     if (ext === "mov") return "video/quicktime";
     if (ext === "webm") return "video/webm";
+    if (ext === "m4v") return "video/x-m4v";
     return "video/mp4";
   }
   if (ext === "png") return "image/png";
@@ -111,8 +129,8 @@ function mimeForMedia(isVideo: boolean, ext: string): string {
  */
 export async function shareExplorePostMedia(opts: ShareExplorePostInput): Promise<void> {
   const index = opts.mediaIndex ?? 0;
-  const mediaUrl = opts.mediaUrls?.[index];
-  if (!mediaUrl) {
+  const mediaUrl = resolveShareMediaUrl(opts, index);
+  if (!mediaUrl || !mediaUrl.startsWith("https://")) {
     await shareExplorePostLink(opts);
     return;
   }
@@ -169,8 +187,13 @@ export async function presentExplorePostShareActions(
   onAction: (action: ExploreShareAction) => void | Promise<void>,
 ): Promise<void> {
   const index = opts.mediaIndex ?? 0;
-  const hasMedia = Boolean(opts.mediaUrls?.[index]);
-  const isVideo = hasMedia && isExploreVideoUrl(opts.mediaUrls![index]!);
+  const shareUrl = resolveShareMediaUrl(opts, index);
+  const hasMedia = Boolean(shareUrl?.startsWith("https://"));
+  const slideKind = opts.mediaMeta?.[index]?.kind;
+  const isVideo =
+    hasMedia &&
+    (slideKind === "video" ||
+      (slideKind !== "image" && opts.mediaUrls?.[index] != null && isExploreVideoUrl(opts.mediaUrls[index]!)));
 
   const buttons: Array<{ text: string; onPress?: () => void; style?: "cancel" | "destructive" }> = [
     { text: labels.shareLink, onPress: () => void onAction("link") },

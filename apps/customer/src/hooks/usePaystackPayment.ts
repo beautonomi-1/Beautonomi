@@ -12,10 +12,8 @@ import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry"
 import { getAnalyticsClient } from "@/lib/analytics-rn";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
-import {
-  extractPaystackReferenceFromUrl,
-  isCancelledPaystackUrl,
-} from "@/lib/paystack-webview-utils";
+import { isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
+import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
   getBookingCheckoutPaystackAuthPrefix,
   matchesCheckoutSuccessReturnUrl,
@@ -152,6 +150,7 @@ export function usePaystackPayment() {
         });
 
         let reference = data.reference;
+        let checkoutSessionId: string | null = null;
 
         if (pr.outcome === "cancel") {
           getAnalyticsClient()?.track("payment_cancelled", {
@@ -184,14 +183,17 @@ export function usePaystackPayment() {
           if (isPaystackCloseUrl(pr.url)) {
             // Webhook may have already processed — fall through to polling
           } else {
-            const extracted = extractPaystackReferenceFromUrl(pr.url);
-            if (extracted) reference = extracted;
+            const parsed = parseOnlineCheckoutReturnUrl(pr.url);
+            if (parsed.reference) reference = parsed.reference;
+            if (parsed.sessionId) checkoutSessionId = parsed.sessionId;
           }
         }
 
         let paymentConfirmed = false;
         if (reference) {
-          const verifyResult = await verifyPaystackWithRetry(reference);
+          const verifyResult = await verifyPaystackWithRetry(reference, {
+            sessionId: checkoutSessionId,
+          });
           if (verifyResult.status === "success") paymentConfirmed = true;
         }
 

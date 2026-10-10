@@ -5,8 +5,9 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockSettlement, mockNotifySlack, mockFetch } = vi.hoisted(() => ({
+const { mockSettlement, mockStripeSettlement, mockNotifySlack, mockFetch } = vi.hoisted(() => ({
   mockSettlement: vi.fn(),
+  mockStripeSettlement: vi.fn(),
   mockNotifySlack: vi.fn(async () => undefined),
   mockFetch: vi.fn(),
 }));
@@ -21,6 +22,28 @@ vi.mock("@/lib/payments/paystack", () => ({
 
 vi.mock("../record-paystack-booking-settlement", () => ({
   recordPaystackBookingSettlement: (...args: unknown[]) => mockSettlement(...args),
+}));
+
+vi.mock("../record-stripe-booking-settlement", () => ({
+  recordStripeBookingSettlement: (...args: unknown[]) => mockStripeSettlement(...args),
+}));
+
+vi.mock("@/lib/payments/stripe-server", () => ({
+  getStripeClient: vi.fn(async () => ({
+    paymentIntents: {
+      retrieve: vi.fn(async (id: string) => ({
+        id,
+        status: "succeeded",
+        amount_received: 20800,
+        amount: 20800,
+        currency: "zar",
+      })),
+    },
+  })),
+}));
+
+vi.mock("@/lib/payments/stripe-balance-fee", () => ({
+  retrieveStripeFeeMinorForPaymentIntent: vi.fn(async () => 600),
 }));
 
 vi.mock("@/lib/integrations/slack/dispatch", () => ({
@@ -157,6 +180,23 @@ function makeSupabase(initial: Partial<Stores> = {}) {
         return { data: rows, error: null };
       },
     }),
+    rpc: async (name: string, args: Record<string, unknown>) => {
+      if (name === "post_gateway_fee_delta") {
+        const financeTxId = String(args.p_finance_tx_id ?? "");
+        const newFee = Number(args.p_new_fee ?? 0);
+        const feeSource = args.p_fee_source;
+        const row = (stores.finance_transactions ?? []).find((r) => r.id === financeTxId);
+        if (row) {
+          row.fees = newFee;
+          row.metadata = {
+            ...(typeof row.metadata === "object" && row.metadata ? (row.metadata as Row) : {}),
+            fee_source: feeSource,
+          };
+        }
+        return { data: null, error: null };
+      }
+      return { data: null, error: { message: `unknown rpc: ${name}` } };
+    },
   };
 
   return { supabase: supabase as never, stores, inserts, updates };
@@ -233,6 +273,10 @@ describe("reconcileOnlineChargeLedger", () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     settlementWritesLedger();
+    mockStripeSettlement.mockResolvedValue({
+      ok: true,
+      ledger: { skipped: false },
+    });
     paystackVerify({});
   });
 
@@ -546,7 +590,7 @@ describe("reconcileOnlineChargeLedger", () => {
     expect(mockSettlement).not.toHaveBeenCalled();
   });
 
-  it("lists Stripe/Flutterwave gaps without posting them", async () => {
+  it("posts missing Stripe ledger via settlement helper and logs Flutterwave gaps only", async () => {
     const { supabase, stores } = makeSupabase({
       bookings: [
         booking({ id: "booking-stripe" }),
@@ -567,15 +611,19 @@ describe("reconcileOnlineChargeLedger", () => {
 
     expect(mockSettlement).not.toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
-    expect(summary.scanned).toBe(0);
+    expect(mockStripeSettlement).toHaveBeenCalledTimes(1);
+    expect(mockStripeSettlement).toHaveBeenCalledWith(
+      supabase,
+      expect.objectContaining({ bookingPaymentId: "bp-stripe", reference: "pi_1" }),
+    );
+    expect(summary).toMatchObject({ scanned: 2, posted: 1, skipped: 1 });
     expect(summary.otherGatewaysMissing).toEqual([
-      { bookingPaymentId: "bp-stripe", bookingId: "booking-stripe", provider: "stripe" },
       { bookingPaymentId: "bp-flw", bookingId: "booking-flw", provider: "flutterwave" },
     ]);
     expect(stores.finance_transactions).toHaveLength(1);
     expect(console.warn).toHaveBeenCalledWith(
       expect.stringContaining("non-Paystack gateway"),
-      expect.objectContaining({ provider: "stripe", bookingPaymentId: "bp-stripe" }),
+      expect.objectContaining({ provider: "flutterwave", bookingPaymentId: "bp-flw" }),
     );
   });
 

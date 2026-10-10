@@ -4,6 +4,7 @@
  * Heuristic. Default: exit 0 (warnings only). Set `TENANT_API_HINTS_STRICT=1` to exit 1 when any
  * route is flagged. Set `ALLOW_TENANT_AUDIT_WARNINGS=1` to force exit 0 even in strict mode (e.g. temporary bypass).
  * Recognizes: Host tenant resolution, portal/cron/webhook guards,
+ * provider explore upload access, Rendobar callback signatures,
  * provider_id / user_id scoping, purchaser_user_id, booking customer checks, and @tenant-hint in a comment
  * for narrow service-role follow-ups after an RLS-scoped read.
  *
@@ -22,7 +23,7 @@ const SENSITIVE =
 
 // Patterns that usually mean the route scopes data (market, provider, or user), not a blind cross-tenant read.
 const TENANT_HINTS =
-  /resolveTenantIdWithZaFallback|resolveTenantFromRequest|resolveAdminApiTenantId|@tenant-global|@admin-global|tenant_id|booking\.tenant_id|bookings\.tenant_id|providers\.tenant_id|eq\(['"]tenant_id['"]|\.eq\(['"]tenant_id['"]|requirePublicTenant|validatePortalToken|verifyCronRequest|getProviderIdForUser|userHasProviderAccessAdmin|verifyPaystackWebhook|fetchBookingInAdminTenant|\.eq\(\s*['"]provider_id['"]|\.eq\(\s*['"]user_id['"],\s*user\.id\)|\.eq\(\s*['"]purchaser_user_id['"]|booking\.customer_id\s*!==|customer_id\s*!==\s*user|@tenant-hint/;
+  /resolveTenantIdWithZaFallback|resolveTenantFromRequest|resolveAdminApiTenantId|@tenant-global|@admin-global|tenant_id|booking\.tenant_id|bookings\.tenant_id|providers\.tenant_id|eq\(['"]tenant_id['"]|\.eq\(['"]tenant_id['"]|requirePublicTenant|validatePortalToken|verifyCronRequest|getProviderIdForUser|requireProviderExploreUploadAccess|userHasProviderAccessAdmin|verifyPaystackWebhook|verifyRendobarSignature|fetchBookingInAdminTenant|\.eq\(\s*['"]provider_id['"]|\.eq\(\s*['"]user_id['"],\s*user\.id\)|\.eq\(\s*['"]purchaser_user_id['"]|booking\.customer_id\s*!==|customer_id\s*!==\s*user|@tenant-hint/;
 
 function walkRouteTs(dir, out = []) {
   for (const name of readdirSync(dir)) {

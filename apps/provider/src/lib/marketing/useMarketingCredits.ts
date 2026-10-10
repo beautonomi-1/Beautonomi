@@ -14,7 +14,7 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { getProviderPaystackReturnBaseUrl } from "@/lib/payments/providerPaystackReturn";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
-import { extractPaystackReferenceFromUrl } from "@/lib/payments/paystackRefFromUrl";
+import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 
 export interface MarketingBalance {
   included_balance_zar: number;
@@ -123,14 +123,18 @@ export function useMarketingCredits(): UseMarketingCreditsResult {
             typeof res.data.paystack_reference === "string"
               ? res.data.paystack_reference.trim()
               : "";
+          let checkoutSessionId: string | null = null;
           if (outcome.url) {
-            const extracted = extractPaystackReferenceFromUrl(outcome.url);
-            if (extracted) reference = extracted;
+            const parsed = parseOnlineCheckoutReturnUrl(outcome.url);
+            if (parsed.reference) reference = parsed.reference;
+            checkoutSessionId = parsed.sessionId;
           }
           let verifyStatus: Awaited<ReturnType<typeof verifyPaystackWithRetry>>["status"] =
             "unknown";
           if (reference) {
-            const verifyResult = await verifyPaystackWithRetry(reference);
+            const verifyResult = await verifyPaystackWithRetry(reference, {
+              sessionId: checkoutSessionId,
+            });
             verifyStatus = verifyResult.status;
             if (verifyResult.status === "failed") {
               await refresh();

@@ -23,6 +23,32 @@ export function isIdentity(s) {
     return true;
   }
   if (/^ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx$/.test(s)) return true;
+  if (BRANDS.includes(s)) return true;
+  if (/^\{\{\w+\}\}\s*km$/i.test(s)) return true;
+  if (/^[~+]?\{\{\w+\}\}\s*min$/i.test(s)) return true;
+  if (/^\+?\{\{\w+\}\}\s*min\s*•/i.test(s)) return true;
+  if (/^Tel:\s*\{\{phone\}\}$/i.test(s)) return true;
+  if (/^\{\{count\}\}\s*items$/i.test(s)) return true;
+  if (/^\{\{count\}\}[dm]$/i.test(s)) return true;
+  if (/^\{\{quantity\}\}\s*[x×]\s*\{\{currency\}\}\s*\{\{price\}\}$/i.test(s)) return true;
+  if (/^\{\{quantity\}\}\s*×\s*R\{\{price\}\}$/.test(s)) return true;
+  if (/^R\{\{price\}\}$/.test(s)) return true;
+  if (/^\{\{brand\}\}\s*••••\s*\{\{last4\}\}\s*·\s*exp\.\s*\{\{exp\}\}$/i.test(s)) return true;
+  if (/^Outlook\s*\(web\)$/i.test(s)) return true;
+  if (/^ETA:\s*\{\{eta\}\}$/i.test(s)) return true;
+  if (/^\{\{size\}\}KB$/i.test(s)) return true;
+  if (/^Radius:\s*\{\{km\}\}km$/i.test(s)) return true;
+  if (/^R\d+[–-]R\d+$/.test(s)) return true;
+  if (
+    /^(January|February|March|April|May|June|July|August|September|October|November|December)$/.test(
+      s,
+    )
+  ) {
+    return true;
+  }
+  if (/^(Pinterest|Instagram|Parabens|Huawei AppGallery)$/i.test(s)) return true;
+  if (/^\/api\/[\w/]+$/.test(s)) return true;
+  if (/^Supabase Dashboard/.test(s)) return true;
   return false;
 }
 

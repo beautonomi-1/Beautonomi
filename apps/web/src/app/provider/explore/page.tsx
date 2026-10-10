@@ -137,24 +137,23 @@ export default function ProviderExplorePage() {
                   className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm hover:shadow-md transition-shadow"
                 >
                   <div className="aspect-square bg-gray-100">
-                    {post.media_urls?.length ? (
+                    {post.display_url || post.media_urls?.length ? (
                       (() => {
-                        const url = post.media_urls[0];
-                        const isVideo =
-                          url?.toLowerCase().endsWith(".mp4") ||
-                          url?.toLowerCase().endsWith(".webm") ||
-                          url?.toLowerCase().endsWith(".mov");
+                        const preview = post.display_url ?? post.media_urls?.[0];
+                        const isVideo = Boolean(
+                          post.playback_path ||
+                            post.media_meta?.[0]?.kind === "video" ||
+                            preview?.match(/\.(mp4|webm|mov|m4v)(\?|$)/i),
+                        );
                         return isVideo ? (
-                          <video
-                            src={url}
+                          <img
+                            src={preview ?? ""}
+                            alt=""
                             className="w-full h-full object-cover"
-                            muted
-                            playsInline
-                            preload="metadata"
                           />
                         ) : (
                           <img
-                            src={url}
+                            src={preview ?? ""}
                             alt=""
                             className="w-full h-full object-cover"
                           />

@@ -156,15 +156,11 @@ export async function dispatchCampaign(
     return { ok: false, code: "VALIDATION_ERROR", status: 400, message: "No recipients found for this campaign" };
   }
 
-  const selectFields =
-    campaign.type === "email"
-      ? "id, full_name, email"
-      : campaign.type === "whatsapp" || campaign.type === "sms"
-        ? "id, full_name, phone"
-        : "id, full_name, email, phone";
-
-  const { data: customers } = await supabase.from("users").select(selectFields).in("id", recipientIds);
-  const validCustomers = (customers || []).filter((customer: any) =>
+  const { data: customers } = await supabase
+    .from("users")
+    .select("id, full_name, email, phone")
+    .in("id", recipientIds);
+  let validCustomers = (customers || []).filter((customer: any) =>
     campaign.type === "email" ? customer.email : customer.phone,
   );
   if (validCustomers.length === 0) {
@@ -173,6 +169,45 @@ export async function dispatchCampaign(
       code: "VALIDATION_ERROR",
       status: 400,
       message: `No recipients have ${campaign.type === "email" ? "email addresses" : "phone numbers"}`,
+    };
+  }
+
+  const { filterAutomationRecipientsByOptOut } = await import("@/lib/marketing/automation-opt-out");
+  const optOut = await filterAutomationRecipientsByOptOut(
+    supabase,
+    validCustomers.map((c: { id: string }) => ({ id: c.id })),
+    { triggerType: "win_back", channel: campaign.type },
+  );
+  const allowedIdSet = new Set(optOut.allowed.map((r) => r.id));
+  const optedOutCustomers = validCustomers.filter((c: { id: string }) => !allowedIdSet.has(c.id));
+  validCustomers = validCustomers.filter((c: { id: string }) => allowedIdSet.has(c.id));
+
+  if (optedOutCustomers.length > 0) {
+    for (const skipped of optedOutCustomers as { id: string }[]) {
+      try {
+        await supabase.from("marketing_campaign_sends").upsert(
+          {
+            campaign_id: id,
+            customer_id: skipped.id,
+            channel: campaign.type,
+            status: "failed",
+            error: "opted_out",
+            sent_at: new Date().toISOString(),
+          },
+          { onConflict: "campaign_id,customer_id" },
+        );
+      } catch {
+        // Best-effort opt-out audit row.
+      }
+    }
+  }
+
+  if (validCustomers.length === 0) {
+    return {
+      ok: false,
+      code: "VALIDATION_ERROR",
+      status: 400,
+      message: "No recipients remain after marketing opt-out preferences",
     };
   }
 

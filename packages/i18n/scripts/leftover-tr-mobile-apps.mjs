@@ -190,6 +190,7 @@ const BRAND_ALLOWLIST = new Set([
   "Paystack",
   "Yoco",
   "Beautonomi",
+  "Stripe Connect",
 ]);
 
 function isLeftoverEnglish(enVal, locVal, locale) {

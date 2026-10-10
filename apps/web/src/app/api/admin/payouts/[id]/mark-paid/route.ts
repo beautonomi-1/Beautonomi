@@ -92,6 +92,7 @@ export async function POST(
       payout_number?: string;
       currency?: string | null;
       transfer_code?: string | null;
+      payout_provider?: string | null;
       payout_provider_response?: unknown;
     };
     const payoutData = payout as PayoutRow;
@@ -204,6 +205,8 @@ export async function POST(
         net_amount: payoutData.net_amount,
         amount: payoutData.amount,
         payout_number: payoutData.payout_number,
+        currency: payoutData.currency,
+        transferFeeMajor: payoutData.payout_provider === "stripe" ? 0 : undefined,
       });
     } catch (ledgerErr) {
       console.error(

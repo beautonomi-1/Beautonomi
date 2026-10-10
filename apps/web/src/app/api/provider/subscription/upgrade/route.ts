@@ -29,6 +29,10 @@ import {
   computePaidPeriodExpiresAt,
   paystackActivationFields,
 } from "@/lib/subscriptions/provider-billing-merchant";
+import {
+  resolveSubscriptionOnlineGatewayId,
+  subscriptionGatewayUsesPaystackCustomer,
+} from "@/lib/subscriptions/resolve-subscription-online-gateway";
 
 const upgradeSubscriptionSchema = z.object({
   plan_id: z.string().min(1, 'Plan ID is required'),
@@ -235,6 +239,14 @@ export async function POST(request: NextRequest) {
       }
 
       return successResponse({ subscription_id: (subscription as SubRow).id, is_free: true });
+    }
+
+    const onlineGateway = await resolveSubscriptionOnlineGatewayId(tenantId);
+    if (!subscriptionGatewayUsesPaystackCustomer(onlineGateway)) {
+      return successResponse({
+        requires_payment: true,
+        message: "Complete checkout to pay and activate your subscription.",
+      });
     }
 
     const { data: userEmailRow } = await supabase

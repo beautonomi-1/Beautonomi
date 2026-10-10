@@ -32,11 +32,13 @@ export default function SubscriptionPaymentReturnScreen() {
   const params = useLocalSearchParams<{
     reference?: string;
     trxref?: string;
+    session_id?: string;
     payment_success?: string;
     payment_cancelled?: string;
     order_id?: string;
   }>();
   const reference = useMemo(() => pickStr(params.reference) || pickStr(params.trxref), [params]);
+  const sessionId = useMemo(() => pickStr(params.session_id), [params]);
   const cancelledFlag = pickStr(params.payment_cancelled);
   const orderId = pickStr(params.order_id);
   const [status, setStatus] = useState<ReturnStatus>(reference ? "verifying" : "pending");
@@ -84,7 +86,7 @@ export default function SubscriptionPaymentReturnScreen() {
       };
     }
     (async () => {
-      const verifyResult = await verifyPaystackWithRetry(reference);
+      const verifyResult = await verifyPaystackWithRetry(reference, { sessionId });
       if (aborted) return;
       if (verifyResult.status === "success") {
         setStatus("success");

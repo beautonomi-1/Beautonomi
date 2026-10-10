@@ -119,6 +119,90 @@ export async function savePaystackAuthorization({
   return method.id;
 }
 
+/** Persist a Stripe PaymentMethod (pm_*) for customer saved cards. */
+export async function saveStripePaymentMethod({
+  userId,
+  email,
+  stripePaymentMethodId,
+  stripeCustomerId,
+  lastFour,
+  expiryMonth,
+  expiryYear,
+  cardBrand,
+  isDefault,
+  supabase,
+}: {
+  userId: string;
+  email: string;
+  stripePaymentMethodId: string;
+  stripeCustomerId?: string | null;
+  lastFour: string;
+  expiryMonth: number;
+  expiryYear: number;
+  cardBrand: string;
+  isDefault?: boolean;
+  supabase: SupabaseClient;
+}) {
+  const pmId = stripePaymentMethodId.trim();
+  const { data: existing } = await (supabase.from("payment_methods") as any)
+    .select("id")
+    .eq("user_id", userId)
+    .eq("provider", "stripe")
+    .eq("provider_payment_method_id", pmId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (existing) {
+    const updateData: Record<string, unknown> = {
+      last_four: lastFour,
+      expiry_month: expiryMonth,
+      expiry_year: expiryYear,
+      card_brand: cardBrand.toLowerCase(),
+      updated_at: new Date().toISOString(),
+    };
+    if (isDefault) {
+      await (supabase.from("payment_methods") as any)
+        .update({ is_default: false })
+        .eq("user_id", userId)
+        .eq("is_default", true);
+      updateData.is_default = true;
+    }
+    await (supabase.from("payment_methods") as any).update(updateData).eq("id", existing.id);
+    return existing.id;
+  }
+
+  if (isDefault) {
+    await (supabase.from("payment_methods") as any)
+      .update({ is_default: false })
+      .eq("user_id", userId)
+      .eq("is_default", true);
+  }
+
+  const { data: method, error } = await (supabase.from("payment_methods") as any)
+    .insert({
+      user_id: userId,
+      type: "card",
+      provider: "stripe",
+      provider_payment_method_id: pmId,
+      last_four: lastFour,
+      expiry_month: expiryMonth,
+      expiry_year: expiryYear,
+      card_brand: cardBrand.toLowerCase(),
+      metadata: {
+        email,
+        saved_via: "stripe_checkout",
+        ...(stripeCustomerId ? { stripe_customer_id: stripeCustomerId } : {}),
+      },
+      is_default: isDefault || false,
+      is_active: true,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return method.id;
+}
+
 /**
  * Generate a unique, human-readable gift card code (16 chars, uppercase)
  */

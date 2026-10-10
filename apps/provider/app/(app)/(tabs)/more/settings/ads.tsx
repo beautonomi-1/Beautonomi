@@ -18,7 +18,7 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
-import { extractPaystackReferenceFromUrl } from "@/lib/payments/paystackRefFromUrl";
+import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
   getAdsPaystackReturnUrl,
   matchesAdsPaystackReturnUrl,
@@ -686,12 +686,15 @@ export default function AdsSettingsScreen() {
       setProcessingMessage(ads("confirmingPayment"));
       setProcessingHint(ads("verifyingPaystackHint"));
       try {
-        const reference = extractPaystackReferenceFromUrl(result.url);
-        const verifyResult = reference ? await verifyPaystackWithRetry<{
-          adsBudgetOrderId?: string;
-          campaignId?: string;
-          type?: string;
-        }>(reference) : null;
+        const parsed = parseOnlineCheckoutReturnUrl(result.url);
+        const reference = parsed.reference;
+        const verifyResult = reference
+          ? await verifyPaystackWithRetry<{
+              adsBudgetOrderId?: string;
+              campaignId?: string;
+              type?: string;
+            }>(reference, { sessionId: parsed.sessionId })
+          : null;
 
         if (verifyResult?.status === "failed") {
           const failed = adsFailedCopy(verifyResult.errorMessage ?? null);

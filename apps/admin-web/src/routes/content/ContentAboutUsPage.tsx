@@ -22,13 +22,25 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 
+/** Keys rendered on the public /about page — must match apps/web/src/app/about/page.tsx */
+const PUBLIC_ABOUT_SECTION_KEYS = [
+  { value: "mission", label: "Mission" },
+  { value: "what_we_do", label: "What we do" },
+  { value: "for_professionals", label: "For professionals" },
+  { value: "safety_trust", label: "Safety & trust" },
+  { value: "contact_intro", label: "Contact intro" },
+  { value: "contact_email", label: "Contact email" },
+  { value: "contact_phone", label: "Contact phone" },
+  { value: "contact_help_center", label: "Help centre link" },
+] as const;
+
 type AboutSection = {
   id: string;
+  section_key?: string;
   title: string;
   content: string;
-  section_type?: string;
-  sort_order?: number;
-  is_published?: boolean;
+  display_order?: number;
+  is_active?: boolean;
   updated_at?: string;
   created_at?: string;
 };
@@ -48,65 +60,108 @@ function AboutSectionForm({
   isSaving: boolean;
   error?: string | null;
 }) {
+  const isCreate = !initial.id;
+  const [sectionKey, setSectionKey] = useState(initial.section_key ?? "mission");
   const [title, setTitle] = useState(initial.title ?? "");
   const [content, setContent] = useState(initial.content ?? "");
-  const [sectionType, setSectionType] = useState(initial.section_type ?? "general");
-  const [sortOrder, setSortOrder] = useState(initial.sort_order ?? 0);
-  const [isPublished, setIsPublished] = useState(initial.is_published !== false);
+  const [displayOrder, setDisplayOrder] = useState(initial.display_order ?? 0);
+  const [isActive, setIsActive] = useState(initial.is_active !== false);
 
   return (
     <div className="space-y-3 rounded-lg border border-indigo-200 bg-indigo-50 p-4">
       <div className="grid gap-3 sm:grid-cols-2">
+        {isCreate ? (
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Section key *</label>
+            <select
+              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+              value={sectionKey}
+              onChange={(e) => setSectionKey(e.target.value)}
+            >
+              {PUBLIC_ABOUT_SECTION_KEYS.map((k) => (
+                <option key={k.value} value={k.value}>
+                  {k.label} ({k.value})
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Section key</label>
+            <input
+              className="w-full rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm text-gray-600"
+              value={initial.section_key ?? ""}
+              readOnly
+            />
+          </div>
+        )}
         <div className="sm:col-span-2">
           <label className="block text-xs font-medium text-gray-600 mb-1">Title *</label>
           <input
             className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Our story"
+            placeholder="Our Mission"
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Section type</label>
-          <select className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm" value={sectionType} onChange={(e) => setSectionType(e.target.value)}>
-            <option value="general">General</option>
-            <option value="mission">Mission</option>
-            <option value="vision">Vision</option>
-            <option value="team">Team</option>
-            <option value="values">Values</option>
-          </select>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Display order</label>
+          <input
+            type="number"
+            className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            value={displayOrder}
+            onChange={(e) => setDisplayOrder(Number(e.target.value))}
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            Among active sections, the lowest display order is shown as the public /about hero (not section key).
+          </p>
         </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Sort order</label>
-          <input type="number" className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm" value={sortOrder} onChange={(e) => setSortOrder(Number(e.target.value))} />
+        <div className="flex items-center gap-2 self-end">
+          <input
+            type="checkbox"
+            id="aboutActive"
+            checked={isActive}
+            onChange={(e) => setIsActive(e.target.checked)}
+            className="accent-indigo-600"
+          />
+          <label htmlFor="aboutActive" className="text-sm text-gray-700">
+            Active on public /about
+          </label>
         </div>
         <div className="sm:col-span-2">
-          <label className="block text-xs font-medium text-gray-600 mb-1">Content *</label>
-          <textarea rows={6} className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm" value={content} onChange={(e) => setContent(e.target.value)} />
-        </div>
-        <div className="flex items-center gap-2">
-          <input type="checkbox" id="aboutPublished" checked={isPublished} onChange={(e) => setIsPublished(e.target.checked)} className="accent-indigo-600" />
-          <label htmlFor="aboutPublished" className="text-sm text-gray-700">Published</label>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Content * (HTML allowed)</label>
+          <textarea
+            rows={8}
+            className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm font-mono text-xs"
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+          />
         </div>
       </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex gap-2">
         <button
           type="button"
-          disabled={isSaving || !title.trim() || !content.trim()}
-          onClick={() => onSave({
-            ...(initial.id ? { id: initial.id } : {}),
-            title: title.trim(),
-            content: content.trim(),
-            section_type: sectionType,
-            sort_order: sortOrder,
-            is_published: isPublished,
-          })}
+          disabled={isSaving || !title.trim() || !content.trim() || (isCreate && !sectionKey.trim())}
+          onClick={() =>
+            onSave({
+              ...(initial.id ? { id: initial.id } : {}),
+              ...(isCreate ? { section_key: sectionKey.trim() } : {}),
+              title: title.trim(),
+              content: content.trim(),
+              display_order: displayOrder,
+              is_active: isActive,
+            })
+          }
           className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
         >
           {isSaving ? "Saving…" : initial.id ? "Update" : "Create"}
         </button>
-        <button type="button" onClick={onCancel} className="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium hover:bg-gray-50">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium hover:bg-gray-50"
+        >
           Cancel
         </button>
       </div>
@@ -134,20 +189,31 @@ export function ContentAboutUsPage() {
 
   const createMut = useMutation({
     mutationFn: (d: Partial<AboutSection>) => adminApi.postJson("/api/admin/content/about-us", d),
-    onSuccess: () => { invalidate(); setCreating(false); setMutError(null); },
+    onSuccess: () => {
+      invalidate();
+      setCreating(false);
+      setMutError(null);
+    },
     onError: (e) => setMutError(e instanceof Error ? e.message : "Failed"),
   });
 
   const updateMut = useMutation({
     mutationFn: ({ id, ...d }: Partial<AboutSection> & { id: string }) =>
       adminApi.patchJson(`/api/admin/content/about-us/${id}`, d),
-    onSuccess: () => { invalidate(); setEditId(null); setMutError(null); },
+    onSuccess: () => {
+      invalidate();
+      setEditId(null);
+      setMutError(null);
+    },
     onError: (e) => setMutError(e instanceof Error ? e.message : "Failed"),
   });
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => adminApi.deleteJson(`/api/admin/content/about-us/${id}`),
-    onSuccess: () => { invalidate(); setMutError(null); },
+    onSuccess: () => {
+      invalidate();
+      setMutError(null);
+    },
     onError: (e) => setMutError(e instanceof Error ? e.message : "Failed to delete"),
   });
 
@@ -173,13 +239,20 @@ export function ContentAboutUsPage() {
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader title="About Us sections" description="Manage About Us page content sections." />
+      <AdminPageHeader
+        title="About Us sections"
+        description="Content for the public /about page (about_us_content). Only the listed section keys appear on the site."
+      />
 
       <AdminPanel>
         <div className="flex items-center justify-between mb-4">
           <button
             type="button"
-            onClick={() => { setCreating(true); setEditId(null); setMutError(null); }}
+            onClick={() => {
+              setCreating(true);
+              setEditId(null);
+              setMutError(null);
+            }}
             className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
           >
             + New section
@@ -217,9 +290,7 @@ export function ContentAboutUsPage() {
         )}
       </AdminPanel>
 
-      {mutError && !creating && !editId && (
-        <p className="text-sm text-red-600 px-1">{mutError}</p>
-      )}
+      {mutError && !creating && !editId && <p className="text-sm text-red-600 px-1">{mutError}</p>}
 
       {rows.length === 0 ? (
         <EmptyState title="No sections" />
@@ -227,10 +298,10 @@ export function ContentAboutUsPage() {
         <AdminDataTable>
           <AdminTableHead>
             <tr>
+              <AdminTh>Section key</AdminTh>
               <AdminTh>Title</AdminTh>
-              <AdminTh>Type</AdminTh>
               <AdminTh>Order</AdminTh>
-              <AdminTh>Published</AdminTh>
+              <AdminTh>Active</AdminTh>
               <AdminTh>Updated</AdminTh>
               <AdminTh>Actions</AdminTh>
             </tr>
@@ -238,16 +309,16 @@ export function ContentAboutUsPage() {
           <AdminTableBody>
             {rows.map((r) => (
               <tr key={r.id}>
+                <AdminTd className="text-xs font-mono">{r.section_key ?? "—"}</AdminTd>
                 <AdminTd className="font-medium">{r.title}</AdminTd>
-                <AdminTd className="text-xs">{r.section_type ?? "general"}</AdminTd>
-                <AdminTd className="text-xs">{r.sort_order ?? 0}</AdminTd>
+                <AdminTd className="text-xs">{r.display_order ?? 0}</AdminTd>
                 <AdminTd>
-                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                    r.is_published !== false
-                      ? "bg-green-100 text-green-700"
-                      : "bg-gray-100 text-gray-500"
-                  }`}>
-                    {r.is_published !== false ? "Published" : "Draft"}
+                  <span
+                    className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                      r.is_active !== false ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
+                    }`}
+                  >
+                    {r.is_active !== false ? "Active" : "Hidden"}
                   </span>
                 </AdminTd>
                 <AdminTd className="text-xs text-gray-500">{(r.updated_at ?? r.created_at ?? "").slice(0, 10)}</AdminTd>
@@ -255,7 +326,11 @@ export function ContentAboutUsPage() {
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => { setEditId(r.id); setCreating(false); setMutError(null); }}
+                      onClick={() => {
+                        setEditId(r.id);
+                        setCreating(false);
+                        setMutError(null);
+                      }}
                       className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
                     >
                       Edit
@@ -263,7 +338,15 @@ export function ContentAboutUsPage() {
                     <button
                       type="button"
                       disabled={deleteMut.isPending}
-                      onClick={() => { requestConfirm({ title: "Confirm action", consequence: `Delete "${r.title}"?`, variant: "danger", confirmLabel: "Confirm", onConfirm: async () => deleteMut.mutate(r.id) }); }}
+                      onClick={() => {
+                        requestConfirm({
+                          title: "Confirm action",
+                          consequence: `Delete "${r.title}"?`,
+                          variant: "danger",
+                          confirmLabel: "Confirm",
+                          onConfirm: async () => deleteMut.mutate(r.id),
+                        });
+                      }}
                       className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
                       Delete
@@ -276,7 +359,6 @@ export function ContentAboutUsPage() {
         </AdminDataTable>
       )}
       <ConfirmDialog />
-
     </div>
   );
 }

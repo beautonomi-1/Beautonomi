@@ -39,6 +39,11 @@ vi.mock("@/lib/subscriptions/entitlements", () => ({
   })),
 }));
 
+vi.mock("@/lib/payments/online-payment", () => ({
+  isOnlineCardEnabledForTenant: vi.fn(async () => true),
+  initializeOnlinePayment: vi.fn(),
+}));
+
 vi.mock("@/lib/payments/platform-payment-types", () => ({
   getPlatformPaymentTypesForTenant: vi.fn(async () => ({ cash: true })),
 }));

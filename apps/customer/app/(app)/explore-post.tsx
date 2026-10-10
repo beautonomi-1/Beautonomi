@@ -24,12 +24,18 @@ import { ContentReportSheet, type ContentReportTargetType } from "@/components/s
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import {
   copyExplorePostLink,
-  isExploreVideoUrl,
   presentExplorePostShareActions,
   shareExplorePostLink,
   shareExplorePostMedia,
   type ExploreShareAction,
 } from "@/lib/share-explore-post";
+import { buildExploreSlides, firstSlideIsVideo } from "@/lib/explore-media";
+import { ExplorePhotoZoomModal } from "@/components/explore/ExplorePhotoZoomModal";
+import { ExploreTextOverlayLayer } from "@/components/explore/ExploreTextOverlayLayer";
+import {
+  filterOverlaysForPlaybackTime,
+  shouldDrawVideoTextOverlays,
+} from "@/lib/explore-overlay-playback";
 
 function formatTime(iso: string, t: TFunction, locale: string) {
   const date = new Date(iso);
@@ -63,12 +69,15 @@ export default function ExplorePostScreen() {
   const [relatedPosts, setRelatedPosts] = useState<ExplorePost[]>([]);
   const [captionExpanded, setCaptionExpanded] = useState(false);
   const [input, setInput] = useState("");
+  const [replyToCommentId, setReplyToCommentId] = useState<string | null>(null);
+  const [zoomPhotoUri, setZoomPhotoUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [sending, setSending] = useState(false);
   const [liking, setLiking] = useState(false);
   const [saving, setSaving] = useState(false);
   const [mediaIndex, setMediaIndex] = useState(0);
+  const [videoPlaybackMs, setVideoPlaybackMs] = useState(0);
   const [reportTarget, setReportTarget] = useState<{ type: ContentReportTargetType; id: string; title?: string } | null>(null);
 
   const explorePostReturnTo = id
@@ -136,6 +145,22 @@ export default function ExplorePostScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!post?.id || firstSlideIsVideo(post.media_urls, post.media_meta)) return;
+    void import("@/lib/explore-analytics").then(({ trackExploreView }) => trackExploreView(post.id));
+  }, [post?.id, post?.media_urls, post?.media_meta]);
+
+  useEffect(() => {
+    setVideoPlaybackMs(0);
+  }, [mediaIndex, post?.id]);
+
+  useEffect(() => {
+    if (!post || loading) return;
+    if (firstSlideIsVideo(post.media_urls, post.media_meta)) {
+      router.replace({ pathname: "/(app)/explore-video", params: { id: post.id } });
+    }
+  }, [post, loading, router]);
 
   useEffect(() => {
     setCaptionExpanded(false);
@@ -220,7 +245,10 @@ export default function ExplorePostScreen() {
     setInput("");
     haptic.light();
     try {
-      const res = await api.post<ExploreComment>(`/api/explore/posts/${id}/comments`, { body: text });
+      const res = await api.post<ExploreComment>(`/api/explore/posts/${id}/comments`, {
+        body: text,
+        ...(replyToCommentId ? { parent_id: replyToCommentId } : {}),
+      });
       if (res.error) {
         setInput(text);
         Alert.alert(t("common.error"), t("customer.explorePost.errorPostComment"));
@@ -228,14 +256,22 @@ export default function ExplorePostScreen() {
       }
       const newComment = (res.data as any)?.data ?? res.data;
       if (newComment) {
-        setComments((prev) => [
-          ...prev,
-          {
-            ...newComment,
-            body: newComment.body ?? text,
-            author: { full_name: user.user_metadata?.full_name },
-          },
-        ]);
+        const normalized = {
+          ...newComment,
+          body: newComment.body ?? text,
+          author: newComment.author ?? { full_name: user.user_metadata?.full_name },
+          replies: newComment.replies ?? [],
+        };
+        if (replyToCommentId) {
+          setComments((prev) =>
+            prev.map((c) =>
+              c.id === replyToCommentId ? { ...c, replies: [...(c.replies ?? []), normalized] } : c,
+            ),
+          );
+        } else {
+          setComments((prev) => [...prev, normalized]);
+        }
+        setReplyToCommentId(null);
       }
     } catch {
       setInput(text);
@@ -255,6 +291,9 @@ export default function ExplorePostScreen() {
       providerName: post.provider?.business_name || "Beautonomi",
       providerSlug: post.provider?.slug,
       mediaUrls: post.media_urls,
+      displayUrl: post.display_url,
+      playbackPath: post.playback_path,
+      mediaMeta: post.media_meta,
       webBaseUrl: APP_URL,
       mediaIndex,
     };
@@ -389,9 +428,76 @@ export default function ExplorePostScreen() {
     );
   }
 
-  const mediaItems = post.media_urls?.length ? post.media_urls : [];
+  const mediaSlides = buildExploreSlides(post);
+  const mediaItems = mediaSlides.length ? mediaSlides : [];
   const providerName = post.provider?.business_name || t("customer.explorePost.providerFallback");
   const providerInitial = providerName.charAt(0).toUpperCase();
+  const commentTotal = comments.reduce((n, c) => n + 1 + (c.replies?.length ?? 0), 0);
+
+  const renderCommentRow = (c: ExploreComment, isReply: boolean) => {
+    const authorName = c.author?.full_name || t("customer.explorePost.userFallback");
+    const initial = authorName.charAt(0).toUpperCase();
+    return (
+      <Pressable
+        key={c.id}
+        onLongPress={() => openContentReport("explore_comment", c.id, t("customer.contentReport.reportComment"))}
+        delayLongPress={400}
+        style={{
+          flexDirection: "row",
+          paddingVertical: 10,
+          paddingStart: isReply ? 42 : 0,
+          borderBottomWidth: isReply ? 0 : 1,
+          borderColor: "#F9FAFB",
+        }}
+      >
+        {c.author?.avatar_url ? (
+          <Image
+            source={{ uri: c.author.avatar_url }}
+            style={{ width: isReply ? 28 : 32, height: isReply ? 28 : 32, borderRadius: isReply ? 14 : 16, marginEnd: 10 }}
+            contentFit="cover"
+          />
+        ) : (
+          <View
+            style={{
+              width: isReply ? 28 : 32,
+              height: isReply ? 28 : 32,
+              borderRadius: isReply ? 14 : 16,
+              backgroundColor: "#F3F4F6",
+              alignItems: "center",
+              justifyContent: "center",
+              marginEnd: 10,
+            }}
+          >
+            <Text style={{ color: "#6B7280", fontWeight: "600", fontSize: isReply ? 12 : 13 }}>{initial}</Text>
+          </View>
+        )}
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: "#111827", marginEnd: 6 }}>{authorName}</Text>
+            <Text style={{ fontSize: 11, color: "#9CA3AF" }}>{formatTime(c.created_at, t, dateLocale)}</Text>
+          </View>
+          <Text style={{ fontSize: 14, color: "#374151", marginTop: 2, lineHeight: 20 }}>{c.body}</Text>
+          {user && canInteract && !isReply ? (
+            <TouchableOpacity onPress={() => setReplyToCommentId(c.id)} style={{ marginTop: 4 }}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500] }}>
+                {t("customer.explorePost.reply", "Reply")}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+        {user ? (
+          <TouchableOpacity
+            onPress={() => openContentReport("explore_comment", c.id, t("customer.contentReport.reportComment"))}
+            style={{ paddingStart: 8, paddingVertical: 4 }}
+            accessibilityRole="button"
+            accessibilityLabel={t("customer.contentReport.reportComment")}
+          >
+            <Ionicons name="flag-outline" size={16} color="#9CA3AF" />
+          </TouchableOpacity>
+        ) : null}
+      </Pressable>
+    );
+  };
 
   return (
     <>
@@ -421,23 +527,38 @@ export default function ExplorePostScreen() {
                 onMomentumScrollEnd={(e) => setMediaIndex(Math.round(e.nativeEvent.contentOffset.x / screenWidth))}
                 keyExtractor={(_, i) => String(i)}
                 renderItem={({ item, index }) =>
-                  isExploreVideoUrl(item) ? (
-                    <ExpoVideoPreview
-                      uri={item}
-                      style={{ width: screenWidth, aspectRatio: 4 / 5 }}
-                      contentFit="cover"
-                      nativeControls
-                      loop
-                      paused={mediaIndex !== index}
-                    />
+                  item.kind === "video" ? (
+                    <View style={{ width: screenWidth, aspectRatio: 4 / 5 }}>
+                      <ExpoVideoPreview
+                        uri={item.playbackUrl ?? item.displayUrl}
+                        style={{ width: screenWidth, aspectRatio: 4 / 5 }}
+                        contentFit="cover"
+                        nativeControls
+                        loop
+                        paused={mediaIndex !== index}
+                        onPlaybackTimeUpdate={
+                          mediaIndex === index ? setVideoPlaybackMs : undefined
+                        }
+                      />
+                      {shouldDrawVideoTextOverlays(post.media_meta?.[index]) ? (
+                        <ExploreTextOverlayLayer
+                          overlays={filterOverlaysForPlaybackTime(
+                            post.media_meta?.[index]?.text_overlays,
+                            mediaIndex === index ? videoPlaybackMs : 0,
+                          )}
+                        />
+                      ) : null}
+                    </View>
                   ) : (
-                    <Image
-                      source={{ uri: item }}
-                      style={{ width: screenWidth, aspectRatio: 4 / 5 }}
-                      contentFit="cover"
-                      cachePolicy="memory-disk"
-                      transition={200}
-                    />
+                    <Pressable onPress={() => setZoomPhotoUri(item.displayUrl)} accessibilityRole="imagebutton">
+                      <Image
+                        source={{ uri: item.displayUrl }}
+                        style={{ width: screenWidth, aspectRatio: 4 / 5 }}
+                        contentFit="cover"
+                        cachePolicy="memory-disk"
+                        transition={200}
+                      />
+                    </Pressable>
                   )
                 }
               />
@@ -518,12 +639,40 @@ export default function ExplorePostScreen() {
                 <Ionicons name="ellipsis-horizontal" size={20} color="#fff" />
               </TouchableOpacity>
 
+              {mediaItems[mediaIndex]?.kind === "image" ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    const uri = mediaItems[mediaIndex]?.displayUrl;
+                    if (uri) setZoomPhotoUri(uri);
+                  }}
+                  style={{
+                    position: "absolute",
+                    bottom: 16,
+                    alignSelf: "center",
+                    width: 44,
+                    height: 44,
+                    borderRadius: 22,
+                    backgroundColor: "rgba(255,255,255,0.92)",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    shadowColor: "#000",
+                    shadowOpacity: 0.15,
+                    shadowRadius: 6,
+                    shadowOffset: { width: 0, height: 2 },
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("web.explore.postDetail.zoom", "Zoom")}
+                >
+                  <Ionicons name="expand-outline" size={22} color="#374151" />
+                </TouchableOpacity>
+              ) : null}
+
               {/* Photo counter */}
-              {mediaItems.length > 1 && (
-                <View style={{ position: "absolute", bottom: 12, alignSelf: "center", backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+              {mediaItems.length > 1 ? (
+                <View style={{ position: "absolute", bottom: 12, right: 12, backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
                   <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>{mediaIndex + 1}/{mediaItems.length}</Text>
                 </View>
-              )}
+              ) : null}
             </View>
           ) : null}
 
@@ -744,7 +893,7 @@ export default function ExplorePostScreen() {
 
             {/* Comments */}
             <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 4 }}>
-              {t("customer.explorePost.commentsTitle")} {comments.length > 0 ? `(${comments.length})` : ""}
+              {t("customer.explorePost.commentsTitle")} {commentTotal > 0 ? `(${commentTotal})` : ""}
             </Text>
             {user && comments.length > 0 ? (
               <Text style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 12 }}>
@@ -771,59 +920,12 @@ export default function ExplorePostScreen() {
                 ) : null}
               </View>
             ) : (
-              comments.map((c) => {
-                const authorName = c.author?.full_name || t("customer.explorePost.userFallback");
-                const initial = authorName.charAt(0).toUpperCase();
-                return (
-                  <Pressable
-                    key={c.id}
-                    onLongPress={() => openContentReport("explore_comment", c.id, t("customer.contentReport.reportComment"))}
-                    delayLongPress={400}
-                    style={{ flexDirection: "row", paddingVertical: 10, borderBottomWidth: 1, borderColor: "#F9FAFB" }}
-                  >
-                    {c.author?.avatar_url ? (
-                      <Image
-                        source={{ uri: c.author.avatar_url }}
-                        style={{ width: 32, height: 32, borderRadius: 16, marginEnd: 10 }}
-                        contentFit="cover"
-                      />
-                    ) : (
-                      <View
-                        style={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: 16,
-                          backgroundColor: "#F3F4F6",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          marginEnd: 10,
-                        }}
-                      >
-                        <Text style={{ color: "#6B7280", fontWeight: "600", fontSize: 13 }}>{initial}</Text>
-                      </View>
-                    )}
-                    <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        <Text style={{ fontSize: 13, fontWeight: "600", color: "#111827", marginEnd: 6 }}>
-                          {authorName}
-                        </Text>
-                        <Text style={{ fontSize: 11, color: "#9CA3AF" }}>{formatTime(c.created_at, t, dateLocale)}</Text>
-                      </View>
-                      <Text style={{ fontSize: 14, color: "#374151", marginTop: 2, lineHeight: 20 }}>{c.body}</Text>
-                    </View>
-                    {user ? (
-                      <TouchableOpacity
-                        onPress={() => openContentReport("explore_comment", c.id, t("customer.contentReport.reportComment"))}
-                        style={{ paddingStart: 8, paddingVertical: 4 }}
-                        accessibilityRole="button"
-                        accessibilityLabel={t("customer.contentReport.reportComment")}
-                      >
-                        <Ionicons name="flag-outline" size={16} color="#9CA3AF" />
-                      </TouchableOpacity>
-                    ) : null}
-                  </Pressable>
-                );
-              })
+              comments.map((c) => (
+                <View key={c.id}>
+                  {renderCommentRow(c, false)}
+                  {(c.replies ?? []).map((r) => renderCommentRow(r, true))}
+                </View>
+              ))
             )}
 
             {/* More like this */}
@@ -834,7 +936,7 @@ export default function ExplorePostScreen() {
                 </Text>
                 <View style={{ flexDirection: "row", flexWrap: "wrap", marginHorizontal: -6 }}>
                   {relatedPosts.slice(0, 6).map((p) => {
-                    const img = p.media_urls?.[0];
+                    const img = p.display_url ?? p.media_urls?.[0];
                     return (
                       <TouchableOpacity
                         key={p.id}
@@ -889,8 +991,6 @@ export default function ExplorePostScreen() {
         {user && canInteract ? (
           <View
             style={{
-              flexDirection: "row",
-              alignItems: "center",
               paddingHorizontal: contentPadding,
               paddingVertical: 10,
               paddingBottom: 10 + (Platform.OS === "ios" ? insets.bottom : 0),
@@ -899,6 +999,19 @@ export default function ExplorePostScreen() {
               backgroundColor: "#fff",
             }}
           >
+            {replyToCommentId ? (
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+                <Text style={{ flex: 1, fontSize: 12, color: "#6B7280" }}>
+                  {t("customer.explorePost.replying", "Replying to a comment")}
+                </Text>
+                <TouchableOpacity onPress={() => setReplyToCommentId(null)}>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.primary }}>
+                    {t("common.cancel", "Cancel")}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
             <View
               style={{
                 width: 32,
@@ -925,7 +1038,11 @@ export default function ExplorePostScreen() {
                 fontSize: 14,
                 color: "#111827",
               }}
-              placeholder={t("customer.explorePost.addComment")}
+              placeholder={
+                replyToCommentId
+                  ? t("customer.explorePost.replyPlaceholder", "Write a reply…")
+                  : t("customer.explorePost.addComment")
+              }
               placeholderTextColor="#9CA3AF"
               value={input}
               onChangeText={setInput}
@@ -944,6 +1061,7 @@ export default function ExplorePostScreen() {
                 <Ionicons name="send" size={24} color={Colors.primary} />
               )}
             </TouchableOpacity>
+            </View>
           </View>
         ) : user && !canInteract ? (
           <View
@@ -989,6 +1107,13 @@ export default function ExplorePostScreen() {
           </Pressable>
         )}
       </KeyboardAvoidingView>
+
+      <ExplorePhotoZoomModal
+        uri={zoomPhotoUri}
+        visible={!!zoomPhotoUri}
+        onClose={() => setZoomPhotoUri(null)}
+        closeLabel={t("common.close", "Close")}
+      />
 
       {reportTarget ? (
         <ContentReportSheet

@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { safeWriteJson } from "./_safe-write-json.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const localesDir = path.join(__dirname, "../src/locales");
@@ -48,6 +49,6 @@ for (const file of fs.readdirSync(localesDir).filter((f) => f.endsWith(".json"))
   for (const [k, v] of enFlat) {
     if (!targetFlat.has(k)) targetFlat.set(k, v);
   }
-  fs.writeFileSync(targetPath, JSON.stringify(unflatten(targetFlat), null, 2) + "\n");
+  safeWriteJson(targetPath, unflatten(targetFlat));
   console.log("merged", code);
 }

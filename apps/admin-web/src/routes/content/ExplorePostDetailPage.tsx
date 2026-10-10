@@ -17,6 +17,11 @@ import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { adminToast } from "@/lib/adminToast";
 import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
+import {
+  exploreAdminMediaUrl,
+  exploreAdminPlaybackPath,
+  exploreAdminPreviewPath,
+} from "./exploreAdminMedia";
 
 const BUCKET = "explore-posts";
 
@@ -109,6 +114,10 @@ export function ExplorePostDetailPage() {
   const comments = bundle?.comments ?? [];
   const viewCount = bundle?.view_count ?? 0;
   const mediaUrls = (post.media_urls as string[]) ?? [];
+  const mediaMeta = (post.media_meta as Array<Record<string, unknown>> | null) ?? null;
+  const { previewPath, isVideo } = exploreAdminPreviewPath(post);
+  const playbackPath = exploreAdminPlaybackPath(post);
+  const supabaseBase = publicEnv.supabaseUrl ?? "";
   const providersRaw = post.providers as
     | { id?: string; business_name?: string; slug?: string }
     | { id?: string; business_name?: string; slug?: string }[]
@@ -142,19 +151,44 @@ export function ExplorePostDetailPage() {
       <div className="grid gap-6 lg:grid-cols-3">
         <AdminPanel className="lg:col-span-2">
           <h2 className="text-lg font-semibold text-gray-900">Media</h2>
-          <div className="mt-3 flex flex-wrap gap-3">
-            {mediaUrls.length === 0 ? (
+          <div className="mt-3 space-y-4">
+            {!previewPath && !playbackPath && mediaUrls.length === 0 ? (
               <p className="text-sm text-gray-500">No media</p>
-            ) : (
-              mediaUrls.map((u) => (
+            ) : null}
+            {previewPath ? (
+              <div>
+                <p className="text-xs text-gray-500 mb-1">{isVideo ? "Cover (display JPEG)" : "Display"}</p>
                 <img
-                  key={u}
-                  src={mediaUrl(u)}
+                  src={exploreAdminMediaUrl(previewPath, supabaseBase)}
                   alt=""
                   className="max-h-80 max-w-full rounded-lg border border-gray-200 object-contain"
                 />
-              ))
-            )}
+              </div>
+            ) : null}
+            {playbackPath ? (
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Playback</p>
+                <video
+                  src={exploreAdminMediaUrl(playbackPath, supabaseBase)}
+                  controls
+                  playsInline
+                  className="max-h-80 max-w-full rounded-lg border border-gray-200 bg-black"
+                />
+              </div>
+            ) : null}
+            {mediaMeta?.length ? (
+              <div>
+                <p className="text-xs font-semibold text-gray-700">Slide processing</p>
+                <ul className="mt-2 space-y-1 text-xs text-gray-600">
+                  {mediaMeta.map((slide, i) => (
+                    <li key={i} className="rounded border border-gray-100 px-2 py-1 font-mono">
+                      #{i + 1} {String(slide.kind ?? "?")} · status={String(slide.status ?? "—")}
+                      {slide.error_code ? ` · err=${String(slide.error_code)}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </div>
           <h3 className="mt-6 text-sm font-semibold text-gray-900">Caption</h3>
           <p className="mt-2 whitespace-pre-wrap text-sm text-gray-800">{String(post.caption ?? "")}</p>
@@ -241,43 +275,86 @@ export function ExplorePostDetailPage() {
           {comments.length === 0 ? (
             <li className="py-2 text-sm text-gray-500">No comments.</li>
           ) : (
-            comments.map((c) => {
-              const cid = String(c.id ?? "");
-              const uRaw = c.users as
-                | { email?: string; full_name?: string | null }
-                | { email?: string; full_name?: string | null }[]
-                | null;
-              const u = Array.isArray(uRaw) ? uRaw[0] : uRaw;
-              return (
-                <li key={cid} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p className="text-xs text-gray-500">{u?.full_name || u?.email || "User"}</p>
-                    <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">{String(c.body)}</p>
-                    <p className="mt-1 text-xs text-gray-400">
-                      {c.created_at ? new Date(String(c.created_at)).toLocaleString() : ""}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="shrink-0 rounded border border-red-200 px-2 py-1 text-xs text-red-800 hover:bg-red-50 disabled:opacity-50"
-                    disabled={deleteCommentMutation.isPending}
-                    onClick={() => {
-                      requestConfirm({
-                        title: "Remove comment",
-                        consequence: "Remove this comment from the post?",
-                        variant: "danger",
-                        confirmLabel: "Remove",
-                        onConfirm: async () => {
-                          await deleteCommentMutation.mutateAsync(cid);
-                        },
-                      });
-                    }}
-                  >
-                    Remove
-                  </button>
-                </li>
-              );
-            })
+            comments
+              .filter((c) => !c.parent_id)
+              .map((c) => {
+                const cid = String(c.id ?? "");
+                const uRaw = c.users as
+                  | { email?: string; full_name?: string | null }
+                  | { email?: string; full_name?: string | null }[]
+                  | null;
+                const u = Array.isArray(uRaw) ? uRaw[0] : uRaw;
+                const replies = comments.filter((r) => String(r.parent_id ?? "") === cid);
+                return (
+                  <li key={cid} className="py-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-xs text-gray-500">{u?.full_name || u?.email || "User"}</p>
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">{String(c.body)}</p>
+                        <p className="mt-1 text-xs text-gray-400">
+                          {c.created_at ? new Date(String(c.created_at)).toLocaleString() : ""}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="shrink-0 rounded border border-red-200 px-2 py-1 text-xs text-red-800 hover:bg-red-50 disabled:opacity-50"
+                        disabled={deleteCommentMutation.isPending}
+                        onClick={() => {
+                          requestConfirm({
+                            title: "Remove comment",
+                            consequence: "Remove this comment from the post?",
+                            variant: "danger",
+                            confirmLabel: "Remove",
+                            onConfirm: async () => {
+                              await deleteCommentMutation.mutateAsync(cid);
+                            },
+                          });
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    {replies.length ? (
+                      <ul className="ms-4 mt-2 space-y-2 border-s border-gray-100 ps-3">
+                        {replies.map((r) => {
+                          const rid = String(r.id ?? "");
+                          const ruRaw = r.users as
+                            | { email?: string; full_name?: string | null }
+                            | { email?: string; full_name?: string | null }[]
+                            | null;
+                          const ru = Array.isArray(ruRaw) ? ruRaw[0] : ruRaw;
+                          return (
+                            <li key={rid} className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                              <div>
+                                <p className="text-xs text-gray-500">{ru?.full_name || ru?.email || "User"}</p>
+                                <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">{String(r.body)}</p>
+                              </div>
+                              <button
+                                type="button"
+                                className="shrink-0 rounded border border-red-200 px-2 py-1 text-xs text-red-800 hover:bg-red-50 disabled:opacity-50"
+                                disabled={deleteCommentMutation.isPending}
+                                onClick={() => {
+                                  requestConfirm({
+                                    title: "Remove reply",
+                                    consequence: "Remove this reply?",
+                                    variant: "danger",
+                                    confirmLabel: "Remove",
+                                    onConfirm: async () => {
+                                      await deleteCommentMutation.mutateAsync(rid);
+                                    },
+                                  });
+                                }}
+                              >
+                                Remove
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : null}
+                  </li>
+                );
+              })
           )}
         </ul>
       </AdminPanel>

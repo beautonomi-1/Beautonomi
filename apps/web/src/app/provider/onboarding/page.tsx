@@ -65,7 +65,6 @@ import {
   stripDataUrl,
   stripDataUrlsFromArray,
 } from "@/lib/images/compress-and-upload";
-import { getPricingPlans } from "@/lib/supabase/pricing";
 import { ChipCombobox } from "@/components/ui/chip-combobox";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { OtpDigitInput } from "@/components/ui/otp-digit-input";
@@ -1228,7 +1227,13 @@ export default function ProviderOnboarding() {
 
   return (
     <RoleGuard
-      allowedRoles={["customer", "provider_owner", "provider_staff", "provider_onboarding"]}
+      allowedRoles={[
+        "customer",
+        "provider_owner",
+        "provider_staff",
+        "provider_onboarding",
+        "superadmin",
+      ]}
       redirectTo="/become-a-partner"
       showLoading={true}
     >
@@ -5311,7 +5316,21 @@ function Step14PlanSelection({
     async function loadPlans() {
       try {
         setIsLoadingPlans(true);
-        const plans = await getPricingPlans();
+        type PublicPricingPlan = {
+          id: string;
+          name: string;
+          price: string;
+          period: string | null;
+          description: string | null;
+          cta_text: string;
+          is_popular: boolean;
+          features: string[];
+          is_free?: boolean;
+        };
+        const res = await fetcher.get<{ data: PublicPricingPlan[] }>(
+          "/api/public/pricing/plans",
+        );
+        const plans = Array.isArray(res.data) ? res.data : [];
         setPricingPlans(plans);
 
         // If plan was pre-selected from query params, ensure it's in the list

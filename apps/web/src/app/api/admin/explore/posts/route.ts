@@ -25,6 +25,13 @@ const SELECT_WITH_SAVE_COUNT = `
         like_count,
         comment_count,
         save_count,
+        display_path,
+        media_width,
+        media_height,
+        duration_ms,
+        playback_path,
+        media_meta,
+        sound_id,
         is_hidden,
         moderation_notes,
         moderated_at,
@@ -41,6 +48,13 @@ const SELECT_WITHOUT_SAVE_COUNT = `
         published_at,
         like_count,
         comment_count,
+        display_path,
+        media_width,
+        media_height,
+        duration_ms,
+        playback_path,
+        media_meta,
+        sound_id,
         is_hidden,
         moderation_notes,
         moderated_at,
@@ -93,7 +107,7 @@ export async function GET(request: NextRequest) {
       const selectClause = includeSaveCount ? SELECT_WITH_SAVE_COUNT : SELECT_WITHOUT_SAVE_COUNT;
       let query = supabaseAdmin
       .from("explore_posts")
-      .select(selectClause, { count: "exact" })
+      .select(selectClause as string, { count: "exact" })
       .eq("providers.tenant_id", tenantId)
       .range(offset, offset + limit - 1);
 

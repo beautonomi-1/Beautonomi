@@ -33,6 +33,12 @@ export type ProviderGamificationHealSignals = {
   storedRatingAverage: number;
   transactionCount: number;
   hasProviderPointsRow: boolean;
+  /** `provider_points.total_points` cache. */
+  cachedTotalPoints: number;
+  /** `GREATEST(0, SUM(provider_point_transactions.points))`. */
+  ledgerPointsSum: number;
+  /** False when `calculate_provider_points` RPC failed — skip cache vs ledger drift heal. */
+  ledgerPointsSumReliable: boolean;
 };
 
 function ratingsDiffer(a: number, b: number): boolean {
@@ -58,6 +64,13 @@ export function shouldHealProviderGamification(signals: ProviderGamificationHeal
   if (hasActivity && !signals.hasProviderPointsRow) {
     return true;
   }
+  if (
+    signals.ledgerPointsSumReliable &&
+    signals.transactionCount > 0 &&
+    signals.cachedTotalPoints !== signals.ledgerPointsSum
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -66,8 +79,14 @@ export async function fetchProviderGamificationHealSignals(
   providerId: string,
   options?: { hasProviderPointsRow?: boolean },
 ): Promise<ProviderGamificationHealSignals> {
-  const [{ count: completedBookingsCount }, { count: transactionCount }, { data: provRow }, liveReviews] =
-    await Promise.all([
+  const [
+    { count: completedBookingsCount },
+    { count: transactionCount },
+    { data: provRow },
+    liveReviews,
+    { data: pointsRow },
+    ledgerRpc,
+  ] = await Promise.all([
       admin
         .from("bookings")
         .select("id", { count: "exact", head: true })
@@ -83,7 +102,18 @@ export async function fetchProviderGamificationHealSignals(
         .eq("id", providerId)
         .maybeSingle(),
       fetchProviderReviewStats(admin, providerId),
+      admin
+        .from("provider_points")
+        .select("total_points")
+        .eq("provider_id", providerId)
+        .maybeSingle(),
+      admin.rpc("calculate_provider_points", { p_provider_id: providerId }),
     ]);
+
+  const ledgerPointsSumReliable = !ledgerRpc.error;
+  const ledgerPointsSum = ledgerPointsSumReliable
+    ? Math.max(0, Number(ledgerRpc.data ?? 0))
+    : Number(pointsRow?.total_points ?? 0);
 
   return {
     completedBookings: completedBookingsCount ?? 0,
@@ -93,7 +123,10 @@ export async function fetchProviderGamificationHealSignals(
     ratingAverage: liveReviews.rating_average,
     storedRatingAverage: Number(provRow?.rating_average ?? 0),
     transactionCount: transactionCount ?? 0,
-    hasProviderPointsRow: options?.hasProviderPointsRow ?? false,
+    hasProviderPointsRow: options?.hasProviderPointsRow ?? !!pointsRow,
+    cachedTotalPoints: Number(pointsRow?.total_points ?? 0),
+    ledgerPointsSum,
+    ledgerPointsSumReliable,
   };
 }
 

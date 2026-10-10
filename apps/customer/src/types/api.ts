@@ -190,10 +190,41 @@ export interface AvailabilitySlot {
   available_staff_ids?: string[];
 }
 
+export type ExploreMediaKind = "image" | "video";
+
+export interface ExploreTextOverlay {
+  text: string;
+  x: number;
+  y: number;
+  font_size: number;
+  color: string;
+  align?: "left" | "center" | "right";
+  start_ms?: number;
+  end_ms?: number;
+}
+
+export interface ExploreMediaSlideMeta {
+  kind: ExploreMediaKind;
+  display_path?: string | null;
+  width?: number | null;
+  height?: number | null;
+  duration_ms?: number | null;
+  playback_path?: string | null;
+  probe_job_id?: string | null;
+  encode_job_id?: string | null;
+  status?: string | null;
+  error_code?: string | null;
+  text_overlays?: ExploreTextOverlay[] | null;
+}
+
 export interface ExplorePost {
   id: string;
   provider_id?: string;
-  provider: { business_name: string; slug?: string };
+  provider: {
+    business_name: string;
+    slug?: string;
+    avatar_url?: string | null;
+  };
   caption: string | null;
   media_urls: string[];
   like_count: number;
@@ -205,15 +236,26 @@ export interface ExplorePost {
   /** When set, "Book this look" links to this offering */
   offering_id?: string | null;
   offering?: { id: string; name: string; price?: number; duration_minutes?: number } | null;
+  /** Public URL for grid / OG (display JPEG or video cover). */
+  display_url?: string | null;
+  media_width?: number | null;
+  media_height?: number | null;
+  duration_ms?: number | null;
+  playback_path?: string | null;
+  media_meta?: ExploreMediaSlideMeta[] | null;
+  sound_id?: string | null;
+  sound_url?: string | null;
 }
 
 export interface ExploreComment {
   id: string;
   post_id: string;
   user_id: string;
+  parent_id?: string | null;
   body: string;
   created_at: string;
   author?: { full_name?: string | null; avatar_url?: string | null };
+  replies?: ExploreComment[];
 }
 
 export interface BookingServiceDetail {

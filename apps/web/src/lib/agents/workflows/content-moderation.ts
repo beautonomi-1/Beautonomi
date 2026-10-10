@@ -89,11 +89,24 @@ export async function runContentModerationSweep(environment?: string): Promise<
       if (report.target_type === "explore_post") {
         const { data: post } = await supabase
           .from("explore_posts")
-          .select("caption, media_urls")
+          .select("caption, media_urls, display_path, media_meta")
           .eq("id", report.target_id)
           .maybeSingle();
         caption = String((post as { caption?: string } | null)?.caption ?? "");
-        mediaUrls = ((post as { media_urls?: string[] } | null)?.media_urls ?? []).filter(Boolean);
+        const row = post as {
+          media_urls?: string[];
+          display_path?: string | null;
+          media_meta?: { display_path?: string | null; kind?: string }[] | null;
+        } | null;
+        const scanPaths: string[] = [];
+        if (row?.display_path) scanPaths.push(row.display_path);
+        for (const slide of row?.media_meta ?? []) {
+          if (slide.display_path) scanPaths.push(slide.display_path);
+        }
+        const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        mediaUrls = scanPaths.map((p) =>
+          p.startsWith("http") ? p : `${base?.replace(/\/$/, "")}/storage/v1/object/public/explore-posts/${p.replace(/^\//, "")}`,
+        );
       }
 
       let imageVerdict = null as Awaited<ReturnType<typeof scanner.scanImageUrls>> | null;

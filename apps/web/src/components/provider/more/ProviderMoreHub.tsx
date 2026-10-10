@@ -90,6 +90,14 @@ type PayoutScheduleData = {
   next_payout_date?: string | null;
 };
 
+type PayoutOptionsData = {
+  payout_rail?: "paystack" | "stripe";
+  stripe_connect?: {
+    onboarding_complete?: boolean;
+    external_account_last4?: string | null;
+  } | null;
+};
+
 type TeamAccessData = {
   can_process_payments?: boolean;
   can_request_payouts?: boolean;
@@ -134,6 +142,7 @@ export function ProviderMoreHub() {
   const [navCounts, setNavCounts] = useState<ProviderNavCounts | null>(null);
   const [financeSummary, setFinanceSummary] = useState<FinanceSummaryData | null>(null);
   const [payoutAccounts, setPayoutAccounts] = useState<PayoutAccountSummary[]>([]);
+  const [payoutOptions, setPayoutOptions] = useState<PayoutOptionsData | null>(null);
   const [payoutAccountsLoading, setPayoutAccountsLoading] = useState(true);
   const [payoutSchedule, setPayoutSchedule] = useState<PayoutScheduleData | null>(null);
   const [teamAccess, setTeamAccess] = useState<TeamAccessData | null>(null);
@@ -213,12 +222,22 @@ export function ProviderMoreHub() {
           .catch(() => {}),
       );
       tasks.push(
-        fetcher
-          .get<{ data: PayoutAccountSummary[] }>("/api/provider/payout-accounts", {
+        Promise.all([
+          fetcher.get<{ data: PayoutAccountSummary[] }>("/api/provider/payout-accounts", {
             timeoutMs: DEFAULT_FETCH_TIMEOUT_MS,
+          }),
+          fetcher.get<{ data: PayoutOptionsData }>("/api/provider/payout-accounts/options", {
+            timeoutMs: DEFAULT_FETCH_TIMEOUT_MS,
+          }),
+        ])
+          .then(([accountsRes, optionsRes]) => {
+            setPayoutAccounts(Array.isArray(accountsRes.data) ? accountsRes.data : []);
+            setPayoutOptions(optionsRes.data ?? null);
           })
-          .then((res) => setPayoutAccounts(Array.isArray(res.data) ? res.data : []))
-          .catch(() => setPayoutAccounts([]))
+          .catch(() => {
+            setPayoutAccounts([]);
+            setPayoutOptions(null);
+          })
           .finally(() => setPayoutAccountsLoading(false)),
       );
       tasks.push(
@@ -323,17 +342,23 @@ export function ProviderMoreHub() {
     payoutAccounts.find((a) => a.is_primary === true) ??
     payoutAccounts.find((a) => a.active !== false) ??
     payoutAccounts[0];
-  const hasPayoutAccount = payoutAccounts.length > 0;
+  const payoutRail = payoutOptions?.payout_rail === "stripe" ? "stripe" : "paystack";
+  const stripeConnectReady = Boolean(payoutOptions?.stripe_connect?.onboarding_complete);
+  const hasPayoutDestinationReady =
+    payoutRail === "stripe" ? stripeConnectReady : payoutAccounts.length > 0;
   const payoutAccountLast4 =
     primaryPayoutAccount?.account_number_last4 ??
     primaryPayoutAccount?.account_number?.slice(-4);
+  const stripeConnectLast4 = payoutOptions?.stripe_connect?.external_account_last4 ?? null;
   const nextPayoutDate = payoutSchedule?.next_payout_date
     ? new Date(payoutSchedule.next_payout_date)
     : null;
   const requestPayoutDisabledReason = !canRequestPayouts
     ? t("web.provider.moreHub.requiresEditSettings")
-    : !hasPayoutAccount
-      ? t("web.provider.moreHub.addBankFirst")
+    : !hasPayoutDestinationReady
+      ? payoutRail === "stripe"
+        ? t("web.provider.moreHub.completeStripeConnectFirst")
+        : t("web.provider.moreHub.addBankFirst")
       : minimumPayout != null && availablePayout < minimumPayout
         ? t("web.provider.moreHub.minimumPayout", { amount: formatMoney(minimumPayout) })
         : null;
@@ -455,7 +480,7 @@ export function ProviderMoreHub() {
 
           <Link
             href={
-              hasPayoutAccount || !canEditSettings
+              hasPayoutDestinationReady || !canEditSettings
                 ? "/provider/finance?tab=payouts"
                 : "/provider/payment-setup"
             }
@@ -463,7 +488,11 @@ export function ProviderMoreHub() {
           >
             <Wallet className="h-5 w-5" />
             <span className="flex-1 font-bold">
-{hasPayoutAccount ? t("web.provider.moreHub.requestPayout") : t("web.provider.moreHub.setUpBank")}
+              {hasPayoutDestinationReady
+                ? t("web.provider.moreHub.requestPayout")
+                : payoutRail === "stripe"
+                  ? t("web.provider.finance.completeStripeConnect")
+                  : t("web.provider.moreHub.setUpBank")}
             </span>
             <ChevronRight className="h-4 w-4 opacity-80" />
           </Link>
@@ -472,19 +501,29 @@ export function ProviderMoreHub() {
             href="/provider/settings/payout-accounts"
             className="mt-2.5 flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3.5 py-3 hover:bg-emerald-50/50 transition-colors"
           >
-            {hasPayoutAccount ? (
+            {hasPayoutDestinationReady ? (
               <CheckCircle2 className="h-5 w-5 text-emerald-600" />
             ) : (
               <AlertCircle className="h-5 w-5 text-amber-600" />
             )}
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-gray-900">{t("web.provider.moreHub.bankAccountSetup")}</p>
+              <p className="text-sm font-bold text-gray-900">
+                {payoutRail === "stripe"
+                  ? t("web.provider.settings.pages.payout-accounts.stripeConnectTitle")
+                  : t("web.provider.moreHub.bankAccountSetup")}
+              </p>
               <p className="text-xs text-gray-500 truncate">
                 {payoutAccountsLoading
                   ? t("web.provider.moreHub.checkingPayoutAccount")
-                  : hasPayoutAccount
-                    ? `${primaryPayoutAccount?.bank_name || t("web.provider.moreHub.bankAccount")}${payoutAccountLast4 ? ` • •••• ${payoutAccountLast4}` : ""}`
-                    : t("web.provider.moreHub.addBankBeforePayouts")}
+                  : payoutRail === "stripe"
+                    ? stripeConnectReady
+                      ? stripeConnectLast4
+                        ? t("web.provider.moreHub.stripeConnectLast4", { last4: stripeConnectLast4 })
+                        : t("web.provider.moreHub.stripeConnectReady")
+                      : t("web.provider.finance.stripeConnectPayoutHint")
+                    : hasPayoutDestinationReady
+                      ? `${primaryPayoutAccount?.bank_name || t("web.provider.moreHub.bankAccount")}${payoutAccountLast4 ? ` • •••• ${payoutAccountLast4}` : ""}`
+                      : t("web.provider.moreHub.addBankBeforePayouts")}
               </p>
             </div>
             <ChevronRight className="h-4 w-4 text-gray-300" />

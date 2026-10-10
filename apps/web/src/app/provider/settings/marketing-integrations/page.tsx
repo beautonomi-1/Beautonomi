@@ -73,7 +73,12 @@ export default function MarketingIntegrationsPage() {
 
     void (async () => {
       try {
-        const verifyResult = await verifyWithRetry(reference, { maxAttempts: 5, delayMs: 1500 });
+        const sessionId = searchParams.get("session_id");
+        const verifyResult = await verifyWithRetry(reference, {
+          maxAttempts: 5,
+          delayMs: 1500,
+          sessionId,
+        });
         await loadCredits();
         await loadStatus();
         if (verifyResult.status === "success") {

@@ -6,7 +6,7 @@
  *
  * Gift card → re-credited to the card by `voidProductOrderGiftCard`; wallet → wallet
  * credit; the card portion is refunded here through the payment provider's refund
- * capability (Paystack today). If the gateway refund fails the caller falls back to
+ * capability (Paystack or Stripe). If the gateway refund fails the caller falls back to
  * a wallet credit so the customer is never left unpaid.
  */
 
@@ -25,7 +25,7 @@ export type OnlineTenderOrder = {
   order_number?: string | null;
 };
 
-const GATEWAY_METHODS = new Set(["paystack", "card", "online"]);
+const GATEWAY_METHODS = new Set(["paystack", "stripe", "card", "online"]);
 
 /** Pure: card/gateway portion of the order total (never negative). */
 export function computeProductOrderOnlinePortion(order: OnlineTenderOrder): number {
@@ -54,16 +54,35 @@ export async function refundProductOrderOnlineTender(
     return { attempted: false, refundedAmount: 0, refundId: null };
   }
 
+  const amountSmallest = Math.round(portion * 100);
+  const currency = order.currency ?? "ZAR";
+  const tenantId = order.tenant_id ?? null;
+
   try {
-    const { paystackProvider } = await import("@/lib/payments/provider/paystack-provider");
-    const result = await paystackProvider.refund({
-      providerPaymentId: reference,
-      amountInSmallestUnit: Math.round(portion * 100),
-      currency: order.currency ?? "ZAR",
-      reason: opts.reason,
-      tenantId: order.tenant_id ?? null,
-      idempotencyKey: opts.idempotencyKey,
-    });
+    let refundId: string | null = null;
+    if (method === "stripe") {
+      const { stripeProvider } = await import("@/lib/payments/provider/stripe-provider");
+      const result = await stripeProvider.refund({
+        providerPaymentId: reference,
+        amountInSmallestUnit: amountSmallest,
+        currency,
+        reason: opts.reason,
+        tenantId,
+        idempotencyKey: opts.idempotencyKey,
+      });
+      refundId = result.refundId || null;
+    } else {
+      const { paystackProvider } = await import("@/lib/payments/provider/paystack-provider");
+      const result = await paystackProvider.refund({
+        providerPaymentId: reference,
+        amountInSmallestUnit: amountSmallest,
+        currency,
+        reason: opts.reason,
+        tenantId,
+        idempotencyKey: opts.idempotencyKey,
+      });
+      refundId = result.refundId || null;
+    }
 
     // Best-effort: reflect the refund on the charge row so finance reports reconcile.
     try {
@@ -80,11 +99,12 @@ export async function refundProductOrderOnlineTender(
       console.warn("[refundProductOrderOnlineTender] payment_transactions sync failed:", e);
     }
 
-    return { attempted: true, refundedAmount: portion, refundId: result.refundId || null };
+    return { attempted: true, refundedAmount: portion, refundId };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     console.error("[refundProductOrderOnlineTender] gateway refund failed:", message, {
       productOrderId: order.id,
+      method,
     });
     return { attempted: true, refundedAmount: 0, refundId: null, error: message };
   }

@@ -509,10 +509,24 @@ export function PlansListPage() {
         </AdminPanel>
       )}
       {showPaystackOffBanner ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          <code className="rounded bg-amber-100 px-1">payment_paystack</code> is off for this market — paid plan
-          creation may still write DB rows, but gateway plan sync can fail. Enable the flag for full billing integration.
-        </div>
+        <AdminPanel className="border-amber-200 bg-amber-50/80">
+          <h3 className="text-sm font-semibold text-amber-950">Paystack checkout is off</h3>
+          <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm text-amber-950">
+            <li>
+              <code className="rounded bg-amber-100 px-1">payment_paystack</code> off → Paystack{" "}
+              <strong>hosted checkout</strong> is disabled for this tenant (Paystack branch in online payment init
+              only).
+            </li>
+            <li>
+              Stripe hosted checkout for this tenant is <strong>not</strong> controlled by this flag; region primary
+              gateway still applies at checkout time.
+            </li>
+            <li>
+              <strong>Plan save:</strong> Paystack plan-code sync runs when region primary gateway is Paystack; when
+              region gateway is Stripe, sync is skipped and paid checkout uses Stripe for the plan amount.
+            </li>
+          </ul>
+        </AdminPanel>
       ) : null}
       <AdminPanel>
         <button
@@ -549,7 +563,7 @@ export function PlansListPage() {
             </label>
             <label className="flex items-center gap-2 text-sm sm:col-span-2">
               <input type="checkbox" checked={nFree} onChange={(e) => setNFree(e.target.checked)} />
-              Free plan (no Paystack product)
+              Free plan (no recurring billing product)
             </label>
             {!nFree ? (
               <>
@@ -751,7 +765,7 @@ export function PlansListPage() {
               />
             </label>
             <label className="text-sm">
-              Paystack plan code (monthly)
+              Recurring billing plan code — Paystack (monthly)
               <input
                 className="mt-1 w-full rounded border border-gray-300 px-2 py-1 font-mono text-xs"
                 value={ePaystackMonthly}
@@ -760,7 +774,7 @@ export function PlansListPage() {
               />
             </label>
             <label className="text-sm">
-              Paystack plan code (yearly)
+              Recurring billing plan code — Paystack (yearly)
               <input
                 className="mt-1 w-full rounded border border-gray-300 px-2 py-1 font-mono text-xs"
                 value={ePaystackYearly}

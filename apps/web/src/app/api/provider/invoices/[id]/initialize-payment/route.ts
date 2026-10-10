@@ -12,7 +12,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
-import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { initializeOnlinePayment } from "@/lib/payments/online-payment";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -116,12 +116,16 @@ export async function POST(
     const reference = generateTransactionReference("provider_invoice", id);
     const currency = inv.currency || fallbackCurrency;
 
-    const paystackData = await initializePaystackTransaction({
+    const onlineInit = await initializeOnlinePayment({
+      tenantId,
       email,
       amountInSmallestUnit: convertToSmallestUnit(amountDue, currency),
       currency,
       reference,
-      callback_url: callbackUrl,
+      callbackUrl,
+      lineItemName: inv.invoice_number
+        ? `Invoice ${inv.invoice_number}`
+        : "Provider invoice",
       metadata: {
         provider_invoice_id: id,
         provider_id: inv.provider_id,
@@ -129,10 +133,9 @@ export async function POST(
         kind: "provider_invoice_payment",
         cancel_action: cancelAction,
       },
-      tenantId,
     });
 
-    const paymentUrl = paystackData?.data?.authorization_url || null;
+    const paymentUrl = onlineInit.authorizationUrl || null;
     if (!paymentUrl) {
       return errorResponse(
         "Paystack did not return a payment URL. Please try again shortly.",

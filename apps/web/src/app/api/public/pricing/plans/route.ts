@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
 import { fetchScopedListMerged } from "@/lib/tenant/scoped-overrides";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  buildPublicPricingBillingPeriods,
+  loadLinkedSubscriptionPlanPricesMap,
+} from "@/lib/pricing/public-pricing-billing-periods";
 
 /**
  * GET /api/public/pricing/plans
@@ -24,7 +28,7 @@ export async function GET(request: Request) {
       table: "pricing_plans",
       tenantId,
       select:
-        "id, name, price, period, description, cta_text, is_popular, display_order, currency, paystack_plan_code_monthly, paystack_plan_code_yearly",
+        "id, name, price, period, description, cta_text, is_popular, display_order, currency, paystack_plan_code_monthly, paystack_plan_code_yearly, subscription_plan_id",
       apply: (q) => q.eq("is_active", true),
       dedupeKey: (row) => String(row.name ?? row.id ?? ""),
       orderBy: { column: "display_order", ascending: true },
@@ -41,11 +45,17 @@ export async function GET(request: Request) {
       currency: string | null;
       paystack_plan_code_monthly?: string | null;
       paystack_plan_code_yearly?: string | null;
+      subscription_plan_id?: string | null;
     }>;
 
     if (!plans?.length) {
       return NextResponse.json({ data: [] });
     }
+
+    const linkedIds = plans
+      .map((p) => p.subscription_plan_id?.trim())
+      .filter((id): id is string => Boolean(id));
+    const linkedMap = await loadLinkedSubscriptionPlanPricesMap(supabaseAdmin, linkedIds);
 
     const withFeatures = await Promise.all(
       plans.map(async (plan) => {
@@ -64,12 +74,19 @@ export async function GET(request: Request) {
           !priceStr || Number.isNaN(numericPrice) || numericPrice === 0 || /free/i.test(String(plan.price ?? ""));
         const isFree = isFreeByPrice && !hasAnyPaystackCode;
 
-        const available_billing_periods: ("monthly" | "yearly")[] = [];
-        if (plan.paystack_plan_code_monthly) available_billing_periods.push("monthly");
-        if (plan.paystack_plan_code_yearly) available_billing_periods.push("yearly");
-        if (!isFree && available_billing_periods.length === 0) {
-          available_billing_periods.push("monthly");
-        }
+        const linked = plan.subscription_plan_id
+          ? linkedMap.get(plan.subscription_plan_id.trim())
+          : undefined;
+
+        const available_billing_periods = buildPublicPricingBillingPeriods({
+          isFree,
+          paystackPlanCodeMonthly: plan.paystack_plan_code_monthly,
+          paystackPlanCodeYearly: plan.paystack_plan_code_yearly,
+          linkedPriceMonthly: linked?.price_monthly,
+          linkedPriceYearly: linked?.price_yearly,
+        });
+
+        const displayCurrency = linked?.currency ?? plan.currency ?? null;
 
         return {
           id: plan.id,
@@ -79,12 +96,13 @@ export async function GET(request: Request) {
           description: plan.description,
           cta_text: plan.cta_text,
           is_popular: plan.is_popular,
-          currency: plan.currency ?? null,
+          currency: displayCurrency,
           features: features?.map((f) => f.feature_text).filter(Boolean) ?? [],
-          // §Provider-launch (2026-05): expose free/paid so onboarding plan
-          // step can render badges + copy without re-deriving the rule.
           is_free: isFree,
           available_billing_periods,
+          subscription_plan_id: plan.subscription_plan_id ?? null,
+          price_monthly: linked?.price_monthly ?? null,
+          price_yearly: linked?.price_yearly ?? null,
         };
       }),
     );

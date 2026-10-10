@@ -96,3 +96,34 @@ export async function getStripeClient(tenantId?: string | null) {
   const secret = await getStripeSecretKey({ tenantId });
   return new Stripe(secret);
 }
+
+/** Publishable key for client SDKs (region → tenant → env). Never throws. */
+export async function getStripePublishableKey(options?: {
+  tenantId?: string | null;
+  regionId?: string | null;
+}): Promise<string | null> {
+  const supabase = getSupabaseAdmin();
+  let regionId = options?.regionId?.trim() || null;
+  if (!regionId && options?.tenantId) {
+    const tid = normalizeTenantId(options.tenantId);
+    if (tid) {
+      regionId = (await getTenantRegionConfig(tid))?.regionId ?? null;
+    }
+  }
+
+  if (regionId) {
+    const { data } = await supabase
+      .from("region_secrets")
+      .select("value_encrypted")
+      .eq("region_id", regionId)
+      .eq("key", "stripe_publishable_key")
+      .maybeSingle();
+    const regionKey = (data as { value_encrypted?: string } | null)?.value_encrypted;
+    if (regionKey?.trim()) return regionKey.trim();
+  }
+
+  const envKey =
+    process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim() ||
+    process.env.STRIPE_PUBLISHABLE_KEY?.trim();
+  return envKey || null;
+}

@@ -9,10 +9,30 @@ export function safeWriteJson(filePath, data) {
   const payload = JSON.stringify(data, null, 2) + "\n";
   const tmp = path.join(os.tmpdir(), `beautonomi-i18n-${path.basename(filePath)}-${process.pid}-${Date.now()}.json`);
   fs.writeFileSync(tmp, payload, "utf8");
-  try {
-    fs.renameSync(tmp, filePath);
-  } catch (e) {
-    fs.copyFileSync(tmp, filePath);
-    fs.unlinkSync(tmp);
+  let lastErr;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    try {
+      fs.renameSync(tmp, filePath);
+      return;
+    } catch (e) {
+      lastErr = e;
+      try {
+        fs.copyFileSync(tmp, filePath);
+        fs.unlinkSync(tmp);
+        return;
+      } catch (e2) {
+        lastErr = e2;
+        const until = Date.now() + 400 * (attempt + 1);
+        while (Date.now() < until) {
+          /* wait for AV / indexer */
+        }
+      }
+    }
   }
+  try {
+    fs.unlinkSync(tmp);
+  } catch {
+    /* ignore */
+  }
+  throw lastErr;
 }

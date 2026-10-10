@@ -39,8 +39,9 @@ export async function recordMarketingCreditTopupPayment(params: {
   feesMajor?: number;
   currency?: string | null;
   metadata?: Record<string, unknown>;
+  paymentProvider?: "paystack" | "stripe";
 }): Promise<RecordMarketingCreditTopupResult> {
-  const { supabase, providerId, reference } = params;
+  const { supabase, providerId, reference, paymentProvider = "paystack" } = params;
   const amountMajor = Number(params.amountMajor) || 0;
   const feesMajor = Number(params.feesMajor ?? 0) || 0;
 
@@ -94,7 +95,7 @@ export async function recordMarketingCreditTopupPayment(params: {
       fees: feesMajor,
       net_amount: netAmount,
       status: "success",
-      provider: "paystack",
+      provider: paymentProvider,
       transaction_type: "charge",
       metadata: {
         kind: "marketing_credit_topup",

@@ -284,6 +284,7 @@ export default function AppLayout() {
         <Stack.Screen name="book-checkout" options={{ headerShown: false }} />
         <Stack.Screen name="chat" options={{ headerShown: true, title: stackTitle("chat") }} />
         <Stack.Screen name="explore-post" options={{ headerShown: true, title: stackTitle("post") }} />
+        <Stack.Screen name="explore-video" options={{ headerShown: false }} />
         <Stack.Screen name="explore/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="explore-collection/[id]" options={{ headerShown: true, title: stackTitle("board") }} />
         <Stack.Screen name="custom-request-create" options={{ headerShown: true, title: stackTitle("customRequest") }} />

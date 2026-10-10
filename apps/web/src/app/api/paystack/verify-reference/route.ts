@@ -83,6 +83,28 @@ export async function GET(request: NextRequest) {
       return errorResponse("reference is required", "VALIDATION_ERROR", 400);
     }
 
+    const sessionId = searchParams.get("session_id");
+    const { getOnlinePaymentCheckoutByReference } = await import(
+      "@/lib/payments/online-payment-checkouts"
+    );
+    const checkoutRow = await getOnlinePaymentCheckoutByReference(reference);
+    const { shouldUseStripeOnlineVerify, verifyAndSettleOnlinePayment } = await import(
+      "@/lib/payments/resolve-online-verify"
+    );
+    if (shouldUseStripeOnlineVerify(checkoutRow?.provider, sessionId)) {
+      const admin = getSupabaseAdmin();
+      const stripeResult = await verifyAndSettleOnlinePayment(
+        { reference, tenantId, sessionId },
+        admin,
+      );
+      return successResponse({
+        verified: stripeResult.paid,
+        provider: stripeResult.provider ?? "stripe",
+        paystackStatus: stripeResult.paid ? "success" : "pending",
+        message: stripeResult.paid ? "Payment verified" : "Payment not complete yet",
+      });
+    }
+
     const secretKey = await getPaystackSecretKey({ tenantId });
     const paystackRes = await fetch(
       `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,

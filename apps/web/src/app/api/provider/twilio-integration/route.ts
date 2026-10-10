@@ -114,8 +114,9 @@ export async function PUT(request: NextRequest) {
       is_whatsapp_enabled 
     } = validated;
 
-    // Validate Twilio Account SID format (starts with AC)
-    if (!account_sid.startsWith("AC")) {
+    const sidIsMasked = account_sid === "••••••••";
+    // Validate Twilio Account SID format (starts with AC) when a new SID is provided
+    if (!sidIsMasked && !account_sid.startsWith("AC")) {
       return errorResponse("Invalid Twilio Account SID format. Should start with 'AC'", "VALIDATION_ERROR", 400);
     }
 

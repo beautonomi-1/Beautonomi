@@ -21,6 +21,7 @@ export type WalletTopupPaystackPayload = {
   amount: number;
   /** Gateway fee for this charge (Paystack `data.fees`, smallest-unit integer). */
   fees?: number;
+  paymentProvider?: "paystack" | "stripe";
 };
 
 /**
@@ -32,6 +33,7 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
 ): Promise<void> {
   const topupId = payload.metadata.wallet_topup_id as string | undefined;
   if (!topupId) return;
+  const paymentProvider = payload.paymentProvider ?? "paystack";
 
   const { data: topup } = await supabase.from("wallet_topups").select("*").eq("id", topupId).single();
   if (!topup) return;
@@ -142,9 +144,9 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
       fees: feesInCurrency,
       net_amount: amountInCurrency,
       status: "success",
-      provider: "paystack",
+      provider: paymentProvider,
       transaction_type: "wallet_topup",
-      metadata: payload.metadata,
+      metadata: { ...payload.metadata, fee_source: paymentProvider },
       created_at: new Date().toISOString(),
     });
   }

@@ -305,7 +305,9 @@ export default function AgeAssuranceScreen() {
                   }}
                   style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.gray[50] }}
                 >
-                  <Text>{m.label}</Text>
+                  <Text>
+                    {t(`web.accountSettings.identityVerification.legalDob.month${m.value}`) as string}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>

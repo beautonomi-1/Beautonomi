@@ -209,7 +209,9 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
   const gatewayFeesServices = sumFees(tx, ["payment", "additional_charge_payment"]);
   const terminalGatewayFees = sumFees(tx, [...TERMINAL_COMMERCE_TYPES]);
   const terminalRevenueGross = sum(tx, [...TERMINAL_COMMERCE_TYPES], "amount");
-  const otherGatewayFees = sumFees(tx, ["gift_card_sale", "wallet_topup"]);
+  const otherGatewayFees =
+    sumFees(tx, ["gift_card_sale", "wallet_topup"]) +
+    sumFees(tx, ["gateway_fee_adjustment"]);
   const membershipGatewayFees = sumFees(tx, ["membership_sale"]);
   const livePayoutRows = tx.filter((r) => r.transaction_type === "payout" && !isReversedPayoutRow(r));
   const payoutTransferFees =

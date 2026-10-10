@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CheckCircle2, XCircle, ExternalLink, Mail, Loader2 } from "lucide-react";
+import { CheckCircle2, XCircle, ExternalLink, Mail, Loader2, Plug } from "lucide-react";
 import { toast } from "sonner";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
@@ -38,6 +38,7 @@ export default function EmailIntegrationPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const [isPinging, setIsPinging] = useState(false);
   const [showKeys, setShowKeys] = useState(false);
   
   const [formData, setFormData] = useState({
@@ -155,6 +156,32 @@ export default function EmailIntegrationPage() {
       }
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    if (!integration) {
+      toast.error(t("web.provider.settings.pages.integrations/email.pleaseConfigureTheIntegrationFirst"));
+      return;
+    }
+    if (integration.provider_name !== "mailchimp") {
+      toast.error(t("web.provider.settings.pages.integrations/email.testConnectionMailchimpOnly"));
+      return;
+    }
+    try {
+      setIsPinging(true);
+      await fetcher.post("/api/provider/email-integration/test", { ping: true });
+      toast.success(t("web.provider.settings.pages.integrations/email.testConnectionSuccess"));
+      await loadData();
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof FetchError
+          ? error.message
+          : (error as { error?: { message?: string } })?.error?.message ||
+            t("web.provider.settings.pages.integrations/email.testFailed");
+      toast.error(errorMessage);
+    } finally {
+      setIsPinging(false);
     }
   };
 
@@ -309,6 +336,12 @@ export default function EmailIntegrationPage() {
                     {t("web.provider.settings.pages.integrations/email.mailchimpNote")}
                   </p>
                 )}
+                {integration &&
+                  formData.provider_name !== integration.provider_name && (
+                    <p className="text-xs text-amber-700 mt-2">
+                      {t("web.provider.settings.pages.integrations/email.providerSwitchRequiresNewKey")}
+                    </p>
+                  )}
               </div>
 
               <div>
@@ -318,7 +351,11 @@ export default function EmailIntegrationPage() {
                 <Input
                   id="api_key"
                   type="password"
-                  placeholder={formData.provider_name === "sendgrid" ? "SG.xxx..." : "xxxx-us1 (includes datacenter)"}
+                  placeholder={
+                    formData.provider_name === "sendgrid"
+                      ? "SG.xxx..."
+                      : t("web.provider.settings.pages.integrations/email.placeholderMailchimpApiKey")
+                  }
                   value={formData.api_key}
                   onChange={(e) =>
                     setFormData({ ...formData, api_key: e.target.value })
@@ -435,7 +472,9 @@ export default function EmailIntegrationPage() {
               <div>
                 <h3 className="text-lg font-semibold mb-1">{t("web.provider.settings.pages.integrations/email.testIntegration")}</h3>
                 <p className="text-sm text-gray-600">
-                  {t("web.provider.settings.pages.integrations/email.testHint")}
+                  {integration.provider_name === "mailchimp"
+                    ? t("web.provider.settings.pages.integrations/email.mailchimpTestHint")
+                    : t("web.provider.settings.pages.integrations/email.testHint")}
                 </p>
               </div>
               {integration.test_status === "success" && (
@@ -465,10 +504,27 @@ export default function EmailIntegrationPage() {
                 />
               </div>
 
-              <Button onClick={handleTest} disabled={isTesting || !testEmail}>
-                {isTesting ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : <Mail className="w-4 h-4 me-2" />}
-                {t("web.provider.settings.pages.integrations/email.sendTestEmail")}
-              </Button>
+              <div className="flex flex-wrap gap-3">
+                {integration.provider_name === "mailchimp" && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleTestConnection}
+                    disabled={isPinging || isTesting}
+                  >
+                    {isPinging ? (
+                      <Loader2 className="w-4 h-4 me-2 animate-spin" />
+                    ) : (
+                      <Plug className="w-4 h-4 me-2" />
+                    )}
+                    {t("web.provider.settings.pages.integrations/email.testConnection")}
+                  </Button>
+                )}
+                <Button onClick={handleTest} disabled={isTesting || isPinging || !testEmail}>
+                  {isTesting ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : <Mail className="w-4 h-4 me-2" />}
+                  {t("web.provider.settings.pages.integrations/email.sendTestEmail")}
+                </Button>
+              </div>
 
               {integration.test_error && (
                 <Alert variant="destructive">

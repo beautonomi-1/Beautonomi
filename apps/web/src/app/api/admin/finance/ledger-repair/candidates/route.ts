@@ -125,7 +125,8 @@ export async function GET(request: NextRequest) {
       if (bookingStatus && ["cancelled", "no_show"].includes(bookingStatus)) reasons.push("booking_status");
       if (bookingsWithRefunds.has(p.booking_id)) reasons.push("has_refunds");
       if (!p.payment_provider_id) reasons.push("missing_reference");
-      if (p.payment_provider !== "paystack") reasons.push("non_paystack_manual_only");
+      if (p.payment_provider === "flutterwave") reasons.push("flutterwave_manual_only");
+      if (p.payment_provider === "stripe") reasons.push("stripe_verify_required");
       const data = p.payment_provider_data ?? {};
       const feesRaw = typeof data.fees === "number" ? data.fees : null;
       return {

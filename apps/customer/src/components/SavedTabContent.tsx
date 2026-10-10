@@ -1246,7 +1246,11 @@ function SavedPostTile({
   useEffect(() => {
     setProviderSaved(isProviderInWishlist);
   }, [isProviderInWishlist]);
-  const mediaUrl = post.media_urls?.[0];
+  const mediaUrl = post.display_url ?? post.media_urls?.[0];
+  const tileAspect =
+    post.media_width && post.media_height && post.media_height > 0
+      ? Math.min(1.5, Math.max(0.6, post.media_width / post.media_height))
+      : 1.2;
   const providerName = post.provider?.business_name || "";
   const providerSlug = post.provider?.slug;
   const providerId = post.provider_id;
@@ -1284,7 +1288,7 @@ function SavedPostTile({
           {mediaUrl ? (
             <Image
               source={{ uri: mediaUrl }}
-              style={{ width: tileWidth, height: tileWidth * 1.2 }}
+              style={{ width: tileWidth, height: tileWidth * tileAspect }}
               contentFit="cover"
               cachePolicy="memory-disk"
               transition={200}
@@ -1293,7 +1297,7 @@ function SavedPostTile({
             <View
               style={{
                 width: tileWidth,
-                height: tileWidth * 1.2,
+                height: tileWidth * tileAspect,
                 alignItems: "center",
                 justifyContent: "center",
               }}

@@ -182,6 +182,8 @@ export default function ProviderFinance() {
   const [isSavingBank, setIsSavingBank] = useState(false);
   const [verifiedAccountName, setVerifiedAccountName] = useState<string | null>(null);
   const [showVerifyAccountButton, setShowVerifyAccountButton] = useState(true);
+  const [payoutRail, setPayoutRail] = useState<"paystack" | "stripe">("paystack");
+  const [stripePayoutReady, setStripePayoutReady] = useState(false);
   const [bankForm, setBankForm] = useState({
     country: "ZA",
     account_number: "",
@@ -210,9 +212,15 @@ export default function ProviderFinance() {
     void (async () => {
       try {
         const res = await fetcher.get<{
-          data: { show_verify_account_button?: boolean };
+          data: {
+            show_verify_account_button?: boolean;
+            payout_rail?: "paystack" | "stripe";
+            stripe_connect?: { onboarding_complete?: boolean } | null;
+          };
         }>("/api/provider/payout-accounts/options");
         setShowVerifyAccountButton(res.data?.show_verify_account_button !== false);
+        setPayoutRail(res.data?.payout_rail === "stripe" ? "stripe" : "paystack");
+        setStripePayoutReady(Boolean(res.data?.stripe_connect?.onboarding_complete));
       } catch {
         setShowVerifyAccountButton(true);
       }
@@ -446,13 +454,20 @@ export default function ProviderFinance() {
       return;
     }
 
+    if (payoutRail === "stripe" && !stripePayoutReady) {
+      toast.error(t("web.provider.finance.stripeConnectPayoutHint"));
+      return;
+    }
+
     try {
       setIsRequestingPayout(true);
       const primaryId = payoutAccounts[0]?.id;
       await fetcher.post("/api/provider/payouts", {
         amount: requested,
         notes: payoutNotes || null,
-        bank_account_id: selectedBankId || primaryId || undefined,
+        ...(payoutRail === "paystack"
+          ? { bank_account_id: selectedBankId || primaryId || undefined }
+          : {}),
       });
       
       toast.success(t("web.provider.finance.payoutSubmitted"));
@@ -475,9 +490,12 @@ export default function ProviderFinance() {
     }
   };
 
+  const payoutDestinationReady =
+    payoutRail === "stripe" ? stripePayoutReady : payoutAccounts.length > 0;
+
   const openPayoutDialog = () => {
     setShowPayoutDialog(true);
-    setShowInlineBankForm(payoutAccounts.length === 0);
+    setShowInlineBankForm(payoutRail === "paystack" && payoutAccounts.length === 0);
     if (earnings && !earnings.payout_balance_unavailable) {
       const available = roundMoney2(earnings.available_balance);
       const minimum = earnings.minimum_payout_amount ?? 100;
@@ -651,6 +669,23 @@ export default function ProviderFinance() {
                     )}
                   </div>
 
+                  {payoutRail === "stripe" ? (
+                    <div className="rounded-2xl border bg-gray-50 p-4 space-y-3">
+                      <p className="text-sm text-gray-700">{t("web.provider.finance.stripeConnectPayoutHint")}</p>
+                      {!stripePayoutReady ? (
+                        <Button variant="outline" size="sm" asChild>
+                          <Link href="/provider/settings/payout-accounts">
+                            {t("web.provider.finance.completeStripeConnect")}
+                          </Link>
+                        </Button>
+                      ) : (
+                        <p className="text-xs text-green-700 flex items-center gap-1">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          {t("web.provider.settings.pages.payout-accounts.stripeConnectReady")}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
                   <div className="rounded-2xl border bg-gray-50 p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -805,6 +840,7 @@ export default function ProviderFinance() {
                       </div>
                     )}
                   </div>
+                  )}
 
                   <div>
                     <Label htmlFor="payout-notes">{t("web.provider.finance.notesOptional")}</Label>
@@ -832,7 +868,7 @@ export default function ProviderFinance() {
                   </Button>
                   <Button
                     onClick={handleRequestPayout}
-                    disabled={isRequestingPayout || earnings.payout_balance_unavailable || payoutAccounts.length === 0 || !payoutAmount || roundMoney2(parseFloat(payoutAmount)) < (earnings.minimum_payout_amount ?? 100) || roundMoney2(parseFloat(payoutAmount)) > roundMoney2(earnings.available_balance)}
+                    disabled={isRequestingPayout || earnings.payout_balance_unavailable || !payoutDestinationReady || !payoutAmount || roundMoney2(parseFloat(payoutAmount)) < (earnings.minimum_payout_amount ?? 100) || roundMoney2(parseFloat(payoutAmount)) > roundMoney2(earnings.available_balance)}
                     className="bg-primary hover:bg-primary-hover"
                   >
                     {isRequestingPayout ? t("web.provider.finance.submitting") : t("web.provider.finance.requestPayout")}
@@ -1208,9 +1244,26 @@ export default function ProviderFinance() {
 
           <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-4 mb-6">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
-              {t("web.provider.finance.linkedBankAccounts")}
+              {payoutRail === "stripe"
+                ? t("web.provider.settings.pages.payout-accounts.stripeConnectTitle")
+                : t("web.provider.finance.linkedBankAccounts")}
             </p>
-            {payoutAccounts.length === 0 ? (
+            {payoutRail === "stripe" ? (
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <p className="text-sm text-gray-600 flex-1">
+                  {stripePayoutReady
+                    ? t("web.provider.settings.pages.payout-accounts.stripeConnectReadyHint")
+                    : t("web.provider.finance.stripeConnectPayoutHint")}
+                </p>
+                {!stripePayoutReady ? (
+                  <Button size="sm" asChild>
+                    <Link href="/provider/settings/payout-accounts">
+                      {t("web.provider.finance.completeStripeConnect")}
+                    </Link>
+                  </Button>
+                ) : null}
+              </div>
+            ) : payoutAccounts.length === 0 ? (
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <p className="text-sm text-gray-600 flex-1">
                   {t("web.provider.finance.noBankYet")}
@@ -1264,14 +1317,15 @@ export default function ProviderFinance() {
               action={
                 canRequestPayout
                   ? {
-                      label: payoutAccounts.length === 0 ? t("provider.mobile.screens.moreTab.setUpBankAccount") : t("provider.mobile.screens.moreTab.requestPayout"),
+                      label: !payoutDestinationReady
+                        ? t("provider.mobile.screens.moreTab.setUpBankAccount")
+                        : t("provider.mobile.screens.moreTab.requestPayout"),
                       onClick: () => {
-                        if (payoutAccounts.length === 0) {
+                        if (!payoutDestinationReady) {
                           window.location.href = "/provider/settings/payout-accounts";
                           return;
                         }
-                        setShowPayoutDialog(true);
-                        setShowInlineBankForm(false);
+                        openPayoutDialog();
                       },
                     }
                   : undefined

@@ -24,6 +24,7 @@ import { adminToast } from "@/lib/adminToast";
 import { publicEnv } from "@/config/publicEnv";
 import { useAdminConfirmAction } from "@/hooks/useAdminConfirmAction";
 import { ChevronLeft, ChevronRight, ExternalLink, Eye, EyeOff } from "lucide-react";
+import { exploreAdminPreviewPath } from "./exploreAdminMedia";
 
 const LIMIT = 50;
 const BUCKET = "explore-posts";
@@ -420,7 +421,7 @@ export function ExplorePostsPage() {
               const prov = Array.isArray(provRaw) ? provRaw[0] : provRaw;
               const providerId = String(prov?.id ?? row.provider_id ?? "");
               const providerLabel = prov?.business_name?.trim() || prov?.slug?.trim() || providerId || "—";
-              const media = Array.isArray(row.media_urls) ? (row.media_urls as string[])[0] : undefined;
+              const { previewPath, isVideo } = exploreAdminPreviewPath(row);
               const hidden = Boolean(row.is_hidden);
               const modNotes = typeof row.moderation_notes === "string" ? row.moderation_notes.trim() : "";
               const moderatedAt = row.moderated_at;
@@ -435,12 +436,19 @@ export function ExplorePostsPage() {
                     />
                   </AdminTd>
                   <AdminTd>
-                    {media ? (
-                      <img
-                        src={mediaUrl(media)}
-                        alt=""
-                        className="h-14 w-14 rounded-md border border-gray-200 object-cover"
-                      />
+                    {previewPath ? (
+                      <div className="relative h-14 w-14">
+                        <img
+                          src={mediaUrl(previewPath)}
+                          alt=""
+                          className="h-14 w-14 rounded-md border border-gray-200 object-cover"
+                        />
+                        {isVideo ? (
+                          <span className="absolute bottom-0.5 right-0.5 rounded bg-black/60 px-1 text-[10px] text-white">
+                            ▶
+                          </span>
+                        ) : null}
+                      </div>
                     ) : (
                       <span className="text-xs text-gray-400">—</span>
                     )}

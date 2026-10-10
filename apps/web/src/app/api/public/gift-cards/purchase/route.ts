@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { handleApiError, successResponse, errorResponse, requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { getPaymentFeatureFlagsForTenant } from "@/lib/subscriptions/entitlements";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
-import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { initializeOnlinePayment, isOnlineCardEnabledForTenant } from "@/lib/payments/online-payment";
 import { resolveHostedCheckoutCallbacks } from "@/lib/payments/resolve-paystack-hosted-callback";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -57,7 +57,7 @@ const purchaseSchema = z.object({
 /**
  * POST /api/public/gift-cards/purchase
  *
- * Initializes Paystack payment for purchasing a gift card. Webhook will issue the code + fund balance.
+ * Initializes online card payment for purchasing a gift card. Webhook/verify will issue the code + fund balance.
  */
 export async function POST(request: NextRequest) {
   const rateLimit = await checkPublicMutationRateLimit(request);
@@ -92,7 +92,8 @@ export async function POST(request: NextRequest) {
     if (!flags.gift_cards) {
       return errorResponse("Gift cards are currently unavailable.", "FEATURE_DISABLED", 403);
     }
-    if (!flags.payment_paystack) {
+    const onlineCardEnabled = await isOnlineCardEnabledForTenant(tenantId);
+    if (!onlineCardEnabled) {
       return errorResponse("Online payment for gift cards is currently unavailable.", "FEATURE_DISABLED", 403);
     }
 
@@ -272,14 +273,16 @@ export async function POST(request: NextRequest) {
     const callbackUrl = hostedGift.successUrl;
     const giftCancelAction = hostedGift.cancelUrl;
 
-    let paystackData: Awaited<ReturnType<typeof initializePaystackTransaction>>;
+    let onlineInit: Awaited<ReturnType<typeof initializeOnlinePayment>>;
     try {
-      paystackData = await initializePaystackTransaction({
+      onlineInit = await initializeOnlinePayment({
+        tenantId,
         email,
         amountInSmallestUnit: convertToSmallestUnit(totalAmount, currency),
         currency,
         reference,
-        callback_url: callbackUrl,
+        callbackUrl,
+        lineItemName: "Gift card",
         metadata: {
           gift_card_order_id: order.id,
           purchaser_user_id: purchaserUserId,
@@ -292,7 +295,6 @@ export async function POST(request: NextRequest) {
           ...templateMetadata,
           // provider_id removed - platform-only gift cards
         },
-        tenantId,
       });
     } catch (error) {
       await (supabase.from("gift_card_orders") as any)
@@ -301,7 +303,7 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
-    const paymentUrl = paystackData?.data?.authorization_url || null;
+    const paymentUrl = onlineInit.authorizationUrl || null;
 
     const { error: updateError } = await (supabase.from("gift_card_orders") as any)
       .update({ paystack_reference: reference })

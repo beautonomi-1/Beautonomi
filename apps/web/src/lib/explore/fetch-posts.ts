@@ -1,13 +1,15 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { ExplorePost } from "@/types/explore";
+import { EXPLORE_POST_SELECT_WITH_PROVIDER } from "@/lib/explore/post-select";
+import { mapExplorePostRow } from "@/lib/explore/post-mapper";
+import { isExploreEnabled } from "@/lib/explore/explore-feature-gates";
+import { enrichExplorePostsWithSoundUrls } from "@/lib/explore/sound-enrich";
+import {
+  buildExploreFeedFilterFingerprint,
+  encodeExplorePostsCursor,
+} from "@/lib/explore/explore-feed-cursor";
 
-const BUCKET = "explore-posts";
-
-function getMediaPublicUrl(path: string): string {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!url) return path;
-  return `${url}/storage/v1/object/public/${BUCKET}/${path}`;
-}
+const supabaseUrl = () => process.env.NEXT_PUBLIC_SUPABASE_URL;
 
 export type ExplorePostsInitial = {
   posts: ExplorePost[];
@@ -19,6 +21,9 @@ export type ExplorePostsInitial = {
  * Server-side first page + cursor for infinite scroll (matches GET /api/explore/posts pagination).
  */
 export async function fetchExplorePostsInitial(pageSize = 20): Promise<ExplorePostsInitial> {
+  if (!(await isExploreEnabled(null))) {
+    return { posts: [], has_more: false };
+  }
   let supabase;
   try {
     supabase = getSupabaseAdmin();
@@ -29,9 +34,7 @@ export async function fetchExplorePostsInitial(pageSize = 20): Promise<ExplorePo
   const fetchLimit = pageSize + 1;
   const { data: rows, error } = await supabase
     .from("explore_posts")
-    .select(
-      "id, provider_id, created_by_user_id, caption, media_urls, status, published_at, like_count, comment_count, created_at, updated_at"
-    )
+    .select(EXPLORE_POST_SELECT_WITH_PROVIDER)
     .eq("status", "published")
     .eq("is_hidden", false)
     .order("published_at", { ascending: false })
@@ -46,59 +49,42 @@ export async function fetchExplorePostsInitial(pageSize = 20): Promise<ExplorePo
   const slice = hasMore ? rows.slice(0, pageSize) : rows;
   const last = slice[slice.length - 1];
 
-  const providerIds = [...new Set(slice.map((r: any) => r.provider_id))];
-  const { data: provData } = await supabase
-    .from("providers")
-    .select("id, business_name, slug")
-    .in("id", providerIds);
-  type ProvRow = { id: string; business_name?: string; slug?: string };
-  const provMap = new Map<string, ProvRow>((provData || []).map((p: ProvRow) => [p.id, p]));
+  const mapped = slice.map((r) =>
+    mapExplorePostRow(r, { supabaseUrl: supabaseUrl(), savedIds: new Set(), likedIds: new Set() }),
+  );
+  const posts = await enrichExplorePostsWithSoundUrls(supabase, mapped, supabaseUrl());
 
-  const posts = slice.map((r: any) => {
-    const p = provMap.get(r.provider_id);
-    return {
-      id: r.id,
-      provider_id: r.provider_id,
-      provider: {
-        business_name: p?.business_name ?? "",
-        slug: p?.slug ?? "",
-      },
-      created_by_user_id: r.created_by_user_id,
-      caption: r.caption,
-      media_urls: (r.media_urls || []).map(getMediaPublicUrl),
-      status: r.status,
-      published_at: r.published_at,
-      like_count: r.like_count ?? 0,
-      comment_count: r.comment_count ?? 0,
-      created_at: r.created_at,
-      updated_at: r.updated_at,
-      is_saved: false,
-      is_liked: false,
-    } as ExplorePost;
+  const filterFp = buildExploreFeedFilterFingerprint({
+    sortMode: "chronological",
+    followingOnly: false,
+    categorySlug: null,
+    filterTags: null,
+    searchQuery: null,
+    lat: null,
+    lng: null,
+    radiusKm: 50,
+    city: null,
   });
-
   let next_cursor: string | undefined;
   if (hasMore && last) {
-    next_cursor = Buffer.from(
-      JSON.stringify({ published_at: last.published_at, id: last.id })
-    ).toString("base64url");
+    next_cursor = encodeExplorePostsCursor(
+      { published_at: last.published_at, id: last.id },
+      filterFp,
+    );
   }
 
   return { posts, next_cursor, has_more: hasMore };
 }
 
-/**
- * Server-side fetch of published explore posts. Use for initial page load (posts only).
- */
 export async function fetchExplorePosts(limit = 20): Promise<ExplorePost[]> {
   const r = await fetchExplorePostsInitial(limit);
   return r.posts;
 }
 
-/**
- * Server-side fetch of a single published explore post.
- */
 export async function fetchExplorePost(id: string): Promise<ExplorePost | null> {
+  if (!(await isExploreEnabled(null))) {
+    return null;
+  }
   let supabase;
   try {
     supabase = getSupabaseAdmin();
@@ -107,9 +93,7 @@ export async function fetchExplorePost(id: string): Promise<ExplorePost | null> 
   }
   const { data: row, error } = await supabase
     .from("explore_posts")
-    .select(
-      "id, provider_id, created_by_user_id, caption, media_urls, status, published_at, like_count, comment_count, created_at, updated_at"
-    )
+    .select(EXPLORE_POST_SELECT_WITH_PROVIDER)
     .eq("id", id)
     .eq("status", "published")
     .eq("is_hidden", false)
@@ -117,76 +101,24 @@ export async function fetchExplorePost(id: string): Promise<ExplorePost | null> 
 
   if (error || !row) return null;
 
-  const { data: prov } = await supabase
-    .from("providers")
-    .select("id, business_name, slug")
-    .eq("id", row.provider_id)
-    .single();
-
-  return {
-    id: row.id,
-    provider_id: row.provider_id,
-    provider: {
-      business_name: prov?.business_name ?? "",
-      slug: prov?.slug ?? "",
-    },
-    created_by_user_id: row.created_by_user_id,
-    caption: row.caption,
-    media_urls: (row.media_urls || []).map(getMediaPublicUrl),
-    status: row.status,
-    published_at: row.published_at,
-    like_count: row.like_count ?? 0,
-    comment_count: row.comment_count ?? 0,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-    is_saved: false,
-    is_liked: false,
-  } as ExplorePost;
+  const post = mapExplorePostRow(row, { supabaseUrl: supabaseUrl(), savedIds: new Set(), likedIds: new Set() });
+  const [withSound] = await enrichExplorePostsWithSoundUrls(supabase, [post], supabaseUrl());
+  return withSound ?? post;
 }
 
 async function rowsToExplorePosts(
   rows: Array<Record<string, unknown>>,
-  supabase: ReturnType<typeof getSupabaseAdmin>,
 ): Promise<ExplorePost[]> {
-  const providerIds = [...new Set(rows.map((r) => r.provider_id as string))];
-  const { data: provData } = await supabase
-    .from("providers")
-    .select("id, business_name, slug")
-    .in("id", providerIds);
-  type ProvRow = { id: string; business_name?: string; slug?: string };
-  const provMap = new Map<string, ProvRow>((provData || []).map((p: ProvRow) => [p.id, p]));
-
-  return rows.map((r) => {
-    const p = provMap.get(r.provider_id as string);
-    return {
-      id: r.id,
-      provider_id: r.provider_id,
-      provider: {
-        business_name: p?.business_name ?? "",
-        slug: p?.slug ?? "",
-      },
-      created_by_user_id: r.created_by_user_id,
-      caption: r.caption,
-      media_urls: ((r.media_urls as string[]) || []).map(getMediaPublicUrl),
-      status: r.status,
-      published_at: r.published_at,
-      like_count: (r.like_count as number) ?? 0,
-      comment_count: (r.comment_count as number) ?? 0,
-      created_at: r.created_at,
-      updated_at: r.updated_at,
-      is_saved: false,
-      is_liked: false,
-    } as ExplorePost;
-  });
+  return rows.map((r) =>
+    mapExplorePostRow(r as Parameters<typeof mapExplorePostRow>[0], {
+      supabaseUrl: supabaseUrl(),
+      savedIds: new Set(),
+      likedIds: new Set(),
+    }),
+  );
 }
 
-/**
- * Server-side fetch of related posts (excluding given post id).
- */
-export async function fetchRelatedPosts(
-  excludeId: string,
-  limit = 12
-): Promise<ExplorePost[]> {
+export async function fetchRelatedPosts(excludeId: string, limit = 12): Promise<ExplorePost[]> {
   let supabase;
   try {
     supabase = getSupabaseAdmin();
@@ -211,9 +143,7 @@ export async function fetchRelatedPosts(
         const ids = matches.map((m) => m.post_id);
         const { data: rows } = await supabase
           .from("explore_posts")
-          .select(
-            "id, provider_id, created_by_user_id, caption, media_urls, status, published_at, like_count, comment_count, created_at, updated_at",
-          )
+          .select(EXPLORE_POST_SELECT_WITH_PROVIDER)
           .in("id", ids)
           .eq("status", "published")
           .eq("is_hidden", false);
@@ -222,7 +152,7 @@ export async function fetchRelatedPosts(
           const sorted = [...rows].sort(
             (a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999),
           );
-          return rowsToExplorePosts(sorted.slice(0, limit), supabase);
+          return rowsToExplorePosts(sorted.slice(0, limit) as Record<string, unknown>[]);
         }
       }
     }
@@ -232,9 +162,7 @@ export async function fetchRelatedPosts(
 
   const { data: rows, error } = await supabase
     .from("explore_posts")
-    .select(
-      "id, provider_id, created_by_user_id, caption, media_urls, status, published_at, like_count, comment_count, created_at, updated_at"
-    )
+    .select(EXPLORE_POST_SELECT_WITH_PROVIDER)
     .eq("status", "published")
     .eq("is_hidden", false)
     .neq("id", excludeId)
@@ -244,5 +172,5 @@ export async function fetchRelatedPosts(
 
   if (error || !rows?.length) return [];
 
-  return rowsToExplorePosts(rows, supabase);
+  return rowsToExplorePosts(rows as Record<string, unknown>[]);
 }

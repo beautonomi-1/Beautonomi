@@ -1,0 +1,38 @@
+{
+  "Billed through Stripe": {
+    "zu": "Kukhokhiswa nge-Stripe"
+  },
+  "Update your card or view invoices in the secure Stripe billing portal. Tap Manage billing below.": {
+    "zu": "Buyekeza ikhadi lakho noma ubuke ama-invoyisi ku-portali yokukhokha ye-Stripe evikelekile. Thepha Phatha ukukhokha ngezansi."
+  },
+  "This plan is not on Paystack recurring billing. Complete checkout or contact support.": {
+    "zu": "Lo mhlelo awubhaliswanga nge-Paystack njalo. Qedela ukukhokha noma uxhumane nosizo."
+  },
+  "Complete Stripe Connect payout setup first": {
+    "zu": "Qedela ukusetha ukukhokha nge-Stripe Connect kuqala"
+  },
+  "Set up payouts through Stripe. Your bank is added on Stripe's secure onboarding page.": {
+    "zu": "Setha ukukhokhwa nge-Stripe. Ibhange lakho lengezwa ekhasini eliphephile lokubhaliswa kwe-Stripe."
+  },
+  "WhatsApp requires end-user opt-in. Freeform campaign text only works within the 24-hour customer service window after a user messages you; otherwise Meta requires approved Twilio Content Templates. Integration tests may succeed in sandbox or active sessions while bulk campaigns fail outside those rules.": {
+    "zu": "I-WhatsApp idinga imvume yomsebenzisi. Umbhalo womkhankaso ovulekile usebenza kuphela emasontweni angu-24 ngemva kokuthi umsebenzisi akuthumelele umlayezo; uma kungenjalo i-Meta idinga ama-Twilio Content Templates avunywe. Ukuhlola ukuhlanganyela kungaphumelela e-sandbox kodwa imikhankaso enkulu ingaphumeleli ngaphandle kwaleyo mvume."
+  },
+  "Use a Mailchimp Transactional API key from Transactional → Settings → API Keys (not Marketing keys from Profile → Extras). Verify your sending domain (SPF/DKIM) before sending.": {
+    "zu": "Sebenzisa ukhiye we-API we-Mailchimp Transactional ku-Transactional → Izilungiselelo → Amakhiye e-API (hhayi amakhiye okumaketha ku-Profile → Okungeziwe). Qinisekisa isizinda sakho sokuthumela (SPF/DKIM) ngaphambi kokuthumela."
+  },
+  "Marketing API keys ending in -us1 are not supported. Create a key in Mailchimp Transactional → Settings → API Keys.": {
+    "zu": "Amakhiye e-API okumaketha aphetha ngo-us1 awasekelwa. Dala ukhiye ku-Mailchimp Transactional → Izilungiselelo → Amakhiye e-API."
+  },
+  "Use a from-address on your domain verified in Mailchimp Transactional (SPF/DKIM).": {
+    "zu": "Sebenzisa ikheli elithi from esizindeni sakho esiqinisekisiwe ku-Mailchimp Transactional (SPF/DKIM)."
+  },
+  "Test connection verifies your Transactional API key. Send test email checks delivery (integration must be enabled).": {
+    "zu": "Ukuhlola ukuxhumana kuqinisekisa ukhiye wakho we-API Transactional. Ukuthumela i-imeyili yokuhlola kuhlola ukulethwa (kuhlanganiswe kumele kuvuliwe)."
+  },
+  "Enter a new API key when switching between SendGrid and Mailchimp Transactional.": {
+    "zu": "Faka ukhiye omusha we-API uma ushintsha phakathi kwe-SendGrid ne-Mailchimp Transactional."
+  },
+  "Test connection is for Mailchimp Transactional only. SendGrid: use Send test email.": {
+    "zu": "Ukuhlola ukuxhumana kungokwe-Mailchimp Transactional kuphela. SendGrid: sebenzisa Thumela i-imeyili yokuhlola."
+  }
+}

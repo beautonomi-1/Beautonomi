@@ -9,9 +9,42 @@ vi.mock("@/lib/http/fetcher", () => ({
   FetchError: class extends Error {},
 }));
 
+describe("buildOnlineVerifyQuery", () => {
+  it("includes reference only when session_id is absent", async () => {
+    const { buildOnlineVerifyQuery } = await import("../verify-with-retry");
+    expect(buildOnlineVerifyQuery("ref-abc")).toBe("reference=ref-abc");
+    expect(buildOnlineVerifyQuery("ref-abc", "  ")).toBe("reference=ref-abc");
+  });
+
+  it("appends session_id for Stripe Checkout returns", async () => {
+    const { buildOnlineVerifyQuery } = await import("../verify-with-retry");
+    expect(buildOnlineVerifyQuery("ref-abc", "cs_test_123")).toBe(
+      "reference=ref-abc&session_id=cs_test_123",
+    );
+  });
+});
+
 describe("verifyWithRetry", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("passes session_id on verify GET for Stripe regions", async () => {
+    mockFetcherGet.mockResolvedValueOnce({
+      data: { status: "success" },
+    });
+
+    const { verifyWithRetry } = await import("../verify-with-retry");
+    await verifyWithRetry("ref-stripe", {
+      maxAttempts: 1,
+      delayMs: 1,
+      sessionId: "cs_live_xyz",
+    });
+
+    expect(mockFetcherGet).toHaveBeenCalledWith(
+      "/api/paystack/verify?reference=ref-stripe&session_id=cs_live_xyz",
+      expect.objectContaining({ staleTimeMs: 0 }),
+    );
   });
 
   it("returns success immediately when verify succeeds", async () => {

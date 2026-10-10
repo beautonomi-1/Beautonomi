@@ -21,12 +21,16 @@ export default function ProviderExploreEditPage() {
   useEffect(() => {
     if (!id) return;
     fetcher
-      .get<{ data: ExplorePost }>(`/api/explore/posts/mine`)
+      .get<{ data: ExplorePost }>(`/api/explore/posts/mine?id=${encodeURIComponent(id)}`)
       .then((res: any) => {
         const data = res?.data ?? res;
-        const list = Array.isArray(data) ? data : (data?.data ? [data.data] : []);
-        const found = list.find((p: ExplorePost) => p.id === id);
-        setPost(found ?? null);
+        const postPayload =
+          data && typeof data === "object" && "id" in data
+            ? (data as ExplorePost)
+            : Array.isArray(data)
+              ? data.find((p: ExplorePost) => p.id === id)
+              : null;
+        setPost(postPayload ?? null);
       })
       .catch(() => setPost(null))
       .finally(() => setIsLoading(false));

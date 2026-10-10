@@ -38,6 +38,7 @@ function AdsPaymentReturnInner() {
   const campaignId = sp.get("campaign_id") ?? "";
   const context = sp.get("context") ?? "web";
   const reference = sp.get("reference") || sp.get("trxref") || "";
+  const sessionId = sp.get("session_id");
   const confirmed = sp.get("confirmed") === "1";
   const nativeContext = isNativeAppContext(context);
 
@@ -136,7 +137,7 @@ function AdsPaymentReturnInner() {
 
         const verifyResult = await verifyWithRetry<{ status?: string; message?: string; type?: string }>(
           reference,
-          { maxAttempts: 5, delayMs: 1500 },
+          { maxAttempts: 5, delayMs: 1500, sessionId },
         );
         if (verifyResult.status === "failed") {
           throw new Error(verifyResult.errorMessage || pr("confirmFailed"));

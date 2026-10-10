@@ -204,6 +204,12 @@ export function PayoutsContent() {
   const { data: accountsList, refresh: refreshAccounts } = useApi<PayoutAccount[]>("/api/provider/payout-accounts", {
     revalidateOnFocus: true,
   });
+  const { data: payoutUiOptions } = useApi<{
+    payout_rail?: "paystack" | "stripe";
+    stripe_connect?: { onboarding_complete?: boolean } | null;
+  }>("/api/provider/payout-accounts/options", { staleTimeMs: 60_000 });
+  const payoutRail = payoutUiOptions?.payout_rail === "stripe" ? "stripe" : "paystack";
+  const stripePayoutReady = Boolean(payoutUiOptions?.stripe_connect?.onboarding_complete);
   const { data: teamAccess } = useApi<TeamAccessPayload>("/api/provider/team-access");
   const { data: nextDate, refresh: refreshNextDate } = useApi<NextDateData>("/api/provider/payouts/next-date", {
     revalidateOnFocus: true,
@@ -233,6 +239,8 @@ export function PayoutsContent() {
       activeAccounts[0],
     [activeAccounts, bankAccountId],
   );
+  const payoutDestinationReady =
+    payoutRail === "stripe" ? stripePayoutReady : activeAccounts.length > 0;
   const availableBalance = financeData?.earnings?.available_balance ?? 0;
   const payoutBalanceUnavailable = financeData?.earnings?.payout_balance_unavailable === true;
   const pendingPayouts = financeData?.earnings?.pending_payouts ?? 0;
@@ -283,17 +291,22 @@ export function PayoutsContent() {
       );
       return;
     }
-    const selectedAccount = preferredAccount;
-    if (!selectedAccount) {
+    if (!payoutDestinationReady) {
       Alert.alert(po("bankRequiredTitle"), po("bankRequiredBody"));
       return;
     }
+    const selectedAccount = preferredAccount;
     const scheduleLabel = nextDate?.next_payout_date
       ? po("scheduleNextRun", { schedule: nextDate.payout_schedule ?? po("weekly"), date: formatDateSafe(nextDate.next_payout_date, po("dash")) })
       : nextDate?.payout_schedule;
     const confirmed = await confirmPayoutRequest({
       amount: formatCurrency(num, defaultCurrency),
-      account: formatAccountLabel(selectedAccount, po),
+      account:
+        payoutRail === "stripe"
+          ? "Stripe Connect"
+          : selectedAccount
+            ? formatAccountLabel(selectedAccount, po)
+            : po("bankRequiredBody"),
       available: formatCurrency(Math.max(0, availableBalance - num), defaultCurrency),
       pending: formatCurrency(pendingPayouts, defaultCurrency),
       schedule: scheduleLabel,
@@ -304,7 +317,7 @@ export function PayoutsContent() {
     const body: Record<string, unknown> = {
       amount: num,
       notes: notes.trim() || undefined,
-      bank_account_id: selectedAccount.id,
+      ...(payoutRail === "paystack" && selectedAccount ? { bank_account_id: selectedAccount.id } : {}),
     };
     const { error: err } = await postPayout("/api/provider/payouts", body);
     if (err) {
@@ -324,6 +337,8 @@ export function PayoutsContent() {
     amount,
     notes,
     preferredAccount,
+    payoutDestinationReady,
+    payoutRail,
     postPayout,
     refresh,
     refreshFinance,
@@ -444,7 +459,7 @@ export function PayoutsContent() {
             {canRequestPayouts ? (
               <TouchableOpacity
                 onPress={() => {
-                  if (activeAccounts.length === 0) {
+                  if (!payoutDestinationReady) {
                     router.push("/(app)/(tabs)/more/settings/payout-accounts");
                     return;
                   }
@@ -454,7 +469,7 @@ export function PayoutsContent() {
               >
                 <Ionicons name="cash-outline" size={20} color="#fff" />
                 <Text style={twStyle("ms-2 font-medium text-white")}>
-                  {activeAccounts.length === 0 ? po("addBankAccount") : po("requestPayout")}
+                  {!payoutDestinationReady ? po("addBankAccount") : po("requestPayout")}
                 </Text>
               </TouchableOpacity>
             ) : null}
@@ -473,7 +488,7 @@ export function PayoutsContent() {
                   );
                   return;
                 }
-                if (activeAccounts.length === 0) {
+                if (!payoutDestinationReady) {
                   router.push("/(app)/(tabs)/more/settings/payout-accounts");
                 } else {
                   setRequestOpen(true);

@@ -108,15 +108,34 @@ export function ProviderFinanceTab({
   if (txEnd) txQs.set("end_date", txEnd);
   const txQsString = txQs.toString();
 
+  type ProviderPayoutAccountsPayload = {
+    accounts?: PayoutAccountRow[];
+    payout_rail?: "paystack" | "stripe";
+    stripe_connect?: { onboarding_complete?: boolean; external_account_last4?: string | null } | null;
+  };
+
   const payoutAccountsQ = useQuery({
     queryKey: adminQueryKeys.providers.payoutAccounts(providerCanonicalId),
-    queryFn: () =>
-      adminApi.getJson<PayoutAccountRow[]>(
+    queryFn: async () =>
+      adminApi.getJson<ProviderPayoutAccountsPayload | PayoutAccountRow[]>(
         `/api/admin/providers/${encodeURIComponent(providerCanonicalId)}/payout-accounts`,
         { timeoutMs: 60_000 },
       ),
     enabled: !!providerCanonicalId,
   });
+
+  const payoutAccountsPayload = payoutAccountsQ.data;
+  const payoutRail =
+    payoutAccountsPayload && !Array.isArray(payoutAccountsPayload)
+      ? payoutAccountsPayload.payout_rail ?? "paystack"
+      : "paystack";
+  const stripeConnectMeta =
+    payoutAccountsPayload && !Array.isArray(payoutAccountsPayload)
+      ? payoutAccountsPayload.stripe_connect
+      : null;
+  const payoutAccountRows: PayoutAccountRow[] = Array.isArray(payoutAccountsPayload)
+    ? payoutAccountsPayload
+    : (payoutAccountsPayload?.accounts ?? []);
 
   const txQ = useQuery({
     queryKey: adminQueryKeys.providers.transactions(providerCanonicalId, txQsString),
@@ -250,10 +269,12 @@ export function ProviderFinanceTab({
           <div>
             <h2 className="text-base font-semibold text-gray-900">Payout accounts</h2>
             <p className="mt-1 text-sm text-gray-600">
-              Bank / transfer recipients on file (masked account details).
+              {payoutRail === "stripe"
+                ? "Stripe Connect handles bank details for this market. Providers complete onboarding in the provider app."
+                : "Bank / transfer recipients on file (masked account details)."}
             </p>
           </div>
-          {providerCanonicalId && (
+          {providerCanonicalId && payoutRail === "paystack" ? (
             <button
               type="button"
               className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50"
@@ -261,20 +282,31 @@ export function ProviderFinanceTab({
             >
               Add bank account
             </button>
-          )}
+          ) : null}
         </div>
 
-        {providerCanonicalId && (
+        {providerCanonicalId && payoutRail === "paystack" ? (
           <ProviderBankAccountModal
             open={showAddBankAccount}
             onClose={() => setShowAddBankAccount(false)}
             providerId={providerCanonicalId}
           />
-        )}
+        ) : null}
+
+        {payoutRail === "stripe" ? (
+          <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
+            <p className="font-medium">Stripe Connect</p>
+            <p className="mt-1 text-indigo-800">
+              {stripeConnectMeta?.onboarding_complete
+                ? `Ready for payouts${stripeConnectMeta.external_account_last4 ? ` (bank ···· ${stripeConnectMeta.external_account_last4})` : ""}.`
+                : "Provider has not finished Connect onboarding yet."}
+            </p>
+          </div>
+        ) : null}
 
         {payoutAccountsQ.isLoading ? (
           <p className="mt-4 text-sm text-gray-500">Loading payout accounts…</p>
-        ) : (payoutAccountsQ.data ?? []).length === 0 ? (
+        ) : payoutRail === "stripe" ? null : payoutAccountRows.length === 0 ? (
           <p className="mt-4 text-sm text-gray-500">No payout accounts.</p>
         ) : (
           <AdminDataTable className="mt-4">
@@ -289,7 +321,7 @@ export function ProviderFinanceTab({
               </tr>
             </AdminTableHead>
             <AdminTableBody>
-              {(payoutAccountsQ.data ?? []).map((acc) => (
+              {payoutAccountRows.map((acc) => (
                 <tr key={str(acc.id)} className="hover:bg-gray-50/60">
                   <AdminTd>{str(acc.type)}</AdminTd>
                   <AdminTd>{str(acc.bank_name) || str(acc.bank_code) || "—"}</AdminTd>

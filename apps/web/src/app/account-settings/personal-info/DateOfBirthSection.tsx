@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 import {
-  LEGAL_DOB_MONTHS,
   composeLegalDobIso,
   daysInMonth,
   formatLegalDobDisplay,
@@ -13,6 +13,10 @@ import {
 } from "@beautonomi/utils";
 
 export function DateOfBirthSection({ initialIso }: { initialIso: string | null }) {
+  const { t } = useTranslation();
+  const dobPrefix = "web.accountSettings.identityVerification.legalDob";
+  const piPrefix = "web.accountSettings.personalInfo";
+
   const [iso, setIso] = useState(initialIso ?? "");
   const parts = parseLegalDobIso(iso || null);
   const [day, setDay] = useState<number | null>(parts.day);
@@ -46,7 +50,7 @@ export function DateOfBirthSection({ initialIso }: { initialIso: string | null }
       { minAge: 13 },
     );
     if (!draftIso || err) {
-      toast.error(err || "Select a valid date of birth.");
+      toast.error(err || t(`${piPrefix}.dateOfBirthInvalid`));
       return;
     }
     setSaving(true);
@@ -58,23 +62,21 @@ export function DateOfBirthSection({ initialIso }: { initialIso: string | null }
       });
       const json = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
       if (!res.ok) {
-        throw new Error(json?.error?.message || "Could not save date of birth.");
+        throw new Error(json?.error?.message || t(`${piPrefix}.dateOfBirthSaveFailed`));
       }
       setIso(draftIso);
-      toast.success("Date of birth saved.");
+      toast.success(t(`${piPrefix}.dateOfBirthSaved`));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not save date of birth.");
+      toast.error(e instanceof Error ? e.message : t(`${piPrefix}.dateOfBirthSaveFailed`));
     } finally {
       setSaving(false);
     }
-  }, [day, draftIso, month, year]);
+  }, [day, draftIso, month, piPrefix, t, year]);
 
   return (
     <section id="date-of-birth-section" className="rounded-xl border border-gray-100 bg-white p-6">
-      <h2 className="text-lg font-semibold text-gray-900">Date of birth</h2>
-      <p className="mt-1 text-sm text-gray-600">
-        Safety controls use your date of birth. Adult settings apply only if you are 18 or older.
-      </p>
+      <h2 className="text-lg font-semibold text-gray-900">{t(`${dobPrefix}.dateOfBirth`)}</h2>
+      <p className="mt-1 text-sm text-gray-600">{t(`${piPrefix}.dateOfBirthSafetyHint`)}</p>
       {iso ? (
         <p className="mt-3 text-sm font-medium text-gray-800">{formatLegalDobDisplay(iso)}</p>
       ) : null}
@@ -83,9 +85,9 @@ export function DateOfBirthSection({ initialIso }: { initialIso: string | null }
           className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
           value={day ?? ""}
           onChange={(e) => setDay(e.target.value ? Number(e.target.value) : null)}
-          aria-label="Day"
+          aria-label={t(`${dobPrefix}.day`)}
         >
-          <option value="">Day</option>
+          <option value="">{t(`${dobPrefix}.day`)}</option>
           {Array.from({ length: maxDay }, (_, i) => i + 1).map((d) => (
             <option key={d} value={d}>
               {d}
@@ -96,12 +98,12 @@ export function DateOfBirthSection({ initialIso }: { initialIso: string | null }
           className="rounded-lg border border-gray-200 px-3 py-2 text-sm min-w-[8rem]"
           value={month ?? ""}
           onChange={(e) => setMonth(e.target.value ? Number(e.target.value) : null)}
-          aria-label="Month"
+          aria-label={t(`${dobPrefix}.month`)}
         >
-          <option value="">Month</option>
-          {LEGAL_DOB_MONTHS.map((m) => (
-            <option key={m.value} value={m.value}>
-              {m.label}
+          <option value="">{t(`${dobPrefix}.month`)}</option>
+          {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+            <option key={m} value={m}>
+              {t(`${dobPrefix}.month${m}`)}
             </option>
           ))}
         </select>
@@ -109,9 +111,9 @@ export function DateOfBirthSection({ initialIso }: { initialIso: string | null }
           className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
           value={year ?? ""}
           onChange={(e) => setYear(e.target.value ? Number(e.target.value) : null)}
-          aria-label="Year"
+          aria-label={t(`${dobPrefix}.year`)}
         >
-          <option value="">Year</option>
+          <option value="">{t(`${dobPrefix}.year`)}</option>
           {years.map((y) => (
             <option key={y} value={y}>
               {y}
@@ -124,7 +126,7 @@ export function DateOfBirthSection({ initialIso }: { initialIso: string | null }
           disabled={saving}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
         >
-          {saving ? "Saving…" : "Save"}
+          {saving ? t(`${piPrefix}.saving`) : t(`${piPrefix}.save`)}
         </button>
       </div>
     </section>

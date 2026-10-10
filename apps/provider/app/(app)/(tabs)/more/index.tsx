@@ -263,6 +263,10 @@ export default function MoreScreen() {
   const { provider } = useProvider();
   const { data: financeSummary, refresh: refreshFinanceSummary } = useApi<FinanceSummaryData>("/api/provider/finance?range=month", { staleTimeMs: 30_000, timeoutMs: MONEY_SURFACE_TIMEOUT_MS });
   const { data: payoutAccounts, loading: payoutAccountsLoading, refresh: refreshPayoutAccounts } = useApi<PayoutAccountSummary[]>("/api/provider/payout-accounts", { staleTimeMs: 30_000, timeoutMs: MONEY_SURFACE_TIMEOUT_MS });
+  const { data: payoutUiOptions, refresh: refreshPayoutOptions } = useApi<{
+    payout_rail?: "paystack" | "stripe";
+    stripe_connect?: { onboarding_complete?: boolean; external_account_last4?: string | null } | null;
+  }>("/api/provider/payout-accounts/options", { staleTimeMs: 60_000 });
   const { data: payoutSchedule, refresh: refreshPayoutSchedule } = useApi<PayoutScheduleData>("/api/provider/payouts/next-date", { staleTimeMs: 60_000, timeoutMs: MONEY_SURFACE_TIMEOUT_MS });
   const { data: teamAccess } = useApi<TeamAccessData>("/api/provider/team-access", { staleTimeMs: 60_000 });
   const { data: permissionData } = useApi<{ isOwner?: boolean; permissions?: Record<string, boolean> }>(
@@ -361,12 +365,18 @@ export default function MoreScreen() {
     accounts.find((account) => account.is_primary === true) ??
     accounts.find((account) => account.active !== false) ??
     accounts[0];
-  const hasPayoutAccount = accounts.length > 0;
+  const payoutRail = payoutUiOptions?.payout_rail === "stripe" ? "stripe" : "paystack";
+  const stripeConnectReady = Boolean(payoutUiOptions?.stripe_connect?.onboarding_complete);
+  const hasPayoutDestinationReady =
+    payoutRail === "stripe" ? stripeConnectReady : accounts.length > 0;
   const payoutAccountLast4 = primaryPayoutAccount?.account_number_last4 ?? primaryPayoutAccount?.account_number?.slice(-4);
+  const stripeConnectLast4 = payoutUiOptions?.stripe_connect?.external_account_last4 ?? null;
   const requestPayoutDisabledReason = !canRequestPayouts
     ? t("provider.mobile.screens.moreTab.payoutRequiresEditSettings")
-    : !hasPayoutAccount
-      ? t("provider.mobile.screens.moreTab.payoutAddBankFirst")
+    : !hasPayoutDestinationReady
+      ? payoutRail === "stripe"
+        ? t("provider.mobile.screens.moreTab.payoutCompleteStripeConnectFirst")
+        : t("provider.mobile.screens.moreTab.payoutAddBankFirst")
       : minimumPayout != null && availablePayout < minimumPayout
         ? t("provider.mobile.screens.moreTab.payoutMinimumIs", { amount: formatCurrency(minimumPayout) })
         : null;
@@ -391,9 +401,18 @@ export default function MoreScreen() {
       void refreshMeProfile();
       void refreshFinanceSummary();
       void refreshPayoutAccounts();
+      void refreshPayoutOptions();
       void refreshPayoutSchedule();
       void refreshNavCounts();
-    }, [refreshCompletion, refreshMeProfile, refreshFinanceSummary, refreshPayoutAccounts, refreshPayoutSchedule, refreshNavCounts])
+    }, [
+      refreshCompletion,
+      refreshMeProfile,
+      refreshFinanceSummary,
+      refreshPayoutAccounts,
+      refreshPayoutOptions,
+      refreshPayoutSchedule,
+      refreshNavCounts,
+    ])
   );
 
   useEffect(() => {
@@ -411,6 +430,7 @@ export default function MoreScreen() {
         refreshMeProfile(),
         refreshFinanceSummary(),
         refreshPayoutAccounts(),
+        refreshPayoutOptions(),
         refreshPayoutSchedule(),
         refreshNavCounts(),
         refreshConfigBundle(),
@@ -418,7 +438,16 @@ export default function MoreScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, [refreshCompletion, refreshMeProfile, refreshFinanceSummary, refreshPayoutAccounts, refreshPayoutSchedule, refreshNavCounts, refreshConfigBundle]);
+  }, [
+    refreshCompletion,
+    refreshMeProfile,
+    refreshFinanceSummary,
+    refreshPayoutAccounts,
+    refreshPayoutOptions,
+    refreshPayoutSchedule,
+    refreshNavCounts,
+    refreshConfigBundle,
+  ]);
 
   const getRouteBadgeCount = useCallback(
     (route: string): number => {
@@ -642,7 +671,7 @@ export default function MoreScreen() {
           <TouchableOpacity
             onPress={() =>
               handleMenuPress(
-                hasPayoutAccount || !canEditSettings
+                hasPayoutDestinationReady || !canEditSettings
                   ? "/(app)/(tabs)/more/money?tab=payouts"
                   : "/(app)/(tabs)/more/payment-setup",
               )
@@ -653,16 +682,26 @@ export default function MoreScreen() {
               flexDirection: "row",
               alignItems: "center",
               borderRadius: 14,
-              backgroundColor: hasPayoutAccount ? "#047857" : "#111827",
+              backgroundColor: hasPayoutDestinationReady ? "#047857" : "#111827",
               paddingHorizontal: 14,
               paddingVertical: 12,
             }}
             accessibilityRole="button"
-            accessibilityLabel={hasPayoutAccount ? t("provider.mobile.screens.moreTab.requestPayoutA11y") : t("provider.mobile.screens.moreTab.setUpBankAccountPayoutsA11y")}
+            accessibilityLabel={
+              hasPayoutDestinationReady
+                ? t("provider.mobile.screens.moreTab.requestPayoutA11y")
+                : t("provider.mobile.screens.moreTab.setUpBankAccountPayoutsA11y")
+            }
           >
-            <Ionicons name={hasPayoutAccount ? "cash-outline" : "business-outline"} size={20} color="#fff" />
+            <Ionicons
+              name={hasPayoutDestinationReady ? "cash-outline" : "business-outline"}
+              size={20}
+              color="#fff"
+            />
             <Text style={{ marginStart: 8, flex: 1, fontSize: 15, fontWeight: "700", color: "#fff" }}>
-              {hasPayoutAccount ? t("provider.mobile.screens.moreTab.requestPayout") : t("provider.mobile.screens.moreTab.setUpBankAccount")}
+              {hasPayoutDestinationReady
+                ? t("provider.mobile.screens.moreTab.requestPayout")
+                : t("provider.mobile.screens.moreTab.setUpBankAccount")}
             </Text>
             <DirectionalIcon name="chevron-forward" size={18} color="rgba(255,255,255,0.8)" />
           </TouchableOpacity>
@@ -685,17 +724,29 @@ export default function MoreScreen() {
             accessibilityRole="button"
             accessibilityLabel={t("provider.mobile.screens.moreTab.bankAccountSetupA11y")}
           >
-            <Ionicons name={hasPayoutAccount ? "checkmark-circle" : "alert-circle"} size={20} color={hasPayoutAccount ? "#059669" : "#d97706"} />
+            <Ionicons
+              name={hasPayoutDestinationReady ? "checkmark-circle" : "alert-circle"}
+              size={20}
+              color={hasPayoutDestinationReady ? "#059669" : "#d97706"}
+            />
             <View style={{ marginStart: 8, flex: 1 }}>
               <Text style={{ fontSize: 14, fontWeight: "700", color: Colors.gray[900] }}>
-                {t("provider.mobile.screens.moreTab.bankAccountSetup")}
+                {payoutRail === "stripe"
+                  ? t("provider.mobile.screens.payoutAccounts.stripeConnectTitle")
+                  : t("provider.mobile.screens.moreTab.bankAccountSetup")}
               </Text>
               <Text style={{ marginTop: 1, fontSize: 12, color: Colors.gray[500] }} numberOfLines={2}>
                 {payoutAccountsLoading
                   ? t("provider.mobile.screens.moreTab.checkingPayoutAccount")
-                  : hasPayoutAccount
-                    ? `${primaryPayoutAccount?.bank_name || t("provider.mobile.screens.moreTab.bankAccountFallback")}${payoutAccountLast4 ? ` • •••• ${payoutAccountLast4}` : ""}`
-                    : t("provider.mobile.screens.moreTab.addBankAccountPrompt")}
+                  : payoutRail === "stripe"
+                    ? stripeConnectReady
+                      ? stripeConnectLast4
+                        ? t("provider.mobile.screens.moreTab.stripeConnectLast4", { last4: stripeConnectLast4 })
+                        : t("provider.mobile.screens.moreTab.stripeConnectReady")
+                      : t("provider.mobile.screens.payoutAccounts.stripeConnectSubtitle")
+                    : hasPayoutDestinationReady
+                      ? `${primaryPayoutAccount?.bank_name || t("provider.mobile.screens.moreTab.bankAccountFallback")}${payoutAccountLast4 ? ` • •••• ${payoutAccountLast4}` : ""}`
+                      : t("provider.mobile.screens.moreTab.addBankAccountPrompt")}
               </Text>
             </View>
             <DirectionalIcon name="chevron-forward" size={16} color="#d1d5db" />

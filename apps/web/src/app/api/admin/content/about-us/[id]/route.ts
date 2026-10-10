@@ -29,9 +29,9 @@ export async function GET(
   }
 }
 
-export async function PUT(
+async function updateAboutUsSection(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  params: Promise<{ id: string }>
 ) {
   try {
     await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
@@ -70,6 +70,21 @@ export async function PUT(
   } catch (error) {
     return handleApiError(error, "Failed to update about us content");
   }
+}
+
+/** PATCH — same body as PUT (admin SPA uses patchJson). */
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  return updateAboutUsSection(request, context.params);
+}
+
+export async function PUT(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  return updateAboutUsSection(request, context.params);
 }
 
 export async function DELETE(

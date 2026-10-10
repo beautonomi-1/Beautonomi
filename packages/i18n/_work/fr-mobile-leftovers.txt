@@ -1,0 +1,180 @@
+﻿booking.noSlotsTryAnother
+  en: No available slots. Try another date.
+  loc: Non disponible slots. Try another date.
+
+provider.mobile.screens.subscriptionSettings.billedThroughStripeTitle
+  en: Billed through Stripe
+  loc: Billed through Stripe
+
+provider.mobile.screens.subscriptionSettings.billedThroughStripeBody
+  en: Update your card or view invoices in the secure Stripe billing portal. Tap Manage billing below.
+  loc: Update your card or view invoices in the secure Stripe billing portal. Tap Manage billing below.
+
+provider.mobile.screens.subscriptionSettings.stripeManageUnavailable
+  en: Stripe billing is not set up yet. Complete checkout first, then try again.
+  loc: Stripe billing is not set up yet. Complete checkout first, then try again.
+
+provider.mobile.screens.subscriptionSettings.paystackManageUnavailable
+  en: This plan is not on Paystack recurring billing. Complete checkout or contact support.
+  loc: This plan is not on Paystack recurring billing. Complete checkout or contact support.
+
+provider.mobile.screens.moreTab.payoutCompleteStripeConnectFirst
+  en: Complete Stripe Connect payout setup first
+  loc: Complete Stripe Connect payout setup first
+
+provider.mobile.screens.moreTab.stripeConnectReady
+  en: Stripe Connect ready for payouts
+  loc: Stripe Connect ready for payouts
+
+provider.mobile.screens.moreTab.stripeConnectLast4
+  en: Stripe Connect ┬╖┬╖┬╖┬╖ {{last4}}
+  loc: Stripe Connect ┬╖┬╖┬╖┬╖ {{last4}}
+
+provider.mobile.screens.paymentSetup.hintPaystackTerminal
+  en: Paystack Terminal: take payment on your phone with a QR code.
+  loc: Paystack Terminal: take payment on your phone with a QR code.
+
+provider.mobile.screens.payoutAccounts.stripeConnectTitle
+  en: Stripe Connect
+  loc: Stripe Connect
+
+provider.mobile.screens.payoutAccounts.stripeConnectSubtitle
+  en: Set up payouts through Stripe. Your bank is added on Stripe's secure onboarding page.
+  loc: Set up payouts through Stripe. Your bank is added on Stripe's secure onboarding page.
+
+provider.mobile.screens.payoutAccounts.stripeConnectReady
+  en: Ready for payouts
+  loc: Ready for payouts
+
+provider.mobile.screens.payoutAccounts.stripeConnectStart
+  en: Connect with Stripe
+  loc: Connect with Stripe
+
+provider.mobile.screens.payoutAccounts.stripeConnectBankLast4
+  en: Bank ┬╖┬╖┬╖┬╖ {{last4}}
+  loc: Bank ┬╖┬╖┬╖┬╖ {{last4}}
+
+provider.mobile.screens.twilioIntegration.whatsappCampaignLimitHint
+  en: WhatsApp requires end-user opt-in. Freeform campaign text only works within the 24-hour customer service window after a user messages you; otherwise Meta requires approved Twilio Content Templates. Integration tests may succeed in sandbox or active sessions while bulk campaigns fail outside those rules.
+  loc: WhatsApp requires end-user opt-in. Freeform campaign text only works within the 24-hour customer service window after a user messages you; otherwise Meta requires approved Twilio Content Templates. Integration tests may succeed in sandbox or active sessions while bulk campaigns fail outside those rules.
+
+customer.mobile.tabs.explore.searchPlaceholder
+  en: Search looks, styles, treatments...
+  loc: Rechercher looks, styles, treatments...
+
+customer.mobile.screens.productOrders.emptyBody
+  en: Your product orders will appear here
+  loc: Your produit commandes will appear here
+
+customer.mobile.screens.recurringBookings.invalidPreferredTime
+  en: Enter a valid time in HH:MM format (e.g. 10:30).
+  loc: Enter a valid time in HH:MM format (e.g. 10:30).
+
+customer.mobile.screens.customRequestsList.noPaymentLinkBody
+  en: No payment link was returned. Please try again.
+  loc: No payment link was returned. Please try again.
+
+customer.mobile.screens.bookingDetail.runningLateSentBody
+  en: The provider has been notified you're running late.
+  loc: The provider has been notified you're running late.
+
+customer.mobile.screens.bookingDetail.paymentLinkNotReceived
+  en: Payment link was not received. Please try again.
+  loc: Payment link was not received. Please try again.
+
+customer.mobile.screens.safetyHub.ageBand.13_17
+  en: 13ΓÇô17 ΓÇö teen safety defaults apply
+  loc: 13ΓÇô17 ΓÇö teen safety defaults appliquer
+
+customer.mobile.screens.help.learningCentreA11y
+  en: Open Learning Centre articles
+  loc: Ouvrir Learning Centre articles
+
+customer.mobile.screens.taxes.documentsLoadFailed
+  en: Could not load tax document list.
+  loc: Impossible de load tax document list.
+
+customer.mobile.screens.taxes.documentsLoadErrorEmpty
+  en: Could not load the document list.
+  loc: Impossible de load the document list.
+
+customer.mobile.screens.taxes.downloadHintA11y
+  en: Opens the PDF or file in your browser
+  loc: Opens the PDF or file in your navegador
+
+customer.mobile.screens.personalInfo.photoUploadedProfileFailed
+  en: Photo uploaded but profile could not be updated. Please try again.
+  loc: Photo uploaded but profile could not be updated. Please try again.
+
+customer.mobile.screens.personalInfo.aboutMeUpdateFailed
+  en: Profile saved but About me could not be updated.
+  loc: Profile saved but About me could not be updated.
+
+customer.mobile.screens.notificationPreferences.messagePushLabel
+  en: Push notifications for messages
+  loc: Notifications push pour les messages
+
+customer.mobile.screens.partnerProfile.paymentLinkError
+  en: Payment link could not be created. Please try again.
+  loc: Payment link could not be created. Please try again.
+
+customer.mobile.screens.partnerProfile.exactAddressAfterBooking
+  en: Exact address available after booking confirmation
+  loc: Exact address available after booking confirmation
+
+customer.mobile.screens.partnerProfile.signInToReadAbout
+  en: Sign in to read the full description, opening times, and location details.
+  loc: Sign in to read the full description, opening times, and location details.
+
+customer.mobile.screens.partnerProfile.membershipPaidWallet
+  en: Membership paid from your wallet.
+  loc: Membership paid from your portefeuille.
+
+customer.mobile.screens.partnerProfile.failedMembershipPurchase
+  en: Failed to start membership purchase
+  loc: Impossible de start membership purchase
+
+customer.mobile.screens.partnerProfile.giftCardsBody
+  en: Purchase a gift card for future visits to this provider. Gift cards can be used for any service or booking.
+  loc: Purchase a gift card for future visits to this provider. Gift cards can be used for any service or booking.
+
+customer.mobile.screens.partnerProfile.noDescriptionForService
+  en: No description available for this service.
+  loc: No description available for this service.
+
+customer.mobile.screens.partnerProfile.pleaseProvideSlug
+  en: Please provide a provider slug.
+  loc: Please provide a prestataire slug.
+
+checkout.noMatchingPackages
+  en: No packages match your search.
+  loc: Non packages match your rechercher.
+
+checkout.redeemPackage
+  en: Redeem a prepaid package (optional)
+  loc: Redeem a prepaid package (facultatif)
+
+checkout.holdExpiredFallback
+  en: Hold expired. Please select a new time.
+  loc: Hold expired. Veuillez s├⌐lectionner a new time.
+
+checkout.promoValidateFailed
+  en: Could not validate promo code
+  loc: Impossible de validate promo code
+
+checkout.invalidServerResponse
+  en: Invalid response from server
+  loc: Response from server no v├ílido
+
+web.global.cityWaitlist.notesPlaceholder
+  en: Tell us more about your interest...
+  loc: Tell us m├ís Acerca de your interest...
+
+fr: leftover=43
+{
+  "fr": {
+    "leftoverBefore": 43,
+    "mapped": 0,
+    "skipped": 0
+  }
+}

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Linking, Modal, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import * as WebBrowser from "expo-web-browser";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -353,8 +354,13 @@ export default function MarketAvailabilityGate() {
 
   const openInternationalSite = () => {
     const url = `https://${globalEntryHost}`;
-    void Linking.openURL(url);
     dismissRegional();
+    // This app claims beautonomi.com as a universal link. Linking.openURL
+    // hands the bare origin back to the app, and iOS rejects it
+    // ("Unable to open URL"). Safari view loads the page in place.
+    void WebBrowser.openBrowserAsync(url).catch(() => {
+      void Linking.openURL(url).catch(() => {});
+    });
   };
 
   const restrictedTitle = ma("restrictedTitle");

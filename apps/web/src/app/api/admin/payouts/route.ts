@@ -331,12 +331,23 @@ export async function GET(request: NextRequest) {
         !bankFromRecipient && payoutRest.provider_id
           ? bankAccountByProviderId.get(payoutRest.provider_id) || null
           : null;
+      const payoutProvider = (payoutRest as { payout_provider?: string | null }).payout_provider;
+      const bank_account =
+        bankFromRecipient ||
+        bankFromProvider ||
+        (payoutProvider === "stripe"
+          ? {
+              account_name: "Stripe Connect",
+              bank_name: "Stripe",
+              account_number_last4: "",
+            }
+          : null);
       return {
         ...payoutRest,
         provider: payoutRest.provider_id
           ? providerMap.get(payoutRest.provider_id) || null
           : null,
-        bank_account: bankFromRecipient || bankFromProvider || null,
+        bank_account,
         payout_hold: payoutRest.provider_id
           ? payoutHoldByProvider.get(payoutRest.provider_id) ?? null
           : null,

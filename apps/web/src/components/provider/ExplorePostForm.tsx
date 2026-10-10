@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
@@ -14,17 +14,126 @@ import {
   ImageIcon,
   FlipHorizontal,
 } from "lucide-react";
-import type { ExplorePost } from "@/types/explore";
+import type { ExploreMediaSlideMeta, ExplorePost, ExploreTextOverlay } from "@/types/explore";
+import { ExploreTextOverlayLayer } from "@/components/explore/ExploreTextOverlayLayer";
+import {
+  ExploreVideoTrimModal,
+  type ExploreVideoTrimResult,
+} from "@/components/explore/ExploreVideoTrimModal";
+import { trimWindowDurationMs } from "@/lib/explore/explore-video-trim";
+import { firstSlideIsVideo } from "@/lib/explore/video-media";
 import { useTranslation } from "@beautonomi/i18n";
+import {
+  ExploreSoundPicker,
+  type ExploreSoundPickerItem,
+} from "@/components/explore/ExploreSoundPicker";
 
-const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+const ALLOWED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+  "image/avif",
+];
 const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime"];
 const ALLOWED_TYPES = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_VIDEO_TYPES];
-const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
-const MAX_VIDEO_SIZE = 50 * 1024 * 1024; // 50MB
+const DEFAULT_MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+const DEFAULT_MULTIPART_IMAGE_BYTES = Math.floor(4.5 * 1024 * 1024);
+const DEFAULT_MAX_VIDEO_BYTES = 262_144_000;
 const MAX_MEDIA_ITEMS = 5;
+const MIN_VIDEO_RECORD_MS = 450;
 
-const VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov"];
+function LibraryClipRing({
+  trimStartMs,
+  trimEndMs,
+  sourceMs,
+  label,
+}: {
+  trimStartMs?: number | null;
+  trimEndMs?: number | null;
+  sourceMs?: number | null;
+  label: string;
+}) {
+  const source = sourceMs && sourceMs > 0 ? sourceMs : trimEndMs && trimEndMs > 0 ? trimEndMs : 1;
+  const start = Math.min(1, Math.max(0, (trimStartMs ?? 0) / source));
+  const end = Math.min(1, Math.max(start, (trimEndMs ?? source) / source));
+  const r = 46;
+  const c = 2 * Math.PI * r;
+  const visible = Math.max(c * (end - start), 4);
+  return (
+    <svg
+      viewBox="0 0 100 100"
+      className="absolute inset-2 h-[calc(100%-1rem)] w-[calc(100%-1rem)] pointer-events-none -rotate-90"
+      aria-label={label}
+    >
+      <circle cx="50" cy="50" r={r} fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="3" />
+      <circle
+        cx="50"
+        cy="50"
+        r={r}
+        fill="none"
+        stroke="#ffffff"
+        strokeWidth="3"
+        strokeDasharray={`${visible} ${c}`}
+        strokeDashoffset={-c * start}
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ExploreRecordProgressRing({
+  size,
+  progress,
+  recording,
+}: {
+  size: number;
+  progress: number;
+  recording: boolean;
+}) {
+  const stroke = 4;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const clamped = Math.min(1, Math.max(0, progress));
+  const offset = c * (1 - clamped);
+  return (
+    <svg
+      width={size}
+      height={size}
+      className="absolute inset-0 -rotate-90 pointer-events-none"
+      aria-hidden
+    >
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke="rgba(255,255,255,0.35)"
+        strokeWidth={stroke}
+      />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke={recording ? "#ef4444" : "#ffffff"}
+        strokeWidth={stroke}
+        strokeDasharray={c}
+        strokeDashoffset={offset}
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function formatBytesShort(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${Math.round(bytes / (1024 * 1024))}MB`;
+  return `${Math.round(bytes / 1024)}KB`;
+}
+
+const VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov", ".m4v"];
 
 function isVideoPath(path: string): boolean {
   const lower = path.toLowerCase();
@@ -76,6 +185,64 @@ export function ExplorePostForm({
       return url;
     });
   });
+  const [mediaMetaSlides, setMediaMetaSlides] = useState<ExploreMediaSlideMeta[]>(
+    () => post?.media_meta ?? [],
+  );
+  const [overlayDraft, setOverlayDraft] = useState("");
+  const [uploadCaps, setUploadCaps] = useState({
+    maxImage: DEFAULT_MAX_IMAGE_BYTES,
+    maxMultipart: DEFAULT_MULTIPART_IMAGE_BYTES,
+    maxVideoDurationMs: 60_000,
+    maxVideoBytes: DEFAULT_MAX_VIDEO_BYTES,
+  });
+  const [soundId, setSoundId] = useState<string | null>(post?.sound_id ?? null);
+  const [soundCatalogEnabled, setSoundCatalogEnabled] = useState(false);
+  const [providerSounds, setProviderSounds] = useState<ExploreSoundPickerItem[]>([]);
+  const hasVideoMedia = mediaPaths.some((p) => isVideoPath(p));
+  /** Sound bed plays on customer full-screen video (first slide must be video). */
+  const hasVideoFirstForSound = firstSlideIsVideo(mediaPaths, mediaMetaSlides);
+  const soundPickerLabels = useMemo(
+    () => ({
+      addMusic: t("web.provider.explorePostForm.addMusic"),
+      originalAudio: t("web.provider.explorePostForm.originalAudio"),
+      viewerHint: t("web.provider.explorePostForm.soundViewerHint"),
+      soundsEmpty: t("web.provider.explorePostForm.soundsEmpty"),
+      sectionPlatform: t("web.provider.explorePostForm.soundsSectionPlatform"),
+      sectionYours: t("web.provider.explorePostForm.soundsSectionYours"),
+      previewPlay: t("web.provider.explorePostForm.soundPreviewPlay"),
+      previewStop: t("web.provider.explorePostForm.soundPreviewStop"),
+    }),
+    [t],
+  );
+
+  useEffect(() => {
+    void fetcher.get<{
+      data?: {
+        max_image_bytes?: number;
+        max_multipart_image_bytes?: number;
+        max_duration_ms?: number;
+        max_video_bytes?: number;
+        sound_catalog_enabled?: boolean;
+      };
+    }>("/api/explore/upload").then((res) => {
+      const d = (res as {
+        data?: {
+          max_image_bytes?: number;
+          max_multipart_image_bytes?: number;
+          max_duration_ms?: number;
+          max_video_bytes?: number;
+          sound_catalog_enabled?: boolean;
+        };
+      })?.data;
+      setUploadCaps((prev) => ({
+        maxImage: d?.max_image_bytes ?? prev.maxImage,
+        maxMultipart: d?.max_multipart_image_bytes ?? prev.maxMultipart,
+        maxVideoDurationMs: d?.max_duration_ms ?? prev.maxVideoDurationMs,
+        maxVideoBytes: d?.max_video_bytes ?? prev.maxVideoBytes,
+      }));
+      setSoundCatalogEnabled(d?.sound_catalog_enabled === true);
+    }).catch(() => {});
+  }, []);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [activeSlide, setActiveSlide] = useState(0);
@@ -84,8 +251,16 @@ export function ExplorePostForm({
   const [captureMode, setCaptureMode] = useState<"idle" | "camera" | "gallery">("idle");
   const [captureType, setCaptureType] = useState<"photo" | "video">("photo");
   const [isRecording, setIsRecording] = useState(false);
+  const [recordProgressMs, setRecordProgressMs] = useState(0);
+  const recordingStartedAtRef = useRef(0);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [facingMode, setFacingMode] = useState<"user" | "environment">("environment");
+  const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
+  const [lensReady, setLensReady] = useState(false);
+  const [videoInputCount, setVideoInputCount] = useState(0);
+  const facingModeRef = useRef<"user" | "environment">("user");
+  const frontDeviceIdRef = useRef<string | null>(null);
+  const backDeviceIdRef = useRef<string | null>(null);
+  const lensRequestRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const carouselRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -93,6 +268,14 @@ export function ExplorePostForm({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [videoTrimPending, setVideoTrimPending] = useState<{
+    file: File;
+    videoUrl: string;
+    durationMs: number;
+  } | null>(null);
+  const videoTrimQueueRef = useRef<
+    { file: File; videoUrl: string; durationMs: number }[]
+  >([]);
 
   const categorySyncedFromPost = useRef(false);
   useEffect(() => {
@@ -128,44 +311,339 @@ export function ExplorePostForm({
       .catch(() => setOfferings([]));
   }, []);
 
-  const triggerFileSelect = () => fileInputRef.current?.click();
+  useEffect(() => {
+    if (!hasVideoFirstForSound || !soundCatalogEnabled) {
+      if (!hasVideoFirstForSound) setSoundId(null);
+      return;
+    }
+    fetcher
+      .get<{ data: ExploreSoundPickerItem[] }>("/api/explore/sounds/mine")
+      .then((res) => {
+        const raw = (res as { data?: { data?: unknown } })?.data?.data ?? (res as { data?: unknown })?.data ?? res;
+        const list = Array.isArray(raw) ? raw : [];
+        setProviderSounds(list as ExploreSoundPickerItem[]);
+      })
+      .catch(() => setProviderSounds([]));
+  }, [hasVideoFirstForSound, soundCatalogEnabled]);
+
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
   }, []);
 
-  const startCamera = useCallback(
-    async (mode?: "user" | "environment") => {
-      const nextMode = mode ?? facingMode;
-      if (mode) setFacingMode(mode);
+  const rememberVideoInputs = useCallback(async (openedId: string | undefined, mode: "user" | "environment") => {
+    const devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput");
+    setVideoInputCount(devices.length);
+    const lensOf = (label: string): "user" | "environment" | null => {
+      if (/\b(back|rear|environment)\b|facing back/i.test(label)) return "environment";
+      if (/\b(front|user|facetime)\b|facing front/i.test(label)) return "user";
+      return null;
+    };
+    const labeledFront = devices.find((d) => lensOf(d.label) === "user");
+    const labeledBack = devices.find((d) => lensOf(d.label) === "environment");
+    if (labeledFront) frontDeviceIdRef.current = labeledFront.deviceId;
+    if (labeledBack) backDeviceIdRef.current = labeledBack.deviceId;
+    if (openedId) {
+      if (mode === "user" && !frontDeviceIdRef.current) frontDeviceIdRef.current = openedId;
+      if (mode === "environment" && !backDeviceIdRef.current) backDeviceIdRef.current = openedId;
+      const other = devices.find((d) => d.deviceId !== openedId);
+      if (other && devices.length > 1) {
+        if (mode === "user" && !backDeviceIdRef.current) backDeviceIdRef.current = other.deviceId;
+        if (mode === "environment" && !frontDeviceIdRef.current) frontDeviceIdRef.current = other.deviceId;
+      }
+    }
+  }, []);
+
+  const openLens = useCallback(
+    async (mode: "user" | "environment") => {
+      const requestId = ++lensRequestRef.current;
+      const stillCurrent = () => requestId === lensRequestRef.current;
+      const dropStream = (stream: MediaStream) => {
+        stream.getTracks().forEach((track) => track.stop());
+      };
       setCameraError(null);
+      setLensReady(false);
       stopCamera();
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: nextMode, width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: captureType === "video",
-        });
+      facingModeRef.current = mode;
+      setFacingMode(mode);
+      const knownId = mode === "user" ? frontDeviceIdRef.current : backDeviceIdRef.current;
+      const videoConstraints: MediaTrackConstraints = knownId
+        ? { deviceId: { exact: knownId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        : { facingMode: { ideal: mode }, width: { ideal: 1280 }, height: { ideal: 720 } };
+      const attach = async (stream: MediaStream) => {
+        if (!stillCurrent()) {
+          dropStream(stream);
+          return;
+        }
+        const openedId = stream.getVideoTracks()[0]?.getSettings().deviceId;
+        await rememberVideoInputs(openedId, mode);
+        if (!stillCurrent()) {
+          dropStream(stream);
+          return;
+        }
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => undefined);
         }
-      } catch (err: any) {
-        setCameraError(err?.message || t("web.provider.explorePostForm.cameraAccessDenied"));
+        setLensReady(true);
+      };
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: videoConstraints,
+          audio: captureType === "video",
+        });
+        await attach(stream);
+      } catch (err: unknown) {
+        if (!stillCurrent()) return;
+        if (knownId) {
+          if (mode === "user") frontDeviceIdRef.current = null;
+          else backDeviceIdRef.current = null;
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: { ideal: mode }, width: { ideal: 1280 }, height: { ideal: 720 } },
+              audio: captureType === "video",
+            });
+            await attach(stream);
+            return;
+          } catch {
+            /* fall through */
+          }
+        }
+        if (!stillCurrent()) return;
+        const message = err instanceof Error ? err.message : t("web.provider.explorePostForm.cameraAccessDenied");
+        setCameraError(message);
         toast.error(t("web.provider.explorePostForm.cameraAccessFailed"));
       }
     },
-    [captureType, stopCamera, facingMode]
+    [captureType, rememberVideoInputs, stopCamera, t],
   );
 
   useEffect(() => {
-    if (captureMode === "camera") {
-      startCamera();
+    if (captureMode !== "camera") {
+      lensRequestRef.current += 1;
+      setLensReady(false);
+      stopCamera();
+      return;
     }
+    void openLens(facingModeRef.current);
     return () => {
-      if (captureMode !== "camera") stopCamera();
+      lensRequestRef.current += 1;
+      stopCamera();
     };
-  }, [captureMode, startCamera, stopCamera]);
+  }, [captureMode, captureType, openLens, stopCamera]);
+
+  useEffect(() => {
+    if (!videoTrimPending || captureMode !== "camera") return;
+    stopCamera();
+    setCaptureMode("idle");
+  }, [videoTrimPending, captureMode, stopCamera]);
+
+  const warnTrimInProgress = useCallback(() => {
+    toast.info(t("web.provider.explorePostForm.trimVideoFinishFirst"));
+  }, [t]);
+
+  const openCameraUi = useCallback(() => {
+    if (videoTrimPending) {
+      warnTrimInProgress();
+      return;
+    }
+    if (mediaPaths.length >= MAX_MEDIA_ITEMS) {
+      toast.error(t("web.provider.explorePostForm.maxMedia", { count: MAX_MEDIA_ITEMS }));
+      return;
+    }
+    facingModeRef.current = "user";
+    setFacingMode("user");
+    setCaptureMode("camera");
+  }, [videoTrimPending, mediaPaths.length, t, warnTrimInProgress]);
+
+  const openGalleryPicker = useCallback(() => {
+    if (videoTrimPending) {
+      warnTrimInProgress();
+      return;
+    }
+    if (mediaPaths.length >= MAX_MEDIA_ITEMS) {
+      toast.error(t("web.provider.explorePostForm.maxMedia", { count: MAX_MEDIA_ITEMS }));
+      return;
+    }
+    fileInputRef.current?.click();
+  }, [videoTrimPending, mediaPaths.length, t, warnTrimInProgress]);
+
+  const flipLens = useCallback(() => {
+    if (isRecording) return;
+    if (videoInputCount > 0 && videoInputCount < 2) {
+      toast.info(t("web.provider.explorePostForm.onlyOneCamera"));
+      return;
+    }
+    const next = facingModeRef.current === "user" ? "environment" : "user";
+    void openLens(next);
+  }, [isRecording, openLens, t, videoInputCount]);
+
+  const readVideoDurationMs = (file: File) =>
+    new Promise<number>((resolve) => {
+      const v = document.createElement("video");
+      v.preload = "metadata";
+      v.onloadedmetadata = () => {
+        URL.revokeObjectURL(v.src);
+        resolve(Math.round((Number.isFinite(v.duration) ? v.duration : 15) * 1000));
+      };
+      v.onerror = () => resolve(15_000);
+      v.src = URL.createObjectURL(file);
+    });
+
+  const uploadVideoAfterTrim = useCallback(
+    async (file: File, trim: ExploreVideoTrimResult) => {
+      setIsUploading(true);
+      try {
+        const sourceDuration = trim.source_duration_ms;
+        const segmentMs = trimWindowDurationMs(trim);
+        await fetcher.get("/api/explore/upload");
+        const slotRes = await fetcher.post<{
+          data: { path: string; signed_url?: string | null; token?: string | null };
+        }>("/api/explore/upload", {
+          kind: "video",
+          size_bytes: file.size,
+          mime_type: file.type || "video/mp4",
+          duration_ms: sourceDuration,
+        });
+        const slot = (slotRes as { data?: { path: string; signed_url?: string | null; token?: string | null } })
+          ?.data;
+        let path = slot?.path;
+        if (slot?.signed_url) {
+          const put = await fetch(slot.signed_url, {
+            method: "PUT",
+            body: file,
+            headers: { "Content-Type": file.type || "video/mp4" },
+          });
+          if (!put.ok) throw new Error("video_upload_failed");
+        }
+        const slideMeta: ExploreMediaSlideMeta = {
+          kind: "video",
+          duration_ms: segmentMs,
+          source_duration_ms: sourceDuration,
+          trim_start_ms: trim.trim_start_ms,
+          trim_end_ms: trim.trim_end_ms,
+        };
+        if (path) {
+          setMediaPaths((p) => [...p, path!]);
+          setMediaMetaSlides((m) => [...m, slideMeta]);
+          setCaptureMode("idle");
+          stopCamera();
+        }
+      } catch {
+        toast.error(t("web.provider.explorePostForm.uploadFailed"));
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    [stopCamera, t],
+  );
+
+  const uploadFile = useCallback(
+    async (file: File) => {
+      if (mediaPaths.length >= MAX_MEDIA_ITEMS) {
+        toast.error(t("web.provider.explorePostForm.maxMedia", { count: MAX_MEDIA_ITEMS }));
+        return;
+      }
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        toast.error(t("web.provider.explorePostForm.invalidFileType"));
+        return;
+      }
+      const isVideo = ALLOWED_VIDEO_TYPES.includes(file.type);
+      const maxSize = isVideo ? uploadCaps.maxVideoBytes : uploadCaps.maxImage;
+      if (file.size > maxSize) {
+        toast.error(
+          t("web.provider.explorePostForm.fileTooLarge", {
+            size: formatBytesShort(maxSize),
+          }),
+        );
+        return;
+      }
+      if (isVideo) {
+        const durationMs = await readVideoDurationMs(file);
+        const item = {
+          file,
+          videoUrl: URL.createObjectURL(file),
+          durationMs,
+        };
+        setVideoTrimPending((cur) => {
+          if (cur) {
+            videoTrimQueueRef.current.push(item);
+            return cur;
+          }
+          return item;
+        });
+        return;
+      }
+      setIsUploading(true);
+      try {
+        let path: string | undefined;
+        let slideMeta: ExploreMediaSlideMeta = { kind: "image" };
+        if (file.size > uploadCaps.maxMultipart) {
+          const slotRes = await fetcher.post<{
+            data: { path: string; signed_url?: string | null };
+          }>("/api/explore/upload", {
+            kind: "image",
+            size_bytes: file.size,
+            mime_type: file.type || "image/jpeg",
+          });
+          const slot = (slotRes as { data?: { path: string; signed_url?: string | null } })?.data;
+          path = slot?.path;
+          if (slot?.signed_url) {
+            const put = await fetch(slot.signed_url, {
+              method: "PUT",
+              body: file,
+              headers: { "Content-Type": file.type || "image/jpeg" },
+            });
+            if (!put.ok) throw new Error("image_upload_failed");
+          }
+          if (path) {
+            const fin = await fetcher.post<{
+              data: { path: string; display_path: string; width: number; height: number };
+            }>("/api/explore/upload/finalize", { path });
+            const finData = (fin as { data?: { path: string; display_path: string; width: number; height: number } })
+              ?.data;
+            if (finData) {
+              slideMeta = {
+                kind: "image",
+                display_path: finData.display_path,
+                width: finData.width,
+                height: finData.height,
+              };
+              path = finData.path;
+            }
+          }
+        } else {
+          const fd = new FormData();
+          fd.append("file", file);
+          const res = await fetcher.post<{
+            data: { path: string; display_path?: string; width?: number; height?: number };
+          }>("/api/explore/upload", fd as any);
+          const data = (res as { data?: { path: string; display_path?: string; width?: number; height?: number } })
+            ?.data;
+          path = data?.path;
+          slideMeta = {
+            kind: "image",
+            display_path: data?.display_path ?? null,
+            width: data?.width ?? null,
+            height: data?.height ?? null,
+          };
+        }
+        if (path) {
+          setMediaPaths((p) => [...p, path!]);
+          setMediaMetaSlides((m) => [...m, slideMeta]);
+          setCaptureMode("idle");
+          stopCamera();
+        }
+      } catch {
+        toast.error(t("web.provider.explorePostForm.uploadFailed"));
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    [mediaPaths.length, stopCamera, t, uploadCaps.maxImage, uploadCaps.maxMultipart, uploadCaps.maxVideoBytes],
+  );
 
   const capturePhoto = useCallback(() => {
     const video = videoRef.current;
@@ -176,6 +654,11 @@ export function ExplorePostForm({
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (facingModeRef.current === "user") {
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+    }
     ctx.drawImage(video, 0, 0);
     canvas.toBlob(
       async (blob) => {
@@ -186,10 +669,10 @@ export function ExplorePostForm({
       "image/jpeg",
       0.92
     );
-  }, []);
+  }, [uploadFile]);
 
   const startRecording = useCallback(() => {
-    if (!streamRef.current || !videoRef.current) return;
+    if (!streamRef.current || !videoRef.current || mediaRecorderRef.current) return;
     chunksRef.current = [];
     const mimeType =
       MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
@@ -199,7 +682,31 @@ export function ExplorePostForm({
           : MediaRecorder.isTypeSupported("video/mp4")
             ? "video/mp4"
             : "";
-    const recorder = new MediaRecorder(streamRef.current, mimeType
+    let recordStream: MediaStream = streamRef.current;
+    let mirrorFrame = 0;
+    if (facingModeRef.current === "user" && canvasRef.current && videoRef.current.videoWidth) {
+      const canvas = canvasRef.current;
+      const video = videoRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d");
+      if (ctx && typeof canvas.captureStream === "function") {
+        const paint = () => {
+          ctx.save();
+          ctx.translate(canvas.width, 0);
+          ctx.scale(-1, 1);
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          ctx.restore();
+          mirrorFrame = requestAnimationFrame(paint);
+        };
+        paint();
+        const mirrored = canvas.captureStream(30);
+        const audio = streamRef.current.getAudioTracks()[0];
+        if (audio) mirrored.addTrack(audio);
+        recordStream = mirrored;
+      }
+    }
+    const recorder = new MediaRecorder(recordStream, mimeType
       ? { mimeType, videoBitsPerSecond: 2500000 }
       : { videoBitsPerSecond: 2500000 });
     recorder.ondataavailable = (e) => {
@@ -207,58 +714,74 @@ export function ExplorePostForm({
     };
     const recMimeType = recorder.mimeType;
     recorder.onstop = async () => {
+      const elapsed = Date.now() - recordingStartedAtRef.current;
+      if (elapsed < MIN_VIDEO_RECORD_MS) {
+        toast.info(t("web.provider.explorePostForm.recordingTooShort"));
+        chunksRef.current = [];
+        return;
+      }
       const type = recMimeType || "video/webm";
       const ext = type.includes("mp4") ? "mp4" : "webm";
       const blob = new Blob(chunksRef.current, { type });
+      if (blob.size < 1024) return;
       const file = new File([blob], `record-${Date.now()}.${ext}`, { type });
       await uploadFile(file);
     };
-    recorder.start();
+    recorder.addEventListener("stop", () => {
+      if (mirrorFrame) cancelAnimationFrame(mirrorFrame);
+    });
+    recordingStartedAtRef.current = Date.now();
+    try {
+      recorder.start(250);
+    } catch {
+      if (mirrorFrame) cancelAnimationFrame(mirrorFrame);
+      toast.error(t("web.provider.explorePostForm.cameraAccessFailed"));
+      return;
+    }
     mediaRecorderRef.current = recorder;
     setIsRecording(true);
-  }, []);
+    setRecordProgressMs(0);
+  }, [uploadFile, t]);
 
   const stopRecording = useCallback(() => {
-    mediaRecorderRef.current?.stop();
+    if (!mediaRecorderRef.current) return;
+    mediaRecorderRef.current.stop();
     mediaRecorderRef.current = null;
     setIsRecording(false);
+    setRecordProgressMs(0);
   }, []);
 
-  const uploadFile = async (file: File) => {
-    if (mediaPaths.length >= MAX_MEDIA_ITEMS) {
-      toast.error(t("web.provider.explorePostForm.maxMedia", { count: MAX_MEDIA_ITEMS }));
-      return;
-    }
-    if (!ALLOWED_TYPES.includes(file.type)) {
-      toast.error(t("web.provider.explorePostForm.invalidFileType"));
-      return;
-    }
-    const isVideo = ALLOWED_VIDEO_TYPES.includes(file.type);
-    const maxSize = isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
-    if (file.size > maxSize) {
-      toast.error(t("web.provider.explorePostForm.fileTooLarge", { size: isVideo ? "50MB" : "5MB" }));
-      return;
-    }
-    setIsUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetcher.post<{ data: { path: string } }>(
-        "/api/explore/upload",
-        fd as any
-      );
-      const path = (res as any)?.data?.path;
-      if (path) {
-        setMediaPaths((p) => [...p, path]);
-        setCaptureMode("idle");
-        stopCamera();
+  useEffect(() => {
+    if (!isRecording) return;
+    const timer = window.setInterval(() => {
+      const elapsed = Date.now() - recordingStartedAtRef.current;
+      setRecordProgressMs(elapsed);
+      if (elapsed >= uploadCaps.maxVideoDurationMs) {
+        stopRecording();
       }
-    } catch {
-      toast.error(t("web.provider.explorePostForm.uploadFailed"));
-    } finally {
-      setIsUploading(false);
-    }
-  };
+    }, 50);
+    return () => window.clearInterval(timer);
+  }, [isRecording, stopRecording, uploadCaps.maxVideoDurationMs]);
+
+  const cancelVideoTrim = useCallback(() => {
+    setVideoTrimPending((pending) => {
+      if (pending) URL.revokeObjectURL(pending.videoUrl);
+      return videoTrimQueueRef.current.shift() ?? null;
+    });
+  }, []);
+
+  const confirmVideoTrim = useCallback(
+    (trim: ExploreVideoTrimResult) => {
+      setVideoTrimPending((pending) => {
+        if (pending) {
+          URL.revokeObjectURL(pending.videoUrl);
+          void uploadVideoAfterTrim(pending.file, trim);
+        }
+        return videoTrimQueueRef.current.shift() ?? null;
+      });
+    },
+    [uploadVideoAfterTrim],
+  );
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -307,9 +830,14 @@ export function ExplorePostForm({
         continue;
       }
       const isVideo = ALLOWED_VIDEO_TYPES.includes(file.type);
-      const maxSize = isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
+      const maxSize = isVideo ? uploadCaps.maxVideoBytes : uploadCaps.maxImage;
       if (file.size > maxSize) {
-        toast.error(t("web.provider.explorePostForm.fileTooLargeNamed", { name: file.name, size: isVideo ? "50MB" : "5MB" }));
+        toast.error(
+          t("web.provider.explorePostForm.fileTooLargeNamed", {
+            name: file.name,
+            size: formatBytesShort(maxSize),
+          }),
+        );
         continue;
       }
       await uploadFile(file);
@@ -319,11 +847,44 @@ export function ExplorePostForm({
 
   const removeMedia = (index: number) => {
     setMediaPaths((p) => p.filter((_, i) => i !== index));
+    setMediaMetaSlides((m) => m.filter((_, i) => i !== index));
     setActiveSlide((prev) => Math.min(prev, Math.max(0, mediaPaths.length - 2)));
+  };
+
+  const addTextOverlayToActiveSlide = () => {
+    const text = overlayDraft.trim();
+    if (!text) return;
+    const layer: ExploreTextOverlay = {
+      text: text.slice(0, 80),
+      x: 0.5,
+      y: 0.35,
+      font_size: 0.06,
+      color: "#ffffff",
+      align: "center",
+    };
+    setMediaMetaSlides((slides) => {
+      const next = [...slides];
+      const base = next[activeSlide] ?? {
+        kind: isVideoPath(mediaPaths[activeSlide] ?? "") ? "video" : "image",
+      };
+      next[activeSlide] = {
+        ...base,
+        text_overlays: [...(base.text_overlays ?? []), layer],
+      };
+      return next;
+    });
+    setOverlayDraft("");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (videoTrimPending) {
+      warnTrimInProgress();
+      return;
+    }
+    if (isUploading) {
+      return;
+    }
     if (!mediaPaths.length) {
       toast.error(t("web.provider.explorePostForm.addMediaRequired"));
       return;
@@ -334,20 +895,24 @@ export function ExplorePostForm({
         await fetcher.patch(`/api/explore/posts/${post.id}`, {
           caption: caption || null,
           media_urls: mediaPaths,
+          media_meta: mediaMetaSlides,
           tags,
           primary_category_slug: primaryCategorySlug,
           offering_id: offeringId || null,
           status: post.status,
+          sound_id: hasVideoFirstForSound ? soundId : null,
         });
         toast.success(t("web.provider.explorePostForm.postUpdated"));
       } else {
         await fetcher.post("/api/explore/posts", {
           caption: caption || null,
           media_urls: mediaPaths,
+          media_meta: mediaMetaSlides,
           tags,
           primary_category_slug: primaryCategorySlug,
           offering_id: offeringId || undefined,
           status: "published",
+          ...(hasVideoFirstForSound && soundId ? { sound_id: soundId } : {}),
           ...(alsoAddToGallery ? { also_add_to_gallery: true } : {}),
           ...(preseedBookingId ? { booking_id: preseedBookingId } : {}),
         });
@@ -389,7 +954,7 @@ export function ExplorePostForm({
             autoPlay
             playsInline
             muted
-            className="w-full h-full object-cover"
+            className={`w-full h-full object-cover ${facingMode === "user" ? "-scale-x-100" : ""}`}
           />
           <canvas ref={canvasRef} className="hidden" />
           {cameraError && (
@@ -398,22 +963,26 @@ export function ExplorePostForm({
             </div>
           )}
 
-          {/* Top bar: back, switch camera, photo/video toggle */}
-          <div className="absolute top-0 start-0 end-0 flex items-center justify-between p-4 bg-gradient-to-b from-black/60 to-transparent">
+          {/* Top bar: close, photo/video, flip lens */}
+          <div className="absolute top-0 start-0 end-0 flex items-center justify-between p-4 bg-gradient-to-b from-black/75 via-black/35 to-transparent">
             <button
               type="button"
               onClick={() => {
+                if (isRecording) return;
                 setCaptureMode("idle");
                 stopCamera();
               }}
-              className="p-2 rounded-full bg-black/40 text-white hover:bg-black/60"
+              aria-label={t("web.provider.explorePostForm.cancel")}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm hover:bg-black/60"
             >
               <X className="w-5 h-5" />
             </button>
             <div className="flex gap-1 rounded-full bg-black/40 p-1">
               <button
                 type="button"
-                onClick={() => setCaptureType("photo")}
+                onClick={() => {
+                  if (!isRecording) setCaptureType("photo");
+                }}
                 className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                   captureType === "photo" ? "bg-white text-black" : "text-white"
                 }`}
@@ -432,44 +1001,84 @@ export function ExplorePostForm({
             </div>
             <button
               type="button"
-              onClick={() => {
-                const next = facingMode === "user" ? "environment" : "user";
-                startCamera(next);
-              }}
-              className="p-2 rounded-full bg-black/40 text-white hover:bg-black/60"
+              onClick={flipLens}
+              disabled={isRecording || !lensReady || (videoInputCount > 0 && videoInputCount < 2)}
+              aria-label={
+                facingMode === "user"
+                  ? t("web.provider.explorePostForm.switchToBack")
+                  : t("web.provider.explorePostForm.switchToFront")
+              }
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm hover:bg-black/60 disabled:opacity-40"
             >
               <FlipHorizontal className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Capture button */}
-          <div className="absolute bottom-6 start-0 end-0 flex justify-center">
-            <button
-              type="button"
-              disabled={isUploading || !!cameraError}
-              onMouseDown={captureType === "photo" ? capturePhoto : undefined}
-              onMouseUp={captureType === "video" ? undefined : undefined}
-              onTouchStart={captureType === "photo" ? capturePhoto : undefined}
-              onClick={
-                captureType === "video"
-                  ? isRecording
-                    ? stopRecording
-                    : startRecording
-                  : undefined
-              }
-              className={`relative w-16 h-16 rounded-full border-4 flex items-center justify-center transition-all ${
-                isRecording
-                  ? "bg-red-500 border-red-600 animate-pulse"
-                  : "bg-white/90 border-white hover:scale-105 active:scale-95"
-              }`}
-            >
-              {captureType === "video" && isRecording && (
-                <div className="absolute -top-8 left-1/2 -translate-x-1/2 flex items-center gap-1 text-red-500 text-xs font-medium">
-                  <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                  {t("web.provider.explorePostForm.recording")}
-                </div>
+          {captureType === "video" && isRecording ? (
+            <div className="absolute top-16 start-0 end-0 flex justify-center pointer-events-none">
+              <span className="inline-flex items-center gap-2 rounded-full bg-red-600/95 px-3 py-1 text-xs font-semibold text-white tabular-nums shadow-sm">
+                <span className="h-2 w-2 rounded-full bg-white" />
+                {t("web.provider.explorePostForm.releaseToFinish")}
+                {" · "}
+                {Math.max(0, Math.ceil((uploadCaps.maxVideoDurationMs - recordProgressMs) / 1000))}s
+              </span>
+            </div>
+          ) : null}
+
+          {/* Capture control */}
+          <div className="absolute bottom-0 start-0 end-0 flex flex-col items-center gap-3 bg-gradient-to-t from-black/80 via-black/45 to-transparent px-6 pb-6 pt-16">
+            <span className="rounded-full bg-black/50 px-3 py-1 text-xs font-semibold tracking-wide text-white backdrop-blur-sm">
+              {!lensReady
+                ? t("web.provider.explorePostForm.openingCamera")
+                : facingMode === "user"
+                  ? t("web.provider.explorePostForm.lensFront")
+                  : t("web.provider.explorePostForm.lensBack")}
+            </span>
+            <p className="text-center text-sm font-medium text-white">
+              {lensReady
+                ? captureType === "video"
+                  ? t("web.provider.explorePostForm.holdToRecord")
+                  : t("web.provider.explorePostForm.tapForPhoto")
+                : null}
+            </p>
+            <div className="relative flex h-[84px] w-[84px] items-center justify-center">
+              {captureType === "video" ? (
+                <ExploreRecordProgressRing
+                  size={84}
+                  progress={recordProgressMs / Math.max(1, uploadCaps.maxVideoDurationMs)}
+                  recording={isRecording}
+                />
+              ) : (
+                <span className="pointer-events-none absolute inset-0 rounded-full border-4 border-white" />
               )}
-            </button>
+              <button
+                type="button"
+                disabled={isUploading || !!cameraError || !lensReady}
+                onClick={captureType === "photo" ? capturePhoto : undefined}
+                onPointerDown={(e) => {
+                  if (captureType !== "video" || isUploading || cameraError || !lensReady) return;
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  startRecording();
+                }}
+                onPointerUp={() => {
+                  if (captureType === "video") stopRecording();
+                }}
+                onPointerCancel={() => {
+                  if (captureType === "video") stopRecording();
+                }}
+                onContextMenu={(e) => e.preventDefault()}
+                className={`relative z-10 transition-transform disabled:opacity-40 ${
+                  captureType === "video" && isRecording
+                    ? "h-7 w-7 rounded-md bg-red-500"
+                    : "h-16 w-16 rounded-full bg-white hover:scale-105 active:scale-95"
+                }`}
+                aria-label={
+                  captureType === "video"
+                    ? t("web.provider.explorePostForm.holdToRecord")
+                    : t("web.provider.explorePostForm.photo")
+                }
+              />
+            </div>
           </div>
         </div>
         {isUploading && (
@@ -507,12 +1116,20 @@ export function ExplorePostForm({
                 >
                   <div className="relative w-full h-full">
                     {isVideoPath(path) ? (
-                      <video
-                        src={getMediaUrl(path)}
-                        controls
-                        playsInline
-                        className="w-full h-full object-cover"
-                      />
+                      <>
+                        <video
+                          src={getMediaUrl(path)}
+                          controls
+                          playsInline
+                          className="w-full h-full object-cover"
+                        />
+                        <LibraryClipRing
+                          trimStartMs={mediaMetaSlides[i]?.trim_start_ms}
+                          trimEndMs={mediaMetaSlides[i]?.trim_end_ms}
+                          sourceMs={mediaMetaSlides[i]?.source_duration_ms}
+                          label={t("web.provider.explorePostForm.clipWindowA11y")}
+                        />
+                      </>
                     ) : (
                       <img
                         src={getMediaUrl(path)}
@@ -520,6 +1137,7 @@ export function ExplorePostForm({
                         className="w-full h-full object-cover"
                       />
                     )}
+                    <ExploreTextOverlayLayer overlays={mediaMetaSlides[i]?.text_overlays ?? []} />
                     <button
                       type="button"
                       onClick={() => removeMedia(i)}
@@ -585,8 +1203,8 @@ export function ExplorePostForm({
             <div className="flex flex-col sm:flex-row">
               <button
                 type="button"
-                onClick={() => setCaptureMode("camera")}
-                disabled={isUploading}
+                onClick={openCameraUi}
+                disabled={isUploading || mediaPaths.length >= MAX_MEDIA_ITEMS}
                 className="flex-1 aspect-[4/5] sm:aspect-square max-h-[280px] sm:max-h-none flex flex-col items-center justify-center gap-3 hover:bg-gray-100 transition-colors active:scale-[0.99] border-b sm:border-b-0 sm:border-e border-gray-200"
               >
                 <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
@@ -597,8 +1215,8 @@ export function ExplorePostForm({
               </button>
               <button
                 type="button"
-                onClick={triggerFileSelect}
-                disabled={isUploading}
+                onClick={openGalleryPicker}
+                disabled={isUploading || mediaPaths.length >= MAX_MEDIA_ITEMS}
                 className="flex-1 aspect-[4/5] sm:aspect-square max-h-[280px] sm:max-h-none flex flex-col items-center justify-center gap-3 hover:bg-gray-100 transition-colors active:scale-[0.99]"
               >
                 {isUploading ? (
@@ -628,12 +1246,31 @@ export function ExplorePostForm({
         )}
 
         {mediaPaths.length > 0 && (
+          <div className="mt-4 flex flex-col gap-2">
+            <label className="text-sm font-medium text-gray-700">
+              {t("web.provider.explorePostForm.onMediaText")}
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={overlayDraft}
+                maxLength={80}
+                onChange={(e) => setOverlayDraft(e.target.value)}
+                placeholder={t("web.provider.explorePostForm.onMediaTextPlaceholder")}
+                className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              />
+              <Button type="button" variant="outline" size="sm" onClick={addTextOverlayToActiveSlide}>
+                {t("web.provider.explorePostForm.addTextLayer")}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {mediaPaths.length > 0 && (
           <button
             type="button"
-            onClick={() => {
-              setCaptureMode("camera");
-            }}
-            disabled={isUploading}
+            onClick={openCameraUi}
+            disabled={isUploading || mediaPaths.length >= MAX_MEDIA_ITEMS}
             className="mt-3 flex items-center gap-2 text-primary text-sm font-medium hover:underline disabled:opacity-50"
           >
             <Camera className="w-4 h-4" />
@@ -644,8 +1281,8 @@ export function ExplorePostForm({
         {mediaPaths.length > 0 && (
           <button
             type="button"
-            onClick={triggerFileSelect}
-            disabled={isUploading}
+            onClick={openGalleryPicker}
+            disabled={isUploading || mediaPaths.length >= MAX_MEDIA_ITEMS}
             className="mt-1 flex items-center gap-2 text-gray-600 text-sm font-medium hover:underline disabled:opacity-50"
           >
             <Upload className="w-4 h-4" />
@@ -796,6 +1433,16 @@ export function ExplorePostForm({
         )}
       </div>
 
+      {hasVideoFirstForSound && soundCatalogEnabled ? (
+        <ExploreSoundPicker
+          sounds={providerSounds}
+          value={soundId}
+          onChange={setSoundId}
+          disabled={isSubmitting || isUploading}
+          labels={soundPickerLabels}
+        />
+      ) : null}
+
       {!post && (
         <label className="mt-4 flex items-start gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 cursor-pointer">
           <input
@@ -814,7 +1461,7 @@ export function ExplorePostForm({
       <div className="mt-6 flex gap-3">
         <Button
           type="submit"
-          disabled={isSubmitting || !mediaPaths.length}
+          disabled={isSubmitting || isUploading || !!videoTrimPending || !mediaPaths.length}
           className="flex-1 h-12 rounded-xl bg-primary hover:bg-primary-hover text-white font-semibold text-base"
         >
           {isSubmitting ? (
@@ -838,6 +1485,17 @@ export function ExplorePostForm({
           </Button>
         )}
       </div>
+
+      {videoTrimPending ? (
+        <ExploreVideoTrimModal
+          open
+          videoUrl={videoTrimPending.videoUrl}
+          fullDurationMs={videoTrimPending.durationMs}
+          maxClipMs={uploadCaps.maxVideoDurationMs}
+          onConfirm={confirmVideoTrim}
+          onCancel={cancelVideoTrim}
+        />
+      ) : null}
     </form>
   );
 }

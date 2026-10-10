@@ -11,7 +11,9 @@ import { assertNotBlocked, UserBlockedError } from "@/lib/safety/user-blocks";
 import { getViewerSafetyContext } from "@/lib/safety/viewer-safety-context";
 import { applyExploreViewerContentFilters } from "@/lib/safety/filter-explore-posts";
 import type { ExplorePost, ExplorePostsCursorResponse } from "@/types/explore";
-import { toPublicMediaUrl } from "@/lib/explore/media-urls";
+import { mapExplorePostRow } from "@/lib/explore/post-mapper";
+import { enrichExplorePostsWithSoundUrls } from "@/lib/explore/sound-enrich";
+import { isExploreEnabled } from "@/lib/explore/explore-feature-gates";
 
 /**
  * GET /api/explore/saved
@@ -19,6 +21,9 @@ import { toPublicMediaUrl } from "@/lib/explore/media-urls";
  */
 export async function GET(request: NextRequest) {
   try {
+    if (!(await isExploreEnabled(null))) {
+      return successResponse({ data: [], next_cursor: undefined, has_more: false });
+    }
     const { user } = await requireAuthInApi(request);
     const supabaseAdmin = await getSupabaseAdmin();
     const viewerSafety = await getViewerSafetyContext(user.id, request);
@@ -118,26 +123,23 @@ export async function GET(request: NextRequest) {
       hiddenAuthorIds,
     );
 
-    const data: (ExplorePost & { collection_ids?: string[] })[] = filteredSlice.map((r: any) => ({
-      id: r.id,
-      provider_id: r.provider_id,
-      provider: r.provider_business_name
-        ? { business_name: r.provider_business_name, slug: r.provider_slug }
-        : { business_name: "", slug: "" },
-      created_by_user_id: r.created_by_user_id,
-      caption: r.caption,
-      media_urls: (r.media_urls || []).map((p: string) =>
-        toPublicMediaUrl(p, process.env.NEXT_PUBLIC_SUPABASE_URL)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const mapped: (ExplorePost & { collection_ids?: string[] })[] = filteredSlice.map((r: any) => ({
+      ...mapExplorePostRow(
+        {
+          ...r,
+          provider_avatar_url: r.provider_avatar_url ?? null,
+        },
+        {
+          supabaseUrl,
+          savedIds: new Set([r.id]),
+          likedIds,
+        },
       ),
-      status: r.status,
-      published_at: r.published_at,
-      like_count: r.like_count ?? 0,
-      created_at: r.created_at,
-      updated_at: r.updated_at,
       is_saved: true,
-      is_liked: likedIds.has(r.id),
       collection_ids: postToCollectionIds.get(r.id) ?? [],
     }));
+    const data = await enrichExplorePostsWithSoundUrls(supabaseAdmin, mapped, supabaseUrl);
 
     let nextCursor: string | undefined;
     if (hasMore && last) {

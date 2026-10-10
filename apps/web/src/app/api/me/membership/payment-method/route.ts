@@ -56,7 +56,8 @@ export async function POST(request: NextRequest) {
     if (!pm.provider_payment_method_id) {
       return successResponse({
         success: false,
-        message: "This card cannot be used for recurring billing. Add a card via Paystack checkout.",
+        message:
+          "This card cannot be used for recurring billing. Add a card using secure online checkout.",
       });
     }
     if (isPaymentMethodExpired(pm.expiry_month, pm.expiry_year)) {

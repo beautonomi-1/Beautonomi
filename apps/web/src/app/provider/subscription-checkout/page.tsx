@@ -9,6 +9,7 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import PartnerNavbar from "../../become-a-partner/components/partner-navbar";
 import { PricingFeatureHtml } from "@/components/pricing/PricingFeatureHtml";
+import { checkoutPriceDisplayForPeriod } from "@/lib/pricing/public-pricing-billing-periods";
 
 interface PricingPlanCheckout {
   id: string;
@@ -22,6 +23,9 @@ interface PricingPlanCheckout {
   available_billing_periods: ("monthly" | "yearly")[];
   is_free?: boolean;
   subscription_plan_id?: string | null;
+  price_monthly?: number | null;
+  price_yearly?: number | null;
+  currency?: string | null;
 }
 
 function CartCard({
@@ -84,11 +88,14 @@ function CartCard({
                 )}
               </div>
               <p className="mt-3 text-gray-900 font-semibold">
-                {plan.price}
+                {checkoutPriceDisplayForPeriod(plan, billingPeriod)}
                 {plan.period || (billingPeriod === "monthly" ? t("web.provider.subscription.checkout.perMo") : t("web.provider.subscription.checkout.perYear"))}
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                {t("web.provider.subscription.checkout.renewsAt", { price: plan.price, period: billingPeriod === "monthly" ? t("web.provider.subscription.checkout.perMo") : t("web.provider.subscription.checkout.perYear") })}
+                {t("web.provider.subscription.checkout.renewsAt", {
+                  price: checkoutPriceDisplayForPeriod(plan, billingPeriod),
+                  period: billingPeriod === "monthly" ? t("web.provider.subscription.checkout.perMo") : t("web.provider.subscription.checkout.perYear"),
+                })}
               </p>
             </>
           )}
@@ -370,7 +377,7 @@ export default function SubscriptionCheckoutPage() {
         setError(serverMsg || t("web.provider.subscription.checkout.planNotLinkedPaystack"));
         return;
       }
-      if (serverCode === "PAYSTACK_ERROR") {
+      if (serverCode === "PAYSTACK_ERROR" || serverCode === "PAYMENT_INIT_ERROR") {
         setError(serverMsg || t("web.provider.subscription.checkout.paystackError"));
         return;
       }
@@ -438,9 +445,11 @@ export default function SubscriptionCheckoutPage() {
     );
   }
 
+  const periodSuffix =
+    plan.period || (billingPeriod === "monthly" ? t("web.provider.subscription.checkout.perMo") : t("web.provider.subscription.checkout.perYear"));
   const priceDisplay = plan.is_free
     ? t("web.provider.subscription.free")
-    : `${plan.price}${plan.period || (billingPeriod === "monthly" ? t("web.provider.subscription.checkout.perMo") : t("web.provider.subscription.checkout.perYear"))}`;
+    : `${checkoutPriceDisplayForPeriod(plan, billingPeriod)}${periodSuffix}`;
 
   return (
     <div className="min-h-screen bg-gray-50">

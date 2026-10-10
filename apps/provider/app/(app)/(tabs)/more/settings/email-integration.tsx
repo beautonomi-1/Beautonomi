@@ -8,18 +8,10 @@ import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
-import { StatCard } from "@/components/ui/StatCard";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { twStyle } from "@/lib/twStyle";
 import { showPlanGateAlert } from "@/lib/plan-gate";
-
-interface EmailStats {
-  total_sent: number;
-  delivered: number;
-  opened: number;
-  delivery_rate: number;
-}
 
 interface EmailIntegration {
   id?: string;
@@ -29,13 +21,14 @@ interface EmailIntegration {
   from_name: string;
   is_enabled: boolean;
   connected_date: string | null;
-  stats?: EmailStats;
 }
 
 const PROVIDERS = [
   { labelKey: "providerSendgrid", value: "sendgrid", icon: "mail-outline" as const, color: "#0ea5e9" },
   { labelKey: "providerMailchimp", value: "mailchimp", icon: "megaphone-outline" as const, color: "#f59e0b" },
 ];
+
+const MASKED_KEY = "••••••••";
 
 function formatDateSafe(value: unknown, empty: string): string {
   if (typeof value !== "string" || !value) return empty;
@@ -70,7 +63,7 @@ export default function EmailIntegrationScreen() {
   useEffect(() => {
     if (integration) {
       setProvider(integration.provider_name);
-      setApiKey(integration.api_key);
+      setApiKey(integration.api_key || "");
       setFromEmail(integration.from_email);
       setFromName(integration.from_name);
       setIsEnabled(integration.is_enabled);
@@ -78,7 +71,9 @@ export default function EmailIntegrationScreen() {
   }, [integration]);
 
   async function handleSave() {
-    if (!apiKey.trim() || !fromEmail.trim()) {
+    const keyForSave = apiKey.trim();
+    const hasKey = keyForSave && keyForSave !== MASKED_KEY;
+    if ((!hasKey && !integration?.id) || !fromEmail.trim()) {
       Alert.alert(ei("requiredTitle"), ei("requiredFields"));
       return;
     }
@@ -87,13 +82,18 @@ export default function EmailIntegrationScreen() {
       Alert.alert(ei("invalidTitle"), ei("invalidEmail"));
       return;
     }
-    const { error, errorCode } = await saveIntegration("/api/provider/email-integration", {
+    const payload: Record<string, unknown> = {
       provider_name: provider,
-      api_key: apiKey.trim(),
       from_email: fromEmail.trim(),
       from_name: fromName.trim() || "Beautonomi",
       is_enabled: isEnabled,
-    });
+    };
+    if (hasKey) {
+      payload.api_key = keyForSave;
+    } else if (integration?.id) {
+      payload.api_key = MASKED_KEY;
+    }
+    const { error, errorCode } = await saveIntegration("/api/provider/email-integration", payload);
     if (error) {
       showPlanGateAlert({ title: ei("saveFailed"), message: error, errorCode, router });
       return;
@@ -102,17 +102,23 @@ export default function EmailIntegrationScreen() {
     refresh();
   }
 
+  const savedProvider = integration?.provider_name ?? provider;
+
   async function handleTestConnection() {
+    if (savedProvider !== "mailchimp") {
+      Alert.alert(ei("requiredTitle"), ei("testConnectionMailchimpOnly"));
+      return;
+    }
     setTestResult(null);
     const { error } = await testConnection("/api/provider/email-integration/test", {
-      provider_name: provider,
-      api_key: apiKey.trim(),
+      ping: true,
     });
     if (error) {
       setTestResult({ success: false, message: error });
     } else {
       setTestResult({ success: true, message: ei("connectionSuccess") });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      refresh();
     }
   }
 
@@ -121,25 +127,34 @@ export default function EmailIntegrationScreen() {
       Alert.alert(ei("requiredTitle"), ei("fromEmailRequired"));
       return;
     }
-    const { error } = await sendTestEmail("/api/provider/email-integration/send-test", {
-      to_email: fromEmail.trim(),
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(fromEmail.trim())) {
+      Alert.alert(ei("invalidTitle"), ei("invalidEmail"));
+      return;
+    }
+    if (!integration?.is_enabled && !isEnabled) {
+      Alert.alert(ei("requiredTitle"), ei("enabledHint"));
+      return;
+    }
+    const { error } = await sendTestEmail("/api/provider/email-integration/test", {
+      test_email: fromEmail.trim(),
     });
     if (error) {
       Alert.alert(ei("errorTitle"), error);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert(ei("sentTitle"), ei("testSent", { email: fromEmail }));
+      Alert.alert(ei("sentTitle"), ei("testSent", { email: fromEmail.trim() }));
+      refresh();
     }
   }
 
   function maskedKey(key: string): string {
-    if (!key || key.length < 8) return ei("maskedKey");
+    if (!key || key === MASKED_KEY) return ei("maskedKey");
+    if (key.length < 8) return ei("maskedKey");
     return key.substring(0, 4) + "••••" + key.substring(key.length - 4);
   }
 
   if (loading && !integration) return <LoadingState />;
-
-  const stats = integration?.stats;
 
   return (
     <ScreenContainer>
@@ -152,20 +167,6 @@ export default function EmailIntegrationScreen() {
             <Text style={twStyle("ms-1.5 text-sm text-green-700")}>
               {ei("connectedSince", { date: formatDateSafe(integration.connected_date, ei("emptyValue")) })}
             </Text>
-          </View>
-        </View>
-      )}
-
-      {stats && (
-        <View style={twStyle("mb-4 flex-row")}>
-          <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
-            <StatCard title={ei("statSent")} value={String(stats.total_sent)} icon="send-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
-          </View>
-          <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
-            <StatCard title={ei("statDelivered")} value={`${(stats.delivery_rate * 100).toFixed(0)}%`} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
-          </View>
-          <View style={twStyle("flex-1")}>
-            <StatCard title={ei("statOpened")} value={String(stats.opened)} icon="mail-open-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
           </View>
         </View>
       )}
@@ -197,6 +198,13 @@ export default function EmailIntegrationScreen() {
           </TouchableOpacity>
         ))}
       </View>
+
+      {provider === "mailchimp" && (
+        <Text style={twStyle("mb-4 text-xs text-blue-700 px-1")}>{ei("mailchimpNote")}</Text>
+      )}
+      {integration && provider !== integration.provider_name && (
+        <Text style={twStyle("mb-4 text-xs text-amber-800 px-1")}>{ei("providerSwitchRequiresNewKey")}</Text>
+      )}
 
       <SectionHeader title={ei("configuration")} />
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
@@ -231,6 +239,9 @@ export default function EmailIntegrationScreen() {
             <Ionicons name={showKey ? "eye-off-outline" : "eye-outline"} size={18} color="#6b7280" />
           </TouchableOpacity>
         </View>
+        {provider === "mailchimp" && (
+          <Text style={twStyle("mb-3 text-xs text-gray-500")}>{ei("mailchimpKeyHint")}</Text>
+        )}
 
         <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{ei("fromEmail")}</Text>
         <TextInput
@@ -242,6 +253,9 @@ export default function EmailIntegrationScreen() {
           keyboardType="email-address"
           autoCapitalize="none"
         />
+        {provider === "mailchimp" && (
+          <Text style={twStyle("mb-2 text-xs text-gray-500")}>{ei("mailchimpFromHint")}</Text>
+        )}
 
         <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{ei("fromName")}</Text>
         <TextInput
@@ -257,6 +271,9 @@ export default function EmailIntegrationScreen() {
 
       <SectionHeader title={ei("testing")} />
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
+        {savedProvider === "mailchimp" && (
+          <Text style={twStyle("mb-3 text-xs text-gray-600")}>{ei("mailchimpTestHint")}</Text>
+        )}
         {testResult && (
           <View style={twStyle(`mb-3 rounded-lg p-3 ${testResult.success ? "bg-green-50" : "bg-red-50"}`)}>
             <View style={twStyle("flex-row items-center")}>
@@ -273,15 +290,17 @@ export default function EmailIntegrationScreen() {
         )}
 
         <View style={twStyle("flex-row")}>
-          <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
-            <ActionButton
-              label={ei("testConnection")}
-              variant="outline"
-              onPress={handleTestConnection}
-              loading={testing}
-              fullWidth
-            />
-          </View>
+          {savedProvider === "mailchimp" ? (
+            <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
+              <ActionButton
+                label={ei("testConnection")}
+                variant="outline"
+                onPress={handleTestConnection}
+                loading={testing}
+                fullWidth
+              />
+            </View>
+          ) : null}
           <View style={twStyle("flex-1")}>
             <ActionButton
               label={ei("sendTestEmail")}

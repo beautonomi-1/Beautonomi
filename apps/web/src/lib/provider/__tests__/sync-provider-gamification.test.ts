@@ -17,6 +17,9 @@ const alignedSignals = {
   storedRatingAverage: 4.5,
   transactionCount: 8,
   hasProviderPointsRow: true,
+  cachedTotalPoints: 100,
+  ledgerPointsSum: 100,
+  ledgerPointsSumReliable: true,
 };
 
 describe("syncProviderGamification", () => {
@@ -51,6 +54,9 @@ describe("syncProviderGamification", () => {
       storedRatingAverage: 0,
       transactionCount: 0,
       hasProviderPointsRow: false,
+      cachedTotalPoints: 0,
+      ledgerPointsSum: 0,
+      ledgerPointsSumReliable: true,
     });
 
     expect(result.healed).toBe(true);

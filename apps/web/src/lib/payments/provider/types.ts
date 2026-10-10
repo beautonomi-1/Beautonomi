@@ -19,9 +19,13 @@ export type PaymentInitParams = {
   callbackUrl?: string;
   metadata?: Record<string, unknown>;
   tenantId?: string | null;
-  /** Stripe Connect / Paystack subaccount routing */
+  /** Legacy destination-charge path only — not used for platform_mor_transfer checkout */
   connectedAccountId?: string;
   settlementModel?: SettlementModel;
+  mode?: "payment" | "setup";
+  lineItemName?: string;
+  saveCard?: boolean;
+  stripeCustomerId?: string;
 };
 
 export type PaymentInitResult = {
@@ -31,6 +35,7 @@ export type PaymentInitResult = {
   accessCode?: string;
   clientSecret?: string;
   paymentIntentId?: string;
+  checkoutSessionId?: string;
 };
 
 export type PaymentRefundParams = {

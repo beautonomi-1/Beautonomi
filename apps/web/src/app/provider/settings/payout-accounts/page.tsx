@@ -3,6 +3,7 @@
 import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { Button } from "@/components/ui/button";
@@ -63,8 +64,17 @@ interface Bank {
   type: string;
 }
 
+type StripeConnectOptions = {
+  connect_account_id: string | null;
+  charges_enabled: boolean;
+  payouts_enabled: boolean;
+  onboarding_complete: boolean;
+  external_account_last4: string | null;
+};
+
 export default function PayoutAccountsPage() {
   const { t } = useTranslation();
+  const searchParams = useSearchParams();
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [banks, setBanks] = useState<Bank[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -85,6 +95,45 @@ export default function PayoutAccountsPage() {
   const [verifiedAccountName, setVerifiedAccountName] = useState<string | null>(null);
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [showVerifyAccountButton, setShowVerifyAccountButton] = useState(true);
+  const [payoutRail, setPayoutRail] = useState<"paystack" | "stripe">("paystack");
+  const [stripeConnect, setStripeConnect] = useState<StripeConnectOptions | null>(null);
+  const [isConnectingStripe, setIsConnectingStripe] = useState(false);
+
+  const loadPayoutOptions = useCallback(async () => {
+    try {
+      const res = await fetcher.get<{
+        data: {
+          show_verify_account_button?: boolean;
+          payout_rail?: "paystack" | "stripe";
+          stripe_connect?: StripeConnectOptions | null;
+        };
+      }>("/api/provider/payout-accounts/options");
+      setShowVerifyAccountButton(res.data?.show_verify_account_button !== false);
+      setPayoutRail(res.data?.payout_rail === "stripe" ? "stripe" : "paystack");
+      setStripeConnect(res.data?.stripe_connect ?? null);
+    } catch {
+      setShowVerifyAccountButton(true);
+    }
+  }, []);
+
+  const handleStripeConnect = async () => {
+    try {
+      setIsConnectingStripe(true);
+      const res = await fetcher.post<{ data: { url: string } }>("/api/provider/stripe-connect/onboard", {});
+      const url = res.data?.url;
+      if (url) {
+        window.location.href = url;
+        return;
+      }
+      toast.error(t("web.provider.settings.pages.payout-accounts.stripeConnectFailed"));
+    } catch (err) {
+      const msg =
+        err instanceof FetchError ? err.message : t("web.provider.settings.pages.payout-accounts.stripeConnectFailed");
+      toast.error(msg);
+    } finally {
+      setIsConnectingStripe(false);
+    }
+  };
 
   const loadBanks = useCallback(async (country: string) => {
     try {
@@ -130,18 +179,21 @@ export default function PayoutAccountsPage() {
   };
 
   useEffect(() => {
-    loadAccounts();
-    void (async () => {
-      try {
-        const res = await fetcher.get<{
-          data: { show_verify_account_button?: boolean };
-        }>("/api/provider/payout-accounts/options");
-        setShowVerifyAccountButton(res.data?.show_verify_account_button !== false);
-      } catch {
-        setShowVerifyAccountButton(true);
+    void loadAccounts();
+    void loadPayoutOptions();
+  }, [loadPayoutOptions]);
+
+  useEffect(() => {
+    const connected = searchParams.get("connected");
+    const refresh = searchParams.get("refresh");
+    if (connected === "1" || refresh === "1") {
+      if (connected === "1") {
+        toast.success(t("web.provider.settings.pages.payout-accounts.stripeConnectReturnSuccess"));
+        invalidateSetupStatusCache();
       }
-    })();
-  }, []);
+      void loadPayoutOptions();
+    }
+  }, [searchParams, loadPayoutOptions, t]);
 
   useEffect(() => {
     if (showAddDialog) {
@@ -366,10 +418,16 @@ export default function PayoutAccountsPage() {
     );
   }
 
+  const stripeReady = Boolean(stripeConnect?.onboarding_complete);
+  const pageSubtitle =
+    payoutRail === "stripe"
+      ? t("web.provider.settings.pages.payout-accounts.stripeConnectSubtitle")
+      : t("web.provider.settings.pages.payout-accounts.addAndManageBankAccountsWhere");
+
   return (
     <SettingsDetailLayout
       title={t("web.provider.settings.pages.payout-accounts.payoutAccounts")}
-      subtitle={t("web.provider.settings.pages.payout-accounts.addAndManageBankAccountsWhere")}
+      subtitle={pageSubtitle}
       breadcrumbs={breadcrumbs}
     >
       <div className="mb-4 flex flex-wrap gap-2">
@@ -391,8 +449,74 @@ export default function PayoutAccountsPage() {
           </Link>
         </Button>
       </div>
-      <SectionCard title={t("web.provider.settings.pages.payout-accounts.bankAccounts")} className="w-full">
-        {error && !accounts.length ? (
+      <SectionCard
+        title={
+          payoutRail === "stripe"
+            ? t("web.provider.settings.pages.payout-accounts.stripeConnectTitle")
+            : t("web.provider.settings.pages.payout-accounts.bankAccounts")
+        }
+        className="w-full"
+      >
+        {payoutRail === "stripe" ? (
+          <div className="space-y-4">
+            {stripeReady ? (
+              <Alert className="border-green-200 bg-green-50">
+                <CheckCircle2 className="h-4 w-4 text-green-700" />
+                <AlertDescription>
+                  <p className="text-sm font-medium text-gray-900">
+                    {t("web.provider.settings.pages.payout-accounts.stripeConnectReady")}
+                  </p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {t("web.provider.settings.pages.payout-accounts.stripeConnectReadyHint")}
+                  </p>
+                  {stripeConnect?.external_account_last4 ? (
+                    <p className="text-xs text-gray-500 mt-2">
+                      {t("web.provider.settings.pages.payout-accounts.stripeConnectBankLast4", {
+                        last4: stripeConnect.external_account_last4,
+                      })}
+                    </p>
+                  ) : null}
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Alert className="border-gray-200 bg-gray-50">
+                <AlertCircle className="h-4 w-4 text-gray-600" />
+                <AlertDescription className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 mb-1">
+                      {stripeConnect?.connect_account_id
+                        ? t("web.provider.settings.pages.payout-accounts.stripeConnectIncomplete")
+                        : t("web.provider.settings.pages.payout-accounts.stripeConnectNotStarted")}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      {stripeConnect?.connect_account_id
+                        ? t("web.provider.settings.pages.payout-accounts.stripeConnectIncompleteHint")
+                        : t("web.provider.settings.pages.payout-accounts.stripeConnectNotStartedHint")}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    className="bg-primary hover:bg-primary-hover w-full sm:w-auto"
+                    disabled={isConnectingStripe}
+                    onClick={() => void handleStripeConnect()}
+                  >
+                    {isConnectingStripe ? (
+                      <Loader2 className="w-4 h-4 me-2 animate-spin" />
+                    ) : null}
+                    {stripeConnect?.connect_account_id
+                      ? t("web.provider.settings.pages.payout-accounts.stripeConnectContinue")
+                      : t("web.provider.settings.pages.payout-accounts.stripeConnectStart")}
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
+            {stripeReady ? (
+              <Button variant="outline" size="sm" disabled={isConnectingStripe} onClick={() => void handleStripeConnect()}>
+                {t("web.provider.settings.pages.payout-accounts.stripeConnectContinue")}
+              </Button>
+            ) : null}
+          </div>
+        ) : error && !accounts.length ? (
           <EmptyState
             title={t("web.provider.settings.pages.payout-accounts.failedToLoadAccounts")}
             description={error}

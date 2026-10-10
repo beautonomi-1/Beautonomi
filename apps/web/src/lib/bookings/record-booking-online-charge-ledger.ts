@@ -80,6 +80,18 @@ function withSourcePaymentId(
   return currency ? { ...base, currency } : base;
 }
 
+function paymentLedgerMetadata(
+  input: RecordBookingOnlineChargeLedgerInput,
+  feesMajor: number,
+): Record<string, unknown> {
+  return {
+    reference: input.reference,
+    fee_source: input.feeSource ?? `${input.provider}_webhook`,
+    fee_journaled: feesMajor,
+    ...(input.metadata ?? {}),
+  };
+}
+
 function resolveBookingLevelAmounts(
   bookingData: BookingRow,
   overrides?: RecordBookingOnlineChargeLedgerInput["bookingLevelAmountOverrides"],
@@ -294,6 +306,7 @@ export async function recordBookingOnlineChargeLedger(
           commission: platformCommission,
           net: paymentNet,
           description: paymentDescription,
+          metadata: paymentLedgerMetadata(input, feesInCurrency),
           created_at: webhookNow,
         },
         sourcePaymentId,
@@ -420,6 +433,7 @@ export async function recordBookingOnlineChargeLedger(
           commission: platformCommission,
           net: paymentNet,
           description: secondPaymentDescription,
+          metadata: paymentLedgerMetadata(input, feesInCurrency),
           created_at: webhookNow,
         },
         sourcePaymentId,

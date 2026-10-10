@@ -454,9 +454,15 @@ export function PayoutsPage() {
         header: "Destination",
         cell: (r) => (
           <div className="text-sm">
+            {r.payout_provider ? (
+              <div className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                {String(r.payout_provider)}
+              </div>
+            ) : null}
             <div>{r.bank_account?.bank_name ?? "—"}</div>
             <div className="text-xs text-gray-500">
-              {r.bank_account?.account_name ?? ""} {r.bank_account?.account_number_last4 ? `•••• ${r.bank_account.account_number_last4}` : ""}
+              {r.bank_account?.account_name ?? ""}{" "}
+              {r.bank_account?.account_number_last4 ? `•••• ${r.bank_account.account_number_last4}` : ""}
             </div>
           </div>
         ),
@@ -697,11 +703,12 @@ export function PayoutsPage() {
             <strong>Approve</strong> moves a request to processing so finance can pay out (notifies the provider).
           </li>
           <li>
-            <strong>Transfer</strong> sends the Paystack transfer when the recipient is set up (use when you pay via Paystack).
+            <strong>Transfer</strong> initiates the payout rail for this market (Paystack transfer or Stripe Connect transfer,
+            depending on region configuration).
           </li>
           <li>
-            <strong>Mark paid</strong> use when money has actually left the platform (bank / Paystack settled). This writes the
-            payout to the finance ledger and is idempotent.
+            <strong>Mark paid</strong> use when money has actually left the platform (bank settled). This writes the payout to
+            the finance ledger and is idempotent.
           </li>
           <li>
             <strong>Reject / Mark failed</strong> frees the provider&apos;s balance for a new request (requires a reason).

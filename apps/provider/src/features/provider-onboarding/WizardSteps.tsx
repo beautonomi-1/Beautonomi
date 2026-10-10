@@ -4088,14 +4088,22 @@ function Step14Plan() {
     let active = true;
     (async () => {
       try {
-        const res = await api.get<PlanRow[] | { plans?: PlanRow[] }>("/api/public/pricing/plans");
+        const res = await api.get<
+          PlanRow[] | { plans?: PlanRow[]; data?: PlanRow[] }
+        >("/api/public/pricing/plans");
         if (!active) return;
-        const raw = res.data as PlanRow[] | { plans?: PlanRow[] } | null | undefined;
+        const raw = res.data as
+          | PlanRow[]
+          | { plans?: PlanRow[]; data?: PlanRow[] }
+          | null
+          | undefined;
         const unsorted = Array.isArray(raw)
           ? raw
-          : raw && typeof raw === "object" && Array.isArray((raw as { plans?: PlanRow[] }).plans)
-            ? (raw as { plans: PlanRow[] }).plans
-            : [];
+          : raw && typeof raw === "object" && Array.isArray((raw as { data?: PlanRow[] }).data)
+            ? (raw as { data: PlanRow[] }).data
+            : raw && typeof raw === "object" && Array.isArray((raw as { plans?: PlanRow[] }).plans)
+              ? (raw as { plans: PlanRow[] }).plans
+              : [];
         // §provider-onboarding-plan-order 2026-05: providers asked us to
         // surface the Free plan first so anyone who just wants to ship can
         // confirm-and-go without a card. We pin free plans to the top and

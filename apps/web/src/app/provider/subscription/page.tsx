@@ -88,7 +88,7 @@ interface ProviderSubscription {
     message: string;
     action: "pay_now" | "update_payment" | "retry_payment" | "complete_payment" | string;
   } | null;
-  billing_provider?: "paystack" | "apple" | "manual" | null;
+  billing_provider?: "paystack" | "stripe" | "apple" | "manual" | null;
 }
 
 function isPaidSubscriptionState(sub: ProviderSubscription | null): boolean {
@@ -126,6 +126,10 @@ function isPaidCurrentPlan(plan: SubscriptionPlan | null): boolean {
 
 function isAppleBilled(sub: ProviderSubscription | null): boolean {
   return isAppleBillingActive(sub?.billing_provider, sub?.status);
+}
+
+function isStripeBilled(sub: ProviderSubscription | null): boolean {
+  return String(sub?.billing_provider ?? "").toLowerCase() === "stripe";
 }
 
 function openAppleSubscriptions(): void {
@@ -262,6 +266,7 @@ export default function SubscriptionPage() {
     const inApp = urlParams.get("in_app") === "1";
     const returnToDashboard = urlParams.get("return_to") === "dashboard";
     const reference = urlParams.get("reference") || urlParams.get("trxref");
+    const sessionId = urlParams.get("session_id");
 
     const timeouts: ReturnType<typeof setTimeout>[] = [];
 
@@ -287,11 +292,11 @@ export default function SubscriptionPage() {
         try {
           const verifyPayload = await verifyWithRetry<{ status?: string; message?: string }>(
             reference,
-            { maxAttempts: 5, delayMs: 1500 }
+            { maxAttempts: 5, delayMs: 1500, sessionId },
           );
           if (verifyPayload.status === "failed") {
             console.warn(
-              "Subscription Paystack verify did not return success:",
+              "Subscription payment verify did not return success:",
               verifyPayload.errorMessage
             );
           }
@@ -651,7 +656,14 @@ export default function SubscriptionPage() {
       }
       toast.error(tx("cardUpdateFailed"));
     } catch (err) {
-      toast.error(tx("cardUpdateFailed"));
+      const code = err instanceof FetchError ? err.code : undefined;
+      if (code === "NO_STRIPE_CUSTOMER") {
+        toast.error(tx("stripeManageUnavailable"));
+      } else if (code === "NO_PAYSTACK_SUBSCRIPTION") {
+        toast.error(tx("paystackManageUnavailable"));
+      } else {
+        toast.error(tx("cardUpdateFailed"));
+      }
     } finally {
       setManagingCard(false);
     }
@@ -918,6 +930,13 @@ export default function SubscriptionPage() {
                       >
                         {tx("manageInAppStore")}
                       </a>
+                    </div>
+                  ) : null}
+
+                  {isStripeBilled(subscription) && !isAppleBilled(subscription) ? (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
+                      <p className="font-semibold">{tx("stripeBillingTitle")}</p>
+                      <p className="mt-1 leading-relaxed">{tx("stripeBillingBody")}</p>
                     </div>
                   ) : null}
 

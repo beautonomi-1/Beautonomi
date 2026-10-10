@@ -13,7 +13,7 @@ const RECENT_GRACE_MS = 5 * 60 * 1000;
 const SCAN_LIMIT = 200;
 const REVIEW_ALERT_AFTER_MS = 24 * 60 * 60 * 1000;
 
-const PLATFORM_METHODS = ["paystack", "wallet", "gift_card"] as const;
+const PLATFORM_METHODS = ["paystack", "stripe", "wallet", "gift_card"] as const;
 
 export type ProductOrderReconcileCandidate = {
   id: string;

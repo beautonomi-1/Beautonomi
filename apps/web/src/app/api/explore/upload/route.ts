@@ -1,169 +1,243 @@
 import { NextRequest } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getSupabaseServer } from "@/lib/supabase/server";
 import {
-  getProviderIdForUser,
   successResponse,
   errorResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
-import { requireRoleInApi } from "@/lib/supabase/api-helpers";
-import { hasPermission } from "@/lib/auth/permissions";
-import { requireSocialAccess } from "@/lib/safety/require-social-access";
+import { processExploreDisplayJpeg, generateVideoPlaceholderCard } from "@/lib/explore/brand-display-image";
+import {
+  getExploreVideoTranscodeCaps,
+  getExploreImageUploadCaps,
+  isExploreSoundCatalogEnabled,
+  isExploreVideoUploadEnabled,
+  isExploreVideoTranscodeEnabled,
+  MAX_SOUND_BYTES,
+} from "@/lib/explore/explore-feature-gates";
+import {
+  EXPLORE_MULTIPART_IMAGE_MAX_BYTES,
+  exploreImageExtFromMime,
+  isAllowedExploreImageMime,
+} from "@/lib/explore/explore-upload-constants";
+import { requireProviderExploreUploadAccess } from "@/lib/explore/explore-upload-access";
+import { z } from "zod";
+
+export const maxDuration = 60;
+
+const signedUploadSchema = z.object({
+  kind: z.enum(["video", "sound", "image"]),
+  duration_ms: z.number().int().positive().optional(),
+  size_bytes: z.number().int().positive().optional(),
+  mime_type: z.string().optional(),
+  include_placeholder_cover: z.boolean().optional(),
+});
 
 /**
- * §Provider-audit 2026-05: previously only "image/jpeg|jpg|png|webp" was
- * allowed, which silently 400'd HEIC/HEIF photos shipped from iPhone
- * libraries (most providers' phones default to HEIC). The provider app
- * relays whatever ImagePicker gives us; rejecting HEIC made every iPhone
- * library upload appear "broken" with the generic "Invalid file type"
- * error. We now accept HEIC/HEIF + a few common gif/avif variants — the
- * Supabase storage bucket and downstream consumers handle them fine.
+ * GET /api/explore/upload — caps and feature gates for signed uploads (no secrets).
  */
-const ALLOWED_IMAGE_TYPES = [
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/webp",
-  "image/heic",
-  "image/heif",
-  "image/heic-sequence",
-  "image/heif-sequence",
-  "image/gif",
-  "image/avif",
-];
-const ALLOWED_VIDEO_TYPES = [
-  "video/mp4",
-  "video/webm",
-  "video/quicktime",
-  "video/x-m4v",
-  "video/m4v",
-  "video/mpeg",
-];
-const ALLOWED_TYPES = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_VIDEO_TYPES];
-const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB (HEIC/large originals)
-const MAX_VIDEO_SIZE = 50 * 1024 * 1024; // 50MB
+export async function GET(request: NextRequest) {
+  try {
+    const auth = await requireProviderExploreUploadAccess(request);
+    if ("error" in auth && auth.error) return auth.error;
+
+    const caps = await getExploreVideoTranscodeCaps(null);
+    const imageCaps = await getExploreImageUploadCaps(null);
+    const videoUploadEnabled = await isExploreVideoUploadEnabled(null);
+    const videoTranscodeEnabled = await isExploreVideoTranscodeEnabled(null);
+    const soundCatalogEnabled = await isExploreSoundCatalogEnabled(null);
+
+    return successResponse({
+      max_video_bytes: caps.maxVideoBytes,
+      max_duration_ms: caps.maxDurationMs,
+      max_sound_bytes: MAX_SOUND_BYTES,
+      max_image_bytes: imageCaps.maxImageBytes,
+      max_multipart_image_bytes: EXPLORE_MULTIPART_IMAGE_MAX_BYTES,
+      video_upload_enabled: videoUploadEnabled,
+      video_transcode_enabled: videoTranscodeEnabled,
+      sound_catalog_enabled: soundCatalogEnabled,
+    });
+  } catch (error) {
+    return handleApiError(error, "Failed to load upload config");
+  }
+}
 
 /**
  * POST /api/explore/upload
- * Upload media for explore post. Multipart form with "file". Returns path for use in POST /api/explore/posts.
+ * - Multipart `file` for images (JPEG after client compress, sharp on server).
+ * - JSON `{ kind: "video" | "sound" | "image", ... }` for signed Supabase upload (no bytes through Vercel).
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request
-    );
-    await requireSocialAccess(user.id, "ugc_create", request);
-    const supabase = await getSupabaseServer(request);
-    const providerId = await getProviderIdForUser(user.id, supabase);
-    if (!providerId) {
-      return errorResponse("Provider not found", "NOT_FOUND", 404);
+    const auth = await requireProviderExploreUploadAccess(request);
+    if ("error" in auth && auth.error) return auth.error;
+    const { providerId, supabaseAdmin } = auth;
+
+    const contentType = request.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      return handleSignedUploadJson(request, providerId, supabaseAdmin);
     }
-
-    const supabaseAdmin = await getSupabaseAdmin();
-    const isOwner =
-      (await supabaseAdmin
-        .from("providers")
-        .select("id")
-        .eq("user_id", user.id)
-        .single()).data != null;
-
-    if (!isOwner) {
-      const hasCreatePermission = await hasPermission(
-        user.id,
-        "create_explore_posts",
-        undefined,
-        request,
-      );
-      if (!hasCreatePermission) {
-        return errorResponse(
-          "Permission denied: create_explore_posts required",
-          "FORBIDDEN",
-          403
-        );
-      }
-    }
-
-    const formData = await request.formData();
-    const file = formData.get("file") as File;
-
-    if (!file) {
-      return errorResponse("No file provided", "VALIDATION_ERROR", 400);
-    }
-
-    // §Provider-audit 2026-05: be lenient when ImagePicker hands us
-    // `application/octet-stream` (Android sometimes does), and fall back to
-    // the file extension when present. Anything still unrecognised gets a
-    // friendlier error message that names the formats we accept.
-    const declaredType = (file.type || "").toLowerCase();
-    const looksLikeImageByExt = /\.(jpe?g|png|webp|heic|heif|gif|avif)$/i.test(file.name);
-    const looksLikeVideoByExt = /\.(mp4|webm|mov|m4v|mpeg|mpg)$/i.test(file.name);
-    const isAllowed =
-      ALLOWED_TYPES.includes(declaredType) ||
-      ((declaredType === "" || declaredType === "application/octet-stream") &&
-        (looksLikeImageByExt || looksLikeVideoByExt));
-    if (!isAllowed) {
-      return errorResponse(
-        "Unsupported file type. Use JPEG, PNG, WebP, HEIC, GIF, MP4, MOV, or WebM.",
-        "VALIDATION_ERROR",
-        400
-      );
-    }
-
-    const isVideo =
-      ALLOWED_VIDEO_TYPES.includes(declaredType) ||
-      (looksLikeVideoByExt && !ALLOWED_IMAGE_TYPES.includes(declaredType));
-    const maxSize = isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
-    if (file.size > maxSize) {
-      return errorResponse(
-        `File too large. Max ${isVideo ? "50MB" : "10MB"} for ${isVideo ? "videos" : "images"}.`,
-        "VALIDATION_ERROR",
-        400
-      );
-    }
-
-    const ext = file.name.split(".").pop() || (isVideo ? "mp4" : "jpg");
-    const safeName = `post-${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
-    const path = `explore/${providerId}/${safeName}`;
-
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    // Use the declared/derived content-type, falling back to a sane default
-    // so the storage object always carries a Content-Type that the browser
-    // (and the provider app's expo-image rendering) can understand.
-    const storageContentType =
-      declaredType && declaredType !== "application/octet-stream"
-        ? file.type
-        : isVideo
-          ? "video/mp4"
-          : "image/jpeg";
-
-    const { data: uploadData, error } = await supabaseAdmin.storage
-      .from("explore-posts")
-      .upload(path, buffer, {
-        contentType: storageContentType,
-        cacheControl: "3600",
-        upsert: false,
-      });
-
-    if (error) {
-      if (
-        error.message.includes("Bucket not found") ||
-        error.message.includes("does not exist")
-      ) {
-        return errorResponse(
-          "Storage bucket explore-posts not found. Create it in Supabase Dashboard.",
-          "STORAGE_ERROR",
-          500
-        );
-      }
-      return handleApiError(error, "Failed to upload file");
-    }
-
-    return successResponse({ path: uploadData.path });
+    return handleMultipartImage(request, providerId, supabaseAdmin);
   } catch (error) {
     return handleApiError(error, "Failed to upload file");
   }
+}
+
+async function handleSignedUploadJson(
+  request: NextRequest,
+  providerId: string,
+  supabaseAdmin: Awaited<ReturnType<typeof import("@/lib/supabase/admin").getSupabaseAdmin>>,
+) {
+  const parsed = signedUploadSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
+    return errorResponse(parsed.error.issues[0]?.message ?? "Invalid input", "VALIDATION_ERROR", 400);
+  }
+  const { kind, duration_ms, size_bytes, mime_type, include_placeholder_cover } = parsed.data;
+
+  if (kind === "video") {
+    if (!(await isExploreVideoUploadEnabled(null))) {
+      return errorResponse("Video upload is disabled", "FORBIDDEN", 403);
+    }
+    const caps = await getExploreVideoTranscodeCaps(null);
+    if (duration_ms == null || !Number.isFinite(duration_ms) || duration_ms <= 0) {
+      return errorResponse("duration_ms is required for video upload", "VALIDATION_ERROR", 400);
+    }
+    if (size_bytes != null && size_bytes > caps.maxVideoBytes) {
+      return errorResponse("Video file is too large", "VALIDATION_ERROR", 400);
+    }
+    /* Long clips are trimmed to max_duration_ms at Rendobar encode (WhatsApp-style), not rejected here. */
+  } else if (kind === "image") {
+    const imageCaps = await getExploreImageUploadCaps(null);
+    if (size_bytes == null || size_bytes <= 0) {
+      return errorResponse("size_bytes is required for image upload", "VALIDATION_ERROR", 400);
+    }
+    if (size_bytes > imageCaps.maxImageBytes) {
+      return errorResponse("Image file is too large", "VALIDATION_ERROR", 400);
+    }
+    const mime = (mime_type ?? "").toLowerCase();
+    if (!mime || !isAllowedExploreImageMime(mime)) {
+      return errorResponse(
+        "Unsupported file type. Use JPEG, PNG, WebP, or HEIC for photos.",
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+  } else {
+    if (!(await isExploreSoundCatalogEnabled(null))) {
+      return errorResponse("Sound upload is disabled", "FORBIDDEN", 403);
+    }
+    if (size_bytes != null && size_bytes > MAX_SOUND_BYTES) {
+      return errorResponse("Sound file is too large", "VALIDATION_ERROR", 400);
+    }
+    const allowed = ["audio/mpeg", "audio/mp4", "audio/x-m4a", "audio/m4a"];
+    if (mime_type && !allowed.includes(mime_type.toLowerCase())) {
+      return errorResponse("Sound must be MP3 or M4A", "VALIDATION_ERROR", 400);
+    }
+  }
+
+  const ext =
+    kind === "video" ? "mp4" : kind === "sound" ? "m4a" : exploreImageExtFromMime(mime_type ?? "image/jpeg");
+  const safeName =
+    kind === "image"
+      ? `post-${Date.now()}.${ext}`
+      : `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
+  const path = `explore/${providerId}/${safeName}`;
+
+  const { data, error } = await supabaseAdmin.storage.from("explore-posts").createSignedUploadUrl(path);
+  if (error || !data) {
+    return handleApiError(error ?? new Error("No signed URL"), "Failed to create upload URL");
+  }
+
+  let placeholder_cover_path: string | null = null;
+  if (kind === "video" && include_placeholder_cover !== false) {
+    const { data: prov } = await supabaseAdmin
+      .from("providers")
+      .select("business_name")
+      .eq("id", providerId)
+      .maybeSingle();
+    const card = await generateVideoPlaceholderCard(prov?.business_name);
+    const coverPath = `explore/${providerId}/cover-${Date.now()}.jpg`;
+    await supabaseAdmin.storage.from("explore-posts").upload(coverPath, card.buffer, {
+      contentType: "image/jpeg",
+      cacheControl: "31536000",
+      upsert: false,
+    });
+    placeholder_cover_path = coverPath;
+  }
+
+  return successResponse({
+    path: data.path ?? path,
+    signed_url: data.signedUrl,
+    token: data.token,
+    placeholder_cover_path,
+  });
+}
+
+async function handleMultipartImage(
+  request: NextRequest,
+  providerId: string,
+  supabaseAdmin: Awaited<ReturnType<typeof import("@/lib/supabase/admin").getSupabaseAdmin>>,
+) {
+  const formData = await request.formData();
+  const file = formData.get("file") as File;
+  if (!file) {
+    return errorResponse("No file provided", "VALIDATION_ERROR", 400);
+  }
+
+  const declaredType = (file.type || "").toLowerCase();
+  if (!isAllowedExploreImageMime(declaredType, file.name)) {
+    return errorResponse(
+      "Unsupported file type. Use JPEG, PNG, WebP, or HEIC for photos.",
+      "VALIDATION_ERROR",
+      400,
+    );
+  }
+
+  if (file.size > EXPLORE_MULTIPART_IMAGE_MAX_BYTES) {
+    return errorResponse(
+      "File too large for direct upload. Use signed upload for larger photos.",
+      "VALIDATION_ERROR",
+      400,
+    );
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const inputBuffer = Buffer.from(arrayBuffer);
+
+  const { data: prov } = await supabaseAdmin
+    .from("providers")
+    .select("business_name")
+    .eq("id", providerId)
+    .maybeSingle();
+
+  const { buffer, width, height } = await processExploreDisplayJpeg(
+    inputBuffer,
+    prov?.business_name,
+  );
+
+  const displayPath = `explore/${providerId}/display-${Date.now()}.jpg`;
+  const { data: uploadData, error } = await supabaseAdmin.storage
+    .from("explore-posts")
+    .upload(displayPath, buffer, {
+      contentType: "image/jpeg",
+      cacheControl: "31536000",
+      upsert: false,
+    });
+
+  if (error) {
+    return handleApiError(error, "Failed to upload display image");
+  }
+
+  const originalExt = file.name.split(".").pop() || "jpg";
+  const originalPath = `explore/${providerId}/post-${Date.now()}.${originalExt}`;
+  await supabaseAdmin.storage.from("explore-posts").upload(originalPath, inputBuffer, {
+    contentType: declaredType || "image/jpeg",
+    cacheControl: "3600",
+    upsert: false,
+  });
+
+  return successResponse({
+    path: originalPath,
+    display_path: uploadData?.path ?? displayPath,
+    width,
+    height,
+  });
 }

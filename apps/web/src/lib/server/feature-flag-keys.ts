@@ -206,6 +206,27 @@ export const FEATURE_FLAG_KEYS = {
 
   /** One-time contextual hints on customer and provider mobile apps. */
   CONTEXTUAL_HINTS: "contextual_hints",
+
+  /** Customer/web Explore feed and post detail. */
+  EXPLORE_ENABLED: "explore.enabled",
+  /** Provider create, edit, and publish Explore posts. */
+  EXPLORE_PROVIDER_POSTS: "explore.provider_posts",
+  /** Signed upload for Explore video bytes. */
+  EXPLORE_VIDEO_UPLOAD: "explore.video_upload",
+  /** Rendobar ffprobe/ffmpeg for Explore videos. Metadata: max_duration_ms, max_video_bytes. */
+  EXPLORE_VIDEO_TRANSCODE: "explore.video_transcode",
+  /** Platform and provider sounds on Explore video posts. */
+  EXPLORE_SOUND_CATALOG: "explore.sound_catalog",
+  /** Signed upload for large Explore photos. Metadata: max_image_bytes. */
+  EXPLORE_IMAGE_UPLOAD: "explore.image_upload",
+  /** On-media text stickers (composer + burn-in). */
+  EXPLORE_TEXT_OVERLAYS: "explore.text_overlays",
+  /** Future: Rendobar AI caption/subtitle burn-in (default OFF). */
+  EXPLORE_RENDOBAR_AI_CAPTIONS: "explore.rendobar_ai_captions",
+  /** Future: Rendobar declarative JSON timeline compose (default OFF). */
+  EXPLORE_RENDOBAR_TIMELINE_COMPOSE: "explore.rendobar_timeline_compose",
+  /** Future: Rendobar smart compression vs fixed CRF (default OFF). */
+  EXPLORE_RENDOBAR_SMART_COMPRESSION: "explore.rendobar_smart_compression",
 } as const;
 
 export type PaymentRelatedFeatureKey =

@@ -117,7 +117,11 @@ export async function GET(request: NextRequest) {
 
     const badge = resolveJoinedBadge(effectivePointsData?.provider_badges);
     const currentPoints = effectivePointsData?.total_points ?? 0;
-    const progressToNextBadge = buildProgressToNextBadge(allBadges, badge, currentPoints);
+    const progressToNextBadge = buildProgressToNextBadge(allBadges, badge, currentPoints, {
+      totalBookings: completedBookings,
+      reviewCount,
+      ratingAverage,
+    });
     const badgeLadder = buildBadgeLadder(allBadges ?? [], badge, progressToNextBadge);
 
     return successResponse({

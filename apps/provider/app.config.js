@@ -158,7 +158,9 @@ const BASE_EXPO_CONFIG = {
       {
         cameraPermission:
           "Beautonomi Provider uses the camera to take photos or videos for your catalogue, profile, messages, to scan arrival QR codes, product barcodes, and for identity verification.",
-        // Enable microphone access on Android for liveness video and future in-app features.
+        microphonePermission:
+          "Beautonomi Provider uses the microphone when you record video for Explore posts, messages, and work documentation.",
+        // Enable microphone access on Android for liveness video and in-app video capture.
         recordAudioAndroid: true,
       },
     ],

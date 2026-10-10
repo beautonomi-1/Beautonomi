@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import { successResponse, handleApiError, errorResponse, requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { isPaystackEnabledForTenant } from "@/lib/subscriptions/entitlements";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
-import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { initializeOnlinePayment } from "@/lib/payments/online-payment";
+import { generateTransactionReference } from "@/lib/payments/paystack";
 import {
   paystackChannelsForInitialize,
   resolveHostedCheckoutCallbacks,
@@ -312,11 +313,23 @@ export async function POST(request: NextRequest) {
     const setAsDefault = rawMeta.setAsDefault === "true" || rawMeta.setAsDefault === true;
     const channelExtras = paystackChannelsForInitialize({ saveCard });
 
-    const data = await initializePaystackTransaction({
+    const reference = generateTransactionReference("paystack_init", user.id);
+    const lineItemName = bookingIdFromMeta
+      ? "Booking payment"
+      : productOrderIdRaw
+        ? "Product order"
+        : customOfferIdRaw
+          ? "Custom offer"
+          : "Payment";
+    const data = await initializeOnlinePayment({
+      tenantId,
       email: body.email,
       amountInSmallestUnit: paystackAmount,
       currency: chargeCurrency,
-      callback_url: callbackUrl,
+      reference,
+      callbackUrl,
+      lineItemName,
+      saveCard,
       metadata: {
         ...rawMeta,
         ...(bookingIdFromMeta ? { booking_id: bookingIdFromMeta } : {}),
@@ -338,11 +351,10 @@ export async function POST(request: NextRequest) {
             : []),
         ],
       },
-      tenantId,
       ...(channelExtras.channels ? { channels: channelExtras.channels } : {}),
     });
 
-    const paystackReference: string = data.data.reference;
+    const paystackReference: string = data.reference;
 
     // M1 guard: persist Paystack reference back to source rows so reconciliation
     // and webhook processing can always find the row by reference.
@@ -369,8 +381,8 @@ export async function POST(request: NextRequest) {
     }
 
     return successResponse({
-      authorization_url: data.data.authorization_url,
-      reference: data.data.reference,
+      authorization_url: data.authorizationUrl ?? "",
+      reference: data.reference,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

@@ -26,7 +26,7 @@ import { downloadTerminalOrderReceipt } from "@/lib/download-terminal-order-rece
 import { useProvider } from "@/providers/ProviderContext";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
-import { extractPaystackReferenceFromUrl } from "@/lib/payments/paystackRefFromUrl";
+import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import {
   getTerminalPaystackReturnUrl,
@@ -378,6 +378,7 @@ export default function TerminalShopScreen() {
       setVerifyingPayment(true);
       try {
         let payReference = reference?.trim() || null;
+        let checkoutSessionId: string | null = null;
         if (result.outcome === "success" && result.url) {
           if (matchesTerminalPaystackReturnUrl(result.url, { cancelled: true })) {
             const failed = terminalOrderFailedCopy(ts("paymentNotCompleted"));
@@ -386,11 +387,14 @@ export default function TerminalShopScreen() {
             await refreshAll();
             return;
           }
-          const extracted = extractPaystackReferenceFromUrl(result.url);
-          if (extracted) payReference = extracted;
+          const parsed = parseOnlineCheckoutReturnUrl(result.url);
+          if (parsed.reference) payReference = parsed.reference;
+          checkoutSessionId = parsed.sessionId;
         }
 
-        const verifyResult = payReference ? await verifyPaystackWithRetry(payReference) : null;
+        const verifyResult = payReference
+          ? await verifyPaystackWithRetry(payReference, { sessionId: checkoutSessionId })
+          : null;
         if (verifyResult?.status === "failed") {
           const failed = terminalOrderFailedCopy(verifyResult.errorMessage ?? null);
           setPaymentOutcome({ phase: "failed", ...failed });

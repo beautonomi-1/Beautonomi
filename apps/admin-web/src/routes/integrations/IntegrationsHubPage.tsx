@@ -114,6 +114,13 @@ export function IntegrationsHubPage() {
           accent: "from-teal-600 to-emerald-800",
         },
         {
+          to: adminSpaTo("/admin/integrations/rendobar"),
+          label: "Rendobar",
+          description: "Explore video transcode and poster jobs.",
+          icon: Radio,
+          accent: "from-violet-600 to-indigo-800",
+        },
+        {
           to: adminSpaTo("/admin/integrations/paycloud"),
           label: "PayCloud",
           description: "Card machine fleet configuration.",

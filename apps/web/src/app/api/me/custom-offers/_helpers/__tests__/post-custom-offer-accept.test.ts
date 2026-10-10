@@ -22,7 +22,7 @@ const mockIsFeatureEnabledServer = vi.fn();
 const mockResourceTenantMatchesHostTenant = vi.fn();
 const mockComputeCustomOfferPricing = vi.fn();
 const mockComputeCustomOfferSplits = vi.fn();
-const mockInitializePaystackTransaction = vi.fn();
+const mockInitializeOnlinePayment = vi.fn();
 const mockChargeAuthorization = vi.fn();
 const mockPatchCustomOfferMessageAttachments = vi.fn();
 const mockFinalizeCustomOfferPayment = vi.fn();
@@ -89,9 +89,9 @@ vi.mock("../custom-offer-splits", () => ({
   computeCustomOfferSplits: (...args: unknown[]) => mockComputeCustomOfferSplits(...args),
 }));
 
-vi.mock("@/lib/payments/paystack-server", () => ({
-  initializePaystackTransaction: (...args: unknown[]) =>
-    mockInitializePaystackTransaction(...args),
+vi.mock("@/lib/payments/online-payment", () => ({
+  initializeOnlinePayment: (...args: unknown[]) => mockInitializeOnlinePayment(...args),
+  isOnlineCardEnabledForTenant: vi.fn(async () => true),
 }));
 
 vi.mock("@/lib/payments/paystack-complete", () => ({
@@ -236,8 +236,9 @@ describe("postCustomOfferAccept — save_card metadata contract", () => {
         paystackAmount: 1000,
       },
     });
-    mockInitializePaystackTransaction.mockResolvedValue({
-      data: { authorization_url: "https://checkout.paystack.test/pay" },
+    mockInitializeOnlinePayment.mockResolvedValue({
+      authorizationUrl: "https://checkout.paystack.test/pay",
+      provider: "paystack",
     });
     mockChargeAuthorization.mockResolvedValue({
       status: true,
@@ -256,8 +257,8 @@ describe("postCustomOfferAccept — save_card metadata contract", () => {
       { params: Promise.resolve({ id: OFFER_ID }) },
     );
     expect(res.status).toBe(200);
-    expect(mockInitializePaystackTransaction).toHaveBeenCalledTimes(1);
-    const call = mockInitializePaystackTransaction.mock.calls[0][0];
+    expect(mockInitializeOnlinePayment).toHaveBeenCalledTimes(1);
+    const call = mockInitializeOnlinePayment.mock.calls[0][0];
     expect(call.metadata).toMatchObject({
       custom_offer_id: OFFER_ID,
       customer_id: CUSTOMER_ID,
@@ -293,7 +294,7 @@ describe("postCustomOfferAccept — save_card metadata contract", () => {
       { params: Promise.resolve({ id: OFFER_ID }) },
     );
     expect(res.status).toBe(200);
-    expect(mockInitializePaystackTransaction).not.toHaveBeenCalled();
+    expect(mockInitializeOnlinePayment).not.toHaveBeenCalled();
     expect(mockChargeAuthorization).toHaveBeenCalledTimes(1);
     const [, , , chargeMetadata] = mockChargeAuthorization.mock.calls[0];
     expect(chargeMetadata).toMatchObject({ customer_id: CUSTOMER_ID, save_card: false });
@@ -301,7 +302,7 @@ describe("postCustomOfferAccept — save_card metadata contract", () => {
 
   it("returns 502 PAYMENT_INIT_FAILED when Paystack init throws", async () => {
     mockGetSupabaseServer.mockResolvedValue(buildSupabaseMock({}));
-    mockInitializePaystackTransaction.mockRejectedValueOnce(new Error("paystack 5xx"));
+    mockInitializeOnlinePayment.mockRejectedValueOnce(new Error("paystack 5xx"));
     const { postCustomOfferAccept } = await import("../post-custom-offer-accept");
     const res = await postCustomOfferAccept(
       buildPostRequest({ payment_option: "full", save_card: true }),
@@ -401,7 +402,7 @@ describe("postCustomOfferAccept — zero-Paystack (wallet fully covers)", () => 
     );
 
     expect(res.status).toBe(200);
-    expect(mockInitializePaystackTransaction).not.toHaveBeenCalled();
+    expect(mockInitializeOnlinePayment).not.toHaveBeenCalled();
     expect(mockChargeAuthorization).not.toHaveBeenCalled();
 
     expect(updates.some((u) => u.status === "payment_pending")).toBe(true);

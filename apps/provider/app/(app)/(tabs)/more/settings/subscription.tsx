@@ -13,7 +13,7 @@ import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
-import { extractPaystackReferenceFromUrl } from "@/lib/payments/paystackRefFromUrl";
+import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
   getSubscriptionPaystackReturnUrl,
   matchesSubscriptionPaystackReturnUrl,
@@ -77,7 +77,7 @@ interface Subscription {
   auto_renew: boolean;
   plan_id: string;
   billing_period?: "monthly" | "yearly" | null;
-  billing_provider?: "paystack" | "apple" | "manual" | null;
+  billing_provider?: "paystack" | "stripe" | "apple" | "manual" | null;
   apple_price_increase_status?: "pending" | "consented" | "none" | null;
   ios_purchase_eligible?: boolean;
   ios_purchase_eligible_reason?: string | null;
@@ -395,6 +395,7 @@ export default function SubscriptionScreen() {
       setVerifying(true);
       try {
         let reference = opts?.reference?.trim() || null;
+        let checkoutSessionId: string | null = null;
         if (result.outcome === "success" && result.url) {
           if (matchesSubscriptionPaystackReturnUrl(result.url, { cancelled: true })) {
             const failed = subscriptionFailedCopy(sub("paymentNotCompleted"));
@@ -403,11 +404,14 @@ export default function SubscriptionScreen() {
             refresh();
             return;
           }
-          const extracted = extractPaystackReferenceFromUrl(result.url);
-          if (extracted) reference = extracted;
+          const parsed = parseOnlineCheckoutReturnUrl(result.url);
+          if (parsed.reference) reference = parsed.reference;
+          checkoutSessionId = parsed.sessionId;
         }
 
-        const verifyResult = reference ? await verifyPaystackWithRetry(reference) : null;
+        const verifyResult = reference
+          ? await verifyPaystackWithRetry(reference, { sessionId: checkoutSessionId })
+          : null;
 
         if (verifyResult?.status === "failed") {
           const failed = subscriptionFailedCopy(verifyResult.errorMessage ?? null);
@@ -727,7 +731,14 @@ export default function SubscriptionScreen() {
     try {
       const { error: linkErr, data } = await api.get<{ link?: string }>("/api/provider/subscription/manage-link");
       if (linkErr) {
-        Alert.alert(sub("errorAlertTitle"), getApiErrorMessage(linkErr, sub("cardUpdateFailed")));
+        const code = (linkErr as { code?: string }).code;
+        const fallback =
+          code === "NO_STRIPE_CUSTOMER"
+            ? sub("stripeManageUnavailable")
+            : code === "NO_PAYSTACK_SUBSCRIPTION"
+              ? sub("paystackManageUnavailable")
+              : sub("cardUpdateFailed");
+        Alert.alert(sub("errorAlertTitle"), getApiErrorMessage(linkErr, fallback));
         return;
       }
       if (data?.link) {
@@ -966,6 +977,19 @@ export default function SubscriptionScreen() {
           <Text style={twStyle("text-sm font-semibold text-blue-900")}>{sub("billedThroughAppleTitle")}</Text>
           <Text style={twStyle("mt-1 text-sm leading-5 text-blue-900")}>
             {sub("billedThroughAppleBody")}
+          </Text>
+        </View>
+      ) : null}
+
+      {paidSubscriber &&
+      subscription.billing_provider === "stripe" &&
+      !isAppleBillingActive(subscription.billing_provider, subscription.status) ? (
+        <View style={twStyle("mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-4")}>
+          <Text style={twStyle("text-sm font-semibold text-slate-900")}>
+            {sub("billedThroughStripeTitle")}
+          </Text>
+          <Text style={twStyle("mt-1 text-sm leading-5 text-slate-800")}>
+            {sub("billedThroughStripeBody")}
           </Text>
         </View>
       ) : null}

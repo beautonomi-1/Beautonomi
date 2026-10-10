@@ -8,7 +8,7 @@ import {
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
-import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { initializeOnlinePayment } from "@/lib/payments/online-payment";
 import { resolveHostedCheckoutCallbacks } from "@/lib/payments/resolve-paystack-hosted-callback";
 import {
   convertToSmallestUnit,
@@ -262,13 +262,16 @@ export async function POST(
     const remainingCallbackUrl = hostedRemaining.successUrl;
     const remainingCancelAction = `${hostedRemaining.cancelUrl}${hostedRemaining.cancelUrl.includes("?") ? "&" : "?"}pay_remaining_cancelled=1`;
 
-    let paystackResponse: Awaited<ReturnType<typeof initializePaystackTransaction>>;
+    let onlineInit: Awaited<ReturnType<typeof initializeOnlinePayment>>;
     try {
-      paystackResponse = await initializePaystackTransaction({
+      onlineInit = await initializeOnlinePayment({
+        tenantId: paymentTenantId,
         email: customer.email,
         amountInSmallestUnit,
         currency,
         reference,
+        callbackUrl: remainingCallbackUrl,
+        lineItemName: `Booking ${bookingNumber || bookingId} — remaining balance`,
         metadata: {
           booking_id: bookingId,
           booking_number: bookingNumber,
@@ -278,8 +281,6 @@ export async function POST(
           wallet_amount_applied: walletAmountApplied,
           gift_card_amount_applied: giftCardAmountApplied,
         },
-        callback_url: remainingCallbackUrl,
-        tenantId: paymentTenantId,
       });
     } catch (initErr) {
       if (paymentLegSuffix && (walletAmountApplied > 0 || giftCardAmountApplied > 0)) {
@@ -298,7 +299,7 @@ export async function POST(
       throw initErr;
     }
 
-    if (!paystackResponse.data?.authorization_url) {
+    if (!onlineInit.authorizationUrl) {
       if (paymentLegSuffix && (walletAmountApplied > 0 || giftCardAmountApplied > 0)) {
         await rollbackCollectibleSplitLeg(admin, {
           bookingId,
@@ -316,8 +317,8 @@ export async function POST(
     }
 
     const payRemainingBody = {
-      authorization_url: paystackResponse.data.authorization_url ?? "",
-      access_code: paystackResponse.data.access_code ?? "",
+      authorization_url: onlineInit.authorizationUrl ?? "",
+      access_code: onlineInit.accessCode ?? "",
       reference,
       wallet_amount_applied: walletAmountApplied,
       gift_card_amount_applied: giftCardAmountApplied,

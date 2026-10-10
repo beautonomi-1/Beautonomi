@@ -36,6 +36,12 @@ vi.mock("@/lib/payments/paystack-server", () => ({
   getPaystackSecretKey: (...args: unknown[]) => mockGetPaystackSecretKey(...args),
 }));
 
+vi.mock("@/lib/payments/online-payment-checkouts", () => ({
+  getOnlinePaymentCheckoutByReference: vi.fn(async () => null),
+  upsertOnlinePaymentCheckout: vi.fn(),
+  markOnlinePaymentCheckoutStatus: vi.fn(),
+}));
+
 vi.mock("@/lib/regions/config", () => ({
   getTenantRegionConfig: vi.fn(async () => ({ defaultCurrency: "ZAR" })),
 }));

@@ -14,7 +14,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
-import { extractPaystackReferenceFromUrl, isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
+import { isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
+import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
   getCustomerPaystackAuthReturnUrl,
   getShopProductPaystackAuthPrefix,
@@ -914,6 +915,7 @@ export default function ProductCheckoutScreen() {
       setProcessingPayment(true);
       setProcessingMessage(pc("confirmingPayment", undefined, "Confirming your payment…"));
       let resolvedReference = paystackRes.data.reference;
+      let checkoutSessionId: string | null = null;
       if (pr.outcome === "success" && pr.url) {
         if (isCancelledPaystackUrl(pr.url)) {
           setProcessingPayment(false);
@@ -934,11 +936,12 @@ export default function ProductCheckoutScreen() {
           );
           return;
         }
-        const extracted = extractPaystackReferenceFromUrl(pr.url);
-        if (extracted) resolvedReference = extracted;
+        const parsed = parseOnlineCheckoutReturnUrl(pr.url);
+        if (parsed.reference) resolvedReference = parsed.reference;
+        checkoutSessionId = parsed.sessionId;
       }
       if (resolvedReference) {
-        await verifyPaystackWithRetry(resolvedReference);
+        await verifyPaystackWithRetry(resolvedReference, { sessionId: checkoutSessionId });
       }
 
       let paid = false;

@@ -93,7 +93,7 @@ export async function recordAdsBudgetOrderPayment(params: {
   feesMajor: number;
   providerIdHint?: string | null;
   campaignIdHint?: string | null;
-  paymentProvider?: "paystack" | "apple" | "marketing_credit";
+  paymentProvider?: "paystack" | "stripe" | "apple" | "marketing_credit";
 }): Promise<RecordAdsBudgetOrderPaymentResult> {
   const { supabase, orderId, reference, amountMajor, feesMajor, paymentProvider = "paystack" } =
     params;

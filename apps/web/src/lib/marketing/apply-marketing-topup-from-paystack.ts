@@ -15,8 +15,10 @@ export async function applyMarketingTopupFromPaystackSuccess(input: {
   paystackReference: string;
   currency?: string | null;
   metadata?: Record<string, unknown>;
+  paymentProvider?: "paystack" | "stripe";
 }): Promise<{ credited: boolean; balance_after?: number }> {
-  const { supabase, providerId, amountZar, paystackReference } = input;
+  const { supabase, providerId, amountZar, paystackReference, paymentProvider = "paystack" } =
+    input;
   if (!providerId || amountZar <= 0) return { credited: false };
 
   const idempotencyKey = `marketing_topup:${paystackReference}`;
@@ -45,6 +47,7 @@ export async function applyMarketingTopupFromPaystackSuccess(input: {
       feesMajor: input.feesZar ?? 0,
       currency: input.currency ?? null,
       metadata: input.metadata,
+      paymentProvider,
     });
   } catch (financeError) {
     console.error("[marketing_topup] finance attribution failed:", financeError);

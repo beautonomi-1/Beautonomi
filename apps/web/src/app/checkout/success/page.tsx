@@ -95,6 +95,7 @@ function CheckoutSuccessContent() {
   /** Paystack appends reference (or trxref) when redirecting after card payment */
   const paystackReference =
     searchParams?.get("reference") || searchParams?.get("trxref");
+  const stripeCheckoutSessionId = searchParams?.get("session_id");
   const isWaitlist = searchParams?.get("waitlist") === "1" || searchParams?.get("source") === "waitlist";
   const isCustomOffer = searchParams?.get("payment_type") === "custom_offer";
   const offerId = searchParams?.get("offer_id");
@@ -164,7 +165,7 @@ function CheckoutSuccessContent() {
       try {
         const verifyResult = await verifyWithRetry<{ type?: string; ads_budget_order_id?: string; order_id?: string }>(
           ref,
-          { maxAttempts: 5, delayMs: 1500 },
+          { maxAttempts: 5, delayMs: 1500, sessionId: stripeCheckoutSessionId },
         );
         const verifyType = typeof verifyResult.data?.type === "string" ? verifyResult.data.type : null;
         if (verifyType === "ads_budget_order") {
@@ -203,7 +204,7 @@ function CheckoutSuccessContent() {
       }
     };
     void run();
-  }, [isWaitlist, isCustomOffer, paystackReference, bookingId]);
+  }, [isWaitlist, isCustomOffer, paystackReference, stripeCheckoutSessionId, bookingId]);
 
   // §Provider-paystack-audit 2026-05: relay the provider success postMessage
   // for the in-app WebView once we know which provider type we're handling.
@@ -219,7 +220,11 @@ function CheckoutSuccessContent() {
     customOfferVerifyStarted.current = true;
     const run = async () => {
       try {
-        await verifyWithRetry(ref, { maxAttempts: 5, delayMs: 1500 });
+        await verifyWithRetry(ref, {
+          maxAttempts: 5,
+          delayMs: 1500,
+          sessionId: stripeCheckoutSessionId,
+        });
         // Immediately probe offer after verify — the inline finalize means
         // booking_id may already be set by the time the fetch resolves.
         const offerRes = await fetch(`/api/me/custom-offers/${encodeURIComponent(offerId)}`, {
@@ -239,7 +244,7 @@ function CheckoutSuccessContent() {
       }
     };
     void run();
-  }, [isCustomOffer, offerId, paystackReference]);
+  }, [isCustomOffer, offerId, paystackReference, stripeCheckoutSessionId]);
 
   /** Realtime: booking_id appears as soon as the webhook / verify path finishes. */
   useEffect(() => {

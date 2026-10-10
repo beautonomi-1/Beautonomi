@@ -10,6 +10,9 @@ const baseSignals = {
   storedRatingAverage: 4.5,
   transactionCount: 12,
   hasProviderPointsRow: true,
+  cachedTotalPoints: 120,
+  ledgerPointsSum: 120,
+  ledgerPointsSumReliable: true,
 };
 
 describe("shouldHealProviderGamification", () => {
@@ -92,5 +95,27 @@ describe("shouldHealProviderGamification", () => {
 
   it("does not heal when ledger and stats are aligned", () => {
     expect(shouldHealProviderGamification(baseSignals)).toBe(false);
+  });
+
+  it("heals when cached total_points differs from ledger sum", () => {
+    expect(
+      shouldHealProviderGamification({
+        ...baseSignals,
+        cachedTotalPoints: 80,
+        ledgerPointsSum: 120,
+        ledgerPointsSumReliable: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not heal on ledger drift when RPC sum is unreliable", () => {
+    expect(
+      shouldHealProviderGamification({
+        ...baseSignals,
+        cachedTotalPoints: 80,
+        ledgerPointsSum: 120,
+        ledgerPointsSumReliable: false,
+      }),
+    ).toBe(false);
   });
 });

@@ -1,5 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { validateAdminPayoutReadiness } from "../validate-provider-payout-readiness";
+import { loadProviderPayoutRailContext } from "@/lib/payments/payout-rail";
+
+vi.mock("@/lib/payments/payout-rail", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/payments/payout-rail")>();
+  return {
+    ...actual,
+    loadProviderPayoutRailContext: vi.fn(async () => ({
+      payout_rail: "paystack" as const,
+      stripe_connect: null,
+    })),
+  };
+});
 
 type Row = Record<string, unknown>;
 
@@ -223,7 +235,67 @@ describe("validateAdminPayoutReadiness", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.account?.recipient_code).toBe("RCP_active");
+      expect(result.payout_rail).toBe("paystack");
       expect(result.rawBalance).toBe(150);
+    }
+  });
+
+  it("allows admin payout when Stripe Connect is ready without a Paystack recipient", async () => {
+    vi.mocked(loadProviderPayoutRailContext).mockResolvedValueOnce({
+      payout_rail: "stripe",
+      stripe_connect: {
+        connect_account_id: "acct_123",
+        charges_enabled: true,
+        payouts_enabled: true,
+        details_submitted: true,
+        onboarding_complete: true,
+        currently_due: [],
+        disabled_reason: null,
+        external_account_last4: "4242",
+      },
+    });
+
+    const result = await validateAdminPayoutReadiness({
+      supabase: mockSupabase(baseRows()),
+      providerId,
+      tenantId,
+      requestedAccountId: null,
+      requireAccount: true,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.payout_rail).toBe("stripe");
+      expect(result.account).toBeNull();
+    }
+  });
+
+  it("blocks admin payout when Stripe Connect onboarding is incomplete", async () => {
+    vi.mocked(loadProviderPayoutRailContext).mockResolvedValueOnce({
+      payout_rail: "stripe",
+      stripe_connect: {
+        connect_account_id: "acct_123",
+        charges_enabled: false,
+        payouts_enabled: false,
+        details_submitted: false,
+        onboarding_complete: false,
+        currently_due: ["external_account"],
+        disabled_reason: null,
+        external_account_last4: null,
+      },
+    });
+
+    const result = await validateAdminPayoutReadiness({
+      supabase: mockSupabase(baseRows()),
+      providerId,
+      tenantId,
+      requestedAccountId: null,
+      requireAccount: true,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("STRIPE_CONNECT_NOT_READY");
     }
   });
 });

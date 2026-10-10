@@ -1034,7 +1034,11 @@ export async function getProviderDashboardResponse(request: NextRequest) {
 
         const badge = resolveJoinedBadge(gamificationData?.provider_badges);
         const currentPoints = gamificationData?.total_points ?? 0;
-        const progressToNextBadge = buildProgressToNextBadge(allBadges, badge, currentPoints);
+        const progressToNextBadge = buildProgressToNextBadge(allBadges, badge, currentPoints, {
+          totalBookings: completedBookings,
+          reviewCount: Number(providerData?.review_count ?? 0),
+          ratingAverage: Number(providerData?.rating_average ?? 0),
+        });
 
         return {
           total_points: currentPoints,

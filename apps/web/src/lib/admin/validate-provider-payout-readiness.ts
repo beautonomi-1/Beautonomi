@@ -2,6 +2,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
 import { getActiveProviderPayoutHold } from "@/lib/fraud/provider-payout-hold";
+import {
+  loadProviderPayoutRailContext,
+  type PayoutRail,
+  type StripeConnectPayoutStatus,
+} from "@/lib/payments/payout-rail";
 
 export type AdminPayoutAccount = {
   id?: string;
@@ -13,6 +18,8 @@ export type AdminPayoutReadinessResult =
   | {
       ok: true;
       account: AdminPayoutAccount | null;
+      payout_rail: PayoutRail;
+      stripe_connect: StripeConnectPayoutStatus | null;
       availableBalance: number;
       rawBalance: number;
       holdDays: number;
@@ -25,6 +32,7 @@ export type AdminPayoutReadinessResult =
       availableBalance?: number;
       rawBalance?: number;
       holdDays?: number;
+      payout_rail?: PayoutRail;
     };
 
 async function getPayoutHoldDays(supabase: SupabaseClient, tenantId: string | null): Promise<number> {
@@ -115,8 +123,40 @@ export async function validateAdminPayoutReadiness(params: {
     };
   }
 
+  const railContext = await loadProviderPayoutRailContext(supabase, providerId, tenantId);
+  const payout_rail: PayoutRail = railContext?.payout_rail ?? "paystack";
+  const stripe_connect = railContext?.stripe_connect ?? null;
+
   const account = await resolveActivePayoutAccount(supabase, providerId, requestedAccountId);
-  if (requireAccount && !account?.recipient_code) {
+
+  if (requireAccount && payout_rail === "stripe") {
+    if (!stripe_connect?.connect_account_id?.trim()) {
+      return {
+        ok: false,
+        status: 409,
+        code: "STRIPE_CONNECT_REQUIRED",
+        message:
+          "Provider has not started Stripe Connect onboarding. Ask them to complete payout setup under Settings → Payout accounts.",
+        availableBalance,
+        rawBalance,
+        holdDays,
+        payout_rail,
+      };
+    }
+    if (!stripe_connect.onboarding_complete) {
+      return {
+        ok: false,
+        status: 409,
+        code: "STRIPE_CONNECT_NOT_READY",
+        message:
+          "Provider Stripe Connect account is not ready for payouts. They must finish onboarding in Stripe before you can transfer.",
+        availableBalance,
+        rawBalance,
+        holdDays,
+        payout_rail,
+      };
+    }
+  } else if (requireAccount && !account?.recipient_code) {
     return {
       ok: false,
       status: 409,
@@ -128,8 +168,17 @@ export async function validateAdminPayoutReadiness(params: {
       availableBalance,
       rawBalance,
       holdDays,
+      payout_rail,
     };
   }
 
-  return { ok: true, account, availableBalance, rawBalance, holdDays };
+  return {
+    ok: true,
+    account: payout_rail === "stripe" ? null : account,
+    payout_rail,
+    stripe_connect,
+    availableBalance,
+    rawBalance,
+    holdDays,
+  };
 }

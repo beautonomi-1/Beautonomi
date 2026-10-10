@@ -272,9 +272,10 @@ export async function requireAuthInApi(request?: NextRequest | Request) {
  * Require role in API route.
  * Pass request as second arg for mobile/Expo Bearer token support.
  *
- * When 'superadmin' is in the allowed roles: superadmin bypasses provider scoping.
- * Routes must handle superadmin explicitly (e.g. accept provider_id query param for
- * cross-provider access). getProviderIdForUser returns null for superadmin.
+ * When 'superadmin' is in the allowed roles: superadmin bypasses role checks only.
+ * Provider scoping still uses {@link getProviderIdForUser}: owner/staff row for the
+ * signed-in user, or an explicit active-provider hint (`x-provider-id` / cookie).
+ * Superadmin without a linked provider gets null — same as any user with no business.
  */
 // §Customer-audit 2026-04: aggregator endpoints like /api/me/profile-summary
 // invoke up to 5 child route handlers in parallel, and each child called

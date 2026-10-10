@@ -17,6 +17,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { haptic } from "@/lib/haptics";
 import { useAuth } from "@/providers/AuthProvider";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { useNotifications } from "@/providers/NotificationsContext";
 import { useSelectedAddress, hasValidServiceCoordinates } from "@/providers/SelectedAddressProvider";
 import { useLocation } from "@/hooks/useLocation";
@@ -444,7 +445,8 @@ export default function HomeScreen() {
   }, []);
   const { user } = useAuth();
   const { settings: safetySettings } = useSafetySettings();
-  const hideExploreFeed = Boolean(user && safetySettings.hide_social_feed);
+  const exploreEnabled = useFeatureFlag("explore.enabled");
+  const hideExploreFeed = !exploreEnabled || Boolean(user && safetySettings.hide_social_feed);
   const { unreadCount } = useNotifications();
   const { selectedAddress, setSelectedAddress, isLoading: selectedAddressLoading } = useSelectedAddress();
   const { addresses, reload: reloadAddresses } = useAddresses(!!user);
