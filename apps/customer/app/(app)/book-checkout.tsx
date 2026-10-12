@@ -167,7 +167,6 @@ interface HoldData {
   payment_gateway?: string;
   payment_wallet?: boolean;
   gift_cards?: boolean;
-  cash_enabled_on_platform?: boolean;
   /** Effective tax rate from GET hold (provider or platform default). */
   tax_rate_percent?: number;
   /** Whether tax is inclusive in the service prices. */

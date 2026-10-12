@@ -17624,6 +17624,12 @@
     "securePaymentTitle": "Secure inkokhelo",
     "paymentCancelledTitle": "inkokhelo kukhanselwe",
     "paymentCancelledBody": "Uyikhansele inkhokhelo. Kubhukha kwakho akukacinisekiswa.",
+    "paymentCancelledHostedBody": "Ukhansile inkokhelo. Akukho mbhadalo wenziwe.",
+    "paymentCancelledBookingSaved": " Kubhuka kwakho kusasebenti — ungaqhubeka nentlawulo noma nini lapho ukulungele.",
+    "cancelledBackToOffer": "Buyela emuva kumnqumo",
+    "cancelledReturnToBooking": "Buyela ekubhukeni",
+    "cancelledGoHome": "Hamba ekhaya",
+    "cancelledLoading": "Iyalayisha…",
     "packageDiscount": "liphakethe saphulelo",
     "packageApplied": "liphakethe applied",
     "redeemPackage": "Redeem a prekukhokhelwe liphakethe (lokukhetsako)",
@@ -17640,7 +17646,8 @@
       "groupSwitchOff": "Kuvaliwe",
       "groupGuestsLimit_one": "Ngeta up to {{count}} Sivakashi.",
       "groupGuestsLimit_other": "Ngeta up to {{count}} guests."
-    }
+    },
+    "noPaymentMethodsAvailable": "Lo mhlinzeki akamukeli tinkhokhelo leti ku-inthanethi noma mathupha njengamanje. Tsintsana naye ukuze ucedze kubhuka kwakho."
   },
   "payments": {
     "pay": "Khokha",
@@ -18559,6 +18566,7 @@
         }
       },
       "stepPayment": {
+        "noPaymentMethodsAvailable": "Lo mhlinzeki akamukeli tinkhokhelo leti ku-inthanethi noma mathupha njengamanje. Tsintsana naye ukuze ucedze kubhuka kwakho.",
         "holdExpiredBody": "Jou gereserveerde gleuf het verval. Gaan terug en kies 'n nuwe tyd om voort te gaan.",
         "backToCalendar": "Khetsa anlokunye sikhatsi",
         "slotHeldBefore": "Slot gehou vir",

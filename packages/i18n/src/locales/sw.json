@@ -17624,6 +17624,12 @@
     "securePaymentTitle": "Secure malipo",
     "paymentCancelledTitle": "Malipo imeghairiwa",
     "paymentCancelledBody": "Jy het die betaling gekanselleer. Jou bespreking is nie bevestig nie.",
+    "paymentCancelledHostedBody": "Ulikataa malipo. Hakuna malipo yaliyofanyika.",
+    "paymentCancelledBookingSaved": " Uhifadhi wako bado umehifadhiwa — unaweza kuendelea na malipo utakapokuwa tayari.",
+    "cancelledBackToOffer": "Rudi kwenye ofa",
+    "cancelledReturnToBooking": "Rudi kwenye uhifadhi",
+    "cancelledGoHome": "Nenda nyumbani",
+    "cancelledLoading": "Inapakia…",
     "packageDiscount": "Package punguzo",
     "packageApplied": "Kifurushi kimetumika",
     "redeemPackage": "Redeem a prepaid package (si lazima)",
@@ -17640,7 +17646,8 @@
       "groupSwitchOff": "Zima",
       "groupGuestsLimit_one": "Ongeza up to {{count}} guest.",
       "groupGuestsLimit_other": "Ongeza up to {{count}} guests."
-    }
+    },
+    "noPaymentMethodsAvailable": "Mtoa huduma huyu hapokei malipo ya mtandaoni au ana kwa ana kwa sasa. Wasiliana naye kukamilisha uhifadhi wako."
   },
   "payments": {
     "pay": "Pay",
@@ -18559,6 +18566,7 @@
         }
       },
       "stepPayment": {
+        "noPaymentMethodsAvailable": "Mtoa huduma huyu hapokei malipo ya mtandaoni au ana kwa ana kwa sasa. Wasiliana naye kukamilisha uhifadhi wako.",
         "holdExpiredBody": "Isikhala sakho ebesigodliwe siphelelwe yisikhathi. Buyela emuva bese ukhetha isikhathi esisha ukuze uqhubeke.",
         "backToCalendar": "Choose another muda",
         "slotHeldBefore": "Nafasi imehifadhiwa kwa ",

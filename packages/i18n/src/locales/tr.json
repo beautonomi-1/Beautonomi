@@ -17624,6 +17624,12 @@
     "securePaymentTitle": "Secure paiement",
     "paymentCancelledTitle": "Paiement annulé",
     "paymentCancelledBody": "Jy het die betaling gekanselleer. Jou bespreking is nie bevestig nie.",
+    "paymentCancelledHostedBody": "Ödemeyi iptal ettiniz. Herhangi bir ücret alınmadı.",
+    "paymentCancelledBookingSaved": " Rezervasyonunuz hâlâ kayıtlı — hazır olduğunuzda ödemeye devam edebilirsiniz.",
+    "cancelledBackToOffer": "Teklife dön",
+    "cancelledReturnToBooking": "Rezervasyona dön",
+    "cancelledGoHome": "Ana sayfaya git",
+    "cancelledLoading": "Yükleniyor…",
     "packageDiscount": "Package réduction",
     "packageApplied": "Forfait appliqué",
     "redeemPackage": "Redeem a prepaid package (facultatif)",
@@ -17640,7 +17646,8 @@
       "groupSwitchOff": "Désactivé",
       "groupGuestsLimit_one": "Ajouter up to {{count}} guest.",
       "groupGuestsLimit_other": "Ajouter up to {{count}} guests."
-    }
+    },
+    "noPaymentMethodsAvailable": "Bu sağlayıcı şu anda çevrimiçi veya yüz yüze ödeme kabul etmiyor. Rezervasyonunuzu tamamlamak için onunla iletişime geçin."
   },
   "payments": {
     "pay": "Pay",
@@ -18559,6 +18566,7 @@
         }
       },
       "stepPayment": {
+        "noPaymentMethodsAvailable": "Bu sağlayıcı şu anda çevrimiçi veya yüz yüze ödeme kabul etmiyor. Rezervasyonunuzu tamamlamak için onunla iletişime geçin.",
         "holdExpiredBody": "Isikhala sakho ebesigodliwe siphelelwe yisikhathi. Buyela emuva bese ukhetha isikhathi esisha ukuze uqhubeke.",
         "backToCalendar": "Choose another heure",
         "slotHeldBefore": "Créneau réservé pendant ",

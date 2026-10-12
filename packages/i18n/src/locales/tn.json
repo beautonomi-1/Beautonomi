@@ -17624,6 +17624,12 @@
     "securePaymentTitle": "Secure tefo",
     "paymentCancelledTitle": "tefo e khansetswe",
     "paymentCancelledBody": "O khansetse tuelo. Peeletso ya gago ga e ise e netefadiwe.",
+    "paymentCancelledHostedBody": "O khansetse tefo. Ga go tefo e e dirilweng.",
+    "paymentCancelledBookingSaved": " Peakanyo ya gago e sa bolokilwe — o ka tswela pele ka tefo neng kapa neng fa o siametse.",
+    "cancelledBackToOffer": "Boela mo tshupong",
+    "cancelledReturnToBooking": "Boela mo peakanyong",
+    "cancelledGoHome": "Tsamaya gae",
+    "cancelledLoading": "E a tsenya…",
     "packageDiscount": "sephuthelwana theolelo",
     "packageApplied": "sephuthelwana applied",
     "redeemPackage": "Redeem a pree duetswe sephuthelwana (boikgethelo)",
@@ -17640,7 +17646,8 @@
       "groupSwitchOff": "E timilwe",
       "groupGuestsLimit_one": "Tsenya up to {{count}} Moeng.",
       "groupGuestsLimit_other": "Tsenya up to {{count}} guests."
-    }
+    },
+    "noPaymentMethodsAvailable": "Mofani eno ga a amogele ditefiso tsa inthanete kgotsa tsa sefahlego jaanong. Ikopanye le ene go wetsa peakanyo ya gago."
   },
   "payments": {
     "pay": "Duela",
@@ -18559,6 +18566,7 @@
         }
       },
       "stepPayment": {
+        "noPaymentMethodsAvailable": "Mofani eno ga a amogele ditefiso tsa inthanete kgotsa tsa sefahlego jaanong. Ikopanye le ene go wetsa peakanyo ya gago.",
         "holdExpiredBody": "Jou gereserveerde gleuf het verval. Gaan terug en kies 'n nuwe tyd om voort te gaan.",
         "backToCalendar": "Tlhopha antse dingwe nako",
         "slotHeldBefore": "Slot gehou vir",

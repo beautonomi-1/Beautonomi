@@ -17652,6 +17652,12 @@
     "securePaymentTitle": "Secure betaling",
     "paymentCancelledTitle": "betaling gekanselleer",
     "paymentCancelledBody": "Jy het die betaling gekanselleer. Jou bespreking is nie bevestig nie.",
+    "paymentCancelledHostedBody": "Jy het die betaling gekanselleer. Geen heffing is gemaak nie.",
+    "paymentCancelledBookingSaved": " Jou bespreking is steeds gestoor — jy kan enige tyd met betaling voortgaan.",
+    "cancelledBackToOffer": "Terug na aanbod",
+    "cancelledReturnToBooking": "Terug na bespreking",
+    "cancelledGoHome": "Gaan huis toe",
+    "cancelledLoading": "Laai tans…",
     "packageDiscount": "pakket afslag",
     "packageApplied": "pakket applied",
     "redeemPackage": "Redeem a prebetaal pakket (opsioneel)",
@@ -17668,7 +17674,8 @@
       "groupSwitchOff": "Af",
       "groupGuestsLimit_one": "Voeg up to {{count}} Gas. by.",
       "groupGuestsLimit_other": "Voeg up to {{count}} guests. by."
-    }
+    },
+    "noPaymentMethodsAvailable": "Hierdie verskaffer aanvaar tans nie aanlyn- of persoonlike betalings nie. Kontak hulle om jou bespreking te voltooi."
   },
   "payments": {
     "pay": "Betaal",
@@ -18587,6 +18594,7 @@
         }
       },
       "stepPayment": {
+        "noPaymentMethodsAvailable": "Hierdie verskaffer aanvaar tans nie aanlyn- of persoonlike betalings nie. Kontak hulle om jou bespreking te voltooi.",
         "holdExpiredBody": "Jou gereserveerde gleuf het verval. Gaan terug en kies 'n nuwe tyd om voort te gaan.",
         "backToCalendar": "Kies anander tyd",
         "slotHeldBefore": "Slot gehou vir",

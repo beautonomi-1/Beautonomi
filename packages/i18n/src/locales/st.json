@@ -17624,6 +17624,12 @@
     "securePaymentTitle": "Secure tefo",
     "paymentCancelledTitle": "tefo e hlakotsoe",
     "paymentCancelledBody": "U hlakotse tefo. Pehelo ea hau ha e so netefatsoe.",
+    "paymentCancelledHostedBody": "U hlakotse tefo. Ha ho tefo e entsoeng.",
+    "paymentCancelledBookingSaved": " Pehelo ea hau e ntse e bolokiloe — u ka tsoela pele ka tefo neng kapa neng ha u loketse.",
+    "cancelledBackToOffer": "Khutlela ho tjhebeletso",
+    "cancelledReturnToBooking": "Khutlela ho pehelo",
+    "cancelledGoHome": "Eya hae",
+    "cancelledLoading": "E a jarolla…",
     "packageDiscount": "sephuthelo theolelo",
     "packageApplied": "sephuthelo applied",
     "redeemPackage": "Redeem a pree lefuoe sephuthelo (boikhethelo)",
@@ -17640,7 +17646,8 @@
       "groupSwitchOff": "E timile",
       "groupGuestsLimit_one": "Kenya up to {{count}} Moeti.",
       "groupGuestsLimit_other": "Kenya up to {{count}} guests."
-    }
+    },
+    "noPaymentMethodsAvailable": "Mofani enoa ha a amohele litefiso tsa inthanete kapa tsa sefahleho hajoale. Ikopanye le eena ho qetela pehelo ea hau."
   },
   "payments": {
     "pay": "Lefa",
@@ -18559,6 +18566,7 @@
         }
       },
       "stepPayment": {
+        "noPaymentMethodsAvailable": "Mofani enoa ha a amohele litefiso tsa inthanete kapa tsa sefahleho hajoale. Ikopanye le eena ho qetela pehelo ea hau.",
         "holdExpiredBody": "Jou gereserveerde gleuf het verval. Gaan terug en kies 'n nuwe tyd om voort te gaan.",
         "backToCalendar": "Khetha antse ding nako",
         "slotHeldBefore": "Slot gehou vir",

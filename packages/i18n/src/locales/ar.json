@@ -17624,6 +17624,12 @@
     "securePaymentTitle": "Secure دفع",
     "paymentCancelledTitle": "دفع ملغى",
     "paymentCancelledBody": "Jy het die betaling gekanselleer. Jou bespreking is nie bevestig nie.",
+    "paymentCancelledHostedBody": "لقد ألغيت الدفع. لم يتم خصم أي مبلغ.",
+    "paymentCancelledBookingSaved": " حجزك ما زال محفوظًا — يمكنك متابعة الدفع متى شئت.",
+    "cancelledBackToOffer": "العودة إلى العرض",
+    "cancelledReturnToBooking": "العودة إلى الحجز",
+    "cancelledGoHome": "الصفحة الرئيسية",
+    "cancelledLoading": "جارٍ التحميل…",
     "packageDiscount": "Package خصم",
     "packageApplied": "تم تطبيق الباقة",
     "redeemPackage": "استخدم باقة مدفوعة مسبقاً (اختياري)",
@@ -17640,7 +17646,8 @@
       "groupSwitchOff": "إيقاف",
       "groupGuestsLimit_one": "إضافة up to {{count}} guest.",
       "groupGuestsLimit_other": "إضافة up to {{count}} guests."
-    }
+    },
+    "noPaymentMethodsAvailable": "هذا المزوّد لا يقبل المدفوعات عبر الإنترنت أو حضوريًا حاليًا. تواصل معه لإكمال حجزك."
   },
   "payments": {
     "pay": "دفع",
@@ -18559,6 +18566,7 @@
         }
       },
       "stepPayment": {
+        "noPaymentMethodsAvailable": "هذا المزوّد لا يقبل المدفوعات عبر الإنترنت أو حضوريًا حاليًا. تواصل معه لإكمال حجزك.",
         "holdExpiredBody": "Isikhala sakho ebesigodliwe siphelelwe yisikhathi. Buyela emuva bese ukhetha isikhathi esisha ukuze uqhubeke.",
         "backToCalendar": "Choose another وقت",
         "slotHeldBefore": "الموعد محجوز لمدة ",

@@ -272,6 +272,9 @@ export default function WalletScreen() {
       let finalPaystackRef = paystackRef;
       let cancelled = false;
       let checkoutSessionId: string | null = null;
+      let hostedCheckoutOutcome: Awaited<
+        ReturnType<typeof paystackHostedCheckout.waitForCheckout>
+      > | null = null;
 
       if (paymentOption === "saved_card") {
         setTopupStatus(t("customer.walletScreen.statusCharging", "Charging your saved card…") as string);
@@ -300,7 +303,7 @@ export default function WalletScreen() {
           return;
         }
         setTopupStatus(t("customer.walletScreen.statusCheckout", "Complete payment in the secure window…") as string);
-        const outcome = await paystackHostedCheckout.waitForCheckout(paymentUrl, {
+        hostedCheckoutOutcome = await paystackHostedCheckout.waitForCheckout(paymentUrl, {
           title: t("customer.walletScreen.topUpSecureTitle", "Wallet top-up") as string,
           returnUrl,
           matchSuccess: (rawUrl) =>
@@ -309,6 +312,7 @@ export default function WalletScreen() {
             !isCancelledPaystackUrl(rawUrl),
           matchCancel: (rawUrl) => isCancelledPaystackUrl(rawUrl),
         });
+        const outcome = hostedCheckoutOutcome;
         if (outcome?.outcome === "start_failed") {
           setTopupStatus(null);
           Alert.alert(
@@ -349,8 +353,9 @@ export default function WalletScreen() {
       setTopupStatus(t("customer.walletScreen.statusConfirming", "Confirming your payment…") as string);
 
       let flutterwaveTransactionId: string | null = null;
-      if (outcome?.outcome === "success" && outcome.url) {
-        flutterwaveTransactionId = parseOnlineCheckoutReturnUrl(outcome.url).transactionId;
+      if (hostedCheckoutOutcome?.outcome === "success" && hostedCheckoutOutcome.url) {
+        flutterwaveTransactionId = parseOnlineCheckoutReturnUrl(hostedCheckoutOutcome.url)
+          .transactionId;
       }
 
       let verifiedSuccess = false;

@@ -17652,6 +17652,12 @@
     "securePaymentTitle": "Secure inkokhelo",
     "paymentCancelledTitle": "inkokhelo kukhanseliwe",
     "paymentCancelledBody": "Ukhansele inkokhelo. Ukubhukha kwakho akuqinisekisiwe.",
+    "paymentCancelledHostedBody": "Ukhansele inkokhelo. Akukho zindleko ezenziwe.",
+    "paymentCancelledBookingSaved": " Ukubhukha kwakho kusavunyelwe — ungaqhubeka nokukhokha noma nini lapho ukulungele.",
+    "cancelledBackToOffer": "Buyela emuva kwinqubomgomo",
+    "cancelledReturnToBooking": "Buyela ekubhukheni",
+    "cancelledGoHome": "Hamba ekhaya",
+    "cancelledLoading": "Iyalayisha…",
     "packageDiscount": "iphakethe isaphulelo",
     "packageApplied": "iphakethe applied",
     "redeemPackage": "Redeem a prekukhokhelwe iphakethe (okukhethekayo)",
@@ -17668,7 +17674,8 @@
       "groupSwitchOff": "Kuvaliwe",
       "groupGuestsLimit_one": "Engeza up to {{count}} Isivakashi.",
       "groupGuestsLimit_other": "Engeza up to {{count}} guests."
-    }
+    },
+    "noPaymentMethodsAvailable": "Lo mhlinzeki akamukeli izinkokhelo eziku-inthanethi noma mathupha njengamanje. Xhumana naye ukuze uqedele ukubhukha kwakho."
   },
   "payments": {
     "pay": "Khokha",
@@ -18587,6 +18594,7 @@
         }
       },
       "stepPayment": {
+        "noPaymentMethodsAvailable": "Lo mhlinzeki akamukeli izinkokhelo eziku-inthanethi noma mathupha njengamanje. Xhumana naye ukuze uqedele ukubhukha kwakho.",
         "holdExpiredBody": "Isikhala sakho ebesigodliwe siphelelwe yisikhathi. Buyela emuva bese ukhetha isikhathi esisha ukuze uqhubeke.",
         "backToCalendar": "emuva to ikhalenda",
         "slotHeldBefore": "Slot gehou vir",

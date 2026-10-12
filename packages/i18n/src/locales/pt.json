@@ -17624,6 +17624,12 @@
     "securePaymentTitle": "Secure pagamento",
     "paymentCancelledTitle": "pagamento cancelado",
     "paymentCancelledBody": "Jy het die betaling gekanselleer. Jou bespreking is nie bevestig nie.",
+    "paymentCancelledHostedBody": "Cancelou o pagamento. Nenhuma cobrança foi feita.",
+    "paymentCancelledBookingSaved": " A sua reserva continua guardada — pode continuar o pagamento quando quiser.",
+    "cancelledBackToOffer": "Voltar à oferta",
+    "cancelledReturnToBooking": "Voltar à reserva",
+    "cancelledGoHome": "Ir para início",
+    "cancelledLoading": "A carregar…",
     "packageDiscount": "pacote desconto",
     "packageApplied": "pacote applied",
     "redeemPackage": "Redeem a prepago pacote (opcional)",
@@ -17640,7 +17646,8 @@
       "groupSwitchOff": "Desligado",
       "groupGuestsLimit_one": "Adicionar up to {{count}} Convidado.",
       "groupGuestsLimit_other": "Adicionar up to {{count}} guests."
-    }
+    },
+    "noPaymentMethodsAvailable": "Este prestador não está a aceitar pagamentos online ou presenciais neste momento. Contacte-o para concluir a sua reserva."
   },
   "payments": {
     "pay": "Pay",
@@ -18559,6 +18566,7 @@
         }
       },
       "stepPayment": {
+        "noPaymentMethodsAvailable": "Este prestador não está a aceitar pagamentos online ou presenciais neste momento. Contacte-o para concluir a sua reserva.",
         "holdExpiredBody": "Isikhala sakho ebesigodliwe siphelelwe yisikhathi. Buyela emuva bese ukhetha isikhathi esisha ukuze uqhubeke.",
         "backToCalendar": "Escolher anoutro hora",
         "slotHeldBefore": "Créneau réservé pendant ",
