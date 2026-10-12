@@ -495,7 +495,7 @@ function TemplateEditor({
                 <button
                   type="button"
                   disabled={emailPreviewBusy}
-                  className={cn(adminToolbarButtonClass, "text-xs")}
+                  className={cn(adminToolbarButtonClass(emailPreviewBusy), "text-xs")}
                   onClick={() => {
                     const templateKey = key.trim();
                     setEmailPreviewBusy(true);

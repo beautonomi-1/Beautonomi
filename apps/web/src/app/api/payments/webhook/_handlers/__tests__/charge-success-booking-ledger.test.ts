@@ -87,26 +87,29 @@ vi.mock("@/lib/integrations/slack/ops-triggers", () => ({
   slackNotifyPaymentFailed: vi.fn(),
 }));
 
+const mockVerifyBookingCharge = vi.fn(async () => ({
+  ok: true as const,
+  amountMajor: 198,
+  currency: "ZAR",
+  pendingPayment: {
+    amount: 198,
+    currency: "ZAR",
+    metadata: {
+      wallet_amount_applied: 0,
+      gift_card_amount_applied: 50,
+      service_fee_amount: 10,
+    },
+    payment_provider_transaction_id: "ref-1",
+  },
+}));
+
 vi.mock("@/lib/bookings/verify-paystack-booking-charge", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/lib/bookings/verify-paystack-booking-charge")>();
   return {
     ...actual,
-    verifyPaystackBookingCharge: vi.fn(async () => ({
-      ok: true as const,
-      amountMajor: 198,
-      currency: "ZAR",
-      pendingPayment: {
-        amount: 198,
-        currency: "ZAR",
-        metadata: {
-          wallet_amount_applied: 0,
-          gift_card_amount_applied: 50,
-          service_fee_amount: 10,
-        },
-        payment_provider_transaction_id: "ref-1",
-      },
-    })),
+    verifyBookingCharge: (...args: unknown[]) => mockVerifyBookingCharge(...args),
+    verifyPaystackBookingCharge: (...args: unknown[]) => mockVerifyBookingCharge(...args),
   };
 });
 

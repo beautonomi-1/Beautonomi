@@ -814,7 +814,7 @@ export async function postCustomOfferAccept(
       init = await initializeOnlinePayment({
         tenantId,
         email,
-        amountInSmallestUnit: amountKobo,
+        amountInSmallestUnit: amountMinor,
         currency: offer.currency || lastResortCurrency,
         reference,
         callbackUrl,
