@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { wirePreferenceGateTables } from "@/lib/notifications/__tests__/pref-gate-supabase-tables";
 
 const hoisted = vi.hoisted(() => ({
   getSupabaseAdminMock: vi.fn(),
@@ -26,7 +27,7 @@ function mockAdminNoDevices() {
   const deviceOr = vi.fn().mockReturnValue(emptyDevices);
   const deviceEq = vi.fn().mockReturnValue({ or: deviceOr, then: emptyDevices.then.bind(emptyDevices) });
   const headCount = vi.fn().mockResolvedValue({ count: 0, error: null });
-  const from = vi.fn().mockImplementation((table: string) => {
+  const baseFrom = (table: string) => {
     if (table === "user_devices") {
       return { select: vi.fn().mockReturnValue({ eq: deviceEq }) };
     }
@@ -54,7 +55,10 @@ function mockAdminNoDevices() {
       };
     }
     throw new Error("unexpected table " + table);
-  });
+  };
+  const from = vi.fn().mockImplementation(
+    wirePreferenceGateTables(baseFrom, ["dddddddd-dddd-dddd-dddd-dddddddddddd"]),
+  );
   return { from };
 }
 

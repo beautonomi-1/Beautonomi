@@ -1,7 +1,7 @@
 /**
  * Control-plane → Region online payment gateway
  *
- * Edit primary online gateway (Paystack / Stripe) and region-scoped secrets via
+ * Edit primary online gateway (Paystack / Stripe / Flutterwave) and region-scoped secrets via
  * GET/PATCH /api/admin/regions/[regionId]/online-gateway.
  */
 import { useEffect, useState } from "react";
@@ -39,7 +39,9 @@ export function CpRegionOnlineGatewayPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [gateway, setGateway] = useState<"paystack" | "stripe">("paystack");
+  const [gateway, setGateway] = useState<"paystack" | "stripe" | "flutterwave">("paystack");
+  const [flutterwaveSecret, setFlutterwaveSecret] = useState("");
+  const [flutterwaveWebhookHash, setFlutterwaveWebhookHash] = useState("");
   const [settlementModel, setSettlementModel] = useState<
     "platform_mor_transfer" | "connected_mor_destination"
   >("platform_mor_transfer");
@@ -83,7 +85,9 @@ export function CpRegionOnlineGatewayPage() {
       );
       if (!data) return;
       const gw = (data.primary?.gateway ?? "paystack").toLowerCase();
-      setGateway(gw === "stripe" ? "stripe" : "paystack");
+      setGateway(
+        gw === "stripe" ? "stripe" : gw === "flutterwave" ? "flutterwave" : "paystack",
+      );
       const sm = data.primary?.config?.settlement_model;
       setSettlementModel("platform_mor_transfer");
       if (sm === "connected_mor_destination") {
@@ -96,6 +100,8 @@ export function CpRegionOnlineGatewayPage() {
       setStripeWebhookSecret("");
       setStripePublishable("");
       setPaystackSecret("");
+      setFlutterwaveSecret("");
+      setFlutterwaveWebhookHash("");
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Failed to load gateway");
     } finally {
@@ -119,6 +125,10 @@ export function CpRegionOnlineGatewayPage() {
           ? { stripe_publishable_key: stripePublishable.trim() }
           : {}),
         ...(paystackSecret.trim() ? { paystack_secret_key: paystackSecret.trim() } : {}),
+        ...(flutterwaveSecret.trim() ? { flutterwave_secret_key: flutterwaveSecret.trim() } : {}),
+        ...(flutterwaveWebhookHash.trim()
+          ? { flutterwave_webhook_hash: flutterwaveWebhookHash.trim() }
+          : {}),
       });
       setMsg("Region gateway updated.");
       await loadGateway();
@@ -138,7 +148,7 @@ export function CpRegionOnlineGatewayPage() {
       <CpBack />
       <AdminPageHeader
         title="Region online gateway"
-        description="Set the primary card checkout provider per region (Paystack or Stripe). Secrets are stored in region_secrets; leave blank to keep existing values."
+        description="Set the primary card checkout provider per region (Paystack, Stripe, or Flutterwave). Secrets are stored in region_secrets; leave blank to keep existing values."
       />
 
       <p className="text-sm text-muted-foreground">
@@ -155,6 +165,10 @@ export function CpRegionOnlineGatewayPage() {
           className="text-primary underline"
         >
           Stripe integration health
+        </Link>
+        ,{" "}
+        <Link to={adminSpaTo("/admin/integrations/flutterwave")} className="text-primary underline">
+          Flutterwave webhook health
         </Link>
         .
       </p>
@@ -200,10 +214,13 @@ export function CpRegionOnlineGatewayPage() {
               <select
                 className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
                 value={gateway}
-                onChange={(e) => setGateway(e.target.value as "paystack" | "stripe")}
+                onChange={(e) =>
+                  setGateway(e.target.value as "paystack" | "stripe" | "flutterwave")
+                }
               >
                 <option value="paystack">Paystack</option>
                 <option value="stripe">Stripe</option>
+                <option value="flutterwave">Flutterwave</option>
               </select>
             </CpField>
             {gateway === "stripe" ? (
@@ -214,52 +231,90 @@ export function CpRegionOnlineGatewayPage() {
                 </p>
               </CpField>
             ) : null}
-            <CpField label="Stripe secret key">
-              <input
-                type="password"
-                autoComplete="off"
-                className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm font-mono"
-                placeholder={secretsSet.stripe_secret_key ? "•••• set (leave blank to keep)" : "sk_live_…"}
-                value={stripeSecret}
-                onChange={(e) => setStripeSecret(e.target.value)}
-              />
-            </CpField>
-            <CpField label="Stripe webhook secret">
-              <input
-                type="password"
-                autoComplete="off"
-                className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm font-mono"
-                placeholder={
-                  secretsSet.stripe_webhook_secret ? "•••• set (leave blank to keep)" : "whsec_…"
-                }
-                value={stripeWebhookSecret}
-                onChange={(e) => setStripeWebhookSecret(e.target.value)}
-              />
-            </CpField>
-            <CpField label="Stripe publishable key">
-              <input
-                type="text"
-                autoComplete="off"
-                className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm font-mono"
-                placeholder={
-                  secretsSet.stripe_publishable_key ? "•••• set (leave blank to keep)" : "pk_live_…"
-                }
-                value={stripePublishable}
-                onChange={(e) => setStripePublishable(e.target.value)}
-              />
-            </CpField>
-            <CpField label="Paystack secret key">
-              <input
-                type="password"
-                autoComplete="off"
-                className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm font-mono"
-                placeholder={
-                  secretsSet.paystack_secret_key ? "•••• set (leave blank to keep)" : "sk_live_…"
-                }
-                value={paystackSecret}
-                onChange={(e) => setPaystackSecret(e.target.value)}
-              />
-            </CpField>
+            {gateway === "stripe" ? (
+              <>
+                <CpField label="Stripe secret key">
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm font-mono"
+                    placeholder={secretsSet.stripe_secret_key ? "•••• set (leave blank to keep)" : "sk_live_…"}
+                    value={stripeSecret}
+                    onChange={(e) => setStripeSecret(e.target.value)}
+                  />
+                </CpField>
+                <CpField label="Stripe webhook secret">
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm font-mono"
+                    placeholder={
+                      secretsSet.stripe_webhook_secret ? "•••• set (leave blank to keep)" : "whsec_…"
+                    }
+                    value={stripeWebhookSecret}
+                    onChange={(e) => setStripeWebhookSecret(e.target.value)}
+                  />
+                </CpField>
+                <CpField label="Stripe publishable key">
+                  <input
+                    type="text"
+                    autoComplete="off"
+                    className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm font-mono"
+                    placeholder={
+                      secretsSet.stripe_publishable_key ? "•••• set (leave blank to keep)" : "pk_live_…"
+                    }
+                    value={stripePublishable}
+                    onChange={(e) => setStripePublishable(e.target.value)}
+                  />
+                </CpField>
+              </>
+            ) : null}
+            {gateway === "paystack" ? (
+              <CpField label="Paystack secret key">
+                <input
+                  type="password"
+                  autoComplete="off"
+                  className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm font-mono"
+                  placeholder={
+                    secretsSet.paystack_secret_key ? "•••• set (leave blank to keep)" : "sk_live_…"
+                  }
+                  value={paystackSecret}
+                  onChange={(e) => setPaystackSecret(e.target.value)}
+                />
+              </CpField>
+            ) : null}
+            {gateway === "flutterwave" ? (
+              <>
+                <CpField label="Flutterwave secret key">
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm font-mono"
+                    placeholder={
+                      secretsSet.flutterwave_secret_key
+                        ? "•••• set (leave blank to keep)"
+                        : "FLWSECK_TEST-…"
+                    }
+                    value={flutterwaveSecret}
+                    onChange={(e) => setFlutterwaveSecret(e.target.value)}
+                  />
+                </CpField>
+                <CpField label="Flutterwave webhook hash (verif-hash)">
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm font-mono"
+                    placeholder={
+                      secretsSet.flutterwave_webhook_hash
+                        ? "•••• set (leave blank to keep)"
+                        : "dashboard secret hash"
+                    }
+                    value={flutterwaveWebhookHash}
+                    onChange={(e) => setFlutterwaveWebhookHash(e.target.value)}
+                  />
+                </CpField>
+              </>
+            ) : null}
             <button
               type="button"
               onClick={() => void saveGateway()}

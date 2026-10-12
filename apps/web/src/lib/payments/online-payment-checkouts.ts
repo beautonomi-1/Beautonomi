@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
-export type OnlineCheckoutProvider = "paystack" | "stripe";
+export type OnlineCheckoutProvider = "paystack" | "stripe" | "flutterwave";
 
 export type OnlineCheckoutRow = {
   reference: string;

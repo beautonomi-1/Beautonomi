@@ -7,6 +7,7 @@ import {
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { getStripeSecretKey } from "@/lib/payments/stripe-server";
+import { getFlutterwaveSecretKey } from "@/lib/payments/flutterwave-server";
 import {
   getOnlinePaymentCheckoutByReference,
   markOnlinePaymentCheckoutStatus,
@@ -53,6 +54,14 @@ export async function isOnlineCardEnabledForTenant(
   if (gw === "stripe") {
     try {
       await getStripeSecretKey({ tenantId });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  if (gw === "flutterwave") {
+    try {
+      await getFlutterwaveSecretKey({ tenantId });
       return true;
     } catch {
       return false;
@@ -114,16 +123,20 @@ export async function initializeOnlinePayment(
     stripeCustomerId: input.stripeCustomerId,
     mode: input.mode ?? "payment",
   };
-  const stripeInit = await psp.provider.initializePayment(initParams);
+  if (providerId !== "stripe" && providerId !== "flutterwave") {
+    throw new Error("Online card payment is currently unavailable");
+  }
+
+  const init = await psp.provider.initializePayment(initParams);
   await upsertOnlinePaymentCheckout({
     reference: input.reference,
-    provider: "stripe",
+    provider: providerId,
     tenantId: input.tenantId,
-    checkoutSessionId: stripeInit.checkoutSessionId ?? null,
-    paymentIntentId: stripeInit.paymentIntentId ?? null,
+    checkoutSessionId: init.checkoutSessionId ?? null,
+    paymentIntentId: init.paymentIntentId ?? null,
     metadata: input.metadata ?? {},
   });
-  return { ...stripeInit, provider: "stripe" };
+  return { ...init, provider: providerId };
 }
 
 /** Paystack subscription plan initializer — Paystack regions only. */
@@ -194,9 +207,27 @@ export async function verifyOnlinePayment(
     return { paid: false, provider: "stripe", raw: null };
   }
 
-  if (provider === "paystack" || !provider) {
+  if (provider === "flutterwave") {
+    const txId = row?.payment_intent_id?.trim();
+    const verifyRef = txId || reference;
+    const psp = getPaymentProviderById("flutterwave");
+    if (!psp) return { paid: false, provider: "flutterwave", raw: null };
+    const result = await psp.verifyPayment(verifyRef, tid);
+    if (result.paid) await markOnlinePaymentCheckoutStatus(reference, "paid");
+    return { paid: result.paid, provider: "flutterwave", raw: result.raw };
+  }
+
+  if (provider === "paystack") {
     const psp = getPaymentProviderById("paystack");
     if (!psp) return { paid: false, provider: "paystack", raw: null };
+    const result = await psp.verifyPayment(reference, tid);
+    if (result.paid) await markOnlinePaymentCheckoutStatus(reference, "paid");
+    return { paid: result.paid, provider: "paystack", raw: result.raw };
+  }
+
+  if (!provider) {
+    const psp = getPaymentProviderById("paystack");
+    if (!psp) return { paid: false, provider: null, raw: null };
     const result = await psp.verifyPayment(reference, tid);
     if (result.paid) await markOnlinePaymentCheckoutStatus(reference, "paid");
     return { paid: result.paid, provider: "paystack", raw: result.raw };

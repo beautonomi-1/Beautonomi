@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { listBanks } from "@/lib/payments/paystack-complete";
+import { listFlutterwaveBanks } from "@/lib/payments/flutterwave-banks";
+import { resolvePayoutRailForTenant } from "@/lib/payments/payout-rail";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -56,6 +58,25 @@ export async function GET(request: NextRequest) {
     const paystackCountry = ISO_TO_PAYSTACK_COUNTRY[isoCountry] ?? countryParam.toLowerCase();
     const currency =
       COUNTRY_CURRENCY[isoCountry] ?? tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
+    const rail = await resolvePayoutRailForTenant(tenantId);
+    if (rail === "stripe") {
+      return successResponse({ banks: [], payout_rail: "stripe", use_connect: true, country: isoCountry, currency });
+    }
+    if (rail === "flutterwave") {
+      const flwBanks = await listFlutterwaveBanks(isoCountry, tenantId);
+      return successResponse({
+        banks: flwBanks.map((b) => ({
+          name: b.name,
+          code: b.code,
+          slug: b.code,
+          type: "flutterwave_bank",
+        })),
+        payout_rail: "flutterwave",
+        country: isoCountry,
+        currency,
+      });
+    }
 
     const result = await listBanks({
       country: paystackCountry,

@@ -29,6 +29,11 @@ import {
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import { FetchError } from "@/lib/http/fetcher";
+import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
+import {
+  readHostedCheckoutReturnParams,
+  isHostedCheckoutFailureStatus,
+} from "@/lib/payments/hosted-checkout-return-params";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -366,16 +371,21 @@ export default function TerminalShopPage() {
 
   useEffect(() => {
     const paymentSuccess = searchParams.get("payment_success");
-    const reference = searchParams.get("reference") || searchParams.get("trxref");
-    const sessionId = searchParams.get("session_id");
+    const hosted = readHostedCheckoutReturnParams(searchParams);
+    const reference = hosted.reference;
+    if (paymentSuccess === "1" && isHostedCheckoutFailureStatus(hosted.hostedStatus)) {
+      setPaymentBanner("processing");
+      toast.info(t("web.provider.settings.pages.sales/terminal-payment-return.paymentCancelledBody"));
+      return;
+    }
     if (paymentSuccess === "1" && reference) {
       void (async () => {
         try {
-          const { verifyWithRetry } = await import("@/lib/payments/verify-with-retry");
           const result = await verifyWithRetry(reference, {
             maxAttempts: 5,
             delayMs: 1500,
-            sessionId,
+            sessionId: hosted.sessionId,
+            transactionId: hosted.transactionId,
           });
           if (result.status === "failed") {
             setPaymentBanner("processing");

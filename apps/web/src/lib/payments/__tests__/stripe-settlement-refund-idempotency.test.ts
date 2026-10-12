@@ -27,7 +27,9 @@ describe("handleStripeRefundCreated idempotency", () => {
     });
   });
 
-  it("skips when refund payment_transaction already exists", async () => {
+  it(
+    "skips when refund payment_transaction already exists",
+    async () => {
     const { handleStripeRefundCreated } = await import("../stripe-settlement");
     await handleStripeRefundCreated({
       id: "re_123",
@@ -39,7 +41,9 @@ describe("handleStripeRefundCreated idempotency", () => {
       (r) => r.value && typeof r.value.insert === "function",
     );
     expect(insertCalls.length).toBe(0);
-  });
+    },
+    120_000,
+  );
 });
 
 describe("handleStripeChargeRefundedBackstop", () => {

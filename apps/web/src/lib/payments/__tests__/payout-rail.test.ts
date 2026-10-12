@@ -44,4 +44,13 @@ describe("isProviderPayoutDestinationReady", () => {
       }),
     ).toBe(true);
   });
+
+  it("treats flutterwave rail as ready without Connect (bank accounts checked separately)", () => {
+    expect(
+      isProviderPayoutDestinationReady({
+        payout_rail: "flutterwave",
+        stripe_connect: null,
+      }),
+    ).toBe(true);
+  });
 });

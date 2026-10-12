@@ -105,10 +105,12 @@ export const defaultReplayHandlerLoaders: ReplayHandlerLoaders = {
     };
   },
   flutterwave: async () => {
-    const mod = await import("@/app/api/payments/flutterwave/webhook/_handlers/flutterwave-charge");
+    const mod = await import("@/lib/payments/settle-flutterwave-online-payment");
     return {
-      handleFlutterwaveChargeCompleted:
-        mod.handleFlutterwaveChargeCompleted as FlutterwaveHandlers["handleFlutterwaveChargeCompleted"],
+      handleFlutterwaveChargeCompleted: async (data: Record<string, unknown>) => {
+        const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+        await mod.settleFlutterwaveChargeWebhookData(data, getSupabaseAdmin());
+      },
     };
   },
 };

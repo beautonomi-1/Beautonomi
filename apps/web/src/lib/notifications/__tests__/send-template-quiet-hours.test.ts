@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { wirePreferenceGateTables } from "@/lib/notifications/__tests__/pref-gate-supabase-tables";
 
 const USER_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
@@ -26,6 +27,10 @@ vi.mock("@/lib/notifications/insert-notification", () => ({
   getUnreadNotificationCount: vi.fn().mockResolvedValue(1),
 }));
 
+vi.mock("@/lib/notifications/total-unread-badge", () => ({
+  getTotalUnreadBadgeCount: vi.fn().mockResolvedValue(1),
+}));
+
 function createSupabaseMock(templateKey: string, profilePrefs?: Record<string, unknown>) {
   const templateRow = {
     key: templateKey,
@@ -41,38 +46,10 @@ function createSupabaseMock(templateKey: string, profilePrefs?: Record<string, u
     maybeSingle: vi.fn().mockResolvedValue({ data: templateRow, error: null }),
   };
 
-  const profileResult = Promise.resolve({
-    data: [
-      {
-        user_id: USER_ID,
-        notification_preferences: profilePrefs ?? {
-          quiet_hours_enabled: true,
-          quiet_hours_start: "22:00",
-          quiet_hours_end: "07:00",
-        },
-      },
-    ],
-    error: null,
-  });
-
-  const userProfilesQuery = {
-    in: vi.fn().mockReturnValue(profileResult),
-  };
-
-  const usersResult = Promise.resolve({
-    data: [
-      {
-        id: USER_ID,
-        email_notifications_enabled: true,
-        sms_notifications_enabled: true,
-        push_notifications_enabled: true,
-      },
-    ],
-    error: null,
-  });
-
-  const usersQuery = {
-    in: vi.fn().mockReturnValue(usersResult),
+  const mergedProfilePrefs = profilePrefs ?? {
+    quiet_hours_enabled: true,
+    quiet_hours_start: "22:00",
+    quiet_hours_end: "07:00",
   };
 
   const deviceResult = Promise.resolve({
@@ -91,25 +68,23 @@ function createSupabaseMock(templateKey: string, profilePrefs?: Record<string, u
     in: vi.fn().mockReturnValue(userDevicesQuery),
   };
 
+  const baseFrom = (table: string) => {
+    if (table === "notification_templates") {
+      return { select: vi.fn().mockReturnValue(templateQuery) };
+    }
+    if (table === "user_devices") {
+      return { select: vi.fn().mockReturnValue(userDevicesSelect) };
+    }
+    if (table === "notification_logs") {
+      return { insert: vi.fn().mockResolvedValue({ error: null }) };
+    }
+    throw new Error(`unexpected table ${table}`);
+  };
+
   return {
-    from: vi.fn().mockImplementation((table: string) => {
-      if (table === "notification_templates") {
-        return { select: vi.fn().mockReturnValue(templateQuery) };
-      }
-      if (table === "user_profiles") {
-        return { select: vi.fn().mockReturnValue(userProfilesQuery) };
-      }
-      if (table === "users") {
-        return { select: vi.fn().mockReturnValue(usersQuery) };
-      }
-      if (table === "user_devices") {
-        return { select: vi.fn().mockReturnValue(userDevicesSelect) };
-      }
-      if (table === "notification_logs") {
-        return { insert: vi.fn().mockResolvedValue({ error: null }) };
-      }
-      throw new Error(`unexpected table ${table}`);
-    }),
+    from: vi.fn().mockImplementation(
+      wirePreferenceGateTables(baseFrom, [USER_ID], mergedProfilePrefs),
+    ),
   };
 }
 
@@ -133,7 +108,7 @@ describe("sendTemplateNotification quiet-hours behavior", () => {
     hoisted.getSupabaseAdminMock.mockReset();
   });
 
-  it("still sends critical transactional template push during quiet hours", async () => {
+  it("suppresses transactional provider push during quiet hours", async () => {
     hoisted.getSupabaseAdminMock.mockReturnValue(
       createSupabaseMock("provider_booking_request"),
     );
@@ -148,19 +123,20 @@ describe("sendTemplateNotification quiet-hours behavior", () => {
     );
 
     expect(result.success).toBe(true);
-    // Alias-first single-recipient push: one alias leg when recipients > 0.
     const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const body = JSON.parse(
-      String((fetchMock.mock.calls[0][1] as { body?: string }).body ?? "{}"),
-    ) as Record<string, unknown>;
-    expect(body.include_aliases).toEqual({ external_id: [USER_ID] });
-    expect(body.include_subscription_ids).toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.notification_id).toMatch(/suppressed/);
   });
 
   it("falls back to subscription ids when alias leg reports zero recipients", async () => {
+    vi.setSystemTime(new Date("2026-05-16T14:00:00"));
     hoisted.getSupabaseAdminMock.mockReturnValue(
-      createSupabaseMock("provider_booking_request"),
+      createSupabaseMock("provider_booking_request", {
+        quiet_hours_enabled: true,
+        quiet_hours_start: "22:00",
+        quiet_hours_end: "07:00",
+        booking_updates: { push: true, email: true, sms: true },
+      }),
     );
 
     const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
@@ -196,9 +172,14 @@ describe("sendTemplateNotification quiet-hours behavior", () => {
     expect(subLeg?.include_subscription_ids).toEqual(["sub-1"]);
   });
 
-  it("still sends custom offer template push during quiet hours", async () => {
+  it("suppresses custom offer push during quiet hours", async () => {
     hoisted.getSupabaseAdminMock.mockReturnValue(
-      createSupabaseMock("customer_custom_offer"),
+      createSupabaseMock("customer_custom_offer", {
+        quiet_hours_enabled: true,
+        quiet_hours_start: "22:00",
+        quiet_hours_end: "07:00",
+        account_activity: { push: true, email: true, sms: true },
+      }),
     );
 
     const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
@@ -212,7 +193,7 @@ describe("sendTemplateNotification quiet-hours behavior", () => {
 
     expect(result.success).toBe(true);
     const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
-    expect(fetchMock).toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("suppresses marketing template push during quiet hours", async () => {

@@ -56,6 +56,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (body.os_notifications_granted === true) {
+      const { maybeEnablePushSectionsAfterDeviceRegister } = await import(
+        "@/lib/notifications/maybe-enable-push-after-device-register"
+      );
+      await maybeEnablePushSectionsAfterDeviceRegister(admin, user.id, "provider");
+    }
+
     return successResponse({ registered: true });
   } catch (error) {
     return handleApiError(error, "Failed to register device");

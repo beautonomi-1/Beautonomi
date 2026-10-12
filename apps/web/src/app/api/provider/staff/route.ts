@@ -561,6 +561,9 @@ export async function POST(request: Request) {
     const staffPhone = phone || foundUser.phone || null;
     const staffName = name || foundUser.full_name || foundUser.email?.split("@")[0] || "Staff Member";
     const defaultPermissions = getDefaultStaffPermissionsForDbRole(dbRole);
+    const { getStaffNotificationSettingsDefaults } = await import(
+      "@/lib/notifications/notification-preferences-defaults"
+    );
     const { data: newStaff, error: insertError } = await supabase
       .from("provider_staff")
       .insert({
@@ -571,6 +574,7 @@ export async function POST(request: Request) {
         phone: staffPhone,
         role: dbRole,
         permissions: defaultPermissions,
+        notification_settings: getStaffNotificationSettingsDefaults(),
         is_active: true,
         mobile_ready: mobileReady || false,
         commission_rate: commission_rate != null ? Number(commission_rate) : null,

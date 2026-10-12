@@ -18,12 +18,13 @@ import { isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
 import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
   getCustomerPaystackAuthReturnUrl,
-  getShopProductPaystackAuthPrefix,
+  getNativePaystackReturnUrl,
+  CUSTOMER_NATIVE_PAYSTACK_PATHS,
   matchesPaystackAuthSessionReturn,
   matchesShopPaymentCallbackReturnUrl,
   SHOP_PAYMENT_CALLBACK_PATH,
 } from "@/lib/payments/customerPaystackReturn";
-import * as ExpoLinking from "expo-linking";
+import { waitForModalDismiss } from "@/lib/payments/waitForModalDismiss";
 import { Colors, Shadows } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
@@ -825,11 +826,8 @@ export default function ProductCheckoutScreen() {
 
     // 2. Initialize Paystack payment for remaining amount (amount in kobo/cents)
     const paystackReturnPath =
-      Platform.OS === "web" ? undefined : getShopProductPaystackAuthPrefix();
-    const paystackCallbackUrl =
-      Platform.OS === "web"
-        ? getCustomerPaystackAuthReturnUrl(SHOP_PAYMENT_CALLBACK_PATH)
-        : ExpoLinking.createURL("shop/paystack");
+      Platform.OS === "web" ? undefined : getNativePaystackReturnUrl(CUSTOMER_NATIVE_PAYSTACK_PATHS.shop);
+    const paystackCallbackUrl = getCustomerPaystackAuthReturnUrl(SHOP_PAYMENT_CALLBACK_PATH);
     const paystackRes = await api.post<{ authorization_url: string; reference: string }>(
       "/api/paystack/initialize",
       {
@@ -878,6 +876,7 @@ export default function ProductCheckoutScreen() {
       // Important: close the blocking overlay before opening Paystack WebView.
       // Two RN modals competing can leave users stuck on "opening payment page".
       setProcessingPayment(false);
+      await waitForModalDismiss();
       const reference = paystackRes.data.reference;
       if (reference) {
         markReferenceProcessing(reference);
@@ -891,6 +890,18 @@ export default function ProductCheckoutScreen() {
           !isCancelledPaystackUrl(u),
         matchCancel: (u) => isCancelledPaystackUrl(u),
       });
+
+      if (pr.outcome === "start_failed") {
+        Alert.alert(
+          pc("paymentUnavailableTitle", undefined, "Payment unavailable"),
+          pc(
+            "paymentBrowserFailed",
+            undefined,
+            "We couldn't open the secure payment window. Please try again.",
+          ),
+        );
+        return;
+      }
 
       if (pr.outcome === "cancel") {
         setProcessingPayment(false);
@@ -916,6 +927,7 @@ export default function ProductCheckoutScreen() {
       setProcessingMessage(pc("confirmingPayment", undefined, "Confirming your payment…"));
       let resolvedReference = paystackRes.data.reference;
       let checkoutSessionId: string | null = null;
+      let checkoutTransactionId: string | null = null;
       if (pr.outcome === "success" && pr.url) {
         if (isCancelledPaystackUrl(pr.url)) {
           setProcessingPayment(false);
@@ -937,11 +949,27 @@ export default function ProductCheckoutScreen() {
           return;
         }
         const parsed = parseOnlineCheckoutReturnUrl(pr.url);
+        if (parsed.status === "failed" || parsed.status === "cancelled") {
+          setProcessingPayment(false);
+          Alert.alert(
+            pc("paymentCancelledTitle", undefined, "Payment cancelled"),
+            pc(
+              "paymentCancelledOrderBody",
+              { orderNumber: String(order.order_number) },
+              `No card charge was completed. Order #${order.order_number} is still pending — complete payment from My Orders.`,
+            ),
+          );
+          return;
+        }
         if (parsed.reference) resolvedReference = parsed.reference;
         checkoutSessionId = parsed.sessionId;
+        checkoutTransactionId = parsed.transactionId;
       }
       if (resolvedReference) {
-        await verifyPaystackWithRetry(resolvedReference, { sessionId: checkoutSessionId });
+        await verifyPaystackWithRetry(resolvedReference, {
+          sessionId: checkoutSessionId,
+          transactionId: checkoutTransactionId,
+        });
       }
 
       let paid = false;

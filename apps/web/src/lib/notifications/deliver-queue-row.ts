@@ -30,7 +30,53 @@ export async function deliverQueueRow(
       return { ok: true };
     }
 
+    if (row.channel === "email" || row.channel === "sms") {
+      const meta = parseQueuePayloadMeta(row.payload);
+      const appType = meta.push_app_type;
+      if (
+        row.recipient_user_id &&
+        (appType === "customer" || appType === "provider")
+      ) {
+        const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+        const { filterChannelsForRecipient } = await import(
+          "@/lib/notifications/filter-channels-for-recipient"
+        );
+        const allowed = await filterChannelsForRecipient(
+          getSupabaseAdmin(),
+          row.recipient_user_id,
+          row.template_key,
+          [row.channel],
+          appType,
+        );
+        if (allowed.length === 0) {
+          return { ok: true };
+        }
+      }
+    }
+
     if (row.channel === "push") {
+      const meta = parseQueuePayloadMeta(row.payload);
+      const appType = meta.push_app_type;
+      if (
+        row.recipient_user_id &&
+        (appType === "customer" || appType === "provider")
+      ) {
+        const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+        const { filterChannelsForRecipient } = await import(
+          "@/lib/notifications/filter-channels-for-recipient"
+        );
+        const allowed = await filterChannelsForRecipient(
+          getSupabaseAdmin(),
+          row.recipient_user_id,
+          row.template_key,
+          ["push"],
+          appType,
+        );
+        if (allowed.length === 0) {
+          return { ok: true };
+        }
+      }
+
       const { sendToUser } = await import("@/lib/notifications/onesignal").catch(
         () => ({
           sendToUser: null as unknown as (
@@ -49,7 +95,6 @@ export async function deliverQueueRow(
       if (!sendToUser || !row.recipient_user_id) {
         return { ok: false, error: "push sender unavailable or missing recipient" };
       }
-      const meta = parseQueuePayloadMeta(row.payload);
       const sendOpts =
         meta.push_app_type || meta.tenant_id
           ? {

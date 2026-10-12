@@ -9,15 +9,26 @@ export type OnlineVerifyContext = {
   reference: string;
   tenantId: string | null;
   sessionId?: string | null;
+  /** Flutterwave redirect query `transaction_id` */
+  transactionId?: string | null;
 };
+
+/** Transaction id from Flutterwave verify-by-reference API shape or verified tx object. */
+export function flutterwaveTransactionIdFromVerifyRaw(raw: unknown): string | null {
+  if (!raw || typeof raw !== "object") return null;
+  const top = raw as { id?: string | number; data?: { id?: string | number } };
+  if (top.id != null && String(top.id).trim()) return String(top.id).trim();
+  if (top.data?.id != null && String(top.data.id).trim()) return String(top.data.id).trim();
+  return null;
+}
 
 /** Stripe return URLs include `session_id`; Paystack uses `reference` only — never treat stray session_id as Stripe when checkout is Paystack. */
 export function shouldUseStripeOnlineVerify(
-  checkoutProvider: "paystack" | "stripe" | null | undefined,
+  checkoutProvider: "paystack" | "stripe" | "flutterwave" | null | undefined,
   sessionId: string | null | undefined,
 ): boolean {
   if (checkoutProvider === "stripe") return true;
-  if (checkoutProvider === "paystack") return false;
+  if (checkoutProvider === "paystack" || checkoutProvider === "flutterwave") return false;
   return Boolean(sessionId?.trim());
 }
 
@@ -48,12 +59,49 @@ export async function verifyAndSettleOnlinePayment(
   supabase: SupabaseClient,
 ): Promise<{
   paid: boolean;
-  provider: "paystack" | "stripe" | null;
+  provider: "paystack" | "stripe" | "flutterwave" | null;
   paystackVerifyJson?: unknown;
 }> {
   const { reference, tenantId, sessionId } = ctx;
   const row = await getOnlinePaymentCheckoutByReference(reference);
   const provider = row?.provider ?? null;
+
+  if (provider === "flutterwave") {
+    const transactionId = ctx.transactionId?.trim() ?? "";
+    const { settleFlutterwaveByTransactionId } = await import(
+      "@/lib/payments/settle-flutterwave-online-payment"
+    );
+    if (transactionId) {
+      const result = await settleFlutterwaveByTransactionId(
+        transactionId,
+        reference,
+        supabase,
+        tenantId ?? row?.tenant_id,
+      );
+      return { paid: result.paid, provider: "flutterwave" };
+    }
+    const { verifyOnlinePayment } = await import("@/lib/payments/online-payment");
+    const verified = await verifyOnlinePayment(reference, tenantId ?? row?.tenant_id);
+    if (verified.paid) {
+      const txId =
+        transactionId ||
+        row?.payment_intent_id?.trim() ||
+        flutterwaveTransactionIdFromVerifyRaw(verified.raw);
+      if (txId) {
+        await settleFlutterwaveByTransactionId(
+          txId,
+          reference,
+          supabase,
+          tenantId ?? row?.tenant_id,
+        );
+      }
+    }
+    return {
+      paid: verified.paid,
+      provider: "flutterwave",
+      paystackVerifyJson: verified.raw,
+    };
+  }
 
   if (shouldUseStripeOnlineVerify(provider, sessionId)) {
     const stripe = await getStripeClient(tenantId ?? row?.tenant_id ?? null);

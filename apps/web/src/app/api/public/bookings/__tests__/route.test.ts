@@ -265,4 +265,44 @@ describe("POST /api/public/bookings", () => {
     expect(mockProcessPayment).toHaveBeenCalled();
     expect(mockPostBookingEffects).toHaveBeenCalled();
   });
+
+  it("passes is_group_booking and group_participants through validateBooking on group checkout", async () => {
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: TEST_USER_ID, email: "customer@example.com" } },
+          error: null,
+        }),
+      },
+    });
+
+    const groupBody = {
+      ...validBookingBody(),
+      is_group_booking: true,
+      group_participants: [
+        {
+          name: "Guest One",
+          email: "guest1@example.com",
+          service_ids: [TEST_OFFERING_ID],
+        },
+      ],
+    };
+
+    const { POST } = await import("../route");
+    const res = await POST(makeRequest(groupBody));
+
+    expect(res.status).toBe(200);
+    expect(mockValidateBooking).toHaveBeenCalled();
+    const validatedDraftArg = mockValidateBooking.mock.calls[0]?.[3] as {
+      is_group_booking?: boolean;
+      group_participants?: unknown[];
+    };
+    expect(validatedDraftArg?.is_group_booking).toBe(true);
+    expect(validatedDraftArg?.group_participants).toHaveLength(1);
+    expect(mockCreateBookingRecord).toHaveBeenCalled();
+    const createValidatedDraft = mockCreateBookingRecord.mock.calls[0]?.[3] as {
+      is_group_booking?: boolean;
+    };
+    expect(createValidatedDraft?.is_group_booking).toBe(true);
+  });
 });

@@ -363,7 +363,11 @@ export default function StepPayment({
   const primaryOnlineGateway = bundle?.meta?.tenant_region?.payment_gateway?.toLowerCase();
   /** Card checkout: Paystack flag for Paystack regions, or Stripe primary gateway (API also gates). */
   const onlineCardEnabled =
-    flagsLoading ? true : paystackEnabled || primaryOnlineGateway === "stripe";
+    flagsLoading
+      ? true
+      : paystackEnabled ||
+        primaryOnlineGateway === "stripe" ||
+        primaryOnlineGateway === "flutterwave";
   const giftCardsEnabled = flagsLoading ? true : (featureFlags["gift_cards"] ?? false);
   const walletEnabled = flagsLoading ? true : (featureFlags["payment_wallet"] ?? false);
   const [cashEnabledOnPlatform, setCashEnabledOnPlatform] = useState(false);
@@ -2047,7 +2051,7 @@ export default function StepPayment({
                   </div>
                   <div className="flex justify-between text-sm font-semibold text-gray-900 bg-gray-100 rounded-lg px-3 py-2">
                     <span>
-                      {primaryOnlineGateway === "stripe"
+                      {primaryOnlineGateway === "stripe" || primaryOnlineGateway === "flutterwave"
                         ? t("web.booking.stepPayment.youPayOnline")
                         : t("web.booking.stepPayment.youPayViaPaystack")}
                     </span>

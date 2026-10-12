@@ -122,7 +122,10 @@ export default function ProductCheckoutPage() {
   const { enabled: walletEnabled } = useFeatureFlag("payment_wallet");
   const { bundle } = useConfigBundle();
   const primaryOnlineGateway = bundle?.meta?.tenant_region?.payment_gateway?.toLowerCase();
-  const onlineCardEnabled = paystackEnabled || primaryOnlineGateway === "stripe";
+  const onlineCardEnabled =
+    paystackEnabled ||
+    primaryOnlineGateway === "stripe" ||
+    primaryOnlineGateway === "flutterwave";
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const providerTimezone = bundle?.meta?.tenant_region?.timezone ?? "Africa/Johannesburg";
 

@@ -5,6 +5,11 @@ const mockRetrieveSession = vi.fn();
 const mockSettleSession = vi.fn();
 const mockVerifyOnline = vi.fn();
 const mockPaystackKey = vi.fn();
+const mockSettleFlutterwave = vi.fn().mockResolvedValue({ paid: true });
+
+vi.mock("@/lib/payments/settle-flutterwave-online-payment", () => ({
+  settleFlutterwaveByTransactionId: (...args: unknown[]) => mockSettleFlutterwave(...args),
+}));
 
 vi.mock("@/lib/payments/online-payment-checkouts", () => ({
   getOnlinePaymentCheckoutByReference: (...args: unknown[]) => mockGetCheckout(...args),
@@ -99,5 +104,22 @@ describe("verifyAndSettleOnlinePayment", () => {
     expect(result.paid).toBe(true);
     expect(result.provider).toBe("paystack");
     expect(mockRetrieveSession).not.toHaveBeenCalled();
+  });
+
+  it("Flutterwave checkout settles by transaction_id without Paystack verify", async () => {
+    mockGetCheckout.mockResolvedValue({
+      provider: "flutterwave",
+      tenant_id: "tenant-ng",
+      payment_intent_id: "999",
+    });
+    const { verifyAndSettleOnlinePayment } = await import("../resolve-online-verify");
+    const result = await verifyAndSettleOnlinePayment(
+      { reference: "tx_ref_1", tenantId: "tenant-ng", transactionId: "999" },
+      supabase,
+    );
+    expect(result.provider).toBe("flutterwave");
+    expect(result.paid).toBe(true);
+    expect(mockSettleFlutterwave).toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });

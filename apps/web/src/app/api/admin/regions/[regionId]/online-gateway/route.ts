@@ -10,12 +10,14 @@ import {
 import { writeAuditLog } from "@/lib/audit/audit";
 
 const patchSchema = z.object({
-  gateway: z.enum(["paystack", "stripe"]),
+  gateway: z.enum(["paystack", "stripe", "flutterwave"]),
   settlement_model: z.enum(["platform_mor_transfer", "connected_mor_destination"]).optional(),
   stripe_secret_key: z.string().optional(),
   stripe_webhook_secret: z.string().optional(),
   paystack_secret_key: z.string().optional(),
   stripe_publishable_key: z.string().optional(),
+  flutterwave_secret_key: z.string().optional(),
+  flutterwave_webhook_hash: z.string().optional(),
 });
 
 function mask(v: string | undefined | null): string | null {
@@ -55,7 +57,14 @@ export async function GET(
       .eq("is_active", true)
       .maybeSingle();
 
-    const keys = ["stripe_secret_key", "stripe_webhook_secret", "paystack_secret_key", "stripe_publishable_key"];
+    const keys = [
+      "stripe_secret_key",
+      "stripe_webhook_secret",
+      "paystack_secret_key",
+      "stripe_publishable_key",
+      "flutterwave_secret_key",
+      "flutterwave_webhook_hash",
+    ];
     const secrets: Record<string, boolean> = {};
     for (const key of keys) {
       const { data: row } = await supabase
@@ -105,9 +114,15 @@ export async function PATCH(
       body.gateway === "stripe" && requested === "connected_mor_destination"
         ? "platform_mor_transfer"
         : requested;
+    const gatewayLabel =
+      body.gateway === "stripe"
+        ? "Stripe"
+        : body.gateway === "flutterwave"
+          ? "Flutterwave"
+          : "Paystack";
     const config = {
       settlement_model: settlement,
-      label: body.gateway === "stripe" ? "Stripe" : "Paystack",
+      label: gatewayLabel,
     };
 
     await supabase
@@ -146,6 +161,8 @@ export async function PATCH(
     await upsertSecret("stripe_webhook_secret", body.stripe_webhook_secret);
     await upsertSecret("paystack_secret_key", body.paystack_secret_key);
     await upsertSecret("stripe_publishable_key", body.stripe_publishable_key);
+    await upsertSecret("flutterwave_secret_key", body.flutterwave_secret_key);
+    await upsertSecret("flutterwave_webhook_hash", body.flutterwave_webhook_hash);
 
     await writeAuditLog({
       actor_user_id: user.id,
@@ -160,6 +177,8 @@ export async function PATCH(
           stripe_webhook_secret: Boolean(body.stripe_webhook_secret?.trim()),
           paystack_secret_key: Boolean(body.paystack_secret_key?.trim()),
           stripe_publishable_key: Boolean(body.stripe_publishable_key?.trim()),
+          flutterwave_secret_key: Boolean(body.flutterwave_secret_key?.trim()),
+          flutterwave_webhook_hash: Boolean(body.flutterwave_webhook_hash?.trim()),
         },
       },
     });

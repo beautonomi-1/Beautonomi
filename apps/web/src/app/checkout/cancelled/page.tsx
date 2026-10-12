@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect } from "react";
+import { NativeAppCheckoutBounce } from "@/components/payments/NativeAppCheckoutBounce";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { XCircle } from "lucide-react";
@@ -157,7 +158,10 @@ export default function CheckoutCancelledPage() {
         </div>
       }
     >
-      <CancelledContent />
+      <>
+        <NativeAppCheckoutBounce />
+        <CancelledContent />
+      </>
     </Suspense>
   );
 }

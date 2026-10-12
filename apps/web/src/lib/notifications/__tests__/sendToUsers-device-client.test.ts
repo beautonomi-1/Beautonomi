@@ -3,6 +3,7 @@
  * so behavior matches broadcast / template sends after the admin-session broadcast fix.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { wirePreferenceGateTables } from "@/lib/notifications/__tests__/pref-gate-supabase-tables";
 
 const hoisted = vi.hoisted(() => ({
   getSupabaseAdminMock: vi.fn(),
@@ -10,6 +11,10 @@ const hoisted = vi.hoisted(() => ({
 
 vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: hoisted.getSupabaseAdminMock,
+}));
+
+vi.mock("@/lib/notifications/total-unread-badge", () => ({
+  getTotalUnreadBadgeCount: vi.fn().mockResolvedValue(1),
 }));
 
 vi.mock("@/lib/platform/secrets", async (importOriginal) => {
@@ -42,7 +47,7 @@ function mockAdminClient(deviceRows: { onesignal_player_id: string; user_id: str
   });
 
   const notifCountResult = Promise.resolve({ count: 1, error: null });
-  const mockFrom = vi.fn().mockImplementation((table: string) => {
+  const baseFrom = (table: string) => {
     if (table === "user_devices") {
       return { select: mockSelect };
     }
@@ -61,7 +66,9 @@ function mockAdminClient(deviceRows: { onesignal_player_id: string; user_id: str
       };
     }
     throw new Error(`unexpected table ${table}`);
-  });
+  };
+  const userIds = [...new Set(deviceRows.map((d) => d.user_id))];
+  const mockFrom = vi.fn().mockImplementation(wirePreferenceGateTables(baseFrom, userIds));
 
   return { from: mockFrom };
 }
@@ -148,9 +155,30 @@ describe("sendToUsers device lookup client", () => {
       };
     });
 
+    const { preferenceGateSupabaseHandlers } = await import(
+      "@/lib/notifications/__tests__/pref-gate-supabase-tables"
+    );
+    const gates = preferenceGateSupabaseHandlers(["cccccccc-cccc-cccc-cccc-cccccccccccc"]);
+    const notifCountResult = Promise.resolve({ count: 1, error: null });
     const adminFrom = vi.fn().mockImplementation((table: string) => {
       if (table === "notification_logs") {
         return { insert: vi.fn().mockResolvedValue({ error: null }) };
+      }
+      if (table === "users") return gates.users;
+      if (table === "user_profiles") return gates.user_profiles;
+      if (table === "notifications") {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue(notifCountResult),
+            }),
+          }),
+        };
+      }
+      if (table === "user_badge_sync_state") {
+        return {
+          upsert: vi.fn().mockResolvedValue({ error: null }),
+        };
       }
       throw new Error(`admin client must not query ${table} for device lookup when supabaseClient override is set`);
     });

@@ -20,6 +20,7 @@ import { getAppleBillingPaystackBlock } from "@/lib/iap/apple/ios-eligibility";
 import { failPendingProviderSubscriptionOrders } from "@/lib/subscriptions/provider-billing-merchant";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
+import { appendInAppQuery } from "@/lib/payments/append-in-app-query";
 
 /**
  * POST /api/provider/subscription/renew
@@ -173,12 +174,18 @@ export async function POST(request: NextRequest) {
     const refQuery = `reference=${encodeURIComponent(reference)}`;
     const callbackUrl =
       in_app && isHttpsClientCallback
-        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}payment_success=true&order_id=${order.id}&${refQuery}`
+        ? appendInAppQuery(
+            `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}payment_success=true&order_id=${order.id}&${refQuery}`,
+            { inApp: true },
+          )
         : `${baseUrl}/provider/subscription?payment_success=true&order_id=${order.id}&${refQuery}${inAppParam}`;
 
     const renewCancelAction =
       in_app && isHttpsClientCallback
-        ? `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}payment_cancelled=1`
+        ? appendInAppQuery(
+            `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}payment_cancelled=1`,
+            { inApp: true },
+          )
         : `${baseUrl}/provider/subscription?payment_cancelled=1${inAppParam}`;
 
     const renewCurrency = planData.currency ?? lastResortCurrency;

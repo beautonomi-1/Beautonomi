@@ -39,7 +39,7 @@ export async function recordMarketingCreditTopupPayment(params: {
   feesMajor?: number;
   currency?: string | null;
   metadata?: Record<string, unknown>;
-  paymentProvider?: "paystack" | "stripe";
+  paymentProvider?: "paystack" | "stripe" | "flutterwave";
 }): Promise<RecordMarketingCreditTopupResult> {
   const { supabase, providerId, reference, paymentProvider = "paystack" } = params;
   const amountMajor = Number(params.amountMajor) || 0;

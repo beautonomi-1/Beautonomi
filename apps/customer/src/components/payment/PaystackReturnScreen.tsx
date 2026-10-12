@@ -114,11 +114,19 @@ function pickStr(value: unknown): string {
 }
 
 function pickRef(params: Record<string, string | string[] | undefined>): string {
-  return pickStr(params.reference) || pickStr(params.trxref);
+  return pickStr(params.reference) || pickStr(params.trxref) || pickStr(params.tx_ref);
 }
 
 function pickSessionId(params: Record<string, string | string[] | undefined>): string {
   return pickStr(params.session_id);
+}
+
+function pickTransactionId(params: Record<string, string | string[] | undefined>): string {
+  return pickStr(params.transaction_id);
+}
+
+function pickHostedStatus(params: Record<string, string | string[] | undefined>): string {
+  return pickStr(params.status).toLowerCase();
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -144,6 +152,8 @@ export function PaystackReturnScreen({
   const paramRecord = params as Record<string, string | string[] | undefined>;
   const reference = pickRef(paramRecord);
   const checkoutSessionId = pickSessionId(paramRecord);
+  const flutterwaveTransactionId = pickTransactionId(paramRecord);
+  const hostedStatus = pickHostedStatus(paramRecord);
   const cancelled = pickStr(paramRecord.cancelled);
 
   const [mode, setMode] = useState<ReturnMode>(reference ? "verifying" : "returning");
@@ -215,6 +225,12 @@ export function PaystackReturnScreen({
       return cleanup;
     }
 
+    if (hostedStatus === "failed" || hostedStatus === "cancelled") {
+      setMode("cancelled");
+      addTimer(() => navigate(cancelledRoute), AUTO_REDIRECT_MS_CANCELLED);
+      return cleanup;
+    }
+
     if (reference && isReferenceProcessing(reference)) {
       clearReferenceProcessing(reference);
       setMode("returning");
@@ -249,6 +265,7 @@ export function PaystackReturnScreen({
       const result = await verifyPaystackWithRetry(reference, {
         endpoint: verifyEndpoint,
         sessionId: checkoutSessionId || null,
+        transactionId: flutterwaveTransactionId || null,
       });
       if (aborted || verifySettled) return;
       verifySettled = true;
@@ -288,6 +305,9 @@ export function PaystackReturnScreen({
     resolveTarget,
     onSuccess,
     verifyEndpoint,
+    checkoutSessionId,
+    flutterwaveTransactionId,
+    hostedStatus,
   ]);
 
   // ── Derived display values ─────────────────────────────────────────────────

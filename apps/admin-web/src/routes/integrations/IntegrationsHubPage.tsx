@@ -65,6 +65,20 @@ export function IntegrationsHubPage() {
           accent: "from-emerald-600 to-teal-800",
         },
         {
+          to: adminSpaTo("/admin/control-plane/integrations/stripe"),
+          label: "Stripe",
+          description: "Stripe Connect and checkout health.",
+          icon: CreditCard,
+          accent: "from-indigo-600 to-violet-800",
+        },
+        {
+          to: adminSpaTo("/admin/integrations/flutterwave"),
+          label: "Flutterwave",
+          description: "Hosted checkout and webhook health.",
+          icon: CreditCard,
+          accent: "from-orange-600 to-amber-800",
+        },
+        {
           to: adminSpaTo("/admin/integrations/resend"),
           label: "Resend",
           description: "Transactional email delivery.",

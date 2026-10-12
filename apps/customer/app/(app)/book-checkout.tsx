@@ -29,11 +29,13 @@ import {
 } from "@/lib/paystack-webview-utils";
 import {
   CHECKOUT_SUCCESS_PATH,
-  getBookingCheckoutPaystackAuthPrefix,
   getCustomerPaystackAuthReturnUrl,
+  getNativePaystackReturnUrl,
+  CUSTOMER_NATIVE_PAYSTACK_PATHS,
   matchesCheckoutSuccessReturnUrl,
   matchesPaystackAuthSessionReturn,
 } from "@/lib/payments/customerPaystackReturn";
+import { waitForModalDismiss } from "@/lib/payments/waitForModalDismiss";
 import * as ExpoLinking from "expo-linking";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearPendingExcludeHoldId } from "@/lib/booking-flow-hold";
@@ -1976,9 +1978,11 @@ export default function BookCheckoutScreen() {
   const paystackEnabled = hold ? hold.payment_paystack !== false : paystackFlagBundle;
   const cardOnlineEnabled =
     marketGateway === "stripe" ||
+    marketGateway === "flutterwave" ||
     (marketGateway === "paystack" && paystackEnabled) ||
     (marketGateway !== "paystack" &&
       marketGateway !== "stripe" &&
+      marketGateway !== "flutterwave" &&
       (paystackEnabled || checkoutGateway.useHostedWebFallback));
   const walletEnabled = hold ? hold.payment_wallet !== false : walletFlagBundle;
   const giftCardsEnabled = hold ? hold.gift_cards !== false : giftCardsFlagBundle;
@@ -2027,11 +2031,18 @@ export default function BookCheckoutScreen() {
 
   useEffect(() => {
     if (!hold) return;
-    const paystack = hold.payment_paystack !== false;
+    const gw =
+      typeof hold.payment_gateway === "string" && hold.payment_gateway.trim()
+        ? hold.payment_gateway.trim().toLowerCase()
+        : checkoutGateway.gateway;
+    const cardOk =
+      gw === "stripe" ||
+      gw === "flutterwave" ||
+      (gw === "paystack" && hold.payment_paystack !== false);
     const walletOk = hold.payment_wallet !== false;
     const giftOk = hold.gift_cards !== false;
     if (paymentMethod === "giftcard" && !giftOk) {
-      setPaymentMethod(paystack ? "card" : cashEnabled ? "cash" : "card");
+      setPaymentMethod(cardOk ? "card" : cashEnabled ? "cash" : "card");
       return;
     }
     if (paymentMethod === "wallet") {
@@ -2039,13 +2050,13 @@ export default function BookCheckoutScreen() {
       setUseWallet(walletOk);
       return;
     }
-    if (paymentMethod === "card" && !paystack && cashEnabled) {
+    if (paymentMethod === "card" && !cardOk && cashEnabled) {
       setPaymentMethod("cash");
     }
     if (paymentMethod === "cash" && !cashEnabled) {
-      setPaymentMethod(paystack ? "card" : giftOk ? "giftcard" : "card");
+      setPaymentMethod(cardOk ? "card" : giftOk ? "giftcard" : "card");
     }
-  }, [hold, paymentMethod, cashEnabled]);
+  }, [hold, paymentMethod, cashEnabled, checkoutGateway.gateway]);
 
   useEffect(() => {
     if (paymentMethod === "wallet") {
@@ -2746,10 +2757,7 @@ export default function BookCheckoutScreen() {
         payload.subscribe_recurring = { enabled: true, frequency: recurringFrequency };
       }
       if (paymentMethod === "card") {
-        payload.paystack_callback_url =
-          Platform.OS !== "web"
-            ? ExpoLinking.createURL("book/paystack")
-            : getCustomerPaystackAuthReturnUrl(CHECKOUT_SUCCESS_PATH);
+        payload.paystack_callback_url = getCustomerPaystackAuthReturnUrl(CHECKOUT_SUCCESS_PATH);
       }
 
       const res = await api.post<ConsumeResponse>(
@@ -2900,12 +2908,14 @@ export default function BookCheckoutScreen() {
         setProcessingMessage(t("checkout.openingPaymentPage"));
         let returnedPaymentReference: string | null = data?.payment_reference ?? null;
         let returnedCheckoutSessionId: string | null = null;
+        let returnedFlutterwaveTransactionId: string | null = null;
         if (Platform.OS !== "web") {
           // Important: close the blocking overlay before opening Paystack WebView.
           // Two RN modals competing can leave users stuck on "opening payment page".
           setProcessingPayment(false);
           setProcessingStep(undefined);
-          const paystackReturnUrl = getBookingCheckoutPaystackAuthPrefix();
+          await waitForModalDismiss();
+          const paystackReturnUrl = getNativePaystackReturnUrl(CUSTOMER_NATIVE_PAYSTACK_PATHS.booking);
           // Mark before opening browser so the deep-link return screen cooperates
           // if Android mounts book/paystack before waitForCheckout resolves.
           if (returnedPaymentReference) {
@@ -2920,6 +2930,17 @@ export default function BookCheckoutScreen() {
               !isCancelledPaystackUrl(u),
             matchCancel: (u) => isCancelledPaystackUrl(u),
           });
+
+          if (authResult.outcome === "start_failed") {
+            Alert.alert(
+              t("checkout.paymentUnavailableTitle", "Payment unavailable"),
+              t(
+                "checkout.paymentBrowserFailed",
+                "We couldn't open the secure payment window. Please try again.",
+              ),
+            );
+            return;
+          }
 
           if (authResult.outcome === "cancel") {
             setProcessingPayment(false);
@@ -2970,6 +2991,17 @@ export default function BookCheckoutScreen() {
             const parsedReturn = parseOnlineCheckoutReturnUrl(authResult.url);
             if (parsedReturn.reference) returnedPaymentReference = parsedReturn.reference;
             if (parsedReturn.sessionId) returnedCheckoutSessionId = parsedReturn.sessionId;
+            if (parsedReturn.transactionId) {
+              returnedFlutterwaveTransactionId = parsedReturn.transactionId;
+            }
+            if (parsedReturn.status === "failed" || parsedReturn.status === "cancelled") {
+              setProcessingPayment(false);
+              Alert.alert(
+                t("checkout.paymentNotCompletedTitle", "Payment not completed"),
+                t("checkout.paymentNotCompletedBody", "Your booking has not been confirmed."),
+              );
+              return;
+            }
           }
         } else {
           // Full redirect on Expo Web — matches the working pattern in custom-offer-checkout.tsx
@@ -2987,6 +3019,7 @@ export default function BookCheckoutScreen() {
         if (returnedPaymentReference) {
           const verifyResult = await verifyPaystackWithRetry(returnedPaymentReference, {
             sessionId: returnedCheckoutSessionId,
+            transactionId: returnedFlutterwaveTransactionId,
           });
           if (verifyResult.status === "success") {
             paymentConfirmed = true;
@@ -3018,7 +3051,7 @@ export default function BookCheckoutScreen() {
           setProcessingStep(undefined);
           if (bookingId) {
             trackBookingConfirmed(bookingId, paymentMethod, total);
-            trackPaymentSuccess(bookingId, amountPaidOnCompletion);
+            trackPaymentSuccess(bookingId, amountPaidOnCompletion, paymentMethod, marketGateway);
             notifyRecurringSubscription({ bookingIdForSeriesCheck: bookingId });
             navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined, "pending_payment");
           } else {
@@ -3040,7 +3073,12 @@ export default function BookCheckoutScreen() {
         setProcessingPayment(false);
         setProcessingStep(undefined);
         trackBookingConfirmed(confirmedBookingId ?? hold_id, paymentMethod, total);
-        trackPaymentSuccess(confirmedBookingId ?? hold_id, amountPaidOnCompletion);
+        trackPaymentSuccess(
+          confirmedBookingId ?? hold_id,
+          amountPaidOnCompletion,
+          paymentMethod,
+          marketGateway,
+        );
         notifyRecurringSubscription({ bookingIdForSeriesCheck: confirmedBookingId ?? bookingId });
         navigateToBooking(
           confirmedBookingId,
@@ -3050,7 +3088,7 @@ export default function BookCheckoutScreen() {
       } else {
         if (selectedCardId && !useNewCard && savedCards.length > 0) refreshCards();
         trackBookingConfirmed(bookingId ?? hold_id, paymentMethod, total);
-        trackPaymentSuccess(bookingId ?? hold_id, amountPaidOnCompletion);
+        trackPaymentSuccess(bookingId ?? hold_id, amountPaidOnCompletion, paymentMethod, marketGateway);
         notifyRecurringSubscription({ bookingIdForSeriesCheck: bookingId ?? undefined });
         navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined);
       }

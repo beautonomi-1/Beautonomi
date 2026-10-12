@@ -12,6 +12,9 @@ export type AdminPayoutAccount = {
   id?: string;
   recipient_code: string;
   currency?: string | null;
+  bank_code?: string | null;
+  account_name?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 export type AdminPayoutReadinessResult =
@@ -58,7 +61,7 @@ export async function resolveActivePayoutAccount(
   if (requestedAccountId) {
     const { data } = await supabase
       .from("provider_payout_accounts")
-      .select("id, recipient_code, currency")
+      .select("id, recipient_code, currency, bank_code, account_name, metadata")
       .eq("id", requestedAccountId)
       .eq("provider_id", providerId)
       .eq("active", true)
@@ -70,7 +73,7 @@ export async function resolveActivePayoutAccount(
 
   const { data } = await supabase
     .from("provider_payout_accounts")
-    .select("id, recipient_code, currency")
+    .select("id, recipient_code, currency, bank_code, account_name, metadata")
     .eq("provider_id", providerId)
     .eq("active", true)
     .is("deleted_at", null)

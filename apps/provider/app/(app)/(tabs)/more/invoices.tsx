@@ -18,7 +18,11 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import * as ExpoLinking from "expo-linking";
+import {
+  getBillingPaystackReturnUrl,
+  getBillingPaymentReturnDeepLink,
+  matchesBillingPaystackReturnUrl,
+} from "@/lib/payments/providerPaystackReturn";
 import { Redirect, useRouter } from "expo-router";
 import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -271,10 +275,13 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
 
     setPayingInvoiceId(inv.id);
     try {
-      const returnUrl = ExpoLinking.createURL("paystack-callback");
+      const returnUrl = getBillingPaymentReturnDeepLink();
       const { data, error } = await startPayment(
         `/api/provider/invoices/${inv.id}/initialize-payment`,
-        { in_app: true },
+        {
+          in_app: true,
+          callback_url: getBillingPaystackReturnUrl({ inApp: true }),
+        },
       );
 
       if (error || !data) {
@@ -289,11 +296,16 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
       }
 
       const result = await waitForCheckout(url, {
-        matchSuccess: (u) => u.includes("payment_success=true"),
-        matchCancel: (u) => u.includes("payment_cancelled=1"),
+        matchSuccess: (u) => matchesBillingPaystackReturnUrl(u, { success: true }),
+        matchCancel: (u) => matchesBillingPaystackReturnUrl(u, { cancelled: true }),
         title: iv("invoiceTitle", { number: inv.invoice_number }),
         returnUrl,
       });
+
+      if (result.outcome === "start_failed") {
+        Alert.alert(iv("paymentUnavailable"), iv("paymentStartFailed"));
+        return;
+      }
 
       if (result.outcome === "success") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

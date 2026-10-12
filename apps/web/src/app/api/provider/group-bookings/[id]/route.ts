@@ -33,6 +33,7 @@ import {
   PROVIDER_CHILD_BOOKINGS_SELECT,
 } from "@/lib/bookings/group-booking-postgrest";
 import { computeGroupPaymentRollupFields } from "@/lib/bookings/group-booking-payment-rollup";
+import { participantRowCountsTowardGroupTotal } from "@/lib/bookings/recalculate-group-total";
 import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
 import { evaluateGroupCapacity, normalizeGroupCapacity } from "@/lib/bookings/group-capacity";
 
@@ -208,10 +209,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const linkedParticipantInvoiceTotal = (((groupBooking as any).bookings ?? []) as any[])
       .filter((booking: any) => booking?.status !== "cancelled" && booking?.status !== "no_show")
       .reduce((sum: number, booking: any) => sum + (Number(booking?.total_amount ?? 0) || 0), 0);
-    const participantServiceTotal = participants.reduce(
-      (sum: number, participant: any) => sum + (Number(participant?.price ?? 0) || 0),
-      0
-    );
+    const participantServiceTotal = (
+      (((groupBooking as any).booking_participants ?? []) as any[]) ?? []
+    ).reduce((sum: number, participant: any) => {
+      const linkedBooking = participant.booking_id
+        ? (((groupBooking as any).bookings ?? []) as any[]).find(
+            (b: any) => b.id === participant.booking_id
+          )
+        : null;
+      if (
+        !participantRowCountsTowardGroupTotal({
+          booking_id: participant.booking_id ?? null,
+          price: participant.price,
+          bookings: linkedBooking ? { status: linkedBooking.status } : null,
+        })
+      ) {
+        return sum;
+      }
+      return sum + (Number(participant?.price ?? 0) || 0);
+    }, 0);
     const productTotal = Array.isArray((groupBooking as any).products)
       ? ((groupBooking as any).products as any[]).reduce(
           (sum: number, product: any) => sum + groupProductLineTotal(product),

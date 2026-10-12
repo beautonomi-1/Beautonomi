@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef } from "react";
 import * as ExpoLinking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
+import { isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
 
 export type InAppPaystackResult =
   | { outcome: "success"; url: string }
   | { outcome: "cancel"; url?: string }
-  | { outcome: "closed" };
+  | { outcome: "closed" }
+  | { outcome: "start_failed"; message?: string };
 
 /**
  * PCI DSS SAQ A guard: Paystack hosted checkout must only ever be opened
@@ -20,6 +22,7 @@ const PAYSTACK_HOST_ALLOWLIST = new Set<string>([
 ]);
 
 const STRIPE_HOST_ALLOWLIST = new Set<string>(["checkout.stripe.com", "pay.stripe.com"]);
+const FLUTTERWAVE_HOST_ALLOWLIST = new Set<string>(["checkout.flutterwave.com"]);
 
 function assertHostedCheckoutUrl(url: string): void {
   let parsed: URL;
@@ -39,7 +42,8 @@ function assertHostedCheckoutUrl(url: string): void {
     host.endsWith(".paystack.shop");
   const stripeAllowed =
     STRIPE_HOST_ALLOWLIST.has(host) || host.endsWith(".stripe.com");
-  if (!paystackAllowed && !stripeAllowed) {
+  const flutterwaveAllowed = FLUTTERWAVE_HOST_ALLOWLIST.has(host);
+  if (!paystackAllowed && !stripeAllowed && !flutterwaveAllowed) {
     throw new Error(`[checkout] refusing to open untrusted host: ${host}`);
   }
 }
@@ -72,7 +76,7 @@ export function useInAppPaystackCheckout() {
           resolverRef.current = null;
 
           if (result.type === "success" && result.url) {
-            if (options.matchCancel?.(result.url) || result.url.includes("cancelled=1")) {
+            if (options.matchCancel?.(result.url) || isCancelledPaystackUrl(result.url)) {
               resolve({ outcome: "cancel", url: result.url });
               return;
             }
@@ -82,10 +86,11 @@ export function useInAppPaystackCheckout() {
             }
           }
           resolve({ outcome: "closed" });
-        } catch {
+        } catch (err) {
           if (resolverRef.current) {
             resolverRef.current = null;
-            resolve({ outcome: "closed" });
+            const message = err instanceof Error ? err.message : undefined;
+            resolve({ outcome: "start_failed", message });
           }
         }
       });

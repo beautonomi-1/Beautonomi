@@ -6,6 +6,11 @@ import { CheckCircle, Loader2, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useTranslation } from "@beautonomi/i18n";
 import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
+import {
+  readHostedCheckoutReturnParams,
+  isHostedCheckoutFailureStatus,
+} from "@/lib/payments/hosted-checkout-return-params";
+import { NativeAppCheckoutBounce } from "@/components/payments/NativeAppCheckoutBounce";
 
 type VerifyResponse = {
   verified: boolean;
@@ -35,13 +40,21 @@ export default function BookingPaymentCallbackPage() {
   const bookingId = params.id as string;
   const payRemaining = searchParams.get("pay_remaining") === "1";
   const nativeAppContext = searchParams.get("context") === "app";
-  const reference = searchParams.get("reference") || searchParams.get("trxref");
-  const sessionId = searchParams.get("session_id");
+  const hosted = readHostedCheckoutReturnParams(searchParams);
+  const reference = hosted.reference || null;
+  const sessionId = hosted.sessionId;
+  const flutterwaveTransactionId = hosted.transactionId;
+  const hostedStatus = hosted.hostedStatus;
 
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [message, setMessage] = useState("");
 
   const verify = useCallback(async () => {
+    if (isHostedCheckoutFailureStatus(hostedStatus)) {
+      setStatus("error");
+      setMessage(t(`${prefix}.confirmFailed`));
+      return;
+    }
     if (!reference?.trim()) {
       setStatus("error");
       setMessage(t(`${prefix}.noReference`));
@@ -54,6 +67,7 @@ export default function BookingPaymentCallbackPage() {
         maxAttempts: 5,
         delayMs: 1500,
         sessionId,
+        transactionId: flutterwaveTransactionId,
       });
       const data = res.data;
       if (res.status === "success" || data?.verified) {
@@ -84,7 +98,7 @@ export default function BookingPaymentCallbackPage() {
       setStatus("success");
       setMessage(t(`${prefix}.finalizing`));
     }
-  }, [reference, sessionId, bookingId, payRemaining, t]);
+  }, [reference, sessionId, flutterwaveTransactionId, hostedStatus, bookingId, payRemaining, t]);
 
   useEffect(() => {
     verify();
@@ -135,6 +149,8 @@ export default function BookingPaymentCallbackPage() {
   }, [status, bookingId, router]);
 
   return (
+    <>
+      <NativeAppCheckoutBounce />
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
         {status === "loading" && (
@@ -189,5 +205,6 @@ export default function BookingPaymentCallbackPage() {
         )}
       </div>
     </div>
+    </>
   );
 }

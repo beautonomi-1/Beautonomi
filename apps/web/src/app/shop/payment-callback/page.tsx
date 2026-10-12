@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import { NativeAppCheckoutBounce } from "@/components/payments/NativeAppCheckoutBounce";
 import { useSearchParams, useRouter } from "next/navigation";
 import { CheckCircle, XCircle, Loader2, ShoppingBag, RotateCcw } from "lucide-react";
 import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
@@ -37,8 +38,21 @@ function ProductPaymentCallbackInner() {
     };
 
     const verifyPayment = async () => {
-      const reference = searchParams.get("reference");
+      const redirectStatus = (searchParams.get("status") ?? "").toLowerCase();
+      const reference =
+        searchParams.get("reference") ||
+        searchParams.get("trxref") ||
+        searchParams.get("tx_ref");
       const sessionId = searchParams.get("session_id");
+      const transactionId = searchParams.get("transaction_id");
+      if (redirectStatus === "failed" || redirectStatus === "cancelled") {
+        if (!cancelled) {
+          setStatus("error");
+          setMessage("Payment was not completed.");
+          notifyWebView({ type: "checkout_failed", payment_type: "product_order", status: "failed" });
+        }
+        return;
+      }
       if (!reference) {
         if (!cancelled) {
           setStatus("error");
@@ -61,7 +75,7 @@ function ProductPaymentCallbackInner() {
           productOrderId?: string;
           orderNumber?: string;
           message?: string;
-        }>(reference, { maxAttempts: 5, delayMs: 1500, sessionId });
+        }>(reference, { maxAttempts: 5, delayMs: 1500, sessionId, transactionId });
 
         if (cancelled) return;
 
@@ -224,7 +238,10 @@ export default function ProductPaymentCallback() {
         </div>
       }
     >
-      <ProductPaymentCallbackInner />
+      <>
+        <NativeAppCheckoutBounce />
+        <ProductPaymentCallbackInner />
+      </>
     </Suspense>
   );
 }

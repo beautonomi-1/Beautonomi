@@ -66,7 +66,7 @@ function disputeAmountMajor(
 
 export async function upsertOpenPaymentDispute(params: {
   supabase: SupabaseClient;
-  paymentProvider: "paystack" | "stripe";
+  paymentProvider: "paystack" | "stripe" | "flutterwave";
   disputeId: string;
   reference: string;
   amountMajor: number;

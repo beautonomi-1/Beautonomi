@@ -8,6 +8,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { wirePreferenceGateTables } from "@/lib/notifications/__tests__/pref-gate-supabase-tables";
 
 const USER_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"; // email on
 const USER_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"; // email off (global)
@@ -77,11 +78,32 @@ function createSupabaseMock(opts: {
     catch: deviceResult.catch.bind(deviceResult),
   };
 
+  const profilePrefsByUser = new Map(
+    opts.profiles.map((p) => [p.user_id, p.notification_preferences as Record<string, unknown>]),
+  );
+  const gatePrefs =
+    opts.profiles.length === 1
+      ? (profilePrefsByUser.get(opts.profiles[0].user_id) ?? {})
+      : undefined;
+
+  const baseFrom = (table: string) => {
+    if (table === "notification_templates") {
+      return { select: vi.fn().mockReturnValue(templateQuery) };
+    }
+    if (table === "user_devices") {
+      return { select: vi.fn().mockReturnValue({ in: vi.fn().mockReturnValue(userDevicesQuery) }) };
+    }
+    if (table === "notification_logs") {
+      return { insert: vi.fn().mockResolvedValue({ error: null }) };
+    }
+    throw new Error(`unexpected table ${table}`);
+  };
+
+  const userIds = opts.users.map((u) => u.id);
+  const wired = wirePreferenceGateTables(baseFrom, userIds, gatePrefs);
+
   return {
     from: vi.fn().mockImplementation((table: string) => {
-      if (table === "notification_templates") {
-        return { select: vi.fn().mockReturnValue(templateQuery) };
-      }
       if (table === "users") {
         return {
           select: vi.fn().mockReturnValue({
@@ -96,13 +118,7 @@ function createSupabaseMock(opts: {
           }),
         };
       }
-      if (table === "user_devices") {
-        return { select: vi.fn().mockReturnValue({ in: vi.fn().mockReturnValue(userDevicesQuery) }) };
-      }
-      if (table === "notification_logs") {
-        return { insert: vi.fn().mockResolvedValue({ error: null }) };
-      }
-      throw new Error(`unexpected table ${table}`);
+      return wired(table);
     }),
   };
 }
@@ -164,6 +180,9 @@ describe("sendTemplateNotification per-user email/SMS gating", () => {
       bookingId: BOOKING_ID,
       dedupeKey: `template:booking_confirmed:${USER_A}:email:${BOOKING_ID}`,
     });
+    const emailPayload = (emailCalls[0][0] as { payload: Record<string, string> }).payload;
+    expect(String(emailPayload.html)).toContain("max-width:640px");
+    expect(String(emailPayload.text)).not.toMatch(/<p>/);
   });
 
   it("does not call OneSignal for email-only sends (queue handles it)", async () => {

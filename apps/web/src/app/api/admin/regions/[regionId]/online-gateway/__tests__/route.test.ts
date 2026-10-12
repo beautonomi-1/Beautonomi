@@ -107,4 +107,59 @@ describe("PATCH /api/admin/regions/[regionId]/online-gateway", () => {
     expect(body.data.gateway).toBe("stripe");
     expect(body.data.settlement_model).toBe("platform_mor_transfer");
   });
+
+  it("accepts flutterwave gateway with region secrets", async () => {
+    const mockSupabase = chainForRegionFound();
+    const upsertSpy = vi.fn().mockResolvedValue({ error: null });
+    mockSupabase.from.mockImplementation((table: string) => {
+      if (table === "region_secrets") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({ data: { id: "sec-1" }, error: null }),
+          upsert: upsertSpy,
+        };
+      }
+      if (table === "regions") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: { id: "reg-1", code: "NG", name: "Nigeria" },
+            error: null,
+          }),
+        };
+      }
+      if (table === "region_payment_gateways") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+          update: vi.fn().mockReturnThis(),
+          upsert: vi.fn().mockResolvedValue({ error: null }),
+        };
+      }
+      return mockSupabase.from(table);
+    });
+    mockGetSupabaseAdmin.mockReturnValue(mockSupabase);
+
+    const { PATCH } = await import("../route");
+    const req = new NextRequest("http://localhost/api/admin/regions/reg-1/online-gateway", {
+      method: "PATCH",
+      body: JSON.stringify({
+        gateway: "flutterwave",
+        flutterwave_secret_key: "FLWSECK_TEST-secret",
+        flutterwave_webhook_hash: "hash-from-dashboard",
+      }),
+    });
+    const res = await PATCH(req, { params: Promise.resolve({ regionId: "reg-1" }) });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.gateway).toBe("flutterwave");
+    expect(upsertSpy).toHaveBeenCalled();
+    const upsertPayloads = upsertSpy.mock.calls.map((c) => c[0]);
+    expect(upsertPayloads.some((p: { key?: string }) => p.key === "flutterwave_secret_key")).toBe(true);
+    expect(upsertPayloads.some((p: { key?: string }) => p.key === "flutterwave_webhook_hash")).toBe(true);
+  });
 });

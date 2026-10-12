@@ -14,7 +14,9 @@ import {
   deleteTransferRecipient,
 } from "@/lib/payments/paystack-complete";
 import { z } from "zod";
-import { loadProviderPayoutRailContext } from "@/lib/payments/payout-rail";
+import { loadProviderPayoutRailContext, resolvePayoutRailForTenant } from "@/lib/payments/payout-rail";
+import { resolveFlutterwaveBankAccount } from "@/lib/payments/flutterwave-banks";
+import { getEffectiveSkipPayoutAccountVerification } from "@/lib/payments/payout-account-verification-settings";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PAYSTACK_RECIPIENT_TYPES = ["nuban", "basa", "ghipss", "mobile_money"] as const;
@@ -38,6 +40,22 @@ function resolveRecipientType(
   if (code === "ZAR") return "basa";
   if (code === "GHS") return "ghipss";
   return "nuban";
+}
+
+async function findActivePayoutAccountByRecipientCode(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  providerId: string,
+  recipientCode: string,
+) {
+  const { data, error } = await supabase
+    .from("provider_payout_accounts")
+    .select("*")
+    .eq("recipient_code", recipientCode)
+    .eq("provider_id", providerId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error) throw error;
+  return data ?? null;
 }
 
 /**
@@ -153,6 +171,80 @@ export async function POST(
 
     const { bank_code, account_number, account_name, account_type, recipient_type, currency } = validation.data;
     const resolvedRecipientType = resolveRecipientType(recipient_type, currency);
+
+    const rail = await resolvePayoutRailForTenant(tenantId);
+    if (rail === "stripe") {
+      return errorResponse(
+        "This market uses Stripe Connect for payouts. The provider must complete Connect onboarding in the provider app.",
+        "STRIPE_CONNECT_REQUIRED",
+        400,
+      );
+    }
+
+    if (rail === "flutterwave") {
+      const { skip: skipVerify } = await getEffectiveSkipPayoutAccountVerification(supabase, tenantId);
+      let resolvedName = account_name.trim();
+      if (!skipVerify) {
+        try {
+          const resolved = await resolveFlutterwaveBankAccount({
+            accountNumber: account_number,
+            accountBank: bank_code,
+            tenantId,
+          });
+          resolvedName = resolved.account_name?.trim() || resolvedName;
+        } catch (verifyError) {
+          const message =
+            verifyError instanceof Error
+              ? verifyError.message
+              : "Account could not be verified. Double-check the bank and account number.";
+          return errorResponse(message, "ACCOUNT_VERIFICATION_FAILED", 400);
+        }
+      }
+
+      const recipientCode = `fw:${bank_code}:${account_number}`;
+      const existingByRecipientCode = await findActivePayoutAccountByRecipientCode(
+        supabase,
+        providerId,
+        recipientCode,
+      );
+      if (existingByRecipientCode) {
+        return successResponse(existingByRecipientCode);
+      }
+
+      const accountNumberLast4 = account_number.slice(-4);
+      const { data: existingAccounts } = await supabase
+        .from("provider_payout_accounts")
+        .select("id")
+        .eq("provider_id", providerId)
+        .is("deleted_at", null);
+      const isFirstAccount = !existingAccounts?.length;
+
+      const { data: savedAccount, error: saveError } = await supabase
+        .from("provider_payout_accounts")
+        .insert({
+          provider_id: providerId,
+          recipient_code: recipientCode,
+          recipient_id: null,
+          type: "bank_account",
+          account_number_last4: accountNumberLast4,
+          account_name: resolvedName,
+          bank_code,
+          bank_name: null,
+          currency,
+          active: true,
+          is_primary: isFirstAccount,
+          metadata: {
+            payout_rail: "flutterwave",
+            added_by_admin: user.id,
+            account_type: account_type ?? null,
+          },
+        })
+        .select()
+        .single();
+
+      if (saveError) throw saveError;
+      return successResponse(savedAccount);
+    }
 
     const paystackRecipient = await createTransferRecipient(
       {

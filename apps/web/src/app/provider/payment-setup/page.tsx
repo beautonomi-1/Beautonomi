@@ -8,18 +8,19 @@ import { PageHeader } from "@/components/provider/PageHeader";
 import { ArrowUpRight, ChevronRight, CreditCard, FileText, Gift, QrCode, Smartphone, Wallet } from "lucide-react";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
+import { normalizePayoutRailOption, type PayoutRail } from "@/lib/payments/payout-rail";
 
 export default function PaymentSetupPage() {
   const { t } = useTranslation();
-  const [payoutRail, setPayoutRail] = useState<"paystack" | "stripe">("paystack");
+  const [payoutRail, setPayoutRail] = useState<PayoutRail>("paystack");
 
   useEffect(() => {
     void (async () => {
       try {
-        const res = await fetcher.get<{ data: { payout_rail?: "paystack" | "stripe" } }>(
+        const res = await fetcher.get<{ data: { payout_rail?: PayoutRail } }>(
           "/api/provider/payout-accounts/options",
         );
-        setPayoutRail(res.data?.payout_rail === "stripe" ? "stripe" : "paystack");
+        setPayoutRail(normalizePayoutRailOption(res.data?.payout_rail));
       } catch {
         setPayoutRail("paystack");
       }

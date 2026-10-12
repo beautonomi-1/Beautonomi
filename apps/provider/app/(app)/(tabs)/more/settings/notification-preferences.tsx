@@ -74,26 +74,12 @@ const SECTIONS = [
   { titleKey: "sectionOther", keys: ["system_updates", "marketing"] },
 ];
 
-const DEFAULT_PREFS: NotifPreferences = {
+/** Skeleton only while GET is in flight — server materializes real defaults. */
+const LOADING_PREFS: NotifPreferences = {
   booking_updates: { email: true, sms: true, push: true, whatsapp: false },
   booking_cancellations: { email: true, sms: true, push: true, whatsapp: false },
   booking_reminders: { email: true, sms: true, push: true, whatsapp: false },
-  new_reviews: { email: true, sms: false, push: true, whatsapp: false },
-  review_responses: { email: true, sms: false, push: true, whatsapp: false },
   client_messages: { email: true, sms: true, push: true, whatsapp: false },
-  payment_received: { email: true, sms: false, push: true, whatsapp: false },
-  payout_updates: { email: true, sms: true, push: true, whatsapp: false },
-  waitlist_notifications: { email: true, sms: false, push: true, whatsapp: false },
-  system_updates: { email: true, sms: false, push: false, whatsapp: false },
-  marketing: { email: true, sms: false, push: false, whatsapp: false },
-  booking_alert_sound: true,
-  order_alert_sound: true,
-  message_alert_sound: true,
-  unsubscribe_marketing: false,
-  quiet_hours_enabled: false,
-  quiet_hours_start: "22:00",
-  quiet_hours_end: "07:00",
-  digest_mode: "none",
 };
 
 const DIGEST_OPTIONS = [
@@ -113,7 +99,7 @@ export default function NotificationPreferencesScreen() {
     useApi<NotifPreferences>("/api/provider/notification-preferences");
   const { execute: savePrefs, loading: saving } = useApiMutation("patch");
   const { execute: testNotif, loading: testing } = useApiMutation("post");
-  const [local, setLocal] = useState<NotifPreferences>(DEFAULT_PREFS);
+  const [local, setLocal] = useState<NotifPreferences>(LOADING_PREFS);
   const [dirty, setDirty] = useState(false);
   const [pushPermissionStatus, setPushPermissionStatus] = useState<string | null>(null);
 
@@ -163,26 +149,7 @@ export default function NotificationPreferencesScreen() {
 
   useEffect(() => {
     if (!prefs) return;
-    const merged: NotifPreferences = { ...DEFAULT_PREFS };
-    (Object.keys(DEFAULT_PREFS) as (keyof typeof DEFAULT_PREFS)[]).forEach((key) => {
-      const incoming = prefs[key];
-      if (incoming === undefined) return;
-      const base = DEFAULT_PREFS[key];
-      if (
-        incoming &&
-        typeof incoming === "object" &&
-        !Array.isArray(incoming) &&
-        base &&
-        typeof base === "object" &&
-        "email" in base &&
-        "email" in (incoming as object)
-      ) {
-        merged[key] = { ...(base as ChannelPrefs), ...(incoming as ChannelPrefs) };
-      } else {
-        (merged as Record<string, unknown>)[key as string] = incoming;
-      }
-    });
-    setLocal(merged);
+    setLocal(prefs);
     setDirty(false);
   }, [prefs]);
 
@@ -202,9 +169,9 @@ export default function NotificationPreferencesScreen() {
       const next = { ...prev };
       keys.forEach((k) => {
         const key = k as keyof NotifPreferences;
-        const base = DEFAULT_PREFS[key];
-        if (base && typeof base === "object" && "email" in base) {
-          next[key] = { email: true, sms: true, push: true, whatsapp: true };
+        const cur = next[key];
+        if (cur && typeof cur === "object" && "email" in cur) {
+          next[key] = { ...(cur as ChannelPrefs), email: true, sms: true, push: true, whatsapp: true };
         }
       });
       return next;
@@ -217,9 +184,9 @@ export default function NotificationPreferencesScreen() {
       const next = { ...prev };
       keys.forEach((k) => {
         const key = k as keyof NotifPreferences;
-        const base = DEFAULT_PREFS[key];
-        if (base && typeof base === "object" && "email" in base) {
-          next[key] = { email: false, sms: false, push: false, whatsapp: false };
+        const cur = next[key];
+        if (cur && typeof cur === "object" && "email" in cur) {
+          next[key] = { ...(cur as ChannelPrefs), email: false, sms: false, push: false, whatsapp: false };
         }
       });
       return next;

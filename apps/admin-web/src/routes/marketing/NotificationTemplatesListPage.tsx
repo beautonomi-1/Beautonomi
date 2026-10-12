@@ -192,6 +192,8 @@ function TemplateEditor({
   const [variablesStr, setVariablesStr] = useState(
     () => (Array.isArray(initial.variables) ? initial.variables.join(", ") : ""),
   );
+  const [emailPreviewBusy, setEmailPreviewBusy] = useState(false);
+  const [emailPreviewError, setEmailPreviewError] = useState<string | null>(null);
 
   useEffect(() => {
     setKey(initial.key ?? initial.name ?? "");
@@ -478,6 +480,9 @@ function TemplateEditor({
           </div>
           <div>
             <label className="text-xs font-medium text-gray-700">Email body (HTML)</label>
+            <p className="mt-1 text-xs text-gray-500">
+              Full HTML skips the Beautonomi shell; fragments are wrapped at send time (see platform email design doc).
+            </p>
             <textarea
               rows={5}
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs"
@@ -485,6 +490,41 @@ function TemplateEditor({
               onChange={(e) => setEmailBody(e.target.value)}
               placeholder="<p>Dear {{customer_name}}, …</p>"
             />
+            {mode === "edit" && key.trim() ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={emailPreviewBusy}
+                  className={cn(adminToolbarButtonClass, "text-xs")}
+                  onClick={() => {
+                    const templateKey = key.trim();
+                    setEmailPreviewBusy(true);
+                    setEmailPreviewError(null);
+                    void adminApi
+                      .postJson<{ html: string }>(
+                        `/api/admin/notification-templates/${encodeURIComponent(templateKey)}/preview-email`,
+                        {
+                          emailSubject,
+                          emailBody,
+                          url: url.trim() || null,
+                        },
+                      )
+                      .then((res) => {
+                        const html = (res as { html?: string }).html ?? "";
+                        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+                        window.open(URL.createObjectURL(blob), "_blank", "noopener,noreferrer");
+                      })
+                      .catch((err: Error) => setEmailPreviewError(err.message ?? "Preview failed"))
+                      .finally(() => setEmailPreviewBusy(false));
+                  }}
+                >
+                  {emailPreviewBusy ? "Previewing…" : "Preview HTML"}
+                </button>
+                {emailPreviewError ? (
+                  <span className="text-xs text-red-600">{emailPreviewError}</span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
       )}
@@ -992,7 +1032,8 @@ export function NotificationTemplatesListPage() {
       <div className="rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-950">
         <strong>Note:</strong> Email and SMS are edited per template here (<code className="rounded bg-amber-100/80 px-1">email_subject</code>,{" "}
         <code className="rounded bg-amber-100/80 px-1">email_body</code>, <code className="rounded bg-amber-100/80 px-1">sms_body</code>).
-        Enable the channel below to reveal those fields.
+        Enable the channel below to reveal those fields. Fragment <code className="rounded bg-amber-100/80 px-1">email_body</code> values get the
+        Beautonomi transactional shell at send time; full HTML bypasses the wrapper.
       </div>
 
       <div className="rounded-xl border border-blue-100 bg-blue-50/90 px-4 py-3 text-sm text-blue-950">

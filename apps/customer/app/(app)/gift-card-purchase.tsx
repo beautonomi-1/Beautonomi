@@ -4,6 +4,7 @@ import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/Ap
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
+import { waitForModalDismiss } from "@/lib/payments/waitForModalDismiss";
 import {
   extractPaystackReferenceFromUrl,
   isCancelledPaystackUrl,
@@ -11,7 +12,8 @@ import {
 import {
   GIFT_CARD_SUCCESS_PATH,
   getCustomerPaystackAuthReturnUrl,
-  getGiftCardPurchasePaystackAuthPrefix,
+  getNativePaystackReturnUrl,
+  CUSTOMER_NATIVE_PAYSTACK_PATHS,
   matchesGiftCardPurchaseSuccessReturnUrl,
   matchesPaystackAuthSessionReturn,
 } from "@/lib/payments/customerPaystackReturn";
@@ -166,10 +168,7 @@ export default function GiftCardPurchaseScreen() {
             if (Number.isFinite(parsed.getTime())) body.deliver_at = parsed.toISOString();
           }
         }
-        body.callback_url =
-          Platform.OS !== "web"
-            ? ExpoLinking.createURL("gift-card-return")
-            : getCustomerPaystackAuthReturnUrl(GIFT_CARD_SUCCESS_PATH);
+        body.callback_url = getCustomerPaystackAuthReturnUrl(GIFT_CARD_SUCCESS_PATH);
         trackGiftCardPurchased(finalAmount);
         const giftReturnTo = "/(app)/gift-card-purchase";
         const hasToken = await hasSupabaseAccessToken();
@@ -253,11 +252,13 @@ export default function GiftCardPurchaseScreen() {
 
         setProcessingMessage(gc("openingPaymentPage") || "Opening payment page…");
         let checkoutSessionId: string | null = null;
+        let flutterwaveTransactionId: string | null = null;
         if (Platform.OS !== "web") {
-          const returnUrl = getGiftCardPurchasePaystackAuthPrefix();
+          const returnUrl = getNativePaystackReturnUrl(CUSTOMER_NATIVE_PAYSTACK_PATHS.giftCard);
           // Important: close blocking overlay before opening Paystack WebView.
           // Concurrent RN modals can prevent checkout from appearing.
           setProcessingPayment(false);
+          await waitForModalDismiss();
           const pr = await paystackHostedCheckout.waitForCheckout(paymentUrl, {
             title: gc("securePaymentTitle") || "Secure payment",
             returnUrl,
@@ -267,6 +268,10 @@ export default function GiftCardPurchaseScreen() {
               !isCancelledPaystackUrl(u),
             matchCancel: (u) => isCancelledPaystackUrl(u),
           });
+          if (pr.outcome === "start_failed") {
+            Alert.alert(errTitle, gc("paymentLinkUnavailable"));
+            return;
+          }
           if (pr.outcome === "cancel") {
             return;
           }
@@ -274,6 +279,7 @@ export default function GiftCardPurchaseScreen() {
             const parsed = parseOnlineCheckoutReturnUrl(pr.url);
             if (parsed.reference) reference = parsed.reference;
             checkoutSessionId = parsed.sessionId;
+            flutterwaveTransactionId = parsed.transactionId;
           }
         } else {
           // Expo Web: full redirect to Paystack → Next.js gift-card success page verifies.
@@ -284,7 +290,10 @@ export default function GiftCardPurchaseScreen() {
         setProcessingPayment(true);
         setProcessingMessage(gc("confirmingPayment") || "Confirming your payment…");
         if (reference) {
-          await verifyPaystackWithRetry(reference, { sessionId: checkoutSessionId });
+          await verifyPaystackWithRetry(reference, {
+            sessionId: checkoutSessionId,
+            transactionId: flutterwaveTransactionId,
+          });
         }
         const pollResult = await pollNewGiftCards(existingGiftCardIds);
         setIssuedGiftCardCodes(pollResult.codes);

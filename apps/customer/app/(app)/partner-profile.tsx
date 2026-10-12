@@ -68,8 +68,9 @@ import {
 } from "@/lib/paystack-webview-utils";
 import {
   CHECKOUT_SUCCESS_PATH,
-  getBookingCheckoutPaystackAuthPrefix,
   getCustomerPaystackAuthReturnUrl,
+  getNativePaystackReturnUrl,
+  CUSTOMER_NATIVE_PAYSTACK_PATHS,
   matchesCheckoutSuccessReturnUrl,
   matchesPaystackAuthSessionReturn,
 } from "@/lib/payments/customerPaystackReturn";
@@ -1693,8 +1694,16 @@ export default function PartnerProfileScreen() {
             try {
               const membershipReturnUrl =
                 Platform.OS !== "web"
-                  ? ExpoLinking.createURL("membership-paystack")
-                  : getCustomerPaystackAuthReturnUrl(CHECKOUT_SUCCESS_PATH);
+                  ? getNativePaystackReturnUrl(CUSTOMER_NATIVE_PAYSTACK_PATHS.membership)
+                  : getCustomerPaystackAuthReturnUrl(CHECKOUT_SUCCESS_PATH, {
+                      payment_type: "membership",
+                    });
+              const membershipPaystackCallbackUrl =
+                Platform.OS !== "web"
+                  ? getCustomerPaystackAuthReturnUrl(CHECKOUT_SUCCESS_PATH, {
+                      payment_type: "membership",
+                    })
+                  : membershipReturnUrl;
               const membershipIdempotencyKey =
                 typeof crypto !== "undefined" && "randomUUID" in crypto
                   ? crypto.randomUUID()
@@ -1706,7 +1715,7 @@ export default function PartnerProfileScreen() {
                 source: "customer_app_partner_profile",
                 campaign_id: paramCampaignId,
                 idempotency_key: membershipIdempotencyKey,
-                callback_url: membershipReturnUrl,
+                callback_url: membershipPaystackCallbackUrl,
               }, {
                 timeout: 120_000,
                 headers: { "Idempotency-Key": membershipIdempotencyKey },
@@ -1786,16 +1795,21 @@ export default function PartnerProfileScreen() {
               let paystackRef = subscribeReference;
 
               if (Platform.OS !== "web") {
-                const returnUrl = getBookingCheckoutPaystackAuthPrefix();
+                const returnUrl = getNativePaystackReturnUrl(CUSTOMER_NATIVE_PAYSTACK_PATHS.membership);
                 const pr = await membershipPaystackCheckout.waitForCheckout(url, {
                   title: pp("membershipPaystackTitle"),
                   returnUrl,
                   matchSuccess: (u) =>
                     (matchesPaystackAuthSessionReturn(u, returnUrl) ||
-                      matchesCheckoutSuccessReturnUrl(u)) &&
+                      matchesCheckoutSuccessReturnUrl(u, { paymentType: "membership" })) &&
                     !isCancelledPaystackUrl(u),
                   matchCancel: (u) => isCancelledPaystackUrl(u),
                 });
+                if (pr.outcome === "start_failed") {
+                  haptic.error();
+                  Alert.alert(pp("paymentUnavailableTitle"), pp("paymentLinkError"));
+                  return;
+                }
                 if (pr.outcome === "cancel") {
                   haptic.error();
                   Alert.alert(pp("paymentCancelledTitle"), pp("paymentCancelledBody"));
@@ -1804,11 +1818,23 @@ export default function PartnerProfileScreen() {
                 let checkoutSessionId: string | null = null;
                 if (pr.outcome === "success" && pr.url && !isCancelledPaystackUrl(pr.url)) {
                   const parsed = parseOnlineCheckoutReturnUrl(pr.url);
+                  if (parsed.status === "failed" || parsed.status === "cancelled") {
+                    haptic.error();
+                    Alert.alert(pp("paymentCancelledTitle"), pp("paymentCancelledBody"));
+                    return;
+                  }
                   if (parsed.reference) paystackRef = parsed.reference;
                   checkoutSessionId = parsed.sessionId;
                 }
                 if (paystackRef) {
-                  await verifyPaystackWithRetry(paystackRef, { sessionId: checkoutSessionId });
+                  const parsed =
+                    pr.outcome === "success" && pr.url
+                      ? parseOnlineCheckoutReturnUrl(pr.url)
+                      : null;
+                  await verifyPaystackWithRetry(paystackRef, {
+                    sessionId: checkoutSessionId,
+                    transactionId: parsed?.transactionId ?? null,
+                  });
                 }
               } else {
                 window.location.assign(url);
@@ -1816,7 +1842,7 @@ export default function PartnerProfileScreen() {
               }
 
               const activated = await pollSalonMembership();
-              haptic.success();
+              if (activated) haptic.success();
               Alert.alert(
                 activated ? pp("membershipConfirmedTitle") : pp("membershipPendingTitle"),
                 activated ? pp("membershipConfirmedBody") : pp("membershipPendingBody"),

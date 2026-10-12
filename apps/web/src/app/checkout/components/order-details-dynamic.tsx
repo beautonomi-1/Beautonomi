@@ -11,7 +11,6 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import type { Booking, BookingEvent, AdditionalCharge } from "@/types/beautonomi";
 import { formatOTP } from "@/lib/otp/generator";
-import { getDefaultMoneyLocale } from "@beautonomi/utils";
 import {
   ARRIVAL_PIN_CUSTOMER_HEADING,
   ARRIVAL_PIN_CUSTOMER_SUBTITLE,
@@ -21,7 +20,14 @@ import {
   ARRIVAL_PIN_LENGTH_HINT,
   ARRIVAL_PIN_PLACEHOLDER,
   ARRIVAL_PIN_TOAST_CUSTOMER_INCOMPLETE,
+  CUSTOMER_TRACKING_STEP_WEB_LABELS,
+  buildCustomerTrackingSteps,
+  getBookingLifecycleDisplay,
   getCustomerEtaUiParts,
+  getDefaultMoneyLocale,
+  isBookingArrivalVerificationActive,
+  isBookingJourneyLive,
+  type CustomerTrackingStepKey,
 } from "@beautonomi/utils";
 import { generateQRCodeDataURL, isQRCodeExpired, type QRCodeData } from "@/lib/qr/generator";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -36,13 +42,13 @@ interface OrderDetailsDynamicProps {
   booking?: Booking;
 }
 
-interface BookingStep {
-  key: string;
-  label: string;
-  completed: boolean;
-  current: boolean;
-  timestamp?: string;
-}
+const TRACKING_EVENT_BY_STEP: Partial<Record<CustomerTrackingStepKey, BookingEvent["event_type"]>> = {
+  accepted: "confirmed",
+  enRoute: "provider_on_way",
+  arrived: "provider_arrived",
+  inProgress: "service_started",
+  completed: "service_completed",
+};
 
 export default function OrderDetailsDynamic({ bookingId, booking: initialBooking }: OrderDetailsDynamicProps) {
   const router = useRouter();
@@ -270,81 +276,6 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
     };
   }, [qrPayloadForImage]);
 
-  const getSteps = (): BookingStep[] => {
-    if (!booking) return [];
-
-    const isAtHome = booking.location_type === "at_home";
-    const currentStage = booking.current_stage || booking.status;
-
-    // Define steps based on booking type
-    const atHomeSteps: BookingStep[] = [
-      {
-        key: "confirmed",
-        label: "Booking Accepted",
-        completed: booking.status === "confirmed" || ["provider_on_way", "provider_arrived", "service_started", "service_completed"].includes(currentStage || ""),
-        current: booking.status === "confirmed" && currentStage === "confirmed",
-        timestamp: events.find(e => e.event_type === "confirmed")?.created_at,
-      },
-      {
-        key: "provider_on_way",
-        label: "Provider on the way",
-        completed: ["provider_arrived", "service_started", "service_completed"].includes(currentStage || ""),
-        current: currentStage === "provider_on_way",
-        timestamp: events.find(e => e.event_type === "provider_on_way")?.created_at,
-      },
-      {
-        key: "provider_arrived",
-        label: "Provider arrived",
-        completed: booking.arrival_otp_verified || ["service_started", "service_completed"].includes(currentStage || ""),
-        current: currentStage === "provider_arrived" && !booking.arrival_otp_verified,
-        timestamp: events.find(e => e.event_type === "provider_arrived")?.created_at,
-      },
-      {
-        key: "service_started",
-        label: "Service in-progress",
-        completed: booking.status === "completed" || currentStage === "service_completed",
-        current: booking.status === "in_progress" || currentStage === "service_started",
-        timestamp: events.find(e => e.event_type === "service_started")?.created_at,
-      },
-      {
-        key: "service_completed",
-        label: "Service Complete",
-        completed: booking.status === "completed",
-        current: currentStage === "service_completed",
-        timestamp: events.find(e => e.event_type === "service_completed")?.created_at || booking.completed_at,
-      },
-    ];
-
-    const atSalonSteps: BookingStep[] = [
-      {
-        key: "confirmed",
-        // "Booking Accepted" means the provider has confirmed. `pending` AND
-        // `pending_payment` are both pre-acceptance states — neither should
-        // mark this step as complete or current.
-        label: "Booking Accepted",
-        completed: booking.status !== "pending" && booking.status !== "pending_payment",
-        current: booking.status === "confirmed",
-        timestamp: events.find(e => e.event_type === "confirmed")?.created_at,
-      },
-      {
-        key: "in_progress",
-        label: "Service in-progress",
-        completed: booking.status === "completed",
-        current: booking.status === "in_progress",
-        timestamp: events.find(e => e.event_type === "service_started")?.created_at,
-      },
-      {
-        key: "completed",
-        label: "Service Complete",
-        completed: booking.status === "completed",
-        current: booking.status === "completed",
-        timestamp: booking.completed_at || events.find(e => e.event_type === "service_completed")?.created_at,
-      },
-    ];
-
-    return isAtHome ? atHomeSteps : atSalonSteps;
-  };
-
   const formatTimestamp = (timestamp?: string) => {
     if (!timestamp) return "";
     const date = new Date(timestamp);
@@ -373,18 +304,50 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
     );
   }
 
-  const steps = getSteps();
-  const needsOTPVerification = booking.location_type === "at_home" && 
-                               booking.current_stage === "provider_arrived" && 
-                               !booking.arrival_otp_verified;
+  const trackingInput = {
+    status: booking.status,
+    locationType: booking.location_type,
+    currentStage: booking.current_stage,
+    arrivalOtpVerified: booking.arrival_otp_verified,
+    hasConfirmedEvent: events.some((e) => e.event_type === "confirmed"),
+  };
+  const steps = buildCustomerTrackingSteps(trackingInput);
+  const journeyLive = isBookingJourneyLive(trackingInput);
+  const needsOTPVerification = isBookingArrivalVerificationActive(trackingInput);
   const bothArrivalMethodsVisible =
     Boolean(needsOTPVerification && booking.arrival_otp && arrivalQrRaw);
   const pendingCharges = additionalCharges.filter(c => c.status === "pending" || c.status === "approved");
   /** `provider_en_route_at` is historical — only `current_stage === "provider_on_way"` means still en route. */
   const showEnRoute =
+    journeyLive &&
     booking.location_type === "at_home" &&
-    !["completed", "cancelled", "no_show"].includes(booking.status) &&
     booking.current_stage === "provider_on_way";
+  const lifecycleDisplay = getBookingLifecycleDisplay({
+    status: booking.status,
+    providerName: booking.provider?.business_name,
+    paymentStatus: (booking as { payment_status?: string }).payment_status,
+    outstandingBalance: (booking as { outstanding_balance?: number }).outstanding_balance,
+  });
+  const isTerminalStatus =
+    booking.status === "cancelled" || booking.status === "no_show";
+
+  const stepTimestamp = (key: CustomerTrackingStepKey): string | undefined => {
+    const eventType = TRACKING_EVENT_BY_STEP[key];
+    if (eventType) {
+      return events.find((e) => e.event_type === eventType)?.created_at;
+    }
+    if (key === "completed") {
+      return booking.completed_at ?? events.find((e) => e.event_type === "service_completed")?.created_at;
+    }
+    if (key === "received") {
+      return booking.created_at;
+    }
+    return undefined;
+  };
+
+  const providerRating = Number(booking.provider?.rating_average ?? 0);
+  const providerReviewCount = Number(booking.provider?.review_count ?? 0);
+  const showProviderRating = providerReviewCount > 0 && providerRating > 0;
   const etaParts = showEnRoute
     ? getCustomerEtaUiParts(booking.estimated_arrival ?? null)
     : { show: false, timeLabel: null as string | null, minutesLabel: "", isLate: false };
@@ -419,41 +382,51 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
           </p>
         </div>
       )}
-      <div className="flex space-x-4 mb-4 text-sm">
-        <span className="text-muted font-normal">Tracking</span>
-        <span className="text-gray-400 font-light">Receipt</span>
-        <span className="text-gray-400 font-light">Details</span>
-      </div>
+      {isTerminalStatus ? (
+        <p className="text-sm text-gray-600 mb-4">{lifecycleDisplay.description}</p>
+      ) : null}
       <div className="flex-grow">
         <div className="relative">
           <div className="absolute left-4 top-0 h-full w-0.5 bg-gray-200"></div>
-          {steps.map((step, _index) => (
+          {steps.map((step) => {
+            const completed = step.state === "done" && !step.isTerminal;
+            const current = step.state === "current";
+            const terminal = Boolean(step.isTerminal);
+            const terminalDanger = terminal && step.terminalKind === "cancelled";
+            const terminalWarning = terminal && step.terminalKind === "no_show";
+            const timestamp = stepTimestamp(step.key);
+            return (
             <div key={step.key} className="relative flex items-center mb-8">
               <div
                 className={`w-8 h-8 rounded-full border-2 flex items-center justify-center z-10 ${
-                  step.completed
+                  terminalDanger
+                    ? "bg-red-500 border-red-500"
+                    : terminalWarning
+                    ? "bg-amber-500 border-amber-500"
+                    : completed
                     ? "bg-green-500 border-green-500"
-                    : step.current
+                    : current
                     ? "bg-blue-500 border-blue-500"
                     : "bg-white border-gray-300"
                 }`}
               >
-                {step.completed ? (
+                {completed || terminal ? (
                   <CheckCircle2 className="w-5 h-5 text-white" />
-                ) : step.current ? (
+                ) : current ? (
                   <div className="w-2 h-2 bg-white rounded-full"></div>
                 ) : null}
               </div>
-              <div className={`ms-4 flex-1 ${step.completed || step.current ? "text-gray-900 font-medium" : "text-gray-500 font-light"}`}>
-                <div>{step.label}</div>
-                {step.timestamp && (
+              <div className={`ms-4 flex-1 ${completed || current || terminal ? "text-gray-900 font-medium" : "text-gray-500 font-light"}`}>
+                <div>{CUSTOMER_TRACKING_STEP_WEB_LABELS[step.key]}</div>
+                {timestamp && (completed || current || terminal) ? (
                   <div className="text-xs text-gray-400 font-light mt-1">
-                    {formatTimestamp(step.timestamp)}
+                    {formatTimestamp(timestamp)}
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -717,7 +690,12 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
           </Avatar>
           <div className="ms-3">
             <div className="font-medium">{booking.provider?.business_name ?? "Provider"}</div>
-            <div className="text-yellow-500">★★★★★</div>
+            {showProviderRating ? (
+              <div className="text-sm text-amber-600">
+                {providerRating.toFixed(1)}★
+                {providerReviewCount > 0 ? ` · ${providerReviewCount} reviews` : ""}
+              </div>
+            ) : null}
           </div>
         </div>
         <Button

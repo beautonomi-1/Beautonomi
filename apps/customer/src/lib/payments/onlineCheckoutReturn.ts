@@ -1,15 +1,21 @@
-import {
-  extractPaystackReferenceFromUrl,
-  extractStripeCheckoutSessionIdFromUrl,
-} from "@/lib/paystack-webview-utils";
+import { extractHostedCheckoutReturn } from "@/lib/paystack-webview-utils";
 
-/** Parse reference + Stripe session_id from hosted checkout return URLs. */
+/** Parse reference + Stripe session_id + Flutterwave transaction_id from return URLs. */
 export function parseOnlineCheckoutReturnUrl(url: string): {
   reference: string | null;
   sessionId: string | null;
+  transactionId: string | null;
+  status: string | null;
 } {
+  const parsed = extractHostedCheckoutReturn(url);
   return {
-    reference: extractPaystackReferenceFromUrl(url),
-    sessionId: extractStripeCheckoutSessionIdFromUrl(url),
+    reference: parsed.reference,
+    sessionId: parsed.sessionId,
+    transactionId: parsed.transactionId,
+    status: parsed.status,
   };
+}
+
+export function isHostedCheckoutFailureStatus(status: string | null | undefined): boolean {
+  return status === "failed" || status === "cancelled";
 }

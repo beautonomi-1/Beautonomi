@@ -16,6 +16,7 @@ import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry"
 import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
   getSubscriptionPaystackReturnUrl,
+  getSubscriptionPaymentReturnDeepLink,
   matchesSubscriptionPaystackReturnUrl,
   pollSubscriptionProvisioned,
   subscriptionSuccessCopy,
@@ -357,7 +358,8 @@ export default function SubscriptionScreen() {
    * for both. The server-side `initialize-payment` / `renew` routes ignore
    * non-HTTPS `callback_url` overrides, so we no longer pass the deep-link.
    */
-  const subscriptionReturnUrl = getSubscriptionPaystackReturnUrl();
+  const subscriptionHttpsCallback = getSubscriptionPaystackReturnUrl({ inApp: true });
+  const subscriptionReturnUrl = getSubscriptionPaymentReturnDeepLink();
   const [paymentOutcome, setPaymentOutcome] = useState<SubscriptionPaymentOutcome>({ phase: "idle" });
   // Blocking overlay shown while we verify with Paystack and poll for the plan
   // to provision — mirrors the ads / customer product-order checkout so the
@@ -378,6 +380,15 @@ export default function SubscriptionScreen() {
         matchSuccess: (rawUrl) => matchesSubscriptionPaystackReturnUrl(rawUrl, { success: true }),
         matchCancel: (rawUrl) => matchesSubscriptionPaystackReturnUrl(rawUrl, { cancelled: true }),
       });
+
+      if (result?.outcome === "start_failed") {
+        Alert.alert(
+          sub("paymentNotCompleted"),
+          "We couldn't open secure checkout. Please try again.",
+        );
+        refresh();
+        return;
+      }
 
       if (result?.outcome === "cancel") {
         const failed = subscriptionFailedCopy(sub("paymentNotCompleted"));
@@ -405,12 +416,27 @@ export default function SubscriptionScreen() {
             return;
           }
           const parsed = parseOnlineCheckoutReturnUrl(result.url);
+          if (parsed.status === "failed" || parsed.status === "cancelled") {
+            const failed = subscriptionFailedCopy(sub("paymentNotCompleted"));
+            setPaymentOutcome({ phase: "failed", ...failed });
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            refresh();
+            return;
+          }
           if (parsed.reference) reference = parsed.reference;
           checkoutSessionId = parsed.sessionId;
         }
 
+        const parsedTxId =
+          result.outcome === "success" && result.url
+            ? parseOnlineCheckoutReturnUrl(result.url).transactionId
+            : null;
+
         const verifyResult = reference
-          ? await verifyPaystackWithRetry(reference, { sessionId: checkoutSessionId })
+          ? await verifyPaystackWithRetry(reference, {
+              sessionId: checkoutSessionId,
+              transactionId: parsedTxId,
+            })
           : null;
 
         if (verifyResult?.status === "failed") {
@@ -618,7 +644,7 @@ export default function SubscriptionScreen() {
     try {
       const { error: err, data } = await postAction("/api/provider/subscription/renew", {
         in_app: true,
-        callback_url: subscriptionReturnUrl,
+        callback_url: subscriptionHttpsCallback,
       });
       if (err) {
         closeReviewSheet();

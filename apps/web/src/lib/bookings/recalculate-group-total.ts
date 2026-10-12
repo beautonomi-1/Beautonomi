@@ -18,11 +18,39 @@ import {
   validateAndPriceGroupPackage,
 } from "./group-booking-package-pricing";
 
+const TERMINAL_CHILD_STATUSES = new Set(["cancelled", "canceled", "no_show"]);
+
+export type ParticipantRowForTotal = {
+  price?: unknown;
+  service_id?: string | null;
+  booking_id?: string | null;
+  bookings?: { status?: string | null } | { status?: string | null }[] | null;
+};
+
+/** Exported for provider group detail display totals (same rules as persistence). */
+export function participantRowCountsTowardGroupTotal(row: ParticipantRowForTotal): boolean {
+  const bookingId = row.booking_id ?? null;
+  if (!bookingId) {
+    return true;
+  }
+  const embedded = row.bookings;
+  const booking = Array.isArray(embedded) ? embedded[0] : embedded;
+  const status = String(booking?.status ?? "").toLowerCase();
+  if (!status) {
+    return true;
+  }
+  return !TERMINAL_CHILD_STATUSES.has(status);
+}
+
+function activeParticipantRows(rows: ParticipantRowForTotal[]): ParticipantRowForTotal[] {
+  return rows.filter(participantRowCountsTowardGroupTotal);
+}
+
 export async function recalculateGroupBookingTotal(
   admin: SupabaseClient,
   groupId: string
 ): Promise<void> {
-  const [{ data: group }, { data: participantRows }] = await Promise.all([
+  const [{ data: group }, { data: participantRowsRaw }] = await Promise.all([
     admin
       .from("group_bookings")
       .select(
@@ -32,12 +60,16 @@ export async function recalculateGroupBookingTotal(
       .maybeSingle(),
     admin
       .from("booking_participants")
-      .select("price, service_id")
+      .select("price, service_id, booking_id, bookings(status)")
       .eq("group_booking_id", groupId),
   ]);
 
+  const participantRows = activeParticipantRows(
+    (participantRowsRaw ?? []) as ParticipantRowForTotal[]
+  );
+
   const products = Array.isArray(group?.products) ? group.products : [];
-  const participantTotal = (participantRows ?? []).reduce(
+  const participantTotal = participantRows.reduce(
     (sum: number, p: { price?: unknown }) =>
       sum + Math.max(0, Number(p.price || 0)),
     0
@@ -60,7 +92,7 @@ export async function recalculateGroupBookingTotal(
       packageId: group.package_id as string,
       locationType: String(group.location_type || "at_salon"),
       locationId: group.location_id as string | null | undefined,
-      participantRows: (participantRows ?? []) as Array<Record<string, unknown>>,
+      participantRows: participantRows as Array<Record<string, unknown>>,
       fallbackServiceId: group.service_id as string | null | undefined,
       productRows: products,
       participantTotal,

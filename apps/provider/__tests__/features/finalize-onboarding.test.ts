@@ -55,7 +55,10 @@ jest.mock("@/lib/payments/verifyPaystackWithRetry", () => ({
 }));
 
 jest.mock("@/lib/payments/providerPaystackReturn", () => ({
-  getSubscriptionPaystackReturnUrl: jest.fn(() => "provider://subscription-return"),
+  getSubscriptionPaystackReturnUrl: jest.fn(() => "https://app.example.com/provider/subscription?in_app=1"),
+  getSubscriptionPaymentReturnDeepLink: jest.fn(
+    () => "provider://settings/subscription-payment-return",
+  ),
   matchesSubscriptionPaystackReturnUrl: jest.fn((_url: string, opts?: { success?: boolean; cancelled?: boolean }) => {
     if (opts?.cancelled) return false;
     if (opts?.success) return true;
@@ -161,7 +164,9 @@ describe("finalizeOnboardingSuccess", () => {
     });
     expect(waitForCheckout).toHaveBeenCalledWith(
       "https://checkout.paystack.com/test",
-      expect.objectContaining({ returnUrl: "provider://subscription-return" }),
+      expect.objectContaining({
+        returnUrl: "provider://settings/subscription-payment-return",
+      }),
     );
     expect(mockReplace).toHaveBeenCalledWith("/(app)/onboarding");
   });

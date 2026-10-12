@@ -21,6 +21,14 @@ describe("resolve-paystack-hosted-callback", () => {
     expect(clientHintsInApp("https://app.example.com/checkout/success?booking_id=b1")).toBe(false);
   });
 
+  it("clientHintsInApp detects provider mobile bridge URLs with in_app=1", () => {
+    expect(
+      clientHintsInApp(
+        "https://app.example.com/provider/settings/marketing-integrations?in_app=1&payment_type=marketing_topup",
+      ),
+    ).toBe(true);
+  });
+
   it("buildHostedCheckoutCallbackUrls uses HTTPS and context=app when inApp", () => {
     const { successUrl, cancelUrl } = buildHostedCheckoutCallbackUrls({
       baseUrl: "https://app.example.com",

@@ -22,6 +22,7 @@ import {
   paystackReferenceFromSearchParams,
   startWebCardVerification,
 } from "@/lib/payments/card-verification-web";
+import { NativeAppCheckoutBounce } from "@/components/payments/NativeAppCheckoutBounce";
 
 type PaymentMethod = PaymentMethodRow;
 
@@ -89,6 +90,7 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
 
     const reference = paystackReferenceFromSearchParams(searchParams);
     const sessionId = searchParams.get("session_id");
+    const transactionId = searchParams.get("transaction_id");
     if (!reference) {
       toast.info(t("web.accountSettings.payments.cardVerificationPending"));
       postCardVerificationToNativeApp("pending");
@@ -102,6 +104,7 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
           maxAttempts: 5,
           delayMs: 1500,
           sessionId,
+          transactionId,
         });
         if (verifyResult.status === "success") {
           toast.success(t("web.accountSettings.payments.cardVerifiedSuccess"));
@@ -277,6 +280,8 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
     }
   };
   return (
+    <>
+      <NativeAppCheckoutBounce />
     <div className="min-h-screen bg-zinc-50/50 py-6 md:py-8">
       <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8">
         <BackButton href="/account-settings" />
@@ -620,6 +625,7 @@ const PaymentPage = ({ initial }: { initial: PaymentsPageInitial | null }) => {
         <AddPaymentModal isOpen={isModalOpen} onClose={handleCloseModal} />
       </div>
     </div>
+    </>
   );
 };
 

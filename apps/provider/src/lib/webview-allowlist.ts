@@ -8,6 +8,7 @@ const PAYSTACK_HOST_ALLOWLIST = new Set([
 ]);
 
 const STRIPE_HOST_ALLOWLIST = new Set(["checkout.stripe.com", "pay.stripe.com"]);
+const FLUTTERWAVE_HOST_ALLOWLIST = new Set(["checkout.flutterwave.com"]);
 
 const DEV_HOST_ALLOWLIST = new Set(["localhost", "127.0.0.1", "10.0.2.2"]);
 
@@ -67,7 +68,7 @@ export function isAllowedInAppWebViewUrl(url: string): boolean {
     if (host === base || host.endsWith(`.${base}`)) return true;
   }
 
-  return isPaystackHost(host) || isStripeHost(host);
+  return isPaystackHost(host) || isStripeHost(host) || FLUTTERWAVE_HOST_ALLOWLIST.has(host);
 }
 
 export function getWebViewOriginWhitelist(): string[] {

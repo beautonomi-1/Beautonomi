@@ -152,6 +152,10 @@ const LATER_MIGRATION_TEMPLATE_KEYS = [
 /** Explicit opt-in marketing / broadcast keys only */
 const EXPECTED_MARKETING_KEYS = new Set([
   "abandoned_cart",
+  "abandoned_booking_reminder",
+  "abandoned_cart_reminder",
+  "rebook_reminder",
+  "membership_win_back",
   "welcome_message",
   "promotion_available",
   "referral_bonus_earned",
@@ -193,9 +197,6 @@ describe("notification template key classification audit", () => {
       "loyalty_points_earned",
       "loyalty_points_redeemed",
       "loyalty_tier_upgraded",
-      "customer_custom_offer",
-      "customer_custom_offer_withdrawn",
-      "customer_custom_offer_expired",
       "provider_custom_offer_declined",
       "membership_activated",
       "membership_renewal_reminder",

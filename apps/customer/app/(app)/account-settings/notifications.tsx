@@ -24,21 +24,17 @@ interface NotificationPrefs {
   account_activity?: { email: boolean; sms: boolean; push: boolean; whatsapp?: boolean };
   client_policies?: { email: boolean; sms: boolean; push: boolean; whatsapp?: boolean };
   reminders?: { email: boolean; sms: boolean; push: boolean; whatsapp?: boolean };
+  subscription_renewal?: { email: boolean; sms: boolean; push: boolean; whatsapp?: boolean };
   messages?: { email: boolean; sms: boolean; push: boolean; whatsapp?: boolean };
   unsubscribe_marketing?: boolean;
 }
 
-const DEFAULT_PREFS: NotificationPrefs = {
+/** Loading skeleton only — API materializes real defaults on first GET. */
+const LOADING_PREFS: NotificationPrefs = {
   email_notifications: true,
   sms_notifications: false,
   booking_reminders: true,
-  inspiration_and_offers: { email: true, sms: true, push: false, whatsapp: false },
-  news_and_programs: { email: true, sms: true, push: false, whatsapp: false },
-  account_activity: { email: true, sms: true, push: false, whatsapp: false },
-  client_policies: { email: true, sms: false, push: false, whatsapp: false },
-  reminders: { email: true, sms: true, push: false, whatsapp: false },
   messages: { email: true, sms: true, push: true, whatsapp: false },
-  unsubscribe_marketing: false,
 };
 
 interface ToggleRowProps {
@@ -117,7 +113,7 @@ export default function NotificationsScreen() {
     isTablet || Platform.OS === "web"
       ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const }
       : {};
-  const [prefs, setPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
+  const [prefs, setPrefs] = useState<NotificationPrefs>(LOADING_PREFS);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -136,7 +132,7 @@ export default function NotificationsScreen() {
       if (res.error) {
         setError(getApiErrorMessage(res.error, np("loadFailed")));
       } else {
-        setPrefs({ ...DEFAULT_PREFS, ...(res.data ?? {}) });
+        setPrefs(res.data as NotificationPrefs);
       }
     } catch (e) {
       setError(getApiErrorMessage(e, np("loadFailed")));
@@ -420,6 +416,20 @@ export default function NotificationsScreen() {
             value={prefs.reminders?.push === true}
             saving={isSaving("reminders.push")}
             onToggle={(v) => toggleNested("reminders", "push", v)}
+          />
+          <ToggleRow
+            label={np("subscriptionRenewalEmailLabel")}
+            description={np("subscriptionRenewalEmailDesc")}
+            value={prefs.subscription_renewal?.email !== false}
+            saving={isSaving("subscription_renewal.email")}
+            onToggle={(v) => toggleNested("subscription_renewal", "email", v)}
+          />
+          <ToggleRow
+            label={np("subscriptionRenewalPushLabel")}
+            description={np("subscriptionRenewalPushDesc")}
+            value={prefs.subscription_renewal?.push === true}
+            saving={isSaving("subscription_renewal.push")}
+            onToggle={(v) => toggleNested("subscription_renewal", "push", v)}
           />
           <ToggleRow
             label={np("whatsappRemindersLabel")}

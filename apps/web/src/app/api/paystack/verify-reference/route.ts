@@ -76,11 +76,24 @@ export async function GET(request: NextRequest) {
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const { searchParams } = new URL(request.url);
-    const reference = searchParams.get("reference")?.trim();
+    const reference =
+      searchParams.get("reference")?.trim() ||
+      searchParams.get("trxref")?.trim() ||
+      searchParams.get("tx_ref")?.trim();
     const bookingIdParam = searchParams.get("booking_id")?.trim();
+    const transactionId = searchParams.get("transaction_id");
+    const redirectStatus = (searchParams.get("status") ?? "").toLowerCase();
 
     if (!reference) {
       return errorResponse("reference is required", "VALIDATION_ERROR", 400);
+    }
+
+    if (redirectStatus === "failed" || redirectStatus === "cancelled") {
+      return successResponse({
+        verified: false,
+        paystackStatus: "failed",
+        message: "Payment was not completed",
+      });
     }
 
     const sessionId = searchParams.get("session_id");
@@ -91,6 +104,21 @@ export async function GET(request: NextRequest) {
     const { shouldUseStripeOnlineVerify, verifyAndSettleOnlinePayment } = await import(
       "@/lib/payments/resolve-online-verify"
     );
+
+    if (checkoutRow?.provider === "flutterwave") {
+      const admin = getSupabaseAdmin();
+      const flwResult = await verifyAndSettleOnlinePayment(
+        { reference, tenantId, sessionId, transactionId },
+        admin,
+      );
+      return successResponse({
+        verified: flwResult.paid,
+        provider: "flutterwave",
+        paystackStatus: flwResult.paid ? "success" : "pending",
+        message: flwResult.paid ? "Payment verified" : "Payment not complete yet",
+      });
+    }
+
     if (shouldUseStripeOnlineVerify(checkoutRow?.provider, sessionId)) {
       const admin = getSupabaseAdmin();
       const stripeResult = await verifyAndSettleOnlinePayment(

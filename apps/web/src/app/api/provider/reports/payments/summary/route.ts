@@ -31,7 +31,14 @@ type LedgerParts = { payment: number; wallet: number; gift: number; additional: 
 /** Paystack / Yoco / card terminal — booking may also have wallet_payment + gift_card_payment rows (split). */
 function isGatewayCardCaptureProvider(provider: string | null | undefined): boolean {
   const p = (provider || "").toLowerCase();
-  return p === "paystack" || p === "yoco" || p === "paycloud" || p === "stripe" || p === "card";
+  return (
+    p === "paystack" ||
+    p === "yoco" ||
+    p === "paycloud" ||
+    p === "stripe" ||
+    p === "flutterwave" ||
+    p === "card"
+  );
 }
 
 /**

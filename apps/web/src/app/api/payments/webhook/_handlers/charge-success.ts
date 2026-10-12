@@ -25,6 +25,7 @@ import type { PaystackEvent, SupabaseClient } from "./shared";
 import {
   savePaystackAuthorization,
   saveStripePaymentMethod,
+  saveFlutterwaveCardToken,
   generateGiftCardCode,
 } from "./shared";
 import { recordLoyaltyRedemption } from "@/lib/loyalty/record-redemption";
@@ -45,6 +46,7 @@ import { tryCreateCustomerRecurringFromPaystackChargeMetadata } from "@/lib/recu
 import { applyWalletTopupFromSuccessfulPaystackCharge } from "@/lib/wallet/apply-wallet-topup-from-paystack-success";
 import { recordBookingPaystackPayment } from "@/lib/bookings/record-booking-paystack-payment";
 import { recordBookingStripePayment } from "@/lib/bookings/record-booking-stripe-payment";
+import { recordBookingFlutterwavePayment } from "@/lib/bookings/record-booking-flutterwave-payment";
 import { recordBookingOnlineChargeLedger } from "@/lib/bookings/record-booking-online-charge-ledger";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import {
@@ -129,9 +131,28 @@ type RecordGatewayBookingPaymentInput = {
 /** Paystack reference vs Stripe PaymentIntent id — keeps booking_payments aligned with the rail. */
 async function recordGatewayBookingPayment(
   supabase: SupabaseClient,
-  paymentProvider: "paystack" | "stripe",
+  paymentProvider: "paystack" | "stripe" | "flutterwave",
   input: RecordGatewayBookingPaymentInput,
 ) {
+  if (paymentProvider === "flutterwave") {
+    const meta = input.metadata ?? {};
+    const transactionId =
+      typeof meta.flutterwave_transaction_id === "string"
+        ? meta.flutterwave_transaction_id.trim()
+        : "";
+    return recordBookingFlutterwavePayment(supabase, {
+      bookingId: input.bookingId,
+      tenantId: input.tenantId,
+      transactionId: transactionId || input.reference,
+      reference: input.reference,
+      amountMajor: input.amountMajor,
+      currency: input.currency,
+      source: input.source,
+      paymentOption: input.paymentOption,
+      requiresDeposit: input.requiresDeposit,
+      notes: input.notes,
+    });
+  }
   if (paymentProvider === "stripe") {
     const meta = input.metadata ?? {};
     const paymentIntentId =
@@ -169,7 +190,7 @@ async function resolvePaystackChargeFees(
   fees: number | undefined,
   currency: string,
   channel?: string | null,
-  paymentProvider: "paystack" | "stripe" = "paystack",
+  paymentProvider: "paystack" | "stripe" | "flutterwave" = "paystack",
 ) {
   const { resolveOnlineChargeFees } = await import("@/lib/payments/resolve-gateway-fees");
   return resolveOnlineChargeFees(supabase, paymentProvider, {
@@ -195,15 +216,23 @@ type PaystackChargeData = {
   subscription?: { subscription_code?: string };
   plan?: { subscription?: { subscription_code?: string } };
   /** Stripe settlement sets this so ledger rows use provider stripe. */
-  __paymentProvider?: "paystack" | "stripe";
+  __paymentProvider?: "paystack" | "stripe" | "flutterwave";
 };
 
 export type ProcessSuccessfulPaymentOptions = {
-  paymentProvider?: "paystack" | "stripe";
+  paymentProvider?: "paystack" | "stripe" | "flutterwave";
 };
 
-function resolveChargePaymentProvider(data: PaystackChargeData): "paystack" | "stripe" {
+function resolveChargePaymentProvider(
+  data: PaystackChargeData,
+): "paystack" | "stripe" | "flutterwave" {
   return data.__paymentProvider ?? "paystack";
+}
+
+function onlineGatewayRailLabel(provider: "paystack" | "stripe" | "flutterwave"): string {
+  if (provider === "stripe") return "Stripe";
+  if (provider === "flutterwave") return "Flutterwave";
+  return "Paystack";
 }
 
 /**
@@ -718,10 +747,7 @@ export async function processSuccessfulPayment(
         paymentOption: typeof metadata?.payment_option === "string" ? metadata.payment_option : null,
         requiresDeposit: Boolean(metadata?.requires_deposit),
         saveCard: Boolean(metadata?.save_card),
-        notes:
-          paymentProvider === "stripe"
-            ? `Payment received via Stripe webhook retry. Ref: ${reference}`
-            : `Payment received via Paystack webhook retry. Ref: ${reference}`,
+        notes: `Payment received via ${onlineGatewayRailLabel(paymentProvider)} webhook retry. Ref: ${reference}`,
         currency: bookingPaystackCurrency,
         metadata: bookingMetaRecord,
       });
@@ -803,7 +829,7 @@ export async function processSuccessfulPayment(
   // Idempotency is enforced by migration 380 unique index on (payment_provider, payment_provider_id).
   let sourcePaymentId: string | null = null;
   if (amountInCurrency > 0) {
-    const railLabel = paymentProvider === "stripe" ? "Stripe" : "Paystack";
+    const railLabel = onlineGatewayRailLabel(paymentProvider);
     const recordedPayment = await recordGatewayBookingPayment(supabase, paymentProvider, {
       bookingId: metadata.booking_id,
       tenantId: financeTenantId,
@@ -938,17 +964,31 @@ export async function processSuccessfulPayment(
     metadata?.customer_id
   ) {
     try {
-      await savePaystackAuthorization({
-        userId: metadata.customer_id,
-        email: customer.email,
-        authorizationCode: authorization.authorization_code,
-        lastFour: authorization.last4,
-        expiryMonth: parseInt(authorization.exp_month || "0"),
-        expiryYear: parseInt(authorization.exp_year || "0"),
-        cardBrand: authorization.brand || authorization.card_type || "unknown",
-        isDefault: metadata.set_as_default === true,
-        supabase,
-      });
+      if (paymentProvider === "flutterwave") {
+        await saveFlutterwaveCardToken({
+          userId: metadata.customer_id,
+          email: customer.email,
+          token: authorization.authorization_code,
+          lastFour: String(authorization.last4 ?? "0000"),
+          expiryMonth: parseInt(authorization.exp_month || "0", 10),
+          expiryYear: parseInt(authorization.exp_year || "0", 10),
+          cardBrand: authorization.brand || authorization.card_type || "unknown",
+          isDefault: metadata.set_as_default === true,
+          supabase,
+        });
+      } else {
+        await savePaystackAuthorization({
+          userId: metadata.customer_id,
+          email: customer.email,
+          authorizationCode: authorization.authorization_code,
+          lastFour: authorization.last4,
+          expiryMonth: parseInt(authorization.exp_month || "0"),
+          expiryYear: parseInt(authorization.exp_year || "0"),
+          cardBrand: authorization.brand || authorization.card_type || "unknown",
+          isDefault: metadata.set_as_default === true,
+          supabase,
+        });
+      }
     } catch (saveError) {
       console.error("Error saving payment method:", saveError);
     }
@@ -1867,7 +1907,7 @@ async function handleCustomOfferSuccess(
     currency?: string;
     customer?: any;
     authorization?: any;
-    paymentProvider?: "paystack" | "stripe";
+    paymentProvider?: "paystack" | "stripe" | "flutterwave";
   },
   _supabase: SupabaseClient,
 ) {
@@ -1879,7 +1919,7 @@ async function handleCustomOfferSuccess(
     reference: payload.reference,
     metadata: {
       ...(payload.metadata ?? {}),
-      ...(payload.paymentProvider === "stripe" ? { payment_provider: "stripe" } : {}),
+      ...(payload.paymentProvider ? { payment_provider: payload.paymentProvider } : {}),
     },
     amount: payload.amount,
     fees: payload.fees,
@@ -2097,7 +2137,7 @@ async function handleGiftCardOrderSuccess(
     amount: any;
     fees?: any;
     currency?: string;
-    paymentProvider?: "paystack" | "stripe";
+    paymentProvider?: "paystack" | "stripe" | "flutterwave";
   },
   supabase: SupabaseClient,
 ) {
@@ -2449,7 +2489,7 @@ async function handleMembershipOrderSuccess(
     currency?: string;
     authorization?: { authorization_code?: string; reusable?: boolean; last4?: string; exp_month?: string; exp_year?: string; brand?: string; card_type?: string } | null;
     customer?: { email?: string } | null;
-    paymentProvider?: "paystack" | "stripe";
+    paymentProvider?: "paystack" | "stripe" | "flutterwave";
   },
   supabase: SupabaseClient,
 ) {
@@ -2775,7 +2815,7 @@ async function handleProviderSubscriptionOrderSuccess(
     fees: any;
     currency?: string;
     customer: any;
-    paymentProvider?: "paystack" | "stripe";
+    paymentProvider?: "paystack" | "stripe" | "flutterwave";
   },
   supabase: SupabaseClient,
 ) {
@@ -2992,7 +3032,7 @@ async function handleAdsBudgetOrderSuccess(
     amount: number;
     fees: number;
     currency?: string;
-    paymentProvider?: "paystack" | "stripe";
+    paymentProvider?: "paystack" | "stripe" | "flutterwave";
   },
   supabase: SupabaseClient,
 ) {
@@ -3025,7 +3065,7 @@ async function handleProviderInvoicePaymentSuccess(
     metadata: any;
     amount: number;
     currency?: string;
-    paymentProvider?: "paystack" | "stripe";
+    paymentProvider?: "paystack" | "stripe" | "flutterwave";
   },
   supabase: SupabaseClient,
 ) {
@@ -3070,7 +3110,7 @@ async function handleCustomerCardVerificationSuccess(
     amount: number;
     fees: number;
     currency?: string;
-    paymentProvider?: "paystack" | "stripe";
+    paymentProvider?: "paystack" | "stripe" | "flutterwave";
     customer: PaystackChargeData["customer"];
     authorization?: PaystackChargeData["authorization"];
   },
@@ -3154,20 +3194,34 @@ async function handleCustomerCardVerificationSuccess(
     }
   } else if (saveCardRequested && authCode && reusable && email) {
     try {
-      await savePaystackAuthorization({
-        userId: customerId,
-        email,
-        authorizationCode: authCode,
-        lastFour: String(authorization?.last4 ?? "0000"),
-        expiryMonth: parseInt(String(authorization?.exp_month ?? "0"), 10),
-        expiryYear: parseInt(String(authorization?.exp_year ?? "0"), 10),
-        cardBrand: String(authorization?.brand ?? authorization?.card_type ?? "unknown"),
-        isDefault: setAsDefault,
-        supabase,
-      });
+      if (paymentProvider === "flutterwave") {
+        await saveFlutterwaveCardToken({
+          userId: customerId,
+          email,
+          token: authCode,
+          lastFour: String(authorization?.last4 ?? "0000"),
+          expiryMonth: parseInt(String(authorization?.exp_month ?? "0"), 10),
+          expiryYear: parseInt(String(authorization?.exp_year ?? "0"), 10),
+          cardBrand: String(authorization?.brand ?? authorization?.card_type ?? "unknown"),
+          isDefault: setAsDefault,
+          supabase,
+        });
+      } else {
+        await savePaystackAuthorization({
+          userId: customerId,
+          email,
+          authorizationCode: authCode,
+          lastFour: String(authorization?.last4 ?? "0000"),
+          expiryMonth: parseInt(String(authorization?.exp_month ?? "0"), 10),
+          expiryYear: parseInt(String(authorization?.exp_year ?? "0"), 10),
+          cardBrand: String(authorization?.brand ?? authorization?.card_type ?? "unknown"),
+          isDefault: setAsDefault,
+          supabase,
+        });
+      }
       savedCard = true;
     } catch (e) {
-      console.error("[card_verification] savePaystackAuthorization failed:", e);
+      console.error("[card_verification] save card failed:", e);
       throw e instanceof Error ? e : new Error(String(e));
     }
   } else if (saveCardRequested) {
@@ -3213,7 +3267,7 @@ async function handleSubscriptionAuthorizationSuccess(
     currency?: string;
     customer: any;
     authorization?: any;
-    paymentProvider?: "paystack" | "stripe";
+    paymentProvider?: "paystack" | "stripe" | "flutterwave";
   },
   supabase: SupabaseClient,
 ) {
@@ -3444,7 +3498,7 @@ async function handleSubscriptionAuthorizationSuccess(
         plan_id: planId,
         billing_period: billingPeriod,
         status: "active",
-        ...paystackActivationFields(extra),
+        ...subscriptionActivationFields(paymentProvider, extra),
       })
       .eq("id", subscriptionRowId);
   };
@@ -3528,12 +3582,21 @@ async function handleSubscriptionAuthorizationSuccess(
         ? metadata.stripe_payment_method_id
         : null;
     await applyActiveSubscriptionUpdate({
-      billing_provider: "stripe",
       auto_renew: Boolean(stripePaymentMethodId),
       started_at: new Date().toISOString(),
       expires_at: computePaidPeriodExpiresAt(billingPeriod),
       ...(stripeCustomerId ? { stripe_customer_id: stripeCustomerId } : {}),
       ...(stripePaymentMethodId ? { stripe_payment_method_id: stripePaymentMethodId } : {}),
+    });
+    await notifySubscriptionActivated();
+    return;
+  }
+
+  if (paymentProvider === "flutterwave") {
+    await applyActiveSubscriptionUpdate({
+      auto_renew: isReusableAuth,
+      started_at: new Date().toISOString(),
+      expires_at: computePaidPeriodExpiresAt(billingPeriod),
     });
     await notifySubscriptionActivated();
     return;
@@ -3632,7 +3695,7 @@ async function handleBookingRemainingSuccess(
     fees: any;
     currency?: string;
     customer: any;
-    paymentProvider?: "paystack" | "stripe";
+    paymentProvider?: "paystack" | "stripe" | "flutterwave";
   },
   supabase: SupabaseClient,
 ) {
@@ -3728,7 +3791,7 @@ async function handleBookingRemainingSuccess(
     : null;
 
   if (!existingBookingPayment) {
-    const railLabel = paymentProvider === "stripe" ? "Stripe" : "Paystack";
+    const railLabel = onlineGatewayRailLabel(paymentProvider);
     const recordedRemain = await recordGatewayBookingPayment(supabase, paymentProvider, {
       bookingId,
       tenantId: payRemainingFinanceTenantId,
@@ -3889,7 +3952,7 @@ async function handleAdditionalChargeSuccess(
     fees: any;
     currency?: string;
     customer: any;
-    paymentProvider?: "paystack" | "stripe";
+    paymentProvider?: "paystack" | "stripe" | "flutterwave";
   },
   supabase: SupabaseClient,
 ) {
@@ -4067,7 +4130,12 @@ async function handleAdditionalChargeSuccess(
     description: `Additional charge payment for booking ${bookingData.booking_number}`,
     metadata: {
       reference,
-      fee_source: paymentProvider === "stripe" ? "stripe" : "paystack",
+      fee_source:
+        paymentProvider === "stripe"
+          ? "stripe"
+          : paymentProvider === "flutterwave"
+            ? "flutterwave"
+            : "paystack",
       fee_journaled: feesInCurrency,
       additional_charge_id: chargeId,
     },
@@ -4203,7 +4271,7 @@ async function handleAdditionalChargeFailed(
     metadata: any;
     message: any;
     gateway_response: any;
-    paymentProvider?: "paystack" | "stripe";
+    paymentProvider?: "paystack" | "stripe" | "flutterwave";
   },
   supabase: SupabaseClient,
 ) {

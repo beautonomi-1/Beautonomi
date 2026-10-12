@@ -13,7 +13,10 @@ import { isTransientApiFailure } from "@/lib/api-error";
 import { isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
 import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
-  getWalletTopupPaystackAuthPrefix,
+  CHECKOUT_SUCCESS_PATH,
+  getCustomerPaystackAuthReturnUrl,
+  getNativePaystackReturnUrl,
+  CUSTOMER_NATIVE_PAYSTACK_PATHS,
   matchesCheckoutSuccessReturnUrl,
   matchesPaystackAuthSessionReturn,
 } from "@/lib/payments/customerPaystackReturn";
@@ -226,7 +229,7 @@ export default function WalletScreen() {
         pushLoginWithReturnTo(walletReturnTo);
         return;
       }
-      const returnUrl = getWalletTopupPaystackAuthPrefix();
+      const returnUrl = getNativePaystackReturnUrl(CUSTOMER_NATIVE_PAYSTACK_PATHS.wallet);
       const res = await api.post<{
         payment_url?: string;
         topup_id?: string;
@@ -235,7 +238,9 @@ export default function WalletScreen() {
         "/api/me/wallet/topup",
         {
           amount,
-          callback_url: ExpoLinking.createURL("wallet-return"),
+          callback_url: getCustomerPaystackAuthReturnUrl(CHECKOUT_SUCCESS_PATH, {
+            payment_type: "wallet_topup",
+          }),
           idempotency_key: topupIdempotencyKeyRef.current,
         },
         {
@@ -304,9 +309,28 @@ export default function WalletScreen() {
             !isCancelledPaystackUrl(rawUrl),
           matchCancel: (rawUrl) => isCancelledPaystackUrl(rawUrl),
         });
+        if (outcome?.outcome === "start_failed") {
+          setTopupStatus(null);
+          Alert.alert(
+            t("common.error"),
+            t(
+              "customer.walletScreen.checkoutOpenFailed",
+              "We couldn't open secure checkout. Please try again.",
+            ) as string,
+          );
+          return;
+        }
         cancelled = outcome?.outcome === "cancel";
         if (outcome?.outcome === "success" && outcome.url && !isCancelledPaystackUrl(outcome.url)) {
           const parsed = parseOnlineCheckoutReturnUrl(outcome.url);
+          if (parsed.status === "failed" || parsed.status === "cancelled") {
+            setTopupStatus(null);
+            Alert.alert(
+              t("customer.walletScreen.topUpCancelledTitle", "Top-up cancelled") as string,
+              t("customer.walletScreen.topUpCancelledBody", "No payment was taken. You can try again anytime.") as string,
+            );
+            return;
+          }
           if (parsed.reference) finalPaystackRef = parsed.reference;
           checkoutSessionId = parsed.sessionId;
         }
@@ -324,10 +348,16 @@ export default function WalletScreen() {
       setTopupAmount("");
       setTopupStatus(t("customer.walletScreen.statusConfirming", "Confirming your payment…") as string);
 
+      let flutterwaveTransactionId: string | null = null;
+      if (outcome?.outcome === "success" && outcome.url) {
+        flutterwaveTransactionId = parseOnlineCheckoutReturnUrl(outcome.url).transactionId;
+      }
+
       let verifiedSuccess = false;
       if (finalPaystackRef) {
         const verifyResult = await verifyPaystackWithRetry(finalPaystackRef, {
           sessionId: checkoutSessionId,
+          transactionId: flutterwaveTransactionId,
         });
         verifiedSuccess = verifyResult.status === "success";
         if (verifyResult.status === "failed") {

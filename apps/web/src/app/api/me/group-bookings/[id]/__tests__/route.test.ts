@@ -8,6 +8,9 @@ const USER_DAUGHTER = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 const mockRequireAuthInApi = vi.fn();
 const mockGetSupabaseAdmin = vi.fn();
 
+/** Heavy route graph; allow headroom under parallel Vitest workers (default 45s flakes). */
+const ROUTE_TEST_TIMEOUT_MS = 90_000;
+
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
   return {
@@ -134,7 +137,7 @@ describe("GET /api/me/group-bookings/[id]", () => {
     expect(body.data.paid_by).toBe("Jane Doe");
     expect(body.data.is_primary_payer).toBe(true);
     expect(body.data.participants).toHaveLength(2);
-  });
+  }, ROUTE_TEST_TIMEOUT_MS);
 
   it("returns 404 when the user is not a participant", async () => {
     mockRequireAuthInApi.mockResolvedValue({ user: { id: "cccccccc-cccc-cccc-cccc-cccccccccccc" } });

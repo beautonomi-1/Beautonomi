@@ -55,6 +55,18 @@ vi.mock("@/lib/payments/paystack-complete", () => ({
   deleteTransferRecipient: vi.fn(),
 }));
 
+vi.mock("@/lib/payments/payout-rail", () => ({
+  resolvePayoutRailForTenant: vi.fn(async () => "paystack"),
+}));
+
+vi.mock("@/lib/payments/flutterwave-banks", () => ({
+  resolveFlutterwaveBankAccount: vi.fn(),
+}));
+
+vi.mock("@/lib/verification/apply-payout-name-match", () => ({
+  applyPayoutNameMatchForAccount: vi.fn(async () => {}),
+}));
+
 const owner = MOCK_USERS.provider_owner;
 const PROVIDER_ID = "11111111-1111-1111-1111-111111111111";
 const TENANT_ID = "22222222-2222-2222-2222-222222222222";
@@ -404,5 +416,58 @@ describe("POST /api/provider/payout-accounts", () => {
     const body = await response.json();
     expect(body.data).toMatchObject({ id: "acc-existing", recipient_code: "RCP_DUPLICATE" });
     expect(deleteTransferRecipient).not.toHaveBeenCalled();
+  });
+
+  it("saves Flutterwave payout accounts without creating a Paystack transfer recipient", async () => {
+    const { createTransferRecipient } = await import("@/lib/payments/paystack-complete");
+    const { resolvePayoutRailForTenant } = await import("@/lib/payments/payout-rail");
+    const { resolveFlutterwaveBankAccount } = await import("@/lib/payments/flutterwave-banks");
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+
+    vi.mocked(resolvePayoutRailForTenant).mockResolvedValue("flutterwave");
+    vi.mocked(resolveFlutterwaveBankAccount).mockResolvedValue({ account_name: "FW Owner" });
+
+    const admin = buildAdminMock({
+      providers: { select: { data: { tenant_id: TENANT_ID }, error: null } },
+      platform_settings: { select: { data: null, error: null } },
+      provider_payout_accounts: {
+        select: { data: [], error: null },
+        insert: {
+          data: {
+            id: "acc-fw-1",
+            provider_id: PROVIDER_ID,
+            recipient_code: "fw:632005:1234567890",
+            is_primary: true,
+          },
+          error: null,
+        },
+      },
+    });
+    vi.mocked(getSupabaseAdmin).mockReturnValue(admin as any);
+
+    const { POST } = await import("../route");
+    const response = await POST(
+      createMockNextRequest({
+        method: "POST",
+        url: "http://localhost/api/provider/payout-accounts",
+        body: {
+          type: "basa",
+          country: "ZA",
+          account_number: "1234567890",
+          bank_code: "632005",
+          account_name: "FW Owner",
+          currency: "ZAR",
+        },
+      }) as any,
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data).toMatchObject({
+      id: "acc-fw-1",
+      recipient_code: "fw:632005:1234567890",
+    });
+    expect(createTransferRecipient).not.toHaveBeenCalled();
+    expect(resolveFlutterwaveBankAccount).toHaveBeenCalled();
   });
 });

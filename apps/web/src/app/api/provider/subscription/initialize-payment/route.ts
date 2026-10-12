@@ -25,6 +25,7 @@ import {
   resolveSubscriptionOnlineGatewayId,
   subscriptionGatewayUsesPaystackCustomer,
 } from "@/lib/subscriptions/resolve-subscription-online-gateway";
+import { appendInAppQuery } from "@/lib/payments/append-in-app-query";
 
 const initializePaymentSchema = z.object({
   plan_id: z.string().min(1, 'Plan ID is required'),
@@ -201,12 +202,18 @@ export async function POST(request: NextRequest) {
     const refQuery = `reference=${encodeURIComponent(reference)}`;
     const callbackUrl =
       in_app && isHttpsClientCallback
-        ? `${callbackFromClient}${callbackFromClient!.includes("?") ? "&" : "?"}payment_success=true&order_id=${order.id}&${refQuery}`
+        ? appendInAppQuery(
+            `${callbackFromClient}${callbackFromClient!.includes("?") ? "&" : "?"}payment_success=true&order_id=${order.id}&${refQuery}`,
+            { inApp: true },
+          )
         : `${subAppUrl}/provider/subscription?payment_success=true&order_id=${order.id}&${refQuery}${inAppParam}`;
 
     const subCancelAction =
       in_app && isHttpsClientCallback
-        ? `${callbackFromClient}${callbackFromClient!.includes("?") ? "&" : "?"}payment_cancelled=1`
+        ? appendInAppQuery(
+            `${callbackFromClient}${callbackFromClient!.includes("?") ? "&" : "?"}payment_cancelled=1`,
+            { inApp: true },
+          )
         : `${subAppUrl}/provider/subscription?payment_cancelled=1${inAppParam}`;
 
     const planCurrency = (plan as any).currency || lastResortCurrency;

@@ -11,6 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { wirePreferenceGateTables } from "@/lib/notifications/__tests__/pref-gate-supabase-tables";
 
 // We exercise the targeting via `sendToUsers` and capture the JSON body
 // posted to OneSignal. That's the same path broadcasts and template sends
@@ -46,7 +47,7 @@ function mockAdmin(deviceRows: { onesignal_player_id: string | null; user_id: st
   });
   const selectFn = vi.fn().mockReturnValue({ in: inFn, eq: eqFn });
   const notifCountResult = Promise.resolve({ count: 2, error: null });
-  const from = vi.fn().mockImplementation((table: string) => {
+  const baseFrom = (table: string) => {
     if (table === "user_devices") return { select: selectFn };
     if (table === "notifications") {
       return {
@@ -59,7 +60,9 @@ function mockAdmin(deviceRows: { onesignal_player_id: string | null; user_id: st
     }
     if (table === "notification_logs") return { insert: vi.fn().mockResolvedValue({ error: null }) };
     throw new Error("unexpected table " + table);
-  });
+  };
+  const userIds = [...new Set(deviceRows.map((d) => d.user_id))];
+  const from = vi.fn().mockImplementation(wirePreferenceGateTables(baseFrom, userIds));
   return { from };
 }
 

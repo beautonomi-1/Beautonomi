@@ -44,7 +44,12 @@ jest.mock("@/lib/payments/verifyPaystackWithRetry", () => ({
 }));
 
 jest.mock("@/lib/payments/providerPaystackReturn", () => ({
-  getSubscriptionPaystackReturnUrl: jest.fn(() => "provider://subscription-return"),
+  getSubscriptionPaystackReturnUrl: jest.fn(
+    () => "https://app.example.com/provider/subscription?in_app=1",
+  ),
+  getSubscriptionPaymentReturnDeepLink: jest.fn(
+    () => "provider://settings/subscription-payment-return",
+  ),
   matchesSubscriptionPaystackReturnUrl: jest.fn(),
   pollSubscriptionProvisioned: jest.fn().mockResolvedValue({ state: "provisioned" }),
 }));

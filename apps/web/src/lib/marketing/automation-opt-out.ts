@@ -60,7 +60,17 @@ export async function filterAutomationRecipientsByOptOut<T extends { id: string 
   try {
     perUser = await resolveChannelsPerCustomerRecipient(supabase, userIds, templateKey, [notificationChannel]);
   } catch (err) {
-    console.warn("[automations] preference lookup failed; sending without opt-out filter", err);
+    const isMarketingPromo = templateKey === "automation_promo";
+    console.warn("[automations] preference lookup failed", err);
+    if (isMarketingPromo) {
+      return {
+        allowed: [],
+        skipped: recipients.map((r) => ({
+          customerId: r.id,
+          reason: "preference_lookup_failed",
+        })),
+      };
+    }
     return { allowed: recipients, skipped: [] };
   }
 

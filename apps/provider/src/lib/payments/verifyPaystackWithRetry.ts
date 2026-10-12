@@ -29,13 +29,16 @@ type Options = {
   maxAttempts?: number;
   delayMs?: number;
   sessionId?: string | null;
+  transactionId?: string | null;
 };
 
-function buildQuery(reference: string, sessionId?: string | null): string {
+function buildQuery(reference: string, sessionId?: string | null, transactionId?: string | null): string {
   const params = new URLSearchParams();
   params.set("reference", reference);
   const sid = sessionId?.trim();
   if (sid) params.set("session_id", sid);
+  const tid = transactionId?.trim();
+  if (tid) params.set("transaction_id", tid);
   return params.toString();
 }
 
@@ -70,6 +73,7 @@ export async function verifyPaystackWithRetry<T = Record<string, unknown>>(
   const maxAttempts = Math.max(1, opts.maxAttempts ?? 5);
   const delayMs = Math.max(0, opts.delayMs ?? 1500);
   const sessionId = opts.sessionId ?? null;
+  const transactionId = opts.transactionId ?? null;
   const trimmedRef = reference.trim();
 
   if (!trimmedRef) {
@@ -88,7 +92,7 @@ export async function verifyPaystackWithRetry<T = Record<string, unknown>>(
   while (attempts < maxAttempts) {
     attempts += 1;
     try {
-      const q = buildQuery(trimmedRef, sessionId);
+      const q = buildQuery(trimmedRef, sessionId, transactionId);
       const res = await api.get<T>(`${endpoint}${endpoint.includes("?") ? "&" : "?"}${q}`);
       if (res.error) {
         lastErr = res.error.message ?? "Payment verification failed";

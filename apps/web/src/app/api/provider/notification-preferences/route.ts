@@ -3,6 +3,8 @@ import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { notificationPreferencesSchema as patchSchema } from "@/lib/schemas/provider-booking";
+import { getProviderNotificationDefaults } from "@/lib/notifications/notification-preferences-defaults";
+import { materializeProviderNotificationPreferences } from "@/lib/notifications/materialize-notification-preferences";
 
 /**
  * GET /api/provider/notification-preferences
@@ -71,26 +73,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Default notification preferences for providers
-    const defaultPreferences = {
-      booking_updates: { email: true, sms: true, push: true },
-      booking_cancellations: { email: true, sms: true, push: true },
-      booking_reminders: { email: true, sms: true, push: true },
-      new_reviews: { email: true, sms: false, push: true },
-      review_responses: { email: true, sms: false, push: true },
-      client_messages: { email: true, sms: true, push: true },
-      payment_received: { email: true, sms: false, push: true },
-      payout_updates: { email: true, sms: true, push: true },
-      waitlist_notifications: { email: true, sms: false, push: true },
-      system_updates: { email: true, sms: false, push: false },
-      marketing: { email: true, sms: false, push: false },
-      booking_alert_sound: true,
-      order_alert_sound: true,
-      message_alert_sound: true,
-      unsubscribe_marketing: false,
-    };
-
-    preferences = profileData?.notification_preferences || defaultPreferences;
+    const rawExisting = profileData?.notification_preferences as Record<string, unknown> | null | undefined;
+    preferences = await materializeProviderNotificationPreferences(
+      supabase,
+      targetUserId,
+      rawExisting,
+    );
 
     return successResponse(preferences);
   } catch (error) {
@@ -166,25 +154,9 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    const defaultPreferences = {
-      booking_updates: { email: true, sms: true, push: true },
-      booking_cancellations: { email: true, sms: true, push: true },
-      booking_reminders: { email: true, sms: true, push: true },
-      new_reviews: { email: true, sms: false, push: true },
-      review_responses: { email: true, sms: false, push: true },
-      client_messages: { email: true, sms: true, push: true },
-      payment_received: { email: true, sms: false, push: true },
-      payout_updates: { email: true, sms: true, push: true },
-      waitlist_notifications: { email: true, sms: false, push: true },
-      system_updates: { email: true, sms: false, push: false },
-      marketing: { email: true, sms: false, push: false },
-      booking_alert_sound: true,
-      order_alert_sound: true,
-      message_alert_sound: true,
-      unsubscribe_marketing: false,
-    };
-
-    const currentPreferences = existingProfile?.notification_preferences || defaultPreferences;
+    const defaultPreferences = getProviderNotificationDefaults();
+    const currentPreferences =
+      (existingProfile?.notification_preferences as Record<string, unknown>) || defaultPreferences;
     
     // Merge with new preferences (deep merge for nested objects)
     const updatedPreferences: any = { ...currentPreferences };

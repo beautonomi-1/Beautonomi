@@ -4,7 +4,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import { formatMoney } from "@beautonomi/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
-import React, { useState, useEffect } from "react";
+import React, { Suspense, useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { Button } from "@/components/ui/button";
@@ -56,6 +56,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { isCompleteE164 } from "@/lib/phone";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { formatStatusLabel } from "@/lib/locale/status-label";
+import { NativeAppCheckoutBounce } from "@/components/payments/NativeAppCheckoutBounce";
 
 interface BillingData {
   billingAddress: any;
@@ -223,6 +224,10 @@ t("web.provider.settings.pages.billing.completeAddressRequired")
   }
 
   return (
+    <>
+      <Suspense fallback={null}>
+        <NativeAppCheckoutBounce />
+      </Suspense>
     <SettingsDetailLayout
       title={t("web.provider.settings.pages.billing.billingDetailsAndInvoices")}
       subtitle={t("web.provider.settings.pages.billing.manageYourBillingInformationAndView")}
@@ -366,6 +371,7 @@ t("web.provider.settings.common.saveChanges")
         </DialogContent>
       </Dialog>
     </SettingsDetailLayout>
+    </>
   );
 }
 

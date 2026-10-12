@@ -14,7 +14,11 @@ import {
 } from "@/lib/calendar/ics";
 import { PortalErrorState } from "../components/portal-error-state";
 import { PortalBookingSkeleton } from "../components/portal-skeleton";
-import { getCustomerEtaUiParts } from "@beautonomi/utils";
+import {
+  getCustomerEtaUiParts,
+  isBookingArrivalVerificationActive,
+  isBookingJourneyLive,
+} from "@beautonomi/utils";
 
 interface Booking {
   id: string;
@@ -324,7 +328,13 @@ export default function PortalBookingPage() {
           </div>
 
           {booking.location_type === "at_home" &&
-            (booking.current_stage === "provider_on_way" || booking.current_stage === "provider_arrived") && (
+            isBookingJourneyLive({
+              status: booking.status,
+              locationType: booking.location_type,
+              currentStage: booking.current_stage,
+            }) &&
+            (booking.current_stage === "provider_on_way" ||
+              booking.current_stage === "provider_arrived") && (
               <div className="rounded-lg border border-pink-200 bg-pink-50 p-4 space-y-3">
                 <p className="text-sm font-semibold text-pink-900">
                   {booking.current_stage === "provider_on_way"
@@ -359,8 +369,12 @@ export default function PortalBookingPage() {
                     </p>
                   );
                 })()}
-                {booking.current_stage === "provider_arrived" &&
-                  !booking.arrival_otp_verified &&
+                {isBookingArrivalVerificationActive({
+                  status: booking.status,
+                  locationType: booking.location_type,
+                  currentStage: booking.current_stage,
+                  arrivalOtpVerified: booking.arrival_otp_verified,
+                }) &&
                   !booking.qr_code_verified &&
                   booking.arrival_otp && (
                     <div className="space-y-2">

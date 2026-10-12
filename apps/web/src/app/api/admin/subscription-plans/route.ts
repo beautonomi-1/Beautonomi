@@ -62,7 +62,8 @@ async function shouldSyncPaystackSubscriptionPlans(scopeTenantId: string | null)
   const regionConfig = await getTenantRegionConfig(scopeTenantId);
   if (!regionConfig?.regionId) return true;
   const primary = await getPrimaryOnlinePaymentGatewayForRegion(regionConfig.regionId);
-  return primary?.gateway.trim().toLowerCase() !== "stripe";
+  const gw = primary?.gateway.trim().toLowerCase();
+  return gw === "paystack" || !gw;
 }
 
 /**

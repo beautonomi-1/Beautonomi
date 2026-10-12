@@ -12,7 +12,11 @@ import {
   withTenantVariable,
 } from "./dispatch-template-notification";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getProviderStaffUserIds, getProviderTeamUserIds } from "@/lib/notifications/notify-provider-team";
+import {
+  getProviderStaffUserIds,
+  getProviderTeamUserIds,
+  type StaffNotificationSettingsCategory,
+} from "@/lib/notifications/notify-provider-team";
 import {
   collectAssignedStaffIds,
   resolveBookingProviderRecipients,
@@ -56,13 +60,21 @@ async function resolveProviderRecipients(
   providerId: string | null | undefined,
   ownerUserId: string | null | undefined,
   booking?: BookingLikeForRecipients | null,
+  staffCategory?: StaffNotificationSettingsCategory,
 ): Promise<string[]> {
+  const category =
+    staffCategory ?? (booking ? ("new_bookings" as StaffNotificationSettingsCategory) : undefined);
   const { recipients } = await resolveBookingProviderRecipients({
     providerId,
     ownerUserId,
     assignedStaffIds: collectAssignedStaffIds(booking),
     loaders: {
-      loadStaffUserIds: getProviderStaffUserIds,
+      loadStaffUserIds: (pid, sids) =>
+        getProviderStaffUserIds(
+          pid,
+          sids,
+          category ? { bookingCategory: category } : undefined,
+        ),
       loadTeamUserIds: getProviderTeamUserIds,
     },
   });
@@ -598,6 +610,7 @@ export async function notifyBookingCancelled(
       booking.provider_id,
       booking.provider.user_id,
       booking,
+      "appointment_cancellations",
     );
     await dispatchTemplateNotification(
       "provider_booking_cancelled",
@@ -664,6 +677,7 @@ export async function notifyBookingRescheduled(
       booking.provider_id,
       booking.provider.user_id,
       booking,
+      "appointment_reschedules",
     );
     await dispatchTemplateNotification(
       "provider_booking_rescheduled",

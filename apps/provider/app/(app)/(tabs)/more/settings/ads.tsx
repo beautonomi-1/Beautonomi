@@ -20,7 +20,7 @@ import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
-  getAdsPaystackReturnUrl,
+  getAdsPaymentReturnDeepLink,
   matchesAdsPaystackReturnUrl,
   pollCampaignProvisioned,
   adsSuccessCopy,
@@ -656,7 +656,7 @@ export default function AdsSettingsScreen() {
         productLabel?: string;
       },
     ) => {
-      const returnUrl = getAdsPaystackReturnUrl();
+      const returnUrl = getAdsPaymentReturnDeepLink();
       const result = await adsPaystackCheckout.waitForCheckout(payUrl, {
         title: ads("adPaymentTitle"),
         returnUrl,
@@ -669,6 +669,12 @@ export default function AdsSettingsScreen() {
       let amount = opts?.amount;
       const payCurrency = opts?.currency ?? tenantCurrency;
       const productLabel = opts?.productLabel;
+
+      if (result?.outcome === "start_failed") {
+        Alert.alert(ads("adPaymentTitle"), ads("paymentNotCompleted"));
+        await loadAll();
+        return;
+      }
 
       if (result?.outcome === "cancel" || result?.outcome === "closed") {
         const failed = adsFailedCopy(ads("paymentNotCompleted"));
@@ -687,13 +693,23 @@ export default function AdsSettingsScreen() {
       setProcessingHint(ads("verifyingPaystackHint"));
       try {
         const parsed = parseOnlineCheckoutReturnUrl(result.url);
+        if (parsed.status === "failed" || parsed.status === "cancelled") {
+          const failed = adsFailedCopy(ads("paymentNotCompleted"));
+          setPaymentOutcome({ phase: "failed", campaignId, ...failed });
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          await loadAll();
+          return;
+        }
         const reference = parsed.reference;
         const verifyResult = reference
           ? await verifyPaystackWithRetry<{
               adsBudgetOrderId?: string;
               campaignId?: string;
               type?: string;
-            }>(reference, { sessionId: parsed.sessionId })
+            }>(reference, {
+              sessionId: parsed.sessionId,
+              transactionId: parsed.transactionId,
+            })
           : null;
 
         if (verifyResult?.status === "failed") {

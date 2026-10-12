@@ -18,12 +18,12 @@ import { isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
 import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
   getCustomerPaystackAuthReturnUrl,
-  getShopProductPaystackAuthPrefix,
+  getNativePaystackReturnUrl,
+  CUSTOMER_NATIVE_PAYSTACK_PATHS,
   matchesPaystackAuthSessionReturn,
   matchesShopPaymentCallbackReturnUrl,
   SHOP_PAYMENT_CALLBACK_PATH,
 } from "@/lib/payments/customerPaystackReturn";
-import * as ExpoLinking from "expo-linking";
 import { api } from "@/lib/api-client";
 import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
@@ -319,11 +319,8 @@ export default function ProductOrderDetailScreen() {
     setPaying(true);
     try {
       const paystackReturnPath =
-        Platform.OS === "web" ? undefined : getShopProductPaystackAuthPrefix();
-      const paystackCallbackUrl =
-        Platform.OS === "web"
-          ? getCustomerPaystackAuthReturnUrl(SHOP_PAYMENT_CALLBACK_PATH)
-          : ExpoLinking.createURL("shop/paystack");
+        Platform.OS === "web" ? undefined : getNativePaystackReturnUrl(CUSTOMER_NATIVE_PAYSTACK_PATHS.shop);
+      const paystackCallbackUrl = getCustomerPaystackAuthReturnUrl(SHOP_PAYMENT_CALLBACK_PATH);
       const paystackRes = await api.post<{ authorization_url: string; reference: string }>(
         "/api/paystack/initialize",
         {
@@ -365,6 +362,10 @@ export default function ProductOrderDetailScreen() {
         matchCancel: (u) => isCancelledPaystackUrl(u),
       });
 
+      if (pr.outcome === "start_failed") {
+        Alert.alert(pod("paymentUnavailableTitle"), pod("paymentStartFailed"));
+        return;
+      }
       if (pr.outcome === "cancel") {
         Alert.alert(pod("paymentCancelledTitle"), pod("paymentCancelledBody"));
         return;
@@ -372,13 +373,22 @@ export default function ProductOrderDetailScreen() {
 
       let reference = paystackRes.data.reference;
       let checkoutSessionId: string | null = null;
+      let checkoutTransactionId: string | null = null;
       if (pr.outcome === "success" && pr.url && !isCancelledPaystackUrl(pr.url)) {
         const parsed = parseOnlineCheckoutReturnUrl(pr.url);
+        if (parsed.status === "failed" || parsed.status === "cancelled") {
+          Alert.alert(pod("paymentCancelledTitle"), pod("paymentCancelledBody"));
+          return;
+        }
         if (parsed.reference) reference = parsed.reference;
         checkoutSessionId = parsed.sessionId;
+        checkoutTransactionId = parsed.transactionId;
       }
       if (reference) {
-        await verifyPaystackWithRetry(reference, { sessionId: checkoutSessionId });
+        await verifyPaystackWithRetry(reference, {
+          sessionId: checkoutSessionId,
+          transactionId: checkoutTransactionId,
+        });
       }
 
       let paid = false;

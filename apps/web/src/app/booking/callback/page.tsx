@@ -6,6 +6,10 @@ import { motion } from "framer-motion";
 import { CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
+import {
+  readHostedCheckoutReturnParams,
+  isHostedCheckoutFailureStatus,
+} from "@/lib/payments/hosted-checkout-return-params";
 import { useTranslation } from "@beautonomi/i18n";
 
 export default function PaymentCallback() {
@@ -17,8 +21,17 @@ export default function PaymentCallback() {
 
   useEffect(() => {
     const verifyPayment = async () => {
-      const reference = searchParams.get("reference") || searchParams.get("trxref");
-      const sessionId = searchParams.get("session_id");
+      const hosted = readHostedCheckoutReturnParams(searchParams);
+      const reference = hosted.reference;
+      const sessionId = hosted.sessionId;
+      const flutterwaveTransactionId = hosted.transactionId;
+      const hostedStatus = hosted.hostedStatus;
+
+      if (isHostedCheckoutFailureStatus(hostedStatus)) {
+        setStatus("error");
+        setMessage(t("web.booking.callback.paymentFailed"));
+        return;
+      }
 
       if (!reference) {
         setStatus("error");
@@ -29,7 +42,12 @@ export default function PaymentCallback() {
       try {
         const response = await verifyWithRetry<{ status?: string; bookingId?: string }>(
           reference,
-          { maxAttempts: 5, delayMs: 1500, sessionId },
+          {
+            maxAttempts: 5,
+            delayMs: 1500,
+            sessionId,
+            transactionId: flutterwaveTransactionId,
+          },
         );
 
         if (response.status === "success") {

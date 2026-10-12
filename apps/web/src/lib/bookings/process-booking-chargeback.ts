@@ -55,7 +55,7 @@ export function shouldProcessPaystackDisputeChargeback(
 
 export type ProcessBookingChargebackParams = {
   supabase: SupabaseClient;
-  paymentProvider: "paystack" | "stripe";
+  paymentProvider: "paystack" | "stripe" | "flutterwave";
   reference: string;
   /** Stable PSP dispute id for idempotency (Paystack dispute id, Stripe dp_*) */
   disputeId: string;

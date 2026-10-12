@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { Suspense, useState, useEffect, useMemo } from "react";
+import { NativeAppCheckoutBounce } from "@/components/payments/NativeAppCheckoutBounce";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Check, CreditCard, Calendar, Sparkles } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
+import {
+  readHostedCheckoutReturnParams,
+  isHostedCheckoutFailureStatus,
+} from "@/lib/payments/hosted-checkout-return-params";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
@@ -88,7 +93,7 @@ interface ProviderSubscription {
     message: string;
     action: "pay_now" | "update_payment" | "retry_payment" | "complete_payment" | string;
   } | null;
-  billing_provider?: "paystack" | "stripe" | "apple" | "manual" | null;
+  billing_provider?: "paystack" | "stripe" | "flutterwave" | "apple" | "manual" | null;
 }
 
 function isPaidSubscriptionState(sub: ProviderSubscription | null): boolean {
@@ -265,8 +270,11 @@ export default function SubscriptionPage() {
     const isPaymentCancelled = urlParams.get("payment_cancelled") === "1";
     const inApp = urlParams.get("in_app") === "1";
     const returnToDashboard = urlParams.get("return_to") === "dashboard";
-    const reference = urlParams.get("reference") || urlParams.get("trxref");
-    const sessionId = urlParams.get("session_id");
+    const hosted = readHostedCheckoutReturnParams(urlParams);
+    const reference = hosted.reference;
+    const sessionId = hosted.sessionId;
+    const flutterwaveTransactionId = hosted.transactionId;
+    const hostedStatus = hosted.hostedStatus;
 
     const timeouts: ReturnType<typeof setTimeout>[] = [];
 
@@ -287,12 +295,24 @@ export default function SubscriptionPage() {
         return;
       }
 
+      if (isHostedCheckoutFailureStatus(hostedStatus)) {
+        window.history.replaceState({}, "", window.location.pathname + (inApp ? "?in_app=1" : ""));
+        toast.info(tx("paymentCancelled"));
+        await loadData();
+        return;
+      }
+
       if (isPaymentSuccess && reference) {
         setVerifying(true);
         try {
           const verifyPayload = await verifyWithRetry<{ status?: string; message?: string }>(
             reference,
-            { maxAttempts: 5, delayMs: 1500, sessionId },
+            {
+              maxAttempts: 5,
+              delayMs: 1500,
+              sessionId,
+              transactionId: flutterwaveTransactionId,
+            },
           );
           if (verifyPayload.status === "failed") {
             console.warn(
@@ -736,6 +756,10 @@ export default function SubscriptionPage() {
   );
 
   return (
+    <>
+      <Suspense fallback={null}>
+        <NativeAppCheckoutBounce />
+      </Suspense>
     <SettingsDetailLayout>
       <div className="mx-auto max-w-5xl">
         <div className="relative mb-8 overflow-hidden rounded-2xl border border-pink-100/80 bg-gradient-to-br from-pink-50/90 via-white to-violet-50/70 px-5 py-8 md:px-8 md:py-10">
@@ -1242,6 +1266,7 @@ export default function SubscriptionPage() {
         </div>
       ) : null}
     </SettingsDetailLayout>
+    </>
   );
 }
 

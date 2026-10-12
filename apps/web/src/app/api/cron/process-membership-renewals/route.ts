@@ -312,7 +312,7 @@ async function runJob(request: NextRequest) {
 
         let chargeSucceeded = false;
         let chargePending = false;
-        let paymentProvider: "paystack" | "stripe" = "paystack";
+        let paymentProvider: "paystack" | "stripe" | "flutterwave" = "paystack";
         let settledReference = renewalReference;
         let grossAmountSuccess = priceMonthly;
         let feeAmountSuccess = 0;
@@ -380,6 +380,56 @@ async function runJob(request: NextRequest) {
             } catch (stripeErr) {
               console.error(`[membership-renewals] Stripe charge failed for ${membershipId}:`, stripeErr);
             }
+          }
+        } else if (pmProvider === "flutterwave") {
+          paymentProvider = "flutterwave";
+          const token = String(pmRow.provider_payment_method_id ?? "").trim();
+          if (!token) {
+            results.errors.push(`${membershipId}: missing Flutterwave card token`);
+            continue;
+          }
+          try {
+            const { chargeAndSettleFlutterwaveOffSession } = await import(
+              "@/lib/payments/charge-flutterwave-off-session"
+            );
+            const { upsertOnlinePaymentCheckout } = await import(
+              "@/lib/payments/online-payment-checkouts"
+            );
+            await upsertOnlinePaymentCheckout({
+              reference: renewalReference,
+              provider: "flutterwave",
+              tenantId,
+              metadata: {
+                membership_order_id: renewalOrder.id,
+                user_id: userId,
+                provider_id: providerId,
+                plan_id: planId,
+                kind: "membership_renewal",
+                tenant_id: tenantId ?? "",
+              },
+            });
+            const fw = await chargeAndSettleFlutterwaveOffSession(supabase, {
+              tenantId,
+              token,
+              email: customerEmail,
+              amountInSmallestUnit: amountSmallest,
+              currency: plan.currency ?? "ZAR",
+              reference: renewalReference,
+              metadata: {
+                membership_order_id: renewalOrder.id,
+                user_id: userId,
+                provider_id: providerId,
+                plan_id: planId,
+                kind: "membership_renewal",
+              },
+            });
+            chargeSucceeded = fw.ok;
+            if (chargeSucceeded) {
+              grossAmountSuccess = priceMonthly;
+              feeAmountSuccess = 0;
+            }
+          } catch (chargeErr) {
+            console.error(`[membership-renewals] Flutterwave charge threw for ${membershipId}:`, chargeErr);
           }
         } else {
           if (!authCode || !String(authCode).startsWith("AUTH_")) {

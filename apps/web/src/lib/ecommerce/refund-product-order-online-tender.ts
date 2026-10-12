@@ -25,7 +25,7 @@ export type OnlineTenderOrder = {
   order_number?: string | null;
 };
 
-const GATEWAY_METHODS = new Set(["paystack", "stripe", "card", "online"]);
+const GATEWAY_METHODS = new Set(["paystack", "stripe", "flutterwave", "card", "online"]);
 
 /** Pure: card/gateway portion of the order total (never negative). */
 export function computeProductOrderOnlinePortion(order: OnlineTenderOrder): number {
@@ -60,10 +60,31 @@ export async function refundProductOrderOnlineTender(
 
   try {
     let refundId: string | null = null;
-    if (method === "stripe") {
+    const { getOnlinePaymentCheckoutByReference } = await import(
+      "@/lib/payments/online-payment-checkouts"
+    );
+    const checkout = reference ? await getOnlinePaymentCheckoutByReference(reference) : null;
+    const checkoutProvider = checkout?.provider ?? (method === "stripe" ? "stripe" : method === "flutterwave" ? "flutterwave" : "paystack");
+    const providerPaymentId =
+      checkoutProvider === "flutterwave" && checkout?.payment_intent_id
+        ? checkout.payment_intent_id
+        : reference;
+
+    if (checkoutProvider === "stripe") {
       const { stripeProvider } = await import("@/lib/payments/provider/stripe-provider");
       const result = await stripeProvider.refund({
-        providerPaymentId: reference,
+        providerPaymentId: providerPaymentId!,
+        amountInSmallestUnit: amountSmallest,
+        currency,
+        reason: opts.reason,
+        tenantId,
+        idempotencyKey: opts.idempotencyKey,
+      });
+      refundId = result.refundId || null;
+    } else if (checkoutProvider === "flutterwave") {
+      const { flutterwaveProvider } = await import("@/lib/payments/provider/flutterwave-provider");
+      const result = await flutterwaveProvider.refund({
+        providerPaymentId: providerPaymentId!,
         amountInSmallestUnit: amountSmallest,
         currency,
         reason: opts.reason,

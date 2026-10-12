@@ -12,7 +12,11 @@ import { useApi } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
-import { getProviderPaystackReturnBaseUrl } from "@/lib/payments/providerPaystackReturn";
+import {
+  getMarketingTopupPaystackReturnUrl,
+  getMarketingIntegrationsReturnDeepLink,
+  matchesMarketingTopupReturnUrl,
+} from "@/lib/payments/providerPaystackReturn";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 
@@ -58,8 +62,6 @@ const STATUS_URL = "/api/provider/marketing/status";
 const LEDGER_URL = "/api/provider/marketing/credits/ledger";
 const TOPUP_URL = "/api/provider/marketing/credits/topup";
 /** Static HTTPS success landing Paystack redirects to (webhook is source of truth). */
-const TOPUP_RETURN_PATH = "/provider/settings/marketing-integrations";
-
 /** Webhook can lag the redirect; poll the balance briefly so the UI reflects the new credit. */
 async function pollBalanceIncrease(
   before: number,
@@ -106,34 +108,49 @@ export function useMarketingCredits(): UseMarketingCreditsResult {
       try {
         const res = await api.post<{ payment_url?: string; paystack_reference?: string; amount_zar?: number }>(
           TOPUP_URL,
-          { amount_zar: Math.round(amountZar * 100) / 100 },
+          {
+            amount_zar: Math.round(amountZar * 100) / 100,
+            callback_url: getMarketingTopupPaystackReturnUrl({ inApp: true }),
+          },
         );
         if (res.error || !res.data?.payment_url) {
           return { ok: false, message: getApiErrorMessage(res.error, "Could not start top-up.") };
         }
-        const returnUrl = `${getProviderPaystackReturnBaseUrl()}${TOPUP_RETURN_PATH}`;
+        const returnUrl = getMarketingIntegrationsReturnDeepLink();
         const outcome = await waitForCheckout(res.data.payment_url, {
           title: "Top up marketing credits",
           returnUrl,
-          matchSuccess: (u) => u.includes("topup=success") || u.includes("payment_success"),
+          matchSuccess: (u) =>
+            matchesMarketingTopupReturnUrl(u) &&
+            (u.includes("topup=success") || u.includes("payment_success")),
           matchCancel: (u) => u.includes("cancelled=1") || u.includes("payment_cancelled=1"),
         });
+        if (outcome.outcome === "start_failed") {
+          return { ok: false, message: "We couldn't open secure checkout. Please try again." };
+        }
         if (outcome.outcome === "success") {
           let reference =
             typeof res.data.paystack_reference === "string"
               ? res.data.paystack_reference.trim()
               : "";
           let checkoutSessionId: string | null = null;
+          let flutterwaveTransactionId: string | null = null;
           if (outcome.url) {
             const parsed = parseOnlineCheckoutReturnUrl(outcome.url);
+            if (parsed.status === "failed" || parsed.status === "cancelled") {
+              await refresh();
+              return { ok: false, message: "Top-up was cancelled. No payment was taken." };
+            }
             if (parsed.reference) reference = parsed.reference;
             checkoutSessionId = parsed.sessionId;
+            flutterwaveTransactionId = parsed.transactionId;
           }
           let verifyStatus: Awaited<ReturnType<typeof verifyPaystackWithRetry>>["status"] =
             "unknown";
           if (reference) {
             const verifyResult = await verifyPaystackWithRetry(reference, {
               sessionId: checkoutSessionId,
+              transactionId: flutterwaveTransactionId,
             });
             verifyStatus = verifyResult.status;
             if (verifyResult.status === "failed") {

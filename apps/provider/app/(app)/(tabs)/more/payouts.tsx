@@ -27,6 +27,12 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatCurrency } from "@/lib/format";
 import { PayoutReconciliationCard, type PayoutReconciliation } from "@/components/PayoutReconciliationCard";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+import {
+  normalizeProviderPayoutRail,
+  providerPayoutRailUsesBankAccounts,
+  providerPayoutRailUsesStripeConnect,
+  type ProviderPayoutRail,
+} from "@/lib/payments/providerPayoutRail";
 
 type IoniconName = ComponentProps<typeof Ionicons>["name"];
 
@@ -205,10 +211,10 @@ export function PayoutsContent() {
     revalidateOnFocus: true,
   });
   const { data: payoutUiOptions } = useApi<{
-    payout_rail?: "paystack" | "stripe";
+    payout_rail?: ProviderPayoutRail;
     stripe_connect?: { onboarding_complete?: boolean } | null;
   }>("/api/provider/payout-accounts/options", { staleTimeMs: 60_000 });
-  const payoutRail = payoutUiOptions?.payout_rail === "stripe" ? "stripe" : "paystack";
+  const payoutRail = normalizeProviderPayoutRail(payoutUiOptions?.payout_rail);
   const stripePayoutReady = Boolean(payoutUiOptions?.stripe_connect?.onboarding_complete);
   const { data: teamAccess } = useApi<TeamAccessPayload>("/api/provider/team-access");
   const { data: nextDate, refresh: refreshNextDate } = useApi<NextDateData>("/api/provider/payouts/next-date", {
@@ -239,8 +245,9 @@ export function PayoutsContent() {
       activeAccounts[0],
     [activeAccounts, bankAccountId],
   );
-  const payoutDestinationReady =
-    payoutRail === "stripe" ? stripePayoutReady : activeAccounts.length > 0;
+  const payoutDestinationReady = providerPayoutRailUsesStripeConnect(payoutRail)
+    ? stripePayoutReady
+    : activeAccounts.length > 0;
   const availableBalance = financeData?.earnings?.available_balance ?? 0;
   const payoutBalanceUnavailable = financeData?.earnings?.payout_balance_unavailable === true;
   const pendingPayouts = financeData?.earnings?.pending_payouts ?? 0;
@@ -302,7 +309,7 @@ export function PayoutsContent() {
     const confirmed = await confirmPayoutRequest({
       amount: formatCurrency(num, defaultCurrency),
       account:
-        payoutRail === "stripe"
+        providerPayoutRailUsesStripeConnect(payoutRail)
           ? "Stripe Connect"
           : selectedAccount
             ? formatAccountLabel(selectedAccount, po)
@@ -317,7 +324,9 @@ export function PayoutsContent() {
     const body: Record<string, unknown> = {
       amount: num,
       notes: notes.trim() || undefined,
-      ...(payoutRail === "paystack" && selectedAccount ? { bank_account_id: selectedAccount.id } : {}),
+      ...(providerPayoutRailUsesBankAccounts(payoutRail) && selectedAccount
+        ? { bank_account_id: selectedAccount.id }
+        : {}),
     };
     const { error: err } = await postPayout("/api/provider/payouts", body);
     if (err) {

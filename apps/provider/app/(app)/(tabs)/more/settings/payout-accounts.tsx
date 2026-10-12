@@ -24,6 +24,11 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { LAST_RESORT_CURRENCY } from "@beautonomi/utils";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { useTranslation } from "@beautonomi/i18n";
+import {
+  normalizeProviderPayoutRail,
+  providerPayoutRailUsesStripeConnect,
+  type ProviderPayoutRail,
+} from "@/lib/payments/providerPayoutRail";
 
 interface PayoutAccount {
   id: string;
@@ -74,7 +79,7 @@ export default function PayoutAccountsScreen() {
   );
   const { data: payoutUiOptions, refresh: refreshPayoutOptions } = useApi<{
     show_verify_account_button: boolean;
-    payout_rail?: "paystack" | "stripe";
+    payout_rail?: ProviderPayoutRail;
     stripe_connect?: {
       connect_account_id?: string | null;
       onboarding_complete?: boolean;
@@ -82,7 +87,7 @@ export default function PayoutAccountsScreen() {
     } | null;
   }>("/api/provider/payout-accounts/options", { staleTimeMs: 60_000 });
   const showVerifyAccountButton = payoutUiOptions?.show_verify_account_button !== false;
-  const payoutRail = payoutUiOptions?.payout_rail === "stripe" ? "stripe" : "paystack";
+  const payoutRail = normalizeProviderPayoutRail(payoutUiOptions?.payout_rail);
   const stripeConnect = payoutUiOptions?.stripe_connect;
   const stripePayoutReady = Boolean(stripeConnect?.onboarding_complete);
   const [connectingStripe, setConnectingStripe] = useState(false);
@@ -350,7 +355,7 @@ export default function PayoutAccountsScreen() {
   }
 
   if (loading && !accounts && !accountsError && !payoutUiOptions) return <LoadingState />;
-  if (accountsError && !accounts && payoutRail !== "stripe") {
+  if (accountsError && !accounts && !providerPayoutRailUsesStripeConnect(payoutRail)) {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title={pa("title")} showBack subtitle={pa("subtitle")} />

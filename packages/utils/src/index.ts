@@ -187,6 +187,16 @@ export {
   type BookingPaymentDisplay,
 } from "./booking/paymentStatusDisplay";
 export {
+  CUSTOMER_TRACKING_STEP_WEB_LABELS,
+  buildCustomerTrackingSteps,
+  isBookingArrivalVerificationActive,
+  isBookingJourneyLive,
+  type BuildCustomerTrackingStepsInput,
+  type CustomerTrackingStep,
+  type CustomerTrackingStepKey,
+  type CustomerTrackingStepState,
+} from "./booking/customerTrackingSteps";
+export {
   DEFAULT_CONFIRMATION_SLA_HOURS,
   DEFAULT_UNCONFIRMED_EXPIRE_HOURS_BEFORE_SLOT,
   MIN_CONFIRM_WINDOW_MS,

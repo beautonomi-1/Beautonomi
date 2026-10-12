@@ -84,6 +84,17 @@ Do **not** prefix the message with marketing copy or URLs. A long or noisy SMS b
 
 The template is configured in **Supabase Dashboard → Authentication → Providers → Phone → SMS Message**. The value in `platform_settings.settings.auth.sms_message_template` is a documentation/sync mirror only — no runtime code reads it to send auth SMS.
 
+## Visual parity with product email (Dashboard checklist)
+
+Transactional product mail uses the **542-style** table shell (dark header, pink accent, 640px card). When pasting into Supabase Auth templates:
+
+1. Copy HTML from the matching file in this folder (inline styles only — no `<style>` blocks).
+2. Keep **`{{ .Token }}`** as the primary OTP (large type in the card body).
+3. Optional secondary line with **`{{ .ConfirmationURL }}`** for link fallback.
+4. After saving, send a test message and compare with a Tier 1 notification email in Gmail (mobile + desktop).
+
+Design reference: `docs/platform/email/TRANSACTIONAL_EMAIL_DESIGN.md`.
+
 ## Files in this folder
 
 - `magic-link-otp.example.html` — example body for the **Magic Link** template (passwordless email sign-in).

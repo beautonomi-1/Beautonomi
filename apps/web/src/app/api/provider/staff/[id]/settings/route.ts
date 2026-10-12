@@ -251,6 +251,30 @@ export async function PATCH(
       mapped.sms_notifications_enabled = false;
     }
 
+    const touchesNotificationToggles =
+      mapped.email_notifications_enabled !== undefined ||
+      mapped.sms_notifications_enabled !== undefined ||
+      mapped.desktop_notifications_enabled !== undefined;
+
+    if (touchesNotificationToggles) {
+      const { data: row } = await supabase
+        .from("provider_staff")
+        .select("notification_settings")
+        .eq("id", id)
+        .single();
+      const { mergeStaffSettingsPatchIntoNotificationJson } = await import(
+        "@/lib/notifications/staff-notification-settings-sync"
+      );
+      mapped.notification_settings = mergeStaffSettingsPatchIntoNotificationJson(
+        row?.notification_settings,
+        {
+          email_notifications_enabled: mapped.email_notifications_enabled as boolean | undefined,
+          sms_notifications_enabled: mapped.sms_notifications_enabled as boolean | undefined,
+          desktop_notifications_enabled: mapped.desktop_notifications_enabled as boolean | undefined,
+        },
+      );
+    }
+
     // Update settings
     const { data: updatedStaff, error: updateError } = await supabase
       .from("provider_staff")

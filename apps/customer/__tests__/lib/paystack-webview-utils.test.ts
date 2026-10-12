@@ -1,40 +1,38 @@
-jest.mock("expo-linking", () => ({
-  parse: jest.fn(() => {
-    throw new Error("use URL fallback in tests");
-  }),
-}));
-
 import {
-  extractPaystackReferenceFromUrl,
-  extractStripeCheckoutSessionIdFromUrl,
+  extractHostedCheckoutReturn,
+  isCancelledPaystackUrl,
 } from "@/lib/paystack-webview-utils";
 
-describe("paystack-webview-utils", () => {
-  describe("extractStripeCheckoutSessionIdFromUrl", () => {
-    it("reads session_id from https success URLs", () => {
-      expect(
-        extractStripeCheckoutSessionIdFromUrl(
-          "https://www.beautonomi.com/booking/callback?reference=bn_1&session_id=cs_test_a",
-        ),
-      ).toBe("cs_test_a");
-    });
-
-    it("returns null when session_id is missing", () => {
-      expect(
-        extractStripeCheckoutSessionIdFromUrl("https://www.beautonomi.com/booking/callback?reference=only"),
-      ).toBeNull();
-    });
-
-    it("returns null for invalid URLs", () => {
-      expect(extractStripeCheckoutSessionIdFromUrl("not-a-url")).toBeNull();
-    });
+describe("isCancelledPaystackUrl", () => {
+  it("detects standard and wallet cancel query flags", () => {
+    expect(isCancelledPaystackUrl("https://app.example.com/checkout/cancelled?cancelled=1")).toBe(
+      true,
+    );
+    expect(
+      isCancelledPaystackUrl(
+        "https://app.example.com/account-settings/wallet?topup_cancelled=1&context=app",
+      ),
+    ).toBe(true);
+    expect(
+      isCancelledPaystackUrl("customer://wallet-return?topup_cancelled=1"),
+    ).toBe(true);
+    expect(isCancelledPaystackUrl("https://app.example.com/shop/cancelled?order_id=o1")).toBe(
+      true,
+    );
   });
 
-  describe("extractPaystackReferenceFromUrl", () => {
-    it("reads reference from query string", () => {
-      expect(
-        extractPaystackReferenceFromUrl("https://example.com/cb?reference=pay_ref_99"),
-      ).toBe("pay_ref_99");
-    });
+  it("parses Flutterwave tx_ref and transaction_id", () => {
+    const url =
+      "https://app.example.com/checkout/success?status=successful&tx_ref=ref_fw&transaction_id=12345";
+    const parsed = extractHostedCheckoutReturn(url);
+    expect(parsed.reference).toBe("ref_fw");
+    expect(parsed.transactionId).toBe("12345");
+    expect(parsed.status).toBe("successful");
+  });
+
+  it("returns false for success returns", () => {
+    expect(
+      isCancelledPaystackUrl("https://app.example.com/checkout/success?reference=r1&context=app"),
+    ).toBe(false);
   });
 });
