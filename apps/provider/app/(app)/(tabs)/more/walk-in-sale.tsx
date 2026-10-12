@@ -1445,7 +1445,7 @@ export default function WalkInSaleScreen() {
                 <View style={{ marginBottom: 16, flexDirection: "row", flexWrap: "wrap", marginHorizontal: -4 }}>
                   {WALK_IN_PAYMENT_METHOD_IDS.filter((methodId) => {
                     if (methodId === "cash") return acceptCash;
-                    if (methodId !== "cash" && !acceptCard) return false;
+                    if (!acceptCard) return false;
                     if (methodId === "paystack_terminal" && !paystackTerminalEnabled) return false;
                     if (methodId === "yoco" && !yocoEnabled) return false;
                     if (

@@ -74,12 +74,21 @@ const SECTIONS = [
   { titleKey: "sectionOther", keys: ["system_updates", "marketing"] },
 ];
 
+const CHANNEL_SKELETON: ChannelPrefs = { email: true, sms: true, push: true, whatsapp: false };
+
 /** Skeleton only while GET is in flight — server materializes real defaults. */
 const LOADING_PREFS: NotifPreferences = {
-  booking_updates: { email: true, sms: true, push: true, whatsapp: false },
-  booking_cancellations: { email: true, sms: true, push: true, whatsapp: false },
-  booking_reminders: { email: true, sms: true, push: true, whatsapp: false },
-  client_messages: { email: true, sms: true, push: true, whatsapp: false },
+  booking_updates: { ...CHANNEL_SKELETON },
+  booking_cancellations: { ...CHANNEL_SKELETON },
+  booking_reminders: { ...CHANNEL_SKELETON },
+  new_reviews: { ...CHANNEL_SKELETON },
+  review_responses: { ...CHANNEL_SKELETON },
+  client_messages: { ...CHANNEL_SKELETON },
+  payment_received: { ...CHANNEL_SKELETON },
+  payout_updates: { ...CHANNEL_SKELETON },
+  waitlist_notifications: { ...CHANNEL_SKELETON },
+  system_updates: { ...CHANNEL_SKELETON },
+  marketing: { ...CHANNEL_SKELETON },
 };
 
 const DIGEST_OPTIONS = [

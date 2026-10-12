@@ -268,6 +268,16 @@ export default function SalesScreen() {
     permissionData?.isOwner === true ||
     permissionData?.permissions?.process_payments === true;
 
+  const { isFocused } = useFocusedApi();
+  const { data: paymentSettings } = useApi<{
+    taxRatePercent?: number;
+    taxInclusive?: boolean;
+    acceptCash?: boolean;
+    acceptCard?: boolean;
+  }>("/api/provider/settings/payments", { enabled: isFocused, staleTimeMs: 60_000 });
+  const acceptCash = paymentSettings?.acceptCash !== false;
+  const acceptCard = paymentSettings?.acceptCard !== false;
+
   useEffect(() => {
     if (!configLoading && !unifiedPosEnabled) {
       router.replace("/(app)/(tabs)/dashboard" as never);
@@ -385,8 +395,6 @@ export default function SalesScreen() {
     expectedAmount: number;
   } | null>(null);
 
-  const { isFocused } = useFocusedApi();
-
   const {
     data: metrics,
     refresh: refreshMetrics,
@@ -490,16 +498,8 @@ export default function SalesScreen() {
   }, [refreshMetrics, refreshSales]);
 
   // Cart helpers
-  const { data: paymentSettings } = useApi<{
-    taxRatePercent?: number;
-    taxInclusive?: boolean;
-    acceptCash?: boolean;
-    acceptCard?: boolean;
-  }>("/api/provider/settings/payments", { enabled: isFocused, staleTimeMs: 60_000 });
   const taxRate = (paymentSettings?.taxRatePercent ?? 0) / 100;
   const taxInclusive = paymentSettings?.taxInclusive ?? true;
-  const acceptCash = paymentSettings?.acceptCash !== false;
-  const acceptCard = paymentSettings?.acceptCard !== false;
 
   const cartTotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.price * item.quantity, 0),

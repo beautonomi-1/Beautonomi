@@ -199,6 +199,7 @@ describe("finalizeOnboardingSuccess", () => {
 
     expect(verifyPaystackWithRetry).toHaveBeenCalledWith("provider_subscription_auth_test", {
       sessionId: null,
+      transactionId: null,
     });
     expect(mockReplace).toHaveBeenCalledWith("/(app)/onboarding");
   });
