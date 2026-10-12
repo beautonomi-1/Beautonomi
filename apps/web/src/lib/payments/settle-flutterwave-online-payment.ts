@@ -166,7 +166,7 @@ export async function settleFlutterwaveChargeWebhookData(
     tenantId,
     expectedTxRef: txRef || undefined,
   });
-  if (!verified.ok) {
+  if (verified.ok === false) {
     console.warn("[settle-flutterwave] re-verify failed:", verified.reason);
     return;
   }

@@ -77,7 +77,7 @@ export async function chargeAndSettleFlutterwaveOffSession(
   },
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const charged = await chargeFlutterwaveTokenized(params);
-  if (!charged.ok) return { ok: false, message: charged.message };
+  if (charged.ok === false) return { ok: false, message: charged.message };
 
   const verified = await verifyFlutterwaveTransactionById(charged.transactionId, {
     tenantId: params.tenantId ?? null,
@@ -85,7 +85,7 @@ export async function chargeAndSettleFlutterwaveOffSession(
     expectedAmountMinor: params.amountInSmallestUnit,
     currency: params.currency,
   });
-  if (!verified.ok) {
+  if (verified.ok === false) {
     return { ok: false, message: verified.reason };
   }
 

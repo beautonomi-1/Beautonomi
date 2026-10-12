@@ -27,7 +27,7 @@ export async function getEffectiveCheckoutMethods(params: {
 
   const [paymentTypes, onlineEnabled, giftCardPlatform, walletPlatform, providerRow] =
     await Promise.all([
-      getPlatformPaymentTypesForTenant(tenantId),
+      getPlatformPaymentTypesForTenant(supabase, tenantId),
       isOnlineCardEnabledForTenant(tenantId),
       isGiftCardsEnabledForTenant(tenantId),
       isWalletEnabledForTenant(tenantId),

@@ -25,7 +25,7 @@ import EmptyState from "@/components/ui/empty-state";
 import { fetcher, FetchError, DEFAULT_FETCH_TIMEOUT_MS } from "@/lib/http/fetcher";
 import { invalidateSetupStatusCache } from "@/lib/provider-portal/setup-status-utils";
 import { PAYOUT_COUNTRIES, getCurrencyForCountry } from "@/lib/payments/payout-countries";
-import { normalizePayoutRailOption, type PayoutRail } from "@/lib/payments/payout-rail";
+import { normalizePayoutRailOption, type PayoutRail } from "@/lib/payments/payout-rail-options";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import {

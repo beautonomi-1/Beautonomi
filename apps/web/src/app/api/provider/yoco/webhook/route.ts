@@ -537,14 +537,14 @@ async function handlePaymentNotification(
       const failedMessage =
         status === "failed"
           ? "Card declined – ask customer to try another card."
-          : `Payment failed for amount ${(amount / 100).toFixed(2)} ${currency}`;
+          : `Payment failed for amount ${(amountCents / 100).toFixed(2)} ${currency}`;
       await sendToUser(
         String(metadata.processed_by ?? ""),
         {
           title: status === "successful" ? "Payment Successful" : "Payment Failed",
           message:
             status === "successful"
-              ? `Payment completed for amount ${(amount / 100).toFixed(2)} ${currency}`
+              ? `Payment completed for amount ${(amountCents / 100).toFixed(2)} ${currency}`
               : failedMessage,
           data: {
             type: "yoco_payment",

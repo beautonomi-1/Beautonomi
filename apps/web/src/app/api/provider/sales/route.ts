@@ -762,9 +762,11 @@ export async function POST(request: NextRequest) {
       }
     } catch (legBlockErr) {
       if (giftReserved) {
-        await supabase
-          .rpc("void_gift_card_redemption_for_sale", { p_sale_id: sale.id })
-          .catch(() => {});
+        try {
+          await supabase.rpc("void_gift_card_redemption_for_sale", { p_sale_id: sale.id });
+        } catch {
+          /* best-effort rollback */
+        }
       }
       throw legBlockErr;
     }

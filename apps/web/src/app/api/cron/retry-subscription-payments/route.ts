@@ -160,7 +160,7 @@ async function runJob(request: NextRequest) {
               subscription_id: row.id,
             },
           });
-          if (!fw.ok) throw new Error(fw.message);
+          if (fw.ok === false) throw new Error(fw.message);
         } else {
           const chargeResult = await chargeAuthorization(
             String(row.paystack_authorization_code),

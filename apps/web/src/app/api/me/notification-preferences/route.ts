@@ -18,7 +18,10 @@ export async function GET(request: NextRequest) {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
 
-    let profileData: { notification_preferences?: unknown } | null = null;
+    let profileData: {
+      notification_preferences?: unknown;
+      privacy_settings?: unknown;
+    } | null = null;
 
     try {
       const { data, error } = await supabase

@@ -136,7 +136,7 @@ export async function sendAppointmentReminders(config: ReminderConfig = DEFAULT_
             supabaseAdmin,
             booking.customer_id,
             reminderTemplateKey,
-            config.channels.filter((c): c is "push" | "email" | "sms" | "whatsapp" => c !== "live_activities"),
+            config.channels,
           );
           if (!allowsExternal) {
             continue;

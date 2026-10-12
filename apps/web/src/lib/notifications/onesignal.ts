@@ -1104,11 +1104,15 @@ export async function sendToUser(
       payload.data as Record<string, unknown> | undefined,
     );
     if (templateKey && templateKey !== "badge_sync") {
+      const prefChannels = normalizedChannels.filter(
+        (c): c is import("@/lib/notifications/customer-notification-channels").NotificationChannelName =>
+          c === "push" || c === "email" || c === "sms" || c === "whatsapp",
+      );
       normalizedChannels = await filterChannelsForRecipient(
         getSupabaseAdmin(),
         userId,
         templateKey,
-        normalizedChannels,
+        prefChannels,
         options.appType,
       );
       if (normalizedChannels.length === 0) {

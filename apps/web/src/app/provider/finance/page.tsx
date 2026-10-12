@@ -39,7 +39,7 @@ import {
   normalizePayoutRailOption,
   payoutRailUsesBankAccounts,
   type PayoutRail,
-} from "@/lib/payments/payout-rail";
+} from "@/lib/payments/payout-rail-options";
 
 function roundMoney2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;

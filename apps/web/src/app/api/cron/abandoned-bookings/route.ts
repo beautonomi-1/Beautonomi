@@ -107,7 +107,6 @@ async function runJob(_request: NextRequest) {
       const allowed = await customerAllowsAnyChannel(supabase, userId, TEMPLATE_KEY, [
         "email",
         "push",
-        "in_app",
       ]);
       if (!allowed) {
         skipped_prefs += 1;

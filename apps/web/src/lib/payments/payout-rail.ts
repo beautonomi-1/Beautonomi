@@ -1,19 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getPaymentProviderForTenant } from "@/lib/payments/provider/registry";
 import { getStripeClient } from "@/lib/payments/stripe-server";
+import {
+  normalizePayoutRailOption,
+  payoutRailUsesBankAccounts,
+  type PayoutRail,
+} from "@/lib/payments/payout-rail-options";
 
-export type PayoutRail = "paystack" | "stripe" | "flutterwave";
-
-/** Normalize API `payout_rail` for provider portal UI and POST bodies. */
-export function normalizePayoutRailOption(value: string | null | undefined): PayoutRail {
-  if (value === "stripe" || value === "flutterwave" || value === "paystack") return value;
-  return "paystack";
-}
-
-/** Bank-account payout destinations (Paystack + Flutterwave transfer recipients). */
-export function payoutRailUsesBankAccounts(rail: PayoutRail): boolean {
-  return rail === "paystack" || rail === "flutterwave";
-}
+export type { PayoutRail } from "@/lib/payments/payout-rail-options";
+export { normalizePayoutRailOption, payoutRailUsesBankAccounts } from "@/lib/payments/payout-rail-options";
 
 export type StripeConnectPayoutStatus = {
   connect_account_id: string | null;

@@ -213,7 +213,7 @@ export async function GET(request: NextRequest) {
       if (productOrderId) {
         const { data: poBefore } = await (admin.from("product_orders") as any)
           .select(
-            "tenant_id, provider_id, customer_id, total_amount, wallet_amount, gift_card_amount, payment_status, payment_reference",
+            "tenant_id, provider_id, customer_id, total_amount, wallet_amount, gift_card_amount, payment_status, payment_reference, currency",
           )
           .eq("id", productOrderId)
           .maybeSingle();
@@ -244,6 +244,7 @@ export async function GET(request: NextRequest) {
           gift_card_amount?: number | string | null;
           payment_status?: string | null;
           payment_reference?: string | null;
+          currency?: string | null;
         };
 
         if (user?.id && poBeforeRow.customer_id !== user.id) {
@@ -583,8 +584,10 @@ export async function GET(request: NextRequest) {
             403,
           );
         }
-        const poCurrency = String(poBeforeRow.currency || "ZAR").toUpperCase();
-        const amountMajor = convertFromSmallestUnit(Number(data.data.amount || 0), poCurrency);
+        const subCurrency = String(
+          (order as { currency?: string | null }).currency || paidCurrency,
+        ).toUpperCase();
+        const amountMajor = convertFromSmallestUnit(Number(data.data.amount || 0), subCurrency);
         const expectedMajor = Number(orderRow.amount ?? 0);
         if (String(orderRow.status ?? "") !== "paid" && Math.abs(amountMajor - expectedMajor) > 0.01) {
           return errorResponse(

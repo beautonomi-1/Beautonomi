@@ -129,14 +129,14 @@ export async function sendBookingPaymentLink(
       const channels: ("push" | "email" | "sms")[] = ["push"];
       if (customerEmail) channels.push("email");
       if (customerPhone) channels.push("sms");
+      const psp = await getPaymentProviderForTenant(input.tenantId ?? undefined);
       await sendTemplateNotification(
         "payment_pending",
         [input.customerId],
         {
           amount: formatMoney(amountDue),
           booking_number: String(input.bookingRef),
-          payment_method:
-            getPaymentProviderForTenant(input.tenantId ?? undefined)?.provider.id ?? "paystack",
+          payment_method: psp?.provider.id ?? "paystack",
           booking_id: input.bookingId,
           payment_link: paymentLink,
         },

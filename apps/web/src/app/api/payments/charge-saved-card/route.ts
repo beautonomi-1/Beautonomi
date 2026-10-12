@@ -482,7 +482,7 @@ export async function POST(request: NextRequest) {
         reference: chargeReference,
         metadata: body.metadata ?? {},
       });
-      if (!fw.ok) {
+      if (fw.ok === false) {
         return handleApiError(
           new Error(fw.message),
           fw.message || "Failed to charge card",

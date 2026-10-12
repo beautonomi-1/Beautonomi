@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/provider/PageHeader";
 import { ArrowUpRight, ChevronRight, CreditCard, FileText, Gift, QrCode, Smartphone, Wallet } from "lucide-react";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
-import { normalizePayoutRailOption, type PayoutRail } from "@/lib/payments/payout-rail";
+import { normalizePayoutRailOption, type PayoutRail } from "@/lib/payments/payout-rail-options";
 
 export default function PaymentSetupPage() {
   const { t } = useTranslation();

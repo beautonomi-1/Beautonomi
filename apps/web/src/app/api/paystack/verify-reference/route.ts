@@ -50,6 +50,7 @@ type ProductOrderPaymentRow = {
   customer_id?: string | null;
   total_amount?: number | string | null;
   wallet_amount?: number | string | null;
+  gift_card_amount?: number | string | null;
   payment_status?: string | null;
   payment_reference?: string | null;
 };
@@ -178,7 +179,9 @@ export async function GET(request: NextRequest) {
       const productOrders = admin as unknown as ProductOrdersReader<ProductOrderPaymentRow>;
       const { data: poBefore, error: poError } = await productOrders
         .from("product_orders")
-        .select("id, tenant_id, provider_id, customer_id, total_amount, wallet_amount, payment_status, payment_reference")
+        .select(
+          "id, tenant_id, provider_id, customer_id, total_amount, wallet_amount, gift_card_amount, payment_status, payment_reference",
+        )
         .eq("id", productOrderId)
         .maybeSingle();
 
