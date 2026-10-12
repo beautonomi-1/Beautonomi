@@ -15,15 +15,50 @@ vi.mock("@/lib/money/tenant-intl-format", () => ({
   getTenantMoneyFormatter: async () => ({ format: (n: number) => `R ${n.toFixed(2)}` }),
 }));
 
+vi.mock("@/lib/payments/provider-checkout-methods", () => ({
+  getEffectiveCheckoutMethods: vi.fn(async () => ({
+    online: true,
+    cash: true,
+    giftCard: true,
+    wallet: true,
+  })),
+}));
+
+vi.mock("@/lib/payments/provider/registry", () => ({
+  getPaymentProviderForTenant: vi.fn(async () => ({ provider: { id: "paystack" } })),
+}));
+
+vi.mock("@/lib/env/app-url", () => ({
+  getAppBaseUrl: vi.fn(() => {
+    const url = process.env.NEXT_PUBLIC_APP_URL;
+    if (!url) throw new Error("NEXT_PUBLIC_APP_URL is not set");
+    return url.replace(/\/$/, "");
+  }),
+}));
+
 import { sendBookingPaymentLink } from "../send-booking-payment-link";
 
 function buildSupabase(contact: { email?: string | null; phone?: string | null } | null) {
   return {
-    from: vi.fn(() => ({
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      maybeSingle: vi.fn().mockResolvedValue({ data: contact, error: null }),
-    })),
+    from: vi.fn((table: string) => {
+      if (table === "bookings") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({
+                data: { provider_id: "provider-1" },
+                error: null,
+              }),
+            })),
+          })),
+        };
+      }
+      return {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({ data: contact, error: null }),
+      };
+    }),
   } as any;
 }
 

@@ -75,6 +75,15 @@ vi.mock("@/lib/payments/paystack", () => ({
   generateTransactionReference: (...args: unknown[]) => mockGenerateTransactionReference(...args),
 }));
 
+vi.mock("@/lib/payments/provider-checkout-methods", () => ({
+  getEffectiveCheckoutMethods: vi.fn(async () => ({
+    online: true,
+    cash: true,
+    giftCard: true,
+    wallet: true,
+  })),
+}));
+
 function bookingRow(overrides: Record<string, unknown> = {}) {
   return {
     id: BOOKING_ID,
