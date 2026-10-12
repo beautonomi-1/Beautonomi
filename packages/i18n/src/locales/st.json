@@ -13387,7 +13387,8 @@
       "failedRedeemGiftCard": "E hlolehile ho redeem karete ya mpho",
       "giftCardRedeemedDefault": "karete ya mpho redeemed to sepache katlehoe tletsey",
       "giftRedeemHelp": "Voer 'n kode in wat jy gekoop het of wat iemand met jou gedeel het - die volle balans word onmiddellik by jou beursie gevoeg.",
-      "yourGiftCards": "likarete tsa mpho ya hau"
+      "yourGiftCards": "likarete tsa mpho ya hau",
+      "checkoutOpenFailed": "Ha rea khona ho bula tefo e sireletsehileng. Ka kopo leka hape."
     },
     "paymentsScreen": {
       "saveCardExplainer": "Ons sal jou kaart veilig stoor wanneer jy betaal. Om jou kaart te verifieer, kan 'n klein tydelike heffing (bv. {{example}}) geplaas en omgekeer word—dit bevestig jou kaart vir toekomstige gebruik.",
@@ -13441,7 +13442,8 @@
       "giftCardCopy": "Kopitsa khoutu",
       "giftCardCopied": "E kopitsitsoe",
       "giftCardShare": "arolelana karete ya mpho",
-      "giftCardRedeem": "Redeem to sepache"
+      "giftCardRedeem": "Redeem to sepache",
+      "checkoutOpenFailed": "Ha rea khona ho bula tefo e sireletsehileng. Ka kopo leka hape."
     },
     "mobile": {
       "stackTitles": {
@@ -17647,7 +17649,11 @@
       "groupGuestsLimit_one": "Kenya up to {{count}} Moeti.",
       "groupGuestsLimit_other": "Kenya up to {{count}} guests."
     },
-    "noPaymentMethodsAvailable": "Mofani enoa ha a amohele litefiso tsa inthanete kapa tsa sefahleho hajoale. Ikopanye le eena ho qetela pehelo ea hau."
+    "noPaymentMethodsAvailable": "Mofani enoa ha a amohele litefiso tsa inthanete kapa tsa sefahleho hajoale. Ikopanye le eena ho qetela pehelo ea hau.",
+    "paymentUnavailableTitle": "tefo ha e fumanehe",
+    "paymentBrowserFailed": "Ha rea khona ho bula fensetere e sireletsehileng ea tefo. Ka kopo leka hape.",
+    "paymentNotCompletedTitle": "Tefo ha e so phethoe",
+    "paymentNotCompletedBody": "Pehelo ea hau ha e so netefatsoe."
   },
   "payments": {
     "pay": "Lefa",

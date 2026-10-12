@@ -13387,7 +13387,8 @@
       "failedRedeemGiftCard": "Zwo kundelwa u redeem khadi ḽa nyiko",
       "giftCardRedeemedDefault": "khadi ḽa nyiko redeemed to sipaji nungoyo ḓalay",
       "giftRedeemHelp": "Voer 'n kode in wat jy gekoop het of wat iemand met jou gedeel het - die volle balans word onmiddellik by jou beursie gevoeg.",
-      "yourGiftCards": "khadi dza nyiko yau"
+      "yourGiftCards": "khadi dza nyiko yau",
+      "checkoutOpenFailed": "A ri ngo kona u vula mbadelo yo ṱhonifhadzaho. Ndi khou humbela uri u lingedze hafhu."
     },
     "paymentsScreen": {
       "saveCardExplainer": "Ons sal jou kaart veilig stoor wanneer jy betaal. Om jou kaart te verifieer, kan 'n klein tydelike heffing (bv. {{example}}) geplaas en omgekeer word—dit bevestig jou kaart vir toekomstige gebruik.",
@@ -13441,7 +13442,8 @@
       "giftCardCopy": "Kopa khoudu",
       "giftCardCopied": "Yo kopiwa",
       "giftCardShare": "kovhela khadi ḽa nyiko",
-      "giftCardRedeem": "Redeem to sipaji"
+      "giftCardRedeem": "Redeem to sipaji",
+      "checkoutOpenFailed": "A ri ngo kona u vula mbadelo yo ṱhonifhadzaho. Ndi khou humbela uri u lingedze hafhu."
     },
     "mobile": {
       "stackTitles": {
@@ -17647,7 +17649,11 @@
       "groupGuestsLimit_one": "Engedza up to {{count}} Muendi.",
       "groupGuestsLimit_other": "Engedza up to {{count}} guests."
     },
-    "noPaymentMethodsAvailable": "Mupfi wa vhudavhidzani u sa amukeli mbadelo dza inthanete kana dza vhukuma zwino. Vhudzisani na ene u fhedza booking ya vhone."
+    "noPaymentMethodsAvailable": "Mupfi wa vhudavhidzani u sa amukeli mbadelo dza inthanete kana dza vhukuma zwino. Vhudzisani na ene u fhedza booking ya vhone.",
+    "paymentUnavailableTitle": "mbadedzo a i ho",
+    "paymentBrowserFailed": "A ri ngo kona u vula fensetere yo ṱhonifhadzaho ya mbadelo. Ndi khou humbela uri u lingedze hafhu.",
+    "paymentNotCompletedTitle": "Mbadelo a i athu u fhela",
+    "paymentNotCompletedBody": "U buka havho a hu athu khwaṱhisedzwa."
   },
   "payments": {
     "pay": "Badela",

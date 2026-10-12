@@ -13387,7 +13387,8 @@
       "failedRedeemGiftCard": "Swi tsandzile ku redeem khadi ra nyiko",
       "giftCardRedeemedDefault": "khadi ra nyiko redeemed to xikhwama ku humelelayi teley",
       "giftRedeemHelp": "Voer 'n kode in wat jy gekoop het of wat iemand met jou gedeel het - die volle balans word onmiddellik by jou beursie gevoeg.",
-      "yourGiftCards": "tikhadi ta nyiko ya wena"
+      "yourGiftCards": "tikhadi ta nyiko ya wena",
+      "checkoutOpenFailed": "A hi nge koti ku pfula xihakelo lexi sirhelelekeke. Hi kombela u ringeta nakambe."
     },
     "paymentsScreen": {
       "saveCardExplainer": "Ons sal jou kaart veilig stoor wanneer jy betaal. Om jou kaart te verifieer, kan 'n klein tydelike heffing (bv. {{example}}) geplaas en omgekeer word—dit bevestig jou kaart vir toekomstige gebruik.",
@@ -13441,7 +13442,8 @@
       "giftCardCopy": "Kopa khodi",
       "giftCardCopied": "Yi kopiwiile",
       "giftCardShare": "avelana khadi ra nyiko",
-      "giftCardRedeem": "Redeem to xikhwama"
+      "giftCardRedeem": "Redeem to xikhwama",
+      "checkoutOpenFailed": "A hi nge koti ku pfula xihakelo lexi sirhelelekeke. Hi kombela u ringeta nakambe."
     },
     "mobile": {
       "stackTitles": {
@@ -17647,7 +17649,11 @@
       "groupGuestsLimit_one": "Engetela up to {{count}} Muendzi.",
       "groupGuestsLimit_other": "Engetela up to {{count}} guests."
     },
-    "noPaymentMethodsAvailable": "Mupfumeri loyi a amukeli hakelo ya inthanete kumbe ya munhu hi xiviri sweswi. Tihlanganisi na yena ku hetisa booking ya wena."
+    "noPaymentMethodsAvailable": "Mupfumeri loyi a amukeli hakelo ya inthanete kumbe ya munhu hi xiviri sweswi. Tihlanganisi na yena ku hetisa booking ya wena.",
+    "paymentUnavailableTitle": "xihakelo a yi kumeki",
+    "paymentBrowserFailed": "A hi nge koti ku pfula fensetere leyi sirhelelekeke ya xihakelo. Hi kombela u ringeta nakambe.",
+    "paymentNotCompletedTitle": "Xihakelo a xi hetiwanga",
+    "paymentNotCompletedBody": "Ku bukuta ka wena a ku tiyisisiwanga."
   },
   "payments": {
     "pay": "Hakela",

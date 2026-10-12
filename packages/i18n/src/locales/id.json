@@ -13387,7 +13387,8 @@
       "failedRedeemGiftCard": "Impossible de redeem carte cadeau",
       "giftCardRedeemedDefault": "Carte cadeau redeemed to portefeuille successfully",
       "giftRedeemHelp": "Faka ikhodi oyithengile noma othile akuthumelele yona — ibhalansi ephelele ifakwa esikhwameni sakho semali ngokushesha.",
-      "yourGiftCards": "Tu tarjetas de regalo"
+      "yourGiftCards": "Tu tarjetas de regalo",
+      "checkoutOpenFailed": "Kami tidak dapat membuka checkout aman. Silakan coba lagi."
     },
     "paymentsScreen": {
       "saveCardExplainer": "Sizolondoloza ikhadi lakho ngokuphephile uma ukhokha. Ukuze uqinisekise ikhadi lakho, inkokhiso yesikhashana encane (isb. {{example}}) ingase ibekwe futhi ihlehliswe—lokhu kuqinisekisa ikhadi lakho ukuze ulisebenzise esikhathini esizayo.",
@@ -13441,7 +13442,8 @@
       "giftCardCopy": "Copier le code",
       "giftCardCopied": "Copié",
       "giftCardShare": "Share carte cadeau",
-      "giftCardRedeem": "Redeem to portefeuille"
+      "giftCardRedeem": "Redeem to portefeuille",
+      "checkoutOpenFailed": "Kami tidak dapat membuka checkout aman. Silakan coba lagi."
     },
     "mobile": {
       "stackTitles": {
@@ -17647,7 +17649,11 @@
       "groupGuestsLimit_one": "Ajouter up to {{count}} guest.",
       "groupGuestsLimit_other": "Ajouter up to {{count}} guests."
     },
-    "noPaymentMethodsAvailable": "Penyedia ini saat ini tidak menerima pembayaran online atau tatap muka. Hubungi mereka untuk menyelesaikan pemesanan Anda."
+    "noPaymentMethodsAvailable": "Penyedia ini saat ini tidak menerima pembayaran online atau tatap muka. Hubungi mereka untuk menyelesaikan pemesanan Anda.",
+    "paymentUnavailableTitle": "Pembayaran tidak tersedia",
+    "paymentBrowserFailed": "Kami tidak dapat membuka jendela pembayaran aman. Silakan coba lagi.",
+    "paymentNotCompletedTitle": "Pembayaran belum selesai",
+    "paymentNotCompletedBody": "Pemesanan Anda belum dikonfirmasi."
   },
   "payments": {
     "pay": "Pay",

@@ -13387,7 +13387,8 @@
       "failedRedeemGiftCard": "Impossible de redeem carte cadeau",
       "giftCardRedeemedDefault": "Carte cadeau redeemed to portefeuille successfully",
       "giftRedeemHelp": "Faka ikhodi oyithengile noma othile akuthumelele yona — ibhalansi ephelele ifakwa esikhwameni sakho semali ngokushesha.",
-      "yourGiftCards": "Tu tarjetas de regalo"
+      "yourGiftCards": "Tu tarjetas de regalo",
+      "checkoutOpenFailed": "Sicherer Checkout konnte nicht geöffnet werden. Bitte versuche es erneut."
     },
     "paymentsScreen": {
       "saveCardExplainer": "Sizolondoloza ikhadi lakho ngokuphephile uma ukhokha. Ukuze uqinisekise ikhadi lakho, inkokhiso yesikhashana encane (isb. {{example}}) ingase ibekwe futhi ihlehliswe—lokhu kuqinisekisa ikhadi lakho ukuze ulisebenzise esikhathini esizayo.",
@@ -13441,7 +13442,8 @@
       "giftCardCopy": "Copier le code",
       "giftCardCopied": "Copié",
       "giftCardShare": "Share carte cadeau",
-      "giftCardRedeem": "Redeem to portefeuille"
+      "giftCardRedeem": "Redeem to portefeuille",
+      "checkoutOpenFailed": "Sicherer Checkout konnte nicht geöffnet werden. Bitte versuche es erneut."
     },
     "mobile": {
       "stackTitles": {
@@ -17647,7 +17649,11 @@
       "groupGuestsLimit_one": "Ajouter up to {{count}} guest.",
       "groupGuestsLimit_other": "Ajouter up to {{count}} guests."
     },
-    "noPaymentMethodsAvailable": "Dieser Anbieter akzeptiert derzeit keine Online- oder Vor-Ort-Zahlungen. Kontaktieren Sie ihn, um Ihre Buchung abzuschließen."
+    "noPaymentMethodsAvailable": "Dieser Anbieter akzeptiert derzeit keine Online- oder Vor-Ort-Zahlungen. Kontaktieren Sie ihn, um Ihre Buchung abzuschließen.",
+    "paymentUnavailableTitle": "Zahlung nicht verfügbar",
+    "paymentBrowserFailed": "Das sichere Zahlungsfenster konnte nicht geöffnet werden. Bitte versuche es erneut.",
+    "paymentNotCompletedTitle": "Zahlung nicht abgeschlossen",
+    "paymentNotCompletedBody": "Deine Buchung wurde nicht bestätigt."
   },
   "payments": {
     "pay": "Pay",

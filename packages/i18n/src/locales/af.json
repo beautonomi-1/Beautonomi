@@ -13419,7 +13419,8 @@
       "failedRedeemGiftCard": "Kon nie redeem geskenkkaart nie",
       "giftCardRedeemedDefault": "geskenkkaart redeemed to beursie suksesvoly",
       "giftRedeemHelp": "Voer 'n kode in wat jy gekoop het of wat iemand met jou gedeel het - die volle balans word onmiddellik by jou beursie gevoeg.",
-      "yourGiftCards": "Jou geskenkkaarte"
+      "yourGiftCards": "Jou geskenkkaarte",
+      "checkoutOpenFailed": "Ons kon nie veilige betaaling oopmaak nie. Probeer asseblief weer."
     },
     "paymentsScreen": {
       "saveCardExplainer": "Ons sal jou kaart veilig stoor wanneer jy betaal. Om jou kaart te verifieer, kan 'n klein tydelike heffing (bv. {{example}}) geplaas en omgekeer word—dit bevestig jou kaart vir toekomstige gebruik.",
@@ -13473,7 +13474,8 @@
       "giftCardCopy": "Kopieer kode",
       "giftCardCopied": "Gekopieer",
       "giftCardShare": "deel geskenkkaart",
-      "giftCardRedeem": "Redeem to beursie"
+      "giftCardRedeem": "Redeem to beursie",
+      "checkoutOpenFailed": "Ons kon nie veilige betaaling oopmaak nie. Probeer asseblief weer."
     },
     "mobile": {
       "stackTitles": {
@@ -17675,7 +17677,11 @@
       "groupGuestsLimit_one": "Voeg up to {{count}} Gas. by.",
       "groupGuestsLimit_other": "Voeg up to {{count}} guests. by."
     },
-    "noPaymentMethodsAvailable": "Hierdie verskaffer aanvaar tans nie aanlyn- of persoonlike betalings nie. Kontak hulle om jou bespreking te voltooi."
+    "noPaymentMethodsAvailable": "Hierdie verskaffer aanvaar tans nie aanlyn- of persoonlike betalings nie. Kontak hulle om jou bespreking te voltooi.",
+    "paymentUnavailableTitle": "betaling onbeskikbaar",
+    "paymentBrowserFailed": "Ons kon nie die veilige betalingsvenster oopmaak nie. Probeer asseblief weer.",
+    "paymentNotCompletedTitle": "Betaling nie voltooi nie",
+    "paymentNotCompletedBody": "Jou bespreking is nie bevestig nie."
   },
   "payments": {
     "pay": "Betaal",

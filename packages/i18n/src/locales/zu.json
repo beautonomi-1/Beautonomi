@@ -13419,7 +13419,8 @@
       "failedRedeemGiftCard": "Kwehlulekile uku-redeem ikhadi lesipho",
       "giftCardRedeemedDefault": "ikhadi lesipho redeemed to isikhwama impumelelokugcweley",
       "giftRedeemHelp": "Faka ikhodi oyithengile noma othile akuthumelele yona — ibhalansi ephelele ifakwa esikhwameni sakho semali ngokushesha.",
-      "yourGiftCards": "amakhadi ezipho yakho"
+      "yourGiftCards": "amakhadi ezipho yakho",
+      "checkoutOpenFailed": "Asikwazanga ukuvula ukukhokha okuvikelekile. Sicela uzame futhi."
     },
     "paymentsScreen": {
       "saveCardExplainer": "Sizolondoloza ikhadi lakho ngokuphephile uma ukhokha. Ukuze uqinisekise ikhadi lakho, inkokhiso yesikhashana encane (isb. {{example}}) ingase ibekwe futhi ihlehliswe—lokhu kuqinisekisa ikhadi lakho ukuze ulisebenzise esikhathini esizayo.",
@@ -13473,7 +13474,8 @@
       "giftCardCopy": "Kopieer kode",
       "giftCardCopied": "Copied",
       "giftCardShare": "yabelana ikhadi lesipho",
-      "giftCardRedeem": "Redeem to isikhwama"
+      "giftCardRedeem": "Redeem to isikhwama",
+      "checkoutOpenFailed": "Asikwazanga ukuvula ukukhokha okuvikelekile. Sicela uzame futhi."
     },
     "mobile": {
       "stackTitles": {
@@ -17675,7 +17677,11 @@
       "groupGuestsLimit_one": "Engeza up to {{count}} Isivakashi.",
       "groupGuestsLimit_other": "Engeza up to {{count}} guests."
     },
-    "noPaymentMethodsAvailable": "Lo mhlinzeki akamukeli izinkokhelo eziku-inthanethi noma mathupha njengamanje. Xhumana naye ukuze uqedele ukubhukha kwakho."
+    "noPaymentMethodsAvailable": "Lo mhlinzeki akamukeli izinkokhelo eziku-inthanethi noma mathupha njengamanje. Xhumana naye ukuze uqedele ukubhukha kwakho.",
+    "paymentUnavailableTitle": "inkokhelo ayitholakali",
+    "paymentBrowserFailed": "Asikwazanga ukuvula iwindi lokukhokha elivikelekile. Sicela uzame futhi.",
+    "paymentNotCompletedTitle": "Inkokhelo ayiqediwe",
+    "paymentNotCompletedBody": "Ukubhukha kwakho akuqinisekisiwe."
   },
   "payments": {
     "pay": "Khokha",

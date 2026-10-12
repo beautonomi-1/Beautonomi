@@ -13387,7 +13387,8 @@
       "failedRedeemGiftCard": "No se pudo redeem tarjeta de regalo",
       "giftCardRedeemedDefault": "tarjeta de regalo redeemed to monedero listollenoy",
       "giftRedeemHelp": "Faka ikhodi oyithengile noma othile akuthumelele yona — ibhalansi ephelele ifakwa esikhwameni sakho semali ngokushesha.",
-      "yourGiftCards": "Tu tarjetas de regalo"
+      "yourGiftCards": "Tu tarjetas de regalo",
+      "checkoutOpenFailed": "No pudimos abrir el pago seguro. Inténtalo de nuevo."
     },
     "paymentsScreen": {
       "saveCardExplainer": "Sizolondoloza ikhadi lakho ngokuphephile uma ukhokha. Ukuze uqinisekise ikhadi lakho, inkokhiso yesikhashana encane (isb. {{example}}) ingase ibekwe futhi ihlehliswe—lokhu kuqinisekisa ikhadi lakho ukuze ulisebenzise esikhathini esizayo.",
@@ -13441,7 +13442,8 @@
       "giftCardCopy": "Copiar código",
       "giftCardCopied": "Copiado",
       "giftCardShare": "compartir tarjeta de regalo",
-      "giftCardRedeem": "Redeem to monedero"
+      "giftCardRedeem": "Redeem to monedero",
+      "checkoutOpenFailed": "No pudimos abrir el pago seguro. Inténtalo de nuevo."
     },
     "mobile": {
       "stackTitles": {
@@ -17647,7 +17649,11 @@
       "groupGuestsLimit_one": "Añadir up to {{count}} Invitado.",
       "groupGuestsLimit_other": "Añadir up to {{count}} guests."
     },
-    "noPaymentMethodsAvailable": "Este proveedor no acepta pagos en línea ni presenciales en este momento. Contáctalo para completar tu reserva."
+    "noPaymentMethodsAvailable": "Este proveedor no acepta pagos en línea ni presenciales en este momento. Contáctalo para completar tu reserva.",
+    "paymentUnavailableTitle": "Pago no disponible",
+    "paymentBrowserFailed": "No pudimos abrir la ventana de pago seguro. Inténtalo de nuevo.",
+    "paymentNotCompletedTitle": "Pago no completado",
+    "paymentNotCompletedBody": "Tu reserva no ha sido confirmada."
   },
   "payments": {
     "pay": "Pay",

@@ -13387,7 +13387,8 @@
       "failedRedeemGiftCard": "تعذر redeem بطاقة هدايا",
       "giftCardRedeemedDefault": "بطاقة هدايا redeemed to محفظة successfully",
       "giftRedeemHelp": "Faka ikhodi oyithengile noma othile akuthumelele yona — ibhalansi ephelele ifakwa esikhwameni sakho semali ngokushesha.",
-      "yourGiftCards": "Tu tarjetas de regalo"
+      "yourGiftCards": "Tu tarjetas de regalo",
+      "checkoutOpenFailed": "تعذّر فتح الدفع الآمن. يُرجى المحاولة مرة أخرى."
     },
     "paymentsScreen": {
       "saveCardExplainer": "Sizolondoloza ikhadi lakho ngokuphephile uma ukhokha. Ukuze uqinisekise ikhadi lakho, inkokhiso yesikhashana encane (isb. {{example}}) ingase ibekwe futhi ihlehliswe—lokhu kuqinisekisa ikhadi lakho ukuze ulisebenzise esikhathini esizayo.",
@@ -13441,7 +13442,8 @@
       "giftCardCopy": "نسخ الرمز",
       "giftCardCopied": "تم النسخ",
       "giftCardShare": "Share بطاقة هدايا",
-      "giftCardRedeem": "Redeem to محفظة"
+      "giftCardRedeem": "Redeem to محفظة",
+      "checkoutOpenFailed": "تعذّر فتح الدفع الآمن. يُرجى المحاولة مرة أخرى."
     },
     "mobile": {
       "stackTitles": {
@@ -17647,7 +17649,11 @@
       "groupGuestsLimit_one": "إضافة up to {{count}} guest.",
       "groupGuestsLimit_other": "إضافة up to {{count}} guests."
     },
-    "noPaymentMethodsAvailable": "هذا المزوّد لا يقبل المدفوعات عبر الإنترنت أو حضوريًا حاليًا. تواصل معه لإكمال حجزك."
+    "noPaymentMethodsAvailable": "هذا المزوّد لا يقبل المدفوعات عبر الإنترنت أو حضوريًا حاليًا. تواصل معه لإكمال حجزك.",
+    "paymentUnavailableTitle": "الدفع غير متاح",
+    "paymentBrowserFailed": "تعذّر فتح نافذة الدفع الآمن. يُرجى المحاولة مرة أخرى.",
+    "paymentNotCompletedTitle": "لم يكتمل الدفع",
+    "paymentNotCompletedBody": "لم يتم تأكيد حجزك."
   },
   "payments": {
     "pay": "دفع",

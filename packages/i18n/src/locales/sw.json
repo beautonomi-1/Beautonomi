@@ -13387,7 +13387,8 @@
       "failedRedeemGiftCard": "Imeshindwa redeem kadi ya zawadi",
       "giftCardRedeemedDefault": "Kadi ya zawadi redeemed to pochi successfully",
       "giftRedeemHelp": "Faka ikhodi oyithengile noma othile akuthumelele yona — ibhalansi ephelele ifakwa esikhwameni sakho semali ngokushesha.",
-      "yourGiftCards": "Tu tarjetas de regalo"
+      "yourGiftCards": "Tu tarjetas de regalo",
+      "checkoutOpenFailed": "Hatukuweza kufungua malipo salama. Tafadhali jaribu tena."
     },
     "paymentsScreen": {
       "saveCardExplainer": "Sizolondoloza ikhadi lakho ngokuphephile uma ukhokha. Ukuze uqinisekise ikhadi lakho, inkokhiso yesikhashana encane (isb. {{example}}) ingase ibekwe futhi ihlehliswe—lokhu kuqinisekisa ikhadi lakho ukuze ulisebenzise esikhathini esizayo.",
@@ -13441,7 +13442,8 @@
       "giftCardCopy": "Nakili msimbo",
       "giftCardCopied": "Imenakiliwa",
       "giftCardShare": "Share kadi ya zawadi",
-      "giftCardRedeem": "Redeem to pochi"
+      "giftCardRedeem": "Redeem to pochi",
+      "checkoutOpenFailed": "Hatukuweza kufungua malipo salama. Tafadhali jaribu tena."
     },
     "mobile": {
       "stackTitles": {
@@ -17647,7 +17649,11 @@
       "groupGuestsLimit_one": "Ongeza up to {{count}} guest.",
       "groupGuestsLimit_other": "Ongeza up to {{count}} guests."
     },
-    "noPaymentMethodsAvailable": "Mtoa huduma huyu hapokei malipo ya mtandaoni au ana kwa ana kwa sasa. Wasiliana naye kukamilisha uhifadhi wako."
+    "noPaymentMethodsAvailable": "Mtoa huduma huyu hapokei malipo ya mtandaoni au ana kwa ana kwa sasa. Wasiliana naye kukamilisha uhifadhi wako.",
+    "paymentUnavailableTitle": "Malipo hayapatikani",
+    "paymentBrowserFailed": "Hatukuweza kufungua dirisha salama la malipo. Tafadhali jaribu tena.",
+    "paymentNotCompletedTitle": "Malipo hayajakamilika",
+    "paymentNotCompletedBody": "Uhifadhi wako haujathibitishwa."
   },
   "payments": {
     "pay": "Pay",

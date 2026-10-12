@@ -13387,7 +13387,8 @@
       "failedRedeemGiftCard": "Kwehlulekile ku-redeem ikhadi lesipho",
       "giftCardRedeemedDefault": "ikhadi lesipho redeemed to sikhwama impumelelokugcweley",
       "giftRedeemHelp": "Voer 'n kode in wat jy gekoop het of wat iemand met jou gedeel het - die volle balans word onmiddellik by jou beursie gevoeg.",
-      "yourGiftCards": "emakhadi etipho yakho"
+      "yourGiftCards": "emakhadi etipho yakho",
+      "checkoutOpenFailed": "Asikwazanga kuvula inkhokhelo levikelekile. Sicela uzame futsi."
     },
     "paymentsScreen": {
       "saveCardExplainer": "Ons sal jou kaart veilig stoor wanneer jy betaal. Om jou kaart te verifieer, kan 'n klein tydelike heffing (bv. {{example}}) geplaas en omgekeer word—dit bevestig jou kaart vir toekomstige gebruik.",
@@ -13441,7 +13442,8 @@
       "giftCardCopy": "Khopisha ikhodi",
       "giftCardCopied": "Kukhopishiwe",
       "giftCardShare": "yabelana ikhadi lesipho",
-      "giftCardRedeem": "Redeem to sikhwama"
+      "giftCardRedeem": "Redeem to sikhwama",
+      "checkoutOpenFailed": "Asikwazanga kuvula inkhokhelo levikelekile. Sicela uzame futsi."
     },
     "mobile": {
       "stackTitles": {
@@ -17647,7 +17649,11 @@
       "groupGuestsLimit_one": "Ngeta up to {{count}} Sivakashi.",
       "groupGuestsLimit_other": "Ngeta up to {{count}} guests."
     },
-    "noPaymentMethodsAvailable": "Lo mhlinzeki akamukeli tinkhokhelo leti ku-inthanethi noma mathupha njengamanje. Tsintsana naye ukuze ucedze kubhuka kwakho."
+    "noPaymentMethodsAvailable": "Lo mhlinzeki akamukeli tinkhokhelo leti ku-inthanethi noma mathupha njengamanje. Tsintsana naye ukuze ucedze kubhuka kwakho.",
+    "paymentUnavailableTitle": "inkokhelo ayatfolakali",
+    "paymentBrowserFailed": "Asikwazanga kuvula lifestile lelivikelekile lembhadalweni. Sicela uzame futsi.",
+    "paymentNotCompletedTitle": "Inkokhelo ayikacitfwa",
+    "paymentNotCompletedBody": "Kubhukha kwakho akukacinisekiswanga."
   },
   "payments": {
     "pay": "Khokha",

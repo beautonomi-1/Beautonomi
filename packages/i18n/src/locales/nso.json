@@ -13387,7 +13387,8 @@
       "failedRedeemGiftCard": "E paletšwe go redeem karata ya mpho",
       "giftCardRedeemedDefault": "karata ya mpho redeemed to sepatši katlegoe tletšey",
       "giftRedeemHelp": "Voer 'n kode in wat jy gekoop het of wat iemand met jou gedeel het - die volle balans word onmiddellik by jou beursie gevoeg.",
-      "yourGiftCards": "dikarata tša mpho ya gago"
+      "yourGiftCards": "dikarata tša mpho ya gago",
+      "checkoutOpenFailed": "Ga re kgone go bula tefo e šireletšegile. Hle leka gape."
     },
     "paymentsScreen": {
       "saveCardExplainer": "Ons sal jou kaart veilig stoor wanneer jy betaal. Om jou kaart te verifieer, kan 'n klein tydelike heffing (bv. {{example}}) geplaas en omgekeer word—dit bevestig jou kaart vir toekomstige gebruik.",
@@ -13441,7 +13442,8 @@
       "giftCardCopy": "Kopiša khoutu",
       "giftCardCopied": "E kopišitšwe",
       "giftCardShare": "abelana karata ya mpho",
-      "giftCardRedeem": "Redeem to sepatši"
+      "giftCardRedeem": "Redeem to sepatši",
+      "checkoutOpenFailed": "Ga re kgone go bula tefo e šireletšegile. Hle leka gape."
     },
     "mobile": {
       "stackTitles": {
@@ -17647,7 +17649,11 @@
       "groupGuestsLimit_one": "Oketsa up to {{count}} Moeng.",
       "groupGuestsLimit_other": "Oketsa up to {{count}} guests."
     },
-    "noPaymentMethodsAvailable": "Mofaniši yo a sa amogele ditefiso tša inthanete goba tša sefahlego gabjale. Ikopanye le yena go phetha peakanyo ya gago."
+    "noPaymentMethodsAvailable": "Mofaniši yo a sa amogele ditefiso tša inthanete goba tša sefahlego gabjale. Ikopanye le yena go phetha peakanyo ya gago.",
+    "paymentUnavailableTitle": "tefo ga e gona",
+    "paymentBrowserFailed": "Ga re kgone go bula fensetere e šireletšegile ya tefo. Hle leka gape.",
+    "paymentNotCompletedTitle": "Tefo ga e sa phethwe",
+    "paymentNotCompletedBody": "Peeletšo ya gago ga se ya tiišetšwa."
   },
   "payments": {
     "pay": "Lefa",

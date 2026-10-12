@@ -13387,7 +13387,8 @@
       "failedRedeemGiftCard": "Kusilele uku-redeem ikhadi lesipho",
       "giftCardRedeemedDefault": "ikhadi lesipho redeemed to isipaji impumelelokugcweley",
       "giftRedeemHelp": "Voer 'n kode in wat jy gekoop het of wat iemand met jou gedeel het - die volle balans word onmiddellik by jou beursie gevoeg.",
-      "yourGiftCards": "amakhadi ezipho yakho"
+      "yourGiftCards": "amakhadi ezipho yakho",
+      "checkoutOpenFailed": "Asikwazanga ukuvula intlawulo ekhuselekileyo. Nceda uzame kwakhona."
     },
     "paymentsScreen": {
       "saveCardExplainer": "Ons sal jou kaart veilig stoor wanneer jy betaal. Om jou kaart te verifieer, kan 'n klein tydelike heffing (bv. {{example}}) geplaas en omgekeer word—dit bevestig jou kaart vir toekomstige gebruik.",
@@ -13441,7 +13442,8 @@
       "giftCardCopy": "Khuphela ikhowudi",
       "giftCardCopied": "Kukhutshwe",
       "giftCardShare": "yabelana ikhadi lesipho",
-      "giftCardRedeem": "Redeem to isipaji"
+      "giftCardRedeem": "Redeem to isipaji",
+      "checkoutOpenFailed": "Asikwazanga ukuvula intlawulo ekhuselekileyo. Nceda uzame kwakhona."
     },
     "mobile": {
       "stackTitles": {
@@ -17647,7 +17649,11 @@
       "groupGuestsLimit_one": "Yongeza up to {{count}} Undwendwe.",
       "groupGuestsLimit_other": "Yongeza up to {{count}} guests."
     },
-    "noPaymentMethodsAvailable": "Lo mboneleli akamkeli iintlawulo eziku-inthanethi okanye ngobuqu ngoku. Qhagamshelana naye ukuze ugqibe ubhukisho lwakho."
+    "noPaymentMethodsAvailable": "Lo mboneleli akamkeli iintlawulo eziku-inthanethi okanye ngobuqu ngoku. Qhagamshelana naye ukuze ugqibe ubhukisho lwakho.",
+    "paymentUnavailableTitle": "intlawulo ayifumaneki",
+    "paymentBrowserFailed": "Asikwazanga ukuvula ifestile yentlawulo ekhuselekileyo. Nceda uzame kwakhona.",
+    "paymentNotCompletedTitle": "Intlawulo ayigqitywanga",
+    "paymentNotCompletedBody": "Ukubhukisha kwakho akukaqinisekiswanga."
   },
   "payments": {
     "pay": "Hlawula",
