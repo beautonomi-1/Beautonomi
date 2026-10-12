@@ -264,7 +264,8 @@ export async function GET(request: NextRequest) {
           );
         }
 
-        const amountMajor = Number(data.data.amount || 0) / 100;
+        const poCurrency = String(poBeforeRow.currency || "ZAR").toUpperCase();
+        const amountMajor = convertFromSmallestUnit(Number(data.data.amount || 0), poCurrency);
         const expectedMajor = Math.max(
           0,
           Number(poBeforeRow.total_amount ?? 0) -
@@ -284,7 +285,7 @@ export async function GET(request: NextRequest) {
           productOrderId,
           reference,
           amountMajor,
-          feesMajor: Number(data.data.fees || 0) / 100,
+          feesMajor: convertFromSmallestUnit(Number(data.data.fees || 0), poCurrency),
           source: "paystack_verify",
           provider: "paystack",
         });
@@ -582,7 +583,8 @@ export async function GET(request: NextRequest) {
             403,
           );
         }
-        const amountMajor = Number(data.data.amount || 0) / 100;
+        const poCurrency = String(poBeforeRow.currency || "ZAR").toUpperCase();
+        const amountMajor = convertFromSmallestUnit(Number(data.data.amount || 0), poCurrency);
         const expectedMajor = Number(orderRow.amount ?? 0);
         if (String(orderRow.status ?? "") !== "paid" && Math.abs(amountMajor - expectedMajor) > 0.01) {
           return errorResponse(

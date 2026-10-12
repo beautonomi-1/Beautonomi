@@ -42,6 +42,34 @@ describe("customer +native-intent payment returns", () => {
     expect(out).toContain("/(app)/wallet-return");
   });
 
+  it("adds cancelled=1 on checkout/cancelled App Link cold start", () => {
+    const out = redirectSystemPath({
+      path: "https://app.beautonomi.com/checkout/cancelled?booking_id=b1&context=app",
+      initial: true,
+    });
+    expect(out).toContain("/(app)/book/paystack");
+    expect(out).toContain("cancelled=1");
+  });
+
+  it("maps pay-remaining cancel on booking detail to book/paystack", () => {
+    const out = redirectSystemPath({
+      path: "https://app.beautonomi.com/account-settings/bookings/b9?pay_remaining_cancelled=1&context=app",
+      initial: true,
+    });
+    expect(out).toContain("/(app)/book/paystack");
+    expect(out).toContain("booking_id=b9");
+    expect(out).toContain("cancelled=1");
+  });
+
+  it("maps gift card purchase cancelled", () => {
+    const out = redirectSystemPath({
+      path: "https://app.beautonomi.com/gift-card/purchase/cancelled?context=app",
+      initial: true,
+    });
+    expect(out).toContain("/(app)/gift-card-return");
+    expect(out).toContain("cancelled=1");
+  });
+
   it("maps customer:// deep link", () => {
     const out = redirectSystemPath({
       path: "customer://book/paystack?reference=abc",

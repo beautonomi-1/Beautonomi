@@ -41,8 +41,13 @@ import {
   ensureWalletGiftBookingPayments,
 } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-payment-types";
+import { getEffectiveCheckoutMethods } from "@/lib/payments/provider-checkout-methods";
 import { getPaymentProviderForTenant } from "@/lib/payments/provider/registry";
 import { chargeStripeOffSession } from "@/lib/payments/charge-stripe-off-session";
+import {
+  chargeAndSettleFlutterwaveOffSession,
+  isFlutterwaveSavedCardToken,
+} from "@/lib/payments/charge-flutterwave-off-session";
 import { assertReportingCurrencyReady } from "@/lib/fx/assert-reporting-currency-ready";
 import { insertCustomerRecurringSeriesFromPaidBooking } from "@/lib/recurring/insert-customer-recurring-from-paid-booking";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
@@ -114,11 +119,25 @@ export async function processPayment(
     ),
   });
   const paymentTypes = await getPlatformPaymentTypesForTenant(supabaseAdmin as any, flagTenantId);
+  const checkoutMethods = await getEffectiveCheckoutMethods({
+    supabase: supabaseAdmin as any,
+    tenantId: flagTenantId,
+    providerId: draft.provider_id,
+  });
 
-  if (paymentMethod === "cash" && !paymentTypes.cash) {
+  if (paymentMethod === "cash" && !checkoutMethods.cash) {
     return handleApiError(
       new Error("Cash payments are currently unavailable"),
       "Cash payments are currently unavailable. Please pay online.",
+      "FEATURE_DISABLED",
+      400
+    );
+  }
+
+  if (paymentMethod === "card" && !checkoutMethods.online) {
+    return handleApiError(
+      new Error("Online payments are not available for this provider"),
+      "Online payments are not available for this provider.",
       "FEATURE_DISABLED",
       400
     );
@@ -645,6 +664,46 @@ export async function processPayment(
             { bookingId: booking.id, err: reconcileErr },
           );
         }
+      } else if (
+        savedCardProvider === "flutterwave" &&
+        isFlutterwaveSavedCardToken(String(savedCard.provider_payment_method_id ?? ""))
+      ) {
+        const flwToken = String(savedCard.provider_payment_method_id ?? "").trim();
+        const flwCharge = await chargeAndSettleFlutterwaveOffSession(supabaseAdmin, {
+          tenantId: flagTenantId,
+          token: flwToken,
+          email,
+          amountInSmallestUnit: convertToSmallestUnit(amountToCollect, v.currency),
+          currency: v.currency,
+          reference,
+          metadata: savedCardMeta,
+        });
+        if (flwCharge.ok === false) {
+          return handleApiError(
+            new Error(flwCharge.message),
+            flwCharge.message || "Failed to charge saved card",
+            "PAYMENT_FAILED",
+            400,
+          );
+        }
+        paymentUrl = null;
+        paymentReference = reference;
+        try {
+          await syncBookingAfterPaystackSuccess(supabaseAdmin, booking.id, {
+            paymentReference: reference,
+            paymentProvider: "flutterwave",
+          });
+          if (giftCardAmountApplied > 0) {
+            await (supabaseAdmin.rpc as any)("capture_gift_card_redemption", {
+              p_booking_id: booking.id,
+            });
+          }
+        } catch (reconcileErr) {
+          console.error("[process-payment] post-flutterwave saved-card reconcile threw", {
+            bookingId: booking.id,
+            err: reconcileErr,
+          });
+        }
       } else {
       let chargeResult: Awaited<ReturnType<typeof chargeAuthorization>>;
       try {
@@ -842,7 +901,7 @@ export async function processPayment(
             amount: amountToCollect,
             currency: v.currency,
             status: "completed",
-            payment_provider: "paystack",
+            payment_provider: savedCardProvider,
             payment_provider_transaction_id: chargeResult.data.reference,
             payment_provider_response: chargeResult,
             payment_method_id: savedPaymentMethodId,

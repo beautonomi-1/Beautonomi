@@ -113,6 +113,9 @@ export interface YocoPaymentRequest {
   device_id: string;
   booking_id?: string;
   sale_id?: string;
+  group_booking_id?: string;
+  entity_type?: "booking" | "group_booking" | "sale" | "product_order" | "additional_charge";
+  entity_id?: string;
   description?: string;
 }
 

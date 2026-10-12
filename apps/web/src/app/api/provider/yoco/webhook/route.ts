@@ -11,6 +11,13 @@ import {
   reverseYocoSettlement,
   settleYocoPayment,
 } from "@/lib/payments/settle-yoco-payment";
+import { convertFromSmallestUnit } from "@/lib/payments/paystack";
+import {
+  getValidAccessToken,
+  resolveProviderCredentialMode,
+  YocoOAuthRequired,
+} from "@/lib/payments/yoco-oauth";
+import { getYocoEndpoints } from "@/lib/payments/yoco";
 
 export const maxDuration = 60;
 
@@ -31,6 +38,40 @@ function yocoCurrency(data: Record<string, unknown>, fallback: string): string {
     if (typeof currency === "string" && currency.trim()) return currency.trim();
   }
   return fallback;
+}
+
+async function reconfirmYocoPaymentStatus(params: {
+  providerId: string;
+  yocoDeviceId: string | null | undefined;
+  yocoPaymentId: string;
+  localStatus: string | null | undefined;
+}): Promise<"successful" | "failed" | "pending" | null> {
+  const { providerId, yocoDeviceId, yocoPaymentId, localStatus } = params;
+  if (!yocoDeviceId || yocoDeviceId.startsWith("virtual:")) {
+    return localStatus === "successful" ? "successful" : localStatus === "failed" ? "failed" : "pending";
+  }
+  try {
+    const credentials = await resolveProviderCredentialMode(providerId);
+    if (credentials.credentialMode !== "oauth") {
+      return localStatus === "successful" ? "successful" : localStatus === "failed" ? "failed" : "pending";
+    }
+    const endpoints = getYocoEndpoints(credentials.environment);
+    const accessToken = await getValidAccessToken(providerId, {
+      environment: credentials.environment,
+    });
+    const yocoResponse = await fetch(
+      endpoints.getWebPosPayment(yocoDeviceId, yocoPaymentId),
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (!yocoResponse.ok) return null;
+    const body = (await yocoResponse.json()) as { status?: string };
+    return normalizeYocoStatus(body.status);
+  } catch (err) {
+    if (!(err instanceof YocoOAuthRequired)) {
+      console.warn("Yoco webhook: API re-verify failed:", err);
+    }
+    return null;
+  }
 }
 
 function normalizeYocoStatus(status: unknown): "successful" | "failed" | "pending" {
@@ -305,9 +346,9 @@ async function handlePaymentNotification(
   supabase: SupabaseClient
 ) {
   const id = data.id as string | undefined;
-  const amount = yocoAmountCents(data.amount);
+  const amountCents = yocoAmountCents(data.amount);
   const currency = yocoCurrency(data, LAST_RESORT_CURRENCY);
-  const status = normalizeYocoStatus(data.status);
+  let status = normalizeYocoStatus(data.status);
   const metadata = (data.metadata ?? {}) as Record<string, unknown>;
 
   if (!id || !metadata?.provider_id) {
@@ -318,7 +359,7 @@ async function handlePaymentNotification(
   const { data: yocoPaymentRow } = await supabase
     .from("provider_yoco_payments")
     .select(
-      "id, sale_id, status, device_id, amount, provider_id, appointment_id, tip_amount, entity_type, entity_id, group_booking_id, metadata",
+      "id, sale_id, status, device_id, yoco_device_id, amount, provider_id, appointment_id, tip_amount, entity_type, entity_id, group_booking_id, metadata",
     )
     .eq("yoco_payment_id", id)
     .maybeSingle();
@@ -349,6 +390,23 @@ async function handlePaymentNotification(
     group_booking_id?: string | null;
     metadata?: Record<string, unknown> | null;
   } | null;
+
+  if (id && metadata?.provider_id) {
+    const providerIdForVerify = String(
+      existingPayment?.provider_id ?? metadata.provider_id,
+    );
+    const yocoDeviceId =
+      (existingPayment as { yoco_device_id?: string | null } | null)?.yoco_device_id ??
+      (typeof data.device_id === "string" ? data.device_id : undefined);
+    const confirmed = await reconfirmYocoPaymentStatus({
+      providerId: providerIdForVerify,
+      yocoDeviceId,
+      yocoPaymentId: id,
+      localStatus: status,
+    });
+    if (confirmed) status = confirmed;
+  }
+
   if (
     status === "successful" &&
     existingPayment?.status !== "successful" &&
@@ -449,7 +507,7 @@ async function handlePaymentNotification(
     });
 
     if (settleEntity && settleEntity.entityType !== "sale") {
-      const amountInCurrency = amount / 100;
+      const amountInCurrency = convertFromSmallestUnit(amountCents, currency);
       // tip_amount column defaults to 0 — treat 0 as unset so metadata tip still applies.
       const tipFromColumn = Number(existingPayment?.tip_amount ?? 0);
       const tipFromMeta = Number(metadata.tip_amount ?? 0);

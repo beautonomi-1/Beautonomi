@@ -15,6 +15,7 @@ import {
   handleStripeTransferReversed,
 } from "./_handlers/stripe-charge";
 import { handleStripeChargeDisputeCreated } from "./_handlers/stripe-dispute";
+import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 
 type LeaseRow = {
   acquired: boolean;
@@ -306,7 +307,10 @@ export async function POST(request: Request) {
           reference: intent.id ?? eventId,
           bookingId: typeof meta.booking_id === "string" ? meta.booking_id : null,
           orderId: typeof meta.product_order_id === "string" ? meta.product_order_id : null,
-          amountMajor: typeof intent.amount === "number" ? intent.amount / 100 : null,
+          amountMajor:
+            typeof intent.amount === "number"
+              ? convertFromSmallestUnit(intent.amount, String(intent.currency ?? "ZAR"))
+              : null,
           currency: intent.currency ? String(intent.currency).toUpperCase() : null,
           reason: intent.last_payment_error?.message ?? "payment_intent.payment_failed",
           customerEmail: intent.receipt_email ?? null,

@@ -195,6 +195,6 @@ export async function POST(request: NextRequest) {
     return new NextResponse("success", { status: 200, headers: { "Content-Type": "text/plain" } });
   } catch (error: any) {
     console.error("POST /api/provider/paycloud/webhook:", error);
-    return new NextResponse("success", { status: 200, headers: { "Content-Type": "text/plain" } });
+    return new NextResponse("fail", { status: 500, headers: { "Content-Type": "text/plain" } });
   }
 }

@@ -42,14 +42,46 @@ export function buildProviderAppDeepLink(path: string, params: URLSearchParams):
   return buildSchemeUrl(PROVIDER_SCHEME, path, params);
 }
 
+const CANCEL_QUERY_FLAGS = [
+  "cancelled",
+  "payment_cancelled",
+  "topup_cancelled",
+  "card_verification_cancelled",
+  "pay_remaining_cancelled",
+  "charge_cancelled",
+  "membership_cancelled",
+] as const;
+
+const CANCEL_LANDING_PATHS = ["/checkout/cancelled", "/shop/cancelled", "/gift-card/purchase/cancelled"] as const;
+
+export function isCheckoutCancelLanding(pathname: string, params: URLSearchParams): boolean {
+  if (CANCEL_LANDING_PATHS.some((p) => pathname.includes(p))) return true;
+  if (CANCEL_QUERY_FLAGS.some((k) => params.get(k) === "1")) return true;
+  const status = params.get("status")?.toLowerCase();
+  return status === "cancelled";
+}
+
 /**
  * Resolve customer HTTPS landing → `customer://` deep link, or null if browser-only visit.
+ * Native return screens key off `cancelled=1`, so every cancel landing carries it.
  */
 export function resolveCustomerNativeBouncePath(pathname: string, params: URLSearchParams): string | null {
   if (!isCustomerNativeAppContext(params.get("context"))) return null;
 
   const q = searchParamsForNativeBounce(params);
   const paymentType = params.get("payment_type");
+  if (isCheckoutCancelLanding(pathname, params)) q.set("cancelled", "1");
+
+  if (pathname.includes("/gift-card/purchase/cancelled")) {
+    return buildCustomerAppDeepLink("gift-card-return", q);
+  }
+
+  const bookingDetailMatch = pathname.match(/\/account-settings\/bookings\/([^/]+)\/?$/);
+  if (bookingDetailMatch) {
+    if (params.get("pay_remaining_cancelled") !== "1" && params.get("charge_cancelled") !== "1") return null;
+    if (!q.get("booking_id")) q.set("booking_id", decodeURIComponent(bookingDetailMatch[1]));
+    return buildCustomerAppDeepLink("book/paystack", q);
+  }
 
   if (pathname.includes("/checkout/cancelled")) {
     if (paymentType === "custom_offer") return buildCustomerAppDeepLink("custom-offer-paystack", q);
@@ -121,7 +153,11 @@ export function resolveProviderNativeBouncePath(pathname: string, params: URLSea
   }
 
   if (pathname.includes("/provider/settings/marketing-integrations")) {
-    if (params.get("topup") === "success" || params.get("payment_type") === "marketing_topup") {
+    if (
+      params.get("topup") === "success" ||
+      params.get("payment_type") === "marketing_topup" ||
+      params.get("topup_cancelled") === "1"
+    ) {
       return buildProviderAppDeepLink("settings/marketing-integrations", q);
     }
   }

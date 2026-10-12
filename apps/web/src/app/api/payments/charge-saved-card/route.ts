@@ -403,6 +403,26 @@ export async function POST(request: NextRequest) {
       }
       chargeCurrency = (adsOrderAmount as { currency?: string | null } | null)?.currency || lastResortCurrency;
       amountInSmallestUnit = convertToSmallestUnit(adsAmount, chargeCurrency);
+    } else if (walletTopupIdFromMeta) {
+      const { data: wtRow, error: wtErr } = await (supabase.from("wallet_topups") as any)
+        .select("id, user_id, amount, currency, status")
+        .eq("id", walletTopupIdFromMeta)
+        .maybeSingle();
+      if (wtErr || !wtRow) {
+        return notFoundResponse("Wallet top-up not found");
+      }
+      if (wtRow.user_id !== user.id) {
+        return errorResponse("Forbidden", "FORBIDDEN", 403);
+      }
+      if (String(wtRow.status ?? "").toLowerCase() !== "pending") {
+        return errorResponse("This top-up is no longer pending", "INVALID_STATUS", 400);
+      }
+      const wtAmount = Number(wtRow.amount ?? 0);
+      if (!Number.isFinite(wtAmount) || wtAmount <= 0) {
+        return errorResponse("Invalid wallet top-up amount", "INVALID_AMOUNT", 400);
+      }
+      chargeCurrency = String(wtRow.currency || lastResortCurrency).toUpperCase();
+      amountInSmallestUnit = convertToSmallestUnit(wtAmount, chargeCurrency);
     } else if (bookingIdFromMeta) {
       const resolved = await resolveBookingPaystackAmount(supabase, bookingIdFromMeta, user.id);
       if (resolved.ok === false) {

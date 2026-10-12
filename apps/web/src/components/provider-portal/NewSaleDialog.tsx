@@ -180,10 +180,40 @@ export function NewSaleDialog({
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const { ready: paycloudReady, blockers } = usePaycloudCollectReady();
+  const [acceptCash, setAcceptCash] = useState(true);
+  const [acceptCard, setAcceptCard] = useState(true);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void import("@/lib/http/fetcher").then(({ fetcher }) =>
+      fetcher.get<{ data?: { acceptCash?: boolean; acceptCard?: boolean } }>(
+        "/api/provider/settings/payments",
+      ),
+    )
+      .then((res) => {
+        if (cancelled) return;
+        const data = (res as { data?: { acceptCash?: boolean; acceptCard?: boolean } })?.data ?? res;
+        setAcceptCash((data as { acceptCash?: boolean })?.acceptCash !== false);
+        setAcceptCard((data as { acceptCard?: boolean })?.acceptCard !== false);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAcceptCash(true);
+          setAcceptCard(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
   const visiblePaymentMethods = paymentMethodDefs.filter((m) => {
+    if (m.id === "cash") return acceptCash;
     if (m.id === "gift_card") return giftCardsEnabled;
-    if (m.id === "yoco") return yocoEnabled;
-    if (m.id === "paycloud") return paycloudEnabled;
+    if (m.id === "yoco") return yocoEnabled && acceptCard;
+    if (m.id === "paycloud") return paycloudEnabled && acceptCard;
+    if (m.id === "card" || m.id === "eft") return acceptCard;
     return true;
   });
 
@@ -817,6 +847,41 @@ export function NewSaleDialog({
   const giftCardApplied = Math.min(giftCardBalance, subtotal + tax + tipAmount - discountAmount);
   const total = Math.max(0, subtotal + tax + tipAmount - discountAmount - giftCardApplied);
 
+  const mapPosMethodToSaleLeg = (method: string): string => {
+    if (method === "paycloud" || method === "card") return "card";
+    if (method === "yoco") return "yoco";
+    if (method === "gift_card") return "gift_card";
+    if (method === "cash") return "cash";
+    return "other";
+  };
+
+  const buildSplitTenderExtras = (): {
+    payment_method?: string;
+    payments?: Array<{ method: string; amount: number }>;
+    gift_card_code?: string;
+    gift_card_amount?: number;
+  } => {
+    if (giftCardApplied <= 0.005 || !giftCardCode.trim()) return {};
+    const code = giftCardCode.trim().toUpperCase();
+    if (total <= 0.005 || selectedPaymentMethod === "gift_card") {
+      return {
+        payment_method: "gift_card",
+        payments: [{ method: "gift_card", amount: giftCardApplied }],
+        gift_card_code: code,
+        gift_card_amount: giftCardApplied,
+      };
+    }
+    return {
+      payment_method: "split",
+      payments: [
+        { method: "gift_card", amount: giftCardApplied },
+        { method: mapPosMethodToSaleLeg(selectedPaymentMethod), amount: total },
+      ],
+      gift_card_code: code,
+      gift_card_amount: giftCardApplied,
+    };
+  };
+
   const handleSubmit = async (options?: {
     afterYocoTerminalSuccess?: boolean;
     yocoPayment?: YocoPayment;
@@ -882,8 +947,7 @@ export function NewSaleDialog({
       team_member_id: selectedTeamMember || undefined,
       team_member_name: teamMembers.find((m) => m.id === selectedTeamMember)?.name,
       coupon_code: appliedCoupon?.code,
-      gift_card_code: giftCardBalance > 0 ? giftCardCode : undefined,
-      gift_card_amount: giftCardApplied,
+      ...buildSplitTenderExtras(),
       is_walk_in:
         !customerId ||
         Boolean(selectedClient?.id?.startsWith("walk-in")) ||

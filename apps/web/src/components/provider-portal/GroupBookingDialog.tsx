@@ -64,6 +64,7 @@ import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
 import Link from "next/link";
 import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
+import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
 import { PAYCLOUD_SETUP_LABEL } from "@/lib/payments/paycloud-collect-cta";
 import { useTranslation } from "@beautonomi/i18n";
 import {
@@ -191,6 +192,11 @@ export function GroupBookingDialog({
   const [postCreatePaystackData, setPostCreatePaystackData] = useState<{
     expectedAmount: number;
     terminal: { qr_url?: string | null; payment_link?: string | null; terminal_url?: string | null; name?: string | null };
+  } | null>(null);
+  const [postCreateYocoData, setPostCreateYocoData] = useState<{
+    groupId: string;
+    expectedAmount: number;
+    locationId: string | null;
   } | null>(null);
   const [postCreatePaycloudData, setPostCreatePaycloudData] = useState<{
     groupId: string;
@@ -1048,9 +1054,7 @@ export function GroupBookingDialog({
             ? "cash"
             : createPaymentMethod === "card"
               ? "card"
-              : createPaymentMethod === "yoco_pos"
-                ? "yoco"
-                : null;
+              : null;
         const createdId =
           (created as { id?: string; data?: { id?: string } } | null)?.id ??
           (created as { data?: { id?: string } } | null)?.data?.id ??
@@ -1093,6 +1097,17 @@ export function GroupBookingDialog({
           onSuccess?.();
           onOpenChange(false);
           setPostCreatePaycloudData({
+            groupId: createdId,
+            expectedAmount: pricing.totalAmount,
+            locationId: formData.location_type === "at_home" ? null : formData.location_id ?? null,
+          });
+          return;
+        }
+        if (createPaymentMethod === "yoco_pos" && createdId) {
+          toast.success(t("web.provider.portal.groupBookingDialog.createdCollectOnMachine"));
+          onSuccess?.();
+          onOpenChange(false);
+          setPostCreateYocoData({
             groupId: createdId,
             expectedAmount: pricing.totalAmount,
             locationId: formData.location_type === "at_home" ? null : formData.location_id ?? null,
@@ -2412,6 +2427,22 @@ export function GroupBookingDialog({
           bookingLocationId={postCreatePaycloudData.locationId}
           onSuccess={() => {
             setPostCreatePaycloudData(null);
+            onSuccess?.();
+          }}
+        />
+      ) : null}
+
+      {postCreateYocoData ? (
+        <YocoPaymentDialog
+          open
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) setPostCreateYocoData(null);
+          }}
+          amount={postCreateYocoData.expectedAmount}
+          groupBookingId={postCreateYocoData.groupId}
+          bookingLocationId={postCreateYocoData.locationId}
+          onSuccess={() => {
+            setPostCreateYocoData(null);
             onSuccess?.();
           }}
         />

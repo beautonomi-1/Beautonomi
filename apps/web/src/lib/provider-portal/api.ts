@@ -1620,6 +1620,9 @@ export class ProviderApiClient implements ProviderApi {
           house_call_address: (data as any).house_call_address ?? null,
           is_walk_in: (data as any).is_walk_in ?? false,
           notes: (data as any).notes || null,
+          payments: (data as any).payments ?? undefined,
+          gift_card_code: (data as any).gift_card_code ?? undefined,
+          gift_card_amount: (data as any).gift_card_amount ?? undefined,
         }
       );
       
@@ -2978,6 +2981,7 @@ export class ProviderApiClient implements ProviderApi {
     appointment_id?: string;
     booking_id?: string;
     sale_id?: string;
+    group_booking_id?: string;
     metadata?: Record<string, unknown>;
   }): Promise<YocoPayment> {
     try {
@@ -2990,6 +2994,7 @@ export class ProviderApiClient implements ProviderApi {
         appointment_id: data.appointment_id,
         booking_id: data.booking_id,
         sale_id: data.sale_id,
+        group_booking_id: data.group_booking_id,
         metadata: data.metadata,
       });
     } catch (error: any) {

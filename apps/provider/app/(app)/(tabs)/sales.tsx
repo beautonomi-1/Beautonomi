@@ -276,32 +276,42 @@ export default function SalesScreen() {
 
   const paymentMethodOptions = useMemo(() => {
     const base: { label: string; value: PaymentMethod; icon: keyof typeof Ionicons.glyphMap }[] = [
-      { label: sl("payCash"), value: "cash", icon: "cash-outline" },
-      ...(yocoEnabled
+      ...(acceptCash ? [{ label: sl("payCash"), value: "cash" as const, icon: "cash-outline" as const }] : []),
+      ...(acceptCard && yocoEnabled
         ? [{ label: sl("payYoco"), value: "yoco" as const, icon: "card-outline" as const }]
         : []),
-      ...(canProcessPayments && paycloudEnabled && paycloudCollectEnabled
+      ...(acceptCard && canProcessPayments && paycloudEnabled && paycloudCollectEnabled
         ? [{
             label: paycloudInFlight ? sl("payResumeCardMachine") : sl("payCardMachine"),
             value: "paycloud" as const,
             icon: "card-outline" as const,
           }]
         : []),
-      ...(manualCardEnabled
+      ...(acceptCard && manualCardEnabled
         ? [{ label: manualCardCollectOptionLabel(), value: "card" as const, icon: "reader-outline" as const }]
         : []),
-      { label: sl("payEft"), value: "eft", icon: "swap-horizontal-outline" },
+      ...(acceptCard ? [{ label: sl("payEft"), value: "eft" as const, icon: "swap-horizontal-outline" as const }] : []),
     ];
-    if (paystackTerminalEnabled) {
-      const insertAt = 2 + (yocoEnabled ? 1 : 0) + (canProcessPayments && paycloudEnabled && paycloudCollectEnabled ? 1 : 0);
-      base.splice(insertAt, 0, {
+    if (acceptCard && paystackTerminalEnabled) {
+      base.push({
         label: sl("payPaystackTerminal"),
         value: "paystack_terminal",
         icon: "qr-code-outline",
       });
     }
-    return base;
-  }, [paystackTerminalEnabled, yocoEnabled, manualCardEnabled, paycloudEnabled, paycloudCollectEnabled, paycloudInFlight, canProcessPayments, sl]);
+    return base.length > 0 ? base : [{ label: sl("payCash"), value: "cash" as const, icon: "cash-outline" as const }];
+  }, [
+    paystackTerminalEnabled,
+    yocoEnabled,
+    manualCardEnabled,
+    paycloudEnabled,
+    paycloudCollectEnabled,
+    paycloudInFlight,
+    canProcessPayments,
+    acceptCash,
+    acceptCard,
+    sl,
+  ]);
   const adsSelfServeAvailable = Boolean(adsModule?.enabled) || adsFeatureOn;
   const { provider, selectedLocationId } = useProvider();
   const locQ = selectedLocationId ? `&location_id=${selectedLocationId}` : "";
@@ -322,6 +332,11 @@ export default function SalesScreen() {
   const [discount, setDiscount] = useState("");
   const [tip, setTip] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+
+  useEffect(() => {
+    if (paymentMethodOptions.some((o) => o.value === paymentMethod)) return;
+    setPaymentMethod(paymentMethodOptions[0]?.value ?? "cash");
+  }, [paymentMethodOptions, paymentMethod]);
 
   useEffect(() => {
     if (!paycloudCollectEnabled && paymentMethod === "paycloud") {
@@ -475,12 +490,16 @@ export default function SalesScreen() {
   }, [refreshMetrics, refreshSales]);
 
   // Cart helpers
-  const { data: paymentSettings } = useApi<{ taxRatePercent?: number; taxInclusive?: boolean }>(
-    "/api/provider/settings/payments",
-    { enabled: isFocused, staleTimeMs: 60_000 },
-  );
+  const { data: paymentSettings } = useApi<{
+    taxRatePercent?: number;
+    taxInclusive?: boolean;
+    acceptCash?: boolean;
+    acceptCard?: boolean;
+  }>("/api/provider/settings/payments", { enabled: isFocused, staleTimeMs: 60_000 });
   const taxRate = (paymentSettings?.taxRatePercent ?? 0) / 100;
   const taxInclusive = paymentSettings?.taxInclusive ?? true;
+  const acceptCash = paymentSettings?.acceptCash !== false;
+  const acceptCard = paymentSettings?.acceptCard !== false;
 
   const cartTotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.price * item.quantity, 0),

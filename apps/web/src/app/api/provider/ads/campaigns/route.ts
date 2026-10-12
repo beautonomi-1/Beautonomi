@@ -17,6 +17,7 @@ import {
   SUBSCRIPTION_FEATURE_KEYS,
 } from "@/lib/subscriptions/feature-access";
 import { reverseAdsBudgetOrderPayment } from "@/lib/ads/ads-budget-order-payment";
+import { resolveAdPackAmountMajor } from "@/lib/ads/resolve-ad-pack-price";
 
 async function getProviderId(userId: string, request: NextRequest): Promise<string | null> {
   const supabase = getSupabaseAdmin();
@@ -328,12 +329,12 @@ export async function POST(request: NextRequest) {
       }
       const { data: pack } = await supabase
         .from("ads_time_packs")
-        .select("id, duration_days, price_zar, label, apple_product_id")
+        .select("id, duration_days, price_zar, price_minor, currency, label, apple_product_id")
         .eq("id", timePackId)
         .eq("is_active", true)
         .single();
       if (!pack) return errorResponse("Invalid or inactive time pack", "VALIDATION", 400);
-      budget = Number((pack as any).price_zar);
+      budget = resolveAdPackAmountMajor(pack as { price_minor?: number | null; price_zar?: number | null });
       durationDays = Number((pack as any).duration_days);
       billingModel = "time_based";
     } else if (impressionPackId) {
@@ -342,12 +343,12 @@ export async function POST(request: NextRequest) {
       }
       const { data: pack } = await supabase
         .from("ads_impression_packs")
-        .select("id, impressions, price_zar, apple_product_id")
+        .select("id, impressions, price_zar, price_minor, currency, apple_product_id")
         .eq("id", impressionPackId)
         .eq("is_active", true)
         .single();
       if (!pack) return errorResponse("Invalid or inactive impression pack", "VALIDATION", 400);
-      budget = Number((pack as any).price_zar);
+      budget = resolveAdPackAmountMajor(pack as { price_minor?: number | null; price_zar?: number | null });
       packImpressions = Number((pack as any).impressions);
       billingModel = "impression_pack";
     } else {

@@ -161,6 +161,9 @@ interface HoldData {
   package_id?: string;
   /** Tenant feature_flags — same as GET booking-holds + consume */
   payment_paystack?: boolean;
+  provider_accepts_online?: boolean;
+  provider_accepts_cash?: boolean;
+  cash_enabled_on_platform?: boolean;
   payment_gateway?: string;
   payment_wallet?: boolean;
   gift_cards?: boolean;
@@ -1976,17 +1979,24 @@ export default function BookCheckoutScreen() {
       ? hold.payment_gateway.trim().toLowerCase()
       : checkoutGateway.gateway;
   const paystackEnabled = hold ? hold.payment_paystack !== false : paystackFlagBundle;
+  const providerAcceptsOnline = hold?.provider_accepts_online !== false;
+  const providerAcceptsCash = hold?.provider_accepts_cash !== false;
   const cardOnlineEnabled =
-    marketGateway === "stripe" ||
-    marketGateway === "flutterwave" ||
-    (marketGateway === "paystack" && paystackEnabled) ||
-    (marketGateway !== "paystack" &&
-      marketGateway !== "stripe" &&
-      marketGateway !== "flutterwave" &&
-      (paystackEnabled || checkoutGateway.useHostedWebFallback));
+    providerAcceptsOnline &&
+    (marketGateway === "stripe" ||
+      marketGateway === "flutterwave" ||
+      (marketGateway === "paystack" && paystackEnabled) ||
+      (marketGateway !== "paystack" &&
+        marketGateway !== "stripe" &&
+        marketGateway !== "flutterwave" &&
+        (paystackEnabled || checkoutGateway.useHostedWebFallback)));
   const walletEnabled = hold ? hold.payment_wallet !== false : walletFlagBundle;
   const giftCardsEnabled = hold ? hold.gift_cards !== false : giftCardsFlagBundle;
-  const cashEnabled = hold?.cash_enabled_on_platform === true || cashEnabledOnPlatform;
+  const cashEnabled =
+    providerAcceptsCash &&
+    (hold?.cash_enabled_on_platform === true || cashEnabledOnPlatform);
+  const noPaymentMethodsAvailable =
+    Boolean(hold) && !cardOnlineEnabled && !cashEnabled && !giftCardsEnabled;
 
   const depositPctEffective =
     hold?.deposit_percentage != null && !Number.isNaN(Number(hold.deposit_percentage))
@@ -5215,6 +5225,11 @@ export default function BookCheckoutScreen() {
               <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>
                 {t("checkout.paymentMethod")}
               </Text>
+              {noPaymentMethodsAvailable ? (
+                <Text style={{ fontSize: 14, color: "#6B7280", marginBottom: 12 }}>
+                  {t("checkout.noPaymentMethodsAvailable")}
+                </Text>
+              ) : null}
               <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 12, gap: 8 }}>
                 {cardOnlineEnabled && (
                   <Pressable
@@ -5863,6 +5878,7 @@ export default function BookCheckoutScreen() {
                 !holdServerReady ||
                 consuming ||
                 isExpired ||
+                noPaymentMethodsAvailable ||
                 policyAckBlocksCheckout ||
                 loyaltyValidating ||
                 promoValidating ||

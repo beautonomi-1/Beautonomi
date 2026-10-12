@@ -17666,6 +17666,12 @@
     "securePaymentTitle": "Secure payment",
     "paymentCancelledTitle": "Payment cancelled",
     "paymentCancelledBody": "You cancelled the payment. Your booking has not been confirmed.",
+    "paymentCancelledHostedBody": "You cancelled the payment. No charge was made.",
+    "paymentCancelledBookingSaved": " Your booking is still saved — you can continue payment whenever you're ready.",
+    "cancelledBackToOffer": "Back to offer",
+    "cancelledReturnToBooking": "Return to booking",
+    "cancelledGoHome": "Go home",
+    "cancelledLoading": "Loading…",
     "contextualHints": {
       "dualFees": "Includes {{houseCall}} in house-call fees and a {{travel}} travel fee.",
       "depositPayNow": "Pay {{deposit}} now. The remaining {{balance}} stays on your booking, and you can pay it from there.",
@@ -17677,7 +17683,8 @@
       "groupSwitchOff": "Off",
       "groupGuestsLimit_one": "Add up to {{count}} guest.",
       "groupGuestsLimit_other": "Add up to {{count}} guests."
-    }
+    },
+    "noPaymentMethodsAvailable": "This provider is not accepting online or in-person payments right now. Contact them to complete your booking."
   },
   "payments": {
     "pay": "Pay",
@@ -18618,6 +18625,7 @@
         }
       },
       "stepPayment": {
+        "noPaymentMethodsAvailable": "This provider is not accepting online or in-person payments right now. Contact them to complete your booking.",
         "holdExpiredBody": "Your reserved slot has expired. Go back and pick a new time to continue.",
         "backToCalendar": "Choose another time",
         "slotHeldBefore": "Slot held for ",
@@ -22710,7 +22718,11 @@
           "continueToPayment": "Continue to Payment",
           "back": "Back",
           "processing": "Processing...",
-          "payAmount": "Pay {{amount}}"
+          "payAmount": "Pay {{amount}}",
+          "promoComingSoon": "Promo codes are not available at checkout yet",
+          "giftCardPlaceholder": "Enter code",
+          "giftCardAmount": "Amount to redeem",
+          "splitGiftAmount": "Gift card portion"
         },
         "calendarLinkDialog": {
           "updated": "Calendar link updated",

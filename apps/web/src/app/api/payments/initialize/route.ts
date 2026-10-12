@@ -9,7 +9,8 @@ import { initializeOnlinePayment } from "@/lib/payments/online-payment";
 import { assertReportingCurrencyReady } from "@/lib/fx/assert-reporting-currency-ready";
 import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
-import { resolveBookingPaystackAmount } from "@/lib/payments/resolve-paystack-initialize-amount";
+import { resolveBookingPendingAmount } from "@/lib/payments/resolve-paystack-initialize-amount";
+import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import { revalidateBookingSlotBeforePayment } from "@/lib/bookings/revalidate-booking-slot-before-payment";
 import { checkPaymentInitRateLimit } from "@/lib/rate-limit/payment-initialize";
 import { getRateLimitHeaders } from "@/lib/rate-limit/headers";
@@ -17,6 +18,7 @@ import {
   paystackChannelsForInitialize,
   resolveHostedCheckoutCallbacks,
 } from "@/lib/payments/resolve-paystack-hosted-callback";
+import { getEffectiveCheckoutMethods } from "@/lib/payments/provider-checkout-methods";
 
 /**
  * POST /api/payments/initialize
@@ -72,7 +74,7 @@ export async function POST(request: Request) {
     // Verify booking belongs to user; use booking tenant for PSP + currency (immutable market for this booking).
     const { data: booking } = await supabase
       .from("bookings")
-      .select("id, customer_id, total_amount, status, tenant_id, currency")
+      .select("id, customer_id, total_amount, status, tenant_id, currency, provider_id")
       .eq("id", booking_id)
       .eq("customer_id", auth.user.id)
       .single();
@@ -106,12 +108,13 @@ export async function POST(request: Request) {
     const tenantRegion = await getTenantRegionConfig(paymentTenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
-    if (bookingData.status !== "pending") {
+    const payableStatuses = new Set(["pending", "pending_payment"]);
+    if (!bookingData.status || !payableStatuses.has(bookingData.status)) {
       return NextResponse.json(
         {
           data: null,
           error: {
-            message: "Booking is not in pending status",
+            message: "Booking is not in a payable status",
             code: "INVALID_STATUS",
           },
         },
@@ -119,7 +122,28 @@ export async function POST(request: Request) {
       );
     }
 
-    const resolved = await resolveBookingPaystackAmount(supabase, booking_id, auth.user.id);
+    const providerIdForGate = (booking as { provider_id?: string }).provider_id;
+    if (providerIdForGate) {
+      const methods = await getEffectiveCheckoutMethods({
+        supabase: supabaseAdmin,
+        tenantId: paymentTenantId,
+        providerId: providerIdForGate,
+      });
+      if (!methods.online) {
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: "Online payments are not available for this provider",
+              code: "FEATURE_DISABLED",
+            },
+          },
+          { status: 400 },
+        );
+      }
+    }
+
+    const resolved = await resolveBookingPendingAmount(supabase, booking_id, auth.user.id);
     if (resolved.ok === false) {
       return NextResponse.json(
         {
@@ -228,10 +252,50 @@ export async function POST(request: Request) {
     await (supabaseAdmin.from("bookings") as any)
       .update({
         payment_reference: onlineInit.reference,
+        payment_provider: onlineInit.provider,
         payment_status: "pending",
+        ...(bookingData.status === "pending" ? { status: "pending_payment" } : {}),
       })
       .eq("id", booking_id)
       .eq("customer_id", auth.user.id);
+
+    const dueMajor =
+      resolved.ok && resolved.amountMajor != null
+        ? resolved.amountMajor
+        : convertFromSmallestUnit(amountInSmallestUnit, chargeCurrency);
+    const pendingId =
+      resolved.ok && "pendingPaymentId" in resolved ? resolved.pendingPaymentId : undefined;
+    const providerId = (booking as { provider_id?: string }).provider_id;
+
+    if (pendingId) {
+      await (supabaseAdmin.from("payments") as any)
+        .update({
+          payment_provider: onlineInit.provider,
+          payment_provider_transaction_id: onlineInit.reference,
+          payment_provider_response: onlineInit,
+          currency: chargeCurrency,
+          amount: dueMajor,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", pendingId)
+        .eq("user_id", auth.user.id)
+        .eq("status", "pending");
+    } else if (dueMajor > 0) {
+      await (supabaseAdmin.from("payments") as any).insert({
+        booking_id,
+        user_id: auth.user.id,
+        provider_id: providerId,
+        payment_number: "",
+        amount: dueMajor,
+        currency: chargeCurrency,
+        status: "pending",
+        payment_provider: onlineInit.provider,
+        payment_provider_transaction_id: onlineInit.reference,
+        payment_provider_response: onlineInit,
+        description: `Payment for booking ${booking_id}`,
+        metadata: { save_card: saveCard },
+      });
+    }
 
     return NextResponse.json({
       data: {

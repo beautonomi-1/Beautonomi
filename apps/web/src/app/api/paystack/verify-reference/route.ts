@@ -215,7 +215,9 @@ export async function GET(request: NextRequest) {
 
       const expectedMajor = Math.max(
         0,
-        Number(order.total_amount ?? 0) - Number(order.wallet_amount ?? 0),
+        Number(order.total_amount ?? 0) -
+          Number(order.wallet_amount ?? 0) -
+          Number(order.gift_card_amount ?? 0),
       );
       if (Math.abs(amountInCurrency - expectedMajor) > 0.01 && existingReference !== (d.reference ?? reference)) {
         return successResponse({

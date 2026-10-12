@@ -61,6 +61,7 @@ interface YocoPaymentDialogProps {
    * salon when providers operate multiple locations.
    */
   bookingLocationId?: string | null;
+  groupBookingId?: string;
   onSuccess?: (payment: YocoPayment) => void;
 }
 
@@ -72,6 +73,7 @@ export function YocoPaymentDialog({
   bookingId,
   saleId,
   bookingLocationId,
+  groupBookingId,
   onSuccess,
 }: YocoPaymentDialogProps) {
   const { t } = useTranslation();
@@ -157,10 +159,12 @@ export function YocoPaymentDialog({
         ...(appointmentId ? { appointment_id: appointmentId } : {}),
         ...(bookingId ? { booking_id: bookingId } : {}),
         sale_id: saleId,
+        ...(groupBookingId ? { group_booking_id: groupBookingId } : {}),
         metadata: {
           ...(appointmentId ? { appointment_ref: appointmentId } : {}),
           ...(bookingId ? { booking_ref: bookingId } : {}),
           sale_ref: saleId,
+          ...(groupBookingId ? { group_booking_ref: groupBookingId } : {}),
         },
       });
 

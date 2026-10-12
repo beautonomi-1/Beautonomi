@@ -78,8 +78,11 @@ import { recordSuccessfulProviderSubscriptionRenewalFromInvoice } from "@/app/ap
 import { slackNotifyPaymentFailed, slackNotifyUnrecognizedPayments } from "@/lib/integrations/slack/ops-triggers";
 import {
   bookingFinancialsFromDb,
+  verifyBookingCharge,
   verifyPaystackBookingCharge,
 } from "@/lib/bookings/verify-paystack-booking-charge";
+
+const ONLINE_VERIFY_PROVIDERS = new Set(["paystack", "stripe", "flutterwave"]);
 
 async function lastResortCurrencyFromTenantId(
   tenantId: string | null | undefined,
@@ -696,40 +699,40 @@ export async function processSuccessfulPayment(
       : null;
 
   let verifiedPendingPayment: Record<string, unknown> | null = null;
-  if (!alreadySettledPaymentTx) {
-    if (paymentProvider === "paystack") {
-      const verified = await verifyPaystackBookingCharge({
-        supabase,
+  if (!alreadySettledPaymentTx && ONLINE_VERIFY_PROVIDERS.has(paymentProvider)) {
+    const verified = await verifyBookingCharge({
+      supabase,
+      bookingId: metadata.booking_id,
+      reference: String(reference),
+      amountSmallest: amount || 0,
+      chargeCurrency:
+        typeof (data as { currency?: string }).currency === "string"
+          ? (data as { currency: string }).currency
+          : null,
+      tenantId: financeTenantId,
+      bookingPaymentReference:
+        typeof bookingData.payment_reference === "string" ? bookingData.payment_reference : null,
+      bookingCurrency: typeof bookingData.currency === "string" ? bookingData.currency : null,
+      psp: paymentProvider,
+    });
+    if (verified.ok === false) {
+      console.error("[charge-success] booking online charge rejected:", {
         bookingId: metadata.booking_id,
-        reference: String(reference),
-        paystackAmountSmallest: amount || 0,
-        paystackCurrency:
-          typeof (data as { currency?: string }).currency === "string"
-            ? (data as { currency: string }).currency
-            : null,
-        tenantId: financeTenantId,
-        bookingPaymentReference:
-          typeof bookingData.payment_reference === "string" ? bookingData.payment_reference : null,
-        bookingCurrency: typeof bookingData.currency === "string" ? bookingData.currency : null,
+        reference,
+        reason: verified.reason,
+        paymentProvider,
       });
-      if (verified.ok === false) {
-        console.error("[charge-success] booking Paystack charge rejected:", {
-          bookingId: metadata.booking_id,
-          reference,
-          reason: verified.reason,
-        });
-        slackNotifyUnrecognizedPayments({
-          tenantId: financeTenantId,
-          count: 1,
-          amountMajor: convertFromSmallestUnit(amount || 0, bookingPaystackCurrency),
-          currency:
-            typeof bookingData.currency === "string" ? bookingData.currency : null,
-          source: `paystack_webhook:${verified.reason}`,
-        });
-        return;
-      }
-      verifiedPendingPayment = verified.pendingPayment as Record<string, unknown>;
+      slackNotifyUnrecognizedPayments({
+        tenantId: financeTenantId,
+        count: 1,
+        amountMajor: convertFromSmallestUnit(amount || 0, bookingPaystackCurrency),
+        currency:
+          typeof bookingData.currency === "string" ? bookingData.currency : null,
+        source: `${paymentProvider}_webhook:${verified.reason}`,
+      });
+      return;
     }
+    verifiedPendingPayment = verified.pendingPayment as Record<string, unknown>;
   }
 
   if (alreadySettledPaymentTx) {
@@ -3741,17 +3744,18 @@ async function handleBookingRemainingSuccess(
   );
 
   let payRemainVerifiedPending: Record<string, unknown> | null = null;
-  if (paymentProvider === "paystack") {
-    const payRemainVerified = await verifyPaystackBookingCharge({
+  if (ONLINE_VERIFY_PROVIDERS.has(paymentProvider)) {
+    const payRemainVerified = await verifyBookingCharge({
       supabase,
       bookingId,
       reference: String(reference),
-      paystackAmountSmallest: amount || 0,
-      paystackCurrency: null,
+      amountSmallest: amount || 0,
+      chargeCurrency: null,
       tenantId: payRemainingFinanceTenantId,
       bookingPaymentReference:
         typeof bookingData.payment_reference === "string" ? bookingData.payment_reference : null,
       bookingCurrency: typeof bookingData.currency === "string" ? bookingData.currency : null,
+      psp: paymentProvider,
     });
     if (payRemainVerified.ok === false) {
       console.error("[pay-remaining] charge rejected:", payRemainVerified.reason, reference);
@@ -3760,7 +3764,7 @@ async function handleBookingRemainingSuccess(
         count: 1,
         amountMajor: amountInCurrency,
         currency: typeof bookingData.currency === "string" ? bookingData.currency : null,
-        source: `paystack_webhook:booking_remaining:${payRemainVerified.reason}`,
+        source: `${paymentProvider}_webhook:booking_remaining:${payRemainVerified.reason}`,
       });
       return;
     }
@@ -4008,24 +4012,25 @@ async function handleAdditionalChargeSuccess(
     return;
   }
 
-  if (paymentProvider === "paystack") {
-    const addChargeVerified = await verifyPaystackBookingCharge({
+  if (ONLINE_VERIFY_PROVIDERS.has(paymentProvider)) {
+    const addChargeVerified = await verifyBookingCharge({
       supabase,
       bookingId,
       reference: String(reference),
-      paystackAmountSmallest: amount || 0,
-      paystackCurrency: null,
+      amountSmallest: amount || 0,
+      chargeCurrency: null,
       tenantId: additionalChargeFinanceTenantId,
       bookingPaymentReference:
         typeof bookingData.payment_reference === "string" ? bookingData.payment_reference : null,
       bookingCurrency: typeof bookingData.currency === "string" ? bookingData.currency : null,
+      psp: paymentProvider,
     });
     if (addChargeVerified.ok === false) {
       console.error("[additional-charge] charge rejected:", addChargeVerified.reason, reference);
       slackNotifyUnrecognizedPayments({
         tenantId: additionalChargeFinanceTenantId,
         count: 1,
-        source: `paystack_webhook:additional_charge:${addChargeVerified.reason}`,
+        source: `${paymentProvider}_webhook:additional_charge:${addChargeVerified.reason}`,
       });
       return;
     }

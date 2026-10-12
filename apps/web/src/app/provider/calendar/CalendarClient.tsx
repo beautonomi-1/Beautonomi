@@ -1527,7 +1527,14 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     tipAmount: number,
     discountAmount: number,
     notes: string,
-    options?: { sendReceipt?: boolean; paycloudSettled?: boolean },
+    options?: {
+      sendReceipt?: boolean;
+      paycloudSettled?: boolean;
+      yocoSettled?: boolean;
+      gift_card_code?: string;
+      gift_card_amount?: number;
+      payments?: Array<{ method: string; amount: number }>;
+    },
   ) => {
     if (!selectedAppointment) {
       throw new Error(t("web.provider.calendarPage.noAppointmentSelected"));
@@ -1546,8 +1553,9 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
 
       const skipSaleRecord =
         options?.paycloudSettled === true ||
+        options?.yocoSettled === true ||
         (paymentMethod === "card" &&
-          (apt.payment_status === "paid" || options?.paycloudSettled));
+          (apt.payment_status === "paid" || options?.paycloudSettled || options?.yocoSettled));
 
       if (!skipSaleRecord) {
         try {
@@ -1561,6 +1569,9 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
               ? Number(apt.total_amount)
               : subtotalForSale + taxForSale + travel;
           const saleTotal = Math.max(0, bookingTotal + tipAmount - discountAmount);
+
+          const salePaymentMethod =
+            paymentMethod === "split" ? "split" : paymentMethod === "mobile" ? "other" : paymentMethod;
 
           await providerApi.createSale({
             customer_id: apt.client_id,
@@ -1579,12 +1590,29 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
             subtotal: subtotalForSale,
             tax: taxForSale,
             total: saleTotal,
-            payment_method: paymentMethod,
+            payment_method: salePaymentMethod,
             location_id: apt.location_id || undefined,
             team_member_id: apt.team_member_id || undefined,
             notes: notes ? `${notes}${tipAmount > 0 ? ` (Tip: ${formatCurrency(tipAmount)})` : ""}`.trim() : undefined,
             discount_amount: discountAmount,
+            gift_card_code: options?.gift_card_code,
+            gift_card_amount: options?.gift_card_amount,
+            payments: options?.payments,
           } as Parameters<typeof providerApi.createSale>[0]);
+
+          if (
+            bookingIdForRating &&
+            apt.payment_status !== "paid" &&
+            !options?.paycloudSettled &&
+            !options?.yocoSettled &&
+            paymentMethod !== "card"
+          ) {
+            const { fetcher } = await import("@/lib/http/fetcher");
+            await fetcher.post(`/api/provider/bookings/${bookingIdForRating}/mark-paid`, {
+              payment_method: paymentMethod === "gift_card" ? "gift_card" : paymentMethod,
+              amount: saleTotal,
+            });
+          }
         } catch (error) {
           console.error("Failed to create sale record:", error);
           throw new Error(

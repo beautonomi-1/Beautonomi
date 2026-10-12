@@ -57,6 +57,7 @@ function isHostedCheckoutCancelReturnUrl(url: string): boolean {
     const p = u.searchParams;
     if (p.get("cancelled") === "1" || p.get("payment_cancelled") === "1") return true;
     if (p.get("topup_cancelled") === "1") return true;
+    if (p.get("status")?.toLowerCase() === "cancelled") return true;
     if (u.pathname.includes("/checkout/cancelled")) return true;
   } catch {
     return false;

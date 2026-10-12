@@ -94,21 +94,35 @@ export function extractPaystackReferenceFromUrl(url: string): string | null {
   }
 }
 
+const CANCEL_QUERY_FLAGS = [
+  "cancelled",
+  "payment_cancelled",
+  "topup_cancelled",
+  "card_verification_cancelled",
+  "pay_remaining_cancelled",
+  "charge_cancelled",
+  "membership_cancelled",
+] as const;
+
 export function isCancelledPaystackUrl(url: string): boolean {
   try {
     const parsed = ExpoLinking.parse(url);
     const q = parsed.queryParams ?? {};
-    if (q.cancelled === "1" || q.payment_cancelled === "1") return true;
-    if (q.topup_cancelled === "1" || q.card_verification_cancelled === "1") return true;
+    if (CANCEL_QUERY_FLAGS.some((k) => q[k] === "1")) return true;
+    if (typeof q.status === "string" && q.status.toLowerCase() === "cancelled") return true;
   } catch {
     /* fall through */
   }
   try {
     const u = new URL(url);
     const p = u.searchParams;
-    if (p.get("cancelled") === "1" || p.get("payment_cancelled") === "1") return true;
-    if (p.get("topup_cancelled") === "1" || p.get("card_verification_cancelled") === "1") return true;
-    if (u.pathname.includes("/checkout/cancelled") || u.pathname.includes("/shop/cancelled")) {
+    if (CANCEL_QUERY_FLAGS.some((k) => p.get(k) === "1")) return true;
+    if (p.get("status")?.toLowerCase() === "cancelled") return true;
+    if (
+      u.pathname.includes("/checkout/cancelled") ||
+      u.pathname.includes("/shop/cancelled") ||
+      u.pathname.includes("/gift-card/purchase/cancelled")
+    ) {
       return true;
     }
   } catch {

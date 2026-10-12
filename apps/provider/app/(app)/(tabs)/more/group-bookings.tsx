@@ -69,6 +69,7 @@ import {
 import { useProvider } from "@/providers/ProviderContext";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { PayCloudPaymentSheet } from "@/components/payments/PayCloudPaymentSheet";
+import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
 import { PaycloudCollectSetupAffordance } from "@/components/payments/PaycloudCollectSetupAffordance";
 import { usePaycloudCollectAvailability } from "@/hooks/usePaycloudCollectAvailability";
 import type { PayCloudEntityType } from "@/hooks/usePayCloud";
@@ -1045,6 +1046,12 @@ export default function GroupBookingsScreen() {
   const [isPreparingTerminal, setIsPreparingTerminal] = useState(false);
   const [showPaycloudPayment, setShowPaycloudPayment] = useState(false);
   const [paycloudAmount, setPaycloudAmount] = useState(0);
+  const [showYocoPayment, setShowYocoPayment] = useState(false);
+  const [yocoAmountCents, setYocoAmountCents] = useState(0);
+  const [yocoCollectTarget, setYocoCollectTarget] = useState<{
+    groupId: string;
+    locationId: string | null;
+  } | null>(null);
   const [paycloudCollectTarget, setPaycloudCollectTarget] = useState<{
     entityType: PayCloudEntityType;
     entityId: string;
@@ -1071,6 +1078,15 @@ export default function GroupBookingsScreen() {
       });
       setPaycloudAmount(target.amount);
       setShowPaycloudPayment(true);
+    },
+    [],
+  );
+
+  const openYocoCollect = useCallback(
+    (target: { groupId: string; amount: number; locationId: string | null }) => {
+      setYocoCollectTarget({ groupId: target.groupId, locationId: target.locationId });
+      setYocoAmountCents(Math.round(target.amount * 100));
+      setShowYocoPayment(true);
     },
     [],
   );
@@ -2602,9 +2618,7 @@ export default function GroupBookingsScreen() {
         ? "cash"
         : participantsSucceeded && createPaymentMethod === "card"
           ? "card"
-          : participantsSucceeded && createPaymentMethod === "yoco_pos"
-            ? "yoco"
-            : null;
+          : null;
 
     if (createPaymentMethod === "paystack_terminal" && participantsSucceeded) {
       // Close create sheets first, then trigger terminal prepare-collection.
@@ -2664,6 +2678,24 @@ export default function GroupBookingsScreen() {
       return;
     }
 
+    if (createPaymentMethod === "yoco_pos" && participantsSucceeded) {
+      setCreateStep("form");
+      setCreateReviewError(null);
+      setShowCreate(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const totalAmt = participantTotal + productsTotal + (createForm.locationType === "at_home" ? travelFee : 0);
+      InteractionManager.runAfterInteractions(() => {
+        void refresh();
+        openYocoCollect({
+          groupId: createdGroupId,
+          amount: totalAmt,
+          locationId: createForm.locationType === "at_home" ? null : createForm.locationId,
+        });
+        router.setParams({ open_group_id: createdGroupId } as never);
+      });
+      return;
+    }
+
     if (methodToMark) {
       const paymentResult = await postGroupAction(
         `/api/provider/group-bookings/${encodeURIComponent(createdGroupId)}?action=mark_paid`,
@@ -2695,7 +2727,9 @@ export default function GroupBookingsScreen() {
             ? createSendNotification
               ? gb("paymentLinkSent")
               : gb("paymentLinkNotSent")
-            : gb("sessionMarkedPaid");
+            : createPaymentMethod === "yoco_pos"
+              ? gb("createdCollectOnMachine")
+              : gb("sessionMarkedPaid");
       Alert.alert(
         gb("groupSessionCreated"),
         `${groupRef ? gb("createdRefLine", { ref: groupRef }) : ""}${gb("participantsAdded", { count: createParticipants.length })}\n\n${paymentNote}`,
@@ -6529,6 +6563,26 @@ export default function GroupBookingsScreen() {
             if (selectedGroup) {
               await openGroupDetail(selectedGroup);
             }
+            await refresh();
+          }}
+        />
+      ) : null}
+
+      {yocoCollectTarget ? (
+        <YocoPaymentSheet
+          visible={showYocoPayment}
+          onClose={() => {
+            setShowYocoPayment(false);
+            setYocoCollectTarget(null);
+          }}
+          amountCents={yocoAmountCents}
+          currency={getTenantDefaultCurrency()}
+          groupBookingId={yocoCollectTarget.groupId}
+          bookingLocationId={yocoCollectTarget.locationId}
+          onPaymentSuccess={async () => {
+            setShowYocoPayment(false);
+            setYocoCollectTarget(null);
+            setPaymentRecordedNotice(gb("cardMachineReceived"));
             await refresh();
           }}
         />

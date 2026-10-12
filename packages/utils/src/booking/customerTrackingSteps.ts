@@ -74,13 +74,12 @@ function computeReach(input: BuildCustomerTrackingStepsInput): ReachFlags {
   const otpVerified = Boolean(input.arrivalOtpVerified);
   const hasConfirmedEvent = Boolean(input.hasConfirmedEvent);
 
-  const acceptedByStatus = new Set([
-    "confirmed",
-    "waiting",
-    "checked_in",
-    ...SERVICE_PROGRESS_STATUSES,
-    "completed",
-  ]).has(status);
+  const acceptedByStatus =
+    status === "confirmed" ||
+    status === "waiting" ||
+    status === "checked_in" ||
+    SERVICE_PROGRESS_STATUSES.has(status) ||
+    status === "completed";
 
   const acceptedByStage = stage != null && POST_ACCEPT_STAGES.has(stage);
   const accepted = acceptedByStatus || acceptedByStage || hasConfirmedEvent;

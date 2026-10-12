@@ -1129,7 +1129,7 @@ export default function BookingDetailScreen() {
   // Show the pay-remaining flow for every payable booking except the strict
   // `pending`/`pending` case still served by the legacy "Pay Now" button
   // (`needsPayment`), so we never render two pay buttons at once.
-  const showPayRemaining = canPayOnline && !needsPayment;
+  const showPayRemaining = canPayOnline;
   const isFullyUnpaid = booking?.payment_status === "pending";
 
   const handlePayRemaining = async () => {
@@ -3125,7 +3125,7 @@ export default function BookingDetailScreen() {
                 <Text style={{ color: "#B91C1C" }}>{payError}</Text>
               </View>
             )}
-            {needsPayment && (
+            {false && needsPayment && (
               <Pressable onPress={handlePay} disabled={payLoading} style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", marginBottom: 12 }} accessibilityRole="button" accessibilityLabel={bd("paymentPayNowA11y")}>
 {payLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>{bd("paymentPayNow")}</Text>}
               </Pressable>

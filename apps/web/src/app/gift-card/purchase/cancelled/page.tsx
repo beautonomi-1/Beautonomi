@@ -7,6 +7,7 @@ import { XCircle, Loader2 } from "lucide-react";
 import Navbar4 from "@/components/global/Navbar4";
 import { Button } from "@/components/ui/button";
 import { supportTicketQuery } from "@beautonomi/utils";
+import { NativeAppCheckoutBounce } from "@/components/payments/NativeAppCheckoutBounce";
 
 /**
  * Cancelled checkout landing page for gift card purchases.
@@ -84,6 +85,7 @@ export default function GiftCardPurchaseCancelledPage() {
         </div>
       }
     >
+      <NativeAppCheckoutBounce />
       <GiftCardPurchaseCancelledInner />
     </Suspense>
   );

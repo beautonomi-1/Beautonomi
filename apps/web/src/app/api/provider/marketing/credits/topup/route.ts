@@ -71,7 +71,17 @@ export async function POST(request: NextRequest) {
       defaultCancelPath: "/provider/settings/marketing-integrations",
       query: { topup: "success", payment_type: "marketing_topup" },
     });
-    const callbackUrl = hosted.successUrl;
+    // Web page and provider app only verify when `topup=success` is present; client callbacks omit it.
+    const successUrl = new URL(hosted.successUrl);
+    successUrl.searchParams.set("topup", "success");
+    successUrl.searchParams.set("payment_type", "marketing_topup");
+    const callbackUrl = successUrl.toString();
+
+    const cancelUrl = new URL(hosted.cancelUrl);
+    cancelUrl.searchParams.delete("topup");
+    cancelUrl.searchParams.set("payment_type", "marketing_topup");
+    cancelUrl.searchParams.set("topup_cancelled", "1");
+    const cancelAction = cancelUrl.toString();
 
     const onlineInit = await initializeOnlinePayment({
       tenantId,
@@ -87,6 +97,7 @@ export async function POST(request: NextRequest) {
         amount_zar: amountZar,
         currency,
         tenant_id: tenantId,
+        cancel_action: cancelAction,
       },
     });
 

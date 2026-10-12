@@ -32,6 +32,7 @@ interface YocoPaymentSheetProps {
   currency?: string;
   bookingId?: string;
   saleId?: string;
+  groupBookingId?: string;
   /**
    * §Yoco-synergy 2026-05: location of the booking/sale so we preselect a
    * device assigned to that location (matches the per-device location_id
@@ -51,6 +52,7 @@ export function YocoPaymentSheet({
   currency = getTenantDefaultCurrency(),
   bookingId,
   saleId,
+  groupBookingId,
   bookingLocationId,
   description,
   onPaymentSuccess,
@@ -139,6 +141,13 @@ export function YocoPaymentSheet({
       device_id: selectedDevice.id,
       booking_id: bookingId,
       sale_id: saleId,
+      ...(groupBookingId
+        ? {
+            group_booking_id: groupBookingId,
+            entity_type: "group_booking" as const,
+            entity_id: groupBookingId,
+          }
+        : {}),
       description,
     });
 

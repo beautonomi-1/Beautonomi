@@ -26,6 +26,7 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
+import { resolveAdPackAmountMajor } from "@/lib/ads/resolve-ad-pack-price";
 
 type CampaignRow = {
   id: string;
@@ -108,21 +109,29 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (c.billing_model === "time_based" && c.duration_days != null) {
       const { data: pack } = await supabase
         .from("ads_time_packs")
-        .select("price_zar, duration_days, apple_product_id")
+        .select("price_zar, price_minor, currency, duration_days, apple_product_id")
         .eq("duration_days", Number(c.duration_days))
         .eq("is_active", true)
         .maybeSingle();
-      amountDue = Number((pack as { price_zar?: number } | null)?.price_zar ?? 0);
+      amountDue = pack
+        ? resolveAdPackAmountMajor(
+            pack as { price_minor?: number | null; price_zar?: number | null },
+          )
+        : 0;
       appleProductId =
         (pack as { apple_product_id?: string | null } | null)?.apple_product_id ?? null;
     } else if (c.pack_impressions != null) {
       const { data: pack } = await supabase
         .from("ads_impression_packs")
-        .select("price_zar, impressions, apple_product_id")
+        .select("price_zar, price_minor, currency, impressions, apple_product_id")
         .eq("impressions", Number(c.pack_impressions))
         .eq("is_active", true)
         .maybeSingle();
-      amountDue = Number((pack as { price_zar?: number } | null)?.price_zar ?? 0);
+      amountDue = pack
+        ? resolveAdPackAmountMajor(
+            pack as { price_minor?: number | null; price_zar?: number | null },
+          )
+        : 0;
       appleProductId =
         (pack as { apple_product_id?: string | null } | null)?.apple_product_id ?? null;
     } else {

@@ -3,6 +3,8 @@
  * returns to in-app cold-start screens (mirrors web NativeAppCheckoutBounce targets).
  */
 
+import { normalizePaymentReturnSearch } from "@/lib/payments/customerNativeIntentPaymentReturn";
+
 type RedirectSystemPathParams = {
   path: string;
   initial: boolean;
@@ -77,15 +79,19 @@ export function redirectSystemPath({ path }: RedirectSystemPathParams): string {
 
     // HTTPS checkout success / cancel (Paystack callback landings)
     if (pathname.includes("/checkout/success") || pathname.includes("/checkout/cancelled")) {
-      return bookingPaystackRoute(search);
+      return bookingPaystackRoute(normalizePaymentReturnSearch(pathname, search));
     }
 
     if (pathname.includes("/shop/payment-callback") || pathname.includes("/shop/cancelled")) {
-      return withQuery("/(app)/shop/paystack", search);
+      return withQuery("/(app)/shop/paystack", normalizePaymentReturnSearch(pathname, search));
+    }
+
+    if (pathname.includes("/gift-card/purchase/cancelled")) {
+      return withQuery("/(app)/gift-card-return", normalizePaymentReturnSearch(pathname, search));
     }
 
     if (pathname.includes("/account-settings/wallet")) {
-      return withQuery("/(app)/wallet-return", search);
+      return withQuery("/(app)/wallet-return", normalizePaymentReturnSearch(pathname, search));
     }
 
     if (pathname.includes("/gift-card/purchase/success")) {
@@ -93,7 +99,19 @@ export function redirectSystemPath({ path }: RedirectSystemPathParams): string {
     }
 
     if (pathname.includes("/account-settings/payments")) {
-      return withQuery("/(app)/payments-return", search);
+      return withQuery("/(app)/payments-return", normalizePaymentReturnSearch(pathname, search));
+    }
+
+    const bookingDetailMatch = pathname.match(/\/account-settings\/bookings\/([^/]+)\/?$/);
+    if (bookingDetailMatch) {
+      const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+      if (params.get("pay_remaining_cancelled") === "1" || params.get("charge_cancelled") === "1") {
+        if (!params.get("booking_id")) {
+          params.set("booking_id", decodeURIComponent(bookingDetailMatch[1]));
+        }
+        const normalized = normalizePaymentReturnSearch(pathname, `?${params.toString()}`);
+        return withQuery("/(app)/book/paystack", normalized);
+      }
     }
 
     const bookingCallbackMatch = pathname.match(

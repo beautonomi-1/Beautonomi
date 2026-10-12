@@ -111,8 +111,13 @@ export const flutterwaveProvider: PaymentProvider = {
       if (!verifyFlutterwaveWebhookHash(signature, hash)) {
         throw new Error("Invalid Flutterwave webhook signature");
       }
-    } else if (process.env.NODE_ENV === "production") {
-      throw new Error("Flutterwave webhook hash not configured");
+    } else {
+      const allowUnsignedDev =
+        process.env.NODE_ENV !== "production" &&
+        (!process.env.VERCEL_ENV || process.env.VERCEL_ENV === "development");
+      if (!allowUnsignedDev) {
+        throw new Error("Flutterwave webhook hash not configured");
+      }
     }
     const parsed = JSON.parse(text) as {
       event?: string;

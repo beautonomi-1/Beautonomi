@@ -92,6 +92,16 @@ export async function settleFlutterwaveVerifiedTransaction(
   const amountMinor = toMinorUnits(tx.amount, currency);
   const feeMinor = toMinorUnits(Number(tx.app_fee ?? 0), currency);
 
+  const expectedMinor = options?.expectedAmountMinor;
+  if (expectedMinor != null && expectedMinor > 0 && amountMinor + 1 < expectedMinor) {
+    console.warn("[settle-flutterwave] amount below expected", {
+      reference,
+      paidMinor: amountMinor,
+      expectedMinor,
+    });
+    return { settled: false, reason: "amount_mismatch" };
+  }
+
   const metadata = mergeMetadata(row?.metadata ?? {}, tx.meta);
 
   await processSuccessfulPayment(
@@ -160,7 +170,19 @@ export async function settleFlutterwaveChargeWebhookData(
     console.warn("[settle-flutterwave] re-verify failed:", verified.reason);
     return;
   }
-  await settleFlutterwaveVerifiedTransaction(verified.tx, supabase, { tenantId });
+  let expectedAmountMinor: number | undefined;
+  const amountToCollect = meta.amount_to_collect;
+  if (typeof amountToCollect === "number" && amountToCollect > 0) {
+    const cur =
+      typeof meta.currency === "string"
+        ? meta.currency
+        : verified.tx.currency;
+    expectedAmountMinor = toMinorUnits(amountToCollect, String(cur).toUpperCase());
+  }
+  await settleFlutterwaveVerifiedTransaction(verified.tx, supabase, {
+    tenantId,
+    expectedAmountMinor,
+  });
 }
 
 export async function settleFlutterwaveByTransactionId(

@@ -94,12 +94,16 @@ export async function verifyFlutterwaveWebhookSignature(
   body: string,
   signature: string | null,
 ): Promise<boolean> {
-  if (process.env.NODE_ENV !== "production" && !signature) {
+  const allowUnsignedDev =
+    process.env.NODE_ENV !== "production" &&
+    (!process.env.VERCEL_ENV || process.env.VERCEL_ENV === "development");
+
+  if (allowUnsignedDev && !signature) {
     return true;
   }
   const secrets = await resolveFlutterwaveWebhookVerificationSecrets(body);
   if (secrets.length === 0) {
-    return process.env.NODE_ENV !== "production";
+    return allowUnsignedDev;
   }
   if (!signature) return false;
   return secrets.some((secret) => verifyFlutterwaveWebhookHash(signature, secret));

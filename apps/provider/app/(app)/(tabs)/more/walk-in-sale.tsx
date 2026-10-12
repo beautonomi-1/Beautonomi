@@ -324,6 +324,12 @@ export default function WalkInSaleScreen() {
     is_vat_registered?: boolean;
     data?: { tax_rate_percent?: number; is_vat_registered?: boolean };
   }>("/api/provider/settings/sales/taxes");
+  const { data: posPaymentSettings } = useApi<{ acceptCash?: boolean; acceptCard?: boolean }>(
+    "/api/provider/settings/payments",
+    { staleTimeMs: 60_000 },
+  );
+  const acceptCash = posPaymentSettings?.acceptCash !== false;
+  const acceptCard = posPaymentSettings?.acceptCard !== false;
   const { execute: postSale, loading: creating } = useApiMutation<{ order: WalkInSale }>("post");
   const { execute: patchOrder } = useApiMutation<{ order: WalkInSale }>("patch");
 
@@ -1437,12 +1443,19 @@ export default function WalkInSaleScreen() {
 
                 <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{wis("payment")}</Text>
                 <View style={{ marginBottom: 16, flexDirection: "row", flexWrap: "wrap", marginHorizontal: -4 }}>
-                  {WALK_IN_PAYMENT_METHOD_IDS.filter(
-                    (methodId) =>
-                      (paystackTerminalEnabled || methodId !== "paystack_terminal") &&
-                      (yocoEnabled || methodId !== "yoco") &&
-                      (canProcessPayments && paycloudEnabled && paycloudCollectEnabled || methodId !== "paycloud"),
-                  ).map((methodId) => {
+                  {WALK_IN_PAYMENT_METHOD_IDS.filter((methodId) => {
+                    if (methodId === "cash") return acceptCash;
+                    if (methodId !== "cash" && !acceptCard) return false;
+                    if (methodId === "paystack_terminal" && !paystackTerminalEnabled) return false;
+                    if (methodId === "yoco" && !yocoEnabled) return false;
+                    if (
+                      methodId === "paycloud" &&
+                      !(canProcessPayments && paycloudEnabled && paycloudCollectEnabled)
+                    ) {
+                      return false;
+                    }
+                    return true;
+                  }).map((methodId) => {
                     const active = paymentMethod === methodId;
                     return (
                       <TouchableOpacity

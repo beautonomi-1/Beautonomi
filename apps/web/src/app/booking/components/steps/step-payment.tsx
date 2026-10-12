@@ -80,6 +80,9 @@ type PublicHoldCheckoutSnapshot = {
   address_snapshot?: unknown;
   travel_fee?: number;
   provider_on_demand_accept_enabled?: boolean;
+  provider_accepts_online?: boolean;
+  provider_accepts_cash?: boolean;
+  cash_enabled_on_platform?: boolean;
   expires_at?: string | null;
   server_now?: string | null;
 };
@@ -362,15 +365,23 @@ export default function StepPayment({
   const paystackEnabled = flagsLoading ? true : (featureFlags["payment_paystack"] ?? false);
   const primaryOnlineGateway = bundle?.meta?.tenant_region?.payment_gateway?.toLowerCase();
   /** Card checkout: Paystack flag for Paystack regions, or Stripe primary gateway (API also gates). */
-  const onlineCardEnabled =
+  const platformOnlineEnabled =
     flagsLoading
       ? true
       : paystackEnabled ||
         primaryOnlineGateway === "stripe" ||
         primaryOnlineGateway === "flutterwave";
+  const providerAcceptsOnline = holdSnapshot?.provider_accepts_online !== false;
+  const onlineCardEnabled = platformOnlineEnabled && providerAcceptsOnline;
   const giftCardsEnabled = flagsLoading ? true : (featureFlags["gift_cards"] ?? false);
   const walletEnabled = flagsLoading ? true : (featureFlags["payment_wallet"] ?? false);
   const [cashEnabledOnPlatform, setCashEnabledOnPlatform] = useState(false);
+  const providerAcceptsCash = holdSnapshot?.provider_accepts_cash !== false;
+  const cashEnabledForCheckout =
+    providerAcceptsCash &&
+    (holdSnapshot?.cash_enabled_on_platform === true || cashEnabledOnPlatform);
+  const noPaymentMethodsAvailable =
+    !flagsLoading && !onlineCardEnabled && !cashEnabledForCheckout && !giftCardsEnabled;
 
   const saveCardInfo = useMemo(() => {
     const example = formatCurrency(1, tenantCurrency);
@@ -472,13 +483,13 @@ export default function StepPayment({
   // When Paystack / gift cards / cash are disabled, switch away from that method
   useEffect(() => {
     if (paymentMethod === "card" && !onlineCardEnabled) {
-      setPaymentMethod(giftCardsEnabled ? "giftcard" : cashEnabledOnPlatform ? "cash" : "card");
+      setPaymentMethod(giftCardsEnabled ? "giftcard" : cashEnabledForCheckout ? "cash" : "card");
     } else if (paymentMethod === "giftcard" && !giftCardsEnabled) {
-      setPaymentMethod(onlineCardEnabled ? "card" : cashEnabledOnPlatform ? "cash" : "giftcard");
-    } else if (paymentMethod === "cash" && !cashEnabledOnPlatform) {
+      setPaymentMethod(onlineCardEnabled ? "card" : cashEnabledForCheckout ? "cash" : "giftcard");
+    } else if (paymentMethod === "cash" && !cashEnabledForCheckout) {
       setPaymentMethod(onlineCardEnabled ? "card" : giftCardsEnabled ? "giftcard" : "cash");
     }
-  }, [onlineCardEnabled, giftCardsEnabled, paymentMethod, cashEnabledOnPlatform]);
+  }, [onlineCardEnabled, giftCardsEnabled, paymentMethod, cashEnabledForCheckout]);
 
   // Fetch platform fees only to determine cash availability.
   // Tax and Platform Fee amounts are computed by booking-flow.tsx from the same API and stored in
@@ -2215,7 +2226,7 @@ export default function StepPayment({
 
         {/* Method toggle: Card / Cash / Gift Card (each gated by feature flags) */}
         <div
-          className={`grid gap-3 ${onlineCardEnabled && giftCardsEnabled && cashEnabledOnPlatform ? "grid-cols-3" : onlineCardEnabled || giftCardsEnabled || cashEnabledOnPlatform ? "grid-cols-2" : "grid-cols-1"}`}
+          className={`grid gap-3 ${onlineCardEnabled && giftCardsEnabled && cashEnabledForCheckout ? "grid-cols-3" : onlineCardEnabled || giftCardsEnabled || cashEnabledForCheckout ? "grid-cols-2" : "grid-cols-1"}`}
         >
           {onlineCardEnabled && (
             <button
@@ -2238,7 +2249,12 @@ export default function StepPayment({
               {paymentMethod === "card" && <Check className="w-4 h-4 text-primary" />}
             </button>
           )}
-          {cashEnabledOnPlatform && (
+          {noPaymentMethodsAvailable && (
+            <p className="text-sm text-muted-foreground col-span-full">
+              {t("web.booking.stepPayment.noPaymentMethodsAvailable")}
+            </p>
+          )}
+          {cashEnabledForCheckout && (
             <button
               type="button"
               onClick={() => setPaymentMethod("cash")}
@@ -2724,6 +2740,7 @@ export default function StepPayment({
                 !holdId ||
                 !holdExpiresAt ||
                 !bookingState.clientInfo ||
+                noPaymentMethodsAvailable ||
                 giftCardOnlyUnderfunded ||
                 (cancellationRequiresAckForPolicy && !acceptedCancellationPolicy)
               }

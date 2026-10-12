@@ -62,11 +62,21 @@ export async function resolveProductOrderPaystackAmount(
   return { ok: true, amountSmallestUnit };
 }
 
-export async function resolveBookingPaystackAmount(
+const ONLINE_CARD_PAYMENT_PROVIDERS = ["paystack", "stripe", "flutterwave"] as const;
+
+export type ResolveBookingPendingAmountResult = ResolvePaystackAmountResult & {
+  pendingPaymentId?: string;
+  amountMajor?: number;
+  currency?: string;
+  paymentProvider?: string;
+};
+
+/** Server-side pending booking card amount (any online PSP). */
+export async function resolveBookingPendingAmount(
   supabase: SupabaseClient,
   bookingId: string,
   userId: string,
-): Promise<ResolvePaystackAmountResult> {
+): Promise<ResolveBookingPendingAmountResult> {
   const { data: booking, error: bErr } = await supabase
     .from("bookings")
     .select("id, customer_id, payment_status, currency")
@@ -90,10 +100,10 @@ export async function resolveBookingPaystackAmount(
   }
 
   const { data: payRow } = await (supabase.from("payments") as any)
-    .select("amount, status, payment_provider")
+    .select("id, amount, status, payment_provider, currency")
     .eq("booking_id", bookingId)
     .eq("user_id", userId)
-    .eq("payment_provider", "paystack")
+    .in("payment_provider", [...ONLINE_CARD_PAYMENT_PROVIDERS])
     .eq("status", "pending")
     .order("created_at", { ascending: false })
     .limit(1)
@@ -109,7 +119,11 @@ export async function resolveBookingPaystackAmount(
     };
   }
 
-  const currency = String((booking as { currency?: string }).currency || "ZAR").toUpperCase();
+  const currency = String(
+    (payRow as { currency?: string }).currency ||
+      (booking as { currency?: string }).currency ||
+      "ZAR",
+  ).toUpperCase();
   const amountSmallestUnit = convertToSmallestUnit(dueMajor, currency);
   if (amountSmallestUnit < toMinorUnits(1, currency)) {
     return {
@@ -120,5 +134,21 @@ export async function resolveBookingPaystackAmount(
     };
   }
 
-  return { ok: true, amountSmallestUnit };
+  return {
+    ok: true,
+    amountSmallestUnit,
+    pendingPaymentId: String((payRow as { id?: string }).id ?? ""),
+    amountMajor: dueMajor,
+    currency,
+    paymentProvider: String((payRow as { payment_provider?: string }).payment_provider ?? ""),
+  };
+}
+
+/** @deprecated Use resolveBookingPendingAmount */
+export async function resolveBookingPaystackAmount(
+  supabase: SupabaseClient,
+  bookingId: string,
+  userId: string,
+): Promise<ResolvePaystackAmountResult> {
+  return resolveBookingPendingAmount(supabase, bookingId, userId);
 }
