@@ -275,6 +275,139 @@ export async function POST(
       });
     }
 
+    if (psp?.provider.id === "flutterwave") {
+      const { parseFlutterwavePayoutRecipientCode } = await import(
+        "@/lib/payments/flutterwave-transfer"
+      );
+      const fromRecipient = parseFlutterwavePayoutRecipientCode(acct?.recipient_code);
+      const bankCode = acct?.bank_code ?? fromRecipient?.bankCode;
+      const accountNumber = fromRecipient?.accountNumber;
+      if (!bankCode || !accountNumber) {
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: "Provider payout account missing bank details for Flutterwave transfer.",
+              code: "PAYOUT_ACCOUNT_NOT_READY",
+            },
+          },
+          { status: 409 },
+        );
+      }
+
+      const { data: claimedFw, error: claimFwErr } = await supabase
+        .from("payouts")
+        .update({
+          payout_provider: "flutterwave",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .eq("status", "processing")
+        .is("transfer_code", null)
+        .is("payout_provider", null)
+        .select("id")
+        .maybeSingle();
+
+      if (claimFwErr) throw claimFwErr;
+      if (!claimedFw) {
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: "Payout was already claimed or processed by another admin",
+              code: "STATE_CONFLICT",
+            },
+          },
+          { status: 409 },
+        );
+      }
+
+      const { createFlutterwaveTransfer } = await import("@/lib/payments/flutterwave-transfer");
+      const amountMajor = Number(p.amount || 0);
+      let transfer: { id: string; status: string };
+      try {
+        transfer = await createFlutterwaveTransfer({
+          amountMajor,
+          currency: payoutCurrency,
+          accountBank: String(bankCode),
+          accountNumber: String(accountNumber),
+          reference: `payout_${p.id}`,
+          narration: reason || `Payout ${p.payout_number || p.id}`,
+          beneficiaryName: acct?.account_name ?? undefined,
+          meta: (acct?.metadata as Record<string, unknown> | undefined) ?? undefined,
+          tenantId,
+        });
+      } catch (transferErr) {
+        await supabase
+          .from("payouts")
+          .update({ payout_provider: null, updated_at: new Date().toISOString() })
+          .eq("id", id)
+          .eq("status", "processing")
+          .is("transfer_code", null)
+          .eq("payout_provider", "flutterwave");
+        throw transferErr;
+      }
+
+      const completed = transfer.status.toLowerCase() === "successful";
+      if (completed) {
+        const { recordPayoutLedger } = await import("@/lib/provider/record-payout-ledger");
+        try {
+          await recordPayoutLedger(supabase, {
+            id: p.id,
+            provider_id: p.provider_id,
+            net_amount: (payout as { net_amount?: number }).net_amount ?? p.amount,
+            amount: p.amount,
+            payout_number: p.payout_number,
+            currency: payoutCurrency,
+            feeGateway: "flutterwave",
+          });
+        } catch (ledgerErr) {
+          console.error("[initiate-transfer/flutterwave] payout ledger failed:", ledgerErr);
+          await supabase
+            .from("payouts")
+            .update({ payout_provider: null, updated_at: new Date().toISOString() })
+            .eq("id", id)
+            .eq("status", "processing")
+            .is("transfer_code", null)
+            .eq("payout_provider", "flutterwave");
+          return NextResponse.json(
+            {
+              data: null,
+              error: {
+                message: "Flutterwave transfer succeeded but finance ledger write failed. Do not retry blindly — contact engineering.",
+                code: "LEDGER_WRITE_FAILED",
+              },
+            },
+            { status: 500 },
+          );
+        }
+      }
+
+      await supabase
+        .from("payouts")
+        .update({
+          transfer_code: transfer.id,
+          status: completed ? "completed" : "processing",
+          ...(completed ? { paid_at: new Date().toISOString() } : {}),
+          payout_provider_response: transfer,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+
+      await writeAuditLog({
+        action: "payout_transfer_initiated",
+        entity_type: "payout",
+        entity_id: id,
+        metadata: { provider: "flutterwave", transfer_id: transfer.id },
+        actor_user_id: user.id,
+      });
+
+      return NextResponse.json({
+        data: { payout_id: id, transfer_code: transfer.id, provider: "flutterwave" },
+        error: null,
+      });
+    }
+
     // Claim payout before calling Paystack to prevent concurrent double-send.
     const { data: claimedPayout, error: claimErr } = await supabase
       .from("payouts")

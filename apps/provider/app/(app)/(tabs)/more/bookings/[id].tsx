@@ -23,8 +23,7 @@ import * as Location from "expo-location";
 import { useApi, useApiMutation, useApiPost } from "@/hooks/useApi";
 import { invalidateApiCacheForPath } from "@/lib/api-response-cache";
 import { useYocoIntegration } from "@/hooks/useYoco";
-import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
-import { PayCloudPaymentSheet } from "@/components/payments/PayCloudPaymentSheet";
+import { CardMachineCollectSheet } from "@/components/payments/CardMachineCollectSheet";
 import { formatPaycloudCollectLabel, inferBookingCollectContext } from "@/lib/paycloud-collect-cta";
 import { manualCardCollectOptionLabel, MANUAL_CARD_METHOD_HELPER, formatMoney } from "@beautonomi/utils";
 import {
@@ -1098,8 +1097,10 @@ export default function BookingDetailScreen() {
   const [paymentExcellenceDismissed, setPaymentExcellenceDismissed] = useState(false);
 
   // Pay with Yoco (pending POS sale → terminal with sale_id → finalize sale + mark booking paid)
-  const [showYocoPayment, setShowYocoPayment] = useState(false);
-  const [showPaycloudPayment, setShowPaycloudPayment] = useState(false);
+  const [showCardMachinePayment, setShowCardMachinePayment] = useState(false);
+  const [cardMachineInitialProvider, setCardMachineInitialProvider] = useState<
+    "yoco" | "paycloud" | undefined
+  >(undefined);
   const [paycloudAdditionalChargeAmount, setPaycloudAdditionalChargeAmount] = useState(0);
   const [paycloudEntityType, setPaycloudEntityType] = useState<
     "booking" | "additional_charge"
@@ -1464,6 +1465,10 @@ export default function BookingDetailScreen() {
   const [rateClientStars, setRateClientStars] = useState(0);
   const [rateClientComment, setRateClientComment] = useState("");
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelRefundRail, setCancelRefundRail] = useState<"wallet" | "terminal">("wallet");
+  useEffect(() => {
+    if (showCancelModal) setCancelRefundRail("wallet");
+  }, [showCancelModal]);
   const [cancelReason, setCancelReason] = useState("");
   const [showNoShowModal, setShowNoShowModal] = useState(false);
   const [noShowFeeEnabled, setNoShowFeeEnabled] = useState(false);
@@ -2058,6 +2063,9 @@ export default function BookingDetailScreen() {
 
   const canRefund = canProcessPayments && totalPaid > 0 && totalRefunded < totalPaid;
   const maxRefundable = Math.max(0, netPaidAfterRefunds);
+  const awaitingMachineRefunds =
+    (b as { awaiting_machine_refunds?: Array<{ id: string; amount: number }> }).awaiting_machine_refunds ?? [];
+  const awaitingMachineTotal = awaitingMachineRefunds.reduce((s, r) => s + Number(r.amount ?? 0), 0);
 
   /** Show payment lines + receipt actions for paid bookings and for closed bookings that may be $0 (complimentary / settled). */
   const showPaymentAndReceiptCard =
@@ -2114,17 +2122,32 @@ export default function BookingDetailScreen() {
     }
     setPaycloudEntityType("booking");
     setPaycloudEntityId(id);
-    setShowPaycloudPayment(true);
+    const yocoReady =
+      yocoEnabled &&
+      yocoIntegration?.is_enabled === true &&
+      Boolean(yocoIntegration?.api_key_set);
+    setCardMachineInitialProvider(yocoReady && paycloudEnabled ? undefined : "paycloud");
+    if (yocoReady) {
+      void openYocoCheckout({ skipOpen: true });
+    }
+    setShowCardMachinePayment(true);
   }
 
   function openPaycloudAdditionalCharge(chargeId: string, amount: number) {
     setPaycloudEntityType("additional_charge");
     setPaycloudEntityId(chargeId);
     setPaycloudAdditionalChargeAmount(amount);
-    setShowPaycloudPayment(true);
+    const yocoReady =
+      yocoEnabled &&
+      yocoIntegration?.is_enabled === true &&
+      Boolean(yocoIntegration?.api_key_set);
+    setCardMachineInitialProvider(
+      yocoReady && paycloudEnabled ? undefined : yocoReady ? "yoco" : "paycloud",
+    );
+    setShowCardMachinePayment(true);
   }
 
-  async function openYocoCheckout() {
+  async function openYocoCheckout(options?: { skipOpen?: boolean }) {
     if (!id) return;
     // Card payment chains several authenticated POSTs; refresh session first to avoid stale-token "sign in again" races after backgrounding.
     try {
@@ -2232,7 +2255,9 @@ export default function BookingDetailScreen() {
       yocoPendingSaleOutstandingSnapshotRef.current = chargeAmount;
     }
     yocoPendingChargeAmountRef.current = chargeAmount;
-    setShowYocoPayment(true);
+    if (options?.skipOpen) return;
+    setCardMachineInitialProvider("yoco");
+    setShowCardMachinePayment(true);
   }
 
   async function openPaystackTerminalCollection() {
@@ -2348,7 +2373,7 @@ export default function BookingDetailScreen() {
     setYocoBookingSaleId(null);
     yocoPendingChargeAmountRef.current = null;
     yocoPendingSaleOutstandingSnapshotRef.current = null;
-    setShowYocoPayment(false);
+    setShowCardMachinePayment(false);
     await Promise.all([refresh(), refreshCharges()]);
   }
 
@@ -2771,6 +2796,36 @@ export default function BookingDetailScreen() {
     setRefunding(true);
     const res = await postMutation(`/api/provider/bookings/${id}/refund`, { amount, reason, refund_method: refundMethod });
     setRefunding(false);
+    if (res.errorCode === "YOCO_REFUND_ON_MACHINE") {
+      Alert.alert(bk("yocoRefundOnMachineTitle"), bk("yocoRefundOnMachineBody", { amount: formatCurrency(amount, b.currency ?? getTenantDefaultCurrency()) }), [
+        { text: t("common.cancel"), style: "cancel" },
+        {
+          text: bk("yocoRefundRecordCta"),
+          onPress: () => {
+            void (async () => {
+              setRefunding(true);
+              const recorded = await postMutation(`/api/provider/bookings/${id}/refund`, {
+                amount,
+                reason,
+                refund_method: "original",
+                record_only: true,
+              });
+              setRefunding(false);
+              if (recorded.error) {
+                Alert.alert(bk("errorTitle"), recorded.error);
+                return;
+              }
+              setShowRefund(false);
+              setRefundAmount("");
+              setRefundReason("");
+              Alert.alert(bk("refundRecordedTitle"), bk("yocoRefundRecordedBody"));
+              await refresh();
+            })();
+          },
+        },
+      ]);
+      return;
+    }
     if (res.error) {
       Alert.alert(bk("errorTitle"), res.error);
       return;
@@ -4583,6 +4638,33 @@ export default function BookingDetailScreen() {
             {id ? (
               <BookingPaymentTimeline bookingId={String(id)} currency={b.currency ?? getTenantDefaultCurrency()} />
             ) : null}
+            {awaitingMachineRefunds.length > 0 && (
+              <View style={twStyle("mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3")}>
+                <Text style={twStyle("text-sm font-semibold text-amber-900")}>
+                  {bk("awaitingYocoRefundTitle", {
+                    amount: formatCurrency(awaitingMachineTotal, b.currency ?? getTenantDefaultCurrency()),
+                  })}
+                </Text>
+                <Text style={twStyle("text-xs text-amber-900 mt-1 leading-5")}>{bk("awaitingYocoRefundBody")}</Text>
+                {canProcessPayments && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setRefundAmount(awaitingMachineRefunds[0].amount.toFixed(2));
+                      setRefundReason(
+                        (b as { cancellation_reason?: string | null }).cancellation_reason ||
+                          bk("awaitingYocoRefundReason"),
+                      );
+                      setRefundMethod("original");
+                      setShowRefund(true);
+                    }}
+                    style={twStyle("mt-2 self-start rounded-lg bg-amber-600 py-2 px-3")}
+                    accessibilityRole="button"
+                  >
+                    <Text style={twStyle("text-sm font-medium text-white")}>{bk("yocoRefundRecordCta")}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
             <View style={twStyle("flex-row flex-wrap gap-2 mt-3")}>
               {canMarkPaid && (
                 <>
@@ -4597,41 +4679,30 @@ export default function BookingDetailScreen() {
                       <Text style={twStyle("font-medium text-white")}>{bk("collectPaymentCta")}</Text>
                     )}
                   </TouchableOpacity>
-                  {canMarkPaid && paycloudEnabled && paycloudCollectEnabled && outstanding > 0 && (
-                    <TouchableOpacity
-                      onPress={() => void openPaycloudCheckout()}
-                      style={twStyle("rounded-xl border border-slate-300 bg-slate-50 py-2.5 px-4")}
-                    >
-                      <Text style={twStyle("font-medium text-slate-900")}>
-                        {formatPaycloudCollectLabel({
-                          context: paycloudCollectContext,
-                          amount: paycloudBookingCharge.chargeAmount,
-                          currency: b.currency ?? getTenantDefaultCurrency(),
-                          inFlight: paycloudInFlight,
-                          depositAmount: paycloudBookingCharge.depositAmount,
-                          fullOutstanding: paycloudBookingCharge.fullOutstanding,
-                        })}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
                   {canMarkPaid && paycloudEnabled && !paycloudCollectEnabled && outstanding > 0 && (
                     <View style={twStyle("w-full")}>
                       <PaycloudCollectSetupAffordance blocker={paycloudPrimaryBlocker} compact loading={paycloudLoading} />
                     </View>
                   )}
-                  {canCreateSales && yocoEnabled && yocoIntegration?.is_enabled && yocoIntegration?.api_key_set && outstanding > 0 && (
+                  {canMarkPaid &&
+                  outstanding > 0 &&
+                  ((paycloudEnabled && paycloudCollectEnabled) ||
+                    (canCreateSales &&
+                      yocoEnabled &&
+                      yocoIntegration?.is_enabled &&
+                      yocoIntegration?.api_key_set)) ? (
                     <TouchableOpacity
-                      onPress={() => void openYocoCheckout()}
+                      onPress={() => void openPaycloudCheckout()}
                       disabled={preparingYocoSale}
-                      style={twStyle("rounded-xl border border-primary bg-primary/10 py-2.5 px-4")}
+                      style={twStyle("rounded-xl border border-slate-300 bg-slate-50 py-2.5 px-4")}
                     >
                       {preparingYocoSale ? (
                         <ActivityIndicator size="small" color={Colors.primary} />
                       ) : (
-                        <Text style={twStyle("font-medium text-primary")}>{bk("payWithYoco")}</Text>
+                        <Text style={twStyle("font-medium text-slate-900")}>{bk("chargeOnCardMachine")}</Text>
                       )}
                     </TouchableOpacity>
-                  )}
+                  ) : null}
                   {paystackTerminalEnabled && outstanding > 0 && (
                     <TouchableOpacity
                       onPress={() => void openPaystackTerminalCollection()}
@@ -5366,7 +5437,7 @@ export default function BookingDetailScreen() {
           <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>{bk("refundMethod")}</Text>
           <View style={twStyle("flex-row flex-wrap rounded-xl border border-gray-200 bg-gray-50 p-1 mb-2 gap-1")}>
             {([
-              ...(paycloudCollectEnabled || paycloudEnabled
+              ...(paycloudCollectEnabled || paycloudEnabled || yocoEnabled
                 ? [{ key: "original" as const, label: bk("refundBackToCard") }]
                 : []),
               { key: "cash" as const, label: bk("refundInPersonCash") },
@@ -5388,10 +5459,10 @@ export default function BookingDetailScreen() {
           </View>
           <Text style={twStyle("text-xs text-gray-500 mb-3")}>
             {refundMethod === "original"
-              ? "The money returns to the customer's card through the card machine or bank. Nothing is taken from your cash drawer."
+              ? bk("refundOriginalHint")
               : refundMethod === "cash"
-              ? "Hand the money back to the customer in person. Recorded for your books; no wallet credit is issued. The booking balance updates after this succeeds."
-              : "Use when the customer is not present or the payment was made online. The refund is credited to their wallet."}
+              ? bk("refundCashHint")
+              : bk("refundWalletHint")}
           </Text>
           <ActionButton label={refunding ? bk("processing") : bk("confirmRefund")} onPress={handleRefund} loading={refunding} fullWidth />
         </View>
@@ -5519,33 +5590,36 @@ export default function BookingDetailScreen() {
         </View>
       </BottomSheet>
 
-      <PayCloudPaymentSheet
-        visible={showPaycloudPayment}
-        onClose={() => setShowPaycloudPayment(false)}
-        amount={paycloudTerminalAmount}
+      <CardMachineCollectSheet
+        visible={showCardMachinePayment}
+        onClose={() => {
+          setShowCardMachinePayment(false);
+          setCardMachineInitialProvider(undefined);
+        }}
+        amount={
+          paycloudEntityType === "additional_charge"
+            ? paycloudAdditionalChargeAmount
+            : paycloudTerminalAmount
+        }
         currency={b.currency ?? getTenantDefaultCurrency()}
+        initialProvider={cardMachineInitialProvider}
         entityType={paycloudEntityType}
         entityId={paycloudEntityId}
         bookingId={id}
         bookingLocationId={b.location_id ?? null}
+        saleId={paycloudEntityType === "additional_charge" ? undefined : yocoBookingSaleId ?? undefined}
+        additionalChargeId={paycloudEntityType === "additional_charge" ? paycloudEntityId : undefined}
+        description={b.booking_number ? `Booking ${b.booking_number}` : undefined}
         tipIncludedInAmount={Number(b.tip_amount ?? 0) > 0.01}
-        onPaymentSuccess={() => {
-          setShowPaycloudPayment(false);
+        onYocoSuccess={(result) => {
+          // Additional charges settle server-side on the Yoco poll; only the booking balance uses mark-paid.
+          if (paycloudEntityType !== "additional_charge") void finalizeYocoBookingPayment(result);
+        }}
+        onSuccess={() => {
+          setShowCardMachinePayment(false);
+          setCardMachineInitialProvider(undefined);
           void refreshBookingDetail();
         }}
-      />
-
-      {/* Yoco: pending POS sale → terminal (sale_id + booking_id) → complete sale + mark booking paid */}
-      <YocoPaymentSheet
-        visible={showYocoPayment}
-        onClose={() => setShowYocoPayment(false)}
-        amountCents={Math.round(yocoTerminalAmount * 100)}
-        currency={b.currency ?? getTenantDefaultCurrency()}
-        bookingId={id}
-        saleId={yocoBookingSaleId ?? undefined}
-        bookingLocationId={b.location_id ?? null}
-        description={`Booking ${b.booking_number ?? id}`}
-        onPaymentSuccess={(result) => void finalizeYocoBookingPayment(result)}
       />
 
       <BottomSheet
@@ -5877,9 +5951,46 @@ export default function BookingDetailScreen() {
                 ) : null}
               </View>
             ) : null}
-            <Text style={{ fontSize: 13, color: "#047857", backgroundColor: "#ecfdf5", borderRadius: 10, padding: 12, marginBottom: 16 }}>
-              The client will receive a full refund to their Beautonomi wallet for amounts already paid. Your cancellation policy does not apply to cancellations you initiate.
-            </Text>
+            {(yocoEnabled || paycloudEnabled) && maxRefundable > 0.01 ? (
+              <View style={{ marginBottom: 16 }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700], marginBottom: 6 }}>
+                  {bk("cancelRefundTo")}
+                </Text>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  {(["wallet", "terminal"] as const).map((rail) => {
+                    const active = cancelRefundRail === rail;
+                    return (
+                      <TouchableOpacity
+                        key={rail}
+                        onPress={() => setCancelRefundRail(rail)}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: active }}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 10,
+                          borderRadius: 10,
+                          borderWidth: 1,
+                          borderColor: active ? "#4f46e5" : Colors.gray[200],
+                          backgroundColor: active ? "#eef2ff" : Colors.white,
+                          alignItems: "center",
+                        }}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: active ? "#4338ca" : Colors.gray[700] }}>
+                          {rail === "wallet" ? bk("refundWalletCredit") : bk("refundBackToCard")}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 6 }}>
+                  {cancelRefundRail === "terminal" ? bk("cancelRefundCardHint") : bk("cancelRefundWalletHint")}
+                </Text>
+              </View>
+            ) : (
+              <Text style={{ fontSize: 13, color: "#047857", backgroundColor: "#ecfdf5", borderRadius: 10, padding: 12, marginBottom: 16 }}>
+                {bk("cancelWalletNote")}
+              </Text>
+            )}
             <TextInput
               value={cancelReason}
               onChangeText={setCancelReason}
@@ -5901,10 +6012,12 @@ export default function BookingDetailScreen() {
                 onPress={async () => {
                   markOptimisticStatus("cancelled");
                   const version = (b as BookingDetail & { version?: number }).version;
-                  const { error: err } = await patchMutation(`/api/provider/bookings/${id}`, {
+                  const offerTerminalRail = (yocoEnabled || paycloudEnabled) && maxRefundable > 0.01;
+                  const { data: cancelData, error: err } = await patchMutation(`/api/provider/bookings/${id}`, {
                     status: "cancelled",
                     cancellation_reason: cancelReason.trim() || "No reason provided",
                     ...(version !== undefined && { version }),
+                    ...(offerTerminalRail ? { refund_rail: cancelRefundRail } : {}),
                   });
                   // Close modal only after the PATCH completes so the user can retry on failure
                   if (err) {
@@ -5923,6 +6036,23 @@ export default function BookingDetailScreen() {
                   }
                   setOptimisticBookingStatus(null);
                   setShowCancelModal(false);
+                  const due = (cancelData as { card_machine_refund_due?: { amount: number; action_required: boolean } } | null)
+                    ?.card_machine_refund_due;
+                  if (due && due.amount > 0.01) {
+                    if (due.action_required) {
+                      // Yoco: refund on the machine, then record it from the refund sheet.
+                      setRefundAmount(due.amount.toFixed(2));
+                      setRefundReason(cancelReason.trim() || bk("awaitingYocoRefundReason"));
+                      setRefundMethod("original");
+                      Alert.alert(
+                        bk("yocoRefundOnMachineTitle"),
+                        bk("yocoRefundOnMachineBody", { amount: formatCurrency(due.amount, b.currency ?? getTenantDefaultCurrency()) }),
+                        [{ text: bk("continue"), onPress: () => setShowRefund(true) }],
+                      );
+                    } else {
+                      Alert.alert(bk("sentToCardMachineTitle"), bk("sentToCardMachineDefault"));
+                    }
+                  }
                   await refresh();
                 }}
                 style={{ flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: patchLoading ? "#f87171" : "#dc2626", alignItems: "center" }}

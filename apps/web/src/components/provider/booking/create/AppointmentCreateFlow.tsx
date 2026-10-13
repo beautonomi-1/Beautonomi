@@ -27,6 +27,7 @@ import {
   buildSingleBookingCreateReadiness,
   validateProviderBookingCreateDetailed,
   type ProviderBookingCreateValidationInput,
+  type ProviderBookingCreateValidationError,
 } from "@beautonomi/provider-booking";
 import { BookingCreateReadinessStrip } from "../ui/BookingCreateReadinessStrip";
 import { openGroupSheet, useAppointmentSidebar } from "@/stores/appointment-sidebar-store";
@@ -52,6 +53,7 @@ import { MembershipPreviewPill } from "./MembershipPreviewPill";
 import { ResourceRequirementsPreview } from "./ResourceRequirementsPreview";
 import { CreatePaymentSection, type CreatePaymentMethod } from "./CreatePaymentSection";
 import { ClientSearchPicker } from "./ClientSearchPicker";
+import { loadClientDefaultAddress } from "./load-client-default-address";
 import {
   AtHomeAddressSection,
   effectiveAtHomeTravelFee,
@@ -183,6 +185,7 @@ export function AppointmentCreateFlow({
   const [discountCode, setDiscountCode] = useState("");
   const [discountAmount, setDiscountAmount] = useState(0);
   const [manualDiscountAmount, setManualDiscountAmount] = useState(0);
+  const [manualDiscountType, setManualDiscountType] = useState<"percentage" | "fixed">("fixed");
   const [discountReason, setDiscountReason] = useState("");
   const [tipAmount, setTipAmount] = useState(0);
   const [isRecurring, setIsRecurring] = useState(false);
@@ -302,6 +305,20 @@ export function AppointmentCreateFlow({
   }, [setCreateStep]);
 
   useEffect(() => {
+    if (appointmentKind !== "at_home" || !clientId.trim()) return;
+    if (atHomeAddress.addressLine1.trim()) return;
+    let cancelled = false;
+    void loadClientDefaultAddress(clientId).then((loaded) => {
+      if (!cancelled && loaded) {
+        setAtHomeAddress((prev) => ({ ...prev, ...loaded }));
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [appointmentKind, clientId, atHomeAddress.addressLine1]);
+
+  useEffect(() => {
     if (!open || !draftSlot) return;
 
     setStaffId(draftSlot.staffId);
@@ -379,8 +396,31 @@ export function AppointmentCreateFlow({
     setServiceId(selectedServices[0]?.serviceId ?? "");
   }, [selectedServices]);
 
-  const effectiveDiscountAmount = Math.max(manualDiscountAmount, discountAmount);
-  const discountFromManual = manualDiscountAmount >= discountAmount && manualDiscountAmount > 0;
+  const subtotalBeforeDiscount = useMemo(() => {
+    const travelFee =
+      appointmentKind === "at_home" ? effectiveAtHomeTravelFee(atHomeAddress) : 0;
+    return calculateBookingPricing(
+      selectedServices,
+      selectedProducts,
+      travelFee,
+      0,
+      taxRate,
+      0,
+      0,
+      { taxInclusive },
+    ).subtotal;
+  }, [selectedServices, selectedProducts, appointmentKind, atHomeAddress, taxRate, taxInclusive]);
+
+  const manualDiscountEffective = useMemo(() => {
+    if (manualDiscountAmount <= 0) return 0;
+    if (manualDiscountType === "percentage") {
+      return (subtotalBeforeDiscount * manualDiscountAmount) / 100;
+    }
+    return manualDiscountAmount;
+  }, [manualDiscountAmount, manualDiscountType, subtotalBeforeDiscount]);
+
+  const effectiveDiscountAmount = Math.max(manualDiscountEffective, discountAmount);
+  const discountFromManual = manualDiscountEffective >= discountAmount && manualDiscountEffective > 0;
   const discountLabel = discountFromManual
     ? t(`${ac}.manualDiscount`)
     : discountCode.trim()
@@ -490,9 +530,9 @@ export function AppointmentCreateFlow({
       intakeForms,
       intakeResponses: intakeResponsesForPackage,
       locationType,
-      addressLine1: atHomeReady ? "ok" : "",
-      addressLatitude: atHomeReady ? 0 : null,
-      addressLongitude: atHomeReady ? 0 : null,
+      addressLine1: atHomeReady ? atHomeAddress.addressLine1.trim() : "",
+      addressLatitude: atHomeReady ? atHomeAddress.addressLatitude : null,
+      addressLongitude: atHomeReady ? atHomeAddress.addressLongitude : null,
     };
   }, [
     appointmentKind,
@@ -504,6 +544,9 @@ export function AppointmentCreateFlow({
     startTime,
     teamMembers.length,
     atHomeReady,
+    atHomeAddress.addressLine1,
+    atHomeAddress.addressLatitude,
+    atHomeAddress.addressLongitude,
     isRecurring,
     recurrenceOccurrences,
     intakeFormsLoaded,
@@ -520,10 +563,28 @@ export function AppointmentCreateFlow({
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
+  const translateCreateValidation = useCallback(
+    (err: ProviderBookingCreateValidationError) => {
+      if (err.messageKey && err.messageKey !== "completeField") {
+        const translated = t(
+          `web.provider.portal.appointmentCreate.validation.${err.messageKey}`,
+        );
+        if (
+          translated &&
+          translated !== `web.provider.portal.appointmentCreate.validation.${err.messageKey}`
+        ) {
+          return translated;
+        }
+      }
+      return err.message;
+    },
+    [t],
+  );
+
   const createValidationError = useMemo(() => {
     const err = validateProviderBookingCreateDetailed(providerBookingCreateInput);
-    return err?.message ?? null;
-  }, [providerBookingCreateInput]);
+    return err ? translateCreateValidation(err) : null;
+  }, [providerBookingCreateInput, translateCreateValidation]);
 
   const canContinue = createValidationError == null;
 
@@ -955,6 +1016,32 @@ export function AppointmentCreateFlow({
 
             <BookingSectionCard>
               <BookingSectionLabel className="mb-2">{t(`${ac}.manualDiscount`)}</BookingSectionLabel>
+              <div className="flex gap-2 mb-2">
+                <button
+                  type="button"
+                  onClick={() => setManualDiscountType("percentage")}
+                  className={cn(
+                    "flex-1 rounded-xl border px-3 py-2 text-xs font-semibold touch-manipulation min-h-[40px]",
+                    manualDiscountType === "percentage"
+                      ? "bg-gray-900 border-gray-900 text-white"
+                      : "border-gray-200 bg-white text-gray-700",
+                  )}
+                >
+                  {t(`${ac}.discountTypePercent`)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManualDiscountType("fixed")}
+                  className={cn(
+                    "flex-1 rounded-xl border px-3 py-2 text-xs font-semibold touch-manipulation min-h-[40px]",
+                    manualDiscountType === "fixed"
+                      ? "bg-gray-900 border-gray-900 text-white"
+                      : "border-gray-200 bg-white text-gray-700",
+                  )}
+                >
+                  {t(`${ac}.discountTypeFixed`)}
+                </button>
+              </div>
               <div className="grid grid-cols-5 gap-2">
                 <div className="col-span-2">
                   <Input
@@ -1103,6 +1190,7 @@ export function AppointmentCreateFlow({
               onSendNotificationChange={setSendNotification}
               depositPercentage={depositPercentage}
               showDeposit={depositRequired || collectDeposit}
+              depositPolicyRequired={depositRequired}
               totalAmount={totals.totalAmount}
             />
             </div>

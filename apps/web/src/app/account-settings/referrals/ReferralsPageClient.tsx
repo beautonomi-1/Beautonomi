@@ -32,6 +32,7 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
   const [stats, setStats] = useState<ReferralStats | null>(() => initial?.stats ?? null);
   const [settings, setSettings] = useState<ReferralSettings | null>(() => initial?.settings ?? null);
   const [isLoading, setIsLoading] = useState(() => !initial);
+  const [loadError, setLoadError] = useState(false);
   const [copied, setCopied] = useState(false);
   const skipHydrateLoadOnce = useRef(!!initial);
 
@@ -48,7 +49,8 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
   const loadReferralData = async () => {
     try {
       setIsLoading(true);
-      
+      setLoadError(false);
+
       // Load referral data from API
       const [referralRes, settingsRes] = await Promise.all([
         fetcher.get<{ data: { referral_code: string; referral_link: string; stats: ReferralStats; settings: ReferralSettings } }>("/api/me/referrals", { staleTimeMs: 30_000 }),
@@ -67,22 +69,11 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
     } catch (error) {
       console.error("Failed to load referral data:", error);
       toast.error(t("web.accountSettings.referrals.loadFailed"));
-      
-      // Fallback to defaults
-      setReferralCode("BEAUTY");
-      setReferralLink(typeof window !== "undefined" ? `${window.location.origin}/signup?ref=BEAUTY` : "");
-      setStats({
-        total_referrals: 0,
-        successful_referrals: 0,
-        total_earnings: 0,
-        pending_earnings: 0,
-      });
-      setSettings({
-        referral_amount: 50,
-        referral_message: t("web.accountSettings.referrals.defaultShareMessage"),
-        referral_currency: tenantCurrency,
-        is_enabled: true,
-      });
+      setLoadError(true);
+      setReferralCode("");
+      setReferralLink("");
+      setStats(null);
+      setSettings(null);
     } finally {
       setIsLoading(false);
     }
@@ -148,7 +139,7 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
               // Replace placeholder with actual amount
               answer = answer.replace(
                 /\$\{referral_amount\}/g,
-                `${settings?.referral_amount || 50} ${settings?.referral_currency || tenantCurrency}`
+                `${settings?.referral_amount ?? 0} ${settings?.referral_currency || tenantCurrency}`
               );
             }
             
@@ -178,7 +169,7 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
               id: "item-2",
               question: t("web.accountSettings.referrals.faqHowMuch"),
               answer: t("web.accountSettings.referrals.faqHowMuchAnswer", {
-                amount: settings?.referral_amount || 50,
+                amount: settings?.referral_amount ?? 0,
                 currency: settings?.referral_currency || tenantCurrency,
               }),
               isList: false,
@@ -236,6 +227,19 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
             {isLoading ? (
               <div className="flex items-center justify-center py-20">
                 <p className="text-sm text-gray-500">{t("web.accountSettings.referrals.loading")}</p>
+              </div>
+            ) : loadError || !referralCode ? (
+              <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
+                <p className="text-sm text-gray-600 max-w-md">
+                  {t("web.accountSettings.referrals.loadFailed")}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void loadReferralData()}
+                  className="rounded-xl bg-[#FF0077] px-6 py-3 text-sm font-semibold text-white hover:bg-[#E6006A]"
+                >
+                  {t("common.retry") as string}
+                </button>
               </div>
             ) : (
               <div className="space-y-6">

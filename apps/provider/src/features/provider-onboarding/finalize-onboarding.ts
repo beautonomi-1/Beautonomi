@@ -11,6 +11,7 @@ import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry"
 import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
   getSubscriptionPaystackReturnUrl,
+  getSubscriptionPaymentReturnDeepLink,
   matchesSubscriptionPaystackReturnUrl,
   pollSubscriptionProvisioned,
 } from "@/lib/payments/providerPaystackReturn";
@@ -107,6 +108,21 @@ async function completeCheckoutAfterReturn(options: {
 }): Promise<boolean> {
   const { result, reference: initialReference, orderId, router } = options;
 
+  if (result.outcome === "start_failed") {
+    Alert.alert(
+      "Payment unavailable",
+      "We couldn't open secure checkout. Please try again from Settings.",
+      [
+        {
+          text: "Open subscription",
+          onPress: () => router.replace("/(app)/(tabs)/more/settings/subscription" as never),
+        },
+        { text: "Continue to app", style: "cancel", onPress: () => router.replace(POST_ONBOARDING_ROUTE as never) },
+      ],
+    );
+    return false;
+  }
+
   if (result.outcome === "cancel") {
     await clearPendingOnboardingCheckout();
     Alert.alert(
@@ -134,6 +150,7 @@ async function completeCheckoutAfterReturn(options: {
 
   let reference = initialReference?.trim() || null;
   let checkoutSessionId: string | null = null;
+  let flutterwaveTransactionId: string | null = null;
   if (result.outcome === "success" && result.url) {
     if (matchesSubscriptionPaystackReturnUrl(result.url, { cancelled: true })) {
       await clearPendingOnboardingCheckout();
@@ -157,10 +174,14 @@ async function completeCheckoutAfterReturn(options: {
     const parsed = parseOnlineCheckoutReturnUrl(result.url);
     if (parsed.reference) reference = parsed.reference;
     checkoutSessionId = parsed.sessionId;
+    flutterwaveTransactionId = parsed.transactionId;
   }
 
   const verifyResult = reference
-    ? await verifyPaystackWithRetry(reference, { sessionId: checkoutSessionId })
+    ? await verifyPaystackWithRetry(reference, {
+        sessionId: checkoutSessionId,
+        transactionId: flutterwaveTransactionId,
+      })
     : null;
   if (verifyResult?.status === "failed") {
     Alert.alert(
@@ -543,7 +564,7 @@ export async function finalizeOnboardingSuccess(options: {
           orderId: checkoutStart.orderId ?? null,
         });
 
-        const subscriptionReturnUrl = getSubscriptionPaystackReturnUrl();
+        const subscriptionReturnUrl = getSubscriptionPaymentReturnDeepLink();
         const result = await waitForCheckout(checkoutStart.authorizationUrl, {
           returnUrl: subscriptionReturnUrl,
           matchSuccess: (u) => matchesSubscriptionPaystackReturnUrl(u, { success: true }),

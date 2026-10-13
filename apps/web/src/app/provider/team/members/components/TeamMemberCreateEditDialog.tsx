@@ -103,9 +103,13 @@ export function TeamMemberCreateEditDialog({
         const loadSettings = async () => {
           try {
             const { fetcher } = await import("@/lib/http/fetcher");
-            const settingsResponse = await fetcher.get<{ data: any }>(`/api/provider/staff/${member.id}/settings`);
+            const [settingsResponse, notifResponse] = await Promise.all([
+              fetcher.get<{ data: any }>(`/api/provider/staff/${member.id}/settings`),
+              fetcher.get<{ data: any }>(`/api/provider/staff/${member.id}/notifications`).catch(() => null),
+            ]);
             const settings = settingsResponse.data;
-            
+            const notif = notifResponse?.data;
+
             setFormData({
               name: member.name || "",
               email: member.email || "",
@@ -117,10 +121,14 @@ export function TeamMemberCreateEditDialog({
               can_be_assigned_to_product_sales: settings?.can_be_assigned_to_product_sales ?? false,
               mobileReady: settings?.mobileReady ?? false,
               is_admin: settings?.is_admin ?? member.role === "owner",
-              email_notifications_enabled: settings?.email_notifications_enabled ?? true,
-              sms_notifications_enabled: settings?.sms_notifications_enabled ?? false,
-              sms_plan_allowed: settings?.sms_plan_allowed === true,
-              desktop_notifications_enabled: settings?.desktop_notifications_enabled ?? false,
+              email_notifications_enabled:
+                notif?.emailEnabled ?? settings?.email_notifications_enabled ?? true,
+              sms_notifications_enabled:
+                notif?.smsEnabled ?? settings?.sms_notifications_enabled ?? false,
+              sms_plan_allowed:
+                notif?.smsPlanAllowed ?? settings?.sms_plan_allowed === true,
+              desktop_notifications_enabled:
+                notif?.desktopEnabled ?? settings?.desktop_notifications_enabled ?? false,
               work_hours_enabled: settings?.work_hours_enabled ?? true,
               commission_enabled: settings?.commission_enabled ?? false,
               commission_rate: settings?.commission_rate ?? 0,
@@ -322,27 +330,33 @@ export function TeamMemberCreateEditDialog({
         // Update basic info and settings separately
         try {
           // Update all other settings
-          await fetcher.patch(`/api/provider/staff/${member.id}/settings`, {
-            is_service_provider: formData.is_service_provider,
-            enable_in_online_booking: formData.enable_in_online_booking,
-            can_be_assigned_to_product_sales: formData.can_be_assigned_to_product_sales,
-            mobileReady: formData.mobileReady,
-            is_admin: formData.is_admin,
-            email_notifications_enabled: formData.email_notifications_enabled,
-            sms_notifications_enabled: formData.sms_plan_allowed
-              ? formData.sms_notifications_enabled
-              : false,
-            desktop_notifications_enabled: formData.desktop_notifications_enabled,
-            work_hours_enabled: formData.work_hours_enabled,
-            commission_enabled: formData.commission_enabled,
-            commission_rate: formData.commission_rate,
-            hourly_rate: formData.hourly_rate,
-            salary: formData.salary,
-            tips_enabled: formData.tips_enabled,
-            time_clock_enabled: formData.time_clock_enabled,
-            time_clock_pin: formData.time_clock_pin,
-            phone_call_availability_enabled: formData.phone_call_availability_enabled,
-          });
+          const smsEnabled = formData.sms_plan_allowed ? formData.sms_notifications_enabled : false;
+          await Promise.all([
+            fetcher.patch(`/api/provider/staff/${member.id}/settings`, {
+              is_service_provider: formData.is_service_provider,
+              enable_in_online_booking: formData.enable_in_online_booking,
+              can_be_assigned_to_product_sales: formData.can_be_assigned_to_product_sales,
+              mobileReady: formData.mobileReady,
+              is_admin: formData.is_admin,
+              email_notifications_enabled: formData.email_notifications_enabled,
+              sms_notifications_enabled: smsEnabled,
+              desktop_notifications_enabled: formData.desktop_notifications_enabled,
+              work_hours_enabled: formData.work_hours_enabled,
+              commission_enabled: formData.commission_enabled,
+              commission_rate: formData.commission_rate,
+              hourly_rate: formData.hourly_rate,
+              salary: formData.salary,
+              tips_enabled: formData.tips_enabled,
+              time_clock_enabled: formData.time_clock_enabled,
+              time_clock_pin: formData.time_clock_pin,
+              phone_call_availability_enabled: formData.phone_call_availability_enabled,
+            }),
+            fetcher.patch(`/api/provider/staff/${member.id}/notifications`, {
+              email_enabled: formData.email_notifications_enabled,
+              sms_enabled: smsEnabled,
+              desktop_enabled: formData.desktop_notifications_enabled,
+            }),
+          ]);
         } catch (error) {
           console.error("Failed to update settings:", error);
           // Don't fail the whole operation if settings update fails
@@ -375,27 +389,35 @@ export function TeamMemberCreateEditDialog({
               is_active: formData.is_active,
             });
             
-            await fetcher.patch(`/api/provider/staff/${createdMember.id}/settings`, {
-              is_service_provider: formData.is_service_provider,
-              enable_in_online_booking: formData.enable_in_online_booking,
-              can_be_assigned_to_product_sales: formData.can_be_assigned_to_product_sales,
-              mobileReady: formData.mobileReady,
-              is_admin: formData.is_admin,
-              email_notifications_enabled: formData.email_notifications_enabled,
-              sms_notifications_enabled: formData.sms_plan_allowed
-                ? formData.sms_notifications_enabled
-                : false,
-              desktop_notifications_enabled: formData.desktop_notifications_enabled,
-              work_hours_enabled: formData.work_hours_enabled,
-              commission_enabled: formData.commission_enabled,
-              commission_rate: formData.commission_rate,
-              hourly_rate: formData.hourly_rate,
-              salary: formData.salary,
-              tips_enabled: formData.tips_enabled,
-              time_clock_enabled: formData.time_clock_enabled,
-              time_clock_pin: formData.time_clock_pin,
-              phone_call_availability_enabled: formData.phone_call_availability_enabled,
-            });
+            const smsEnabledCreate = formData.sms_plan_allowed
+              ? formData.sms_notifications_enabled
+              : false;
+            await Promise.all([
+              fetcher.patch(`/api/provider/staff/${createdMember.id}/settings`, {
+                is_service_provider: formData.is_service_provider,
+                enable_in_online_booking: formData.enable_in_online_booking,
+                can_be_assigned_to_product_sales: formData.can_be_assigned_to_product_sales,
+                mobileReady: formData.mobileReady,
+                is_admin: formData.is_admin,
+                email_notifications_enabled: formData.email_notifications_enabled,
+                sms_notifications_enabled: smsEnabledCreate,
+                desktop_notifications_enabled: formData.desktop_notifications_enabled,
+                work_hours_enabled: formData.work_hours_enabled,
+                commission_enabled: formData.commission_enabled,
+                commission_rate: formData.commission_rate,
+                hourly_rate: formData.hourly_rate,
+                salary: formData.salary,
+                tips_enabled: formData.tips_enabled,
+                time_clock_enabled: formData.time_clock_enabled,
+                time_clock_pin: formData.time_clock_pin,
+                phone_call_availability_enabled: formData.phone_call_availability_enabled,
+              }),
+              fetcher.patch(`/api/provider/staff/${createdMember.id}/notifications`, {
+                email_enabled: formData.email_notifications_enabled,
+                sms_enabled: smsEnabledCreate,
+                desktop_enabled: formData.desktop_notifications_enabled,
+              }),
+            ]);
           } catch (error) {
             console.error("Failed to save settings:", error);
             // Don't fail the whole operation if settings save fails

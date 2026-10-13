@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { providerPortalFetch } from "@/lib/http/fetcher";
 import { Input } from "@/components/ui/input";
 import { BookingSectionCard, BookingSectionLabel } from "../ui";
+import { loadClientDefaultAddress } from "./load-client-default-address";
 
 export type ClientSearchResult = {
   id: string;
@@ -26,6 +27,7 @@ interface ClientSearchPickerProps {
     addressLine1: string;
     addressLine2: string;
     addressCity: string;
+    addressState: string;
     addressPostalCode: string;
     addressCountry: string;
     addressLatitude: number | null;
@@ -121,53 +123,8 @@ export function ClientSearchPicker({
     if (!loadAddressOnSelect || !onAddressLoaded) return;
 
     try {
-      let addr: Record<string, unknown> | null = null;
-      const res = await providerPortalFetch(`/api/provider/clients/${client.id}`);
-      if (res.ok) {
-        const body = await res.json();
-        const clientData = body?.data ?? body;
-        addr =
-          (clientData?.customer?.default_address as Record<string, unknown>) ??
-          (clientData?.default_address as Record<string, unknown>) ??
-          null;
-      }
-
-      if (!addr) {
-        const addrRes = await providerPortalFetch(`/api/provider/clients/${client.id}/addresses`);
-        if (addrRes.ok) {
-          const addrBody = await addrRes.json();
-          const addresses = addrBody?.data ?? addrBody ?? [];
-          if (Array.isArray(addresses) && addresses.length > 0) {
-            addr =
-              (addresses.find((a: Record<string, unknown>) => a.is_default || a.is_primary) as Record<
-                string,
-                unknown
-              >) ?? (addresses[0] as Record<string, unknown>);
-          }
-        }
-      }
-
-      if (addr) {
-        onAddressLoaded({
-          addressLine1: String(addr.address_line1 || addr.line1 || addr.street || ""),
-          addressLine2: String(addr.address_line2 || addr.line2 || ""),
-          addressCity: String(addr.city || ""),
-          addressPostalCode: String(addr.postal_code || addr.postalCode || ""),
-          addressCountry: String(addr.country || ""),
-          addressLatitude:
-            addr.latitude != null
-              ? Number(addr.latitude)
-              : addr.lat != null
-                ? Number(addr.lat)
-                : null,
-          addressLongitude:
-            addr.longitude != null
-              ? Number(addr.longitude)
-              : addr.lng != null
-                ? Number(addr.lng)
-                : null,
-        });
-      }
+      const loaded = await loadClientDefaultAddress(client.id);
+      if (loaded) onAddressLoaded(loaded);
     } catch {
       /* client may not have address */
     }

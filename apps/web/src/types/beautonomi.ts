@@ -496,7 +496,15 @@ export interface Booking {
   /** Resolved package title when `package_id` is set */
   package_name?: string | null;
   /** Provider summary, populated in detail views */
-  provider?: { id?: string; business_name?: string; slug?: string; phone?: string; email?: string } | null;
+  provider?: {
+    id?: string;
+    business_name?: string;
+    slug?: string;
+    phone?: string;
+    email?: string;
+    rating_average?: number | null;
+    review_count?: number | null;
+  } | null;
   /** Populated when booking originated from a custom offer (detail endpoints join custom_requests). */
   custom_offer?: {
     id?: string;

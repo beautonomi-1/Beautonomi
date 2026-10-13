@@ -195,7 +195,12 @@ export interface ProviderApi {
     amount: number; // Amount in Rands (API converts to cents)
     currency?: string;
     appointment_id?: string;
+    booking_id?: string;
     sale_id?: string;
+    group_booking_id?: string;
+    product_order_id?: string;
+    additional_charge_id?: string;
+    attempt_id?: string;
     metadata?: Record<string, unknown>;
   }): Promise<YocoPayment>;
   getYocoPayment(id: string): Promise<YocoPayment>;
@@ -1299,6 +1304,9 @@ export class ProviderApiClient implements ProviderApi {
       if (data.tax_amount !== undefined) {
         updateData.tax_amount = data.tax_amount;
       }
+      if ((data as { tax_rate?: number }).tax_rate !== undefined) {
+        updateData.tax_rate = (data as { tax_rate?: number }).tax_rate;
+      }
       if (data.subtotal !== undefined) {
         updateData.subtotal = data.subtotal;
       }
@@ -1320,6 +1328,9 @@ export class ProviderApiClient implements ProviderApi {
           add_on_ids: s.addons?.length
             ? s.addons.map((a: any) => a.addonId || a.id).filter(Boolean)
             : (s.add_on_ids || null),
+          ...(s.scheduled_start_at || s.scheduledStartAt
+            ? { scheduled_start_at: s.scheduled_start_at || s.scheduledStartAt }
+            : {}),
         }));
       }
       if ((data as any).products !== undefined) {
@@ -1620,6 +1631,9 @@ export class ProviderApiClient implements ProviderApi {
           house_call_address: (data as any).house_call_address ?? null,
           is_walk_in: (data as any).is_walk_in ?? false,
           notes: (data as any).notes || null,
+          payments: (data as any).payments ?? undefined,
+          gift_card_code: (data as any).gift_card_code ?? undefined,
+          gift_card_amount: (data as any).gift_card_amount ?? undefined,
         }
       );
       
@@ -1726,17 +1740,45 @@ export class ProviderApiClient implements ProviderApi {
       console.log("Own categories count:", own_categories.length);
       
       // Get services including variants so they can be grouped under parents
-      const servicesResponse = await fetcher.get<{ data: any[] }>("/api/provider/services?include_variants=true");
+      const servicesResponse = await fetcher.get<{ data: any[] }>(
+        "/api/provider/services?include_variants=true&include_addons=true",
+      );
       console.log("Services API response:", servicesResponse);
       const services = servicesResponse.data || [];
       console.log("Services count:", services.length, services);
       
+      const groupServicesWithVariants = (allServices: any[]) => {
+        const basicServices = allServices.filter(
+          (svc: any) => !svc.service_type || svc.service_type === "basic",
+        );
+        const variantServices = allServices.filter((svc: any) => svc.service_type === "variant");
+        const packageServices = allServices.filter((svc: any) => svc.service_type === "package");
+        const addonServices = allServices.filter((svc: any) => svc.service_type === "addon");
+        const servicesWithVariants = basicServices.map((basic: any) => {
+          const variants = variantServices
+            .filter((v: any) => v.parent_service_id === basic.id)
+            .sort(
+              (a: any, b: any) => (a.variant_sort_order || 0) - (b.variant_sort_order || 0),
+            );
+          return {
+            ...basic,
+            variants: variants.length > 0 ? variants : undefined,
+          };
+        });
+        return [...servicesWithVariants, ...packageServices, ...addonServices];
+      };
+
       // Helper to map service to ServiceItem format
-      const mapService = (svc: any, catId: string) => ({
+      const mapService = (svc: any, cat?: { id: string; name?: string; order?: number }) => {
+        const pc = svc.provider_categories;
+        const categoryId = svc.provider_category_id || cat?.id;
+        return {
         id: svc.id,
         name: svc.title || svc.name,
-        category_id: svc.provider_category_id || catId,
+        category_id: categoryId,
         provider_category_id: svc.provider_category_id,
+        category_name: cat?.name ?? pc?.name ?? undefined,
+        category_order: cat?.order ?? pc?.display_order ?? undefined,
         duration_minutes: svc.duration_minutes,
         price: svc.price,
         is_active: svc.is_active ?? true,
@@ -1774,48 +1816,46 @@ export class ProviderApiClient implements ProviderApi {
         advanced_pricing_rules: svc.advanced_pricing_rules || [],
         // Team members
         team_member_ids: svc.team_member_ids || [],
-      } as ServiceItem);
-      
+      } as ServiceItem;
+      };
+
+      const mapServiceWithVariants = (
+        svc: any,
+        cat?: { id: string; name?: string; order?: number },
+      ) => {
+        const mapped = mapService(svc, cat);
+        if (svc.variants?.length) {
+          mapped.variants = svc.variants.map((v: any) => mapService(v, cat));
+        }
+        return mapped;
+      };
+
+      const allServicesGrouped = groupServicesWithVariants(services);
+
       // If there are no categories, create a virtual one with all services
       if (own_categories.length === 0 && services.length > 0) {
         console.log("No categories found, creating virtual 'All Services' category");
+        const virtualCat = { id: "all-services", name: "All Services", order: 0 };
         return [{
-          id: "all-services",
-          name: "All Services",
-          order: 0,
+          id: virtualCat.id,
+          name: virtualCat.name,
+          order: virtualCat.order,
           color: "#FF0077",
           description: "",
-          services: services.map((svc: any) => mapService(svc, "all-services")),
+          services: allServicesGrouped.map((svc: any) => mapServiceWithVariants(svc, virtualCat)),
         }];
       }
       
-      // Separate services by type for grouping
-      const basicServices = services.filter((svc: any) => !svc.service_type || svc.service_type === "basic");
-      const variantServices = services.filter((svc: any) => svc.service_type === "variant");
-      const packageServices = services.filter((svc: any) => svc.service_type === "package");
-      const addonServices = services.filter((svc: any) => svc.service_type === "addon");
-      
-      // Group variants under their parent services
-      const servicesWithVariants = basicServices.map((basic: any) => {
-        const variants = variantServices
-          .filter((v: any) => v.parent_service_id === basic.id)
-          .sort((a: any, b: any) => (a.variant_sort_order || 0) - (b.variant_sort_order || 0));
-        return {
-          ...basic,
-          variants: variants.length > 0 ? variants : undefined,
-        };
-      });
-      
-      // Combine all services: basic (with variants), packages, and addons
-      const allServicesGrouped = [
-        ...servicesWithVariants,
-        ...packageServices,
-        ...addonServices,
-      ];
-      
       // Map categories with their services (grouped with variants)
       const providerCategories = own_categories.map((cat: any) => {
-        const categoryServices = allServicesGrouped.filter((svc: any) => svc.provider_category_id === cat.id);
+        const catMeta = {
+          id: cat.id as string,
+          name: cat.name as string | undefined,
+          order: (cat.display_order || 0) as number,
+        };
+        const categoryServices = allServicesGrouped.filter(
+          (svc: any) => svc.provider_category_id === cat.id,
+        );
         console.log(`Category "${cat.name}" (${cat.id}): ${categoryServices.length} services`);
         return {
           id: cat.id,
@@ -1823,36 +1863,25 @@ export class ProviderApiClient implements ProviderApi {
           order: cat.display_order || 0,
           color: cat.color || "#FF0077",
           description: cat.description,
-          services: categoryServices.map((svc: any) => {
-            const mapped = mapService(svc, cat.id);
-            // Include variants if present
-            if (svc.variants && svc.variants.length > 0) {
-              (mapped as any).variants = svc.variants.map((v: any) => mapService(v, cat.id));
-            }
-            return mapped;
-          }),
+          services: categoryServices.map((svc: any) => mapServiceWithVariants(svc, catMeta)),
         };
       });
       
       // Check if any services don't belong to a category (orphaned services)
       const categoryIds = new Set(own_categories.map((c: any) => c.id));
-      const orphanedServices = allServicesGrouped.filter((svc: any) => !categoryIds.has(svc.provider_category_id));
+      const orphanedServices = allServicesGrouped.filter(
+        (svc: any) => !categoryIds.has(svc.provider_category_id),
+      );
       if (orphanedServices.length > 0) {
         console.log(`Found ${orphanedServices.length} orphaned services, adding to 'Other' category`);
+        const otherCat = { id: "other", name: "Other Services", order: 9999 };
         providerCategories.push({
-          id: "other",
-          name: "Other Services",
-          order: 9999,
+          id: otherCat.id,
+          name: otherCat.name,
+          order: otherCat.order,
           color: "#6B7280",
           description: "Services not assigned to a category",
-          services: orphanedServices.map((svc: any) => {
-            const mapped = mapService(svc, "other");
-            // Include variants if present
-            if (svc.variants && svc.variants.length > 0) {
-              (mapped as any).variants = svc.variants.map((v: any) => mapService(v, "other"));
-            }
-            return mapped;
-          }),
+          services: orphanedServices.map((svc: any) => mapServiceWithVariants(svc, otherCat)),
         });
       }
       
@@ -2978,6 +3007,10 @@ export class ProviderApiClient implements ProviderApi {
     appointment_id?: string;
     booking_id?: string;
     sale_id?: string;
+    group_booking_id?: string;
+    product_order_id?: string;
+    additional_charge_id?: string;
+    attempt_id?: string;
     metadata?: Record<string, unknown>;
   }): Promise<YocoPayment> {
     try {
@@ -2990,6 +3023,10 @@ export class ProviderApiClient implements ProviderApi {
         appointment_id: data.appointment_id,
         booking_id: data.booking_id,
         sale_id: data.sale_id,
+        group_booking_id: data.group_booking_id,
+        product_order_id: data.product_order_id,
+        additional_charge_id: data.additional_charge_id,
+        attempt_id: data.attempt_id,
         metadata: data.metadata,
       });
     } catch (error: any) {
@@ -3409,11 +3446,16 @@ export class ProviderApiClient implements ProviderApi {
         line1: (data as any).address_line1 ?? null,
         line2: (data as any).address_line2 ?? null,
         city: (data as any).address_city ?? null,
+        state: (data as any).address_state ?? null,
         postal_code: (data as any).address_postal_code ?? null,
         country: (data as any).address_country ?? null,
         latitude: (data as any).address_latitude ?? null,
         longitude: (data as any).address_longitude ?? null,
       };
+    }
+    if (Array.isArray(cartItems)) {
+      const addonItems = cartItems.filter((item: { type?: string }) => item?.type === "addon");
+      if (addonItems.length > 0) metadata.addons = addonItems;
     }
 
     const sched = (data.scheduled_time || "10:00").trim();
@@ -4952,8 +4994,11 @@ export class ProviderApiClient implements ProviderApi {
   async getServiceAddons(serviceId: string): Promise<ServiceItem[]> {
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
-      const response = await fetcher.get<{ data: { addons: any[] } }>(`/api/provider/services/${serviceId}/addons`);
-      const addons = response.data?.addons || [];
+      const response = await fetcher.get<{ data: any[] | { addons: any[] } }>(
+        `/api/provider/services/${serviceId}/addons`,
+      );
+      const raw = response.data;
+      const addons = Array.isArray(raw) ? raw : raw?.addons || [];
       return addons.map((a: any) => ({
         id: a.id,
         name: a.title || a.name,

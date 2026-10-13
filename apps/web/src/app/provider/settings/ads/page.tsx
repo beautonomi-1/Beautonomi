@@ -240,12 +240,21 @@ function isPastCampaign(lifecycle: CampaignLifecycle | undefined): boolean {
   );
 }
 
-type ImpressionPack = { id: string; impressions: number; price_zar: number; display_order: number };
+type ImpressionPack = {
+  id: string;
+  impressions: number;
+  price_zar: number;
+  price_minor?: number | null;
+  currency?: string | null;
+  display_order: number;
+};
 type TimePack = {
   id: string;
   duration_days: number;
   label: string;
   price_zar: number;
+  price_minor?: number | null;
+  currency?: string | null;
   display_order: number;
 };
 
@@ -304,6 +313,11 @@ export default function ProviderAdsPage() {
 
   const enabled = Boolean(adsConfig?.enabled) || adsEnabled;
   const cpcBudgetAvailable = availableModels.length === 0 || availableModels.includes("cpc_budget");
+
+  const packAmountMajor = (pack: { price_zar: number; price_minor?: number | null }) =>
+    pack.price_minor != null && Number.isFinite(Number(pack.price_minor))
+      ? Number(pack.price_minor) / 100
+      : Number(pack.price_zar);
 
   const loadCampaigns = useCallback(async () => {
     try {
@@ -533,10 +547,10 @@ subtitle: t("web.provider.settings.pages.ads.impressionPackSubtitle"),
       ],
       lineItems: [
         { label: t("web.provider.settings.pages.ads.impressionPack"), value: formatCompactNumber(pack.impressions) },
-        { label: t("web.provider.settings.pages.ads.totalDue"), value: fmt(Number(pack.price_zar)) },
+        { label: t("web.provider.settings.pages.ads.totalDue"), value: fmt(packAmountMajor(pack)) },
       ],
-      total: fmt(Number(pack.price_zar)),
-      confirmLabel: t("web.provider.settings.pages.ads.payAmount", { amount: fmt(Number(pack.price_zar)) }),
+      total: fmt(packAmountMajor(pack)),
+      confirmLabel: t("web.provider.settings.pages.ads.payAmount", { amount: fmt(packAmountMajor(pack)) }),
       run: () => runBuyPack(pack),
     });
   };
@@ -618,10 +632,10 @@ heading: t("web.provider.settings.pages.ads.timeBoost"),
       ],
       lineItems: [
         { label: t("web.provider.settings.pages.ads.boostDuration"), value: daysLabel },
-        { label: t("web.provider.settings.pages.ads.totalDue"), value: fmt(Number(tp.price_zar)) },
+        { label: t("web.provider.settings.pages.ads.totalDue"), value: fmt(packAmountMajor(tp)) },
       ],
-      total: fmt(Number(tp.price_zar)),
-      confirmLabel: t("web.provider.settings.pages.ads.payAmount", { amount: fmt(Number(tp.price_zar)) }),
+      total: fmt(packAmountMajor(tp)),
+      confirmLabel: t("web.provider.settings.pages.ads.payAmount", { amount: fmt(packAmountMajor(tp)) }),
       run: () => runBuyTimePack(tp),
     });
   };
@@ -995,7 +1009,7 @@ toast.message(t("web.provider.settings.pages.ads.pickImpressionPack"));
                                 : t("web.provider.settings.pages.ads.daysInSponsoredSlots")}
                           </span>
                           <span className="mt-auto pt-3 border-t border-border text-lg font-semibold">
-                            {fmt(Number(tp.price_zar))}
+                            {fmt(packAmountMajor(tp))}
                           </span>
                           {creatingPackId === tp.id ? (
                             <Loader2 className="h-4 w-4 animate-spin mt-2 text-emerald-600" />
@@ -1044,7 +1058,7 @@ toast.message(t("web.provider.settings.pages.ads.pickImpressionPack"));
 {t("web.provider.settings.pages.ads.sponsoredImpressions")}
                           </span>
                           <span className="mt-auto pt-3 border-t border-border text-lg font-semibold">
-                            {fmt(Number(pack.price_zar))}
+                            {fmt(packAmountMajor(pack))}
                           </span>
                           {creatingPackId === pack.id ? (
                             <Loader2 className="h-4 w-4 animate-spin mt-2 text-violet-600" />

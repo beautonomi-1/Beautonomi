@@ -256,6 +256,16 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         reportId: "yoco-reconciliation",
       },
       {
+        id: "card-machine-reconciliation",
+        name: "Card machine reconciliation",
+        description: "Yoco + Beautonomi card machine pending and amount exceptions",
+        icon: "card-outline",
+        color: "#0f172a",
+        bg: "#f1f5f9",
+        target: "detail",
+        reportId: "card-machine-reconciliation",
+      },
+      {
         id: "paystack-terminal-reconciliation",
         name: "Paystack Terminal reconciliation",
         description: "Terminal captures, allocations, holds, and payout readiness",

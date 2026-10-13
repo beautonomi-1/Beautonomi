@@ -33,6 +33,23 @@ export interface UseIdentityVerificationOptions {
   pollIntervalMs?: number;
 }
 
+type SessionPayload = {
+  session_token?: string;
+  url?: string;
+  is_existing?: boolean;
+};
+
+type StatusEnvelope = {
+  data?: { status?: NormalizedVerificationStatus } | null;
+  status?: NormalizedVerificationStatus;
+  error?: { message?: string; code?: string } | null;
+};
+
+type SessionEnvelope = {
+  data?: SessionPayload | null;
+  error?: { message?: string; code?: string } | null;
+} & SessionPayload;
+
 export interface UseIdentityVerificationReturn {
   status: NormalizedVerificationStatus | null;
   loading: boolean;
@@ -40,6 +57,8 @@ export interface UseIdentityVerificationReturn {
   sessionToken: string | null;
   sessionUrl: string | null;
   isExisting: boolean;
+  /** Increments on each successful session create so the SDK can relaunch the same URL */
+  launchNonce: number;
   legalDetails: LegalDetails;
   setLegalDetails: (d: LegalDetails) => void;
   legalDetailsErrors: Partial<Record<keyof LegalDetails, string>>;
@@ -109,6 +128,7 @@ export function useIdentityVerification(
   });
   const [legalDetailsErrors, setLegalDetailsErrors] = useState<Partial<Record<keyof LegalDetails, string>>>({});
   const [error, setError] = useState<string | null>(null);
+  const [launchNonce, setLaunchNonce] = useState(0);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollAttemptsRef = useRef(0);
 
@@ -123,8 +143,8 @@ export function useIdentityVerification(
   const fetchStatus = useCallback(async (): Promise<NormalizedVerificationStatus> => {
     const res = await fetch(STATUS_ENDPOINT[persona], { credentials: "include" });
     if (!res.ok) throw new Error(`Status fetch failed: ${res.status}`);
-    const json = await res.json() as { status?: NormalizedVerificationStatus };
-    return json.status ?? "not_started";
+    const json = await res.json() as StatusEnvelope;
+    return json.data?.status ?? json.status ?? "not_started";
   }, [persona]);
 
   const refresh = useCallback(async () => {
@@ -250,12 +270,12 @@ export function useIdentityVerification(
             : safe,
         );
       }
-      const data = await res.json() as {
-        session_token?: string; url?: string; is_existing?: boolean;
-      };
-      setSessionToken(data.session_token ?? null);
-      setSessionUrl(data.url ?? null);
-      setIsExisting(data.is_existing ?? false);
+      const json = await res.json() as SessionEnvelope;
+      const payload: SessionPayload = json.data ?? json;
+      setSessionToken(payload.session_token ?? null);
+      setSessionUrl(payload.url ?? null);
+      setIsExisting(payload.is_existing ?? false);
+      setLaunchNonce((n) => n + 1);
     } catch (err) {
       setError(
         formatDiditLaunchError(
@@ -276,7 +296,7 @@ export function useIdentityVerification(
   }, []);
 
   return {
-    status, loading, launching, sessionToken, sessionUrl, isExisting,
+    status, loading, launching, sessionToken, sessionUrl, isExisting, launchNonce,
     legalDetails, setLegalDetails, legalDetailsErrors,
     startVerification, onSdkReturn, retryVerification, refresh, error,
   };

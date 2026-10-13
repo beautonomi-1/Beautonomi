@@ -1,9 +1,11 @@
 "use client";
 
 import { Suspense, useEffect } from "react";
+import { NativeAppCheckoutBounce } from "@/components/payments/NativeAppCheckoutBounce";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { XCircle } from "lucide-react";
+import { useTranslation } from "@beautonomi/i18n";
 
 const ACCENT = "var(--primary, #FF0077)";
 const TEXT_PRIMARY = "#111827";
@@ -14,6 +16,7 @@ function isNativeAppContext(context: string | null): boolean {
 }
 
 function CancelledContent() {
+  const { t } = useTranslation();
   const params = useSearchParams();
   const bookingId = params.get("booking_id");
   const paymentType = params.get("payment_type");
@@ -40,14 +43,14 @@ function CancelledContent() {
   }, [nativeContext, paymentType, bookingId, offerId]);
 
   let backHref = "/";
-  let backLabel = "Go home";
+  let backLabel = t("checkout.cancelledGoHome");
 
   if (paymentType === "custom_offer" && offerId) {
     backHref = `/offers/${encodeURIComponent(offerId)}`;
-    backLabel = "Back to offer";
+    backLabel = t("checkout.cancelledBackToOffer");
   } else if (bookingId) {
-    backHref = `/account-settings/bookings/${encodeURIComponent(bookingId)}/pay`;
-    backLabel = "Return to booking";
+    backHref = `/bookings/${encodeURIComponent(bookingId)}/pay`;
+    backLabel = t("checkout.cancelledReturnToBooking");
   }
 
   return (
@@ -85,7 +88,7 @@ function CancelledContent() {
             marginBottom: "12px",
           }}
         >
-          Payment cancelled
+          {t("checkout.paymentCancelledTitle")}
         </h1>
         <p
           style={{
@@ -95,10 +98,8 @@ function CancelledContent() {
             marginBottom: "32px",
           }}
         >
-          You cancelled the payment. No charge was made.
-          {bookingId
-            ? " Your booking is still saved — you can continue payment whenever you're ready."
-            : ""}
+          {t("checkout.paymentCancelledHostedBody")}
+          {bookingId ? t("checkout.paymentCancelledBookingSaved") : ""}
         </p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -132,7 +133,7 @@ function CancelledContent() {
               cursor: "pointer",
             }}
           >
-            Go home
+            {t("checkout.cancelledGoHome")}
           </Link>
         </div>
       </div>
@@ -141,6 +142,7 @@ function CancelledContent() {
 }
 
 export default function CheckoutCancelledPage() {
+  const { t } = useTranslation();
   return (
     <Suspense
       fallback={
@@ -153,11 +155,14 @@ export default function CheckoutCancelledPage() {
             justifyContent: "center",
           }}
         >
-          <p style={{ color: TEXT_SECONDARY }}>Loading…</p>
+          <p style={{ color: TEXT_SECONDARY }}>{t("checkout.cancelledLoading")}</p>
         </div>
       }
     >
-      <CancelledContent />
+      <>
+        <NativeAppCheckoutBounce />
+        <CancelledContent />
+      </>
     </Suspense>
   );
 }

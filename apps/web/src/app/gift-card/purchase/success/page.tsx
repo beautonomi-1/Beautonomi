@@ -11,6 +11,7 @@ import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
 import { Copy, CheckCircle2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@beautonomi/i18n";
+import { NativeAppCheckoutBounce } from "@/components/payments/NativeAppCheckoutBounce";
 
 type GiftCardRow = {
   id: string;
@@ -84,8 +85,11 @@ function GiftCardPurchaseSuccessInner() {
   const reference =
     searchParams.get("reference")?.trim() ||
     searchParams.get("trxref")?.trim() ||
+    searchParams.get("tx_ref")?.trim() ||
     "";
   const sessionId = searchParams.get("session_id");
+  const transactionId = searchParams.get("transaction_id");
+  const redirectStatus = (searchParams.get("status") ?? "").toLowerCase();
   const tx = (key: string, opts?: Record<string, unknown>) =>
     t(`web.giftCard.purchaseSuccess.${key}`, opts);
   const [phase, setPhase] = useState<"idle" | "verifying" | "loading_codes" | "done" | "error">(
@@ -134,6 +138,11 @@ function GiftCardPurchaseSuccessInner() {
       setPhase("idle");
       return;
     }
+    if (redirectStatus === "failed" || redirectStatus === "cancelled") {
+      setPhase("error");
+      setErrorMsg(tx("verifyFailed"));
+      return;
+    }
     setPhase("verifying");
     setErrorMsg(null);
     try {
@@ -141,6 +150,7 @@ function GiftCardPurchaseSuccessInner() {
         maxAttempts: 5,
         delayMs: 1500,
         sessionId,
+        transactionId,
       });
       const vp = extractVerifyPayload({ data: verifyResult.data });
       const oid = vp.giftCardOrderId ?? null;
@@ -310,7 +320,10 @@ export default function GiftCardPurchaseSuccessPage() {
         </div>
       }
     >
-      <GiftCardPurchaseSuccessInner />
+      <>
+        <NativeAppCheckoutBounce />
+        <GiftCardPurchaseSuccessInner />
+      </>
     </Suspense>
   );
 }

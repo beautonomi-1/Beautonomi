@@ -296,7 +296,7 @@ export function resolveCheckoutGateway(appVersion?: string | null): CheckoutGate
   const region = getCachedConfigBundle()?.meta?.tenant_region;
   const gateway = (region?.payment_gateway ?? "paystack").trim().toLowerCase() || "paystack";
 
-  if (gateway === "paystack") {
+  if (gateway === "paystack" || gateway === "flutterwave") {
     return { gateway, canCheckoutNatively: true, useHostedWebFallback: false };
   }
 

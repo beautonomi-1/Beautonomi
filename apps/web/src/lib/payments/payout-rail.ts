@@ -1,8 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getPaymentProviderForTenant } from "@/lib/payments/provider/registry";
 import { getStripeClient } from "@/lib/payments/stripe-server";
+import {
+  normalizePayoutRailOption,
+  payoutRailUsesBankAccounts,
+  type PayoutRail,
+} from "@/lib/payments/payout-rail-options";
 
-export type PayoutRail = "paystack" | "stripe";
+export type { PayoutRail } from "@/lib/payments/payout-rail-options";
+export { normalizePayoutRailOption, payoutRailUsesBankAccounts } from "@/lib/payments/payout-rail-options";
 
 export type StripeConnectPayoutStatus = {
   connect_account_id: string | null;
@@ -28,6 +34,7 @@ export async function resolvePayoutRailForTenant(
   if (!psp) return null;
   if (psp.provider.id === "stripe") return "stripe";
   if (psp.provider.id === "paystack") return "paystack";
+  if (psp.provider.id === "flutterwave") return "flutterwave";
   return null;
 }
 
@@ -94,8 +101,8 @@ export async function loadProviderPayoutRailContext(
   const rail = await resolvePayoutRailForTenant(effectiveTenantId);
   if (!rail) return null;
 
-  if (rail === "paystack") {
-    return { payout_rail: "paystack", stripe_connect: null };
+  if (rail === "paystack" || rail === "flutterwave") {
+    return { payout_rail: rail, stripe_connect: null };
   }
 
   const connectId = (provider as { stripe_connect_account_id?: string | null } | null)
@@ -122,6 +129,6 @@ export async function loadProviderPayoutRailContext(
 }
 
 export function isProviderPayoutDestinationReady(ctx: ProviderPayoutRailContext): boolean {
-  if (ctx.payout_rail === "paystack") return true;
+  if (payoutRailUsesBankAccounts(ctx.payout_rail)) return true;
   return Boolean(ctx.stripe_connect?.onboarding_complete && ctx.stripe_connect.connect_account_id);
 }

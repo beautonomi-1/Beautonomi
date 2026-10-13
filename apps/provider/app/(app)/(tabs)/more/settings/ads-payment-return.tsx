@@ -12,6 +12,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { twStyle } from "@/lib/twStyle";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
+import {
+  pickHostedCheckoutRouteParams,
+  isHostedCheckoutFailureStatus,
+} from "@/lib/payments/hostedCheckoutRouteParams";
 
 type ReturnStatus = "verifying" | "success" | "pending" | "failed" | "cancel";
 
@@ -32,8 +36,10 @@ export default function AdsPaymentReturnScreen() {
     order_id?: string;
     campaign_id?: string;
   }>();
-  const reference = useMemo(() => pickStr(params.reference) || pickStr(params.trxref), [params]);
-  const sessionId = useMemo(() => pickStr(params.session_id), [params]);
+  const hosted = useMemo(() => pickHostedCheckoutRouteParams(params as Record<string, unknown>), [params]);
+  const reference = hosted.reference;
+  const sessionId = hosted.sessionId;
+  const transactionId = hosted.transactionId;
   const successFlag = pickStr(params.success);
   const cancelFlag = pickStr(params.cancelled);
   const campaignId = pickStr(params.campaign_id);
@@ -99,6 +105,15 @@ export default function AdsPaymentReturnScreen() {
         clearTimeout(t);
       };
     }
+    if (isHostedCheckoutFailureStatus(hosted.status)) {
+      const t = setTimeout(() => {
+        if (!aborted) navigateBack("payment_failed");
+      }, 700);
+      return () => {
+        aborted = true;
+        clearTimeout(t);
+      };
+    }
     if (!reference) {
       const delay = successFlag === "1" ? 700 : 200;
       const t = setTimeout(() => {
@@ -113,7 +128,7 @@ export default function AdsPaymentReturnScreen() {
       const verifyResult = await verifyPaystackWithRetry<{
         adsBudgetOrderId?: string;
         campaignId?: string;
-      }>(reference, { sessionId });
+      }>(reference, { sessionId, transactionId });
       if (aborted) return;
       if (verifyResult.status === "success") setStatus("success");
       else if (verifyResult.status === "failed") setStatus("failed");

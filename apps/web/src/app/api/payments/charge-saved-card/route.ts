@@ -164,6 +164,18 @@ export async function POST(request: NextRequest) {
           400
         );
       }
+    } else if (cardProvider === "flutterwave") {
+      const { isFlutterwaveSavedCardToken } = await import(
+        "@/lib/payments/charge-flutterwave-off-session"
+      );
+      if (!isFlutterwaveSavedCardToken(authorizationCode)) {
+        return handleApiError(
+          new Error("Invalid payment method"),
+          "This payment method is not a valid Flutterwave saved card",
+          "INVALID_METHOD",
+          400
+        );
+      }
     }
 
     if (isPaymentMethodExpired(paymentMethod.expiry_month, paymentMethod.expiry_year)) {
@@ -391,6 +403,26 @@ export async function POST(request: NextRequest) {
       }
       chargeCurrency = (adsOrderAmount as { currency?: string | null } | null)?.currency || lastResortCurrency;
       amountInSmallestUnit = convertToSmallestUnit(adsAmount, chargeCurrency);
+    } else if (walletTopupIdFromMeta) {
+      const { data: wtRow, error: wtErr } = await (supabase.from("wallet_topups") as any)
+        .select("id, user_id, amount, currency, status")
+        .eq("id", walletTopupIdFromMeta)
+        .maybeSingle();
+      if (wtErr || !wtRow) {
+        return notFoundResponse("Wallet top-up not found");
+      }
+      if (wtRow.user_id !== user.id) {
+        return errorResponse("Forbidden", "FORBIDDEN", 403);
+      }
+      if (String(wtRow.status ?? "").toLowerCase() !== "pending") {
+        return errorResponse("This top-up is no longer pending", "INVALID_STATUS", 400);
+      }
+      const wtAmount = Number(wtRow.amount ?? 0);
+      if (!Number.isFinite(wtAmount) || wtAmount <= 0) {
+        return errorResponse("Invalid wallet top-up amount", "INVALID_AMOUNT", 400);
+      }
+      chargeCurrency = String(wtRow.currency || lastResortCurrency).toUpperCase();
+      amountInSmallestUnit = convertToSmallestUnit(wtAmount, chargeCurrency);
     } else if (bookingIdFromMeta) {
       const resolved = await resolveBookingPaystackAmount(supabase, bookingIdFromMeta, user.id);
       if (resolved.ok === false) {
@@ -426,7 +458,43 @@ export async function POST(request: NextRequest) {
     );
 
     let chargeResult: Awaited<ReturnType<typeof chargeAuthorization>>;
-    if (cardProvider === "stripe") {
+    if (cardProvider === "flutterwave") {
+      const { chargeAndSettleFlutterwaveOffSession } = await import(
+        "@/lib/payments/charge-flutterwave-off-session"
+      );
+      const { upsertOnlinePaymentCheckout } = await import("@/lib/payments/online-payment-checkouts");
+      await upsertOnlinePaymentCheckout({
+        reference: chargeReference,
+        provider: "flutterwave",
+        tenantId,
+        metadata: {
+          ...(body.metadata ?? {}),
+          payment_method_id: body.payment_method_id,
+          user_id: user.id,
+        },
+      });
+      const fw = await chargeAndSettleFlutterwaveOffSession(supabaseAdmin, {
+        tenantId,
+        token: String(authorizationCode),
+        email: body.email,
+        amountInSmallestUnit,
+        currency: chargeCurrency,
+        reference: chargeReference,
+        metadata: body.metadata ?? {},
+      });
+      if (fw.ok === false) {
+        return handleApiError(
+          new Error(fw.message),
+          fw.message || "Failed to charge card",
+          "CHARGE_FAILED",
+          400,
+        );
+      }
+      chargeResult = {
+        status: true,
+        data: { status: "success", reference: chargeReference, currency: chargeCurrency },
+      } as Awaited<ReturnType<typeof chargeAuthorization>>;
+    } else if (cardProvider === "stripe") {
       const stripeCharge = await chargeStripeOffSession({
         tenantId,
         reference: chargeReference,

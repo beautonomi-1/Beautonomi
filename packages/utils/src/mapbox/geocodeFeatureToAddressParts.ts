@@ -16,6 +16,8 @@ export type MapboxGeocodeFeatureLike = {
 
 export type ParsedAddressFromMapboxFeature = {
   address_line1: string;
+  /** Suburb/neighborhood when Mapbox provides it separately from the metro `city`. */
+  address_line2?: string;
   city: string;
   state: string;
   postal_code: string;
@@ -116,6 +118,15 @@ export function mapGeocodeFeatureToAddressParts(
 
   if (!addressParts.country && options?.defaultCountryName) {
     addressParts.country = options.defaultCountryName;
+  }
+
+  // Persist suburb/neighborhood in line2 (no DB suburb column) for courier local_area/suburb.
+  if (
+    neighborhoodOrLocality &&
+    addressParts.city &&
+    neighborhoodOrLocality.trim().toLowerCase() !== addressParts.city.trim().toLowerCase()
+  ) {
+    addressParts.address_line2 = neighborhoodOrLocality.trim();
   }
 
   return addressParts;

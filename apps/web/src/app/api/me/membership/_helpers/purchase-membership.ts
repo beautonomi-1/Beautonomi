@@ -254,7 +254,9 @@ export async function createMembershipPurchase(input: PurchaseMembershipInput): 
     query: { payment_type: "membership" },
   });
   const callbackUrl = hostedMembership.successUrl;
-  const membershipCancelAction = `${membershipAppUrl}/explore?membership_cancelled=1${hostedMembership.inApp ? "&context=app" : ""}`;
+  const membershipCancelAction = hostedMembership.inApp
+    ? `${membershipAppUrl}/checkout/cancelled?payment_type=membership&membership_cancelled=1&context=app`
+    : `${membershipAppUrl}/explore?membership_cancelled=1`;
 
   const membershipChannelExtras = paystackChannelsForInitialize({ saveCard: true });
   let onlineInit: Awaited<ReturnType<typeof initializeOnlinePayment>>;

@@ -18,6 +18,18 @@ describe("customerPaystackReturn", () => {
     expect(url).toContain("context=app");
   });
 
+  it("matches native customer:// book/paystack return URLs", () => {
+    expect(
+      matchesCheckoutSuccessReturnUrl("customer://book/paystack?booking_id=b1&reference=ref123"),
+    ).toBe(true);
+    expect(
+      matchesPaystackAuthSessionReturn(
+        "customer://book/paystack?reference=ref123",
+        "customer://book/paystack",
+      ),
+    ).toBe(true);
+  });
+
   it("auth session prefix matches Paystack redirect with extra query params", () => {
     const prefix = paystackAuthSessionReturnPrefix(CHECKOUT_SUCCESS_PATH);
     const redirect =

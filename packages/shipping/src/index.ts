@@ -68,11 +68,25 @@ export interface TrackingUpdate {
   occurredAt: string;
 }
 
+export type LabelResult = {
+  url?: string;
+  pdfBytes?: Uint8Array;
+  contentType?: string;
+};
+
+export type CancelShipmentResult =
+  | { ok: true }
+  | { ok: false; reason: "unsupported" | "not_found" | "courier_rejected"; message?: string };
+
 export interface ShippingProvider {
   readonly id: ShippingProviderId;
   quoteRates(req: RateQuoteRequest): Promise<RateQuote[]>;
   createShipment(req: CreateShipmentRequest): Promise<Shipment>;
   track(trackingNumber: string): Promise<TrackingUpdate[]>;
+  /** Cancel a booked shipment when the courier API supports it. */
+  cancelShipment(params: { shipmentId?: string | null; trackingNumber?: string | null }): Promise<CancelShipmentResult>;
+  /** Fetch a printable label (URL or PDF bytes). */
+  fetchLabel(params: { shipmentId?: string | null; trackingNumber?: string | null }): Promise<LabelResult>;
 }
 
 export class ShippingProviderNotConfiguredError extends Error {
@@ -82,6 +96,7 @@ export class ShippingProviderNotConfiguredError extends Error {
 }
 
 import { createAramexProvider, type AramexCredentials } from "./providers/aramex";
+export type { AramexCredentials } from "./providers/aramex";
 import { createCourierGuyProvider } from "./providers/courier-guy";
 import { createBobGoProvider } from "./providers/bob-go";
 

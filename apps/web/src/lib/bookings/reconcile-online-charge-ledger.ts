@@ -6,8 +6,8 @@
  *     verifying the charge with Paystack; refunded/cancelled bookings go to needs_review.
  *  2. Fee patch: payment_transactions posted with fees = 0 and an estimated/manual
  *     fee_source are re-verified and patched with Paystack's real fee (R208 case).
- *  3. Stripe/Flutterwave: log-only — no in-process capture exists, repair goes
- *     through the webhook or the manual repair script.
+ *  3. Flutterwave: verify transaction id + post ledger (same safety net as Stripe).
+ *  4. Other gateways: log-only.
  *  4. needs_review items are persisted to `reconciliation_exceptions` and an ops
  *     Slack alert fires once per run when any item has been open > 24h.
  */
@@ -17,6 +17,9 @@ import { recordPaystackBookingSettlement } from "./record-paystack-booking-settl
 import { recordStripeBookingSettlement } from "./record-stripe-booking-settlement";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import { retrieveStripeFeeMinorForPaymentIntent } from "@/lib/payments/stripe-balance-fee";
+import { verifyFlutterwaveTransactionById } from "@/lib/payments/flutterwave-server";
+import { recordFlutterwaveBookingSettlement } from "./record-flutterwave-booking-settlement";
+import { toMinorUnits } from "@beautonomi/utils";
 import { tryNotifySlackEvent } from "@/lib/integrations/slack/dispatch";
 import { SLACK_EVENT_KEYS } from "@/lib/integrations/slack/event-keys";
 
@@ -395,6 +398,115 @@ async function reconcileStripeMissingLedger(
   return { scannedPaymentIds };
 }
 
+// ─── Pass 1c: Flutterwave missing ledger ──────────────────────────────────────
+
+async function reconcileFlutterwaveMissingLedger(
+  supabase: SupabaseClient,
+  summary: ReconcileOnlineChargeLedgerSummary,
+  cutoffIso: string,
+): Promise<{ scannedPaymentIds: string[] }> {
+  const scannedPaymentIds: string[] = [];
+
+  const { data: rows, error } = await supabase
+    .from("booking_payments")
+    .select(
+      "id, booking_id, amount, payment_provider, payment_provider_id, payment_provider_data, created_at, bookings(id, status, tenant_id, currency, total_amount, payment_option)",
+    )
+    .eq("payment_provider", "flutterwave")
+    .eq("status", "completed")
+    .lt("created_at", cutoffIso)
+    .order("created_at", { ascending: true })
+    .limit(OTHER_GATEWAY_SCAN_LIMIT);
+
+  if (error) {
+    console.error("[reconcile-online-charge-ledger] flutterwave query failed:", error);
+    return { scannedPaymentIds };
+  }
+
+  for (const raw of rows ?? []) {
+    const row = normaliseBookingPaymentRow(raw);
+    summary.scanned += 1;
+    scannedPaymentIds.push(row.id);
+
+    const transactionId = row.payment_provider_id?.trim();
+    if (!transactionId) {
+      summary.skipped += 1;
+      continue;
+    }
+
+    if (await bookingPredatesSourceAttribution(supabase, row.booking_id)) {
+      summary.skipped += 1;
+      continue;
+    }
+
+    if (await bookingHasLedgerForPayment(supabase, row.booking_id, row.id)) {
+      summary.skipped += 1;
+      continue;
+    }
+
+    const reviewBase: ReconcileNeedsReviewItem = {
+      bookingPaymentId: row.id,
+      bookingId: row.booking_id,
+      reason: "unknown",
+      tenantId: row.bookings?.tenant_id ?? null,
+      currency: row.bookings?.currency ?? null,
+      amount: Number(row.amount ?? 0),
+    };
+
+    const review = await bookingNeedsReview(supabase, row.booking_id, row.bookings?.status);
+    if (review.needsReview) {
+      summary.needsReview.push({ ...reviewBase, reason: review.reason ?? "unknown" });
+      continue;
+    }
+
+    const currency = (row.bookings?.currency || "ZAR").toUpperCase();
+    const amountMajor = Number(row.amount ?? 0);
+    const expectedMinor = toMinorUnits(amountMajor, currency);
+    const dataMeta = row.payment_provider_data ?? {};
+    const txRef =
+      typeof dataMeta.reference === "string"
+        ? dataMeta.reference
+        : typeof dataMeta.tx_ref === "string"
+          ? dataMeta.tx_ref
+          : undefined;
+
+    const verified = await verifyFlutterwaveTransactionById(transactionId, {
+      tenantId: row.bookings?.tenant_id ?? null,
+      expectedTxRef: txRef,
+      expectedAmountMinor: expectedMinor,
+      currency,
+    });
+    if (!verified.ok) {
+      summary.needsReview.push({ ...reviewBase, reason: "flutterwave_not_success" });
+      continue;
+    }
+
+    const feeMinor = toMinorUnits(Number(verified.tx.app_fee ?? 0), currency);
+    const settlement = await recordFlutterwaveBookingSettlement(supabase, {
+      bookingId: row.booking_id,
+      reference: verified.tx.tx_ref || txRef || transactionId,
+      transactionId,
+      amountMajor:
+        verified.tx.amount > 0 ? verified.tx.amount : amountMajor,
+      feesSmallestOrMajor: feeMinor,
+      bookingPaymentId: row.id,
+      isDeposit: resolveIsDeposit(row),
+      feeSource: "flutterwave_verify_reconcile",
+      metadata: { source: RECONCILE_ONLINE_CHARGE_LEDGER_SOURCE },
+    });
+
+    if (settlement.ok === false) {
+      summary.errors.push({ bookingPaymentId: row.id, reason: settlement.reason });
+      continue;
+    }
+
+    if (settlement.ledger.skipped) summary.skipped += 1;
+    else summary.posted += 1;
+  }
+
+  return { scannedPaymentIds };
+}
+
 // ─── Pass 2: fee patch for already-posted backfills ───────────────────────────
 
 /**
@@ -519,7 +631,7 @@ async function scanOtherGatewaysMissingLedger(
   const { data: rows, error } = await supabase
     .from("booking_payments")
     .select("id, booking_id, payment_provider, created_at")
-    .in("payment_provider", ["flutterwave"])
+    .in("payment_provider", ["unknown_gateway"])
     .eq("status", "completed")
     .lt("created_at", cutoffIso)
     .order("created_at", { ascending: true })
@@ -721,7 +833,12 @@ export async function reconcileOnlineChargeLedger(
     summary,
     cutoffIso,
   );
-  const scannedPaymentIds = [...paystackIds, ...stripeIds];
+  const { scannedPaymentIds: flutterwaveIds } = await reconcileFlutterwaveMissingLedger(
+    supabase,
+    summary,
+    cutoffIso,
+  );
+  const scannedPaymentIds = [...paystackIds, ...stripeIds, ...flutterwaveIds];
 
   try {
     await patchBackfilledFees(supabase, summary, nowIso);

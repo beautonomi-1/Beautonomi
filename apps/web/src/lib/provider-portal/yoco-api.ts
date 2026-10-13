@@ -146,6 +146,10 @@ export class YocoApi {
     /** Booking UUID — same column as appointment_id on provider_yoco_payments */
     booking_id?: string;
     sale_id?: string;
+    group_booking_id?: string;
+    product_order_id?: string;
+    additional_charge_id?: string;
+    attempt_id?: string;
     metadata?: Record<string, any>;
   }): Promise<YocoPayment> {
     const response = await fetcher.post<{ data: YocoPayment }>(
@@ -157,6 +161,10 @@ export class YocoApi {
         appointment_id: data.appointment_id,
         booking_id: data.booking_id,
         sale_id: data.sale_id,
+        group_booking_id: data.group_booking_id,
+        product_order_id: data.product_order_id,
+        additional_charge_id: data.additional_charge_id,
+        attempt_id: data.attempt_id,
         metadata: data.metadata,
       }
     );

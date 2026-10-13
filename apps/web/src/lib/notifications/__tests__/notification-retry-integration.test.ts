@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { wirePreferenceGateTables } from "@/lib/notifications/__tests__/pref-gate-supabase-tables";
 
 const USER_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const BOOKING_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
@@ -37,6 +38,10 @@ vi.mock("@/lib/notifications/insert-notification", () => ({
   getUnreadNotificationCount: vi.fn().mockResolvedValue(1),
 }));
 
+vi.mock("@/lib/notifications/total-unread-badge", () => ({
+  getTotalUnreadBadgeCount: vi.fn().mockResolvedValue(1),
+}));
+
 function createSupabaseForTemplateSend() {
   const templateRow = {
     key: "booking_confirmed",
@@ -64,50 +69,25 @@ function createSupabaseForTemplateSend() {
     catch: deviceResult.catch.bind(deviceResult),
   };
 
+  const baseFrom = (table: string) => {
+    if (table === "notification_templates") {
+      return { select: vi.fn().mockReturnValue(templateQuery) };
+    }
+    if (table === "user_devices") {
+      return {
+        select: vi.fn().mockReturnValue({
+          in: vi.fn().mockReturnValue(userDevicesQuery),
+        }),
+      };
+    }
+    if (table === "notification_logs") {
+      return { insert: vi.fn().mockResolvedValue({ error: null }) };
+    }
+    throw new Error(`unexpected table ${table}`);
+  };
+
   return {
-    from: vi.fn().mockImplementation((table: string) => {
-      if (table === "notification_templates") {
-        return { select: vi.fn().mockReturnValue(templateQuery) };
-      }
-      if (table === "user_devices") {
-        return {
-          select: vi.fn().mockReturnValue({
-            in: vi.fn().mockReturnValue(userDevicesQuery),
-          }),
-        };
-      }
-      if (table === "user_profiles") {
-        // Provider preference gating reads notification_preferences (opt-in defaults).
-        return {
-          select: vi.fn().mockReturnValue({
-            in: vi.fn().mockResolvedValue({
-              data: [{ user_id: USER_ID, notification_preferences: null }],
-              error: null,
-            }),
-          }),
-        };
-      }
-      if (table === "users") {
-        return {
-          select: vi.fn().mockReturnValue({
-            in: vi.fn().mockResolvedValue({
-              data: [
-                {
-                  id: USER_ID,
-                  phone: "+27123456789",
-                  whatsapp_opted_out_at: null,
-                },
-              ],
-              error: null,
-            }),
-          }),
-        };
-      }
-      if (table === "notification_logs") {
-        return { insert: vi.fn().mockResolvedValue({ error: null }) };
-      }
-      throw new Error(`unexpected table ${table}`);
-    }),
+    from: vi.fn().mockImplementation(wirePreferenceGateTables(baseFrom, [USER_ID])),
   };
 }
 
@@ -235,20 +215,24 @@ describe("notification retry integration", () => {
       then: deviceResult.then.bind(deviceResult),
       catch: deviceResult.catch.bind(deviceResult),
     };
+    const { wirePreferenceGateTables } = await import(
+      "@/lib/notifications/__tests__/pref-gate-supabase-tables"
+    );
+    const baseFrom = (table: string) => {
+      if (table === "user_devices") {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue(userDevicesQuery),
+          }),
+        };
+      }
+      if (table === "notification_logs") {
+        return { insert: vi.fn().mockResolvedValue({ error: null }) };
+      }
+      throw new Error(`unexpected table ${table}`);
+    };
     hoisted.getSupabaseAdminMock.mockReturnValue({
-      from: vi.fn().mockImplementation((table: string) => {
-        if (table === "user_devices") {
-          return {
-            select: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue(userDevicesQuery),
-            }),
-          };
-        }
-        if (table === "notification_logs") {
-          return { insert: vi.fn().mockResolvedValue({ error: null }) };
-        }
-        throw new Error(`unexpected table ${table}`);
-      }),
+      from: vi.fn().mockImplementation(wirePreferenceGateTables(baseFrom, [USER_ID])),
     });
 
     const { sendToUser } = await import("@/lib/notifications/onesignal");

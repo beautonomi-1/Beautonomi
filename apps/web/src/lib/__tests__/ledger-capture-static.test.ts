@@ -92,7 +92,8 @@ describe("Ledger capture: writer and settlement helper contracts", () => {
     expect(src).toMatch(/BACKFILLED_FEE_SOURCES\s*=\s*\[\s*["']manual_backfill["'],\s*["']estimate["'],\s*["']estimated["']\s*\]/);
     expect(src).toContain("otherGatewaysMissing");
     expect(src).toContain("reconcileStripeMissingLedger");
-    expect(src).toContain('.in("payment_provider", ["flutterwave"])');
+    expect(src).toContain('reconcileFlutterwaveMissingLedger');
+    expect(src).toContain('.eq("payment_provider", "flutterwave")');
     expect(src).toContain('from("reconciliation_exceptions")');
     expect(src).toContain("SLACK_EVENT_KEYS.FINANCE_RECONCILIATION_WARNING");
   });

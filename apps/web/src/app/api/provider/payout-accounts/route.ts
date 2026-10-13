@@ -23,6 +23,8 @@ import { z } from "zod";
 import { getEffectiveSkipPayoutAccountVerification } from "@/lib/payments/payout-account-verification-settings";
 import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
 import { applyPayoutNameMatchForAccount } from "@/lib/verification/apply-payout-name-match";
+import { resolvePayoutRailForTenant } from "@/lib/payments/payout-rail";
+import { resolveFlutterwaveBankAccount } from "@/lib/payments/flutterwave-banks";
 
 // §payout-account-fix 2026-05: Paystack `/transferrecipient` accepts `nuban`,
 // `ghipss`, `mobile_money`, and `basa`. For South African providers (the
@@ -266,7 +268,104 @@ export async function POST(request: NextRequest) {
     const resolvedCurrency = currency?.trim() || fallbackCurrency;
     const resolvedType = resolveRecipientType(type, country);
 
+    const rail = await resolvePayoutRailForTenant(tenantId);
+    if (rail === "stripe") {
+      return errorResponse(
+        "Link your bank via Stripe Connect in payout settings.",
+        "STRIPE_CONNECT_REQUIRED",
+        400,
+      );
+    }
+
     const { skip: skipVerify } = await getEffectiveSkipPayoutAccountVerification(admin, tenantId);
+
+    if (rail === "flutterwave") {
+      let resolvedName: string;
+      if (skipVerify) {
+        resolvedName = account_name.trim();
+      } else if (verified_account_name?.trim()) {
+        resolvedName = verified_account_name.trim();
+      } else {
+        try {
+          const resolved = await resolveFlutterwaveBankAccount({
+            accountNumber: account_number,
+            accountBank: bank_code,
+            tenantId,
+          });
+          resolvedName = resolved.account_name?.trim() || account_name.trim();
+        } catch (verifyError) {
+          const message =
+            verifyError instanceof Error
+              ? verifyError.message
+              : "Account could not be verified. Double-check the bank and account number.";
+          return errorResponse(message, "ACCOUNT_VERIFICATION_FAILED", 400);
+        }
+      }
+
+      const accountNumberLast4 = account_number.slice(-4);
+      const recipientCode = `fw:${bank_code}:${account_number}`;
+
+      const { data: existingAccounts } = await admin
+        .from("provider_payout_accounts")
+        .select("id")
+        .eq("provider_id", providerId)
+        .is("deleted_at", null);
+      const isFirstAccount = !existingAccounts?.length;
+
+      const existingByRecipientCode = await findActivePayoutAccountByRecipientCode(
+        admin,
+        providerId,
+        recipientCode,
+      );
+      if (existingByRecipientCode) {
+        return successResponse(existingByRecipientCode);
+      }
+
+      const { data: savedAccount, error: saveError } = await admin
+        .from("provider_payout_accounts")
+        .insert({
+          provider_id: providerId,
+          recipient_code: recipientCode,
+          recipient_id: null,
+          type: "bank_account",
+          account_number_last4: accountNumberLast4,
+          account_name: resolvedName,
+          bank_code,
+          bank_name: null,
+          currency: resolvedCurrency,
+          active: true,
+          is_primary: isFirstAccount,
+          metadata: {
+            payout_rail: "flutterwave",
+            added_by: user.id,
+            country: country ?? undefined,
+          },
+        })
+        .select()
+        .single();
+
+      if (saveError) {
+        if (isRecipientCodeUniqueViolation(saveError)) {
+          const existingRow = await findActivePayoutAccountByRecipientCode(
+            admin,
+            providerId,
+            recipientCode,
+          );
+          if (existingRow) return successResponse(existingRow);
+        }
+        return errorResponse(
+          "Could not save payout account. Try again or contact support.",
+          "DB_ERROR",
+          500,
+          dbSaveErrorResponseDetails(saveError),
+        );
+      }
+
+      if (savedAccount?.id) {
+        await applyPayoutNameMatchForAccount(providerId, savedAccount.id, resolvedName);
+      }
+      return successResponse(savedAccount);
+    }
 
     // Resolve display name: skip verify (superadmin setting), use pre-verified name, or call Paystack verify.
     let resolvedName: string;

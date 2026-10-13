@@ -59,6 +59,8 @@ export { KpiCardsRow } from "./KpiCardsRow";
 export { NewSaleDialog } from "./NewSaleDialog";
 export { YocoPaymentDialog } from "./YocoPaymentDialog";
 export { PayCloudPaymentDialog } from "./PayCloudPaymentDialog";
+export { CardMachineCollectDialog } from "./CardMachineCollectDialog";
+export type { CardMachineCollectEntity } from "./CardMachineCollectDialog";
 export { PaycloudCollectButton } from "./PaycloudCollectButton";
 export { Money } from "./Money";
 

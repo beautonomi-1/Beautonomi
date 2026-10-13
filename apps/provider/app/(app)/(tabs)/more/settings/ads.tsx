@@ -20,7 +20,7 @@ import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
-  getAdsPaystackReturnUrl,
+  getAdsPaymentReturnDeepLink,
   matchesAdsPaystackReturnUrl,
   pollCampaignProvisioned,
   adsSuccessCopy,
@@ -216,6 +216,8 @@ type ImpressionPack = {
   id: string;
   impressions: number;
   price_zar: number;
+  price_minor?: number | null;
+  currency?: string | null;
   display_order?: number;
   apple_product_id?: string | null;
 };
@@ -225,9 +227,18 @@ type TimePack = {
   duration_days: number;
   label: string;
   price_zar: number;
+  price_minor?: number | null;
+  currency?: string | null;
   display_order?: number;
   apple_product_id?: string | null;
 };
+
+function adPackAmountMajor(pack: { price_zar: number; price_minor?: number | null }): number {
+  if (pack.price_minor != null && Number.isFinite(Number(pack.price_minor))) {
+    return Number(pack.price_minor) / 100;
+  }
+  return Number(pack.price_zar);
+}
 
 type GlobalCategory = { id: string; name: string; slug: string };
 
@@ -570,12 +581,21 @@ export default function AdsSettingsScreen() {
   const { byId: applePackPrices } = useAppleIapProducts(applePackProductIds);
 
   const packDisplayPrice = useCallback(
-    (pack: { price_zar: number; apple_product_id?: string | null }) => {
+    (pack: {
+      price_zar: number;
+      price_minor?: number | null;
+      currency?: string | null;
+      apple_product_id?: string | null;
+    }) => {
       if (shouldUseAppleIap() && pack.apple_product_id) {
         const applePrice = applePackPrices.get(pack.apple_product_id)?.displayPrice;
         if (applePrice) return applePrice;
       }
-      return formatMoney(Number(pack.price_zar), tenantCurrency);
+      const currency =
+        typeof pack.currency === "string" && pack.currency.trim()
+          ? pack.currency.trim()
+          : tenantCurrency;
+      return formatMoney(adPackAmountMajor(pack), currency);
     },
     [applePackPrices, tenantCurrency],
   );
@@ -656,7 +676,7 @@ export default function AdsSettingsScreen() {
         productLabel?: string;
       },
     ) => {
-      const returnUrl = getAdsPaystackReturnUrl();
+      const returnUrl = getAdsPaymentReturnDeepLink();
       const result = await adsPaystackCheckout.waitForCheckout(payUrl, {
         title: ads("adPaymentTitle"),
         returnUrl,
@@ -669,6 +689,12 @@ export default function AdsSettingsScreen() {
       let amount = opts?.amount;
       const payCurrency = opts?.currency ?? tenantCurrency;
       const productLabel = opts?.productLabel;
+
+      if (result?.outcome === "start_failed") {
+        Alert.alert(ads("adPaymentTitle"), ads("paymentNotCompleted"));
+        await loadAll();
+        return;
+      }
 
       if (result?.outcome === "cancel" || result?.outcome === "closed") {
         const failed = adsFailedCopy(ads("paymentNotCompleted"));
@@ -687,13 +713,23 @@ export default function AdsSettingsScreen() {
       setProcessingHint(ads("verifyingPaystackHint"));
       try {
         const parsed = parseOnlineCheckoutReturnUrl(result.url);
+        if (parsed.status === "failed" || parsed.status === "cancelled") {
+          const failed = adsFailedCopy(ads("paymentNotCompleted"));
+          setPaymentOutcome({ phase: "failed", campaignId, ...failed });
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          await loadAll();
+          return;
+        }
         const reference = parsed.reference;
         const verifyResult = reference
           ? await verifyPaystackWithRetry<{
               adsBudgetOrderId?: string;
               campaignId?: string;
               type?: string;
-            }>(reference, { sessionId: parsed.sessionId })
+            }>(reference, {
+              sessionId: parsed.sessionId,
+              transactionId: parsed.transactionId,
+            })
           : null;
 
         if (verifyResult?.status === "failed") {
@@ -1018,8 +1054,11 @@ export default function AdsSettingsScreen() {
           await openAdsPaystack(payUrl, {
             campaignId: campaign?.id,
             orderId: adsCreateOrderId(data),
-            amount: pack.price_zar,
-            currency: tenantCurrency,
+            amount: adPackAmountMajor(pack),
+            currency:
+              typeof pack.currency === "string" && pack.currency.trim()
+                ? pack.currency.trim()
+                : tenantCurrency,
             productLabel: ads("impressionPack"),
           });
           return;
@@ -1651,8 +1690,11 @@ export default function AdsSettingsScreen() {
                           await openAdsPaystack(payUrl, {
                             campaignId: campaign?.id,
                             orderId: adsCreateOrderId(data),
-                            amount: tp.price_zar,
-                            currency: tenantCurrency,
+                            amount: adPackAmountMajor(tp),
+                            currency:
+                              typeof tp.currency === "string" && tp.currency.trim()
+                                ? tp.currency.trim()
+                                : tenantCurrency,
                             productLabel: ads("timeBoost"),
                           });
                           return;

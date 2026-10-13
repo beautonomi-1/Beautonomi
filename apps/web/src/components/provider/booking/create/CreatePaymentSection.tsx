@@ -37,11 +37,12 @@ interface CreatePaymentSectionProps {
   onSendNotificationChange: (value: boolean) => void;
   depositPercentage?: number;
   showDeposit?: boolean;
+  depositPolicyRequired?: boolean;
   totalAmount?: number;
 }
 
 type MethodChip = {
-  id: CreatePaymentMethod;
+  id: CreatePaymentMethod | "card_machine_collect";
   label: string;
   icon: typeof Clock;
 };
@@ -55,6 +56,7 @@ export function CreatePaymentSection({
   onSendNotificationChange,
   depositPercentage = 50,
   showDeposit = true,
+  depositPolicyRequired = false,
   totalAmount = 0,
 }: CreatePaymentSectionProps) {
   const { t } = useTranslation();
@@ -76,11 +78,12 @@ export function CreatePaymentSection({
     if (paymentLinkEnabled) {
       list.push({ id: "payment_link", label: t("web.provider.bookings.createPayment.paymentLink"), icon: Link2 });
     }
-    if (yocoEnabled) {
-      list.push({ id: "yoco_pos", label: t("web.provider.bookings.createPayment.yoco"), icon: Smartphone });
-    }
-    if (paycloudEnabled && paycloudReady) {
-      list.push({ id: "paycloud_terminal", label: t("web.provider.bookings.createPayment.paycloud"), icon: CreditCard });
+    if (yocoEnabled || (paycloudEnabled && paycloudReady)) {
+      list.push({
+        id: "card_machine_collect",
+        label: t("web.provider.bookings.createPayment.cardMachine"),
+        icon: CreditCard,
+      });
     }
     if (paystackEnabled) {
       list.push({ id: "paystack_terminal", label: t("web.provider.bookings.createPayment.paystack"), icon: Wallet });
@@ -97,7 +100,12 @@ export function CreatePaymentSection({
   ]);
 
   useEffect(() => {
-    if (!methods.some((m) => m.id === paymentMethod)) {
+    const terminalCollect =
+      paymentMethod === "yoco_pos" || paymentMethod === "paycloud_terminal";
+    const allowed = terminalCollect
+      ? methods.some((m) => m.id === "card_machine_collect")
+      : methods.some((m) => m.id === paymentMethod);
+    if (!allowed) {
       onPaymentMethodChange("pay_later");
     }
   }, [methods, paymentMethod, onPaymentMethodChange]);
@@ -115,12 +123,23 @@ export function CreatePaymentSection({
           <p className="text-xs font-medium text-gray-600 mb-2">{t("web.provider.bookings.createPayment.paymentMethod")}</p>
           <div className="flex flex-wrap gap-2">
             {methods.map(({ id, label, icon: Icon }) => {
-              const active = paymentMethod === id;
+              const active =
+                id === "card_machine_collect"
+                  ? paymentMethod === "yoco_pos" || paymentMethod === "paycloud_terminal"
+                  : paymentMethod === id;
               return (
                 <button
                   key={id}
                   type="button"
-                  onClick={() => onPaymentMethodChange(id)}
+                  onClick={() => {
+                    if (id === "card_machine_collect") {
+                      onPaymentMethodChange(
+                        paycloudEnabled && paycloudReady ? "paycloud_terminal" : "yoco_pos",
+                      );
+                      return;
+                    }
+                    onPaymentMethodChange(id);
+                  }}
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold touch-manipulation min-h-[40px]",
                     active
@@ -148,6 +167,13 @@ export function CreatePaymentSection({
           </p>
         ) : null}
 
+        {depositPolicyRequired ? (
+          <p className="text-xs text-gray-600">
+            {t("web.provider.bookings.createPayment.depositPolicyHint", {
+              percent: depositPercentage,
+            })}
+          </p>
+        ) : null}
         {showDeposit ? (
           <div className="space-y-2">
             <p className="text-xs font-medium text-gray-600">{t("web.provider.bookings.createPayment.amountToCollect")}</p>

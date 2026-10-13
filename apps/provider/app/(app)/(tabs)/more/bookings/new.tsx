@@ -31,6 +31,11 @@ import { Avatar } from "@/components/ui/Avatar";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { formatDuration, formatCurrency } from "@/lib/format";
 import { normalizeProductsList } from "@/lib/unpack-provider-api";
+import {
+  formatDefaultAddressSearchValue,
+  hasMeaningfulDefaultAddress,
+  type ClientDefaultAddressLike,
+} from "@/lib/client-default-address";
 import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
 import { PROVIDER_SERVICES_CATALOG_CHANGED } from "@/lib/provider-services-catalog-events";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
@@ -72,6 +77,10 @@ import { useBookingAvailableSlots } from "@/hooks/useBookingAvailableSlots";
 import { usePaycloudCollectAvailability } from "@/hooks/usePaycloudCollectAvailability";
 import { PaycloudCollectSetupAffordance } from "@/components/payments/PaycloudCollectSetupAffordance";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+import {
+  getServiceCategoryInfo,
+  UNCATEGORIZED_SERVICE_CATEGORY,
+} from "@/lib/service-category";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -132,6 +141,7 @@ interface ApiClient {
     phone?: string;
     avatar_url?: string | null;
     is_registered?: boolean;
+    default_address?: ClientDefaultAddressLike | null;
   };
   /** §Provider-audit 2026-05: surfaced from `/api/provider/clients` so we
    * can render a member/expired/cancelled pill on the new-booking flow. */
@@ -166,6 +176,7 @@ interface Client {
     cancelled_at?: string | null;
     is_entitled?: boolean;
   } | null;
+  default_address?: ClientDefaultAddressLike | null;
 }
 
 interface SelectedService {
@@ -337,35 +348,13 @@ const PAYMENT_METHODS: { label: string; value: PaymentMethod; icon: keyof typeof
   { label: "Pay Later", value: "pay_later", icon: "time-outline" },
   { label: "Cash", value: "cash", icon: "cash-outline" },
   { label: manualCardCollectOptionLabel(), value: "card", icon: "card-outline" },
-  { label: "Yoco Terminal", value: "yoco_pos", icon: "phone-portrait-outline" },
+  { label: "Card machine", value: "yoco_pos", icon: "card-outline" },
   { label: "Card machine", value: "paycloud_terminal", icon: "card-outline" },
   { label: "Paystack Terminal", value: "paystack_terminal", icon: "qr-code-outline" },
   { label: "Payment Link", value: "payment_link", icon: "send-outline" },
 ];
 const TIP_PERCENTAGES = [0, 10, 15, 20] as const;
-const UNCATEGORIZED_SERVICE_CATEGORY = "__uncategorized__";
 const UNCATEGORIZED_PRODUCT_CATEGORY = "__uncategorized_product__";
-
-function getServiceCategoryInfo(service: Service, otherLabel = "Other"): { id: string; label: string } {
-  const id =
-    service.category_id ||
-    service.global_category_id ||
-    service.category?.id ||
-    service.global_category?.id ||
-    service.provider_categories?.id ||
-    UNCATEGORIZED_SERVICE_CATEGORY;
-  const label =
-    service.category_name ||
-    service.global_category_name ||
-    service.category?.name ||
-    service.category?.title ||
-    service.global_category?.name ||
-    service.global_category?.title ||
-    service.provider_categories?.name ||
-    service.provider_categories?.title ||
-    otherLabel;
-  return { id, label };
-}
 
 /* ------------------------------------------------------------------ */
 /*  Section header                                                     */
@@ -471,7 +460,7 @@ export default function NewBookingScreen() {
 
   // --- API data ---
   const { data: services, loading: servicesLoading, error: servicesError, refresh: refreshServices } = useApi<Service[]>(
-    "/api/provider/services?include_variants=true&include_offering_resources=true",
+    "/api/provider/services?include_variants=true&include_offering_resources=true&include_addons=true",
   );
   const teamUrl = selectedLocationId
     ? `/api/provider/team?location_id=${encodeURIComponent(selectedLocationId)}`
@@ -525,6 +514,7 @@ export default function NewBookingScreen() {
       avatar_url: c.customer?.avatar_url ?? null,
       is_shadow: c.customer?.is_registered === false,
       salon_membership: c.salon_membership ?? null,
+      default_address: c.customer?.default_address ?? null,
     }),
     [nb],
   );
@@ -664,6 +654,7 @@ export default function NewBookingScreen() {
           avatar_url: raw.customer?.avatar_url ?? null,
           is_shadow: raw.customer?.is_registered === false,
           salon_membership: raw.salon_membership ?? null,
+          default_address: raw.customer?.default_address ?? null,
         });
       }
     }
@@ -696,6 +687,7 @@ export default function NewBookingScreen() {
   const [travelPreviewMinutes, setTravelPreviewMinutes] = useState<number | null>(null);
   /** From POST /api/location/validate — straight-line or driving distance to base. */
   const [travelPreviewDistanceKm, setTravelPreviewDistanceKm] = useState<number | null>(null);
+  const [travelAddressValidationError, setTravelAddressValidationError] = useState<string | null>(null);
   const [tipAmount, setTipAmount] = useState("");
   const [notes, setNotes] = useState("");
   // §Provider-audit 2026-04: allow providers to suppress customer
@@ -794,7 +786,9 @@ export default function NewBookingScreen() {
   );
 
   useEffect(() => {
-    if (!yocoEnabled && paymentMethod === "yoco_pos") {
+    if (paymentMethod === "yoco_pos" && paycloudEnabled && paycloudCollectEnabled) {
+      setPaymentMethod("paycloud_terminal");
+    } else if (!yocoEnabled && paymentMethod === "yoco_pos") {
       setPaymentMethod("pay_later");
     }
     if (!paystackTerminalEnabled && paymentMethod === "paystack_terminal") {
@@ -846,11 +840,41 @@ export default function NewBookingScreen() {
     travelFeeUserLockedRef.current = false;
   }, [addressLatitude, addressLongitude]);
 
+  const applyClientDefaultHomeAddress = useCallback((addr: ClientDefaultAddressLike) => {
+    setAddressSearchValue(formatDefaultAddressSearchValue(addr));
+    setAddressLine1(String(addr.address_line1 ?? "").trim());
+    setAddressLine2(String(addr.address_line2 ?? "").trim());
+    setAddressCity(String(addr.city ?? "").trim());
+    setAddressStateProv(String(addr.state ?? "").trim());
+    setAddressPostalCode(String(addr.postal_code ?? "").trim());
+    setAddressCountry(String(addr.country ?? "").trim());
+    const lat = addr.latitude != null ? Number(addr.latitude) : null;
+    const lng = addr.longitude != null ? Number(addr.longitude) : null;
+    setAddressLatitude(lat != null && Number.isFinite(lat) ? lat : null);
+    setAddressLongitude(lng != null && Number.isFinite(lng) ? lng : null);
+    setTravelAddressValidationError(null);
+  }, []);
+
+  useEffect(() => {
+    if (locationType !== "at_home") return;
+    const da = selectedClient?.default_address;
+    if (!hasMeaningfulDefaultAddress(da)) return;
+    if (addressLine1.trim()) return;
+    applyClientDefaultHomeAddress(da!);
+  }, [
+    locationType,
+    selectedClient?.id,
+    selectedClient?.default_address,
+    addressLine1,
+    applyClientDefaultHomeAddress,
+  ]);
+
   // Dynamic travel fee + drive time (same engine as customer / web booking)
   useEffect(() => {
     if (locationType !== "at_home") {
       setTravelPreviewMinutes(null);
       setTravelPreviewDistanceKm(null);
+      setTravelAddressValidationError(null);
       return;
     }
     const pid = providerProfile?.id;
@@ -880,6 +904,8 @@ export default function NewBookingScreen() {
             travelFee?: number;
             travelTimeMinutes?: number;
             distanceKm?: number;
+            reason?: string;
+            message?: string;
           }>("/api/location/validate", {
             address: addressString,
             provider_id: pid,
@@ -890,10 +916,12 @@ export default function NewBookingScreen() {
           if (res.error) {
             setTravelPreviewMinutes(null);
             setTravelPreviewDistanceKm(null);
+            setTravelAddressValidationError(nb("addressValidateFailed"));
             return;
           }
           const d = res.data;
           if (d?.valid === true) {
+            setTravelAddressValidationError(null);
             const fee = Math.max(0, Number(d.travelFee ?? 0));
             setTravelPreviewMinutes(
               typeof d.travelTimeMinutes === "number" && Number.isFinite(d.travelTimeMinutes)
@@ -911,6 +939,9 @@ export default function NewBookingScreen() {
             setTravelPreviewMinutes(null);
             setTravelPreviewDistanceKm(
               typeof d?.distanceKm === "number" && Number.isFinite(d.distanceKm) ? d.distanceKm : null,
+            );
+            setTravelAddressValidationError(
+              d?.reason?.trim() || d?.message?.trim() || nb("addressOutsideArea"),
             );
             if (!travelFeeUserLockedRef.current) {
               setTravelFee("");
@@ -942,6 +973,7 @@ export default function NewBookingScreen() {
     addressLatitude,
     addressLongitude,
     homeAddressCountryFallback,
+    nb,
   ]);
 
   const handleAtHomeDropPin = useCallback(
@@ -1449,9 +1481,14 @@ export default function NewBookingScreen() {
 
   const serviceCategoryOptions = useMemo(() => {
     if (!services?.length) return [];
-    const categories = new Map<string, { id: string; label: string; count: number }>();
+    const categories = new Map<string, { id: string; label: string; count: number; order: number }>();
     services
-      .filter((s) => !s.parent_service_id && s.service_type !== "variant")
+      .filter(
+        (s) =>
+          !s.parent_service_id &&
+          s.service_type !== "variant" &&
+          s.service_type !== "addon",
+      )
       .forEach((service) => {
         const info = getServiceCategoryInfo(service, nb("otherCategory"));
         const existing = categories.get(info.id);
@@ -1464,6 +1501,7 @@ export default function NewBookingScreen() {
     return Array.from(categories.values()).sort((a, b) => {
       if (a.id === UNCATEGORIZED_SERVICE_CATEGORY) return 1;
       if (b.id === UNCATEGORIZED_SERVICE_CATEGORY) return -1;
+      if (a.order !== b.order) return a.order - b.order;
       return a.label.localeCompare(b.label);
     });
   }, [services, nb]);
@@ -1560,7 +1598,12 @@ export default function NewBookingScreen() {
 
   useEffect(() => {
     if (!services?.length) return;
-    const allParent = services.filter((s) => !s.parent_service_id && s.service_type !== "variant");
+    const allParent = services.filter(
+      (s) =>
+        !s.parent_service_id &&
+        s.service_type !== "variant" &&
+        s.service_type !== "addon",
+    );
     if (!shouldGroupAllCatalogItems(allParent.length)) return;
     const counts = new Map<string, number>();
     for (const svc of allParent) {
@@ -2981,7 +3024,12 @@ export default function NewBookingScreen() {
                   ) : null}
                   {(() => {
                     if (!services) return null;
-                    const allParentSvcs = services.filter((s) => !s.parent_service_id && s.service_type !== "variant");
+                    const allParentSvcs = services.filter(
+                      (s) =>
+                        !s.parent_service_id &&
+                        s.service_type !== "variant" &&
+                        s.service_type !== "addon",
+                    );
                     const parentSvcs = selectedServiceCategory === "all"
                       ? allParentSvcs
                       : allParentSvcs.filter((s) => getServiceCategoryInfo(s).id === selectedServiceCategory);
@@ -3412,12 +3460,22 @@ export default function NewBookingScreen() {
                   <Text style={twStyle("mb-2 text-xs text-gray-500")}>
                     {nb("addressHint")}
                   </Text>
+                  {travelAddressValidationError ? (
+                    <Text style={twStyle("mb-2 text-xs font-medium text-amber-800")}>
+                      {travelAddressValidationError}
+                    </Text>
+                  ) : null}
                   <AddressAutocomplete
                     label={nb("searchAddress")}
                     value={addressSearchValue}
                     countryCode={mapboxCountryIso}
                     defaultCountryName={homeAddressCountryFallback}
                     placeholder={nb("addressSearchPlaceholder")}
+                    onQueryChange={() => {
+                      setAddressLatitude(null);
+                      setAddressLongitude(null);
+                      setTravelAddressValidationError(null);
+                    }}
                     onSelect={(parsed) => {
                       setAddressSearchValue(parsed.full_address);
                       setAddressLine1(parsed.address_line1);
@@ -3427,6 +3485,7 @@ export default function NewBookingScreen() {
                       setAddressCountry(parsed.country);
                       setAddressLatitude(parsed.latitude);
                       setAddressLongitude(parsed.longitude);
+                      setTravelAddressValidationError(null);
                     }}
                     onBlur={(q) => {
                       if (!addressLine1.trim() && q) setAddressLine1(q);
@@ -3771,7 +3830,8 @@ export default function NewBookingScreen() {
                 {paymentMethods.filter(
                   (pm) =>
                     (manualCardEnabled || pm.value !== "card") &&
-                    (yocoEnabled || pm.value !== "yoco_pos") &&
+                    // One "Card machine" chip: PayCloud path when ready (booking detail offers every machine), else Yoco.
+                    ((yocoEnabled && !(paycloudEnabled && paycloudCollectEnabled)) || pm.value !== "yoco_pos") &&
                     (paycloudEnabled && paycloudCollectEnabled || pm.value !== "paycloud_terminal") &&
                     (paystackTerminalEnabled || pm.value !== "paystack_terminal") &&
                     (paymentLinkEnabled || pm.value !== "payment_link"),

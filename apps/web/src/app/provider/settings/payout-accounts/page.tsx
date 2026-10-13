@@ -25,6 +25,7 @@ import EmptyState from "@/components/ui/empty-state";
 import { fetcher, FetchError, DEFAULT_FETCH_TIMEOUT_MS } from "@/lib/http/fetcher";
 import { invalidateSetupStatusCache } from "@/lib/provider-portal/setup-status-utils";
 import { PAYOUT_COUNTRIES, getCurrencyForCountry } from "@/lib/payments/payout-countries";
+import { normalizePayoutRailOption, type PayoutRail } from "@/lib/payments/payout-rail-options";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import {
@@ -95,7 +96,7 @@ export default function PayoutAccountsPage() {
   const [verifiedAccountName, setVerifiedAccountName] = useState<string | null>(null);
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [showVerifyAccountButton, setShowVerifyAccountButton] = useState(true);
-  const [payoutRail, setPayoutRail] = useState<"paystack" | "stripe">("paystack");
+  const [payoutRail, setPayoutRail] = useState<PayoutRail>("paystack");
   const [stripeConnect, setStripeConnect] = useState<StripeConnectOptions | null>(null);
   const [isConnectingStripe, setIsConnectingStripe] = useState(false);
 
@@ -104,12 +105,12 @@ export default function PayoutAccountsPage() {
       const res = await fetcher.get<{
         data: {
           show_verify_account_button?: boolean;
-          payout_rail?: "paystack" | "stripe";
+          payout_rail?: PayoutRail;
           stripe_connect?: StripeConnectOptions | null;
         };
       }>("/api/provider/payout-accounts/options");
       setShowVerifyAccountButton(res.data?.show_verify_account_button !== false);
-      setPayoutRail(res.data?.payout_rail === "stripe" ? "stripe" : "paystack");
+      setPayoutRail(normalizePayoutRailOption(res.data?.payout_rail));
       setStripeConnect(res.data?.stripe_connect ?? null);
     } catch {
       setShowVerifyAccountButton(true);

@@ -112,6 +112,15 @@ vi.mock("@/lib/payments/payment-method-expiry", () => ({
   isPaymentMethodExpired: (...args: unknown[]) => mockIsPaymentMethodExpired(...args),
 }));
 
+vi.mock("@/lib/payments/provider-checkout-methods", () => ({
+  getEffectiveCheckoutMethods: vi.fn(async () => ({
+    online: true,
+    cash: true,
+    giftCard: true,
+    wallet: true,
+  })),
+}));
+
 const PROVIDER_ID = "11111111-1111-1111-1111-111111111111";
 const OFFER_ID = "22222222-2222-2222-2222-222222222222";
 const CUSTOMER_ID = "33333333-3333-3333-3333-333333333333";

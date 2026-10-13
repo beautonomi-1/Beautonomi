@@ -7,6 +7,8 @@ import {
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
 import { verifyAccount } from "@/lib/payments/paystack-complete";
+import { resolveFlutterwaveBankAccount } from "@/lib/payments/flutterwave-banks";
+import { resolvePayoutRailForTenant } from "@/lib/payments/payout-rail";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -79,6 +81,27 @@ export async function POST(request: NextRequest) {
         "VERIFICATION_DISABLED",
         403,
       );
+    }
+
+    const rail = await resolvePayoutRailForTenant(tenantId);
+    if (rail === "flutterwave") {
+      try {
+        const resolved = await resolveFlutterwaveBankAccount({
+          accountNumber: account_number,
+          accountBank: bank_code,
+          tenantId,
+        });
+        return successResponse({
+          account_name: resolved.account_name,
+          account_number,
+        });
+      } catch (flwErr: unknown) {
+        const msg =
+          flwErr instanceof Error
+            ? flwErr.message
+            : "Account could not be verified. Please enter your account holder name manually.";
+        return errorResponse(msg, "FLUTTERWAVE_ERROR", 400);
+      }
     }
 
     let result;

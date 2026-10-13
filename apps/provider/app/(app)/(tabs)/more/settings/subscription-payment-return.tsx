@@ -33,12 +33,20 @@ export default function SubscriptionPaymentReturnScreen() {
     reference?: string;
     trxref?: string;
     session_id?: string;
+    tx_ref?: string;
+    transaction_id?: string;
+    status?: string;
     payment_success?: string;
     payment_cancelled?: string;
     order_id?: string;
   }>();
-  const reference = useMemo(() => pickStr(params.reference) || pickStr(params.trxref), [params]);
+  const reference = useMemo(
+    () => pickStr(params.reference) || pickStr(params.trxref) || pickStr(params.tx_ref),
+    [params],
+  );
   const sessionId = useMemo(() => pickStr(params.session_id), [params]);
+  const transactionId = useMemo(() => pickStr(params.transaction_id), [params]);
+  const hostedStatus = useMemo(() => pickStr(params.status).toLowerCase(), [params]);
   const cancelledFlag = pickStr(params.payment_cancelled);
   const orderId = pickStr(params.order_id);
   const [status, setStatus] = useState<ReturnStatus>(reference ? "verifying" : "pending");
@@ -66,6 +74,16 @@ export default function SubscriptionPaymentReturnScreen() {
       });
     };
 
+    if (hostedStatus === "failed" || hostedStatus === "cancelled") {
+      setStatus("cancel");
+      const t = setTimeout(() => {
+        if (!aborted) navigateBack("payment_failed");
+      }, 800);
+      return () => {
+        aborted = true;
+        clearTimeout(t);
+      };
+    }
     if (cancelledFlag === "1") {
       setStatus("cancel");
       const t = setTimeout(() => {
@@ -86,7 +104,7 @@ export default function SubscriptionPaymentReturnScreen() {
       };
     }
     (async () => {
-      const verifyResult = await verifyPaystackWithRetry(reference, { sessionId });
+      const verifyResult = await verifyPaystackWithRetry(reference, { sessionId, transactionId });
       if (aborted) return;
       if (verifyResult.status === "success") {
         setStatus("success");
@@ -106,7 +124,7 @@ export default function SubscriptionPaymentReturnScreen() {
     return () => {
       aborted = true;
     };
-  }, [reference, cancelledFlag, orderId, router]);
+  }, [reference, sessionId, transactionId, hostedStatus, cancelledFlag, orderId, router]);
 
   const isSuccess = status === "success";
   const isCancel = status === "cancel";

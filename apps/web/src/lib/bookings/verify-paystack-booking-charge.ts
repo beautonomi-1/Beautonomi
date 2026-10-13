@@ -9,25 +9,30 @@ type PendingPaymentRow = {
   payment_provider_transaction_id?: string | null;
 };
 
-export type VerifyPaystackBookingChargeResult =
+export type VerifyBookingChargeResult =
   | { ok: true; amountMajor: number; currency: string; pendingPayment: PendingPaymentRow }
   | { ok: false; reason: string };
 
+/** @deprecated alias */
+export type VerifyPaystackBookingChargeResult = VerifyBookingChargeResult;
+
 /**
- * Ensures a Paystack charge matches a server-issued pending payment for the booking.
+ * Ensures an online card charge matches a server-issued pending payment for the booking.
  */
-export async function verifyPaystackBookingCharge(params: {
+export async function verifyBookingCharge(params: {
   supabase: SupabaseClient;
   bookingId: string;
   reference: string;
-  paystackAmountSmallest: number;
-  paystackCurrency?: string | null;
+  amountSmallest: number;
+  chargeCurrency?: string | null;
   tenantId: string;
   bookingPaymentReference?: string | null;
   bookingCurrency?: string | null;
-}): Promise<VerifyPaystackBookingChargeResult> {
-  const currency = (params.paystackCurrency || params.bookingCurrency || "ZAR").toUpperCase();
-  const amountMajor = convertFromSmallestUnit(params.paystackAmountSmallest || 0, currency);
+  psp?: string;
+}): Promise<VerifyBookingChargeResult> {
+  const psp = params.psp ?? "paystack";
+  const currency = (params.chargeCurrency || params.bookingCurrency || "ZAR").toUpperCase();
+  const amountMajor = convertFromSmallestUnit(params.amountSmallest || 0, currency);
 
   const { data: pendingRows } = await params.supabase
     .from("payments")
@@ -66,8 +71,8 @@ export async function verifyPaystackBookingCharge(params: {
       supabase: params.supabase,
       tenantId: params.tenantId,
       currency,
-      psp: "paystack",
-      mismatchReason: "paystack_webhook:no_pending_payment_for_reference",
+      psp,
+      mismatchReason: `${psp}_webhook:no_pending_payment_for_reference`,
       externalId: ref,
       internalId: params.bookingId,
       amount: amountMajor,
@@ -83,8 +88,8 @@ export async function verifyPaystackBookingCharge(params: {
       supabase: params.supabase,
       tenantId: params.tenantId,
       currency,
-      psp: "paystack",
-      mismatchReason: "paystack_webhook:amount_mismatch",
+      psp,
+      mismatchReason: `${psp}_webhook:amount_mismatch`,
       externalId: ref,
       internalId: params.bookingId,
       amount: amountMajor,
@@ -98,8 +103,8 @@ export async function verifyPaystackBookingCharge(params: {
       supabase: params.supabase,
       tenantId: params.tenantId,
       currency,
-      psp: "paystack",
-      mismatchReason: "paystack_webhook:currency_mismatch",
+      psp,
+      mismatchReason: `${psp}_webhook:currency_mismatch`,
       externalId: ref,
       internalId: params.bookingId,
       amount: amountMajor,
@@ -109,6 +114,24 @@ export async function verifyPaystackBookingCharge(params: {
   }
 
   return { ok: true, amountMajor, currency, pendingPayment: pending };
+}
+
+export async function verifyPaystackBookingCharge(params: {
+  supabase: SupabaseClient;
+  bookingId: string;
+  reference: string;
+  paystackAmountSmallest: number;
+  paystackCurrency?: string | null;
+  tenantId: string;
+  bookingPaymentReference?: string | null;
+  bookingCurrency?: string | null;
+}): Promise<VerifyBookingChargeResult> {
+  return verifyBookingCharge({
+    ...params,
+    amountSmallest: params.paystackAmountSmallest,
+    chargeCurrency: params.paystackCurrency,
+    psp: "paystack",
+  });
 }
 
 export function bookingFinancialsFromDb(booking: Record<string, unknown>, pending?: PendingPaymentRow) {

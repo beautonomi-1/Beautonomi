@@ -10,6 +10,7 @@ import {
   ScrollView,
   Alert,
   Switch,
+  TouchableOpacity,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -30,8 +31,12 @@ interface ShippingConfig {
   offers_delivery: boolean;
   offers_collection: boolean;
   delivery_fee: number;
+  delivery_fee_type?: "flat" | "weight_based" | "distance_based";
   free_delivery_threshold: number | null;
   delivery_radius_km: number | null;
+  weight_rate_per_kg?: number | null;
+  distance_rate_per_km?: number | null;
+  shipping_provider_preference?: "aramex" | "courier-guy" | "bob-go" | null;
   estimated_delivery_days: number;
   delivery_notes: string | null;
   collection_notes: string | null;
@@ -70,7 +75,11 @@ export default function ShippingConfigScreen() {
       offers_delivery: Boolean(raw.offers_delivery),
       offers_collection: Boolean(raw.offers_collection),
       delivery_fee: Number(raw.delivery_fee) || 0,
+      delivery_fee_type: (raw.delivery_fee_type as ShippingConfig["delivery_fee_type"]) ?? "flat",
       free_delivery_threshold: raw.free_delivery_threshold != null ? Number(raw.free_delivery_threshold) : null,
+      weight_rate_per_kg: raw.weight_rate_per_kg != null ? Number(raw.weight_rate_per_kg) : null,
+      distance_rate_per_km: raw.distance_rate_per_km != null ? Number(raw.distance_rate_per_km) : null,
+      shipping_provider_preference: raw.shipping_provider_preference ?? null,
       delivery_radius_km: raw.delivery_radius_km != null ? Number(raw.delivery_radius_km) : null,
       estimated_delivery_days: Number(raw.estimated_delivery_days) || 3,
       delivery_notes: raw.delivery_notes ?? null,
@@ -85,7 +94,11 @@ export default function ShippingConfigScreen() {
       offers_delivery: config.offers_delivery,
       offers_collection: config.offers_collection,
       delivery_fee: config.delivery_fee,
+      delivery_fee_type: config.delivery_fee_type ?? "flat",
       free_delivery_threshold: config.free_delivery_threshold,
+      weight_rate_per_kg: config.weight_rate_per_kg ?? null,
+      distance_rate_per_km: config.distance_rate_per_km ?? null,
+      shipping_provider_preference: config.shipping_provider_preference ?? null,
       delivery_radius_km: config.delivery_radius_km,
       estimated_delivery_days: config.estimated_delivery_days,
       delivery_notes: config.delivery_notes,
@@ -245,6 +258,43 @@ export default function ShippingConfigScreen() {
                   placeholder="3"
                   placeholderTextColor="#9ca3af"
                 />
+              </View>
+              <View style={{ marginBottom: 12 }}>
+                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{sh("courierPreference")}</Text>
+                <View style={twStyle("flex-row flex-wrap gap-2")}>
+                  {(
+                    [
+                      { value: null as ShippingConfig["shipping_provider_preference"], label: sh("courierNone") },
+                      { value: "aramex" as const, label: "Aramex" },
+                      { value: "courier-guy" as const, label: "Courier Guy" },
+                      { value: "bob-go" as const, label: "Bob Go" },
+                    ] as const
+                  ).map((opt) => {
+                    const selected = config.shipping_provider_preference === opt.value;
+                    return (
+                      <TouchableOpacity
+                        key={opt.value ?? "none"}
+                        onPress={() =>
+                          setConfig((c) => ({ ...c, shipping_provider_preference: opt.value }))
+                        }
+                        style={twStyle(
+                          `rounded-full border px-3 py-2 ${selected ? "border-primary bg-primary/10" : "border-gray-200 bg-gray-50"}`,
+                        )}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                      >
+                        <Text
+                          style={twStyle(
+                            `text-sm font-medium ${selected ? "text-primary" : "text-gray-700"}`,
+                          )}
+                        >
+                          {opt.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <Text style={twStyle("mt-1 text-xs text-gray-500")}>{sh("courierKeysWebHint")}</Text>
               </View>
               <View>
                 <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{sh("deliveryNotes")}</Text>

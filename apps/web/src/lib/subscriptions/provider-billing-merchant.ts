@@ -26,7 +26,19 @@ export function shouldIgnorePaystackEventForRow(
   if (!row) return false;
   if (isAppleBillingActive(row.billing_provider, row.status)) return true;
   const bp = String(row.billing_provider ?? "").toLowerCase();
-  return bp === "stripe";
+  return bp === "stripe" || bp === "flutterwave";
+}
+
+export function flutterwaveActivationFields(
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    billing_provider: "flutterwave",
+    paystack_sync_pending: false,
+    paystack_sync_note: null,
+    updated_at: new Date().toISOString(),
+    ...extra,
+  };
 }
 
 /** Fields applied whenever Paystack activates or renews paid access locally. */
@@ -56,12 +68,12 @@ export function stripeActivationFields(
 }
 
 export function subscriptionActivationFields(
-  paymentProvider: "paystack" | "stripe",
+  paymentProvider: "paystack" | "stripe" | "flutterwave",
   extra: Record<string, unknown> = {},
 ): Record<string, unknown> {
-  return paymentProvider === "stripe"
-    ? stripeActivationFields(extra)
-    : paystackActivationFields(extra);
+  if (paymentProvider === "stripe") return stripeActivationFields(extra);
+  if (paymentProvider === "flutterwave") return flutterwaveActivationFields(extra);
+  return paystackActivationFields(extra);
 }
 
 /** After Apple expiry, refund, or downgrade to free — allow Android/web Paystack again. */

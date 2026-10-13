@@ -5,22 +5,10 @@ import crypto from "crypto";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { sanitizeWebhookPayload } from "@/lib/payment/webhook-payload-sanitizer";
 import { persistFailedWebhookSignature } from "@/lib/payment/persist-failed-webhook-signature";
-import { handleFlutterwaveChargeCompleted } from "./_handlers/flutterwave-charge";
-
-function verifyFlutterwaveSignature(body: string, signature: string | null): boolean {
-  const secret = process.env.FLUTTERWAVE_WEBHOOK_SECRET?.trim();
-  if (!secret) {
-    return process.env.NODE_ENV !== "production";
-  }
-  if (!signature) {
-    return false;
-  }
-  const hash = crypto.createHmac("sha256", secret).update(body).digest("hex");
-  if (hash.length !== signature.length) {
-    return false;
-  }
-  return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(signature));
-}
+import { settleFlutterwaveChargeWebhookData } from "@/lib/payments/settle-flutterwave-online-payment";
+import { verifyFlutterwaveWebhookSignature } from "@/lib/payments/flutterwave-webhook-verify";
+import { handleFlutterwaveTransferWebhook } from "@/lib/payments/flutterwave-transfer-webhook";
+import { handleFlutterwaveDisputeWebhook } from "@/lib/payments/flutterwave-dispute-handler";
 
 /**
  * POST /api/payments/flutterwave/webhook
@@ -30,7 +18,7 @@ export async function POST(request: Request) {
   const body = await request.text();
   const signature = request.headers.get("verif-hash");
 
-  if (!verifyFlutterwaveSignature(body, signature)) {
+  if (!(await verifyFlutterwaveWebhookSignature(body, signature))) {
     let parsed: Record<string, unknown> | undefined;
     try {
       parsed = JSON.parse(body) as Record<string, unknown>;
@@ -86,11 +74,13 @@ export async function POST(request: Request) {
   }
 
   try {
-    if (
-      eventType === "charge.completed" ||
-      String(data.status ?? "").toLowerCase() === "successful"
-    ) {
-      await handleFlutterwaveChargeCompleted(data as Parameters<typeof handleFlutterwaveChargeCompleted>[0]);
+    const eventLower = (eventType || "charge.completed").toLowerCase();
+    if (eventLower.includes("transfer.")) {
+      await handleFlutterwaveTransferWebhook(data, supabase);
+    } else if (eventLower.includes("chargeback") || eventLower.includes("dispute")) {
+      await handleFlutterwaveDisputeWebhook(eventType, data, supabase);
+    } else if (eventLower.includes("charge")) {
+      await settleFlutterwaveChargeWebhookData(data, supabase);
     }
 
     await supabase

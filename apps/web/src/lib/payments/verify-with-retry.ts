@@ -13,13 +13,21 @@ type VerifyWithRetryOptions = {
   delayMs?: number;
   /** Stripe Checkout success URL query param — enables verify before registry lookup. */
   sessionId?: string | null;
+  /** Flutterwave redirect query param */
+  transactionId?: string | null;
 };
 
-export function buildOnlineVerifyQuery(reference: string, sessionId?: string | null): string {
+export function buildOnlineVerifyQuery(
+  reference: string,
+  sessionId?: string | null,
+  transactionId?: string | null,
+): string {
   const params = new URLSearchParams();
   params.set("reference", reference);
   const sid = sessionId?.trim();
   if (sid) params.set("session_id", sid);
+  const tid = transactionId?.trim();
+  if (tid) params.set("transaction_id", tid);
   return params.toString();
 }
 
@@ -61,6 +69,7 @@ export async function verifyWithRetry<T = Record<string, unknown>>(
   const maxAttempts = options.maxAttempts ?? 5;
   const delayMs = options.delayMs ?? 1500;
   const sessionId = options.sessionId ?? null;
+  const transactionId = options.transactionId ?? null;
 
   let attempts = 0;
   let lastData: Record<string, unknown> | null = null;
@@ -69,7 +78,7 @@ export async function verifyWithRetry<T = Record<string, unknown>>(
   while (attempts < maxAttempts) {
     attempts += 1;
     try {
-      const q = buildOnlineVerifyQuery(reference, sessionId);
+      const q = buildOnlineVerifyQuery(reference, sessionId, transactionId);
       const sep = endpoint.includes("?") ? "&" : "?";
       const res = await fetcher.get<{ data?: T }>(`${endpoint}${sep}${q}`, { staleTimeMs: 0 });
       const payload = (res?.data ?? null) as Record<string, unknown> | null;

@@ -63,7 +63,7 @@ import { LocationMapPickerDialog, type PickedMapLocation } from "@/components/ma
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
 import Link from "next/link";
-import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
+import { CardMachineCollectDialog } from "@/components/provider-portal/CardMachineCollectDialog";
 import { PAYCLOUD_SETUP_LABEL } from "@/lib/payments/paycloud-collect-cta";
 import { useTranslation } from "@beautonomi/i18n";
 import {
@@ -73,6 +73,7 @@ import {
 } from "@beautonomi/provider-booking";
 import { BookingCreateReadinessStrip } from "@/components/provider/booking/ui/BookingCreateReadinessStrip";
 import { ResourceRequirementsPreview } from "@/components/provider/booking/create/ResourceRequirementsPreview";
+import { isBookableCatalogService } from "@/lib/provider-portal/bookable-services";
 
 // ─── Participant addon shape ────────────────────────────────────────────────
 interface ParticipantAddon {
@@ -192,10 +193,11 @@ export function GroupBookingDialog({
     expectedAmount: number;
     terminal: { qr_url?: string | null; payment_link?: string | null; terminal_url?: string | null; name?: string | null };
   } | null>(null);
-  const [postCreatePaycloudData, setPostCreatePaycloudData] = useState<{
+  const [postCreateCardMachineData, setPostCreateCardMachineData] = useState<{
     groupId: string;
     expectedAmount: number;
     locationId: string | null;
+    initialProvider?: "yoco" | "paycloud";
   } | null>(null);
   const [isPreparingTerminal, setIsPreparingTerminal] = useState(false);
 
@@ -209,7 +211,7 @@ export function GroupBookingDialog({
       setCreatePaymentMethod("pay_later");
       setCreateSendNotification(true);
       setPostCreatePaystackData(null);
-      setPostCreatePaycloudData(null);
+      setPostCreateCardMachineData(null);
     }
   }, [open]);
 
@@ -344,8 +346,12 @@ export function GroupBookingDialog({
     addonsFetchedRef.current.add(serviceId);
     try {
       setLoadingAddons(p => ({ ...p, [serviceId]: true }));
-      const res = await fetcher.get<{ data: { addons: any[] } }>(`/api/provider/services/${serviceId}/addons`);
-      setServiceAddons(p => ({ ...p, [serviceId]: res.data?.addons ?? [] }));
+      const res = await fetcher.get<{ data: any[] | { addons: any[] } }>(
+        `/api/provider/services/${serviceId}/addons`,
+      );
+      const raw = res.data;
+      const list = Array.isArray(raw) ? raw : raw?.addons ?? [];
+      setServiceAddons((p) => ({ ...p, [serviceId]: list }));
     } catch {
       addonsFetchedRef.current.delete(serviceId);
     } finally {
@@ -384,7 +390,7 @@ export function GroupBookingDialog({
     try {
       const [servicesRes, members] = await Promise.all([
         fetcher.get<{ data?: ServiceItem[] }>(
-          "/api/provider/services?include_variants=true&include_offering_resources=true",
+          "/api/provider/services?include_variants=true&include_offering_resources=true&include_addons=true",
         ),
         providerApi.listTeamMembers(),
       ]);
@@ -842,10 +848,11 @@ export function GroupBookingDialog({
         phone: p.client_phone.trim(),
         email: p.client_email.trim(),
         serviceId: p.service_id || formData.service_id,
+        customerId: p.customer_id?.trim() || undefined,
       })),
       validatePhone: (phone: string) => {
         const trimmed = phone.trim();
-        if (!trimmed) return "Phone is required";
+        if (!trimmed) return null;
         if (!isCompleteE164(trimmed)) return "Phone must be in E.164 format";
         return null;
       },
@@ -874,12 +881,15 @@ export function GroupBookingDialog({
 
   // ─── Filtered services/products ────────────────────────────────────────
   const filteredServices = useMemo(() => {
-    return services.filter(s => {
-      const typeOk = !s.service_type || s.service_type === "basic" || s.service_type === "variant" || s.service_type === "package";
-      if (!typeOk) return false;
+    return services.filter((s) => {
+      if (!isBookableCatalogService(s)) return false;
       if (!serviceSearchQuery.trim()) return true;
       const q = serviceSearchQuery.toLowerCase();
-      return s.name.toLowerCase().includes(q) || (s.description || "").toLowerCase().includes(q);
+      return (
+        s.name.toLowerCase().includes(q) ||
+        (s.description || "").toLowerCase().includes(q) ||
+        (s.variant_name || "").toLowerCase().includes(q)
+      );
     });
   }, [services, serviceSearchQuery]);
 
@@ -1048,9 +1058,7 @@ export function GroupBookingDialog({
             ? "cash"
             : createPaymentMethod === "card"
               ? "card"
-              : createPaymentMethod === "yoco_pos"
-                ? "yoco"
-                : null;
+              : null;
         const createdId =
           (created as { id?: string; data?: { id?: string } } | null)?.id ??
           (created as { data?: { id?: string } } | null)?.data?.id ??
@@ -1092,10 +1100,23 @@ export function GroupBookingDialog({
           toast.success(t("web.provider.portal.groupBookingDialog.createdCollectOnMachine"));
           onSuccess?.();
           onOpenChange(false);
-          setPostCreatePaycloudData({
+          setPostCreateCardMachineData({
             groupId: createdId,
             expectedAmount: pricing.totalAmount,
             locationId: formData.location_type === "at_home" ? null : formData.location_id ?? null,
+            initialProvider: "paycloud",
+          });
+          return;
+        }
+        if (createPaymentMethod === "yoco_pos" && createdId) {
+          toast.success(t("web.provider.portal.groupBookingDialog.createdCollectOnMachine"));
+          onSuccess?.();
+          onOpenChange(false);
+          setPostCreateCardMachineData({
+            groupId: createdId,
+            expectedAmount: pricing.totalAmount,
+            locationId: formData.location_type === "at_home" ? null : formData.location_id ?? null,
+            initialProvider: "yoco",
           });
           return;
         } else if (methodToMark && createdId) {
@@ -2399,19 +2420,23 @@ export function GroupBookingDialog({
         </AlertDialogContent>
       </AlertDialog>
 
-      {postCreatePaycloudData ? (
-        <PayCloudPaymentDialog
+      {postCreateCardMachineData ? (
+        <CardMachineCollectDialog
           open
           onOpenChange={(nextOpen) => {
-            if (!nextOpen) setPostCreatePaycloudData(null);
+            if (!nextOpen) setPostCreateCardMachineData(null);
           }}
-          amount={postCreatePaycloudData.expectedAmount}
-          entityType="group_booking"
-          entityId={postCreatePaycloudData.groupId}
-          groupBookingId={postCreatePaycloudData.groupId}
-          bookingLocationId={postCreatePaycloudData.locationId}
+          amount={postCreateCardMachineData.expectedAmount}
+          autoStart
+          initialProvider={postCreateCardMachineData.initialProvider}
+          entity={{
+            entityType: "group_booking",
+            entityId: postCreateCardMachineData.groupId,
+            groupBookingId: postCreateCardMachineData.groupId,
+            bookingLocationId: postCreateCardMachineData.locationId,
+          }}
           onSuccess={() => {
-            setPostCreatePaycloudData(null);
+            setPostCreateCardMachineData(null);
             onSuccess?.();
           }}
         />

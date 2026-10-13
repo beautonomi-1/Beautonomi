@@ -104,6 +104,35 @@ describe("initializeOnlinePayment", () => {
     );
   });
 
+  it("Flutterwave branch stores flutterwave provider and payment intent id", async () => {
+    mockStripeInit.mockResolvedValue({
+      reference: "ref_fw",
+      authorizationUrl: "https://checkout.flutterwave.com/v3/hosted/pay/x",
+      paymentIntentId: "12345",
+    });
+    mockGetProvider.mockResolvedValue({
+      provider: { id: "flutterwave", initializePayment: mockStripeInit },
+      gateway: { config: {} },
+    });
+
+    const { initializeOnlinePayment } = await import("../online-payment");
+    const out = await initializeOnlinePayment({
+      tenantId: "tenant-ng",
+      email: "a@b.com",
+      amountInSmallestUnit: 500000,
+      currency: "NGN",
+      reference: "ref_fw",
+    });
+
+    expect(out.provider).toBe("flutterwave");
+    expect(mockUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "flutterwave",
+        paymentIntentId: "12345",
+      }),
+    );
+  });
+
   it("Paystack branch throws when payment_paystack flag is off", async () => {
     mockGetProvider.mockResolvedValue({
       provider: { id: "paystack", initializePayment: mockStripeInit },

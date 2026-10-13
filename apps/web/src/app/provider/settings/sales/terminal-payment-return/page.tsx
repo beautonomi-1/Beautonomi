@@ -5,7 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
+import {
+  readHostedCheckoutReturnParams,
+  isHostedCheckoutFailureStatus,
+} from "@/lib/payments/hosted-checkout-return-params";
 import { useTranslation } from "@beautonomi/i18n";
+import { NativeAppCheckoutBounce } from "@/components/payments/NativeAppCheckoutBounce";
 
 const PROVIDER_APP_SCHEME = "provider";
 
@@ -30,8 +35,11 @@ function TerminalPaymentReturnInner() {
   const cancelled = sp.get("payment_cancelled") === "1";
   const orderId = sp.get("order_id") ?? "";
   const context = sp.get("context") ?? "web";
-  const reference = sp.get("reference") || sp.get("trxref") || "";
-  const sessionId = sp.get("session_id");
+  const hosted = readHostedCheckoutReturnParams(sp);
+  const reference = hosted.reference;
+  const sessionId = hosted.sessionId;
+  const flutterwaveTransactionId = hosted.transactionId;
+  const hostedStatus = hosted.hostedStatus;
   const confirmed = sp.get("confirmed") === "1";
   const nativeContext = isNativeAppContext(context) || sp.get("in_app") === "1";
 
@@ -95,6 +103,9 @@ function TerminalPaymentReturnInner() {
 
     const run = async () => {
       try {
+        if (isHostedCheckoutFailureStatus(hostedStatus)) {
+          throw new Error(pr("confirmFailed"));
+        }
         if (!reference) {
           throw new Error(
             "MISSING_REFERENCE: " + pr("missingReference"),
@@ -103,7 +114,12 @@ function TerminalPaymentReturnInner() {
 
         const verifyResult = await verifyWithRetry<{ status?: string; message?: string }>(
           reference,
-          { maxAttempts: 5, delayMs: 1500, sessionId },
+          {
+            maxAttempts: 5,
+            delayMs: 1500,
+            sessionId,
+            transactionId: flutterwaveTransactionId,
+          },
         );
         if (verifyResult.status === "failed") {
           throw new Error(verifyResult.errorMessage || pr("confirmFailed"));
@@ -250,7 +266,10 @@ function TerminalPaymentReturnLoading() {
 export default function TerminalPaymentReturnPage() {
   return (
     <Suspense fallback={<TerminalPaymentReturnLoading />}>
-      <TerminalPaymentReturnInner />
+      <>
+        <NativeAppCheckoutBounce />
+        <TerminalPaymentReturnInner />
+      </>
     </Suspense>
   );
 }

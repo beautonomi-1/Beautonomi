@@ -113,7 +113,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
   );
   const locationId = booking.location_id ?? null;
   const servicesUrl =
-    "/api/provider/services?include_inactive=true&include_variants=true&include_offering_resources=false";
+    "/api/provider/services?include_inactive=true&include_variants=true&include_offering_resources=false&include_addons=true";
   const staffUrl = locationId
     ? `/api/provider/team?location_id=${encodeURIComponent(locationId)}`
     : "/api/provider/staff";
@@ -150,9 +150,12 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
 
   const parentCatalogServices = useMemo(
     () =>
-      catalogServices.filter(
-        (s) => !("parent_service_id" in s && (s as { parent_service_id?: string }).parent_service_id),
-      ),
+      catalogServices.filter((s) => {
+        const row = s as { parent_service_id?: string; service_type?: string };
+        if (row.parent_service_id) return false;
+        if (row.service_type === "variant" || row.service_type === "addon") return false;
+        return true;
+      }),
     [catalogServices],
   );
 
@@ -611,10 +614,17 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
       >
         <ScrollView>
           {productsList.map((product) => {
+            const variants = product.variants ?? [];
+            const hasVariants = variants.length > 0;
             const baseMax = stockLimitForProductLine(product);
             const baseOut = baseMax !== null && baseMax <= 0;
             return (
             <View key={product.id}>
+              {hasVariants ? (
+                <Text style={twStyle("px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
+                  {product.name}
+                </Text>
+              ) : (
               <TouchableOpacity
                 onPress={() => !baseOut && addProduct(product)}
                 disabled={baseOut}
@@ -626,7 +636,8 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
                   {baseMax != null ? (baseOut ? be("outOfStockSuffix") : be("inStockSuffix", { count: baseMax })) : ""}
                 </Text>
               </TouchableOpacity>
-              {(product.variants ?? []).map((variant) => {
+              )}
+              {variants.map((variant) => {
                 const variantMax = stockLimitForProductLine(product, variant);
                 const variantOut = variantMax !== null && variantMax <= 0;
                 return (

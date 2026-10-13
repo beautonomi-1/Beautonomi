@@ -45,6 +45,7 @@ CREATE INDEX IF NOT EXISTS idx_online_payment_checkouts_pi
   ON public.online_payment_checkouts (payment_intent_id)
   WHERE payment_intent_id IS NOT NULL;
 
+DROP TRIGGER IF EXISTS update_online_payment_checkouts_updated_at ON public.online_payment_checkouts;
 CREATE TRIGGER update_online_payment_checkouts_updated_at
   BEFORE UPDATE ON public.online_payment_checkouts
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

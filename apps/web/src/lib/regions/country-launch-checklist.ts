@@ -110,9 +110,11 @@ export async function validateCountryLaunchReadiness(
     const secretKeys =
       gateway?.gateway === "stripe"
         ? ["stripe_secret_key", "stripe_webhook_secret"]
-        : gateway?.gateway === "paystack"
-          ? ["paystack_secret_key"]
-          : [];
+        : gateway?.gateway === "flutterwave"
+          ? ["flutterwave_secret_key", "flutterwave_webhook_hash"]
+          : gateway?.gateway === "paystack"
+            ? ["paystack_secret_key"]
+            : [];
 
     for (const key of secretKeys) {
       const { data: secret } = await supabase

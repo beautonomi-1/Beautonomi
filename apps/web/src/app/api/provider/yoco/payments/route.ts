@@ -40,6 +40,8 @@ const createPaymentSchema = z
     group_booking_id: z.string().uuid().optional().nullable(),
     product_order_id: z.string().uuid().optional().nullable(),
     additional_charge_id: z.string().uuid().optional().nullable(),
+    /** Optional retry attempt so a declined charge can be retried without idempotency collision. */
+    attempt_id: z.string().max(128).optional().nullable(),
     metadata: z.record(z.string(), z.any()).optional(),
   })
   .refine((d) => d.amount != null || d.amount_cents != null, {
@@ -388,21 +390,60 @@ export async function POST(request: Request) {
     const amountInCents = convertToCents(amountInRands);
     const currency = validationResult.data.currency || lastResortCurrency;
 
-    // Reuse recent pending payment for same booking or sale to avoid double-send when app timed out after first create
-    const PENDING_WINDOW_MINUTES = 15;
     const saleId = validationResult.data.sale_id ?? null;
-    if (appointmentId || saleId) {
-      let reuseQuery = supabase
+
+    // Yoco expects amount as Money object and metadata values as strings (API reference)
+    const tipAmount = Math.max(0, Number(validationResult.data.tip_amount ?? 0));
+    const groupBookingId = validationResult.data.group_booking_id ?? null;
+    const productOrderId = validationResult.data.product_order_id ?? null;
+    const additionalChargeId = validationResult.data.additional_charge_id ?? null;
+
+    // client_reference is required by Yoco API; stable per entity for idempotency (Web POS retries).
+    const clientReference =
+      appointmentId ||
+      productOrderId ||
+      additionalChargeId ||
+      groupBookingId ||
+      (validationResult.data.sale_id ?? null) ||
+      crypto.randomUUID();
+    const resolvedEntityType =
+      validationResult.data.entity_type ??
+      (groupBookingId
+        ? "group_booking"
+        : productOrderId
+          ? "product_order"
+          : additionalChargeId
+            ? "additional_charge"
+            : validationResult.data.sale_id
+              ? "sale"
+              : appointmentId
+                ? "booking"
+                : undefined);
+    const resolvedEntityId =
+      validationResult.data.entity_id ??
+      groupBookingId ??
+      productOrderId ??
+      additionalChargeId ??
+      validationResult.data.sale_id ??
+      appointmentId ??
+      null;
+
+    // In-flight resume: a recent pending charge for the same entity + amount is returned
+    // (client keeps polling) instead of sending a second charge to the machine.
+    const PENDING_WINDOW_MINUTES = 15;
+    if (resolvedEntityType && resolvedEntityId) {
+      const { data: existingPending } = await supabase
         .from("provider_yoco_payments")
-        .select("id, yoco_payment_id, yoco_device_id, amount, currency, status, created_at, device_id, metadata")
+        .select("*")
         .eq("provider_id", providerId)
         .eq("status", "pending")
+        .eq("entity_type", resolvedEntityType)
+        .eq("entity_id", resolvedEntityId)
+        .eq("amount", amountInCents)
         .gte("created_at", new Date(Date.now() - PENDING_WINDOW_MINUTES * 60 * 1000).toISOString())
         .order("created_at", { ascending: false })
-        .limit(1);
-      if (appointmentId) reuseQuery = reuseQuery.eq("appointment_id", appointmentId);
-      else reuseQuery = reuseQuery.eq("sale_id", saleId);
-      const { data: existingPending } = await reuseQuery.maybeSingle();
+        .limit(1)
+        .maybeSingle();
 
       if (existingPending) {
         const existing = existingPending as {
@@ -416,9 +457,6 @@ export async function POST(request: Request) {
           device_id: string;
           metadata?: Record<string, unknown> | null;
         };
-        // For Web POS, poll Yoco for the latest status before reusing the row.
-        // For virtual_checkout there's no poll endpoint that uses the dashboard
-        // secret in the same shape; just return what we have.
         if (deviceCredentialMode === "web_pos" && webPosBearer && existing.yoco_device_id && existing.yoco_payment_id) {
           try {
             const statusRes = await fetch(
@@ -443,69 +481,61 @@ export async function POST(request: Request) {
             console.warn("Reuse pending: failed to sync status from Yoco", reuseErr);
           }
         }
-        const { data: dev } = await supabase
-          .from("provider_yoco_devices")
-          .select("name")
-          .eq("id", existing.device_id)
-          .single();
-        const reusedName = (dev as { name?: string } | null)?.name ?? deviceName;
-        const reusedMeta = (existing.metadata ?? {}) as Record<string, unknown>;
-        return NextResponse.json({
-          data: {
-            id: existing.id,
-            yoco_payment_id: existing.yoco_payment_id,
-            reference: existing.yoco_payment_id,
-            device_id: existing.device_id,
-            device_name: reusedName,
-            amount: existing.amount,
-            amount_cents: existing.amount,
-            currency: existing.currency,
-            status: existing.status,
-            payment_date: existing.created_at,
-            appointment_id: appointmentId,
-            sale_id: validationResult.data.sale_id,
-            metadata: validationResult.data.metadata,
-            credential_mode: deviceCredentialMode,
-            checkout_url: (reusedMeta.checkout_url as string | undefined) ?? undefined,
-            qr_payload: (reusedMeta.qr_payload as string | undefined) ?? undefined,
-          },
-          error: null,
-        });
+
+        if (existing.status === "successful" && existing.yoco_payment_id) {
+          try {
+            const { applyYocoSuccessfulSettlement } = await import(
+              "@/lib/payments/yoco-apply-successful-settlement"
+            );
+            const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+            await applyYocoSuccessfulSettlement(getSupabaseAdmin(), {
+              yocoPaymentId: existing.yoco_payment_id,
+              existingPayment: existing as unknown as Parameters<
+                typeof applyYocoSuccessfulSettlement
+              >[1]["existingPayment"],
+              metadata: (existing.metadata ?? {}) as Record<string, unknown>,
+              amountCents: existing.amount,
+              currency: existing.currency || currency,
+            });
+          } catch (settleErr) {
+            console.error("Reuse pending: settlement after successful status failed:", settleErr);
+          }
+        }
+
+        // A declined/cancelled attempt is finished; fall through and start a fresh charge.
+        if (existing.status === "pending" || existing.status === "successful") {
+          const { data: dev } = await supabase
+            .from("provider_yoco_devices")
+            .select("name")
+            .eq("id", existing.device_id)
+            .single();
+          const reusedName = (dev as { name?: string } | null)?.name ?? deviceName;
+          const reusedMeta = (existing.metadata ?? {}) as Record<string, unknown>;
+          return NextResponse.json({
+            data: {
+              id: existing.id,
+              yoco_payment_id: existing.yoco_payment_id,
+              reference: existing.yoco_payment_id,
+              device_id: existing.device_id,
+              device_name: reusedName,
+              amount: existing.amount,
+              amount_cents: existing.amount,
+              currency: existing.currency,
+              status: existing.status,
+              payment_date: existing.created_at,
+              appointment_id: appointmentId,
+              sale_id: saleId,
+              metadata: validationResult.data.metadata,
+              credential_mode: deviceCredentialMode,
+              checkout_url: (reusedMeta.checkout_url as string | undefined) ?? undefined,
+              qr_payload: (reusedMeta.qr_payload as string | undefined) ?? undefined,
+              resumed: true,
+            },
+            error: null,
+          });
+        }
       }
     }
-
-    // client_reference is required by Yoco API; used for reconciliation and echoed back (https://developer.yoco.com/api-reference/yoco-api/web-pos/create-web-pos-payment-v-1-webpos-webpos-device-id-payments-post)
-    const clientReference =
-      appointmentId ||
-      (validationResult.data.sale_id ?? null) ||
-      crypto.randomUUID();
-
-    // Yoco expects amount as Money object and metadata values as strings (API reference)
-    const tipAmount = Math.max(0, Number(validationResult.data.tip_amount ?? 0));
-    const groupBookingId = validationResult.data.group_booking_id ?? null;
-    const productOrderId = validationResult.data.product_order_id ?? null;
-    const additionalChargeId = validationResult.data.additional_charge_id ?? null;
-    const resolvedEntityType =
-      validationResult.data.entity_type ??
-      (groupBookingId
-        ? "group_booking"
-        : productOrderId
-          ? "product_order"
-          : additionalChargeId
-            ? "additional_charge"
-            : validationResult.data.sale_id
-              ? "sale"
-              : appointmentId
-                ? "booking"
-                : undefined);
-    const resolvedEntityId =
-      validationResult.data.entity_id ??
-      groupBookingId ??
-      productOrderId ??
-      additionalChargeId ??
-      validationResult.data.sale_id ??
-      appointmentId ??
-      null;
 
     const metadataRecord: Record<string, string> = {
       provider_id: providerId,
@@ -529,9 +559,12 @@ export async function POST(request: Request) {
     // §Yoco-audit 2026-05 (idempotency): forward an Idempotency-Key derived
     // from `client_reference` so the Yoco Web POS API safely deduplicates
     // when this route is retried (network blip / our caller re-invokes).
+    const attemptId = validationResult.data.attempt_id?.trim() ?? "";
     const idempotencyKey = crypto
       .createHash("sha256")
-      .update(`${providerId}:${yocoDeviceId}:${clientReference}:${amountInCents}:${currency}`)
+      .update(
+        `${providerId}:${yocoDeviceId}:${clientReference}:${amountInCents}:${currency}:${attemptId}`,
+      )
       .digest("hex");
 
     let yocoPayment: Record<string, any>;

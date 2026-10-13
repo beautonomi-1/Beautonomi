@@ -102,6 +102,12 @@ async function updateProductHandler(
   if (body.is_active !== undefined) updateData.is_active = body.is_active;
   if (body.has_variants !== undefined) updateData.has_variants = body.has_variants;
   if (body.variant_option_types !== undefined) updateData.variant_option_types = body.variant_option_types;
+  if (body.weight_grams !== undefined) {
+    updateData.weight_grams =
+      body.weight_grams == null || body.weight_grams === ""
+        ? null
+        : Math.max(0, parseInt(String(body.weight_grams), 10) || 0);
+  }
 
   const { data: updatedProduct, error: updateError } = await supabase
     .from("products")
@@ -130,6 +136,11 @@ async function updateProductHandler(
     } catch (logErr) {
       console.error("[products PATCH] stock movement log failed:", logErr);
     }
+  }
+
+  if (body.has_variants === false) {
+    const { error: clearVarErr } = await supabase.from("product_variants").delete().eq("product_id", id);
+    if (clearVarErr) throw clearVarErr;
   }
 
   // Replace variants if sent

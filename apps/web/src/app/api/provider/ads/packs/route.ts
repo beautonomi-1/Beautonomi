@@ -5,6 +5,24 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  resolveAdPackAmountMajor,
+  resolveAdPackCurrency,
+  type AdPackPriceRow,
+} from "@/lib/ads/resolve-ad-pack-price";
+
+function mapPackRow(row: Record<string, unknown>) {
+  const amountMajor = resolveAdPackAmountMajor(row as AdPackPriceRow);
+  const currency = resolveAdPackCurrency(row as AdPackPriceRow);
+  return {
+    ...row,
+    price_minor:
+      row.price_minor != null ? Number(row.price_minor) : Math.round(amountMajor * 100),
+    currency,
+    /** Major units for display + legacy clients (derived from price_minor when set). */
+    price_zar: amountMajor,
+  };
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -30,16 +48,30 @@ export async function GET(request: NextRequest) {
 
     const [impressionRes, timeRes] = await Promise.all([
       availableModels.includes("impression_pack")
-        ? admin.from("ads_impression_packs").select("id, impressions, price_zar, display_order, apple_product_id").eq("is_active", true).order("display_order", { ascending: true })
+        ? admin
+            .from("ads_impression_packs")
+            .select(
+              "id, impressions, price_zar, price_minor, currency, display_order, apple_product_id",
+            )
+            .eq("is_active", true)
+            .order("display_order", { ascending: true })
         : Promise.resolve({ data: [], error: null }),
       availableModels.includes("time_based")
-        ? admin.from("ads_time_packs").select("id, duration_days, label, price_zar, display_order, apple_product_id").eq("is_active", true).order("display_order", { ascending: true })
+        ? admin
+            .from("ads_time_packs")
+            .select(
+              "id, duration_days, label, price_zar, price_minor, currency, display_order, apple_product_id",
+            )
+            .eq("is_active", true)
+            .order("display_order", { ascending: true })
         : Promise.resolve({ data: [], error: null }),
     ]);
 
     return successResponse({
-      impression_packs: impressionRes.data ?? [],
-      time_packs: timeRes.data ?? [],
+      impression_packs: (impressionRes.data ?? []).map((r) =>
+        mapPackRow(r as Record<string, unknown>),
+      ),
+      time_packs: (timeRes.data ?? []).map((r) => mapPackRow(r as Record<string, unknown>)),
       available_models: availableModels,
       default_model: defaultModel,
     });

@@ -469,6 +469,23 @@ export default function CardMachinesPage() {
       subtitle={t("web.provider.settings.categories.sales.items.cardMachines.description")}
       breadcrumbs={breadcrumbs}
     >
+      <SectionCard className="mb-4 flex flex-wrap gap-2 p-4">
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/provider/settings/sales/card-machines/beautonomi">
+            {t("web.provider.settings.pages.sales/card-machines.beautonomiCardMachineNav")}
+          </Link>
+        </Button>
+        {yocoEnabled ? (
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/provider/settings/sales/card-machines/yoco">
+              {t("web.provider.settings.pages.sales/card-machines.yocoCardMachineNav")}
+            </Link>
+          </Button>
+        ) : null}
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/provider/settings/sales/terminal-shop">{t("web.provider.settings.pages.sales/card-machines.orderFromTerminalShop")}</Link>
+        </Button>
+      </SectionCard>
       <SectionCard className="mb-6 overflow-hidden border-pink-100 bg-gradient-to-br from-pink-50/70 via-white to-purple-50/50">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
@@ -1099,7 +1116,7 @@ export default function CardMachinesPage() {
         <SectionCard className="mt-6">
           <PageHeader title={t("web.provider.settings.pages.sales/card-machines.yoco")} subtitle={t("web.provider.settings.pages.sales/card-machines.separateYocoWebPosIntegration")} />
           <Button variant="outline" asChild className="mt-3">
-<Link href="/provider/settings/sales/yoco-integration">{t("web.provider.settings.pages.sales/card-machines.openYocoSettings")}</Link>
+<Link href="/provider/settings/sales/card-machines/yoco">{t("web.provider.settings.pages.sales/card-machines.openYocoSettings")}</Link>
           </Button>
         </SectionCard>
       ) : null}

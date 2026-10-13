@@ -20,7 +20,9 @@ import { computeCustomOfferSplits } from "./custom-offer-splits";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { toCents, percentOf } from "@beautonomi/utils";
+import { toMinorUnits, percentOf } from "@beautonomi/utils";
+import { chargeStripeOffSession } from "@/lib/payments/charge-stripe-off-session";
+import { chargeAndSettleFlutterwaveOffSession } from "@/lib/payments/charge-flutterwave-off-session";
 import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-offer-message-attachments";
 import { finalizeCustomOfferPayment } from "@/lib/custom-offers/finalize-custom-offer-payment";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack-complete";
@@ -33,6 +35,7 @@ import {
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { isPaymentMethodExpired } from "@/lib/payments/payment-method-expiry";
 import { creditWalletForCustomOfferAbandon } from "@/lib/custom-offers/credit-wallet-for-offer-abandon";
+import { getEffectiveCheckoutMethods } from "@/lib/payments/provider-checkout-methods";
 
 interface OfferRow {
   id: string;
@@ -396,6 +399,22 @@ export async function postCustomOfferAccept(
       amountToCollect = splits.result.paystackAmount;
     }
 
+    if (amountToCollect > 0 && req?.provider_id) {
+      const adminForMethods = getSupabaseAdmin();
+      const methods = await getEffectiveCheckoutMethods({
+        supabase: adminForMethods,
+        tenantId,
+        providerId: req.provider_id,
+      });
+      if (!methods.online) {
+        return errorResponse(
+          "Online payments are not available for this provider.",
+          "FEATURE_DISABLED",
+          400,
+        );
+      }
+    }
+
     const reference = `co_${id}_${Date.now()}`;
     const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com").replace(/\/$/, "");
     const rawCallback =
@@ -582,7 +601,8 @@ export async function postCustomOfferAccept(
       });
     }
 
-    const amountKobo = toCents(amountToCollect);
+    const offerCurrency = (offer.currency || lastResortCurrency).toUpperCase();
+    const amountMinor = toMinorUnits(amountToCollect, offerCurrency);
 
     if (body.payment_method_id) {
       const { data: paymentMethod, error: pmError } = await (
@@ -592,7 +612,6 @@ export async function postCustomOfferAccept(
         .eq("id", body.payment_method_id)
         .eq("user_id", user.id)
         .eq("is_active", true)
-        .eq("provider", "paystack")
         .single();
 
       if (pmError || !paymentMethod) {
@@ -600,8 +619,12 @@ export async function postCustomOfferAccept(
         return errorResponse("Payment method not found.", "NOT_FOUND", 404);
       }
 
+      const pmProvider = String(paymentMethod.provider ?? "paystack").toLowerCase();
       const authorizationCode = paymentMethod.provider_payment_method_id as string | undefined;
-      if (!authorizationCode || !authorizationCode.startsWith("AUTH_")) {
+      if (
+        pmProvider === "paystack" &&
+        (!authorizationCode || !authorizationCode.startsWith("AUTH_"))
+      ) {
         for (const rb of reservedRollbacks) await rb();
         return errorResponse(
           "This payment method is not a valid Paystack authorization.",
@@ -639,13 +662,76 @@ export async function postCustomOfferAccept(
 
       await patchCustomOfferMessageAttachments(adminSupabase, id, { status: "payment_pending" });
 
-      const chargeResult = await chargeAuthorization(
-        authorizationCode,
-        email,
-        amountKobo,
-        pricingMetadata,
-        { tenantId }
-      );
+      let chargeResult: Awaited<ReturnType<typeof chargeAuthorization>>;
+      if (pmProvider === "stripe") {
+        const stripePmId = String(paymentMethod.provider_payment_method_id ?? "").trim();
+        const stripeCharge = await chargeStripeOffSession({
+          tenantId,
+          reference,
+          email,
+          amountInSmallestUnit: amountMinor,
+          currency: offerCurrency,
+          stripePaymentMethodId: stripePmId,
+          metadata: pricingMetadata,
+        });
+        if (stripeCharge.ok === false) {
+          for (const rb of reservedRollbacks) await rb();
+          await adminSupabase
+            .from("custom_offers")
+            .update({
+              status: "pending",
+              payment_url: null,
+              payment_reference: null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", id);
+          await patchCustomOfferMessageAttachments(adminSupabase, id, { status: "pending" });
+          return errorResponse(stripeCharge.message || "Failed to charge card", "CHARGE_FAILED", 400);
+        }
+        chargeResult = {
+          status: true,
+          data: { reference: stripeCharge.reference, fees: 0 },
+          message: "",
+        } as Awaited<ReturnType<typeof chargeAuthorization>>;
+      } else if (pmProvider === "flutterwave") {
+        const flwToken = String(paymentMethod.provider_payment_method_id ?? "").trim();
+        const flwCharge = await chargeAndSettleFlutterwaveOffSession(adminSupabase, {
+          tenantId,
+          token: flwToken,
+          email,
+          amountInSmallestUnit: amountMinor,
+          currency: offerCurrency,
+          reference,
+          metadata: pricingMetadata,
+        });
+        if (flwCharge.ok === false) {
+          for (const rb of reservedRollbacks) await rb();
+          await adminSupabase
+            .from("custom_offers")
+            .update({
+              status: "pending",
+              payment_url: null,
+              payment_reference: null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", id);
+          await patchCustomOfferMessageAttachments(adminSupabase, id, { status: "pending" });
+          return errorResponse(flwCharge.message || "Failed to charge card", "CHARGE_FAILED", 400);
+        }
+        chargeResult = {
+          status: true,
+          data: { reference, fees: 0 },
+          message: "",
+        } as Awaited<ReturnType<typeof chargeAuthorization>>;
+      } else {
+        chargeResult = await chargeAuthorization(
+          authorizationCode!,
+          email,
+          amountMinor,
+          pricingMetadata,
+          { tenantId, currency: offerCurrency },
+        );
+      }
 
       if (!chargeResult.status) {
         for (const rb of reservedRollbacks) await rb();
@@ -728,7 +814,7 @@ export async function postCustomOfferAccept(
       init = await initializeOnlinePayment({
         tenantId,
         email,
-        amountInSmallestUnit: amountKobo,
+        amountInSmallestUnit: amountMinor,
         currency: offer.currency || lastResortCurrency,
         reference,
         callbackUrl,

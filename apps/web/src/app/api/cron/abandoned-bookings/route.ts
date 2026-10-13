@@ -32,6 +32,7 @@ const JOB_NAME = "abandoned-bookings";
 const LOOKBACK_HOURS = 48;
 const BATCH_LIMIT = 200;
 const PURPOSE = "hold_expired_reminder";
+const TEMPLATE_KEY = "abandoned_booking_reminder";
 
 export async function GET(request: NextRequest) {
   const auth = verifyCronRequest(request);
@@ -44,20 +45,11 @@ export async function GET(request: NextRequest) {
   return runLockedCronRoute(JOB_NAME, () => runJob(request));
 }
 
-async function runJob(request: NextRequest) {
-  const auth = verifyCronRequest(request);
-  if (!auth.valid) {
-    return NextResponse.json(
-      { ok: false, error: auth.error ?? "unauthorized" },
-      { status: 401 },
-    );
-  }
-
+async function runJob(_request: NextRequest) {
   const supabase = getSupabaseAdmin();
   const now = new Date();
   const lookbackFrom = new Date(now.getTime() - LOOKBACK_HOURS * 60 * 60 * 1000);
 
-  // Candidate holds: expired, not consumed, have an owner user.
   const { data: holds, error: holdErr } = await supabase
     .from("booking_holds")
     .select("id, provider_id, created_by_user_id, offering_id, expires_at, hold_status")
@@ -100,68 +92,49 @@ async function runJob(request: NextRequest) {
     });
   }
 
-  const { insertNotification } = await import(
-    "@/lib/notifications/insert-notification"
-  ).catch(() => ({
-    insertNotification: null as unknown as (args: {
-      user_id: string;
-      type: string;
-      title: string;
-      message: string;
-      data?: Record<string, unknown>;
-    }) => Promise<unknown>,
-  }));
-
-  // Wave 3.2 (audit 2026-04 final 100/100): route the re-engagement email
-  // through the durable notification queue so transient OneSignal/email
-  // outages don't silently drop the reminder. In-app bell row is still
-  // inserted directly for instant UX once the user opens the app.
-  const { enqueueNotification } = await import(
-    "@/lib/notifications/enqueue"
-  ).catch(() => ({ enqueueNotification: null as unknown as typeof import("@/lib/notifications/enqueue").enqueueNotification }));
+  const { customerAllowsAnyChannel } = await import(
+    "@/lib/notifications/customer-notification-channels"
+  );
+  const { dispatchTemplateNotification } = await import(
+    "@/lib/notifications/dispatch-template-notification"
+  );
 
   let sent = 0;
+  let skipped_prefs = 0;
   for (const hold of toSend) {
     try {
-      if (insertNotification) {
-        await insertNotification({
-          user_id: hold.created_by_user_id as string,
-          type: "abandoned_booking_reminder",
-          title: "Finish your booking?",
-          message:
-            "Your booking hold expired before checkout. Tap to pick up where you left off.",
-          data: {
-            provider_id: hold.provider_id,
-            offering_id: hold.offering_id,
-            hold_id: hold.id,
-          },
+      const userId = hold.created_by_user_id as string;
+      const allowed = await customerAllowsAnyChannel(supabase, userId, TEMPLATE_KEY, [
+        "email",
+        "push",
+      ]);
+      if (!allowed) {
+        skipped_prefs += 1;
+        await supabase.from("abandoned_booking_reengagement").insert({
+          hold_id: hold.id,
+          user_id: userId,
+          provider_id: hold.provider_id,
+          purpose: PURPOSE,
+          metadata: { expires_at: hold.expires_at, skipped: "preferences" },
         });
+        continue;
       }
 
-      if (enqueueNotification) {
-        await enqueueNotification({
-          channel: "email",
-          templateKey: "abandoned_booking_reminder",
-          recipientUserId: hold.created_by_user_id as string,
-          payload: {
-            subject: "Finish your booking?",
-            body:
-              "Your booking hold expired before checkout. Tap to pick up where you left off.",
-            data: {
-              provider_id: hold.provider_id,
-              offering_id: hold.offering_id,
-              hold_id: hold.id,
-            },
-          },
-          dedupeKey: `abandoned:${hold.id}:email`,
-        });
-      }
+      await dispatchTemplateNotification(
+        TEMPLATE_KEY,
+        [userId],
+        {
+          provider_id: hold.provider_id,
+          offering_id: hold.offering_id,
+          hold_id: hold.id,
+        },
+        ["email", "push"],
+        { appType: "customer" },
+      );
 
-      // Record re-engagement — UNIQUE (hold_id, purpose) prevents the cron
-      // from ever double-sending for the same hold.
       await supabase.from("abandoned_booking_reengagement").insert({
         hold_id: hold.id,
-        user_id: hold.created_by_user_id,
+        user_id: userId,
         provider_id: hold.provider_id,
         purpose: PURPOSE,
         metadata: { expires_at: hold.expires_at },
@@ -169,7 +142,6 @@ async function runJob(request: NextRequest) {
 
       sent += 1;
     } catch (err) {
-      // Best-effort: don't let one bad recipient halt the sweep.
       console.warn("[abandoned-bookings] send failed", hold.id, err);
     }
   }
@@ -178,6 +150,7 @@ async function runJob(request: NextRequest) {
     ok: true,
     candidates: candidates.length,
     sent,
+    skipped_prefs,
     skipped_already_reengaged: candidates.length - toSend.length,
   });
 }

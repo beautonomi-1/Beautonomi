@@ -20,6 +20,7 @@ export function isGatewayCardCaptureProvider(provider: string | null | undefined
     p === "yoco" ||
     p === "paycloud" ||
     p === "stripe" ||
+    p === "flutterwave" ||
     p === "card"
   );
 }
@@ -41,8 +42,9 @@ export function humanizePaymentMethodKey(key: string): string {
     paystack_terminal: "Paystack Terminal",
     paystack_virtual_terminal: "Paystack Terminal",
     yoco: "Yoco",
-    paycloud: "Card machine (PayCloud)",
+    paycloud: "Beautonomi card machine",
     stripe: "Stripe",
+    flutterwave: "Flutterwave",
     card: manualCardReportLabel(),
     wallet: "Wallet credit",
     gift_card: "Gift card",
@@ -268,6 +270,9 @@ export async function buildProviderPaymentMethodsReport(
     const provider = (row.payment_provider ?? "").toLowerCase();
     if (provider === "paycloud") return "paycloud";
     if (provider === "yoco") return "yoco";
+    if (provider === "paystack" || provider === "stripe" || provider === "flutterwave") {
+      return provider;
+    }
     return normalizeRecordedPaymentMethod(row.payment_method);
   }
 

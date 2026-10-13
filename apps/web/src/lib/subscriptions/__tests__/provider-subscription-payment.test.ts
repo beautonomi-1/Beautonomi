@@ -154,6 +154,26 @@ describe("recordProviderSubscriptionPayment", () => {
     expect(tax[0].metadata.vat_rate_percent).toBe(15);
   });
 
+  it("stores yearly billing_period and 365-day term_end when billingPeriod is yearly", async () => {
+    const db = makeDb({ payment_transactions: [], finance_transactions: [] });
+    const before = Date.now();
+    await recordProviderSubscriptionPayment({
+      supabase: db.supabase,
+      reference: "ref-yearly",
+      providerId: "prov-1",
+      amountMajor: 1200,
+      feesMajor: 0,
+      billingPeriod: "yearly",
+      kind: "subscription_renewal",
+    });
+    const payment = (db.inserts.finance_transactions ?? []).find(
+      (r) => r.transaction_type === "provider_subscription_payment",
+    );
+    expect(payment?.metadata?.billing_period).toBe("yearly");
+    const termEndMs = new Date(String(payment?.metadata?.term_end)).getTime();
+    expect(termEndMs - before).toBeGreaterThanOrEqual(364 * 86400000);
+  });
+
   it("posts no VAT leg when the platform VAT rate is 0", async () => {
     const db = makeDb({ payment_transactions: [], finance_transactions: [] });
     await recordProviderSubscriptionPayment({

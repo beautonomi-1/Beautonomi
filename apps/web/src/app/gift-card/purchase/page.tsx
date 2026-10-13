@@ -61,8 +61,11 @@ export default function GiftCardPurchasePage() {
   const { bundle } = useConfigBundle();
   const primaryGateway = bundle?.meta?.tenant_region?.payment_gateway?.toLowerCase();
   const flagsLoading = giftCardsFlagLoading || paymentFlagsLoading;
-  const onlineCardEnabled =
-    flagsLoading ? true : (paymentFeatures.payment_paystack ?? false) || primaryGateway === "stripe";
+  const onlineCardEnabled = flagsLoading
+    ? true
+    : (paymentFeatures.payment_paystack ?? false) ||
+      primaryGateway === "stripe" ||
+      primaryGateway === "flutterwave";
   const purchaseEnabled = giftCardsEnabled && onlineCardEnabled;
 
   // Check if coming from bulk purchase link

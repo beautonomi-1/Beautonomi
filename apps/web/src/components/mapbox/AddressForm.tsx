@@ -86,6 +86,7 @@ export default function AddressForm({
 
   const handleAddressSelect = (address: {
     address_line1: string;
+    address_line2?: string;
     city: string;
     state?: string;
     postal_code?: string;
@@ -97,6 +98,9 @@ export default function AddressForm({
     setFormData({
       ...formData,
       address_line1: address.address_line1,
+      address_line2: formData.address_line2?.trim()
+        ? formData.address_line2
+        : (address.address_line2 ?? formData.address_line2),
       place_name: address.place_name || address.address_line1,
       city: address.city,
       state: address.state || "",

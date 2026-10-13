@@ -60,9 +60,19 @@ export function collectGroupBookingCreateValidationErrors(
       if (!p.name) {
         push(`Participant ${idx + 1} needs a name.`, `participant:${idx}`);
       }
-      const phoneErr = input.validatePhone(p.phone);
-      if (phoneErr) {
-        push(`Participant ${idx + 1}: ${phoneErr}`, `participant:${idx}`);
+      const linkedCustomer = Boolean(p.customerId?.trim());
+      const phone = p.phone.trim();
+      const email = p.email.trim();
+      if (!linkedCustomer && !phone && !email) {
+        push(
+          `Participant ${idx + 1} needs a phone number or email so they can receive a booking.`,
+          `participant:${idx}`,
+        );
+      } else if (phone) {
+        const phoneErr = input.validatePhone(phone);
+        if (phoneErr) {
+          push(`Participant ${idx + 1}: ${phoneErr}`, `participant:${idx}`);
+        }
       }
       if (!p.serviceId) {
         push(`Select what participant ${idx + 1} wants.`, `participant:${idx}`);

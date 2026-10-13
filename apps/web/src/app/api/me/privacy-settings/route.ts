@@ -235,6 +235,18 @@ export async function PATCH(request: NextRequest) {
           throw profileError;
         }
       }
+
+      if (
+        body.receive_marketing !== undefined ||
+        body.marketing_consent !== undefined
+      ) {
+        const consented =
+          body.receive_marketing === true || body.marketing_consent === true;
+        const { persistMarketingConsent } = await import(
+          "@/lib/auth/persist-marketing-consent"
+        );
+        await persistMarketingConsent(supabase, user.id, consented);
+      }
     }
 
     // Return the merged updated settings

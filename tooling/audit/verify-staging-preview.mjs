@@ -250,6 +250,26 @@ function evaluateLiveProbe(path, result) {
     printVercelPreviewEnvChecklist();
     return;
   }
+  if (path === "/api/public/pricing/plans" && result.json?.data) {
+    const plans = Array.isArray(result.json.data) ? result.json.data : [];
+    const legacyNames = new Set(["Starter", "Professional", "Enterprise"]);
+    const badLegacy = plans.filter(
+      (p) => legacyNames.has(String(p.name ?? "").trim()) && !p.subscription_plan_id,
+    );
+    if (badLegacy.length > 0) {
+      fail(`pricing/plans: ${badLegacy.length} active legacy unlinked plan(s) in catalog`);
+    }
+    const subIds = plans.map((p) => p.subscription_plan_id).filter(Boolean);
+    if (subIds.length !== new Set(subIds).size) {
+      fail("pricing/plans: duplicate subscription_plan_id in published catalog");
+    }
+  }
+  if (path === "/api/public/directions-config" && result.json) {
+    const enabled = result.json?.mapbox_config?.is_enabled;
+    if (enabled && !result.json?.mapboxPublicToken) {
+      fail("directions-config: mapbox enabled but mapboxPublicToken missing");
+    }
+  }
   if (path.includes("staging-deploy-meta") && result.json) {
     const m = result.json;
     if (m.supabase_service_role_jwt_role && m.supabase_service_role_jwt_role !== "service_role") {
@@ -273,7 +293,13 @@ function evaluateLiveProbe(path, result) {
 
 async function checkLivePreview() {
   const secret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  for (const path of ["/api/public/staging-deploy-meta", "/api/health", "/api/public/home"]) {
+  for (const path of [
+    "/api/public/staging-deploy-meta",
+    "/api/health",
+    "/api/public/home",
+    "/api/public/pricing/plans",
+    "/api/public/directions-config",
+  ]) {
     const result = await probePreviewPath(path, { secret });
     evaluateLiveProbe(path, result);
   }

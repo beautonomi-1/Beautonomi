@@ -13,6 +13,7 @@ import {
   maskSecret,
   type EcommerceShippingEnvOverride,
 } from "@/lib/orders/shipping-secrets";
+import { isShippingCredentialsEncryptionConfigured } from "@/lib/orders/shipping-credentials-crypto";
 
 const SECRET_KEYS = [
   "courier_guy_api_key",
@@ -98,6 +99,7 @@ function statusPayload(
       },
     },
     updated_at: runtime.updatedAt,
+    provider_credentials_encryption_configured: isShippingCredentialsEncryptionConfigured(),
   };
 }
 

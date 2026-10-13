@@ -11,6 +11,7 @@ import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { PickupStoreCard } from "@/components/shop/PickupStoreCard";
 import { useTranslation } from "@beautonomi/i18n";
+import { useAuth } from "@/providers/AuthProvider";
 
 function csrfHeaders(): HeadersInit {
   const h: Record<string, string> = {};
@@ -115,12 +116,20 @@ interface CartItem {
   };
 }
 
+type CartFetchState = "loading" | "unauthenticated" | "ready";
+
 export default function CartPage() {
   const { bundle } = useConfigBundle();
+  const { user, isLoading: authLoading } = useAuth();
   const { t } = useTranslation();
   const shopT = useCallback(
     (key: string, opts?: Record<string, string | number>) =>
       t(`customer.mobile.tabs.shop.${key}`, opts) as string,
+    [t],
+  );
+  const cartT = useCallback(
+    (key: string, opts?: Record<string, string | number>) =>
+      t(`customer.mobile.screens.cart.${key}`, opts) as string,
     [t],
   );
   const currency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
@@ -128,22 +137,37 @@ export default function CartPage() {
   const fmt = (n: number) => formatCurrency(n, currency);
 
   const [items, setItems] = useState<CartItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [fetchState, setFetchState] = useState<CartFetchState>("loading");
 
   const fetchCart = useCallback(async () => {
-    setLoading(true);
+    if (!user) {
+      setItems([]);
+      setFetchState("unauthenticated");
+      return;
+    }
+    setFetchState("loading");
     try {
       const res = await fetch("/api/me/cart");
+      if (res.status === 401 || res.status === 403) {
+        setItems([]);
+        setFetchState("unauthenticated");
+        return;
+      }
       const json = await res.json();
-      if (json.data) setItems(json.data.items);
-    } catch { /* ignore */ }
-    setLoading(false);
-  }, []);
+      if (json.data?.items) setItems(json.data.items);
+      else setItems([]);
+      setFetchState("ready");
+    } catch {
+      setItems([]);
+      setFetchState("ready");
+    }
+  }, [user]);
 
   useEffect(() => {
-    const id = setTimeout(() => fetchCart(), 0);
+    if (authLoading) return;
+    const id = setTimeout(() => void fetchCart(), 0);
     return () => clearTimeout(id);
-  }, [fetchCart]);
+  }, [fetchCart, authLoading]);
 
   const updateQty = async (itemId: string, qty: number) => {
     const prev = items;
@@ -223,18 +247,31 @@ export default function CartPage() {
           )}
         </div>
 
-        {loading ? (
+        {authLoading || fetchState === "loading" ? (
           <div className="flex items-center justify-center py-24">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-pink-200 border-t-pink-600" />
+          </div>
+        ) : fetchState === "unauthenticated" ? (
+          <div className="flex flex-col items-center justify-center py-24 text-gray-600">
+            <p className="text-lg font-medium">{cartT("loginPrompt")}</p>
+            <Link
+              href="/?login=true&redirect=/cart"
+              className="mt-4 rounded-xl bg-pink-600 px-6 py-3 text-sm font-semibold text-white hover:bg-pink-700"
+            >
+              {t("auth.login") as string}
+            </Link>
+            <Link href="/shop" className="mt-3 text-sm text-pink-600 hover:text-pink-700">
+              {cartT("browseProducts")}
+            </Link>
           </div>
         ) : items.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-gray-400">
             <svg className="mb-4 h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
             </svg>
-            <p className="text-lg font-medium">Your cart is empty</p>
+            <p className="text-lg font-medium">{cartT("emptyTitle")}</p>
             <Link href="/shop" className="mt-4 rounded-xl bg-pink-600 px-6 py-3 text-sm font-semibold text-white hover:bg-pink-700">
-              Browse Products
+              {cartT("browseProducts")}
             </Link>
           </div>
         ) : (

@@ -1,10 +1,14 @@
 "use client";
 
 import { useTranslation } from "@beautonomi/i18n";
-import React, { useEffect, useRef, useState } from "react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
 import { paystackReferenceFromSearchParams } from "@/lib/payments/paystack-return-reference";
+import {
+  readHostedCheckoutReturnParams,
+  isHostedCheckoutFailureStatus,
+} from "@/lib/payments/hosted-checkout-return-params";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { Button } from "@/components/ui/button";
@@ -13,6 +17,7 @@ import Link from "next/link";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
+import { NativeAppCheckoutBounce } from "@/components/payments/NativeAppCheckoutBounce";
 
 const marketingIntegrations = [
   {
@@ -71,13 +76,20 @@ export default function MarketingIntegrationsPage() {
       return;
     }
 
+    const hosted = readHostedCheckoutReturnParams(searchParams);
+    if (isHostedCheckoutFailureStatus(hosted.hostedStatus)) {
+      toast.info(t("web.provider.settings.pages.marketing-integrations.topUpFailed"));
+      router.replace("/provider/settings/marketing-integrations");
+      return;
+    }
+
     void (async () => {
       try {
-        const sessionId = searchParams.get("session_id");
         const verifyResult = await verifyWithRetry(reference, {
           maxAttempts: 5,
           delayMs: 1500,
-          sessionId,
+          sessionId: hosted.sessionId,
+          transactionId: hosted.transactionId,
         });
         await loadCredits();
         await loadStatus();
@@ -142,6 +154,10 @@ export default function MarketingIntegrationsPage() {
   };
 
   return (
+    <>
+      <Suspense fallback={null}>
+        <NativeAppCheckoutBounce />
+      </Suspense>
     <div>
       <PageHeader
         title={t("web.provider.settings.categories.marketingIntegrations.title")}
@@ -269,5 +285,6 @@ export default function MarketingIntegrationsPage() {
         </SectionCard>
       </div>
     </div>
+    </>
   );
 }

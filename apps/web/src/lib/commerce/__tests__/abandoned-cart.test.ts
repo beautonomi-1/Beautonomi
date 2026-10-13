@@ -117,8 +117,10 @@ describe("abandoned-cart notification classification", () => {
     expect(templateKeyToPreferenceSection("abandoned_cart")).toBe("inspiration_and_offers");
   });
 
-  it("maps abandoned_cart_reminder to reminders", () => {
-    expect(templateKeyToPreferenceSection("abandoned_cart_reminder")).toBe("reminders");
+  it("maps abandoned_cart_reminder to inspiration_and_offers", () => {
+    expect(templateKeyToPreferenceSection("abandoned_cart_reminder")).toBe(
+      "inspiration_and_offers",
+    );
   });
 });
 

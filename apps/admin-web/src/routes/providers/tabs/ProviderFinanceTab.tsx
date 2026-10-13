@@ -110,7 +110,7 @@ export function ProviderFinanceTab({
 
   type ProviderPayoutAccountsPayload = {
     accounts?: PayoutAccountRow[];
-    payout_rail?: "paystack" | "stripe";
+    payout_rail?: "paystack" | "stripe" | "flutterwave";
     stripe_connect?: { onboarding_complete?: boolean; external_account_last4?: string | null } | null;
   };
 
@@ -129,6 +129,7 @@ export function ProviderFinanceTab({
     payoutAccountsPayload && !Array.isArray(payoutAccountsPayload)
       ? payoutAccountsPayload.payout_rail ?? "paystack"
       : "paystack";
+  const usesBankAccountRail = payoutRail === "paystack" || payoutRail === "flutterwave";
   const stripeConnectMeta =
     payoutAccountsPayload && !Array.isArray(payoutAccountsPayload)
       ? payoutAccountsPayload.stripe_connect
@@ -271,10 +272,12 @@ export function ProviderFinanceTab({
             <p className="mt-1 text-sm text-gray-600">
               {payoutRail === "stripe"
                 ? "Stripe Connect handles bank details for this market. Providers complete onboarding in the provider app."
-                : "Bank / transfer recipients on file (masked account details)."}
+                : payoutRail === "flutterwave"
+                  ? "Flutterwave transfer recipients (bank accounts). Admin add uses the same verify + fw: recipient code as the provider app."
+                  : "Paystack transfer recipients on file (masked account details)."}
             </p>
           </div>
-          {providerCanonicalId && payoutRail === "paystack" ? (
+          {providerCanonicalId && usesBankAccountRail ? (
             <button
               type="button"
               className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50"
@@ -285,7 +288,7 @@ export function ProviderFinanceTab({
           ) : null}
         </div>
 
-        {providerCanonicalId && payoutRail === "paystack" ? (
+        {providerCanonicalId && usesBankAccountRail ? (
           <ProviderBankAccountModal
             open={showAddBankAccount}
             onClose={() => setShowAddBankAccount(false)}

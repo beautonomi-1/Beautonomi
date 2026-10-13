@@ -340,6 +340,7 @@ path,class,note
 /api/admin/nav-counts,T,"uses resolveAdminApiTenantId"
 /api/admin/notification-logs,U,"needs tenant review"
 /api/admin/notification-templates/[id],T,"uses resolveAdminApiTenantId"
+/api/admin/notification-templates/[key]/preview-email,T,"uses resolveAdminApiTenantId; POST finalized email preview"
 /api/admin/notification-templates/[id]/whatsapp/push,T,"uses resolveAdminApiTenantId"
 /api/admin/notification-templates,T,"review: likely tenant-scoped ops"
 /api/admin/notification-templates/whatsapp/validate-readiness,T,"review: likely tenant-scoped ops"

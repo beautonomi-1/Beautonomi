@@ -6,7 +6,7 @@ import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useOrdersReturnsListRefresh } from "@/hooks/useOrdersReturnsListRefresh";
-import { api } from "@/lib/api-client";
+import { api, getApiBaseUrl } from "@/lib/api-client";
 import { downloadPdf } from "@/lib/pdf-file";
 import { shareProviderOrderReceipt } from "@/lib/share-receipt";
 import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
@@ -19,8 +19,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
-import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
-import { PayCloudPaymentSheet } from "@/components/payments/PayCloudPaymentSheet";
+import { CardMachineCollectSheet } from "@/components/payments/CardMachineCollectSheet";
 import { PaycloudCollectSetupAffordance } from "@/components/payments/PaycloudCollectSetupAffordance";
 import { usePaycloudCollectAvailability } from "@/hooks/usePaycloudCollectAvailability";
 import { formatPaycloudCollectLabel } from "@/lib/paycloud-collect-cta";
@@ -123,6 +122,9 @@ interface Order {
   tracking_number?: string | null;
   carrier?: string | null;
   tracking_url?: string | null;
+  shipping_booking_status?: string | null;
+  shipping_booking_detail?: string | null;
+  courier_label_url?: string | null;
   delivery_instructions?: string | null;
   estimated_delivery_date?: string | null;
   confirmed_at?: string | null;
@@ -371,10 +373,12 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
   const [cancelReasonOrderId, setCancelReasonOrderId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [recordPaymentSheetOpen, setRecordPaymentSheetOpen] = useState(false);
-  const [recordPaymentMethod, setRecordPaymentMethod] = useState<"cash" | "card_on_delivery" | "yoco" | "paycloud">("cash");
+  const [recordPaymentMethod, setRecordPaymentMethod] = useState<
+    "cash" | "card_on_delivery" | "card_machine"
+  >("cash");
   const [recordPaymentReference, setRecordPaymentReference] = useState("");
-  const [showYocoPaymentSheet, setShowYocoPaymentSheet] = useState(false);
-  const [showPaycloudPaymentSheet, setShowPaycloudPaymentSheet] = useState(false);
+  const [showCardMachineCollect, setShowCardMachineCollect] = useState(false);
+  const yocoEnabled = useFeatureFlag("payment_yoco");
   const [terminalSheetOpen, setTerminalSheetOpen] = useState(false);
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const {
@@ -611,10 +615,6 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
   const recordCollectionPayment = useCallback(async (referenceOverride?: string) => {
     if (!activeOrder) return;
     const reference = (referenceOverride ?? recordPaymentReference).trim();
-    if (recordPaymentMethod === "yoco" && !reference) {
-      Alert.alert(po("referenceRequiredTitle"), po("referenceRequiredBody"));
-      return;
-    }
     const { error: err } = await postOrderMutation(
       `/api/provider/product-orders/${activeOrder.id}/mark-collected`,
       {
@@ -631,8 +631,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
     setRecordPaymentSheetOpen(false);
     setRecordPaymentReference("");
     setRecordPaymentMethod("cash");
-    setShowYocoPaymentSheet(false);
-    setShowPaycloudPaymentSheet(false);
+    setShowCardMachineCollect(false);
     setViewOrder(null);
     setOrderDetail(null);
     refresh();
@@ -642,18 +641,9 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
     await recordCollectionPayment();
   }, [recordCollectionPayment]);
 
-  const handleYocoCollectionSuccess = useCallback(
-    async (result: { reference: string }) => {
-      setRecordPaymentMethod("yoco");
-      setRecordPaymentReference(result.reference);
-      await recordCollectionPayment(result.reference);
-    },
-    [recordCollectionPayment],
-  );
-
-  const handlePaycloudCollectionSuccess = useCallback(async () => {
+  const handleCardMachineCollectionSuccess = useCallback(async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setShowPaycloudPaymentSheet(false);
+    setShowCardMachineCollect(false);
     setRecordPaymentSheetOpen(false);
     setRecordPaymentReference("");
     setRecordPaymentMethod("cash");
@@ -1063,6 +1053,71 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                   )}
                 </View>
               )}
+
+              {activeOrder.fulfillment_type === "delivery" &&
+              activeOrder.payment_status === "paid" &&
+              activeOrder.status !== "cancelled" &&
+              activeOrder.status !== "refunded" ? (
+                <View style={twStyle("mb-3 rounded-xl border border-violet-100 bg-violet-50 px-4 py-3")}>
+                  <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-violet-500 mb-1")}>
+                    {po("courierBooking")}
+                  </Text>
+                  {activeOrder.shipping_booking_status ? (
+                    <Text style={twStyle("text-sm text-violet-900 capitalize")}>
+                      {activeOrder.shipping_booking_status.replace(/_/g, " ")}
+                    </Text>
+                  ) : null}
+                  {activeOrder.shipping_booking_detail ? (
+                    <Text style={twStyle("mt-1 text-xs text-violet-800")}>{activeOrder.shipping_booking_detail}</Text>
+                  ) : null}
+                  {(!activeOrder.tracking_number ||
+                    activeOrder.shipping_booking_status === "failed" ||
+                    activeOrder.shipping_booking_status === "skipped") && (
+                    <TouchableOpacity
+                      style={twStyle("mt-2 self-start rounded-lg bg-violet-600 px-3 py-2")}
+                      onPress={async () => {
+                        if (!activeOrder.id) return;
+                        setLoadingDetail(true);
+                        try {
+                          const res = await api.post<{ data?: unknown }>(
+                            `/api/provider/product-orders/${activeOrder.id}/book-shipment`,
+                            {},
+                          );
+                          if (res.error) Alert.alert(po("errorTitle"), res.error.message);
+                          else {
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                            const detail = await api.get<{ order: Order }>(
+                              `/api/provider/product-orders/${activeOrder.id}`,
+                            );
+                            setOrderDetail(detail.data?.order ?? activeOrder);
+                          }
+                        } finally {
+                          setLoadingDetail(false);
+                        }
+                      }}
+                      accessibilityRole="button"
+                    >
+                      <Text style={twStyle("text-xs font-semibold text-white")}>
+                        {activeOrder.tracking_number ? po("retryCourierBooking") : po("bookCourier")}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  {(activeOrder.tracking_number || activeOrder.courier_label_url) && (
+                    <TouchableOpacity
+                      style={twStyle("mt-2 self-start rounded-lg border border-violet-300 px-3 py-2")}
+                      onPress={() =>
+                        void openExternalUrl(
+                          `${getApiBaseUrl().replace(/\/$/, "")}/api/provider/product-orders/${activeOrder.id}/shipping-label`,
+                          po,
+                        )
+                      }
+                      accessibilityRole="link"
+                    >
+                      <Text style={twStyle("text-xs font-semibold text-violet-800")}>{po("printLabel")}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ) : null}
 
               {/* Tracking info */}
               {(activeOrder.tracking_number || activeOrder.tracking_url) && (
@@ -1506,15 +1561,14 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
             {[
               { label: po("payCash"), value: "cash" as const },
               { label: po("payCardOnDelivery"), value: "card_on_delivery" as const },
-              { label: po("payYoco"), value: "yoco" as const },
-              ...(canProcessPayments && paycloudEnabled && paycloudCollectEnabled
+              ...(canProcessPayments && (yocoEnabled || (paycloudEnabled && paycloudCollectEnabled))
                 ? [{
                     label: formatPaycloudCollectLabel({
                       context: "product_order",
                       amount: 0,
                       inFlight: paycloudInFlight,
                     }),
-                    value: "paycloud" as const,
+                    value: "card_machine" as const,
                   }]
                 : []),
             ].map((option) => {
@@ -1545,33 +1599,19 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
           <TextInput
             value={recordPaymentReference}
             onChangeText={setRecordPaymentReference}
-            placeholder={
-              recordPaymentMethod === "yoco"
-                ? po("refYocoRequired")
-                : recordPaymentMethod === "paycloud"
-                  ? po("refPaycloudOptional")
-                  : po("refOptional")
-            }
+            placeholder={po("refOptional")}
             placeholderTextColor="#9ca3af"
             style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             accessibilityLabel={po("paymentRefA11y")}
           />
-          {recordPaymentMethod === "yoco" ? (
-            <ActionButton
-              label={po("chargeYoco")}
-              onPress={() => setShowYocoPaymentSheet(true)}
-              variant="outline"
-              fullWidth
-            />
-          ) : null}
-          {recordPaymentMethod === "paycloud" ? (
+          {recordPaymentMethod === "card_machine" ? (
             <ActionButton
               label={po("chargeCardMachine")}
-              onPress={() => setShowPaycloudPaymentSheet(true)}
+              onPress={() => setShowCardMachineCollect(true)}
               fullWidth
             />
           ) : null}
-          {recordPaymentMethod !== "paycloud" ? (
+          {recordPaymentMethod !== "card_machine" ? (
             <ActionButton
               label={postingOrderMutation ? po("recording") : po("recordPaymentCta")}
               onPress={handleRecordCollectionPayment}
@@ -1606,25 +1646,17 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         customerReference={activeOrder?.order_number ?? null}
       />
 
-      <YocoPaymentSheet
-        visible={showYocoPaymentSheet}
-        onClose={() => setShowYocoPaymentSheet(false)}
-        amountCents={Math.round((activeOrder ? orderCollectibleAmount(activeOrder) : 0) * 100)}
-        currency={activeOrder?.currency ?? currency}
-        description={po("yocoDescription", { number: activeOrder?.order_number ?? activeOrder?.id ?? "" })}
-        onPaymentSuccess={(result) => void handleYocoCollectionSuccess(result)}
-      />
-
       {activeOrder ? (
-        <PayCloudPaymentSheet
-          visible={showPaycloudPaymentSheet}
-          onClose={() => setShowPaycloudPaymentSheet(false)}
+        <CardMachineCollectSheet
+          visible={showCardMachineCollect}
+          onClose={() => setShowCardMachineCollect(false)}
           amount={orderCollectibleAmount(activeOrder)}
           currency={activeOrder.currency ?? currency}
           entityType="product_order"
           entityId={activeOrder.id}
+          productOrderId={activeOrder.id}
           bookingLocationId={unwrapOne(activeOrder.collection_location)?.id ?? selectedLocationId ?? null}
-          onPaymentSuccess={() => void handlePaycloudCollectionSuccess()}
+          onSuccess={() => void handleCardMachineCollectionSuccess()}
         />
       ) : null}
 

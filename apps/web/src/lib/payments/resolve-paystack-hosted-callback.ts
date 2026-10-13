@@ -23,7 +23,10 @@ export function clientHintsInApp(clientCallback?: string | null): boolean {
   const t = clientCallback.trim();
   if (normalizeInAppHint(t)) return true;
   try {
-    return new URL(t).searchParams.get("context") === "app";
+    const params = new URL(t).searchParams;
+    if (params.get("context") === "app") return true;
+    if (params.get("in_app") === "1") return true;
+    return false;
   } catch {
     return false;
   }

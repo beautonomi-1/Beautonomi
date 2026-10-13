@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { XCircle, ShoppingBag, RotateCcw } from "lucide-react";
+import { NativeAppCheckoutBounce } from "@/components/payments/NativeAppCheckoutBounce";
 
 function ShopCancelledInner() {
   const sp = useSearchParams();
@@ -11,6 +12,8 @@ function ShopCancelledInner() {
   const orderNumber = sp.get("order_number") ?? "";
 
   return (
+    <>
+      <NativeAppCheckoutBounce />
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
         <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -49,6 +52,7 @@ function ShopCancelledInner() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

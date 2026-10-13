@@ -19,6 +19,7 @@ import { isLikelyFramed, postBookingEmbedMessage } from "@/lib/booking/embed-hos
 import { isBookingEmbedEnabled } from "@beautonomi/utils";
 import { formatMoney as formatMoneyUtil } from "@beautonomi/utils";
 import { verifyEmbedReturnUrl } from "@/lib/booking/embed-return-url";
+import { NativeAppCheckoutBounce } from "@/components/payments/NativeAppCheckoutBounce";
 
 /** Beautonomi primary (use CSS var in styles for single source) */
 const ACCENT = "var(--primary, #FF0077)";
@@ -92,9 +93,13 @@ function CheckoutSuccessContent() {
   const paymentSuccessTracked = useRef(false);
   const bookingId = searchParams?.get("booking_id");
   const bookingNumber = searchParams?.get("booking_number");
-  /** Paystack appends reference (or trxref) when redirecting after card payment */
+  /** Paystack / Flutterwave append reference, trxref, or tx_ref on redirect */
   const paystackReference =
-    searchParams?.get("reference") || searchParams?.get("trxref");
+    searchParams?.get("reference") ||
+    searchParams?.get("trxref") ||
+    searchParams?.get("tx_ref");
+  const flutterwaveTransactionId = searchParams?.get("transaction_id");
+  const hostedCheckoutStatus = (searchParams?.get("status") ?? "").toLowerCase();
   const stripeCheckoutSessionId = searchParams?.get("session_id");
   const isWaitlist = searchParams?.get("waitlist") === "1" || searchParams?.get("source") === "waitlist";
   const isCustomOffer = searchParams?.get("payment_type") === "custom_offer";
@@ -160,12 +165,22 @@ function CheckoutSuccessContent() {
         }
       }
       if (!ref) return;
+      if (hostedCheckoutStatus === "failed" || hostedCheckoutStatus === "cancelled") {
+        setVerifyStatus("failed");
+        setVerifyMessage("Payment was not completed.");
+        return;
+      }
       paystackVerifyStarted.current = true;
       setVerifyStatus("verifying");
       try {
         const verifyResult = await verifyWithRetry<{ type?: string; ads_budget_order_id?: string; order_id?: string }>(
           ref,
-          { maxAttempts: 5, delayMs: 1500, sessionId: stripeCheckoutSessionId },
+          {
+            maxAttempts: 5,
+            delayMs: 1500,
+            sessionId: stripeCheckoutSessionId,
+            transactionId: flutterwaveTransactionId,
+          },
         );
         const verifyType = typeof verifyResult.data?.type === "string" ? verifyResult.data.type : null;
         if (verifyType === "ads_budget_order") {
@@ -188,7 +203,11 @@ function CheckoutSuccessContent() {
               portal: "web",
               booking_id: bookingId ?? undefined,
               transaction_id: ref,
-              payment_provider: "paystack",
+              payment_provider: stripeCheckoutSessionId
+                ? "stripe"
+                : flutterwaveTransactionId
+                  ? "flutterwave"
+                  : "paystack",
             });
           }
         } else if (verifyResult.status === "failed") {
@@ -204,7 +223,15 @@ function CheckoutSuccessContent() {
       }
     };
     void run();
-  }, [isWaitlist, isCustomOffer, paystackReference, stripeCheckoutSessionId, bookingId]);
+  }, [
+    isWaitlist,
+    isCustomOffer,
+    paystackReference,
+    stripeCheckoutSessionId,
+    flutterwaveTransactionId,
+    hostedCheckoutStatus,
+    bookingId,
+  ]);
 
   // §Provider-paystack-audit 2026-05: relay the provider success postMessage
   // for the in-app WebView once we know which provider type we're handling.
@@ -224,6 +251,7 @@ function CheckoutSuccessContent() {
           maxAttempts: 5,
           delayMs: 1500,
           sessionId: stripeCheckoutSessionId,
+          transactionId: flutterwaveTransactionId,
         });
         // Immediately probe offer after verify — the inline finalize means
         // booking_id may already be set by the time the fetch resolves.
@@ -1330,6 +1358,7 @@ function CheckoutSuccessWithBridge() {
   const searchParams = useSearchParams();
   return (
     <>
+      <NativeAppCheckoutBounce />
       <BookingEmbedBridge active={isBookingEmbedEnabled(searchParams)} />
       <CheckoutSuccessContent />
     </>

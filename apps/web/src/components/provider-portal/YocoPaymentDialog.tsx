@@ -2,7 +2,7 @@
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { YocoDevice, YocoPayment } from "@/lib/provider-portal/types";
 import {
@@ -61,6 +61,9 @@ interface YocoPaymentDialogProps {
    * salon when providers operate multiple locations.
    */
   bookingLocationId?: string | null;
+  groupBookingId?: string;
+  productOrderId?: string;
+  additionalChargeId?: string;
   onSuccess?: (payment: YocoPayment) => void;
 }
 
@@ -72,6 +75,9 @@ export function YocoPaymentDialog({
   bookingId,
   saleId,
   bookingLocationId,
+  groupBookingId,
+  productOrderId,
+  additionalChargeId,
   onSuccess,
 }: YocoPaymentDialogProps) {
   const { t } = useTranslation();
@@ -85,6 +91,7 @@ export function YocoPaymentDialog({
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentResult, setPaymentResult] = useState<YocoPayment | null>(null);
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+  const paymentAttemptIdRef = useRef<string>(crypto.randomUUID());
 
   useEffect(() => {
     if (open && yocoEnabled) {
@@ -148,19 +155,27 @@ export function YocoPaymentDialog({
     try {
       setIsProcessing(true);
       setPaymentResult(null);
+      const attemptId = paymentAttemptIdRef.current;
 
       // API expects amount in major units (will convert to cents server-side)
       let payment = await providerApi.createYocoPayment({
         device_id: selectedDeviceId,
         amount: amount,
         currency: tenantCurrency,
+        attempt_id: attemptId,
         ...(appointmentId ? { appointment_id: appointmentId } : {}),
         ...(bookingId ? { booking_id: bookingId } : {}),
         sale_id: saleId,
+        ...(groupBookingId ? { group_booking_id: groupBookingId } : {}),
+        ...(productOrderId ? { product_order_id: productOrderId } : {}),
+        ...(additionalChargeId ? { additional_charge_id: additionalChargeId } : {}),
         metadata: {
           ...(appointmentId ? { appointment_ref: appointmentId } : {}),
           ...(bookingId ? { booking_ref: bookingId } : {}),
           sale_ref: saleId,
+          ...(groupBookingId ? { group_booking_ref: groupBookingId } : {}),
+          ...(productOrderId ? { product_order_id: productOrderId } : {}),
+          ...(additionalChargeId ? { additional_charge_id: additionalChargeId } : {}),
         },
       });
 
@@ -202,8 +217,10 @@ export function YocoPaymentDialog({
         }, 2000);
       } else if (payment.status === "pending") {
         toast.error(t("web.provider.portal.yocoPaymentDialog.paymentTimedOut"));
+        paymentAttemptIdRef.current = crypto.randomUUID();
       } else {
         toast.error(payment.error_message || t("web.provider.portal.yocoPaymentDialog.paymentFailed"));
+        paymentAttemptIdRef.current = crypto.randomUUID();
       }
     } catch (error) {
       console.error("Payment processing failed:", error);

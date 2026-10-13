@@ -24,6 +24,8 @@ interface AddressAutocompleteProps {
   value?: string;
   onChange?: (address: {
     address_line1: string;
+    /** Mapbox suburb/neighborhood when distinct from city (stored in DB line2). */
+    address_line2?: string;
     city: string;
     state?: string;
     postal_code?: string;
@@ -48,6 +50,8 @@ interface AddressAutocompleteProps {
   inputClassName?: string;
   inputId?: string;
   disabled?: boolean;
+  /** When false, blur does not commit a manual entry with zero coordinates (use in booking sheets). */
+  commitOnBlur?: boolean;
 }
 
 export default function AddressAutocomplete({
@@ -65,6 +69,7 @@ export default function AddressAutocomplete({
   inputClassName,
   inputId = "address-autocomplete",
   disabled = false,
+  commitOnBlur = true,
 }: AddressAutocompleteProps) {
   const countryIso =
     country && /^[a-zA-Z]{2}$/.test(country.trim()) ? country.trim().toUpperCase() : undefined;
@@ -113,6 +118,20 @@ export default function AddressAutocomplete({
       window.removeEventListener("resize", updateDropdownPosition);
     };
   }, [showSuggestions, suggestions.length, updateDropdownPosition, query]);
+
+  useEffect(() => {
+    const el = suggestionsRef.current;
+    if (!el) return;
+    const stopScrollBubble = (e: Event) => {
+      e.stopPropagation();
+    };
+    el.addEventListener("wheel", stopScrollBubble, { passive: false });
+    el.addEventListener("touchmove", stopScrollBubble, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", stopScrollBubble);
+      el.removeEventListener("touchmove", stopScrollBubble);
+    };
+  }, [showSuggestions, suggestions.length]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -216,6 +235,10 @@ export default function AddressAutocomplete({
       // If user just selected a suggestion, don't overwrite with partial manual entry
       if (didSelectRef.current) {
         didSelectRef.current = false;
+        setShowSuggestions(false);
+        return;
+      }
+      if (!commitOnBlur) {
         setShowSuggestions(false);
         return;
       }
@@ -341,6 +364,7 @@ export default function AddressAutocomplete({
               left: dropdownRect.left,
               width: dropdownRect.width,
               zIndex: 200000,
+              pointerEvents: "auto",
               WebkitOverflowScrolling: "touch",
               touchAction: "pan-y",
             }}

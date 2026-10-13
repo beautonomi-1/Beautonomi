@@ -13,6 +13,7 @@ import { RADIUS_INPUT, RADIUS_BUTTON } from "@/constants/layout";
 import { webCookiePolicyUrl, webCustomerEulaUrl, webPrivacyPolicyUrl } from "@/lib/legal-web";
 import { haptic } from "@/lib/haptics";
 import { api } from "@/lib/api-client";
+import { shouldClearStoredReferralAfterAttach } from "@/lib/referral-attach-storage";
 import { navigateAfterNewCustomerSignup } from "@/lib/customer-auth-routing";
 import { trackSignUp, trackSignUpStart } from "@/lib/analytics";
 import { useTranslation, supportedLanguages, preferredLanguageFromDevice, SIGNUP_SOURCE_OPTIONS } from "@beautonomi/i18n";
@@ -326,11 +327,13 @@ export default function SignupScreen() {
     const ref = pending.referralCode?.trim() || (await AsyncStorage.getItem(REFERRAL_REF_KEY));
     if (ref?.trim()) {
       try {
-        await api.post("/api/me/referrals/attach", { referral_code: ref.trim() });
+        const attachRes = await api.post("/api/me/referrals/attach", { referral_code: ref.trim() });
+        if (shouldClearStoredReferralAfterAttach(attachRes)) {
+          await AsyncStorage.removeItem(REFERRAL_REF_KEY);
+        }
       } catch {
-        // Non-blocking
+        // Non-blocking — keep referral_ref for retry
       }
-      await AsyncStorage.removeItem(REFERRAL_REF_KEY);
     }
     try {
       await api.post("/api/auth/consent", { marketing_consent: pending.marketingConsent === true });
@@ -487,11 +490,15 @@ export default function SignupScreen() {
           (await AsyncStorage.getItem(REFERRAL_REF_KEY));
         if (refToAttach?.trim()) {
           try {
-            await api.post("/api/me/referrals/attach", { referral_code: refToAttach.trim() });
+            const attachRes = await api.post("/api/me/referrals/attach", {
+              referral_code: refToAttach.trim(),
+            });
+            if (shouldClearStoredReferralAfterAttach(attachRes)) {
+              await AsyncStorage.removeItem(REFERRAL_REF_KEY);
+            }
           } catch {
-            // Non-blocking
+            // Non-blocking — keep referral_ref for retry
           }
-          await AsyncStorage.removeItem(REFERRAL_REF_KEY);
         }
         await navigateAfterNewCustomerSignup(params.return_to);
       }

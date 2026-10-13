@@ -25,6 +25,7 @@ import {
   completeWalletGiftSyntheticPayments,
 } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
+import { getEffectiveCheckoutMethods } from "@/lib/payments/provider-checkout-methods";
 import { z } from "zod";
 import {
   extractIdempotencyKey,
@@ -92,6 +93,22 @@ export async function POST(
     }
     const { paymentTenantId } = tenantResolved;
     const tenantRegion = await getTenantRegionConfig(paymentTenantId);
+
+    const providerIdForGate = (booking as { provider_id?: string }).provider_id ?? "";
+    if (providerIdForGate) {
+      const methods = await getEffectiveCheckoutMethods({
+        supabase: admin,
+        tenantId: paymentTenantId,
+        providerId: providerIdForGate,
+      });
+      if (!methods.online) {
+        return errorResponse(
+          "Online payments are not available for this provider",
+          "FEATURE_DISABLED",
+          400,
+        );
+      }
+    }
 
     if (booking.status === "cancelled") {
       return errorResponse(

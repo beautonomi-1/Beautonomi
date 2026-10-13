@@ -112,6 +112,7 @@ describe("getAvailablePayoutBalance", () => {
       pendingPayoutsSum: 15,
       rawBalance: 85,
       hasNegativeBalance: false,
+      openDisputeReserve: 0,
       breakdown: {
         recognizedPayoutableEarnings: 130,
         onHold: 0,

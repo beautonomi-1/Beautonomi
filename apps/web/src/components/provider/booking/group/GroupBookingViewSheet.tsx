@@ -49,10 +49,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useTranslation } from "@beautonomi/i18n";
 
-const PayCloudPaymentDialog = dynamic(
+const CardMachineCollectDialog = dynamic(
   () =>
-    import("@/components/provider-portal/PayCloudPaymentDialog").then((m) => ({
-      default: m.PayCloudPaymentDialog,
+    import("@/components/provider-portal/CardMachineCollectDialog").then((m) => ({
+      default: m.CardMachineCollectDialog,
     })),
   { ssr: false },
 );
@@ -86,7 +86,7 @@ export function GroupBookingViewSheet({
   const [booking, setBooking] = useState<GroupBooking | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [paycloudOpen, setPaycloudOpen] = useState(false);
+  const [cardMachineOpen, setCardMachineOpen] = useState(false);
   const [paystackOpen, setPaystackOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [recordPaymentConfirm, setRecordPaymentConfirm] = useState<{
@@ -319,7 +319,7 @@ export function GroupBookingViewSheet({
                       amount={outstanding}
                       currency={booking.currency ?? "ZAR"}
                       context="group_booking"
-                      onClick={() => setPaycloudOpen(true)}
+                      onClick={() => setCardMachineOpen(true)}
                       className="w-full justify-center min-h-[44px]"
                       size="default"
                     />
@@ -437,20 +437,23 @@ export function GroupBookingViewSheet({
         ) : null}
       </BookingBottomSheet>
 
-      {booking && paycloudOpen ? (
-        <PayCloudPaymentDialog
-          open={paycloudOpen}
-          onOpenChange={setPaycloudOpen}
+      {booking ? (
+        <CardMachineCollectDialog
+          open={cardMachineOpen}
+          onOpenChange={setCardMachineOpen}
           amount={outstanding}
-          entityType="group_booking"
-          entityId={normalizeGroupBookingId(booking.id)}
-          groupBookingId={normalizeGroupBookingId(booking.id)}
-          bookingLocationId={booking.location_id ?? null}
+          autoStart
+          entity={{
+            entityType: "group_booking",
+            entityId: normalizeGroupBookingId(booking.id),
+            groupBookingId: normalizeGroupBookingId(booking.id),
+            bookingLocationId: booking.location_id ?? null,
+          }}
           tipIncludedInAmount={paycloudTipIncludedInChargeAmount(
             Number((booking as { tip_amount?: number | null }).tip_amount ?? 0),
           )}
           onSuccess={() => {
-            setPaycloudOpen(false);
+            setCardMachineOpen(false);
             void load();
             onRefresh?.();
           }}

@@ -5,7 +5,8 @@ export type GatewayFeeSource =
   | "paystack"
   | "estimated"
   | "stripe"
-  | "stripe_fee_missing";
+  | "stripe_fee_missing"
+  | "flutterwave";
 
 export type ResolvedGatewayFees = {
   feesMajor: number;
@@ -58,6 +59,18 @@ export async function resolvePaystackGatewayFees(
 }
 
 /** Stripe: use PSP fee in major units; never Paystack estimate. */
+export function resolveFlutterwaveGatewayFees(params: {
+  feeMinor: number;
+  currency: string;
+}): ResolvedGatewayFees {
+  const feesMajor =
+    Math.round(convertFromSmallestUnit(Math.max(0, params.feeMinor), params.currency) * 100) / 100;
+  if (feesMajor > 0) {
+    return { feesMajor, feeSource: "flutterwave" };
+  }
+  return { feesMajor: 0, feeSource: "flutterwave" };
+}
+
 export function resolveStripeGatewayFees(params: {
   feeMinor: number;
   currency: string;
@@ -72,7 +85,7 @@ export function resolveStripeGatewayFees(params: {
 
 export async function resolveGatewayFeesForCharge(
   supabase: SupabaseClient,
-  provider: "paystack" | "stripe",
+  provider: "paystack" | "stripe" | "flutterwave",
   params: {
     amountMajor: number;
     feesSmallestOrMajor?: number;
@@ -88,6 +101,12 @@ export async function resolveGatewayFeesForCharge(
       currency: params.currency,
     });
   }
+  if (provider === "flutterwave") {
+    return resolveFlutterwaveGatewayFees({
+      feeMinor: params.stripeFeeMinor ?? params.feesSmallestOrMajor ?? 0,
+      currency: params.currency,
+    });
+  }
   return resolvePaystackGatewayFees(supabase, {
     feesSmallestOrMajor: params.feesSmallestOrMajor ?? 0,
     amountMajor: params.amountMajor,
@@ -99,7 +118,7 @@ export async function resolveGatewayFeesForCharge(
 
 export async function resolveOnlineChargeFees(
   supabase: SupabaseClient,
-  paymentProvider: "paystack" | "stripe",
+  paymentProvider: "paystack" | "stripe" | "flutterwave",
   params: {
     amountSmallest?: number;
     feesSmallest?: number;
@@ -108,6 +127,16 @@ export async function resolveOnlineChargeFees(
   },
 ) {
   const amountInCurrency = convertFromSmallestUnit(params.amountSmallest || 0, params.currency);
+  if (paymentProvider === "flutterwave") {
+    const feeMinor = Number(params.feesSmallest ?? 0);
+    const resolved = resolveFlutterwaveGatewayFees({ feeMinor, currency: params.currency });
+    return {
+      amountInCurrency,
+      feesInCurrency: resolved.feesMajor,
+      feeSource: resolved.feeSource,
+      netAmount: amountInCurrency - resolved.feesMajor,
+    };
+  }
   if (paymentProvider === "stripe") {
     const feeMinor = Number(params.feesSmallest ?? 0);
     const resolved = resolveStripeGatewayFees({ feeMinor, currency: params.currency });

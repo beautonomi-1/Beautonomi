@@ -8,6 +8,7 @@ import {
   REFERRAL_SETTINGS_ID,
   resolveReferralProgramEnabled,
 } from "@/lib/referrals/referral-program-enabled";
+import { getAppBaseUrl } from "@/lib/env/app-url";
 
 /**
  * GET /api/me/referrals
@@ -99,7 +100,12 @@ export async function GET(request: NextRequest) {
     };
 
     // Generate referral link
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+    let baseUrl: string;
+    try {
+      baseUrl = getAppBaseUrl();
+    } catch {
+      baseUrl = request.nextUrl.origin;
+    }
     const referralLink = `${baseUrl}/signup?ref=${referralCode}`;
 
     return successResponse({

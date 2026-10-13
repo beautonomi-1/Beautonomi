@@ -17,7 +17,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import Image from "next/image";
-import { Camera, X, Upload, Plus } from "lucide-react";
+import { Camera, X, Upload, Plus, ScanLine } from "lucide-react";
+import { ProductBarcodeScanDialog } from "@/components/provider/ProductBarcodeScanDialog";
+import { generateVariantMatrixRows } from "@/lib/products/variant-matrix";
 import { providerApi } from "@/lib/provider-portal/api";
 import { toast } from "sonner";
 import type { ProductItem, ProductVariantOptionType, ProductVariantItem } from "@/lib/provider-portal/types";
@@ -62,6 +64,7 @@ export function ProductCreateEditDialog({
   const [newSupplierName, setNewSupplierName] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [uploadingImages, setUploadingImages] = useState(false);
+  const [barcodeScanOpen, setBarcodeScanOpen] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     barcode: "",
@@ -87,6 +90,7 @@ export function ProductCreateEditDialog({
     lowStockLevel: 5,
     reorderQuantity: 0,
     receiveLowStockNotifications: false,
+    weightGrams: "",
     isActive: true,
     imageUrls: [] as string[],
     mainImageUrl: "",
@@ -139,6 +143,10 @@ export function ProductCreateEditDialog({
         lowStockLevel: product.low_stock_level || 5,
         reorderQuantity: product.reorder_quantity || 0,
         receiveLowStockNotifications: product.receive_low_stock_notifications || false,
+        weightGrams:
+          (product as { weight_grams?: number | null }).weight_grams != null
+            ? String((product as { weight_grams?: number | null }).weight_grams)
+            : "",
         isActive: product.is_active !== false,
         imageUrls: product.image_urls || (product.image_url ? [product.image_url] : []),
         mainImageUrl: product.image_url || (product.image_urls?.[0] || ""),
@@ -189,6 +197,7 @@ export function ProductCreateEditDialog({
         lowStockLevel: 5,
         reorderQuantity: 0,
         receiveLowStockNotifications: false,
+        weightGrams: "",
         isActive: true,
         imageUrls: [],
         mainImageUrl: "",
@@ -477,17 +486,26 @@ export function ProductCreateEditDialog({
           const cleanImageUrls = prev.imageUrls.filter(
             (u) => !u.startsWith("data:") && u !== prev.mainImageUrl
           );
+          const merged = [imageUrl, ...cleanImageUrls].slice(0, 5);
+          if (merged.length >= 5 && cleanImageUrls.length + 1 > 5) {
+            toast.error(t("web.provider.catalogue.productDialog.maxPhotos"));
+          }
           return {
             ...prev,
             mainImageUrl: imageUrl,
-            imageUrls: [imageUrl, ...cleanImageUrls],
+            imageUrls: merged,
           };
         });
       } else {
         setFormData((prev) => {
           const withoutDataUrls = prev.imageUrls.filter((u) => !u.startsWith("data:"));
           if (withoutDataUrls.includes(imageUrl)) return prev;
-          return { ...prev, imageUrls: [...withoutDataUrls, imageUrl] };
+          const merged = [...withoutDataUrls, imageUrl];
+          if (merged.length > 5) {
+            toast.error(t("web.provider.catalogue.productDialog.maxPhotos"));
+            return prev;
+          }
+          return { ...prev, imageUrls: merged };
         });
       }
 
@@ -589,10 +607,23 @@ export function ProductCreateEditDialog({
           ? [formData.mainImageUrl]
           : [],
         is_active: formData.isActive,
+        weight_grams: formData.weightGrams.trim()
+          ? Math.max(0, parseInt(formData.weightGrams, 10) || 0)
+          : null,
       };
       if (withVariants) {
+        const validTypes = formData.variantOptionTypes
+          .map((t) => ({
+            name: t.name.trim(),
+            values: [...new Set(t.values.map((x) => x.trim()).filter(Boolean))],
+          }))
+          .filter((t) => t.name.length > 0 && t.values.length > 0);
+        if (validTypes.length === 0) {
+          toast.error(t("web.provider.catalogue.productDialog.addOptionHint"));
+          return;
+        }
         productData.has_variants = true;
-        productData.variant_option_types = formData.variantOptionTypes;
+        productData.variant_option_types = validTypes;
         productData.variants = formData.variantRows.map((r) => ({
           option_values: r.option_values,
           sku: r.sku || undefined,
@@ -607,6 +638,10 @@ export function ProductCreateEditDialog({
           markup: r.markup ?? undefined,
           image_url: r.image_url || undefined,
         }));
+      } else if (product) {
+        productData.has_variants = false;
+        productData.variant_option_types = [];
+        productData.variants = [];
       }
 
       if (product) {
@@ -674,12 +709,37 @@ export function ProductCreateEditDialog({
 
                 <div>
                   <Label htmlFor="barcode">{t("web.provider.catalogue.productDialog.barcode")}</Label>
+                  <div className="flex gap-2 mt-1">
+                    <Input
+                      id="barcode"
+                      value={formData.barcode}
+                      onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }
+                      }}
+                      placeholder={t("web.provider.catalogue.productDialog.barcodePlaceholder")}
+                      className="flex-1"
+                    />
+                    <Button type="button" variant="outline" size="icon" onClick={() => setBarcodeScanOpen(true)} aria-label={t("web.provider.catalogue.productDialog.scanBarcodeTitle")}>
+                      <ScanLine className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="weightGrams">{t("web.provider.catalogue.productDialog.weightGrams")}</Label>
                   <Input
-                    id="barcode"
-                    value={formData.barcode}
-                    onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                    placeholder={t("web.provider.catalogue.productDialog.barcodePlaceholder")}
+                    id="weightGrams"
+                    type="number"
+                    min={0}
+                    value={formData.weightGrams}
+                    onChange={(e) => setFormData({ ...formData, weightGrams: e.target.value })}
+                    placeholder="500"
                   />
+                  <p className="text-xs text-gray-500 mt-1">{t("web.provider.catalogue.productDialog.weightGramsHint")}</p>
                 </div>
 
                 <div>
@@ -825,78 +885,106 @@ export function ProductCreateEditDialog({
                   <div className="space-y-3 rounded-lg border border-gray-200 p-4 bg-gray-50/50">
                     <h4 className="font-medium">{t("web.provider.catalogue.productDialog.variantOptions")}</h4>
                     <p className="text-xs text-gray-500">{t("web.provider.catalogue.productDialog.variantOptionsHint")}</p>
-                    <div className="flex flex-wrap gap-2 items-end">
-                      <div className="flex-1 min-w-[120px]">
-                        <Label className="text-xs">{t("web.provider.catalogue.productDialog.optionName")}</Label>
-                        <Input
-                          placeholder={t("web.provider.catalogue.productDialog.optionNamePlaceholder")}
-                          value={formData.variantOptionTypes[0]?.name ?? ""}
-                          onChange={(e) => {
-                            const name = e.target.value;
-                            setFormData((prev) => ({
-                              ...prev,
-                              variantOptionTypes: prev.variantOptionTypes.length
-                                ? [{ ...prev.variantOptionTypes[0], name }]
-                                : [{ name, values: [] }],
-                            }));
-                          }}
-                        />
-                      </div>
-                      <div className="flex-1 min-w-[180px]">
-                        <Label className="text-xs">{t("web.provider.catalogue.productDialog.optionValues")}</Label>
-                        <ChipCombobox
-                          singleSelect={false}
-                          value={formData.variantOptionTypes[0]?.values ?? []}
-                          onChange={(values) => {
-                            setFormData((prev) => ({
-                              ...prev,
-                              variantOptionTypes: prev.variantOptionTypes.length
-                                ? [{ ...prev.variantOptionTypes[0], values }]
-                                : [{ name: prev.variantOptionTypes[0]?.name ?? t("web.provider.catalogue.productDialog.optionFallback"), values }],
-                            }));
-                          }}
-                          staticSuggestions={[
-                            "250ml", "500ml", "1L", "100ml", "200ml",
-                            "S", "M", "L", "XL", "XXL",
-                            t("web.provider.catalogue.productDialog.small"), t("web.provider.catalogue.productDialog.medium"), t("web.provider.catalogue.productDialog.large"),
-                            "30ml", "50ml", "75ml",
-                          ].map((v) => ({ value: v, label: v }))}
-                          allowFreeForm
-                          placeholder={t("web.provider.catalogue.productDialog.addValue")}
-                          className="mt-1"
-                        />
-                      </div>
+                    <div className="space-y-3">
+                      {(formData.variantOptionTypes.length
+                        ? formData.variantOptionTypes
+                        : [{ name: "", values: [] as string[] }]
+                      ).map((opt, oi) => (
+                        <div key={oi} className="flex flex-wrap gap-2 items-end rounded-md border border-gray-200 bg-white p-3">
+                          <div className="flex-1 min-w-[120px]">
+                            <Label className="text-xs">
+                              {t("web.provider.catalogue.productDialog.optionN", { n: oi + 1 })}
+                            </Label>
+                            <Input
+                              placeholder={t("web.provider.catalogue.productDialog.optionNamePlaceholder")}
+                              value={opt.name}
+                              onChange={(e) => {
+                                const name = e.target.value;
+                                setFormData((prev) => {
+                                  const types = prev.variantOptionTypes.length
+                                    ? [...prev.variantOptionTypes]
+                                    : [{ name: "", values: [] as string[] }];
+                                  types[oi] = { ...types[oi], name };
+                                  return { ...prev, variantOptionTypes: types };
+                                });
+                              }}
+                            />
+                          </div>
+                          <div className="flex-1 min-w-[180px]">
+                            <Label className="text-xs">{t("web.provider.catalogue.productDialog.optionValues")}</Label>
+                            <ChipCombobox
+                              singleSelect={false}
+                              value={opt.values ?? []}
+                              onChange={(values) => {
+                                setFormData((prev) => {
+                                  const types = prev.variantOptionTypes.length
+                                    ? [...prev.variantOptionTypes]
+                                    : [{ name: opt.name || "", values: [] as string[] }];
+                                  types[oi] = { ...types[oi], values };
+                                  return { ...prev, variantOptionTypes: types };
+                                });
+                              }}
+                              staticSuggestions={[
+                                "250ml", "500ml", "1L", "100ml", "200ml",
+                                "S", "M", "L", "XL", "XXL",
+                                t("web.provider.catalogue.productDialog.small"), t("web.provider.catalogue.productDialog.medium"), t("web.provider.catalogue.productDialog.large"),
+                                "30ml", "50ml", "75ml",
+                              ].map((v) => ({ value: v, label: v }))}
+                              allowFreeForm
+                              placeholder={t("web.provider.catalogue.productDialog.addValue")}
+                              className="mt-1"
+                            />
+                          </div>
+                          {formData.variantOptionTypes.length > 1 ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600"
+                              onClick={() =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  variantOptionTypes: prev.variantOptionTypes.filter((_, i) => i !== oi),
+                                }))
+                              }
+                            >
+                              {t("common.delete")}
+                            </Button>
+                          ) : null}
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            variantOptionTypes:
+                              prev.variantOptionTypes.length > 0
+                                ? [...prev.variantOptionTypes, { name: "", values: [] }]
+                                : [{ name: "", values: [] }],
+                          }))
+                        }
+                      >
+                        {t("web.provider.catalogue.productDialog.addOptionType")}
+                      </Button>
+                    </div>
+                    <div className="flex flex-wrap gap-2 items-end mt-2">
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          const opt = formData.variantOptionTypes[0];
-                          if (!opt?.name || !opt.values?.length) {
+                          const rows = generateVariantMatrixRows(
+                            formData.variantOptionTypes,
+                            formData.variantRows,
+                            { measure: formData.measure || "ml" },
+                          );
+                          if (!rows.length) {
                             toast.error(t("web.provider.catalogue.productDialog.addOptionHint"));
                             return;
                           }
-                          const rows = opt.values.map((val, idx) => {
-                            const existing = formData.variantRows.find(
-                              (r) => JSON.stringify(r.option_values) === JSON.stringify({ [opt.name]: val })
-                            );
-                            if (existing) return existing;
-                            return {
-                              option_values: { [opt.name]: val },
-                              sku: "",
-                              barcode: "",
-                              measure: formData.measure,
-                              amount: 0,
-                              quantity: 0,
-                              low_stock_level: 5,
-                              reorder_quantity: 0,
-                              supply_price: 0,
-                              retail_price: 0,
-                              markup: 0,
-                              image_url: "",
-                              sort_order: idx,
-                            };
-                          });
                           setFormData((prev) => ({ ...prev, variantRows: rows }));
                           toast.success(t("web.provider.catalogue.productDialog.variantsGenerated", { count: rows.length }));
                         }}
@@ -979,6 +1067,12 @@ export function ProductCreateEditDialog({
                                       next[idx] = { ...next[idx], barcode: e.target.value };
                                       setFormData((prev) => ({ ...prev, variantRows: next }));
                                     }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                      }
+                                    }}
                                   />
                                 </td>
                                 <td className="p-2">
@@ -1029,6 +1123,52 @@ export function ProductCreateEditDialog({
                   </div>
                 )}
               </div>
+
+              {formData.hasVariants ? (
+                <div className="space-y-4 mt-4">
+                  <div className="space-y-2">
+                    <h4 className="font-medium">{t("web.provider.catalogue.productDialog.retailSales")}</h4>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={formData.retailSalesEnabled}
+                        onCheckedChange={(checked) => setFormData({ ...formData, retailSalesEnabled: checked })}
+                      />
+                      <Label className="font-normal text-gray-600">{t("web.provider.catalogue.productDialog.enableRetail")}</Label>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <h4 className="font-medium">{t("web.provider.catalogue.productDialog.productStatus")}</h4>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={formData.isActive}
+                        onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
+                      />
+                      <Label className="font-normal text-gray-600">{t("web.provider.catalogue.productDialog.activeInCatalog")}</Label>
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="taxRateVariants">{t("web.provider.catalogue.productDialog.tax")}</Label>
+                    <Select
+                      value={formData.taxRate.toString()}
+                      onValueChange={(val) => {
+                        const rate = parseFloat(val) || 0;
+                        setFormData({ ...formData, taxEnabled: rate > 0, taxRate: rate });
+                      }}
+                    >
+                      <SelectTrigger id="taxRateVariants">
+                        <SelectValue placeholder={t("web.provider.catalogue.serviceDialog.defaultNoTax")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {getOptions("tax_rate").map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              ) : null}
 
               <Separator />
 
@@ -1347,7 +1487,7 @@ export function ProductCreateEditDialog({
                   <div className="grid grid-cols-2 gap-2 mt-4">
                     {formData.imageUrls
                       .filter((url) => url !== formData.mainImageUrl && !url.startsWith("data:"))
-                      .slice(0, 2)
+                      .slice(0, 4)
                       .map((url, index) => (
                         <div key={index} className="relative aspect-square bg-pink-100 rounded-lg overflow-hidden group">
                           <Image src={url} alt={t("web.provider.catalogue.productDialog.productNAlt", { n: index + 2 })} fill className="object-cover" unoptimized />
@@ -1366,7 +1506,7 @@ export function ProductCreateEditDialog({
                           </Button>
                         </div>
                       ))}
-                    {formData.imageUrls.filter(url => url !== formData.mainImageUrl && !url.startsWith("data:")).length < 2 && (
+                    {formData.imageUrls.filter(url => url !== formData.mainImageUrl && !url.startsWith("data:")).length < 4 && (
                       <div 
                         className={`aspect-square bg-pink-100 rounded-lg flex flex-col items-center justify-center text-pink-500 cursor-pointer hover:bg-pink-200 transition-colors ${uploadingImages ? "opacity-50 cursor-not-allowed" : ""}`}
                         onClick={() => !uploadingImages && document.getElementById("additionalImageUpload")?.click()}
@@ -1509,6 +1649,12 @@ export function ProductCreateEditDialog({
             </QuickDialogFooter>
           </QuickDialogContent>
         </QuickDialog>
+
+        <ProductBarcodeScanDialog
+          open={barcodeScanOpen}
+          onOpenChange={setBarcodeScanOpen}
+          onScan={(code) => setFormData((prev) => ({ ...prev, barcode: code }))}
+        />
       </DialogContent>
     </Dialog>
   );

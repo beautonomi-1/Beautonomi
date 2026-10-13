@@ -47,14 +47,21 @@ export function FlutterwaveIntegrationPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Flutterwave"
-        description="Webhook health for Flutterwave charges. Secret lives in FLUTTERWAVE_WEBHOOK_SECRET (server env). Replay from Inbound webhooks."
+        description="Webhook health for Flutterwave charges and transfers. Per-region verif-hash and secret key are set under Region online gateway (region_secrets). Optional FLUTTERWAVE_WEBHOOK_SECRET env is a fallback when region hash is missing."
       />
       <AdminPanel>
         <p className="mb-3 text-sm text-gray-700">
-          Signature rejects (24h, this source): <strong>{sig24}</strong>. Configure the dashboard webhook URL to{" "}
-          <code className="rounded bg-gray-100 px-1">/api/payments/flutterwave/webhook</code>.
+          Signature rejects (24h, this source): <strong>{sig24}</strong>. In the Flutterwave dashboard, point webhooks to{" "}
+          <code className="rounded bg-gray-100 px-1">/api/payments/flutterwave/webhook</code> and copy the secret hash into{" "}
+          <Link className="text-violet-700 underline" to={adminSpaTo("/admin/control-plane/region-online-gateway")}>
+            Region online gateway
+          </Link>{" "}
+          for each live region.
         </p>
-        <div className="mb-3 flex gap-2">
+        <div className="mb-3 flex flex-wrap gap-2">
+          <Link className="text-sm text-violet-700 underline" to={adminSpaTo("/admin/control-plane/region-online-gateway")}>
+            Region online gateway
+          </Link>
           <Link className="text-sm text-violet-700 underline" to={adminSpaTo("/admin/webhooks/inbound?source=flutterwave")}>
             Open inbound forensics
           </Link>

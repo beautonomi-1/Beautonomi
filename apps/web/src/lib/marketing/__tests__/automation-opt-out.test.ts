@@ -76,12 +76,25 @@ describe("automation opt-out enforcement", () => {
     expect(result.skipped).toEqual([{ customerId: "ghost", reason: "opted_out:push" }]);
   });
 
-  it("fails open when preference lookup throws", async () => {
+  it("fails closed for marketing promo when preference lookup throws", async () => {
     mockResolveChannels.mockRejectedValue(new Error("db down"));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const recipients = [{ id: "u1", contact: "x" }];
     const result = await filterAutomationRecipientsByOptOut(supabase, recipients, {
       triggerType: "client_inactive",
+      channel: "email",
+    });
+    expect(result.allowed).toEqual([]);
+    expect(result.skipped).toEqual([{ customerId: "u1", reason: "preference_lookup_failed" }]);
+    warn.mockRestore();
+  });
+
+  it("fails open for appointment reminder automations when preference lookup throws", async () => {
+    mockResolveChannels.mockRejectedValue(new Error("db down"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const recipients = [{ id: "u1", contact: "x" }];
+    const result = await filterAutomationRecipientsByOptOut(supabase, recipients, {
+      triggerType: "appointment_reminder",
       channel: "email",
     });
     expect(result.allowed).toEqual(recipients);

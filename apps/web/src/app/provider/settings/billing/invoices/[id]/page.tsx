@@ -4,6 +4,10 @@ import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
+import {
+  readHostedCheckoutReturnParams,
+  isHostedCheckoutFailureStatus,
+} from "@/lib/payments/hosted-checkout-return-params";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -64,11 +68,20 @@ export default function InvoiceDetailPage() {
   useEffect(() => {
     const paymentSuccess = searchParams.get("payment_success") === "true";
     const paymentCancelled = searchParams.get("payment_cancelled") === "1";
-    const reference =
-      searchParams.get("reference")?.trim() || searchParams.get("trxref")?.trim() || "";
-    const sessionId = searchParams.get("session_id");
+    const hosted = readHostedCheckoutReturnParams(searchParams);
+    const reference = hosted.reference;
+    const sessionId = hosted.sessionId;
+    const flutterwaveTransactionId = hosted.transactionId;
+    const hostedStatus = hosted.hostedStatus;
 
     if (paymentCancelled) {
+      router.replace(`/provider/settings/billing/invoices/${invoiceId}`);
+      toast.info(t("web.provider.settings.pages.billing/invoices/[id].paymentCancelled"));
+      void loadInvoice();
+      return;
+    }
+
+    if (isHostedCheckoutFailureStatus(hostedStatus)) {
       router.replace(`/provider/settings/billing/invoices/${invoiceId}`);
       toast.info(t("web.provider.settings.pages.billing/invoices/[id].paymentCancelled"));
       void loadInvoice();
@@ -84,6 +97,7 @@ export default function InvoiceDetailPage() {
           maxAttempts: 5,
           delayMs: 1500,
           sessionId,
+          transactionId: flutterwaveTransactionId,
         });
         if (verify.status === "success") {
           toast.success(t("web.provider.settings.pages.billing/invoices/[id].paymentSuccessful"));

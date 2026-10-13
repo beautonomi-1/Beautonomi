@@ -25,14 +25,17 @@ import type {
   ProductVariantItem,
   TeamMember,
   Sale,
-  YocoPayment,
 } from "@/lib/provider-portal/types";
 import { isLikelyUuid } from "@/lib/http/api-error";
 import { providerPortalFetch } from "@/lib/http/fetcher";
 import { providerApi } from "@/lib/provider-portal/api";
 import { Money } from "./Money";
-import { YocoPaymentDialog } from "./YocoPaymentDialog";
-import { PayCloudPaymentDialog } from "./PayCloudPaymentDialog";
+import dynamic from "next/dynamic";
+
+const CardMachineCollectDialog = dynamic(
+  () => import("./CardMachineCollectDialog").then((m) => ({ default: m.CardMachineCollectDialog })),
+  { ssr: false },
+);
 import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import Link from "next/link";
@@ -155,8 +158,7 @@ function formatProductVariantLabel(v: ProductVariantItem, fallback = "Variant"):
 // Payment methods for POS sale dialog - aligned with other dialogs
 const paymentMethodDefs = [
   { id: "cash", labelKey: "paymentCash", descriptionKey: "paymentCashDesc", icon: Banknote },
-  { id: "paycloud", labelKey: "paymentCardMachine", descriptionKey: "paymentCardMachineDesc", icon: CreditCard },
-  { id: "yoco", labelKey: "paymentYoco", descriptionKey: "paymentYocoDesc", icon: CreditCard },
+  { id: "card_machine", labelKey: "paymentCardMachine", descriptionKey: "paymentCardMachineDesc", icon: CreditCard },
   { id: "card", labelKey: "paymentCardManual", descriptionKey: "paymentCardManualDesc", icon: CreditCard },
   { id: "eft", labelKey: "paymentEft", descriptionKey: "paymentEftDesc", icon: Smartphone },
   { id: "gift_card", labelKey: "paymentGiftCard", descriptionKey: "paymentGiftCardDesc", icon: Gift },
@@ -180,10 +182,39 @@ export function NewSaleDialog({
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const { ready: paycloudReady, blockers } = usePaycloudCollectReady();
+  const [acceptCash, setAcceptCash] = useState(true);
+  const [acceptCard, setAcceptCard] = useState(true);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void import("@/lib/http/fetcher").then(({ fetcher }) =>
+      fetcher.get<{ data?: { acceptCash?: boolean; acceptCard?: boolean } }>(
+        "/api/provider/settings/payments",
+      ),
+    )
+      .then((res) => {
+        if (cancelled) return;
+        const data = (res as { data?: { acceptCash?: boolean; acceptCard?: boolean } })?.data ?? res;
+        setAcceptCash((data as { acceptCash?: boolean })?.acceptCash !== false);
+        setAcceptCard((data as { acceptCard?: boolean })?.acceptCard !== false);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAcceptCash(true);
+          setAcceptCard(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
   const visiblePaymentMethods = paymentMethodDefs.filter((m) => {
+    if (m.id === "cash") return acceptCash;
     if (m.id === "gift_card") return giftCardsEnabled;
-    if (m.id === "yoco") return yocoEnabled;
-    if (m.id === "paycloud") return paycloudEnabled;
+    if (m.id === "card_machine") return (yocoEnabled || paycloudEnabled) && acceptCard;
+    if (m.id === "card" || m.id === "eft") return acceptCard;
     return true;
   });
 
@@ -191,8 +222,7 @@ export function NewSaleDialog({
   useEffect(() => {
     if (
       (!giftCardsEnabled && selectedPaymentMethod === "gift_card") ||
-      (!yocoEnabled && selectedPaymentMethod === "yoco") ||
-      (!paycloudEnabled && selectedPaymentMethod === "paycloud")
+      (!(yocoEnabled || paycloudEnabled) && selectedPaymentMethod === "card_machine")
     ) {
       setSelectedPaymentMethod("cash");
     }
@@ -224,23 +254,15 @@ export function NewSaleDialog({
   const [isValidatingGiftCard, setIsValidatingGiftCard] = useState(false);
   
   // Yoco payment — pending sale row links terminal payment via sale_id
-  const [showYocoDialog, setShowYocoDialog] = useState(false);
-  const [yocoLinkedSaleId, setYocoLinkedSaleId] = useState<string | null>(null);
-  const yocoPendingSaleIdRef = useRef<string | null>(null);
-
-  // PayCloud payment — pending sale row links terminal payment via sale_id
-  const [showPaycloudDialog, setShowPaycloudDialog] = useState(false);
-  const [paycloudLinkedSaleId, setPaycloudLinkedSaleId] = useState<string | null>(null);
-  const paycloudPendingSaleIdRef = useRef<string | null>(null);
+  const [cardMachineOpen, setCardMachineOpen] = useState(false);
+  const [cardMachineLinkedSaleId, setCardMachineLinkedSaleId] = useState<string | null>(null);
+  const cardMachinePendingSaleIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!open) {
-      yocoPendingSaleIdRef.current = null;
-      setYocoLinkedSaleId(null);
-      setShowYocoDialog(false);
-      paycloudPendingSaleIdRef.current = null;
-      setPaycloudLinkedSaleId(null);
-      setShowPaycloudDialog(false);
+      cardMachinePendingSaleIdRef.current = null;
+      setCardMachineLinkedSaleId(null);
+      setCardMachineOpen(false);
       setBarcodeScanError("");
     }
   }, [open]);
@@ -817,11 +839,41 @@ export function NewSaleDialog({
   const giftCardApplied = Math.min(giftCardBalance, subtotal + tax + tipAmount - discountAmount);
   const total = Math.max(0, subtotal + tax + tipAmount - discountAmount - giftCardApplied);
 
-  const handleSubmit = async (options?: {
-    afterYocoTerminalSuccess?: boolean;
-    yocoPayment?: YocoPayment;
-    afterPaycloudTerminalSuccess?: boolean;
-  }) => {
+  const mapPosMethodToSaleLeg = (method: string): string => {
+    if (method === "card_machine" || method === "card") return "card";
+    if (method === "gift_card") return "gift_card";
+    if (method === "cash") return "cash";
+    return "other";
+  };
+
+  const buildSplitTenderExtras = (): {
+    payment_method?: string;
+    payments?: Array<{ method: string; amount: number }>;
+    gift_card_code?: string;
+    gift_card_amount?: number;
+  } => {
+    if (giftCardApplied <= 0.005 || !giftCardCode.trim()) return {};
+    const code = giftCardCode.trim().toUpperCase();
+    if (total <= 0.005 || selectedPaymentMethod === "gift_card") {
+      return {
+        payment_method: "gift_card",
+        payments: [{ method: "gift_card", amount: giftCardApplied }],
+        gift_card_code: code,
+        gift_card_amount: giftCardApplied,
+      };
+    }
+    return {
+      payment_method: "split",
+      payments: [
+        { method: "gift_card", amount: giftCardApplied },
+        { method: mapPosMethodToSaleLeg(selectedPaymentMethod), amount: total },
+      ],
+      gift_card_code: code,
+      gift_card_amount: giftCardApplied,
+    };
+  };
+
+  const handleSubmit = async (options?: { afterCardMachineSuccess?: boolean }) => {
     if (cart.length === 0) {
       toast.error(t("web.provider.portal.newSaleDialog.addItemsToSale"));
       return;
@@ -882,22 +934,17 @@ export function NewSaleDialog({
       team_member_id: selectedTeamMember || undefined,
       team_member_name: teamMembers.find((m) => m.id === selectedTeamMember)?.name,
       coupon_code: appliedCoupon?.code,
-      gift_card_code: giftCardBalance > 0 ? giftCardCode : undefined,
-      gift_card_amount: giftCardApplied,
+      ...buildSplitTenderExtras(),
       is_walk_in:
         !customerId ||
         Boolean(selectedClient?.id?.startsWith("walk-in")) ||
         Boolean(selectedClient?.id?.startsWith("new-client-")),
     };
 
-    // PayCloud: create a pending sale, charge terminal with sale_id, settlement completes the sale
-    if (selectedPaymentMethod === "paycloud" && !options?.afterPaycloudTerminalSuccess) {
-      if (!paycloudReady) {
-        return;
-      }
+    if (selectedPaymentMethod === "card_machine" && !options?.afterCardMachineSuccess) {
       setIsLoading(true);
       try {
-        let saleId = paycloudPendingSaleIdRef.current ?? paycloudLinkedSaleId;
+        let saleId = cardMachinePendingSaleIdRef.current ?? cardMachineLinkedSaleId;
         if (!saleId) {
           const pending = await providerApi.createSale({
             ...saleBase,
@@ -905,12 +952,12 @@ export function NewSaleDialog({
             payment_status: "pending",
           } as Partial<Sale>);
           saleId = pending.id;
-          paycloudPendingSaleIdRef.current = saleId;
-          setPaycloudLinkedSaleId(saleId);
+          cardMachinePendingSaleIdRef.current = saleId;
+          setCardMachineLinkedSaleId(saleId);
         }
-        setShowPaycloudDialog(true);
+        setCardMachineOpen(true);
       } catch (error) {
-        console.error("Failed to start PayCloud sale:", error);
+        console.error("Failed to start card machine sale:", error);
         toast.error(t("web.provider.portal.newSaleDialog.prepareCardSaleFailed"));
       } finally {
         setIsLoading(false);
@@ -918,70 +965,17 @@ export function NewSaleDialog({
       return;
     }
 
-    if (selectedPaymentMethod === "paycloud" && options?.afterPaycloudTerminalSuccess) {
-      const saleId = paycloudPendingSaleIdRef.current ?? paycloudLinkedSaleId;
+    if (selectedPaymentMethod === "card_machine" && options?.afterCardMachineSuccess) {
+      const saleId = cardMachinePendingSaleIdRef.current ?? cardMachineLinkedSaleId;
       if (!saleId) {
         toast.error(t("web.provider.portal.newSaleDialog.finalizeCardSaleFailed"));
         return;
       }
-      paycloudPendingSaleIdRef.current = null;
-      setPaycloudLinkedSaleId(null);
+      cardMachinePendingSaleIdRef.current = null;
+      setCardMachineLinkedSaleId(null);
       toast.success(t("web.provider.portal.newSaleDialog.saleCompleted"));
       onSuccess?.({ id: saleId } as Sale);
       onOpenChange(false);
-      return;
-    }
-
-    // Yoco: create a pending sale, charge terminal with sale_id, then mark completed (no second insert)
-    if (selectedPaymentMethod === "yoco" && !options?.afterYocoTerminalSuccess) {
-      setIsLoading(true);
-      try {
-        let saleId = yocoPendingSaleIdRef.current ?? yocoLinkedSaleId;
-        if (!saleId) {
-          const pending = await providerApi.createSale({
-            ...saleBase,
-            payment_method: "yoco",
-            payment_status: "pending",
-          } as Partial<Sale>);
-          saleId = pending.id;
-          yocoPendingSaleIdRef.current = saleId;
-          setYocoLinkedSaleId(saleId);
-        }
-        setShowYocoDialog(true);
-      } catch (error) {
-        console.error("Failed to start Yoco sale:", error);
-        toast.error(t("web.provider.portal.newSaleDialog.prepareCardSaleFailed"));
-      } finally {
-        setIsLoading(false);
-      }
-      return;
-    }
-
-    if (selectedPaymentMethod === "yoco" && options?.afterYocoTerminalSuccess) {
-      const saleId = yocoPendingSaleIdRef.current ?? yocoLinkedSaleId;
-      const payment = options.yocoPayment;
-      if (!saleId || !payment?.yoco_payment_id) {
-        toast.error(t("web.provider.portal.newSaleDialog.finalizeCardSaleFailed"));
-        return;
-      }
-      setIsLoading(true);
-      try {
-        const sale = await providerApi.updateSale(saleId, {
-          payment_status: "completed",
-          payment_provider: "yoco",
-          payment_provider_id: payment.yoco_payment_id,
-        });
-        yocoPendingSaleIdRef.current = null;
-        setYocoLinkedSaleId(null);
-        toast.success(t("web.provider.portal.newSaleDialog.saleCompleted"));
-        onSuccess?.(sale);
-        onOpenChange(false);
-      } catch (error) {
-        console.error("Failed to finalize Yoco sale:", error);
-        toast.error(t("web.provider.portal.newSaleDialog.yocoFinalizeFailed"));
-      } finally {
-        setIsLoading(false);
-      }
       return;
     }
 
@@ -1002,14 +996,9 @@ export function NewSaleDialog({
     }
   };
 
-  const handleYocoPaymentSuccess = (payment: YocoPayment) => {
-    setShowYocoDialog(false);
-    void handleSubmit({ afterYocoTerminalSuccess: true, yocoPayment: payment });
-  };
-
-  const handlePaycloudPaymentSuccess = () => {
-    setShowPaycloudDialog(false);
-    void handleSubmit({ afterPaycloudTerminalSuccess: true });
+  const handleCardMachineSuccess = () => {
+    setCardMachineOpen(false);
+    void handleSubmit({ afterCardMachineSuccess: true });
   };
 
   return (
@@ -1956,7 +1945,10 @@ export function NewSaleDialog({
                       const Icon = method.icon;
                       const isSelected = selectedPaymentMethod === method.id;
                       const isPaycloudSetupBlocked =
-                        method.id === "paycloud" && paycloudEnabled && !paycloudReady;
+                        method.id === "card_machine" &&
+                          paycloudEnabled &&
+                          !yocoEnabled &&
+                          !paycloudReady;
                       const setupHref = blockers[0]?.href ?? "/provider/settings/sales/card-machines";
                       if (isPaycloudSetupBlocked) {
                         return (
@@ -2057,29 +2049,22 @@ export function NewSaleDialog({
       </SheetContent>
     </Sheet>
 
-      {showYocoDialog && yocoLinkedSaleId && (
-        <YocoPaymentDialog
-          open={showYocoDialog}
-          onOpenChange={setShowYocoDialog}
+      {cardMachineLinkedSaleId ? (
+        <CardMachineCollectDialog
+          open={cardMachineOpen}
+          onOpenChange={setCardMachineOpen}
           amount={total}
-          saleId={yocoLinkedSaleId}
-          onSuccess={handleYocoPaymentSuccess}
-        />
-      )}
-
-      {showPaycloudDialog && paycloudLinkedSaleId && (
-        <PayCloudPaymentDialog
-          open={showPaycloudDialog}
-          onOpenChange={setShowPaycloudDialog}
-          amount={total}
+          autoStart
           tipIncludedInAmount={tipAmount > 0}
-          entityType="sale"
-          entityId={paycloudLinkedSaleId}
-          saleId={paycloudLinkedSaleId}
-          bookingLocationId={serviceLocationType === "at-salon" ? selectedLocationId : undefined}
-          onSuccess={handlePaycloudPaymentSuccess}
+          entity={{
+            entityType: "sale",
+            entityId: cardMachineLinkedSaleId,
+            saleId: cardMachineLinkedSaleId,
+            bookingLocationId: serviceLocationType === "at-salon" ? selectedLocationId : undefined,
+          }}
+          onSuccess={handleCardMachineSuccess}
         />
-      )}
+      ) : null}
 
       {/* Product variant picker */}
       <Dialog

@@ -20,6 +20,8 @@ export const RECORDED_TAKINGS_PAYMENT_METHODS = [
   "card",
   "bank_transfer",
   "paystack",
+  "stripe",
+  "flutterwave",
   "paystack_terminal",
   "yoco",
   "paycloud",
@@ -68,6 +70,10 @@ export function resolveRecordedTakingsBucket(
 ): string {
   const provider = (paymentProvider ?? "").toLowerCase();
   if (provider === "paycloud") return "paycloud";
+  if (provider === "yoco") return "yoco";
+  if (provider === "paystack" || provider === "stripe" || provider === "flutterwave") {
+    return provider;
+  }
   return normalizeRecordedPaymentMethod(paymentMethod);
 }
 

@@ -35,6 +35,11 @@ import { PageHeader } from "@/components/provider/PageHeader";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { PAYOUT_COUNTRIES, getCurrencyForCountry } from "@/lib/payments/payout-countries";
 import { ledgerRowDisplaySign } from "@/lib/provider/provider-ledger-transaction-view";
+import {
+  normalizePayoutRailOption,
+  payoutRailUsesBankAccounts,
+  type PayoutRail,
+} from "@/lib/payments/payout-rail-options";
 
 function roundMoney2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -182,7 +187,7 @@ export default function ProviderFinance() {
   const [isSavingBank, setIsSavingBank] = useState(false);
   const [verifiedAccountName, setVerifiedAccountName] = useState<string | null>(null);
   const [showVerifyAccountButton, setShowVerifyAccountButton] = useState(true);
-  const [payoutRail, setPayoutRail] = useState<"paystack" | "stripe">("paystack");
+  const [payoutRail, setPayoutRail] = useState<PayoutRail>("paystack");
   const [stripePayoutReady, setStripePayoutReady] = useState(false);
   const [bankForm, setBankForm] = useState({
     country: "ZA",
@@ -214,12 +219,12 @@ export default function ProviderFinance() {
         const res = await fetcher.get<{
           data: {
             show_verify_account_button?: boolean;
-            payout_rail?: "paystack" | "stripe";
+            payout_rail?: PayoutRail;
             stripe_connect?: { onboarding_complete?: boolean } | null;
           };
         }>("/api/provider/payout-accounts/options");
         setShowVerifyAccountButton(res.data?.show_verify_account_button !== false);
-        setPayoutRail(res.data?.payout_rail === "stripe" ? "stripe" : "paystack");
+        setPayoutRail(normalizePayoutRailOption(res.data?.payout_rail));
         setStripePayoutReady(Boolean(res.data?.stripe_connect?.onboarding_complete));
       } catch {
         setShowVerifyAccountButton(true);
@@ -465,7 +470,7 @@ export default function ProviderFinance() {
       await fetcher.post("/api/provider/payouts", {
         amount: requested,
         notes: payoutNotes || null,
-        ...(payoutRail === "paystack"
+        ...(payoutRailUsesBankAccounts(payoutRail)
           ? { bank_account_id: selectedBankId || primaryId || undefined }
           : {}),
       });
@@ -495,7 +500,7 @@ export default function ProviderFinance() {
 
   const openPayoutDialog = () => {
     setShowPayoutDialog(true);
-    setShowInlineBankForm(payoutRail === "paystack" && payoutAccounts.length === 0);
+    setShowInlineBankForm(payoutRailUsesBankAccounts(payoutRail) && payoutAccounts.length === 0);
     if (earnings && !earnings.payout_balance_unavailable) {
       const available = roundMoney2(earnings.available_balance);
       const minimum = earnings.minimum_payout_amount ?? 100;

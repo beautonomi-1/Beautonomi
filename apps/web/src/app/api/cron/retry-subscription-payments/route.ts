@@ -58,6 +58,7 @@ async function runJob(request: NextRequest) {
         plan_id,
         billing_period,
         paystack_authorization_code,
+        billing_provider,
         dunning_retry_count,
         last_dunning_retry_at,
         updated_at,
@@ -82,6 +83,7 @@ async function runJob(request: NextRequest) {
         plan_id: string;
         billing_period?: string | null;
         paystack_authorization_code?: string | null;
+        billing_provider?: string | null;
         dunning_retry_count?: number | null;
         last_dunning_retry_at?: string | null;
         updated_at?: string | null;
@@ -122,28 +124,68 @@ async function runJob(request: NextRequest) {
       const planCurrency = plan?.currency || "ZAR";
 
       try {
-        const chargeResult = await chargeAuthorization(
-          String(row.paystack_authorization_code),
-          email,
-          convertToSmallestUnit(amountMajor, planCurrency),
-          {
-            provider_id: row.provider_id,
-            plan_id: row.plan_id,
-            dunning_retry: true,
-            subscription_id: row.id,
-          },
-          { tenantId, reference, currency: planCurrency },
-        );
+        const billingProvider = String(row.billing_provider ?? "paystack").toLowerCase();
+        let feesMajor = 0;
 
-        const status = String(chargeResult.data?.status ?? "");
-        if (status !== "success") {
-          throw new Error(chargeResult.message || "Charge not successful");
+        if (billingProvider === "flutterwave") {
+          const { chargeAndSettleFlutterwaveOffSession } = await import(
+            "@/lib/payments/charge-flutterwave-off-session"
+          );
+          const { upsertOnlinePaymentCheckout } = await import(
+            "@/lib/payments/online-payment-checkouts"
+          );
+          await upsertOnlinePaymentCheckout({
+            reference,
+            provider: "flutterwave",
+            tenantId: tenantId ?? null,
+            metadata: {
+              provider_id: row.provider_id,
+              plan_id: row.plan_id,
+              kind: "subscription_renewal",
+              dunning_retry: true,
+              tenant_id: tenantId ?? "",
+            },
+          });
+          const fw = await chargeAndSettleFlutterwaveOffSession(supabase, {
+            tenantId: tenantId ?? null,
+            token: String(row.paystack_authorization_code),
+            email,
+            amountInSmallestUnit: convertToSmallestUnit(amountMajor, planCurrency),
+            currency: planCurrency,
+            reference,
+            metadata: {
+              provider_id: row.provider_id,
+              plan_id: row.plan_id,
+              dunning_retry: true,
+              subscription_id: row.id,
+            },
+          });
+          if (fw.ok === false) throw new Error(fw.message);
+        } else {
+          const chargeResult = await chargeAuthorization(
+            String(row.paystack_authorization_code),
+            email,
+            convertToSmallestUnit(amountMajor, planCurrency),
+            {
+              provider_id: row.provider_id,
+              plan_id: row.plan_id,
+              dunning_retry: true,
+              subscription_id: row.id,
+            },
+            { tenantId, reference, currency: planCurrency },
+          );
+
+          const status = String(chargeResult.data?.status ?? "");
+          if (status !== "success") {
+            throw new Error(chargeResult.message || "Charge not successful");
+          }
+
+          feesMajor = convertFromSmallestUnit(
+            Number(chargeResult.data?.fees ?? 0),
+            chargeResult.data?.currency || planCurrency,
+          );
         }
 
-        const feesMajor = convertFromSmallestUnit(
-          Number(chargeResult.data?.fees ?? 0),
-          chargeResult.data?.currency || planCurrency,
-        );
         await recordProviderSubscriptionPayment({
           supabase,
           providerId: row.provider_id,
@@ -154,6 +196,7 @@ async function runJob(request: NextRequest) {
           kind: "subscription_renewal",
           billingPeriod: isYearly ? "yearly" : "monthly",
           description: `Subscription renewal (dunning retry) — ${plan?.name ?? "plan"}`,
+          paymentProvider: billingProvider === "flutterwave" ? "flutterwave" : "paystack",
         });
 
         await supabase

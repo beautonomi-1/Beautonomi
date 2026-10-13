@@ -80,6 +80,7 @@ const reportCategories = [
       { id: "payment-methods", href: "/provider/reports/payments/methods" },
       { id: "payouts", href: "/provider/reports/payments/payouts" },
       { id: "yoco-reconciliation", href: "/provider/reports/payments/yoco-reconciliation" },
+      { id: "card-machine-reconciliation", href: "/provider/reports/payments/card-machine-reconciliation" },
       { id: "paystack-terminal-reconciliation", href: "/provider/reports/payments/paystack-terminal-reconciliation" },
     ],
   },

@@ -47,10 +47,14 @@ import {
   buildCustomerRebookParams,
   type RebookServiceLine,
   slaSettingsFromHours,
+  buildCustomerTrackingSteps,
   getBookingLifecycleDisplay,
   getBookingPaymentDisplay,
   getCustomerEtaUiParts,
+  isBookingArrivalVerificationActive,
   normalizeProviderTimezone,
+  resolveEffectiveBookingLifecycleStatus,
+  type CustomerTrackingStepKey,
 } from "@beautonomi/utils";
 import { pendingConfirmationSlaDisplay } from "@/lib/pending-confirmation-sla-copy";
 import QRCode from "react-native-qrcode-svg";
@@ -59,6 +63,8 @@ import { isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
 import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
   getBookingPaymentCallbackAuthPrefix,
+  getNativePaystackReturnUrl,
+  CUSTOMER_NATIVE_PAYSTACK_PATHS,
   getCustomerPaystackAuthReturnUrl,
   matchesBookingPaymentCallbackReturnUrl,
   matchesPaystackAuthSessionReturn,
@@ -771,12 +777,19 @@ export default function BookingDetailScreen() {
 
   // Countdown for arrival PIN expiry
   const pinExpiresAt = booking?.arrival_otp_expires_at;
+  const trackingStepInput = booking
+    ? {
+        status: booking.status,
+        locationType: booking.location_type,
+        currentStage: booking.current_stage,
+        arrivalOtpVerified: booking.arrival_otp_verified,
+      }
+    : null;
+
   const needsPinDisplay =
-    booking &&
-    booking.location_type === "at_home" &&
-    !["completed", "cancelled", "no_show"].includes(booking.status) &&
-    (booking.current_stage === "provider_arrived" || (booking as any).provider_arrived_at) &&
-    !booking.arrival_otp_verified &&
+    !!booking &&
+    !!trackingStepInput &&
+    isBookingArrivalVerificationActive(trackingStepInput) &&
     !!booking.arrival_otp;
 
   const qrPayloadForDisplay = (() => {
@@ -795,10 +808,8 @@ export default function BookingDetailScreen() {
   })();
   const needsQrDisplay =
     !!booking &&
-    booking.location_type === "at_home" &&
-    !["completed", "cancelled", "no_show"].includes(booking.status) &&
-    (booking.current_stage === "provider_arrived" || !!(booking as any).provider_arrived_at) &&
-    !booking.arrival_otp_verified &&
+    !!trackingStepInput &&
+    isBookingArrivalVerificationActive(trackingStepInput) &&
     !(booking as { qr_code_verified?: boolean }).qr_code_verified &&
     !!qrPayloadForDisplay;
 
@@ -1118,7 +1129,7 @@ export default function BookingDetailScreen() {
   // Show the pay-remaining flow for every payable booking except the strict
   // `pending`/`pending` case still served by the legacy "Pay Now" button
   // (`needsPayment`), so we never render two pay buttons at once.
-  const showPayRemaining = canPayOnline && !needsPayment;
+  const showPayRemaining = canPayOnline;
   const isFullyUnpaid = booking?.payment_status === "pending";
 
   const handlePayRemaining = async () => {
@@ -1141,12 +1152,9 @@ export default function BookingDetailScreen() {
         gift_card_amount_applied?: number;
         reference?: string;
       }>(`/api/me/bookings/${id}/pay-remaining`, {
-        callback_url:
-          Platform.OS === "web"
-            ? getCustomerPaystackAuthReturnUrl(
-                `/account-settings/bookings/${encodeURIComponent(id)}/payment-callback`,
-              )
-            : ExpoLinking.createURL("book/paystack"),
+        callback_url: getCustomerPaystackAuthReturnUrl(
+          `/account-settings/bookings/${encodeURIComponent(id)}/payment-callback`,
+        ),
         use_wallet: payRemainingUseWallet,
         ...(payRemainingGiftCode.trim()
           ? { gift_card_code: payRemainingGiftCode.trim().toUpperCase() }
@@ -1186,7 +1194,7 @@ export default function BookingDetailScreen() {
         window.location.assign(url);
         return;
       } else {
-        const returnUrl = getBookingPaymentCallbackAuthPrefix(id);
+        const returnUrl = getNativePaystackReturnUrl(CUSTOMER_NATIVE_PAYSTACK_PATHS.booking);
         let paymentReference = res.data?.reference ?? null;
         if (paymentReference) {
           markReferenceProcessing(paymentReference);
@@ -1200,6 +1208,10 @@ export default function BookingDetailScreen() {
             !isCancelledPaystackUrl(rawUrl),
           matchCancel: (rawUrl) => isCancelledPaystackUrl(rawUrl),
         });
+        if (checkoutResult.outcome === "start_failed") {
+          Alert.alert(errTitle, bd("couldNotStartPayment"));
+          return;
+        }
         if (checkoutResult.outcome === "cancel") {
           Alert.alert(
             bd("paymentPendingTitle"),
@@ -1208,13 +1220,25 @@ export default function BookingDetailScreen() {
           return;
         }
         let checkoutSessionId: string | null = null;
+        let checkoutTransactionId: string | null = null;
         if (checkoutResult.outcome === "success" && checkoutResult.url) {
           const parsed = parseOnlineCheckoutReturnUrl(checkoutResult.url);
+          if (parsed.status === "failed" || parsed.status === "cancelled") {
+            Alert.alert(
+              bd("paymentPendingTitle"),
+              bd("paymentCancelledRetryBody"),
+            );
+            return;
+          }
           if (parsed.reference) paymentReference = parsed.reference;
           checkoutSessionId = parsed.sessionId;
+          checkoutTransactionId = parsed.transactionId;
         }
         if (paymentReference) {
-          await verifyPaystackWithRetry(paymentReference, { sessionId: checkoutSessionId });
+          await verifyPaystackWithRetry(paymentReference, {
+            sessionId: checkoutSessionId,
+            transactionId: checkoutTransactionId,
+          });
         }
       }
 
@@ -1503,12 +1527,11 @@ export default function BookingDetailScreen() {
   // Effective lifecycle: if payment has actually settled, treat a stuck
   // `pending_payment` row as `pending` for all UI rules on this screen.
   const _bookingOutstanding = (booking as any).outstanding_balance;
-  const _effectiveStatus =
-    booking.status === "pending_payment" &&
-    ((booking.payment_status === "paid" || booking.payment_status === "partially_paid") ||
-      (typeof _bookingOutstanding === "number" && _bookingOutstanding <= 0.005))
-      ? "pending"
-      : booking.status;
+  const _effectiveStatus = resolveEffectiveBookingLifecycleStatus({
+    status: booking.status,
+    paymentStatus: booking.payment_status,
+    outstandingBalance: _bookingOutstanding,
+  });
   const lifecycleDisplay = getBookingLifecycleDisplay({
     status: booking.status,
     providerName: provider?.business_name,
@@ -1582,6 +1605,59 @@ export default function BookingDetailScreen() {
     (booking.current_stage === "provider_arrived" ||
       !!(booking as { provider_arrived_at?: string | null }).provider_arrived_at);
   const estimatedArrival = parseValidDate((booking as any).estimated_arrival);
+
+  const customerTrackingSteps = buildCustomerTrackingSteps({
+    status: booking.status,
+    locationType: booking.location_type,
+    currentStage: booking.current_stage,
+    arrivalOtpVerified: booking.arrival_otp_verified,
+  });
+
+  const trackingMilestoneLabel = (key: CustomerTrackingStepKey): string => {
+    switch (key) {
+      case "received":
+        return bd("milestoneRequestReceived");
+      case "accepted":
+        return bd("milestoneConfirmedByProvider");
+      case "salonCheckedIn":
+        return bd("statusCheckedIn");
+      case "enRoute":
+        return bd("milestoneProviderEnRoute");
+      case "arrived":
+        return bd("milestoneProviderArrived");
+      case "inProgress":
+        return bd("milestoneServiceInProgress");
+      case "completed":
+        return bd("milestoneCompleted");
+      case "cancelled":
+        return bd("milestoneBookingCancelled");
+      case "no_show":
+        return bd("statusNoShow");
+      default:
+        return key;
+    }
+  };
+
+  const trackingStatusHeadline = (() => {
+    if (_effectiveStatus === "completed") return bd("statusServiceCompleted");
+    if (_effectiveStatus === "started" || _effectiveStatus === "in_progress") {
+      return bd("statusServiceInProgress");
+    }
+    if (_effectiveStatus === "cancelled") return bd("statusBookingCancelled");
+    if (_effectiveStatus === "no_show") return bd("statusNoShow");
+    if (_effectiveStatus === "pending_payment") return bd("statusPaymentPending");
+    if (_effectiveStatus === "pending") return bd("statusAwaitingConfirmation");
+    if (_effectiveStatus === "waiting" || _effectiveStatus === "checked_in") {
+      return bd("statusCheckedIn");
+    }
+    if (!isAtHome && booking.current_stage === "client_arrived") {
+      return bd("statusCheckedIn");
+    }
+    if (isProviderArrived) return bd("statusProviderArrived");
+    if (isProviderEnRoute) return bd("statusProviderEnRoute");
+    if (_effectiveStatus === "confirmed") return bd("statusVisitConfirmed");
+    return lifecycleDisplay.title;
+  })();
 
   const detailAddonRows = Array.isArray((booking as any).addons)
     ? ((booking as any).addons as Record<string, unknown>[])
@@ -1832,12 +1908,9 @@ export default function BookingDetailScreen() {
         fully_settled?: boolean;
         reference?: string;
       }>(`/api/me/bookings/${id}/additional-charges/${chargeId}/pay`, {
-        callback_url:
-          Platform.OS === "web"
-            ? getCustomerPaystackAuthReturnUrl(
-                `/account-settings/bookings/${encodeURIComponent(id)}/payment-callback`,
-              )
-            : ExpoLinking.createURL("book/paystack"),
+        callback_url: getCustomerPaystackAuthReturnUrl(
+          `/account-settings/bookings/${encodeURIComponent(id)}/payment-callback`,
+        ),
         use_wallet: additionalPayUseWallet,
         ...(additionalPayGiftCode.trim()
           ? { gift_card_code: additionalPayGiftCode.trim().toUpperCase() }
@@ -1866,7 +1939,7 @@ export default function BookingDetailScreen() {
         window.location.assign(url);
         return;
       } else {
-        const returnUrl = getBookingPaymentCallbackAuthPrefix(id);
+        const returnUrl = getNativePaystackReturnUrl(CUSTOMER_NATIVE_PAYSTACK_PATHS.booking);
         let paymentReference = res.data?.reference ?? null;
         if (paymentReference) {
           markReferenceProcessing(paymentReference);
@@ -1880,6 +1953,10 @@ export default function BookingDetailScreen() {
             !isCancelledPaystackUrl(rawUrl),
           matchCancel: (rawUrl) => isCancelledPaystackUrl(rawUrl),
         });
+        if (checkoutResult.outcome === "start_failed") {
+          Alert.alert(errTitle, bd("couldNotStartPayment"));
+          return;
+        }
         if (checkoutResult.outcome === "cancel") {
           Alert.alert(
             bd("paymentPendingTitle"),
@@ -1888,13 +1965,25 @@ export default function BookingDetailScreen() {
           return;
         }
         let checkoutSessionId: string | null = null;
+        let checkoutTransactionId: string | null = null;
         if (checkoutResult.outcome === "success" && checkoutResult.url) {
           const parsed = parseOnlineCheckoutReturnUrl(checkoutResult.url);
+          if (parsed.status === "failed" || parsed.status === "cancelled") {
+            Alert.alert(
+              bd("paymentPendingTitle"),
+              bd("paymentCancelledRetryBody"),
+            );
+            return;
+          }
           if (parsed.reference) paymentReference = parsed.reference;
           checkoutSessionId = parsed.sessionId;
+          checkoutTransactionId = parsed.transactionId;
         }
         if (paymentReference) {
-          await verifyPaystackWithRetry(paymentReference, { sessionId: checkoutSessionId });
+          await verifyPaystackWithRetry(paymentReference, {
+            sessionId: checkoutSessionId,
+            transactionId: checkoutTransactionId,
+          });
         }
       }
 
@@ -2683,21 +2772,7 @@ export default function BookingDetailScreen() {
             {/* Status block */}
             <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0", padding: 20 }}>
               <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>
-                {booking.status === "completed"
-                  ? bd("statusServiceCompleted")
-                  : booking.status === "started" || booking.status === "in_progress"
-                    ? bd("statusServiceInProgress")
-                    : booking.status === "cancelled"
-                      ? bd("statusBookingCancelled")
-                      : booking.status === "no_show"
-                        ? bd("statusNoShow")
-                        : booking.status === "pending"
-                          ? bd("statusAwaitingConfirmation")
-                          : isProviderArrived
-                          ? bd("statusProviderArrived")
-                          : isProviderEnRoute
-                            ? bd("statusProviderEnRoute")
-                            : bd("statusVisitConfirmed")}
+                {trackingStatusHeadline}
               </Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 12 }}>
                 <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginEnd: 12, marginBottom: 12 }}>
@@ -2971,40 +3046,54 @@ export default function BookingDetailScreen() {
             )}
             {/* Milestones (at-home: en route / arrived; at-salon: preparing / in progress) */}
             <View style={{ marginBottom: 16 }}>
-              {(
-                booking.status === "cancelled"
-                  ? [
-                      { key: "confirmed", label: bd("milestoneBookingConfirmed"), done: true },
-                      { key: "cancelled", label: bd("milestoneBookingCancelled"), done: true },
-                    ]
-                  : isAtHome
-                    ? [
-                        { key: "received", label: bd("milestoneRequestReceived"), done: true },
-                        { key: "confirmed", label: bd("milestoneConfirmedByProvider"), done: ["confirmed", "started", "completed", "in_progress"].includes(booking.status) || isProviderEnRoute || isProviderArrived },
-                        { key: "en_route", label: bd("milestoneProviderEnRoute"), done: isProviderEnRoute || isProviderArrived || ["started", "completed", "in_progress"].includes(booking.status) },
-                        { key: "arrived", label: bd("milestoneProviderArrived"), done: isProviderArrived || ["started", "completed", "in_progress"].includes(booking.status) },
-                        { key: "in_progress", label: bd("milestoneServiceInProgress"), done: ["started", "completed", "in_progress"].includes(booking.status) },
-                        { key: "completed", label: bd("milestoneCompleted"), done: booking.status === "completed" },
-                      ]
-                    : [
-                        { key: "received", label: bd("milestoneRequestReceived"), done: true },
-                        { key: "confirmed", label: bd("milestoneConfirmedByProvider"), done: ["confirmed", "started", "completed", "in_progress"].includes(booking.status) },
-                        { key: "preparing", label: bd("milestonePreparingForVisit"), done: ["confirmed", "started", "completed", "in_progress"].includes(booking.status) },
-                        { key: "in_progress", label: bd("milestoneServiceInProgress"), done: ["started", "completed", "in_progress"].includes(booking.status) },
-                        { key: "completed", label: bd("milestoneCompleted"), done: booking.status === "completed" },
-                      ]
-              ).map((step: { key: string; label: string; done: boolean }) => (
+              {customerTrackingSteps.map((step) => {
+                const done = step.state === "done" || step.isTerminal;
+                const current = step.state === "current";
+                const terminal = Boolean(step.isTerminal);
+                const terminalBg =
+                  step.terminalKind === "cancelled"
+                    ? "#FEE2E2"
+                    : step.terminalKind === "no_show"
+                      ? "#FFFBEB"
+                      : "#DCFCE7";
+                const terminalIcon =
+                  step.terminalKind === "cancelled"
+                    ? "#B91C1C"
+                    : step.terminalKind === "no_show"
+                      ? "#B45309"
+                      : "#16a34a";
+                return (
                 <View key={step.key} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}>
-                  <View style={{ width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center", marginEnd: 12, backgroundColor: step.done ? "#DCFCE7" : Colors.gray[100] }}>
-                    {step.done ? (
-                      <Ionicons name="checkmark" size={14} color="#16a34a" />
+                  <View
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: 12,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginEnd: 12,
+                      backgroundColor: done ? (terminal ? terminalBg : "#DCFCE7") : current ? "#DBEAFE" : Colors.gray[100],
+                    }}
+                  >
+                    {done ? (
+                      <Ionicons name="checkmark" size={14} color={terminal ? terminalIcon : "#16a34a"} />
+                    ) : current ? (
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.primary }} />
                     ) : (
                       <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.gray[300] }} />
                     )}
                   </View>
-                  <Text style={{ color: step.done ? Colors.gray[900] : Colors.gray[400], fontWeight: step.done ? "500" : "400" }}>{step.label}</Text>
+                  <Text
+                    style={{
+                      color: done || current ? Colors.gray[900] : Colors.gray[400],
+                      fontWeight: done || current ? "500" : "400",
+                    }}
+                  >
+                    {trackingMilestoneLabel(step.key)}
+                  </Text>
                 </View>
-              ))}
+                );
+              })}
             </View>
             {/* Scheduled time */}
             <View style={{ borderRadius: 16, backgroundColor: Colors.gray[50], padding: 16, marginBottom: 16 }}>
@@ -3036,7 +3125,7 @@ export default function BookingDetailScreen() {
                 <Text style={{ color: "#B91C1C" }}>{payError}</Text>
               </View>
             )}
-            {needsPayment && (
+            {false && needsPayment && (
               <Pressable onPress={handlePay} disabled={payLoading} style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", marginBottom: 12 }} accessibilityRole="button" accessibilityLabel={bd("paymentPayNowA11y")}>
 {payLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>{bd("paymentPayNow")}</Text>}
               </Pressable>

@@ -207,6 +207,12 @@ export async function POST(
         payout_number: payoutData.payout_number,
         currency: payoutData.currency,
         transferFeeMajor: payoutData.payout_provider === "stripe" ? 0 : undefined,
+        feeGateway:
+          payoutData.payout_provider === "flutterwave"
+            ? "flutterwave"
+            : payoutData.payout_provider === "stripe"
+              ? "stripe"
+              : "paystack",
       });
     } catch (ledgerErr) {
       console.error(

@@ -389,6 +389,39 @@ export function ProductOrderDetailPage() {
             <span className="font-mono">{str(order.tracking_number)}</span>
           </p>
         ) : null}
+        {order.fulfillment_type === "delivery" ? (
+          <dl className="mt-4 grid gap-2 border-t border-gray-100 pt-4 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-gray-500">Courier booking</dt>
+              <dd className="font-medium">{str(order.shipping_booking_status) || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Courier shipment id</dt>
+              <dd className="font-mono text-xs break-all">{str(order.courier_shipment_id) || "—"}</dd>
+            </div>
+            {order.shipping_booking_detail != null && String(order.shipping_booking_detail).trim() ? (
+              <div className="sm:col-span-2">
+                <dt className="text-gray-500">Booking detail</dt>
+                <dd className="text-xs text-gray-700 break-words">{str(order.shipping_booking_detail)}</dd>
+              </div>
+            ) : null}
+            {order.courier_label_url ? (
+              <div className="sm:col-span-2">
+                <dt className="text-gray-500">Label</dt>
+                <dd>
+                  <a
+                    href={str(order.courier_label_url)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary underline text-sm"
+                  >
+                    Open waybill label
+                  </a>
+                </dd>
+              </div>
+            ) : null}
+          </dl>
+        ) : null}
       </AdminPanel>
 
       <AdminPanel>

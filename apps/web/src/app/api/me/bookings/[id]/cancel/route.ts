@@ -329,8 +329,12 @@ export async function POST(
           '@/lib/bookings/recalculate-group-total'
         );
         await tryRecalculateGroupBookingTotal(adminSupabase, nonPrimaryGroupId);
+        const { syncGroupBookingStatusFromChildren } = await import(
+          '@/lib/bookings/group-booking'
+        );
+        await syncGroupBookingStatusFromChildren(adminSupabase, nonPrimaryGroupId);
       } catch (recalcErr) {
-        console.warn('[cancel] non-primary group total recalculation failed:', recalcErr);
+        console.warn('[cancel] non-primary group total/status sync failed:', recalcErr);
       }
     }
 
@@ -379,7 +383,12 @@ export async function POST(
         }
       } catch (groupError) {
         console.error('Error handling group booking cancellation:', groupError);
-        // Don't fail the cancellation if group handling fails
+        return handleApiError(
+          groupError instanceof Error ? groupError : new Error(String(groupError)),
+          'Your booking was cancelled but we could not finish cancelling the rest of the group. Please contact support.',
+          'GROUP_CANCEL_INCOMPLETE',
+          500,
+        );
       }
     }
 

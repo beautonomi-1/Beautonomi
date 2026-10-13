@@ -1,5 +1,9 @@
 import { NextRequest } from "next/server";
-import { sendAppointmentReminders, sendRebookReminders } from "@/lib/bookings/appointment-reminders";
+import {
+  sendAppointmentReminders,
+  sendRebookReminders,
+  sendStaffAppointmentReminders,
+} from "@/lib/bookings/appointment-reminders";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
@@ -24,11 +28,18 @@ export async function GET(request: NextRequest) {
     return await runLockedCronRoute(JOB_NAME, async () => {
       const result = await sendAppointmentReminders();
       const rebook = await sendRebookReminders();
+      const staff = await sendStaffAppointmentReminders();
+      const { sendStaffScheduleSummaries } = await import(
+        "@/lib/bookings/staff-schedule-summaries"
+      );
+      const scheduleSummaries = await sendStaffScheduleSummaries();
 
       return successResponse({
         message: "Reminders sent successfully",
         ...result,
         ...rebook,
+        ...staff,
+        ...scheduleSummaries,
       });
     });
   } catch (error) {

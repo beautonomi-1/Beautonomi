@@ -17,7 +17,7 @@ export function routeForProfileCompletionItem(itemId: string): string {
     case "interests":
       return "/(app)/account-settings/profile-details";
     case "beauty_preferences":
-      return "/(app)/account-settings/beauty-preferences";
+      return "/(app)/account-settings/profile-details";
     case "emergency_contact":
       return "/(app)/account-settings/emergency-contact";
     default:

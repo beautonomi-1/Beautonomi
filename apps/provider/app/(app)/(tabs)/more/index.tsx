@@ -27,6 +27,10 @@ import { PROVIDER_SETUP_STATUS_CHANGED } from "@/lib/setup-status-cache";
 import { ProviderOrgSwitcher } from "@/components/ProviderOrgSwitcher";
 import { StartOwnBusinessCard } from "@/components/StartOwnBusinessCard";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+import {
+  normalizeProviderPayoutRail,
+  providerPayoutRailUsesStripeConnect,
+} from "@/lib/payments/providerPayoutRail";
 /**
  * Setup status API response (GET /api/provider/setup-status) — single source
  * of truth for the More-tab completion card, the Dashboard hero card, the
@@ -222,7 +226,6 @@ const QUICK_ACTIONS: { icon: keyof typeof Ionicons.glyphMap; label: string; labe
   { icon: "layers-outline", label: "Catalogue", labelKey: "provider.mobile.screens.moreTab.qaCatalogue", route: "/(app)/(tabs)/more/catalogue", color: "#ec4899" },
   { icon: "megaphone-outline", label: "Buy ads", labelKey: "provider.mobile.screens.moreTab.qaBuyAds", route: "/(app)/(tabs)/more/settings/ads", color: "#f59e0b" },
   { icon: "card-outline", label: "Memberships", labelKey: "provider.mobile.screens.moreTab.qaMemberships", route: "/(app)/(tabs)/more/membership-plans", color: "#7c3aed" },
-  { icon: "phone-portrait-outline", label: "Yoco", labelKey: "provider.mobile.screens.moreTab.qaYoco", route: "/(app)/(tabs)/more/settings/yoco-devices", color: "#2563eb" },
   { icon: "hardware-chip-outline", label: "Card machines", labelKey: "provider.mobile.screens.moreTab.qaCardMachines", route: "/(app)/(tabs)/more/card-machines", color: "#7c3aed" },
   { icon: "qr-code-outline", label: "Paystack Terminal", labelKey: "provider.mobile.screens.moreTab.qaPaystackTerminal", route: "/(app)/(tabs)/more/paystack-terminal", color: "#16a34a" },
   { icon: "ribbon-outline", label: "Subscription", labelKey: "provider.mobile.screens.moreTab.qaSubscription", route: "/(app)/(tabs)/more/settings/subscription", color: "#8b5cf6" },
@@ -365,16 +368,17 @@ export default function MoreScreen() {
     accounts.find((account) => account.is_primary === true) ??
     accounts.find((account) => account.active !== false) ??
     accounts[0];
-  const payoutRail = payoutUiOptions?.payout_rail === "stripe" ? "stripe" : "paystack";
+  const payoutRail = normalizeProviderPayoutRail(payoutUiOptions?.payout_rail);
   const stripeConnectReady = Boolean(payoutUiOptions?.stripe_connect?.onboarding_complete);
-  const hasPayoutDestinationReady =
-    payoutRail === "stripe" ? stripeConnectReady : accounts.length > 0;
+  const hasPayoutDestinationReady = providerPayoutRailUsesStripeConnect(payoutRail)
+    ? stripeConnectReady
+    : accounts.length > 0;
   const payoutAccountLast4 = primaryPayoutAccount?.account_number_last4 ?? primaryPayoutAccount?.account_number?.slice(-4);
   const stripeConnectLast4 = payoutUiOptions?.stripe_connect?.external_account_last4 ?? null;
   const requestPayoutDisabledReason = !canRequestPayouts
     ? t("provider.mobile.screens.moreTab.payoutRequiresEditSettings")
     : !hasPayoutDestinationReady
-      ? payoutRail === "stripe"
+      ? providerPayoutRailUsesStripeConnect(payoutRail)
         ? t("provider.mobile.screens.moreTab.payoutCompleteStripeConnectFirst")
         : t("provider.mobile.screens.moreTab.payoutAddBankFirst")
       : minimumPayout != null && availablePayout < minimumPayout
@@ -731,14 +735,14 @@ export default function MoreScreen() {
             />
             <View style={{ marginStart: 8, flex: 1 }}>
               <Text style={{ fontSize: 14, fontWeight: "700", color: Colors.gray[900] }}>
-                {payoutRail === "stripe"
+                {providerPayoutRailUsesStripeConnect(payoutRail)
                   ? t("provider.mobile.screens.payoutAccounts.stripeConnectTitle")
                   : t("provider.mobile.screens.moreTab.bankAccountSetup")}
               </Text>
               <Text style={{ marginTop: 1, fontSize: 12, color: Colors.gray[500] }} numberOfLines={2}>
                 {payoutAccountsLoading
                   ? t("provider.mobile.screens.moreTab.checkingPayoutAccount")
-                  : payoutRail === "stripe"
+                  : providerPayoutRailUsesStripeConnect(payoutRail)
                     ? stripeConnectReady
                       ? stripeConnectLast4
                         ? t("provider.mobile.screens.moreTab.stripeConnectLast4", { last4: stripeConnectLast4 })

@@ -5,11 +5,13 @@ import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
 import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
-  getCardVerificationPaystackAuthPrefix,
+  ACCOUNT_PAYMENTS_PATH,
+  getCustomerPaystackAuthReturnUrl,
+  getNativePaystackReturnUrl,
+  CUSTOMER_NATIVE_PAYSTACK_PATHS,
   matchesAccountPaymentsReturnUrl,
   matchesPaystackAuthSessionReturn,
 } from "@/lib/payments/customerPaystackReturn";
-import * as ExpoLinking from "expo-linking";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "@beautonomi/i18n";
 import { api } from "@/lib/api-client";
@@ -199,8 +201,8 @@ export default function PaymentsScreen() {
     setAddingCard(true);
     const countBefore = methods.length;
     try {
-      const returnUrl = getCardVerificationPaystackAuthPrefix();
-      const callbackUrl = ExpoLinking.createURL("payments-return");
+      const returnUrl = getNativePaystackReturnUrl(CUSTOMER_NATIVE_PAYSTACK_PATHS.addCard);
+      const callbackUrl = getCustomerPaystackAuthReturnUrl(ACCOUNT_PAYMENTS_PATH);
       const res = await api.post<{
         authorization_url?: string;
         reference?: string;
@@ -239,17 +241,35 @@ export default function PaymentsScreen() {
           !isCancelledPaystackUrl(u),
         matchCancel: (u) => isCancelledPaystackUrl(u),
       });
+      if (pr.outcome === "start_failed") {
+        Alert.alert(
+          t("common.error"),
+          t(
+            "customer.paymentsScreen.checkoutOpenFailed",
+            "We couldn't open secure checkout. Please try again.",
+          ) as string,
+        );
+        return;
+      }
       if (pr.outcome === "cancel") {
         return;
       }
       let checkoutSessionId: string | null = null;
+      let checkoutTransactionId: string | null = null;
       if (pr.outcome === "success" && pr.url && !isCancelledPaystackUrl(pr.url)) {
         const parsed = parseOnlineCheckoutReturnUrl(pr.url);
+        if (parsed.status === "failed" || parsed.status === "cancelled") {
+          return;
+        }
         if (parsed.reference) reference = parsed.reference;
         checkoutSessionId = parsed.sessionId;
+        checkoutTransactionId = parsed.transactionId;
       }
       if (reference) {
-        await verifyPaystackWithRetry(reference, { sessionId: checkoutSessionId });
+        await verifyPaystackWithRetry(reference, {
+          sessionId: checkoutSessionId,
+          transactionId: checkoutTransactionId,
+        });
       }
 
       const MAX_POLL = 12;

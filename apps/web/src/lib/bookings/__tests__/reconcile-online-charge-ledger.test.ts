@@ -5,9 +5,24 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockSettlement, mockStripeSettlement, mockNotifySlack, mockFetch } = vi.hoisted(() => ({
+const {
+  mockSettlement,
+  mockStripeSettlement,
+  mockFlutterwaveSettlement,
+  mockVerifyFlutterwave,
+  mockNotifySlack,
+  mockFetch,
+} = vi.hoisted(() => ({
   mockSettlement: vi.fn(),
   mockStripeSettlement: vi.fn(),
+  mockFlutterwaveSettlement: vi.fn(async () => ({
+    ok: true as const,
+    ledger: { skipped: false },
+  })),
+  mockVerifyFlutterwave: vi.fn(async () => ({
+    ok: true as const,
+    tx: { tx_ref: "flw_ref", amount: 208, app_fee: 0 },
+  })),
   mockNotifySlack: vi.fn(async () => undefined),
   mockFetch: vi.fn(),
 }));
@@ -26,6 +41,14 @@ vi.mock("../record-paystack-booking-settlement", () => ({
 
 vi.mock("../record-stripe-booking-settlement", () => ({
   recordStripeBookingSettlement: (...args: unknown[]) => mockStripeSettlement(...args),
+}));
+
+vi.mock("../record-flutterwave-booking-settlement", () => ({
+  recordFlutterwaveBookingSettlement: (...args: unknown[]) => mockFlutterwaveSettlement(...args),
+}));
+
+vi.mock("@/lib/payments/flutterwave-server", () => ({
+  verifyFlutterwaveTransactionById: (...args: unknown[]) => mockVerifyFlutterwave(...args),
 }));
 
 vi.mock("@/lib/payments/stripe-server", () => ({
@@ -590,7 +613,7 @@ describe("reconcileOnlineChargeLedger", () => {
     expect(mockSettlement).not.toHaveBeenCalled();
   });
 
-  it("posts missing Stripe ledger via settlement helper and logs Flutterwave gaps only", async () => {
+  it("posts missing Stripe and Flutterwave ledgers via settlement helpers", async () => {
     const { supabase, stores } = makeSupabase({
       bookings: [
         booking({ id: "booking-stripe" }),
@@ -616,15 +639,17 @@ describe("reconcileOnlineChargeLedger", () => {
       supabase,
       expect.objectContaining({ bookingPaymentId: "bp-stripe", reference: "pi_1" }),
     );
-    expect(summary).toMatchObject({ scanned: 2, posted: 1, skipped: 1 });
-    expect(summary.otherGatewaysMissing).toEqual([
-      { bookingPaymentId: "bp-flw", bookingId: "booking-flw", provider: "flutterwave" },
-    ]);
-    expect(stores.finance_transactions).toHaveLength(1);
-    expect(console.warn).toHaveBeenCalledWith(
-      expect.stringContaining("non-Paystack gateway"),
-      expect.objectContaining({ provider: "flutterwave", bookingPaymentId: "bp-flw" }),
+    expect(mockVerifyFlutterwave).toHaveBeenCalledWith(
+      "flw_1",
+      expect.objectContaining({ currency: "ZAR" }),
     );
+    expect(mockFlutterwaveSettlement).toHaveBeenCalledWith(
+      supabase,
+      expect.objectContaining({ bookingPaymentId: "bp-flw", transactionId: "flw_1" }),
+    );
+    expect(summary).toMatchObject({ scanned: 3, posted: 2, skipped: 1 });
+    expect(summary.otherGatewaysMissing).toEqual([]);
+    expect(stores.finance_transactions).toHaveLength(1);
   });
 
   it("records settlement failures without aborting the run", async () => {

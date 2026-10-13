@@ -16,6 +16,7 @@ import { initializeOnlinePayment } from "@/lib/payments/online-payment";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { appendInAppQuery } from "@/lib/payments/append-in-app-query";
 
 const bodySchema = z.object({
   in_app: z.boolean().optional(),
@@ -107,10 +108,16 @@ export async function POST(
     const useClientCallback = Boolean(clientCallback && /^https?:\/\//i.test(clientCallback));
     const inAppParam = parsed.in_app ? "&in_app=1" : "";
     const callbackUrl = useClientCallback
-      ? `${clientCallback}${clientCallback!.includes("?") ? "&" : "?"}payment_success=true&invoice_id=${id}`
+      ? appendInAppQuery(
+          `${clientCallback}${clientCallback!.includes("?") ? "&" : "?"}payment_success=true&invoice_id=${id}`,
+          { inApp: parsed.in_app === true },
+        )
       : `${appUrl}/provider/settings/billing?payment_success=true&invoice_id=${id}${inAppParam}`;
     const cancelAction = useClientCallback
-      ? `${clientCallback}${clientCallback!.includes("?") ? "&" : "?"}payment_cancelled=1`
+      ? appendInAppQuery(
+          `${clientCallback}${clientCallback!.includes("?") ? "&" : "?"}payment_cancelled=1`,
+          { inApp: parsed.in_app === true },
+        )
       : `${appUrl}/provider/settings/billing?payment_cancelled=1${inAppParam}`;
 
     const reference = generateTransactionReference("provider_invoice", id);

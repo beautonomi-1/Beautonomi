@@ -5,6 +5,7 @@ export type BookingPaymentForRefundCap = {
   amount?: number | string | null;
   payment_method?: string | null;
   payment_provider?: string | null;
+  payment_provider_id?: string | null;
   status?: string | null;
 };
 
@@ -36,7 +37,7 @@ export async function fetchBookingPaymentsForRefundCap(
 ): Promise<BookingPaymentForRefundCap[]> {
   let query = supabase
     .from("booking_payments")
-    .select("id, amount, payment_method, payment_provider, status")
+    .select("id, amount, payment_method, payment_provider, payment_provider_id, status")
     .eq("booking_id", bookingId);
   if (tenantId) query = query.eq("tenant_id", tenantId);
   const { data } = await query;

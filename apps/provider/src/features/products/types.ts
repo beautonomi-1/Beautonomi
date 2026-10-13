@@ -76,6 +76,7 @@ export interface ProductFormState {
   receive_low_stock_notifications: boolean;
   is_active: boolean;
   image_urls: string[];
+  weight_grams: string;
   hasVariants: boolean;
   variantOptionTypes: VariantOptionType[];
   variantRows: ProductVariantRow[];

@@ -29,6 +29,7 @@ export type RecordProductOrderPaymentInput = {
   provider:
     | "paystack"
     | "stripe"
+    | "flutterwave"
     | "wallet"
     | "gift_card"
     | "cash"

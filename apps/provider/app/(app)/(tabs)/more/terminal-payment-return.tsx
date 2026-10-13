@@ -9,6 +9,10 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { twStyle } from "@/lib/twStyle";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import {
+  pickHostedCheckoutRouteParams,
+  isHostedCheckoutFailureStatus,
+} from "@/lib/payments/hostedCheckoutRouteParams";
+import {
   pollTerminalOrderPaid,
   terminalOrderFailedCopy,
   terminalOrderPendingCopy,
@@ -36,8 +40,10 @@ export default function TerminalPaymentReturnScreen() {
     session_id?: string;
     order_id?: string;
   }>();
-  const reference = useMemo(() => pickStr(params.reference) || pickStr(params.trxref), [params]);
-  const sessionId = useMemo(() => pickStr(params.session_id), [params]);
+  const hosted = useMemo(() => pickHostedCheckoutRouteParams(params as Record<string, unknown>), [params]);
+  const reference = hosted.reference;
+  const sessionId = hosted.sessionId;
+  const transactionId = hosted.transactionId;
   const successFlag = pickStr(params.payment_success);
   const cancelFlag = pickStr(params.payment_cancelled);
   const orderId = pickStr(params.order_id);
@@ -70,6 +76,10 @@ export default function TerminalPaymentReturnScreen() {
       navigateBack("payment_cancelled");
       return;
     }
+    if (isHostedCheckoutFailureStatus(hosted.status)) {
+      navigateBack("payment_failed");
+      return;
+    }
     if (status !== "verifying" || !reference) {
       if (status === "pending") navigateBack("payment_pending");
       return;
@@ -77,7 +87,7 @@ export default function TerminalPaymentReturnScreen() {
 
     let cancelled = false;
     const run = async () => {
-      const verifyResult = await verifyPaystackWithRetry(reference, { sessionId });
+      const verifyResult = await verifyPaystackWithRetry(reference, { sessionId, transactionId });
       if (cancelled) return;
       if (verifyResult.status === "failed") {
         setStatus("failed");

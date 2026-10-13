@@ -12,6 +12,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { wirePreferenceGateTables } from "@/lib/notifications/__tests__/pref-gate-supabase-tables";
 
 const hoisted = vi.hoisted(() => ({
   getSupabaseAdminMock: vi.fn(),
@@ -44,7 +45,7 @@ function mockAdmin(deviceRows: { onesignal_player_id: string | null; user_id: st
   });
   const selectFn = vi.fn().mockReturnValue({ in: inFn, eq: eqFn });
   const notifCountResult = Promise.resolve({ count: 1, error: null });
-  const from = vi.fn().mockImplementation((table: string) => {
+  const baseFrom = (table: string) => {
     if (table === "user_devices") return { select: selectFn };
     if (table === "notifications") {
       return {
@@ -57,7 +58,9 @@ function mockAdmin(deviceRows: { onesignal_player_id: string | null; user_id: st
     }
     if (table === "notification_logs") return { insert: vi.fn().mockResolvedValue({ error: null }) };
     throw new Error("unexpected table " + table);
-  });
+  };
+  const userIds = [...new Set(deviceRows.map((d) => d.user_id))];
+  const from = vi.fn().mockImplementation(wirePreferenceGateTables(baseFrom, userIds));
   return { from };
 }
 

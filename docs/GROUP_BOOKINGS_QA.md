@@ -12,7 +12,7 @@ This document is the test plan for group bookings across all surfaces.
 |---|-----------|----------------|
 | A | A group booking always has exactly one participant with `is_primary_contact = true`. | `group_bookings.primary_contact_booking_id` must match that participant's `booking_id`. |
 | B | Deleting/removing a participant cancels (not deletes) their child booking. | `DELETE /api/provider/group-bookings/[id]/participants/[pid]` — booking status `→ cancelled`, `group_booking_id → null`. |
-| C | `total_price` on `group_bookings` is always recalculated after participant add/remove. | `recalculateGroupBookingTotal` called from both POST participants and DELETE participant. |
+| C | `total_price` on `group_bookings` is recalculated after participant add/remove and after non-primary customer cancel. | `recalculateGroupBookingTotal` from POST/DELETE participants and `POST /api/me/bookings/[id]/cancel` (non-primary). Recalculate **excludes** roster rows whose linked child booking is `cancelled` / `no_show` (customer cancel keeps roster rows; provider DELETE removes them). See [`recalculate-group-total.ts`](apps/web/src/lib/bookings/recalculate-group-total.ts). |
 | D | Provider cancel cascades to all non-terminal child bookings and sends cancellation notifications. | `DELETE /api/provider/group-bookings/[id]` — `sendCancellationNotification` called per child. |
 | E | Check-in is idempotent: calling check-in on an already-checked-in participant returns the original timestamp. | `POST .../check-in` — pre-flight fetch; early return when `checked_in_at IS NOT NULL`. |
 | F | Check-out requires check-in: calling check-out on a non-checked-in participant returns `400 NOT_CHECKED_IN`. | `POST .../check-out` — pre-flight guard. |
@@ -177,8 +177,11 @@ confirmed
 1. Primary contact cancels their individual booking via the app.
    - **Verify**: entire group cancelled (all child bookings → `cancelled`).
    - **Verify**: each group participant with a user account receives a cancellation notification.
-2. Non-primary contact cancels their individual booking.
+   - **Verify**: if group cascade fails after the primary booking is cancelled, API returns **500** / `GROUP_CANCEL_INCOMPLETE` (not silent success).
+2. Non-primary contact cancels their individual booking (requires their own child `bookings` row, e.g. `from-bookings` group).
    - **Verify**: only their booking is cancelled; group continues.
+   - **Verify**: `group_bookings.total_price` drops that participant's service price (roster row may remain with `booking_status: cancelled` on group detail).
+   - **Verify**: group lifecycle status is synced from remaining child bookings (`syncGroupBookingStatusFromChildren`).
 
 ### 4.11 Admin — manage group bookings
 
@@ -236,22 +239,161 @@ confirmed
 
 ## 7. Test suites
 
-Run all group booking tests:
+### 7.1 Automated QA (local CI parity)
+
+**Web (Vitest)** — full group-booking unit/route slice:
 
 ```bash
 pnpm --filter web exec vitest run \
   src/lib/bookings/__tests__/group-booking-package-pricing \
   src/lib/bookings/__tests__/group-capacity \
+  src/lib/bookings/__tests__/group-booking-status-sync \
+  src/lib/bookings/__tests__/group-booking-payment-rollup \
+  src/lib/bookings/__tests__/group-booking-postgrest \
+  src/lib/bookings/__tests__/group-booking-notifications \
   src/lib/public-booking/__tests__/group-booking-policy \
   src/lib/provider-booking/__tests__/pick-group-booking-patch-payload \
   src/lib/provider-booking/__tests__/build-merged-group-row-from-group-detail \
   src/app/api/provider/bookings/__tests__/group-synthetic-id-proxy \
-  "src/app/api/provider/group-bookings/[id]/participants/[participantId]/__tests__/check-in-check-out"
+  "src/app/api/provider/group-bookings/[id]/participants/[participantId]/__tests__/check-in-check-out" \
+  "src/app/api/me/group-bookings/[id]/__tests__/route.test"
 ```
+
+**Shared package (Vitest):**
+
+```bash
+pnpm --filter @beautonomi/provider-booking exec vitest run src/validateGroupBookingCreate.test.ts
+```
+
+**Provider + customer apps (Jest — these packages do not ship Vitest):**
+
+```bash
+pnpm --filter provider test -- __tests__/lib/group-booking-detail-helpers.test.ts __tests__/features/validateGroupBookingCreate.test.ts
+pnpm --filter customer test -- __tests__/lib/group-booking-payment-display.test.ts
+```
+
+**Extended route + lib coverage (2026-10-11):**
+
+```bash
+pnpm --filter web exec vitest run \
+  src/lib/bookings/__tests__/recalculate-group-total \
+  src/lib/bookings/__tests__/group-booking.test \
+  src/app/api/provider/group-bookings/__tests__/route.post.test \
+  src/app/api/provider/group-bookings/from-bookings/__tests__/route.test \
+  "src/app/api/provider/group-bookings/[id]/__tests__/complete-service.test" \
+  "src/app/api/provider/group-bookings/[id]/__tests__/delete-group.test" \
+  "src/app/api/me/group-bookings/[id]/reschedule/__tests__/route.test" \
+  "src/app/api/me/bookings/[id]/cancel/__tests__/route.group-booking.test" \
+  src/app/api/public/bookings/__tests__/route.test.ts
+```
+
+**Full web group + adjacent lifecycle slice (recommended dev sign-off):**
+
+```bash
+cd apps/web && pnpm exec vitest run \
+  src/lib/bookings/__tests__/recalculate-group-total \
+  src/lib/bookings/__tests__/group-booking.test \
+  src/lib/bookings/__tests__/group-booking-package-pricing \
+  src/lib/bookings/__tests__/group-capacity \
+  src/lib/bookings/__tests__/group-booking-status-sync \
+  src/lib/bookings/__tests__/group-booking-payment-rollup \
+  src/lib/bookings/__tests__/group-booking-postgrest \
+  src/lib/bookings/__tests__/group-booking-notifications \
+  src/lib/public-booking/__tests__/group-booking-policy \
+  src/lib/provider-booking/__tests__/pick-group-booking-patch-payload \
+  src/lib/provider-booking/__tests__/build-merged-group-row-from-group-detail \
+  src/app/api/provider/bookings/__tests__/group-synthetic-id-proxy \
+  src/app/api/provider/group-bookings/__tests__/route.post.test \
+  src/app/api/provider/group-bookings/from-bookings/__tests__/route.test \
+  "src/app/api/provider/group-bookings/[id]/__tests__/complete-service.test" \
+  "src/app/api/provider/group-bookings/[id]/__tests__/delete-group.test" \
+  "src/app/api/provider/group-bookings/[id]/participants/[participantId]/__tests__/check-in-check-out" \
+  "src/app/api/me/group-bookings/[id]/__tests__/route.test" \
+  "src/app/api/me/group-bookings/[id]/reschedule/__tests__/route.test" \
+  "src/app/api/me/bookings/[id]/cancel/__tests__/route.group-booking.test" \
+  src/app/api/public/bookings/__tests__/route.test.ts \
+  src/__tests__/api/booking-flow.test.ts \
+  src/lib/bookings/__tests__/lifecycle-qa-gaps.test.ts \
+  --pool=forks --maxWorkers=2 --testTimeout=60000
+```
+
+Expect **118** web Vitest tests when counts are current. Under heavy parallel load, two cancel/me-detail tests use **90s** per-test timeouts to survive cold `import()` of the cancel route graph.
+
+**Provider Jest (include optimistic patch):**
+
+```bash
+pnpm --filter provider test -- __tests__/lib/group-booking-detail-helpers.test.ts __tests__/features/validateGroupBookingCreate.test.ts __tests__/features/optimisticGroupPatch.test.ts
+```
+
+**Browser E2E (Playwright — requires `E2E_PROVIDER_EMAIL` or `PLAYWRIGHT_PROVIDER_STORAGE`):**
+
+```bash
+pnpm --filter web exec playwright test e2e/provider-booking-mobile-shell-matrix.spec.ts --grep group
+```
+
+Five scenarios: group quick action shell, group list row → view sheet, create bottom sheet, **optional** POST `/api/provider/group-bookings` on submit (skips if form/seed incomplete), more hub link. Without credentials all **skip** (not fail).
+
+### 7.2 Manual staging QA
+
+Execute §4.1–4.12 in order on **staging** before production release; record pass/fail per step (operator-owned — not runnable in CI).
+
+| § | Scenario | Pass | Notes / build |
+|---|----------|------|----------------|
+| 4.1 | Provider create session | ☐ | |
+| 4.2 | Mobile check-in/out | ☐ | |
+| 4.3 | Complete service shortcut | ☐ | |
+| 4.4 | Provider cancel group | ☐ | |
+| 4.5 | Remove participant | ☐ | |
+| 4.6 | Mark paid | ☐ | |
+| 4.7 | From-bookings | ☐ | |
+| 4.8 | Customer online group | ☐ | |
+| 4.9 | Customer reschedule | ☐ | |
+| 4.10 | Customer cancel | ☐ | |
+| 4.11 | Admin manage | ☐ | |
+| 4.12 | Customer mobile detail | ☐ | |
+
+**Dev sign-off (automated):** full command in §7.1 (**118** web + **23** provider + **4** customer + **4** package = **149** tests) + optional Playwright `--grep group`. **Prod sign-off:** §7.2 checklist complete on staging (§10 layer **L6**).
 
 ---
 
-## 8. References
+## 8. Extended coverage matrix (facts)
+
+| Flow | Implementation | Automated test | Staging §4 |
+|------|----------------|----------------|------------|
+| `POST /api/provider/group-bookings` create session | [`route.ts`](apps/web/src/app/api/provider/group-bookings/route.ts) — capacity, slot grid, insert group + participants, rollback on participant failure | [`route.post.test.ts`](apps/web/src/app/api/provider/group-bookings/__tests__/route.post.test.ts): validation, capacity, **happy path** (child bookings + primary row), participant insert rollback; not real DB / slot grid without `allow_override` | §4.1 |
+| Public `createGroupBooking` helper (online group rows) | [`group-booking.ts`](apps/web/src/lib/bookings/group-booking.ts) — insert group + participants, rollback on link failure | [`group-booking.test.ts`](apps/web/src/lib/bookings/__tests__/group-booking.test.ts) | §4.8 (with `create-booking-record`) |
+| `POST /api/me/group-bookings/[id]/reschedule` | [`reschedule/route.ts`](apps/web/src/app/api/me/group-bookings/[id]/reschedule/route.ts) — primary only, slot grid per child, `rescheduleGroupBooking`, events, notifications | [`reschedule/__tests__/route.test.ts`](apps/web/src/app/api/me/group-bookings/[id]/reschedule/__tests__/route.test.ts) (403 non-primary, primary happy path mocked) | §4.9 |
+| `DELETE /api/provider/group-bookings/[id]` | [`[id]/route.ts`](apps/web/src/app/api/provider/group-bookings/[id]/route.ts) — cancel by `bookings.group_booking_id`, waitlist, `sendCancellationNotification` per child | [`delete-group.test.ts`](apps/web/src/app/api/provider/group-bookings/[id]/__tests__/delete-group.test.ts) | §4.4 |
+| `POST /api/public/bookings` + `is_group_booking` | [`create-booking-record.ts`](apps/web/src/app/api/public/bookings/_helpers/create-booking-record.ts) creates group + roster; route wires draft | Route wiring test in [`public/bookings/__tests__/route.test.ts`](apps/web/src/app/api/public/bookings/__tests__/route.test.ts); **not** full DB E2E | §4.8 |
+| Provider/customer UI, admin, live Paystack, push/email | Apps under `apps/web`, `apps/provider`, `apps/customer`, `apps/admin-web` | Playwright shell smoke (§7.1); provider mobile **no** Detox/E2E in repo | §4.1–4.12 |
+| Public draft schema + `hold_id` + group flags | [`booking-draft-schema`](apps/web/src/lib/public-booking/booking-draft-schema.ts) | [`booking-flow.test.ts`](apps/web/src/__tests__/api/booking-flow.test.ts) | §4.8 |
+| Group organiser for pending expiry | lifecycle helper | [`lifecycle-qa-gaps.test.ts`](apps/web/src/lib/bookings/__tests__/lifecycle-qa-gaps.test.ts) | — |
+| Synthetic booking id → group detail proxy | [`bookings/[id]/route`](apps/web/src/app/api/provider/bookings/[id]/route.ts) | [`group-synthetic-id-proxy.test.ts`](apps/web/src/app/api/provider/bookings/[id]/__tests__/group-synthetic-id-proxy.test.ts) | §4.1 |
+
+---
+
+## 10. End-to-end layers (facts)
+
+| Layer | Meaning | Group booking coverage |
+|-------|---------|-------------------------|
+| **L1** | Pure lib logic | `group-*` Vitest under `src/lib/bookings` |
+| **L2** | API handlers (mocked DB) | Provider / me / public route tests (§7.1) |
+| **L3** | Schema, proxies, lifecycle | `booking-flow`, `lifecycle-qa-gaps`, synthetic id proxy |
+| **L4** | Browser (Playwright) | 5 tests — `provider-booking-mobile-shell-matrix.spec.ts` (`--grep group`) |
+| **L5** | Mobile Jest | Provider + customer + `@beautonomi/provider-booking` |
+| **L6** | Staging (real DB, Paystack, push) | §7.2 manual only |
+
+**Customer API chain:** public POST → me GET group → reschedule (primary) → cancel (primary cascade / non-primary recalc).
+
+**Provider API chain:** POST group session → check-in/out / complete_service → DELETE (cascade + notify).
+
+No one test executes L1–L6 against production data.
+
+**Automated totals (2026-10-12):** web **118** + provider Jest **23** + customer **4** + package **4** = **149** tests.
+
+---
+
+## 9. References (API & apps)
 
 - API entry: `apps/web/src/app/api/provider/group-bookings/`
 - Core lib: `apps/web/src/lib/bookings/group-booking*.ts`

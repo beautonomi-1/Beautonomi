@@ -39,4 +39,29 @@ describe("mapGeocodeFeatureToAddressParts", () => {
     expect(parsed.address_line1).toBe("12 Viljoen Street");
     expect(parsed.city).toBe("Pretoria");
   });
+
+  it("stores Mapbox suburb in address_line2 when metro city is separate", () => {
+    const parsed = mapGeocodeFeatureToAddressParts(
+      {
+        place_name: "12 Long Street, Gardens, Cape Town, Western Cape 8001, South Africa",
+        text: "Long Street",
+        address: "12",
+        center: [18.42, -33.92],
+        context: [
+          { id: "neighborhood.1", text: "Gardens" },
+          { id: "place.1", text: "Cape Town" },
+          { id: "region.1", text: "Western Cape" },
+          { id: "postcode.1", text: "8001" },
+          { id: "country.1", text: "South Africa" },
+        ],
+      },
+      { defaultCountryName: "South Africa" },
+    );
+
+    expect(parsed).toMatchObject({
+      address_line1: "12 Long Street",
+      address_line2: "Gardens",
+      city: "Cape Town",
+    });
+  });
 });

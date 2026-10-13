@@ -122,22 +122,40 @@ export async function sendAppointmentReminders(config: ReminderConfig = DEFAULT_
           timeZone: providerTz,
         });
 
-        // Create notification record
-        const { insertNotification } = await import("@/lib/notifications/insert-notification");
-        await insertNotification({
-          user_id: booking.customer_id,
-          type: "appointment_reminder",
-          title: `Appointment Reminder - ${hoursBefore} hour${hoursBefore > 1 ? "s" : ""} to go`,
-          message: `Your appointment with ${provider.business_name} is in ${hoursBefore} hour${hoursBefore > 1 ? "s" : ""}. Date: ${dateStr} at ${timeStr}`,
-          data: {
-            booking_id: booking.id,
-            reminder_key: reminderKey,
-            hours_before: hoursBefore,
-          },
-          action_url: `/account-settings/bookings/${booking.id}`,
-        });
-
         try {
+          const reminderTemplateKey =
+            hoursBefore === 24
+              ? "booking_reminder_24h"
+              : hoursBefore === 2
+                ? "booking_reminder_2h"
+                : "appointment_reminder";
+          const { customerAllowsAnyChannel } = await import(
+            "@/lib/notifications/customer-notification-channels"
+          );
+          const allowsExternal = await customerAllowsAnyChannel(
+            supabaseAdmin,
+            booking.customer_id,
+            reminderTemplateKey,
+            config.channels,
+          );
+          if (!allowsExternal) {
+            continue;
+          }
+
+          const { insertNotification } = await import("@/lib/notifications/insert-notification");
+          await insertNotification({
+            user_id: booking.customer_id,
+            type: "appointment_reminder",
+            title: `Appointment Reminder - ${hoursBefore} hour${hoursBefore > 1 ? "s" : ""} to go`,
+            message: `Your appointment with ${provider.business_name} is in ${hoursBefore} hour${hoursBefore > 1 ? "s" : ""}. Date: ${dateStr} at ${timeStr}`,
+            data: {
+              booking_id: booking.id,
+              reminder_key: reminderKey,
+              hours_before: hoursBefore,
+            },
+            action_url: `/account-settings/bookings/${booking.id}`,
+          });
+
           const tenantId = (booking as { tenant_id?: string | null }).tenant_id ?? null;
           let channels: TemplateDispatchChannel[] = [...config.channels];
           if (config.channels.includes("whatsapp")) {
@@ -284,6 +302,17 @@ export async function sendRebookReminders() {
         ? `/booking?slug=${encodeURIComponent(providerSlug)}&service=${encodeURIComponent(off.id)}`
         : `/account-settings/bookings`;
 
+      const { customerAllowsAnyChannel } = await import(
+        "@/lib/notifications/customer-notification-channels"
+      );
+      const allowsRebook = await customerAllowsAnyChannel(
+        supabaseAdmin,
+        booking.customer_id as string,
+        "rebook_reminder",
+        ["push", "email", "sms"],
+      );
+      if (!allowsRebook) continue;
+
       const { insertNotification: insertRebookNotification } = await import("@/lib/notifications/insert-notification");
       await insertRebookNotification({
         user_id: booking.customer_id,
@@ -393,7 +422,25 @@ export async function sendBookingReminder(bookingId: string, hoursBefore: number
       timeZone: providerTz,
     });
 
-    // Create notification
+    const singleTemplateKey =
+      hoursBefore === 24
+        ? "booking_reminder_24h"
+        : hoursBefore === 2
+          ? "booking_reminder_2h"
+          : "appointment_reminder";
+    const { customerAllowsAnyChannel } = await import(
+      "@/lib/notifications/customer-notification-channels"
+    );
+    const allowsSingle = await customerAllowsAnyChannel(
+      supabaseAdmin,
+      booking.customer_id,
+      singleTemplateKey,
+      ["push", "email", "sms"],
+    );
+    if (!allowsSingle) {
+      return { success: true, skipped: "preferences" };
+    }
+
     const { insertNotification: insertSingleReminder } = await import("@/lib/notifications/insert-notification");
     await insertSingleReminder({
       user_id: booking.customer_id,
@@ -430,4 +477,230 @@ export async function sendBookingReminder(bookingId: string, hoursBefore: number
     console.error("Error sending booking reminder:", error);
     throw error;
   }
+}
+
+function parseStaffReminderOffsetMs(reminderTime: string): number | null {
+  const trimmed = reminderTime.trim().toLowerCase();
+  const match = /^(\d+)(h|m)$/.exec(trimmed);
+  if (!match) return null;
+  const amount = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return match[2] === "h" ? amount * 60 * 60 * 1000 : amount * 60 * 1000;
+}
+
+function staffReminderTemplateKey(reminderTime: string): string {
+  if (reminderTime === "24h") return "booking_reminder_24h";
+  if (reminderTime === "2h") return "booking_reminder_2h";
+  return "appointment_reminder";
+}
+
+function bookingAssignedToStaff(
+  booking: {
+    staff_id?: string | null;
+    booking_services?: Array<{ staff_id?: string | null } | null> | null;
+  },
+  staffId: string,
+): boolean {
+  if (booking.staff_id === staffId) return true;
+  for (const row of booking.booking_services ?? []) {
+    if (row?.staff_id === staffId) return true;
+  }
+  return false;
+}
+
+function parseStaffNotificationSettings(raw: unknown): Record<string, unknown> {
+  if (!raw) return {};
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+  if (typeof raw === "object") return raw as Record<string, unknown>;
+  return {};
+}
+
+/**
+ * Staff-specific appointment reminders driven by provider_staff.notification_settings
+ * (appointment_reminders + reminder_time). Runs on the same cron as customer reminders.
+ */
+export async function sendStaffAppointmentReminders() {
+  const supabaseAdmin = getSupabaseAdmin();
+  const now = new Date();
+  const remindersSent: string[] = [];
+
+  const { data: staffRows, error: staffErr } = await supabaseAdmin
+    .from("provider_staff")
+    .select(
+      `
+      id,
+      user_id,
+      provider_id,
+      notification_settings,
+      providers!inner (
+        id,
+        business_name,
+        timezone,
+        tenant_id
+      )
+    `,
+    )
+    .eq("is_active", true)
+    .not("user_id", "is", null);
+
+  if (staffErr) {
+    throw staffErr;
+  }
+
+  type StaffRow = {
+    id: string;
+    user_id: string;
+    provider_id: string;
+    notification_settings?: unknown;
+    providers: { business_name?: string; timezone?: string | null; tenant_id?: string | null };
+  };
+
+  const eligible = ((staffRows ?? []) as StaffRow[]).filter((row) => {
+    const settings = parseStaffNotificationSettings(row.notification_settings);
+    return settings.appointment_reminders !== false;
+  });
+
+  const byProviderReminder = new Map<string, StaffRow[]>();
+  for (const row of eligible) {
+    const settings = parseStaffNotificationSettings(row.notification_settings);
+    const reminderTime = typeof settings.reminder_time === "string" ? settings.reminder_time : "24h";
+    const key = `${row.provider_id}:${reminderTime}`;
+    const list = byProviderReminder.get(key) ?? [];
+    list.push(row);
+    byProviderReminder.set(key, list);
+  }
+
+  for (const [groupKey, members] of byProviderReminder) {
+    const [providerId, reminderTime] = groupKey.split(":");
+    const offsetMs = parseStaffReminderOffsetMs(reminderTime);
+    if (offsetMs == null) continue;
+
+    const reminderAt = new Date(now.getTime() + offsetMs);
+    const windowStart = new Date(reminderAt.getTime() - 30 * 60 * 1000);
+    const windowEnd = new Date(reminderAt.getTime() + 30 * 60 * 1000);
+    const { data: bookings, error: bookingErr } = await supabaseAdmin
+      .from("bookings")
+      .select(
+        `
+        id,
+        booking_number,
+        scheduled_at,
+        customer_id,
+        provider_id,
+        tenant_id,
+        staff_id,
+        customers:users!bookings_customer_id_fkey ( id, full_name ),
+        booking_services ( staff_id, offering:offerings!inner ( title ) )
+      `,
+      )
+      .eq("provider_id", providerId)
+      .eq("status", "confirmed")
+      .gte("scheduled_at", windowStart.toISOString())
+      .lte("scheduled_at", windowEnd.toISOString())
+      .is("cancelled_at", null);
+
+    if (bookingErr) {
+      console.error("[sendStaffAppointmentReminders] booking query failed:", bookingErr);
+      continue;
+    }
+
+    for (const booking of bookings ?? []) {
+      const assignedStaff = members.filter((m) => bookingAssignedToStaff(booking as never, m.id));
+      if (assignedStaff.length === 0) continue;
+
+      const provider = assignedStaff[0].providers;
+      const providerTz = provider?.timezone || "Africa/Johannesburg";
+      const customer = (booking as { customers?: { full_name?: string } | null }).customers;
+      const customerName = customer?.full_name || "Customer";
+      const services = (
+        (booking as { booking_services?: Array<{ offering?: { title?: string } }> }).booking_services ??
+        []
+      )
+        .map((bs) => bs.offering?.title || "Service")
+        .join(", ");
+
+      const scheduledDate = new Date((booking as { scheduled_at: string }).scheduled_at);
+      const dateStr = scheduledDate.toLocaleDateString("en-ZA", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        timeZone: providerTz,
+      });
+      const timeStr = scheduledDate.toLocaleTimeString("en-ZA", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: providerTz,
+      });
+      const hoursBefore = Math.round(offsetMs / (60 * 60 * 1000));
+      const templateKey = staffReminderTemplateKey(reminderTime);
+
+      for (const staff of assignedStaff) {
+        const reminderKey = `staff_reminder_${reminderTime}_${booking.id}_${staff.id}`;
+        const { data: existingNotification } = await supabaseAdmin
+          .from("notifications")
+          .select("id")
+          .eq("user_id", staff.user_id)
+          .eq("type", "appointment_reminder")
+          .contains("data", { reminder_key: reminderKey })
+          .limit(1);
+        if (existingNotification?.length) continue;
+
+        const { insertNotification } = await import("@/lib/notifications/insert-notification");
+        await insertNotification({
+          user_id: staff.user_id,
+          type: "appointment_reminder",
+          title: "Upcoming appointment",
+          message: `${customerName} — ${dateStr} at ${timeStr}`,
+          data: {
+            booking_id: (booking as { id: string }).id,
+            reminder_key: reminderKey,
+            staff_id: staff.id,
+            reminder_time: reminderTime,
+          },
+          action_url: `/provider/bookings/${(booking as { id: string }).id}`,
+        });
+
+        try {
+          await sendTemplateNotification(
+            templateKey,
+            [staff.user_id],
+            {
+              provider_name: customerName,
+              appointment_date: dateStr,
+              appointment_time: timeStr,
+              services,
+              hours_before: String(hoursBefore || reminderTime),
+              booking_number: (booking as { booking_number?: string }).booking_number || "",
+              booking_id: (booking as { id: string }).id,
+            },
+            ["push", "email"],
+            {
+              appType: "provider",
+              skipInApp: true,
+              tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? null,
+            },
+          );
+          remindersSent.push(reminderKey);
+        } catch (notifError) {
+          console.error(
+            `[sendStaffAppointmentReminders] send failed booking ${(booking as { id: string }).id} staff ${staff.id}:`,
+            notifError,
+          );
+        }
+      }
+    }
+  }
+
+  return {
+    success: true,
+    staffRemindersSent: remindersSent.length,
+  };
 }

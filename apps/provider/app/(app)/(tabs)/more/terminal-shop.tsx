@@ -30,6 +30,7 @@ import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutRetur
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import {
   getTerminalPaystackReturnUrl,
+  getTerminalPaymentReturnDeepLink,
   matchesTerminalPaystackReturnUrl,
   pollTerminalOrderPaid,
   terminalOrderFailedCopy,
@@ -231,7 +232,8 @@ export default function TerminalShopScreen() {
     reference?: string;
   }>("post");
 
-  const terminalReturnUrl = getTerminalPaystackReturnUrl();
+  const terminalHttpsCallback = getTerminalPaystackReturnUrl({ inApp: true });
+  const terminalReturnUrl = getTerminalPaymentReturnDeepLink();
   const paystackCheckout = useInAppPaystackCheckout();
   const [paymentOutcome, setPaymentOutcome] = useState<{
     phase: "idle" | "success" | "pending" | "failed";
@@ -362,6 +364,12 @@ export default function TerminalShopScreen() {
         matchCancel: (rawUrl) => matchesTerminalPaystackReturnUrl(rawUrl, { cancelled: true }),
       });
 
+      if (result?.outcome === "start_failed") {
+        Alert.alert(ts("paystackTitle"), ts("paymentNotCompleted"));
+        await refreshAll();
+        return;
+      }
+
       if (result?.outcome === "cancel") {
         const failed = terminalOrderFailedCopy(ts("paymentNotCompleted"));
         setPaymentOutcome({ phase: "failed", ...failed });
@@ -388,12 +396,27 @@ export default function TerminalShopScreen() {
             return;
           }
           const parsed = parseOnlineCheckoutReturnUrl(result.url);
+          if (parsed.status === "failed" || parsed.status === "cancelled") {
+            const failed = terminalOrderFailedCopy(ts("paymentNotCompleted"));
+            setPaymentOutcome({ phase: "failed", ...failed });
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            await refreshAll();
+            return;
+          }
           if (parsed.reference) payReference = parsed.reference;
           checkoutSessionId = parsed.sessionId;
         }
 
+        const parsedTxId =
+          result.outcome === "success" && result.url
+            ? parseOnlineCheckoutReturnUrl(result.url).transactionId
+            : null;
+
         const verifyResult = payReference
-          ? await verifyPaystackWithRetry(payReference, { sessionId: checkoutSessionId })
+          ? await verifyPaystackWithRetry(payReference, {
+              sessionId: checkoutSessionId,
+              transactionId: parsedTxId,
+            })
           : null;
         if (verifyResult?.status === "failed") {
           const failed = terminalOrderFailedCopy(verifyResult.errorMessage ?? null);
@@ -421,7 +444,7 @@ export default function TerminalShopScreen() {
   async function startTerminalPayment(orderId: string) {
     const payRes = await postPay(`/api/provider/terminal-orders/${orderId}/initialize-payment`, {
       in_app: true,
-      callback_url: terminalReturnUrl,
+      callback_url: terminalHttpsCallback,
     });
     if (payRes.error) throw new Error(payRes.error);
     const url = payRes.data?.authorization_url ?? payRes.data?.payment_url;

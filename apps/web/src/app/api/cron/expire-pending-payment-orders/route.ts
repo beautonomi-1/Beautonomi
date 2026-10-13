@@ -97,9 +97,17 @@ async function runJob(request: NextRequest) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 
+  const walkInExpired = await expireAbandonedWalkInCardMachineOrders(admin);
+
   const candidates = (stale as StaleOrderRow[] | null) ?? [];
   if (candidates.length === 0) {
-    return NextResponse.json({ ok: true, ttl_minutes: ttlMinutes, candidates: 0, expired: 0 });
+    return NextResponse.json({
+      ok: true,
+      ttl_minutes: ttlMinutes,
+      candidates: 0,
+      expired: 0,
+      walk_in_expired: walkInExpired,
+    });
   }
 
   let expired = 0;
@@ -161,5 +169,45 @@ async function runJob(request: NextRequest) {
     ttl_minutes: ttlMinutes,
     candidates: candidates.length,
     expired,
+    walk_in_expired: walkInExpired,
   });
+}
+
+/** Hours an unpaid walk-in card-machine order may wait (late webhooks / staff retry) before it is cancelled. */
+const WALK_IN_CARD_MACHINE_TTL_HOURS = 24;
+
+/**
+ * Walk-in card-machine sales create a pending order before the machine charge
+ * (`payment_method: card_machine` → stored as `card`). If staff abandon the charge the
+ * order would sit "awaiting payment" forever. Pending walk-in orders never deducted
+ * stock or posted a ledger row, so cancelling needs no restock or reversal.
+ */
+async function expireAbandonedWalkInCardMachineOrders(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+): Promise<number> {
+  const cutoff = new Date(Date.now() - WALK_IN_CARD_MACHINE_TTL_HOURS * 60 * 60 * 1000).toISOString();
+  try {
+    const { data: claimed, error } = await (admin.from("product_orders") as any)
+      .update({
+        status: "cancelled",
+        payment_status: "failed",
+        cancelled_at: new Date().toISOString(),
+        cancellation_reason: "Card machine payment was not completed",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("order_source", "walk_in")
+      .eq("payment_status", "pending")
+      .eq("status", "confirmed")
+      .eq("payment_method", "card")
+      .lt("created_at", cutoff)
+      .select("id");
+    if (error) {
+      console.warn("[expire-pending-payment-orders] walk-in sweep failed", error);
+      return 0;
+    }
+    return claimed?.length ?? 0;
+  } catch (err) {
+    console.warn("[expire-pending-payment-orders] walk-in sweep failed", err);
+    return 0;
+  }
 }

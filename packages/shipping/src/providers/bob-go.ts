@@ -1,5 +1,7 @@
 import type {
+  CancelShipmentResult,
   CreateShipmentRequest,
+  LabelResult,
   RateQuote,
   RateQuoteRequest,
   Shipment,
@@ -7,8 +9,12 @@ import type {
   TrackingUpdate,
 } from "../index";
 import { ShippingProviderNotConfiguredError } from "../index";
+import { shippingJsonRequest } from "../http";
+import { asRecord, strField } from "../map-tracking";
 import {
+  cancelShiplogicStyleShipment,
   createShiplogicStyleShipment,
+  fetchShiplogicStyleLabel,
   quoteShiplogicStyleRates,
   trackShiplogicStyle,
   type ShiplogicStyleConfig,
@@ -57,7 +63,75 @@ export function createBobGoProvider(credentials?: {
   }
 
   async function track(trackingNumber: string): Promise<TrackingUpdate[]> {
-    return trackShiplogicStyle(config(), trackingNumber);
+    const cfg = config();
+    try {
+      return await trackShiplogicStyle(cfg, trackingNumber);
+    } catch {
+      const payload = await shippingJsonRequest({
+        url: `${cfg.baseUrl.replace(/\/+$/, "")}/tracking-events?tracking_reference=${encodeURIComponent(trackingNumber)}`,
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${cfg.apiKey}`,
+          Accept: "application/json",
+        },
+      });
+      const root = asRecord(payload);
+      const events = Array.isArray(root.data) ? root.data : Array.isArray(root.events) ? root.events : [];
+      if (events.length === 0) return [];
+      return events.map((event) => {
+        const rec = asRecord(event);
+        const status = strField(rec.status) ?? strField(rec.message) ?? "pending";
+        return {
+          status: "in_transit" as const,
+          message: status,
+          occurredAt: strField(rec.occurred_at) ?? strField(rec.date) ?? new Date().toISOString(),
+        };
+      });
+    }
+  }
+
+  async function cancelShipment(params: {
+    shipmentId?: string | null;
+    trackingNumber?: string | null;
+  }): Promise<CancelShipmentResult> {
+    const id = params.shipmentId?.trim() || params.trackingNumber?.trim();
+    if (!id) return { ok: false, reason: "not_found", message: "Missing shipment id" };
+    try {
+      await cancelShiplogicStyleShipment(config(), id);
+      return { ok: true };
+    } catch (err) {
+      return {
+        ok: false,
+        reason: "courier_rejected",
+        message: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
+  async function fetchLabel(params: {
+    shipmentId?: string | null;
+    trackingNumber?: string | null;
+  }): Promise<LabelResult> {
+    const id = params.shipmentId?.trim() || params.trackingNumber?.trim();
+    if (!id) throw new Error("shipment id or tracking number required for label");
+    const cfg = config();
+    try {
+      return await fetchShiplogicStyleLabel(cfg, params);
+    } catch {
+      const payload = asRecord(
+        await shippingJsonRequest({
+          url: `${cfg.baseUrl.replace(/\/+$/, "")}/shipments/${encodeURIComponent(id)}/waybill`,
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${cfg.apiKey}`,
+            Accept: "application/json",
+          },
+        }),
+      );
+      const url = strField(payload.url) ?? strField(payload.waybill_url);
+      if (url) return { url, contentType: "application/pdf" };
+      throw new Error("Bob Go label response missing URL");
+    }
   }
 
   return {
@@ -65,5 +139,7 @@ export function createBobGoProvider(credentials?: {
     quoteRates,
     createShipment,
     track,
+    cancelShipment,
+    fetchLabel,
   };
 }

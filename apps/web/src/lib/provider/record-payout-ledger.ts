@@ -27,9 +27,11 @@ export async function recordPayoutLedger(
     net_amount: number;
     amount: number;
     payout_number?: string;
-    /** Paystack transfer fee in major currency units (e.g. Rands). When not
-     *  provided, falls back to expectedGatewayFee from config (R3 for ZA). */
+    /** Gateway transfer fee in major currency units (e.g. Rands). When not
+     *  provided, falls back to expectedGatewayFee from config. */
     transferFeeMajor?: number;
+    /** Gateway name for config-driven fee fallback (default paystack). */
+    feeGateway?: string;
     /** payouts.currency when known; otherwise resolved from the provider tenant. */
     currency?: string | null;
   }
@@ -43,9 +45,11 @@ export async function recordPayoutLedger(
     transferFee = payout.transferFeeMajor;
   } else {
     try {
-      transferFee = await expectedGatewayFee(supabase, "paystack", amount, {
+      const feeGateway = (payout.feeGateway ?? "paystack").trim().toLowerCase() || "paystack";
+      transferFee = await expectedGatewayFee(supabase, feeGateway, amount, {
         method: "bank_transfer",
         scope: "transfer",
+        currency: payout.currency ?? undefined,
       });
     } catch {
       // Best-effort: if config lookup fails, log and proceed with 0

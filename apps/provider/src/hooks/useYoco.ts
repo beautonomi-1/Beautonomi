@@ -113,6 +113,13 @@ export interface YocoPaymentRequest {
   device_id: string;
   booking_id?: string;
   sale_id?: string;
+  group_booking_id?: string;
+  product_order_id?: string;
+  additional_charge_id?: string;
+  entity_type?: "booking" | "group_booking" | "sale" | "product_order" | "additional_charge";
+  entity_id?: string;
+  /** New value per charge attempt so a retry after a decline is not replayed by idempotency. */
+  attempt_id?: string;
   description?: string;
 }
 

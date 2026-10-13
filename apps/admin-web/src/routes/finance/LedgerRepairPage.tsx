@@ -50,9 +50,36 @@ export function LedgerRepairPage() {
   const [amountMajor, setAmountMajor] = useState("");
   const [fees, setFees] = useState("0");
   const [note, setNote] = useState("");
+  const [paymentProvider, setPaymentProvider] = useState<"paystack" | "stripe" | "flutterwave">("paystack");
+  const [candidateProvider, setCandidateProvider] = useState<"paystack" | "stripe" | "flutterwave" | "all">(
+    "paystack",
+  );
   const [rejectId, setRejectId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [approveConfirmId, setApproveConfirmId] = useState<string | null>(null);
+
+  type Candidate = {
+    booking_payment_id: string;
+    booking_id: string;
+    booking_number?: string | null;
+    payment_provider?: string | null;
+    reference?: string | null;
+    amount?: number;
+    fees_hint_major?: number | null;
+    needs_review?: boolean;
+    review_reasons?: string[];
+    open_proposal?: { id: string; status: string } | null;
+  };
+
+  const candidatesQuery = useQuery({
+    queryKey: [...adminQueryKeys.root, "ledger-repair-candidates", candidateProvider] as const,
+    enabled: allowed,
+    queryFn: () =>
+      adminApi.getJson<{ candidates: Candidate[]; scanned: number }>(
+        `/api/admin/finance/ledger-repair/candidates?provider=${encodeURIComponent(candidateProvider)}&limit=50`,
+        { timeoutMs: 60_000 },
+      ),
+  });
 
   const query = useQuery({
     queryKey: adminQueryKeys.ledgerRepair(status),
@@ -78,6 +105,7 @@ export function LedgerRepairPage() {
           reference: reference.trim(),
           amountMajor: Number(amountMajor),
           fees: Number(fees) || 0,
+          paymentProvider,
         },
       }),
     onSuccess: () => {
@@ -136,7 +164,16 @@ export function LedgerRepairPage() {
         <div className="grid gap-2 md:grid-cols-2">
           <input className="rounded-lg border border-gray-200 px-3 py-2 text-sm" placeholder="Booking UUID" value={bookingId} onChange={(e) => setBookingId(e.target.value)} />
           <input className="rounded-lg border border-gray-200 px-3 py-2 text-sm" placeholder="booking_payments.id (optional)" value={bookingPaymentId} onChange={(e) => setBookingPaymentId(e.target.value)} />
-          <input className="rounded-lg border border-gray-200 px-3 py-2 text-sm" placeholder="Paystack / payment reference" value={reference} onChange={(e) => setReference(e.target.value)} />
+          <select
+            className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            value={paymentProvider}
+            onChange={(e) => setPaymentProvider(e.target.value as "paystack" | "stripe" | "flutterwave")}
+          >
+            <option value="paystack">Gateway: Paystack</option>
+            <option value="stripe">Gateway: Stripe</option>
+            <option value="flutterwave">Gateway: Flutterwave</option>
+          </select>
+          <input className="rounded-lg border border-gray-200 px-3 py-2 text-sm" placeholder="Payment reference (tx_ref / ref)" value={reference} onChange={(e) => setReference(e.target.value)} />
           <input className="rounded-lg border border-gray-200 px-3 py-2 text-sm" placeholder="Amount (major units)" value={amountMajor} onChange={(e) => setAmountMajor(e.target.value)} />
           <input className="rounded-lg border border-gray-200 px-3 py-2 text-sm" placeholder="Gateway fees (major)" value={fees} onChange={(e) => setFees(e.target.value)} />
           <input className="rounded-lg border border-gray-200 px-3 py-2 text-sm" placeholder="Note" value={note} onChange={(e) => setNote(e.target.value)} />
@@ -149,6 +186,84 @@ export function LedgerRepairPage() {
         >
           {proposeMut.isPending ? "Proposing…" : "Propose repair"}
         </button>
+      </AdminPanel>
+
+      <AdminPanel>
+        <h3 className="mb-3 text-sm font-semibold">Missing-ledger candidates</h3>
+        <p className="mb-3 text-xs text-gray-600">
+          Completed online booking payments with no attributed finance ledger row (same scan as the reconcile cron, read-only).
+        </p>
+        <div className="mb-3 flex flex-wrap gap-2">
+          <select
+            className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            value={candidateProvider}
+            onChange={(e) =>
+              setCandidateProvider(e.target.value as "paystack" | "stripe" | "flutterwave" | "all")
+            }
+          >
+            <option value="paystack">Paystack</option>
+            <option value="stripe">Stripe</option>
+            <option value="flutterwave">Flutterwave</option>
+            <option value="all">All online gateways</option>
+          </select>
+          <button type="button" className={adminToolbarButtonClass()} onClick={() => void candidatesQuery.refetch()}>
+            Refresh candidates
+          </button>
+        </div>
+        {candidatesQuery.isLoading ? (
+          <AdminPageSkeleton rows={2} />
+        ) : isAdminApiAuthFailure(candidatesQuery.error) ? (
+          <AdminRetryBlock
+            message={candidatesQuery.error instanceof Error ? candidatesQuery.error.message : "Failed to load"}
+            onRetry={() => void candidatesQuery.refetch()}
+          />
+        ) : (candidatesQuery.data?.candidates ?? []).length === 0 ? (
+          <EmptyState title="No candidates" description={`Scanned ${candidatesQuery.data?.scanned ?? 0} payments in window.`} />
+        ) : (
+          <AdminDataTable>
+            <AdminTableHead>
+              <AdminTh>Provider</AdminTh>
+              <AdminTh>Reference</AdminTh>
+              <AdminTh>Booking</AdminTh>
+              <AdminTh>Amount</AdminTh>
+              <AdminTh>Flags</AdminTh>
+              <AdminTh>Fill form</AdminTh>
+            </AdminTableHead>
+            <AdminTableBody>
+              {(candidatesQuery.data?.candidates ?? []).map((c) => (
+                <tr key={c.booking_payment_id} className="border-b border-gray-100">
+                  <AdminTd className="text-xs">{c.payment_provider ?? "—"}</AdminTd>
+                  <AdminTd className="font-mono text-xs">{c.reference ?? "—"}</AdminTd>
+                  <AdminTd className="text-xs">{c.booking_number ?? c.booking_id.slice(0, 8)}</AdminTd>
+                  <AdminTd className="text-xs">{c.amount ?? "—"}</AdminTd>
+                  <AdminTd className="text-xs">
+                    {c.needs_review ? (c.review_reasons ?? []).join(", ") : "ok"}
+                    {c.open_proposal ? ` · proposal ${c.open_proposal.status}` : null}
+                  </AdminTd>
+                  <AdminTd>
+                    <button
+                      type="button"
+                      className="text-xs text-violet-700 underline"
+                      onClick={() => {
+                        setBookingId(c.booking_id);
+                        setBookingPaymentId(c.booking_payment_id);
+                        setReference(String(c.reference ?? ""));
+                        setAmountMajor(String(c.amount ?? ""));
+                        if (c.fees_hint_major != null) setFees(String(c.fees_hint_major));
+                        const p = (c.payment_provider ?? "paystack").toLowerCase();
+                        if (p === "stripe" || p === "flutterwave" || p === "paystack") {
+                          setPaymentProvider(p);
+                        }
+                      }}
+                    >
+                      Use
+                    </button>
+                  </AdminTd>
+                </tr>
+              ))}
+            </AdminTableBody>
+          </AdminDataTable>
+        )}
       </AdminPanel>
 
       <AdminPanel>

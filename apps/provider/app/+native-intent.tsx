@@ -106,6 +106,24 @@ export function redirectSystemPath({ path }: RedirectSystemPathParams): string {
       return withQuery("/(app)/(tabs)/more/settings/subscription-payment-return", search);
     }
 
+    // Platform invoice payment return
+    if (
+      pathname.includes("billing-payment-return") ||
+      (host === "settings" && pathname.includes("billing-payment-return"))
+    ) {
+      return withQuery("/(app)/(tabs)/more/settings/billing-payment-return", search);
+    }
+
+    // HTTPS: /provider/settings/billing?payment_success=…&in_app=1 (invoice Paystack return)
+    if (
+      pathname.includes("/provider/settings/billing") &&
+      (search.includes("payment_success") ||
+        search.includes("payment_cancelled") ||
+        search.includes("invoice_id"))
+    ) {
+      return withQuery("/(app)/(tabs)/more/settings/billing-payment-return", search);
+    }
+
     // Marketing credits top-up return
     // HTTPS: /provider/settings/marketing-integrations?topup=success
     // Deep:  provider://settings/marketing-integrations

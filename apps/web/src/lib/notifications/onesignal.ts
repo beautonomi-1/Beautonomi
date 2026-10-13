@@ -30,6 +30,7 @@ import {
   webUrlToRelativePath,
 } from "@/lib/notifications/push-url";
 import { recordSyncedBadgeCount } from "@/lib/notifications/badge-sync-state";
+import { finalizeTemplateEmailHtml } from "@/lib/email/finalize-notification-email";
 
 // OneSignal API base URL
 const ONESIGNAL_API_BASE = "https://api.onesignal.com";
@@ -1084,10 +1085,44 @@ export async function sendToUser(
   channels: readonly (string | NotificationChannel)[] = DEFAULT_NOTIFICATION_CHANNELS,
   options?: OneSignalSendOptions
 ): Promise<SendNotificationResult> {
-  const normalizedChannels = parseNotificationChannels(channels);
+  let normalizedChannels = parseNotificationChannels(channels);
   // Device rows live under RLS (owner-only). Server sends (webhooks, provider APIs, cron) have no
   // customer session — always use admin for user_devices reads so subscription targeting works.
   const supabase = options?.supabaseClient ?? getSupabaseAdmin();
+
+  const badgeSync = isBadgeSyncPayload(payload);
+  if (
+    !badgeSync &&
+    (options?.appType === "customer" || options?.appType === "provider")
+  ) {
+    const { filterChannelsForRecipient, templateKeyForDirectSend } = await import(
+      "@/lib/notifications/filter-channels-for-recipient"
+    );
+    const templateKey = templateKeyForDirectSend(
+      options?.appType,
+      payload.type,
+      payload.data as Record<string, unknown> | undefined,
+    );
+    if (templateKey && templateKey !== "badge_sync") {
+      const prefChannels = normalizedChannels.filter(
+        (c): c is import("@/lib/notifications/customer-notification-channels").NotificationChannelName =>
+          c === "push" || c === "email" || c === "sms" || c === "whatsapp",
+      );
+      normalizedChannels = await filterChannelsForRecipient(
+        getSupabaseAdmin(),
+        userId,
+        templateKey,
+        prefChannels,
+        options.appType,
+      );
+      if (normalizedChannels.length === 0) {
+        return {
+          success: true,
+          message: "No channels enabled for recipient (preferences)",
+        };
+      }
+    }
+  }
 
   if (options?.senderUserId) {
     const { filterBlockedNotificationRecipients } = await import(
@@ -1120,7 +1155,6 @@ export async function sendToUser(
       ?.map((d) => d.onesignal_player_id)
       .filter((id): id is string => typeof id === "string" && id.length > 0) ?? [];
 
-  const badgeSync = isBadgeSyncPayload(payload);
   const notificationPayload: Record<string, unknown> = {
     include_external_user_ids: [userId],
     channels: normalizedChannels,
@@ -1177,7 +1211,7 @@ export async function sendToUser(
   ) {
     const data = (payload.data ?? {}) as Record<string, unknown>;
     const templateKey = resolvePushTemplateKey(data, payload.type);
-    if (templateKey && isMustDeliverPushTemplate(templateKey)) {
+    if (templateKey && isMustDeliverPushTemplate(templateKey) && normalizedChannels.includes("push")) {
       const bookingId = typeof data.booking_id === "string" ? data.booking_id : null;
       await enqueueMustDeliverChannelsRetry({
         templateKey,
@@ -1215,8 +1249,44 @@ export async function sendToUsers(
   if (targetUserIds.length === 0) {
     return { success: false, message: "No recipients" };
   }
-  const normalizedChannels = parseNotificationChannels(channels);
+  let normalizedChannels = parseNotificationChannels(channels);
   const supabase = options?.supabaseClient ?? getSupabaseAdmin();
+
+  if (
+    !isBadgeSyncPayload(payload) &&
+    (options?.appType === "customer" || options?.appType === "provider")
+  ) {
+    const { filterChannelsForRecipients, templateKeyForDirectSend } = await import(
+      "@/lib/notifications/filter-channels-for-recipient"
+    );
+    const templateKey = templateKeyForDirectSend(
+      options?.appType,
+      payload.type,
+      payload.data as Record<string, unknown> | undefined,
+    );
+    if (
+      templateKey &&
+      templateKey !== "badge_sync" &&
+      normalizedChannels.some((c) => c === "push" || c === "email" || c === "sms")
+    ) {
+      const perUser = await filterChannelsForRecipients(
+        getSupabaseAdmin(),
+        targetUserIds,
+        templateKey,
+        normalizedChannels.filter((c): c is "push" | "email" | "sms" =>
+          c === "push" || c === "email" || c === "sms",
+        ),
+        options.appType,
+      );
+      targetUserIds = targetUserIds.filter((uid) => (perUser.get(uid) ?? []).length > 0);
+      if (targetUserIds.length === 0) {
+        return {
+          success: true,
+          message: "No recipients with enabled channels (preferences)",
+        };
+      }
+    }
+  }
 
   if (options?.senderUserId) {
     const { filterBlockedNotificationRecipients } = await import(
@@ -1616,52 +1686,52 @@ export async function sendTemplateNotification(
   let quietHoursSuppressedPush = false;
 
   let channelsToSend: NotificationChannel[] = [...activeChannels];
+  let pushRecipientUserIds = [...userIds];
+  let inAppRecipientUserIds = [...userIds];
   if ((options?.appType === "customer" || options?.appType === "provider") && userIds.length > 0) {
     const nonPref = channelsToSend.filter((c) => c !== "email" && c !== "sms" && c !== "push");
     const triad = channelsToSend.filter((c): c is "email" | "sms" | "push" =>
-      c === "email" || c === "sms" || c === "push"
+      c === "email" || c === "sms" || c === "push",
     );
-    let allowed: ("email" | "sms" | "push")[];
+    let perUserTriad: Map<string, ("email" | "sms" | "push" | "whatsapp")[]>;
     if (options.appType === "provider") {
-      // Providers store opt-outs on user_profiles.notification_preferences too
-      // (per provider user — owner or staff). Historically these were stored but
-      // never enforced on send; now they gate email/sms/push the same way the
-      // customer prefs do, with must-deliver bypass below.
-      const { intersectChannelsForProviderRecipients } = await import(
+      const { resolveChannelsPerProviderRecipient } = await import(
         "@/lib/notifications/provider-notification-channels"
       );
-      allowed = (await intersectChannelsForProviderRecipients(
+      perUserTriad = await resolveChannelsPerProviderRecipient(
         getSupabaseAdmin(),
         userIds,
         templateKey,
-        triad
-      )).filter((c): c is "email" | "sms" | "push" =>
-        c === "email" || c === "sms" || c === "push",
+        triad,
       );
     } else {
-      const { intersectChannelsForCustomerRecipients } = await import(
+      const { resolveChannelsPerCustomerRecipient } = await import(
         "@/lib/notifications/customer-notification-channels"
       );
-      allowed = (await intersectChannelsForCustomerRecipients(
+      perUserTriad = await resolveChannelsPerCustomerRecipient(
         getSupabaseAdmin(),
         userIds,
         templateKey,
-        triad
-      )).filter((c): c is "email" | "sms" | "push" =>
-        c === "email" || c === "sms" || c === "push",
+        triad,
       );
     }
-    // Must-deliver pushes (everything except marketing/promo) bypass preference
-    // gating so transactional notifications reach the device. Email/SMS prefs
-    // are still respected.
-    if (
-      isMustDeliverPushTemplate(templateKey) &&
-      triad.includes("push") &&
-      !allowed.includes("push")
-    ) {
-      allowed.push("push");
+    pushRecipientUserIds = userIds.filter((uid) =>
+      (perUserTriad.get(uid) ?? []).includes("push"),
+    );
+    inAppRecipientUserIds = userIds.filter(
+      (uid) => (perUserTriad.get(uid) ?? []).length > 0,
+    );
+    const allowedTriad: ("email" | "sms" | "push")[] = [];
+    if (triad.includes("email") && userIds.some((uid) => (perUserTriad.get(uid) ?? []).includes("email"))) {
+      allowedTriad.push("email");
     }
-    channelsToSend = [...nonPref, ...allowed];
+    if (triad.includes("sms") && userIds.some((uid) => (perUserTriad.get(uid) ?? []).includes("sms"))) {
+      allowedTriad.push("sms");
+    }
+    if (triad.includes("push") && pushRecipientUserIds.length > 0) {
+      allowedTriad.push("push");
+    }
+    channelsToSend = [...nonPref, ...allowedTriad];
   }
 
   // Per-user email/SMS gating (Option A). Email/SMS are delivered per-recipient
@@ -1719,70 +1789,109 @@ export async function sendTemplateNotification(
     userIds.length > 0 &&
     (emailSmsByUser ? emailSmsByUser.size > 0 : true);
 
-  // Quiet hours enforcement: suppress push during quiet hours for marketing
-  // only; must-deliver transactional pushes always go through.
-  if (
-    channelsToSend.includes("push") &&
-    userIds.length > 0 &&
-    !isMustDeliverPushTemplate(templateKey)
-  ) {
+  // Quiet hours: per-recipient — only suppress push for users inside their window.
+  if (channelsToSend.includes("push") && pushRecipientUserIds.length > 0) {
     try {
+      const { isUserInQuietHours } = await import("@/lib/notifications/quiet-hours");
       const supabaseAdmin = getSupabaseAdmin();
       const [{ data: profiles }, { data: tzRows }] = await Promise.all([
         supabaseAdmin
           .from("user_profiles")
           .select("user_id, notification_preferences")
-          .in("user_id", userIds),
-        supabaseAdmin.from("users").select("id, timezone").in("id", userIds),
+          .in("user_id", pushRecipientUserIds),
+        supabaseAdmin.from("users").select("id, timezone").in("id", pushRecipientUserIds),
       ]);
-
-      if (profiles && profiles.length > 0) {
-        const tzByUser = new Map<string, string>(
-          (tzRows ?? []).map((u) => [
-            u.id as string,
-            (typeof u.timezone === "string" && u.timezone.trim()) || "Africa/Johannesburg",
-          ]),
-        );
-        const now = new Date();
-        // Quiet hours are wall-clock for the recipient, so evaluate "now" in
-        // each user's IANA timezone rather than the Vercel/server timezone —
-        // previously a user in another region was silenced at the wrong hours.
-        const hhmmInTz = (tz: string): string => {
-          try {
-            return new Intl.DateTimeFormat("en-GB", {
-              hour: "2-digit",
-              minute: "2-digit",
-              hour12: false,
-              timeZone: tz,
-            }).format(now);
-          } catch {
-            return new Intl.DateTimeFormat("en-GB", {
-              hour: "2-digit",
-              minute: "2-digit",
-              hour12: false,
-              timeZone: "Africa/Johannesburg",
-            }).format(now);
-          }
-        };
-        const allInQuietHours = profiles.every((p) => {
-          const prefs = p.notification_preferences as Record<string, unknown> | null;
-          if (!prefs?.quiet_hours_enabled) return false;
-          const tz = tzByUser.get(p.user_id as string) ?? "Africa/Johannesburg";
-          const nowHHMM = hhmmInTz(tz);
-          const start = String(prefs.quiet_hours_start ?? "22:00");
-          const end = String(prefs.quiet_hours_end ?? "07:00");
-          if (start <= end) {
-            return nowHHMM >= start && nowHHMM < end;
-          }
-          return nowHHMM >= start || nowHHMM < end;
-        });
-        if (allInQuietHours) {
+      const tzByUser = new Map<string, string>(
+        (tzRows ?? []).map((u) => [
+          u.id as string,
+          (typeof u.timezone === "string" && u.timezone.trim()) || "Africa/Johannesburg",
+        ]),
+      );
+      const prefByUser = new Map(
+        (profiles ?? []).map((p) => [
+          p.user_id as string,
+          (p.notification_preferences as Record<string, unknown> | null) ?? null,
+        ]),
+      );
+      const now = new Date();
+      const beforeQuiet = pushRecipientUserIds.length;
+      pushRecipientUserIds = pushRecipientUserIds.filter((uid) => {
+        const prefs = prefByUser.get(uid);
+        const tz = tzByUser.get(uid) ?? "Africa/Johannesburg";
+        return !isUserInQuietHours(prefs, tz, now);
+      });
+      if (pushRecipientUserIds.length < beforeQuiet) {
+        quietHoursSuppressedPush = pushRecipientUserIds.length === 0;
+        if (pushRecipientUserIds.length === 0) {
           channelsToSend = channelsToSend.filter((c) => c !== "push");
-          quietHoursSuppressedPush = true;
         }
       }
     } catch {
       // Non-blocking: if quiet hours check fails, send push anyway
+    }
+  }
+
+  if (
+    options?.appType === "provider" &&
+    channelsToSend.includes("push") &&
+    pushRecipientUserIds.length > 0
+  ) {
+    try {
+      const {
+        shouldDeferProviderPushToDigest,
+        resolveProviderDigestMode,
+        enqueueProviderDigestPending,
+      } = await import("@/lib/notifications/provider-notification-digest");
+      const supabaseAdmin = getSupabaseAdmin();
+      const { data: profiles } = await supabaseAdmin
+        .from("user_profiles")
+        .select("user_id, notification_preferences")
+        .in("user_id", pushRecipientUserIds);
+      const prefByUser = new Map(
+        (profiles ?? []).map((p) => [
+          p.user_id as string,
+          (p.notification_preferences as Record<string, unknown> | null) ?? null,
+        ]),
+      );
+      const deferred: string[] = [];
+      for (const uid of pushRecipientUserIds) {
+        const prefs = prefByUser.get(uid);
+        if (!shouldDeferProviderPushToDigest(prefs, templateKey)) continue;
+        const digestMode = resolveProviderDigestMode(prefs);
+        if (!digestMode) continue;
+        const lang = recipientLangs.get(uid) ?? "en";
+        const itemTitle = pushHeadings[lang] ?? pushHeadings.en ?? title;
+        const itemMessage = pushContents[lang] ?? pushContents.en ?? body;
+        const bookingId =
+          typeof variables.booking_id === "string" ? variables.booking_id.trim() : "";
+        const dedupeKey =
+          bookingId && templateKey
+            ? `digest:${templateKey}:${bookingId}:${uid}`
+            : null;
+        await enqueueProviderDigestPending({
+          userId: uid,
+          templateKey,
+          title: itemTitle,
+          message: itemMessage,
+          digestMode,
+          dedupeKey,
+          payload: {
+            template_key: templateKey,
+            ...variables,
+            url: pushUrlFields.actionPath || templateUrlRelative || undefined,
+          },
+        });
+        deferred.push(uid);
+      }
+      if (deferred.length > 0) {
+        const deferSet = new Set(deferred);
+        pushRecipientUserIds = pushRecipientUserIds.filter((uid) => !deferSet.has(uid));
+        if (pushRecipientUserIds.length === 0) {
+          channelsToSend = channelsToSend.filter((c) => c !== "push");
+        }
+      }
+    } catch (digestErr) {
+      console.warn("[sendTemplateNotification] provider digest defer failed:", digestErr);
     }
   }
 
@@ -1862,6 +1971,7 @@ export async function sendTemplateNotification(
           smsBody,
           data: { template_key: templateKey, ...variables },
           url: pushUrlFields.actionPath || undefined,
+          emailCtaWebUrl: pushUrlFields.webUrl || undefined,
         },
         options?.supabaseClient,
       );
@@ -1963,6 +2073,7 @@ export async function sendTemplateNotification(
               whatsappTemplateStatus: waStatus,
               data: { template_key: templateKey, ...variables },
               url: pushUrlFields.actionPath || undefined,
+              emailCtaWebUrl: pushUrlFields.webUrl || undefined,
               scheduleAt: options?.scheduleAt ?? null,
             },
             options?.supabaseClient,
@@ -1973,7 +2084,10 @@ export async function sendTemplateNotification(
   }
 
   const notificationPayload: Record<string, unknown> = {
-    include_external_user_ids: userIds,
+    include_external_user_ids:
+      channelsToSend.includes("push") && pushRecipientUserIds.length > 0
+        ? pushRecipientUserIds
+        : userIds,
     channels: channelsToSend,
     headings: pushHeadings,
     contents: pushContents,
@@ -2023,7 +2137,7 @@ export async function sendTemplateNotification(
   if (
     !SKIP_IN_APP_TEMPLATES.has(templateKey) &&
     !options?.skipInApp &&
-    userIds.length > 0 &&
+    inAppRecipientUserIds.length > 0 &&
     (title || body)
   ) {
     // Pull well-known context IDs out of template variables
@@ -2052,7 +2166,7 @@ export async function sendTemplateNotification(
     // treat it as fire-and-forget (never block a fan-out on DB insert latency).
     inAppInsertPromise = import("@/lib/notifications/insert-notification").then(({ insertNotifications }) =>
       insertNotifications(
-        userIds.map((userId) => ({
+        inAppRecipientUserIds.map((userId) => ({
           user_id: userId,
           type: templateKey,
           title: title || templateKey,
@@ -2062,17 +2176,22 @@ export async function sendTemplateNotification(
         }))
       )
     );
-    if (userIds.length > 1) void inAppInsertPromise;
+    if (inAppRecipientUserIds.length > 1) void inAppInsertPromise;
   }
 
-  // Always target devices (player_ids + correct app config) when we have userIds.
+  const pushTargetUserIds =
+    channelsToSend.includes("push") && pushRecipientUserIds.length > 0
+      ? pushRecipientUserIds
+      : [];
+
+  // Always target devices (player_ids + correct app config) for push recipients.
   // Use admin for user_devices reads — webhooks and provider routes have no customer JWT for RLS.
-  if (userIds.length > 0) {
+  if (pushTargetUserIds.length > 0) {
     const supabase = options?.supabaseClient ?? getSupabaseAdmin();
     let query = supabase
       .from("user_devices")
       .select("onesignal_player_id")
-      .in("user_id", userIds);
+      .in("user_id", pushTargetUserIds);
     if (options?.appType === "provider") {
       query = query.eq("app_type", "provider");
     } else if (options?.appType === "customer") {
@@ -2092,17 +2211,20 @@ export async function sendTemplateNotification(
   // app is killed. For a single recipient, wait for the in-app row insert so
   // the unread count includes this notification, then set it exactly (SetTo).
   // Multi-recipient fan-outs increment by 1 (one payload carries one value).
-  if (channelsToSend.includes("push")) {
-    if (userIds.length === 1) {
+  if (channelsToSend.includes("push") && pushTargetUserIds.length > 0) {
+    if (pushTargetUserIds.length === 1) {
       try {
         if (inAppInsertPromise) await inAppInsertPromise;
       } catch {
         // best-effort; still send a badge below
       }
-      const unread = await getTotalUnreadBadgeCount(userIds[0], options?.appType ?? "customer");
+      const unread = await getTotalUnreadBadgeCount(
+        pushTargetUserIds[0],
+        options?.appType ?? "customer",
+      );
       notificationPayload.ios_badgeType = "SetTo";
       notificationPayload.ios_badgeCount = exactIosBadgeCount(unread);
-    } else if (userIds.length > 1) {
+    } else if (pushTargetUserIds.length > 1) {
       notificationPayload.ios_badgeType = "Increase";
       notificationPayload.ios_badgeCount = 1;
     }
@@ -2146,6 +2268,7 @@ export async function sendTemplateNotification(
       smsBody,
       data: { template_key: templateKey, ...variables },
       url: pushUrlFields.actionPath || undefined,
+      emailCtaWebUrl: pushUrlFields.webUrl || undefined,
       dedupePrefix: "fallback",
     });
   }
@@ -2178,6 +2301,7 @@ async function enqueueMustDeliverChannelsRetry(ctx: {
   smsBody: string;
   data: Record<string, unknown>;
   url?: string;
+  emailCtaWebUrl?: string;
   dedupePrefix: string;
 }): Promise<void> {
   try {
@@ -2204,6 +2328,7 @@ async function enqueueMustDeliverChannelsRetry(ctx: {
                 smsBody: ctx.smsBody,
                 data: ctx.data,
                 url: ctx.url,
+                emailCtaWebUrl: ctx.emailCtaWebUrl,
               }),
               dedupeKey: `${ctx.dedupePrefix}:${ctx.templateKey}:${userId}:${channel}:${ctx.bookingId ?? "none"}`,
             }),
@@ -2225,15 +2350,18 @@ function buildQueuePayload(
     smsBody: string;
     data: Record<string, unknown>;
     url?: string;
+    emailCtaWebUrl?: string;
   },
 ): Record<string, unknown> {
   if (channel === "email") {
-    return {
-      subject: ctx.emailSubject || ctx.title,
-      html: ctx.emailBody || ctx.body,
-      body: ctx.emailBody || ctx.body,
-      data: ctx.data,
-    };
+    const subject = ctx.emailSubject || ctx.title;
+    const rawHtml = ctx.emailBody || ctx.body;
+    const { html, text } = finalizeTemplateEmailHtml({
+      emailBody: rawHtml,
+      emailSubject: subject,
+      ctaHref: ctx.emailCtaWebUrl,
+    });
+    return { subject, html, text, body: text, data: ctx.data };
   }
   if (channel === "sms") {
     return {

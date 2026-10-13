@@ -30,6 +30,7 @@ interface GeocodingResult extends MapboxGeocodeFeatureLike {
 export interface ParsedAddress {
   full_address: string;
   address_line1: string;
+  address_line2?: string;
   city: string;
   state: string;
   postal_code: string;
@@ -57,6 +58,8 @@ interface AddressAutocompleteProps {
   returnKeyType?: TextInputProps["returnKeyType"];
   blurOnSubmit?: boolean;
   onSubmitEditing?: TextInputProps["onSubmitEditing"];
+  /** Fired when the user edits the search field (not on programmatic select). */
+  onQueryChange?: (query: string) => void;
 }
 
 export function AddressAutocomplete({
@@ -74,6 +77,7 @@ export function AddressAutocomplete({
   returnKeyType,
   blurOnSubmit,
   onSubmitEditing,
+  onQueryChange,
 }: AddressAutocompleteProps) {
   const { bundle } = useConfigBundle();
   const resolvedDefaultCountry =
@@ -135,6 +139,7 @@ export function AddressAutocomplete({
 
   function handleChangeText(text: string) {
     setQuery(text);
+    onQueryChange?.(text);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => search(text), 300);
   }
@@ -151,6 +156,7 @@ export function AddressAutocomplete({
     const parsed: ParsedAddress = {
       full_address: result.place_name,
       address_line1: mapped.address_line1,
+      ...(mapped.address_line2 ? { address_line2: mapped.address_line2 } : {}),
       city: mapped.city,
       state: mapped.state,
       postal_code: mapped.postal_code,

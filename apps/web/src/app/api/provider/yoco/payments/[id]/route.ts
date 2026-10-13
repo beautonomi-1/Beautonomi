@@ -9,6 +9,9 @@ import {
   YocoOAuthRequired,
 } from "@/lib/payments/yoco-oauth";
 import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { applyYocoSuccessfulSettlement } from "@/lib/payments/yoco-apply-successful-settlement";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/provider/yoco/payments/[id]
@@ -146,6 +149,42 @@ export async function GET(
           console.error("Error syncing payment status from Yoco:", syncError);
         }
         // Continue with local data; the polled value is best-effort.
+      }
+    }
+
+    const metaForVirtual = (paymentData.metadata ?? {}) as Record<string, unknown>;
+    const isVirtualForSettle =
+      metaForVirtual.credential_mode === "virtual_checkout" ||
+      (typeof paymentData.yoco_device_id === "string" &&
+        paymentData.yoco_device_id.startsWith("virtual:"));
+
+    if (
+      !isVirtualForSettle &&
+      paymentData.status === "successful" &&
+      typeof paymentData.yoco_payment_id === "string" &&
+      paymentData.yoco_payment_id.trim()
+    ) {
+      try {
+        const amountCents =
+          typeof paymentData.amount === "number" && Number.isFinite(paymentData.amount)
+            ? paymentData.amount
+            : 0;
+        const currency =
+          typeof paymentData.currency === "string" && paymentData.currency.trim()
+            ? paymentData.currency.trim()
+            : LAST_RESORT_CURRENCY;
+        const admin = getSupabaseAdmin();
+        await applyYocoSuccessfulSettlement(admin, {
+          yocoPaymentId: paymentData.yoco_payment_id,
+          existingPayment: paymentData as Parameters<
+            typeof applyYocoSuccessfulSettlement
+          >[1]["existingPayment"],
+          metadata: (paymentData.metadata ?? {}) as Record<string, unknown>,
+          amountCents,
+          currency,
+        });
+      } catch (settleError) {
+        console.error("Yoco poll: settlement after successful status failed:", settleError);
       }
     }
 

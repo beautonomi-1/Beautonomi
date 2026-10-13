@@ -69,6 +69,7 @@ export function ProviderBookingDateTimePicker({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [debouncedDate, setDebouncedDate] = useState(date);
+  const [timeAdjustHint, setTimeAdjustHint] = useState<string | null>(null);
   const { t } = useTranslation();
 
   const selectedDate = useMemo(() => parseDateValue(date || format(new Date(), "yyyy-MM-dd")), [date]);
@@ -137,15 +138,29 @@ export function ProviderBookingDateTimePicker({
   );
 
   useEffect(() => {
-    if (!availableTimes.length || needsServiceFirst) return;
-    if (startTime && availableTimes.includes(startTime)) return;
-    if (startTime) {
-      const idx = availableTimes.findIndex((t) => t >= startTime);
-      onTimeChange(idx >= 0 ? availableTimes[idx]! : availableTimes[0]!);
-    } else {
-      onTimeChange(availableTimes[0]!);
+    if (!availableTimes.length || needsServiceFirst) {
+      setTimeAdjustHint(null);
+      return;
     }
-  }, [availableTimes, needsServiceFirst, startTime, onTimeChange]);
+    if (startTime && availableTimes.includes(startTime)) {
+      setTimeAdjustHint(null);
+      return;
+    }
+    const nextTime = startTime
+      ? (() => {
+          const idx = availableTimes.findIndex((slot) => slot >= startTime);
+          return idx >= 0 ? availableTimes[idx]! : availableTimes[0]!;
+        })()
+      : availableTimes[0]!;
+    if (startTime && nextTime !== startTime) {
+      setTimeAdjustHint(
+        t("web.provider.bookingDateTimePicker.timeAdjusted", { time: formatTime(nextTime) }),
+      );
+    } else {
+      setTimeAdjustHint(null);
+    }
+    onTimeChange(nextTime);
+  }, [availableTimes, needsServiceFirst, startTime, onTimeChange, t]);
 
   const grouped = useMemo(() => groupSlotsByPeriod(rows), [rows]);
   const filteredGroups = useMemo(() => {
@@ -231,6 +246,11 @@ export function ProviderBookingDateTimePicker({
         {needsServiceFirst ? (
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 mb-2">
             {t(SCHEDULING_HINT_KEY)}
+          </p>
+        ) : null}
+        {timeAdjustHint ? (
+          <p className="text-xs text-blue-800 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2 mb-2">
+            {timeAdjustHint}
           </p>
         ) : null}
         <button

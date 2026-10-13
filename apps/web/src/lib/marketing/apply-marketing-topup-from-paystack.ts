@@ -15,7 +15,7 @@ export async function applyMarketingTopupFromPaystackSuccess(input: {
   paystackReference: string;
   currency?: string | null;
   metadata?: Record<string, unknown>;
-  paymentProvider?: "paystack" | "stripe";
+  paymentProvider?: "paystack" | "stripe" | "flutterwave";
 }): Promise<{ credited: boolean; balance_after?: number }> {
   const { supabase, providerId, amountZar, paystackReference, paymentProvider = "paystack" } =
     input;

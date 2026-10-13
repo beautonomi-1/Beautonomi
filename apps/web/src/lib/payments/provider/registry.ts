@@ -6,6 +6,7 @@ import {
 import type { PaymentProvider, SettlementModel } from "./types";
 import { paystackProvider } from "./paystack-provider";
 import { stripeProvider } from "./stripe-provider";
+import { flutterwaveProvider } from "./flutterwave-provider";
 import { resolveSettlementModel } from "./settlement-model";
 
 export { resolveSettlementModel };
@@ -13,6 +14,7 @@ export { resolveSettlementModel };
 const PROVIDERS: Record<string, PaymentProvider> = {
   paystack: paystackProvider,
   stripe: stripeProvider,
+  flutterwave: flutterwaveProvider,
 };
 
 export async function getRegionPaymentGateway(

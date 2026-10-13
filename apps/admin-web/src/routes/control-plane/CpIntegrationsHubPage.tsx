@@ -83,6 +83,12 @@ const cards: { title: string; description: string; to: string; icon: typeof BarC
     icon: CreditCard,
   },
   {
+    title: "Flutterwave",
+    description: "Webhook health; keys and verif-hash per region on Region online gateway",
+    to: adminSpaTo("/admin/integrations/flutterwave"),
+    icon: CreditCard,
+  },
+  {
     title: "Country launch checklist",
     description: "Automated pre-launch readiness validation per tenant/region",
     to: adminSpaTo("/admin/control-plane/country-launch-checklist"),
@@ -90,7 +96,7 @@ const cards: { title: string; description: string; to: string; icon: typeof BarC
   },
   {
     title: "Region online gateway",
-    description: "Primary Paystack or Stripe checkout + region secrets",
+    description: "Primary Paystack, Stripe, or Flutterwave checkout + region secrets",
     to: adminSpaTo("/admin/control-plane/region-online-gateway"),
     icon: CreditCard,
   },

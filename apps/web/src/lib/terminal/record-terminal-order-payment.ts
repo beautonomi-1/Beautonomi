@@ -44,7 +44,7 @@ type RecordTerminalOrderPaymentInput = {
   feesMajor?: number;
   commercialModel: TerminalCommercialModel;
   source: "paystack_webhook" | "paystack_verify" | "manual_invoice" | "subscription_allocation";
-  provider: "paystack" | "stripe" | "manual" | "subscription";
+  provider: "paystack" | "stripe" | "flutterwave" | "manual" | "subscription";
 };
 
 export async function recordTerminalOrderPayment(

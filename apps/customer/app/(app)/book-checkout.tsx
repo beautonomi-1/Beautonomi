@@ -18,6 +18,7 @@ import { useTranslation, buildCancellationPolicyLines, cancellationRequiresAck }
 import type { CancellationPolicyView } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { haptic } from "@/lib/haptics";
+import { groupGuestsServiceSubtotal } from "@/lib/group-booking-checkout-subtotal";
 import { Skeleton } from "@/components/Skeleton";
 import { PaymentProcessingOverlay } from "@/components/payment/PaymentProcessingOverlay";
 import { useSavedCards } from "@/hooks/useSavedCards";
@@ -29,11 +30,13 @@ import {
 } from "@/lib/paystack-webview-utils";
 import {
   CHECKOUT_SUCCESS_PATH,
-  getBookingCheckoutPaystackAuthPrefix,
   getCustomerPaystackAuthReturnUrl,
+  getNativePaystackReturnUrl,
+  CUSTOMER_NATIVE_PAYSTACK_PATHS,
   matchesCheckoutSuccessReturnUrl,
   matchesPaystackAuthSessionReturn,
 } from "@/lib/payments/customerPaystackReturn";
+import { waitForModalDismiss } from "@/lib/payments/waitForModalDismiss";
 import * as ExpoLinking from "expo-linking";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearPendingExcludeHoldId } from "@/lib/booking-flow-hold";
@@ -159,10 +162,12 @@ interface HoldData {
   package_id?: string;
   /** Tenant feature_flags — same as GET booking-holds + consume */
   payment_paystack?: boolean;
+  provider_accepts_online?: boolean;
+  provider_accepts_cash?: boolean;
+  cash_enabled_on_platform?: boolean;
   payment_gateway?: string;
   payment_wallet?: boolean;
   gift_cards?: boolean;
-  cash_enabled_on_platform?: boolean;
   /** Effective tax rate from GET hold (provider or platform default). */
   tax_rate_percent?: number;
   /** Whether tax is inclusive in the service prices. */
@@ -1774,14 +1779,10 @@ export default function BookCheckoutScreen() {
   }, [hold?.booking_services_snapshot]);
 
   const primarySubtotal = snapshotServiceLines.reduce((s, line) => s + line.price, 0);
-  const groupParticipantsSubtotal =
-    isGroupBooking && groupParticipants.length > 0
-      ? groupParticipants.reduce((sum, p) => {
-          const ids = p.service_ids.length > 0 ? p.service_ids : snapshotOfferingIds;
-          return sum + ids.reduce((s, id) => s + (offeringPriceMap.get(id) ?? 0), 0);
-        }, 0)
-      : 0;
-  const subtotal = primarySubtotal;
+  const groupParticipantsSubtotal = isGroupBooking
+    ? groupGuestsServiceSubtotal(groupParticipants, snapshotOfferingIds, offeringPriceMap)
+    : 0;
+  const servicesSubtotal = primarySubtotal + groupParticipantsSubtotal;
   const currency = hold?.booking_services_snapshot[0]?.currency || getTenantDefaultCurrency();
   const travelFee = hold?.travel_fee ?? 0;
   const houseCallFeeTotal =
@@ -1855,7 +1856,7 @@ export default function BookCheckoutScreen() {
   }, [effectivePackageId]);
 
   const prePromoTotal =
-    Math.max(0, primarySubtotal - packageDiscount) +
+    Math.max(0, servicesSubtotal - packageDiscount) +
     addonsSubtotal +
     travelFee +
     productsSubtotal;
@@ -1863,7 +1864,7 @@ export default function BookCheckoutScreen() {
   const checkoutCartFingerprint = useMemo(
     () =>
       [
-        primarySubtotal.toFixed(4),
+        servicesSubtotal.toFixed(4),
         packageDiscount.toFixed(4),
         addonsSubtotal.toFixed(4),
         String(travelFee),
@@ -1877,7 +1878,7 @@ export default function BookCheckoutScreen() {
         isGroupBooking ? String(groupParticipants.length) : "0",
       ].join("~"),
     [
-      primarySubtotal,
+      servicesSubtotal,
       packageDiscount,
       addonsSubtotal,
       travelFee,
@@ -1974,15 +1975,24 @@ export default function BookCheckoutScreen() {
       ? hold.payment_gateway.trim().toLowerCase()
       : checkoutGateway.gateway;
   const paystackEnabled = hold ? hold.payment_paystack !== false : paystackFlagBundle;
+  const providerAcceptsOnline = hold?.provider_accepts_online !== false;
+  const providerAcceptsCash = hold?.provider_accepts_cash !== false;
   const cardOnlineEnabled =
-    marketGateway === "stripe" ||
-    (marketGateway === "paystack" && paystackEnabled) ||
-    (marketGateway !== "paystack" &&
-      marketGateway !== "stripe" &&
-      (paystackEnabled || checkoutGateway.useHostedWebFallback));
+    providerAcceptsOnline &&
+    (marketGateway === "stripe" ||
+      marketGateway === "flutterwave" ||
+      (marketGateway === "paystack" && paystackEnabled) ||
+      (marketGateway !== "paystack" &&
+        marketGateway !== "stripe" &&
+        marketGateway !== "flutterwave" &&
+        (paystackEnabled || checkoutGateway.useHostedWebFallback)));
   const walletEnabled = hold ? hold.payment_wallet !== false : walletFlagBundle;
   const giftCardsEnabled = hold ? hold.gift_cards !== false : giftCardsFlagBundle;
-  const cashEnabled = hold?.cash_enabled_on_platform === true || cashEnabledOnPlatform;
+  const cashEnabled =
+    providerAcceptsCash &&
+    (hold?.cash_enabled_on_platform === true || cashEnabledOnPlatform);
+  const noPaymentMethodsAvailable =
+    Boolean(hold) && !cardOnlineEnabled && !cashEnabled && !giftCardsEnabled;
 
   const depositPctEffective =
     hold?.deposit_percentage != null && !Number.isNaN(Number(hold.deposit_percentage))
@@ -2027,11 +2037,18 @@ export default function BookCheckoutScreen() {
 
   useEffect(() => {
     if (!hold) return;
-    const paystack = hold.payment_paystack !== false;
+    const gw =
+      typeof hold.payment_gateway === "string" && hold.payment_gateway.trim()
+        ? hold.payment_gateway.trim().toLowerCase()
+        : checkoutGateway.gateway;
+    const cardOk =
+      gw === "stripe" ||
+      gw === "flutterwave" ||
+      (gw === "paystack" && hold.payment_paystack !== false);
     const walletOk = hold.payment_wallet !== false;
     const giftOk = hold.gift_cards !== false;
     if (paymentMethod === "giftcard" && !giftOk) {
-      setPaymentMethod(paystack ? "card" : cashEnabled ? "cash" : "card");
+      setPaymentMethod(cardOk ? "card" : cashEnabled ? "cash" : "card");
       return;
     }
     if (paymentMethod === "wallet") {
@@ -2039,13 +2056,13 @@ export default function BookCheckoutScreen() {
       setUseWallet(walletOk);
       return;
     }
-    if (paymentMethod === "card" && !paystack && cashEnabled) {
+    if (paymentMethod === "card" && !cardOk && cashEnabled) {
       setPaymentMethod("cash");
     }
     if (paymentMethod === "cash" && !cashEnabled) {
-      setPaymentMethod(paystack ? "card" : giftOk ? "giftcard" : "card");
+      setPaymentMethod(cardOk ? "card" : giftOk ? "giftcard" : "card");
     }
-  }, [hold, paymentMethod, cashEnabled]);
+  }, [hold, paymentMethod, cashEnabled, checkoutGateway.gateway]);
 
   useEffect(() => {
     if (paymentMethod === "wallet") {
@@ -2746,10 +2763,7 @@ export default function BookCheckoutScreen() {
         payload.subscribe_recurring = { enabled: true, frequency: recurringFrequency };
       }
       if (paymentMethod === "card") {
-        payload.paystack_callback_url =
-          Platform.OS !== "web"
-            ? ExpoLinking.createURL("book/paystack")
-            : getCustomerPaystackAuthReturnUrl(CHECKOUT_SUCCESS_PATH);
+        payload.paystack_callback_url = getCustomerPaystackAuthReturnUrl(CHECKOUT_SUCCESS_PATH);
       }
 
       const res = await api.post<ConsumeResponse>(
@@ -2900,12 +2914,14 @@ export default function BookCheckoutScreen() {
         setProcessingMessage(t("checkout.openingPaymentPage"));
         let returnedPaymentReference: string | null = data?.payment_reference ?? null;
         let returnedCheckoutSessionId: string | null = null;
+        let returnedFlutterwaveTransactionId: string | null = null;
         if (Platform.OS !== "web") {
           // Important: close the blocking overlay before opening Paystack WebView.
           // Two RN modals competing can leave users stuck on "opening payment page".
           setProcessingPayment(false);
           setProcessingStep(undefined);
-          const paystackReturnUrl = getBookingCheckoutPaystackAuthPrefix();
+          await waitForModalDismiss();
+          const paystackReturnUrl = getNativePaystackReturnUrl(CUSTOMER_NATIVE_PAYSTACK_PATHS.booking);
           // Mark before opening browser so the deep-link return screen cooperates
           // if Android mounts book/paystack before waitForCheckout resolves.
           if (returnedPaymentReference) {
@@ -2920,6 +2936,17 @@ export default function BookCheckoutScreen() {
               !isCancelledPaystackUrl(u),
             matchCancel: (u) => isCancelledPaystackUrl(u),
           });
+
+          if (authResult.outcome === "start_failed") {
+            Alert.alert(
+              t("checkout.paymentUnavailableTitle", "Payment unavailable"),
+              t(
+                "checkout.paymentBrowserFailed",
+                "We couldn't open the secure payment window. Please try again.",
+              ),
+            );
+            return;
+          }
 
           if (authResult.outcome === "cancel") {
             setProcessingPayment(false);
@@ -2970,6 +2997,17 @@ export default function BookCheckoutScreen() {
             const parsedReturn = parseOnlineCheckoutReturnUrl(authResult.url);
             if (parsedReturn.reference) returnedPaymentReference = parsedReturn.reference;
             if (parsedReturn.sessionId) returnedCheckoutSessionId = parsedReturn.sessionId;
+            if (parsedReturn.transactionId) {
+              returnedFlutterwaveTransactionId = parsedReturn.transactionId;
+            }
+            if (parsedReturn.status === "failed" || parsedReturn.status === "cancelled") {
+              setProcessingPayment(false);
+              Alert.alert(
+                t("checkout.paymentNotCompletedTitle", "Payment not completed"),
+                t("checkout.paymentNotCompletedBody", "Your booking has not been confirmed."),
+              );
+              return;
+            }
           }
         } else {
           // Full redirect on Expo Web — matches the working pattern in custom-offer-checkout.tsx
@@ -2987,6 +3025,7 @@ export default function BookCheckoutScreen() {
         if (returnedPaymentReference) {
           const verifyResult = await verifyPaystackWithRetry(returnedPaymentReference, {
             sessionId: returnedCheckoutSessionId,
+            transactionId: returnedFlutterwaveTransactionId,
           });
           if (verifyResult.status === "success") {
             paymentConfirmed = true;
@@ -3018,7 +3057,7 @@ export default function BookCheckoutScreen() {
           setProcessingStep(undefined);
           if (bookingId) {
             trackBookingConfirmed(bookingId, paymentMethod, total);
-            trackPaymentSuccess(bookingId, amountPaidOnCompletion);
+            trackPaymentSuccess(bookingId, amountPaidOnCompletion, paymentMethod, marketGateway);
             notifyRecurringSubscription({ bookingIdForSeriesCheck: bookingId });
             navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined, "pending_payment");
           } else {
@@ -3040,7 +3079,12 @@ export default function BookCheckoutScreen() {
         setProcessingPayment(false);
         setProcessingStep(undefined);
         trackBookingConfirmed(confirmedBookingId ?? hold_id, paymentMethod, total);
-        trackPaymentSuccess(confirmedBookingId ?? hold_id, amountPaidOnCompletion);
+        trackPaymentSuccess(
+          confirmedBookingId ?? hold_id,
+          amountPaidOnCompletion,
+          paymentMethod,
+          marketGateway,
+        );
         notifyRecurringSubscription({ bookingIdForSeriesCheck: confirmedBookingId ?? bookingId });
         navigateToBooking(
           confirmedBookingId,
@@ -3050,7 +3094,7 @@ export default function BookCheckoutScreen() {
       } else {
         if (selectedCardId && !useNewCard && savedCards.length > 0) refreshCards();
         trackBookingConfirmed(bookingId ?? hold_id, paymentMethod, total);
-        trackPaymentSuccess(bookingId ?? hold_id, amountPaidOnCompletion);
+        trackPaymentSuccess(bookingId ?? hold_id, amountPaidOnCompletion, paymentMethod, marketGateway);
         notifyRecurringSubscription({ bookingIdForSeriesCheck: bookingId ?? undefined });
         navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined);
       }
@@ -5177,6 +5221,11 @@ export default function BookCheckoutScreen() {
               <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>
                 {t("checkout.paymentMethod")}
               </Text>
+              {noPaymentMethodsAvailable ? (
+                <Text style={{ fontSize: 14, color: "#6B7280", marginBottom: 12 }}>
+                  {t("checkout.noPaymentMethodsAvailable")}
+                </Text>
+              ) : null}
               <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 12, gap: 8 }}>
                 {cardOnlineEnabled && (
                   <Pressable
@@ -5825,6 +5874,7 @@ export default function BookCheckoutScreen() {
                 !holdServerReady ||
                 consuming ||
                 isExpired ||
+                noPaymentMethodsAvailable ||
                 policyAckBlocksCheckout ||
                 loyaltyValidating ||
                 promoValidating ||

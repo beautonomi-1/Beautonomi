@@ -11,13 +11,21 @@ describe("payment provider registry", () => {
     expect(resolveSettlementModel({ settlement_model: "invalid" })).toBe("platform_mor_transfer");
   });
 
-  it("registers paystack and stripe providers", () => {
+  it("registers paystack, stripe, and flutterwave providers", () => {
     expect(getPaymentProviderById("paystack")?.id).toBe("paystack");
     expect(getPaymentProviderById("stripe")?.id).toBe("stripe");
+    expect(getPaymentProviderById("flutterwave")?.id).toBe("flutterwave");
     expect(getPaymentProviderById("unknown")).toBeNull();
   });
 
   it("paystack supports refunds", () => {
     expect(getPaymentProviderById("paystack")?.capabilities.supportsRefunds).toBe(true);
+  });
+
+  it("flutterwave supports saved cards and refunds but not native subscriptions", () => {
+    const fw = getPaymentProviderById("flutterwave");
+    expect(fw?.capabilities.supportsSavedCards).toBe(true);
+    expect(fw?.capabilities.supportsRefunds).toBe(true);
+    expect(fw?.capabilities.supportsSubscriptions).toBe(false);
   });
 });

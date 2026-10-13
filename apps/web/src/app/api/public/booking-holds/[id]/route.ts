@@ -18,6 +18,7 @@ import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { getRequestNowAvailability } from "@/lib/on-demand/request-now-availability";
 import { withNoStore } from "@/lib/http/no-store";
 import { getPlatformDefaultTaxRateAndInclusive } from "@/lib/pricing/checkout-tax-defaults";
+import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-payment-types";
 
 /** Hold state is per-session; responses are `Cache-Control: no-store` (never edge-cached). */
 export const GET = withNoStore(handleGet);
@@ -126,7 +127,7 @@ async function handleGet(
       supabase
         .from("providers")
         .select(
-          "tips_enabled, tip_presets, currency, no_show_fee_enabled, no_show_fee_amount, requires_deposit, deposit_percentage, tax_rate_percent, tax_inclusive, customer_fee_config_id",
+          "tips_enabled, tip_presets, currency, no_show_fee_enabled, no_show_fee_amount, requires_deposit, deposit_percentage, tax_rate_percent, tax_inclusive, customer_fee_config_id, accept_online, accept_cash",
         )
         .eq("id", hold.provider_id)
         .eq("tenant_id", tenantId)
@@ -265,6 +266,8 @@ async function handleGet(
       // Non-critical — checkout will still work; server calculates the authoritative total
     }
 
+    const platformPaymentTypes = await getPlatformPaymentTypesForTenant(supabase, tenantId);
+
     return successResponse({
       /** ISO time from server — use with client `Date.now()` to correct clock skew for hold countdowns. */
       server_now: new Date().toISOString(),
@@ -295,6 +298,9 @@ async function handleGet(
       payment_gateway: (await getPaymentProviderForTenant(tenantId))?.provider.id ?? "paystack",
       payment_wallet: paymentFlags.payment_wallet,
       gift_cards: paymentFlags.gift_cards,
+      provider_accepts_online: (providerRow as { accept_online?: boolean | null })?.accept_online ?? true,
+      provider_accepts_cash: (providerRow as { accept_cash?: boolean | null })?.accept_cash ?? true,
+      cash_enabled_on_platform: platformPaymentTypes.cash === true,
       tax_rate_percent: providerTaxRate,
       tax_inclusive: taxInclusive,
       service_fee_config: serviceFeeConfig,

@@ -5,12 +5,19 @@ import { YOCO_WEBHOOK_EVENTS } from "@/lib/payments/yoco";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { applyPosProductStockDecrements } from "@/lib/provider-sales/pos-product-stock";
+import { applyYocoSuccessfulSettlement } from "@/lib/payments/yoco-apply-successful-settlement";
 import {
   resolveYocoSettleEntity,
   reverseYocoSettlement,
-  settleYocoPayment,
 } from "@/lib/payments/settle-yoco-payment";
+import {
+  getValidAccessToken,
+  resolveProviderCredentialMode,
+  YocoOAuthRequired,
+} from "@/lib/payments/yoco-oauth";
+import { getYocoEndpoints } from "@/lib/payments/yoco";
+import { verifyYocoWebhookRequest } from "@/lib/payments/yoco-webhook-verify";
+import { reconcileYocoRefundWebhook } from "@/lib/bookings/awaiting-machine-refunds";
 
 export const maxDuration = 60;
 
@@ -31,6 +38,40 @@ function yocoCurrency(data: Record<string, unknown>, fallback: string): string {
     if (typeof currency === "string" && currency.trim()) return currency.trim();
   }
   return fallback;
+}
+
+async function reconfirmYocoPaymentStatus(params: {
+  providerId: string;
+  yocoDeviceId: string | null | undefined;
+  yocoPaymentId: string;
+  localStatus: string | null | undefined;
+}): Promise<"successful" | "failed" | "pending" | null> {
+  const { providerId, yocoDeviceId, yocoPaymentId, localStatus } = params;
+  if (!yocoDeviceId || yocoDeviceId.startsWith("virtual:")) {
+    return localStatus === "successful" ? "successful" : localStatus === "failed" ? "failed" : "pending";
+  }
+  try {
+    const credentials = await resolveProviderCredentialMode(providerId);
+    if (credentials.credentialMode !== "oauth") {
+      return localStatus === "successful" ? "successful" : localStatus === "failed" ? "failed" : "pending";
+    }
+    const endpoints = getYocoEndpoints(credentials.environment);
+    const accessToken = await getValidAccessToken(providerId, {
+      environment: credentials.environment,
+    });
+    const yocoResponse = await fetch(
+      endpoints.getWebPosPayment(yocoDeviceId, yocoPaymentId),
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (!yocoResponse.ok) return null;
+    const body = (await yocoResponse.json()) as { status?: string };
+    return normalizeYocoStatus(body.status);
+  } catch (err) {
+    if (!(err instanceof YocoOAuthRequired)) {
+      console.warn("Yoco webhook: API re-verify failed:", err);
+    }
+    return null;
+  }
 }
 
 function normalizeYocoStatus(status: unknown): "successful" | "failed" | "pending" {
@@ -75,38 +116,6 @@ function extractProviderIdFromEvent(event: Record<string, unknown>): string | nu
     : null;
 }
 
-function signatureCandidates(signature: string): string[] {
-  const raw = signature.trim();
-  if (!raw) return [];
-  const candidates = new Set<string>([raw]);
-  if (raw.startsWith("sha256=")) candidates.add(raw.slice("sha256=".length));
-  for (const part of raw.split(",")) {
-    const idx = part.indexOf("=");
-    if (idx < 0) continue;
-    const key = part.slice(0, idx).trim();
-    const value = part.slice(idx + 1).trim();
-    if (value && ["v1", "signature", "sig", "s"].includes(key)) {
-      candidates.add(value);
-    }
-  }
-  return [...candidates].filter(Boolean);
-}
-
-function timingSafeStringEqual(a: string, b: string): boolean {
-  const aBuf = Buffer.from(a);
-  const bBuf = Buffer.from(b);
-  return aBuf.length === bBuf.length && crypto.timingSafeEqual(aBuf, bBuf);
-}
-
-function verifyYocoSignature(body: string, signature: string, secret: string): boolean {
-  const hexDigest = crypto.createHmac("sha256", secret).update(body).digest("hex");
-  const base64Digest = crypto.createHmac("sha256", secret).update(body).digest("base64");
-  return signatureCandidates(signature).some((candidate) =>
-    timingSafeStringEqual(candidate, hexDigest) ||
-    timingSafeStringEqual(candidate.toLowerCase(), hexDigest) ||
-    timingSafeStringEqual(candidate, base64Digest)
-  );
-}
 /**
  * POST /api/provider/yoco/webhook
  *
@@ -128,7 +137,9 @@ export async function POST(request: Request) {
     const signature =
       request.headers.get("x-yoco-signature") ??
       request.headers.get("webhook-signature");
-    const webhookId = request.headers.get("x-yoco-webhook-id");
+    const webhookId =
+      request.headers.get("webhook-id") ?? request.headers.get("x-yoco-webhook-id");
+    const webhookTimestamp = request.headers.get("webhook-timestamp");
 
     if (!signature) {
       console.error("Missing Yoco webhook signature");
@@ -200,10 +211,18 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!verifyYocoSignature(body, signature, webhookSecret)) {
+    const verificationScheme = verifyYocoWebhookRequest({
+      body,
+      signatureHeader: signature,
+      secret: webhookSecret,
+      webhookId,
+      webhookTimestamp,
+    });
+    if (verificationScheme === "none") {
       console.error("Invalid Yoco webhook signature");
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
+    console.info(`Yoco webhook: verified via ${verificationScheme}`);
 
     // Signature verified — safe to parse body.
     event = event ?? (JSON.parse(body) as Record<string, unknown>);
@@ -305,9 +324,9 @@ async function handlePaymentNotification(
   supabase: SupabaseClient
 ) {
   const id = data.id as string | undefined;
-  const amount = yocoAmountCents(data.amount);
+  const amountCents = yocoAmountCents(data.amount);
   const currency = yocoCurrency(data, LAST_RESORT_CURRENCY);
-  const status = normalizeYocoStatus(data.status);
+  let status = normalizeYocoStatus(data.status);
   const metadata = (data.metadata ?? {}) as Record<string, unknown>;
 
   if (!id || !metadata?.provider_id) {
@@ -318,7 +337,7 @@ async function handlePaymentNotification(
   const { data: yocoPaymentRow } = await supabase
     .from("provider_yoco_payments")
     .select(
-      "id, sale_id, status, device_id, amount, provider_id, appointment_id, tip_amount, entity_type, entity_id, group_booking_id, metadata",
+      "id, sale_id, status, device_id, yoco_device_id, amount, provider_id, appointment_id, tip_amount, entity_type, entity_id, group_booking_id, metadata",
     )
     .eq("yoco_payment_id", id)
     .maybeSingle();
@@ -349,6 +368,23 @@ async function handlePaymentNotification(
     group_booking_id?: string | null;
     metadata?: Record<string, unknown> | null;
   } | null;
+
+  if (id && metadata?.provider_id) {
+    const providerIdForVerify = String(
+      existingPayment?.provider_id ?? metadata.provider_id,
+    );
+    const yocoDeviceId =
+      (existingPayment as { yoco_device_id?: string | null } | null)?.yoco_device_id ??
+      (typeof data.device_id === "string" ? data.device_id : undefined);
+    const confirmed = await reconfirmYocoPaymentStatus({
+      providerId: providerIdForVerify,
+      yocoDeviceId,
+      yocoPaymentId: id,
+      localStatus: status,
+    });
+    if (confirmed) status = confirmed;
+  }
+
   if (
     status === "successful" &&
     existingPayment?.status !== "successful" &&
@@ -375,47 +411,14 @@ async function handlePaymentNotification(
   }
 
   const saleId = ((metadata?.sale_id as string | undefined) ?? existingPayment?.sale_id ?? null);
-  if (status === "successful" && saleId) {
-    const { data: saleBefore } = await supabase
-      .from("sales")
-      .select("id, payment_status")
-      .eq("id", saleId)
-      .maybeSingle();
-    const shouldDecrementStock = (saleBefore as { payment_status?: string } | null)?.payment_status !== "completed";
-
-    const { error: saleError } = await supabase
-      .from("sales")
-      .update({
-        payment_status: "completed",
-        payment_provider: "yoco",
-        payment_provider_id: id,
-        payment_method: "yoco",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", saleId)
-      .neq("payment_status", "completed");
-    if (saleError) {
-      console.error("Yoco webhook: failed to mark POS sale completed:", saleError);
-      throw new Error(`Failed to complete POS sale for Yoco payment ${id}: ${saleError.message}`);
-    }
-    if (shouldDecrementStock) {
-      const { data: saleItems } = await supabase
-        .from("sale_items")
-        .select("item_type, item_id, product_variant_id, quantity")
-        .eq("sale_id", saleId);
-      const stockItems = (saleItems || []).map((row: Record<string, unknown>) => ({
-        type: row.item_type as string,
-        item_id: (row.item_id as string | null) ?? null,
-        product_variant_id: (row.product_variant_id as string | null) ?? null,
-        quantity: Number(row.quantity ?? 1),
-      }));
-      try {
-        await applyPosProductStockDecrements(supabase, stockItems);
-      } catch (stockError) {
-        // Payment is already captured; leave the sale complete and surface stock drift for ops.
-        console.error("Yoco webhook: POS sale completed but stock decrement failed:", stockError);
-      }
-    }
+  if (status === "successful") {
+    await applyYocoSuccessfulSettlement(supabase, {
+      yocoPaymentId: id,
+      existingPayment,
+      metadata,
+      amountCents,
+      currency,
+    });
   } else if (status === "failed" && saleId) {
     const { error: saleError } = await supabase
       .from("sales")
@@ -433,45 +436,6 @@ async function handlePaymentNotification(
     }
   }
 
-  // Settle booking / group / product_order / additional_charge via shared card-machine helper
-  // (tip + add-ons + clamps). Sale path above keeps POS stock decrement ownership.
-  if (status === "successful") {
-    const settleEntity = resolveYocoSettleEntity({
-      entity_type: existingPayment?.entity_type,
-      entity_id: existingPayment?.entity_id,
-      appointment_id: existingPayment?.appointment_id ?? (metadata?.appointment_id as string | undefined),
-      sale_id: existingPayment?.sale_id ?? (metadata?.sale_id as string | undefined),
-      group_booking_id: existingPayment?.group_booking_id,
-      metadata: {
-        ...(existingPayment?.metadata ?? {}),
-        ...metadata,
-      },
-    });
-
-    if (settleEntity && settleEntity.entityType !== "sale") {
-      const amountInCurrency = amount / 100;
-      // tip_amount column defaults to 0 — treat 0 as unset so metadata tip still applies.
-      const tipFromColumn = Number(existingPayment?.tip_amount ?? 0);
-      const tipFromMeta = Number(metadata.tip_amount ?? 0);
-      const tipAmount = Math.max(0, tipFromColumn > 0 ? tipFromColumn : tipFromMeta);
-      const settleResult = await settleYocoPayment(supabase, {
-        paymentId: String(existingPayment?.id ?? id),
-        providerId: String(existingPayment?.provider_id ?? metadata.provider_id),
-        entityType: settleEntity.entityType,
-        entityId: settleEntity.entityId,
-        amount: amountInCurrency,
-        yocoPaymentId: id,
-        processedBy:
-          typeof metadata.processed_by === "string" ? metadata.processed_by : null,
-        currency,
-        tipAmount,
-      });
-      if (!settleResult.settled && settleResult.reason) {
-        console.warn(`Yoco settle skipped/failed for ${id}: ${settleResult.reason}`);
-      }
-    }
-  }
-
   // Send notification
   try {
     const { sendToUser } = await import("@/lib/notifications/onesignal");
@@ -479,14 +443,14 @@ async function handlePaymentNotification(
       const failedMessage =
         status === "failed"
           ? "Card declined – ask customer to try another card."
-          : `Payment failed for amount ${(amount / 100).toFixed(2)} ${currency}`;
+          : `Payment failed for amount ${(amountCents / 100).toFixed(2)} ${currency}`;
       await sendToUser(
         String(metadata.processed_by ?? ""),
         {
           title: status === "successful" ? "Payment Successful" : "Payment Failed",
           message:
             status === "successful"
-              ? `Payment completed for amount ${(amount / 100).toFixed(2)} ${currency}`
+              ? `Payment completed for amount ${(amountCents / 100).toFixed(2)} ${currency}`
               : failedMessage,
           data: {
             type: "yoco_payment",
@@ -607,8 +571,21 @@ async function handleRefundSuccess(
     },
   });
 
+  const reconcileBookingId =
+    bookingId ?? (settleEntity?.entityType === "booking" ? settleEntity.entityId : null);
+
   // Full refunds reverse every settle suffix (base/tip/charge/group) like PayCloud void.
   if (isFullRefund && settleEntity) {
+    if (reconcileBookingId) {
+      const alreadyRecorded = await reconcileYocoRefundWebhook(getSupabaseAdmin(), {
+        bookingId: reconcileBookingId,
+        amount: amountCents / 100,
+        yocoRefundId: id,
+        paymentId: null,
+        mode: "full",
+      });
+      if (alreadyRecorded) return;
+    }
     const reverseResult = await reverseYocoSettlement(supabase, {
       entityType: settleEntity.entityType,
       entityId: settleEntity.entityId,
@@ -645,6 +622,25 @@ async function handleRefundSuccess(
       .eq("booking_id", bookingId)
       .eq("payment_provider_id", yocoPaymentId)
       .maybeSingle();
+
+    const alreadyRecorded = await reconcileYocoRefundWebhook(supabaseAdmin, {
+      bookingId,
+      amount: amountInCurrency,
+      yocoRefundId: id,
+      paymentId: (bookingPayment as { id?: string } | null)?.id ?? null,
+      mode: "partial",
+    });
+    if (alreadyRecorded) {
+      try {
+        const { syncBookingRefundTransactions } = await import(
+          "@/lib/finance/sync-booking-refund-transactions"
+        );
+        await syncBookingRefundTransactions(supabaseAdmin, bookingId, "yoco_refund", null);
+      } catch (syncErr) {
+        console.warn("Yoco webhook: refund transaction sync failed:", syncErr);
+      }
+      return;
+    }
 
     const { error: refundError } = await supabaseAdmin.from("booking_refunds").insert({
       booking_id: bookingId,

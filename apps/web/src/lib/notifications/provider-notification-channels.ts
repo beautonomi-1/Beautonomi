@@ -1,48 +1,25 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { isTransactionalWhatsAppTemplate } from "@/lib/whatsapp/transactional-templates";
+import { PROVIDER_SECTION_DEFAULTS } from "@/lib/notifications/notification-preferences-defaults";
 
 export type NotificationChannelName = "push" | "email" | "sms" | "whatsapp";
 
 type SectionPrefs = { email?: boolean; sms?: boolean; push?: boolean; whatsapp?: boolean };
 
-/**
- * Provider preference sections, mirroring the defaults returned by
- * `/api/provider/notification-preferences`. Stored on
- * `user_profiles.notification_preferences` per provider user (owner or staff —
- * each authenticated user has their own row, so this also respects per-staff
- * opt-outs made from the provider app).
- */
-const DEFAULT_PREFS: Record<string, SectionPrefs> = {
-  booking_updates: { email: true, sms: true, push: true, whatsapp: false },
-  booking_cancellations: { email: true, sms: true, push: true, whatsapp: false },
-  booking_reminders: { email: true, sms: true, push: true, whatsapp: false },
-  new_reviews: { email: true, sms: false, push: true, whatsapp: false },
-  review_responses: { email: true, sms: false, push: true, whatsapp: false },
-  client_messages: { email: true, sms: true, push: true, whatsapp: false },
-  payment_received: { email: true, sms: false, push: true, whatsapp: false },
-  payout_updates: { email: true, sms: true, push: true, whatsapp: false },
-  waitlist_notifications: { email: true, sms: false, push: true, whatsapp: false },
-  system_updates: { email: true, sms: false, push: false, whatsapp: false },
-  marketing: { email: true, sms: false, push: false, whatsapp: false },
-};
-
-const MARKETING_SECTION_SET = new Set<string>(["marketing", "system_updates"]);
+const MARKETING_SECTION_SET = new Set<string>(["marketing"]);
 
 function mergeSection(
   prefs: Record<string, unknown> | null | undefined,
   section: string,
 ): SectionPrefs {
-  const base = DEFAULT_PREFS[section] ?? { email: true, sms: true, push: true };
+  const base = (PROVIDER_SECTION_DEFAULTS[section] as SectionPrefs | undefined) ?? {
+    email: true,
+    sms: true,
+    push: true,
+  };
   const row = prefs?.[section] as SectionPrefs | undefined;
   return { ...base, ...row };
 }
 
-/**
- * Map a provider-facing template key to its preference section. Defaults to a
- * transactional section (`booking_updates`) so an unmapped key is never
- * silently suppressed — `isMustDeliverPushTemplate()` still force-delivers
- * critical pushes regardless of preference.
- */
 export function providerTemplateKeyToPreferenceSection(templateKey: string): string {
   const key = templateKey.toLowerCase();
   if (key.includes("cancel")) return "booking_cancellations";
@@ -61,6 +38,9 @@ export function providerTemplateKeyToPreferenceSection(templateKey: string): str
     return "payment_received";
   }
   if (key.includes("waitlist")) return "waitlist_notifications";
+  if (key.includes("schedule_summary") || key === "staff_schedule_summary") {
+    return "booking_reminders";
+  }
   if (
     key.includes("subscription") ||
     key.includes("low_stock") ||
@@ -75,7 +55,7 @@ export function providerTemplateKeyToPreferenceSection(templateKey: string): str
   return "booking_updates";
 }
 
-function channelAllowedForProvider(
+export function channelAllowedForProviderUser(
   prefs: Record<string, unknown> | null | undefined,
   usersRow: { whatsapp_opted_out_at?: string | null; phone?: string | null } | null,
   templateKey: string,
@@ -85,7 +65,7 @@ function channelAllowedForProvider(
   const sec = mergeSection(prefs, section);
 
   if (prefs?.unsubscribe_marketing === true && MARKETING_SECTION_SET.has(section)) {
-    if (channel === "email") return false;
+    return false;
   }
 
   if (channel === "email") return sec.email !== false;
@@ -93,34 +73,21 @@ function channelAllowedForProvider(
   if (channel === "push") return sec.push !== false;
   if (channel === "whatsapp") {
     if (usersRow?.whatsapp_opted_out_at) return false;
-    if (isTransactionalWhatsAppTemplate(templateKey, "provider")) {
-      const phone = typeof usersRow?.phone === "string" ? usersRow.phone.trim() : "";
-      if (!phone) return false;
-      return true;
-    }
+    const phone = typeof usersRow?.phone === "string" ? usersRow.phone.trim() : "";
+    if (!phone) return false;
     return sec.whatsapp === true;
   }
   return true;
 }
 
-/**
- * Whether the provider has push enabled for ANY section. Used to gate silent
- * badge_sync pushes: a provider who turned push off across every section should
- * not receive even silent OS-badge updates. Defaults keep push on, so an
- * untouched preference returns true.
- */
 export function isAnyProviderPushSectionEnabled(
   prefs: Record<string, unknown> | null | undefined,
 ): boolean {
-  return Object.keys(DEFAULT_PREFS).some((section) => mergeSection(prefs, section).push !== false);
+  return Object.keys(PROVIDER_SECTION_DEFAULTS).some(
+    (section) => mergeSection(prefs, section).push !== false,
+  );
 }
 
-/**
- * For a batch of provider users, resolve the requested channels each recipient
- * individually allows. Returns a `Map<userId, allowedChannels[]>`. Used for
- * per-recipient channels (email/SMS via the durable queue) so a single staff
- * opt-out doesn't suppress the channel for other recipients.
- */
 export async function resolveChannelsPerProviderRecipient(
   supabase: SupabaseClient,
   userIds: string[],
@@ -154,16 +121,12 @@ export async function resolveChannelsPerProviderRecipient(
     const userRow = userById.get(uid) ?? null;
     out.set(
       uid,
-      requested.filter((ch) => channelAllowedForProvider(pref, userRow, templateKey, ch)),
+      requested.filter((ch) => channelAllowedForProviderUser(pref, userRow, templateKey, ch)),
     );
   }
   return out;
 }
 
-/**
- * For a batch of provider users, return channels allowed for every recipient
- * (OneSignal sends one payload per call). Mirrors the customer resolver.
- */
 export async function intersectChannelsForProviderRecipients(
   supabase: SupabaseClient,
   userIds: string[],

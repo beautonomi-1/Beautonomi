@@ -13,7 +13,10 @@ import { isTransientApiFailure } from "@/lib/api-error";
 import { isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
 import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
-  getWalletTopupPaystackAuthPrefix,
+  CHECKOUT_SUCCESS_PATH,
+  getCustomerPaystackAuthReturnUrl,
+  getNativePaystackReturnUrl,
+  CUSTOMER_NATIVE_PAYSTACK_PATHS,
   matchesCheckoutSuccessReturnUrl,
   matchesPaystackAuthSessionReturn,
 } from "@/lib/payments/customerPaystackReturn";
@@ -226,7 +229,7 @@ export default function WalletScreen() {
         pushLoginWithReturnTo(walletReturnTo);
         return;
       }
-      const returnUrl = getWalletTopupPaystackAuthPrefix();
+      const returnUrl = getNativePaystackReturnUrl(CUSTOMER_NATIVE_PAYSTACK_PATHS.wallet);
       const res = await api.post<{
         payment_url?: string;
         topup_id?: string;
@@ -235,7 +238,9 @@ export default function WalletScreen() {
         "/api/me/wallet/topup",
         {
           amount,
-          callback_url: ExpoLinking.createURL("wallet-return"),
+          callback_url: getCustomerPaystackAuthReturnUrl(CHECKOUT_SUCCESS_PATH, {
+            payment_type: "wallet_topup",
+          }),
           idempotency_key: topupIdempotencyKeyRef.current,
         },
         {
@@ -267,6 +272,9 @@ export default function WalletScreen() {
       let finalPaystackRef = paystackRef;
       let cancelled = false;
       let checkoutSessionId: string | null = null;
+      let hostedCheckoutOutcome: Awaited<
+        ReturnType<typeof paystackHostedCheckout.waitForCheckout>
+      > | null = null;
 
       if (paymentOption === "saved_card") {
         setTopupStatus(t("customer.walletScreen.statusCharging", "Charging your saved card…") as string);
@@ -295,7 +303,7 @@ export default function WalletScreen() {
           return;
         }
         setTopupStatus(t("customer.walletScreen.statusCheckout", "Complete payment in the secure window…") as string);
-        const outcome = await paystackHostedCheckout.waitForCheckout(paymentUrl, {
+        hostedCheckoutOutcome = await paystackHostedCheckout.waitForCheckout(paymentUrl, {
           title: t("customer.walletScreen.topUpSecureTitle", "Wallet top-up") as string,
           returnUrl,
           matchSuccess: (rawUrl) =>
@@ -304,9 +312,29 @@ export default function WalletScreen() {
             !isCancelledPaystackUrl(rawUrl),
           matchCancel: (rawUrl) => isCancelledPaystackUrl(rawUrl),
         });
+        const outcome = hostedCheckoutOutcome;
+        if (outcome?.outcome === "start_failed") {
+          setTopupStatus(null);
+          Alert.alert(
+            t("common.error"),
+            t(
+              "customer.walletScreen.checkoutOpenFailed",
+              "We couldn't open secure checkout. Please try again.",
+            ) as string,
+          );
+          return;
+        }
         cancelled = outcome?.outcome === "cancel";
         if (outcome?.outcome === "success" && outcome.url && !isCancelledPaystackUrl(outcome.url)) {
           const parsed = parseOnlineCheckoutReturnUrl(outcome.url);
+          if (parsed.status === "failed" || parsed.status === "cancelled") {
+            setTopupStatus(null);
+            Alert.alert(
+              t("customer.walletScreen.topUpCancelledTitle", "Top-up cancelled") as string,
+              t("customer.walletScreen.topUpCancelledBody", "No payment was taken. You can try again anytime.") as string,
+            );
+            return;
+          }
           if (parsed.reference) finalPaystackRef = parsed.reference;
           checkoutSessionId = parsed.sessionId;
         }
@@ -324,10 +352,17 @@ export default function WalletScreen() {
       setTopupAmount("");
       setTopupStatus(t("customer.walletScreen.statusConfirming", "Confirming your payment…") as string);
 
+      let flutterwaveTransactionId: string | null = null;
+      if (hostedCheckoutOutcome?.outcome === "success" && hostedCheckoutOutcome.url) {
+        flutterwaveTransactionId = parseOnlineCheckoutReturnUrl(hostedCheckoutOutcome.url)
+          .transactionId;
+      }
+
       let verifiedSuccess = false;
       if (finalPaystackRef) {
         const verifyResult = await verifyPaystackWithRetry(finalPaystackRef, {
           sessionId: checkoutSessionId,
+          transactionId: flutterwaveTransactionId,
         });
         verifiedSuccess = verifyResult.status === "success";
         if (verifyResult.status === "failed") {

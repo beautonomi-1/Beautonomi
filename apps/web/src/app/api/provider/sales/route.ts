@@ -473,6 +473,9 @@ export async function POST(request: NextRequest) {
       house_call_address,
       is_walk_in,
       notes,
+      payments: paymentLegsInput,
+      gift_card_code: giftCardCodeInput,
+      gift_card_amount: giftCardAmountInput,
     } = body;
 
     // Validate required fields
@@ -655,6 +658,117 @@ export async function POST(request: NextRequest) {
       // Rollback sale creation
       await supabase.from('sales').delete().eq('id', sale.id);
       throw itemsError;
+    }
+
+    const rollbackSaleWithGift = async (giftWasReserved: boolean) => {
+      if (giftWasReserved) {
+        await supabase.rpc("void_gift_card_redemption_for_sale", { p_sale_id: sale.id });
+      }
+      await supabase.from("sale_payments").delete().eq("sale_id", sale.id);
+      await supabase.from("sale_items").delete().eq("sale_id", sale.id);
+      await supabase.from("sales").delete().eq("id", sale.id);
+    };
+
+    const { data: providerCurrencyRow } = await supabase
+      .from("providers")
+      .select("currency")
+      .eq("id", providerId)
+      .maybeSingle();
+    const saleCurrency =
+      (providerCurrencyRow as { currency?: string | null } | null)?.currency?.trim() || "ZAR";
+
+    const paymentLegs = Array.isArray(paymentLegsInput) ? paymentLegsInput : null;
+    const giftCode =
+      typeof giftCardCodeInput === "string" ? giftCardCodeInput.trim().toUpperCase() : "";
+    const giftAmount = Number(giftCardAmountInput ?? 0);
+    let giftReserved = false;
+
+    try {
+      if (giftCode && giftAmount > 0) {
+        const { error: reserveErr } = await supabase.rpc(
+          "reserve_gift_card_redemption_for_sale",
+          {
+            p_code: giftCode,
+            p_amount: giftAmount,
+            p_sale_id: sale.id,
+            p_currency: saleCurrency,
+          },
+        );
+        if (reserveErr) {
+          await rollbackSaleWithGift(false);
+          return handleApiError(
+            new Error(reserveErr.message || "Gift card could not be applied"),
+            "GIFT_CARD_ERROR",
+            400,
+          );
+        }
+        giftReserved = true;
+      }
+
+      if (paymentLegs && paymentLegs.length > 0) {
+        const legSum = paymentLegs.reduce(
+          (sum: number, leg: { amount?: unknown }) => sum + Number(leg.amount ?? 0),
+          0,
+        );
+        if (Math.abs(legSum - calculatedTotal) > 0.02) {
+          await rollbackSaleWithGift(giftReserved);
+          return handleApiError(
+            new Error("Payment legs must sum to the sale total"),
+            "VALIDATION_ERROR",
+            400,
+          );
+        }
+        for (const leg of paymentLegs) {
+          const { error: legErr } = await (supabase.from("sale_payments") as any).insert({
+            sale_id: sale.id,
+            method: normalizeSalePaymentMethodForDb(String(leg.method ?? "other")),
+            provider: leg.provider ?? null,
+            amount: Number(leg.amount ?? 0),
+            currency: saleCurrency,
+            reference: leg.reference ?? null,
+            status: "completed",
+          });
+          if (legErr) {
+            await rollbackSaleWithGift(giftReserved);
+            throw legErr;
+          }
+        }
+        if (paymentLegs.length > 1) {
+          await supabase.from("sales").update({ payment_method: "split" }).eq("id", sale.id);
+        }
+      } else if (giftReserved) {
+        await (supabase.from("sale_payments") as any).insert({
+          sale_id: sale.id,
+          method: "gift_card",
+          amount: giftAmount,
+          currency: saleCurrency,
+          status: "completed",
+        });
+      }
+
+      if (giftReserved && resolvedPaymentStatus === "completed") {
+        const { error: captureErr } = await supabase.rpc(
+          "capture_gift_card_redemption_for_sale",
+          { p_sale_id: sale.id },
+        );
+        if (captureErr) {
+          await rollbackSaleWithGift(true);
+          return handleApiError(
+            new Error(captureErr.message || "Gift card capture failed"),
+            "GIFT_CARD_ERROR",
+            500,
+          );
+        }
+      }
+    } catch (legBlockErr) {
+      if (giftReserved) {
+        try {
+          await supabase.rpc("void_gift_card_redemption_for_sale", { p_sale_id: sale.id });
+        } catch {
+          /* best-effort rollback */
+        }
+      }
+      throw legBlockErr;
     }
 
     if (resolvedPaymentStatus === "completed") {

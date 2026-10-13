@@ -21,10 +21,19 @@ vi.mock("@/lib/platform/secrets", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/notifications/customer-notification-channels", () => ({
-  intersectChannelsForCustomerRecipients: vi.fn().mockResolvedValue(["push"]),
-  templateKeyToPreferenceSection: vi.fn().mockReturnValue("bookings"),
-}));
+vi.mock("@/lib/notifications/customer-notification-channels", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("@/lib/notifications/customer-notification-channels")
+  >();
+  return {
+    ...actual,
+    resolveChannelsPerCustomerRecipient: vi.fn().mockImplementation(async (_s, userIds: string[]) => {
+      const map = new Map<string, ("push" | "email" | "sms")[]>();
+      for (const uid of userIds) map.set(uid, ["push"]);
+      return map;
+    }),
+  };
+});
 
 vi.mock("@/lib/notifications/provider-notification-channels", () => ({
   intersectChannelsForProviderRecipients: vi.fn().mockResolvedValue(["push"]),
@@ -71,6 +80,23 @@ function mockAdminNoTemplate(deviceRows: { onesignal_player_id: string | null }[
       };
     }
     if (table === "notification_logs") return { insert: vi.fn().mockResolvedValue({ error: null }) };
+    if (table === "user_profiles") {
+      return {
+        select: vi.fn().mockReturnValue({
+          in: vi.fn().mockResolvedValue({ data: [], error: null }),
+        }),
+      };
+    }
+    if (table === "users") {
+      return {
+        select: vi.fn().mockReturnValue({
+          in: vi.fn().mockResolvedValue({
+            data: [{ id: USER_ID, push_notifications_enabled: true }],
+            error: null,
+          }),
+        }),
+      };
+    }
     throw new Error("unexpected table " + table);
   });
   return { from };

@@ -3,6 +3,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { finalizeTemplateEmailHtml } from "@/lib/email/finalize-notification-email";
 import type { EnqueueNotificationInput } from "@/lib/notifications/enqueue";
 
 export type TemplateOutboundChannel = "email" | "sms" | "whatsapp";
@@ -35,6 +36,8 @@ export interface TemplateChannelContext {
   whatsappTemplateStatus?: string | null;
   data: Record<string, unknown>;
   url?: string;
+  /** Absolute web URL for primary CTA in transactional email shell. */
+  emailCtaWebUrl?: string;
   dedupePrefix?: string;
   scheduleAt?: Date | null;
 }
@@ -78,15 +81,20 @@ export function buildTemplateChannelQueueRows(
   return rows;
 }
 
-function buildTemplateChannelPayload(
+export function buildTemplateChannelPayload(
   channel: TemplateOutboundChannel,
   ctx: TemplateChannelContext,
 ): Record<string, unknown> | null {
   if (channel === "email") {
     const subject = ctx.emailSubject || ctx.title || "";
-    const html = ctx.emailBody || ctx.body || "";
-    if (!subject && !html) return null;
-    return { subject, html, body: html, data: ctx.data };
+    const rawHtml = ctx.emailBody || ctx.body || "";
+    if (!subject && !rawHtml) return null;
+    const { html, text } = finalizeTemplateEmailHtml({
+      emailBody: rawHtml,
+      emailSubject: subject,
+      ctaHref: ctx.emailCtaWebUrl,
+    });
+    return { subject, html, text, body: text, data: ctx.data };
   }
 
   if (channel === "whatsapp") {

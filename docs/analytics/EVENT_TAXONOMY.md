@@ -139,7 +139,7 @@ Examples:
 | `staff_role_changed` | staff_id, role | Web, Provider |
 | `permission_changed` | staff_id | Web, Provider |
 
-### Provider operations (22 events)
+### Provider operations (29 events)
 | Event | Properties | Platforms |
 |-------|-----------|-----------|
 | `provider_calendar_action` | action | Web, Provider |
@@ -151,6 +151,13 @@ Examples:
 | `payment_link_sent` | booking_id | Web, Provider |
 | `mark_paid_clicked` | booking_id | Web, Provider |
 | `yoco_terminal_recorded` | — | Web, Provider |
+| `card_machine_setup_step` | step, provider?, portal? | Web, Provider |
+| `card_machine_collect_started` | provider, entity_type?, portal? | Web, Provider |
+| `card_machine_collect_succeeded` | provider, entity_type?, portal? | Web, Provider |
+| `card_machine_collect_declined` | provider, code?, portal? | Web, Provider |
+| `card_machine_collect_timeout` | provider, portal? | Web, Provider |
+| `card_machine_collect_resumed` | provider, portal? | Web, Provider |
+| `card_machine_manual_fallback` | reason?, portal? | Web, Provider |
 | `invoice_generated` | booking_id | Web, Provider |
 | `explore_post_created` | post_id | Web, Provider |
 | `explore_post_published` | post_id | Web, Provider |

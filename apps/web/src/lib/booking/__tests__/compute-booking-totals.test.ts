@@ -51,6 +51,27 @@ describe("computeBookingTotals", () => {
     expect(totals.total).toBe(130);
   });
 
+  it("group booking totals ignore unnamed guests and default empty serviceIds", () => {
+    const totals = computeBookingTotals({
+      selectedServices: [
+        { id: "cut", price: 100, currency: "ZAR" },
+        { id: "colour", price: 250, currency: "ZAR" },
+      ],
+      selectedAddons: [],
+      selectedProducts: [],
+      isGroupBooking: true,
+      groupParticipants: [
+        { name: "You", serviceIds: ["cut", "colour"] },
+        { name: "Ama", serviceIds: ["cut"] },
+        { name: "   ", serviceIds: ["colour"] },
+        { name: "Lebo", serviceIds: [] },
+      ],
+      defaultCurrency: "ZAR",
+    });
+    // Primary + named guest + guest with default booker services (unnamed row dropped)
+    expect(totals.servicesTotal).toBe(800);
+  });
+
   it("computeBookingPayableTotal matches validate-booking exclusive path", () => {
     expect(
       computeBookingPayableTotal({

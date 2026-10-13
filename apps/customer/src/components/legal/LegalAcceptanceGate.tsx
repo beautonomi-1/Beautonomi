@@ -50,16 +50,29 @@ export function LegalAcceptanceGate({ children }: Props) {
 
   const syncServerAcceptance = useCallback(async () => {
     if (!session) return;
-    await api.post("/api/me/legal-acceptance", {
+    const res = await api.post("/api/me/legal-acceptance", {
       app: "customer",
       version: CUSTOMER_EULA_VERSION,
     });
+    if (res.error) throw new Error(res.error.message ?? "legal acceptance sync failed");
   }, [session]);
 
   useEffect(() => {
-    if (session && accepted) {
-      void syncServerAcceptance().catch(() => {});
-    }
+    if (!session || !accepted) return;
+    let cancelled = false;
+    const run = async (attempt: number) => {
+      try {
+        await syncServerAcceptance();
+      } catch {
+        if (cancelled || attempt >= 1) return;
+        await new Promise((r) => setTimeout(r, 1500));
+        if (!cancelled) await run(1);
+      }
+    };
+    void run(0);
+    return () => {
+      cancelled = true;
+    };
   }, [session, accepted, syncServerAcceptance]);
 
   const onContinue = useCallback(async () => {
@@ -68,13 +81,10 @@ export function LegalAcceptanceGate({ children }: Props) {
     try {
       await storeCustomerEulaAcceptance();
       setAccepted(true);
-      if (session) {
-        await syncServerAcceptance();
-      }
     } finally {
       setSubmitting(false);
     }
-  }, [checked, submitting, session, syncServerAcceptance]);
+  }, [checked, submitting]);
 
   if (loading) {
     return (

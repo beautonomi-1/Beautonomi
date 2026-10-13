@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@beautonomi/i18n";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -16,7 +17,7 @@ import {
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
 import { usePermissions } from "@/hooks/usePermissions";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { formatApiErrorMessage } from "@/lib/http/api-error";
 import {
   BookingBottomSheet,
@@ -45,24 +46,29 @@ export function ParticipantRefundSheet({
 }: ParticipantRefundSheetProps) {
   const { t } = useTranslation();
   const prefix = "web.provider.portal.participantRefund";
+  const refundPrefix = "web.provider.bookings.detail.refund";
   const { hasPermission, isOwner } = usePermissions();
   const canProcessPayments = isOwner || hasPermission("process_payments");
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
   const [refundMethod, setRefundMethod] = useState<"store_credit" | "cash" | "original">("cash");
   const [saving, setSaving] = useState(false);
+  const [yocoPendingRecord, setYocoPendingRecord] = useState(false);
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const yocoEnabled = useFeatureFlag("payment_yoco");
   const { ready: paycloudReady } = usePaycloudCollectReady();
+  const cardRefundAvailable = (paycloudEnabled && paycloudReady) || yocoEnabled;
 
   useEffect(() => {
     if (open) {
       setAmount(maxAmount != null ? String(maxAmount) : "");
       setReason("");
+      setYocoPendingRecord(false);
       setRefundMethod(paycloudEnabled && paycloudReady ? "original" : "cash");
     }
   }, [open, maxAmount, paycloudEnabled, paycloudReady]);
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (options?: { recordOnly?: boolean }) => {
     if (!canProcessPayments) {
       toast.error(t(`${prefix}.noPermissionToast`));
       return;
@@ -72,17 +78,36 @@ export function ParticipantRefundSheet({
       toast.error(t(`${prefix}.invalidAmount`));
       return;
     }
+    if (!reason.trim()) {
+      toast.error(t("web.provider.bookings.detail.toast.enterRefundReason"));
+      return;
+    }
     setSaving(true);
     try {
-      await fetcher.post(`/api/provider/bookings/${bookingId}/refund`, {
-        amount: parsed,
-        reason: reason.trim() || undefined,
-        refund_method: refundMethod,
-      });
-      toast.success(t(`${prefix}.issued`));
+      const res = await fetcher.post<{ data?: { pending_terminal?: boolean } }>(
+        `/api/provider/bookings/${bookingId}/refund`,
+        {
+          amount: parsed,
+          reason: reason.trim(),
+          refund_method: options?.recordOnly ? "original" : refundMethod,
+          ...(options?.recordOnly ? { record_only: true } : {}),
+        },
+      );
+      if (options?.recordOnly) {
+        toast.success(t(`${refundPrefix}.yocoRecorded`));
+      } else if (res?.data?.pending_terminal) {
+        toast.success(t(`${refundPrefix}.sentToCardMachine`));
+      } else {
+        toast.success(t(`${prefix}.issued`));
+      }
+      setYocoPendingRecord(false);
       onSuccess?.();
       onOpenChange(false);
     } catch (error) {
+      if (error instanceof FetchError && error.code === "YOCO_REFUND_ON_MACHINE") {
+        setYocoPendingRecord(true);
+        return;
+      }
       toast.error(formatApiErrorMessage(error, t(`${prefix}.failed`)));
     } finally {
       setSaving(false);
@@ -90,7 +115,7 @@ export function ParticipantRefundSheet({
   };
 
   const footer = canProcessPayments ? (
-    <BookingActionButton disabled={saving} onClick={handleSubmit}>
+    <BookingActionButton disabled={saving || !reason.trim()} onClick={() => void handleSubmit()}>
       {saving ? (
         <>
           <Loader2 className="me-2 h-4 w-4 animate-spin" />
@@ -138,18 +163,40 @@ export function ParticipantRefundSheet({
 
         <BookingSectionCard>
           <BookingSectionLabel className="mb-2">{t(`${prefix}.refundMethod`)}</BookingSectionLabel>
-          <Select value={refundMethod} onValueChange={(v) => setRefundMethod(v as typeof refundMethod)}>
+          <Select
+            value={refundMethod}
+            onValueChange={(v) => {
+              setYocoPendingRecord(false);
+              setRefundMethod(v as typeof refundMethod);
+            }}
+          >
             <SelectTrigger className="rounded-xl min-h-[44px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {paycloudEnabled && paycloudReady ? (
+              {cardRefundAvailable ? (
                 <SelectItem value="original">{t(`${prefix}.originalMethod`)}</SelectItem>
               ) : null}
               <SelectItem value="store_credit">{t(`${prefix}.storeCredit`)}</SelectItem>
               <SelectItem value="cash">{t(`${prefix}.cash`)}</SelectItem>
             </SelectContent>
           </Select>
+          {yocoPendingRecord ? (
+            <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <p className="font-medium">{t(`${refundPrefix}.yocoOnMachineTitle`)}</p>
+              <p className="mt-1">
+                {t(`${refundPrefix}.yocoOnMachineBody`, { amount: Number(amount || 0).toFixed(2) })}
+              </p>
+              <Button
+                className="mt-3 w-full"
+                variant="outline"
+                disabled={saving}
+                onClick={() => void handleSubmit({ recordOnly: true })}
+              >
+                {t(`${refundPrefix}.yocoRecordCta`)}
+              </Button>
+            </div>
+          ) : null}
         </BookingSectionCard>
 
         <BookingSectionCard>

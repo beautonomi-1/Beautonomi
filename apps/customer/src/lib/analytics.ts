@@ -239,8 +239,19 @@ export function trackBookingConfirmed(bookingId: string, paymentMethod: string, 
  * Client-side echo of a booking payment. The server is authoritative for revenue
  * (`trackPaymentSuccessServer` with insert_id); this exists for in-session funnels only.
  */
-export function trackPaymentSuccess(bookingId: string, amount: number, method?: string) {
-  track(EVENT_PAYMENT_SUCCESS, { booking_id: bookingId, amount, method, source: "client" });
+export function trackPaymentSuccess(
+  bookingId: string,
+  amount: number,
+  method?: string,
+  paymentProvider?: string,
+) {
+  track(EVENT_PAYMENT_SUCCESS, {
+    booking_id: bookingId,
+    amount,
+    method,
+    ...(paymentProvider ? { payment_provider: paymentProvider } : {}),
+    source: "client",
+  });
 }
 
 export function trackAdditionalChargePaid(bookingId: string, chargeId: string, amount: number) {

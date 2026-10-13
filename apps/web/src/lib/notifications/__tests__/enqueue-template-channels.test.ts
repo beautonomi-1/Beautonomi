@@ -44,12 +44,11 @@ describe("buildTemplateChannelQueueRows", () => {
     expect(email.templateKey).toBe("booking_confirmed");
     expect(email.bookingId).toBe("book-1");
     expect(email.tenantId).toBe("tenant-1");
-    // Matches the contract queued-senders reads: subject / html / text(=body).
-    expect(email.payload).toMatchObject({
-      subject: "Your booking is confirmed",
-      html: "<p>Your booking is confirmed.</p>",
-      body: "<p>Your booking is confirmed.</p>",
-    });
+    // Matches the contract queued-senders reads: subject / html / text + body (plain text).
+    expect(email.payload.subject).toBe("Your booking is confirmed");
+    expect(String(email.payload.html)).toContain("max-width:640px");
+    expect(String(email.payload.text)).not.toMatch(/<p>/);
+    expect(String(email.payload.body)).toBe(String(email.payload.text));
 
     const sms = rows.find((r) => r.channel === "sms" && r.recipientUserId === USER_B)!;
     expect(sms).toBeDefined();
@@ -112,11 +111,26 @@ describe("buildTemplateChannelQueueRows", () => {
     const rows = buildTemplateChannelQueueRows(
       baseCtx([{ userId: USER_A, channels: ["email"] }], { emailSubject: "", emailBody: "" }),
     );
-    expect(rows[0].payload).toMatchObject({
-      subject: "Booking confirmed",
-      html: "Your booking is confirmed.",
-      body: "Your booking is confirmed.",
-    });
+    expect(rows[0].payload.subject).toBe("Booking confirmed");
+    expect(String(rows[0].payload.html)).toContain("max-width:640px");
+    expect(String(rows[0].payload.text)).toContain("Your booking is confirmed.");
+  });
+
+  it("passes through full-document email_body without double wrap", () => {
+    const fullDoc = `<!doctype html><html><body><table role="presentation" style="max-width:640px"><tr><td>Receipt</td></tr></table></body></html>`;
+    const rows = buildTemplateChannelQueueRows(
+      baseCtx([{ userId: USER_A, channels: ["email"] }], { emailBody: fullDoc }),
+    );
+    expect(String(rows[0].payload.html)).toBe(fullDoc);
+  });
+
+  it("adds CTA when emailCtaWebUrl is set", () => {
+    const rows = buildTemplateChannelQueueRows(
+      baseCtx([{ userId: USER_A, channels: ["email"] }], {
+        emailCtaWebUrl: "https://app.example.com/bookings/1",
+      }),
+    );
+    expect(String(rows[0].payload.html)).toContain("https://app.example.com/bookings/1");
   });
 
   it("returns no rows when there are no recipients/channels", () => {

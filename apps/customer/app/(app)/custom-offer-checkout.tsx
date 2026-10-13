@@ -16,9 +16,11 @@ import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
 import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
+import { waitForModalDismiss } from "@/lib/payments/waitForModalDismiss";
 import {
   CHECKOUT_SUCCESS_PATH,
-  getBookingCheckoutPaystackAuthPrefix,
+  getNativePaystackReturnUrl,
+  CUSTOMER_NATIVE_PAYSTACK_PATHS,
   getCustomerPaystackAuthReturnUrl,
   matchesCheckoutSuccessReturnUrl,
   matchesPaystackAuthSessionReturn,
@@ -437,7 +439,9 @@ export default function CustomOfferCheckoutScreen() {
         }
 
         const paystackReturnPath =
-          Platform.OS === "web" ? undefined : getBookingCheckoutPaystackAuthPrefix();
+          Platform.OS === "web"
+            ? undefined
+            : getNativePaystackReturnUrl(CUSTOMER_NATIVE_PAYSTACK_PATHS.customOffer);
 
         if (Platform.OS === "web") {
           setProcessingPayment(false);
@@ -448,6 +452,7 @@ export default function CustomOfferCheckoutScreen() {
         // Important: close blocking overlay before opening Paystack WebView.
         // Concurrent RN modals can prevent checkout from appearing.
         setProcessingPayment(false);
+        await waitForModalDismiss();
         const pr = await paystackHostedCheckout.waitForCheckout(url, {
           title: coc("securePaymentTitle", undefined, "Pay custom offer"),
           returnUrl: paystackReturnPath ?? undefined,
@@ -458,6 +463,14 @@ export default function CustomOfferCheckoutScreen() {
             !isCancelledPaystackUrl(u),
           matchCancel: (u) => isCancelledPaystackUrl(u),
         });
+
+        if (pr.outcome === "start_failed") {
+          Alert.alert(
+            coc("paymentFailedTitle", undefined, "Payment failed"),
+            "We couldn't open secure checkout. Please try again.",
+          );
+          return;
+        }
 
         if (pr.outcome === "cancel") {
           setProcessingPayment(false);
@@ -503,6 +516,7 @@ export default function CustomOfferCheckoutScreen() {
 
         let reference: string | null = null;
         let checkoutSessionId: string | null = null;
+        let checkoutTransactionId: string | null = null;
         if (pr.outcome === "success" && pr.url) {
           if (isCancelledPaystackUrl(pr.url)) {
             setProcessingPayment(false);
@@ -512,12 +526,23 @@ export default function CustomOfferCheckoutScreen() {
             return;
           }
           const parsed = parseOnlineCheckoutReturnUrl(pr.url);
+          if (parsed.status === "failed" || parsed.status === "cancelled") {
+            setProcessingPayment(false);
+            setPayError(
+              coc("paymentCancelled", undefined, "You cancelled the payment. Tap Pay to try again."),
+            );
+            return;
+          }
           reference = parsed.reference;
           checkoutSessionId = parsed.sessionId;
+          checkoutTransactionId = parsed.transactionId;
         }
         if (reference) {
           markReferenceProcessing(reference);
-          await verifyPaystackWithRetry(reference, { sessionId: checkoutSessionId });
+          await verifyPaystackWithRetry(reference, {
+            sessionId: checkoutSessionId,
+            transactionId: checkoutTransactionId,
+          });
         }
 
         setProcessingPayment(true);
@@ -635,13 +660,10 @@ export default function CustomOfferCheckoutScreen() {
       return;
     }
 
-    const callbackUrl =
-      Platform.OS === "web"
-        ? getCustomerPaystackAuthReturnUrl(CHECKOUT_SUCCESS_PATH, {
-            payment_type: "custom_offer",
-            offer_id: offerId,
-          })
-        : ExpoLinking.createURL("custom-offer-paystack");
+    const callbackUrl = getCustomerPaystackAuthReturnUrl(CHECKOUT_SUCCESS_PATH, {
+      payment_type: "custom_offer",
+      offer_id: offerId,
+    });
     await runAcceptThenNavigate({
       payment_option: opt,
       callback_url: callbackUrl,

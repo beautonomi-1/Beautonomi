@@ -21,7 +21,7 @@ export type WalletTopupPaystackPayload = {
   amount: number;
   /** Gateway fee for this charge (Paystack `data.fees`, smallest-unit integer). */
   fees?: number;
-  paymentProvider?: "paystack" | "stripe";
+  paymentProvider?: "paystack" | "stripe" | "flutterwave";
 };
 
 /**

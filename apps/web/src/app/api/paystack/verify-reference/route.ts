@@ -50,6 +50,7 @@ type ProductOrderPaymentRow = {
   customer_id?: string | null;
   total_amount?: number | string | null;
   wallet_amount?: number | string | null;
+  gift_card_amount?: number | string | null;
   payment_status?: string | null;
   payment_reference?: string | null;
 };
@@ -76,11 +77,24 @@ export async function GET(request: NextRequest) {
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const { searchParams } = new URL(request.url);
-    const reference = searchParams.get("reference")?.trim();
+    const reference =
+      searchParams.get("reference")?.trim() ||
+      searchParams.get("trxref")?.trim() ||
+      searchParams.get("tx_ref")?.trim();
     const bookingIdParam = searchParams.get("booking_id")?.trim();
+    const transactionId = searchParams.get("transaction_id");
+    const redirectStatus = (searchParams.get("status") ?? "").toLowerCase();
 
     if (!reference) {
       return errorResponse("reference is required", "VALIDATION_ERROR", 400);
+    }
+
+    if (redirectStatus === "failed" || redirectStatus === "cancelled") {
+      return successResponse({
+        verified: false,
+        paystackStatus: "failed",
+        message: "Payment was not completed",
+      });
     }
 
     const sessionId = searchParams.get("session_id");
@@ -91,6 +105,21 @@ export async function GET(request: NextRequest) {
     const { shouldUseStripeOnlineVerify, verifyAndSettleOnlinePayment } = await import(
       "@/lib/payments/resolve-online-verify"
     );
+
+    if (checkoutRow?.provider === "flutterwave") {
+      const admin = getSupabaseAdmin();
+      const flwResult = await verifyAndSettleOnlinePayment(
+        { reference, tenantId, sessionId, transactionId },
+        admin,
+      );
+      return successResponse({
+        verified: flwResult.paid,
+        provider: "flutterwave",
+        paystackStatus: flwResult.paid ? "success" : "pending",
+        message: flwResult.paid ? "Payment verified" : "Payment not complete yet",
+      });
+    }
+
     if (shouldUseStripeOnlineVerify(checkoutRow?.provider, sessionId)) {
       const admin = getSupabaseAdmin();
       const stripeResult = await verifyAndSettleOnlinePayment(
@@ -150,7 +179,9 @@ export async function GET(request: NextRequest) {
       const productOrders = admin as unknown as ProductOrdersReader<ProductOrderPaymentRow>;
       const { data: poBefore, error: poError } = await productOrders
         .from("product_orders")
-        .select("id, tenant_id, provider_id, customer_id, total_amount, wallet_amount, payment_status, payment_reference")
+        .select(
+          "id, tenant_id, provider_id, customer_id, total_amount, wallet_amount, gift_card_amount, payment_status, payment_reference",
+        )
         .eq("id", productOrderId)
         .maybeSingle();
 
@@ -187,7 +218,9 @@ export async function GET(request: NextRequest) {
 
       const expectedMajor = Math.max(
         0,
-        Number(order.total_amount ?? 0) - Number(order.wallet_amount ?? 0),
+        Number(order.total_amount ?? 0) -
+          Number(order.wallet_amount ?? 0) -
+          Number(order.gift_card_amount ?? 0),
       );
       if (Math.abs(amountInCurrency - expectedMajor) > 0.01 && existingReference !== (d.reference ?? reference)) {
         return successResponse({

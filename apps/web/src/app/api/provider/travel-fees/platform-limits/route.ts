@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 
 /**
  * GET /api/provider/travel-fees/platform-limits
@@ -12,19 +14,20 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
 export async function GET(request: NextRequest) {
   try {
     await requireRoleInApi(["customer", "provider_owner", "provider_staff"], request);
-    const supabase = await getSupabaseServer(request);
+    const supabaseAdmin = getSupabaseAdmin();
+    const tenantId = await resolveTenantIdWithZaFallback(request);
 
-    const { data: platformSettings, error } = await supabase
-      .from("platform_settings")
-      .select("settings")
-      .eq("is_active", true)
-      .single();
+    const scoped = await fetchScopedSingle<{ settings?: Record<string, unknown> }>({
+      supabase: supabaseAdmin,
+      table: "platform_settings",
+      tenantId,
+      select: "settings",
+      apply: (q) => q.eq("is_active", true),
+      orderBy: { column: "updated_at", ascending: false },
+    });
 
-    if (error && error.code !== "PGRST116") {
-      throw error;
-    }
-
-    const travelFees = platformSettings?.settings?.travel_fees || {
+    const settings = scoped.data?.settings;
+    const travelFees = (settings?.travel_fees as Record<string, unknown> | undefined) || {
       provider_min_rate_per_km: 0.0,
       provider_max_rate_per_km: 50.0,
       provider_min_minimum_fee: 0.0,

@@ -7,6 +7,7 @@ import { X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { useTranslation } from "@beautonomi/i18n"
+import { isAddressAutocompletePortalTarget } from "@/components/mapbox/address-autocomplete-portal"
 
 const Sheet = SheetPrimitive.Root
 
@@ -64,14 +65,44 @@ interface SheetContentProps
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, "aria-describedby": ariaDescribedby, ...props }, ref) => {
+>(({ side = "right", className, children, "aria-describedby": ariaDescribedby, onPointerDownOutside, onFocusOutside, onInteractOutside, ...props }, ref) => {
   const { t } = useTranslation();
+  const handlePointerDownOutside: React.ComponentPropsWithoutRef<
+    typeof SheetPrimitive.Content
+  >["onPointerDownOutside"] = (e) => {
+    onPointerDownOutside?.(e);
+    if (e.defaultPrevented) return;
+    if (isAddressAutocompletePortalTarget(e.detail.originalEvent.target)) {
+      e.preventDefault();
+    }
+  };
+  const handleFocusOutside: React.ComponentPropsWithoutRef<
+    typeof SheetPrimitive.Content
+  >["onFocusOutside"] = (e) => {
+    onFocusOutside?.(e);
+    if (e.defaultPrevented) return;
+    if (isAddressAutocompletePortalTarget(e.target)) {
+      e.preventDefault();
+    }
+  };
+  const handleInteractOutside: React.ComponentPropsWithoutRef<
+    typeof SheetPrimitive.Content
+  >["onInteractOutside"] = (e) => {
+    onInteractOutside?.(e);
+    if (e.defaultPrevented) return;
+    if (isAddressAutocompletePortalTarget(e.target)) {
+      e.preventDefault();
+    }
+  };
   return (
   <SheetPortal>
     <SheetOverlay />
       <SheetPrimitive.Content
         ref={ref}
         aria-describedby={ariaDescribedby ?? undefined}
+        onPointerDownOutside={handlePointerDownOutside}
+        onFocusOutside={handleFocusOutside}
+        onInteractOutside={handleInteractOutside}
         className={cn(sheetVariants({ side }), side === "bottom" ? "" : "overflow-y-auto max-h-screen", className)}
         {...props}
       >

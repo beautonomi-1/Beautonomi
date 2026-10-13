@@ -99,7 +99,7 @@ export async function startPaidSubscriptionCheckout(options: {
     plan_id: subscriptionPlanId,
     billing_period: billingPeriod,
     in_app: inApp,
-    callback_url: getSubscriptionPaystackReturnUrl(),
+    callback_url: getSubscriptionPaystackReturnUrl({ inApp }),
   });
 
   if (initRes.error) {

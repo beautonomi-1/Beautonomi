@@ -1,6 +1,8 @@
 import type {
   Address,
+  CancelShipmentResult,
   CreateShipmentRequest,
+  LabelResult,
   Parcel,
   RateQuote,
   RateQuoteRequest,
@@ -19,7 +21,7 @@ import { asArray, asRecord, mapCourierTrackingStatus, strField } from "../map-tr
  *   https://ws.aramex.net/ShippingAPI.V2/RateCalculator/Service_1_0.svc/json/CalculateRate
  *   https://ws.aramex.net/ShippingAPI.V2/Shipping/Service_1_0.svc/json/CreateShipments
  *   https://ws.aramex.net/ShippingAPI.V2/Tracking/Service_1_0.svc/json/TrackShipments
- * Sandbox: https://ws.sbx.aramex.net/ShippingAPI.V2/...
+ * Sandbox: https://ws.dev.aramex.net/ShippingAPI.V2/...
  *
  * Env: ARAMEX_ACCOUNT_NUMBER, ARAMEX_ACCOUNT_PIN, ARAMEX_USERNAME, ARAMEX_PASSWORD.
  * Optional: ARAMEX_ACCOUNT_ENTITY (default JNB), ARAMEX_ACCOUNT_COUNTRY_CODE (default ZA),
@@ -35,6 +37,8 @@ export type AramexCredentials = {
   accountCountryCode?: string;
   source?: number;
   baseUrl?: string;
+  /** ZA domestic product type (ONP, PEC, PEX, …). Default ONP. */
+  domesticProductType?: string;
 };
 
 function resolveAramex(credentials?: Partial<AramexCredentials>): AramexCredentials | null {
@@ -60,7 +64,29 @@ function resolveAramex(credentials?: Partial<AramexCredentials>): AramexCredenti
       credentials?.baseUrl?.trim() ||
       process.env.ARAMEX_BASE_URL?.trim() ||
       "https://ws.aramex.net/ShippingAPI.V2",
+    domesticProductType:
+      credentials?.domesticProductType?.trim() ||
+      process.env.ARAMEX_DOMESTIC_PRODUCT_TYPE?.trim() ||
+      "ONP",
   };
+}
+
+function aramexWcfDate(d: Date): string {
+  return `/Date(${d.getTime()})/`;
+}
+
+function domesticProductType(creds: AramexCredentials): string {
+  const code = creds.domesticProductType?.trim().toUpperCase() || "ONP";
+  return code.length === 3 ? code : "ONP";
+}
+
+export function assertAramexContact(address: Address, role: "origin" | "destination"): void {
+  if (!address.phone?.trim()) {
+    throw new Error(`missing_contact:${role}_phone`);
+  }
+  if (!address.email?.trim()) {
+    throw new Error(`missing_contact:${role}_email`);
+  }
 }
 
 function countryCode(address: Address): string {
@@ -105,12 +131,14 @@ function partyAddress(address: Address) {
 }
 
 function contact(address: Address) {
+  const phone = address.phone!.trim();
+  const email = address.email!.trim();
   return {
     PersonName: address.name,
     CompanyName: address.name,
-    PhoneNumber1: address.phone ?? "0000000000",
-    CellPhone: address.phone ?? "0000000000",
-    EmailAddress: address.email ?? "",
+    PhoneNumber1: phone,
+    CellPhone: phone,
+    EmailAddress: email,
   };
 }
 
@@ -155,6 +183,7 @@ export function createAramexProvider(credentials?: Partial<AramexCredentials>): 
   async function quoteRates(req: RateQuoteRequest): Promise<RateQuote[]> {
     const creds = requireCreds();
     const domestic = isDomestic(req.origin, req.destination);
+    const productType = domestic ? domesticProductType(creds) : "EPX";
     const payload = assertNoAramexErrors(
       await shippingJsonRequest({
         url: `${aramexBase(creds)}/RateCalculator/Service_1_0.svc/json/CalculateRate`,
@@ -167,7 +196,7 @@ export function createAramexProvider(credentials?: Partial<AramexCredentials>): 
           ShipmentDetails: {
             PaymentType: "P",
             ProductGroup: domestic ? "DOM" : "EXP",
-            ProductType: domestic ? "ONP" : "EPX",
+            ProductType: productType,
             ActualWeight: { Value: totalWeightKg(req.parcels), Unit: "KG" },
             ChargeableWeight: { Value: totalWeightKg(req.parcels), Unit: "KG" },
             NumberOfPieces: Math.max(1, req.parcels.length),
@@ -189,7 +218,7 @@ export function createAramexProvider(credentials?: Partial<AramexCredentials>): 
         etaDays: domestic ? 2 : 5,
         metadata: {
           product_group: domestic ? "DOM" : "EXP",
-          product_type: domestic ? "ONP" : "EPX",
+          product_type: productType,
         },
       },
     ];
@@ -197,13 +226,18 @@ export function createAramexProvider(credentials?: Partial<AramexCredentials>): 
 
   async function createShipment(req: CreateShipmentRequest): Promise<Shipment> {
     const creds = requireCreds();
+    assertAramexContact(req.origin, "origin");
+    assertAramexContact(req.destination, "destination");
     const quotes = await quoteRates(req);
     const selected = quotes[0];
     if (!selected) {
       throw new Error("Aramex returned no bookable rate for this route");
     }
     const domestic = isDomestic(req.origin, req.destination);
+    const productType = domestic ? domesticProductType(creds) : "EPX";
     const first = req.parcels[0];
+    const shipDate = new Date();
+    const dueDate = new Date(shipDate.getTime() + Math.max(1, selected.etaDays) * 86_400_000);
     const payload = assertNoAramexErrors(
       await shippingJsonRequest({
         url: `${aramexBase(creds)}/Shipping/Service_1_0.svc/json/CreateShipments`,
@@ -215,6 +249,8 @@ export function createAramexProvider(credentials?: Partial<AramexCredentials>): 
           Shipments: [
             {
               Reference1: req.orderRef,
+              ShippingDateTime: aramexWcfDate(shipDate),
+              DueDate: aramexWcfDate(dueDate),
               Shipper: {
                 AccountNumber: creds.accountNumber,
                 PartyAddress: partyAddress(req.origin),
@@ -233,7 +269,7 @@ export function createAramexProvider(credentials?: Partial<AramexCredentials>): 
                 },
                 ActualWeight: { Value: totalWeightKg(req.parcels), Unit: "KG" },
                 ProductGroup: domestic ? "DOM" : "EXP",
-                ProductType: domestic ? "ONP" : "EPX",
+                ProductType: productType,
                 PaymentType: "P",
                 DescriptionOfGoods: first?.description ?? "Parcel",
                 GoodsOriginCountry: countryCode(req.origin),
@@ -263,6 +299,7 @@ export function createAramexProvider(credentials?: Partial<AramexCredentials>): 
       trackingNumber,
       waybillUrl: labelUrl ?? undefined,
       rate: selected,
+      metadata: { shipment_id: trackingNumber, label_url: labelUrl ?? null },
     };
   }
 
@@ -306,10 +343,34 @@ export function createAramexProvider(credentials?: Partial<AramexCredentials>): 
     return events;
   }
 
+  async function cancelShipment(_params: {
+    shipmentId?: string | null;
+    trackingNumber?: string | null;
+  }): Promise<CancelShipmentResult> {
+    return {
+      ok: false,
+      reason: "unsupported",
+      message: "Cancel this shipment in the Aramex portal.",
+    };
+  }
+
+  async function fetchLabel(params: {
+    shipmentId?: string | null;
+    trackingNumber?: string | null;
+  }): Promise<LabelResult> {
+    const id = params.shipmentId?.trim() || params.trackingNumber?.trim();
+    if (!id) throw new Error("Missing tracking number for Aramex label");
+    throw new Error(
+      "Aramex labels are issued at booking time; use the waybill URL stored on the order.",
+    );
+  }
+
   return {
     id: "aramex",
     quoteRates,
     createShipment,
     track,
+    cancelShipment,
+    fetchLabel,
   };
 }

@@ -1,19 +1,43 @@
 import { insertNotifications } from "@/lib/notifications/insert-notification";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { effectiveStaffNotificationSettings } from "@/lib/notifications/staff-notification-settings-sync";
 
 type NotificationPrefs = Record<string, unknown>;
 
-function parseNotificationSettings(raw: unknown): NotificationPrefs {
-  if (!raw) return {};
-  if (typeof raw === "string") {
-    try {
-      return JSON.parse(raw) as NotificationPrefs;
-    } catch {
-      return {};
+export type StaffNotificationSettingsCategory =
+  | "new_bookings"
+  | "appointment_reminders"
+  | "appointment_cancellations"
+  | "appointment_reschedules";
+
+function staffAllowsNotificationCategory(
+  settings: NotificationPrefs,
+  category: StaffNotificationSettingsCategory,
+): boolean {
+  if (settings[category] === false) return false;
+  return true;
+}
+
+export function filterStaffUserIdsByNotificationSettings(
+  staffRows: Array<{
+    user_id?: string | null;
+    notification_settings?: unknown;
+    email_notifications_enabled?: boolean | null;
+    sms_notifications_enabled?: boolean | null;
+    desktop_notifications_enabled?: boolean | null;
+  }>,
+  category: StaffNotificationSettingsCategory,
+): string[] {
+  const out = new Set<string>();
+  for (const row of staffRows) {
+    const uid = row.user_id;
+    if (!uid) continue;
+    const settings = effectiveStaffNotificationSettings(row);
+    if (staffAllowsNotificationCategory(settings, category)) {
+      out.add(uid);
     }
   }
-  if (typeof raw === "object") return raw as NotificationPrefs;
-  return {};
+  return [...out];
 }
 
 function shouldDeliverToStaffMember(
@@ -58,7 +82,7 @@ export async function getProviderTeamUserIds(providerId: string): Promise<string
   const { data: ownerRow } = await admin.from("providers").select("user_id").eq("id", providerId).maybeSingle();
   const { data: staffRows } = await admin
     .from("provider_staff")
-    .select("user_id, notification_settings")
+    .select("user_id")
     .eq("provider_id", providerId)
     .eq("is_active", true)
     .not("user_id", "is", null);
@@ -76,17 +100,26 @@ export async function getProviderTeamUserIds(providerId: string): Promise<string
  * Distinct app user IDs for specific `provider_staff` rows (active, linked login only).
  * Used to target booking notifications at the assigned staff instead of the whole team.
  */
-export async function getProviderStaffUserIds(providerId: string, staffIds: string[]): Promise<string[]> {
+export async function getProviderStaffUserIds(
+  providerId: string,
+  staffIds: string[],
+  options?: { bookingCategory?: StaffNotificationSettingsCategory },
+): Promise<string[]> {
   const ids = [...new Set(staffIds.filter(Boolean))];
   if (ids.length === 0) return [];
   const admin = getSupabaseAdmin();
   const { data: staffRows } = await admin
     .from("provider_staff")
-    .select("user_id")
+    .select(
+      "user_id, notification_settings, email_notifications_enabled, sms_notifications_enabled, desktop_notifications_enabled",
+    )
     .eq("provider_id", providerId)
     .eq("is_active", true)
     .in("id", ids)
     .not("user_id", "is", null);
+  if (options?.bookingCategory) {
+    return filterStaffUserIdsByNotificationSettings(staffRows ?? [], options.bookingCategory);
+  }
   const out = new Set<string>();
   for (const s of staffRows ?? []) {
     const uid = (s as { user_id?: string | null }).user_id;
@@ -129,8 +162,13 @@ async function resolveFilteredTeamUserIds(
   for (const row of staffRows ?? []) {
     const uid = (row as { user_id?: string | null }).user_id;
     if (!uid) continue;
-    const settings = parseNotificationSettings(
-      (row as { notification_settings?: unknown }).notification_settings,
+    const settings = effectiveStaffNotificationSettings(
+      row as {
+        notification_settings?: unknown;
+        email_notifications_enabled?: boolean | null;
+        sms_notifications_enabled?: boolean | null;
+        desktop_notifications_enabled?: boolean | null;
+      },
     );
     if (shouldDeliverToStaffMember(settings, payload)) {
       ids.add(uid);

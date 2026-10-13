@@ -66,12 +66,15 @@ export async function sendQueuedEmail(row: QueuedNotificationRow): Promise<void>
     throw new Error("no email address available for recipient");
   }
 
+  const plainText =
+    (row.payload?.text as string | undefined)?.trim() || bodyOf(row);
+
   await sendQueuedEmailViaProvider(
     {
       to: toEmail,
       subject: subjectOf(row),
-      html: (row.payload?.html as string | undefined) ?? bodyOf(row),
-      text: bodyOf(row),
+      html: (row.payload?.html as string | undefined) ?? plainText,
+      text: plainText,
       from: row.payload?.from as string | undefined,
       templateKey: row.template_key,
       queueRowId: row.id,

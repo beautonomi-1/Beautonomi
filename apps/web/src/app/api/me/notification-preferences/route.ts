@@ -2,10 +2,15 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { computeUserNotificationRollup } from "@/lib/notifications/customer-notification-channels";
+import {
+  getCustomerNotificationDefaults,
+  withCustomerFlatKeys,
+} from "@/lib/notifications/notification-preferences-defaults";
+import { materializeCustomerNotificationPreferences } from "@/lib/notifications/materialize-notification-preferences";
 
 /**
  * GET /api/me/notification-preferences
- * 
+ *
  * Get current user's notification preferences
  */
 export async function GET(request: NextRequest) {
@@ -13,19 +18,19 @@ export async function GET(request: NextRequest) {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
 
-    // Get notification preferences from user_profiles
-    let profileData: any = null;
-    let preferences: any = null;
+    let profileData: {
+      notification_preferences?: unknown;
+      privacy_settings?: unknown;
+    } | null = null;
 
     try {
       const { data, error } = await supabase
         .from("user_profiles")
-        .select("notification_preferences")
+        .select("notification_preferences, privacy_settings")
         .eq("user_id", user.id)
         .maybeSingle();
 
       if (error && error.code !== 'PGRST116') {
-        // If column doesn't exist, return default preferences instead of throwing
         if (error.code === '42703' || error.message?.includes('column') || error.message?.includes('does not exist')) {
           console.warn('Notification preferences column may not exist in user_profiles table:', error.message);
           profileData = null;
@@ -35,41 +40,29 @@ export async function GET(request: NextRequest) {
       } else {
         profileData = data;
       }
-    } catch (err: any) {
-      // Handle column not found errors gracefully
-      if (err.code === '42703' || err.message?.includes('column') || err.message?.includes('does not exist')) {
-        console.warn('Notification preferences column may not exist in user_profiles table:', err.message);
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      if (e.code === '42703' || e.message?.includes('column') || e.message?.includes('does not exist')) {
+        console.warn('Notification preferences column may not exist in user_profiles table:', e.message);
         profileData = null;
       } else {
         throw err;
       }
     }
 
-    // Default notification preferences
-    const defaultPreferences = {
-      inspiration_and_offers: { email: true, sms: true, push: false, whatsapp: false },
-      news_and_programs: { email: true, sms: true, push: false, whatsapp: false },
-      feedback: { email: true, sms: false, push: false, whatsapp: false },
-      travel_regulations: { email: true, sms: true, push: false, whatsapp: false },
-      account_activity: { email: true, sms: true, push: false, whatsapp: true },
-      client_policies: { email: true, sms: false, push: false, whatsapp: false },
-      reminders: { email: true, sms: true, push: false, whatsapp: true },
-      subscription_renewal: { email: true, sms: false, push: false, whatsapp: false },
-      messages: { email: true, sms: true, push: true, whatsapp: true },
-      unsubscribe_marketing: false,
-    };
+    const privacy = profileData?.privacy_settings as Record<string, unknown> | undefined;
+    const marketingConsented =
+      privacy?.receive_marketing === true || privacy?.marketing_consent === true;
 
-    preferences = profileData?.notification_preferences || defaultPreferences;
+    const rawExisting = profileData?.notification_preferences as Record<string, unknown> | null | undefined;
+    const preferences = await materializeCustomerNotificationPreferences(
+      supabase,
+      user.id,
+      rawExisting,
+      { marketingConsented: marketingConsented || undefined },
+    );
 
-    // Expose flat keys for mobile app (email_notifications, sms_notifications, booking_reminders)
-    const withFlatKeys = {
-      ...preferences,
-      email_notifications: (preferences as any).email_notifications ?? (preferences as any).reminders?.email !== false,
-      sms_notifications: (preferences as any).sms_notifications === true,
-      booking_reminders: (preferences as any).booking_reminders ?? (preferences as any).reminders?.email !== false,
-    };
-
-    return successResponse(withFlatKeys);
+    return successResponse(withCustomerFlatKeys(preferences));
   } catch (error) {
     return handleApiError(error, "Failed to fetch notification preferences");
   }
@@ -77,7 +70,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * PATCH /api/me/notification-preferences
- * 
+ *
  * Update current user's notification preferences
  */
 export async function PATCH(request: NextRequest) {
@@ -86,8 +79,7 @@ export async function PATCH(request: NextRequest) {
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
-    // Get existing preferences
-    let existingProfile: any = null;
+    let existingProfile: { notification_preferences?: unknown } | null = null;
     try {
       const { data, error } = await supabase
         .from("user_profiles")
@@ -96,7 +88,6 @@ export async function PATCH(request: NextRequest) {
         .maybeSingle();
 
       if (error && error.code !== 'PGRST116') {
-        // If column doesn't exist, use defaults
         if (error.code === '42703' || error.message?.includes('column') || error.message?.includes('does not exist')) {
           console.warn('Notification preferences column may not exist:', error.message);
           existingProfile = null;
@@ -106,34 +97,22 @@ export async function PATCH(request: NextRequest) {
       } else {
         existingProfile = data;
       }
-    } catch (err: any) {
-      // Handle column not found errors gracefully
-      if (err.code === '42703' || err.message?.includes('column') || err.message?.includes('does not exist')) {
-        console.warn('Notification preferences column may not exist:', err.message);
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      if (e.code === '42703' || e.message?.includes('column') || e.message?.includes('does not exist')) {
+        console.warn('Notification preferences column may not exist:', e.message);
         existingProfile = null;
       } else {
         throw err;
       }
     }
 
-    const defaultPreferences = {
-      inspiration_and_offers: { email: true, sms: true, push: false, whatsapp: false },
-      news_and_programs: { email: true, sms: true, push: false, whatsapp: false },
-      feedback: { email: true, sms: false, push: false, whatsapp: false },
-      travel_regulations: { email: true, sms: true, push: false, whatsapp: false },
-      account_activity: { email: true, sms: true, push: false, whatsapp: true },
-      client_policies: { email: true, sms: false, push: false, whatsapp: false },
-      reminders: { email: true, sms: true, push: false, whatsapp: true },
-      subscription_renewal: { email: true, sms: false, push: false, whatsapp: false },
-      messages: { email: true, sms: true, push: true, whatsapp: true },
-      unsubscribe_marketing: false,
-    };
+    const defaultPreferences = getCustomerNotificationDefaults({ marketingConsented: false });
+    const currentPreferences =
+      (existingProfile?.notification_preferences as Record<string, unknown>) || defaultPreferences;
 
-    const currentPreferences = existingProfile?.notification_preferences || defaultPreferences;
-    
-    // Merge with new preferences (deep merge for nested objects)
-    const updatedPreferences: any = { ...currentPreferences };
-    
+    const updatedPreferences: Record<string, unknown> = { ...currentPreferences };
+
     for (const [key, value] of Object.entries(body)) {
       if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
         updatedPreferences[key] = { ...(updatedPreferences[key] as object), ...value };
@@ -142,8 +121,7 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    // Update or insert
-    let profileData: any = null;
+    let profileData: { id?: string } | null = null;
     try {
       const { data, error: checkError } = await supabase
         .from("user_profiles")
@@ -152,19 +130,17 @@ export async function PATCH(request: NextRequest) {
         .maybeSingle();
 
       if (checkError && checkError.code !== 'PGRST116') {
-        // If table doesn't exist or other critical error, throw
-        // But allow PGRST116 (no rows found) to continue
         throw checkError;
       }
       profileData = data;
-    } catch (err: any) {
-      // Only throw if it's not a "no rows found" error
-      if (err.code !== 'PGRST116') {
+    } catch (err: unknown) {
+      const e = err as { code?: string };
+      if (e.code !== 'PGRST116') {
         throw err;
       }
     }
 
-    let result;
+    let result: Record<string, unknown>;
     try {
       if (profileData) {
         const { data, error } = await supabase
@@ -175,13 +151,12 @@ export async function PATCH(request: NextRequest) {
           .single();
 
         if (error) {
-          // If column doesn't exist, provide helpful error
           if (error.code === '42703' || error.message?.includes('column') || error.message?.includes('does not exist')) {
             throw new Error('Notification preferences column not found. Please run database migration 105_add_tax_info_to_user_profiles.sql');
           }
           throw error;
         }
-        result = data?.notification_preferences || {};
+        result = (data?.notification_preferences as Record<string, unknown>) || {};
       } else {
         const { data, error } = await supabase
           .from("user_profiles")
@@ -193,23 +168,21 @@ export async function PATCH(request: NextRequest) {
           .single();
 
         if (error) {
-          // If column doesn't exist, provide helpful error
           if (error.code === '42703' || error.message?.includes('column') || error.message?.includes('does not exist')) {
             throw new Error('Notification preferences column not found. Please run database migration 105_add_tax_info_to_user_profiles.sql');
           }
           throw error;
         }
-        result = data?.notification_preferences || {};
+        result = (data?.notification_preferences as Record<string, unknown>) || {};
       }
-    } catch (err: any) {
-      // Provide helpful error message for missing columns
-      if (err.code === '42703' || err.message?.includes('column') || err.message?.includes('does not exist')) {
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      if (e.code === '42703' || e.message?.includes('column') || e.message?.includes('does not exist')) {
         throw new Error('Notification preferences column not found. Please run database migration 105_add_tax_info_to_user_profiles.sql');
       }
       throw err;
     }
 
-    // Keep users.*_notifications_enabled in sync so cron, retention, and legacy checks match the UI.
     try {
       const rollup = computeUserNotificationRollup(updatedPreferences);
       const patch: Record<string, unknown> = { ...rollup };

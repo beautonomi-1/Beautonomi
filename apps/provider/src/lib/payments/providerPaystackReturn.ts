@@ -18,6 +18,8 @@ const trimSlash = (s: string) => s.replace(/\/$/, "");
 export const ADS_PAYMENT_RETURN_PATH = "/provider/settings/ads/payment-return";
 export const SUBSCRIPTION_RETURN_PATH = "/provider/subscription";
 export const TERMINAL_PAYMENT_RETURN_PATH = "/provider/settings/sales/terminal-payment-return";
+export const BILLING_PAYMENT_RETURN_PATH = "/provider/settings/billing";
+export const MARKETING_TOPUP_RETURN_PATH = "/provider/settings/marketing-integrations";
 
 /** Base HTTPS URL for provider Paystack returns (web origin). */
 export function getProviderPaystackReturnBaseUrl(): string {
@@ -30,13 +32,39 @@ export function getAdsPaystackReturnUrl(): string {
 }
 
 /** Full HTTPS Paystack return URL for the subscription flow. */
-export function getSubscriptionPaystackReturnUrl(): string {
-  return `${getProviderPaystackReturnBaseUrl()}${SUBSCRIPTION_RETURN_PATH}`;
+export function getSubscriptionPaystackReturnUrl(options?: { inApp?: boolean }): string {
+  const base = `${getProviderPaystackReturnBaseUrl()}${SUBSCRIPTION_RETURN_PATH}`;
+  if (options?.inApp) {
+    return `${base}?in_app=1`;
+  }
+  return base;
+}
+
+/** Full HTTPS Paystack return URL for platform invoice payments. */
+export function getBillingPaystackReturnUrl(options?: { inApp?: boolean }): string {
+  const base = `${getProviderPaystackReturnBaseUrl()}${BILLING_PAYMENT_RETURN_PATH}`;
+  if (options?.inApp) {
+    return `${base}?in_app=1`;
+  }
+  return base;
+}
+
+/** Full HTTPS Paystack return URL for marketing credits top-up. */
+export function getMarketingTopupPaystackReturnUrl(options?: { inApp?: boolean }): string {
+  const base = `${getProviderPaystackReturnBaseUrl()}${MARKETING_TOPUP_RETURN_PATH}`;
+  if (options?.inApp) {
+    return `${base}?in_app=1&payment_type=marketing_topup`;
+  }
+  return base;
 }
 
 /** Full HTTPS Paystack return URL for terminal hardware orders. */
-export function getTerminalPaystackReturnUrl(): string {
-  return `${getProviderPaystackReturnBaseUrl()}${TERMINAL_PAYMENT_RETURN_PATH}`;
+export function getTerminalPaystackReturnUrl(options?: { inApp?: boolean }): string {
+  const base = `${getProviderPaystackReturnBaseUrl()}${TERMINAL_PAYMENT_RETURN_PATH}`;
+  if (options?.inApp) {
+    return `${base}?in_app=1&context=provider_inapp`;
+  }
+  return base;
 }
 
 type MatchOpts = { success?: boolean; cancelled?: boolean };
@@ -103,6 +131,31 @@ export function matchesTerminalPaystackReturnUrl(url: string, opts: MatchOpts = 
   if (opts.success && u.searchParams.get("payment_success") !== "1") return false;
   if (opts.cancelled && u.searchParams.get("payment_cancelled") !== "1") return false;
   return true;
+}
+
+/**
+ * True if `url` is a provider invoice / billing Paystack-return URL.
+ */
+export function matchesBillingPaystackReturnUrl(url: string, opts: MatchOpts = {}): boolean {
+  const u = tryParseUrl(url);
+  if (!u) return false;
+  const isBillingPath =
+    u.pathname.includes(BILLING_PAYMENT_RETURN_PATH) ||
+    u.pathname.includes("billing-payment-return") ||
+    (u.host === "settings" && u.pathname.includes("billing-payment-return"));
+  if (!isBillingPath) return false;
+  if (opts.success && u.searchParams.get("payment_success") !== "true") return false;
+  if (opts.cancelled && u.searchParams.get("payment_cancelled") !== "1") return false;
+  return true;
+}
+
+export function matchesMarketingTopupReturnUrl(url: string): boolean {
+  const u = tryParseUrl(url);
+  if (!u) return false;
+  return (
+    u.pathname.includes(MARKETING_TOPUP_RETURN_PATH) ||
+    (u.host === "settings" && u.pathname.includes("marketing-integrations"))
+  );
 }
 
 // ─── Provisioning polls ────────────────────────────────────────────────────
@@ -314,26 +367,6 @@ export function terminalOrderFailedCopy(message?: string | null): TerminalSucces
       ? message
       : "Try again from Your orders, or contact support if you were charged.",
   };
-}
-
-export type TerminalPaymentReturnDeepLinkParams = {
-  success?: boolean;
-  cancelled?: boolean;
-  orderId?: string | null;
-  reference?: string | null;
-};
-
-/** Native deep link for terminal payment-return cold start. */
-export function getTerminalPaymentReturnDeepLink(
-  params: TerminalPaymentReturnDeepLinkParams = {},
-): string {
-  const q = new URLSearchParams();
-  if (params.success) q.set("payment_success", "1");
-  if (params.cancelled) q.set("payment_cancelled", "1");
-  if (params.orderId) q.set("order_id", params.orderId);
-  if (params.reference) q.set("reference", params.reference);
-  const query = q.toString();
-  return `provider://settings/terminal-payment-return${query ? `?${query}` : ""}`;
 }
 
 // ─── Success copy helpers ──────────────────────────────────────────────────
@@ -566,4 +599,72 @@ export function getAdsPaymentReturnDeepLink(params: AdsPaymentReturnDeepLinkPara
   if (params.reference) q.set("reference", params.reference);
   const query = q.toString();
   return `provider://settings/ads-payment-return${query ? `?${query}` : ""}`;
+}
+
+export type SubscriptionPaymentReturnDeepLinkParams = {
+  paymentSuccess?: boolean;
+  paymentCancelled?: boolean;
+  orderId?: string | null;
+  reference?: string | null;
+  sessionId?: string | null;
+};
+
+/** Native deep link for subscription Paystack return (`provider://settings/subscription-payment-return`). */
+export function getSubscriptionPaymentReturnDeepLink(
+  params: SubscriptionPaymentReturnDeepLinkParams = {},
+): string {
+  const q = new URLSearchParams();
+  if (params.paymentSuccess) q.set("payment_success", "true");
+  if (params.paymentCancelled) q.set("payment_cancelled", "1");
+  if (params.orderId) q.set("order_id", params.orderId);
+  if (params.reference) q.set("reference", params.reference);
+  if (params.sessionId) q.set("session_id", params.sessionId);
+  const query = q.toString();
+  return `provider://settings/subscription-payment-return${query ? `?${query}` : ""}`;
+}
+
+export type TerminalPaymentReturnDeepLinkParams = {
+  paymentSuccess?: boolean;
+  paymentCancelled?: boolean;
+  orderId?: string | null;
+  reference?: string | null;
+  sessionId?: string | null;
+};
+
+export function getTerminalPaymentReturnDeepLink(
+  params: TerminalPaymentReturnDeepLinkParams = {},
+): string {
+  const q = new URLSearchParams();
+  if (params.paymentSuccess) q.set("payment_success", "1");
+  if (params.paymentCancelled) q.set("payment_cancelled", "1");
+  if (params.orderId) q.set("order_id", params.orderId);
+  if (params.reference) q.set("reference", params.reference);
+  if (params.sessionId) q.set("session_id", params.sessionId);
+  const query = q.toString();
+  return `provider://settings/terminal-payment-return${query ? `?${query}` : ""}`;
+}
+
+export type BillingPaymentReturnDeepLinkParams = {
+  paymentSuccess?: boolean;
+  paymentCancelled?: boolean;
+  invoiceId?: string | null;
+  reference?: string | null;
+  sessionId?: string | null;
+};
+
+export function getMarketingIntegrationsReturnDeepLink(): string {
+  return "provider://settings/marketing-integrations";
+}
+
+export function getBillingPaymentReturnDeepLink(
+  params: BillingPaymentReturnDeepLinkParams = {},
+): string {
+  const q = new URLSearchParams();
+  if (params.paymentSuccess) q.set("payment_success", "true");
+  if (params.paymentCancelled) q.set("payment_cancelled", "1");
+  if (params.invoiceId) q.set("invoice_id", params.invoiceId);
+  if (params.reference) q.set("reference", params.reference);
+  if (params.sessionId) q.set("session_id", params.sessionId);
+  const query = q.toString();
+  return `provider://settings/billing-payment-return${query ? `?${query}` : ""}`;
 }

@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
     const includeVariants = request.nextUrl?.searchParams.get("include_variants") === "true";
     const includeInactive = request.nextUrl?.searchParams.get("include_inactive") === "true";
     const includeOfferingResources = request.nextUrl?.searchParams.get("include_offering_resources") === "true";
+    const includeAddons = request.nextUrl?.searchParams.get("include_addons") === "true";
 
     let query = supabase
       .from("offerings")
@@ -47,7 +48,8 @@ export async function GET(request: NextRequest) {
           name,
           slug,
           color,
-          description
+          description,
+          display_order
         )
       `)
       .eq("provider_id", providerId);
@@ -148,6 +150,42 @@ export async function GET(request: NextRequest) {
           ...s,
           resource_requirements: byOffering.get(s.id) ?? [],
         })) as unknown as OfferingCard[];
+      }
+    }
+
+    if (includeAddons && payload.length > 0) {
+      const { data: addonRows, error: addonErr } = await supabase
+        .from("offerings")
+        .select("id, title, price, duration_minutes, currency, applicable_service_ids")
+        .eq("provider_id", providerId)
+        .eq("service_type", "addon")
+        .eq("is_active", true);
+
+      if (!addonErr && addonRows?.length) {
+        const { addonAppliesTo } = await import("@/lib/offerings/addon-applicability");
+        payload = payload.map((row) => {
+          if ((row as { service_type?: string | null }).service_type === "addon") return row;
+          const target = {
+            id: String(row.id),
+            parent_service_id: (row as { parent_service_id?: string | null }).parent_service_id,
+            master_service_id: (row as { master_service_id?: string | null }).master_service_id,
+          };
+          const add_ons = addonRows
+            .filter((a) =>
+              addonAppliesTo(
+                { applicable_service_ids: (a as { applicable_service_ids?: string[] | null }).applicable_service_ids },
+                target,
+              ),
+            )
+            .map((a) => ({
+              id: a.id,
+              name: a.title,
+              price: a.price,
+              duration_minutes: a.duration_minutes,
+              currency: a.currency,
+            }));
+          return { ...row, add_ons };
+        }) as typeof payload;
       }
     }
 

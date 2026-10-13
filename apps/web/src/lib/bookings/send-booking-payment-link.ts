@@ -1,6 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
+import { getAppBaseUrl } from "@/lib/env/app-url";
+import { getPaymentProviderForTenant } from "@/lib/payments/provider/registry";
+import { getEffectiveCheckoutMethods } from "@/lib/payments/provider-checkout-methods";
 
 export interface SendBookingPaymentLinkInput {
   bookingId: string;
@@ -57,7 +60,34 @@ export async function sendBookingPaymentLink(
     return { ok: false, paymentLink: null, amountDue, warnings };
   }
 
-  const appBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+  const { data: bookingRow } = await supabaseAdmin
+    .from("bookings")
+    .select("provider_id")
+    .eq("id", input.bookingId)
+    .maybeSingle();
+  const providerId = (bookingRow as { provider_id?: string } | null)?.provider_id;
+  if (providerId && input.tenantId) {
+    const methods = await getEffectiveCheckoutMethods({
+      supabase: supabaseAdmin,
+      tenantId: input.tenantId,
+      providerId,
+    });
+    if (!methods.online) {
+      return {
+        ok: false,
+        paymentLink: null,
+        amountDue,
+        warnings: ["This provider is not accepting online payments."],
+      };
+    }
+  }
+
+  let appBase = "";
+  try {
+    appBase = getAppBaseUrl().replace(/\/$/, "");
+  } catch {
+    appBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+  }
   const paymentLink = `${appBase}/bookings/${input.bookingId}/pay`;
   if (!appBase) {
     // A relative path still resolves inside the app, but it is dead in an SMS
@@ -99,13 +129,14 @@ export async function sendBookingPaymentLink(
       const channels: ("push" | "email" | "sms")[] = ["push"];
       if (customerEmail) channels.push("email");
       if (customerPhone) channels.push("sms");
+      const psp = await getPaymentProviderForTenant(input.tenantId ?? undefined);
       await sendTemplateNotification(
         "payment_pending",
         [input.customerId],
         {
           amount: formatMoney(amountDue),
           booking_number: String(input.bookingRef),
-          payment_method: "Paystack",
+          payment_method: psp?.provider.id ?? "paystack",
           booking_id: input.bookingId,
           payment_link: paymentLink,
         },

@@ -10,8 +10,6 @@ import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
-import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
-import { PaycloudCollectButton } from "@/components/provider-portal/PaycloudCollectButton";
 import { ShareReceiptButton } from "@/components/receipts/ShareReceiptButton";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -42,18 +40,10 @@ import {
   BookingStatusChip,
 } from "../ui";
 
-const YocoPaymentDialog = dynamic(
+const CardMachineCollectDialog = dynamic(
   () =>
-    import("@/components/provider-portal/YocoPaymentDialog").then((m) => ({
-      default: m.YocoPaymentDialog,
-    })),
-  { ssr: false },
-);
-
-const PayCloudPaymentDialog = dynamic(
-  () =>
-    import("@/components/provider-portal/PayCloudPaymentDialog").then((m) => ({
-      default: m.PayCloudPaymentDialog,
+    import("@/components/provider-portal/CardMachineCollectDialog").then((m) => ({
+      default: m.CardMachineCollectDialog,
     })),
   { ssr: false },
 );
@@ -110,15 +100,12 @@ export function ProductOrderViewSheet({
   const canProcessPayments = isOwner || hasPermission("process_payments");
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
-  const { ready: paycloudReady, terminals } = usePaycloudCollectReady();
-  const paycloudInFlight = (terminals?.inFlight ?? 0) > 0;
   const { selectedLocationId } = useProviderPortal();
 
   const [order, setOrder] = useState<ProductOrderSheetOrder | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [yocoOpen, setYocoOpen] = useState(false);
-  const [paycloudOpen, setPaycloudOpen] = useState(false);
+  const [cardMachineOpen, setCardMachineOpen] = useState(false);
   const [refundOpen, setRefundOpen] = useState(false);
   const [trackingOpen, setTrackingOpen] = useState(false);
   const [trackingNumber, setTrackingNumber] = useState("");
@@ -193,10 +180,19 @@ export function ProductOrderViewSheet({
       return;
     }
     if (newStatus === "shipped") {
+      if (order.tracking_number?.trim()) {
+        await patchOrder({
+          status: newStatus,
+          tracking_number: order.tracking_number,
+          carrier: order.carrier ?? undefined,
+          tracking_url: order.tracking_url ?? undefined,
+        });
+        return;
+      }
       setPendingShipStatus(newStatus);
       setTrackingNumber(order.tracking_number ?? "");
-      setCarrier("");
-      setTrackingUrl("");
+      setCarrier(order.carrier ?? "");
+      setTrackingUrl(order.tracking_url ?? "");
       setTrackingOpen(true);
       return;
     }
@@ -257,22 +253,13 @@ export function ProductOrderViewSheet({
     }
   };
 
-  const handleYocoSuccess = async (payment: YocoPayment) => {
+  const handleCardMachineSuccess = async () => {
     if (!order) return;
-    try {
-      await fetcher.post(`/api/provider/product-orders/${order.id}/mark-collected`, {
-        payment_method: "yoco",
-        reference: payment.yoco_payment_id,
-        idempotency_key: `web-yoco-${order.id}-${payment.yoco_payment_id}`,
-      });
-      clearFetcherCache();
-      await load();
-      onUpdated?.();
-      setYocoOpen(false);
-      toast.success(t("web.provider.productOrderViewSheet.paymentRecorded"));
-    } catch {
-      toast.error(t("web.provider.productOrderViewSheet.chargeRecordFailed"));
-    }
+    clearFetcherCache();
+    await load();
+    onUpdated?.();
+    setCardMachineOpen(false);
+    toast.success(t("web.provider.productOrderViewSheet.paymentRecorded"));
   };
 
   const isAppointmentOrder = order?.order_source === "appointment";
@@ -282,8 +269,8 @@ export function ProductOrderViewSheet({
     order.payment_status !== "paid" &&
     order.status !== "cancelled" &&
     order.status !== "refunded";
-  const canCollectPaycloud = paycloudEnabled && canCollect && !isAppointmentOrder;
-  const canCollectYoco = yocoEnabled && canCollect;
+  const canCollectCardMachine =
+    (yocoEnabled || paycloudEnabled) && canCollect && !isAppointmentOrder;
   const canRefund =
     canProcessPayments &&
     order?.payment_status === "paid" &&
@@ -408,22 +395,15 @@ export function ProductOrderViewSheet({
               <BookingSectionCard>
                 <BookingSectionLabel className="mb-2">{t("web.provider.productOrderViewSheet.collectPayment")}</BookingSectionLabel>
                 <div className="flex flex-col gap-2">
-                  {canCollectPaycloud ? (
-                    <PaycloudCollectButton
-                      amount={totalAmount}
-                      currency="ZAR"
-                      context="product_order"
-                      inFlight={paycloudInFlight}
-                      onClick={() => {
-                        if (paycloudReady || paycloudInFlight) setPaycloudOpen(true);
-                      }}
+                  {canCollectCardMachine ? (
+                    <BookingActionButton
+                      variant="outline"
                       className="w-full justify-center min-h-[44px]"
-                      size="default"
-                    />
-                  ) : null}
-                  {canCollectYoco ? (
-                    <BookingActionButton variant="outline" onClick={() => setYocoOpen(true)}>
-                      {t("web.provider.productOrderViewSheet.collectWithYoco")}
+                      onClick={() => setCardMachineOpen(true)}
+                    >
+                      {t("web.provider.bookings.detail.paymentCollect.cardMachine", {
+                        amount: totalAmount.toFixed(2),
+                      })}
                     </BookingActionButton>
                   ) : null}
                   <BookingActionButton
@@ -449,6 +429,79 @@ export function ProductOrderViewSheet({
                   >
                     {t("web.provider.productOrderViewSheet.markPaidCash")}
                   </BookingActionButton>
+                </div>
+              </BookingSectionCard>
+            ) : null}
+
+            {order.fulfillment_type === "delivery" ? (
+              <BookingSectionCard>
+                <BookingSectionLabel className="mb-2">
+                  {t("web.provider.productOrderViewSheet.courierBooking")}
+                </BookingSectionLabel>
+                {order.shipping_booking_status ? (
+                  <BookingSummaryRow
+                    label={t("web.provider.productOrderViewSheet.bookingStatus")}
+                    value={order.shipping_booking_status}
+                  />
+                ) : null}
+                {order.shipping_booking_detail ? (
+                  <BookingSummaryRow
+                    label={t("web.provider.productOrderViewSheet.bookingDetail")}
+                    value={order.shipping_booking_detail}
+                  />
+                ) : null}
+                {order.tracking_number ? (
+                  <BookingSummaryRow
+                    label={t("web.provider.productOrderViewSheet.trackingNumber")}
+                    value={order.tracking_number}
+                  />
+                ) : null}
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {order.payment_status === "paid" &&
+                  order.status !== "cancelled" &&
+                  order.status !== "refunded" &&
+                  (!order.tracking_number ||
+                    order.shipping_booking_status === "failed" ||
+                    order.shipping_booking_status === "skipped") ? (
+                    <BookingActionButton
+                      size="sm"
+                      fullWidth={false}
+                      disabled={busy}
+                      onClick={async () => {
+                        if (!orderId) return;
+                        setBusy(true);
+                        try {
+                          await fetcher.post(`/api/provider/product-orders/${orderId}/book-shipment`);
+                          clearFetcherCache();
+                          await load();
+                          onUpdated?.();
+                          toast.success(t("web.provider.productOrderViewSheet.bookingSuccess"));
+                        } catch (err) {
+                          toast.error(
+                            err instanceof Error
+                              ? err.message
+                              : t("web.provider.productOrderViewSheet.bookingFailed"),
+                          );
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      {order.tracking_number
+                        ? t("web.provider.productOrderViewSheet.retryBooking")
+                        : t("web.provider.productOrderViewSheet.bookCourier")}
+                    </BookingActionButton>
+                  ) : null}
+                  {order.tracking_number || order.courier_label_url ? (
+                    <a
+                      href={`/api/provider/product-orders/${order.id}/shipping-label`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center rounded-xl border border-gray-200 px-3 py-2 text-xs font-semibold min-h-[36px]"
+                    >
+                      {t("web.provider.productOrderViewSheet.printLabel")}
+                    </a>
+                  ) : null}
                 </div>
               </BookingSectionCard>
             ) : null}
@@ -540,28 +593,19 @@ export function ProductOrderViewSheet({
         </BookingBottomSheet>
       ) : null}
 
-      {order && yocoOpen ? (
-        <YocoPaymentDialog
-          open={yocoOpen}
-          onOpenChange={setYocoOpen}
+      {order && canCollectCardMachine ? (
+        <CardMachineCollectDialog
+          open={cardMachineOpen}
+          onOpenChange={setCardMachineOpen}
           amount={totalAmount}
-          onSuccess={handleYocoSuccess}
-        />
-      ) : null}
-
-      {order && paycloudOpen ? (
-        <PayCloudPaymentDialog
-          open={paycloudOpen}
-          onOpenChange={setPaycloudOpen}
-          amount={totalAmount}
-          entityType="product_order"
-          entityId={order.id}
-          bookingLocationId={selectedLocationId}
-          onSuccess={() => {
-            setPaycloudOpen(false);
-            void load();
-            onUpdated?.();
+          autoStart
+          entity={{
+            entityType: "product_order",
+            entityId: order.id,
+            productOrderId: order.id,
+            bookingLocationId: selectedLocationId,
           }}
+          onSuccess={() => void handleCardMachineSuccess()}
         />
       ) : null}
 

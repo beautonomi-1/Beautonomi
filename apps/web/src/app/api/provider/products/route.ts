@@ -137,6 +137,7 @@ export async function POST(request: Request) {
       has_variants,
       variant_option_types,
       variants: variantsPayload,
+      weight_grams,
     } = body;
 
     if (!name) {
@@ -202,6 +203,10 @@ export async function POST(request: Request) {
         is_active: is_active ?? true,
         has_variants: withVariants,
         variant_option_types: withVariants ? (variant_option_types || []) : [],
+        weight_grams:
+          weight_grams != null && weight_grams !== ""
+            ? Math.max(0, parseInt(String(weight_grams), 10) || 0)
+            : null,
       })
       .select()
       .single();

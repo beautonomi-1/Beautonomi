@@ -30,7 +30,7 @@ export const missingOnlineChargeLedgerPayloadSchema = z.object({
   giftCardAmountApplied: z.number().min(0).optional(),
   customerEmail: z.string().email().optional().nullable(),
   feeSource: z.string().max(64).optional(),
-  paymentProvider: z.enum(["paystack", "stripe"]).optional().default("paystack"),
+  paymentProvider: z.enum(["paystack", "stripe", "flutterwave"]).optional().default("paystack"),
 });
 
 export type MissingOnlineChargeLedgerPayload = z.infer<typeof missingOnlineChargeLedgerPayloadSchema>;
@@ -150,7 +150,30 @@ export async function executeLedgerRepairProposal(
             approved_by: ctx.approvedBy,
           },
         })
-      : await recordPaystackBookingSettlement(supabase, {
+      : p.paymentProvider === "flutterwave"
+        ? await (
+            await import("@/lib/bookings/record-flutterwave-booking-settlement")
+          ).recordFlutterwaveBookingSettlement(supabase, {
+            bookingId: p.bookingId,
+            reference: p.reference,
+            transactionId: p.reference,
+            amountMajor: p.amountMajor,
+            feesSmallestOrMajor: p.fees,
+            feesAlreadyMajor: true,
+            feeSource: p.feeSource ?? "admin_ledger_repair",
+            bookingPaymentId: p.bookingPaymentId ?? null,
+            isDeposit: p.isDeposit,
+            walletAmountApplied: p.walletAmountApplied,
+            giftCardAmountApplied: p.giftCardAmountApplied,
+            customerEmail: p.customerEmail ?? null,
+            metadata: {
+              source: "admin_ledger_repair",
+              ledger_repair_proposal_id: proposal.id,
+              proposed_by: proposal.proposed_by,
+              approved_by: ctx.approvedBy,
+            },
+          })
+        : await recordPaystackBookingSettlement(supabase, {
           bookingId: p.bookingId,
           reference: p.reference,
           amountMajor: p.amountMajor,

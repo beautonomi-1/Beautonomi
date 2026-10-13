@@ -6,16 +6,18 @@
  * 2. Saved card: Charge authorization directly via API (no redirect needed)
  */
 import { useState, useCallback } from "react";
-import * as ExpoLinking from "expo-linking";
 import { api } from "@/lib/api-client";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
-import { isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
+import { isCancelledPaystackUrl, isFailedHostedCheckoutReturn } from "@/lib/paystack-webview-utils";
 import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
-  getBookingCheckoutPaystackAuthPrefix,
+  getCustomerPaystackAuthReturnUrl,
+  getNativePaystackReturnUrl,
+  CUSTOMER_NATIVE_PAYSTACK_PATHS,
+  CHECKOUT_SUCCESS_PATH,
   matchesCheckoutSuccessReturnUrl,
   matchesPaystackAuthSessionReturn,
 } from "@/lib/payments/customerPaystackReturn";
@@ -101,14 +103,15 @@ export function usePaystackPayment() {
       setError(null);
 
       try {
-        const returnUrl = getBookingCheckoutPaystackAuthPrefix();
-        const schemeHint = ExpoLinking.createURL("paystack-callback");
+        const returnUrl = getNativePaystackReturnUrl(CUSTOMER_NATIVE_PAYSTACK_PATHS.legacyCallback);
         const res = await api.post<PaystackInitResponse>("/api/payments/initialize", {
           booking_id: params.booking_id,
           amount: params.amount,
           email: params.email,
           currency: params.currency || getTenantDefaultCurrency(),
-          callback_url: schemeHint,
+          callback_url: getCustomerPaystackAuthReturnUrl(CHECKOUT_SUCCESS_PATH, {
+            booking_id: params.booking_id,
+          }),
           metadata: {
             save_card: params.save_card ?? false,
             customer_id: params.customer_id,
@@ -151,6 +154,12 @@ export function usePaystackPayment() {
 
         let reference = data.reference;
         let checkoutSessionId: string | null = null;
+        let flutterwaveTransactionId: string | null = null;
+
+        if (pr.outcome === "start_failed") {
+          setError("We couldn't open secure checkout. Please try again.");
+          return { success: false };
+        }
 
         if (pr.outcome === "cancel") {
           getAnalyticsClient()?.track("payment_cancelled", {
@@ -171,7 +180,7 @@ export function usePaystackPayment() {
         }
 
         if (pr.outcome === "success" && pr.url) {
-          if (isCancelledPaystackUrl(pr.url)) {
+          if (isCancelledPaystackUrl(pr.url) || isFailedHostedCheckoutReturn(pr.url)) {
             getAnalyticsClient()?.track("payment_cancelled", {
               booking_id: params.booking_id,
               reason: "cancel_action",
@@ -186,6 +195,7 @@ export function usePaystackPayment() {
             const parsed = parseOnlineCheckoutReturnUrl(pr.url);
             if (parsed.reference) reference = parsed.reference;
             if (parsed.sessionId) checkoutSessionId = parsed.sessionId;
+            if (parsed.transactionId) flutterwaveTransactionId = parsed.transactionId;
           }
         }
 
@@ -193,6 +203,7 @@ export function usePaystackPayment() {
         if (reference) {
           const verifyResult = await verifyPaystackWithRetry(reference, {
             sessionId: checkoutSessionId,
+            transactionId: flutterwaveTransactionId,
           });
           if (verifyResult.status === "success") paymentConfirmed = true;
         }

@@ -612,7 +612,7 @@
           "lookupFailed": "فشل Lookup",
           "notFound": "لا منتج found for this barcode or SKU",
           "title": "Find منتج to تعديل",
-          "subtitle": "Scan or enter a barcode / SKU to فتح the منتج editor.",
+          "subtitle": "امسح أو أدخل الرمز الشريطي / SKU لفتح محرر المنتج.",
           "codePlaceholder": "باركود / SKU",
           "lookupA11y": "Look up منتج",
           "scanA11y": "Scan barcode with camera",
@@ -852,7 +852,7 @@
           "renewsPrefix": "This plan renews تلقائيًا each billing فترة. You can ",
           "cancelAnytime": "إلغاء anytime",
           "renewsSuffix": " — تحتفظ بالوصول حتى نهاية الفترة التي دفعتها.",
-          "chargeNoteApple": "You are only charged after you confirm with Face ID, Touch ID, or your App Store password. Your plan activates once Apple verifies the purchase — never before.",
+          "chargeNoteApple": "لا يُخصم المبلغ إلا بعد التأكيد عبر Face ID أو Touch ID أو كلمة مرور App Store. يُفعَّل اشتراكك بعد تحقق Apple من الشراء — وليس قبل ذلك.",
           "chargeNotePaystack": "You are only charged after you confirm on the secure Paystack page. Your plan activates once payment is verified — never before.",
           "termsEula": "شروط of Use (EULA)",
           "privacyPolicy": "سياسة الخصوصية",
@@ -1649,7 +1649,9 @@
           "measureG": "غرام (غ)",
           "measureKg": "كيلوغرام (كغ)",
           "measureUnit": "وحدة",
-          "defaultVariantType": "الحجم"
+          "defaultVariantType": "الحجم",
+          "weightGrams": "وزن الشحن (g)",
+          "weightGramsPlaceholder": "500"
         },
         "ads": {
           "title": "إعلانات مدفوعة",
@@ -1752,7 +1754,7 @@
           "timeBoostSubtitle": "Flat رسوم — برعاية placement for {{days}}.",
           "timeBoostBenefit1": "برعاية placement for the full {{days}}",
           "timeBoostBenefit2": "Predictable flat سعر — لا per-click charges",
-          "timeBoostBenefit3": "Goes live فقط after دفع is موثّق",
+          "timeBoostBenefit3": "يُنشر فقط بعد التحقق من الدفع",
           "boostDuration": "مدة التعزيز",
           "timeBoostPurchased": "وقت boost purchased and حملة تم الإنشاء.",
           "dayInSlots": "يوم in sponsored slots",
@@ -1839,7 +1841,7 @@
           "sponsoredBefore": "Your listing will appear as a ",
           "sponsoredLabel": "مموّل",
           "sponsoredAfter": " تظهر في عمليات البحث المؤهلة ما دامت الحملة ممولة ونشطة.",
-          "chargeNoteApple": "You are only charged after you confirm with Face ID, Touch ID, or your App Store password. Your campaign goes live once Apple verifies the purchase — never before.",
+          "chargeNoteApple": "لا يُخصم المبلغ إلا بعد التأكيد عبر Face ID أو Touch ID أو كلمة مرور App Store. تبدأ حملتك بعد تحقق Apple من الشراء — وليس قبل ذلك.",
           "chargeNotePaystack": "You are only charged after you confirm on the secure Paystack page. Your campaign goes live once payment is verified — never before.",
           "openingAppStore": "فتح App Store purchase…",
           "openingCheckout": "فتح secure checkout…",
@@ -1899,7 +1901,7 @@
           "noOneInService": "لا one marked in خدمة.",
           "completeAppointmentA11y": "إكمال موعد",
           "serviceFallback": "الخدمة",
-          "serviceWithDuration": "{{name}} · {{minutes}} min",
+          "serviceWithDuration": "{{name}} · {{minutes}} د",
           "runningLate": "متأخر",
           "runningLateMinutes": "متأخر {{minutes}}m",
           "introHint": "اليوم بنظرة: أكّد الطلبات الجديدة، سجّل وصول العملاء، وابدأ خدمتهم."
@@ -2024,7 +2026,7 @@
           "noPermissionCheckOut": "You do not have إذن to تحقق participants out.",
           "checkOutFailed": "فشل Check-out",
           "groupReceipt": "إيصال المجموعة",
-          "receiptOpenFailed": "حدث خطأ ما while فتح the group إيصال.",
+          "receiptOpenFailed": "حدث خطأ أثناء فتح إيصال المجموعة.",
           "refundParticipantTitle": "استرداد participant",
           "refundNoLinkedBooking": "هذا المشارك ليس له حجز مرتبط بعد؛ لا شيء للاسترداد.",
           "guest": "ضيف",
@@ -2398,7 +2400,7 @@
           "referralSources": "Referral Sources",
           "referralSourcesSub": "Track how عملاء find you",
           "tipDistribution": "إكرامية Distribution",
-          "tipDistributionSub": "Solo keeps tips; salons can مشاركة with فريق",
+          "tipDistributionSub": "في العمل الفردي تبقى الإكراميات لك؛ ويمكن للصالونات مشاركتها مع الفريق",
           "timeOffTypes": "وقت Off Types",
           "timeOffTypesSub": "Leave فئات & pay rules",
           "productCategories": "منتج Categories",
@@ -2472,7 +2474,7 @@
           "statusNoShow": "لا Show",
           "unitHours": "ساعات",
           "unitMinutes": "د",
-          "defaultStatusHint": "جديد مواعيد will be تم الإنشاء with this حالة",
+          "defaultStatusHint": "تُنشأ المواعيد الجديدة بهذه الحالة",
           "unsavedChanges": "You have unsaved changes",
           "setDefaultStatusA11y": "Set default حالة to {{status}}"
         },
@@ -3104,7 +3106,23 @@
           "recommendChargeCard": "Charge card on file (عميل approves first)",
           "recommendCustomerPay": "Send to عميل — they pay in-تطبيق",
           "recommendCollectInPerson": "Collect in شخص (cash, card, or terminal)",
-          "removeCta": "إزالة"
+          "removeCta": "إزالة",
+          "continue": "متابعة",
+          "yocoRefundRecordedBody": "لقد تم تسجيل استرداد Yoco في هذا الحجز.",
+          "awaitingYocoRefundTitle": "{{amount}} لا يزال يتعين استرداد المبلغ على الجهاز Yoco",
+          "awaitingYocoRefundBody": "تم إلغاء هذا الحجز مع إعادة الأموال إلى البطاقة. قم برد المبلغ في تطبيق Yoco أو على الجهاز، ثم قم بتسجيله هنا. وحتى ذلك الحين، تظل معلقة في تقرير تسوية ماكينة البطاقة.",
+          "awaitingYocoRefundReason": "تم إلغاء الحجز – رد المبلغ مرة أخرى إلى البطاقة",
+          "refundOriginalHint": "يتم إرجاع الأموال إلى بطاقة العميل من خلال ماكينة البطاقة أو البنك. لا يتم أخذ أي شيء من درج النقود الخاص بك.",
+          "refundCashHint": "قم بتسليم الأموال إلى العميل شخصيًا. مسجلة لكتبك. لم يتم إصدار رصيد المحفظة. يتم تحديث رصيد الحجز بعد نجاح ذلك.",
+          "refundWalletHint": "يُستخدم عندما لا يكون العميل موجودًا أو يتم الدفع عبر الإنترنت. يتم إضافة المبلغ المسترد إلى محفظتهم.",
+          "refundOriginalMachineHint": "يتم إرجاع الأموال إلى بطاقة العميل من خلال ماكينة البطاقة التي تم الدفع عليها.",
+          "cancelRefundWalletHint": "يتلقى العميل كامل المبلغ إلى محفظة Beautonomi الخاصة به. لا تنطبق سياسة الإلغاء الخاصة بك على عمليات الإلغاء التي تبدأها.",
+          "yocoRefundOnMachineTitle": "استرداد الأموال على جهاز Yoco الخاص بك",
+          "yocoRefundOnMachineBody": "لا يمكن بدء عمليات استرداد الأموال من Yoco من Beautonomi. قم باسترداد مبلغ {{amount}} في تطبيق Yoco أو على الجهاز أولاً، ثم قم بتسجيله هنا حتى يظل رصيد الحجز والتقارير صحيحة.",
+          "cancelWalletNote": "سيحصل العميل على كامل المبلغ إلى محفظة Beautonomi الخاصة به مقابل المبالغ المدفوعة بالفعل. لا تنطبق سياسة الإلغاء الخاصة بك على عمليات الإلغاء التي تبدأها.",
+          "cancelRefundTo": "إعادة المبلغ المدفوع إلى",
+          "yocoRefundRecordCta": "تم استرداد المبلغ على الجهاز — قم بتسجيل المبلغ المسترد",
+          "cancelRefundCardHint": "تعود مدفوعات جهاز البطاقات إلى بطاقة العميل (تلقائيًا لأجهزة Beautonomi؛ أما مع Yoco فتسترد المبلغ على الجهاز ثم تسجّله). تُضاف المدفوعات عبر الإنترنت إلى محفظته."
         },
         "operatingHoursSettings": {
           "title": "Operating ساعات",
@@ -3130,7 +3148,7 @@
           "saving": "جارٍ الحفظ…",
           "unsavedChanges": "You have unsaved changes",
           "validationTitle": "Validation خطأ",
-          "closeAfterOpen": "{{day}}: Closing وقت must be after فتح وقت",
+          "closeAfterOpen": "{{day}}: يجب أن يكون وقت الإغلاق بعد وقت الفتح",
           "breakEndAfterStart": "{{day}}: Break {{index}} end must be after بدء",
           "breakWithinHours": "{{day}}: يجب أن تكون استراحة {{index}} ضمن ساعات العمل",
           "noLocationTitle": "خطأ",
@@ -3306,7 +3324,7 @@
           "membershipsLabel": "بيع العضويات",
           "membershipsSubtitle": "Plans, benefits, pricing & مشتركون",
           "promoCodesLabel": "رموز ترويجية",
-          "promoCodesSubtitle": "Your discounts—scoped to your حجوزات فقط",
+          "promoCodesSubtitle": "خصوماتك — مقتصرة على حجوزاتك فقط",
           "bookingsCalendarLabel": "حجوزات & calendar",
           "bookingsCalendarSubtitle": "مواعيد, waitlist & schedule",
           "timeBlocksLabel": "وقت blocks",
@@ -3969,7 +3987,11 @@
           "trackingUrlHelp": "الصق صفحة تتبع الناقل ليتمكن العملاء من فتحها من طلبهم.",
           "saving": "جارٍ الحفظ…",
           "confirmShipped": "تأكيد shipped",
-          "estimatedDeliveryDate": "Estimated delivery تاريخ (اختياري)"
+          "estimatedDeliveryDate": "Estimated delivery تاريخ (اختياري)",
+          "courierBooking": "Courier حجز",
+          "bookCourier": "حجز شركة الشحن",
+          "retryCourierBooking": "إعادة المحاولة حجز",
+          "printLabel": "طباعة الملصق"
         },
         "yocoDevices": {
           "title": "أجهزة Yoco",
@@ -4160,7 +4182,7 @@
           "stillWaitingShortTitle": "ما زال بالانتظار",
           "stillWaitingShortBody": "The payment is still processing. حاول مرة أخرى in a moment or cancel and start fresh.",
           "chargeStillOpenTitle": "Charge still فتح",
-          "chargeStillOpenBody": "A charge is still open on the جهاز البطاقة. Keep it open to finish or resume it, or cancel it now.",
+          "chargeStillOpenBody": "لا يزال خصماً مفتوحاً على جهاز البطاقة. اتركه مفتوحاً للإنهاء أو الاستئناف، أو ألغِه الآن.",
           "keepItOpen": "Keep it فتح",
           "cancelTheCharge": "إلغاء the charge",
           "voidSentTitle": "إلغاء sent to جهاز البطاقة",
@@ -4203,7 +4225,7 @@
           "handTerminal": "Hand the terminal to your عميل",
           "confirmingPayment": "Confirming دفع…",
           "completeInWiseCashier": "إكمال the دفع in WiseCashier, then return here.",
-          "keepScreenOpen": "Keep this screen فتح until the دفع finishes.",
+          "keepScreenOpen": "أبقِ هذه الشاشة مفتوحة حتى ينتهي الدفع.",
           "paymentMode": "دفع mode",
           "modeThisDevice": "ادفع على هذا الجهاز",
           "modeCloud": "Send to جهاز البطاقة (Cloud)",
@@ -4242,7 +4264,7 @@
           "checking": "جارٍ التحقق…",
           "resumePayment": "Resume دفع",
           "cancelInProgressA11y": "إلغاء الدفع الجاري على جهاز البطاقة",
-          "mobileUsingPortable": "جوال حجز · using your محمول card machine.",
+          "mobileUsingPortable": "حجز متنقل · باستخدام جهاز البطاقة المحمول.",
           "mobileSetAllLocations": "جوال حجز · set a machine to \"الكل مواقع\" for on-site work.",
           "noMachineAssigned": "No active machine is assigned to this location. The selected جهاز البطاقة will still take the payment.",
           "usingPortable": "Using your محمول machine — لا شيء مُعيَّن to this صالون yet.",
@@ -4715,7 +4737,7 @@
             "editService": "تعديل خدمة",
             "addAService": "إضافة a خدمة",
             "addonsOptional": "إضافة-ons (اختياري)",
-            "addonMinutes": " · +{{minutes}} min",
+            "addonMinutes": " · +{{minutes}} د",
             "addonNamePlaceholder": "إضافة-on اسم",
             "pricePlaceholder": "سعر ({{currency}})",
             "addonPriceA11y": "إضافة-on سعر",
@@ -4730,7 +4752,7 @@
             "cancelEdit": "إلغاء تعديل"
           },
           "hours": {
-            "freelancerHint": "We've started you on broad weekday hours (8 am–8 pm). Tap a day to toggle open/closed, then set times.",
+            "freelancerHint": "بدأنا بساعات أسبوعية واسعة (8 ص–8 م). اضغط يوماً للتبديل بين مفتوح/مغلق ثم حدّد الأوقات.",
             "teamHint": "Clients can only book slots within these hours. Tap a day to toggle it, then set the times.",
             "toggleA11y": "Toggle {{day}} {{state}}",
             "closed": "مغلق",
@@ -4748,7 +4770,7 @@
             "openingTooLateTitle": "Opening وقت too late",
             "openingTooLateBody": "فتح وقت must be earlier than closing وقت.",
             "closingTooEarlyTitle": "Closing وقت too early",
-            "closingTooEarlyBody": "Closing وقت must be لاحقًا than فتح وقت.",
+            "closingTooEarlyBody": "يجب أن يكون وقت الإغلاق بعد وقت الفتح.",
             "openingTime": "Opening وقت",
             "closingTime": "Closing وقت",
             "donePickingA11y": "تم picking وقت",
@@ -5169,7 +5191,9 @@
           "staffOffersServiceHint": "يمكن لأعضاء الفريق هؤلاء تنفيذ هذه الخدمة.",
           "categoryPickerTitle": "الفئة",
           "runningBehindSheetTitle": "متأخر عن الجدول؟",
-          "staffFilteredByService": "عرض أعضاء الفريق المعيّنين لهذه الخدمة."
+          "staffFilteredByService": "عرض أعضاء الفريق المعيّنين لهذه الخدمة.",
+          "addressOutsideArea": "هذا العنوان خارج منطقة خدمتك.",
+          "addressValidateFailed": "تعذّر التحقق من هذا العنوان. تحقق من اتصالك وحاول مرة أخرى."
         },
         "expressBooking": {
           "invalidJson": "JSON غير صالح.",
@@ -5331,7 +5355,7 @@
           "limitReachedTitle": "تم بلوغ الحد",
           "limitReachedBody": "You can إضافة up to 5 photos or videos per post.",
           "noPermissionCreate": "You do not have إذن to إنشاء Explore posts.",
-          "uploadFailedItem": "{{message}}\n(Item {{current}} of {{total}})",
+          "uploadFailedItem": "{{message}}\n(العنصر {{current}} من {{total}})",
           "somethingWentWrong": "حدث خطأ ما.",
           "createPostA11y": "إنشاء new Explore post",
           "exploreBrowserTitle": "استكشف",
@@ -5403,7 +5427,44 @@
           "posting": "جارٍ النشر…",
           "postAction": "منشور",
           "commentsDisabled": "تعليقات and likes are turned off in your محتوى & safety إعدادات.",
-          "commentLength": "{{count}}/200"
+          "commentLength": "{{count}}/200",
+          "videoTooLong": "تتجاوز الفيديو الحد الأقصى للطول في Explorer ({{seconds}} ثانية).",
+          "trimVideoTitle": "قص الفيديو",
+          "trimVideoHint": "اسحب لاختيار الجزء من الفيديو الذي يظهر في Explorer.",
+          "trimClipLength": "مقطع {{seconds}} ث",
+          "trimVideoScrubber": "اختر بداية المقطع",
+          "trimVideoConfirm": "استخدام المقطع",
+          "trimVideoLoading": "جاري تحميل video…",
+          "trimVideoFinishFirst": "أنهِ قص الفيديو قبل المتابعة.",
+          "holdToRecord": "اضغط مطولاً للتسجيل",
+          "releaseToFinish": "ارفع إصبعك للإنهاء",
+          "tapForPhoto": "اضغط للصورة",
+          "clipWindowA11y": "المقطع المحدد",
+          "capturePhoto": "صورة",
+          "captureVideo": "فيديو",
+          "flipCamera": "قلب الكاميرا",
+          "lensFront": "الكاميرا الأمامية",
+          "lensBack": "رجوع camera",
+          "switchToFront": "التبديل إلى الكاميرا الأمامية",
+          "switchToBack": "Switch to رجوع camera",
+          "openingCamera": "جارٍ فتح الكاميرا…",
+          "cameraOpenFailed": "تعذّر فتح هذه الكاميرا. جرّب العدسة الأخرى أو أغلق وأعد الفتح.",
+          "cameraPermissionContinue": "متابعة",
+          "micPermissionForVideo": "يلزم الوصول إلى الميكroفون لتسجيل فيديو بصوت.",
+          "onMediaText": "نص على الوسائط",
+          "onMediaTextHint": "اضغط صورة مصغرة لاختيار الشريحة، ثم أضف نصاً قصيراً (يظهر على المنشور حتى الحرق عند النشر).",
+          "onMediaTextDragHint": "اسحب النص على المعاينة لإعادة وضعه.",
+          "onMediaTextPlaceholder": "تسمية قصيرة على هذه الشريحة",
+          "addTextLayer": "إضافة text",
+          "backgroundSoundOptional": "Background sound (اختياري)",
+          "addMusic": "إضافة music (اختياري)",
+          "originalAudio": "الصوت الأصلي",
+          "soundViewerHint": "يسمع المشاهدون هذه الموسيقى بدلاً من صوت مقطعك في Explorer.",
+          "soundsEmpty": "لا توجد مسارات في الكatalog بعد — استخدم الصوت الأصلي أو اطلب من المسؤول إضافة أصوات المنصة.",
+          "soundsSectionPlatform": "أصوات شائعة",
+          "soundsSectionYours": "أصواتك",
+          "soundPreviewPlay": "تشغيل المعاينة",
+          "soundPreviewStop": "إيقاف المعاينة"
         },
         "dashboard": {
           "title": "لوحة التحكم",
@@ -5442,7 +5503,7 @@
           "completeProfileCta": "إكمال your ملف شخصي →",
           "reconcilingA11y": "{{count}} مدفوعات still being reconciled اليوم",
           "reconcilingBody": "بعض مدفوعات are still being reconciled ({{count}} اليوم). أرباح may تحديث shortly.",
-          "subscriptionRequiredA11y": "اشتراك مطلوب for online حجوزات. Opens plan and billing.",
+          "subscriptionRequiredA11y": "الاشتراك مطلوب للحجوزات عبر الإنترنت. يفتح الخطة والفوترة.",
           "onlineBookingsNeedAttention": "Online حجوزات need attention",
           "openPlanBilling": "فتح plan & billing →",
           "identityStripA11y": "تقييم {{rating}}، {{reviews}} مراجعة. المستوى: {{level}}. {{services}} {{distance}}",
@@ -5982,7 +6043,7 @@
           "countryNG": "نيجيريا",
           "countryGH": "غانا",
           "countryKE": "كينيا",
-          "bankPaystack": "Bank * (Paystack)",
+          "bankPaystack": "البنك * (Paystack)",
           "loadingBanks": "جاري تحميل banks…",
           "selectBank": "اختيار your bank",
           "noBanks": "لا banks مُرجَع for this دولة. تحقق your Paystack إعداد.",
@@ -6656,7 +6717,7 @@
           "add": "إضافة",
           "readOnlyBanner": "You have read-only team access. Ask an owner or manager with Manage team to add or edit members.",
           "freelancerLead": "You’re set up as a مستقل.",
-          "freelancerBody": "To إضافة فريق أعضاء and unlock متقدم ميزات, upgrade to a صالون.",
+          "freelancerBody": "لإضافة أعضاء الفريق وفتح الميزات المتقدمة، قم بالترقية إلى صالون.",
           "upgradeTitle": "ترقية",
           "upgradeToSalonA11y": "Upgrade to صالون",
           "upgradeToSalon": "Upgrade to صالون",
@@ -6931,7 +6992,7 @@
           "staffForServiceA11y": "Staff for this خدمة",
           "titleLabel": "العنوان",
           "descriptionLabel": "الوصف",
-          "bookingOptionsA11y": "{{count}} حجز options مُعدّ. فتح full editor.",
+          "bookingOptionsA11y": "تم إعداد {{count}} خيارات حجز. افتح المحرر الكامل.",
           "bookingOptions": "{{count}} حجز options",
           "bookingOptionsHint": "Quick edit updates the default option only. Open the full editor to manage every price customers see at booking.",
           "price": "السعر",
@@ -7042,7 +7103,7 @@
           "pricePlaceholder": "0.00",
           "currency": "العملة",
           "discountPct": "خصم %",
-          "itemsCount": "Items ({{count}})",
+          "itemsCount": "عناصر ({{count}})",
           "addItem": "إضافة عنصر",
           "variant": "متغير",
           "updatePackage": "تحديث Package",
@@ -7370,7 +7431,11 @@
           "deliveryNotesPlaceholder": "e.g. Mon–Fri فقط",
           "howFeesWork": "How رسوم work",
           "howFeesWorkBody": "Collection is free. Delivery uses your fee and platform fee. Set a free-delivery threshold so orders above that amount get free delivery.",
-          "saveChanges": "حفظ التغييرات"
+          "saveChanges": "حفظ التغييرات",
+          "courierPreference": "شركة الشحن",
+          "courierPreferencePlaceholder": "اتركه فارغاً للتتبع اليدوي",
+          "courierNone": "لا شيء (تتبع يدوي)",
+          "courierKeysWebHint": "اربط مفاتيح API في تطبيق الويب للمزود ضمن التجارة الإلكترونية → الشحن."
         },
         "productSalesReport": {
           "factsDefinitions": "Facts & تعريفات",
@@ -7470,7 +7535,7 @@
         "payouts": {
           "dash": "—",
           "statusRejected": "مرفوض",
-          "statusRejectedDesc": "مالية مرفوض this دفعة request. The مبلغ is released رجوع when applicable.",
+          "statusRejectedDesc": "رفضت المالية طلب الدفع هذا. يُعاد المبلغ عند الاقتضاء.",
           "statusPaid": "مدفوع",
           "statusPaidDesc": "Money has been recorded as paid out.",
           "statusProcessing": "قيد المعالجة",
@@ -7543,7 +7608,7 @@
           "addMember": "إضافة member",
           "readOnlyBanner": "You have read-only team access. Ask an owner or manager with Manage team to add or edit members.",
           "freelancerLead": "You’re set up as a مستقل.",
-          "freelancerBody": "To إضافة فريق أعضاء and unlock متقدم ميزات, upgrade to a صالون.",
+          "freelancerBody": "لإضافة أعضاء الفريق وفتح الميزات المتقدمة، قم بالترقية إلى صالون.",
           "upgradeTitle": "ترقية",
           "upgradeA11y": "Upgrade to صالون",
           "upgradeCta": "Upgrade to صالون",
@@ -7710,7 +7775,7 @@
           "autoConfirm": "Auto-تأكيد مواعيد",
           "autoConfirmHint": "New حجوزات are مؤكد automatically",
           "requireConfirm": "Require confirmation for حجوزات",
-          "requireConfirmHint": "Online حجوزات need your confirmation first",
+          "requireConfirmHint": "تحتاج الحجوزات عبر الإنترنت إلى تأكيدك أولاً",
           "saving": "جارٍ الحفظ...",
           "saveChanges": "حفظ التغييرات",
           "defaultStatusSheet": "Default حالة",
@@ -8646,7 +8711,7 @@
           "title": "Referral Sources",
           "subtitle": "Track how عملاء find you",
           "attributionLead": "مزود الخدمة attribution only.",
-          "attributionBody": " These sources (مثال Instagram, Friend) track where your clients come from. Separate from the platform referral program (invite friends → wallet reward), which is in Admin → Settings → Referrals. Assign a source on a booking to trigger the \"Referral received\" automation.",
+          "attributionBody": "تتتبع هذه المصادر (مثل Instagram، صديق) من أين يأتي عملاؤك. منفصلة عن برنامج الإحالة (دعوة الأصدقاء → مكافأة المحفظة) في المسؤول → الإعدادات → الإحالات. عيّن مصدراً على الحجز لتشغيل أتمتة «تم استلام الإحالة».",
           "statTotal": "الإجمالي",
           "statActive": "نشط",
           "statClients": "العملاء",
@@ -10403,7 +10468,7 @@
           "setupChecklistA11y": "إعداد checklist. Track your business إعداد progress.",
           "upgradeBanner": "Upgrade to صالون",
           "upgradeBannerSub": "Unlock فريق, مواقع & متقدم ميزات",
-          "upgradeBannerA11y": "Upgrade to صالون, unlock فريق, مواقع and متقدم ميزات",
+          "upgradeBannerA11y": "الترقية إلى صالون، فتح الفريق والمواقع والميزات المتقدمة",
           "signOutTitle": "تسجيل الخروج",
           "signOutBody": "Are you sure you want to تسجيل الخروج?",
           "cancel": "إلغاء",
@@ -10553,7 +10618,7 @@
           "itemContactSupport": "التواصل مع الدعم",
           "itemContactSupportDesc": "إرسال a دعم ticket or get مساعدة",
           "itemRateApp": "قيّم Beautonomi على App Store",
-          "itemRateAppDesc": "يفتح App Store أو Google Play لتترك تقييمًا",
+          "itemRateAppDesc": "يفتح App Store أو Google Play لتترك تقييماً",
           "itemLoginSecurity": "تسجيل الدخول والأمان",
           "itemLoginSecurityDesc": "بريد إلكتروني, هاتف, كلمة المرور, biometrics & sessions",
           "itemPrivacy": "سياسة الخصوصية",
@@ -10567,7 +10632,9 @@
           "itemGlobalSignOut": "تسجيل الخروج من جميع الأجهزة",
           "itemGlobalSignOutDesc": "End every نشط session on your account",
           "itemDelete": "حذف الحساب",
-          "itemDeleteDesc": "حذف الحساب والبيانات نهائيًا"
+          "itemDeleteDesc": "حذف الحساب والبيانات نهائيًا",
+          "itemReferBusiness": "إحالة نشاط تجاري",
+          "itemReferBusinessDesc": "قدّم صالوناً أو نشاطاً للجمال إلى Beautonomi"
         },
         "settingsBusinessDescription": {
           "validationTitle": "التحقق",
@@ -11147,7 +11214,7 @@
           "outOfStockVariant": "That variant is نفد المخزون.",
           "barcodeLookupTitle": "البحث بالباركود",
           "lookupFailed": "فشل Lookup",
-          "receiptUnavailable": "Sale was محفوظ but the إيصال تعذر be opened.",
+          "receiptUnavailable": "تم حفظ البيع لكن تعذّر فتح الإيصال.",
           "couldNotPreparePaystack": "تعذر prepare Paystack Terminal sale",
           "saleForClient": "Sale for {{name}}",
           "walkInSale": "بيع بدون موعد",
@@ -12109,7 +12176,7 @@
           "promoDiscount": "Promo / coupon خصم",
           "transactions": "معاملات",
           "recentActivityAllLocations": "حديث activity across الكل مواقع",
-          "txCountInRange": "{{count}} in {{range}}",
+          "txCountInRange": "{{count}} في {{range}}",
           "noTransactions": "لا معاملات in this فترة.",
           "retainedByPlatform": " · Retained by منصة",
           "loadMoreA11y": "Load المزيد معاملات",
@@ -12620,6 +12687,23 @@
           "submitFailedFallback": "يُرجى المحاولة مرة أخرى أو التواصل مع دعم الشركاء.",
           "submitGenericError": "حدث خطأ ما.",
           "supportFallback": "لا تعرف المعرّف؟ افتح تذكرة دعم للشركاء بدلاً من ذلك"
+        },
+        "cardMachineCollect": {
+          "title": "آلة البطاقة",
+          "chooseMachine": "اختر آلة البطاقة",
+          "noMachines": "لم يتم إعداد أي آلات بطاقة حتى الآن.",
+          "setUp": "إعداد آلات البطاقة",
+          "loadFailed": "تعذر تحميل أجهزة البطاقة الخاصة بك.",
+          "retry": "حاول مرة أخرى",
+          "defaultBadge": "الافتراضي",
+          "beautonomi": "Beautonomi",
+          "yoco": "Yoco",
+          "collectOn": "الافتراضي: {{name}}",
+          "collectOnNamed": "تحصيل على {{name}} ({{provider}})",
+          "loadingMachines": "جاري تحميل machines…",
+          "selectMachine": "اختيار machine",
+          "chargeNamed": "خصم · {{name}}",
+          "switchMachine": "تبديل الجهاز"
         }
       }
     },
@@ -13387,7 +13471,8 @@
       "failedRedeemGiftCard": "تعذر redeem بطاقة هدايا",
       "giftCardRedeemedDefault": "بطاقة هدايا redeemed to محفظة successfully",
       "giftRedeemHelp": "Faka ikhodi oyithengile noma othile akuthumelele yona — ibhalansi ephelele ifakwa esikhwameni sakho semali ngokushesha.",
-      "yourGiftCards": "Tu tarjetas de regalo"
+      "yourGiftCards": "Tu tarjetas de regalo",
+      "checkoutOpenFailed": "تعذّر فتح الدفع الآمن. يُرجى المحاولة مرة أخرى."
     },
     "paymentsScreen": {
       "saveCardExplainer": "Sizolondoloza ikhadi lakho ngokuphephile uma ukhokha. Ukuze uqinisekise ikhadi lakho, inkokhiso yesikhashana encane (isb. {{example}}) ingase ibekwe futhi ihlehliswe—lokhu kuqinisekisa ikhadi lakho ukuze ulisebenzise esikhathini esizayo.",
@@ -13441,7 +13526,8 @@
       "giftCardCopy": "نسخ الرمز",
       "giftCardCopied": "تم النسخ",
       "giftCardShare": "Share بطاقة هدايا",
-      "giftCardRedeem": "Redeem to محفظة"
+      "giftCardRedeem": "Redeem to محفظة",
+      "checkoutOpenFailed": "تعذّر فتح الدفع الآمن. يُرجى المحاولة مرة أخرى."
     },
     "mobile": {
       "stackTitles": {
@@ -13790,6 +13876,18 @@
           "youPaidForGroup": "لقد دفعت للمجموعة",
           "paidBy": "دفعه {{name}}",
           "covered": "مغطى"
+        },
+        "paystackReturn": {
+          "bookVerifying": "Confirming your دفع…",
+          "bookReturning": "Returning to حجوزات…",
+          "bookFallbackCta": "Go to حجوزات",
+          "bookContinueCta": "عرض حجز",
+          "shopVerifying": "Confirming your طلب دفع…",
+          "shopReturning": "العودة إلى المتجر…",
+          "shopFallbackCta": "Go to طلبات",
+          "shopContinueCta": "عرض طلب",
+          "shopPendingSubtext": "سنقوم بتحديث طلبك في غضون دقائق قليلة. يمكنك الاستمرار في استخدام التطبيق بينما نقوم بالتأكيد مع البنك الذي تتعامل معه.",
+          "shopFailedSubtext": "إذا تم تحصيل الرسوم منك، فسيتم تأكيد طلبك بمجرد وصول الدفعة. يرجى التحقق من علامة تبويب الطلبات الخاصة بك."
         }
       },
       "tabs": {
@@ -14797,7 +14895,7 @@
           "endSeriesCta": "إنهاء السلسلة",
           "listHeaderExplainer": "كل زيارة تُنشأ بجدولنا اليومي عند استحقاق موعد. تدفع لكل حجز (بطاقة أو محفظة أو نقد) — خطة التكرار لا تخصم بطاقتك تلقائيًا. إذا لم يعد الوقت متاحًا، قد تُتخطى الزيارة حتى إعادة الجدولة مع الصالون.",
           "emptyTitle": "لا يوجد recurring حجوزات بعد",
-          "emptyBody": "After you book while signed in, turn on \"Repeat this booking\" on checkout (app or web). You can also ask your provider to set up a series.",
+          "emptyBody": "بعد الحجز وأنت مسجّل الدخول، فعّل «تكرار هذا الحجز» عند الدفع (التطبيق أو الويب). يمكنك أيضاً طلب سلسلة من المزود.",
           "emptyNote": "You pay per زيارة—تكرار schedules do not auto-charge your card.",
           "findSalonCta": "العثور على صالون",
           "tapForDetails": "انقر للتفاصيل",
@@ -15004,7 +15102,7 @@
           "payWithSavedCard": "Pay with محفوظ card",
           "completePaymentTitle": "إكمال دفع",
           "cancelRequestTitle": "إلغاء this request?",
-          "cancelRequestBody": "The مزود will be تم الإشعار. You can إرسال a جديد request لاحقًا.",
+          "cancelRequestBody": "سيتم إبلاغ المزود. يمكنك تقديم طلب جديد لاحقاً.",
           "keepRequestCta": "الإبقاء على الطلب",
           "cancelRequestCta": "إلغاء request",
           "cancelRequestFailed": "تعذر إلغاء request",
@@ -15154,7 +15252,7 @@
           "couldNotSaveCalendarTitle": "تعذر حفظ",
           "couldNotSaveCalendarBody": "Calendar تعذر be محدّث.",
           "calendarSectionTitle": "إضافة this حجز to your تقويم",
-          "calendarSectionSubtitleNative": "حفظ into your phone’s calendar app (Apple Calendar, Google on your device, Samsung Calendar, etc.), open a web calendar, or share a file to import anywhere.",
+          "calendarSectionSubtitleNative": "احفظ في تطبيق التقويم على هاتفك (تقويم Apple، Google على جهازك، Samsung Calendar، إلخ)، أو افتح تقويماً على الويب، أو شارك ملفاً للاستيراد.",
           "calendarSectionSubtitleWeb": "Open Google Calendar or Outlook in your browser, or share a calendar file (.ics) for Apple Calendar and other apps.",
           "calendarPhoneAppCta": "هاتف calendar",
           "calendarGoogleCta": "تقويم Google",
@@ -15432,7 +15530,7 @@
           "retry": "إعادة المحاولة",
           "goBack": "رجوع",
           "sessionNotFound": "جلسة غير موجود",
-          "sessionGoneBody": "This حجز جماعي no longer exists or you may not have access to it.",
+          "sessionGoneBody": "لم يعد هذا الحجز الجماعي موجودًا أو قد لا تتمكن من الوصول إليه.",
           "rescheduleSession": "إعادة جدولة الجلسة",
           "participants": "المشاركون",
           "sessionTotal": "إجمالي الجلسة",
@@ -16829,6 +16927,10 @@
           "pushSubtitle": "اختر تنبيهات الدفع التي تتلقاها على هذا الجهاز. التنبيهات الحرجة (مثل الدفع والأمان) تُرسل دائمًا.",
           "pushRemindersLabel": "تذكيرات الحجز",
           "pushRemindersDesc": "Push rappels before your à venir rendez-vous",
+          "subscriptionRenewalEmailLabel": "رسائل بريد لتجديد الاشتراك",
+          "subscriptionRenewalEmailDesc": "بريد إلكتروني قبل تجديد العضوية أو الاشتراك",
+          "subscriptionRenewalPushLabel": "إشعارات push لتجديد الاشتراك",
+          "subscriptionRenewalPushDesc": "إشعار push قبل تجديد العضوية أو الاشتراك",
           "whatsappRemindersLabel": "تذكيرات WhatsApp",
           "whatsappRemindersDesc": "WhatsApp-herinnerings voor jou komende afsprake",
           "pushAccountActivityLabel": "نشاط الحساب",
@@ -17620,6 +17722,12 @@
     "securePaymentTitle": "Secure دفع",
     "paymentCancelledTitle": "دفع ملغى",
     "paymentCancelledBody": "Jy het die betaling gekanselleer. Jou bespreking is nie bevestig nie.",
+    "paymentCancelledHostedBody": "لقد ألغيت الدفع. لم يتم خصم أي مبلغ.",
+    "paymentCancelledBookingSaved": " حجزك ما زال محفوظًا — يمكنك متابعة الدفع متى شئت.",
+    "cancelledBackToOffer": "العودة إلى العرض",
+    "cancelledReturnToBooking": "العودة إلى الحجز",
+    "cancelledGoHome": "الصفحة الرئيسية",
+    "cancelledLoading": "جارٍ التحميل…",
     "packageDiscount": "Package خصم",
     "packageApplied": "تم تطبيق الباقة",
     "redeemPackage": "استخدم باقة مدفوعة مسبقاً (اختياري)",
@@ -17636,7 +17744,12 @@
       "groupSwitchOff": "إيقاف",
       "groupGuestsLimit_one": "إضافة up to {{count}} guest.",
       "groupGuestsLimit_other": "إضافة up to {{count}} guests."
-    }
+    },
+    "noPaymentMethodsAvailable": "هذا المزوّد لا يقبل المدفوعات عبر الإنترنت أو حضوريًا حاليًا. تواصل معه لإكمال حجزك.",
+    "paymentUnavailableTitle": "الدفع غير متاح",
+    "paymentBrowserFailed": "تعذّر فتح نافذة الدفع الآمن. يُرجى المحاولة مرة أخرى.",
+    "paymentNotCompletedTitle": "لم يكتمل الدفع",
+    "paymentNotCompletedBody": "لم يتم تأكيد حجزك."
   },
   "payments": {
     "pay": "دفع",
@@ -18555,6 +18668,7 @@
         }
       },
       "stepPayment": {
+        "noPaymentMethodsAvailable": "هذا المزوّد لا يقبل المدفوعات عبر الإنترنت أو حضوريًا حاليًا. تواصل معه لإكمال حجزك.",
         "holdExpiredBody": "Isikhala sakho ebesigodliwe siphelelwe yisikhathi. Buyela emuva bese ukhetha isikhathi esisha ukuze uqhubeke.",
         "backToCalendar": "Choose another وقت",
         "slotHeldBefore": "الموعد محجوز لمدة ",
@@ -22647,7 +22761,12 @@
           "continueToPayment": "Continue to دفع",
           "back": "رجوع",
           "processing": "جارٍ المعالجة...",
-          "payAmount": "ادفع {{amount}}"
+          "payAmount": "ادفع {{amount}}",
+          "promoComingSoon": "Promo codes are not available at checkout yet",
+          "giftCardCode": "رمز بطاقة الهدايا",
+          "giftCardPlaceholder": "أدخل الرمز",
+          "giftCardAmount": "Amount to redeem",
+          "splitGiftAmount": "بطاقة هدايا portion"
         },
         "calendarLinkDialog": {
           "updated": "Calendar link محدّث",
@@ -22785,10 +22904,27 @@
           "selectProduct": "اختيار منتج…",
           "selectVariant": "اختيار variant…",
           "variantFallback": "متغير",
-          "openGroupBooking": "Plan a group booking instead",
+          "openGroupBooking": "Plan a حجز جماعي instead",
           "sendQuote": "Send a quote instead",
-          "sendQuoteNeedsAccount": "Select a client with an account to send a quote.",
-          "uncategorized": "Uncategorized"
+          "sendQuoteNeedsAccount": "اختيار a client with an account to send a quote.",
+          "uncategorized": "Uncategorized",
+          "allCategories": "الكل",
+          "discountTypePercent": "Percentage",
+          "discountTypeFixed": "Fixed amount",
+          "validation": {
+            "selectClient": "يرجى الاختيار a client",
+            "enterFirstName": "يرجى إدخال client first اسم",
+            "selectServiceOrProduct": "يرجى الاختيار at least one service or product",
+            "serviceRequiredForProducts": "إضافة a service. Product-only sales use New sale / Checkout.",
+            "selectDate": "يرجى الاختيار a تاريخ",
+            "selectTime": "يرجى الاختيار a وقت",
+            "recurringNeedsSavedClient": "Repeating visits must use a saved client. Select the client from نتائج البحث first.",
+            "recurringNeedsService": "Repeating visits need at least one service.",
+            "repeatCountMin": "Repeat count must be at least 2 visits.",
+            "assignStaffEach": "Please assign staff for each خدمة",
+            "selectClientAddress": "بحث and select the client's عنوان",
+            "chooseAddressSuggestion": "Choose an address from the search suggestions so the map pin and travel distance are accurate."
+          }
         },
         "blockedTimeTypeDialog": {
           "updated": "Blocked وقت type محدّث",
@@ -22925,6 +23061,23 @@
           "friday": "الجمعة",
           "saturday": "السبت",
           "sunday": "الأحد"
+        },
+        "cardMachineCollect": {
+          "title": "جهاز البطاقة",
+          "collectOn": "Default: {{name}}",
+          "collectOnNamed": "Collect on {{name}} ({{provider}})",
+          "loadingMachines": "جاري تحميل machines…",
+          "selectMachine": "اختيار machine",
+          "chargeNamed": "Charge · {{name}}",
+          "switchMachine": "Switch machine",
+          "chooseMachine": "Choose a جهاز البطاقة",
+          "noMachines": "No card machines are set up yet.",
+          "setUp": "Set up card machines",
+          "loadFailed": "تعذر load your card machines.",
+          "retry": "حاول مرة أخرى",
+          "beautonomi": "Beautonomi",
+          "yoco": "Yoco",
+          "defaultBadge": "افتراضي"
         }
       },
       "bookings": {
@@ -23068,8 +23221,8 @@
           "blocksOnly_other": "{{count}} blocks",
           "runningBehindTitle": "متأخر عن الجدول؟",
           "runningBehindBody": "We'll notify remaining confirmed clients today that you're delayed.",
-          "delay15": "15 minutes",
-          "delay30": "30 minutes"
+          "delay15": "15 دقائق",
+          "delay30": "30 دقائق"
         },
         "overview": {
           "all": "الكل",
@@ -23477,7 +23630,9 @@
             "processingRefund": "جارٍ المعالجة...",
             "confirmRefund": "تأكيد استرداد",
             "chargeMarkPaidTitle": "Mark charge as paid",
-            "thisClient": "هذا العميل"
+            "thisClient": "هذا العميل",
+            "cancelRefundTo": "إعادة المبلغ المدفوع إلى",
+            "cancelRefundCardHint": "تعود المبالغ المحصّلة على جهاز البطاقات إلى بطاقة العميل (تلقائيًا لأجهزة Beautonomi؛ أما مع Yoco فتسترد المبلغ على الجهاز ثم تسجّله). يُضاف كل ما دُفع عبر الإنترنت إلى محفظته."
           },
           "paystackCollect": {
             "noBalance": "There is no remaining balance to collect.",
@@ -23498,10 +23653,10 @@
             "journeyStartedEta": "Journey started. ETA {{minutes}} min.",
             "chargeMarkedPaidNote": "Marked as paid by provider via {{method}}",
             "yocoChargeBookingNote": "حجز {{number}}",
-            "bookingChanged": "This booking changed, reload",
+            "bookingChanged": "This حجز changed, reload",
             "cancelFailed": "تعذر إلغاء حجز",
-            "cancellationNoticeFailed": "Failed to send cancellation notice",
-            "cancellationNoticeSendFailed": "Failed to send cancellation notice",
+            "cancellationNoticeFailed": "تعذر send cancellation notice",
+            "cancellationNoticeSendFailed": "تعذر send cancellation notice",
             "cancellationNoticeSent": "Cancellation notice sent",
             "cancelled": "حجز ملغى",
             "cannotCharge": "Cannot charge this حجز",
@@ -23562,12 +23717,12 @@
             "startBeforeCard": "Start or complete the service before collecting card payment.",
             "statusUpdateFailed": "تعذر تحديث حجز حالة",
             "statusUpdated": "حجز حالة محدّث",
-            "terminalFinalizeFailed": "The terminal payment succeeded but the sale could not be finalized. Check Sales for a pending entry.",
+            "terminalFinalizeFailed": "The terminal payment succeeded but the sale تعذر be finalized. Check Sales for a pending entry.",
             "uploadFailed": "فشل Upload",
             "verifiedCanStart": "Customer verified – you can start the service.",
             "verifyFailed": "فشل دفع verification",
             "verifyQrFailed": "تعذر verify QR",
-            "verifyQrHint": "Enter an 8-character code or paste the QR JSON from the customer."
+            "verifyQrHint": "أدخل an 8-character code or paste the QR JSON from the customer."
           },
           "resources": {
             "fallback": "Resource",
@@ -23599,7 +23754,8 @@
             "paystackTerminal": "Paystack Terminal",
             "recording": "جارٍ التسجيل…",
             "markPaidCash": "Mark paid (cash) · {{amount}}",
-            "sendPaymentLink": "Send دفع link"
+            "sendPaymentLink": "Send دفع link",
+            "cardMachine": "جهاز البطاقة · {{amount}}"
           },
           "receipt": {
             "title": "إيصال",
@@ -23655,7 +23811,16 @@
             "chargeNotFound": "Charge غير موجود",
             "inPersonCash": "شخصيًا (نقدًا)",
             "netPaidMaxRefund": "Net paid after refunds: {{net}} · Max refundable: {{max}}",
-            "processing": "جارٍ المعالجة…"
+            "processing": "جارٍ المعالجة…",
+            "backToCard": "العودة إلى البطاقة",
+            "backToCardHint": "إرجاع الأموال إلى بطاقة العميل من خلال ماكينة البطاقة التي تم الدفع عليها.",
+            "sentToCardMachine": "تم إرسال المبلغ المسترد إلى ماكينة البطاقة. اتبع المطالبات. يتم تحديث الحجز عندما يتم تأكيده.",
+            "yocoOnMachineTitle": "استرداد الأموال على جهازك Yoco أولاً",
+            "awaitingYocoTitle": "{{amount}} لا يزال يتعين استرداد المبلغ على الجهاز Yoco",
+            "awaitingYocoBody": "تم إلغاء هذا الحجز مع إعادة الأموال إلى البطاقة. قم برد المبلغ في تطبيق Yoco أو على الجهاز، ثم قم بتسجيله هنا. وحتى ذلك الحين، تظل معلقة في تقرير تسوية ماكينة البطاقة.",
+            "yocoOnMachineBody": "لا يمكن بدء عمليات استرداد الأموال من Yoco من Beautonomi. قم باسترداد مبلغ {{amount}} في تطبيق Yoco أو على الجهاز، ثم قم بتسجيله هنا حتى يظل الرصيد والتقارير صحيحة.",
+            "yocoRecorded": "تم تسجيل استرداد Yoco",
+            "yocoRecordCta": "تم استرداد المبلغ على الجهاز — قم بتسجيل المبلغ المسترد"
           }
         },
         "createPayment": {
@@ -23674,7 +23839,9 @@
           "depositPct": "عربون ({{percent}}%)",
           "depositDue": "Deposit due now: {{amount}}",
           "notifyClient": "Notify client",
-          "notifyHint": "Send حجز confirmation"
+          "notifyHint": "Send حجز confirmation",
+          "cardMachine": "آلة البطاقة",
+          "depositPolicyHint": "Your payment settings require a {{percent}}% deposit when collecting upfront."
         },
         "productPicker": {
           "selectProductAndQty": "اختيار a منتج and quantity",
@@ -23987,7 +24154,7 @@
         "additionalCharges": "رسوم إضافية",
         "request": "طلب",
         "stripeConnectPayoutHint": "Payouts are sent via Stripe Connect. Complete setup under Settings → Payout accounts before requesting a withdrawal.",
-        "completeStripeConnect": "Complete Stripe Connect setup"
+        "completeStripeConnect": "إكمال Stripe Connect setup"
       },
       "onboarding": {
         "steps": {
@@ -24049,7 +24216,7 @@
           },
           "travelFees": {
             "title": "Travel Fees",
-            "description": "House-call travel fee rules and live fee preview"
+            "description": "House-call رسوم التنقل rules and live fee preview"
           }
         },
         "toast": {
@@ -24117,7 +24284,7 @@
           "oneDayOpen": "At least one day must be open",
           "selectPlan": "يرجى الاختيار a subscription plan",
           "andMoreSeeConsole": " (and {{count}} more - see console)",
-          "dobRequired": "Date of birth is required for identity verification"
+          "dobRequired": "تاريخ الميلاد is required for identity verification"
         },
         "successHeadline": "You're all set!",
         "continueVerification": "Continue to verification",
@@ -24169,7 +24336,7 @@
           "ownerContactBody": "We verify both your email and mobile number to protect your account.",
           "yourName": "Your اسم",
           "emailAddress": "عنوان البريد الإلكتروني",
-          "dateOfBirth": "Date of birth"
+          "dateOfBirth": "تاريخ الميلاد"
         },
         "photos": {
           "yourPhoto": "Your Photo",
@@ -24407,7 +24574,7 @@
           "categoriesDraftHint": "If you skip services for now, we can draft simple services from the categories you pick.",
           "noCategoriesAvailable": "لا categories متاح. Please التواصل مع الدعم.",
           "menuCategoryNames": "Names on your menu (you can rename these)",
-          "categoryNamePlaceholder": "Category name"
+          "categoryNamePlaceholder": "Category اسم"
         },
         "catalog": {
           "atSalon": "في الصالون",
@@ -24444,7 +24611,8 @@
           "plusMinSuffix": " (+{{minutes}} min)",
           "catalogIntro": "إضافة the services you sell today with price and duration. Clients see these on your booking page; you can refine them anytime after onboarding.",
           "extraTimeMins": "Extra وقت (mins)",
-          "updateAddon": "تحديث إضافة-on"
+          "updateAddon": "تحديث إضافة-on",
+          "menuCategory": "Menu category"
         },
         "review": {
           "markMobileReady": "Mark you as mobile-ready where applicable",
@@ -24498,7 +24666,13 @@
           "afterSubmitFreeActual": "After you submit, you'll be on this plan immediately — no payment needed.",
           "afterSubmitPaidActual": "After you submit, you'll be taken to a secure Paystack page to complete payment.",
           "selectPlanToContinue": "اختيار a plan to continue. Free plans activate instantly; paid plans take you to a secure card payment.",
-          "noPlansAvailable": "No pricing plans available at the moment. Please التواصل مع الدعم."
+          "noPlansAvailable": "No pricing plans available at the moment. Please التواصل مع الدعم.",
+          "freeForever": "Free forever",
+          "planRadiogroupLabel": "Subscription plans",
+          "showAllFeatures": "Show all features",
+          "showLessFeatures": "عرض أقل",
+          "summaryFree": "You're on {{name}} — لا دفع needed.",
+          "summaryPaid": "You'll pay securely after submitting."
         },
         "countries": {
           "ZA": "جنوب أفريقيا",
@@ -24530,7 +24704,28 @@
           "hoursTo": "إلى"
         },
         "travelFees": {
-          "usePlatformDefault": "Use platform default travel fees"
+          "usePlatformDefault": "Use platform default travel fees",
+          "usePlatformDefaultHint": "Recommended — matches what most providers use on the platform.",
+          "skipHint": "You can skip this step — we'll apply the platform standard and you can adjust it later in Settings.",
+          "loadingDefaults": "جاري تحميل platform travel defaults…",
+          "platformStandard": "Platform standard",
+          "ratePerKm": "Rate per km",
+          "minimumFee": "Minimum fee",
+          "freeWithinKm": "Free within (km)",
+          "maximumFee": "Maximum fee",
+          "enable": "Charge travel fees for house calls",
+          "enableHint": "When off, travel is included at no extra charge.",
+          "platformLocked": "Custom travel fees are locked on this platform — platform defaults apply.",
+          "previewLabel": "Preview distance (km)",
+          "previewAtKm": "At {{km}} km: {{currency}} {{fee}}",
+          "pricingModel": "Pricing model",
+          "perKm": "Per kilometer",
+          "tiered": "Distance tiers",
+          "ratePerKmInput": "Rate per km ({{currency}})",
+          "minimumFeeInput": "Minimum fee ({{currency}})",
+          "tierMaxKm": "Up to km",
+          "tierFee": "Fee ({{currency}})",
+          "addTier": "إضافة tier"
         }
       },
       "dashboard": {
@@ -24836,6 +25031,10 @@
               "customerVisibility": {
                 "title": "عميل Visibility",
                 "description": "Control how customer and salon lists are displayed"
+              },
+              "referBusinessProgram": {
+                "title": "Refer a business",
+                "description": "Submit another salon or beauty business to Beautonomi"
               }
             }
           },
@@ -25526,8 +25725,8 @@
             "saveBookingFlow": "حفظ حجز flow إعدادات",
             "onlineBookingDisabled": "Online booking is currently disabled. Clients will not be able to book appointments online.",
             "shareWhatsApp": "WhatsApp",
-            "shareEmail": "Email",
-            "shareNative": "Share"
+            "shareEmail": "البريد الإلكتروني",
+            "shareNative": "مشاركة"
           },
           "appointment-activity/resources": {
             "resources": "الموارد",
@@ -25643,15 +25842,15 @@
             "backToBilling": "رجوع to Billing",
             "download": "تنزيل",
             "payOnline": "Pay online",
-            "paying": "Starting payment…",
+            "paying": "Starting دفع…",
             "paymentUnavailable": "Online payment is not available for this invoice.",
-            "paymentStartFailed": "Could not start payment. Please try again.",
-            "paymentSuccessful": "Payment successful",
-            "paymentPendingTitle": "Payment pending",
+            "paymentStartFailed": "تعذر start دفع. يرجى المحاولة مرة أخرى.",
+            "paymentSuccessful": "دفع successful",
+            "paymentPendingTitle": "دفع قيد الانتظار",
             "paymentPendingBody": "Your payment is still processing. Refresh this page in a moment.",
-            "paymentFailedDefault": "Payment was not completed. Please try again or use another card.",
-            "paymentCancelled": "Payment cancelled",
-            "verifyingPayment": "Confirming your payment…"
+            "paymentFailedDefault": "Payment was not completed. يرجى المحاولة مرة أخرى or use another card.",
+            "paymentCancelled": "دفع ملغى",
+            "verifyingPayment": "Confirming your دفع…"
           },
           "billing": {
             "billingDetailsAndInvoices": "Billing details and Invoices",
@@ -26801,7 +27000,9 @@
             "activeMachineCount": "Active Machine Count",
             "amountMismatch": "Amount Mismatch",
             "paymentsCount": "مدفوعات ({{count}})",
-            "paymentsWaitingOnMachine": "مدفوعات Waiting On Machine"
+            "paymentsWaitingOnMachine": "مدفوعات Waiting On Machine",
+            "beautonomiCardMachineNav": "Beautonomi جهاز البطاقة",
+            "yocoCardMachineNav": "Yoco جهاز البطاقة"
           },
           "sales/gift-cards": {
             "giftCards": "بطاقات الهدايا",
@@ -28124,13 +28325,13 @@
           "downloadIos": "تنزيل for iPhone",
           "downloadAndroid": "تنزيل for Android",
           "logoAlt": "Beautonomi",
-          "setPasswordTitle": "Create your password",
-          "setPasswordHint": "Choose a password (at least 8 characters), then sign in with your invite email.",
-          "passwordLabel": "Password",
-          "passwordConfirmLabel": "Confirm password",
-          "setPasswordSubmit": "Save password",
+          "setPasswordTitle": "إنشاء your كلمة المرور",
+          "setPasswordHint": "Choose a password (at least 8 characters), then تسجيل الدخول with your invite email.",
+          "passwordLabel": "كلمة المرور",
+          "passwordConfirmLabel": "تأكيد كلمة المرور",
+          "setPasswordSubmit": "حفظ كلمة المرور",
           "setPasswordSuccess": "تم حفظ كلمة المرور. سجّل الدخول لقبول دعوتك.",
-          "setPasswordFailed": "Could not save password",
+          "setPasswordFailed": "تعذر حفظ كلمة المرور",
           "passwordMismatch": "كلمتا المرور غير متطابقتين",
           "passwordTooShort": "يجب أن تتكون كلمة المرور من 8 أحرف على الأقل"
         },
@@ -28415,7 +28616,27 @@
           "collectionNotesHint": "Shown to customers at checkout (e.g. hours, entrance, what to bring)",
           "collectionNotesPlaceholder": "e.g. Collection available Mon-Fri 9am-5pm. Please bring a copy of your order confirmation.",
           "saved": "محفوظ!",
-          "saveConfiguration": "حفظ الإعداد"
+          "saveConfiguration": "حفظ الإعداد",
+          "readinessTitle": "Setup checklist",
+          "courierAccount": "Your courier account",
+          "connected": "Connected",
+          "notConnected": "Not connected",
+          "courierOwnerOnly": "Only the business owner can view or edit courier API keys.",
+          "apiKey": "API key",
+          "pasteApiKey": "Paste new API key",
+          "saveCourierKeys": "حفظ courier keys",
+          "testCourierConnection": "Test connection",
+          "testingCourier": "Testing…",
+          "courierSaved": "Courier credentials محفوظ.",
+          "courierSaveFailed": "تعذر حفظ courier credentials.",
+          "courierTestOk": "Connection successful.",
+          "courierTestFailed": "فشل Connection test",
+          "courierNoChanges": "أدخل new credential fields to حفظ.",
+          "aramexAccount": "Account number",
+          "aramexPin": "Account PIN",
+          "aramexUser": "Username",
+          "aramexPassword": "كلمة المرور",
+          "aramexProductType": "Domestic منتج type (e.g. ONP)"
         },
         "packages/new": {
           "failedToLoadItems": "تعذر load items",
@@ -28714,7 +28935,8 @@
           "statusCancelled": "ملغى",
           "statusRefunded": "تم الاسترداد",
           "paid": "مدفوع",
-          "estimatedDeliveryDate": "Estimated delivery تاريخ (اختياري)"
+          "estimatedDeliveryDate": "Estimated delivery تاريخ (اختياري)",
+          "partialWalletRefundHint": "Partial wallet refunds credit the customer's store balance only. Card and gift-card payments are not returned unless you refund the full order total."
         },
         "team/shifts/dialog": {
           "overrideLocation": "Override موقع Operating ساعات",
@@ -29008,7 +29230,8 @@
           "privateNotes": "ملاحظات خاصة",
           "notesPlaceholder": "Anything else we should know",
           "submitting": "جارٍ الإرسال…",
-          "submitReferral": "إرسال referral"
+          "submitReferral": "إرسال referral",
+          "loadFailed": "تعذر load your referrals. حاول مرة أخرى."
         },
         "account/personal-profile": {
           "fallbackName": "Your ملف شخصي",
@@ -29145,7 +29368,7 @@
           "paystackDesc": "QR and link مدفوعات through Beautonomi دفعات",
           "giftCardsDesc": "Accept منصة gift cards",
           "terminalShopDesc": "Order card machines from the Beautonomi catalog",
-          "payoutAccountsDescStripe": "Complete Stripe Connect payout setup",
+          "payoutAccountsDescStripe": "إكمال Stripe Connect payout setup",
           "payoutAccountsDescPaystack": "Add, verify and manage payout bank accounts"
         },
         "resources-forms": {
@@ -29293,7 +29516,8 @@
             "package-usage": "Package استخدام",
             "business-overview": "Business Overview",
             "performance-dashboard": "Performance Dashboard",
-            "comparison": "Period Comparison"
+            "comparison": "Period Comparison",
+            "card-machine-reconciliation": "تسوية آلة البطاقة"
           }
         },
         "pages": {
@@ -30298,6 +30522,32 @@
             "items_other": "{{count}} عناصر",
             "currency": "Currency: {{code}}.",
             "items": "Items: {{amount}}"
+          },
+          "payments/card-machine-reconciliation": {
+            "title": "تسوية آلة البطاقة",
+            "unableToLoad": "غير قادر على تحميل بيانات تسوية جهاز البطاقة",
+            "totalRows": "صفوف في النطاق",
+            "emptyTitle": "لا استثناءات",
+            "created": "تم إنشاؤها",
+            "amount": "المبلغ",
+            "status": "الحالة",
+            "link": "الحجز / البيع",
+            "awaitingRefundsSection": "المبالغ المستردة المستحقة على الجهاز Yoco",
+            "awaitingRefundsHint": "يتم رد الحجوزات الملغاة إلى البطاقة. Yoco ليس لديه واجهة برمجة تطبيقات لاسترداد الأموال: يمكنك استرداد كل واحدة في تطبيق Yoco أو على الجهاز، ثم قم بتسجيله في الحجز.",
+            "booking": "الحجز",
+            "reason": "السبب",
+            "subtitle": "الدفعات الطرفية المعلقة من Yoco ومبلغ PayCloud غير متطابقين في النطاق",
+            "unavailableDesc": "تمكين أجهزة بطاقة Yoco أو Beautonomi من استخدام هذا التقرير.",
+            "paycloudMismatch": "عدم تطابق مبلغ PayCloud",
+            "emptyDesc": "لا توجد مدفوعات Yoco المعلقة أو عدم تطابق مبلغ PayCloud في هذه الفترة.",
+            "paycloudSection": "عدم تطابق PayCloud",
+            "awaitingRefunds": "المستحقة على آلة Yoco",
+            "match": "مطابقة المبلغ",
+            "order": "رقم الطلب",
+            "openBooking": "افتح الحجز لتسجيله",
+            "yocoPending": "Yoco قيد الانتظار",
+            "yocoSection": "Yoco قيد الانتظار",
+            "awaitingSince": "في انتظار منذ ذلك الحين"
           }
         },
         "export": {
@@ -30895,7 +31145,16 @@
           "productBrand": "منتج brand",
           "productCategory": "منتج category",
           "medium": "متوسط",
-          "large": "Large"
+          "large": "Large",
+          "maxPhotos": "You can upload up to 5 product photos.",
+          "scanBarcodeTitle": "Scan barcode",
+          "scanBarcodeHint": "Point the camera at a 1D barcode or QR code on the product.",
+          "barcodeScanFailed": "تعذر start the camera.",
+          "startingCamera": "Starting camera…",
+          "weightGrams": "Shipping weight (grams)",
+          "weightGramsHint": "Used for delivery fee and courier booking. Default 500g if empty.",
+          "addOptionType": "إضافة another option",
+          "optionN": "Option {{n}}"
         }
       },
       "waitlistPage": {
@@ -31450,7 +31709,7 @@
         "moreIncluded": "+ more included",
         "activeSelection": "Your active selection",
         "noPlansForPeriod": "No {{period}} options are published for your region. Try the other billing period or ask an admin to enable pricing for this market.",
-        "noPurchasablePlans": "No paid plans are available for your region right now. Contact support or try again later.",
+        "noPurchasablePlans": "No paid plans are available for your region right now. التواصل مع الدعم or حاول مرة أخرى later.",
         "noSubscriptionTitle": "لا يوجد subscription بعد",
         "noSubscriptionDesc": "Choose a subscription plan to activate billing",
         "verifyingTitle": "تأكيدing your دفع…",
@@ -31529,7 +31788,7 @@
           "signInRequired": "Please تسجيل الدخول to complete your subscription.",
           "alreadySubscribed": "You already have an active subscription.",
           "providerNotFound": "Provider غير موجود. Please complete onboarding first.",
-          "planNotLinkedPaystack": "This plan is not available for card checkout yet. Contact support or choose another plan.",
+          "planNotLinkedPaystack": "This plan is not available for card checkout yet. التواصل مع الدعم or choose another plan.",
           "paystackError": "Payment gateway error. يرجى المحاولة مرة أخرى shortly.",
           "checkoutFailed": "Checkout فشل. يرجى المحاولة مرة أخرى.",
           "taxes": "الضرائب",
@@ -31538,8 +31797,8 @@
         },
         "stripeBillingTitle": "Billed through Stripe",
         "stripeBillingBody": "Update your card or view invoices in the secure Stripe billing portal. Use Manage billing below — the same flow as Paystack regions, but hosted by Stripe for your market.",
-        "stripeManageUnavailable": "Stripe billing is not set up for this subscription yet. Complete checkout first, then try again.",
-        "paystackManageUnavailable": "This plan is not on Paystack recurring billing. Pay any due invoice from checkout or contact support."
+        "stripeManageUnavailable": "Stripe billing is not set up for this subscription yet. Complete checkout first, then حاول مرة أخرى.",
+        "paystackManageUnavailable": "This plan is not on Paystack recurring billing. Pay any due invoice from checkout or التواصل مع الدعم."
       },
       "explorePostForm": {
         "cameraAccessDenied": "رُفض الوصول إلى الكاميرا",
@@ -31581,7 +31840,41 @@
         "saveChanges": "حفظ التغييرات",
         "share": "مشاركة",
         "cancel": "إلغاء",
-        "remainingSlots": "Remaining Slots"
+        "remainingSlots": "Remaining Slots",
+        "videoTooLong": "Video exceeds the maximum length for Explore.",
+        "videoWillTrim": "Long videos are trimmed to the Explore maximum when processed.",
+        "trimVideoTitle": "Trim video",
+        "trimVideoHint": "Drag to choose which part of your video appears on Explore.",
+        "trimClipLength": "{{seconds}}s clip",
+        "trimVideoScrubber": "Choose clip start",
+        "trimVideoConfirm": "Use clip",
+        "trimVideoFinishFirst": "Finish trimming your video before continuing.",
+        "trimVideoLoading": "جاري تحميل video…",
+        "holdToRecord": "Hold to record",
+        "releaseToFinish": "Release to finish",
+        "tapForPhoto": "Tap for photo",
+        "recordingTooShort": "Hold a little longer to record video.",
+        "lensFront": "Front camera",
+        "lensBack": "رجوع camera",
+        "switchToFront": "Switch to front camera",
+        "switchToBack": "Switch to رجوع camera",
+        "openingCamera": "Opening camera…",
+        "onlyOneCamera": "Only one camera is available on this device.",
+        "clipWindowA11y": "Selected clip",
+        "onMediaText": "On-media text",
+        "onMediaTextPlaceholder": "Short label on this slide",
+        "onMediaTextDragHint": "Drag text on the preview to reposition it.",
+        "addTextLayer": "إضافة",
+        "noSound": "لا شيء",
+        "soundOptional": "إضافة music (اختياري)",
+        "addMusic": "إضافة music (اختياري)",
+        "originalAudio": "Original audio",
+        "soundViewerHint": "يسمع المشاهدون هذه الموسيقى بدلاً من صوت مقطعك في Explorer.",
+        "soundsEmpty": "لا توجد مسارات في الكatalog بعد — استخدم الصوت الأصلي أو اطلب من المسؤول إضافة أصوات المنصة.",
+        "soundsSectionPlatform": "Popular sounds",
+        "soundsSectionYours": "Your sounds",
+        "soundPreviewPlay": "Play preview",
+        "soundPreviewStop": "Stop preview"
       },
       "calendarMobile": {
         "timeOff": "وقت off",
@@ -31835,7 +32128,16 @@
         "actionMarkShipped": "وضع علامة مشحون",
         "actionReadyForCollection": "Ready for collection",
         "actionMarkDelivered": "تعيين كمُسلَّم",
-        "actionCollected": "تم الاستلام"
+        "actionCollected": "تم الاستلام",
+        "courierBooking": "Courier حجز",
+        "bookingStatus": "حجز حالة",
+        "bookingDetail": "Detail",
+        "bookCourier": "Book courier",
+        "retryBooking": "إعادة المحاولة حجز",
+        "bookingInProgress": "حجز…",
+        "bookingSuccess": "Courier booked",
+        "bookingFailed": "تعذر book courier",
+        "printLabel": "Print label"
       },
       "appointmentEditSheet": {
         "updated": "حجز محدّث",
@@ -31885,7 +32187,8 @@
         "geocoded": "Geocoded",
         "overrideTitle": "Override رسوم التنقل",
         "overrideHint": "Use a custom fee instead of calculated",
-        "customFeePlaceholder": "Custom رسوم التنقل"
+        "customFeePlaceholder": "Custom رسوم التنقل",
+        "chooseSuggestionOrPin": "Choose a suggestion or pin the address on the map so city, area, postal code, and GPS stay in sync for travel fees."
       },
       "postCompletion": {
         "selectRating": "اختيار a rating (1–5 stars).",
@@ -32076,7 +32379,7 @@
         "signOut": "تسجيل الخروج",
         "allRequiredDone": "All مطلوب تم",
         "requiredTasksLeft": "مطلوب Tasks Left",
-        "completeStripeConnectFirst": "Complete Stripe Connect payout setup first",
+        "completeStripeConnectFirst": "إكمال Stripe Connect payout setup first",
         "stripeConnectReady": "Stripe Connect ready for payouts",
         "stripeConnectLast4": "Stripe Connect ···· {{last4}}"
       },
@@ -32189,7 +32492,8 @@
         "selectTimeSlot": "اختيار وقت slot",
         "selectTime": "اختيار وقت",
         "loadingTimes": "جاري تحميل متاح times…",
-        "noSlots": "No time slots for this date. Try another day or adjust services."
+        "noSlots": "No time slots for this date. Try another day or adjust services.",
+        "timeAdjusted": "Time adjusted to {{time}} — previous slot unavailable"
       },
       "etaPicker": {
         "estimatedArrival": "الوصول المتوقع",
@@ -33419,15 +33723,15 @@
         "calendarIcons": {
           "isNewClient": "New client",
           "hasNotes": "Has notes",
-          "isRepeating": "Repeating appointment",
+          "isRepeating": "Repeating موعد",
           "hasMembership": "Member",
           "hasFormsIncomplete": "Forms incomplete",
           "hasPhotos": "Has photos",
-          "hasConversation": "Has messages",
-          "isGroup": "Group booking",
-          "hasCustomization": "Service customization",
+          "hasConversation": "Has رسائل",
+          "isGroup": "حجز جماعي",
+          "hasCustomization": "خدمة customization",
           "isWalkIn": "Walk-in",
-          "isAtHome": "At-home service"
+          "isAtHome": "At-home خدمة"
         }
       }
     },

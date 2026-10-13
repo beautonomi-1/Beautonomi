@@ -61,6 +61,7 @@ export const EMPTY_PAYOUT_BALANCE = {
   pendingPayoutsSum: 0,
   rawBalance: 0,
   hasNegativeBalance: false,
+  openDisputeReserve: 0,
   breakdown: {
     recognizedPayoutableEarnings: 0,
     onHold: 0,
@@ -133,6 +134,7 @@ export async function getAvailablePayoutBalance(
   pendingPayoutsSum: number;
   rawBalance: number;
   hasNegativeBalance: boolean;
+  openDisputeReserve: number;
   breakdown: PayoutBalanceBreakdown;
 }> {
   const allTime = "1970-01-01T00:00:00.000Z";
@@ -485,5 +487,12 @@ export async function getAvailablePayoutBalance(
     availableBalance,
   };
 
-  return { availableBalance, pendingPayoutsSum: roundedPending, rawBalance, hasNegativeBalance, breakdown };
+  return {
+    availableBalance,
+    pendingPayoutsSum: roundedPending,
+    rawBalance,
+    hasNegativeBalance,
+    openDisputeReserve: roundMoney2(openDisputeReserve),
+    breakdown,
+  };
 }

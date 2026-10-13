@@ -74,12 +74,34 @@ export interface SettleBookingCancellationResult {
   policyRefundAmount: number;
   walletRefundAmount: number;
   terminalRefundDue: number;
+  /** Which rail owes `terminalRefundDue`. Yoco has no refund API: staff refund on the machine, then record it. */
+  terminalRefundProvider?: "paycloud" | "yoco";
   refundResult: RefundResult;
   cancellationFeeLedgerPosted: boolean;
   loyaltyRedeemedRestored: boolean;
   loyaltyEarnClawedBack: boolean;
   giftCardVoidAttempted: boolean;
   refundRail?: "terminal" | "wallet";
+}
+
+/**
+ * Portion of a terminal-rail cancel refund owed back on a Yoco machine: the in-person
+ * candidate, capped at what was actually captured on Yoco for this booking.
+ */
+export function computeYocoTerminalRefundDue(
+  bookingPayments: Array<{ payment_provider?: string | null; status?: string | null; amount?: number | string | null }>,
+  candidateTerminal: number,
+): number {
+  const yocoCaptured = roundCurrency2(
+    bookingPayments
+      .filter(
+        (p) =>
+          String(p.payment_provider ?? "").toLowerCase() === "yoco" &&
+          (p.status === "completed" || p.status === "partially_refunded"),
+      )
+      .reduce((sum, p) => sum + Math.max(0, Number(p.amount ?? 0)), 0),
+  );
+  return roundCurrency2(Math.max(0, Math.min(candidateTerminal, yocoCaptured)));
 }
 
 export function computeEffectiveCollectedAmount(booking: BookingFinancialSnapshot): number {
@@ -126,6 +148,7 @@ export function computeReconciledCancellationAmounts(
   const walletRefundAmount = roundCurrency2(
     Math.min(policyRefundAmount, refundableWithoutGift),
   );
+
   const cancellationFeeApplied = roundCurrency2(
     Math.max(
       0,
@@ -138,6 +161,21 @@ export function computeReconciledCancellationAmounts(
     ),
   );
   return { cancellationFeeApplied, policyRefundAmount, walletRefundAmount, isLate };
+}
+
+/** Manual provider store_credit refunds: exclude the gift leg when a full refund voids redemption. */
+export function walletStoreCreditAmountWhenVoidingGiftOnFullRefund(params: {
+  refundAmount: number;
+  giftCardCollected: number;
+  totalRefundedBefore: number;
+  totalCollectedAllSources: number;
+}): number {
+  const projectedTotalRefunded = params.totalRefundedBefore + params.refundAmount;
+  const willVoidGiftCardOnFullRefund =
+    params.giftCardCollected > 0 &&
+    projectedTotalRefunded + 0.01 >= params.totalCollectedAllSources;
+  if (!willVoidGiftCardOnFullRefund) return params.refundAmount;
+  return roundCurrency2(Math.max(0, params.refundAmount - params.giftCardCollected));
 }
 
 export function computeCancellationFeeForSettlement(
@@ -346,6 +384,7 @@ export async function settleBookingCancellation(
   );
 
   let terminalRefundDue = 0;
+  let terminalRefundProvider: "paycloud" | "yoco" | undefined;
   let walletCreditTarget = walletRefundTarget;
   const wantsTerminalRail =
     params.refundRail === "terminal" &&
@@ -375,7 +414,15 @@ export async function settleBookingCancellation(
         .maybeSingle();
       if (pcSale?.id) {
         terminalRefundDue = candidateTerminal;
+        terminalRefundProvider = "paycloud";
         walletCreditTarget = roundCurrency2(Math.max(0, walletRefundTarget - terminalRefundDue));
+      } else {
+        const yocoDue = computeYocoTerminalRefundDue(bookingPayments, candidateTerminal);
+        if (yocoDue > 0.01) {
+          terminalRefundDue = yocoDue;
+          terminalRefundProvider = "yoco";
+          walletCreditTarget = roundCurrency2(Math.max(0, walletRefundTarget - terminalRefundDue));
+        }
       }
     }
   }
@@ -499,6 +546,7 @@ export async function settleBookingCancellation(
     policyRefundAmount,
     walletRefundAmount: walletCreditTarget,
     terminalRefundDue,
+    terminalRefundProvider,
     refundResult,
     cancellationFeeLedgerPosted,
     loyaltyRedeemedRestored,

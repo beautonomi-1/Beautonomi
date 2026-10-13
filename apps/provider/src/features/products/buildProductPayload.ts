@@ -30,6 +30,9 @@ export function buildProductPayload(form: ProductFormState) {
     image_urls,
     is_active: form.is_active,
     has_variants: withVariants,
+    weight_grams: form.weight_grams.trim()
+      ? Math.max(0, parseInt(form.weight_grams, 10) || 0)
+      : null,
   };
 
   if (withVariants) {

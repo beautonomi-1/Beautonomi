@@ -67,6 +67,8 @@ describe("getShippingProvider", () => {
       expect(typeof provider.quoteRates).toBe("function");
       expect(typeof provider.createShipment).toBe("function");
       expect(typeof provider.track).toBe("function");
+      expect(typeof provider.cancelShipment).toBe("function");
+      expect(typeof provider.fetchLabel).toBe("function");
     },
   );
 
@@ -156,7 +158,7 @@ describe("live courier HTTP", () => {
         metadata: expect.objectContaining({ service_level_code: "ECO" }),
       }),
     ]);
-    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("https://api.shiplogic.com/rates");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("https://api.shiplogic.com/v2/rates");
     expect((fetchMock.mock.calls[0]?.[1] as { headers?: Record<string, string> }).headers?.Authorization).toBe(
       "Bearer tcg-test",
     );

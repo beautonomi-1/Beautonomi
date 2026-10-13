@@ -33,7 +33,7 @@ export type RecordMembershipPaymentParams = {
   kind: "membership_order" | "membership_renewal";
   tenantIdHint?: string | null;
   /** Payment rail. Defaults to Paystack (webhook / saved-card). Wallet purchases use "wallet". */
-  paymentProvider?: "paystack" | "stripe" | "wallet";
+  paymentProvider?: "paystack" | "stripe" | "flutterwave" | "wallet";
 };
 
 export type RecordMembershipPaymentResult = {

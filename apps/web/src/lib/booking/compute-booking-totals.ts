@@ -1,4 +1,4 @@
-import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
+import { computeCatalogPackageServiceDiscount, sumGroupParticipantServicesTotal } from "@beautonomi/utils";
 
 export type BookingTotalsLineItem = {
   servicesTotal: number;
@@ -20,7 +20,7 @@ export type BookingTotalsLineItem = {
 };
 
 type ServiceLine = { id: string; price: number; currency?: string };
-type Participant = { serviceIds: string[] };
+type Participant = { name?: string; serviceIds: string[] };
 
 export type ComputeBookingTotalsInput = {
   selectedServices: ServiceLine[];
@@ -83,13 +83,15 @@ export function computeBookingTotals(input: ComputeBookingTotalsInput): BookingT
 
   let servicesTotal = 0;
   if (isGroupBooking && groupParticipants?.length) {
-    servicesTotal = groupParticipants.reduce((total, participant) => {
-      const participantTotal = participant.serviceIds.reduce((sum, serviceId) => {
-        const service = selectedServices.find((s) => s.id === serviceId);
-        return sum + (service?.price || 0);
-      }, 0);
-      return total + participantTotal;
-    }, 0);
+    const bookerServiceIds = selectedServices.map((s) => s.id);
+    servicesTotal = sumGroupParticipantServicesTotal(
+      groupParticipants.map((p) => ({
+        name: p.name ?? "",
+        serviceIds: p.serviceIds,
+      })),
+      bookerServiceIds,
+      (serviceId) => selectedServices.find((s) => s.id === serviceId)?.price ?? 0,
+    );
   } else {
     servicesTotal = selectedServices.reduce((sum, s) => sum + s.price, 0);
   }
