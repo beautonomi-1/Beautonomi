@@ -17,6 +17,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { BookingSectionCard, BookingSectionLabel, BookingActionButton } from "../ui";
 import { useTranslation } from "@beautonomi/i18n";
+import { isBookableCatalogService } from "@/lib/provider-portal/bookable-services";
+import {
+  buildServiceCategoryOptions,
+  UNCATEGORIZED_SERVICE_CATEGORY,
+} from "@/lib/provider-portal/service-category";
+import { cn } from "@/lib/utils";
 
 interface CreateServicesSectionProps {
   catalog: ServiceItem[];
@@ -52,6 +58,7 @@ export function CreateServicesSection({
 }: CreateServicesSectionProps) {
   const { t } = useTranslation();
   const { format: formatMoney } = useProviderMoneyFormat();
+  const [selectedCategory, setSelectedCategory] = useState("all");
   const [customOpen, setCustomOpen] = useState(false);
   const [customName, setCustomName] = useState("");
   const [customPrice, setCustomPrice] = useState("");
@@ -86,7 +93,7 @@ export function CreateServicesSection({
   };
 
   const addService = (catalogId: string, variantId?: string) => {
-    const parent = catalog.find((s) => s.id === catalogId);
+    const parent = bookableCatalog.find((s) => s.id === catalogId);
     if (!parent) return;
     const variant = variantId ? parent.variants?.find((v) => v.id === variantId) : undefined;
     const target = variant ?? parent;
@@ -116,10 +123,27 @@ export function CreateServicesSection({
 
   const uncategorizedLabel = t("web.provider.portal.appointmentCreate.uncategorized");
 
-  const flatOptions = catalog.flatMap((svc) => {
-    const categoryLabel =
-      (svc.category_id && catalog.find((c) => c.id === svc.category_id)?.name) ||
-      uncategorizedLabel;
+  const bookableCatalog = catalog.filter(isBookableCatalogService);
+
+  const categoryOptions = useMemo(
+    () => buildServiceCategoryOptions(catalog, uncategorizedLabel, isBookableCatalogService),
+    [catalog, uncategorizedLabel],
+  );
+
+  const catalogForPicker = useMemo(() => {
+    if (selectedCategory === "all") return bookableCatalog;
+    return bookableCatalog.filter(
+      (svc) =>
+        (svc.provider_category_id ?? svc.category_id ?? UNCATEGORIZED_SERVICE_CATEGORY) ===
+          selectedCategory ||
+        (selectedCategory === UNCATEGORIZED_SERVICE_CATEGORY &&
+          !svc.provider_category_id &&
+          !svc.category_id),
+    );
+  }, [bookableCatalog, selectedCategory]);
+
+  const flatOptions = catalogForPicker.flatMap((svc) => {
+    const categoryLabel = svc.category_name?.trim() || uncategorizedLabel;
     if (svc.variants?.length) {
       return svc.variants.map((v) => ({
         key: `${svc.id}:${v.id}`,
@@ -217,6 +241,38 @@ export function CreateServicesSection({
       ) : (
         <p className="text-sm text-gray-500 mb-3">{t("web.provider.portal.appointmentCreate.addAtLeastOne")}</p>
       )}
+
+      {categoryOptions.length > 1 ? (
+        <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+          <button
+            type="button"
+            onClick={() => setSelectedCategory("all")}
+            className={cn(
+              "shrink-0 rounded-full border px-3 py-2 text-xs font-semibold touch-manipulation min-h-[40px]",
+              selectedCategory === "all"
+                ? "border-gray-900 bg-gray-900 text-white"
+                : "border-gray-200 bg-white text-gray-700",
+            )}
+          >
+            {t("web.provider.portal.appointmentCreate.allCategories")}
+          </button>
+          {categoryOptions.map((cat) => (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setSelectedCategory(cat.id)}
+              className={cn(
+                "shrink-0 rounded-full border px-3 py-2 text-xs font-semibold touch-manipulation min-h-[40px] max-w-[220px] truncate",
+                selectedCategory === cat.id
+                  ? "border-gray-900 bg-gray-900 text-white"
+                  : "border-gray-200 bg-white text-gray-700",
+              )}
+            >
+              {cat.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <Select
         onValueChange={(key) => {

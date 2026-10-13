@@ -123,7 +123,7 @@ export async function computeProductOrderDeliveryQuote(params: {
 
   const { data: shipConfig } = await (supabase.from("provider_shipping_config") as any)
     .select(
-      "delivery_fee, delivery_fee_type, free_delivery_threshold, delivery_radius_km, weight_rate_per_km, distance_rate_per_km, estimated_delivery_days, delivery_notes",
+      "delivery_fee, delivery_fee_type, free_delivery_threshold, delivery_radius_km, weight_rate_per_kg, distance_rate_per_km, estimated_delivery_days, delivery_notes",
     )
     .eq("provider_id", providerId)
     .maybeSingle();

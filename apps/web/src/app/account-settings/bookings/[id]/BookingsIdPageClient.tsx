@@ -33,6 +33,7 @@ import { getBookingLifecycleDisplay, getBookingPaymentDisplay, resolveEffectiveB
 import { pendingConfirmationSlaDisplay } from "@/lib/bookings/pending-confirmation-sla-copy";
 import { BookingReferencePanel } from "@/components/bookings/BookingReferencePanel";
 import { useTranslation } from "@beautonomi/i18n";
+import Link from "next/link";
 
 /** Booking as returned from GET /api/me/bookings/:id (includes expanded provider, location, etc.) */
 type BookingDetail = Booking & {
@@ -46,6 +47,9 @@ type BookingDetail = Booking & {
   lifecycle_hint?: "upcoming" | "late_window" | "awaiting_close_out" | "past" | null;
   pending_confirmation_sla?: { body?: string; overnight?: boolean; lastMinute?: boolean; timeLabel?: string };
   recurring_series_id?: string | null;
+  is_group_booking?: boolean;
+  group_booking_id?: string | null;
+  group_booking_ref?: string | null;
   in_late_window?: boolean;
   close_out_at?: string;
   can_report_running_late?: boolean;
@@ -530,6 +534,22 @@ export default function BookingDetailPage() {
           ]} 
         />
       )}
+
+      {booking.group_booking_id ? (
+        <div className="mb-4 rounded-2xl border border-violet-200 bg-violet-50/80 p-4">
+          <p className="text-sm font-medium text-violet-900">
+            {booking.group_booking_ref
+              ? t("web.accountSettings.bookings.list.groupSession", { ref: booking.group_booking_ref })
+              : t("web.accountSettings.bookings.list.group")}
+          </p>
+          <Link
+            href={`/account-settings/group-bookings/${booking.group_booking_id}`}
+            className="mt-2 inline-block text-sm font-semibold text-[#FF0077] hover:underline"
+          >
+            {t("customer.mobile.screens.bookingDetail.viewGroupDetails")}
+          </Link>
+        </div>
+      ) : null}
 
       {showRunningLateStrip ? (
         <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">

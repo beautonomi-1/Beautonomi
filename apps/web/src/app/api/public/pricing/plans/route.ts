@@ -6,6 +6,7 @@ import {
   buildPublicPricingBillingPeriods,
   loadLinkedSubscriptionPlanPricesMap,
 } from "@/lib/pricing/public-pricing-billing-periods";
+import { resolvePublishedPricingPlanRows } from "@/lib/pricing/published-pricing-plans";
 
 /**
  * GET /api/public/pricing/plans
@@ -30,10 +31,11 @@ export async function GET(request: Request) {
       select:
         "id, name, price, period, description, cta_text, is_popular, display_order, currency, paystack_plan_code_monthly, paystack_plan_code_yearly, subscription_plan_id",
       apply: (q) => q.eq("is_active", true),
-      dedupeKey: (row) => String(row.name ?? row.id ?? ""),
+      dedupeKey: (row) =>
+        String(row.subscription_plan_id ?? row.id ?? row.name ?? ""),
       orderBy: { column: "display_order", ascending: true },
     });
-    const plans = scopedPlans.data as Array<{
+    const merged = scopedPlans.data as Array<{
       id: string;
       name: string;
       price: string;
@@ -47,6 +49,8 @@ export async function GET(request: Request) {
       paystack_plan_code_yearly?: string | null;
       subscription_plan_id?: string | null;
     }>;
+
+    const plans = await resolvePublishedPricingPlanRows(supabaseAdmin, merged);
 
     if (!plans?.length) {
       return NextResponse.json({ data: [] });

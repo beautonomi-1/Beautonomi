@@ -1,15 +1,12 @@
 /**
  * Paystack redirect target for shop / product-order payments.
  * Deep-link URL: `ExpoLinking.createURL("shop/paystack")`.
- *
- * On success, fires `emitCartUpdated()` so the cart badge clears
- * before navigating to the order detail screen.
- *
- * All verify / state-machine / button logic lives in PaystackReturnScreen.
  */
 import { PaystackReturnScreen } from "@/components/payment/PaystackReturnScreen";
 import { emitCartUpdated } from "@/lib/cart-events";
 import type { RouteTarget } from "@/lib/payments/resolvePaystackVerifyRoute";
+import { useTranslation } from "@beautonomi/i18n";
+import { useMemo } from "react";
 
 function resolveShopTarget(verifyData: unknown): RouteTarget | null {
   let cur: unknown = verifyData;
@@ -30,20 +27,28 @@ const CANCELLED_ROUTE: RouteTarget = { pathname: "/(app)/(tabs)/cart" };
 const FALLBACK_ROUTE: RouteTarget = { pathname: "/(app)/product-orders" };
 
 export default function ShopPaystackReturnScreen() {
+  const { t } = useTranslation();
+  const pr = (key: string) =>
+    t(`customer.mobile.components.paystackReturn.${key}`) as string;
+  const labels = useMemo(
+    () => ({
+      verifying: pr("shopVerifying"),
+      returning: pr("shopReturning"),
+      fallbackCta: pr("shopFallbackCta"),
+      continueCta: pr("shopContinueCta"),
+    }),
+    [t],
+  );
+
   return (
     <PaystackReturnScreen
       resolveTarget={resolveShopTarget}
       cancelledRoute={CANCELLED_ROUTE}
       fallbackRoute={FALLBACK_ROUTE}
       onSuccess={emitCartUpdated}
-      labels={{
-        verifying: "Confirming your order payment…",
-        returning: "Returning to shop…",
-        fallbackCta: "Go to Orders",
-        continueCta: "View order",
-      }}
-      pendingSubtext="We'll update your order within a few minutes. You can keep using the app while we confirm with your bank."
-      failedSubtext="If you were charged, your order will still be confirmed once the payment lands. Please check your Orders tab."
+      labels={labels}
+      pendingSubtext={pr("shopPendingSubtext")}
+      failedSubtext={pr("shopFailedSubtext")}
     />
   );
 }

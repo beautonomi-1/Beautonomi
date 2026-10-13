@@ -33,6 +33,11 @@ import { checkActiveHoldOverlap, canOverrideDoubleBooking } from "@/lib/bookings
 import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-provider-slot-grid";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
+import {
+  BOOKING_ADDONS_SELECT,
+  mapBookingAddonsForApi,
+  type BookingAddonJoinRow,
+} from "@/lib/provider/bookings/map-booking-addons-for-api";
 import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
 import {
   createBookingsReadCacheKey,
@@ -227,7 +232,8 @@ async function handleGetProviderBookings(request: NextRequest) {
           id,
           amount,
           status
-        )
+        ),
+        ${BOOKING_ADDONS_SELECT}
       `
       )
       .eq("provider_id", providerId)
@@ -481,7 +487,9 @@ async function handleGetProviderBookings(request: NextRequest) {
         cancellation_reason: booking.cancellation_reason || null,
         services: services,
         products: products,
-        addons: [], // Addons would need to be fetched from booking_addons table
+        addons: mapBookingAddonsForApi(
+          (booking as { booking_addons?: BookingAddonJoinRow[] }).booking_addons,
+        ),
         package_id: booking.package_id || null,
         package_name: (() => {
           const sp = (
@@ -2100,14 +2108,18 @@ async function handleCreateProviderBooking(request: NextRequest) {
       if (addonIds.length > 0) {
         const { data: addonOfferings } = await supabaseAdmin
           .from("offerings")
-          .select("id, price")
+          .select("id, price, title")
           .in("id", addonIds);
         const priceByAddonId = new Map(
           (addonOfferings || []).map((o: any) => [o.id, Number(o.price || 0)])
         );
+        const nameByAddonId = new Map(
+          (addonOfferings || []).map((o: any) => [o.id, String(o.title || "Add-on")])
+        );
         const bookingAddonsData = addonIds.map((addonId: string) => ({
           booking_id: booking.id,
           addon_id: addonId,
+          addon_name: nameByAddonId.get(addonId) ?? "Add-on",
           quantity: 1,
           price: priceByAddonId.get(addonId) ?? 0,
           currency: body.currency || lastResortCurrency,

@@ -137,6 +137,7 @@ const defaultForm = {
   supplier: "",
   sku: "",
   image_urls: [] as string[],
+  weight_grams: "",
   quantity: "0",
   low_stock_level: "5",
   reorder_quantity: "0",
@@ -291,6 +292,10 @@ export default function ProductFormScreen() {
         supplier: product.supplier ?? "",
         sku: product.sku ?? "",
         image_urls: urls,
+        weight_grams:
+          (product as { weight_grams?: number | null }).weight_grams != null
+            ? String((product as { weight_grams?: number | null }).weight_grams)
+            : "",
         quantity: String(product.quantity ?? 0),
         low_stock_level: String(product.low_stock_level ?? 5),
         reorder_quantity: String(product.reorder_quantity ?? 0),
@@ -527,6 +532,17 @@ export default function ProductFormScreen() {
                 onChangeText={(t) => setForm((p) => ({ ...p, barcode: t }))}
                 accessibilityLabel={pf("barcode")}
               />
+              <View style={{ marginTop: 12 }}>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>{pf("weightGrams")}</Text>
+                <TextInput
+                  style={twStyle("mt-1.5 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                  value={form.weight_grams}
+                  onChangeText={(t) => setForm((p) => ({ ...p, weight_grams: t.replace(/[^\d]/g, "") }))}
+                  keyboardType="number-pad"
+                  placeholder={pf("weightGramsPlaceholder")}
+                  placeholderTextColor="#9ca3af"
+                />
+              </View>
             </View>
 
             <View style={twStyle("mb-3")}>

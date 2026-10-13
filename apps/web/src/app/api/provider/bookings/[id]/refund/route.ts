@@ -14,6 +14,7 @@ import {
   fetchBookingPaymentsForRefundCap,
   fetchCompletedInPersonRefundsTotal,
 } from "@/lib/bookings/booking-refund-limits";
+import { walletStoreCreditAmountWhenVoidingGiftOnFullRefund } from "@/lib/bookings/settle-booking-cancellation";
 import {
   cashRefundConfirmationDeadline,
   finalizeCashRefund,
@@ -22,6 +23,14 @@ import {
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 import { loadBookingRefundCoverage } from "@/lib/admin/booking-refund-coverage";
 import { syncPaymentTransactionRefundState } from "@/lib/finance/sync-payment-transaction-refund";
+import {
+  completeAwaitingMachineRefund,
+  createAwaitingYocoRefund,
+  fetchAwaitingMachineRefunds,
+  pickYocoRefundPaymentId,
+  releaseAwaitingMachineRefunds,
+  sumAwaitingMachineRefunds,
+} from "@/lib/bookings/awaiting-machine-refunds";
 
 /**
  * POST /api/provider/bookings/[id]/refund
@@ -203,18 +212,44 @@ export async function POST(
       bookingId,
       (booking as { tenant_id?: string | null }).tenant_id,
     );
+    const recordOnly =
+      body?.record_only === true ||
+      body?.record_only === "true" ||
+      body?.record_only === 1;
+
+    // An open Yoco obligation (booking cancelled back to card) already holds this
+    // money in the in-person cap; recording completes that row instead of adding one.
+    const awaitingMachineRefunds = await fetchAwaitingMachineRefunds(supabaseAdmin, bookingId);
+    const awaitingMachineTotal = sumAwaitingMachineRefunds(awaitingMachineRefunds);
+    const awaitingMachineRefund =
+      refundMethod === "original" && recordOnly ? (awaitingMachineRefunds[0] ?? null) : null;
+    if (awaitingMachineRefund && amount > awaitingMachineRefund.amount + 0.01) {
+      return errorResponse(
+        `Record the outstanding Yoco machine refund of ${formatMoney(awaitingMachineRefund.amount)} first.`,
+        "AWAITING_MACHINE_REFUND_AMOUNT",
+        400,
+      );
+    }
+
     const completedInPersonRefunds = await fetchCompletedInPersonRefundsTotal(supabaseAdmin, bookingId);
     const inPersonCap = computeInPersonRefundableCap(bookingPayments, completedInPersonRefunds);
+    // Cash handed back instead of the machine refund releases the obligation below.
+    const cashCap = computeInPersonRefundableCap(
+      bookingPayments,
+      Math.max(0, completedInPersonRefunds - awaitingMachineTotal),
+    );
 
-    if (refundMethod === "cash" && amount > inPersonCap) {
+    if (refundMethod === "cash" && amount > cashCap) {
       return errorResponse(
-        `Cash refunds are limited to ${formatMoney(inPersonCap)} collected in person on this booking. Amounts paid online must be refunded as wallet credit.`,
+        `Cash refunds are limited to ${formatMoney(cashCap)} collected in person on this booking. Amounts paid online must be refunded as wallet credit.`,
         "CASH_REFUND_CAP_EXCEEDED",
         400,
       );
     }
 
-    if (refundMethod === "original" && amount > inPersonCap) {
+    const coveredByAwaiting =
+      awaitingMachineRefunds.length > 0 && amount <= awaitingMachineTotal + 0.01;
+    if (refundMethod === "original" && !coveredByAwaiting && amount > inPersonCap) {
       return errorResponse(
         `Card machine refunds are limited to ${formatMoney(inPersonCap)} collected on a terminal for this booking. Online portions should be refunded as wallet credit.`,
         "TERMINAL_REFUND_CAP_EXCEEDED",
@@ -242,30 +277,84 @@ export async function POST(
     }
 
     const requiresCustomerConfirmation = refundMethod === "cash" && !!booking.customer_id;
-    const recordOnly =
-      body?.record_only === true ||
-      body?.record_only === "true" ||
-      body?.record_only === 1;
 
     // Terminal reverse: send REFUND to PayCloud. Settlement writes booking_refunds
     // via webhook/reconcile — do not insert a completed booking_refund here or the
     // customer is told the money is returning while nothing hits the machine.
     if (refundMethod === "original" && !recordOnly) {
+      const linkedForTerminal =
+        linkedPaymentId != null
+          ? bookingPayments.find((p) => String((p as { id?: string }).id ?? "") === linkedPaymentId)
+          : null;
+      const linkedProvider = String(
+        (linkedForTerminal as { payment_provider?: string } | undefined)?.payment_provider ?? "",
+      ).toLowerCase();
+
+      if (linkedProvider === "yoco") {
+        await createAwaitingYocoRefund(supabaseAdmin, {
+          bookingId,
+          amount,
+          paymentId: linkedPaymentId ?? pickYocoRefundPaymentId(bookingPayments),
+          reason,
+          createdBy: user.id,
+        });
+        return errorResponse(
+          "Complete this refund in the Yoco app or on your Yoco machine, then record it here with record only.",
+          "YOCO_REFUND_ON_MACHINE",
+          400,
+        );
+      }
+
       const { data: pcPayments } = await supabaseAdmin
         .from("provider_paycloud_payments")
-        .select("id, amount, tip_amount, cashback_amount, terminal_id, status, trans_type, metadata")
+        .select(
+          "id, amount, tip_amount, cashback_amount, terminal_id, status, trans_type, metadata, merchant_order_no",
+        )
         .eq("provider_id", providerId)
         .eq("booking_id", bookingId)
         .eq("status", "successful")
         .order("created_at", { ascending: false })
         .limit(10);
 
-      const salePayment = (pcPayments ?? []).find((p) => {
+      const linkedRef = String(
+        (linkedForTerminal as { payment_provider_id?: string } | undefined)?.payment_provider_id ?? "",
+      ).split(":")[0];
+
+      let salePayment = (pcPayments ?? []).find((p) => {
         const tt = Number(p.trans_type ?? 1);
         return tt === 1 || tt === 11;
       });
 
+      if (linkedProvider === "paycloud" && linkedRef) {
+        salePayment =
+          (pcPayments ?? []).find((p) => {
+            const row = p as { id?: string; merchant_order_no?: string };
+            const tt = Number(p.trans_type ?? 1);
+            if (tt !== 1 && tt !== 11) return false;
+            return row.id === linkedRef || row.merchant_order_no === linkedRef;
+          }) ?? salePayment;
+      }
+
       if (!salePayment) {
+        const paidByYoco = bookingPayments.some(
+          (p) =>
+            String(p.payment_provider ?? "").toLowerCase() === "yoco" &&
+            (p.status === "completed" || p.status === "partially_refunded"),
+        );
+        if (paidByYoco) {
+          await createAwaitingYocoRefund(supabaseAdmin, {
+            bookingId,
+            amount,
+            paymentId: pickYocoRefundPaymentId(bookingPayments),
+            reason,
+            createdBy: user.id,
+          });
+          return errorResponse(
+            "Complete this refund in the Yoco app or on your Yoco machine, then record it here with record only.",
+            "YOCO_REFUND_ON_MACHINE",
+            400,
+          );
+        }
         return errorResponse(
           "No card machine payment found to reverse on this booking. Use wallet credit, or complete the refund on the machine and record it as a card refund.",
           "NO_TERMINAL_PAYMENT",
@@ -323,24 +412,64 @@ export async function POST(
         : refundMethod === "original"
           ? "Provider refund – recorded after card machine reversal"
           : "Provider refund – credited to customer wallet";
-    const { data: refund, error: refundError } = await supabaseAdmin
-      .from("booking_refunds")
-      .insert({
-        booking_id: bookingId,
-        payment_id: linkedPaymentId,
+    const linkedProviderForRecord = String(
+      (linkedPaymentId
+        ? bookingPayments.find((p) => String((p as { id?: string }).id ?? "") === linkedPaymentId)
+        : undefined
+      )?.payment_provider ?? "",
+    ).toLowerCase();
+    const isYocoMachineRecord =
+      refundMethod === "original" &&
+      recordOnly &&
+      (linkedProviderForRecord === "yoco" ||
+        (!linkedPaymentId &&
+          bookingPayments.some(
+            (p) =>
+              String(p.payment_provider ?? "").toLowerCase() === "yoco" &&
+              (p.status === "completed" || p.status === "partially_refunded"),
+          )));
+
+    let refund: Record<string, unknown> | null = null;
+    let refundError: { message?: string } | null = null;
+    if (awaitingMachineRefund) {
+      const completed = await completeAwaitingMachineRefund(supabaseAdmin, awaitingMachineRefund, {
         amount,
         reason,
-        refund_method: refundMethod,
-        status: "pending",
-        notes: notes || defaultNotes,
-        created_by: user.id,
-        customer_confirmation_required: requiresCustomerConfirmation,
-        confirmation_deadline_at: requiresCustomerConfirmation
-          ? cashRefundConfirmationDeadline()
-          : null,
-      })
-      .select()
-      .single();
+        notes: notes || null,
+        recordedBy: user.id,
+      });
+      if (completed.ok === false) {
+        return errorResponse(completed.message, "REFUND_ERROR", 400);
+      }
+      const { data: completedRow } = await supabaseAdmin
+        .from("booking_refunds")
+        .select()
+        .eq("id", completed.refundId)
+        .single();
+      refund = (completedRow as Record<string, unknown> | null) ?? { id: completed.refundId };
+    } else {
+      const inserted = await supabaseAdmin
+        .from("booking_refunds")
+        .insert({
+          booking_id: bookingId,
+          payment_id: linkedPaymentId,
+          amount,
+          reason,
+          refund_method: refundMethod,
+          status: "pending",
+          notes: notes || defaultNotes,
+          created_by: user.id,
+          customer_confirmation_required: requiresCustomerConfirmation,
+          confirmation_deadline_at: requiresCustomerConfirmation
+            ? cashRefundConfirmationDeadline()
+            : null,
+          ...(isYocoMachineRecord ? { machine_refund_provider: "yoco" } : {}),
+        })
+        .select()
+        .single();
+      refund = (inserted.data as Record<string, unknown> | null) ?? null;
+      refundError = inserted.error;
+    }
 
     if (refundError || !refund) {
       console.error("Error creating refund record:", refundError);
@@ -354,6 +483,16 @@ export async function POST(
     // and return 5xx without ever flipping it to `completed`, so the ledger
     // trigger never fires. For `cash` (in-person) there is no wallet movement —
     // the provider hands the money back; we only record it for audit + ledger.
+    const walletCreditAmount =
+      refundMethod === "store_credit"
+        ? walletStoreCreditAmountWhenVoidingGiftOnFullRefund({
+            refundAmount: amount,
+            giftCardCollected: giftPaid,
+            totalRefundedBefore: totalRefunded,
+            totalCollectedAllSources,
+          })
+        : amount;
+
     if (refundMethod === "store_credit") {
       if (!booking.customer_id) {
         await supabaseAdmin
@@ -371,7 +510,7 @@ export async function POST(
       }
       const { error: walletError } = await (supabaseAdmin.rpc as any)("wallet_credit_admin", {
         p_user_id: booking.customer_id,
-        p_amount: amount,
+        p_amount: walletCreditAmount,
         p_currency: booking.currency || lastResortCurrency,
         p_description: `Refund for booking ${booking.booking_number || booking.ref_number || bookingId.slice(0, 8)}: ${reason}`,
         p_reference_id: bookingId,
@@ -395,6 +534,17 @@ export async function POST(
           500,
         );
       }
+    }
+
+    if (refundMethod !== "original" && awaitingMachineTotal > 0.01) {
+      await releaseAwaitingMachineRefunds(
+        supabaseAdmin,
+        bookingId,
+        amount,
+        refundMethod === "cash"
+          ? "Closed — refunded in cash instead of on the Yoco machine"
+          : "Closed — refunded to wallet instead of on the Yoco machine",
+      );
     }
 
     if (requiresCustomerConfirmation) {
@@ -448,12 +598,14 @@ export async function POST(
         return errorResponse(finalizeResult.error, "FINALIZE_ERROR", 500);
       }
     } else if (refundMethod === "original") {
-      const { error: finalizeErr } = await supabaseAdmin
-        .from("booking_refunds")
-        .update({ status: "completed" })
-        .eq("id", refundId);
-      if (finalizeErr) {
-        return errorResponse("Failed to finalise card refund record.", "FINALIZE_ERROR", 500);
+      if (!awaitingMachineRefund) {
+        const { error: finalizeErr } = await supabaseAdmin
+          .from("booking_refunds")
+          .update({ status: "completed" })
+          .eq("id", refundId);
+        if (finalizeErr) {
+          return errorResponse("Failed to finalise card refund record.", "FINALIZE_ERROR", 500);
+        }
       }
       try {
         const { syncBookingRefundTransactions } = await import(

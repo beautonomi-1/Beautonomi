@@ -2,7 +2,7 @@
 
 import { useTranslation } from "@beautonomi/i18n";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetcher } from "@/lib/http/fetcher";
 import { Save } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,12 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
+import { usePermissions } from "@/hooks/usePermissions";
+import {
+  ProviderCourierCredentialsCard,
+  type CourierCredentialsSaveHandle,
+} from "@/components/provider/shipping/ProviderCourierCredentialsCard";
+import type { ShippingReadinessResult } from "@/lib/orders/shipping-readiness";
 
 interface ShippingConfig {
   offers_delivery: boolean;
@@ -53,6 +59,20 @@ export default function ProviderShippingConfigPage() {
   const [quoteLine1, setQuoteLine1] = useState("");
   const [quoting, setQuoting] = useState(false);
   const [quoteResult, setQuoteResult] = useState<string | null>(null);
+  const [readiness, setReadiness] = useState<ShippingReadinessResult | null>(null);
+  const { isOwner } = usePermissions();
+  const courierSaveRef = useRef<CourierCredentialsSaveHandle>(null);
+
+  const refreshReadiness = async () => {
+    try {
+      const res = await fetcher.get<{ data?: { readiness?: ShippingReadinessResult } }>(
+        "/api/provider/shipping-readiness",
+      );
+      if (res?.data?.readiness) setReadiness(res.data.readiness);
+    } catch {
+      setReadiness(null);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -63,13 +83,22 @@ export default function ProviderShippingConfigPage() {
         setConfig(res.data.config);
       }
       setLoading(false);
+      void refreshReadiness();
     })();
   }, []);
 
   const handleSave = async () => {
     setSaving(true);
     try {
+      if (isOwner && courierSaveRef.current) {
+        const credsOk = await courierSaveRef.current.savePendingIfAny();
+        if (!credsOk) {
+          setSaving(false);
+          return;
+        }
+      }
       await fetcher.put("/api/provider/shipping-config", config);
+      await refreshReadiness();
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch {
@@ -94,6 +123,19 @@ export default function ProviderShippingConfigPage() {
           {t("web.provider.pages.ecommerce/shipping.subtitle")}
         </p>
       </div>
+
+      {readiness?.items?.length ? (
+        <div className="bg-white rounded-xl border p-4 space-y-2">
+          <h2 className="text-sm font-semibold text-gray-900">{t("web.provider.pages.ecommerce/shipping.readinessTitle")}</h2>
+          <ul className="space-y-1 text-sm">
+            {readiness.items.map((item) => (
+              <li key={item.id} className={item.ok ? "text-emerald-700" : "text-amber-800"}>
+                {item.ok ? "✓" : "○"} {item.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <div className="bg-white rounded-xl border p-6 space-y-6">
         <div className="flex items-center justify-between">
@@ -244,6 +286,13 @@ export default function ProviderShippingConfigPage() {
                 <option value="bob-go">{t("web.provider.pages.ecommerce/shipping.bobGo")}</option>
               </select>
               {config.shipping_provider_preference ? (
+                <>
+                <ProviderCourierCredentialsCard
+                  ref={courierSaveRef}
+                  preference={config.shipping_provider_preference}
+                  isOwner={isOwner}
+                  onSaved={() => void refreshReadiness()}
+                />
                 <div className="mt-3 space-y-2 rounded-lg border border-gray-100 bg-gray-50 p-3">
                   <p className="text-xs text-gray-500">
                     {t("web.provider.pages.ecommerce/shipping.probeLiveRates")}
@@ -320,6 +369,7 @@ export default function ProviderShippingConfigPage() {
                   </button>
                   {quoteResult ? <p className="text-xs text-gray-600">{quoteResult}</p> : null}
                 </div>
+                </>
               ) : null}
             </div>
             <div>

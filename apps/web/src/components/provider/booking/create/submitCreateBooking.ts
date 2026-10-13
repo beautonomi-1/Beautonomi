@@ -11,7 +11,7 @@ import {
 } from "@beautonomi/provider-booking";
 import type { CreatePaymentMethod } from "./CreatePaymentSection";
 import type { AppointmentKindValue } from "./AppointmentKindSelector";
-import type { AtHomeAddressValue } from "./AtHomeAddressSection";
+import { effectiveAtHomeTravelFee, type AtHomeAddressValue } from "./AtHomeAddressSection";
 import type { RecurrencePattern } from "./RecurrenceSection";
 
 const UUID_RE =
@@ -101,7 +101,10 @@ export async function submitCreateBooking(
     taxAmount: input.taxAmount,
     totalAmount: input.totalAmount,
     intakeResponses: input.intakeResponses,
-    atHomeAddress: input.appointmentKind === "at_home" ? input.atHomeAddress : undefined,
+    atHomeAddress:
+      input.appointmentKind === "at_home"
+        ? { ...input.atHomeAddress, travelFee: effectiveAtHomeTravelFee(input.atHomeAddress) }
+        : undefined,
     defaultStatus: DEFAULT_APPOINTMENT_STATUS,
   }) as Partial<Appointment>;
 
@@ -118,10 +121,21 @@ export async function submitCreateBooking(
   let warnings: string[] | undefined;
 
   if (input.isRecurring && input.clientId.trim() && isLikelyUuid(input.clientId)) {
-    const addonPriceSum = (addons?: AppointmentService["addons"]) =>
-      addons?.reduce((sum, a) => sum + a.price, 0) || 0;
     const addonDurationSum = (addons?: AppointmentService["addons"]) =>
       addons?.reduce((sum, a) => sum + a.duration, 0) || 0;
+
+    const addonCartItems = input.selectedServices.flatMap((s) =>
+      (s.addons ?? []).map((a) => ({
+        id: a.addonId,
+        type: "addon" as const,
+        addon_id: a.addonId,
+        service_id: s.serviceId,
+        name: a.addonName ?? "Add-on",
+        quantity: 1,
+        unit_price: a.price,
+        total: a.price,
+      })),
+    );
 
     raw.cart_items = [
       ...input.selectedServices.map((s) => ({
@@ -130,11 +144,12 @@ export async function submitCreateBooking(
         name: s.serviceName,
         quantity: 1,
         unit_price: s.price,
-        total: s.price + addonPriceSum(s.addons),
+        total: s.price,
         service_id: s.serviceId,
         staff_id: s.staffId || input.staffId,
         duration_minutes: s.duration + addonDurationSum(s.addons),
       })),
+      ...addonCartItems,
       ...input.selectedProducts.map((p) => ({
         id: p.id,
         type: "product" as const,

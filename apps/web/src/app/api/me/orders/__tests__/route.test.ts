@@ -96,6 +96,23 @@ function mockProviderLocationsTable() {
   return chain;
 }
 
+function mockProviderShippingConfigTable(opts?: {
+  offers_delivery?: boolean;
+  offers_collection?: boolean;
+}) {
+  const chain: Record<string, unknown> = {};
+  chain.select = vi.fn(() => chain);
+  chain.eq = vi.fn(() => chain);
+  chain.maybeSingle = vi.fn(async () => ({
+    data: {
+      offers_delivery: opts?.offers_delivery ?? true,
+      offers_collection: opts?.offers_collection ?? true,
+    },
+    error: null,
+  }));
+  return chain;
+}
+
 function buildHappyPathSupabase(opts?: { failItemsInsert?: boolean }) {
   const cartItem = {
     id: "cart-1",
@@ -137,6 +154,9 @@ function buildHappyPathSupabase(opts?: { failItemsInsert?: boolean }) {
       }
       if (table === "provider_locations") {
         return mockProviderLocationsTable();
+      }
+      if (table === "provider_shipping_config") {
+        return mockProviderShippingConfigTable();
       }
       if (table === "cart_items") {
         const chain: Record<string, unknown> = {};
@@ -220,6 +240,9 @@ describe("POST /api/me/orders", () => {
         if (table === "provider_locations") {
           return mockProviderLocationsTable();
         }
+        if (table === "provider_shipping_config") {
+          return mockProviderShippingConfigTable();
+        }
         throw new Error(`Unexpected table ${table}`);
       }),
     };
@@ -239,6 +262,53 @@ describe("POST /api/me/orders", () => {
 
     expect(res.status).toBe(404);
     expect(body?.error?.code).toBe("TENANT_MISMATCH");
+  }, 45_000);
+
+  it("rejects delivery when provider has delivery disabled", async () => {
+    mockRequireRoleInApi.mockResolvedValue({
+      user: { id: "user-1", role: "customer" },
+    });
+    mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
+
+    const mockSupabase = {
+      from: vi.fn((table: string) => {
+        if (table === "providers") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(async () => ({
+                  data: { tenant_id: "tenant-za", customer_fee_config_id: null },
+                  error: null,
+                })),
+              })),
+            })),
+          };
+        }
+        if (table === "provider_shipping_config") {
+          return mockProviderShippingConfigTable({
+            offers_delivery: false,
+            offers_collection: true,
+          });
+        }
+        throw new Error(`Unexpected table ${table}`);
+      }),
+    };
+    mockGetSupabaseServer.mockResolvedValue(mockSupabase);
+
+    const { POST } = await import("../route");
+    const req = new NextRequest("http://localhost/api/me/orders", {
+      method: "POST",
+      body: JSON.stringify({
+        provider_id: providerId,
+        fulfillment_type: "delivery",
+        delivery_address_id: "44444444-4444-4444-8444-444444444444",
+      }),
+    });
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body?.error?.code).toBe("DELIVERY_UNAVAILABLE");
   }, 45_000);
 
   it("rolls back wallet checkout when items insert fails after debit", async () => {

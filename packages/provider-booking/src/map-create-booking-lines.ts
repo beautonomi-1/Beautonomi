@@ -50,7 +50,6 @@ export function mapCreateBookingServiceLines(
 ): Array<Record<string, unknown>> {
   return lines.map((line) => {
     const addonDuration = sumAddonDuration(line.addons);
-    const addonPrice = sumAddonPrice(line.addons);
     const addOnIds = (line.addons ?? []).map((a) => a.addonId).filter(Boolean);
     const staff = line.staffId || fallbackStaffId || null;
     const durationMinutes = line.duration + addonDuration;
@@ -69,7 +68,7 @@ export function mapCreateBookingServiceLines(
             name: customLabel || line.serviceName,
           }
         : {}),
-      price: line.price + addonPrice,
+      price: line.price,
       duration: durationMinutes,
       duration_minutes: durationMinutes,
       staffId: staff,

@@ -6,7 +6,7 @@ import {
 } from "./map-create-booking-lines";
 
 describe("mapCreateBookingServiceLines", () => {
-  it("maps addons to add_on_ids and rolls up duration and price", () => {
+  it("maps addons to add_on_ids and rolls up duration but keeps base price", () => {
     const rows = mapCreateBookingServiceLines(
       [
         {
@@ -27,7 +27,7 @@ describe("mapCreateBookingServiceLines", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       service_id: "svc-1",
-      price: 250,
+      price: 200,
       duration_minutes: 60,
       staff_id: "staff-a",
       add_on_ids: ["ao-1"],

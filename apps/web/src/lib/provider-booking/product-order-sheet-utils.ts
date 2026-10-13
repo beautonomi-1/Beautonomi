@@ -26,6 +26,11 @@ export interface ProductOrderSheetOrder {
   booking_id?: string | null;
   customer_name?: string | null;
   tracking_number: string | null;
+  carrier?: string | null;
+  tracking_url?: string | null;
+  shipping_booking_status?: string | null;
+  shipping_booking_detail?: string | null;
+  courier_label_url?: string | null;
   created_at: string;
   customer?: {
     id: string;

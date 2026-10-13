@@ -343,11 +343,13 @@ export async function POST(
           );
         }
       } else {
-        return errorResponse(
-          "Booking is already fully paid (including wallet/gift card credits)",
-          "ALREADY_PAID",
-          400,
-        );
+        return successResponse({
+          payment: null,
+          base_paid: 0,
+          charges_settled: [],
+          message: "Booking is already fully paid (including wallet/gift card credits)",
+          already_paid: true,
+        });
       }
     }
 

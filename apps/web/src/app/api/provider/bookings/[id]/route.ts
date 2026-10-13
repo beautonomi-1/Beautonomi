@@ -52,6 +52,11 @@ import { buildMergedGroupRowFromGroupDetailApi } from "@/lib/provider-booking/bu
 import { pickGroupBookingPatchPayload } from "@/lib/provider-booking/pick-group-booking-patch-payload";
 import { syncGroupBookingStatusFromChildren } from "@/lib/bookings/group-booking";
 import { mapProviderBookingServiceLineForApi } from "@/lib/bookings/walk-in-custom-service";
+import {
+  BOOKING_ADDONS_SELECT,
+  mapBookingAddonsForApi,
+  type BookingAddonJoinRow,
+} from "@/lib/provider/bookings/map-booking-addons-for-api";
 
 function mapStatusToDatabase(frontendStatus: string): string {
   return mapStatusFromProvider(frontendStatus as ProviderBookingStatus);
@@ -104,6 +109,13 @@ type BookingDbRow = Record<string, unknown> & {
   completed_at?: string | null;
   cancelled_at?: string | null;
   cancellation_reason?: string | null;
+  /** Refunds owed on a card machine that staff must complete and record (Yoco). */
+  awaiting_machine_refunds?: Array<{
+    id: string;
+    amount: number;
+    provider: "yoco";
+    since: string | null;
+  }>;
   package_id?: string | null;
   subtotal?: number;
   discount_amount?: number;
@@ -158,7 +170,16 @@ type BookingDbRow = Record<string, unknown> & {
 };
 
 /** Booking response with optional provider-only fields */
-type BookingResponse = Booking & { custom_field_values?: Record<string, string | number | boolean | null>; provider_points_earned?: number | null };
+type BookingResponse = Booking & {
+  custom_field_values?: Record<string, string | number | boolean | null>;
+  provider_points_earned?: number | null;
+  awaiting_machine_refunds?: Array<{
+    id: string;
+    amount: number;
+    provider: "yoco";
+    since: string | null;
+  }>;
+};
 
 /** Minimal booking row fields read in PATCH (from .select("*")) */
 type BookingRow = {
@@ -341,6 +362,14 @@ export async function GET(
           products:products!booking_products_product_id_fkey(id, name, retail_price),
           product_variant:product_variants(id, option_values)
         ),
+        booking_addons(
+          id,
+          addon_id,
+          addon_name,
+          quantity,
+          price,
+          offerings:offerings!booking_addons_addon_id_fkey(id, title, duration_minutes, applicable_service_ids)
+        ),
         additional_charges(id, amount, status),
         custom_offer:custom_offers!bookings_custom_offer_id_fkey(
           id,
@@ -475,7 +504,7 @@ export async function GET(
         total_price: bp.total_price,
       };
       }),
-      addons: [], // Would need separate fetch from booking_addons
+      addons: mapBookingAddonsForApi(bookingData.booking_addons as BookingAddonJoinRow[] | undefined),
       package_id: computePackageAppliedForDisplay({
         package_id: bookingData.package_id || null,
         customer_package_entitlement_id:
@@ -710,6 +739,17 @@ export async function GET(
       } catch {
         transformedBooking.provider_points_earned = null;
       }
+    }
+
+    if (id) {
+      const { fetchAwaitingMachineRefunds } = await import("@/lib/bookings/awaiting-machine-refunds");
+      const awaiting = await fetchAwaitingMachineRefunds(supabaseAdmin, id);
+      transformedBooking.awaiting_machine_refunds = awaiting.map((r) => ({
+        id: r.id,
+        amount: r.amount,
+        provider: r.machine_refund_provider,
+        since: r.awaiting_machine_since ?? r.created_at,
+      }));
     }
 
     return successResponse(transformedBooking);
@@ -1412,6 +1452,7 @@ export async function PATCH(
       | import("@/lib/bookings/settle-booking-cancellation").SettleBookingCancellationResult
       | null = null;
     let cancelNotifyCurrency: string | undefined;
+    let awaitingMachineRefundId: string | null = null;
 
     if (updatedToCancelled || updatedToNoShow) {
       try {
@@ -1541,6 +1582,38 @@ export async function PATCH(
               console.error("[provider PATCH] terminal cancel refund failed:", terminalRefundErr);
             }
           }
+
+          if (
+            cancellationSettlementResult &&
+            cancellationSettlementResult.terminalRefundProvider === "yoco" &&
+            cancellationSettlementResult.terminalRefundDue > 0.01
+          ) {
+            try {
+              const { createAwaitingYocoRefund, pickYocoRefundPaymentId } = await import(
+                "@/lib/bookings/awaiting-machine-refunds"
+              );
+              const { fetchBookingPaymentsForRefundCap } = await import(
+                "@/lib/bookings/booking-refund-limits"
+              );
+              const payments = await fetchBookingPaymentsForRefundCap(
+                getSupabaseAdmin(),
+                id,
+                bookingTenantId,
+              );
+              const awaiting = await createAwaitingYocoRefund(getSupabaseAdmin(), {
+                bookingId: id,
+                amount: cancellationSettlementResult.terminalRefundDue,
+                paymentId: pickYocoRefundPaymentId(payments),
+                reason:
+                  (typeof cancellation_reason === "string" && cancellation_reason.trim()) ||
+                  "Booking cancelled — refund back to card",
+                createdBy: user.id,
+              });
+              awaitingMachineRefundId = awaiting?.id ?? null;
+            } catch (awaitErr) {
+              console.error("[provider PATCH] could not record awaiting Yoco refund:", awaitErr);
+            }
+          }
         }
       } catch (settleErr) {
         console.error("[provider PATCH] booking cancellation settlement failed:", settleErr);
@@ -1588,7 +1661,8 @@ export async function PATCH(
           products:products!booking_products_product_id_fkey(id, name, retail_price),
           product_variant:product_variants(id, option_values)
         ),
-        additional_charges(amount,status)
+        additional_charges(amount,status),
+        ${BOOKING_ADDONS_SELECT}
       `
       )
       .eq("id", id)
@@ -1639,7 +1713,8 @@ export async function PATCH(
               description
             )
           ),
-          additional_charges(amount,status)
+          additional_charges(amount,status),
+          ${BOOKING_ADDONS_SELECT}
         `
         )
         .eq("id", id)
@@ -1663,19 +1738,21 @@ export async function PATCH(
         .delete()
         .eq("booking_id", id);
 
+      type ServiceUpdateInput = {
+        scheduled_start_at?: string;
+        duration?: number;
+        serviceId?: string;
+        offering_id?: string;
+        staff_id?: string | null;
+        staffId?: string | null;
+        price?: number;
+        currency?: string;
+        add_on_ids?: string[];
+      };
+
       // Insert new services
       if (services.length > 0) {
         const baseScheduledAt = scheduled_at || (currentBooking as BookingRow).scheduled_at;
-        type ServiceUpdateInput = {
-          scheduled_start_at?: string;
-          duration?: number;
-          serviceId?: string;
-          offering_id?: string;
-          staff_id?: string | null;
-          staffId?: string | null;
-          price?: number;
-          currency?: string;
-        };
         const servicesToInsert = services.map((service: ServiceUpdateInput) => {
           const startAt = service.scheduled_start_at || baseScheduledAt;
           const duration = service.duration ?? 60;
@@ -1704,6 +1781,53 @@ export async function PATCH(
           throw servicesError; // Surface error instead of false success
         }
       }
+
+      const addonIdsFromServices = [
+        ...new Set(
+          services
+            .flatMap((s: ServiceUpdateInput) =>
+              Array.isArray(s.add_on_ids) ? s.add_on_ids.filter(Boolean) : [],
+            )
+            .map((id) => String(id)),
+        ),
+      ];
+      await supabaseAdminPatch.from("booking_addons").delete().eq("booking_id", id);
+      if (addonIdsFromServices.length > 0) {
+        const { data: addonOfferings } = await supabaseAdminPatch
+          .from("offerings")
+          .select("id, price, title")
+          .in("id", addonIdsFromServices);
+        const priceById = new Map(
+          (addonOfferings ?? []).map((o: { id: string; price?: number; title?: string }) => [
+            o.id,
+            Number(o.price ?? 0),
+          ]),
+        );
+        const nameById = new Map(
+          (addonOfferings ?? []).map((o: { id: string; title?: string }) => [
+            o.id,
+            String(o.title ?? "Add-on"),
+          ]),
+        );
+        const rows = addonIdsFromServices.map((addonId) => ({
+          booking_id: id,
+          addon_id: addonId,
+          addon_name: nameById.get(addonId) ?? "Add-on",
+          quantity: 1,
+          price: priceById.get(addonId) ?? 0,
+          currency: lastResortCurrency,
+        }));
+        const { error: addonSyncErr } = await supabaseAdminPatch.from("booking_addons").insert(rows);
+        if (addonSyncErr) {
+          console.error("Error syncing booking_addons:", addonSyncErr);
+          return errorResponse(
+            "The booking was updated, but add-ons could not be saved. Please try again.",
+            "BOOKING_ADDONS_FAILED",
+            422,
+          );
+        }
+      }
+
       // Refetch so response includes new services
       const { data: refetchedServices } = await supabaseAdminPatch
         .from("bookings")
@@ -1740,7 +1864,8 @@ export async function PATCH(
               description
             )
           ),
-          additional_charges(amount,status)
+          additional_charges(amount,status),
+          ${BOOKING_ADDONS_SELECT}
         `
         )
         .eq("id", id)
@@ -1902,7 +2027,12 @@ export async function PATCH(
         if (dbStatus === "cancelled") {
           await sendCancellationNotification(id, {
             cancelledBy: 'provider',
-            refundInfo: 'A full refund has been credited to the customer Beautonomi wallet for amounts already paid.',
+            refundInfo:
+              (cancellationSettlementResult?.terminalRefundDue ?? 0) > 0.01
+                ? (cancellationSettlementResult?.walletRefundAmount ?? 0) > 0.01
+                  ? 'Card payments are being refunded to the card you paid with; the rest has been credited to your Beautonomi wallet.'
+                  : 'Your payment is being refunded to the card you paid with.'
+                : 'A full refund has been credited to the customer Beautonomi wallet for amounts already paid.',
             cancellationReason: cancellation_reason || null,
             walletRefund: cancellationSettlementResult?.walletRefundAmount,
             feeRetained: cancellationSettlementResult?.cancellationFeeApplied,
@@ -2279,7 +2409,7 @@ export async function PATCH(
         total_price: bp.total_price,
       };
       }),
-      addons: [],
+      addons: mapBookingAddonsForApi(bookingData.booking_addons as BookingAddonJoinRow[] | undefined),
       package_id: bookingData.package_id || null,
       subtotal: bookingData.subtotal || 0,
       discount_amount: bookingData.discount_amount || 0,
@@ -2386,7 +2516,20 @@ export async function PATCH(
     }
 
     invalidateProviderBookingsReadCache(providerId);
-    return successResponse({ booking: transformedBooking });
+    const cardMachineRefundDue =
+      cancellationSettlementResult && cancellationSettlementResult.terminalRefundDue > 0.01
+        ? {
+            amount: cancellationSettlementResult.terminalRefundDue,
+            provider: cancellationSettlementResult.terminalRefundProvider ?? "paycloud",
+            /** Yoco has no refund API: refund on the machine, then record it (refund route, record_only). */
+            action_required: cancellationSettlementResult.terminalRefundProvider === "yoco",
+            awaiting_refund_id: awaitingMachineRefundId,
+          }
+        : null;
+    return successResponse({
+      booking: transformedBooking,
+      ...(cardMachineRefundDue ? { card_machine_refund_due: cardMachineRefundDue } : {}),
+    });
   } catch (error) {
     return handleApiError(error, "The booking could not be updated. Please refresh and try again.");
   }

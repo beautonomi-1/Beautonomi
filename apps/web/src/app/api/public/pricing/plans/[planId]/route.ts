@@ -5,6 +5,11 @@ import {
   buildPublicPricingBillingPeriods,
   loadLinkedSubscriptionPlanPrices,
 } from "@/lib/pricing/public-pricing-billing-periods";
+import {
+  isPublishedPricingPlanRow,
+  loadActiveSubscriptionPlanIds,
+} from "@/lib/pricing/published-pricing-plans";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 function derivePricingPlanIsFree(plan: {
   price: string;
@@ -42,6 +47,8 @@ export async function GET(
     }
 
     const supabase = await getSupabaseServer();
+    const supabaseAdmin = getSupabaseAdmin();
+    const activeSubscriptionIds = await loadActiveSubscriptionPlanIds(supabaseAdmin);
     const tenant = await resolveTenantFromRequest(request);
     const tenantId = tenant?.id ?? "";
 
@@ -106,6 +113,17 @@ export async function GET(
           const subscriptionPlanId =
             (overrideLink as { subscription_plan_id?: string | null } | null)?.subscription_plan_id ??
             null;
+          if (
+            !isPublishedPricingPlanRow(
+              { ...overrideByName, subscription_plan_id: subscriptionPlanId, is_active: true },
+              activeSubscriptionIds,
+            )
+          ) {
+            return NextResponse.json(
+              { error: "Pricing plan not found or inactive" },
+              { status: 404 },
+            );
+          }
           const linked = await loadLinkedSubscriptionPlanPrices(supabase, subscriptionPlanId);
           const isFree = derivePricingPlanIsFree(overrideByName);
           const available_billing_periods = buildPublicPricingBillingPeriods({
@@ -165,6 +183,17 @@ export async function GET(
       .maybeSingle();
     const subscriptionPlanId =
       (fullPlan as { subscription_plan_id?: string | null } | null)?.subscription_plan_id ?? null;
+    if (
+      !isPublishedPricingPlanRow(
+        { ...plan, subscription_plan_id: subscriptionPlanId, is_active: true },
+        activeSubscriptionIds,
+      )
+    ) {
+      return NextResponse.json(
+        { error: "Pricing plan not found or inactive" },
+        { status: 404 },
+      );
+    }
     const linked = await loadLinkedSubscriptionPlanPrices(supabase, subscriptionPlanId);
 
     const available_billing_periods = buildPublicPricingBillingPeriods({

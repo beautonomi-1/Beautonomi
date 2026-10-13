@@ -192,7 +192,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { availableBalance, rawBalance, hasNegativeBalance, breakdown } = await getAvailablePayoutBalance(
+    const { availableBalance, rawBalance, hasNegativeBalance, breakdown, openDisputeReserve } =
+      await getAvailablePayoutBalance(
       getSupabaseAdmin(),
       providerId,
       {
@@ -328,7 +329,9 @@ export async function POST(request: NextRequest) {
     const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
     const payoutNumber = `PAY-${dateStamp}-${randomSuffix}`;
 
-    const maxAvailableBeforeReserve = roundMoney2(availableBalance + breakdown.pendingPayouts);
+    const maxAvailableBeforeReserve = roundMoney2(
+      availableBalance + breakdown.pendingPayouts + openDisputeReserve,
+    );
 
     const payoutPayload = {
       payout_number: payoutNumber,

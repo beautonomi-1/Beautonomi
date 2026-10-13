@@ -22,18 +22,10 @@ import { PermissionGateInline } from "../scenario/PermissionGateInline";
 import { PaystackTerminalCollectDialog } from "./PaystackTerminalCollectDialog";
 import { BookingSendPaymentLinkDialog } from "./BookingSendPaymentLinkDialog";
 
-const PayCloudPaymentDialog = dynamic(
+const CardMachineCollectDialog = dynamic(
   () =>
-    import("@/components/provider-portal/PayCloudPaymentDialog").then((m) => ({
-      default: m.PayCloudPaymentDialog,
-    })),
-  { ssr: false },
-);
-
-const YocoPaymentDialog = dynamic(
-  () =>
-    import("@/components/provider-portal/YocoPaymentDialog").then((m) => ({
-      default: m.YocoPaymentDialog,
+    import("@/components/provider-portal/CardMachineCollectDialog").then((m) => ({
+      default: m.CardMachineCollectDialog,
     })),
   { ssr: false },
 );
@@ -63,8 +55,9 @@ export function BookingPaymentCollectSection({
   const { hasPermission, isOwner } = usePermissions();
   const canProcessPayments = isOwner || hasPermission("process_payments");
 
-  const [paycloudOpen, setPaycloudOpen] = useState(initialOpenPaycloud);
-  const [yocoOpen, setYocoOpen] = useState(initialOpenYoco);
+  const [cardMachineOpen, setCardMachineOpen] = useState(
+    initialOpenPaycloud || initialOpenYoco,
+  );
   const [paystackOpen, setPaystackOpen] = useState(initialOpenPaystack);
   const [paystackReady, setPaystackReady] = useState(false);
   const [markingCash, setMarkingCash] = useState(false);
@@ -173,6 +166,7 @@ export function BookingPaymentCollectSection({
 
   const terminalAmount = chargeAmount > 0 ? chargeAmount : outstanding;
   const paycloudInFlight = (terminals?.inFlight ?? 0) > 0;
+  const cardMachineEnabled = yocoEnabled || paycloudEnabled;
 
   return (
     <PermissionGateInline allowed={canProcessPayments} message={t("web.provider.bookings.detail.toast.permissionToCollect")}>
@@ -187,29 +181,42 @@ export function BookingPaymentCollectSection({
           </p>
         ) : null}
         <div className="flex flex-col gap-2">
-          {paycloudEnabled ? (
-            <PaycloudCollectButton
-              amount={terminalAmount}
-              currency="ZAR"
-              context={paycloudContext}
-              inFlight={paycloudInFlight}
-              depositAmount={depositAmount}
-              fullOutstanding={fullOutstanding}
-              onClick={() => {
-                if (terminalAmount <= 0) {
-                  toast.error(t("web.provider.bookings.detail.toast.noBalanceCollect"));
-                  return;
-                }
-                setPaycloudOpen(true);
-              }}
-              className="w-full justify-center min-h-[44px]"
-              size="default"
-            />
-          ) : null}
-          {yocoEnabled ? (
-            <BookingActionButton variant="outline" onClick={() => setYocoOpen(true)}>
-              {t("web.provider.bookings.detail.paymentCollect.collectWithYoco", { amount: terminalAmount.toFixed(2) })}
-            </BookingActionButton>
+          {cardMachineEnabled ? (
+            paycloudEnabled && paycloudInFlight ? (
+              <PaycloudCollectButton
+                amount={terminalAmount}
+                currency="ZAR"
+                context={paycloudContext}
+                inFlight={paycloudInFlight}
+                depositAmount={depositAmount}
+                fullOutstanding={fullOutstanding}
+                onClick={() => {
+                  if (terminalAmount <= 0) {
+                    toast.error(t("web.provider.bookings.detail.toast.noBalanceCollect"));
+                    return;
+                  }
+                  setCardMachineOpen(true);
+                }}
+                className="w-full justify-center min-h-[44px]"
+                size="default"
+              />
+            ) : (
+              <BookingActionButton
+                variant="outline"
+                className="w-full justify-center min-h-[44px]"
+                onClick={() => {
+                  if (terminalAmount <= 0) {
+                    toast.error(t("web.provider.bookings.detail.toast.noBalanceCollect"));
+                    return;
+                  }
+                  setCardMachineOpen(true);
+                }}
+              >
+                {t("web.provider.bookings.detail.paymentCollect.cardMachine", {
+                  amount: terminalAmount.toFixed(2),
+                })}
+              </BookingActionButton>
+            )
           ) : null}
           {paystackEnabled && paystackReady ? (
             <BookingActionButton variant="outline" onClick={() => setPaystackOpen(true)}>
@@ -242,25 +249,21 @@ export function BookingPaymentCollectSection({
           ) : null}
         </div>
 
-        <PayCloudPaymentDialog
-          open={paycloudOpen}
-          onOpenChange={setPaycloudOpen}
-          entityType="booking"
-          entityId={appointment.id}
-          bookingId={appointment.id}
-          amount={terminalAmount}
-          bookingLocationId={appointment.location_id ?? null}
-          tipIncludedInAmount={paycloudTipIncludedInChargeAmount(Number(raw.tip_amount ?? 0))}
-          onSuccess={handlePaid}
-        />
-
-        {yocoOpen ? (
-          <YocoPaymentDialog
-            open={yocoOpen}
-            onOpenChange={setYocoOpen}
-            bookingId={appointment.id}
+        {cardMachineEnabled ? (
+          <CardMachineCollectDialog
+            open={cardMachineOpen}
+            onOpenChange={setCardMachineOpen}
             amount={terminalAmount}
-            bookingLocationId={appointment.location_id}
+            tipIncludedInAmount={paycloudTipIncludedInChargeAmount(Number(raw.tip_amount ?? 0))}
+            initialProvider={
+              initialOpenYoco ? "yoco" : initialOpenPaycloud ? "paycloud" : undefined
+            }
+            entity={{
+              entityType: "booking",
+              entityId: appointment.id,
+              bookingId: appointment.id,
+              bookingLocationId: appointment.location_id ?? null,
+            }}
             onSuccess={handlePaid}
           />
         ) : null}

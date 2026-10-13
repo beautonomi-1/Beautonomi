@@ -7,7 +7,7 @@ import {
   getBookingPaymentChannelLabel,
   type BookingPaymentRow,
   type BookingRefundRow,
-} from "@/lib/booking-payment-channel";
+} from "@beautonomi/provider-booking";
 
 type Props = {
   bookingId: string;

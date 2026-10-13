@@ -11,13 +11,12 @@ import { Input } from "@/components/ui/input";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
-import { PaycloudCollectButton } from "@/components/provider-portal/PaycloudCollectButton";
 import { BookingSectionCard, BookingSectionLabel, BookingActionButton, PermissionGateInline } from "../ui";
 
-const PayCloudPaymentDialog = dynamic(
+const CardMachineCollectDialog = dynamic(
   () =>
-    import("@/components/provider-portal/PayCloudPaymentDialog").then((m) => ({
-      default: m.PayCloudPaymentDialog,
+    import("@/components/provider-portal/CardMachineCollectDialog").then((m) => ({
+      default: m.CardMachineCollectDialog,
     })),
   { ssr: false },
 );
@@ -44,15 +43,17 @@ export function BookingAdditionalChargesSection({
   const { t } = useTranslation();
   const { hasPermission, isOwner } = usePermissions();
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const yocoEnabled = useFeatureFlag("payment_yoco");
+  const cardMachineEnabled = yocoEnabled || paycloudEnabled;
   const canProcessPayments = isOwner || hasPermission("process_payments");
   const [charges, setCharges] = useState<AdditionalCharge[]>([]);
   const [loading, setLoading] = useState(true);
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [saving, setSaving] = useState(false);
-  const [paycloudChargeId, setPaycloudChargeId] = useState<string | null>(null);
-  const [paycloudAmount, setPaycloudAmount] = useState(0);
-  const [paycloudOpen, setPaycloudOpen] = useState(false);
+  const [collectChargeId, setCollectChargeId] = useState<string | null>(null);
+  const [collectAmount, setCollectAmount] = useState(0);
+  const [collectOpen, setCollectOpen] = useState(false);
   const [notifyingId, setNotifyingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -101,7 +102,7 @@ export function BookingAdditionalChargesSection({
     try {
       await fetcher.post(
         `/api/provider/bookings/${bookingId}/additional-charges/${chargeId}/mark-paid`,
-        {},
+        { payment_method: "cash" },
       );
       toast.success(t("web.provider.bookingAdditionalCharges.markedPaid"));
       await load();
@@ -123,14 +124,14 @@ export function BookingAdditionalChargesSection({
     }
   };
 
-  const openPaycloudForCharge = (chargeId: string, chargeAmount: number) => {
+  const openCollectForCharge = (chargeId: string, chargeAmount: number) => {
     if (chargeAmount <= 0) {
       toast.error(t("web.provider.bookingAdditionalCharges.noBalance"));
       return;
     }
-    setPaycloudChargeId(chargeId);
-    setPaycloudAmount(chargeAmount);
-    setPaycloudOpen(true);
+    setCollectChargeId(chargeId);
+    setCollectAmount(chargeAmount);
+    setCollectOpen(true);
   };
 
   const unpaidStatuses = new Set(["pending", "approved"]);
@@ -169,17 +170,18 @@ export function BookingAdditionalChargesSection({
                       className="text-xs font-semibold underline touch-manipulation min-h-[36px] px-1"
                       onClick={() => void markPaid(c.id)}
                     >
-{t("web.provider.bookingAdditionalCharges.markPaid")}
+                      {t("web.provider.bookingAdditionalCharges.markPaid")}
                     </button>
-                    {paycloudEnabled ? (
-                      <PaycloudCollectButton
-                        amount={amt}
-                        currency="ZAR"
-                        context="additional_charge"
-                        onClick={() => openPaycloudForCharge(c.id, amt)}
+                    {cardMachineEnabled ? (
+                      <BookingActionButton
                         size="sm"
                         className="min-h-[36px]"
-                      />
+                        onClick={() => openCollectForCharge(c.id, amt)}
+                      >
+                        {t("web.provider.bookings.detail.paymentCollect.cardMachine", {
+                          amount: amt.toFixed(2),
+                        })}
+                      </BookingActionButton>
                     ) : null}
                   </div>
                 ) : null}
@@ -217,24 +219,32 @@ export function BookingAdditionalChargesSection({
             ) : (
               <>
                 <Plus className="me-2 h-4 w-4" />
-{t("web.provider.bookingAdditionalCharges.requestCharge")}
+                {t("web.provider.bookingAdditionalCharges.requestCharge")}
               </>
             )}
           </BookingActionButton>
         </div>
       </PermissionGateInline>
 
-      {paycloudChargeId ? (
-        <PayCloudPaymentDialog
-          open={paycloudOpen}
-          onOpenChange={setPaycloudOpen}
-          entityType="additional_charge"
-          entityId={paycloudChargeId}
-          amount={paycloudAmount}
-          bookingLocationId={bookingLocationId}
+      {collectChargeId ? (
+        <CardMachineCollectDialog
+          open={collectOpen}
+          onOpenChange={(open) => {
+            setCollectOpen(open);
+            if (!open) setCollectChargeId(null);
+          }}
+          amount={collectAmount}
+          autoStart
+          entity={{
+            entityType: "additional_charge",
+            entityId: collectChargeId,
+            bookingId,
+            bookingLocationId,
+            additionalChargeId: collectChargeId,
+          }}
           onSuccess={() => {
-            setPaycloudOpen(false);
-            setPaycloudChargeId(null);
+            setCollectOpen(false);
+            setCollectChargeId(null);
             void load();
             onUpdated?.();
           }}

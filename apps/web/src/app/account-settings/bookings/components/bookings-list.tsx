@@ -247,6 +247,7 @@ export default function BookingsList({
           depositRequired: (booking as { deposit_required?: boolean }).deposit_required,
         });
         const isGroupBooking = Boolean((booking as { is_group_booking?: boolean }).is_group_booking);
+        const groupBookingId = (booking as { group_booking_id?: string | null }).group_booking_id;
         const groupBookingRef = (booking as { group_booking_ref?: string | null }).group_booking_ref;
         // Resolve the effective lifecycle status for badge styling, so the
         // pill colour matches the label (paid pending_payment shows yellow
@@ -302,9 +303,19 @@ export default function BookingsList({
               </div>
 
               {isGroupBooking && groupBookingRef ? (
-                <p className="text-xs text-violet-700 font-medium mb-2">
-                  {t("web.accountSettings.bookings.list.groupSession", { ref: groupBookingRef })}
-                </p>
+                <div className="mb-2 space-y-1">
+                  <p className="text-xs text-violet-700 font-medium">
+                    {t("web.accountSettings.bookings.list.groupSession", { ref: groupBookingRef })}
+                  </p>
+                  {groupBookingId ? (
+                    <Link
+                      href={`/account-settings/group-bookings/${groupBookingId}`}
+                      className="text-xs font-semibold text-[#FF0077] hover:underline"
+                    >
+                      {t("customer.mobile.screens.bookingDetail.viewGroupDetails")}
+                    </Link>
+                  ) : null}
+                </div>
               ) : null}
 
               <div className="space-y-3 text-sm md:text-base text-gray-700">

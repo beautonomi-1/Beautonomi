@@ -226,7 +226,6 @@ const QUICK_ACTIONS: { icon: keyof typeof Ionicons.glyphMap; label: string; labe
   { icon: "layers-outline", label: "Catalogue", labelKey: "provider.mobile.screens.moreTab.qaCatalogue", route: "/(app)/(tabs)/more/catalogue", color: "#ec4899" },
   { icon: "megaphone-outline", label: "Buy ads", labelKey: "provider.mobile.screens.moreTab.qaBuyAds", route: "/(app)/(tabs)/more/settings/ads", color: "#f59e0b" },
   { icon: "card-outline", label: "Memberships", labelKey: "provider.mobile.screens.moreTab.qaMemberships", route: "/(app)/(tabs)/more/membership-plans", color: "#7c3aed" },
-  { icon: "phone-portrait-outline", label: "Yoco", labelKey: "provider.mobile.screens.moreTab.qaYoco", route: "/(app)/(tabs)/more/settings/yoco-devices", color: "#2563eb" },
   { icon: "hardware-chip-outline", label: "Card machines", labelKey: "provider.mobile.screens.moreTab.qaCardMachines", route: "/(app)/(tabs)/more/card-machines", color: "#7c3aed" },
   { icon: "qr-code-outline", label: "Paystack Terminal", labelKey: "provider.mobile.screens.moreTab.qaPaystackTerminal", route: "/(app)/(tabs)/more/paystack-terminal", color: "#16a34a" },
   { icon: "ribbon-outline", label: "Subscription", labelKey: "provider.mobile.screens.moreTab.qaSubscription", route: "/(app)/(tabs)/more/settings/subscription", color: "#8b5cf6" },

@@ -7,8 +7,11 @@ import type {
   TrackingUpdate,
 } from "../index";
 import { ShippingProviderNotConfiguredError } from "../index";
+import type { CancelShipmentResult, LabelResult } from "../index";
 import {
+  cancelShiplogicStyleShipment,
   createShiplogicStyleShipment,
+  fetchShiplogicStyleLabel,
   quoteShiplogicStyleRates,
   trackShiplogicStyle,
   type ShiplogicStyleConfig,
@@ -41,10 +44,10 @@ export function createCourierGuyProvider(credentials?: {
       baseUrl,
       apiKey,
       countryName: (iso) => (iso === "ZA" ? "South Africa" : iso),
-      ratesPath: "/rates",
-      shipmentsPath: "/shipments",
+      ratesPath: "/v2/rates",
+      shipmentsPath: "/v2/shipments",
       trackingUrl: (trackingNumber) =>
-        `${baseUrl}/tracking/shipments?waybill=${encodeURIComponent(trackingNumber)}`,
+        `${baseUrl}/v2/tracking/shipments?waybill=${encodeURIComponent(trackingNumber)}`,
     };
   }
 
@@ -65,11 +68,36 @@ export function createCourierGuyProvider(credentials?: {
         {
           ...cfg,
           trackingUrl: (id) =>
-            `${cfg.baseUrl}/tracking?tracking_reference=${encodeURIComponent(id)}`,
+            `${cfg.baseUrl}/v2/tracking/shipments?tracking_reference=${encodeURIComponent(id)}`,
         },
         trackingNumber,
       );
     }
+  }
+
+  async function cancelShipment(params: {
+    shipmentId?: string | null;
+    trackingNumber?: string | null;
+  }): Promise<CancelShipmentResult> {
+    const id = params.shipmentId?.trim() || params.trackingNumber?.trim();
+    if (!id) return { ok: false, reason: "not_found", message: "Missing shipment id" };
+    try {
+      await cancelShiplogicStyleShipment(config(), id);
+      return { ok: true };
+    } catch (err) {
+      return {
+        ok: false,
+        reason: "courier_rejected",
+        message: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
+  async function fetchLabel(params: {
+    shipmentId?: string | null;
+    trackingNumber?: string | null;
+  }): Promise<LabelResult> {
+    return fetchShiplogicStyleLabel(config(), params);
   }
 
   return {
@@ -77,5 +105,7 @@ export function createCourierGuyProvider(credentials?: {
     quoteRates,
     createShipment,
     track,
+    cancelShipment,
+    fetchLabel,
   };
 }

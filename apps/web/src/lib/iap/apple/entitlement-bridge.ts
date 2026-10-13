@@ -199,6 +199,7 @@ async function applySubscriptionEntitlement(
     amountMajor: grossMajor,
     feesMajor: commissionMajor,
     planId,
+    billingPeriod,
     kind: "apple_iap_subscription",
     description: "Provider subscription (Apple In-App Purchase)",
     paymentProvider: "apple",

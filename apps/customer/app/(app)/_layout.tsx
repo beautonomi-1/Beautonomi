@@ -14,6 +14,7 @@ import { BiometricGate } from "@/components/BiometricGate";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
+import { shouldClearStoredReferralAfterAttach } from "@/lib/referral-attach-storage";
 import { onboardingDoneKey } from "./onboarding/index";
 import { isScreenshotMode } from "@/config/public-env";
 import {
@@ -165,9 +166,11 @@ export default function AppLayout() {
     if (!userId) return;
     AsyncStorage.getItem(REFERRAL_REF_KEY).then((ref) => {
       if (!ref?.trim()) return;
-      api
-        .post("/api/me/referrals/attach", { referral_code: ref.trim() })
-        .finally(() => AsyncStorage.removeItem(REFERRAL_REF_KEY));
+      api.post("/api/me/referrals/attach", { referral_code: ref.trim() }).then((res) => {
+        if (shouldClearStoredReferralAfterAttach(res)) {
+          void AsyncStorage.removeItem(REFERRAL_REF_KEY);
+        }
+      });
     });
   }, [userId]);
 

@@ -45,7 +45,7 @@ export function IdentityVerificationPanel({
 }: Props) {
   const { t } = useTranslation();
   const {
-    status, loading, launching, sessionToken, sessionUrl, isExisting,
+    status, loading, launching, sessionToken, sessionUrl, isExisting, launchNonce,
     legalDetails, setLegalDetails, legalDetailsErrors,
     startVerification, onSdkReturn, retryVerification, refresh, error,
   } = useIdentityVerification({ persona, locale, returnTo });
@@ -68,7 +68,7 @@ export function IdentityVerificationPanel({
       void refresh();
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionUrl]);
+  }, [sessionUrl, launchNonce]);
 
   // Determine whether to show the confirm-legal-details form
   const effectiveStatus = status ?? "not_started";

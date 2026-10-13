@@ -33,6 +33,10 @@ interface YocoPaymentSheetProps {
   bookingId?: string;
   saleId?: string;
   groupBookingId?: string;
+  productOrderId?: string;
+  additionalChargeId?: string;
+  /** Saved default device (card-machine defaults); wins over the location/recency heuristic. */
+  preferredDeviceId?: string | null;
   /**
    * §Yoco-synergy 2026-05: location of the booking/sale so we preselect a
    * device assigned to that location (matches the per-device location_id
@@ -53,6 +57,9 @@ export function YocoPaymentSheet({
   bookingId,
   saleId,
   groupBookingId,
+  productOrderId,
+  additionalChargeId,
+  preferredDeviceId,
   bookingLocationId,
   description,
   onPaymentSuccess,
@@ -115,16 +122,21 @@ export function YocoPaymentSheet({
         : undefined;
       // Mobile booking → portable first, then most-recent.
       // At-salon booking → exact location match → portable fallback → most-recent.
-      const preferred = isMobileBooking
-        ? (portable ?? sortedByRecency[0])
-        : (locationMatch ?? portable ?? sortedByRecency[0]);
+      const savedDefault = preferredDeviceId
+        ? activeDevices.find((d) => d.id === preferredDeviceId)
+        : undefined;
+      const preferred =
+        savedDefault ??
+        (isMobileBooking
+          ? (portable ?? sortedByRecency[0])
+          : (locationMatch ?? portable ?? sortedByRecency[0]));
       setSelectedDevice(preferred);
       return;
     }
     if (selectedDevice && !activeDevices.some((d) => d.id === selectedDevice.id)) {
       setSelectedDevice(activeDevices.length > 0 ? activeDevices[0] : null);
     }
-  }, [activeDevices, selectedDevice, bookingLocationId, isMobileBooking]);
+  }, [activeDevices, selectedDevice, bookingLocationId, isMobileBooking, preferredDeviceId]);
 
   const handleProcess = useCallback(async () => {
     if (!selectedDevice) {
@@ -148,6 +160,21 @@ export function YocoPaymentSheet({
             entity_id: groupBookingId,
           }
         : {}),
+      ...(productOrderId
+        ? {
+            product_order_id: productOrderId,
+            entity_type: "product_order" as const,
+            entity_id: productOrderId,
+          }
+        : {}),
+      ...(additionalChargeId
+        ? {
+            additional_charge_id: additionalChargeId,
+            entity_type: "additional_charge" as const,
+            entity_id: additionalChargeId,
+          }
+        : {}),
+      attempt_id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
       description,
     });
 
@@ -193,7 +220,7 @@ export function YocoPaymentSheet({
         Alert.alert(yp("paymentFailedTitle"), yp("paymentFailedBody"));
       }
     }
-  }, [selectedDevice, amountCents, currency, bookingId, saleId, description, processPayment, onPaymentSuccess, onClose, router]);
+  }, [selectedDevice, amountCents, currency, bookingId, saleId, groupBookingId, productOrderId, additionalChargeId, description, processPayment, onPaymentSuccess, onClose, router]);
 
   const displayAmount = formatCurrency(amountCents / 100, currency);
 

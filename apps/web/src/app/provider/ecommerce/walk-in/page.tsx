@@ -2,7 +2,7 @@
 import { useTranslation } from "@beautonomi/i18n";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { percentOf, sumMoney } from "@beautonomi/utils";
 import {
   Search,
@@ -23,8 +23,15 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { isCompleteE164 } from "@/lib/phone";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
-import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
-import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
+import dynamic from "next/dynamic";
+
+const CardMachineCollectDialog = dynamic(
+  () =>
+    import("@/components/provider-portal/CardMachineCollectDialog").then((m) => ({
+      default: m.CardMachineCollectDialog,
+    })),
+  { ssr: false },
+);
 import Link from "next/link";
 import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
 import { PAYCLOUD_SETUP_LABEL } from "@/lib/payments/paycloud-collect-cta";
@@ -159,17 +166,21 @@ export default function WalkInSalePage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "yoco" | "paycloud">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card_machine">("cash");
+  const cardMachineEnabled = yocoEnabled || paycloudEnabled;
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [success, setSuccess] = useState<{ orderNumber: string; total: number } | null>(null);
   const [error, setError] = useState("");
   const [recentSales, setRecentSales] = useState<WalkInOrder[]>([]);
   const [showHistory, setShowHistory] = useState(false);
-  const [showYocoDialog, setShowYocoDialog] = useState(false);
-  const [showPaycloudDialog, setShowPaycloudDialog] = useState(false);
-  const [paycloudLinkedOrderId, setPaycloudLinkedOrderId] = useState<string | null>(null);
-  const [paycloudLinkedTotal, setPaycloudLinkedTotal] = useState<number | null>(null);
+  const [cardMachineOpen, setCardMachineOpen] = useState(false);
+  const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
+
+  // The pending card-machine order is priced from the cart; any cart edit needs a fresh order.
+  useEffect(() => {
+    setPendingOrderId(null);
+  }, [cart]);
   const [walkInTaxRate, setWalkInTaxRate] = useState(0);
   const [loadError, setLoadError] = useState("");
   const [barcodeScanError, setBarcodeScanError] = useState("");
@@ -190,6 +201,7 @@ export default function WalkInSalePage() {
             .filter(
               (p) =>
                 p.is_active &&
+                (p as { retail_sales_enabled?: boolean }).retail_sales_enabled !== false &&
                 ((p as { track_stock_quantity?: boolean }).track_stock_quantity === false ||
                   (p.effective_quantity ?? p.quantity) > 0),
             )
@@ -376,7 +388,7 @@ export default function WalkInSalePage() {
   );
 
   const buildWalkInSalePayload = (overrides?: {
-    payment_method?: "cash" | "yoco" | "paycloud";
+    payment_method?: "cash" | "card" | "card_machine" | "yoco" | "paycloud";
     payment_reference?: string;
     finalize_paycloud_order_id?: string;
   }) => ({
@@ -424,28 +436,38 @@ export default function WalkInSalePage() {
       setError(t("web.provider.ecommerceWalkIn.invalidPhone"));
       return;
     }
-    if (paymentMethod === "yoco") {
+    if (paymentMethod === "card_machine" && pendingOrderId) {
+      // Retry on the same order: finalize if the machine already settled it, else resume collect.
       setError("");
-      setShowYocoDialog(true);
+      setProcessing(true);
+      try {
+        await submitWalkInOrder(undefined, pendingOrderId);
+      } catch (err: unknown) {
+        if (err instanceof FetchError && err.code === "PAYMENT_NOT_SETTLED") {
+          setCardMachineOpen(true);
+        } else {
+          setError(err instanceof Error ? err.message : t("web.provider.ecommerceWalkIn.somethingWentWrong"));
+        }
+      } finally {
+        setProcessing(false);
+      }
       return;
     }
-    if (paymentMethod === "paycloud") {
+    if (paymentMethod === "card_machine") {
       setError("");
       setProcessing(true);
       try {
         const res = await fetcher.post<{
-          data?: { order?: { id: string; order_number: string; total_amount?: string | number } };
+          data?: { order?: { id: string } };
           error?: string;
-        }>("/api/provider/product-sales", buildWalkInSalePayload({ payment_method: "paycloud" }));
-        const order = res?.data?.order;
-        if (!order?.id) {
+        }>("/api/provider/product-sales", buildWalkInSalePayload({ payment_method: "card_machine" }));
+        const id = res?.data?.order?.id;
+        if (!id) {
           setError(res?.error ?? t("web.provider.ecommerceWalkIn.failedPrepareCard"));
           return;
         }
-        const serverTotal = parseFloat(String(order.total_amount ?? ""));
-        setPaycloudLinkedOrderId(order.id);
-        setPaycloudLinkedTotal(Number.isFinite(serverTotal) ? serverTotal : grandTotal);
-        setShowPaycloudDialog(true);
+        setPendingOrderId(id);
+        setCardMachineOpen(true);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : t("web.provider.ecommerceWalkIn.failedPrepareCard"));
       } finally {
@@ -459,33 +481,6 @@ export default function WalkInSalePage() {
       await submitWalkInOrder();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t("web.provider.ecommerceWalkIn.somethingWentWrong"));
-    }
-    setProcessing(false);
-  };
-
-  const handleYocoWalkInSuccess = async (payment: { yoco_payment_id: string }) => {
-    setShowYocoDialog(false);
-    setProcessing(true);
-    setError("");
-    try {
-      await submitWalkInOrder(payment.yoco_payment_id);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t("web.provider.ecommerceWalkIn.somethingWentWrong"));
-    }
-    setProcessing(false);
-  };
-
-  const handlePaycloudWalkInSuccess = async () => {
-    if (!paycloudLinkedOrderId) return;
-    setShowPaycloudDialog(false);
-    setProcessing(true);
-    setError("");
-    try {
-      await submitWalkInOrder(undefined, paycloudLinkedOrderId);
-      setPaycloudLinkedOrderId(null);
-      setPaycloudLinkedTotal(null);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t("web.provider.ecommerceWalkIn.paycloudCompleteFailed"));
     }
     setProcessing(false);
   };
@@ -756,7 +751,7 @@ export default function WalkInSalePage() {
                   </div>
 
                   {/* Payment method */}
-                  <div className={`grid gap-2 ${paycloudEnabled && yocoEnabled ? "grid-cols-3" : paycloudEnabled || yocoEnabled ? "grid-cols-2" : "grid-cols-1"}`}>
+                  <div className={`grid gap-2 ${cardMachineEnabled ? "grid-cols-2" : "grid-cols-1"}`}>
                     <button
                       onClick={() => setPaymentMethod("cash")}
                       className={`flex items-center justify-center gap-2 rounded-lg border-2 py-2.5 text-sm font-medium transition-colors ${
@@ -768,19 +763,21 @@ export default function WalkInSalePage() {
                       <Banknote className="h-4 w-4" />
                       {t("web.provider.ecommerceWalkIn.cash")}
                     </button>
-                    {paycloudEnabled && paycloudCollectVisible ? (
+                    {cardMachineEnabled && (paycloudCollectVisible || yocoEnabled) ? (
                       <button
-                        onClick={() => setPaymentMethod("paycloud")}
+                        onClick={() => setPaymentMethod("card_machine")}
                         className={`flex items-center justify-center gap-2 rounded-lg border-2 py-2.5 text-sm font-medium transition-colors ${
-                          paymentMethod === "paycloud"
+                          paymentMethod === "card_machine"
                             ? "border-pink-500 bg-pink-50 text-pink-700"
                             : "border-gray-200 text-gray-600 hover:bg-gray-50"
                         }`}
                       >
                         <CreditCard className="h-4 w-4" />
-                        {paycloudInFlight ? t("web.provider.ecommerceWalkIn.resumeCardMachine") : t("web.provider.ecommerceWalkIn.cardMachine")}
+                        {paycloudInFlight
+                          ? t("web.provider.ecommerceWalkIn.resumeCardMachine")
+                          : t("web.provider.ecommerceWalkIn.cardMachine")}
                       </button>
-                    ) : paycloudEnabled ? (
+                    ) : cardMachineEnabled && paycloudEnabled ? (
                       <Link
                         href={blockers[0]?.href ?? "/provider/settings/sales/card-machines"}
                         className="flex items-center justify-center gap-2 rounded-lg border-2 border-amber-200 bg-amber-50 py-2.5 text-sm font-medium text-amber-900 transition-colors hover:border-amber-300"
@@ -789,19 +786,6 @@ export default function WalkInSalePage() {
                         {PAYCLOUD_SETUP_LABEL}
                       </Link>
                     ) : null}
-                    {yocoEnabled && (
-                      <button
-                        onClick={() => setPaymentMethod("yoco")}
-                        className={`flex items-center justify-center gap-2 rounded-lg border-2 py-2.5 text-sm font-medium transition-colors ${
-                          paymentMethod === "yoco"
-                            ? "border-pink-500 bg-pink-50 text-pink-700"
-                            : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                        }`}
-                      >
-                        <CreditCard className="h-4 w-4" />
-                        {t("web.provider.ecommerceWalkIn.yocoCard")}
-                      </button>
-                    )}
                   </div>
                 </div>
 
@@ -921,26 +905,32 @@ export default function WalkInSalePage() {
         </div>
       )}
 
-      {showYocoDialog && (
-        <YocoPaymentDialog
-          open={showYocoDialog}
-          onOpenChange={setShowYocoDialog}
+      {pendingOrderId ? (
+        <CardMachineCollectDialog
+          open={cardMachineOpen}
+          onOpenChange={setCardMachineOpen}
           amount={grandTotal}
-          onSuccess={(p) => void handleYocoWalkInSuccess(p)}
+          autoStart
+          entity={{
+            entityType: "product_order",
+            entityId: pendingOrderId,
+            productOrderId: pendingOrderId,
+            bookingLocationId: selectedLocationId,
+          }}
+          onSuccess={async () => {
+            setCardMachineOpen(false);
+            setProcessing(true);
+            setError("");
+            try {
+              await submitWalkInOrder(undefined, pendingOrderId);
+            } catch (err: unknown) {
+              setError(err instanceof Error ? err.message : t("web.provider.ecommerceWalkIn.somethingWentWrong"));
+            } finally {
+              setProcessing(false);
+            }
+          }}
         />
-      )}
-
-      {showPaycloudDialog && paycloudLinkedOrderId && (
-        <PayCloudPaymentDialog
-          open={showPaycloudDialog}
-          onOpenChange={setShowPaycloudDialog}
-          amount={paycloudLinkedTotal ?? grandTotal}
-          entityType="product_order"
-          entityId={paycloudLinkedOrderId}
-          bookingLocationId={selectedLocationId}
-          onSuccess={() => void handlePaycloudWalkInSuccess()}
-        />
-      )}
+      ) : null}
     </div>
   );
 }

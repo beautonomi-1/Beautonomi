@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
+import { cancelCourierShipmentForOrder } from "@/lib/orders/shipping";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -17,6 +18,7 @@ import {
   applyProductOrderCancelRefundSideEffects,
   restockProductOrderLineItems,
 } from "@/lib/orders/product-order-lifecycle";
+import { splitProductOrderRefundTender } from "@/lib/ecommerce/product-order-refund-tender";
 import {
   dispatchProductOrderStatusNotification,
   type ProductOrderNotifyStatus,
@@ -134,10 +136,16 @@ export async function PATCH(
         tenant_id,
         provider_id,
         total_amount,
+        wallet_amount,
+        gift_card_amount,
+        payment_method,
+        payment_reference,
         currency,
         collection_location_id,
         tracking_number,
         carrier,
+        courier_shipment_id,
+        fulfillment_type,
         estimated_delivery_date,
         provider:providers!inner ( id, business_name, tenant_id )
       `,
@@ -198,10 +206,6 @@ export async function PATCH(
     if (parsed.tracking_number !== undefined) updates.tracking_number = parsed.tracking_number;
     if (parsed.admin_notes !== undefined) updates.admin_notes = parsed.admin_notes;
 
-    if (parsed.status === "cancelled" || parsed.status === "refunded") {
-      await restockProductOrderLineItems(supabase, id);
-    }
-
     const { data, error } = await (supabase.from("product_orders") as any)
       .update(updates)
       .eq("id", id)
@@ -213,43 +217,131 @@ export async function PATCH(
     if (error) throw error;
     if (!data) return notFoundResponse("Order not found");
 
+    // Restock and cancel the courier shipment only once the cancel/refund is committed:
+    // restocking is not idempotent, so running it before a wallet-failure rollback would
+    // restock again when the refund is retried.
+    // Restock, tender refunds and ledger reversal run only on the transition into a
+    // terminal status; re-sending the current terminal status must not repeat them.
+    const enteringTerminal =
+      (parsed.status === "cancelled" || parsed.status === "refunded") &&
+      parsed.status !== orderRow.status;
+
+    const applyTerminalStockAndShipping = async () => {
+      if (!enteringTerminal) return;
+      await restockProductOrderLineItems(supabase, id, {
+        movementType: parsed.status === "refunded" ? "return" : "cancel",
+        actorUserId: user.id,
+      });
+      if (
+        (orderRow as { fulfillment_type?: string }).fulfillment_type === "delivery" &&
+        ((orderRow as { courier_shipment_id?: string | null }).courier_shipment_id ||
+          orderRow.tracking_number)
+      ) {
+        try {
+          await cancelCourierShipmentForOrder(supabase, id);
+        } catch (cancelErr) {
+          console.warn("Admin courier shipment cancel failed:", cancelErr);
+        }
+      }
+    };
+
     const statusChanged = parsed.status != null && parsed.status !== orderRow.status;
 
+    let onlineRefundedAmount = 0;
+    let walletFailedAfterTender = false;
+    const refundAmount = Number(orderRow.total_amount ?? 0);
     if (
+      enteringTerminal &&
       parsed.status === "refunded" &&
       orderRow.payment_status === "paid" &&
       orderRow.customer_id
     ) {
       const adminClient = getSupabaseAdmin();
-      const refundAmount = Number(orderRow.total_amount ?? 0);
-      await (adminClient.rpc as any)("wallet_credit_admin", {
-        p_user_id: orderRow.customer_id,
-        p_amount: refundAmount,
-        p_currency: orderRow.currency || LAST_RESORT_CURRENCY,
-        p_description: `Refund for order ${orderRow.order_number || id.slice(0, 8)}`,
-        p_reference_id: id,
-        p_reference_type: "product_order_refund",
-        p_tenant_id: orderRow.tenant_id ?? null,
-        p_idempotency_key: `product_order_refund:${id}`,
+      const tender = await splitProductOrderRefundTender(adminClient, orderRow, {
+        refundAmount,
+        reason: "Order refunded by admin",
+        idempotencyKey: `product_order_refund_online:${id}`,
       });
+      onlineRefundedAmount = tender.onlineRefundedAmount;
+      if (tender.onlineRefundFailed) {
+        console.warn(
+          `[admin product-order refund] gateway refund failed for ${id}; wallet fallback`,
+        );
+      }
+      if (tender.walletCreditAmount > 0) {
+        const { error: walletError } = await (adminClient.rpc as any)("wallet_credit_admin", {
+          p_user_id: orderRow.customer_id,
+          p_amount: tender.walletCreditAmount,
+          p_currency: orderRow.currency || LAST_RESORT_CURRENCY,
+          p_description: `Refund for order ${orderRow.order_number || id.slice(0, 8)}`,
+          p_reference_id: id,
+          p_reference_type: "product_order_refund",
+          p_tenant_id: orderRow.tenant_id ?? null,
+          p_idempotency_key: `product_order_refund:${id}`,
+        });
+        if (walletError) {
+          console.error(`[admin product-order refund] wallet credit failed for ${id}:`, walletError);
+          if (tender.tenderMoved) {
+            // Card / gift money already went back — keep the order refunded (restock and
+            // ledger reversal still apply); the wallet leg needs manual reconciliation.
+            walletFailedAfterTender = true;
+          } else {
+            await (supabase.from("product_orders") as any)
+              .update({
+                status: orderRow.status,
+                payment_status: orderRow.payment_status,
+                refunded_amount: null,
+                refunded_at: null,
+              })
+              .eq("id", id);
+            return errorResponse(
+              "Could not credit the customer's wallet. The refund was not recorded.",
+              "WALLET_CREDIT_FAILED",
+              500,
+            );
+          }
+        }
+      }
     }
 
+    await applyTerminalStockAndShipping();
+
+    let cancelRefundWalletFailed = false;
     if (
-      parsed.status === "refunded" ||
-      (parsed.status === "cancelled" && orderRow.payment_status === "paid")
+      enteringTerminal &&
+      (parsed.status === "refunded" ||
+        (parsed.status === "cancelled" && orderRow.payment_status === "paid"))
     ) {
-      await applyProductOrderCancelRefundSideEffects(
+      const sideEffects = await applyProductOrderCancelRefundSideEffects(
         supabase,
         getSupabaseAdmin(),
         orderRow,
         {
           newStatus: parsed.status === "refunded" ? "refunded" : "cancelled",
-          refundAmount: Number(orderRow.total_amount ?? 0),
+          refundAmount,
           cancellationReason:
             parsed.cancellation_reason?.trim() ||
             parsed.admin_notes?.trim() ||
             "Cancelled by admin",
+          onlineRefundedAmount,
         },
+      );
+      cancelRefundWalletFailed = sideEffects.walletCreditFailed;
+    }
+
+    if (cancelRefundWalletFailed) {
+      return errorResponse(
+        "The order was cancelled, but the customer's wallet refund failed. Support will complete it — do not cancel again.",
+        "REFUND_PENDING",
+        502,
+      );
+    }
+
+    if (walletFailedAfterTender) {
+      return errorResponse(
+        "The card or gift card portion was refunded, but the wallet credit failed. Support will reconcile the remaining amount.",
+        "WALLET_CREDIT_FAILED_PARTIAL",
+        500,
       );
     }
 

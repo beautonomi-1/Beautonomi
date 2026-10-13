@@ -309,8 +309,10 @@ export function CustomOfferSheet({
 
   const validationHint = useMemo(() => {
     const d = description.trim();
-    if (d.length > 0 && d.length < MIN_DESC) {
-      return co("descCharsNeeded", { count: MIN_DESC - d.length });
+    if (d.length < MIN_DESC) {
+      return d.length === 0
+        ? co("descCharsNeeded", { count: MIN_DESC })
+        : co("descCharsNeeded", { count: MIN_DESC - d.length });
     }
     if (d.length > 4000) return co("descTooLong");
     if (price.trim() === "" || Number.isNaN(Number(price)) || Number(price) < 0) {

@@ -105,6 +105,15 @@ export const EVENT_SHARE_PROVIDER = "share_provider";
 
 // Provider growth funnel
 export const EVENT_PROVIDER_ONBOARDING_STEP_COMPLETED = "provider_onboarding_step_completed";
+
+// Card machine (Yoco + PayCloud)
+export const EVENT_CARD_MACHINE_SETUP_STEP = "card_machine_setup_step";
+export const EVENT_CARD_MACHINE_COLLECT_STARTED = "card_machine_collect_started";
+export const EVENT_CARD_MACHINE_COLLECT_SUCCEEDED = "card_machine_collect_succeeded";
+export const EVENT_CARD_MACHINE_COLLECT_DECLINED = "card_machine_collect_declined";
+export const EVENT_CARD_MACHINE_COLLECT_TIMEOUT = "card_machine_collect_timeout";
+export const EVENT_CARD_MACHINE_COLLECT_RESUMED = "card_machine_collect_resumed";
+export const EVENT_CARD_MACHINE_MANUAL_FALLBACK = "card_machine_manual_fallback";
 export const EVENT_PROVIDER_SUBSCRIPTION_CHECKOUT_START = "provider_subscription_checkout_start";
 export const EVENT_ADS_CAMPAIGN_CHECKOUT_START = "ads_campaign_checkout_start";
 export const EVENT_ADS_CAMPAIGN_FILTER = "ads_campaign_filter";
@@ -262,6 +271,13 @@ export type AnalyticsEventProperties = {
   [EVENT_ADS_BUDGET_PAID]: MoneyEventProperties & { campaign_id: string; provider_id: string };
   [EVENT_APPLE_IAP_VERIFIED]: MoneyEventProperties & { product_id: string; original_transaction_id?: string };
   [EVENT_PROVIDER_ONBOARDING_STEP_COMPLETED]: { step: string; step_index?: number; portal: "provider" };
+  [EVENT_CARD_MACHINE_SETUP_STEP]: { step: string; provider?: "yoco" | "paycloud"; portal?: "provider" | "web" };
+  [EVENT_CARD_MACHINE_COLLECT_STARTED]: { provider: "yoco" | "paycloud"; entity_type?: string; portal?: "provider" | "web" };
+  [EVENT_CARD_MACHINE_COLLECT_SUCCEEDED]: { provider: "yoco" | "paycloud"; entity_type?: string; portal?: "provider" | "web" };
+  [EVENT_CARD_MACHINE_COLLECT_DECLINED]: { provider: "yoco" | "paycloud"; code?: string; portal?: "provider" | "web" };
+  [EVENT_CARD_MACHINE_COLLECT_TIMEOUT]: { provider: "yoco" | "paycloud"; portal?: "provider" | "web" };
+  [EVENT_CARD_MACHINE_COLLECT_RESUMED]: { provider: "yoco" | "paycloud"; portal?: "provider" | "web" };
+  [EVENT_CARD_MACHINE_MANUAL_FALLBACK]: { reason?: string; portal?: "provider" | "web" };
   [EVENT_PROVIDER_SUBSCRIPTION_CHECKOUT_START]: { plan_id: string; billing_cycle?: string; portal: "provider" };
   [EVENT_ADS_CAMPAIGN_CHECKOUT_START]: { campaign_id?: string; budget: number; currency?: string; portal: "provider" };
   [EVENT_STAFF_INVITE_ACCEPTED]: { staff_id?: string; provider_id?: string; portal: "provider" };

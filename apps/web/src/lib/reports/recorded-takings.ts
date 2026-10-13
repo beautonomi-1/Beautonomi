@@ -70,6 +70,7 @@ export function resolveRecordedTakingsBucket(
 ): string {
   const provider = (paymentProvider ?? "").toLowerCase();
   if (provider === "paycloud") return "paycloud";
+  if (provider === "yoco") return "yoco";
   if (provider === "paystack" || provider === "stripe" || provider === "flutterwave") {
     return provider;
   }

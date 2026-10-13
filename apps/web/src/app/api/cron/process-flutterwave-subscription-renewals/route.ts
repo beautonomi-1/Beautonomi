@@ -127,6 +127,7 @@ async function runJob() {
           continue;
         }
 
+        const billingPeriod = isYearly ? "yearly" : "monthly";
         await recordProviderSubscriptionPayment({
           supabase,
           reference,
@@ -139,9 +140,8 @@ async function runJob() {
           description: "Provider subscription renewal",
           tenantIdHint: tenantId,
           paymentProvider: "flutterwave",
+          billingPeriod,
         });
-
-        const billingPeriod = isYearly ? "yearly" : "monthly";
         await supabase
           .from("provider_subscriptions")
           .update({

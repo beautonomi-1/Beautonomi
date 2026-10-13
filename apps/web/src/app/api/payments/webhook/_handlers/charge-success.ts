@@ -2932,6 +2932,7 @@ async function handleProviderSubscriptionOrderSuccess(
     description: "Provider subscription payment",
     tenantIdHint: providerSubOrderFinanceTenantId,
     paymentProvider,
+    billingPeriod,
   });
 
   try {
@@ -3365,6 +3366,7 @@ async function handleSubscriptionAuthorizationSuccess(
       description: "Provider subscription payment",
       tenantIdHint: tenantHint,
       paymentProvider,
+      billingPeriod,
     });
     return;
   }
@@ -3424,6 +3426,7 @@ async function handleSubscriptionAuthorizationSuccess(
         description: "Provider subscription payment",
         tenantIdHint: subscriptionAuthTenantId,
         paymentProvider,
+        billingPeriod,
       });
       return;
     }
@@ -3575,6 +3578,7 @@ async function handleSubscriptionAuthorizationSuccess(
     description: "Provider subscription payment",
     tenantIdHint: subscriptionAuthTenantId,
     paymentProvider,
+    billingPeriod,
   });
 
   if (paymentProvider === "stripe") {

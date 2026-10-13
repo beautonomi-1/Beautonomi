@@ -38,8 +38,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 import Link from "next/link";
-import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
-import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
+import { CardMachineCollectDialog } from "@/components/provider-portal/CardMachineCollectDialog";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
@@ -134,8 +133,7 @@ export function CheckoutDialog({
   const [sendReceipt, setSendReceipt] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [step, setStep] = useState<"review" | "payment" | "complete">("review");
-  const [showPaycloudDialog, setShowPaycloudDialog] = useState(false);
-  const [showYocoDialog, setShowYocoDialog] = useState(false);
+  const [cardMachineOpen, setCardMachineOpen] = useState(false);
   const [giftCardCode, setGiftCardCode] = useState("");
   const [giftCardAmount, setGiftCardAmount] = useState("");
   const [splitSecondaryMethod, setSplitSecondaryMethod] = useState<"cash" | "card">("cash");
@@ -230,7 +228,7 @@ export function CheckoutDialog({
     setPaymentMethod(fallback as PaymentMethod);
   }, [visiblePaymentMethods, paymentMethod]);
 
-  const useYocoForCard = yocoEnabled && !paycloudEnabled;
+  const cardMachineCollectEnabled = yocoEnabled || paycloudEnabled;
 
   const cardCollectLabel =
     paycloudReady || paycloudInFlight
@@ -274,16 +272,11 @@ export function CheckoutDialog({
   };
 
   const handleComplete = async () => {
-    if (paymentMethod === "card" && useYocoForCard) {
-      setShowYocoDialog(true);
-      return;
-    }
-    if (paymentMethod === "card" && paycloudEnabled) {
-      if (!paycloudReady && !paycloudInFlight) {
+    if (paymentMethod === "card") {
+      if (cardMachineCollectEnabled) {
+        setCardMachineOpen(true);
         return;
       }
-      setShowPaycloudDialog(true);
-      return;
     }
     if (paymentMethod === "gift_card" && (!giftCardCode.trim() || !giftCardAmount.trim())) {
       return;
@@ -321,40 +314,21 @@ export function CheckoutDialog({
     }
   };
 
-  const handleYocoSuccess = async () => {
-    setShowYocoDialog(false);
+  const handleCardMachineSuccess = async (info?: { provider: "yoco" | "paycloud" }) => {
+    setCardMachineOpen(false);
     setIsProcessing(true);
     try {
       await onComplete("card", calculations.tip, calculations.discount, notes, {
         sendReceipt,
-        yocoSettled: true,
+        yocoSettled: info?.provider === "yoco",
+        paycloudSettled: info?.provider === "paycloud",
       });
       setStep("complete");
       setTimeout(() => {
         onClose();
       }, 2000);
     } catch (error) {
-      console.error("Checkout failed after Yoco payment:", error);
-      throw error;
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handlePaycloudSuccess = async () => {
-    setShowPaycloudDialog(false);
-    setIsProcessing(true);
-    try {
-      await onComplete("card", calculations.tip, calculations.discount, notes, {
-        sendReceipt,
-        paycloudSettled: true,
-      });
-      setStep("complete");
-      setTimeout(() => {
-        onClose();
-      }, 2000);
-    } catch (error) {
-      console.error("Checkout failed after PayCloud payment:", error);
+      console.error("Checkout failed after card machine payment:", error);
       throw error;
     } finally {
       setIsProcessing(false);
@@ -369,7 +343,7 @@ export function CheckoutDialog({
     setDiscountValue("");
     setPromoCode("");
     setNotes("");
-    setShowPaycloudDialog(false);
+    setCardMachineOpen(false);
     onClose();
   };
 
@@ -634,9 +608,16 @@ export function CheckoutDialog({
                         const Icon = method.icon;
                         const isSelected = paymentMethod === method.id;
                         const isCardSetupBlocked =
-                          method.id === "card" && paycloudEnabled && !paycloudReady && !paycloudInFlight;
+                          method.id === "card" &&
+                          cardMachineCollectEnabled &&
+                          !yocoEnabled &&
+                          paycloudEnabled &&
+                          !paycloudReady &&
+                          !paycloudInFlight;
                         const displayName =
-                          method.id === "card" && paycloudEnabled ? cardCollectLabel : t(`web.provider.portal.checkoutDialog.${method.nameKey}`);
+                          method.id === "card" && paycloudEnabled && !yocoEnabled
+                            ? cardCollectLabel
+                            : t(`web.provider.portal.checkoutDialog.${method.nameKey}`);
                         const displayDescription =
                           method.id === "card" && isCardSetupBlocked
                             ? t("web.provider.portal.checkoutDialog.cardSetupBlocked")
@@ -864,29 +845,22 @@ export function CheckoutDialog({
         )}
       </DialogContent>
     </Dialog>
-    {paycloudEnabled && (
-      <PayCloudPaymentDialog
-        open={showPaycloudDialog}
-        onOpenChange={setShowPaycloudDialog}
+    {checkoutData && cardMachineCollectEnabled ? (
+      <CardMachineCollectDialog
+        open={cardMachineOpen}
+        onOpenChange={setCardMachineOpen}
         amount={calculations.total}
+        autoStart
         tipIncludedInAmount={calculations.tip > 0}
-        entityType="booking"
-        entityId={checkoutData.appointment_id}
-        bookingId={checkoutData.appointment_id}
-        bookingLocationId={bookingLocationId}
-        onSuccess={handlePaycloudSuccess}
+        entity={{
+          entityType: "booking",
+          entityId: checkoutData.appointment_id,
+          bookingId: checkoutData.appointment_id,
+          bookingLocationId,
+        }}
+        onSuccess={(info) => void handleCardMachineSuccess(info)}
       />
-    )}
-    {checkoutData && yocoEnabled && (
-      <YocoPaymentDialog
-        open={showYocoDialog}
-        onOpenChange={setShowYocoDialog}
-        amount={calculations.total}
-        bookingId={checkoutData.appointment_id}
-        bookingLocationId={bookingLocationId}
-        onSuccess={handleYocoSuccess}
-      />
-    )}
+    ) : null}
     </>
   );
 }

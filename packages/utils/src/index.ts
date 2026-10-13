@@ -179,6 +179,12 @@ export {
   type PublicProductCatalogRow,
 } from "./booking/packageCartMatch";
 export {
+  groupGuestsServiceSubtotal,
+  sumGroupParticipantServicesTotal,
+  type CheckoutGroupParticipant,
+  type GroupParticipantServiceLine,
+} from "./booking/group-guests-service-subtotal";
+export {
   getBookingLifecycleDisplay,
   getBookingPaymentDisplay,
   resolveEffectiveBookingLifecycleStatus,
@@ -415,6 +421,13 @@ export {
   manualCardCollectOptionLabel,
   manualCardReportLabel,
 } from "./payments/card-machine-labels";
+export { selectDefaultMachine } from "./payments/card-machines";
+export type {
+  CardMachine,
+  CardMachineProvider,
+  SelectDefaultMachineInput,
+  SelectDefaultMachineResult,
+} from "./payments/card-machines";
 export {
   humanizePaycloudPaymentError,
   PAYCLOUD_PAYMENT_ERROR_CODES,

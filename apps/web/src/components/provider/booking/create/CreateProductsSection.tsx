@@ -8,26 +8,20 @@ import type { AppointmentProduct } from "@/components/appointments/types";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { BookingSectionCard, BookingSectionLabel, BookingActionButton } from "../ui";
 import { useTranslation } from "@beautonomi/i18n";
+import {
+  productCartLineKey,
+  resolveProductLineUnitPrice,
+  stockLimitForCatalogProduct,
+} from "@beautonomi/provider-booking";
 
 interface CreateProductsSectionProps {
   products: AppointmentProduct[];
   onChange: (next: AppointmentProduct[]) => void;
 }
 
-function stockLimitForLine(product: ProductItem, variant?: ProductVariantItem | null): number | null {
-  if (product.track_stock_quantity === false) return null;
-  const raw = variant ? variant.quantity : product.quantity;
-  const stock = Number(raw ?? 0);
-  return Number.isFinite(stock) ? Math.max(0, Math.floor(stock)) : 0;
-}
-
 function variantLabel(variant: ProductVariantItem, fallback: string): string {
   const values = Object.values(variant.option_values ?? {});
   return values.length > 0 ? values.join(" / ") : variant.sku ?? fallback;
-}
-
-function lineKey(productId: string, variantId?: string | null) {
-  return `${productId}:${variantId ?? ""}`;
 }
 
 export function CreateProductsSection({ products, onChange }: CreateProductsSectionProps) {
@@ -84,13 +78,13 @@ export function CreateProductsSection({ products, onChange }: CreateProductsSect
 
     if (variantOptions.length > 0 && !variant) return;
 
-    const unitPrice = Number(variant?.retail_price ?? p.retail_price ?? 0);
-    const maxStock = stockLimitForLine(p, variant);
+    const unitPrice = resolveProductLineUnitPrice(p, variant?.id ?? null);
+    const maxStock = stockLimitForCatalogProduct(p, variant);
     if (maxStock === 0) return;
 
-    const key = lineKey(p.id, variant?.id);
+    const key = productCartLineKey(p.id, variant?.id);
     const existing = products.find(
-      (x) => lineKey(x.productId, x.productVariantId) === key,
+      (x) => productCartLineKey(x.productId, x.productVariantId) === key,
     );
 
     if (existing) {
@@ -98,7 +92,7 @@ export function CreateProductsSection({ products, onChange }: CreateProductsSect
         maxStock == null ? existing.quantity + 1 : Math.min(existing.quantity + 1, maxStock);
       onChange(
         products.map((x) =>
-          lineKey(x.productId, x.productVariantId) === key
+          productCartLineKey(x.productId, x.productVariantId) === key
             ? { ...x, quantity: nextQty, totalPrice: nextQty * x.unitPrice }
             : x,
         ),
@@ -123,15 +117,15 @@ export function CreateProductsSection({ products, onChange }: CreateProductsSect
   };
 
   const updateQty = (productId: string, variantId: string | null | undefined, delta: number) => {
-    const key = lineKey(productId, variantId);
+    const key = productCartLineKey(productId, variantId);
     const catalogProduct = catalog.find((c) => c.id === productId);
     const variant = catalogProduct?.variants?.find((v) => v.id === variantId) ?? null;
-    const maxStock = catalogProduct ? stockLimitForLine(catalogProduct, variant) : null;
+    const maxStock = catalogProduct ? stockLimitForCatalogProduct(catalogProduct, variant) : null;
 
     onChange(
       products
         .map((p) => {
-          if (lineKey(p.productId, p.productVariantId) !== key) return p;
+          if (productCartLineKey(p.productId, p.productVariantId) !== key) return p;
           const nextRaw = p.quantity + delta;
           const qty =
             maxStock == null ? Math.max(0, nextRaw) : Math.max(0, Math.min(nextRaw, maxStock));
@@ -150,7 +144,7 @@ export function CreateProductsSection({ products, onChange }: CreateProductsSect
         variantOptions.length > 0
           ? variantOptions.find((v) => v.id === pickVariantId)
           : null;
-      return stockLimitForLine(selectedProduct, variant) !== 0;
+      return stockLimitForCatalogProduct(selectedProduct, variant) !== 0;
     })();
 
   if (catalog.length === 0) return null;

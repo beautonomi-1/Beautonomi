@@ -165,31 +165,7 @@ export function drawPdfTotals(
  * `payment_provider`. Centralised so customer/provider PDF + JSON receipts and
  * mobile/web detail screens never disagree.
  */
-export function formatPaymentMethodLabel(
-  paymentMethod?: string | null,
-  paymentProvider?: string | null,
-): string {
-  const m = String(paymentMethod ?? "").toLowerCase();
-  const p = String(paymentProvider ?? "").toLowerCase();
-  if (m === "wallet" || p === "wallet") return "Wallet";
-  if (m === "gift_card" || p === "gift_card") return "Gift card";
-  if (m === "cash" || p === "cash") return "Cash";
-  if (m === "bank_transfer") return "EFT";
-  if (m === "paystack_terminal" || p === "paystack_terminal" || p === "paystack_virtual_terminal") {
-    return "Paystack Terminal";
-  }
-  if (m === "card") {
-    if (p === "yoco") return "Card (Yoco)";
-    if (p === "paystack") return "Card";
-    if (p === "stripe") return "Card";
-    if (p === "flutterwave") return "Card";
-    if (p === "other") return "Card (manual)";
-    return "Card";
-  }
-  if (m === "saved_card" || m === "new_card") return "Card";
-  if (m === "other") return p ? `Other (${p})` : "Other";
-  return paymentMethod ? String(paymentMethod) : "Payment";
-}
+export { formatPaymentMethodLabel } from "@beautonomi/utils";
 
 /**
  * Payments table: lists each completed `booking_payments` row with method label.

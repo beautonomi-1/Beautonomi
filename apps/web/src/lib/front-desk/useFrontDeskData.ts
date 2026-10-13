@@ -8,6 +8,7 @@ import { getMetricRangeParams } from "@beautonomi/utils";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import type { Booking } from "@/types/beautonomi";
 import { getOperationalBadge } from "./operationalState";
+import type { ServiceItem } from "@/lib/provider-portal/types";
 import type { FrontDeskBooking, FrontDeskMetricRange } from "./types";
 
 export { formatFrontDeskRangeCaption } from "@beautonomi/utils";
@@ -25,7 +26,7 @@ export interface UseFrontDeskDataOutput {
   metricBookings: FrontDeskBooking[];
   staff: Array<{ id: string; name: string }>;
   locations: Array<{ id: string; name: string }>;
-  services: Array<{ id: string; name: string; duration_minutes?: number; price?: number }>;
+  services: ServiceItem[];
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
@@ -90,16 +91,10 @@ async function fetchLocations(): Promise<Array<{ id: string; name: string }>> {
   }
 }
 
-async function fetchServices(): Promise<Array<{ id: string; name: string; duration_minutes?: number; price?: number }>> {
+async function fetchServices(): Promise<ServiceItem[]> {
   try {
     const { providerApi } = await import("@/lib/provider-portal/api");
-    const svcs = await providerApi.listServices();
-    return (svcs || []).map((s: any) => ({
-      id: s.id,
-      name: s.title || s.name || "Service",
-      duration_minutes: s.duration_minutes || 60,
-      price: s.price || 0,
-    }));
+    return (await providerApi.listServices()) ?? [];
   } catch {
     return [];
   }
@@ -111,7 +106,7 @@ export function useFrontDeskData(input: UseFrontDeskDataInput): UseFrontDeskData
   const [metricBookings, setMetricBookings] = useState<FrontDeskBooking[]>([]);
   const [staff, setStaff] = useState<Array<{ id: string; name: string }>>([]);
   const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
-  const [services, setServices] = useState<Array<{ id: string; name: string; duration_minutes?: number; price?: number }>>([]);
+  const [services, setServices] = useState<ServiceItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

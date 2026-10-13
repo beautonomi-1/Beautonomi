@@ -1649,7 +1649,9 @@
           "measureG": "Gramos (g)",
           "measureKg": "Kilogramos (kg)",
           "measureUnit": "Unidad",
-          "defaultVariantType": "Size"
+          "defaultVariantType": "Size",
+          "weightGrams": "Shipping weight (g)",
+          "weightGramsPlaceholder": "500"
         },
         "ads": {
           "title": "Anuncios de pago",
@@ -3104,7 +3106,23 @@
           "recommendChargeCard": "cobrar Tarjeta on file (cliente aprobars first)",
           "recommendCustomerPay": "Enviar to cliente — they pagar in-app",
           "recommendCollectInPerson": "Collect en persona (Efectivo, Tarjeta, or terminal)",
-          "removeCta": "Remove"
+          "removeCta": "Remove",
+          "cancelRefundCardHint": "Los pagos en máquinas con tarjeta vuelven a la tarjeta del cliente (Beautonomi máquinas automáticamente; Yoco reembolsas en la máquina y registras). Los pagos en línea se acreditan en su billetera.",
+          "cancelRefundWalletHint": "El cliente recibe un reembolso completo en su billetera Beautonomi. Su política de cancelación no se aplica a las cancelaciones que usted inicie.",
+          "continue": "Continuar",
+          "yocoRefundOnMachineTitle": "Reembolso en tu máquina Yoco",
+          "yocoRefundOnMachineBody": "Los reembolsos Yoco no se pueden iniciar desde Beautonomi. Reembolsa {{amount}} en la aplicación Yoco o en la máquina primero, luego regístralo aquí para que el saldo de la reserva y los informes se mantengan correctos.",
+          "yocoRefundRecordedBody": "En esta reserva se ha registrado el reembolso de Yoco.",
+          "awaitingYocoRefundTitle": "{{amount}} aún por reembolsar en la máquina Yoco",
+          "awaitingYocoRefundBody": "Esta reserva fue cancelada con un reembolso a la tarjeta. Devuélvelo en la aplicación Yoco o en la máquina, luego regístralo aquí. Hasta entonces, permanece pendiente en el informe de conciliación de la máquina de tarjetas.",
+          "awaitingYocoRefundReason": "Reserva cancelada: reembolso a la tarjeta",
+          "refundOriginalHint": "El dinero regresa a la tarjeta del cliente a través del cajero automático o del banco. No se saca nada de su cajón de dinero.",
+          "refundCashHint": "Devuelva el dinero al cliente en persona. Grabado para sus libros; no se emite ningún crédito de billetera. El saldo de la reserva se actualiza después de que esto se realice correctamente.",
+          "refundWalletHint": "Utilizar cuando el cliente no está presente o el pago se realizó en línea. El reembolso se acredita en su billetera.",
+          "refundOriginalMachineHint": "El dinero regresa a la tarjeta del cliente a través del cajero automático en el que se pagó.",
+          "cancelWalletNote": "El cliente recibirá un reembolso completo en su billetera Beautonomi por los montos ya pagados. Su política de cancelación no se aplica a las cancelaciones que usted inicie.",
+          "cancelRefundTo": "Reembolsar el importe pagado a",
+          "yocoRefundRecordCta": "Reembolsado en la máquina: registrar el reembolso"
         },
         "operatingHoursSettings": {
           "title": "Operating Hours",
@@ -3969,7 +3987,11 @@
           "trackingUrlHelp": "Paste the carrier's tracking page so customers can tap through from their order.",
           "saving": "Guardando…",
           "confirmShipped": "Confirmar Enviado",
-          "estimatedDeliveryDate": "Estimated delivery date (optional)"
+          "estimatedDeliveryDate": "Estimated delivery date (optional)",
+          "courierBooking": "Courier booking",
+          "bookCourier": "Book courier",
+          "retryCourierBooking": "Retry booking",
+          "printLabel": "Print label"
         },
         "yocoDevices": {
           "title": "Yoco dispositivos",
@@ -5169,7 +5191,9 @@
           "staffOffersServiceHint": "These team members can perform this service.",
           "categoryPickerTitle": "Category",
           "runningBehindSheetTitle": "Running behind?",
-          "staffFilteredByService": "Showing team members assigned to this service."
+          "staffFilteredByService": "Showing team members assigned to this service.",
+          "addressOutsideArea": "This address is outside your service area.",
+          "addressValidateFailed": "Could not validate this address. Check your connection and try again."
         },
         "expressBooking": {
           "invalidJson": "JSON. no válido.",
@@ -5403,7 +5427,44 @@
           "posting": "Publicacióning…",
           "postAction": "Publicación",
           "commentsDisabled": "Comments and likes are turned off in your content & safety settings.",
-          "commentLength": "{{count}}/200"
+          "commentLength": "{{count}}/200",
+          "videoTooLong": "Video exceeds the maximum length for Explore ({{seconds}} seconds).",
+          "trimVideoTitle": "Trim video",
+          "trimVideoHint": "Drag to choose which part of your video appears on Explore.",
+          "trimClipLength": "{{seconds}}s clip",
+          "trimVideoScrubber": "Choose clip start",
+          "trimVideoConfirm": "Use clip",
+          "trimVideoLoading": "Loading video…",
+          "trimVideoFinishFirst": "Finish trimming your video before continuing.",
+          "holdToRecord": "Hold to record",
+          "releaseToFinish": "Release to finish",
+          "tapForPhoto": "Tap for photo",
+          "clipWindowA11y": "Selected clip",
+          "capturePhoto": "Photo",
+          "captureVideo": "Video",
+          "flipCamera": "Flip camera",
+          "lensFront": "Front camera",
+          "lensBack": "Back camera",
+          "switchToFront": "Switch to front camera",
+          "switchToBack": "Switch to back camera",
+          "openingCamera": "Opening camera…",
+          "cameraOpenFailed": "Could not open this camera. Try the other lens or close and reopen.",
+          "cameraPermissionContinue": "Continue",
+          "micPermissionForVideo": "Microphone access is needed to record video with sound.",
+          "onMediaText": "On-media text",
+          "onMediaTextHint": "Tap a thumbnail to pick the slide, then add short text (shown on the post until publish burn-in).",
+          "onMediaTextDragHint": "Drag text on the preview to reposition it.",
+          "onMediaTextPlaceholder": "Short label on this slide",
+          "addTextLayer": "Add text",
+          "backgroundSoundOptional": "Background sound (optional)",
+          "addMusic": "Add music (optional)",
+          "originalAudio": "Original audio",
+          "soundViewerHint": "Viewers hear this music instead of your clip's audio on Explore.",
+          "soundsEmpty": "No catalog tracks yet — use original audio or ask your admin to add platform sounds.",
+          "soundsSectionPlatform": "Popular sounds",
+          "soundsSectionYours": "Your sounds",
+          "soundPreviewPlay": "Play preview",
+          "soundPreviewStop": "Stop preview"
         },
         "dashboard": {
           "title": "Dashboard",
@@ -7370,7 +7431,11 @@
           "deliveryNotesPlaceholder": "e.g. lun–vie only",
           "howFeesWork": "How tarifas work",
           "howFeesWorkBody": "Collection is free. Delivery uses your fee and platform fee. Set a free-delivery threshold so orders above that amount get free delivery.",
-          "saveChanges": "Guardar cambios"
+          "saveChanges": "Guardar cambios",
+          "courierPreference": "Courier",
+          "courierPreferencePlaceholder": "Leave empty for manual tracking",
+          "courierNone": "None (manual tracking)",
+          "courierKeysWebHint": "Connect API keys in the provider web app under Ecommerce → Shipping."
         },
         "productSalesReport": {
           "factsDefinitions": "Facts & definitions",
@@ -10567,7 +10632,9 @@
           "itemGlobalSignOut": "Cerrar sesión en todos los dispositivos",
           "itemGlobalSignOutDesc": "End every Activo Sesión on your cuenta",
           "itemDelete": "Eliminar cuenta",
-          "itemDeleteDesc": "Permanently Eliminar cuenta and Datos"
+          "itemDeleteDesc": "Permanently Eliminar cuenta and Datos",
+          "itemReferBusiness": "Refer a business",
+          "itemReferBusinessDesc": "Submit another salon or beauty business to Beautonomi"
         },
         "settingsBusinessDescription": {
           "validationTitle": "Validación",
@@ -12620,6 +12687,23 @@
           "submitFailedFallback": "Tafadhali jaribu tena or contact Partner support.",
           "submitGenericError": "Kuna tatizo limetokea.",
           "supportFallback": "Don't know their handle? Open a Partner support ticket instead"
+        },
+        "cardMachineCollect": {
+          "title": "maquina de tarjetas",
+          "collectOn": "Predeterminado: {{name}}",
+          "chooseMachine": "Elige una máquina de tarjetas",
+          "noMachines": "Aún no hay máquinas de tarjetas instaladas.",
+          "setUp": "Configurar máquinas de tarjetas",
+          "loadFailed": "No se pudieron cargar sus máquinas de tarjetas.",
+          "retry": "Inténtalo de nuevo",
+          "beautonomi": "Beautonomi",
+          "yoco": "Yoco",
+          "defaultBadge": "Predeterminado",
+          "collectOnNamed": "Collect on {{name}} ({{provider}})",
+          "loadingMachines": "Loading machines…",
+          "selectMachine": "Select machine",
+          "chargeNamed": "Charge · {{name}}",
+          "switchMachine": "Switch machine"
         }
       }
     },
@@ -13792,6 +13876,18 @@
           "youPaidForGroup": "You pagado for the Grupo",
           "paidBy": "pagado by {{name}}",
           "covered": "Covered"
+        },
+        "paystackReturn": {
+          "bookVerifying": "Confirming your payment…",
+          "bookReturning": "Returning to bookings…",
+          "bookFallbackCta": "Go to Bookings",
+          "bookContinueCta": "View booking",
+          "shopVerifying": "Confirming your order payment…",
+          "shopReturning": "Returning to shop…",
+          "shopFallbackCta": "Go to Orders",
+          "shopContinueCta": "View order",
+          "shopPendingSubtext": "We'll update your order within a few minutes. You can keep using the app while we confirm with your bank.",
+          "shopFailedSubtext": "If you were charged, your order will still be confirmed once the payment lands. Please check your Orders tab."
         }
       },
       "tabs": {
@@ -21756,7 +21852,7 @@
         "levelUpNext": "Level up siguiente",
         "pointsRatio": "/ {{amount}} puntos",
         "morePointsNeeded": "más puntos needed",
-        "pointsAway": "You're {{amount}} points away from {{name}}.",
+        "pointsAway": "You're {{amount}} puntos away from {{name}}.",
         "keepEarningHint": "💡 Keep earning points by completing bookings and receiving great reviews!",
         "reachedRequirements": "🎉 You've reached the requirements!",
         "startEarning": "empezar earning",
@@ -21898,8 +21994,8 @@
           "titleFromAppointments": "Crear Grupo from citas",
           "titleNew": "Nuevo Reserva grupal",
           "scheduleMultiple": "horario multiple clientes together",
-          "headerSummary_one": "{{count}} participant · {{duration}} min · {{amount}}",
-          "headerSummary_other": "{{count}} participants · {{duration}} min · {{amount}}",
+          "headerSummary_one": "{{count}} participante · {{duration}} min · {{amount}}",
+          "headerSummary_other": "{{count}} participantes · {{duration}} min · {{amount}}",
           "groupBadge": "Grupo",
           "titleLabel": "Título / Grupo nombre",
           "titlePlaceholder": "e.g. Bridal Party, Team Workshop...",
@@ -21978,8 +22074,8 @@
           "fullDot": "· lleno",
           "oneLeft": "· 1 left",
           "remainingDot": "· {{count}} remaining",
-          "spotsAvailable_one": "{{count}} spot available once you add participants.",
-          "spotsAvailable_other": "{{count}} spots available once you add participants.",
+          "spotsAvailable_one": "{{count}} spot disponible once you añadir participantes.",
+          "spotsAvailable_other": "{{count}} spots disponible once you añadir participantes.",
           "atCapacityHint": "Session is at capacity. Increase the limit above before adding more participants.",
           "products": "Productos",
           "searchProducts": "Buscar productos...",
@@ -22045,12 +22141,12 @@
           "groupSession": "Grupo Sesión",
           "serviceFallback": "Servicio",
           "productFallback": "producto",
-          "headerSummary": "Header Summary",
-          "reviewSpotsStill": "Review Spots Still",
-          "spotsAvailable": "Spots Available",
-          "subtotalParticipants": "Subtotal Participants",
-          "subtotalProducts": "Subtotal Products",
-          "reviewAndCreateRemaining": "Review & create ({{count}} left)"
+          "headerSummary": "Header Resumen",
+          "reviewSpotsStill": "reseña Spots Still",
+          "spotsAvailable": "Spots disponible",
+          "subtotalParticipants": "subtotal participantes",
+          "subtotalProducts": "subtotal productos",
+          "reviewAndCreateRemaining": "reseña & crear ({{count}} left)"
         },
         "newSaleDialog": {
           "variantFallback": "Variant",
@@ -22193,7 +22289,7 @@
           "validPriceRequired": "Enter a válido precio",
           "validDurationRequired": "Enter a válido duración",
           "customServiceAdded": "Personalizado servicio added to Carrito",
-          "cartItem": "Cart Item"
+          "cartItem": "Carrito Artículo"
         },
         "addClientDialog": {
           "close": "Cerrar",
@@ -22467,7 +22563,7 @@
           "cashbackOptional": "Efectivoatrás (opcional)",
           "walletQr": "monedero QR pago",
           "lastError": "Last error: {{error}}",
-          "waitingPoll": "Waiting on card machine (polls every {{seconds}}s)…",
+          "waitingPoll": "En espera on terminal de tarjeta (polls every {{seconds}}s)…",
           "close": "Cerrar",
           "cancel": "Cancelar",
           "waitingOnMachine": "En espera on terminal de tarjeta…",
@@ -22665,7 +22761,12 @@
           "continueToPayment": "continuar to pago",
           "back": "Atrás",
           "processing": "procesando...",
-          "payAmount": "Pagar {{amount}}"
+          "payAmount": "Pagar {{amount}}",
+          "promoComingSoon": "promoción códigos are not disponible at pago yet",
+          "giftCardCode": "tarjeta de regalo código",
+          "giftCardPlaceholder": "Introduce código",
+          "giftCardAmount": "importe to redeem",
+          "splitGiftAmount": "tarjeta de regalo portion"
         },
         "calendarLinkDialog": {
           "updated": "calendario enlace actualizard",
@@ -22757,7 +22858,7 @@
           "kindWalkIn": "Sin cita",
           "kindAtHome": "A domicilio",
           "couldNotCreateRecurring": "No se pudo crear repeating series",
-          "recurringFailedTrySingle": "{{reason}}. Try a single booking instead.",
+          "recurringFailedTrySingle": "{{reason}}. Try a single reserva instead.",
           "location": "Ubicación",
           "selectLocation": "Seleccionar ubicación",
           "defaultStaff": "predeterminado personal",
@@ -22803,10 +22904,27 @@
           "selectProduct": "Seleccionar producto…",
           "selectVariant": "Seleccionar variant…",
           "variantFallback": "Variant",
-          "openGroupBooking": "Plan a group booking instead",
-          "sendQuote": "Send a quote instead",
-          "sendQuoteNeedsAccount": "Select a client with an account to send a quote.",
-          "uncategorized": "Uncategorized"
+          "openGroupBooking": "Plan a reserva grupal instead",
+          "sendQuote": "Enviar a quote instead",
+          "sendQuoteNeedsAccount": "Seleccionar a cliente with an cuenta to enviar a quote.",
+          "uncategorized": "Uncategorized",
+          "allCategories": "Todo",
+          "discountTypePercent": "Percentage",
+          "discountTypeFixed": "Fixed importe",
+          "validation": {
+            "selectClient": "Seleccionar a cliente",
+            "enterFirstName": "Enter cliente nombre",
+            "selectServiceOrProduct": "Seleccionar at least one servicio or producto",
+            "serviceRequiredForProducts": "Añadir un servicio. producto-only sales use Nueva venta / pago.",
+            "selectDate": "Seleccionar a fecha",
+            "selectTime": "Seleccionar a hora",
+            "recurringNeedsSavedClient": "Repeating visits must use a saved client. Select the client from search results first.",
+            "recurringNeedsService": "Repeating visits need at least one service.",
+            "repeatCountMin": "Repeat count must be at least 2 visits.",
+            "assignStaffEach": "Assign personal for each servicio",
+            "selectClientAddress": "Buscar and seleccionar the cliente's dirección",
+            "chooseAddressSuggestion": "Choose an address from the search suggestions so the map pin and travel distance are accurate."
+          }
         },
         "blockedTimeTypeDialog": {
           "updated": "Blocked hora Tipo actualizard",
@@ -22863,7 +22981,7 @@
           "clientNotified": "The client will be notified about this schedule change.",
           "rescheduling": "Rescheduling...",
           "confirmReschedule": "Confirmar Rehorario",
-          "appointmentAria": "Appointment: {{client}} for {{service}} at {{time}}",
+          "appointmentAria": "cita: {{client}} for {{service}} at {{time}}",
           "keyboardHint": "Use arrow keys to move • Esc to deselect",
           "cannotPlaceHere": "Cannot place aquí",
           "durationMin": "{{count}} min",
@@ -22943,6 +23061,23 @@
           "friday": "viernes",
           "saturday": "sábado",
           "sunday": "domingo"
+        },
+        "cardMachineCollect": {
+          "title": "Terminal de tarjeta",
+          "collectOn": "predeterminado: {{name}}",
+          "collectOnNamed": "Collect on {{name}} ({{provider}})",
+          "loadingMachines": "Cargando machines…",
+          "selectMachine": "Seleccionar machine",
+          "chargeNamed": "cobrar · {{name}}",
+          "switchMachine": "Switch machine",
+          "chooseMachine": "Elegir un terminal de tarjeta",
+          "noMachines": "No terminales de tarjeta are Configurar yet.",
+          "setUp": "Configurar terminales de tarjeta",
+          "loadFailed": "No se pudo cargar your terminales de tarjeta.",
+          "retry": "Intentarlo de nuevo",
+          "beautonomi": "Beautonomi",
+          "yoco": "Yoco",
+          "defaultBadge": "predeterminado"
         }
       },
       "bookings": {
@@ -23056,7 +23191,7 @@
           "statusUpdated": "reserva estado actualizard",
           "bookingChanged": "This reserva cambiard, recargar",
           "statusUpdateFailed": "No se pudo actualizar reserva estado",
-          "bulkCompleted": "Bulk {{action}} completed for {{count}} booking(s)",
+          "bulkCompleted": "Bulk {{action}} completado for {{count}} reserva(s)",
           "bulkFailed": "No se pudo {{action}} reservas"
         },
         "liveSync": {
@@ -23086,8 +23221,8 @@
           "blocksOnly_other": "{{count}} blocks",
           "runningBehindTitle": "Running behind?",
           "runningBehindBody": "We'll notify remaining confirmed clients today that you're delayed.",
-          "delay15": "15 minutes",
-          "delay30": "30 minutes"
+          "delay15": "15 minutos",
+          "delay30": "30 minutos"
         },
         "overview": {
           "all": "Todo",
@@ -23098,7 +23233,7 @@
           "closeOutTitle": "cerrar-out queue",
           "closeOutEmpty": "No citas need cerrar-out",
           "stalePendingTitle": "Stale pendiente solicitudes",
-          "stalePendingBody": "{{count}} pending booking(s) may need attention",
+          "stalePendingBody": "{{count}} pendiente reserva(s) may need attention",
           "reviewNow": "reseña ahora",
           "confirmed": "Confirmared",
           "inProgress": "In Progreso",
@@ -23122,7 +23257,7 @@
           "bookingsCount": "reservas ({{count}})",
           "closeOutEmptyNow": "No citas need cerrar-out right ahora.",
           "noMatchFilter": "No reservas match this filtrar.",
-          "needCloseOut": "Need Close Out"
+          "needCloseOut": "Need cerrar el día"
         },
         "bulkActions": {
           "selectAll": "Seleccionar todo",
@@ -23469,7 +23604,7 @@
             "noShowNoFeeNote": "No no-show fee is configured — the client will be fully refunded for amounts already paid.",
             "confirmNoShow": "Confirmar no-mostrar",
             "sendLinkTitle": "Enviar pago enlace",
-            "sendLinkBody": "Send a link so the customer can pay online. Outstanding: {{amount}}",
+            "sendLinkBody": "Enviar a enlace so the cliente can pagar En línea. Outstanding: {{amount}}",
             "sendVia": "Enviar via",
             "contactRequiredHint": "Email and SMS options require the customer's contact details on file.",
             "addContactHint": "Añadir cliente correo/teléfono on the cliente perfil",
@@ -23495,7 +23630,9 @@
             "processingRefund": "procesando...",
             "confirmRefund": "Confirmar Reembolsar",
             "chargeMarkPaidTitle": "Mark cobrar as pagado",
-            "thisClient": "this cliente"
+            "thisClient": "this cliente",
+            "cancelRefundCardHint": "Los importes cobrados en una máquina de tarjetas regresan a la tarjeta del cliente (Beautonomi máquinas automáticamente; Yoco se reembolsa en la máquina y se registra). Todo lo pagado en línea se acredita en su billetera.",
+            "cancelRefundTo": "Reembolsar el importe pagado a"
           },
           "paystackCollect": {
             "noBalance": "Taquí is no remaining saldo to collect.",
@@ -23512,79 +23649,79 @@
             "copyPaymentLink": "Copiar pago enlace"
           },
           "toast": {
-            "saleSavedBookingFailed": "The sale was saved, but updating the booking failed: {{error}}",
+            "saleSavedBookingFailed": "The Venta was guardard, but updating the reserva error: {{error}}",
             "journeyStartedEta": "Journey empezared. ETA {{minutes}} min.",
             "chargeMarkedPaidNote": "Marked as pagado by profesional via {{method}}",
             "yocoChargeBookingNote": "reserva {{number}}",
-            "bookingChanged": "This booking changed, reload",
-            "cancelFailed": "Failed to cancel booking",
-            "cancellationNoticeFailed": "Failed to send cancellation notice",
-            "cancellationNoticeSendFailed": "Failed to send cancellation notice",
-            "cancellationNoticeSent": "Cancellation notice sent",
-            "cancelled": "Booking cancelled",
-            "cannotCharge": "Cannot charge this booking",
-            "cardPaymentFailed": "Card payment failed",
-            "chargeMarkedPaid": "Charge marked as paid",
-            "chargeSendFailed": "Failed to send charge",
-            "chargeSent": "Charge sent to client",
-            "codeSent": "Verification code sent",
-            "confirmationResent": "Confirmation resent",
-            "documentUploaded": "Document uploaded",
-            "emailRequired": "Email is required",
-            "enterDescription": "Enter a description",
-            "enterRefundReason": "Enter a refund reason",
-            "enterValidAmount": "Enter a valid amount",
-            "etaFailed": "Failed to update ETA",
-            "etaRange": "Enter ETA between 1 and 180 minutes",
-            "etaUpdated": "ETA updated to {{minutes}} minutes",
-            "journeyFailed": "Failed to start journey",
-            "journeyStarted": "Journey started",
-            "markArrivedFailed": "Failed to mark as arrived",
-            "markPaidFailed": "Failed to mark as paid",
+            "bookingChanged": "This reserva cambiard, recargar",
+            "cancelFailed": "No se pudo Cancelar reserva",
+            "cancellationNoticeFailed": "No se pudo enviar cancelarlation notice",
+            "cancellationNoticeSendFailed": "No se pudo enviar cancelarlation notice",
+            "cancellationNoticeSent": "Cancelarlation notice Enviado",
+            "cancelled": "reserva cancelado",
+            "cannotCharge": "Cannot cobrar this reserva",
+            "cardPaymentFailed": "Tarjeta Error en el pago",
+            "chargeMarkedPaid": "cobrar marked as pagado",
+            "chargeSendFailed": "No se pudo enviar cobrar",
+            "chargeSent": "cobrar Enviado to cliente",
+            "codeSent": "código de verificación Enviado",
+            "confirmationResent": "Confirmaration reenviado",
+            "documentUploaded": "Documento subired",
+            "emailRequired": "correo is obligatorio",
+            "enterDescription": "Introduce a descripción",
+            "enterRefundReason": "Introduce a reembolso Motivo",
+            "enterValidAmount": "Introduce a válido importe",
+            "etaFailed": "No se pudo actualizar ETA",
+            "etaRange": "Introduce ETA between 1 and 180 minutos",
+            "etaUpdated": "ETA actualizard to {{minutes}} minutos",
+            "journeyFailed": "No se pudo empezar journey",
+            "journeyStarted": "Journey empezared",
+            "markArrivedFailed": "No se pudo mark as arrived",
+            "markPaidFailed": "No se pudo mark as pagado",
             "markedArrived": "Marked as arrived",
-            "markedNoShow": "Booking marked as no-show",
-            "markedPaid": "Marked as paid",
-            "missingReference": "Missing payment reference",
-            "missingSaleRecord": "Missing sale record",
-            "noBalance": "There is no remaining balance on this booking.",
-            "noBalanceCollect": "No balance to collect",
-            "noBalanceOverpaid": "This booking is overpaid",
+            "markedNoShow": "reserva marked as no-mostrar",
+            "markedPaid": "Marked as pagado",
+            "missingReference": "Missing pago reference",
+            "missingSaleRecord": "Missing Venta record",
+            "noBalance": "Taquí is no remaining saldo on this reserva.",
+            "noBalanceCollect": "No saldo to collect",
+            "noBalanceOverpaid": "This reserva is overpagado",
             "noPaystackTerminal": "No Paystack terminal configured",
             "noPermission": "You do not have permission for this action",
-            "noReasonProvided": "No reason provided",
-            "noShowFailed": "Failed to mark as no-show",
-            "notesSaveFailed": "Failed to save notes",
-            "notesSaved": "Notes saved",
-            "notificationFailed": "Notification failed",
-            "notificationSendFailed": "Failed to send notification",
-            "overrideFailed": "Failed to override",
+            "noReasonProvided": "No Motivo provided",
+            "noShowFailed": "No se pudo mark as no-mostrar",
+            "notesSaveFailed": "No se pudo guardar notas",
+            "notesSaved": "notas guardard",
+            "notificationFailed": "notificación error",
+            "notificationSendFailed": "No se pudo enviar notificación",
+            "overrideFailed": "No se pudo override",
             "overridePrompt": "Override verification?",
             "overrideSuccess": "Override applied",
-            "paymentRecorded": "Booking payment recorded",
-            "paystackPrepareFailed": "Could not prepare Paystack payment",
-            "permissionToCollect": "You do not have permission to collect payment",
-            "phoneRequired": "Phone number is required",
-            "refundCash": "Refund issued (cash)",
-            "refundExceeds": "Refund cannot exceed {{amount}}",
-            "refundFailed": "Refund failed",
-            "refundWallet": "Refund issued (wallet)",
-            "reminderFailed": "Failed to send reminder",
-            "reminderSent": "Reminder sent",
-            "reminderSentCustomer": "Reminder sent to customer",
-            "rescheduleFailed": "Failed to reschedule booking",
-            "rescheduled": "Booking rescheduled",
-            "resendFailed": "Failed to resend",
-            "selectDateTime": "Select a date and time",
-            "serviceCompleted": "Service completed",
-            "serviceStarted": "Service started",
+            "paymentRecorded": "reserva pago recorded",
+            "paystackPrepareFailed": "No se pudo prepare Paystack pago",
+            "permissionToCollect": "You do not have permiso to collect pago",
+            "phoneRequired": "número de teléfono is obligatorio",
+            "refundCash": "reembolso issued (Efectivo)",
+            "refundExceeds": "reembolso cannot exceed {{amount}}",
+            "refundFailed": "Error en el reembolso",
+            "refundWallet": "reembolso issued (monedero)",
+            "reminderFailed": "No se pudo enviar reminder",
+            "reminderSent": "Reminder Enviado",
+            "reminderSentCustomer": "Reminder Enviado to cliente",
+            "rescheduleFailed": "No se pudo rehorario reserva",
+            "rescheduled": "reserva reprogramado",
+            "resendFailed": "No se pudo reenviar",
+            "selectDateTime": "Seleccionar a fecha y hora",
+            "serviceCompleted": "servicio completado",
+            "serviceStarted": "servicio empezared",
             "startBeforeCard": "Start or complete the service before collecting card payment.",
-            "statusUpdateFailed": "Failed to update booking status",
-            "statusUpdated": "Booking status updated",
+            "statusUpdateFailed": "No se pudo actualizar reserva estado",
+            "statusUpdated": "reserva estado actualizard",
             "terminalFinalizeFailed": "The terminal payment succeeded but the sale could not be finalized. Check Sales for a pending entry.",
-            "uploadFailed": "Upload failed",
-            "verifiedCanStart": "Customer verified – you can start the service.",
-            "verifyFailed": "Payment verification failed",
-            "verifyQrFailed": "Failed to verify QR",
+            "uploadFailed": "subir error",
+            "verifiedCanStart": "cliente verificado – you can empezar the servicio.",
+            "verifyFailed": "pago Error de verificación",
+            "verifyQrFailed": "No se pudo Verificar QR",
             "verifyQrHint": "Enter an 8-character code or paste the QR JSON from the customer."
           },
           "resources": {
@@ -23612,12 +23749,13 @@
           },
           "paymentCollect": {
             "title": "Collect pago",
-            "depositDueNow": "Deposit due now · {{deposit}} of {{outstanding}} outstanding",
+            "depositDueNow": "Señal pendiente ahora · {{deposit}} of {{outstanding}} outstanding",
             "collectWithYoco": "Collect with Yoco · {{amount}}",
             "paystackTerminal": "Paystack Terminal",
             "recording": "Recording…",
             "markPaidCash": "Mark pagado (Efectivo) · {{amount}}",
-            "sendPaymentLink": "Enviar pago enlace"
+            "sendPaymentLink": "Enviar pago enlace",
+            "cardMachine": "terminal de tarjeta · {{amount}}"
           },
           "receipt": {
             "title": "Recibo",
@@ -23626,8 +23764,8 @@
             "emailReceipt": "correo recibo",
             "downloadPdf": "Descargar PDF",
             "sendsTo": "Enviars to {{email}}",
-            "titleEmailFailed": "Failed to email receipt",
-            "titleEmailed": "Receipt emailed"
+            "titleEmailFailed": "No se pudo correo recibo",
+            "titleEmailed": "recibo correoed"
           },
           "productFulfillment": {
             "title": "producto Recogida",
@@ -23673,7 +23811,16 @@
             "chargeNotFound": "cobrar no encontrado.",
             "inPersonCash": "en persona (Efectivo)",
             "netPaidMaxRefund": "Net pagado after reembolsos: {{net}} · Max reembolsoable: {{max}}",
-            "processing": "Procesando…"
+            "processing": "Procesando…",
+            "backToCard": "Volver a la tarjeta",
+            "backToCardHint": "Devuelve el dinero a la tarjeta del cliente a través del cajero automático en el que se realizó el pago.",
+            "sentToCardMachine": "Reembolso enviado a la máquina de tarjetas. Siga las indicaciones; la reserva se actualiza cuando se confirma.",
+            "yocoOnMachineTitle": "Reembolso en su máquina Yoco primero",
+            "yocoOnMachineBody": "Los reembolsos Yoco no se pueden iniciar desde Beautonomi. Reembolsa {{amount}} en la aplicación Yoco o en la máquina, luego regístralo aquí para que el saldo y los informes se mantengan correctos.",
+            "yocoRecorded": "Yoco reembolso registrado",
+            "awaitingYocoTitle": "{{amount}} aún por reembolsar en la máquina Yoco",
+            "awaitingYocoBody": "Esta reserva fue cancelada con un reembolso a la tarjeta. Devuélvelo en la aplicación Yoco o en la máquina, luego regístralo aquí. Hasta entonces, permanece pendiente en el informe de conciliación de la máquina de tarjetas.",
+            "yocoRecordCta": "Reembolsado en la máquina: registrar el reembolso"
           }
         },
         "createPayment": {
@@ -23692,7 +23839,9 @@
           "depositPct": "Señal ({{percent}}%)",
           "depositDue": "Señal pendiente ahora: {{amount}}",
           "notifyClient": "Notify cliente",
-          "notifyHint": "Enviar Confirmación de la reserva"
+          "notifyHint": "Enviar Confirmación de la reserva",
+          "cardMachine": "maquina de tarjetas",
+          "depositPolicyHint": "Your payment settings require a {{percent}}% deposit when collecting upfront."
         },
         "productPicker": {
           "selectProductAndQty": "Seleccionar un producto and cantidad",
@@ -23810,23 +23959,23 @@
           "next": "Ifuatayo: {{label}}",
           "a11ySummary": "{{completed}} of {{total}} uhifadhi requirements kamilisha",
           "jumpHint": "Jump to the ifuatayo inahitajika section",
-          "showRequirements": "Show requirements",
-          "hideRequirements": "Hide requirements",
-          "participant": "Participant {{number}}",
+          "showRequirements": "Mostrar requirements",
+          "hideRequirements": "ocultar requirements",
+          "participant": "participante {{number}}",
           "items": {
             "group_date": "Tarehe",
             "group_time": "Muda slot",
-            "group_duration": "Duration",
+            "group_duration": "Duración",
             "group_service": "Default huduma",
-            "group_staff": "Team member",
+            "group_staff": "Miembro del equipo",
             "group_address": "At-home anwani",
-            "group_participants": "Participants",
-            "booking_client": "Client",
+            "group_participants": "participantes",
+            "booking_client": "Cliente",
             "booking_services": "Huduma or bidhaa",
             "booking_schedule": "Tarehe & muda",
-            "booking_staff": "Staff assignment",
+            "booking_staff": "personal assignment",
             "booking_location": "Huduma anwani",
-            "booking_intake": "Client forms",
+            "booking_intake": "cliente forms",
             "booking_recurring": "Repeating series"
           }
         }
@@ -23868,7 +24017,7 @@
         "available": "Disponible",
         "minimum": "Minimum",
         "inQueue": "In queue",
-        "payoutAmountLabel": "Payout Amount ({{currency}}) * — min {{amount}}",
+        "payoutAmountLabel": "Payout importe ({{currency}}) * — min {{amount}}",
         "enterAmount": "Introduce importe",
         "withdrawLoadFailed": "Withdrawable balance could not be loaded. Refresh the page and try again.",
         "belowMinimum": "Below minimum payout ({{amount}})",
@@ -23911,7 +24060,7 @@
         "payoutsInQueueHint": "Sum of your requests still pending or processing (already deducted from available balance).",
         "reconIntro": "Headline revenue reports can read higher than withdrawable because they include cash you collected directly. Here is the full bridge:",
         "excludedCollected": "Excluded: cash / Yoco / EFT you collected directly (not held by us)",
-        "onHoldClears": " (clears {{days}} days after each booking)",
+        "onHoldClears": " (borrars {{days}} días after each reserva)",
         "pendingProcessingRequests": "− pendiente / procesando payout solicitudes",
         "reconFooter": "Note: subscription and ads are billed to your card separately and are never deducted from this balance.",
         "serviceEarnings": "servicio earnings ({{range}})",
@@ -23934,12 +24083,12 @@
         "additionalChargesHint": "Extra cobrars added to reservas",
         "earningsComparison": "Earnings comparison",
         "selectedPeriodEarned": "Selected period (total earned)",
-        "serviceEarningsOnly": "Service earnings only: {{amount}}",
+        "serviceEarningsOnly": "servicio earnings only: {{amount}}",
         "previousComparison": "Previous comparison (total earned)",
         "vsPreviousPeriod": "{{value}}% vs anterior period",
         "payoutSchedule": "Payout horario",
         "nextScheduledPayout": "siguiente programado payout:",
-        "scheduleMeta": "Schedule: {{schedule}} · Minimum {{amount}} · Hold {{days}} days",
+        "scheduleMeta": "horario: {{schedule}} · Minimum {{amount}} · Hold {{days}} días",
         "payoutsAndBanks": "Pagos & cuenta bancarias",
         "payoutsAndBanksHint": "Withdraw available balance to your verified payout accounts. Download statements for accounting.",
         "manageBankAccounts": "Gestionar cuenta bancarias",
@@ -24003,9 +24152,9 @@
         "tips": "propinas",
         "cancellationFees": "Cancelarlation tarifas",
         "additionalCharges": "Cargos adicionales",
-        "request": "Request",
+        "request": "solicitud",
         "stripeConnectPayoutHint": "Payouts are sent via Stripe Connect. Complete setup under Settings → Payout accounts before requesting a withdrawal.",
-        "completeStripeConnect": "Complete Stripe Connect setup"
+        "completeStripeConnect": "completar Stripe Conectar setup"
       },
       "onboarding": {
         "steps": {
@@ -24066,8 +24215,8 @@
             "description": "Seleccionar a suscripción Plan"
           },
           "travelFees": {
-            "title": "Travel Fees",
-            "description": "House-call travel fee rules and live fee preview"
+            "title": "Desplazamiento tarifas",
+            "description": "House-llamar tarifa de desplazamiento rules and En vivo tarifa preseña"
           }
         },
         "toast": {
@@ -24090,13 +24239,13 @@
           "enterSmsCode": "Introduce el código de {{digits}} dígitos del SMS.",
           "emailFirst": "Enter a válido correo electrónico first",
           "emailVerified": "correo verificado!",
-          "emailCodeSent": "A {{digits}}-digit code was sent to {{email}}.",
+          "emailCodeSent": "A {{digits}}-digit código was Enviado to {{email}}.",
           "enterEmailCode": "Please enter the {{digits}}-digit code from your email.",
           "sendEmailCodeFailed": "No se pudo enviar correo código.",
           "invalidFileType": "Invalid file type. Please upload a JPEG, PNG, or WebP image.",
           "imageTooLarge": "That image is too large to upload. Please pick a smaller photo.",
           "galleryNoneUploaded": "ninguno of the galería fotos could be subired. Inténtalo de nuevo.",
-          "galleryPartialFailed": "{{count}} failed to upload. The rest were saved.",
+          "galleryPartialFailed": "{{count}} error to subir. The rest were guardard.",
           "fillRequired": "Fill in all campo obligatorios",
           "serviceRemoved": "servicio quitard",
           "addonRequired": "Addon nombre and precio are obligatorio",
@@ -24135,7 +24284,7 @@
           "oneDayOpen": "At least one día must be abrir",
           "selectPlan": "Seleccionar a suscripción Plan",
           "andMoreSeeConsole": " (and {{count}} más - see console)",
-          "dobRequired": "Date of birth is required for identity verification"
+          "dobRequired": "fecha de nacimiento is obligatorio for verificación de identidad"
         },
         "successHeadline": "You're all set!",
         "continueVerification": "continuar to verification",
@@ -24187,7 +24336,7 @@
           "ownerContactBody": "We verify both your email and mobile number to protect your account.",
           "yourName": "Tu Nombre",
           "emailAddress": "Correo electrónico",
-          "dateOfBirth": "Date of birth"
+          "dateOfBirth": "Fecha de nacimiento"
         },
         "photos": {
           "yourPhoto": "Tu foto",
@@ -24224,7 +24373,7 @@
           "photosUploaded_one": "{{count}} foto subired",
           "photosUploaded_other": "{{count}} fotos subired",
           "requiredBothPhotos": "Upload both a main thumbnail and a profile image/avatar so your provider card has a reliable listing image on web and app.",
-          "photosUploaded": "Photos Uploaded"
+          "photosUploaded": "fotos Upcargared"
         },
         "languages": {
           "en": "Inglés",
@@ -24365,7 +24514,7 @@
           "loadingTravelRates": "Cargando platform Desplazamiento rates…",
           "chargedFromFirstKm": "cobrard from first km",
           "platformRatesApply": "Platform Estándar rates aplicar",
-          "matchingLocation": "{{count}} matching your location",
+          "matchingLocation": "{{count}} matching your ubicación",
           "businessLocation": "Negocio ubicación",
           "baseAddress": "base dirección",
           "mobileLocationBody": "(often your home). We use it for travel distance and fees only. Clients won't get a \"Visit salon\" option here until you add a salon-style location in Settings.",
@@ -24412,9 +24561,9 @@
           "cityType": "Ciudad",
           "zonesSelectedTravel_one": "{{count}} zone selected — set travel fees anytime after signup.",
           "zonesSelectedTravel_other": "{{count}} zones selected — set travel fees anytime after signup.",
-          "autoSelectedZones": "Auto Selected Zones",
+          "autoSelectedZones": "Auto Seleccionado Zones",
           "foundZones": "Found Zones",
-          "zonesSelectedTravel": "Zones Selected Travel"
+          "zonesSelectedTravel": "Zones Seleccionado Desplazamiento"
         },
         "categories": {
           "loadFailed": "No se pudo cargar categorías",
@@ -24425,7 +24574,7 @@
           "categoriesDraftHint": "If you skip services for now, we can draft simple services from the categories you pick.",
           "noCategoriesAvailable": "No categorías disponible. Please Contacto ayuda.",
           "menuCategoryNames": "Names on your menu (you can rename these)",
-          "categoryNamePlaceholder": "Category name"
+          "categoryNamePlaceholder": "Nombre de la categoría"
         },
         "catalog": {
           "atSalon": "En el salón",
@@ -24462,7 +24611,8 @@
           "plusMinSuffix": " (+{{minutes}} min)",
           "catalogIntro": "Add the services you sell today with price and duration. Clients see these on your booking page; you can refine them anytime after onboarding.",
           "extraTimeMins": "Extra hora (mins)",
-          "updateAddon": "Actualizar complemento"
+          "updateAddon": "Actualizar complemento",
+          "menuCategory": "Menu categoría"
         },
         "review": {
           "markMobileReady": "Mark you as Móvil-Listo waquí applicable",
@@ -24501,8 +24651,8 @@
           "addonReviewLine": "+ {{name}} — {{currency}} {{price}}",
           "draftServicesLabel": "borrador servicios:",
           "attachZones": "Attach Zones",
-          "categorySelected": "Category Selected",
-          "zonesSelected": "Selected all {{count}} zones"
+          "categorySelected": "categoría Seleccionado",
+          "zonesSelected": "Seleccionado all {{count}} zones"
         },
         "plan": {
           "activatesInstantly": "Activars instantly",
@@ -24516,7 +24666,13 @@
           "afterSubmitFreeActual": "After you submit, you'll be on this plan immediately — no payment needed.",
           "afterSubmitPaidActual": "After you submit, you'll be taken to a secure Paystack page to complete payment.",
           "selectPlanToContinue": "Select a plan to continue. Free plans activate instantly; paid plans take you to a secure card payment.",
-          "noPlansAvailable": "No pricing plans available at the moment. Please contact support."
+          "noPlansAvailable": "No pricing plans available at the moment. Please contact support.",
+          "freeForever": "gratis forever",
+          "planRadiogroupLabel": "suscripción Planes",
+          "showAllFeatures": "Mostrar all features",
+          "showLessFeatures": "Mostrar menos",
+          "summaryFree": "You're on {{name}} — no pago needed.",
+          "summaryPaid": "You'll pagar securely after enviarting."
         },
         "countries": {
           "ZA": "South Africa",
@@ -24548,7 +24704,28 @@
           "hoursTo": "to"
         },
         "travelFees": {
-          "usePlatformDefault": "Use platform default travel fees"
+          "usePlatformDefault": "Use platform default travel fees",
+          "usePlatformDefaultHint": "Recommended — matches what most providers use on the platform.",
+          "skipHint": "You can skip this step — we'll apply the platform standard and you can adjust it later in Settings.",
+          "loadingDefaults": "Cargando platform Desplazamiento predeterminados…",
+          "platformStandard": "Platform Estándar",
+          "ratePerKm": "Rate per km",
+          "minimumFee": "Minimum tarifa",
+          "freeWithinKm": "gratis within (km)",
+          "maximumFee": "Maximum tarifa",
+          "enable": "cobrar tarifa de desplazamientos for house llamars",
+          "enableHint": "When off, travel is included at no extra charge.",
+          "platformLocked": "Custom travel fees are locked on this platform — platform defaults apply.",
+          "previewLabel": "Preseña Distancia (km)",
+          "previewAtKm": "At {{km}} km: {{currency}} {{fee}}",
+          "pricingModel": "precios model",
+          "perKm": "Per kilometer",
+          "tiered": "Distancia tiers",
+          "ratePerKmInput": "Rate per km ({{currency}})",
+          "minimumFeeInput": "Minimum tarifa ({{currency}})",
+          "tierMaxKm": "Up to km",
+          "tierFee": "Fee ({{currency}})",
+          "addTier": "Añadir tier"
         }
       },
       "dashboard": {
@@ -24626,7 +24803,7 @@
           "owedToPlatformReview": "{{prefix}}Owed to platform — review in Finance",
           "platformHeldReady": "{{prefix}}Platform-held · ready to request payout",
           "payoutQueue": "{{prefix}}{{amount}} in payout queue",
-          "holdOnEarnings": "{{prefix}}{{days}}-day hold on new earnings",
+          "holdOnEarnings": "{{prefix}}{{days}}-día hold on nuevo earnings",
           "allLocationsPrefix": "Todas las ubicaciones · "
         },
         "excellenceBanner": {
@@ -24713,8 +24890,8 @@
           "truncatedBoth": "Some booking and ledger totals may be incomplete for very high-volume accounts.",
           "truncatedBookings": "Booking status counts may be incomplete for very high-volume accounts.",
           "truncatedLedger": "Period earnings may be incomplete for very high-volume accounts.",
-          "bookingsCount": "Bookings ({{count}})",
-          "saleCount": "Sale ({{count}})"
+          "bookingsCount": "reservas ({{count}})",
+          "saleCount": "Venta ({{count}})"
         }
       },
       "settings": {
@@ -24854,6 +25031,10 @@
               "customerVisibility": {
                 "title": "cliente Visibility",
                 "description": "Control how customer and salon lists are displayed"
+              },
+              "referBusinessProgram": {
+                "title": "Refer a Negocio",
+                "description": "enviar anotro salón or beauty Negocio to Beautonomi"
               }
             }
           },
@@ -25100,7 +25281,7 @@
             "addonCreated": "Addon creard",
             "addAddon": "Añadir Addon",
             "filterByType": "filtrar by Tipo",
-            "deleteConfirm": "Are you sure you want to delete \"{{name}}\"?",
+            "deleteConfirm": "Are you sure you want to eliminar \"{{name}}\"?",
             "failedToSave": "No se pudo guardar addon",
             "intro": "Create addons that customers can add to their bookings to increase revenue and enhance their experience.",
             "emptyDescription": "Create addons to offer additional services, products, or upgrades",
@@ -25187,7 +25368,7 @@
             "payAmount": "Pagar {{amount}}",
             "impressionPackTitle": "{{value}} impresiones patrocinadas",
             "impressionPackSubtitle": "Prepaid reach — placements deliver until the pack is fully shown.",
-            "benefitGuaranteedImpressions": "{{value}} guaranteed sponsored impressions",
+            "benefitGuaranteedImpressions": "{{value}} guaranteed sponsored Impresiones",
             "benefitDeliveryAfterPayment": "Entrega empezars only after pago is verificado",
             "benefitNoBidding": "No bidding or daily caps to manage",
             "redirectingImpressions": "Redirecting to pago for {{count}} Impresiones.",
@@ -25196,7 +25377,7 @@
             "timeBoost": "Impulso por tiempo",
             "daysBoost": "{{days}} boost",
             "timeBoostSubtitle": "Flat fee — sponsored placement for {{days}}.",
-            "benefitSponsoredDuration": "Sponsored placement for the full {{days}}",
+            "benefitSponsoredDuration": "Sponsored placement for the lleno {{days}}",
             "benefitFlatPrice": "Predictable flat price — no per-click charges",
             "benefitGoesLiveAfterPayment": "Goes live only after payment is verified",
             "budgetIncreaseBlocked": "Budget increases require a new paid campaign or pack. Reduce the budget, or buy a new boost.",
@@ -25259,10 +25440,10 @@
             "impressionsRemaining": "{{value}} Impresiones remaining",
             "budgetFullyUsed": "Budget llenoy used",
             "budgetRemaining": "{{amount}} budget remaining",
-            "dayBoostPaid": "{{days}} day boost · {{amount}} paid",
+            "dayBoostPaid": "{{days}} día boost · {{amount}} pagado",
             "endsOn": "Ends {{date}}",
-            "impressionsPaidSpent": "{{count}} impressions · {{paid}} paid · {{spent}} spent",
-            "totalBudgetSpent": "Total budget {{budget}} · Spent {{spent}}",
+            "impressionsPaidSpent": "{{count}} Impresiones · {{paid}} pagado · {{spent}} spent",
+            "totalBudgetSpent": "total budget {{budget}} · Spent {{spent}}",
             "dailyCapLine": "Tope diario {{amount}}",
             "bidLine": "Bid {{amount}}/click",
             "targetingCategory_one": "Targeting: {{count}} categoría",
@@ -25298,7 +25479,7 @@
             "paySecurely": "Pay securely",
             "unknownDays": "?",
             "dayCount": "Day Count",
-            "targetingCategory": "Targeting Category"
+            "targetingCategory": "Targeting categoría"
           },
           "ai": {
             "aiStudio": "AI studio",
@@ -25544,8 +25725,8 @@
             "saveBookingFlow": "Guardar reserva flow ajustes",
             "onlineBookingDisabled": "Online booking is currently disabled. Clients will not be able to book appointments online.",
             "shareWhatsApp": "WhatsApp",
-            "shareEmail": "Email",
-            "shareNative": "Share"
+            "shareEmail": "correo",
+            "shareNative": "Compartir"
           },
           "appointment-activity/resources": {
             "resources": "Resources",
@@ -25660,16 +25841,16 @@
             "reference": "Reference",
             "backToBilling": "atrás to Facturación",
             "download": "descargar",
-            "payOnline": "Pay online",
-            "paying": "Starting payment…",
-            "paymentUnavailable": "Online payment is not available for this invoice.",
-            "paymentStartFailed": "Could not start payment. Please try again.",
-            "paymentSuccessful": "Payment successful",
-            "paymentPendingTitle": "Payment pending",
+            "payOnline": "Pay En línea",
+            "paying": "Starting pago…",
+            "paymentUnavailable": "En línea pago is not disponible for this factura.",
+            "paymentStartFailed": "No se pudo empezar pago. inténtalo de nuevo.",
+            "paymentSuccessful": "pago listoful",
+            "paymentPendingTitle": "pago pendiente",
             "paymentPendingBody": "Your payment is still processing. Refresh this page in a moment.",
-            "paymentFailedDefault": "Payment was not completed. Please try again or use another card.",
-            "paymentCancelled": "Payment cancelled",
-            "verifyingPayment": "Confirming your payment…"
+            "paymentFailedDefault": "pago was not completado. inténtalo de nuevo or use anotro Tarjeta.",
+            "paymentCancelled": "pago cancelado",
+            "verifyingPayment": "confirmando your pago…"
           },
           "billing": {
             "billingDetailsAndInvoices": "Facturación detalles and Facturas",
@@ -25749,8 +25930,8 @@
             "period": "Period",
             "receipt": "Recibo",
             "setAsDefault": "Set as predeterminado",
-            "invoiceCount": "Invoice Count",
-            "paymentMethodCount": "Payment Method Count"
+            "invoiceCount": "factura Count",
+            "paymentMethodCount": "método de pago Count"
           },
           "business-description": {
             "businessDescription": "Negocio descripción",
@@ -25914,10 +26095,10 @@
             "howBody": "Customers can cancel for free within 15 minutes of booking, or more than the hours below before their appointment — they receive a full refund to their Beautonomi wallet. Cancellations inside that window are late: the refund percentage below applies to amounts already paid. A cancellation fee only applies when the late refund percentage is 0%. No-show fees are configured separately under Payment Settings.",
             "empty": "No cancelarlation políticas configured",
             "createFirst": "Crear First política",
-            "moreThanHours": "More than {{hours}} hours before:",
+            "moreThanHours": "más than {{hours}} horas before:",
             "fullRefund": "lleno reembolso",
             "toWallet": "to the cliente's monedero",
-            "withinHours": "Within {{hours}} hours (late cancellation):",
+            "withinHours": "Within {{hours}} horas (late cancelarlation):",
             "lateRefund": "{{pct}}% reembolso",
             "ofAmountsPaid": "of importes pagado",
             "lateFee": "Late cancelarlation tarifa (when reembolso is 0%):",
@@ -25994,11 +26175,11 @@
             "lastService": "Last servicio: {{date}}",
             "bookings_one": "{{count}} reserva",
             "bookings_other": "{{count}} reservas",
-            "combinedRating_one": "{{rating}} combined ({{count}} rating)",
-            "combinedRating_other": "{{rating}} combined ({{count}} ratings)",
+            "combinedRating_one": "{{rating}} combined ({{count}} valoración)",
+            "combinedRating_other": "{{rating}} combined ({{count}} valoracións)",
             "reviewsAfterVisits": "Reviews {{reviewAvg}} ({{reviewCount}}) · After visits {{visitAvg}} ({{visitCount}})",
-            "bookings": "Bookings",
-            "combinedRating": "Combined Rating"
+            "bookings": "Reservas",
+            "combinedRating": "Combined valoración"
           },
           "clients/referrals": {
             "referralSources": "recomendación Sources",
@@ -26100,7 +26281,7 @@
             "addACaptionForThisPhoto": "Añadir a Leyenda for this foto",
             "invalidFileTypeNamed": "{{name}}: Invalid file type. Only JPEG, PNG, and WebP are allowed.",
             "fileTooLargeNamed": "{{name}}: File too large. Maximum size is 5MB.",
-            "compressedImages": "Compressed {{count}} image(s): {{percent}}% reduction",
+            "compressedImages": "Compressed {{count}} imagen(s): {{percent}}% reduction",
             "successfullyUploadedImages": "Listollenoy subired {{count}} imagen(s)",
             "failedToUploadImages": "No se pudo subir imagens",
             "uploadFailedDetails": "Upload failed: {{message}}. Please check console for details.",
@@ -26166,7 +26347,7 @@
             "editPhotoDetails": "Editar foto detalles",
             "providerIdNotFound": "profesional ID no encontrado",
             "uploadTimeoutNamed": "subir horaout for {{name}}",
-            "imagesUploaded": "Images Uploaded"
+            "imagesUploaded": "Images Upcargared"
           },
           "integrations/email": {
             "emailMarketingIntegration": "correo Marketing Integration",
@@ -26207,7 +26388,7 @@
             "mailchimpNote": "Use a Mailchimp Transactional API key from Mailchimp Transactional → Settings → API Keys (not Marketing keys from Profile → Extras → API keys). Verify your sending domain (SPF/DKIM) before sending.",
             "sendGridApiKey": "EnviarGrid API Key",
             "mailchimpApiKey": "Mailchimp Transactional API Key",
-            "placeholderMailchimpApiKey": "Your Transactional API key",
+            "placeholderMailchimpApiKey": "Tu Transactional API key",
             "providerSwitchRequiresNewKey": "Switching email providers requires entering a new API key for the selected provider.",
             "sendGridKeyHint": "Get your API key from SendGrid Settings → API Keys. Keep this key secure.",
             "mailchimpKeyHint": "Create a key in your Mailchimp Transactional account (Settings → API Keys). Marketing API keys ending in -us1 are not supported here.",
@@ -26224,7 +26405,7 @@
             "testIntegration": "Prueba Integration",
             "testHint": "Send a test email to verify your integration is working",
             "mailchimpTestHint": "Test connection checks your Mailchimp Transactional API key. Send test email verifies sending domain and delivery (integration must be enabled).",
-            "testConnection": "Test Connection",
+            "testConnection": "Prueba Conectarion",
             "testConnectionSuccess": "Mailchimp Transactional connection successful",
             "testConnectionMailchimpOnly": "Connection ping is only for Mailchimp Transactional. Send a test email instead.",
             "testPassed": "Prueba Passed",
@@ -26426,7 +26607,7 @@
             "refresh": "Actualizar",
             "ownIntegrations": "Own integrations",
             "ownIntegrationsHint": "Connect your SendGrid/Mailchimp or Twilio account. Sends on your credentials are not debited from platform credits.",
-            "topUpSuccess": "Marketing credits topped up successfully.",
+            "topUpSuccess": "Marketing creditars topped up listollenoy.",
             "topUpPending": "Payment is still processing. Refresh in a moment if your balance has not updated."
           },
           "note-templates": {
@@ -26660,19 +26841,19 @@
             "verificationOptionalSuffix": " Account verification is optional — if it's unavailable for your bank, enter the name manually.",
             "adding": "Adding...",
             "addAccount": "Añadir Cuenta",
-            "bankAccountCount": "Bank Account Count",
-            "stripeConnectTitle": "Stripe Connect",
+            "bankAccountCount": "cuenta bancaria Count",
+            "stripeConnectTitle": "Stripe Conectar",
             "stripeConnectSubtitle": "Set up payouts through Stripe. Your bank is added on Stripe's secure onboarding page.",
-            "stripeConnectReady": "Ready for payouts",
+            "stripeConnectReady": "Listo for Pagos",
             "stripeConnectReadyHint": "Payouts will be sent to the bank account on your Stripe Connect account.",
-            "stripeConnectIncomplete": "Setup incomplete",
+            "stripeConnectIncomplete": "Setup incompletar",
             "stripeConnectIncompleteHint": "Finish Stripe onboarding so payouts can be sent to your bank.",
-            "stripeConnectNotStarted": "Stripe Connect not set up",
+            "stripeConnectNotStarted": "Stripe Conectar No definido up",
             "stripeConnectNotStartedHint": "Connect with Stripe to receive payouts. You will add your bank on Stripe's secure onboarding page.",
-            "stripeConnectContinue": "Continue setup",
-            "stripeConnectStart": "Connect with Stripe",
-            "stripeConnectBankLast4": "Bank ···· {{last4}}",
-            "stripeConnectFailed": "Could not open Stripe Connect. Try again.",
+            "stripeConnectContinue": "continuar setup",
+            "stripeConnectStart": "Conectar with Stripe",
+            "stripeConnectBankLast4": "Banco ···· {{last4}}",
+            "stripeConnectFailed": "No se pudo abrir Stripe Conectar. intentarlo de nuevo.",
             "stripeConnectReturnSuccess": "Stripe Connect updated. Complete any remaining steps if setup is still incomplete."
           },
           "sales/card-machines": {
@@ -26726,8 +26907,8 @@
             "settledCount": "{{count}} settled",
             "stillProcessingCount": "{{count}} still procesando",
             "closedCount": "{{count}} cerrard",
-            "checkedPaymentsChanges": "Checked {{count}} payment — {{parts}}",
-            "checkedPaymentsChanges_other": "Checked {{count}} payments — {{parts}}",
+            "checkedPaymentsChanges": "Checked {{count}} pago — {{parts}}",
+            "checkedPaymentsChanges_other": "Checked {{count}} pagos — {{parts}}",
             "checkedPaymentsNoChanges": "Checked {{count}} pago — no cambiars",
             "checkedPaymentsNoChanges_other": "Checked {{count}} pagos — no cambiars",
             "environmentSuffix": " · {{environment}}",
@@ -26816,10 +26997,12 @@
             "setupGuideCheckoutRest": "— customer taps, inserts, swipes, or scans QR.",
             "setupGuideRefunds": "Refunds are done on the physical machine, then recorded in Beautonomi.",
             "cardMachinePayoutsNote": "Card machine payments stay in your merchant account — not Beautonomi online payouts.",
-            "activeMachineCount": "Active Machine Count",
-            "amountMismatch": "Amount Mismatch",
-            "paymentsCount": "Payments ({{count}})",
-            "paymentsWaitingOnMachine": "Payments Waiting On Machine"
+            "activeMachineCount": "Activo Machine Count",
+            "amountMismatch": "importe Mismatch",
+            "paymentsCount": "pagos ({{count}})",
+            "paymentsWaitingOnMachine": "pagos En espera On Machine",
+            "beautonomiCardMachineNav": "Beautonomi terminal de tarjeta",
+            "yocoCardMachineNav": "Yoco terminal de tarjeta"
           },
           "sales/gift-cards": {
             "giftCards": "tarjetas de regalo",
@@ -27223,7 +27406,7 @@
             "delivery": "Entrega",
             "review": "reseña",
             "beautonomiCardMachines": "Beautonomi terminales de tarjeta",
-            "devicesActive": "Devices Active"
+            "devicesActive": "dispositivos Activo"
           },
           "sales/tips": {
             "tips": "propinas",
@@ -27365,7 +27548,7 @@
             "skLive": "sk_live_...",
             "pkLive": "pk_live_...",
             "whsec": "whsec_...",
-            "yocoConnectionFailed": "Yoco connection failed: {{error}}",
+            "yocoConnectionFailed": "Yoco connection error: {{error}}",
             "dismissFailed": "Descartar error",
             "webPosConnected": "Web POS connected",
             "checkoutOnlyReconnect": "Checkout only — reconnect for terminals",
@@ -27388,7 +27571,7 @@
             "connectedAs": "Conectared as",
             "yocoAccount": "Yoco cuenta",
             "environment": "Environment:",
-            "tokenRefreshes": "token refreshes automatically (current expiry {{date}})",
+            "tokenRefreshes": "token actualizares automatillamary (actual expiry {{date}})",
             "lastTokenRefreshFailed": "Last token actualizar error:",
             "reconnectToRestore": "to restore Web POS Acceso.",
             "redirectToYoco": "We will redirect you to",
@@ -27487,7 +27670,7 @@
             "completionRate": "Completion Rate",
             "cancelledCount_one": "{{count}} cancelado reserva",
             "cancelledCount_other": "{{count}} cancelado reservas",
-            "cancelledCount": "{{count}} cancelled"
+            "cancelledCount": "{{count}} cancelado"
           },
           "service-zones": {
             "serviceZones": "servicio Zones",
@@ -27773,7 +27956,7 @@
             "sendMessagesDesc": "respuesta to cliente conversations",
             "createExplorePosts": "Crear Explorar Publicacións",
             "createExplorePostsDesc": "Crear and manage profesional Explorar posts",
-            "permissionCount": "Permission Count"
+            "permissionCount": "permiso Count"
           },
           "team/roles": {
             "roles": "Rols",
@@ -27834,7 +28017,7 @@
               "create_explore_posts": "Crear Explorar Publicacións"
             },
             "catEngagement": "Engagement",
-            "permissionCount": "Permission Count"
+            "permissionCount": "permiso Count"
           },
           "team/time-off-types": {
             "timeOffTypes": "hora Off Tipos",
@@ -27991,7 +28174,7 @@
         },
         "serviceZones": {
           "introHint": "Zones set where customers can book you at home. A zone with its own fee uses it instead of your travel fee.",
-          "actionTravelFees": "Travel fees"
+          "actionTravelFees": "Tarifa de desplazamientos"
         }
       },
       "pages": {
@@ -28097,7 +28280,7 @@
           "periodToday": "hoy",
           "periodWeek": "semana",
           "periodMonth": "mes",
-          "commissionTips": "Commission {{commission}} · Tips {{tips}}",
+          "commissionTips": "Commission {{commission}} · propinas {{tips}}",
           "noPayStubs": "Aún no hay pagar stubs",
           "noPayStubsHint": "When your employer runs payroll, your pay stubs will appear here.",
           "netLabel": "Net: {{amount}}",
@@ -28142,14 +28325,14 @@
           "downloadIos": "descargar for iPhone",
           "downloadAndroid": "descargar for Android",
           "logoAlt": "Beautonomi",
-          "setPasswordTitle": "Create your password",
+          "setPasswordTitle": "Crear your contraseña",
           "setPasswordHint": "Choose a password (at least 8 characters), then sign in with your invite email.",
-          "passwordLabel": "Password",
-          "passwordConfirmLabel": "Confirm password",
-          "setPasswordSubmit": "Save password",
-          "setPasswordSuccess": "Password saved. Sign in to accept your invite.",
-          "setPasswordFailed": "Could not save password",
-          "passwordMismatch": "Passwords do not match",
+          "passwordLabel": "Contraseña",
+          "passwordConfirmLabel": "Confirmar contraseña",
+          "setPasswordSubmit": "Guardar contraseña",
+          "setPasswordSuccess": "contraseña guardard. iniciar sesión to accept your invitación.",
+          "setPasswordFailed": "No se pudo guardar contraseña",
+          "passwordMismatch": "Contraseñas do not match",
           "passwordTooShort": "Password must be at least 8 characters"
         },
         "notifications": {
@@ -28386,7 +28569,7 @@
           "publicHoliday": "Public holiday",
           "orTypeYourOwn": "Or Tipo your own…",
           "savingEllipsis": "Guardando…",
-          "overlappingBookings": "Overlapping Bookings"
+          "overlappingBookings": "Overlapping reservas"
         },
         "ecommerce/shipping": {
           "failedToSave": "No se pudo guardar shipping configuration. inténtalo de nuevo.",
@@ -28433,7 +28616,27 @@
           "collectionNotesHint": "Shown to customers at checkout (e.g. hours, entrance, what to bring)",
           "collectionNotesPlaceholder": "e.g. Collection available Mon-Fri 9am-5pm. Please bring a copy of your order confirmation.",
           "saved": "Guardard!",
-          "saveConfiguration": "Guardar Configuration"
+          "saveConfiguration": "Guardar Configuration",
+          "readinessTitle": "Setup checklist",
+          "courierAccount": "Tu courier cuenta",
+          "connected": "Conectared",
+          "notConnected": "Not connected",
+          "courierOwnerOnly": "Only the business owner can view or edit courier API keys.",
+          "apiKey": "API key",
+          "pasteApiKey": "pegar nuevo API key",
+          "saveCourierKeys": "Guardar courier keys",
+          "testCourierConnection": "Prueba connection",
+          "testingCourier": "Pruebaing…",
+          "courierSaved": "Courier credentials guardard.",
+          "courierSaveFailed": "No se pudo guardar courier credentials.",
+          "courierTestOk": "Conectarion listoful.",
+          "courierTestFailed": "Conectarion Prueba error.",
+          "courierNoChanges": "Introduce nuevo credential fields to guardar.",
+          "aramexAccount": "cuenta número",
+          "aramexPin": "cuenta PIN",
+          "aramexUser": "Usuarionombre",
+          "aramexPassword": "Contraseña",
+          "aramexProductType": "Domestic producto Tipo (e.g. ONP)"
         },
         "packages/new": {
           "failedToLoadItems": "No se pudo cargar Artículos",
@@ -28523,7 +28726,7 @@
           "managePlanUnderSubscription": "Manage your plan under Subscription.",
           "viewPlans": "Ver Planes",
           "verifyEmail": "Verificar correo",
-          "enterCodeSentTo": "Enter the {{count}}-digit code sent to {{target}}.",
+          "enterCodeSentTo": "Introduce the {{count}}-digit Código enviado to {{target}}.",
           "emailVerificationCode": "correo código de verificación",
           "verifyAndSave": "Verificar y guardar",
           "verifyPhone": "Verificar teléfono",
@@ -28720,7 +28923,7 @@
           "walletHint": "Adds store credit to the customer's wallet for a future purchase.",
           "reasonOptional": "Motivo (opcional)",
           "reasonPlaceholder": "e.g. Damaged Artículo, cliente solicitud",
-          "refundAmountRange": "Refund amount must be between 0 and {{amount}}.",
+          "refundAmountRange": "reembolso importe must be between 0 and {{amount}}.",
           "processingRefund": "procesando...",
           "confirmRefund": "Confirmar reembolso",
           "statusPending": "pendiente",
@@ -28732,7 +28935,8 @@
           "statusCancelled": "cancelado",
           "statusRefunded": "reembolsado",
           "paid": "pagado",
-          "estimatedDeliveryDate": "Estimated delivery date (optional)"
+          "estimatedDeliveryDate": "Estimated Entrega fecha (opcional)",
+          "partialWalletRefundHint": "Partial wallet refunds credit the customer's store balance only. Card and gift-card payments are not returned unless you refund the full order total."
         },
         "team/shifts/dialog": {
           "overrideLocation": "Override ubicación Opevaloración horas",
@@ -28860,11 +29064,11 @@
           "bookingsPeriod": "reservas (period)",
           "bookingsPeriodHint": "Created in window · not cita fecha",
           "upcomingConfirmed": "Próximos confirmared: {{count}}",
-          "firstPeriodBookings": "First {{period}} with bookings",
+          "firstPeriodBookings": "First {{period}} with reservas",
           "allTimeBookingRows": "All-hora reserva rows:",
           "customers": "clientes",
           "customersHint": "Distinct clientes in your reservas",
-          "repeatSingle": "Repeat (2+ bookings): {{repeat}} · Single-booking: {{single}}",
+          "repeatSingle": "Repeat (2+ reservas): {{repeat}} · Single-reserva: {{single}}",
           "topOfferings": "Top offerings",
           "topOfferingsHint": "By catalog line totals · not ledger",
           "leading": "Leading: {{name}}",
@@ -28881,7 +29085,7 @@
           "rankedOfferingsHint": "Sum of booking line prices per service for bookings ever created — catalog totals; use ledger reports for settlement economics.",
           "noOfferingTitle": "Aún no hay offering Datos",
           "noOfferingDesc": "Completed appointments with catalog lines will rank here.",
-          "bookingsLineTotal": "{{count}} bookings · line total"
+          "bookingsLineTotal": "{{count}} reservas · line total"
         },
         "finance/vat-reports": {
           "unableToMarkRemitted": "Unable to mark as remitted. Please refresh the page.",
@@ -28930,7 +29134,7 @@
           "nextStepsBody": "Remit {{amount}} to SARS by {{date}}.",
           "submitEfiling": "enviar via SARS eFiling →",
           "markAsRemitted": "Mark as Remitted to SARS",
-          "daysRemaining": "{{count}} days remaining",
+          "daysRemaining": "{{count}} días remaining",
           "transaction": "Transaction"
         },
         "marketing/segment-builder": {
@@ -29026,7 +29230,8 @@
           "privateNotes": "Privado notas",
           "notesPlaceholder": "Anything else we should know",
           "submitting": "Enviarting…",
-          "submitReferral": "enviar recomendación"
+          "submitReferral": "enviar recomendación",
+          "loadFailed": "No se pudo cargar your recomendacións. intentarlo de nuevo."
         },
         "account/personal-profile": {
           "fallbackName": "Tu perfil",
@@ -29052,7 +29257,7 @@
           "noMatch": "No clientes match your buscar",
           "favorite": "Favorite",
           "noContact": "No Contacto",
-          "bookingsSpent": "{{count}} bookings • {{amount}} spent",
+          "bookingsSpent": "{{count}} reservas • {{amount}} spent",
           "moreCount": "+{{count}} más",
           "unknown": "Desconocido",
           "emptyPreview": "Start typing your message to see a live preview here.",
@@ -29110,7 +29315,7 @@
           "endpointNotFound": "Conversations endpoint no encontrado.",
           "networkError": "Network error: Unable to reach server. Please check your connection.",
           "serverError": "Server error. inténtalo de nuevo más tarde.",
-          "loadFailedWithStatus": "Failed to fetch conversations ({{status}})",
+          "loadFailedWithStatus": "No se pudo fetch conversations ({{status}})",
           "unexpectedError": "An unexpected error occurred",
           "loading": "Cargando mensajes...",
           "selectConversation": "Seleccionar a conversation",
@@ -29163,8 +29368,8 @@
           "paystackDesc": "QR and enlace pagos through Beautonomi Pagos",
           "giftCardsDesc": "Accept platform tarjetas de regalo",
           "terminalShopDesc": "pedido terminales de tarjeta from the Beautonomi catalog",
-          "payoutAccountsDescStripe": "Complete Stripe Connect payout setup",
-          "payoutAccountsDescPaystack": "Add, verify and manage payout bank accounts"
+          "payoutAccountsDescStripe": "completar Stripe Conectar payout setup",
+          "payoutAccountsDescPaystack": "Add, Verificar and manage payout cuenta bancarias"
         },
         "resources-forms": {
           "title": "Resources & Forms",
@@ -29311,7 +29516,8 @@
             "package-usage": "paquete Usage",
             "business-overview": "Negocio Overver",
             "performance-dashboard": "Performance Dashboard",
-            "comparison": "Period Comparison"
+            "comparison": "Period Comparison",
+            "card-machine-reconciliation": "Conciliación de la máquina de tarjetas"
           }
         },
         "pages": {
@@ -29372,7 +29578,7 @@
             "subtitle": "Products ranked by total retail line revenue — appointment add-ons (by scheduled date) and paid product orders (by order date). Same mixed window as Product Sales.",
             "unableToLoad": "Unable to cargar top productos Datos",
             "calendarWindow": "calendario window · {{from}} – {{to}}",
-            "listCap": "List cap · top {{count}} SKUs by revenue",
+            "listCap": "List cap · top {{count}} SKUs by relocal",
             "bookingLines": "cita lines",
             "orderLines": "Minorista pedido lines",
             "lineRevenue": "Line relocal",
@@ -29386,7 +29592,7 @@
             "lineRevenueHint": "Total of line amounts for all products with any sales in the period.",
             "rankedProducts": "Ranked productos",
             "rankedHint": "Top {{count}} shown · sorted by line revenue · avg price is revenue ÷ units for that SKU.",
-            "unitsAvg": "{{count}} units · {{amount}} avg / unit",
+            "unitsAvg": "{{count}} units · {{amount}} avg / Unidad",
             "lineRows": "{{count}} line rows (booking or order lines, not visits)",
             "emptyTitle": "No productos sold",
             "emptyDesc": "No qualifying product lines in the selected period."
@@ -29403,7 +29609,7 @@
             "clientsCount": "{{count}} clientes",
             "avg": "{{amount}} avg",
             "topClients": "Top clientes by Lifehora Value",
-            "visitsMonths": "{{visits}} visits • {{months}} months",
+            "visitsMonths": "{{visits}} visits • {{months}} meses",
             "emptyTitle": "No clientes found",
             "emptyDesc": "No cliente Datos disponible."
           },
@@ -29419,7 +29625,7 @@
             "failedCaptures": "Failed gateway captures in this window",
             "failedBody": "{{total}} failed payment_transaction rows with capture timestamps in range",
             "failedLinked": "({{count}} enlaceed to a reserva at this profesional).",
-            "failedLinkedLocation": "({{count}} linked to a booking at this provider and location).",
+            "failedLinkedLocation": "({{count}} enlaceed to a reserva at this profesional and ubicación).",
             "failedSuffix": "These are attempts, not settled customer funds — excluded from method totals above.",
             "breakdown": "Breakdown by method",
             "breakdownHint": "Each row can combine gateway captures (Paystack, Yoco, …), till logs (booking_payments), and wallet split adjustments.",
@@ -29429,20 +29635,20 @@
             "gatewayRows_other": "{{count}} gateway/settlement rows",
             "tillLogs_one": "{{count}} till / manual log",
             "tillLogs_other": "{{count}} till / manual logs",
-            "walletAdj_one": "{{count}} wallet split adjustment",
-            "walletAdj_other": "{{count}} wallet split adjustments",
+            "walletAdj_one": "{{count}} monedero split adjustment",
+            "walletAdj_other": "{{count}} monedero split adjustments",
             "lineItems_one": "{{count}} line Artículo",
             "lineItems_other": "{{count}} line Artículos",
-            "avgLineItems": "Avg {{amount}} · {{count}} line item",
-            "avgLineItems_one": "Avg {{amount}} · {{count}} line item",
-            "avgLineItems_other": "Avg {{amount}} · {{count}} line items",
+            "avgLineItems": "Avg {{amount}} · {{count}} line Artículo",
+            "avgLineItems_one": "Avg {{amount}} · {{count}} line Artículo",
+            "avgLineItems_other": "Avg {{amount}} · {{count}} line Artículos",
             "dateRange": "{{from}} → {{to}}",
             "amountSuffix": " · {{amount}}",
             "listSeparator": " · ",
             "gatewayRows": "Gateway rows",
-            "lineItems": "Line items",
+            "lineItems": "Line Artículos",
             "tillLogs": "Till Logs",
-            "walletAdj": "Wallet Adj"
+            "walletAdj": "monedero Adj"
           },
           "staff/commission": {
             "title": "Commission informes",
@@ -29455,9 +29661,9 @@
             "breakdown": "personal Commission Breakdown",
             "emptyTitle": "No commission Datos",
             "emptyDesc": "No commission data available for the selected period.",
-            "rateBookings": "{{rate}}% rate • {{count}} booking",
-            "rateBookings_one": "{{rate}}% rate • {{count}} booking",
-            "rateBookings_other": "{{rate}}% rate • {{count}} bookings",
+            "rateBookings": "{{rate}}% rate • {{count}} reserva",
+            "rateBookings_one": "{{rate}}% rate • {{count}} reserva",
+            "rateBookings_other": "{{rate}}% rate • {{count}} reservas",
             "fromAmount": "from {{amount}}"
           },
           "staff/hours": {
@@ -29517,9 +29723,9 @@
             "revenueByStaff": "Relocal by personal",
             "revenueByStaffHint": "Allocated from each booking’s ledger net by share of line items assigned to staff (retail not included).",
             "noStaffRevenue": "No personal relocal Datos disponible for the Seleccionado period.",
-            "appointmentsCount": "Appointments Count",
-            "ordersCount": "Orders Count",
-            "scheduledAppointmentsCount": "Scheduled Appointments Count"
+            "appointmentsCount": "citas Count",
+            "ordersCount": "pedidos Count",
+            "scheduledAppointmentsCount": "programado citas Count"
           },
           "payments/summary": {
             "title": "pago Resumen",
@@ -29538,7 +29744,7 @@
             "providerNetActivity": "profesional net activity",
             "providerNetHint": "Earnings + propinas + Desplazamiento + cancelar tarifas − reembolsos (ledger)",
             "refundedLedger": "reembolsado (ledger)",
-            "refundRateVsSettled": "Refund rate vs settled funds: {{rate}}%",
+            "refundRateVsSettled": "reembolso rate vs settled funds: {{rate}}%",
             "customerFundsSettled": "cliente funds settled",
             "customerFundsHint": "Finance ledger in the settlement window — Paystack/Yoco splits sum card + wallet + gift card; wallet-only flows count wallet/gift rows without double-counting the commission “payment” row.",
             "rawLedgerLines": "Raw ledger lines: payment {{payment}} · wallet {{wallet}} · gift card {{gift}}{{addon}} (informational — headline uses deduped total)",
@@ -29561,14 +29767,14 @@
             "noPaymentMethodData": "No método de pago Datos disponible for the Seleccionado period.",
             "paymentsByStatus": "pagos by estado",
             "noPaymentStatusData": "No pago estado Datos disponible for the Seleccionado period.",
-            "cashStyle": "Cash Style",
-            "transactionsCount": "{{count}} transactions",
+            "cashStyle": "Efectivo Style",
+            "transactionsCount": "{{count}} transacciones",
             "ledgerTruncatedTitle": "Large ledger — totals may be incomplete",
             "ledgerTruncated": "More than {{max}} finance rows matched this range. Narrow the date range for complete totals.",
-            "membershipEarnings": "Membership earnings (ledger)",
+            "membershipEarnings": "membresía earnings (ledger)",
             "membershipEarningsHint": "membership_provider_earnings rows settled in this period (included in provider net activity).",
-            "providerCollectedByMethod": "Provider-collected (cash / EFT / card)",
-            "methodEft": "Bank transfer (EFT)"
+            "providerCollectedByMethod": "profesional-collected (Efectivo / EFT / Tarjeta)",
+            "methodEft": "Transferencia bancaria (EFT)"
           },
           "payments/yoco-reconciliation": {
             "title": "Yoco reconciliation",
@@ -29679,7 +29885,7 @@
             "feature": "personal performance",
             "subtitle": "Ledger net by team member — aligned with Sales Summary",
             "unableToLoad": "Unable to cargar personal performance Datos",
-            "ledgerIncludes": "Ledger allocation includes: {{types}}",
+            "ledgerIncludes": "Ledger alubicación includes: {{types}}",
             "teamSize": "equipo size",
             "inReportScope": "In informe scope",
             "uniqueAppointments": "Unique citas",
@@ -29748,7 +29954,7 @@
             "noCategoriesDesc": "No producto categorías disponible.",
             "productsCount_one": "{{count}} producto",
             "productsCount_other": "{{count}} productos",
-            "productsCount": "Products ({{count}})"
+            "productsCount": "productos ({{count}})"
           },
           "products/sales": {
             "title": "producto Ventas",
@@ -29864,7 +30070,7 @@
             "subtitle": "Ledger refund rows and provider earnings reversals — same window as your filters",
             "unableToLoad": "Unable to cargar reembolsos Datos",
             "howToRead": "How to read this informe",
-            "datesBucket": "Dates bucket using provider timezone: {{timezone}}",
+            "datesBucket": "Fechas bucket using profesional horazone: {{timezone}}",
             "refundLedgerRows": "reembolso ledger rows",
             "refundLedgerHint": "Count of finance_transactions refund rows in range",
             "customerRefundGross": "cliente reembolso gross",
@@ -29883,7 +30089,7 @@
             "noRefundsDesc": "No refund ledger rows in the selected period.",
             "ofRefundGross": "{{pct}}% of reembolso gross · {{count}} row",
             "ofRefundGross_one": "{{pct}}% of reembolso gross · {{count}} row",
-            "ofRefundGross_other": "{{pct}}% of refund gross · {{count}} rows",
+            "ofRefundGross_other": "{{pct}}% of reembolso gross · {{count}} rows",
             "byDay": "By día (profesional horazone)",
             "rowsCount_one": "{{count}} row",
             "rowsCount_other": "{{count}} rows",
@@ -29910,7 +30116,7 @@
             "subtitle": "Reservado servicio minutos vs programado personal availability (profesional horazone)",
             "fromBeforeTo": "'From' must be on or before 'To'.",
             "maxDays": "Choose at most {{max}} inclusive days (your range is {{count}} days).",
-            "rangeTooLong": "Range is {{range}} — maximum {{max}} days.",
+            "rangeTooLong": "Range is {{range}} — maximum {{max}} días.",
             "daysCount_one": "{{count}} día",
             "daysCount_other": "{{count}} días",
             "reportUnavailable": "informe no disponible",
@@ -29940,7 +30146,7 @@
             "noActiveStaff": "No Activo personal match this filtrar.",
             "noDaysInRange": "No días in range.",
             "occupancyHiddenNoAvailability": "Occupancy % is not shown when there is no scheduled availability in this range.",
-            "daysCount": "Days Count"
+            "daysCount": "días Count"
           },
           "business/comparison": {
             "monthVsPrior": "Month vs prior mes",
@@ -29966,7 +30172,7 @@
             "avgLedgerHint": "Booking-linked ledger only ÷ appointment count (not booking.total_amount)",
             "new": "Nuevo",
             "vsPreviousColumn": "vs anterior column",
-            "bookingsLedgerSplit": "Bookings ledger {{bookings}} · Product orders {{orders}}"
+            "bookingsLedgerSplit": "reservas ledger {{bookings}} · producto pedidos {{orders}}"
           },
           "bookings/status": {
             "title": "reserva estado",
@@ -29998,7 +30204,7 @@
             "monthlyBuckets": "Mensual buckets",
             "quarterlyBuckets": "Quarterly buckets",
             "yearlyBuckets": "Anual buckets",
-            "windowLookback": "Window {{from}} → {{to}} · ~{{months}} mo lookback · {{tz}}",
+            "windowLookback": "Window {{from}} → {{to}} · ~{{months}} mo lookatrás · {{tz}}",
             "quarterLabel": "Q{{q}} {{year}}",
             "withCompletedVisit": "With ≥1 completed visit in window",
             "singleVisitClients": "Single-visit clientes",
@@ -30039,7 +30245,7 @@
             "repeatVisitsInWindow": "Repeat visits in window",
             "repeatVisitsHint": "{{returning}} clients had 2+ appointments scheduled in this range ({{total}} active clients).",
             "retentionRate": "Retention rate",
-            "windowDaysTz": "Window: {{days}} inclusive days · {{tz}}",
+            "windowDaysTz": "Window: {{days}} inclusive días · {{tz}}",
             "topSpenders": "Top spenders (in window)",
             "topSpendersHint": "Sum of reserva.total_importe per cliente · top 10.",
             "clientDetail": "cliente detail",
@@ -30101,7 +30307,7 @@
             "topServices": "Top servicios",
             "noServicesFound": "No servicios found",
             "noServiceData": "No servicio Datos disponible.",
-            "bookingsCount": "Bookings ({{count}})"
+            "bookingsCount": "reservas ({{count}})"
           },
           "packages/sales": {
             "title": "paquete sales",
@@ -30146,7 +30352,7 @@
             "topClientsHint": "Up to 20 — counts paquete-included reservas per cliente.",
             "bookingsCount_one": "{{count}} reserva",
             "bookingsCount_other": "{{count}} reservas",
-            "bookingsCount": "Bookings ({{count}})",
+            "bookingsCount": "reservas ({{count}})",
             "uses": "Uses"
           },
           "gift-cards/sales": {
@@ -30180,7 +30386,7 @@
             "title": "cierre del día",
             "reportTitle": "cierre del día informe",
             "subtitle": "Till-style totals by capture timestamps — not the same as ledger payouts",
-            "calendarDay": "Calendar day for “{{date}}” is interpreted in {{timezone}}.",
+            "calendarDay": "calendario día for “{{date}}” is interpreted in {{timezone}}.",
             "unclosed": "Uncerrard citas ({{count}})",
             "unclosedSplit": "{{today}} from today · {{older}} from earlier days",
             "moreInQueue": "+{{count}} más in the cerrar-out queue",
@@ -30216,7 +30422,7 @@
             "reportTitle": "Cancelarlations informe",
             "subtitle": "Scheduled-window counts, reasons, and ledger-linked amounts posted in range",
             "unableToLoad": "Unable to cargar cancelarlations Datos",
-            "ledgerNetTypes": "Ledger net types for “lost revenue”: {{types}}",
+            "ledgerNetTypes": "Ledger net types for “lost relocal”: {{types}}",
             "cancelledScheduled": "cancelado (programado in window)",
             "cancellationRate": "Cancelarlation rate",
             "rateHint": "compartir of all citas in window",
@@ -30315,7 +30521,33 @@
             "items_one": "{{count}} artículo",
             "items_other": "{{count}} artículos",
             "currency": "Moneda: {{code}}.",
-            "items": "Items: {{amount}}"
+            "items": "Artículos: {{amount}}"
+          },
+          "payments/card-machine-reconciliation": {
+            "title": "Conciliación de la máquina de tarjetas",
+            "subtitle": "Pagos de Yoco pendientes en terminal y discrepancias de importe de PayCloud en el periodo",
+            "unableToLoad": "No se pueden cargar los datos de conciliación de la máquina de tarjetas",
+            "unavailableDesc": "Habilite Yoco o Beautonomi máquinas de tarjetas para usar este informe.",
+            "totalRows": "Filas en el periodo",
+            "yocoPending": "Yoco pendiente",
+            "paycloudMismatch": "Discrepancia de importe de PayCloud",
+            "emptyTitle": "Sin excepciones",
+            "emptyDesc": "No hay Yoco pagos pendientes ni PayCloud desfases de importe en este periodo.",
+            "yocoSection": "Yoco pendiente",
+            "paycloudSection": "Discrepancias de PayCloud",
+            "created": "Creado",
+            "amount": "Cantidad",
+            "status": "Estado",
+            "link": "Reserva / venta",
+            "awaitingRefunds": "Pendiente en la máquina Yoco",
+            "awaitingRefundsSection": "Reembolsos adeudados en la máquina Yoco",
+            "awaitingRefundsHint": "Reservas canceladas reembolsadas a la tarjeta. Yoco no tiene API de reembolso: reembolsa cada uno en la aplicación Yoco o en la máquina, luego regístralo en la reserva.",
+            "booking": "Reserva",
+            "reason": "Razón",
+            "match": "Coincidencia de importe",
+            "order": "Número de pedido",
+            "openBooking": "Abrir la reserva para registrarlo",
+            "awaitingSince": "Pendiente desde"
           }
         },
         "export": {
@@ -30622,7 +30854,7 @@
           "categoryCreated": "categoría creard",
           "failedToSaveCategory": "No se pudo guardar categoría",
           "cannotDeleteWithServices": "Cannot delete category with services. Please remove all services first.",
-          "deleteConfirm": "Are you sure you want to delete \"{{name}}\"?",
+          "deleteConfirm": "Are you sure you want to eliminar \"{{name}}\"?",
           "categoryDeleted": "categoría eliminard",
           "failedToDeleteCategory": "No se pudo eliminar categoría",
           "title": "servicios menu",
@@ -30797,7 +31029,7 @@
           "optionsToChooseFrom_one": "{{count}} Opción to elegir from",
           "optionsToChooseFrom_other": "{{count}} Opciones to elegir from",
           "serviceTitleSuffix": " · {{title}}",
-          "optionsToChooseFrom": "Options To Choose From",
+          "optionsToChooseFrom": "Opciones To elegir From",
           "tiersSynced": "Tiers Synced"
         },
         "productDialog": {
@@ -30913,7 +31145,16 @@
           "productBrand": "producto Marca",
           "productCategory": "Categoría del producto",
           "medium": "Medium",
-          "large": "Large"
+          "large": "Large",
+          "maxPhotos": "You can subir up to 5 producto fotos.",
+          "scanBarcodeTitle": "Escanear código de barras",
+          "scanBarcodeHint": "Point the cámara at a 1D código de barras or QR código on the producto.",
+          "barcodeScanFailed": "No se pudo empezar the cámara.",
+          "startingCamera": "Starting cámara…",
+          "weightGrams": "Shipping weight (grams)",
+          "weightGramsHint": "Used for delivery fee and courier booking. Default 500g if empty.",
+          "addOptionType": "Añadir anotro Opción",
+          "optionN": "Opción {{n}}"
         }
       },
       "waitlistPage": {
@@ -30931,7 +31172,7 @@
         "notifyCustomer": "Notify cliente",
         "call": "llamar",
         "createBooking": "Crear Reserva",
-        "addedPriority": "Added {{date}} • Priority: {{priority}}",
+        "addedPriority": "Added {{date}} • Prioridad: {{priority}}",
         "status": {
           "waiting": "En espera",
           "contacted": "Contactoed",
@@ -31286,7 +31527,7 @@
       },
       "identityStrip": {
         "glanceA11y": "Tu perfil at a glance",
-        "ratingA11y": "Rating: {{rating}} from {{count}} reviews. View reviews.",
+        "ratingA11y": "valoración: {{rating}} from {{count}} reseñas. ver reseñas.",
         "review_one": "reseña",
         "review_other": "reseñas",
         "levelA11y": "actual level: {{name}}. ver recompensas.",
@@ -31299,7 +31540,7 @@
         "distanceA11y": "You accept at-inicio reservas within {{km}} km. abrir Distancia ajustes to cambiar.",
         "within": "Within",
         "withinKm": "Within {{km}} km",
-        "review": "review"
+        "review": "reseña"
       },
       "dataTableShell": {
         "searchPlaceholder": "Buscar...",
@@ -31398,7 +31639,7 @@
         "paymentFailedDefault": "Payment was not completed. Please try another card or add funds.",
         "paymentPending": "Payment is still pending. We'll update your subscription once the bank confirms it.",
         "planNotFound": "Plan no encontrado",
-        "planChangeScheduled": "Plan change scheduled. Changes on {{when}}.",
+        "planChangeScheduled": "Plan cambiar programado. Changes on {{when}}.",
         "periodEnd": "period terminar",
         "freeActivated": "gratis suscripción activard!",
         "subscriptionActivated": "suscripción activard listollenoy!",
@@ -31513,7 +31754,7 @@
           "month1": "1 mes",
           "perMo": "/mo",
           "perYear": "/year",
-          "renewsAt": "Renews at {{price}}{{period}}. Cancel anytime.",
+          "renewsAt": "Renews at {{price}}{{period}}. cancelar anyhora.",
           "mostPopular": "Most Popular",
           "planSummary": "Plan Resumen",
           "orderSummary": "pedido Resumen",
@@ -31562,7 +31803,7 @@
       "explorePostForm": {
         "cameraAccessDenied": "Acceso a la cámara denegado",
         "cameraAccessFailed": "No se pudo Acceso cámara",
-        "maxMedia": "You can add up to {{count}} media files.",
+        "maxMedia": "You can añadir up to {{count}} media files.",
         "invalidFileType": "File Tipo no válido",
         "fileTooLarge": "File too large. Max {{size}}.",
         "uploadFailed": "subir error",
@@ -31599,7 +31840,41 @@
         "saveChanges": "Guardar cambios",
         "share": "Compartir",
         "cancel": "Cancelar",
-        "remainingSlots": "Remaining Slots"
+        "remainingSlots": "Remaining Slots",
+        "videoTooLong": "Video exceeds the maximum length for Explore.",
+        "videoWillTrim": "Long videos are trimmed to the Explore maximum when processed.",
+        "trimVideoTitle": "Trim Vídeo",
+        "trimVideoHint": "Drag to choose which part of your video appears on Explore.",
+        "trimClipLength": "{{seconds}}s clip",
+        "trimVideoScrubber": "Elegir clip empezar",
+        "trimVideoConfirm": "Use clip",
+        "trimVideoFinishFirst": "Finish trimming your video before continuing.",
+        "trimVideoLoading": "Cargando Vídeo…",
+        "holdToRecord": "Hold to record",
+        "releaseToFinish": "Release to terminar",
+        "tapForPhoto": "Tap for foto",
+        "recordingTooShort": "Hold a little longer to record video.",
+        "lensFront": "Front cámara",
+        "lensBack": "atrás cámara",
+        "switchToFront": "Switch to front cámara",
+        "switchToBack": "Switch to atrás cámara",
+        "openingCamera": "Opening cámara…",
+        "onlyOneCamera": "Only one cámara is disponible on this dispositivo.",
+        "clipWindowA11y": "Seleccionado clip",
+        "onMediaText": "On-media Texto",
+        "onMediaTextPlaceholder": "Short label on this slide",
+        "onMediaTextDragHint": "Drag Texto on the preseña to reposition it.",
+        "addTextLayer": "Añadir",
+        "noSound": "Ninguno",
+        "soundOptional": "Añadir music (opcional)",
+        "addMusic": "Añadir music (opcional)",
+        "originalAudio": "Original audio",
+        "soundViewerHint": "Viewers hear this music instead of your clip's audio on Explore.",
+        "soundsEmpty": "No catalog tracks yet — use original audio or ask your admin to add platform sounds.",
+        "soundsSectionPlatform": "Popular sounds",
+        "soundsSectionYours": "Tu sounds",
+        "soundPreviewPlay": "Play preseña",
+        "soundPreviewStop": "Stop preseña"
       },
       "calendarMobile": {
         "timeOff": "hora off",
@@ -31853,7 +32128,16 @@
         "actionMarkShipped": "Mark Enviado",
         "actionReadyForCollection": "Listo for collection",
         "actionMarkDelivered": "Mark delivered",
-        "actionCollected": "Collected"
+        "actionCollected": "Collected",
+        "courierBooking": "Courier reserva",
+        "bookingStatus": "reserva estado",
+        "bookingDetail": "Detail",
+        "bookCourier": "reservar courier",
+        "retryBooking": "reintentar reserva",
+        "bookingInProgress": "Reserva…",
+        "bookingSuccess": "Courier Reservado",
+        "bookingFailed": "No se pudo reservar courier",
+        "printLabel": "Imprimir label"
       },
       "appointmentEditSheet": {
         "updated": "reserva actualizard",
@@ -31878,7 +32162,7 @@
         "addons": "complementos",
         "addService": "Añadir servicio",
         "manualDiscount": "Manual descuento",
-        "preservedDiscounts": "Promo/loyalty discounts ({{amount}}) are preserved automatically.",
+        "preservedDiscounts": "promoción/Fidelidad descuentos ({{amount}}) are preserved automatillamary.",
         "notes": "Notas",
         "notesPlaceholder": "reserva notas"
       },
@@ -31903,7 +32187,8 @@
         "geocoded": "Geocódigod",
         "overrideTitle": "Override tarifa de desplazamiento",
         "overrideHint": "Use a Personalizado tarifa instead of calculated",
-        "customFeePlaceholder": "Personalizado tarifa de desplazamiento"
+        "customFeePlaceholder": "Personalizado tarifa de desplazamiento",
+        "chooseSuggestionOrPin": "Choose a suggestion or pin the address on the map so city, area, postal code, and GPS stay in sync for travel fees."
       },
       "postCompletion": {
         "selectRating": "Seleccionar a valoración (1–5 stars).",
@@ -32080,11 +32365,11 @@
         "setupLoadFailed": "Couldn't load profile setup status. Check your connection and try again.",
         "tryAgain": "Intentarlo de nuevo",
         "completeProfile": "completar your Negocio perfil",
-        "requiredTasksLeft_one": "{{count}} required task left",
-        "requiredTasksLeft_other": "{{count}} required tasks left",
+        "requiredTasksLeft_one": "{{count}} obligatorio task left",
+        "requiredTasksLeft_other": "{{count}} obligatorio tasks left",
         "optionalCount": "{{count}} opcional",
-        "allRequiredDone_one": "All required tasks done · {{count}} optional improvement",
-        "allRequiredDone_other": "All required tasks done · {{count}} optional improvements",
+        "allRequiredDone_one": "All obligatorio tasks listo · {{count}} opcional improvement",
+        "allRequiredDone_other": "All obligatorio tasks listo · {{count}} opcional improvements",
         "finishSetup": "terminar setup to empezar accepting reservas",
         "done": "Listo",
         "optional": "Opcional",
@@ -32092,11 +32377,11 @@
         "viewChecklist": "Ver lleno checklist",
         "allFeatures": "All features",
         "signOut": "Cerrar sesión",
-        "allRequiredDone": "All Required Done",
-        "requiredTasksLeft": "Required Tasks Left",
+        "allRequiredDone": "All obligatorio listo",
+        "requiredTasksLeft": "obligatorio Tasks Left",
         "completeStripeConnectFirst": "Complete Stripe Connect payout setup first",
-        "stripeConnectReady": "Stripe Connect ready for payouts",
-        "stripeConnectLast4": "Stripe Connect ···· {{last4}}"
+        "stripeConnectReady": "Stripe Conectar Listo for Pagos",
+        "stripeConnectLast4": "Stripe Conectar ···· {{last4}}"
       },
       "limitError": {
         "title": "Limit Alcanceed",
@@ -32177,7 +32462,7 @@
         "durationMin": "{{minutes}}min",
         "notePrefix": "Note: {{notes}}",
         "print": "Imprimir",
-        "appointmentCount": "Appointment Count"
+        "appointmentCount": "cita Count"
       },
       "verificationHub": {
         "completeIdentityFirst": "completar Identidad first",
@@ -32207,7 +32492,8 @@
         "selectTimeSlot": "Seleccionar hora slot",
         "selectTime": "Seleccionar hora",
         "loadingTimes": "Cargando disponible horas…",
-        "noSlots": "No time slots for this date. Try another day or adjust services."
+        "noSlots": "No time slots for this date. Try another day or adjust services.",
+        "timeAdjusted": "hora adjusted to {{time}} — anterior slot no disponible"
       },
       "etaPicker": {
         "estimatedArrival": "Estimated arrival",
@@ -32295,7 +32581,7 @@
         "emptyQueue": "Nothing in this queue for {{range}}. Try another queue tab or choose All.",
         "showAllQueues": "Mostrar all queues",
         "emptyLocation": "No bookings for {{range}} at this location. Switch location or pick another date in the bar above.",
-        "emptyDate": "No bookings for {{range}}. Pick another date in the calendar or create an appointment.",
+        "emptyDate": "No reservas for {{range}}. Pick anotro fecha in the calendario or crear an cita.",
         "jumpToToday": "Jump to hoy",
         "groupBooking": "Reserva grupal",
         "loadAppointmentFailed": "No se pudo cargar cita",
@@ -32323,8 +32609,8 @@
         "serviceLabel": "Servicio",
         "productsLabel": "Productos",
         "serviceAndProductsLabel": "servicio & productos",
-        "appointmentCount": "Appointment Count",
-        "needsConfirm": "Needs Confirm"
+        "appointmentCount": "cita Count",
+        "needsConfirm": "Needs confirmar"
       },
       "teamMemberDialog": {
         "serviceFallback": "Servicio",
@@ -32507,9 +32793,9 @@
         "shortCodeCol": "Short código",
         "services": "Servicios",
         "expiresCol": "Caduca",
-        "clicks": "Clicks",
-        "itemsSelected": "Items Selected",
-        "copyEmbedSnippet": "Copy embed snippet"
+        "clicks": "Clics",
+        "itemsSelected": "Artículos Seleccionado",
+        "copyEmbedSnippet": "Copiar embed snippet"
       },
       "calendarPage": {
         "serviceFallback": "Servicio",
@@ -32576,8 +32862,8 @@
         "completed": "completado",
         "cancelled": "Cancelado",
         "no_show": "No mostrar",
-        "confirmed": "Confirmed",
-        "waiting": "Waiting",
+        "confirmed": "Confirmared",
+        "waiting": "En espera",
         "checkedIn": "Checked in"
       },
       "clientsPage": {
@@ -32591,7 +32877,7 @@
         "created": "cliente creard listollenoy",
         "invalidClient": "Cliente Datos no válido",
         "saveFailed": "No se pudo guardar cliente",
-        "deleteConfirm": "Are you sure you want to remove {{name}}?",
+        "deleteConfirm": "Are you sure you want to quitar {{name}}?",
         "notSavedInfo": "This client is not saved. They will remain in your serviced customers list.",
         "removed": "cliente quitard",
         "removeFailed": "No se pudo quitar cliente",
@@ -32732,7 +33018,7 @@
         "appointmentMeta": "{{duration}} min cita • {{phone}}",
         "bookingRef": "reserva #{{ref}}",
         "returnToSalon": "Return to salón (opcional)",
-        "optimizedToast": "Route optimized! Saved {{amount}} ({{pct}}%)",
+        "optimizedToast": "Route optimized! Guardard {{amount}} ({{pct}}%)",
         "km": "{{km}} km",
         "min": "{{min}} min"
       },
@@ -32760,9 +33046,9 @@
         "views_one": "{{count}} ver",
         "views_other": "{{count}} vers",
         "viewComments": "Ver & comentarios",
-        "comments": "{{count}} comments",
+        "comments": "{{count}} comentarios",
         "likes": "{{count}} likes",
-        "views": "{{count}} views"
+        "views": "{{count}} vers"
       },
       "formsPage": {
         "failedToLoad": "No se pudo cargar forms",
@@ -32826,7 +33112,7 @@
         "completeLater": "completar más tarde",
         "setUp": "Configurar",
         "stepsToGo": "Steps To Go",
-        "verificationRequiredToGoLive": "Identity verification required to go live",
+        "verificationRequiredToGoLive": "verificación de identidad obligatorio to go En vivo",
         "verificationRequiredBody": "Your checklist is complete, but we still need to verify your identity before you can accept public bookings."
       },
       "shiftsPage": {
@@ -32907,8 +33193,8 @@
         "chooseVariant": "Elegir a variant to añadir to the Venta:",
         "outOfStock": "Agotado",
         "inCart": "{{count}} in Carrito",
-        "itemCount": "Item Count",
-        "options": "Options"
+        "itemCount": "Artículo Count",
+        "options": "Opciones"
       },
       "customerProfilePage": {
         "failedToLoad": "No se pudo cargar cliente perfil",
@@ -32936,7 +33222,7 @@
         "bookingHistory": "reserva Historial ({{count}})",
         "reviewsLeft": "reseñas Left ({{count}})",
         "bookingNumber": "reserva #{{number}}",
-        "reviewCount": "Review Count"
+        "reviewCount": "reseña Count"
       },
       "resourcesPage": {
         "loadFailed": "No se pudo cargar resources",
@@ -32985,7 +33271,7 @@
       },
       "catalogueProducts": {
         "loadFailed": "No se pudo cargar los productos",
-        "deleteConfirm": "Are you sure you want to delete \"{{name}}\"?",
+        "deleteConfirm": "Are you sure you want to eliminar \"{{name}}\"?",
         "deleted": "producto eliminard",
         "deleteFailed": "No se pudo Eliminar producto",
         "updated": "producto actualizard",
@@ -33097,7 +33383,7 @@
         "keepBooking": "Conservar reserva",
         "cancelGroupBooking": "Cancelar reserva grupal",
         "completed": "completado",
-        "participantCount": "Participant Count"
+        "participantCount": "participante Count"
       },
       "timeBlocksPage": {
         "loadFailed": "No se pudo cargar hora blocks",
@@ -33435,17 +33721,17 @@
       "scheduling": {
         "calendarIconLegendTitle": "What these icons mean",
         "calendarIcons": {
-          "isNewClient": "New client",
-          "hasNotes": "Has notes",
-          "isRepeating": "Repeating appointment",
+          "isNewClient": "Nuevo cliente",
+          "hasNotes": "Has notas",
+          "isRepeating": "Repeating cita",
           "hasMembership": "Member",
-          "hasFormsIncomplete": "Forms incomplete",
-          "hasPhotos": "Has photos",
-          "hasConversation": "Has messages",
-          "isGroup": "Group booking",
-          "hasCustomization": "Service customization",
-          "isWalkIn": "Walk-in",
-          "isAtHome": "At-home service"
+          "hasFormsIncomplete": "Forms incompletar",
+          "hasPhotos": "Has fotos",
+          "hasConversation": "Has mensajes",
+          "isGroup": "Reserva grupal",
+          "hasCustomization": "servicio personalizadoization",
+          "isWalkIn": "Sin cita",
+          "isAtHome": "At-inicio servicio"
         }
       }
     },

@@ -21,6 +21,7 @@ import type {
 } from "../index";
 import { shippingJsonRequest } from "../http";
 import { asArray, asRecord, mapCourierTrackingStatus, strField } from "../map-tracking";
+import { toShiplogicApiLocality } from "../address-locality";
 
 export type ShiplogicStyleConfig = {
   providerId: ShippingProviderId;
@@ -49,14 +50,15 @@ function bearerHeaders(apiKey: string): Record<string, string> {
 function toApiAddress(address: Address, countryName: (iso: string) => string) {
   const iso = address.country.trim().toUpperCase();
   const country = iso.length === 2 ? countryName(iso) : address.country;
+  const { city, suburb, local_area } = toShiplogicApiLocality(address);
   return {
     type: "residential",
     company: address.name,
     street_address: address.line1,
-    local_area: address.line2 || address.city,
-    suburb: address.city,
-    city: address.city,
-    zone: address.region || address.city,
+    local_area,
+    suburb,
+    city,
+    zone: address.region || city,
     country,
     code: address.postalCode,
   };
@@ -302,4 +304,38 @@ export async function trackShiplogicStyle(
     headers: bearerHeaders(config.apiKey),
   });
   return parseTracking(payload);
+}
+
+export async function cancelShiplogicStyleShipment(
+  config: ShiplogicStyleConfig,
+  shipmentId: string,
+): Promise<void> {
+  await shippingJsonRequest({
+    url: `${stripSlash(config.baseUrl)}${config.shipmentsPath}/${encodeURIComponent(shipmentId)}/cancel`,
+    method: "POST",
+    headers: bearerHeaders(config.apiKey),
+    body: {},
+  });
+}
+
+export async function fetchShiplogicStyleLabel(
+  config: ShiplogicStyleConfig,
+  params: { shipmentId?: string | null; trackingNumber?: string | null },
+): Promise<{ url?: string; pdfBytes?: Uint8Array; contentType?: string }> {
+  const id = params.shipmentId?.trim() || params.trackingNumber?.trim();
+  if (!id) throw new Error("shipment id or tracking number required for label");
+  const payload = asRecord(
+    await shippingJsonRequest({
+      url: `${stripSlash(config.baseUrl)}${config.shipmentsPath}/${encodeURIComponent(id)}/label`,
+      method: "GET",
+      headers: bearerHeaders(config.apiKey),
+    }),
+  );
+  const url =
+    strField(payload.url) ??
+    strField(payload.label_url) ??
+    strField(payload.pdf_url) ??
+    strField(payload.tracking_url);
+  if (url) return { url, contentType: "application/pdf" };
+  throw new Error(`${config.providerId} label response missing URL`);
 }

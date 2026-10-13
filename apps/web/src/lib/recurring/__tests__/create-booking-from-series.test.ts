@@ -7,11 +7,25 @@ describe("resolveAddonLines", () => {
       resolveAddonLines({
         metadata: {
           addons: [
-            { addon_id: "addon-1", quantity: 1, price: 75, currency: "ZAR" },
+            {
+              addon_id: "addon-1",
+              addon_name: "Deep conditioning",
+              quantity: 1,
+              price: 75,
+              currency: "ZAR",
+            },
           ],
         },
       }),
-    ).toEqual([{ addon_id: "addon-1", quantity: 1, price: 75, currency: "ZAR" }]);
+    ).toEqual([
+      {
+        addon_id: "addon-1",
+        addon_name: "Deep conditioning",
+        quantity: 1,
+        price: 75,
+        currency: "ZAR",
+      },
+    ]);
   });
 
   it("falls back to add-on cart items for generated occurrences", () => {
@@ -24,7 +38,9 @@ describe("resolveAddonLines", () => {
           ],
         },
       }),
-    ).toEqual([{ addon_id: "addon-2", quantity: 2, price: 40, currency: null }]);
+    ).toEqual([
+      { addon_id: "addon-2", addon_name: null, quantity: 2, price: 40, currency: null },
+    ]);
   });
 });
 

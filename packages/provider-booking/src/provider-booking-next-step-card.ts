@@ -107,7 +107,7 @@ export function getBookingNextStepCard(
   if (status === "completed" && options.outstanding > 0) {
     return {
       title: "Payment still due",
-      description: "Send a payment link, take Yoco, or mark the remaining amount as paid.",
+      description: "Send a payment link, take a card machine payment, or mark the remaining amount as paid.",
       icon: "card-outline",
       color: "#d97706",
     };

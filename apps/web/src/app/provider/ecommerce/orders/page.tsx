@@ -10,8 +10,15 @@ import type { YocoPayment } from "@/lib/provider-portal/types";
 import { Badge } from "@/components/ui/badge";
 import { VerifiedBadge } from "@/components/ui/verified-badge";
 import { Input } from "@/components/ui/input";
-import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
-import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
+import dynamic from "next/dynamic";
+
+const CardMachineCollectDialog = dynamic(
+  () =>
+    import("@/components/provider-portal/CardMachineCollectDialog").then((m) => ({
+      default: m.CardMachineCollectDialog,
+    })),
+  { ssr: false },
+);
 import { ShareReceiptButton } from "@/components/receipts/ShareReceiptButton";
 import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
 import {
@@ -175,10 +182,8 @@ export default function ProviderProductOrdersPage() {
   const [carrierInput, setCarrierInput] = useState("");
   const [trackingUrlInput, setTrackingUrlInput] = useState("");
   const [estimatedDeliveryDateInput, setEstimatedDeliveryDateInput] = useState("");
-  const [yocoDialogOpen, setYocoDialogOpen] = useState(false);
-  const [yocoOrder, setYocoOrder] = useState<ProductOrder | null>(null);
-  const [paycloudDialogOpen, setPaycloudDialogOpen] = useState(false);
-  const [paycloudOrder, setPaycloudOrder] = useState<ProductOrder | null>(null);
+  const [cardMachineOpen, setCardMachineOpen] = useState(false);
+  const [cardMachineOrder, setCardMachineOrder] = useState<ProductOrder | null>(null);
 
   // Refund dialog: capture method (cash vs wallet), amount, and reason so
   // product-sale refunds match the in-person/wallet split used for bookings.
@@ -403,28 +408,21 @@ export default function ProviderProductOrdersPage() {
     setTrackingDialog(null);
   };
 
-  const openYocoCollection = (order: ProductOrder) => {
-    setYocoOrder(order);
-    setYocoDialogOpen(true);
-  };
-
-  const openPaycloudCollection = (order: ProductOrder) => {
-    setPaycloudOrder(order);
-    setPaycloudDialogOpen(true);
+  const openCardMachineCollection = (order: ProductOrder) => {
+    setCardMachineOrder(order);
+    setCardMachineOpen(true);
   };
 
   const handleYocoCollectionSuccess = async (payment: YocoPayment) => {
-    if (!yocoOrder) return;
+    if (!cardMachineOrder) return;
     try {
-      await fetcher.post(`/api/provider/product-orders/${yocoOrder.id}/mark-collected`, {
+      await fetcher.post(`/api/provider/product-orders/${cardMachineOrder.id}/mark-collected`, {
         payment_method: "yoco",
         reference: payment.yoco_payment_id,
-        idempotency_key: `web-yoco-${yocoOrder.id}-${payment.yoco_payment_id}`,
+        idempotency_key: `web-yoco-${cardMachineOrder.id}-${payment.yoco_payment_id}`,
       });
       clearFetcherCache();
       await fetchOrders();
-      setYocoDialogOpen(false);
-      setYocoOrder(null);
     } catch {
       setError(t("web.provider.pages.ecommerce/orders.collectRecordFailed"));
     }
@@ -529,20 +527,20 @@ export default function ProviderProductOrdersPage() {
                   ref={isFocus ? highlightRef : undefined}
                   id={isFocus ? "provider-order-focus" : undefined}
                   data-product-order-row={o.id}
-                  role={mobileBookingShell ? "button" : undefined}
-                  tabIndex={mobileBookingShell ? 0 : undefined}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => {
-                    if (mobileBookingShell) openProductOrderView(o.id);
+                    openProductOrderView(o.id);
                   }}
                   onKeyDown={(e) => {
-                    if (mobileBookingShell && (e.key === "Enter" || e.key === " ")) {
+                    if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
                       openProductOrderView(o.id);
                     }
                   }}
                   className={cn(
                     "p-4 sm:p-5 hover:bg-gray-50 transition-colors rounded-xl",
-                    mobileBookingShell && "cursor-pointer",
+                    "cursor-pointer hover:bg-gray-50/80",
                     isFocus && "ring-2 ring-pink-500 ring-offset-2 bg-pink-50/30",
                   )}
                 >
@@ -675,7 +673,7 @@ export default function ProviderProductOrdersPage() {
                         {canCollectWithPaycloud ? (
                           paycloudReady || paycloudInFlight ? (
                             <button
-                              onClick={() => openPaycloudCollection(o)}
+                              onClick={() => openCardMachineCollection(o)}
                               className="px-3 py-1.5 text-xs font-medium text-white rounded-lg bg-gray-900 hover:bg-black"
                             >
                               {formatPaycloudCollectLabel({
@@ -695,7 +693,7 @@ export default function ProviderProductOrdersPage() {
                         ) : null}
                         {canCollectWithYoco ? (
                           <button
-                            onClick={() => openYocoCollection(o)}
+                            onClick={() => openCardMachineCollection(o)}
                             className="px-3 py-1.5 text-xs font-medium text-white rounded-lg bg-gray-900 hover:bg-black"
                           >
                             {t("web.provider.pages.ecommerce/orders.collectWithYoco")}
@@ -711,35 +709,33 @@ export default function ProviderProductOrdersPage() {
         )}
       </div>
 
-      {paycloudOrder ? (
-        <PayCloudPaymentDialog
-          open={paycloudDialogOpen}
+      {cardMachineOrder ? (
+        <CardMachineCollectDialog
+          open={cardMachineOpen}
           onOpenChange={(open) => {
-            setPaycloudDialogOpen(open);
-            if (!open) setPaycloudOrder(null);
+            setCardMachineOpen(open);
+            if (!open) setCardMachineOrder(null);
           }}
-          amount={Number(paycloudOrder.total_amount || 0)}
-          entityType="product_order"
-          entityId={paycloudOrder.id}
-          bookingLocationId={selectedLocationId}
-          onSuccess={() => {
+          amount={Number(cardMachineOrder.total_amount || 0)}
+          autoStart
+          entity={{
+            entityType: "product_order",
+            entityId: cardMachineOrder.id,
+            productOrderId: cardMachineOrder.id,
+            bookingLocationId: selectedLocationId,
+          }}
+          onSuccess={async (info) => {
+            if (info?.provider === "yoco" && info.yocoPayment && cardMachineOrder) {
+              await handleYocoCollectionSuccess(info.yocoPayment);
+              setCardMachineOpen(false);
+              setCardMachineOrder(null);
+              return;
+            }
             clearFetcherCache();
             void fetchOrders();
-            setPaycloudDialogOpen(false);
-            setPaycloudOrder(null);
+            setCardMachineOpen(false);
+            setCardMachineOrder(null);
           }}
-        />
-      ) : null}
-
-      {yocoOrder ? (
-        <YocoPaymentDialog
-          open={yocoDialogOpen}
-          onOpenChange={(open) => {
-            setYocoDialogOpen(open);
-            if (!open) setYocoOrder(null);
-          }}
-          amount={Number(yocoOrder.total_amount || 0)}
-          onSuccess={handleYocoCollectionSuccess}
         />
       ) : null}
 
@@ -887,6 +883,18 @@ export default function ProviderProductOrdersPage() {
                   ? t("web.provider.pages.ecommerce/orders.cashHint")
                   : t("web.provider.pages.ecommerce/orders.walletHint")}
               </p>
+              {refundMethodInput === "store_credit" && refundDialog ? (() => {
+                const amount = parseFloat(refundAmountInput);
+                const total = Number(refundDialog.total_amount ?? 0);
+                if (Number.isFinite(amount) && amount > 0 && amount + 0.01 < total) {
+                  return (
+                    <p className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg p-2">
+                      {t("web.provider.pages.ecommerce/orders.partialWalletRefundHint")}
+                    </p>
+                  );
+                }
+                return null;
+              })() : null}
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">{t("web.provider.pages.ecommerce/orders.reasonOptional")}</label>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, CalendarClock, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@beautonomi/i18n";
@@ -44,6 +44,7 @@ import { BookingTravelSection } from "../view/BookingTravelSection";
 import { BookingPaymentSummarySection } from "../view/BookingPaymentSummarySection";
 
 import { Plus, Trash2 } from "lucide-react";
+import { isBookableCatalogService } from "@/lib/provider-portal/bookable-services";
 
 interface AppointmentEditSheetProps {
   services: ServiceItem[];
@@ -77,6 +78,11 @@ export function AppointmentEditSheet({
   const { hasPermission, isOwner } = usePermissions();
   const canEditAppointments = isOwner || hasPermission("edit_appointments");
   const open = isOpen && mode === "edit" && !!selectedAppointment;
+
+  const bookableServices = useMemo(
+    () => services.filter(isBookableCatalogService),
+    [services],
+  );
 
   const [notes, setNotes] = useState("");
   const [serviceLines, setServiceLines] = useState<BookingEditServiceLine[]>([]);
@@ -443,7 +449,7 @@ export function AppointmentEditSheet({
                   <SelectValue placeholder={t("web.provider.appointmentEditSheet.selectService")} />
                 </SelectTrigger>
                 <SelectContent>
-                  {services.map((svc) => (
+                  {bookableServices.map((svc) => (
                     <SelectItem key={svc.id} value={svc.id}>
                       {svc.name}
                     </SelectItem>

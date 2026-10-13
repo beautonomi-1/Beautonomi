@@ -48,7 +48,12 @@ export function normalizeProductsList(data: unknown): unknown[] {
   // "R NaN" whenever it received the raw DB shape (the exact bug
   // reported on the new-booking flow and ecommerce product picker).
   // Normalise here so every caller sees a consistent shape.
-  return raw.map((p) => {
+  return raw
+    .filter((p) => {
+      const record = (p ?? {}) as Record<string, unknown>;
+      return record.is_active !== false && record.retail_sales_enabled !== false;
+    })
+    .map((p) => {
     const record = (p ?? {}) as Record<string, unknown>;
     const retail = toFiniteNumber(record.retail_price ?? record.price);
     const rawVariants =

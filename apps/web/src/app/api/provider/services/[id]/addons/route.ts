@@ -5,6 +5,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, notFoundResponse, handleApiError, getProviderIdForUser, requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { buildAddonApplicabilityOrFilter } from "@/lib/offerings/addon-applicability";
 
 /**
  * GET /api/provider/services/[id]/addons
@@ -31,7 +32,7 @@ export async function GET(
     // First get the service and verify it belongs to provider
     const { data: service, error: serviceError } = await supabase
       .from("offerings")
-      .select("id, provider_id, title")
+      .select("id, provider_id, title, parent_service_id, master_service_id")
       .eq("id", serviceId)
       .eq("provider_id", providerId)
       .single();
@@ -58,7 +59,13 @@ export async function GET(
       .eq("provider_id", service.provider_id)
       .eq("service_type", "addon")
       .eq("is_active", true)
-      .or(`applicable_service_ids.is.null,applicable_service_ids.cs.{${serviceId}}`)
+      .or(
+        buildAddonApplicabilityOrFilter({
+          id: service.id,
+          parent_service_id: (service as { parent_service_id?: string | null }).parent_service_id,
+          master_service_id: (service as { master_service_id?: string | null }).master_service_id,
+        }),
+      )
       .order("is_recommended", { ascending: false })
       .order("addon_category")
       .order("display_order");
@@ -81,8 +88,10 @@ export async function GET(
     const mapped = (addons || []).map((a: any) => ({
       id: a.id,
       name: a.title,
+      description: a.description ?? null,
       price: a.price,
       duration_minutes: a.duration_minutes,
+      currency: a.currency ?? null,
       is_active: a.is_active ?? true,
       addon_category: a.addon_category,
       is_recommended: a.is_recommended,

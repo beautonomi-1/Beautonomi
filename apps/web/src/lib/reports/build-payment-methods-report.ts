@@ -42,7 +42,7 @@ export function humanizePaymentMethodKey(key: string): string {
     paystack_terminal: "Paystack Terminal",
     paystack_virtual_terminal: "Paystack Terminal",
     yoco: "Yoco",
-    paycloud: "Card machine (PayCloud)",
+    paycloud: "Beautonomi card machine",
     stripe: "Stripe",
     flutterwave: "Flutterwave",
     card: manualCardReportLabel(),

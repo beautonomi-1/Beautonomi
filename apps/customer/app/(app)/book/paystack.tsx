@@ -1,12 +1,11 @@
 /**
  * Paystack redirect target for normal booking payments.
  * Deep-link URL: `ExpoLinking.createURL("book/paystack")`.
- *
- * All verify / state-machine / button logic lives in PaystackReturnScreen.
- * This file is a thin config wrapper so Expo Router registers the route.
  */
 import { PaystackReturnScreen } from "@/components/payment/PaystackReturnScreen";
 import type { RouteTarget } from "@/lib/payments/resolvePaystackVerifyRoute";
+import { useTranslation } from "@beautonomi/i18n";
+import { useMemo } from "react";
 
 function resolveBookingTarget(verifyData: unknown): RouteTarget | null {
   let cur: unknown = verifyData;
@@ -26,17 +25,25 @@ function resolveBookingTarget(verifyData: unknown): RouteTarget | null {
 const FALLBACK: RouteTarget = { pathname: "/(app)/(tabs)/bookings" };
 
 export default function BookPaystackReturnScreen() {
+  const { t } = useTranslation();
+  const pr = (key: string) =>
+    t(`customer.mobile.components.paystackReturn.${key}`) as string;
+  const labels = useMemo(
+    () => ({
+      verifying: pr("bookVerifying"),
+      returning: pr("bookReturning"),
+      fallbackCta: pr("bookFallbackCta"),
+      continueCta: pr("bookContinueCta"),
+    }),
+    [t],
+  );
+
   return (
     <PaystackReturnScreen
       resolveTarget={resolveBookingTarget}
       cancelledRoute={FALLBACK}
       fallbackRoute={FALLBACK}
-      labels={{
-        verifying: "Confirming your payment…",
-        returning: "Returning to bookings…",
-        fallbackCta: "Go to Bookings",
-        continueCta: "View booking",
-      }}
+      labels={labels}
     />
   );
 }

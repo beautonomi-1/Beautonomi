@@ -895,7 +895,16 @@ export async function POST(request: NextRequest) {
         let nextDisplayOrder =
           typeof maxProviderCategoryOrder?.display_order === "number" ? maxProviderCategoryOrder.display_order + 1 : 0;
 
+        const namedMenuByGlobalId = new Set(
+          (provider_categories || [])
+            .map((pc) => pc.global_category_id)
+            .filter((gid): gid is string => typeof gid === "string" && gid.length > 0),
+        );
+
         for (const globalCategory of normalizedGlobalCategories) {
+          if (namedMenuByGlobalId.has(globalCategory.id)) {
+            continue;
+          }
           if (providerCategoryBySlug.has(globalCategory.slug)) {
             providerCategoryByGlobalId.set(globalCategory.id, providerCategoryBySlug.get(globalCategory.slug)!);
             continue;
@@ -1103,6 +1112,9 @@ export async function POST(request: NextRequest) {
 
       const generatedServices: any[] = [];
       (categories || []).forEach((category) => {
+        const menuCategoryName =
+          (provider_categories || []).find((pc) => pc.global_category_id === category.id)?.name?.trim() ||
+          category.name;
         const categorySlug = category.slug?.toLowerCase() || category.name?.toLowerCase() || "";
         const templates = serviceTemplates[categorySlug] || 
           Object.values(serviceTemplates).find((templates, idx) => {
@@ -1121,7 +1133,7 @@ export async function POST(request: NextRequest) {
               supports_at_home: template.supports_at_home || false,
               supports_at_salon: business_type === "salon" || business_type === "both",
               category_id: category.id,
-              provider_category_name: category.name,
+              provider_category_name: menuCategoryName,
             });
           });
         } else {
@@ -1135,7 +1147,7 @@ export async function POST(request: NextRequest) {
             supports_at_home: business_type === "mobile" || business_type === "both",
             supports_at_salon: business_type === "salon" || business_type === "both",
             category_id: category.id,
-            provider_category_name: category.name,
+            provider_category_name: menuCategoryName,
           });
         }
       });
@@ -1315,6 +1327,7 @@ export async function POST(request: NextRequest) {
           const parent = createdOfferings[spec.parentIndex];
           if (!parent?.id) continue;
           const parentCategoryId = parent.provider_category_id ?? null;
+          const parentGlobalCategoryId = (parent as { category_id?: string | null }).category_id ?? null;
           addonRows.push({
             provider_id: providerId,
             title: spec.addon.name,
@@ -1324,6 +1337,7 @@ export async function POST(request: NextRequest) {
             currency: spec.addon.currency || tenantDefaultCurrency,
             supports_at_home: false,
             supports_at_salon: true,
+            category_id: parentGlobalCategoryId,
             provider_category_id: parentCategoryId,
             is_active: true,
             service_type: "addon",

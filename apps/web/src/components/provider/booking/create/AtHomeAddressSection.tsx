@@ -2,7 +2,7 @@
 
 import { useTranslation } from "@beautonomi/i18n";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { Loader2, MapPin, Navigation } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,7 @@ export interface AtHomeAddressValue {
 
 interface AtHomeAddressSectionProps {
   value: AtHomeAddressValue;
-  onChange: (next: AtHomeAddressValue) => void;
+  onChange: Dispatch<SetStateAction<AtHomeAddressValue>>;
 }
 
 export function effectiveAtHomeTravelFee(value: AtHomeAddressValue): number {
@@ -43,18 +43,55 @@ export function effectiveAtHomeTravelFee(value: AtHomeAddressValue): number {
   return Math.max(0, value.travelFee);
 }
 
+function hasValidCoordinates(value: AtHomeAddressValue): boolean {
+  const lat = value.addressLatitude;
+  const lng = value.addressLongitude;
+  if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return false;
+  }
+  return !(lat === 0 && lng === 0);
+}
+
+function validationRequestKey(value: AtHomeAddressValue): string | null {
+  const line1 = value.addressLine1.trim();
+  const hasCoords = hasValidCoordinates(value);
+  const hasStructured = Boolean(line1) && Boolean(value.addressCity.trim());
+  if (!hasCoords && line1.length >= 5) {
+    return `text:${line1}:${value.addressCity}:${value.addressState}:${value.addressPostalCode}`;
+  }
+  if (hasCoords || hasStructured) {
+    return [
+      line1,
+      value.addressLine2,
+      value.addressCity,
+      value.addressState,
+      value.addressPostalCode,
+      value.addressCountry,
+      value.addressLatitude,
+      value.addressLongitude,
+    ].join("|");
+  }
+  return null;
+}
+
+export function isAtHomeAddressReady(value: AtHomeAddressValue): boolean {
+  return Boolean(value.addressLine1.trim()) && hasValidCoordinates(value);
+}
+
 export function AtHomeAddressSection({ value, onChange }: AtHomeAddressSectionProps) {
   const { t } = useTranslation();
   const { provider } = useProviderPortal();
   const { format: formatMoney } = useProviderMoneyFormat();
   const [validating, setValidating] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [needsGeocodeHint, setNeedsGeocodeHint] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [locating, setLocating] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastRequestKeyRef = useRef<string | null>(null);
 
   const patch = (partial: Partial<AtHomeAddressValue>) => {
-    onChange({ ...value, ...partial });
+    onChange((prev) => ({ ...prev, ...partial }));
   };
 
   const applyPickedAddress = (addr: {
@@ -73,29 +110,36 @@ export function AtHomeAddressSection({ value, onChange }: AtHomeAddressSectionPr
       addressState: addr.state ?? "",
       addressPostalCode: addr.postal_code ?? "",
       addressCountry: addr.country || "South Africa",
-      addressLatitude: addr.latitude || null,
-      addressLongitude: addr.longitude || null,
+      addressLatitude: Number.isFinite(addr.latitude) ? addr.latitude : null,
+      addressLongitude: Number.isFinite(addr.longitude) ? addr.longitude : null,
     });
+    setNeedsGeocodeHint(false);
   };
 
   useEffect(() => {
     if (!provider?.id) return;
 
-    const hasStructured =
-      Boolean(value.addressLine1.trim()) && Boolean(value.addressCity.trim());
-    const hasCoords =
-      value.addressLatitude != null &&
-      value.addressLongitude != null &&
-      Number.isFinite(value.addressLatitude) &&
-      Number.isFinite(value.addressLongitude);
+    const requestKey = validationRequestKey(value);
+    const line1 = value.addressLine1.trim();
 
-    if (!hasStructured && !hasCoords) {
+    if (!requestKey) {
       setValidationError(null);
-      if (value.travelFee !== 0 || value.travelPreviewMinutes != null) {
-        patch({ travelFee: 0, travelPreviewMinutes: null, travelPreviewDistanceKm: null });
-      }
+      setNeedsGeocodeHint(Boolean(line1) && !hasValidCoordinates(value));
+      onChange((prev) => {
+        if (prev.travelFee === 0 && prev.travelPreviewMinutes == null) return prev;
+        return {
+          ...prev,
+          travelFee: 0,
+          travelPreviewMinutes: null,
+          travelPreviewDistanceKm: null,
+        };
+      });
       return;
     }
+
+    setNeedsGeocodeHint(Boolean(line1) && !hasValidCoordinates(value));
+
+    if (requestKey === lastRequestKeyRef.current) return;
 
     if (timerRef.current) clearTimeout(timerRef.current);
 
@@ -106,6 +150,8 @@ export function AtHomeAddressSection({ value, onChange }: AtHomeAddressSectionPr
         setValidationError(null);
         try {
           const country = value.addressCountry.trim() || "South Africa";
+          const hasCoords = hasValidCoordinates(value);
+          const hasStructured = Boolean(line1) && Boolean(value.addressCity.trim());
           const addressString = hasStructured
             ? [
                 value.addressLine1,
@@ -135,13 +181,25 @@ export function AtHomeAddressSection({ value, onChange }: AtHomeAddressSectionPr
               travelTimeMinutes?: number;
               distanceKm?: number;
               message?: string;
+              reason?: string;
+              coordinates?: { latitude: number; longitude: number };
+              address?: {
+                line1?: string;
+                city?: string;
+                state?: string;
+                country?: string;
+                postalCode?: string;
+              };
             };
           }>("/api/location/validate", body);
           if (cancelled) return;
 
+          lastRequestKeyRef.current = requestKey;
           const payload = json?.data;
           if (payload?.valid === false) {
-            setValidationError(payload.message || t("web.provider.atHomeAddress.outsideArea"));
+            setValidationError(
+              payload.reason || payload.message || t("web.provider.atHomeAddress.outsideArea"),
+            );
             patch({ travelFee: 0, travelPreviewMinutes: null, travelPreviewDistanceKm: null });
             return;
           }
@@ -157,14 +215,36 @@ export function AtHomeAddressSection({ value, onChange }: AtHomeAddressSectionPr
             typeof payload?.distanceKm === "number" && Number.isFinite(payload.distanceKm)
               ? payload.distanceKm
               : null;
-          patch({
+
+          const addrPatch: Partial<AtHomeAddressValue> = {
             travelFee: fee,
             travelPreviewMinutes: minutes,
             travelPreviewDistanceKm: distanceKm,
-          });
-        } catch {
+          };
+          if (payload?.coordinates) {
+            addrPatch.addressLatitude = payload.coordinates.latitude;
+            addrPatch.addressLongitude = payload.coordinates.longitude;
+          }
+          const resolved = payload?.address;
+          if (resolved) {
+            if (resolved.city && !value.addressCity.trim()) addrPatch.addressCity = resolved.city;
+            if (resolved.state && !value.addressState.trim()) addrPatch.addressState = resolved.state;
+            if (resolved.postalCode && !value.addressPostalCode.trim()) {
+              addrPatch.addressPostalCode = resolved.postalCode;
+            }
+            if (resolved.country && !value.addressCountry.trim()) {
+              addrPatch.addressCountry = resolved.country;
+            }
+          }
+          patch(addrPatch);
+          setNeedsGeocodeHint(false);
+        } catch (err: unknown) {
           if (!cancelled) {
-            setValidationError(t("web.provider.atHomeAddress.validateFailed"));
+            const msg =
+              err && typeof err === "object" && "message" in err && typeof err.message === "string"
+                ? err.message
+                : t("web.provider.atHomeAddress.validateFailed");
+            setValidationError(msg);
             patch({ travelFee: 0, travelPreviewMinutes: null, travelPreviewDistanceKm: null });
           }
         } finally {
@@ -241,19 +321,31 @@ export function AtHomeAddressSection({ value, onChange }: AtHomeAddressSectionPr
       <div className="space-y-2">
         <AddressAutocomplete
           value={value.addressLine1}
+          commitOnBlur={false}
           onChange={(addr) => {
+            const line2 = value.addressLine2.trim()
+              ? value.addressLine2
+              : (addr.address_line2 ?? value.addressLine2);
             patch({
               addressLine1: addr.place_name || addr.address_line1,
-              addressCity: addr.city,
-              addressState: addr.state ?? "",
-              addressPostalCode: addr.postal_code ?? "",
+              addressLine2: line2,
+              addressCity: addr.city || value.addressCity,
+              addressState: addr.state ?? value.addressState,
+              addressPostalCode: addr.postal_code ?? value.addressPostalCode,
               addressCountry: addr.country || value.addressCountry || "South Africa",
-              addressLatitude: addr.latitude || null,
-              addressLongitude: addr.longitude || null,
+              addressLatitude: Number.isFinite(addr.latitude) ? addr.latitude : null,
+              addressLongitude: Number.isFinite(addr.longitude) ? addr.longitude : null,
             });
+            lastRequestKeyRef.current = null;
+            setNeedsGeocodeHint(false);
           }}
           onInputChange={(val) => {
-            if (val) patch({ addressLine1: val });
+            patch({
+              addressLine1: val,
+              addressLatitude: null,
+              addressLongitude: null,
+            });
+            lastRequestKeyRef.current = null;
           }}
           placeholder={t("web.provider.atHomeAddress.searchPlaceholder")}
           label=""
@@ -326,6 +418,8 @@ export function AtHomeAddressSection({ value, onChange }: AtHomeAddressSectionPr
             </>
           ) : validationError ? (
             <span className="text-amber-800">{validationError}</span>
+          ) : needsGeocodeHint ? (
+            <span className="text-blue-700">{t("web.provider.atHomeAddress.chooseSuggestionOrPin")}</span>
           ) : displayFee > 0 ? (
             <>
               <MapPin className="h-4 w-4 shrink-0 text-blue-600" />
@@ -350,7 +444,9 @@ export function AtHomeAddressSection({ value, onChange }: AtHomeAddressSectionPr
             {value.travelPreviewMinutes != null
               ? t("web.provider.atHomeAddress.driveMin", { minutes: value.travelPreviewMinutes })
               : null}
-            {value.addressLatitude != null && value.addressLongitude != null ? t("web.provider.atHomeAddress.separator") + t("web.provider.atHomeAddress.geocoded") : null}
+            {hasValidCoordinates(value)
+              ? t("web.provider.atHomeAddress.separator") + t("web.provider.atHomeAddress.geocoded")
+              : null}
           </p>
         ) : null}
       </div>
@@ -396,8 +492,4 @@ export function AtHomeAddressSection({ value, onChange }: AtHomeAddressSectionPr
       />
     </BookingSectionCard>
   );
-}
-
-export function isAtHomeAddressReady(value: AtHomeAddressValue): boolean {
-  return Boolean(value.addressLine1.trim()) && Boolean(value.addressCity.trim());
 }

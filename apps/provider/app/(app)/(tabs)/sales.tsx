@@ -14,8 +14,7 @@ import { useRouter } from "expo-router";
 import { useFromTransactionsHub, useProviderStackBack } from "@/lib/provider-tab-navigation";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
-import { PayCloudPaymentSheet } from "@/components/payments/PayCloudPaymentSheet";
+import { CardMachineCollectSheet } from "@/components/payments/CardMachineCollectSheet";
 import { PaycloudCollectSetupAffordance } from "@/components/payments/PaycloudCollectSetupAffordance";
 import { usePaycloudCollectAvailability } from "@/hooks/usePaycloudCollectAvailability";
 import { getReportDateRange } from "@/lib/reportDateRanges";
@@ -221,7 +220,7 @@ type CheckoutStep =
   | "payment"
   | "receipt";
 
-type PaymentMethod = "cash" | "yoco" | "paycloud" | "card" | "eft" | "paystack_terminal";
+type PaymentMethod = "cash" | "card_machine" | "card" | "eft" | "paystack_terminal";
 
 const DATE_RANGE_VALUES = [
   { key: "dateRangeToday", value: "today" },
@@ -287,15 +286,16 @@ export default function SalesScreen() {
   const paymentMethodOptions = useMemo(() => {
     const base: { label: string; value: PaymentMethod; icon: keyof typeof Ionicons.glyphMap }[] = [
       ...(acceptCash ? [{ label: sl("payCash"), value: "cash" as const, icon: "cash-outline" as const }] : []),
-      ...(acceptCard && yocoEnabled
-        ? [{ label: sl("payYoco"), value: "yoco" as const, icon: "card-outline" as const }]
-        : []),
-      ...(acceptCard && canProcessPayments && paycloudEnabled && paycloudCollectEnabled
-        ? [{
-            label: paycloudInFlight ? sl("payResumeCardMachine") : sl("payCardMachine"),
-            value: "paycloud" as const,
-            icon: "card-outline" as const,
-          }]
+      ...(acceptCard &&
+      canProcessPayments &&
+      (yocoEnabled || (paycloudEnabled && paycloudCollectEnabled))
+        ? [
+            {
+              label: paycloudInFlight ? sl("payResumeCardMachine") : sl("payCardMachine"),
+              value: "card_machine" as const,
+              icon: "card-outline" as const,
+            },
+          ]
         : []),
       ...(acceptCard && manualCardEnabled
         ? [{ label: manualCardCollectOptionLabel(), value: "card" as const, icon: "reader-outline" as const }]
@@ -349,13 +349,17 @@ export default function SalesScreen() {
   }, [paymentMethodOptions, paymentMethod]);
 
   useEffect(() => {
-    if (!paycloudCollectEnabled && paymentMethod === "paycloud") {
+    if (
+      paymentMethod === "card_machine" &&
+      !yocoEnabled &&
+      !(paycloudEnabled && paycloudCollectEnabled)
+    ) {
       setPaymentMethod("cash");
     }
     if (!manualCardEnabled && paymentMethod === "card") {
       setPaymentMethod("cash");
     }
-  }, [paycloudCollectEnabled, manualCardEnabled, paymentMethod]);
+  }, [paycloudCollectEnabled, paycloudEnabled, yocoEnabled, manualCardEnabled, paymentMethod]);
 
   const [clientSearch, setClientSearch] = useState("");
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
@@ -381,12 +385,9 @@ export default function SalesScreen() {
     date: string;
   } | null>(null);
 
-  const yocoPendingSaleIdRef = useRef<string | null>(null);
-  const [yocoLinkedSaleId, setYocoLinkedSaleId] = useState<string | null>(null);
-  const [showYocoPayment, setShowYocoPayment] = useState(false);
-  const paycloudPendingSaleIdRef = useRef<string | null>(null);
-  const [paycloudLinkedSaleId, setPaycloudLinkedSaleId] = useState<string | null>(null);
-  const [showPaycloudPayment, setShowPaycloudPayment] = useState(false);
+  const cardMachinePendingSaleIdRef = useRef<string | null>(null);
+  const [cardMachineLinkedSaleId, setCardMachineLinkedSaleId] = useState<string | null>(null);
+  const [showCardMachineCollect, setShowCardMachineCollect] = useState(false);
   const [preparingPaystackTerminal, setPreparingPaystackTerminal] = useState(false);
   const [paystackTerminalPrompt, setPaystackTerminalPrompt] = useState<{
     code: string;
@@ -761,10 +762,8 @@ export default function SalesScreen() {
     setBarcodeLookupError(null);
     setVariantLoadingId(null);
     variantsCacheRef.current.clear();
-    yocoPendingSaleIdRef.current = null;
-    setYocoLinkedSaleId(null);
-    paycloudPendingSaleIdRef.current = null;
-    setPaycloudLinkedSaleId(null);
+    cardMachinePendingSaleIdRef.current = null;
+    setCardMachineLinkedSaleId(null);
     setCheckoutStep("select_client");
   }
 
@@ -782,7 +781,8 @@ export default function SalesScreen() {
 
   function buildSalePayload(overrides: Record<string, unknown> = {}) {
     const rawMethod = (overrides.payment_method as PaymentMethod | undefined) ?? paymentMethod;
-    const payment_method = rawMethod === "eft" ? "other" : rawMethod;
+    const payment_method =
+      rawMethod === "eft" ? "other" : rawMethod === "card_machine" ? "card" : rawMethod;
     return {
       customer_id: selectedClient?.customer_id ?? null,
       is_walk_in: isWalkIn,
@@ -822,10 +822,8 @@ export default function SalesScreen() {
       Alert.alert(sl("errorTitle"), sl("receiptUnavailable"));
       return;
     }
-    yocoPendingSaleIdRef.current = null;
-    setYocoLinkedSaleId(null);
-    paycloudPendingSaleIdRef.current = null;
-    setPaycloudLinkedSaleId(null);
+    cardMachinePendingSaleIdRef.current = null;
+    setCardMachineLinkedSaleId(null);
     setReceiptData({
       saleId: data.id,
       saleNumber: data.ref_number ?? null,
@@ -920,12 +918,12 @@ export default function SalesScreen() {
       await preparePaystackTerminalSale();
       return;
     }
-    if (paymentMethod === "yoco") {
-      let saleId = yocoPendingSaleIdRef.current ?? yocoLinkedSaleId;
+    if (paymentMethod === "card_machine") {
+      let saleId = cardMachinePendingSaleIdRef.current ?? cardMachineLinkedSaleId;
       if (!saleId) {
         const { data, error } = await createSale(
           buildSalePayload({
-            payment_method: "yoco",
+            payment_method: "card",
             payment_status: "pending",
           }),
         );
@@ -938,121 +936,32 @@ export default function SalesScreen() {
           return;
         }
         saleId = data.id;
-        yocoPendingSaleIdRef.current = saleId;
-        setYocoLinkedSaleId(saleId);
+        cardMachinePendingSaleIdRef.current = saleId;
+        setCardMachineLinkedSaleId(saleId);
       }
-      setShowYocoPayment(true);
-      return;
-    }
-    if (paymentMethod === "paycloud") {
-      let saleId = paycloudPendingSaleIdRef.current ?? paycloudLinkedSaleId;
-      if (!saleId) {
-        const { data, error } = await createSale(
-          buildSalePayload({
-            payment_method: "paycloud",
-            payment_status: "pending",
-          }),
-        );
-        if (error) {
-          Alert.alert(sl("errorTitle"), error);
-          return;
-        }
-        if (!data?.id) {
-          Alert.alert(sl("errorTitle"), sl("couldNotPrepareCardSale"));
-          return;
-        }
-        saleId = data.id;
-        paycloudPendingSaleIdRef.current = saleId;
-        setPaycloudLinkedSaleId(saleId);
-      }
-      setShowPaycloudPayment(true);
+      setShowCardMachineCollect(true);
       return;
     }
     await completeSaleWithMethod(paymentMethod);
   }
 
-  async function finalizeYocoSale(result: { reference: string }) {
-    const saleId = yocoPendingSaleIdRef.current ?? yocoLinkedSaleId;
-    if (!saleId || !result.reference) {
-      Alert.alert(sl("errorTitle"), sl("couldNotFinalizeCardSale"));
-      return;
-    }
-    const patch = await api.patch(`/api/provider/sales/${saleId}`, {
-      payment_status: "completed",
-      payment_provider: "yoco",
-      payment_provider_id: result.reference,
-    });
-    if (patch.error) {
-      Alert.alert(
-        sl("finishRecordingTitle"),
-        sl("finishRecordingBody"),
-        [
-          { text: sl("later"), style: "cancel" },
-          {
-            text: sl("finishRecording"),
-            onPress: () => {
-              void finalizeYocoSale(result);
-            },
-          },
-        ],
-      );
-      return;
-    }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    yocoPendingSaleIdRef.current = null;
-    setYocoLinkedSaleId(null);
-    setReceiptData({
-      saleId,
-      saleNumber: null,
-      total: grandTotal,
-      items: [...cart],
-      client: selectedClient?.full_name ?? sl("walkIn"),
-      method: "yoco",
-      date: new Date().toISOString(),
-    });
-    setCheckoutStep("receipt");
-    refreshSales();
-    refreshMetrics();
-  }
-
-  async function finalizePaycloudSale(result: { id: string }) {
-    const saleId = paycloudPendingSaleIdRef.current ?? paycloudLinkedSaleId;
+  function finalizeCardMachineSale() {
+    const saleId = cardMachinePendingSaleIdRef.current ?? cardMachineLinkedSaleId;
     if (!saleId) {
       Alert.alert(sl("errorTitle"), sl("couldNotFinalizeCardSale"));
       return;
     }
-    const patch = await api.patch(`/api/provider/sales/${saleId}`, {
-      payment_status: "completed",
-      payment_provider: "paycloud",
-      payment_provider_id: result.id,
-    });
-    if (patch.error) {
-      Alert.alert(
-        sl("finishRecordingTitle"),
-        sl("finishRecordingBody"),
-        [
-          { text: sl("later"), style: "cancel" },
-          {
-            text: sl("finishRecording"),
-            onPress: () => {
-              void finalizePaycloudSale(result);
-            },
-          },
-        ],
-      );
-      return;
-    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    paycloudPendingSaleIdRef.current = null;
-    setPaycloudLinkedSaleId(null);
-    setShowPaycloudPayment(false);
+    cardMachinePendingSaleIdRef.current = null;
+    setCardMachineLinkedSaleId(null);
+    setShowCardMachineCollect(false);
     setReceiptData({
       saleId,
       saleNumber: null,
       total: grandTotal,
       items: [...cart],
       client: selectedClient?.full_name ?? sl("walkIn"),
-      method: "paycloud",
+      method: "card_machine",
       date: new Date().toISOString(),
     });
     setCheckoutStep("receipt");
@@ -1965,28 +1874,17 @@ export default function SalesScreen() {
       {checkoutStep === "review" && renderReviewStep()}
       {checkoutStep === "receipt" && renderReceiptStep()}
 
-      {/* Yoco Card Payment */}
-      <YocoPaymentSheet
-        visible={showYocoPayment}
-        onClose={() => setShowYocoPayment(false)}
-        amountCents={Math.round(grandTotal * 100)}
-        currency={tenantCurrency}
-        saleId={yocoLinkedSaleId ?? undefined}
-        description={sl("posSaleFor", { name: selectedClient?.full_name ?? sl("walkIn") })}
-        onPaymentSuccess={(result) => finalizeYocoSale(result)}
-      />
-
-      <PayCloudPaymentSheet
-        visible={showPaycloudPayment}
-        onClose={() => setShowPaycloudPayment(false)}
+      <CardMachineCollectSheet
+        visible={showCardMachineCollect}
+        onClose={() => setShowCardMachineCollect(false)}
         amount={grandTotal}
         currency={tenantCurrency}
         entityType="sale"
-        entityId={paycloudLinkedSaleId ?? ""}
-        saleId={paycloudLinkedSaleId ?? undefined}
+        entityId={cardMachineLinkedSaleId ?? ""}
+        saleId={cardMachineLinkedSaleId ?? undefined}
         bookingLocationId={selectedLocationId}
         tipIncludedInAmount={tipAmount > 0}
-        onPaymentSuccess={(result) => void finalizePaycloudSale(result)}
+        onSuccess={() => finalizeCardMachineSale()}
       />
 
       <BottomSheet

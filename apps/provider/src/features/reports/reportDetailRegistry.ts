@@ -111,6 +111,12 @@ export const REPORT_DETAIL_REGISTRY: Record<string, ReportDetailDefinition> = {
     query: "fromTo",
     extraSearch: () => "&limit=300",
   },
+  "card-machine-reconciliation": {
+    title: "Card machine reconciliation",
+    subtitle: "Yoco + Beautonomi card machine exceptions",
+    apiPath: "payments/card-machine-reconciliation",
+    query: "fromTo",
+  },
   "paystack-terminal-reconciliation": {
     title: "Paystack Terminal reconciliation",
     subtitle: "Terminal captures, allocations, and payout readiness",

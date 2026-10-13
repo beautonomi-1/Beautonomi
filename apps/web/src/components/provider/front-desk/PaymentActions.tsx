@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,22 +13,21 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CreditCard, Link2, QrCode } from "lucide-react";
-import { sendPaystackLink, createYocoTerminalPaymentAndMarkPaid } from "@/lib/front-desk/actions";
+import { sendPaystackLink, recordYocoPayment } from "@/lib/front-desk/actions";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { PaystackTerminalCollectDialog } from "@/components/provider/PaystackTerminalCollectDialog";
-import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
-import { PaycloudCollectButton } from "@/components/provider-portal/PaycloudCollectButton";
 import { fetcher } from "@/lib/http/fetcher";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { paycloudTipIncludedInChargeAmount } from "@/lib/payments/paycloud-booking-charge";
-import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
-import Link from "next/link";
 import { useTranslation } from "@beautonomi/i18n";
-import {
-  formatPaycloudCollectLabel,
-  inferBookingCollectContext,
-  PAYCLOUD_SETUP_LABEL,
-} from "@/lib/payments/paycloud-collect-cta";
+
+const CardMachineCollectDialog = dynamic(
+  () =>
+    import("@/components/provider-portal/CardMachineCollectDialog").then((m) => ({
+      default: m.CardMachineCollectDialog,
+    })),
+  { ssr: false },
+);
 
 interface PaymentActionsProps {
   bookingId: string;
@@ -40,11 +40,8 @@ interface PaymentActionsProps {
   paymentStatus?: string;
   currency: string;
   onComplete: () => void;
-  /** Salon location for at-salon bookings; null for house-call / portable path */
   bookingLocationId?: string | null;
-  /** Checkout tip already included in collect amount — hide terminal tip field. */
   tipAmount?: number | null;
-  /** "footer" = large interactive tiles for Concierge Panel */
   variant?: "default" | "footer";
 }
 
@@ -76,16 +73,9 @@ export function PaymentActions({
   const paymentLinkEnabled = useFeatureFlag("payment_link");
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
-  const { ready: paycloudReady, loading: paycloudLoading, blockers, terminals } =
-    usePaycloudCollectReady();
-  const paycloudCollectContext = inferBookingCollectContext({
-    totalAmount,
-    totalPaid,
-    unpaidAdditionalCharges,
-    outstanding: remaining,
-  });
-  const [yocoOpen, setYocoOpen] = useState(false);
-  const [paycloudOpen, setPaycloudOpen] = useState(false);
+  const cardMachineEnabled = yocoEnabled || paycloudEnabled;
+  const [cardMachineOpen, setCardMachineOpen] = useState(false);
+  const [yocoRecordOpen, setYocoRecordOpen] = useState(false);
   const [yocoAmount, setYocoAmount] = useState(String(remaining));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [terminalReady, setTerminalReady] = useState(false);
@@ -116,14 +106,14 @@ export function PaymentActions({
     if (ok) onComplete();
   };
 
-  const handleRecordYoco = async () => {
+  const handleRecordYocoManual = async () => {
     const amt = parseFloat(yocoAmount);
     if (isNaN(amt) || amt <= 0) return;
     setIsSubmitting(true);
     try {
-      const ok = await createYocoTerminalPaymentAndMarkPaid(bookingId, amt, currency);
+      const ok = await recordYocoPayment(bookingId, amt);
       if (ok) {
-        setYocoOpen(false);
+        setYocoRecordOpen(false);
         onComplete();
       }
     } finally {
@@ -139,22 +129,25 @@ export function PaymentActions({
     );
   }
 
-  const paycloudDialog = (
-    <PayCloudPaymentDialog
-      open={paycloudOpen}
-      onOpenChange={setPaycloudOpen}
+  const cardMachineDialog = cardMachineEnabled ? (
+    <CardMachineCollectDialog
+      open={cardMachineOpen}
+      onOpenChange={setCardMachineOpen}
       amount={chargeAmount}
-      entityType="booking"
-      entityId={bookingId}
-      bookingId={bookingId}
-      bookingLocationId={bookingLocationId}
+      autoStart
       tipIncludedInAmount={paycloudTipIncludedInChargeAmount(tipAmount)}
+      entity={{
+        entityType: "booking",
+        entityId: bookingId,
+        bookingId,
+        bookingLocationId,
+      }}
       onSuccess={() => {
-        setPaycloudOpen(false);
+        setCardMachineOpen(false);
         onComplete();
       }}
     />
-  );
+  ) : null;
 
   if (variant === "footer") {
     return (
@@ -163,43 +156,20 @@ export function PaymentActions({
           {t("web.provider.bookings.detail.paymentActions.balanceDue", { currency, amount: remaining.toFixed(2) })}
         </div>
         <div className="grid grid-cols-2 gap-4">
-          {paycloudEnabled && !paycloudLoading ? (
-            paycloudReady || (terminals?.inFlight ?? 0) > 0 ? (
-              <button
-                type="button"
-                onClick={() => setPaycloudOpen(true)}
-                className="flex flex-col items-center justify-center gap-3 rounded-[2.5rem] border-2 border-[#0F172A]/10 bg-white p-8 shadow-sm transition-all duration-300 hover:border-[#0F172A]/20 hover:shadow-lg active:scale-[0.98]"
-              >
-                <CreditCard className="h-10 w-10 text-[#0F172A]" strokeWidth={1.5} />
-                <span className="font-semibold text-[#0F172A] text-center text-sm px-2">
-                  {formatPaycloudCollectLabel({
-                    context: paycloudCollectContext,
-                    amount: chargeAmount,
-                    currency,
-                    inFlight: (terminals?.inFlight ?? 0) > 0,
-                  })}
-                </span>
-              </button>
-            ) : (
-              <Link
-                href={blockers[0]?.href ?? "/provider/settings/sales/card-machines"}
-                className="flex flex-col items-center justify-center gap-3 rounded-[2.5rem] border-2 border-dashed border-[#0F172A]/15 bg-white p-8 shadow-sm transition-all hover:border-[#0F172A]/25"
-              >
-                <CreditCard className="h-10 w-10 text-[#0F172A]/50" strokeWidth={1.5} />
-                <span className="font-semibold text-[#0F172A]/70 text-center text-sm">{PAYCLOUD_SETUP_LABEL}</span>
-              </Link>
-            )
-          ) : null}
-          {yocoEnabled && (
+          {cardMachineEnabled ? (
             <button
               type="button"
-              onClick={() => setYocoOpen(true)}
+              onClick={() => setCardMachineOpen(true)}
               className="flex flex-col items-center justify-center gap-3 rounded-[2.5rem] border-2 border-[#0F172A]/10 bg-white p-8 shadow-sm transition-all duration-300 hover:border-[#0F172A]/20 hover:shadow-lg active:scale-[0.98]"
             >
               <CreditCard className="h-10 w-10 text-[#0F172A]" strokeWidth={1.5} />
-              <span className="font-semibold text-[#0F172A]">{t("web.provider.bookings.detail.paymentActions.yocoMachine")}</span>
+              <span className="font-semibold text-[#0F172A] text-center text-sm px-2">
+                {t("web.provider.bookings.detail.paymentCollect.cardMachine", {
+                  amount: chargeAmount.toFixed(2),
+                })}
+              </span>
             </button>
-          )}
+          ) : null}
           {paymentLinkEnabled && (
             <button
               type="button"
@@ -229,39 +199,7 @@ export function PaymentActions({
           expectedAmount={chargeAmount}
           currency={currency}
         />
-        {paycloudDialog}
-        <Dialog open={yocoOpen} onOpenChange={setYocoOpen}>
-          <DialogContent className="rounded-[2.5rem] border-[#0F172A]/10 shadow-[0_25px_60px_rgba(0,0,0,0.15)]">
-            <DialogHeader>
-              <DialogTitle className="text-[#0F172A]">{t("web.provider.bookings.detail.paymentActions.recordYocoTitle")}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div>
-                <Label className="text-[#0F172A]/80">{t("web.provider.bookings.detail.paymentActions.amountWithCurrency", { currency })}</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  value={yocoAmount}
-                  onChange={(e) => setYocoAmount(e.target.value)}
-                  placeholder={String(remaining.toFixed(2))}
-                  className="mt-2 rounded-2xl border-[#0F172A]/12"
-                />
-                <p className="text-xs text-[#0F172A]/50 mt-1.5">
-                  {t("web.provider.bookings.detail.paymentActions.remaining", { currency, amount: remaining.toFixed(2) })}
-                </p>
-              </div>
-            </div>
-            <DialogFooter className="gap-2">
-              <Button variant="outline" onClick={() => setYocoOpen(false)} className="rounded-2xl border-[#0F172A]/12">
-                {t("web.provider.bookings.detail.paymentActions.cancel")}
-              </Button>
-              <Button onClick={handleRecordYoco} disabled={isSubmitting} className="rounded-2xl bg-[#0F172A] hover:bg-[#0F172A]/90 text-white">
-                {isSubmitting ? t("web.provider.bookings.detail.paymentActions.recording") : t("web.provider.bookings.detail.paymentActions.recordPayment")}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {cardMachineDialog}
       </>
     );
   }
@@ -271,13 +209,19 @@ export function PaymentActions({
       <div className="space-y-3">
         <p className="text-[9px] font-black uppercase tracking-widest text-[#0F172A]/50">{t("web.provider.bookings.detail.paymentActions.payments")}</p>
         <div className="flex flex-wrap gap-2">
-          <PaycloudCollectButton
-            amount={chargeAmount}
-            currency={currency}
-            context={paycloudCollectContext}
-            onClick={() => setPaycloudOpen(true)}
-            className="h-11 gap-2 rounded-2xl border-[#0F172A]/12 hover:bg-[#0F172A]/[0.04]"
-          />
+          {cardMachineEnabled ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-11 gap-2 rounded-2xl border-[#0F172A]/12 hover:bg-[#0F172A]/[0.04]"
+              onClick={() => setCardMachineOpen(true)}
+            >
+              <CreditCard className="h-4 w-4" />
+              {t("web.provider.bookings.detail.paymentCollect.cardMachine", {
+                amount: chargeAmount.toFixed(2),
+              })}
+            </Button>
+          ) : null}
           {paymentLinkEnabled && (
             <Button variant="outline" size="sm" className="h-11 gap-2 rounded-2xl border-[#0F172A]/12 hover:bg-[#0F172A]/[0.04]" onClick={handleSendPaystack}>
               <Link2 className="h-4 w-4" />
@@ -285,7 +229,7 @@ export function PaymentActions({
             </Button>
           )}
           {yocoEnabled && (
-            <Button variant="outline" size="sm" className="h-11 gap-2 rounded-2xl border-[#0F172A]/12 hover:bg-[#0F172A]/[0.04]" onClick={() => setYocoOpen(true)}>
+            <Button variant="outline" size="sm" className="h-11 gap-2 rounded-2xl border-[#0F172A]/12 hover:bg-[#0F172A]/[0.04]" onClick={() => setYocoRecordOpen(true)}>
               <CreditCard className="h-4 w-4" />
               {t("web.provider.bookings.detail.paymentActions.recordYocoPayment")}
             </Button>
@@ -306,8 +250,8 @@ export function PaymentActions({
           currency={currency}
         />
       </div>
-      {paycloudDialog}
-      <Dialog open={yocoOpen} onOpenChange={setYocoOpen}>
+      {cardMachineDialog}
+      <Dialog open={yocoRecordOpen} onOpenChange={setYocoRecordOpen}>
         <DialogContent className="rounded-[2.5rem] border-[#0F172A]/10 shadow-[0_25px_60px_rgba(0,0,0,0.15)]">
           <DialogHeader>
             <DialogTitle className="text-[#0F172A]">{t("web.provider.bookings.detail.paymentActions.recordYocoTitle")}</DialogTitle>
@@ -320,8 +264,8 @@ export function PaymentActions({
             </div>
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setYocoOpen(false)} className="rounded-2xl border-[#0F172A]/12">{t("web.provider.bookings.detail.paymentActions.cancel")}</Button>
-            <Button onClick={handleRecordYoco} disabled={isSubmitting} className="rounded-2xl bg-[#0F172A] hover:bg-[#0F172A]/90 text-white">
+            <Button variant="outline" onClick={() => setYocoRecordOpen(false)} className="rounded-2xl border-[#0F172A]/12">{t("web.provider.bookings.detail.paymentActions.cancel")}</Button>
+            <Button onClick={handleRecordYocoManual} disabled={isSubmitting} className="rounded-2xl bg-[#0F172A] hover:bg-[#0F172A]/90 text-white">
               {isSubmitting ? t("web.provider.bookings.detail.paymentActions.recording") : t("web.provider.bookings.detail.paymentActions.recordPayment")}
             </Button>
           </DialogFooter>

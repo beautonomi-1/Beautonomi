@@ -411,6 +411,10 @@ export async function recordSuccessfulProviderSubscriptionRenewalFromInvoice(
   // Recognize the renewal payment through the unified idempotent helper so the
   // money is posted exactly once (charge.success / invoice.update overlap and
   // duplicate webhooks all dedupe on txnReference).
+  const renewalBillingPeriod =
+    (subscriptionDetails as SubDetailsRow | null)?.billing_period === "yearly"
+      ? "yearly"
+      : "monthly";
   await recordProviderSubscriptionPayment({
     supabase,
     reference: txnReference,
@@ -424,6 +428,7 @@ export async function recordSuccessfulProviderSubscriptionRenewalFromInvoice(
     kind: "subscription_renewal",
     description: "Provider subscription renewal payment",
     tenantIdHint: (subscriptionDetails as SubDetailsRow | null)?.tenant_id ?? null,
+    billingPeriod: renewalBillingPeriod,
   });
 
   if (subscriptionDetails) {

@@ -1,7 +1,12 @@
 import { getSupabasePublicAnon } from "@/lib/supabase/public-anon";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { headers } from "next/headers";
 import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
 import { fetchScopedListMerged } from "@/lib/tenant/scoped-overrides";
+import {
+  resolvePublishedPricingPlanRows,
+  type PricingPlanRow,
+} from "@/lib/pricing/published-pricing-plans";
 
 export type PricingPlan = {
   id: string;
@@ -52,13 +57,14 @@ export async function getPricingPageData(): Promise<{
     const tenantId = tenant?.id ?? "";
 
     const [plansScoped, faqsScoped, contentScoped] = await Promise.all([
-      fetchScopedListMerged<Record<string, any>>({
+      fetchScopedListMerged<PricingPlanRow>({
         supabase,
         table: "pricing_plans",
         tenantId,
         select: "*",
         apply: (q) => q.eq("is_active", true),
-        dedupeKey: (row) => String(row.name ?? row.id ?? ""),
+        dedupeKey: (row) =>
+          String(row.subscription_plan_id ?? row.id ?? row.name ?? ""),
         orderBy: { column: "display_order", ascending: true },
       }),
       fetchScopedListMerged<Record<string, any>>({
@@ -85,7 +91,9 @@ export async function getPricingPageData(): Promise<{
       }),
     ]);
 
-    const plans = plansScoped.data || [];
+    const mergedPlans = plansScoped.data || [];
+    const supabaseAdmin = getSupabaseAdmin();
+    const plans = await resolvePublishedPricingPlanRows(supabaseAdmin, mergedPlans);
     const faqs =
       faqsScoped.data?.map((faq) => ({
         id: faq.id,
@@ -117,12 +125,12 @@ export async function getPricingPageData(): Promise<{
 
     const normalizedPlans: PricingPlan[] = plans.map((plan) => ({
       id: plan.id,
-      name: plan.name,
-      price: plan.price,
-      period: plan.period,
-      description: plan.description,
-      cta_text: plan.cta_text,
-      is_popular: plan.is_popular,
+      name: String(plan.name ?? ""),
+      price: String(plan.price ?? ""),
+      period: plan.period != null ? String(plan.period) : null,
+      description: plan.description != null ? String(plan.description) : null,
+      cta_text: String(plan.cta_text ?? ""),
+      is_popular: Boolean(plan.is_popular),
       features: featuresMap.get(plan.id) || [],
       currency: (plan.currency as string | null | undefined) ?? null,
       subscriptionPlanId: (plan.subscription_plan_id as string | null | undefined) ?? null,

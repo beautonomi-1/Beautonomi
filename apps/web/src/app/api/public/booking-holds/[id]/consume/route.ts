@@ -25,6 +25,7 @@ import {
 import { z } from "zod";
 import { withNoStore } from "@/lib/http/no-store";
 import { resolveConsumePackageId } from "@/lib/public-booking/consume-package-id";
+import { flattenHoldServicesForGroupBooking } from "@/lib/public-booking/flatten-group-booking-services";
 
 const consumeBodySchema = z.object({
   client_info: z
@@ -473,10 +474,13 @@ async function handlePost(
       scheduled_end_at: string;
     }>;
 
-    const services = snapshot.map((s) => ({
-      offering_id: s.offering_id,
-      staff_id: s.staff_id,
-    }));
+    const services = flattenHoldServicesForGroupBooking(
+      snapshot.map((s) => ({
+        offering_id: s.offering_id,
+        staff_id: s.staff_id,
+      })),
+      isGroupBooking === true ? groupParticipants ?? undefined : undefined,
+    );
 
     // Normalize to ISO 8601 so /api/public/bookings Zod datetime() accepts it (DB may return different format)
     const selectedDatetime = new Date(hold.start_at).toISOString();

@@ -55,6 +55,7 @@ import {
 } from "@beautonomi/provider-booking";
 import { BookingCreateReadinessStrip } from "@/components/bookings/BookingCreateReadinessStrip";
 import { useCreateFormSections } from "@/hooks/useCreateFormSections";
+import { getServiceCategoryInfo } from "@/lib/service-category";
 import {
   participantsEqual,
   patchGroupMarkPaid,
@@ -68,8 +69,7 @@ import {
 } from "@/features/group-bookings/ParticipantRefundSheet";
 import { useProvider } from "@/providers/ProviderContext";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
-import { PayCloudPaymentSheet } from "@/components/payments/PayCloudPaymentSheet";
-import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
+import { CardMachineCollectSheet } from "@/components/payments/CardMachineCollectSheet";
 import { PaycloudCollectSetupAffordance } from "@/components/payments/PaycloudCollectSetupAffordance";
 import { usePaycloudCollectAvailability } from "@/hooks/usePaycloudCollectAvailability";
 import type { PayCloudEntityType } from "@/hooks/usePayCloud";
@@ -649,29 +649,6 @@ function serviceLabel(service: ServiceRow, variantLabel: string): string {
   return service.title;
 }
 
-const UNCATEGORIZED_GROUP_SERVICE_CATEGORY = "__uncategorized__";
-
-function getServiceCategoryInfo(service: ServiceRow, otherLabel: string): { id: string; label: string } {
-  const id =
-    service.category_id ||
-    service.global_category_id ||
-    service.category?.id ||
-    service.global_category?.id ||
-    service.provider_categories?.id ||
-    UNCATEGORIZED_GROUP_SERVICE_CATEGORY;
-  const label =
-    service.category_name ||
-    service.global_category_name ||
-    service.category?.name ||
-    service.category?.title ||
-    service.global_category?.name ||
-    service.global_category?.title ||
-    service.provider_categories?.name ||
-    service.provider_categories?.title ||
-    otherLabel;
-  return { id, label };
-}
-
 function createBlankParticipant(id: string, serviceId = ""): ParticipantFormRow {
   return { id, name: "", phone: "", email: "", serviceId, addOnIds: [], notes: "", staffId: "" };
 }
@@ -758,7 +735,7 @@ export default function GroupBookingsScreen() {
     isOwner || permissionData?.permissions?.process_payments === true;
 
   const { data: servicesRaw, refresh: refreshServices } = useApi<ServiceRow[]>(
-    "/api/provider/services?include_variants=true&include_offering_resources=true"
+    "/api/provider/services?include_variants=true&include_offering_resources=true&include_addons=true"
   );
   const { data: productsRaw, refresh: refreshProducts } = useApi<unknown>(
     "/api/provider/products?limit=200"
@@ -809,8 +786,14 @@ export default function GroupBookingsScreen() {
     [packagesRaw]
   );
   const parentServices = useMemo(
-    () => services.filter((s) => !s.parent_service_id && s.service_type !== "variant"),
-    [services]
+    () =>
+      services.filter(
+        (s) =>
+          !s.parent_service_id &&
+          s.service_type !== "variant" &&
+          s.service_type !== "addon",
+      ),
+    [services],
   );
   const variantServices = useMemo(
     () => services.filter((s) => s.parent_service_id || s.service_type === "variant"),
@@ -821,14 +804,17 @@ export default function GroupBookingsScreen() {
     [parentServices, variantServices]
   );
   const serviceCategoryOptions = useMemo(() => {
-    const categories = new Map<string, { id: string; label: string; count: number }>();
+    const categories = new Map<string, { id: string; label: string; count: number; order: number }>();
     parentServices.forEach((service) => {
       const info = getServiceCategoryInfo(service, gb("otherCategory"));
       const existing = categories.get(info.id);
       if (existing) existing.count += 1;
       else categories.set(info.id, { ...info, count: 1 });
     });
-    return Array.from(categories.values()).sort((a, b) => a.label.localeCompare(b.label));
+    return Array.from(categories.values()).sort((a, b) => {
+      if (a.order !== b.order) return a.order - b.order;
+      return a.label.localeCompare(b.label);
+    });
   }, [parentServices, gb]);
   const useServiceCategoryPickerSheet = shouldUseCategoryPicker(serviceCategoryOptions.length);
   const visibleParentServices = useMemo(
@@ -1044,21 +1030,15 @@ export default function GroupBookingsScreen() {
     terminal: { qr_url?: string | null; payment_link?: string | null; terminal_url?: string | null; name?: string | null };
   } | null>(null);
   const [isPreparingTerminal, setIsPreparingTerminal] = useState(false);
-  const [showPaycloudPayment, setShowPaycloudPayment] = useState(false);
-  const [paycloudAmount, setPaycloudAmount] = useState(0);
-  const [showYocoPayment, setShowYocoPayment] = useState(false);
-  const [yocoAmountCents, setYocoAmountCents] = useState(0);
-  const [yocoCollectTarget, setYocoCollectTarget] = useState<{
-    groupId: string;
-    locationId: string | null;
-  } | null>(null);
-  const [paycloudCollectTarget, setPaycloudCollectTarget] = useState<{
+  const [cardMachineCollect, setCardMachineCollect] = useState<{
+    amount: number;
     entityType: PayCloudEntityType;
     entityId: string;
     bookingId?: string;
     groupBookingId?: string;
     locationId?: string | null;
   } | null>(null);
+  const [showCardMachineCollect, setShowCardMachineCollect] = useState(false);
 
   const openPaycloudCollect = useCallback(
     (target: {
@@ -1069,24 +1049,29 @@ export default function GroupBookingsScreen() {
       groupBookingId?: string;
       locationId?: string | null;
     }) => {
-      setPaycloudCollectTarget({
+      setCardMachineCollect({
+        amount: target.amount,
         entityType: target.entityType,
         entityId: target.entityId,
         bookingId: target.bookingId,
         groupBookingId: target.groupBookingId,
         locationId: target.locationId,
       });
-      setPaycloudAmount(target.amount);
-      setShowPaycloudPayment(true);
+      setShowCardMachineCollect(true);
     },
     [],
   );
 
   const openYocoCollect = useCallback(
     (target: { groupId: string; amount: number; locationId: string | null }) => {
-      setYocoCollectTarget({ groupId: target.groupId, locationId: target.locationId });
-      setYocoAmountCents(Math.round(target.amount * 100));
-      setShowYocoPayment(true);
+      setCardMachineCollect({
+        amount: target.amount,
+        entityType: "group_booking",
+        entityId: target.groupId,
+        groupBookingId: target.groupId,
+        locationId: target.locationId,
+      });
+      setShowCardMachineCollect(true);
     },
     [],
   );
@@ -1173,6 +1158,7 @@ export default function GroupBookingsScreen() {
             phone: p.phone.trim(),
             email: p.email.trim(),
             serviceId: p.serviceId || createForm.serviceId,
+            customerId: p.customerId?.trim() || undefined,
           }))
           .filter((p) => p.name.length > 0 || p.phone.length > 0 || p.email.length > 0),
         validatePhone: validateE164Phone,
@@ -1931,6 +1917,7 @@ export default function GroupBookingsScreen() {
           phone: p.phone.trim(),
           email: p.email.trim(),
           serviceId: p.serviceId || createForm.serviceId,
+          customerId: p.customerId?.trim() || undefined,
         }))
         .filter((p) => p.name.length > 0 || p.phone.length > 0 || p.email.length > 0),
       validatePhone: validateE164Phone,
@@ -6539,50 +6526,30 @@ export default function GroupBookingsScreen() {
         onSuccess={handleParticipantRefundSuccess}
       />
 
-      {paycloudCollectTarget ? (
-        <PayCloudPaymentSheet
-          visible={showPaycloudPayment}
+      {cardMachineCollect ? (
+        <CardMachineCollectSheet
+          visible={showCardMachineCollect}
           onClose={() => {
-            setShowPaycloudPayment(false);
-            setPaycloudCollectTarget(null);
+            setShowCardMachineCollect(false);
+            setCardMachineCollect(null);
           }}
-          amount={paycloudAmount}
+          amount={cardMachineCollect.amount}
           currency={getTenantDefaultCurrency()}
-          entityType={paycloudCollectTarget.entityType}
-          entityId={paycloudCollectTarget.entityId}
-          bookingId={paycloudCollectTarget.bookingId}
-          groupBookingId={paycloudCollectTarget.groupBookingId}
+          entityType={cardMachineCollect.entityType}
+          entityId={cardMachineCollect.entityId}
+          bookingId={cardMachineCollect.bookingId}
+          groupBookingId={cardMachineCollect.groupBookingId}
           bookingLocationId={
-            paycloudCollectTarget.locationId ?? selectedGroup?.location_id ?? null
+            cardMachineCollect.locationId ?? selectedGroup?.location_id ?? null
           }
           tipIncludedInAmount={Number(selectedGroup?.tip_amount ?? 0) > 0.01}
-          onPaymentSuccess={async () => {
-            setShowPaycloudPayment(false);
-            setPaycloudCollectTarget(null);
+          onSuccess={async () => {
+            setShowCardMachineCollect(false);
+            setCardMachineCollect(null);
             setPaymentRecordedNotice(gb("cardMachineReceived"));
             if (selectedGroup) {
               await openGroupDetail(selectedGroup);
             }
-            await refresh();
-          }}
-        />
-      ) : null}
-
-      {yocoCollectTarget ? (
-        <YocoPaymentSheet
-          visible={showYocoPayment}
-          onClose={() => {
-            setShowYocoPayment(false);
-            setYocoCollectTarget(null);
-          }}
-          amountCents={yocoAmountCents}
-          currency={getTenantDefaultCurrency()}
-          groupBookingId={yocoCollectTarget.groupId}
-          bookingLocationId={yocoCollectTarget.locationId}
-          onPaymentSuccess={async () => {
-            setShowYocoPayment(false);
-            setYocoCollectTarget(null);
-            setPaymentRecordedNotice(gb("cardMachineReceived"));
             await refresh();
           }}
         />

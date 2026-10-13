@@ -58,9 +58,16 @@ export default function ReferralsScreen() {
   const stats = data?.stats;
   const settings = data?.settings;
   const isEnabled = settings?.is_enabled !== false;
-  const amount = settings?.referral_amount ?? 50;
+  const hasRewardAmount =
+    settings?.referral_amount != null && Number.isFinite(Number(settings.referral_amount));
   const currency = settings?.referral_currency ?? getTenantDefaultCurrency();
-  const rewardFormatted = useMemo(() => formatMoney(amount, currency), [amount, currency]);
+  const rewardFormatted = useMemo(
+    () =>
+      hasRewardAmount
+        ? formatMoney(Number(settings!.referral_amount), currency)
+        : null,
+    [hasRewardAmount, settings, currency],
+  );
 
   const handleCopy = async () => {
     if (!link) return;
@@ -128,7 +135,9 @@ export default function ReferralsScreen() {
         </View>
 
         <Text style={{ color: Colors.gray[600], fontSize: 14, marginTop: 16 }}>
-          {t("customer.referral.earnExplainer", { amount: rewardFormatted })}
+          {rewardFormatted
+            ? t("customer.referral.earnExplainer", { amount: rewardFormatted })
+            : t("customer.referral.subtitleGeneric")}
         </Text>
 
         {stats && (stats.total_referrals > 0 || stats.successful_referrals > 0 || stats.total_earnings > 0) && (

@@ -10,7 +10,13 @@ import {
   type TrackingUpdate,
   type ShippingRuntimeCredentials,
 } from "@beautonomi/shipping";
-import { loadEcommerceShippingRuntime } from "@/lib/orders/shipping-secrets";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  isLiveCourierBookingEnabled,
+  isShippingKillSwitchActive,
+  resolveProviderOwnedCredentials,
+  resolveTrackingCredentials,
+} from "@/lib/orders/shipping-runtime";
 
 /**
  * F28 — Thin adapter around @beautonomi/shipping that knows how to load an
@@ -49,10 +55,45 @@ function courierFor(id: ShippingProviderId, credentials: ShippingRuntimeCredenti
   return getShippingProvider(id, credentials);
 }
 
+const BOOKING_CLAIM_STALE_MS = 10 * 60 * 1000;
+
+async function tryClaimShippingBooking(admin: SupabaseClient, orderId: string): Promise<boolean> {
+  const selectClaimed = () =>
+    (admin.from("product_orders") as any)
+      .update({ shipping_booking_status: "booking", shipping_booking_detail: null })
+      .eq("id", orderId)
+      .is("tracking_number", null)
+      .select("id");
+
+  const { data: fresh } = await selectClaimed().or(
+    "shipping_booking_status.is.null,shipping_booking_status.eq.failed,shipping_booking_status.eq.skipped",
+  );
+  if (fresh?.length) return true;
+
+  const staleBefore = new Date(Date.now() - BOOKING_CLAIM_STALE_MS).toISOString();
+  const { data: reclaimed } = await selectClaimed()
+    .eq("shipping_booking_status", "booking")
+    .lt("updated_at", staleBefore);
+  return (reclaimed?.length ?? 0) > 0;
+}
+
+async function persistBookingSkip(
+  admin: SupabaseClient,
+  orderId: string,
+  skipped: string,
+): Promise<BookShippingResult> {
+  await (admin.from("product_orders") as any)
+    .update({ shipping_booking_status: "skipped", shipping_booking_detail: skipped })
+    .eq("id", orderId);
+  return { ok: true, skipped };
+}
+
 export async function bookShippingForOrder(
   supabase: SupabaseClient,
   orderId: string,
 ): Promise<BookShippingResult> {
+  const admin = getSupabaseAdmin();
+
   const { data: order, error } = await supabase
     .from("product_orders")
     .select(`
@@ -62,6 +103,7 @@ export async function bookShippingForOrder(
       fulfillment_type,
       status,
       tracking_number,
+      shipping_booking_status,
       customer:users!product_orders_customer_id_fkey (
         full_name,
         email,
@@ -88,14 +130,15 @@ export async function bookShippingForOrder(
   }
 
   if ((order as { fulfillment_type?: string | null }).fulfillment_type !== "delivery") {
-    return { ok: true, skipped: "not_delivery_order" };
+    return persistBookingSkip(admin, orderId, "not_delivery_order");
   }
 
-  // Ops gate: live courier booking stays off until superadmin enables it with keys
-  // (Integrations → Courier shipping) or ECOMMERCE_SHIPPING_ENABLED=true.
-  const runtime = await loadEcommerceShippingRuntime(supabase);
-  if (!runtime.enabled) {
-    return { ok: true, skipped: "shipping_globally_disabled" };
+  if (isShippingKillSwitchActive()) {
+    return persistBookingSkip(admin, orderId, "shipping_globally_disabled");
+  }
+
+  if (!(await isLiveCourierBookingEnabled(admin))) {
+    return persistBookingSkip(admin, orderId, "live_booking_disabled");
   }
 
   const { data: shippingConfig } = await supabase
@@ -108,20 +151,38 @@ export async function bookShippingForOrder(
     ?.shipping_provider_preference as ShippingProviderId | null | undefined;
 
   if (!providerPreference || !isKnownShippingProviderId(providerPreference)) {
-    return { ok: true, skipped: "no_shipping_preference" };
+    return persistBookingSkip(admin, orderId, "no_shipping_preference");
+  }
+
+  const runtimeCredentials = await resolveProviderOwnedCredentials(
+    admin,
+    order.provider_id,
+    providerPreference,
+  );
+  if (!runtimeCredentials) {
+    return persistBookingSkip(admin, orderId, `provider_not_configured:${providerPreference}`);
+  }
+
+  const claimed = await tryClaimShippingBooking(admin, orderId);
+  if (!claimed) {
+    return { ok: true, skipped: "booking_in_progress" };
   }
 
   let courier: ShippingProvider;
   try {
-    courier = courierFor(providerPreference, runtime.credentials);
+    courier = courierFor(providerPreference, runtimeCredentials);
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    const msg = err instanceof Error ? err.message : String(err);
+    await (admin.from("product_orders") as any)
+      .update({ shipping_booking_status: "failed", shipping_booking_detail: msg })
+      .eq("id", orderId);
+    return { ok: false, error: msg };
   }
 
   const [{ data: provider }, { data: originLocation }] = await Promise.all([
     supabase
       .from("providers")
-      .select("id, business_name")
+      .select("id, business_name, email, phone")
       .eq("id", order.provider_id)
       .single(),
     supabase
@@ -136,7 +197,10 @@ export async function bookShippingForOrder(
   ]);
 
   const customer = unwrapRow((order as { customer?: unknown }).customer);
-  const origin = toShippingAddress(originLocation, provider?.business_name ?? "");
+  const origin = toShippingAddress(originLocation, provider?.business_name ?? "", {
+    phone: str(originLocation?.phone) ?? str(provider?.phone) ?? undefined,
+    email: str(provider?.email) ?? undefined,
+  });
   const destination = toShippingAddress(
     (order as { delivery_address?: unknown })?.delivery_address,
     str(customer?.full_name) ?? "Customer",
@@ -147,6 +211,9 @@ export async function bookShippingForOrder(
   );
 
   if (!origin || !destination) {
+    await (admin.from("product_orders") as any)
+      .update({ shipping_booking_status: "failed", shipping_booking_detail: "missing_address" })
+      .eq("id", orderId);
     return { ok: false, error: "missing_address" };
   }
 
@@ -166,13 +233,21 @@ export async function bookShippingForOrder(
 
   try {
     const shipment = await courier.createShipment(req);
-    await (supabase.from("product_orders") as unknown as {
-      update: (v: Record<string, unknown>) => { eq: (k: string, v: string) => Promise<unknown> };
-    })
+    const shipmentId =
+      typeof shipment.metadata?.shipment_id === "string" ? shipment.metadata.shipment_id : null;
+    const labelUrl =
+      shipment.waybillUrl ??
+      (typeof shipment.metadata?.label_url === "string" ? shipment.metadata.label_url : null);
+
+    await (admin.from("product_orders") as any)
       .update({
         tracking_number: shipment.trackingNumber,
         carrier: shipment.providerId,
         tracking_url: shipment.waybillUrl ?? null,
+        courier_shipment_id: shipmentId,
+        courier_label_url: labelUrl,
+        shipping_booking_status: "booked",
+        shipping_booking_detail: null,
       })
       .eq("id", order.id);
 
@@ -182,10 +257,14 @@ export async function bookShippingForOrder(
       trackingNumber: shipment.trackingNumber,
     };
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     if (err instanceof ShippingProviderNotConfiguredError) {
-      return { ok: true, skipped: `provider_not_configured:${err.providerId}` };
+      return persistBookingSkip(admin, orderId, `provider_not_configured:${err.providerId}`);
     }
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    await (admin.from("product_orders") as any)
+      .update({ shipping_booking_status: "failed", shipping_booking_detail: msg.slice(0, 500) })
+      .eq("id", orderId);
+    return { ok: false, error: msg };
   }
 }
 
@@ -226,8 +305,23 @@ export async function refreshTrackingForOrder(
   }
 
   try {
-    const runtime = await loadEcommerceShippingRuntime(supabase);
-    const events = await courierFor(carrier, runtime.credentials).track(trackingNumber);
+    const providerId = (order as { provider_id?: string }).provider_id;
+    const credentials =
+      providerId && isKnownShippingProviderId(carrier)
+        ? await resolveTrackingCredentials(getSupabaseAdmin(), providerId, carrier)
+        : null;
+    if (!credentials) {
+      return {
+        ok: true,
+        live: false,
+        events: [],
+        skipped: `provider_not_configured:${carrier}`,
+        trackingNumber,
+        carrier,
+        trackingUrl,
+      };
+    }
+    const events = await courierFor(carrier, credentials).track(trackingNumber);
     return {
       ok: true,
       live: true,
@@ -264,6 +358,7 @@ export async function quoteRatesForProvider(
   supabase: SupabaseClient,
   providerId: string,
   destination: Address,
+  options?: { preferenceOverride?: ShippingProviderId },
 ): Promise<{
   ok: boolean;
   quotes: RateQuote[];
@@ -271,10 +366,11 @@ export async function quoteRatesForProvider(
   skipped?: string;
   error?: string;
 }> {
-  const runtime = await loadEcommerceShippingRuntime(supabase);
-  if (!runtime.enabled) {
+  if (isShippingKillSwitchActive()) {
     return { ok: true, quotes: [], skipped: "shipping_globally_disabled" };
   }
+
+  const admin = getSupabaseAdmin();
 
   const [{ data: shippingConfig }, { data: provider }, { data: originLocation }] = await Promise.all([
     supabase
@@ -282,7 +378,7 @@ export async function quoteRatesForProvider(
       .select("shipping_provider_preference")
       .eq("provider_id", providerId)
       .maybeSingle(),
-    supabase.from("providers").select("id, business_name").eq("id", providerId).maybeSingle(),
+    supabase.from("providers").select("id, business_name, email, phone").eq("id", providerId).maybeSingle(),
     supabase
       .from("provider_locations")
       .select("name, address_line1, address_line2, city, state, postal_code, country, phone")
@@ -294,19 +390,29 @@ export async function quoteRatesForProvider(
       .maybeSingle(),
   ]);
 
-  const preference = (shippingConfig as { shipping_provider_preference?: string | null } | null)
-    ?.shipping_provider_preference;
+  const preference =
+    options?.preferenceOverride ??
+    (shippingConfig as { shipping_provider_preference?: string | null } | null)
+      ?.shipping_provider_preference;
   if (!isKnownShippingProviderId(preference)) {
     return { ok: true, quotes: [], skipped: "no_shipping_preference" };
   }
 
-  const origin = toShippingAddress(originLocation, provider?.business_name ?? "");
+  const origin = toShippingAddress(originLocation, provider?.business_name ?? "", {
+    phone: str(originLocation?.phone) ?? str(provider?.phone) ?? undefined,
+    email: str(provider?.email) ?? undefined,
+  });
   if (!origin) {
     return { ok: false, quotes: [], error: "missing_origin_address", providerId: preference };
   }
 
+  const runtimeCredentials = await resolveProviderOwnedCredentials(admin, providerId, preference);
+  if (!runtimeCredentials) {
+    return { ok: true, quotes: [], skipped: `provider_not_configured:${preference}`, providerId: preference };
+  }
+
   try {
-    const quotes = await courierFor(preference, runtime.credentials).quoteRates({
+    const quotes = await courierFor(preference, runtimeCredentials).quoteRates({
       origin,
       destination,
       parcels: [defaultParcel()],
@@ -318,6 +424,40 @@ export async function quoteRatesForProvider(
     }
     return { ok: false, quotes: [], error: err instanceof Error ? err.message : String(err), providerId: preference };
   }
+}
+
+export async function cancelCourierShipmentForOrder(
+  supabase: SupabaseClient,
+  orderId: string,
+): Promise<{ ok: boolean; skipped?: string; error?: string }> {
+  const { data: order } = await supabase
+    .from("product_orders")
+    .select("id, provider_id, carrier, courier_shipment_id, tracking_number")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (!order) return { ok: false, error: "order_not_found" };
+  const carrier = (order as { carrier?: string | null }).carrier;
+  if (!isKnownShippingProviderId(carrier)) {
+    return { ok: true, skipped: "manual_tracking" };
+  }
+  const admin = getSupabaseAdmin();
+  const creds = await resolveProviderOwnedCredentials(
+    admin,
+    (order as { provider_id: string }).provider_id,
+    carrier,
+  );
+  if (!creds) return { ok: true, skipped: "provider_not_configured" };
+  const result = await courierFor(carrier, creds).cancelShipment({
+    shipmentId: (order as { courier_shipment_id?: string | null }).courier_shipment_id,
+    trackingNumber: (order as { tracking_number?: string | null }).tracking_number,
+  });
+  if (result.ok === false) {
+    return { ok: false, error: result.message ?? result.reason };
+  }
+  await (admin.from("product_orders") as any)
+    .update({ shipping_booking_status: "cancelled" })
+    .eq("id", orderId);
+  return { ok: true };
 }
 
 export function toShippingAddress(
@@ -332,10 +472,15 @@ export function toShippingAddress(
   const postal = str(row.postal_code ?? row.postalCode ?? row.zip);
   const country = str(row.country ?? row.country_code) ?? "ZA";
   if (!line1 || !city || !postal || !country) return null;
+  const suburbHint = str(row.suburb ?? row.neighborhood ?? row.local_area);
+  const line2FromRow = str(row.address_line2 ?? row.line2 ?? row.address2);
+  const line2 =
+    line2FromRow ??
+    (suburbHint && suburbHint.toLowerCase() !== city.toLowerCase() ? suburbHint : undefined);
   return {
     name: str(row.name ?? row.label ?? row.company) ?? fallbackName,
     line1,
-    line2: str(row.address_line2 ?? row.line2 ?? row.address2) ?? undefined,
+    line2,
     city,
     region: str(row.region ?? row.state) ?? undefined,
     postalCode: postal,

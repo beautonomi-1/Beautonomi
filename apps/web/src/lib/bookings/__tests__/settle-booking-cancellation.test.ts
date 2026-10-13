@@ -3,7 +3,33 @@ import {
   computeCancellationFeeForSettlement,
   computeEffectiveCollectedAmount,
   computeReconciledCancellationAmounts,
+  computeYocoTerminalRefundDue,
 } from "../settle-booking-cancellation";
+
+describe("computeYocoTerminalRefundDue", () => {
+  it("caps at Yoco captures and ignores other rails and failed rows", () => {
+    expect(
+      computeYocoTerminalRefundDue(
+        [
+          { payment_provider: "yoco", status: "completed", amount: 150 },
+          { payment_provider: "yoco", status: "failed", amount: 500 },
+          { payment_provider: "paystack", status: "completed", amount: 100 },
+        ],
+        200,
+      ),
+    ).toBe(150);
+  });
+
+  it("never exceeds the in-person candidate", () => {
+    expect(
+      computeYocoTerminalRefundDue([{ payment_provider: "YOCO", status: "completed", amount: "300" }], 120),
+    ).toBe(120);
+  });
+
+  it("is zero without Yoco captures", () => {
+    expect(computeYocoTerminalRefundDue([{ payment_provider: "paycloud", status: "completed", amount: 80 }], 80)).toBe(0);
+  });
+});
 
 describe("computeEffectiveCollectedAmount", () => {
   it("uses max(total_paid, wallet+gift) minus prior refunds", () => {
@@ -232,6 +258,28 @@ describe("customer/portal cancel wallet cap", () => {
     });
     expect(walletRefundAmount).toBe(0);
     expect(cancellationFeeApplied).toBe(60);
+  });
+
+  it("walletStoreCreditAmountWhenVoidingGiftOnFullRefund excludes gift leg on full refund", async () => {
+    const { walletStoreCreditAmountWhenVoidingGiftOnFullRefund } = await import(
+      "../settle-booking-cancellation"
+    );
+    expect(
+      walletStoreCreditAmountWhenVoidingGiftOnFullRefund({
+        refundAmount: 200,
+        giftCardCollected: 50,
+        totalRefundedBefore: 0,
+        totalCollectedAllSources: 200,
+      }),
+    ).toBe(150);
+    expect(
+      walletStoreCreditAmountWhenVoidingGiftOnFullRefund({
+        refundAmount: 80,
+        giftCardCollected: 50,
+        totalRefundedBefore: 0,
+        totalCollectedAllSources: 200,
+      }),
+    ).toBe(80);
   });
 
   it("admin cancel defaults to full refund and zero fee", () => {

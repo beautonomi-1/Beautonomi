@@ -192,6 +192,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const { data: shippingConfigRow } = await (supabase.from("provider_shipping_config") as any)
+      .select("offers_delivery, offers_collection")
+      .eq("provider_id", parsed.provider_id)
+      .maybeSingle();
+    const offersDelivery = Boolean(
+      (shippingConfigRow as { offers_delivery?: boolean } | null)?.offers_delivery,
+    );
+    const offersCollection =
+      (shippingConfigRow as { offers_collection?: boolean } | null)?.offers_collection !== false;
+    if (!offersDelivery && !offersCollection) {
+      return errorResponse(
+        "This provider is not accepting product orders right now.",
+        "FULFILLMENT_UNAVAILABLE",
+        400,
+      );
+    }
+    if (parsed.fulfillment_type === "delivery" && !offersDelivery) {
+      return errorResponse("This provider does not offer delivery.", "DELIVERY_UNAVAILABLE", 400);
+    }
+    if (parsed.fulfillment_type === "collection" && !offersCollection) {
+      return errorResponse("This provider does not offer collection.", "COLLECTION_UNAVAILABLE", 400);
+    }
+
     const { data: providerForTenant } = await supabase
       .from("providers")
       .select("tenant_id, customer_fee_config_id")

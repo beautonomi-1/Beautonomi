@@ -31,7 +31,6 @@ import {
 import { clearFetcherCache, fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { Appointment, Salon, TeamMember, ServiceItem } from "@/lib/provider-portal/types";
-import type { YocoPayment } from "@/lib/provider-portal/types";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import Pagination from "@/components/ui/pagination";
@@ -54,10 +53,15 @@ import {
 } from "@/components/ui/dialog";
 import { AppointmentStatusBadge } from "@/components/provider-portal/AppointmentStatusBadge";
 import { Money } from "@/components/provider-portal/Money";
-import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
-import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
-import { PaycloudCollectButton } from "@/components/provider-portal/PaycloudCollectButton";
-import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
+import dynamic from "next/dynamic";
+
+const CardMachineCollectDialog = dynamic(
+  () =>
+    import("@/components/provider-portal/CardMachineCollectDialog").then((m) => ({
+      default: m.CardMachineCollectDialog,
+    })),
+  { ssr: false },
+);
 import { computeWalletGiftCoverageOutstanding } from "@/lib/bookings/provider-booking-finance";
 import { isCloseOutBookingsDeepLink } from "@/lib/bookings/lifecycle-close-out";
 import { paycloudTipIncludedInChargeAmount } from "@/lib/payments/paycloud-booking-charge";
@@ -123,7 +127,6 @@ export function BookingsClient({
   const { selectedLocationId, provider } = useProviderPortal();
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
-  const { ready: paycloudReady, blockers } = usePaycloudCollectReady();
   const { hasPermission, isOwner } = usePermissions();
   const canCreateAppointments = isOwner || hasPermission("create_appointments");
   const canEditAppointments = isOwner || hasPermission("edit_appointments");
@@ -209,10 +212,8 @@ export function BookingsClient({
   const [journeyEtaMinutes, setJourneyEtaMinutes] = useState<number | null>(15);
 
   // Yoco
-  const [yocoDialogOpen, setYocoDialogOpen] = useState(false);
-  const [yocoBooking, setYocoBooking] = useState<ProviderBookingListItem | null>(null);
-  const [paycloudDialogOpen, setPaycloudDialogOpen] = useState(false);
-  const [paycloudBooking, setPaycloudBooking] = useState<ProviderBookingListItem | null>(null);
+  const [cardMachineOpen, setCardMachineOpen] = useState(false);
+  const [cardMachineBooking, setCardMachineBooking] = useState<ProviderBookingListItem | null>(null);
 
   // Team members, services, locations for BookingSheetHost
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -810,18 +811,9 @@ export function BookingsClient({
     });
   };
 
-  const handleYocoPayment = (b: ProviderBookingListItem) => {
-    setYocoBooking(b);
-    setYocoDialogOpen(true);
-  };
-
-  const handlePaycloudPayment = (b: ProviderBookingListItem) => {
-    setPaycloudBooking(b);
-    setPaycloudDialogOpen(true);
-  };
-
-  const handlePaymentSuccess = (_payment: YocoPayment) => {
-    loadBookings();
+  const handleCardMachinePayment = (b: ProviderBookingListItem) => {
+    setCardMachineBooking(b);
+    setCardMachineOpen(true);
   };
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -1031,20 +1023,11 @@ export function BookingsClient({
                                 {primaryAction.label}
                               </Button>
                             )}
-                            {shouldShowPayButton(b) && paycloudEnabled ? (
-                              <PaycloudCollectButton
-                                amount={collectableAmount(b)}
-                                currency={(b as { currency?: string }).currency ?? "ZAR"}
-                                context="booking"
-                                onClick={() => handlePaycloudPayment(b)}
-                                className="text-[11px] h-7 px-2"
-                                size="sm"
-                              />
-                            ) : shouldShowPayButton(b) && yocoEnabled ? (
+                            {shouldShowPayButton(b) && (paycloudEnabled || yocoEnabled) ? (
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleYocoPayment(b)}
+                                onClick={() => handleCardMachinePayment(b)}
                                 className="text-[11px] h-7 px-2 border-gray-200 text-gray-700 hover:bg-gray-50"
                                 title={t("web.provider.bookings.takePayment")}
                                 aria-label={t("web.provider.bookings.takePayment")}
@@ -1161,17 +1144,8 @@ export function BookingsClient({
                         {primaryAction.label}
                       </Button>
                     )}
-                    {shouldShowPayButton(b) && paycloudEnabled ? (
-                      <PaycloudCollectButton
-                        amount={collectableAmount(b)}
-                        currency={(b as { currency?: string }).currency ?? "ZAR"}
-                        context="booking"
-                        onClick={() => handlePaycloudPayment(b)}
-                        className="text-xs h-9"
-                        size="sm"
-                      />
-                    ) : shouldShowPayButton(b) && yocoEnabled ? (
-                      <Button variant="outline" size="sm" onClick={() => handleYocoPayment(b)} className="gap-1 text-xs h-9">
+                    {shouldShowPayButton(b) && (paycloudEnabled || yocoEnabled) ? (
+                      <Button variant="outline" size="sm" onClick={() => handleCardMachinePayment(b)} className="gap-1 text-xs h-9">
                         <CreditCard className="w-3 h-3" /> {t("web.provider.bookings.pay")}
                       </Button>
                     ) : null}
@@ -1544,36 +1518,27 @@ export function BookingsClient({
           />
         ) : null}
 
-        {paycloudBooking && (
-          <PayCloudPaymentDialog
-            open={paycloudDialogOpen}
-            onOpenChange={setPaycloudDialogOpen}
-            amount={collectableAmount(paycloudBooking)}
-            entityType="booking"
-            entityId={paycloudBooking.id}
-            bookingId={paycloudBooking.id}
-            bookingLocationId={(paycloudBooking as { location_id?: string | null }).location_id ?? null}
+        {cardMachineBooking ? (
+          <CardMachineCollectDialog
+            open={cardMachineOpen}
+            onOpenChange={setCardMachineOpen}
+            amount={collectableAmount(cardMachineBooking)}
+            autoStart
             tipIncludedInAmount={paycloudTipIncludedInChargeAmount(
-              Number((paycloudBooking as { tip_amount?: number }).tip_amount ?? 0),
+              Number((cardMachineBooking as { tip_amount?: number }).tip_amount ?? 0),
             )}
+            entity={{
+              entityType: "booking",
+              entityId: cardMachineBooking.id,
+              bookingId: cardMachineBooking.id,
+              bookingLocationId: (cardMachineBooking as { location_id?: string | null }).location_id ?? null,
+            }}
             onSuccess={() => {
               loadBookings();
-              setPaycloudDialogOpen(false);
+              setCardMachineOpen(false);
             }}
           />
-        )}
-
-        {/* Yoco payment dialog */}
-        {yocoBooking && (
-          <YocoPaymentDialog
-            open={yocoDialogOpen}
-            onOpenChange={setYocoDialogOpen}
-            amount={yocoBooking.total_amount || 0}
-            appointmentId={yocoBooking.id}
-            bookingLocationId={(yocoBooking as { location_id?: string | null }).location_id ?? null}
-            onSuccess={handlePaymentSuccess}
-          />
-        )}
+        ) : null}
 
         {/* Appointment sidebar for full detail view */}
         <BookingSheetHost

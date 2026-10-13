@@ -35,7 +35,7 @@ describe("validateCreateBooking", () => {
     expect(validateCreateBooking({ ...base, serviceCount: 0 })).toMatch(/service/i);
   });
 
-  it("allows products-only when productCount > 0", () => {
+  it("rejects products-only when productCount > 0 and no services", () => {
     expect(
       validateCreateBooking({
         ...base,
@@ -44,7 +44,7 @@ describe("validateCreateBooking", () => {
         staffListLength: 0,
         staffId: "",
       }),
-    ).toBeNull();
+    ).toMatch(/service/i);
   });
 
   it("skips staff when staffListLength is 0", () => {

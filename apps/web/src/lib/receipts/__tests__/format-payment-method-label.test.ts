@@ -28,17 +28,17 @@ describe("formatPaymentMethodLabel", () => {
   });
 
   it("card with Yoco provider", () => {
-    expect(formatPaymentMethodLabel("card", "yoco")).toBe("Card (Yoco)");
+    expect(formatPaymentMethodLabel("card", "yoco")).toBe("Yoco card machine");
   });
 
   it("card with paystack/stripe/flutterwave shows generic Card", () => {
-    expect(formatPaymentMethodLabel("card", "paystack")).toBe("Card");
-    expect(formatPaymentMethodLabel("card", "stripe")).toBe("Card");
-    expect(formatPaymentMethodLabel("card", "flutterwave")).toBe("Card");
+    expect(formatPaymentMethodLabel("card", "paystack")).toBe("Card (online)");
+    expect(formatPaymentMethodLabel("card", "stripe")).toBe("Card (online)");
+    expect(formatPaymentMethodLabel("card", "flutterwave")).toBe("Card (online)");
   });
 
   it("card with 'other' provider is manual card", () => {
-    expect(formatPaymentMethodLabel("card", "other")).toBe("Card (manual)");
+    expect(formatPaymentMethodLabel("card", "other")).toBe("Card (recorded)");
   });
 
   it("saved_card / new_card both render as Card", () => {

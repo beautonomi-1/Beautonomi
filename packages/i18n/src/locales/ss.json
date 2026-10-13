@@ -1649,7 +1649,9 @@
           "measureG": "Emagremu (g)",
           "measureKg": "Emakhilogremu (kg)",
           "measureUnit": "Iyunithi",
-          "defaultVariantType": "Sayizi"
+          "defaultVariantType": "Sayizi",
+          "weightGrams": "Shipping weight (g)",
+          "weightGramsPlaceholder": "500"
         },
         "ads": {
           "title": "Tikhangiso letikhokhelwako",
@@ -3104,7 +3106,23 @@
           "recommendChargeCard": "khokhisa Ikhadi on file (likhasimende vumas first)",
           "recommendCustomerPay": "Tfumela to likhasimende — they khokha in-app",
           "recommendCollectInPerson": "Collect ebusweni (Imali, Ikhadi, or itheminali)",
-          "removeCta": "Susa"
+          "removeCta": "Susa",
+          "cancelRefundCardHint": "Tinkhokhelo temshini welikhadi tibuyela emuva ekhadini leklayenti (Beautonomi imishini iyatentekela; Yoco ubuyisela imali emshinini bese uyayirekhoda). Tinkhokhelo letiku-inthanethi tifakwa esikhwameni sabo semali.",
+          "cancelRefundWalletHint": "Iklayenti itfola kubuyiselwa imali lephelele esikhwameni sabo se-Beautonomi. Inchubomgomo yakho yekukhansela ayisebenti ekukhanseleni lokucalako.",
+          "continue": "Chubeka",
+          "yocoRefundOnMachineTitle": "Buyisela imali emshinini wakho Yoco",
+          "yocoRefundOnMachineBody": "Yoco kubuyiselwa kwemali akukwati kucala kusuka ku Beautonomi. Buyisela imali {{amount}} ku-app ye-Yoco noma kumshini kucala, bese uyayibhala lapha kute ibhalansi yekubhuka kanye nemibiko ihlale ilungile.",
+          "yocoRefundRecordedBody": "Imali lebuyiselwako Yoco ibhalwe phansi kulokubhukha.",
+          "awaitingYocoRefundTitle": "{{amount}} kusafanele kubuyiselwe imali emshinini Yoco",
+          "awaitingYocoRefundBody": "Lokubhukha kwakhanselwa ngekubuyiselwa imali emuva ekhadini. Libuyisele ku-app ye-Yoco nobe emshinini, bese ulirekhoda lapha. Kuze kube ngulapho kuhlala kuvelele embikweni wekubuyisana kwemshini wekhadi.",
+          "awaitingYocoRefundReason": "Kubhuka kukhanseliwe — kubuyiselwa imali ekhadini",
+          "refundOriginalHint": "Lemali ibuyela ekhadini lekhasimende ngekusebentisa umshini welikhadi nobe ebhange. Kute lokutsatfwako e-cash drawer yakho.",
+          "refundCashHint": "Niketa imali emuva ekhasimendeni mathupha. Kubhalwe phansi kutsi kubhalwe tincwadzi takho; kute sikweleti sesikhwama semali lesikhishwako. Ibhalansi yekubhuka iyabuyeketwa ngemuva kwaloku kuphumelela.",
+          "refundWalletHint": "Sebentisa nangabe likhasimende lingekho nobe inkhokhelo yentiwe ku-inthanethi. Imali lebuyiselwako ifakwa esikhwameni sabo semali.",
+          "refundOriginalMachineHint": "Lemali ibuyela ekhadini lekhasimende ngemshini welikhadi lebeyikhokhelwe ngawo.",
+          "cancelWalletNote": "Iklayenti itawubuyiselwa imali lephelele esikhwameni sayo se-Beautonomi semali leseyivele ikhokhelwe. Inchubomgomo yakho yekukhansela ayisebenti ekukhanseleni lokucalako.",
+          "cancelRefundTo": "Buyisela imali lekhokhelwe ku .",
+          "yocoRefundRecordCta": "Ibuyiselwe emshinini — bhala imali lebuyiselwe ."
         },
         "operatingHoursSettings": {
           "title": "Opesilinganiso emahora",
@@ -3969,7 +3987,11 @@
           "trackingUrlHelp": "Namatsisela likhasi lekulandzelela lemtfwali kute emakhasimende akhone kushaya kusuka ku-oda lawo.",
           "saving": "Iyagcina…",
           "confirmShipped": "Cinisekisa Kutfunyelwe",
-          "estimatedDeliveryDate": "Estimated Kuletsa lilanga (lokukhetsako)"
+          "estimatedDeliveryDate": "Estimated Kuletsa lilanga (lokukhetsako)",
+          "courierBooking": "Courier booking",
+          "bookCourier": "Book courier",
+          "retryCourierBooking": "Retry booking",
+          "printLabel": "Print label"
         },
         "yocoDevices": {
           "title": "Yoco emadivaysi",
@@ -5169,7 +5191,9 @@
           "staffOffersServiceHint": "Lawa malunga elitimba angayenta lensita.",
           "categoryPickerTitle": "Sigaba",
           "runningBehindSheetTitle": "Usalele emuva?",
-          "staffFilteredByService": "Kuboniswa emalunga elitimba laniketwe lensita."
+          "staffFilteredByService": "Kuboniswa emalunga elitimba laniketwe lensita.",
+          "addressOutsideArea": "This address is outside your service area.",
+          "addressValidateFailed": "Could not validate this address. Check your connection and try again."
         },
         "expressBooking": {
           "invalidJson": "JSON. lengavumelekile.",
@@ -5403,7 +5427,44 @@
           "posting": "Siposoing…",
           "postAction": "Siposo",
           "commentsDisabled": "Amazwana nokuthandwa kucinyiwe kuzilungiselelo zakho zokuqukethwe nokuphepha.",
-          "commentLength": "{{count}}/200"
+          "commentLength": "{{count}}/200",
+          "videoTooLong": "Video exceeds the maximum length for Explore ({{seconds}} seconds).",
+          "trimVideoTitle": "Trim video",
+          "trimVideoHint": "Drag to choose which part of your video appears on Explore.",
+          "trimClipLength": "{{seconds}}s clip",
+          "trimVideoScrubber": "Choose clip start",
+          "trimVideoConfirm": "Use clip",
+          "trimVideoLoading": "Loading video…",
+          "trimVideoFinishFirst": "Finish trimming your video before continuing.",
+          "holdToRecord": "Hold to record",
+          "releaseToFinish": "Release to finish",
+          "tapForPhoto": "Tap for photo",
+          "clipWindowA11y": "Selected clip",
+          "capturePhoto": "Photo",
+          "captureVideo": "Video",
+          "flipCamera": "Flip camera",
+          "lensFront": "Front camera",
+          "lensBack": "Back camera",
+          "switchToFront": "Switch to front camera",
+          "switchToBack": "Switch to back camera",
+          "openingCamera": "Opening camera…",
+          "cameraOpenFailed": "Could not open this camera. Try the other lens or close and reopen.",
+          "cameraPermissionContinue": "Continue",
+          "micPermissionForVideo": "Microphone access is needed to record video with sound.",
+          "onMediaText": "On-media text",
+          "onMediaTextHint": "Tap a thumbnail to pick the slide, then add short text (shown on the post until publish burn-in).",
+          "onMediaTextDragHint": "Drag text on the preview to reposition it.",
+          "onMediaTextPlaceholder": "Short label on this slide",
+          "addTextLayer": "Add text",
+          "backgroundSoundOptional": "Background sound (optional)",
+          "addMusic": "Add music (optional)",
+          "originalAudio": "Original audio",
+          "soundViewerHint": "Viewers hear this music instead of your clip's audio on Explore.",
+          "soundsEmpty": "No catalog tracks yet — use original audio or ask your admin to add platform sounds.",
+          "soundsSectionPlatform": "Popular sounds",
+          "soundsSectionYours": "Your sounds",
+          "soundPreviewPlay": "Play preview",
+          "soundPreviewStop": "Stop preview"
         },
         "dashboard": {
           "title": "Dashboard",
@@ -7370,7 +7431,11 @@
           "deliveryNotesPlaceholder": "e.g. Mso–Hla only",
           "howFeesWork": "How timali work",
           "howFeesWorkBody": "Ukuthatha kumahhala. Ukulethwa kusebenzisa imali yakho neyephulatifomu. Setha umgcele wokulethwa kwamahhala ukuze ama-oda ngaphezu kwalowo mkhawulo athole ukulethwa kwamahhala.",
-          "saveChanges": "Gcina tinguquko"
+          "saveChanges": "Gcina tinguquko",
+          "courierPreference": "Courier",
+          "courierPreferencePlaceholder": "Leave empty for manual tracking",
+          "courierNone": "None (manual tracking)",
+          "courierKeysWebHint": "Connect API keys in the provider web app under Ecommerce → Shipping."
         },
         "productSalesReport": {
           "factsDefinitions": "Amaqiniso netincazelo",
@@ -10567,7 +10632,9 @@
           "itemGlobalSignOut": "Phuma kuwo onkhe emadivaysi",
           "itemGlobalSignOutDesc": "End every Iyasebenta Seshini on your li-akhawunti",
           "itemDelete": "Sula li-akhawunti",
-          "itemDeleteDesc": "Permanently Sula li-akhawunti and Lidatha"
+          "itemDeleteDesc": "Permanently Sula li-akhawunti and Lidatha",
+          "itemReferBusiness": "Refer a business",
+          "itemReferBusinessDesc": "Submit another salon or beauty business to Beautonomi"
         },
         "settingsBusinessDescription": {
           "validationTitle": "Kucinisekisa",
@@ -12620,6 +12687,23 @@
           "submitFailedFallback": "Sicela zama futsi or Tintsana Partner lusito.",
           "submitGenericError": "Kukhona lokungahambanga kahle.",
           "supportFallback": "Awuyati @handle yabo? Vula itikithi lesekela le-Partner esikhundleni salokho"
+        },
+        "cardMachineCollect": {
+          "title": "Umshini wemakhadi",
+          "collectOn": "Lokujwayelekile: {{name}}",
+          "chooseMachine": "Khetsa umshini welikhadi",
+          "noMachines": "Kute imishini yemakhadi leseyisetjentisiwe.",
+          "setUp": "Setha imishini yemakhadi",
+          "loadFailed": "Ayikhoni kulayisha imishini yakho yemakhadi.",
+          "retry": "Zama futsi",
+          "beautonomi": "Beautonomi",
+          "yoco": "Yoco",
+          "defaultBadge": "Lokujwayelekile",
+          "collectOnNamed": "Collect on {{name}} ({{provider}})",
+          "loadingMachines": "Loading machines…",
+          "selectMachine": "Select machine",
+          "chargeNamed": "Charge · {{name}}",
+          "switchMachine": "Switch machine"
         }
       }
     },
@@ -13792,6 +13876,18 @@
           "youPaidForGroup": "Ukhokhelele litimba",
           "paidBy": "Kukhokhelwe ngu-{{name}}",
           "covered": "Kumbozwa"
+        },
+        "paystackReturn": {
+          "bookVerifying": "Confirming your payment…",
+          "bookReturning": "Returning to bookings…",
+          "bookFallbackCta": "Go to Bookings",
+          "bookContinueCta": "View booking",
+          "shopVerifying": "Confirming your order payment…",
+          "shopReturning": "Returning to shop…",
+          "shopFallbackCta": "Go to Orders",
+          "shopContinueCta": "View order",
+          "shopPendingSubtext": "We'll update your order within a few minutes. You can keep using the app while we confirm with your bank.",
+          "shopFailedSubtext": "If you were charged, your order will still be confirmed once the payment lands. Please check your Orders tab."
         }
       },
       "tabs": {
@@ -22665,7 +22761,12 @@
           "continueToPayment": "chubeka to inkokhelo",
           "back": "Emuva",
           "processing": "iyacubungula...",
-          "payAmount": "Khokha {{amount}}"
+          "payAmount": "Khokha {{amount}}",
+          "promoComingSoon": "phromoshini ikhodis are not iyatfolakala at kukhokha yet",
+          "giftCardCode": "ikhadi lesipho ikhodi",
+          "giftCardPlaceholder": "Faka ikhodi",
+          "giftCardAmount": "linani to redeem",
+          "splitGiftAmount": "ikhadi lesipho portion"
         },
         "calendarLinkDialog": {
           "updated": "likhalenda sichumanisi buyekisad",
@@ -22803,10 +22904,27 @@
           "selectProduct": "Khetsa umkhicito…",
           "selectVariant": "Khetsa variant…",
           "variantFallback": "Luhlobo",
-          "openGroupBooking": "Plan a group booking instead",
-          "sendQuote": "Send a quote instead",
-          "sendQuoteNeedsAccount": "Select a client with an account to send a quote.",
-          "uncategorized": "Uncategorized"
+          "openGroupBooking": "Luhlelo a kubhuka kwelitimba instead",
+          "sendQuote": "Tfumela a quote instead",
+          "sendQuoteNeedsAccount": "Khetsa a liklayenti with an li-akhawunti to tfumela a quote.",
+          "uncategorized": "Uncategorized",
+          "allCategories": "Konkhe",
+          "discountTypePercent": "Percentage",
+          "discountTypeFixed": "Fixed linani",
+          "validation": {
+            "selectClient": "Sicela khetsa a liklayenti",
+            "enterFirstName": "Sicela enter liklayenti ligama lekucala",
+            "selectServiceOrProduct": "Sicela khetsa at least one insita or umkhicito",
+            "serviceRequiredForProducts": "Ngeta insita. umkhicito-only sales use Kudayisa lokusha / kukhokha.",
+            "selectDate": "Sicela khetsa a lilanga",
+            "selectTime": "Sicela khetsa a sikhatsi",
+            "recurringNeedsSavedClient": "Repeating visits must use a saved client. Select the client from search results first.",
+            "recurringNeedsService": "Repeating visits need at least one service.",
+            "repeatCountMin": "Repeat count must be at least 2 visits.",
+            "assignStaffEach": "Sicela assign basebenti for each insita",
+            "selectClientAddress": "Sesha and khetsa the liklayenti's likheli",
+            "chooseAddressSuggestion": "Choose an address from the search suggestions so the map pin and travel distance are accurate."
+          }
         },
         "blockedTimeTypeDialog": {
           "updated": "Blocked sikhatsi Luhlobo buyekisad",
@@ -22943,6 +23061,23 @@
           "friday": "uLwesihlanu",
           "saturday": "uMgcibelo",
           "sunday": "liSontfo"
+        },
+        "cardMachineCollect": {
+          "title": "Umshini wekhadi",
+          "collectOn": "lekuhlala: {{name}}",
+          "collectOnNamed": "Collect on {{name}} ({{provider}})",
+          "loadingMachines": "Iyalayisha machines…",
+          "selectMachine": "Khetsa machine",
+          "chargeNamed": "khokhisa · {{name}}",
+          "switchMachine": "Switch machine",
+          "chooseMachine": "Khetsa umshini wekhadi",
+          "noMachines": "No imishini yemakhadi are Setha yet.",
+          "setUp": "Setha imishini yemakhadi",
+          "loadFailed": "Ayikhonanga ku-layisha your imishini yemakhadi.",
+          "retry": "Zama futsi",
+          "beautonomi": "Beautonomi",
+          "yoco": "Yoco",
+          "defaultBadge": "lekuhlala"
         }
       },
       "bookings": {
@@ -23086,8 +23221,8 @@
           "blocksOnly_other": "{{count}} blocks",
           "runningBehindTitle": "Usalele emuva?",
           "runningBehindBody": "We'll notify remaining confirmed clients today that you're delayed.",
-          "delay15": "15 minutes",
-          "delay30": "30 minutes"
+          "delay15": "15 imizuzu",
+          "delay30": "30 imizuzu"
         },
         "overview": {
           "all": "Konkhe",
@@ -23495,7 +23630,9 @@
             "processingRefund": "iyacubungula...",
             "confirmRefund": "Cinisekisa Imali lebuye",
             "chargeMarkPaidTitle": "Mark khokhisa as kukhokhelwe",
-            "thisClient": "this liklayenti"
+            "thisClient": "this liklayenti",
+            "cancelRefundCardHint": "Imali letsatfwe ngemshini welikhadi ibuyela emuva ekhadini leklayenti (Beautonomi imishini iyatentekela; Yoco ubuyisela imali emshinini bese uyayibhala). Noma yini lekhokhwa ku-inthanethi ifakwa esikhwameni sabo semali.",
+            "cancelRefundTo": "Buyisela imali lekhokhelwe ku ."
           },
           "paystackCollect": {
             "noBalance": "Tlapha is cha remaining libhalansi to collect.",
@@ -23617,7 +23754,8 @@
             "paystackTerminal": "Paystack Terminal",
             "recording": "Ukurekhoda...",
             "markPaidCash": "Mark kukhokhelwe (Imali) · {{amount}}",
-            "sendPaymentLink": "Tfumela inkokhelo sichumanisi"
+            "sendPaymentLink": "Tfumela inkokhelo sichumanisi",
+            "cardMachine": "umshini wekhadi · {{amount}}"
           },
           "receipt": {
             "title": "Irisidi",
@@ -23673,7 +23811,16 @@
             "chargeNotFound": "khokhisa akutfolakali.",
             "inPersonCash": "ebusweni (Imali)",
             "netPaidMaxRefund": "Net kukhokhelwe after imali lebuyes: {{net}} · Max imali lebuyeable: {{max}}",
-            "processing": "Iyacubungula…"
+            "processing": "Iyacubungula…",
+            "backToCard": "Buyela ekhadini",
+            "backToCardHint": "Ibuyisela imali ekhadini lekhasimende ngemshini welikhadi lebeyikhokhelwe ngawo.",
+            "sentToCardMachine": "Imali lebuyiselwako itfunyelwe emshinini welikhadi. Landzela ticondziso; lokubuyeketwa kwekubhuka uma kucinisekisa.",
+            "yocoOnMachineTitle": "Buyisela imali kumshini wakho Yoco kucala",
+            "yocoOnMachineBody": "Yoco kubuyiselwa kwemali akukwati kucala kusuka ku Beautonomi. Buyisela {{amount}} ku-app ye-Yoco noma kumshini, bese uyayibhala lapha kute ibhalansi nemibiko ihlale ilungile.",
+            "yocoRecorded": "Yoco kubuyiselwa kwemali kubhaliwe",
+            "awaitingYocoTitle": "{{amount}} kusafanele kubuyiselwe imali emshinini Yoco",
+            "awaitingYocoBody": "Lokubhuka kwakhanselwa ngekubuyiselwa imali ekhadini. Libuyisele ku-app ye-Yoco nobe emshinini, bese ulirekhoda lapha. Kuze kube ngulapho kuhlala kuvelele embikweni wekubuyisana kwemshini wekhadi.",
+            "yocoRecordCta": "Ibuyiselwe emshinini — bhala imali lebuyiselwe ."
           }
         },
         "createPayment": {
@@ -23692,7 +23839,9 @@
           "depositPct": "Lidiphozithi ({{percent}}%)",
           "depositDue": "Lidiphozithi lokukhokhwa nyalo: {{amount}}",
           "notifyClient": "Notify liklayenti",
-          "notifyHint": "Tfumela Kucinisekisa kubhuka"
+          "notifyHint": "Tfumela Kucinisekisa kubhuka",
+          "cardMachine": "Umshini wemakhadi",
+          "depositPolicyHint": "Your payment settings require a {{percent}}% deposit when collecting upfront."
         },
         "productPicker": {
           "selectProductAndQty": "Khetsa umkhicito and linani",
@@ -24066,8 +24215,8 @@
             "description": "Khetsa a kubhalisa Luhlelo"
           },
           "travelFees": {
-            "title": "Travel Fees",
-            "description": "House-call travel fee rules and live fee preview"
+            "title": "Kuhamba timali",
+            "description": "House-shayela imali yekuhamba rules and Bukhoma imali psibuyekezo"
           }
         },
         "toast": {
@@ -24135,7 +24284,7 @@
           "oneDayOpen": "At least one lilanga must be vula",
           "selectPlan": "Sicela khetsa a kubhalisa Luhlelo",
           "andMoreSeeConsole": " (and {{count}} lokunye - see console)",
-          "dobRequired": "Date of birth is required for identity verification"
+          "dobRequired": "lilanga lekutalwa is kuyadingeka for kucinisekisa buhle"
         },
         "successHeadline": "You're all set!",
         "continueVerification": "chubeka to verification",
@@ -24187,7 +24336,7 @@
           "ownerContactBody": "We verify both your email and mobile number to protect your account.",
           "yourName": "Ligama yakho",
           "emailAddress": "Likheli le-imeyili",
-          "dateOfBirth": "Date of birth"
+          "dateOfBirth": "Lilanga lekutalwa"
         },
         "photos": {
           "yourPhoto": "sitfombe yakho",
@@ -24425,7 +24574,7 @@
           "categoriesDraftHint": "If you skip services for now, we can draft simple services from the categories you pick.",
           "noCategoriesAvailable": "No tigaba iyatfolakala. Please Tintsana lusito.",
           "menuCategoryNames": "Names on your menu (you can rename these)",
-          "categoryNamePlaceholder": "Category name"
+          "categoryNamePlaceholder": "Ligama lesigaba"
         },
         "catalog": {
           "atSalon": "Esaloni",
@@ -24462,7 +24611,8 @@
           "plusMinSuffix": " (+{{minutes}} min)",
           "catalogIntro": "Add the services you sell today with price and duration. Clients see these on your booking page; you can refine them anytime after onboarding.",
           "extraTimeMins": "Extra sikhatsi (mins)",
-          "updateAddon": "Buyekisa lokungeziwe"
+          "updateAddon": "Buyekisa lokungeziwe",
+          "menuCategory": "Menu sigaba"
         },
         "review": {
           "markMobileReady": "Mark you as Liselula-Kulungile wlapha applicable",
@@ -24516,7 +24666,13 @@
           "afterSubmitFreeActual": "After you submit, you'll be on this plan immediately — no payment needed.",
           "afterSubmitPaidActual": "After you submit, you'll be taken to a secure Paystack page to complete payment.",
           "selectPlanToContinue": "Khetsa a Luhlelo to chubeka. mahhala Tinhlelo vula instantly; kukhokhelwe Tinhlelo take you to a secure Ikhadi inkokhelo.",
-          "noPlansAvailable": "No pricing plans available at the moment. Please contact support."
+          "noPlansAvailable": "No pricing plans available at the moment. Please contact support.",
+          "freeForever": "mahhala forever",
+          "planRadiogroupLabel": "kubhalisa Tinhlelo",
+          "showAllFeatures": "Khombisa all features",
+          "showLessFeatures": "Khombisa lokuncane",
+          "summaryFree": "You're on {{name}} — cha inkokhelo needed.",
+          "summaryPaid": "You'll khokha securely after tfumelating."
         },
         "countries": {
           "ZA": "South Africa",
@@ -24548,7 +24704,28 @@
           "hoursTo": "ku"
         },
         "travelFees": {
-          "usePlatformDefault": "Use platform default travel fees"
+          "usePlatformDefault": "Use platform default travel fees",
+          "usePlatformDefaultHint": "Recommended — matches what most providers use on the platform.",
+          "skipHint": "You can skip this step — we'll apply the platform standard and you can adjust it later in Settings.",
+          "loadingDefaults": "Iyalayisha platform Kuhamba lekuhlalas…",
+          "platformStandard": "Platform Lokuvamile",
+          "ratePerKm": "Rate per km",
+          "minimumFee": "Minimum imali",
+          "freeWithinKm": "mahhala within (km)",
+          "maximumFee": "Maximum imali",
+          "enable": "khokhisa imali yekuhambas for house shayelas",
+          "enableHint": "When off, travel is included at no extra charge.",
+          "platformLocked": "Custom travel fees are locked on this platform — platform defaults apply.",
+          "previewLabel": "Psibuyekezo Libanga (km)",
+          "previewAtKm": "At {{km}} km: {{currency}} {{fee}}",
+          "pricingModel": "emanani model",
+          "perKm": "Per kilometer",
+          "tiered": "Libanga tiers",
+          "ratePerKmInput": "Rate per km ({{currency}})",
+          "minimumFeeInput": "Minimum imali ({{currency}})",
+          "tierMaxKm": "Up to km",
+          "tierFee": "Fee ({{currency}})",
+          "addTier": "Ngeta tier"
         }
       },
       "dashboard": {
@@ -24854,6 +25031,10 @@
               "customerVisibility": {
                 "title": "likhasimende Visibility",
                 "description": "Control how customer and salon lists are displayed"
+              },
+              "referBusinessProgram": {
+                "title": "Refer a Libhizinisi",
+                "description": "tfumela anlokunye lisaloni or beauty Libhizinisi to Beautonomi"
               }
             }
           },
@@ -25544,8 +25725,8 @@
             "saveBookingFlow": "Gcina kubhuka flow tilungiselelo",
             "onlineBookingDisabled": "Online booking is currently disabled. Clients will not be able to book appointments online.",
             "shareWhatsApp": "WhatsApp",
-            "shareEmail": "Email",
-            "shareNative": "Share"
+            "shareEmail": "i-imeyili",
+            "shareNative": "Yabelana"
           },
           "appointment-activity/resources": {
             "resources": "Umtfombo",
@@ -26207,7 +26388,7 @@
             "mailchimpNote": "Use a Mailchimp Transactional API key from Mailchimp Transactional → Settings → API Keys (not Marketing keys from Profile → Extras → API keys). Verify your sending domain (SPF/DKIM) before sending.",
             "sendGridApiKey": "TfumelaGrid API Key",
             "mailchimpApiKey": "Mailchimp Transactional API Key",
-            "placeholderMailchimpApiKey": "Your Transactional API key",
+            "placeholderMailchimpApiKey": "Transactional API key yakho",
             "providerSwitchRequiresNewKey": "Switching email providers requires entering a new API key for the selected provider.",
             "sendGridKeyHint": "Get your API key from SendGrid Settings → API Keys. Keep this key secure.",
             "mailchimpKeyHint": "Create a key in your Mailchimp Transactional account (Settings → API Keys). Marketing API keys ending in -us1 are not supported here.",
@@ -26224,7 +26405,7 @@
             "testIntegration": "Kuhlola Integration",
             "testHint": "Send a test email to verify your integration is working",
             "mailchimpTestHint": "Test connection checks your Mailchimp Transactional API key. Send test email verifies sending domain and delivery (integration must be enabled).",
-            "testConnection": "Test Connection",
+            "testConnection": "Kuhlola Hlanganisaion",
             "testConnectionSuccess": "Mailchimp Transactional connection successful",
             "testConnectionMailchimpOnly": "Connection ping is only for Mailchimp Transactional. Send a test email instead.",
             "testPassed": "Kuhlola Passed",
@@ -26426,7 +26607,7 @@
             "refresh": "Vuselela",
             "ownIntegrations": "Own integrations",
             "ownIntegrationsHint": "Connect your SendGrid/Mailchimp or Twilio account. Sends on your credentials are not debited from platform credits.",
-            "topUpSuccess": "Marketing credits topped up successfully.",
+            "topUpSuccess": "Marketing crhlelas topped up impumelelokugcweley.",
             "topUpPending": "Payment is still processing. Refresh in a moment if your balance has not updated."
           },
           "note-templates": {
@@ -26661,18 +26842,18 @@
             "adding": "Adding...",
             "addAccount": "Ngeta Li-akhawunti",
             "bankAccountCount": "li-akhawunti yebhange Count",
-            "stripeConnectTitle": "Stripe Connect",
+            "stripeConnectTitle": "Stripe Hlanganisa",
             "stripeConnectSubtitle": "Set up payouts through Stripe. Your bank is added on Stripe's secure onboarding page.",
-            "stripeConnectReady": "Ready for payouts",
+            "stripeConnectReady": "Kulungile for Tinkhokhelo",
             "stripeConnectReadyHint": "Payouts will be sent to the bank account on your Stripe Connect account.",
-            "stripeConnectIncomplete": "Setup incomplete",
+            "stripeConnectIncomplete": "Setup incedza",
             "stripeConnectIncompleteHint": "Finish Stripe onboarding so payouts can be sent to your bank.",
-            "stripeConnectNotStarted": "Stripe Connect not set up",
+            "stripeConnectNotStarted": "Stripe Hlanganisa Akusetiwe up",
             "stripeConnectNotStartedHint": "Connect with Stripe to receive payouts. You will add your bank on Stripe's secure onboarding page.",
-            "stripeConnectContinue": "Continue setup",
-            "stripeConnectStart": "Connect with Stripe",
-            "stripeConnectBankLast4": "Bank ···· {{last4}}",
-            "stripeConnectFailed": "Could not open Stripe Connect. Try again.",
+            "stripeConnectContinue": "chubeka setup",
+            "stripeConnectStart": "Hlanganisa with Stripe",
+            "stripeConnectBankLast4": "Libhange ···· {{last4}}",
+            "stripeConnectFailed": "Ayikhonanga ku-vula Stripe Hlanganisa. zama futsi.",
             "stripeConnectReturnSuccess": "Stripe Connect updated. Complete any remaining steps if setup is still incomplete."
           },
           "sales/card-machines": {
@@ -26819,7 +27000,9 @@
             "activeMachineCount": "Iyasebenta Machine Count",
             "amountMismatch": "linani Mismatch",
             "paymentsCount": "tinkhokhelo ({{count}})",
-            "paymentsWaitingOnMachine": "tinkhokhelo Kulindzile On Machine"
+            "paymentsWaitingOnMachine": "tinkhokhelo Kulindzile On Machine",
+            "beautonomiCardMachineNav": "Beautonomi umshini wekhadi",
+            "yocoCardMachineNav": "Yoco umshini wekhadi"
           },
           "sales/gift-cards": {
             "giftCards": "emakhadi etipho",
@@ -27991,7 +28174,7 @@
         },
         "serviceZones": {
           "introHint": "Tindzawo tibeka lapho emaklayenti angakubhuka khona ekhaya. Indzawo lenemali yayo iyisebentisa esikhundleni semali yakho yekuhamba.",
-          "actionTravelFees": "Travel fees"
+          "actionTravelFees": "Imali yekuhambas"
         }
       },
       "pages": {
@@ -28142,13 +28325,13 @@
           "downloadIos": "layisha for iPhone",
           "downloadAndroid": "layisha for Android",
           "logoAlt": "Beautonomi",
-          "setPasswordTitle": "Create your password",
+          "setPasswordTitle": "Yakha your liphaswedi",
           "setPasswordHint": "Choose a password (at least 8 characters), then sign in with your invite email.",
-          "passwordLabel": "Password",
-          "passwordConfirmLabel": "Confirm password",
-          "setPasswordSubmit": "Save password",
+          "passwordLabel": "Liphaswedi",
+          "passwordConfirmLabel": "Cinisekisa liphaswedi",
+          "setPasswordSubmit": "Gcina liphaswedi",
           "setPasswordSuccess": "Liphaswedi ligciniwe. Ngena kute wemukele simemo sakho.",
-          "setPasswordFailed": "Could not save password",
+          "setPasswordFailed": "Ayikhonanga ku-gcina liphaswedi",
           "passwordMismatch": "Emaphaswedi awafani",
           "passwordTooShort": "Liphaswedi kufanele kube nezinhlavu letingu-8 okungenani"
         },
@@ -28433,7 +28616,27 @@
           "collectionNotesHint": "Kuboniswa amakhasimende ekukhokheni (isb. amahora, ukungena, okumele kulethwe).",
           "collectionNotesPlaceholder": "e.g. Collection available Mon-Fri 9am-5pm. Please bring a copy of your order confirmation.",
           "saved": "Gcinad!",
-          "saveConfiguration": "Gcina Configuration"
+          "saveConfiguration": "Gcina Configuration",
+          "readinessTitle": "Setup checklist",
+          "courierAccount": "courier li-akhawunti yakho",
+          "connected": "Hlanganisaed",
+          "notConnected": "Not connected",
+          "courierOwnerOnly": "Only the business owner can view or edit courier API keys.",
+          "apiKey": "API key",
+          "pasteApiKey": "namatsisela lokusha API key",
+          "saveCourierKeys": "Gcina courier keys",
+          "testCourierConnection": "Kuhlola connection",
+          "testingCourier": "Kuhlolaing…",
+          "courierSaved": "Courier credentials gcinad.",
+          "courierSaveFailed": "Ayikhonanga ku-gcina courier credentials.",
+          "courierTestOk": "Hlanganisaion impumeleloful.",
+          "courierTestFailed": "Hlanganisaion Kuhlola kwehlulekile.",
+          "courierNoChanges": "Faka lokusha credential fields to gcina.",
+          "aramexAccount": "li-akhawunti inombolo",
+          "aramexPin": "li-akhawunti PIN",
+          "aramexUser": "Umsebentisiligama",
+          "aramexPassword": "Liphaswedi",
+          "aramexProductType": "Domestic umkhicito Luhlobo (e.g. ONP)"
         },
         "packages/new": {
           "failedToLoadItems": "Kwehlulekile ku-layisha Tintfo",
@@ -28732,7 +28935,8 @@
           "statusCancelled": "kukhanselwe",
           "statusRefunded": "imali ibuyisiwe",
           "paid": "kukhokhelwe",
-          "estimatedDeliveryDate": "Estimated Kuletsa lilanga (lokukhetsako)"
+          "estimatedDeliveryDate": "Estimated Kuletsa lilanga (lokukhetsako)",
+          "partialWalletRefundHint": "Partial wallet refunds credit the customer's store balance only. Card and gift-card payments are not returned unless you refund the full order total."
         },
         "team/shifts/dialog": {
           "overrideLocation": "Override indzawo Opesilinganiso emahora",
@@ -29026,7 +29230,8 @@
           "privateNotes": "Lokuyimfihlo emanothi",
           "notesPlaceholder": "Anything else we should know",
           "submitting": "Tfumelating…",
-          "submitReferral": "tfumela kudlulisela"
+          "submitReferral": "tfumela kudlulisela",
+          "loadFailed": "Ayikhonanga ku-layisha your kudluliselas. zama futsi."
         },
         "account/personal-profile": {
           "fallbackName": "liphrofayili yakho",
@@ -29311,7 +29516,8 @@
             "package-usage": "liphakethe Usage",
             "business-overview": "Libhizinisi Overbuka",
             "performance-dashboard": "Performance Dashboard",
-            "comparison": "Period Comparison"
+            "comparison": "Period Comparison",
+            "card-machine-reconciliation": "Kubuyisana kwemshini wemakhadi"
           }
         },
         "pages": {
@@ -29568,7 +29774,7 @@
             "membershipEarnings": "Imali yebulunga (lejja)",
             "membershipEarningsHint": "membership_provider_earnings rows settled in this period (included in provider net activity).",
             "providerCollectedByMethod": "Lokuqoqwe umnikati (imali / EFT / ikhadi)",
-            "methodEft": "Bank transfer (EFT)"
+            "methodEft": "Kudlulisela kwebhange (EFT)"
           },
           "payments/yoco-reconciliation": {
             "title": "Yoco reconciliation",
@@ -30316,6 +30522,32 @@
             "items_other": "Tintfo letingu-{{count}}",
             "currency": "Imali: {{code}}.",
             "items": "Tintfo: {{amount}}"
+          },
+          "payments/card-machine-reconciliation": {
+            "title": "Kubuyisana kwemshini wemakhadi",
+            "subtitle": "Kulindzelwe Yoco tinkhokhelo tesiphelo kanye PayCloud imali lengahambisani ebangeni",
+            "unableToLoad": "Ayikhoni kulayisha idatha yekubuyisana kwemshini welikhadi",
+            "unavailableDesc": "Nika emandla imishini yemakhadi Yoco nobe Beautonomi kutsi isebentise lombiko.",
+            "totalRows": "Imigca lesesigabeni",
+            "yocoPending": "Yoco lisalindzelwe",
+            "paycloudMismatch": "PayCloud linani lelingahambisani",
+            "emptyTitle": "Kute lokuhlukile",
+            "emptyDesc": "Kute tinkhokhelo letilindzelwe letingu Yoco noma imali PayCloud lengahambisani kulesikhatsi.",
+            "yocoSection": "Yoco lisalindzelwe",
+            "paycloudSection": "PayCloud lokungahambisani",
+            "created": "Kudalwe",
+            "amount": "Inani",
+            "status": "Simo",
+            "link": "Kubhukha / kutsengisa",
+            "awaitingRefunds": "Kukweletwa ngumshini Yoco",
+            "awaitingRefundsSection": "Kubuyiselwa kwemali lokukweletwa kumshini Yoco",
+            "awaitingRefundsHint": "Kubhukha lokukhanseliwe kubuyiselwa emuva ekhadini. Yoco ayinayo i-API yekubuyisela imali: buyisela imali ngayinye ku-app ye-Yoco nobe kumshini, bese uyayibhala ekubhukheni.",
+            "booking": "Kubhuka",
+            "reason": "Sizatfu",
+            "match": "Inani lelihambisanako",
+            "order": "Inombolo ye-oda",
+            "openBooking": "Vula lokubhukha kute ukurekhode",
+            "awaitingSince": "Kulindze kusukela"
           }
         },
         "export": {
@@ -30913,7 +31145,16 @@
           "productBrand": "umkhicito Luhlobo",
           "productCategory": "Sigaba semkhicito",
           "medium": "Maphakathi",
-          "large": "Large"
+          "large": "Large",
+          "maxPhotos": "You can layisha up to 5 umkhicito titfombe.",
+          "scanBarcodeTitle": "Skena ibhakhodi",
+          "scanBarcodeHint": "Point the likhamera at a 1D ibhakhodi or QR ikhodi on the umkhicito.",
+          "barcodeScanFailed": "Ayikhonanga ku-cala the likhamera.",
+          "startingCamera": "Starting likhamera…",
+          "weightGrams": "Shipping weight (grams)",
+          "weightGramsHint": "Used for delivery fee and courier booking. Default 500g if empty.",
+          "addOptionType": "Ngeta anlokunye Inkhetsi",
+          "optionN": "Inkhetsi {{n}}"
         }
       },
       "waitlistPage": {
@@ -31599,7 +31840,41 @@
         "saveChanges": "Gcina tinguquko",
         "share": "Yabelana",
         "cancel": "Khansela",
-        "remainingSlots": "Remaining Slots"
+        "remainingSlots": "Remaining Slots",
+        "videoTooLong": "Video exceeds the maximum length for Explore.",
+        "videoWillTrim": "Long videos are trimmed to the Explore maximum when processed.",
+        "trimVideoTitle": "Trim Ividiyo",
+        "trimVideoHint": "Drag to choose which part of your video appears on Explore.",
+        "trimClipLength": "{{seconds}}s clip",
+        "trimVideoScrubber": "Khetsa clip cala",
+        "trimVideoConfirm": "Use clip",
+        "trimVideoFinishFirst": "Finish trimming your video before continuing.",
+        "trimVideoLoading": "Iyalayisha Ividiyo…",
+        "holdToRecord": "Hold to record",
+        "releaseToFinish": "Release to cedza",
+        "tapForPhoto": "Tap for sitfombe",
+        "recordingTooShort": "Hold a little longer to record video.",
+        "lensFront": "Front likhamera",
+        "lensBack": "emuva likhamera",
+        "switchToFront": "Switch to front likhamera",
+        "switchToBack": "Switch to emuva likhamera",
+        "openingCamera": "Opening likhamera…",
+        "onlyOneCamera": "Only one likhamera is iyatfolakala on this lidivaysi.",
+        "clipWindowA11y": "Kukhetsiwe clip",
+        "onMediaText": "On-media Umbhalo",
+        "onMediaTextPlaceholder": "Short label on this slide",
+        "onMediaTextDragHint": "Drag Umbhalo on the psibuyekezo to reposition it.",
+        "addTextLayer": "Ngeta",
+        "noSound": "Awekho",
+        "soundOptional": "Ngeta music (lokukhetsako)",
+        "addMusic": "Ngeta music (lokukhetsako)",
+        "originalAudio": "Original audio",
+        "soundViewerHint": "Viewers hear this music instead of your clip's audio on Explore.",
+        "soundsEmpty": "No catalog tracks yet — use original audio or ask your admin to add platform sounds.",
+        "soundsSectionPlatform": "Lokudumile sounds",
+        "soundsSectionYours": "sounds yakho",
+        "soundPreviewPlay": "Play psibuyekezo",
+        "soundPreviewStop": "Stop psibuyekezo"
       },
       "calendarMobile": {
         "timeOff": "sikhatsi off",
@@ -31853,7 +32128,16 @@
         "actionMarkShipped": "Mark Kutfunyelwe",
         "actionReadyForCollection": "Kulungile for collection",
         "actionMarkDelivered": "I-Mark yahanjiswa",
-        "actionCollected": "TITSaholic"
+        "actionCollected": "TITSaholic",
+        "courierBooking": "Courier kubhuka",
+        "bookingStatus": "kubhuka simo",
+        "bookingDetail": "Detail",
+        "bookCourier": "bhuka courier",
+        "retryBooking": "zama futsi kubhuka",
+        "bookingInProgress": "Kubhuka…",
+        "bookingSuccess": "Courier Kubhukiwe",
+        "bookingFailed": "Ayikhonanga ku-bhuka courier",
+        "printLabel": "Phrinta label"
       },
       "appointmentEditSheet": {
         "updated": "kubhuka buyekisad",
@@ -31903,7 +32187,8 @@
         "geocoded": "Geoikhodid",
         "overrideTitle": "Override imali yekuhamba",
         "overrideHint": "Use a Lwekhefiso imali instead of calculated",
-        "customFeePlaceholder": "Lwekhefiso imali yekuhamba"
+        "customFeePlaceholder": "Lwekhefiso imali yekuhamba",
+        "chooseSuggestionOrPin": "Choose a suggestion or pin the address on the map so city, area, postal code, and GPS stay in sync for travel fees."
       },
       "postCompletion": {
         "selectRating": "Khetsa a silinganiso (1–5 stars).",
@@ -32207,7 +32492,8 @@
         "selectTimeSlot": "Khetsa sikhatsi slot",
         "selectTime": "Khetsa sikhatsi",
         "loadingTimes": "Iyalayisha iyatfolakala sikhatsis…",
-        "noSlots": "No time slots for this date. Try another day or adjust services."
+        "noSlots": "No time slots for this date. Try another day or adjust services.",
+        "timeAdjusted": "sikhatsi adjusted to {{time}} — lokudlulile slot ayatfolakali"
       },
       "etaPicker": {
         "estimatedArrival": "Kufika lokulinganisiwe",
@@ -32509,7 +32795,7 @@
         "expiresCol": "Kuphela",
         "clicks": "Kuchofoza",
         "itemsSelected": "Tintfo Kukhetsiwe",
-        "copyEmbedSnippet": "Copy embed snippet"
+        "copyEmbedSnippet": "Khopisha embed snippet"
       },
       "calendarPage": {
         "serviceFallback": "Insita",
@@ -33435,17 +33721,17 @@
       "scheduling": {
         "calendarIconLegendTitle": "What these icons mean",
         "calendarIcons": {
-          "isNewClient": "New client",
-          "hasNotes": "Has notes",
-          "isRepeating": "Repeating appointment",
+          "isNewClient": "liklayenti lesisha",
+          "hasNotes": "Has emanothi",
+          "isRepeating": "Repeating sikhatsi",
           "hasMembership": "Member",
-          "hasFormsIncomplete": "Forms incomplete",
-          "hasPhotos": "Has photos",
-          "hasConversation": "Has messages",
-          "isGroup": "Group booking",
-          "hasCustomization": "Service customization",
-          "isWalkIn": "Walk-in",
-          "isAtHome": "At-home service"
+          "hasFormsIncomplete": "Forms incedza",
+          "hasPhotos": "Has titfombe",
+          "hasConversation": "Has milayeto",
+          "isGroup": "Kubhuka kwelitimba",
+          "hasCustomization": "insita lwekhefisoization",
+          "isWalkIn": "Kungena nje",
+          "isAtHome": "At-likhaya insita"
         }
       }
     },

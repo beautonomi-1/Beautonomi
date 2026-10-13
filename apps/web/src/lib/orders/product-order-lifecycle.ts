@@ -39,7 +39,7 @@ export async function applyProductOrderCancelRefundSideEffects(
   admin: SupabaseClient,
   order: ProductOrderSideEffectRow,
   options: ApplyProductOrderCancelRefundOptions,
-): Promise<void> {
+): Promise<{ walletCreditFailed: boolean }> {
   const { newStatus, refundAmount, cancellationReason, refundReason, onlineRefundedAmount } = options;
   const shouldReversePlatformLedger =
     newStatus === "refunded" ||
@@ -49,7 +49,7 @@ export async function applyProductOrderCancelRefundSideEffects(
       ? (refundAmount ?? Number(order.total_amount ?? 0))
       : Number(order.total_amount ?? 0);
 
-  if (!shouldReversePlatformLedger) return;
+  if (!shouldReversePlatformLedger) return { walletCreditFailed: false };
 
   const { data: ledgerRows } = await (admin.from("finance_transactions") as any)
     .select("id, tenant_id")
@@ -164,7 +164,7 @@ export async function applyProductOrderCancelRefundSideEffects(
       );
     }
     if (walletCreditAmount > 0) {
-      await (admin.rpc as any)("wallet_credit_admin", {
+      const { error: walletError } = await (admin.rpc as any)("wallet_credit_admin", {
         p_user_id: order.customer_id,
         p_amount: walletCreditAmount,
         p_currency: order.currency || LAST_RESORT_CURRENCY,
@@ -174,6 +174,15 @@ export async function applyProductOrderCancelRefundSideEffects(
         p_tenant_id: order.tenant_id ?? null,
         p_idempotency_key: `product_order_cancel_refund:${order.id}`,
       });
+      if (walletError) {
+        // Leave payment_status as paid so the order is visibly owed a refund
+        // (cancelled + paid) instead of reading "refunded" with no credit issued.
+        console.error("[product-order] cancel refund wallet credit failed:", walletError, {
+          orderId: order.id,
+          walletCreditAmount,
+        });
+        return { walletCreditFailed: true };
+      }
     }
     await (supabase.from("product_orders") as any)
       .update({
@@ -183,6 +192,7 @@ export async function applyProductOrderCancelRefundSideEffects(
       })
       .eq("id", order.id);
   }
+  return { walletCreditFailed: false };
 }
 
 export type RestockMovementType = "cancel" | "return" | "sale_refund";

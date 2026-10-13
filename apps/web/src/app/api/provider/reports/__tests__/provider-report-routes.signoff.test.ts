@@ -524,7 +524,7 @@ describe("provider report routes sign-off coverage", () => {
     expect(data.tipsTotal).toBe(5);
     expect(data.cancellationFeesTotal).toBe(8);
     expect(data.total).toBe(163);
-    expect(data.byPaymentMethod).toMatchObject({ card: 100, wallet: 10, cash: 40 });
+    expect(data.byPaymentMethod).toMatchObject({ yoco: 100, wallet: 10, cash: 40 });
     expect(data.locationAttribution.excludedUnattributedRows).toBe(1);
   });
 

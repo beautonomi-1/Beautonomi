@@ -25,6 +25,14 @@ describe("buildGroupBookingCreateReadiness", () => {
     expect(s.nextItem).toBeUndefined();
   });
 
+  it("requires phone or email for roster-only participants", () => {
+    const s = buildGroupBookingCreateReadiness({
+      ...base,
+      participants: [{ name: "Alex", phone: "", email: "", serviceId: "svc-1" }],
+    });
+    expect(s.percent).toBeLessThan(100);
+  });
+
   it("counts missing service and staff", () => {
     const s = buildGroupBookingCreateReadiness({ ...base, serviceId: "", staffId: "" });
     expect(s.percent).toBeLessThan(100);
@@ -65,13 +73,14 @@ describe("buildSingleBookingCreateReadiness", () => {
     expect(s.percent).toBe(100);
   });
 
-  it("allows products-only", () => {
+  it("blocks products-only without a service line", () => {
     const s = buildSingleBookingCreateReadiness({
       ...base,
       serviceCount: 0,
       productCount: 2,
       staffListLength: 0,
     });
-    expect(s.percent).toBe(100);
+    expect(s.percent).toBeLessThan(100);
+    expect(s.items.some((i) => i.id === "booking_services" && !i.done)).toBe(true);
   });
 });

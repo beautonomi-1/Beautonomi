@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
+import { buildAddonApplicabilityOrFilter } from "@/lib/offerings/addon-applicability";
 
 /** Empty addons response so booking flow never 404s on addons */
 function emptyAddonsResponse(serviceId: string) {
@@ -50,10 +51,16 @@ export async function GET(
     }
 
     // Resolve service: try as offering id first, then as master_service_id on offerings.
-    let service: { id: string; title: string; provider_id: string; master_service_id?: string | null } | null = null;
+    let service: {
+      id: string;
+      title: string;
+      provider_id: string;
+      master_service_id?: string | null;
+      parent_service_id?: string | null;
+    } | null = null;
     const byOfferingId = await supabase
       .from("offerings")
-      .select("id, title, provider_id, master_service_id")
+      .select("id, title, provider_id, master_service_id, parent_service_id")
       .eq("id", serviceId)
       .eq("provider_id", provider.id)
       .single();
@@ -63,7 +70,7 @@ export async function GET(
     } else {
       const byMasterServiceId = await supabase
         .from("offerings")
-        .select("id, title, provider_id, master_service_id")
+        .select("id, title, provider_id, master_service_id, parent_service_id")
         .eq("master_service_id", serviceId)
         .eq("provider_id", provider.id)
         .limit(1)
@@ -75,11 +82,11 @@ export async function GET(
       return emptyAddonsResponse(serviceId);
     }
 
-    // applicable_service_ids may reference master_service_id or offering id; match both when available
-    const orClause =
-      service.master_service_id && service.master_service_id !== serviceId
-        ? `applicable_service_ids.is.null,applicable_service_ids.cs.{${serviceId}},applicable_service_ids.cs.{${service.master_service_id}}`
-        : `applicable_service_ids.is.null,applicable_service_ids.cs.{${serviceId}}`;
+    const orClause = buildAddonApplicabilityOrFilter({
+      id: service.id,
+      parent_service_id: service.parent_service_id,
+      master_service_id: service.master_service_id,
+    });
 
     const { data: addons, error } = await supabase
       .from("offerings")

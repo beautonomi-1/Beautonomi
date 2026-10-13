@@ -3,7 +3,7 @@
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 import { useEffect, useRef, useState } from "react";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, FetchError } from "@/lib/http/fetcher";
 import BackButton from "../../components/back-button";
 import Breadcrumb from "../../components/breadcrumb";
 import BottomNav from "@/components/layout/bottom-nav";
@@ -42,6 +42,8 @@ export default function LoyaltyRedeemPageClient({
   const [isLoading, setIsLoading] = useState(() => initialLoyalty === null);
   const [isRedeeming, setIsRedeeming] = useState(false);
   const skipHydrateLoadOnce = useRef(initialLoyalty !== null);
+  /** Same key across double-clicks and retries of one redemption; reset once it settles. */
+  const redeemIdempotencyKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (skipHydrateLoadOnce.current) {
@@ -89,6 +91,7 @@ export default function LoyaltyRedeemPageClient({
       return;
     }
 
+    const idempotencyKey = (redeemIdempotencyKeyRef.current ??= crypto.randomUUID());
     try {
       setIsRedeeming(true);
       const response = await fetcher.post<{
@@ -101,7 +104,9 @@ export default function LoyaltyRedeemPageClient({
       }>("/api/me/loyalty/redeem", {
         points,
         description: t("web.accountSettings.loyalty.redeemPage.apiDescription", { points }),
+        idempotency_key: idempotencyKey,
       });
+      redeemIdempotencyKeyRef.current = null;
 
       toast.success(
         t("web.accountSettings.loyalty.redeemPage.success", {
@@ -113,6 +118,11 @@ export default function LoyaltyRedeemPageClient({
       loadLoyaltyData();
       router.push("/account-settings/loyalty");
     } catch (error: unknown) {
+      // Keep the key only when the outcome is unknown (no response) or still settling,
+      // so the retry replays instead of redeeming twice.
+      if (error instanceof FetchError && error.code !== "REDEMPTION_PENDING") {
+        redeemIdempotencyKeyRef.current = null;
+      }
       console.error("Failed to redeem points:", error);
       toast.error(error instanceof Error ? error.message : t("web.accountSettings.loyalty.redeemPage.redeemFailed"));
     } finally {

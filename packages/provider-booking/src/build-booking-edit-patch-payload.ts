@@ -10,7 +10,7 @@ import type {
 function resolveServiceLineFields(
   sel: BookingEditServiceLine,
   catalogServices: BookingEditCatalogService[],
-): { title: string; price: number; durationMinutes: number } {
+): { title: string; price: number; addonPrice: number; durationMinutes: number } {
   const svc = catalogServices.find((s) => s.id === sel.serviceId);
   const addonPrice = (sel.addOnIds ?? []).reduce((acc, aoId) => {
     const ao = svc?.add_ons?.find((a) => a.id === aoId);
@@ -27,7 +27,8 @@ function resolveServiceLineFields(
 
   return {
     title,
-    price: basePrice + addonPrice,
+    price: basePrice,
+    addonPrice,
     durationMinutes: baseMinutes + addonMinutes,
   };
 }
@@ -42,7 +43,7 @@ export function computeBookingEditLineSubtotal(
 
   for (const sel of selectedServices) {
     const line = resolveServiceLineFields(sel, catalogServices);
-    subtotal += line.price;
+    subtotal += line.price + line.addonPrice;
     totalMinutes += line.durationMinutes;
   }
 
@@ -118,12 +119,14 @@ export function buildBookingEditPatchPayload(args: {
       : undefined;
     cursorMs += duration * 60 * 1000;
 
+    const addOnIds = (sel.addOnIds ?? []).filter(Boolean);
     return {
       serviceId: sel.serviceId,
       offering_id: sel.serviceId,
       staff_id: sel.staffId,
       price: line.price,
       duration,
+      ...(addOnIds.length > 0 ? { add_on_ids: addOnIds } : {}),
       ...(scheduled_start_at ? { scheduled_start_at } : {}),
     };
   });
@@ -167,6 +170,10 @@ export function mapBookingDetailToEditLines(booking: {
     price?: number;
     duration_minutes?: number;
   }>;
+  addons?: Array<{
+    addon_id?: string;
+    applicable_service_ids?: string[] | null;
+  }>;
   products?: Array<{
     product_id?: string;
     product_name?: string;
@@ -179,11 +186,31 @@ export function mapBookingDetailToEditLines(booking: {
   services: BookingEditServiceLine[];
   products: BookingEditProductLine[];
 } {
+  const bookingAddons = booking.addons ?? [];
   const services = (booking.services ?? [])
     .map((s): BookingEditServiceLine | null => {
       const serviceId = s.offering_id ?? s.service_id;
       if (!serviceId) return null;
-      const line: BookingEditServiceLine = { serviceId, addOnIds: [] };
+      const matchedAddonIds = bookingAddons
+        .filter((a) => {
+          if (!a.addon_id) return false;
+          const applicable = a.applicable_service_ids;
+          if (!applicable || applicable.length === 0) return false;
+          return applicable.includes(serviceId);
+        })
+        .map((a) => String(a.addon_id));
+      const globalAddonIds = bookingAddons
+        .filter((a) => {
+          if (!a.addon_id) return false;
+          const applicable = a.applicable_service_ids;
+          return !applicable || applicable.length === 0;
+        })
+        .map((a) => String(a.addon_id));
+      const addOnIds =
+        matchedAddonIds.length === 0 && globalAddonIds.length > 0 && booking.services?.length === 1
+          ? globalAddonIds
+          : matchedAddonIds;
+      const line: BookingEditServiceLine = { serviceId, addOnIds };
       if (s.staff_id) line.staffId = s.staff_id;
       if (s.offering_name) line.offeringName = s.offering_name;
       if (s.price != null) line.price = Number(s.price);
@@ -191,6 +218,20 @@ export function mapBookingDetailToEditLines(booking: {
       return line;
     })
     .filter((s): s is BookingEditServiceLine => s !== null);
+
+  const assignedAddonIds = new Set(services.flatMap((s) => s.addOnIds ?? []));
+  for (const addon of bookingAddons) {
+    if (!addon.addon_id || assignedAddonIds.has(addon.addon_id)) continue;
+    const applicable = addon.applicable_service_ids;
+    const targetLine =
+      applicable && applicable.length > 0
+        ? services.find((s) => applicable.includes(s.serviceId))
+        : services[0];
+    if (targetLine) {
+      targetLine.addOnIds = [...(targetLine.addOnIds ?? []), String(addon.addon_id)];
+      assignedAddonIds.add(addon.addon_id);
+    }
+  }
 
   const products = (booking.products ?? [])
     .map((p): BookingEditProductLine | null => {
@@ -231,7 +272,7 @@ export function resolveBookingEditServiceDisplay(
   return {
     title: line.title,
     durationMinutes: line.durationMinutes,
-    price: line.price,
+    price: line.price + line.addonPrice,
     currency: svc?.currency,
   };
 }

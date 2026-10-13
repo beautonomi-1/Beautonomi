@@ -19,7 +19,7 @@ export async function recordLoyaltyRedemption(
     /** Optional metadata to attach to the ledger row. */
     metadata?: Record<string, unknown>;
   },
-): Promise<{ recorded: boolean; points: number; reason?: string }> {
+): Promise<{ recorded: boolean; points: number; reason?: string; ledgerId?: string | null }> {
   const { customerId, points, description, bookingId, metadata } = args;
 
   if (!customerId || !points || points <= 0) {
@@ -40,7 +40,7 @@ export async function recordLoyaltyRedemption(
     }
   }
 
-  const { error: rpcError } = await (adminClient.rpc as any)("append_loyalty_ledger_entry", {
+  const { data: ledgerId, error: rpcError } = await (adminClient.rpc as any)("append_loyalty_ledger_entry", {
     p_customer_id: customerId,
     p_transaction_type: "redeemed",
     p_points_amount: -points,
@@ -51,13 +51,21 @@ export async function recordLoyaltyRedemption(
   });
 
   if (rpcError) {
-    console.error("Loyalty ledger redeem append failed:", rpcError);
+    const code = String((rpcError as { code?: string }).code ?? "");
     const msg = String((rpcError as { message?: string }).message ?? "");
+    if (code === "23505" || msg.includes("uq_loyalty_ledger_redeem_idempotency_key")) {
+      return { recorded: false, points: 0, reason: "duplicate_idempotency_key" };
+    }
+    console.error("Loyalty ledger redeem append failed:", rpcError);
     if (msg.includes("insufficient_loyalty_balance")) {
       return { recorded: false, points: 0, reason: "insufficient_balance" };
     }
     return { recorded: false, points: 0, reason: "rpc_error" };
   }
 
-  return { recorded: true, points };
+  return {
+    recorded: true,
+    points,
+    ledgerId: typeof ledgerId === "string" ? ledgerId : null,
+  };
 }

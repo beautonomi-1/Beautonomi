@@ -32,6 +32,7 @@ type ShippingIntegrationStatus = {
   enabled: boolean;
   enabled_in_db: boolean;
   env_override: "on" | "off" | "unset";
+  provider_credentials_encryption_configured: boolean;
   any_courier_configured: boolean;
   couriers: {
     "courier-guy": CourierStatus;
@@ -145,7 +146,7 @@ export function ShippingIntegrationPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Courier shipping"
-        description="Turn on live Courier Guy, Bob Go, and Aramex booking after product-order payment, and store the API keys used at compile/runtime."
+        description="Global kill switch and platform courier keys for admin probes and legacy tracking. Salons connect their own keys in the provider portal."
       />
       <AdminMutationAlert
         errors={[
@@ -160,13 +161,19 @@ export function ShippingIntegrationPage() {
           <Info className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
           <div className="text-sm text-gray-700 space-y-2">
             <p>
-              Customer checkout still uses each provider’s delivery fees. This switch only books a
-              real courier waybill after payment when the salon has chosen a courier under Shipping
-              &amp; Collection.
+              Paid delivery orders auto-book a courier waybill only when live booking is on, the
+              salon has verified courier keys under Shipping &amp; Collection, and{" "}
+              <code className="rounded bg-gray-100 px-1">SHIPPING_CREDENTIALS_ENCRYPTION_KEY</code> is
+              set in the web app environment (32-byte base64 — never stored in admin).
             </p>
             <p>
-              Keys are stored in <code className="rounded bg-gray-100 px-1">platform_secrets</code>.
-              Environment variables override the database (for local/Vercel).{" "}
+              Platform keys below live in <code className="rounded bg-gray-100 px-1">platform_secrets</code>{" "}
+              (or env overrides). They power <strong>Probe rates</strong> and fallback tracking — not
+              salon waybill booking. Addresses have no suburb column: Mapbox suburbs are saved in{" "}
+              <code className="rounded bg-gray-100 px-1">address_line2</code> and sent to couriers as
+              suburb when it differs from city.
+            </p>
+            <p>
               <code className="rounded bg-gray-100 px-1">ECOMMERCE_SHIPPING_ENABLED=false</code> is an
               emergency kill switch and cannot be overridden here.
             </p>
@@ -197,16 +204,26 @@ export function ShippingIntegrationPage() {
             {d.enabled_in_db ? "Turn off in admin" : "Turn on in admin"}
           </button>
         </div>
-        {!d.any_courier_configured ? (
+        {!d.provider_credentials_encryption_configured ? (
           <p className="mt-3 text-sm text-amber-800">
-            No courier keys yet. Save at least one live key before turning booking on, or quotes will
-            skip as not configured.
+            <code className="rounded bg-amber-50 px-1">SHIPPING_CREDENTIALS_ENCRYPTION_KEY</code> is
+            missing or invalid in the web environment. Salons cannot save courier keys until this is
+            configured.
           </p>
         ) : null}
       </AdminPanel>
 
       <AdminPanel>
-        <h2 className="text-base font-semibold text-gray-900">Courier status</h2>
+        <h2 className="text-base font-semibold text-gray-900">Salon credential encryption</h2>
+        <p className="mt-1 text-sm text-gray-600">
+          {d.provider_credentials_encryption_configured
+            ? "Web env has a valid SHIPPING_CREDENTIALS_ENCRYPTION_KEY. Provider portal can store encrypted salon keys."
+            : "Not configured. Set SHIPPING_CREDENTIALS_ENCRYPTION_KEY on the web app (32 random bytes, base64-encoded)."}
+        </p>
+      </AdminPanel>
+
+      <AdminPanel>
+        <h2 className="text-base font-semibold text-gray-900">Platform courier keys (probe &amp; legacy)</h2>
         <ul className="mt-4 space-y-2 text-sm">
           {(
             [
@@ -394,10 +411,16 @@ export function ShippingIntegrationPage() {
             </button>
           </form>
         ) : null}
+        {!d.any_courier_configured ? (
+          <p className="mt-3 text-sm text-gray-600">
+            No platform keys saved — probe and legacy tracking only. Salon booking uses each provider’s
+            own keys in the provider portal.
+          </p>
+        ) : null}
       </AdminPanel>
       <p className="flex items-center gap-2 text-xs text-gray-500">
         <Truck className="h-3.5 w-3.5" />
-        Apply migration 858 before this page can persist keys.
+        Migrations: 858 (platform secrets), 994 (salon courier credentials &amp; booking columns).
       </p>
     </div>
   );

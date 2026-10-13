@@ -90,6 +90,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
     items: [
       { titleKey: "itemClientList", descriptionKey: "itemClientListDesc", href: "/provider/settings/clients/list", mobileRoute: "/(app)/(tabs)/clients" },
       { titleKey: "itemReferrals", descriptionKey: "itemReferralsDesc", href: "/provider/settings/clients/referrals", mobileRoute: "/(app)/(tabs)/more/settings/referral-sources" },
+      { titleKey: "itemReferBusiness", descriptionKey: "itemReferBusinessDesc", href: "/provider/referrals", mobileRoute: "/(app)/(tabs)/more/refer-a-business" },
       { titleKey: "itemCancelReasons", descriptionKey: "itemCancelReasonsDesc", href: "/provider/settings/clients/cancellation-reasons", mobileRoute: "/(app)/(tabs)/more/settings/cancellation-reasons" },
       { titleKey: "itemCancelPolicies", descriptionKey: "itemCancelPoliciesDesc", href: "/provider/settings/cancellation-policies", mobileRoute: "/(app)/(tabs)/more/settings/cancellation-policies" },
       { titleKey: "itemVisibility", descriptionKey: "itemVisibilityDesc", href: "/provider/settings/customer-visibility", mobileRoute: "/(app)/(tabs)/more/settings/customer-visibility" },
@@ -114,7 +115,6 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
       { titleKey: "itemPayoutCenter", descriptionKey: "itemPayoutCenterDesc", href: "/provider/payouts", mobileRoute: "/(app)/(tabs)/more/payouts" },
       { titleKey: "itemPayoutAccounts", descriptionKey: "itemPayoutAccountsDesc", href: "/provider/settings/payout-accounts", mobileRoute: "/(app)/(tabs)/more/settings/payout-accounts" },
       { titleKey: "itemCardMachines", descriptionKey: "itemCardMachinesDesc", href: "/provider/settings/sales/card-machines", mobileRoute: "/(app)/(tabs)/more/card-machines" },
-      { titleKey: "itemYoco", descriptionKey: "itemYocoDesc", href: "/provider/settings/sales/yoco-integration", mobileRoute: "/(app)/(tabs)/more/settings/yoco-devices" },
       { titleKey: "itemPaystack", descriptionKey: "itemPaystackDesc", href: "/provider/settings/sales/paystack-terminal", mobileRoute: "/(app)/(tabs)/more/paystack-terminal" },
       { titleKey: "itemReceiptSeq", descriptionKey: "itemReceiptSeqDesc", href: "/provider/settings/sales/receipt-sequencing", mobileRoute: "/(app)/(tabs)/more/settings/receipt-sequencing" },
       { titleKey: "itemReceiptTpl", descriptionKey: "itemReceiptTplDesc", href: "/provider/settings/sales/receipt-template", mobileRoute: "/(app)/(tabs)/more/settings/receipt-template" },

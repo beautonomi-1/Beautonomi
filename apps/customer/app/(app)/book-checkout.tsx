@@ -18,6 +18,7 @@ import { useTranslation, buildCancellationPolicyLines, cancellationRequiresAck }
 import type { CancellationPolicyView } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { haptic } from "@/lib/haptics";
+import { groupGuestsServiceSubtotal } from "@/lib/group-booking-checkout-subtotal";
 import { Skeleton } from "@/components/Skeleton";
 import { PaymentProcessingOverlay } from "@/components/payment/PaymentProcessingOverlay";
 import { useSavedCards } from "@/hooks/useSavedCards";
@@ -1778,14 +1779,10 @@ export default function BookCheckoutScreen() {
   }, [hold?.booking_services_snapshot]);
 
   const primarySubtotal = snapshotServiceLines.reduce((s, line) => s + line.price, 0);
-  const groupParticipantsSubtotal =
-    isGroupBooking && groupParticipants.length > 0
-      ? groupParticipants.reduce((sum, p) => {
-          const ids = p.service_ids.length > 0 ? p.service_ids : snapshotOfferingIds;
-          return sum + ids.reduce((s, id) => s + (offeringPriceMap.get(id) ?? 0), 0);
-        }, 0)
-      : 0;
-  const subtotal = primarySubtotal;
+  const groupParticipantsSubtotal = isGroupBooking
+    ? groupGuestsServiceSubtotal(groupParticipants, snapshotOfferingIds, offeringPriceMap)
+    : 0;
+  const servicesSubtotal = primarySubtotal + groupParticipantsSubtotal;
   const currency = hold?.booking_services_snapshot[0]?.currency || getTenantDefaultCurrency();
   const travelFee = hold?.travel_fee ?? 0;
   const houseCallFeeTotal =
@@ -1859,7 +1856,7 @@ export default function BookCheckoutScreen() {
   }, [effectivePackageId]);
 
   const prePromoTotal =
-    Math.max(0, primarySubtotal - packageDiscount) +
+    Math.max(0, servicesSubtotal - packageDiscount) +
     addonsSubtotal +
     travelFee +
     productsSubtotal;
@@ -1867,7 +1864,7 @@ export default function BookCheckoutScreen() {
   const checkoutCartFingerprint = useMemo(
     () =>
       [
-        primarySubtotal.toFixed(4),
+        servicesSubtotal.toFixed(4),
         packageDiscount.toFixed(4),
         addonsSubtotal.toFixed(4),
         String(travelFee),
@@ -1881,7 +1878,7 @@ export default function BookCheckoutScreen() {
         isGroupBooking ? String(groupParticipants.length) : "0",
       ].join("~"),
     [
-      primarySubtotal,
+      servicesSubtotal,
       packageDiscount,
       addonsSubtotal,
       travelFee,

@@ -26,6 +26,7 @@ type ProductLine = {
 };
 type AddonLine = {
   addon_id: string;
+  addon_name?: string | null;
   quantity: number;
   price: number;
   currency?: string | null;
@@ -96,8 +97,17 @@ export function resolveAddonLines(row: Pick<SeriesRow, "metadata">): AddonLine[]
     .map((item) => {
       const quantity = Math.max(1, Math.floor(Number(item.quantity || 1)) || 1);
       const price = Number(item.price ?? item.unit_price ?? item.total ?? 0) || 0;
+      const addonName =
+        typeof item.addon_name === "string"
+          ? item.addon_name
+          : typeof item.addonName === "string"
+            ? item.addonName
+            : typeof item.name === "string"
+              ? item.name
+              : null;
       return {
         addon_id: String(item.addon_id ?? item.addonId),
+        addon_name: addonName,
         quantity,
         price,
         currency: typeof item.currency === "string" ? item.currency : null,
@@ -165,10 +175,15 @@ export async function createBookingFromRecurringSeries(
   const wallClockDate = new Date(year, month - 1, day, hh, mm, ss || 0);
   const scheduledAtLocal = fromBusinessTime(wallClockDate, providerTz);
 
-  const offeringIds = [...new Set(lines.map((l) => l.offering_id))];
+  const offeringIds = [
+    ...new Set([
+      ...lines.map((l) => l.offering_id),
+      ...addonLines.map((a) => a.addon_id),
+    ]),
+  ];
   const { data: offerings, error: offErr } = await admin
     .from("offerings")
-    .select("id, price, duration_minutes, buffer_minutes, currency")
+    .select("id, title, price, duration_minutes, buffer_minutes, currency")
     .in("id", offeringIds)
     .eq("provider_id", row.provider_id);
 
@@ -177,6 +192,12 @@ export async function createBookingFromRecurringSeries(
   }
 
   const offeringMap = new Map(offerings.map((o: { id: string }) => [o.id, o]));
+  const addonNameById = new Map(
+    offerings.map((o: { id: string; title?: string | null }) => [
+      o.id,
+      String(o.title ?? "").trim(),
+    ]),
+  );
 
   let subtotal = 0;
   for (const line of lines) {
@@ -469,6 +490,7 @@ export async function createBookingFromRecurringSeries(
         bookingId as string,
         productLines,
         addonLines,
+        addonNameById,
         primaryStaffId,
         row,
         occurrenceDateYmd,
@@ -523,10 +545,11 @@ export async function createBookingFromRecurringSeries(
       bookingId,
       productLines,
       addonLines,
+      addonNameById,
       primaryStaffId,
       row,
       occurrenceDateYmd,
-      recurringTotalAmount
+      recurringTotalAmount,
     );
   } catch (lineErr) {
     await admin.from("bookings").delete().eq("id", bookingId);
@@ -543,16 +566,21 @@ async function insertRecurringBookingProductsAndAudit(
   bookingId: string,
   productLines: ProductLine[],
   addonLines: AddonLine[],
+  addonNameById: Map<string, string>,
   primaryStaffId: string | null,
   row: SeriesRow,
   occurrenceDateYmd: string,
-  totalAmount: number
+  totalAmount: number,
 ): Promise<void> {
   if (addonLines.length > 0) {
     const { error } = await admin.from("booking_addons").insert(
       addonLines.map((addon) => ({
         booking_id: bookingId,
         addon_id: addon.addon_id,
+        addon_name:
+          addon.addon_name?.trim() ||
+          addonNameById.get(addon.addon_id) ||
+          "Add-on",
         quantity: addon.quantity,
         price: addon.price,
         currency: addon.currency ?? LAST_RESORT_CURRENCY,

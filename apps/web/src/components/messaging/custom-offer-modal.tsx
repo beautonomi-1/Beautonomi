@@ -298,23 +298,9 @@ export default function CustomOfferModal({
 
   const MIN_DESC = 5;
 
-  const isValid = () => {
-    return (
-      description.trim().length >= MIN_DESC &&
-      description.trim().length <= 4000 &&
-      price !== "" &&
-      Number(price) >= 0 &&
-      durationMinutes &&
-      Number(durationMinutes) >= 15 &&
-      Number(durationMinutes) <= 480 &&
-      expirationDays &&
-      Number(expirationDays) > 0
-    );
-  };
-
   const validationHint = useMemo(() => {
     const d = description.trim();
-    if (d.length > 0 && d.length < MIN_DESC) return t("web.messaging.customOfferModal.descCharsNeeded", { count: MIN_DESC - d.length });
+    if (d.length < MIN_DESC) return t("web.messaging.customOfferModal.descCharsNeeded", { count: MIN_DESC - d.length });
     if (!price || Number.isNaN(Number(price)) || Number(price) < 0) return t("web.messaging.customOfferModal.invalidPrice");
     const dm = Number(durationMinutes);
     if (!Number.isFinite(dm) || dm < 15 || dm > 480) return t("web.messaging.customOfferModal.invalidDuration");
@@ -328,6 +314,8 @@ export default function CustomOfferModal({
     }
     return null;
   }, [description, price, durationMinutes, expirationDays, locationType, addressLine1, locationId, t]);
+
+  const isValid = () => validationHint === null;
 
   const handleSubmit = async () => {
     if (!isValid()) {

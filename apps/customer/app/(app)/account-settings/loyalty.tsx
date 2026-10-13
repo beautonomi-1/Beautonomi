@@ -2,7 +2,7 @@
  * Customer Loyalty Points — full experience with balance, history, milestones, redemption.
  * Uses /api/me/loyalty-points for enriched data.
  */
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
@@ -28,6 +28,17 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { loyaltyHistoryRowsForDisplay } from "@/lib/loyalty-history-rows";
 import { endTextAlign } from "@/lib/rtlText";
 import { getTenantLocaleTag } from "@/lib/locale";
+
+function generateRedeemKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = Math.floor(Math.random() * 16);
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
 
 interface Milestone {
   id: string;
@@ -107,6 +118,8 @@ export default function LoyaltyScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<Tab>("overview");
   const [redeeming, setRedeeming] = useState(false);
+  /** Same key across double-taps and retries of one redemption; reset once it settles. */
+  const redeemIdempotencyKeyRef = useRef<string | null>(null);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -167,7 +180,19 @@ export default function LoyaltyScreen() {
             haptic.medium();
             setRedeeming(true);
             try {
-              const res = await api.post("/api/me/loyalty/redeem", { points });
+              const idempotencyKey = (redeemIdempotencyKeyRef.current ??= generateRedeemKey());
+              const res = await api.post("/api/me/loyalty/redeem", {
+                points,
+                idempotency_key: idempotencyKey,
+              });
+              // Keep the key only when the outcome is unknown (no HTTP status) or still
+              // settling, so the retry replays instead of redeeming twice.
+              if (
+                !res.error ||
+                (res.error.status != null && res.error.code !== "REDEMPTION_PENDING")
+              ) {
+                redeemIdempotencyKeyRef.current = null;
+              }
               if (res.error) {
                 haptic.error();
                 Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message || lp("redemptionFailed"));
@@ -193,7 +218,8 @@ export default function LoyaltyScreen() {
 
   async function handleShareReferral() {
     haptic.medium();
-    const code = data?.referral_code ?? "BEAUTONOMI";
+    const code = data?.referral_code?.trim();
+    if (!code) return;
     try {
       await Share.share({
         message: lp("referralShareMessage", { code }),
@@ -268,7 +294,19 @@ export default function LoyaltyScreen() {
         </View>
         <TouchableOpacity
           onPress={handleShareReferral}
-          style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: "#E0E7FF", borderRadius: 12, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: "#A5B4FC" }}
+          disabled={!data?.referral_code?.trim()}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "#E0E7FF",
+            borderRadius: 12,
+            padding: 14,
+            marginBottom: 16,
+            borderWidth: 1,
+            borderColor: "#A5B4FC",
+            opacity: data?.referral_code?.trim() ? 1 : 0.5,
+          }}
           accessibilityRole="button"
           accessibilityLabel={lp("shareReferralA11y")}
         >

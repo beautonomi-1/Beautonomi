@@ -13,6 +13,8 @@ export const PROVIDER_ONBOARDING_ROUTE_PREFIXES = [
   "/provider/settings/locations",
   "/provider/settings/gallery",
   "/provider/settings/operating-hours",
+  "/provider/settings/sales/card-machines",
+  "/provider/settings/sales/card-machines/yoco",
   "/provider/settings/sales/yoco-integration",
   "/provider/settings/sales/yoco-devices",
   "/provider/settings/payments",

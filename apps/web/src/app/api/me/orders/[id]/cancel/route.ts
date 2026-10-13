@@ -131,28 +131,32 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     // 2/3. Refund original tender + ledger reversal (paid orders only).
     let refund: { online_refunded: number; wallet_credited: number; gift_card_restored: number } | null = null;
+    let walletCreditFailed = false;
     if (order.payment_status === "paid") {
       const online = await refundProductOrderOnlineTender(admin, order, {
         reason,
         idempotencyKey: `product_order_self_cancel:${id}`,
       });
-      if (online.attempted && online.error) {
-        return errorResponse(
-          "We could not refund your card payment. Your order was cancelled but please contact support to complete the refund.",
-          "ONLINE_REFUND_FAILED",
-          502,
+      const onlineRefundFailed = Boolean(online.attempted && online.error);
+      if (onlineRefundFailed) {
+        console.warn(
+          `[product-order cancel] gateway refund failed for ${id}; crediting wallet fallback`,
+          online.error,
         );
       }
-      await applyProductOrderCancelRefundSideEffects(admin, admin, order, {
+      const sideEffects = await applyProductOrderCancelRefundSideEffects(admin, admin, order, {
         newStatus: "cancelled",
         cancellationReason: reason,
         onlineRefundedAmount: online.refundedAmount,
       });
+      walletCreditFailed = sideEffects.walletCreditFailed;
       const total = Math.max(0, Number(order.total_amount ?? 0));
       const gift = Math.min(total, Math.max(0, Number(order.gift_card_amount ?? 0)));
       refund = {
         online_refunded: online.refundedAmount,
-        wallet_credited: Math.max(0, Math.round((total - gift - online.refundedAmount) * 100) / 100),
+        wallet_credited: walletCreditFailed
+          ? 0
+          : Math.max(0, Math.round((total - gift - online.refundedAmount) * 100) / 100),
         gift_card_restored: gift,
       };
     }
@@ -171,12 +175,21 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           cancelled_by: "customer",
           cancellation_reason: reason,
           refund,
+          ...(walletCreditFailed ? { refund_pending: true } : {}),
         },
         link,
         action_url: link,
       });
     } catch (e) {
       console.warn("[me/orders/cancel] provider notify failed:", e);
+    }
+
+    if (walletCreditFailed) {
+      return errorResponse(
+        "Your order was cancelled, but we could not add the refund to your wallet yet. Support will complete it — you do not need to cancel again.",
+        "REFUND_PENDING",
+        502,
+      );
     }
 
     return successResponse({ order: updated, refund });

@@ -1,7 +1,7 @@
 "use client";
 import { useTranslation } from "@beautonomi/i18n";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -43,23 +43,34 @@ export default function ProviderReferralsPage() {
   const [submitted, setSubmitted] = useState(false);
   const [referrals, setReferrals] = useState<ReferralRow[]>([]);
   const [loadingReferrals, setLoadingReferrals] = useState(true);
+  const [loadReferralsError, setLoadReferralsError] = useState<string | null>(null);
+
+  const loadReferrals = useCallback(async () => {
+    setLoadingReferrals(true);
+    setLoadReferralsError(null);
+    try {
+      const res = await fetcher.get<{ data: { referrals: ReferralRow[] } }>("/api/provider/referrals");
+      setReferrals(res.data?.referrals ?? []);
+    } catch (err) {
+      setReferrals([]);
+      setLoadReferralsError(
+        err instanceof FetchError ? err.message : t("web.provider.pages.referrals.loadFailed"),
+      );
+    } finally {
+      setLoadingReferrals(false);
+    }
+  }, [t]);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetcher.get<{ data: { referrals: ReferralRow[] } }>("/api/provider/referrals");
-        if (!cancelled) setReferrals(res.data?.referrals ?? []);
-      } catch {
-        if (!cancelled) setReferrals([]);
-      } finally {
-        if (!cancelled) setLoadingReferrals(false);
-      }
+    void (async () => {
+      await loadReferrals();
+      if (cancelled) return;
     })();
     return () => {
       cancelled = true;
     };
-  }, [submitted]);
+  }, [submitted, loadReferrals]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -131,6 +142,15 @@ export default function ProviderReferralsPage() {
           </SectionCard>
         ) : null}
 
+        {loadReferralsError ? (
+          <SectionCard>
+            <p className="text-sm text-red-600 mb-3">{loadReferralsError}</p>
+            <Button type="button" variant="outline" onClick={() => void loadReferrals()}>
+              {t("common.retry")}
+            </Button>
+          </SectionCard>
+        ) : null}
+
         {referrals.length > 0 ? (
           <SectionCard title={t("web.provider.pages.referrals.yourReferrals")}>
             <ul className="divide-y divide-gray-100">
@@ -159,7 +179,7 @@ export default function ProviderReferralsPage() {
               ))}
             </ul>
           </SectionCard>
-        ) : !loadingReferrals ? (
+        ) : !loadingReferrals && !loadReferralsError ? (
           <SectionCard>
             <p className="text-sm text-gray-600">{t("web.provider.pages.referrals.empty")}</p>
           </SectionCard>

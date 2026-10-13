@@ -14,6 +14,8 @@ export type GroupBookingCreateValidationInput = {
     phone: string;
     email: string;
     serviceId: string;
+    /** When set, roster-only phone/email rules are skipped (linked account). */
+    customerId?: string;
   }[];
   validatePhone: (phone: string) => string | null;
 };

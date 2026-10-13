@@ -150,7 +150,7 @@ export async function applyCollectibleGiftAndWallet(
     });
     if (walletErr || !debitResult) {
       if (giftCardAmountApplied > 0) {
-        await (admin.rpc as any)("release_gift_card_redemption", { p_booking_id: bookingId }).catch(() => {});
+        await (admin.rpc as any)("void_gift_card_redemption", { p_booking_id: bookingId }).catch(() => {});
       }
       return {
         ok: false,

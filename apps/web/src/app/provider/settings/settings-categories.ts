@@ -48,6 +48,7 @@ export const settingsCategories: SettingsCategoryConfig[] = [
     items: [
       { itemKey: "clientList", href: "/provider/settings/clients/list" },
       { itemKey: "referrals", href: "/provider/settings/clients/referrals" },
+      { itemKey: "referBusinessProgram", href: "/provider/referrals" },
       { itemKey: "cancellationReasons", href: "/provider/settings/clients/cancellation-reasons" },
       { itemKey: "cancellationPolicies", href: "/provider/settings/cancellation-policies" },
       { itemKey: "customerVisibility", href: "/provider/settings/customer-visibility" },

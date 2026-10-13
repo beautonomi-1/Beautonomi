@@ -44,4 +44,19 @@ describe("toShippingAddress", () => {
       toShippingAddress({ city: "Cape Town", postal_code: "8001", country: "ZA" }, "Customer"),
     ).toBeNull();
   });
+
+  it("maps suburb hint into line2 when line2 is empty", () => {
+    expect(
+      toShippingAddress(
+        {
+          address_line1: "12 Long Street",
+          city: "Cape Town",
+          suburb: "Gardens",
+          postal_code: "8001",
+          country: "ZA",
+        },
+        "Customer",
+      )?.line2,
+    ).toBe("Gardens");
+  });
 });

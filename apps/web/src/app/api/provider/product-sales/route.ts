@@ -84,7 +84,17 @@ const walkInLineSchema = z.object({
 const walkInSaleSchema = z
   .object({
     items: z.array(walkInLineSchema).optional(),
-    payment_method: z.enum(["cash", "yoco", "card", "eft", "other", "paycloud", "paystack_terminal"]),
+    /** `card_machine` = pending order awaiting a Yoco or PayCloud charge (settled server-side, then finalized). */
+    payment_method: z.enum([
+      "cash",
+      "yoco",
+      "card",
+      "card_machine",
+      "eft",
+      "other",
+      "paycloud",
+      "paystack_terminal",
+    ]),
     payment_reference: z.string().max(200).optional(),
     finalize_paycloud_order_id: z.string().uuid().optional(),
     finalize_walk_in_order_id: z.string().uuid().optional(),
@@ -179,7 +189,8 @@ async function finalizePaidWalkInOrder(params: {
         amountMajor: totalAmount,
         feesMajor: 0,
         source: "walk_in_pos",
-        provider: paymentMethod === "paycloud" ? "paycloud" : "card_on_delivery",
+        provider:
+          paymentMethod === "paycloud" || paymentMethod === "yoco" ? paymentMethod : "card_on_delivery",
         platformHeld: false,
       });
       if (payResult.ledgerIncomplete) {
@@ -275,6 +286,12 @@ export async function POST(request: NextRequest) {
     if (parsed.payment_method === "paycloud") {
       const paycloudGate = await requirePaycloudPlatformEnabledForProvider(supabase, providerId);
       if (paycloudGate) return paycloudGate;
+    }
+
+    if (parsed.payment_method === "card_machine") {
+      const yocoGate = await requireYocoPlatformEnabledForProvider(supabase, providerId);
+      const paycloudGate = await requirePaycloudPlatformEnabledForProvider(supabase, providerId);
+      if (yocoGate && paycloudGate) return paycloudGate;
     }
 
     const { data: providerRow, error: provTenantErr } = await supabase
@@ -503,7 +520,8 @@ export async function POST(request: NextRequest) {
       parsed.payment_method === "paycloud" && !parsed.payment_reference?.trim();
     const isPendingPaystackTerminal =
       parsed.payment_method === "paystack_terminal" && !parsed.payment_reference?.trim();
-    const isPendingTerminal = isPendingPaycloud || isPendingPaystackTerminal;
+    const isPendingCardMachine = parsed.payment_method === "card_machine";
+    const isPendingTerminal = isPendingPaycloud || isPendingPaystackTerminal || isPendingCardMachine;
 
     const totalAmount = sumMoney(subtotal, taxAmount);
 

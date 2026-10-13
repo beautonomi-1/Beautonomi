@@ -649,7 +649,7 @@ async function main() {
     prod,
     stage,
     "pricing_plans",
-    "slug",
+    "name",
     tenantIdMap,
     regionIdMap,
     report,

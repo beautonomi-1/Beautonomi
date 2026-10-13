@@ -373,6 +373,7 @@ function LocationDialog({
 
   const handleAddressSelect = (address: {
     address_line1: string;
+    address_line2?: string;
     city: string;
     state?: string;
     postal_code?: string;
@@ -383,6 +384,9 @@ function LocationDialog({
     setFormData({
       ...formData,
       address_line1: address.address_line1,
+      address_line2: formData.address_line2?.trim()
+        ? formData.address_line2
+        : (address.address_line2 ?? formData.address_line2),
       city: address.city,
       state: address.state || "",
       postal_code: address.postal_code || "",

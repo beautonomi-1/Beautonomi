@@ -1649,7 +1649,9 @@
           "measureG": "Grams (g)",
           "measureKg": "Kilograms (kg)",
           "measureUnit": "Unit",
-          "defaultVariantType": "Size"
+          "defaultVariantType": "Size",
+          "weightGrams": "Shipping weight (g)",
+          "weightGramsPlaceholder": "500"
         },
         "ads": {
           "title": "Paid ads",
@@ -3104,7 +3106,23 @@
           "recommendChargeCard": "Charge card on file (customer approves first)",
           "recommendCustomerPay": "Send to customer — they pay in-app",
           "recommendCollectInPerson": "Collect in person (cash, card, or terminal)",
-          "removeCta": "Remove"
+          "removeCta": "Remove",
+          "cancelRefundCardHint": "Betalingen met kaartautomaten gaan terug naar de kaart van de klant (Beautonomi automaten automatisch; Yoco u betaalt terug op de automaat en registreert). Online betalingen worden bijgeschreven op hun portemonnee.",
+          "cancelRefundWalletHint": "De klant ontvangt een volledige terugbetaling in zijn portemonnee van Beautonomi. Uw annuleringsbeleid is niet van toepassing op annuleringen die u initieert.",
+          "continue": "Ga door",
+          "yocoRefundOnMachineTitle": "Terugbetaling op uw Yoco-automaat",
+          "yocoRefundOnMachineBody": "Terugbetalingen van Yoco kunnen niet worden gestart vanaf Beautonomi. Restitueer eerst {{amount}} in de Yoco-app of op de automaat en noteer dit vervolgens hier, zodat het boekingssaldo en de rapporten correct blijven.",
+          "yocoRefundRecordedBody": "De terugbetaling van Yoco is op deze boeking vastgelegd.",
+          "awaitingYocoRefundTitle": "{{amount}} moet nog worden terugbetaald op de Yoco-automaat",
+          "awaitingYocoRefundBody": "Deze boeking is geannuleerd met een terugbetaling op de kaart. Betaal het terug in de Yoco-app of op de machine en noteer het hier. Tot die tijd blijft het openstaan ​​in het afstemmingsrapport van de kaartmachine.",
+          "awaitingYocoRefundReason": "Boeking geannuleerd - terugbetaling terug naar kaart",
+          "refundOriginalHint": "Het geld komt via de kaartautomaat of bank terug op de kaart van de klant. Er wordt niets uit uw kassalade gehaald.",
+          "refundCashHint": "Geef het geld persoonlijk terug aan de klant. Opgenomen voor uw boeken; er wordt geen portefeuilletegoed uitgegeven. Het boekingssaldo wordt bijgewerkt nadat dit is gelukt.",
+          "refundWalletHint": "Gebruik wanneer de klant niet aanwezig is of de betaling online is gedaan. De terugbetaling wordt bijgeschreven op hun portemonnee.",
+          "refundOriginalMachineHint": "Het geld keert terug naar de kaart van de klant via de kaartautomaat waarop het is betaald.",
+          "cancelWalletNote": "De klant ontvangt een volledige terugbetaling in zijn portemonnee van Beautonomi voor reeds betaalde bedragen. Uw annuleringsbeleid is niet van toepassing op annuleringen die u initieert.",
+          "cancelRefundTo": "Het betaalde bedrag terugstorten op",
+          "yocoRefundRecordCta": "Terugbetaald op het apparaat — terugbetaling vastleggen"
         },
         "operatingHoursSettings": {
           "title": "Operating Hours",
@@ -3969,7 +3987,11 @@
           "trackingUrlHelp": "Paste the carrier's tracking page so customers can tap through from their order.",
           "saving": "Saving…",
           "confirmShipped": "Confirm shipped",
-          "estimatedDeliveryDate": "Estimated delivery date (optional)"
+          "estimatedDeliveryDate": "Estimated delivery date (optional)",
+          "courierBooking": "Courier booking",
+          "bookCourier": "Book courier",
+          "retryCourierBooking": "Retry booking",
+          "printLabel": "Print label"
         },
         "yocoDevices": {
           "title": "Yoco Devices",
@@ -5169,7 +5191,9 @@
           "staffOffersServiceHint": "These team members can perform this service.",
           "categoryPickerTitle": "Category",
           "runningBehindSheetTitle": "Running behind?",
-          "staffFilteredByService": "Showing team members assigned to this service."
+          "staffFilteredByService": "Showing team members assigned to this service.",
+          "addressOutsideArea": "This address is outside your service area.",
+          "addressValidateFailed": "Could not validate this address. Check your connection and try again."
         },
         "expressBooking": {
           "invalidJson": "Invalid JSON.",
@@ -5403,7 +5427,44 @@
           "posting": "Posting…",
           "postAction": "Post",
           "commentsDisabled": "Comments and likes are turned off in your content & safety settings.",
-          "commentLength": "{{count}}/200"
+          "commentLength": "{{count}}/200",
+          "videoTooLong": "Video exceeds the maximum length for Explore ({{seconds}} seconds).",
+          "trimVideoTitle": "Trim video",
+          "trimVideoHint": "Drag to choose which part of your video appears on Explore.",
+          "trimClipLength": "{{seconds}}s clip",
+          "trimVideoScrubber": "Choose clip start",
+          "trimVideoConfirm": "Use clip",
+          "trimVideoLoading": "Loading video…",
+          "trimVideoFinishFirst": "Finish trimming your video before continuing.",
+          "holdToRecord": "Hold to record",
+          "releaseToFinish": "Release to finish",
+          "tapForPhoto": "Tap for photo",
+          "clipWindowA11y": "Selected clip",
+          "capturePhoto": "Photo",
+          "captureVideo": "Video",
+          "flipCamera": "Flip camera",
+          "lensFront": "Front camera",
+          "lensBack": "Back camera",
+          "switchToFront": "Switch to front camera",
+          "switchToBack": "Switch to back camera",
+          "openingCamera": "Opening camera…",
+          "cameraOpenFailed": "Could not open this camera. Try the other lens or close and reopen.",
+          "cameraPermissionContinue": "Continue",
+          "micPermissionForVideo": "Microphone access is needed to record video with sound.",
+          "onMediaText": "On-media text",
+          "onMediaTextHint": "Tap a thumbnail to pick the slide, then add short text (shown on the post until publish burn-in).",
+          "onMediaTextDragHint": "Drag text on the preview to reposition it.",
+          "onMediaTextPlaceholder": "Short label on this slide",
+          "addTextLayer": "Add text",
+          "backgroundSoundOptional": "Background sound (optional)",
+          "addMusic": "Add music (optional)",
+          "originalAudio": "Original audio",
+          "soundViewerHint": "Viewers hear this music instead of your clip's audio on Explore.",
+          "soundsEmpty": "No catalog tracks yet — use original audio or ask your admin to add platform sounds.",
+          "soundsSectionPlatform": "Popular sounds",
+          "soundsSectionYours": "Your sounds",
+          "soundPreviewPlay": "Play preview",
+          "soundPreviewStop": "Stop preview"
         },
         "dashboard": {
           "title": "Dashboard",
@@ -7370,7 +7431,11 @@
           "deliveryNotesPlaceholder": "e.g. Mon–Fri only",
           "howFeesWork": "How fees work",
           "howFeesWorkBody": "Collection is free. Delivery uses your fee and platform fee. Set a free-delivery threshold so orders above that amount get free delivery.",
-          "saveChanges": "Save changes"
+          "saveChanges": "Save changes",
+          "courierPreference": "Courier",
+          "courierPreferencePlaceholder": "Leave empty for manual tracking",
+          "courierNone": "None (manual tracking)",
+          "courierKeysWebHint": "Connect API keys in the provider web app under Ecommerce → Shipping."
         },
         "productSalesReport": {
           "factsDefinitions": "Facts & definitions",
@@ -10567,7 +10632,9 @@
           "itemGlobalSignOut": "Sign out from all devices",
           "itemGlobalSignOutDesc": "End every active session on your account",
           "itemDelete": "Delete account",
-          "itemDeleteDesc": "Permanently delete account and data"
+          "itemDeleteDesc": "Permanently delete account and data",
+          "itemReferBusiness": "Refer a business",
+          "itemReferBusinessDesc": "Submit another salon or beauty business to Beautonomi"
         },
         "settingsBusinessDescription": {
           "validationTitle": "Validation",
@@ -12620,6 +12687,23 @@
           "submitFailedFallback": "Tafadhali jaribu tena or contact Partner support.",
           "submitGenericError": "Kuna tatizo limetokea.",
           "supportFallback": "Don't know their handle? Open a Partner support ticket instead"
+        },
+        "cardMachineCollect": {
+          "title": "Kaartautomaat",
+          "collectOn": "Standaard: {{name}}",
+          "chooseMachine": "Kies een kaartautomaat",
+          "noMachines": "Er zijn nog geen kaartautomaten ingesteld.",
+          "setUp": "Kaartautomaten opzetten",
+          "loadFailed": "Kan uw kaartautomaten niet laden.",
+          "retry": "Probeer het opnieuw",
+          "beautonomi": "Beautonomi",
+          "yoco": "Yoco",
+          "defaultBadge": "Standaard",
+          "collectOnNamed": "Collect on {{name}} ({{provider}})",
+          "loadingMachines": "Loading machines…",
+          "selectMachine": "Select machine",
+          "chargeNamed": "Charge · {{name}}",
+          "switchMachine": "Switch machine"
         }
       }
     },
@@ -13792,6 +13876,18 @@
           "youPaidForGroup": "Vous avez payé pour le groupe",
           "paidBy": "Payé par {{name}}",
           "covered": "Inclus"
+        },
+        "paystackReturn": {
+          "bookVerifying": "Confirming your payment…",
+          "bookReturning": "Returning to bookings…",
+          "bookFallbackCta": "Go to Bookings",
+          "bookContinueCta": "View booking",
+          "shopVerifying": "Confirming your order payment…",
+          "shopReturning": "Returning to shop…",
+          "shopFallbackCta": "Go to Orders",
+          "shopContinueCta": "View order",
+          "shopPendingSubtext": "We'll update your order within a few minutes. You can keep using the app while we confirm with your bank.",
+          "shopFailedSubtext": "If you were charged, your order will still be confirmed once the payment lands. Please check your Orders tab."
         }
       },
       "tabs": {
@@ -22665,7 +22761,12 @@
           "continueToPayment": "Continue to Payment",
           "back": "Back",
           "processing": "Processing...",
-          "payAmount": "Pay {{amount}}"
+          "payAmount": "Pay {{amount}}",
+          "promoComingSoon": "Promo codes are not available at checkout yet",
+          "giftCardCode": "Gift card code",
+          "giftCardPlaceholder": "Enter code",
+          "giftCardAmount": "Amount to redeem",
+          "splitGiftAmount": "Gift card portion"
         },
         "calendarLinkDialog": {
           "updated": "Calendar link updated",
@@ -22806,7 +22907,24 @@
           "openGroupBooking": "Plan a group booking instead",
           "sendQuote": "Send a quote instead",
           "sendQuoteNeedsAccount": "Select a client with an account to send a quote.",
-          "uncategorized": "Uncategorized"
+          "uncategorized": "Uncategorized",
+          "allCategories": "All",
+          "discountTypePercent": "Percentage",
+          "discountTypeFixed": "Fixed amount",
+          "validation": {
+            "selectClient": "Please select a client",
+            "enterFirstName": "Please enter client first name",
+            "selectServiceOrProduct": "Please select at least one service or product",
+            "serviceRequiredForProducts": "Add a service. Product-only sales use New sale / Checkout.",
+            "selectDate": "Please select a date",
+            "selectTime": "Please select a time",
+            "recurringNeedsSavedClient": "Repeating visits must use a saved client. Select the client from search results first.",
+            "recurringNeedsService": "Repeating visits need at least one service.",
+            "repeatCountMin": "Repeat count must be at least 2 visits.",
+            "assignStaffEach": "Please assign staff for each service",
+            "selectClientAddress": "Search and select the client's address",
+            "chooseAddressSuggestion": "Choose an address from the search suggestions so the map pin and travel distance are accurate."
+          }
         },
         "blockedTimeTypeDialog": {
           "updated": "Blocked time type updated",
@@ -22943,6 +23061,23 @@
           "friday": "Friday",
           "saturday": "Saturday",
           "sunday": "Sunday"
+        },
+        "cardMachineCollect": {
+          "title": "Card machine",
+          "collectOn": "Default: {{name}}",
+          "collectOnNamed": "Collect on {{name}} ({{provider}})",
+          "loadingMachines": "Loading machines…",
+          "selectMachine": "Select machine",
+          "chargeNamed": "Charge · {{name}}",
+          "switchMachine": "Switch machine",
+          "chooseMachine": "Choose a card machine",
+          "noMachines": "No card machines are set up yet.",
+          "setUp": "Set up card machines",
+          "loadFailed": "Could not load your card machines.",
+          "retry": "Try again",
+          "beautonomi": "Beautonomi",
+          "yoco": "Yoco",
+          "defaultBadge": "Default"
         }
       },
       "bookings": {
@@ -23495,7 +23630,9 @@
             "processingRefund": "Processing...",
             "confirmRefund": "Confirm Refund",
             "chargeMarkPaidTitle": "Mark charge as paid",
-            "thisClient": "this client"
+            "thisClient": "this client",
+            "cancelRefundCardHint": "Bedragen die op een kaartautomaat zijn opgenomen, gaan terug naar de kaart van de klant (Beautonomi automaten automatisch; Yoco u betaalt terug op de automaat en registreert). Alles wat online wordt betaald, wordt bijgeschreven op hun portemonnee.",
+            "cancelRefundTo": "Het betaalde bedrag terugstorten op"
           },
           "paystackCollect": {
             "noBalance": "There is no remaining balance to collect.",
@@ -23617,7 +23754,8 @@
             "paystackTerminal": "Paystack Terminal",
             "recording": "Recording…",
             "markPaidCash": "Mark paid (cash) · {{amount}}",
-            "sendPaymentLink": "Send payment link"
+            "sendPaymentLink": "Send payment link",
+            "cardMachine": "Card machine · {{amount}}"
           },
           "receipt": {
             "title": "Receipt",
@@ -23673,7 +23811,16 @@
             "chargeNotFound": "Charge not found.",
             "inPersonCash": "In person (cash)",
             "netPaidMaxRefund": "Net paid after refunds: {{net}} · Max refundable: {{max}}",
-            "processing": "Processing…"
+            "processing": "Processing…",
+            "backToCard": "Terug naar kaart",
+            "backToCardHint": "Retourneert het geld naar de kaart van de klant via de kaartautomaat waarop het is betaald.",
+            "sentToCardMachine": "Terugbetaling verzonden naar de kaartautomaat. Volg de aanwijzingen; de boeking wordt bijgewerkt wanneer deze wordt bevestigd.",
+            "yocoOnMachineTitle": "Eerst geld terug op uw Yoco-automaat",
+            "yocoOnMachineBody": "Terugbetalingen van Yoco kunnen niet worden gestart vanaf Beautonomi. Betaal {{amount}} terug in de Yoco app of op de automaat en noteer het hier zodat het saldo en de rapporten correct blijven.",
+            "yocoRecorded": "Terugbetaling van Yoco geregistreerd",
+            "awaitingYocoTitle": "{{amount}} moet nog worden terugbetaald op de Yoco-automaat",
+            "awaitingYocoBody": "Deze boeking is geannuleerd met een terugbetaling op de kaart. Betaal het terug in de Yoco-app of op de machine en noteer het hier. Tot die tijd blijft het openstaan ​​in het afstemmingsrapport van de kaartmachine.",
+            "yocoRecordCta": "Terugbetaald op het apparaat — terugbetaling vastleggen"
           }
         },
         "createPayment": {
@@ -23692,7 +23839,9 @@
           "depositPct": "Deposit ({{percent}}%)",
           "depositDue": "Deposit due now: {{amount}}",
           "notifyClient": "Notify client",
-          "notifyHint": "Send booking confirmation"
+          "notifyHint": "Send booking confirmation",
+          "cardMachine": "Kaartautomaat",
+          "depositPolicyHint": "Your payment settings require a {{percent}}% deposit when collecting upfront."
         },
         "productPicker": {
           "selectProductAndQty": "Select a product and quantity",
@@ -24462,7 +24611,8 @@
           "plusMinSuffix": " (+{{minutes}} min)",
           "catalogIntro": "Add the services you sell today with price and duration. Clients see these on your booking page; you can refine them anytime after onboarding.",
           "extraTimeMins": "Extra Time (mins)",
-          "updateAddon": "Update Add-on"
+          "updateAddon": "Update Add-on",
+          "menuCategory": "Menu category"
         },
         "review": {
           "markMobileReady": "Mark you as mobile-ready where applicable",
@@ -24516,7 +24666,13 @@
           "afterSubmitFreeActual": "After you submit, you'll be on this plan immediately — no payment needed.",
           "afterSubmitPaidActual": "After you submit, you'll be taken to a secure Paystack page to complete payment.",
           "selectPlanToContinue": "Select a plan to continue. Free plans activate instantly; paid plans take you to a secure card payment.",
-          "noPlansAvailable": "No pricing plans available at the moment. Please contact support."
+          "noPlansAvailable": "No pricing plans available at the moment. Please contact support.",
+          "freeForever": "Free forever",
+          "planRadiogroupLabel": "Subscription plans",
+          "showAllFeatures": "Show all features",
+          "showLessFeatures": "Show less",
+          "summaryFree": "You're on {{name}} — no payment needed.",
+          "summaryPaid": "You'll pay securely after submitting."
         },
         "countries": {
           "ZA": "South Africa",
@@ -24548,7 +24704,28 @@
           "hoursTo": "to"
         },
         "travelFees": {
-          "usePlatformDefault": "Use platform default travel fees"
+          "usePlatformDefault": "Use platform default travel fees",
+          "usePlatformDefaultHint": "Recommended — matches what most providers use on the platform.",
+          "skipHint": "You can skip this step — we'll apply the platform standard and you can adjust it later in Settings.",
+          "loadingDefaults": "Loading platform travel defaults…",
+          "platformStandard": "Platform standard",
+          "ratePerKm": "Rate per km",
+          "minimumFee": "Minimum fee",
+          "freeWithinKm": "Free within (km)",
+          "maximumFee": "Maximum fee",
+          "enable": "Charge travel fees for house calls",
+          "enableHint": "When off, travel is included at no extra charge.",
+          "platformLocked": "Custom travel fees are locked on this platform — platform defaults apply.",
+          "previewLabel": "Preview distance (km)",
+          "previewAtKm": "At {{km}} km: {{currency}} {{fee}}",
+          "pricingModel": "Pricing model",
+          "perKm": "Per kilometer",
+          "tiered": "Distance tiers",
+          "ratePerKmInput": "Rate per km ({{currency}})",
+          "minimumFeeInput": "Minimum fee ({{currency}})",
+          "tierMaxKm": "Up to km",
+          "tierFee": "Fee ({{currency}})",
+          "addTier": "Add tier"
         }
       },
       "dashboard": {
@@ -24854,6 +25031,10 @@
               "customerVisibility": {
                 "title": "Customer Visibility",
                 "description": "Control how customer and salon lists are displayed"
+              },
+              "referBusinessProgram": {
+                "title": "Refer a business",
+                "description": "Submit another salon or beauty business to Beautonomi"
               }
             }
           },
@@ -26819,7 +27000,9 @@
             "activeMachineCount": "Active Machine Count",
             "amountMismatch": "Amount Mismatch",
             "paymentsCount": "Payments ({{count}})",
-            "paymentsWaitingOnMachine": "Payments Waiting On Machine"
+            "paymentsWaitingOnMachine": "Payments Waiting On Machine",
+            "beautonomiCardMachineNav": "Beautonomi card machine",
+            "yocoCardMachineNav": "Yoco card machine"
           },
           "sales/gift-cards": {
             "giftCards": "Gift Cards",
@@ -28433,7 +28616,27 @@
           "collectionNotesHint": "Shown to customers at checkout (e.g. hours, entrance, what to bring)",
           "collectionNotesPlaceholder": "e.g. Collection available Mon-Fri 9am-5pm. Please bring a copy of your order confirmation.",
           "saved": "Saved!",
-          "saveConfiguration": "Save Configuration"
+          "saveConfiguration": "Save Configuration",
+          "readinessTitle": "Setup checklist",
+          "courierAccount": "Your courier account",
+          "connected": "Connected",
+          "notConnected": "Not connected",
+          "courierOwnerOnly": "Only the business owner can view or edit courier API keys.",
+          "apiKey": "API key",
+          "pasteApiKey": "Paste new API key",
+          "saveCourierKeys": "Save courier keys",
+          "testCourierConnection": "Test connection",
+          "testingCourier": "Testing…",
+          "courierSaved": "Courier credentials saved.",
+          "courierSaveFailed": "Could not save courier credentials.",
+          "courierTestOk": "Connection successful.",
+          "courierTestFailed": "Connection test failed.",
+          "courierNoChanges": "Enter new credential fields to save.",
+          "aramexAccount": "Account number",
+          "aramexPin": "Account PIN",
+          "aramexUser": "Username",
+          "aramexPassword": "Password",
+          "aramexProductType": "Domestic product type (e.g. ONP)"
         },
         "packages/new": {
           "failedToLoadItems": "Failed to load items",
@@ -28732,7 +28935,8 @@
           "statusCancelled": "cancelled",
           "statusRefunded": "refunded",
           "paid": "paid",
-          "estimatedDeliveryDate": "Estimated delivery date (optional)"
+          "estimatedDeliveryDate": "Estimated delivery date (optional)",
+          "partialWalletRefundHint": "Partial wallet refunds credit the customer's store balance only. Card and gift-card payments are not returned unless you refund the full order total."
         },
         "team/shifts/dialog": {
           "overrideLocation": "Override Location Operating Hours",
@@ -29026,7 +29230,8 @@
           "privateNotes": "Private notes",
           "notesPlaceholder": "Anything else we should know",
           "submitting": "Submitting…",
-          "submitReferral": "Submit referral"
+          "submitReferral": "Submit referral",
+          "loadFailed": "Could not load your referrals. Try again."
         },
         "account/personal-profile": {
           "fallbackName": "Your profile",
@@ -29311,7 +29516,8 @@
             "package-usage": "Package Usage",
             "business-overview": "Business Overview",
             "performance-dashboard": "Performance Dashboard",
-            "comparison": "Period Comparison"
+            "comparison": "Period Comparison",
+            "card-machine-reconciliation": "Afstemming van kaartmachines"
           }
         },
         "pages": {
@@ -30316,6 +30522,32 @@
             "items_other": "{{count}} items",
             "currency": "Currency: {{code}}.",
             "items": "Items: {{amount}}"
+          },
+          "payments/card-machine-reconciliation": {
+            "title": "Afstemming van kaartmachines",
+            "subtitle": "Openstaande Yoco-terminalbetalingen en PayCloud-bedragverschillen in de periode",
+            "unableToLoad": "Kan de afstemmingsgegevens van de kaartmachine niet laden",
+            "unavailableDesc": "Schakel kaartmachines Yoco of Beautonomi in om dit rapport te gebruiken.",
+            "totalRows": "Rijen in de periode",
+            "yocoPending": "Yoco in behandeling",
+            "paycloudMismatch": "PayCloud-bedragverschil",
+            "emptyTitle": "Geen uitzonderingen",
+            "emptyDesc": "Geen openstaande betalingen van Yoco of mismatches van PayCloud bedragen in deze periode.",
+            "yocoSection": "Yoco in behandeling",
+            "paycloudSection": "PayCloud komt niet overeen",
+            "created": "Gemaakt",
+            "amount": "Bedrag",
+            "status": "Status",
+            "link": "Boeking / verkoop",
+            "awaitingRefunds": "Open op Yoco-apparaat",
+            "awaitingRefundsSection": "Terugbetalingen op de Yoco-automaat",
+            "awaitingRefundsHint": "Geannuleerde boekingen worden teruggestort op de kaart. Yoco heeft geen restitutie-API: betaal elk bedrag terug in de Yoco-app of op de machine en noteer het vervolgens in de boeking.",
+            "booking": "Boeking",
+            "reason": "Reden",
+            "match": "Bedrag komt overeen",
+            "order": "Bestelnummer",
+            "openBooking": "Open de boeking om deze vast te leggen",
+            "awaitingSince": "Openstaand sinds"
           }
         },
         "export": {
@@ -30913,7 +31145,16 @@
           "productBrand": "Product brand",
           "productCategory": "Product category",
           "medium": "Medium",
-          "large": "Large"
+          "large": "Large",
+          "maxPhotos": "You can upload up to 5 product photos.",
+          "scanBarcodeTitle": "Scan barcode",
+          "scanBarcodeHint": "Point the camera at a 1D barcode or QR code on the product.",
+          "barcodeScanFailed": "Could not start the camera.",
+          "startingCamera": "Starting camera…",
+          "weightGrams": "Shipping weight (grams)",
+          "weightGramsHint": "Used for delivery fee and courier booking. Default 500g if empty.",
+          "addOptionType": "Add another option",
+          "optionN": "Option {{n}}"
         }
       },
       "waitlistPage": {
@@ -31599,7 +31840,41 @@
         "saveChanges": "Save changes",
         "share": "Share",
         "cancel": "Cancel",
-        "remainingSlots": "Remaining Slots"
+        "remainingSlots": "Remaining Slots",
+        "videoTooLong": "Video exceeds the maximum length for Explore.",
+        "videoWillTrim": "Long videos are trimmed to the Explore maximum when processed.",
+        "trimVideoTitle": "Trim video",
+        "trimVideoHint": "Drag to choose which part of your video appears on Explore.",
+        "trimClipLength": "{{seconds}}s clip",
+        "trimVideoScrubber": "Choose clip start",
+        "trimVideoConfirm": "Use clip",
+        "trimVideoFinishFirst": "Finish trimming your video before continuing.",
+        "trimVideoLoading": "Loading video…",
+        "holdToRecord": "Hold to record",
+        "releaseToFinish": "Release to finish",
+        "tapForPhoto": "Tap for photo",
+        "recordingTooShort": "Hold a little longer to record video.",
+        "lensFront": "Front camera",
+        "lensBack": "Back camera",
+        "switchToFront": "Switch to front camera",
+        "switchToBack": "Switch to back camera",
+        "openingCamera": "Opening camera…",
+        "onlyOneCamera": "Only one camera is available on this device.",
+        "clipWindowA11y": "Selected clip",
+        "onMediaText": "On-media text",
+        "onMediaTextPlaceholder": "Short label on this slide",
+        "onMediaTextDragHint": "Drag text on the preview to reposition it.",
+        "addTextLayer": "Add",
+        "noSound": "None",
+        "soundOptional": "Add music (optional)",
+        "addMusic": "Add music (optional)",
+        "originalAudio": "Original audio",
+        "soundViewerHint": "Viewers hear this music instead of your clip's audio on Explore.",
+        "soundsEmpty": "No catalog tracks yet — use original audio or ask your admin to add platform sounds.",
+        "soundsSectionPlatform": "Popular sounds",
+        "soundsSectionYours": "Your sounds",
+        "soundPreviewPlay": "Play preview",
+        "soundPreviewStop": "Stop preview"
       },
       "calendarMobile": {
         "timeOff": "Time off",
@@ -31853,7 +32128,16 @@
         "actionMarkShipped": "Mark shipped",
         "actionReadyForCollection": "Ready for collection",
         "actionMarkDelivered": "Mark delivered",
-        "actionCollected": "Collected"
+        "actionCollected": "Collected",
+        "courierBooking": "Courier booking",
+        "bookingStatus": "Booking status",
+        "bookingDetail": "Detail",
+        "bookCourier": "Book courier",
+        "retryBooking": "Retry booking",
+        "bookingInProgress": "Booking…",
+        "bookingSuccess": "Courier booked",
+        "bookingFailed": "Could not book courier",
+        "printLabel": "Print label"
       },
       "appointmentEditSheet": {
         "updated": "Booking updated",
@@ -31903,7 +32187,8 @@
         "geocoded": "Geocoded",
         "overrideTitle": "Override travel fee",
         "overrideHint": "Use a custom fee instead of calculated",
-        "customFeePlaceholder": "Custom travel fee"
+        "customFeePlaceholder": "Custom travel fee",
+        "chooseSuggestionOrPin": "Choose a suggestion or pin the address on the map so city, area, postal code, and GPS stay in sync for travel fees."
       },
       "postCompletion": {
         "selectRating": "Select a rating (1–5 stars).",
@@ -32207,7 +32492,8 @@
         "selectTimeSlot": "Select time slot",
         "selectTime": "Select time",
         "loadingTimes": "Loading available times…",
-        "noSlots": "No time slots for this date. Try another day or adjust services."
+        "noSlots": "No time slots for this date. Try another day or adjust services.",
+        "timeAdjusted": "Time adjusted to {{time}} — previous slot unavailable"
       },
       "etaPicker": {
         "estimatedArrival": "Estimated arrival",

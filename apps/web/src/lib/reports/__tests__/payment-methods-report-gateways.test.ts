@@ -20,5 +20,6 @@ describe("payment methods report — online gateways", () => {
     expect(resolveRecordedTakingsBucket("card", "flutterwave")).toBe("flutterwave");
     expect(resolveRecordedTakingsBucket("card", "stripe")).toBe("stripe");
     expect(resolveRecordedTakingsBucket("card", "paystack")).toBe("paystack");
+    expect(resolveRecordedTakingsBucket("card", "yoco")).toBe("yoco");
   });
 });

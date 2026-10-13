@@ -85,6 +85,13 @@ export function collectProviderBookingCreateValidationErrors(
   if (input.serviceCount <= 0 && input.productCount <= 0) {
     push("Select a service or product", "services", "selectServiceOrProduct");
   }
+  if (input.serviceCount <= 0 && input.productCount > 0) {
+    push(
+      "Add a service. Product-only sales use New sale / Checkout.",
+      "services",
+      "serviceRequiredForProducts",
+    );
+  }
 
   if (!input.hasDate) {
     push("Select a date", "schedule", "selectDate");

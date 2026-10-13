@@ -81,6 +81,8 @@ export interface ServiceItem {
   name: string;
   category_id: string;
   provider_category_id?: string; // Provider-specific category
+  category_name?: string;
+  category_order?: number;
   duration_minutes: number;
   price: number;
   description?: string;

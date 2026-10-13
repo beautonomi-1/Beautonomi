@@ -8,6 +8,7 @@ import { providerApi } from "@/lib/provider-portal/api";
 import type { AppointmentService } from "@/components/appointments/types";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BookingSectionCard, BookingSectionLabel } from "../ui";
+import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 
 type AddonRow = { id: string; name: string; price: number; duration_minutes: number };
 
@@ -24,6 +25,7 @@ function ServiceAddonBlock({
   onToggle: (addon: AddonRow) => void;
 }) {
   const { t } = useTranslation();
+  const { format: formatMoney } = useProviderMoneyFormat();
   const [addons, setAddons] = useState<AddonRow[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -84,7 +86,7 @@ function ServiceAddonBlock({
           />
           <span className="text-sm text-gray-800 flex-1">
             {addon.name}
-            {addon.price > 0 ? ` · ${addon.price.toFixed(2)}` : ""}
+            {addon.price > 0 ? ` · ${formatMoney(addon.price)}` : ""}
             {addon.duration_minutes > 0 ? ` · ${t("web.book.engine.durationMinShort", { minutes: addon.duration_minutes })}` : ""}
           </span>
         </label>

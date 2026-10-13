@@ -11,9 +11,15 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Money } from "@/components/provider-portal/Money";
-import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
-import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
-import { PaycloudCollectButton } from "@/components/provider-portal/PaycloudCollectButton";
+import dynamic from "next/dynamic";
+
+const CardMachineCollectDialog = dynamic(
+  () =>
+    import("@/components/provider-portal/CardMachineCollectDialog").then((m) => ({
+      default: m.CardMachineCollectDialog,
+    })),
+  { ssr: false },
+);
 import { NewSaleDialog } from "@/components/provider-portal/NewSaleDialog";
 import { toast } from "sonner";
 import { Search, Plus, CreditCard, Calendar, User, ShoppingBag } from "lucide-react";
@@ -21,7 +27,6 @@ import Pagination from "@/components/ui/pagination";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { SectionCard } from "@/components/provider/SectionCard";
-import type { YocoPayment } from "@/lib/provider-portal/types";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 import { ProtectedPage } from "@/components/provider/ProtectedPage";
 import { useConfigBundle, useFeatureFlag } from "@/providers/ConfigBundleProvider";
@@ -44,8 +49,7 @@ function ProviderSalesContent() {
   const [dateRange, setDateRange] = useState<string>("month");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [yocoDialogOpen, setYocoDialogOpen] = useState(false);
-  const [paycloudDialogOpen, setPaycloudDialogOpen] = useState(false);
+  const [cardMachineOpen, setCardMachineOpen] = useState(false);
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [isNewSaleDialogOpen, setIsNewSaleDialogOpen] = useState(false);
 
@@ -120,14 +124,9 @@ function ProviderSalesContent() {
     loadSales();
   };
 
-  const handleYocoPayment = (sale: Sale) => {
+  const handleCardMachinePayment = (sale: Sale) => {
     setSelectedSale(sale);
-    setYocoDialogOpen(true);
-  };
-
-  const handlePaycloudPayment = (sale: Sale) => {
-    setSelectedSale(sale);
-    setPaycloudDialogOpen(true);
+    setCardMachineOpen(true);
   };
 
   /**
@@ -140,11 +139,6 @@ function ProviderSalesContent() {
     if (Number(sale.total ?? 0) <= 0) return false;
     const status = (sale.payment_status || "").toLowerCase();
     return status === "pending" || status === "failed";
-  };
-
-  const handlePaymentSuccess = (_payment: YocoPayment) => {
-    // Reload sales to reflect payment status
-    loadSales();
   };
 
   if (configLoading || !unifiedPosEnabled) {
@@ -269,7 +263,7 @@ function ProviderSalesContent() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleYocoPayment(sale)}
+                    onClick={() => handleCardMachinePayment(sale)}
                     className="h-8 px-3 text-xs active:scale-95 transition-transform"
                   >
                     <CreditCard className="w-3 h-3 me-1" />
@@ -317,26 +311,19 @@ function ProviderSalesContent() {
                     <TableCell>{sale.team_member_name || t("web.provider.common.hyphen")}</TableCell>
                     <TableCell className="text-end">
                       {isSaleCollectable(sale) ? (
-                        <>
-                          <PaycloudCollectButton
-                            amount={sale.total}
-                            currency={currencyCode}
-                            context="sale"
-                            onClick={() => handlePaycloudPayment(sale)}
+                        (yocoEnabled || paycloudEnabled) ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleCardMachinePayment(sale)}
                             className="gap-2"
-                          />
-                          {yocoEnabled && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleYocoPayment(sale)}
-                              className="gap-2"
-                            >
-                              <CreditCard className="w-3 h-3" />
-                              {t("web.provider.pages.sales.pay")}
-                            </Button>
-                          )}
-                        </>
+                          >
+                            <CreditCard className="w-3 h-3" />
+                            {t("web.provider.pages.sales.pay")}
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-gray-400">{t("web.provider.common.hyphen")}</span>
+                        )
                       ) : (
                         <span className="text-xs text-gray-400 capitalize">
                           {sale.payment_status || t("web.provider.common.status.completed")}
@@ -361,31 +348,24 @@ function ProviderSalesContent() {
         </>
       )}
 
-      {selectedSale && (
-        <PayCloudPaymentDialog
-          open={paycloudDialogOpen}
-          onOpenChange={setPaycloudDialogOpen}
+      {selectedSale ? (
+        <CardMachineCollectDialog
+          open={cardMachineOpen}
+          onOpenChange={setCardMachineOpen}
           amount={selectedSale.total}
-          entityType="sale"
-          entityId={selectedSale.id}
-          saleId={selectedSale.id}
-          bookingLocationId={selectedLocationId}
+          autoStart
+          entity={{
+            entityType: "sale",
+            entityId: selectedSale.id,
+            saleId: selectedSale.id,
+            bookingLocationId: selectedLocationId,
+          }}
           onSuccess={() => {
             loadSales();
-            setPaycloudDialogOpen(false);
+            setCardMachineOpen(false);
           }}
         />
-      )}
-
-      {selectedSale && (
-        <YocoPaymentDialog
-          open={yocoDialogOpen}
-          onOpenChange={setYocoDialogOpen}
-          amount={selectedSale.total}
-          saleId={selectedSale.id}
-          onSuccess={handlePaymentSuccess}
-        />
-      )}
+      ) : null}
 
       <NewSaleDialog
         open={isNewSaleDialogOpen}

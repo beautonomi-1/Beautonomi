@@ -177,6 +177,7 @@ async function setupMocks(adminMock: ReturnType<typeof buildAdminMock>) {
     pendingPayoutsSum: 200,
     rawBalance: 500,
     hasNegativeBalance: false,
+    openDisputeReserve: 75,
     breakdown: {
       recognizedPayoutableEarnings: 1000,
       onHold: 0,
@@ -219,8 +220,8 @@ describe("POST /api/provider/payouts (guarded RPC path)", () => {
     const [fnName, args] = adminMock.rpc.mock.calls[0];
     expect(fnName).toBe("insert_payout_request_guarded");
     expect(args.p_provider_id).toBe(PROVIDER_ID);
-    // availableBalance (500) + pending reserve (200) = the earnings-side ceiling
-    expect(args.p_max_available_before_reserve).toBe(700);
+    // available (500) + pending (200) + dispute reserve (75) = earnings before RPC subtracts disputes once
+    expect(args.p_max_available_before_reserve).toBe(775);
     expect(args.p_payout).toMatchObject({
       amount: 400,
       net_amount: 400,
@@ -280,6 +281,6 @@ describe("POST /api/provider/payouts (guarded RPC path)", () => {
     const [fnName, args] = adminMock.rpc.mock.calls[0];
     expect(fnName).toBe("insert_payout_request_guarded");
     expect(args.p_payout.amount).toBe(500);
-    expect(args.p_max_available_before_reserve).toBe(700);
+    expect(args.p_max_available_before_reserve).toBe(775);
   });
 });

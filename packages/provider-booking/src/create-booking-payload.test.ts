@@ -139,6 +139,6 @@ describe("create booking payload helpers", () => {
     const services = payload.services as Array<Record<string, unknown>>;
     expect(services[0]?.add_on_ids).toEqual(["ao-1"]);
     expect(services[0]?.duration_minutes).toBe(75);
-    expect(services[0]?.price).toBe(300);
+    expect(services[0]?.price).toBe(250);
   });
 });
