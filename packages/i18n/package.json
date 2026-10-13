@@ -24,6 +24,8 @@
     "i18n:apply:sa-integration-batch": "node scripts/apply-sa-integration-batch.mjs",
     "i18n:mobile-leftover:report": "node scripts/leftover-tr-mobile-apps.mjs --report",
     "i18n:mobile-leftover:apply": "node scripts/leftover-tr-mobile-apps.mjs --apply",
+    "i18n:mobile-leftover:remote": "node scripts/apply-mobile-leftovers-remote.mjs",
+    "i18n:prepare:ci-gates": "node scripts/apply-customer-surfaces-translations.mjs && node scripts/apply-customer-surfaces-translations.mjs --remote && node scripts/build-mobile-leftover-key-map.mjs && node scripts/patch-known-mobile-leftovers.mjs && node scripts/leftover-tr-mobile-apps.mjs --apply",
     "i18n:mobile-subtree": "node scripts/mobile-subtree-translate.mjs",
     "i18n:mobile:repair-calques": "node scripts/repair-mobile-calques.mjs",
     "i18n:mobile:apply-exact": "node scripts/apply-exact-mobile-maps.mjs",

@@ -1,0 +1,298 @@
+[
+  {
+    "key": "provider.mobile.components.barcodeLookup.subtitle",
+    "en": "Scan or enter a barcode / SKU to open the product editor."
+  },
+  {
+    "key": "provider.mobile.components.audienceSelector.segment",
+    "en": "Segment"
+  },
+  {
+    "key": "provider.mobile.components.subscriptionCheckoutReview.chargeNoteApple",
+    "en": "You are only charged after you confirm with Face ID, Touch ID, or your App Store password. Your plan activates once Apple verifies the purchase — never before."
+  },
+  {
+    "key": "provider.mobile.components.providerOrgSwitcher.switchSubtitle",
+    "en": "Bookings, team, and AI follow the salon you select."
+  },
+  {
+    "key": "provider.mobile.components.roleGate.networkBody",
+    "en": "Start the backend (e.g. pnpm dev in apps/web). Set EXPO_PUBLIC_APP_URL in .env.local (e.g. http://localhost:3000 for emulator, or your machine IP for a device). Then tap Retry."
+  },
+  {
+    "key": "provider.mobile.screens.ads.timeBoostBenefit3",
+    "en": "Goes live only after payment is verified"
+  },
+  {
+    "key": "provider.mobile.screens.ads.chargeNoteApple",
+    "en": "You are only charged after you confirm with Face ID, Touch ID, or your App Store password. Your campaign goes live once Apple verifies the purchase — never before."
+  },
+  {
+    "key": "provider.mobile.screens.waitingRoom.serviceWithDuration",
+    "en": "{{name}} · {{minutes}} min"
+  },
+  {
+    "key": "provider.mobile.screens.groupBookings.receiptOpenFailed",
+    "en": "Something went wrong while opening the group receipt."
+  },
+  {
+    "key": "provider.mobile.screens.settingsIndex.tipDistributionSub",
+    "en": "Solo keeps tips; salons can share with staff"
+  },
+  {
+    "key": "provider.mobile.screens.operatingHoursSettings.closeAfterOpen",
+    "en": "{{day}}: Closing time must be after opening time"
+  },
+  {
+    "key": "provider.mobile.screens.subscriptionSettings.autoRenewableSubscriptionBody",
+    "en": "Payment is charged to your Apple ID. The subscription renews automatically unless you cancel at least 24 hours before the end of the current period. Manage, cancel, or accept a price change anytime in Apple ID → Subscriptions. Any introductory offer on this plan is applied automatically when you subscribe. Redeem a promotional or win-back offer code with Redeem App Store offer code. Any unused portion of a free trial, if offered, is forfeited when you purchase."
+  },
+  {
+    "key": "provider.mobile.screens.moreTab.promoCodesSubtitle",
+    "en": "Your discounts—scoped to your bookings only"
+  },
+  {
+    "key": "provider.mobile.screens.paymentSetup.hintPaystackTerminal",
+    "en": "Paystack Terminal: take payment on your phone with a QR code."
+  },
+  {
+    "key": "provider.mobile.screens.payCloudPaymentSheet.chargeStillOpenBody",
+    "en": "A charge is still open on the card machine. Keep it open to finish or resume it, or cancel it now."
+  },
+  {
+    "key": "provider.mobile.screens.payCloudPaymentSheet.keepScreenOpen",
+    "en": "Keep this screen open until the payment finishes."
+  },
+  {
+    "key": "provider.mobile.screens.payCloudPaymentSheet.mobileUsingPortable",
+    "en": "Mobile booking · using your portable card machine."
+  },
+  {
+    "key": "provider.mobile.screens.onboardingWizard.services.addonMinutes",
+    "en": "· +{{minutes}} min"
+  },
+  {
+    "key": "provider.mobile.screens.onboardingWizard.services.extraMinPlaceholder",
+    "en": "+ min"
+  },
+  {
+    "key": "provider.mobile.screens.onboardingWizard.hours.freelancerHint",
+    "en": "We've started you on broad weekday hours (8 am–8 pm). Tap a day to toggle open/closed, then set times."
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.videoTooLong",
+    "en": "Video exceeds the maximum length for Explore ({{seconds}} seconds)."
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.trimVideoTitle",
+    "en": "Trim video"
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.trimVideoHint",
+    "en": "Drag to choose which part of your video appears on Explore."
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.trimClipLength",
+    "en": "{{seconds}}s clip"
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.trimVideoScrubber",
+    "en": "Choose clip start"
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.trimVideoConfirm",
+    "en": "Use clip"
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.trimVideoFinishFirst",
+    "en": "Finish trimming your video before continuing."
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.holdToRecord",
+    "en": "Hold to record"
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.releaseToFinish",
+    "en": "Release to finish"
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.tapForPhoto",
+    "en": "Tap for photo"
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.clipWindowA11y",
+    "en": "Selected clip"
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.flipCamera",
+    "en": "Flip camera"
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.lensFront",
+    "en": "Front camera"
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.switchToFront",
+    "en": "Switch to front camera"
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.openingCamera",
+    "en": "Opening camera…"
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.cameraOpenFailed",
+    "en": "Could not open this camera. Try the other lens or close and reopen."
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.micPermissionForVideo",
+    "en": "Microphone access is needed to record video with sound."
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.onMediaText",
+    "en": "On-media text"
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.onMediaTextHint",
+    "en": "Tap a thumbnail to pick the slide, then add short text (shown on the post until publish burn-in)."
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.onMediaTextDragHint",
+    "en": "Drag text on the preview to reposition it."
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.onMediaTextPlaceholder",
+    "en": "Short label on this slide"
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.soundsSectionPlatform",
+    "en": "Popular sounds"
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.soundsSectionYours",
+    "en": "Your sounds"
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.soundPreviewPlay",
+    "en": "Play preview"
+  },
+  {
+    "key": "provider.mobile.screens.explorePosts.soundPreviewStop",
+    "en": "Stop preview"
+  },
+  {
+    "key": "provider.mobile.screens.dashboard.subscriptionRequiredA11y",
+    "en": "Subscription required for online bookings. Opens plan and billing."
+  },
+  {
+    "key": "provider.mobile.screens.payoutAccounts.countryGH",
+    "en": "Ghana"
+  },
+  {
+    "key": "provider.mobile.screens.payoutAccounts.bankPaystack",
+    "en": "Bank * (Paystack)"
+  },
+  {
+    "key": "provider.mobile.screens.customRequestDetail.durationMinDot",
+    "en": "· {{count}} min"
+  },
+  {
+    "key": "provider.mobile.screens.teamList.freelancerBody",
+    "en": "To add team members and unlock advanced features, upgrade to a salon."
+  },
+  {
+    "key": "provider.mobile.screens.catalogueDetail.bookingOptionsA11y",
+    "en": "{{count}} booking options configured. Open full editor."
+  },
+  {
+    "key": "provider.mobile.screens.shippingConfig.courierPreferencePlaceholder",
+    "en": "Leave empty for manual tracking"
+  },
+  {
+    "key": "provider.mobile.screens.shippingConfig.courierNone",
+    "en": "None (manual tracking)"
+  },
+  {
+    "key": "provider.mobile.screens.payouts.statusRejectedDesc",
+    "en": "Finance rejected this payout request. The amount is released back when applicable."
+  },
+  {
+    "key": "provider.mobile.screens.team.freelancerBody",
+    "en": "To add team members and unlock advanced features, upgrade to a salon."
+  },
+  {
+    "key": "provider.mobile.screens.appointmentDefaults.requireConfirmHint",
+    "en": "Online bookings need your confirmation first"
+  },
+  {
+    "key": "provider.mobile.screens.referralSources.attributionBody",
+    "en": "These sources (e.g. Instagram, Friend) track where your clients come from. Separate from the platform referral program (invite friends → wallet reward), which is in Admin → Settings → Referrals. Assign a source on a booking to trigger the \"Referral received\" automation."
+  },
+  {
+    "key": "provider.mobile.screens.cardMachineCollect.chargeNamed",
+    "en": "Charge · {{name}}"
+  },
+  {
+    "key": "provider.mobile.screens.settingsAccountHub.upgradeBannerA11y",
+    "en": "Upgrade to Salon, unlock team, locations and advanced features"
+  },
+  {
+    "key": "provider.mobile.screens.settingsAccountHub.itemReferBusiness",
+    "en": "Refer a business"
+  },
+  {
+    "key": "provider.mobile.screens.settingsAccountHub.itemReferBusinessDesc",
+    "en": "Submit another salon or beauty business to Beautonomi"
+  },
+  {
+    "key": "provider.mobile.screens.personalProfile.bioLabel",
+    "en": "Bio"
+  },
+  {
+    "key": "provider.mobile.screens.sales.receiptUnavailable",
+    "en": "Sale was saved but the receipt could not be opened."
+  },
+  {
+    "key": "provider.mobile.screens.authLogin.continueWithPhoneEmailSocial",
+    "en": "Continue with phone, email, Google, or Apple."
+  },
+  {
+    "key": "provider.mobile.screens.marketing.audienceSegment",
+    "en": "segment"
+  },
+  {
+    "key": "customer.mobile.tabs.explore.categorySpa",
+    "en": "Spa"
+  },
+  {
+    "key": "customer.mobile.screens.recurringBookings.emptyBody",
+    "en": "After you book while signed in, turn on \"Repeat this booking\" on checkout (app or web). You can also ask your provider to set up a series."
+  },
+  {
+    "key": "customer.mobile.screens.customRequestsList.cancelRequestBody",
+    "en": "The provider will be notified. You can submit a new request later."
+  },
+  {
+    "key": "customer.mobile.screens.bookingDetail.calendarSectionSubtitleNative",
+    "en": "Save into your phone’s calendar app (Apple Calendar, Google on your device, Samsung Calendar, etc.), open a web calendar, or share a file to import anywhere."
+  },
+  {
+    "key": "customer.mobile.screens.bookingDetail.calServiceLine",
+    "en": "{{name}} ({{minutes}} min)"
+  },
+  {
+    "key": "customer.mobile.screens.customRequestCreate.budgetMin",
+    "en": "Min"
+  },
+  {
+    "key": "customer.mobile.screens.partnerProfile.durationPrice",
+    "en": "{{minutes}} min · {{price}}"
+  },
+  {
+    "key": "customer.mobile.screens.partnerProfile.durationMinutesRange",
+    "en": "{{min}}–{{max}} min"
+  },
+  {
+    "key": "customer.mobile.screens.partnerProfile.customBudgetMin",
+    "en": "Minimum ({{currency}})"
+  }
+]

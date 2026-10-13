@@ -106,13 +106,20 @@ function loadCuratedPhraseMaps() {
   if (fs.existsSync(fixLeftoverPath)) {
     const fix = JSON.parse(fs.readFileSync(fixLeftoverPath, "utf8"));
     Object.assign(sa, fix);
-    Object.assign(frar, fix);
+    for (const [phrase, row] of Object.entries(fix)) {
+      if (!frar[phrase]) continue;
+      frar[phrase] = { ...row, ...frar[phrase] };
+    }
   }
   const ciLeftoverPath = path.join(root, "_maps/t-sa-mobile-ci-leftover.json");
   if (fs.existsSync(ciLeftoverPath)) {
     const ci = JSON.parse(fs.readFileSync(ciLeftoverPath, "utf8"));
     Object.assign(sa, ci);
-    Object.assign(frar, ci);
+    // SA-only catalog: merging into `frar` would drop fr/ar on shared English keys.
+    for (const [phrase, row] of Object.entries(ci)) {
+      if (!frar[phrase]) continue;
+      frar[phrase] = { ...row, ...frar[phrase] };
+    }
   }
   return { sa, frar };
 }

@@ -90,6 +90,24 @@ const BY_LOCALE = {
     "checkout.promoValidateFailed": "Impossible de valider le code promo",
     "checkout.invalidServerResponse": "Réponse serveur invalide",
     "web.global.cityWaitlist.notesPlaceholder": "Dites-nous en plus sur votre intérêt…",
+    "provider.mobile.components.subscriptionCheckoutReview.chargeNoteApple":
+      "Le débit n’a lieu qu’après confirmation via Face ID, Touch ID ou le mot de passe App Store. Votre forfait s’active une fois l’achat vérifié par Apple — jamais avant.",
+    "provider.mobile.screens.ads.chargeNoteApple":
+      "Le débit n’a lieu qu’après confirmation via Face ID, Touch ID ou le mot de passe App Store. Votre campagne démarre une fois l’achat vérifié par Apple — jamais avant.",
+    "provider.mobile.screens.waitingRoom.serviceWithDuration": "{{name}} · {{minutes}} min de prestation",
+    "provider.mobile.screens.onboardingWizard.services.addonMinutes": " · +{{minutes}} min suppl.",
+    "provider.mobile.screens.onboardingWizard.services.extraMinPlaceholder": "+ min suppl.",
+    "provider.mobile.screens.payoutAccounts.countryGH": "Ghana (GH)",
+    "provider.mobile.screens.customRequestDetail.durationMinDot": "· {{count}} min d’attente",
+    "provider.mobile.screens.referralSources.attributionBody":
+      "Ces sources (p. ex. Instagram, Ami) indiquent d’où viennent vos clientes. Distinct du programme de parrainage plateforme (inviter des amis → récompense portefeuille) dans Admin → Paramètres → Parrainages. Assignez une source sur une réservation pour déclencher l’automatisation « Parrainage reçu ».",
+    "provider.mobile.screens.marketing.audienceSegment": "tranche",
+    "customer.mobile.tabs.explore.categorySpa": "Spa bien-être",
+    "customer.mobile.screens.bookingDetail.calendarSectionSubtitleNative":
+      "Enregistrez dans l’agenda du téléphone (Calendrier Apple, Google sur l’appareil, Samsung Calendar, etc.), ouvrez un calendrier web ou partagez un fichier à importer.",
+    "customer.mobile.screens.partnerProfile.durationPrice": "{{minutes}} min · {{price}} TTC",
+    "customer.mobile.screens.partnerProfile.durationMinutesRange": "{{min}}–{{max}} minutes",
+    "customer.mobile.screens.partnerProfile.customBudgetMin": "Montant minimum ({{currency}})",
   },
   ar: {
     "booking.noSlotsTryAnother": "لا توجد مواعيد متاحة. جرّب تاريخاً آخر.",
@@ -139,6 +157,21 @@ const BY_LOCALE = {
     "customer.mobile.screens.partnerProfile.pleaseProvideSlug": "يرجى تقديم معرّف مزود الخدمة.",
     "checkout.redeemPackage": "استخدم باقة مدفوعة مسبقاً (اختياري)",
     "checkout.holdExpiredFallback": "انتهت صلاحية الحجز المؤقت. يرجى اختيار وقت جديد.",
+    "provider.mobile.components.subscriptionCheckoutReview.chargeNoteApple":
+      "لا يُخصم المبلغ إلا بعد التأكيد عبر Face ID أو Touch ID أو كلمة مرور App Store. يُفعَّل اشتراكك بعد تحقق Apple من الشراء — وليس قبل ذلك.",
+    "provider.mobile.screens.ads.chargeNoteApple":
+      "لا يُخصم المبلغ إلا بعد التأكيد عبر Face ID أو Touch ID أو كلمة مرور App Store. تبدأ حملتك بعد تحقق Apple من الشراء — وليس قبل ذلك.",
+    "provider.mobile.screens.bookingSettings.defaultStatusHint":
+      "تُنشأ المواعيد الجديدة بهذه الحالة",
+    "provider.mobile.screens.onboardingWizard.hours.closingTooEarlyBody":
+      "يجب أن يكون وقت الإغلاق بعد وقت الفتح.",
+    "provider.mobile.screens.explorePosts.uploadFailedItem": "{{message}}\n(العنصر {{current}} من {{total}})",
+    "provider.mobile.screens.packages.itemsCount": "عناصر ({{count}})",
+    "provider.mobile.screens.settingsAccountHub.itemRateAppDesc":
+      "يفتح App Store أو Google Play لتترك تقييماً",
+    "provider.mobile.screens.finance.txCountInRange": "{{count}} في {{range}}",
+    "customer.mobile.screens.bookingDetail.calendarSectionSubtitleNative":
+      "احفظ في تطبيق التقويم على هاتفك (تقويم Apple، Google على جهازك، Samsung Calendar، إلخ)، أو افتح تقويماً على الويب، أو شارك ملفاً للاستيراد.",
   },
   af: {
     "provider.mobile.screens.subscriptionSettings.billedThroughStripeTitle": "Gefaktureer deur Stripe",

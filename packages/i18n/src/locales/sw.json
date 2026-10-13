@@ -13878,16 +13878,16 @@
           "covered": "Covered"
         },
         "paystackReturn": {
-          "bookVerifying": "Confirming your payment…",
-          "bookReturning": "Returning to bookings…",
-          "bookFallbackCta": "Go to Bookings",
-          "bookContinueCta": "View booking",
-          "shopVerifying": "Confirming your order payment…",
-          "shopReturning": "Returning to shop…",
-          "shopFallbackCta": "Go to Orders",
-          "shopContinueCta": "View order",
-          "shopPendingSubtext": "We'll update your order within a few minutes. You can keep using the app while we confirm with your bank.",
-          "shopFailedSubtext": "If you were charged, your order will still be confirmed once the payment lands. Please check your Orders tab."
+          "bookVerifying": "Confirming your malipo…",
+          "bookReturning": "Returning to uhifadhi…",
+          "bookFallbackCta": "Go to Uhifadhi",
+          "bookContinueCta": "Angalia uhifadhi",
+          "shopVerifying": "Confirming your agizo malipo…",
+          "shopReturning": "Inarudi dukani...",
+          "shopFallbackCta": "Go to Maagizo",
+          "shopContinueCta": "Angalia agizo",
+          "shopPendingSubtext": "Tutasasisha agizo lako baada ya dakika chache. Unaweza kuendelea kutumia programu huku tukithibitisha na benki yako.",
+          "shopFailedSubtext": "Ikiwa ulitozwa, agizo lako bado litathibitishwa mara tu malipo yatakapowasili. Tafadhali angalia kichupo chako cha Maagizo."
         }
       },
       "tabs": {
@@ -15530,7 +15530,7 @@
           "retry": "Jaribu tena",
           "goBack": "Rudi nyuma",
           "sessionNotFound": "Kikao haijapatikana",
-          "sessionGoneBody": "This uhifadhi wa kikundi no longer exists or you may not have access to it.",
+          "sessionGoneBody": "Uhifadhi huu wa kikundi haupo tena au huenda huna idhini ya kufikia.",
           "rescheduleSession": "Panga kikao upya",
           "participants": "Washiriki",
           "sessionTotal": "Jumla ya kikao",

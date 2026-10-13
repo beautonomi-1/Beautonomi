@@ -172,7 +172,7 @@
     "ar": "ديسمبر"
   },
   "Bio": {
-    "fr": "Bio",
+    "fr": "Biographie",
     "ar": "نبذة"
   },
   "REC": {
@@ -200,7 +200,7 @@
     "ar": "جاف"
   },
   "Min": {
-    "fr": "Min",
+    "fr": "Min.",
     "ar": "الحد الأدنى"
   },
   "<1h": {
@@ -912,8 +912,8 @@
     "ar": "تكرارات"
   },
   "Segment": {
-    "fr": "Segment",
-    "ar": "شريحة"
+    "fr": "Segment client",
+    "ar": "شريحة العملاء"
   },
   "measure": {
     "fr": "mesure",
@@ -4036,8 +4036,8 @@
     "ar": "كيف ربحته"
   },
   "Bank * (Paystack)": {
-    "fr": "Bank * (Paystack)",
-    "ar": "Bank * (Paystack)"
+    "fr": "Banque * (Paystack)",
+    "ar": "البنك * (Paystack)"
   },
   "{{count}} on hand": {
     "fr": "{{count}} en stock",
@@ -4481,7 +4481,7 @@
   },
   " · +{{minutes}} min": {
     "fr": " · +{{minutes}} min",
-    "ar": " · +{{minutes}} min"
+    "ar": " · +{{minutes}} د"
   },
   "{{day}} open switch": {
     "fr": "{{day}} ouvrir switch",
@@ -5489,7 +5489,7 @@
   },
   "{{name}} · {{minutes}} min": {
     "fr": "{{name}} · {{minutes}} min",
-    "ar": "{{name}} · {{minutes}} min"
+    "ar": "{{name}} · {{minutes}} د"
   },
   "Organize rooms & equipment": {
     "fr": "Organize rooms & équipement",
@@ -6412,8 +6412,8 @@
     "ar": "{{count}} نشط حجوزات — تصفية list"
   },
   "Goes live only after payment is verified": {
-    "fr": "Goes live uniquement after paiement is vérifié",
-    "ar": "Goes live فقط after دفع is موثّق"
+    "fr": "Mise en ligne uniquement après vérification du paiement",
+    "ar": "يُنشر فقط بعد التحقق من الدفع"
   },
   "{{count}} pending bookings — filter list": {
     "fr": "{{count}} en attente réservations — filtrer list",
@@ -6432,8 +6432,8 @@
     "ar": "Pay per زيارة (cash at صالون or as agreed)"
   },
   "Your discounts—scoped to your bookings only": {
-    "fr": "Your discounts—scoped to your réservations uniquement",
-    "ar": "Your discounts—scoped to your حجوزات فقط"
+    "fr": "Vos remises — limitées à vos réservations",
+    "ar": "خصوماتك — مقتصرة على حجوزاتك فقط"
   },
   "{{prefix}}{{days}}-day hold on new earnings": {
     "fr": "{{prefix}}{{days}}-jour attente on nouveau revenus",
@@ -6444,16 +6444,16 @@
     "ar": "حجز with {{name}}, {{status}}, {{date}}"
   },
   "Solo keeps tips; salons can share with staff": {
-    "fr": "Solo keeps tips; salons can partager with équipe",
-    "ar": "Solo keeps tips; salons can مشاركة with فريق"
+    "fr": "En solo, les pourboires restent à vous ; les salons peuvent les partager avec l’équipe",
+    "ar": "في العمل الفردي تبقى الإكراميات لك؛ ويمكن للصالونات مشاركتها مع الفريق"
   },
   "No staff items are included in this pay run.": {
     "fr": "Non équipe items are inclus in this cycle de paie.",
     "ar": "لا فريق items are مشمول in this دورة دفع."
   },
   "Online bookings need your confirmation first": {
-    "fr": "Online réservations need your confirmation first",
-    "ar": "Online حجوزات need your confirmation first"
+    "fr": "Les réservations en ligne nécessitent d’abord votre confirmation",
+    "ar": "تحتاج الحجوزات عبر الإنترنت إلى تأكيدك أولاً"
   },
   "Sent {{date}} · {{sent}}/{{total}} delivered": {
     "fr": "Sent {{date}} · {{sent}}/{{total}} livré",
@@ -6488,8 +6488,8 @@
     "ar": "Your نشط صالون memberships are listed below."
   },
   "{{day}}: Closing time must be after opening time": {
-    "fr": "{{day}} : Closing time must be après opening time",
-    "ar": "{{day}}: Closing وقت must be after فتح وقت"
+    "fr": "{{day}} : l’heure de fermeture doit être après l’ouverture",
+    "ar": "{{day}}: يجب أن يكون وقت الإغلاق بعد وقت الفتح"
   },
   "Item added. View your cart or continue shopping.": {
     "fr": "Article ajouté. Voir le panier ou continuer vos achats.",
@@ -6500,8 +6500,8 @@
     "ar": "جديد مواعيد will be تم الإنشاء with this حالة"
   },
   "Keep this screen open until the payment finishes.": {
-    "fr": "Keep this screen open jusqu’au the payment finishes.",
-    "ar": "Keep this screen فتح until the دفع finishes."
+    "fr": "Gardez cet écran ouvert jusqu’à la fin du paiement.",
+    "ar": "أبقِ هذه الشاشة مفتوحة حتى ينتهي الدفع."
   },
   "{{name}}: {{count}} bookings, {{revenue}} revenue": {
     "fr": "{{name}}: {{count}} réservations, {{revenue}} chiffre d’affaires",
@@ -6520,28 +6520,28 @@
     "ar": "{{name}}: {{stock}} متبقٍ (reorder at {{reorder}})"
   },
   "Mobile booking · using your portable card machine.": {
-    "fr": "Mobile réservation · using your portable card machine.",
-    "ar": "جوال حجز · using your محمول card machine."
+    "fr": "Réservation mobile · avec votre terminal portable.",
+    "ar": "حجز متنقل · باستخدام جهاز البطاقة المحمول."
   },
   "{{name}} — no longer available (retention policy).": {
     "fr": "{{name}} — non longer disponible (fidélisation politique).",
     "ar": "{{name}} — لا longer متاح (احتفاظ سياسة)."
   },
   "Bookings, team, and AI follow the salon you select.": {
-    "fr": "Réservations, équipe, and AI follow the salon you sélectionner.",
-    "ar": "حجوزات, فريق, and AI follow the صالون you اختيار."
+    "fr": "Réservations, équipe et IA suivent le salon sélectionné.",
+    "ar": "تتبع الحجوزات والفريق والذكاء الاصطناعي الصالون الذي تختاره."
   },
   "Resume the payment in progress and check its status": {
     "fr": "Reprendre the paiement in progress and vérifier its statut",
     "ar": "استئناف the دفع in progress and تحقق its حالة"
   },
   "Sale was saved but the receipt could not be opened.": {
-    "fr": "Sale was enregistré but the reçu impossible de be opened.",
-    "ar": "Sale was محفوظ but the إيصال تعذر be opened."
+    "fr": "La vente a été enregistrée mais le reçu n’a pas pu s’ouvrir.",
+    "ar": "تم حفظ البيع لكن تعذّر فتح الإيصال."
   },
   "Something went wrong while opening the group receipt.": {
-    "fr": "Une erreur s’est produite while ouverture the group reçu.",
-    "ar": "حدث خطأ ما while فتح the group إيصال."
+    "fr": "Une erreur s’est produite à l’ouverture du reçu de groupe.",
+    "ar": "حدث خطأ أثناء فتح إيصال المجموعة."
   },
   "Time adjusted to {{time}} — previous slot unavailable": {
     "fr": "Heure adjusted to {{time}} — précédent slot indisponible",
@@ -6608,8 +6608,8 @@
     "ar": "سعر and مدة must be valid numbers before saving."
   },
   "{{count}} booking options configured. Open full editor.": {
-    "fr": "{{count}} réservation options configuré. Ouvrir full editor.",
-    "ar": "{{count}} حجز options مُعدّ. فتح full editor."
+    "fr": "{{count}} options de réservation configurées. Ouvrir l’éditeur complet.",
+    "ar": "تم إعداد {{count}} خيارات حجز. افتح المحرر الكامل."
   },
   "Unique appointments: {{count}} · Ledger net: {{amount}}": {
     "fr": "Unique rendez-vous: {{count}} · Grand livre net: {{amount}}",
@@ -6744,8 +6744,8 @@
     "ar": "I'm looking for خدمات for my wedding/حدث. I need..."
   },
   "Scan or enter a barcode / SKU to open the product editor.": {
-    "fr": "Scan ou enter a barcode / SKU à open the product editor.",
-    "ar": "Scan or enter a barcode / SKU to فتح the منتج editor."
+    "fr": "Scannez ou saisissez un code-barres / SKU pour ouvrir l’éditeur produit.",
+    "ar": "امسح أو أدخل الرمز الشريطي / SKU لفتح محرر المنتج."
   },
   "You do not have permission to update this booking status.": {
     "fr": "You do not have autorisation to mettre à jour this réservation statut.",
@@ -7040,16 +7040,16 @@
     "ar": "Access is غير متاح due to legal or regulatory restrictions."
   },
   "Upgrade to Salon, unlock team, locations and advanced features": {
-    "fr": "Upgrade to Salon, unlock équipe, lieux and avancé fonctionnalités",
-    "ar": "Upgrade to صالون, unlock فريق, مواقع and متقدم ميزات"
+    "fr": "Passer en salon, débloquer équipe, adresses et fonctions avancées",
+    "ar": "الترقية إلى صالون، فتح الفريق والمواقع والميزات المتقدمة"
   },
   "Subscription required for online bookings. Opens plan and billing.": {
-    "fr": "Abonnement obligatoire for online réservations. Opens plan and billing.",
-    "ar": "اشتراك مطلوب for online حجوزات. Opens plan and billing."
+    "fr": "Abonnement requis pour les réservations en ligne. Ouvre forfait et facturation.",
+    "ar": "الاشتراك مطلوب للحجوزات عبر الإنترنت. يفتح الخطة والفوترة."
   },
   "The provider will be notified. You can submit a new request later.": {
-    "fr": "The prestataire will be notifié. You can envoyer a nouveau request plus tard.",
-    "ar": "The مزود will be تم الإشعار. You can إرسال a جديد request لاحقًا."
+    "fr": "Le prestataire sera averti. Vous pourrez envoyer une nouvelle demande plus tard.",
+    "ar": "سيتم إبلاغ المزود. يمكنك تقديم طلب جديد لاحقاً."
   },
   "The salon opens at {{openTime}} and will confirm by {{confirmBy}}.": {
     "fr": "The salon opens à {{openTime}} et will confirm by {{confirmBy}}.",
@@ -7208,8 +7208,8 @@
     "ar": "Slots with a عميل انتظار appear غير متاح until the انتظار expires."
   },
   "To add team members and unlock advanced features, upgrade to a salon.": {
-    "fr": "To ajouter équipe membres and unlock avancé fonctionnalités, upgrade to a salon.",
-    "ar": "To إضافة فريق أعضاء and unlock متقدم ميزات, upgrade to a صالون."
+    "fr": "Pour ajouter des membres d’équipe et débloquer les fonctions avancées, passez en mode salon.",
+    "ar": "لإضافة أعضاء الفريق وفتح الميزات المتقدمة، قم بالترقية إلى صالون."
   },
   "Your plan payment was confirmed. Continue to your provider dashboard.": {
     "fr": "Your plan paiement was confirmé. Continuer to your prestataire tableau de bord.",
@@ -7780,8 +7780,8 @@
     "ar": "رسوم التنقل ({{currency}}) — calculated when عنوان is on file (override اختياري)"
   },
   "Finance rejected this payout request. The amount is released back when applicable.": {
-    "fr": "Finance rejeté this versement request. The montant is released retour when applicable.",
-    "ar": "مالية مرفوض this دفعة request. The مبلغ is released رجوع when applicable."
+    "fr": "Les finances ont refusé cette demande de versement. Le montant est libéré le cas échéant.",
+    "ar": "رفضت المالية طلب الدفع هذا. يُعاد المبلغ عند الاقتضاء."
   },
   "Create types like Lunch Break, Training, or Meeting to categorize calendar blocks.": {
     "fr": "Créer types like Lunch Break, Formation, or Meeting to categorize calendrier blocks.",
@@ -8112,8 +8112,8 @@
     "ar": "إضافة at least one option with a name and values. Use Generate variant matrix after editing options."
   },
   "A charge is still open on the card machine. Keep it open to finish or resume it, or cancel it now.": {
-    "fr": "A charge is still open sur the card machine. Keep it open à finish ou resume it, ou cancel it now.",
-    "ar": "A charge is still open on the جهاز البطاقة. Keep it open to finish or resume it, or cancel it now."
+    "fr": "Un débit est encore ouvert sur le terminal. Laissez-le ouvert pour terminer ou reprendre, ou annulez-le maintenant.",
+    "ar": "لا يزال خصماً مفتوحاً على جهاز البطاقة. اتركه مفتوحاً للإنهاء أو الاستئناف، أو ألغِه الآن."
   },
   "Earn reward points when you post to Explore. Share your work to grow visibility and unlock rewards.": {
     "fr": "Gagnez des points en publiant sur Explorer. Partagez votre travail pour plus de visibilité.",
@@ -8368,8 +8368,8 @@
     "ar": "Beautonomi uses your تاريخ الميلاد to apply age-appropriate features, parental controls, and verification requirements. Your current age band is shown below."
   },
   "Save into your phone’s calendar app (Apple Calendar, Google on your device, Samsung Calendar, etc.), open a web calendar, or share a file to import anywhere.": {
-    "fr": "Enregistrer into your phone’s calendar app (Apple Calendar, Google on your device, Samsung Calendar, etc.), open a web calendar, or share a file to import anywhere.",
-    "ar": "حفظ into your phone’s calendar app (Apple Calendar, Google on your device, Samsung Calendar, etc.), open a web calendar, or share a file to import anywhere."
+    "fr": "Enregistrez dans l’agenda du téléphone (Calendrier Apple, Google sur l’appareil, Samsung Calendar, etc.), ouvrez un calendrier web ou partagez un fichier à importer.",
+    "ar": "احفظ في تطبيق التقويم على هاتفك (تقويم Apple، Google على جهازك، Samsung Calendar، إلخ)، أو افتح تقويماً على الويب، أو شارك ملفاً للاستيراد."
   },
   "Password accounts confirm with your current password. Accounts that sign in with email or phone codes will be asked for a one-time verification code instead.": {
     "fr": "Password accounts confirm with your current password. Accounts that se connecter with email or phone codes will be asked for a one-time code de vérification instead.",
@@ -8440,8 +8440,8 @@
     "ar": ". I understand Beautonomi may use cookies and similar technologies, process data as described in the سياسة الخصوصية and Cookie Policy, and (while signed in) use product analytics. I can update analytics preferences in my account privacy settings."
   },
   " These sources (e.g. Instagram, Friend) track where your clients come from. Separate from the platform referral program (invite friends → wallet reward), which is in Admin → Settings → Referrals. Assign a source on a booking to trigger the \"Referral received\" automation.": {
-    "fr": " These sources (p. ex. Instagram, Friend) track where your clients come from. Separate de the platform referral program (invite friends → wallet reward), which is dans Admin → Settings → Referrals. Assign a source sur a booking à trigger the \"Referral received\" automation.",
-    "ar": " These sources (مثال Instagram, Friend) track where your clients come from. Separate from the platform referral program (invite friends → wallet reward), which is in Admin → Settings → Referrals. Assign a source on a booking to trigger the \"Referral received\" automation."
+    "fr": "Ces sources (p. ex. Instagram, Ami) indiquent d’où viennent vos clientes. Distinct du programme de parrainage plateforme (inviter des amis → récompense portefeuille) dans Admin → Paramètres → Parrainages. Assignez une source sur une réservation pour déclencher l’automatisation « Parrainage reçu ».",
+    "ar": "تتتبع هذه المصادر (مثل Instagram، صديق) من أين يأتي عملاؤك. منفصلة عن برنامج الإحالة (دعوة الأصدقاء → مكافأة المحفظة) في المسؤول → الإعدادات → الإحالات. عيّن مصدراً على الحجز لتشغيل أتمتة «تم استلام الإحالة»."
   },
   "N/A": {
     "fr": "N/D",
@@ -8693,7 +8693,7 @@
   },
   "Opens the App Store or Google Play so you can leave a review": {
     "fr": "Ouvre l’App Store ou Google Play pour laisser un avis",
-    "ar": "يفتح App Store أو Google Play لتترك تقييمًا"
+    "ar": "يفتح App Store أو Google Play لتترك تقييماً"
   },
   "New on-demand request — accept or decline before it expires.": {
     "fr": "Nouvelle demande à la demande — acceptez ou refusez avant expiration.",
@@ -16140,8 +16140,8 @@
     "ar": "Your plan was updated but card billing still needs confirmation. Complete payment or update your card."
   },
   "We've started you on broad weekday hours (8 am–8 pm). Tap a day to toggle open/closed, then set times.": {
-    "fr": "We've started you on broad weekday hours (8 am–8 pm). Tap a day to toggle open/closed, then set times.",
-    "ar": "We've started you on broad weekday hours (8 am–8 pm). Tap a day to toggle open/closed, then set times."
+    "fr": "Nous vous avons prérempli des horaires larges en semaine (8 h–20 h). Touchez un jour pour ouvrir/fermer, puis réglez les heures.",
+    "ar": "بدأنا بساعات أسبوعية واسعة (8 ص–8 م). اضغط يوماً للتبديل بين مفتوح/مغلق ثم حدّد الأوقات."
   },
   "Tap the previews above to pick from your phone, or use the star and person icons on any gallery photo.": {
     "fr": "Tap the previews above to pick from your phone, or use the star and person icons on any gallery photo.",
@@ -16584,16 +16584,16 @@
     "ar": "Beautonomi Ops will create your Virtual Terminal in Paystack and add the terminal code, payment link, QR, and poster here once ready."
   },
   "After you book while signed in, turn on \"Repeat this booking\" on checkout (app or web). You can also ask your provider to set up a series.": {
-    "fr": "After you book while signed in, turn on \"Repeat this booking\" on checkout (app or web). You can also ask your provider to set up a series.",
-    "ar": "After you book while signed in, turn on \"Repeat this booking\" on checkout (app or web). You can also ask your provider to set up a series."
+    "fr": "Après une réservation connecté, activez « Répéter cette réservation » au paiement (app ou web). Vous pouvez aussi demander au prestataire une série.",
+    "ar": "بعد الحجز وأنت مسجّل الدخول، فعّل «تكرار هذا الحجز» عند الدفع (التطبيق أو الويب). يمكنك أيضاً طلب سلسلة من المزود."
   },
   "You are only charged after you confirm with Face ID, Touch ID, or your App Store password. Your plan activates once Apple verifies the purchase — never before.": {
-    "fr": "You are only charged after you confirm with Face ID, Touch ID, or your App Store password. Your plan activates once Apple verifies the purchase — never before.",
-    "ar": "You are only charged after you confirm with Face ID, Touch ID, or your App Store password. Your plan activates once Apple verifies the purchase — never before."
+    "fr": "Le débit n’a lieu qu’après confirmation via Face ID, Touch ID ou le mot de passe App Store. Votre forfait s’active une fois l’achat vérifié par Apple — jamais avant.",
+    "ar": "لا يُخصم المبلغ إلا بعد التأكيد عبر Face ID أو Touch ID أو كلمة مرور App Store. يُفعَّل اشتراكك بعد تحقق Apple من الشراء — وليس قبل ذلك."
   },
   "You are only charged after you confirm with Face ID, Touch ID, or your App Store password. Your campaign goes live once Apple verifies the purchase — never before.": {
-    "fr": "You are only charged after you confirm with Face ID, Touch ID, or your App Store password. Your campaign goes live once Apple verifies the purchase — never before.",
-    "ar": "You are only charged after you confirm with Face ID, Touch ID, or your App Store password. Your campaign goes live once Apple verifies the purchase — never before."
+    "fr": "Le débit n’a lieu qu’après confirmation via Face ID, Touch ID ou le mot de passe App Store. Votre campagne démarre une fois l’achat vérifié par Apple — jamais avant.",
+    "ar": "لا يُخصم المبلغ إلا بعد التأكيد عبر Face ID أو Touch ID أو كلمة مرور App Store. تبدأ حملتك بعد تحقق Apple من الشراء — وليس قبل ذلك."
   },
   "Date": {
     "fr": "Date",
@@ -21086,5 +21086,157 @@
   "Email or phone is required.": {
     "fr": "L'e-mail ou le téléphone est requis.",
     "ar": "البريد الإلكتروني أو الهاتف مطلوب."
+  },
+  "Shipping weight (g)": {
+    "fr": "Poids d'expédition (g)",
+    "ar": "وزن الشحن (g)"
+  },
+  "Original audio": {
+    "fr": "Audio d'origine",
+    "ar": "الصوت الأصلي"
+  },
+  "Courier": {
+    "fr": "Transporteur",
+    "ar": "شركة الشحن"
+  },
+  "Collect on {{name}} ({{provider}})": {
+    "fr": "Encaisser sur {{name}} ({{provider}})",
+    "ar": "تحصيل على {{name}} ({{provider}})"
+  },
+  "Switch machine": {
+    "fr": "Changer de terminal",
+    "ar": "تبديل الجهاز"
+  },
+  "Book courier": {
+    "fr": "Réserver un coursier",
+    "ar": "حجز شركة الشحن"
+  },
+  "Print label": {
+    "fr": "Imprimer l'étiquette",
+    "ar": "طباعة الملصق"
+  },
+  "Paystack Terminal: take payment on your phone with a QR code.": {
+    "fr": "Paystack Terminal : encaissez sur votre téléphone avec un code QR.",
+    "ar": "Paystack Terminal: استلم الدفع على هاتفك برمز QR."
+  },
+  "Video exceeds the maximum length for Explore ({{seconds}} seconds).": {
+    "fr": "La vidéo dépasse la durée maximale pour Explorer ({{seconds}} secondes).",
+    "ar": "تتجاوز الفيديو الحد الأقصى للطول في Explorer ({{seconds}} ثانية)."
+  },
+  "Trim video": {
+    "fr": "Rogner la vidéo",
+    "ar": "قص الفيديو"
+  },
+  "Drag to choose which part of your video appears on Explore.": {
+    "fr": "Faites glisser pour choisir la partie de votre vidéo visible sur Explorer.",
+    "ar": "اسحب لاختيار الجزء من الفيديو الذي يظهر في Explorer."
+  },
+  "{{seconds}}s clip": {
+    "fr": "Extrait {{seconds}} s",
+    "ar": "مقطع {{seconds}} ث"
+  },
+  "Choose clip start": {
+    "fr": "Choisir le début de l’extrait",
+    "ar": "اختر بداية المقطع"
+  },
+  "Use clip": {
+    "fr": "Utiliser l’extrait",
+    "ar": "استخدام المقطع"
+  },
+  "Finish trimming your video before continuing.": {
+    "fr": "Terminez le rognage de la vidéo avant de continuer.",
+    "ar": "أنهِ قص الفيديو قبل المتابعة."
+  },
+  "Hold to record": {
+    "fr": "Maintenir pour enregistrer",
+    "ar": "اضغط مطولاً للتسجيل"
+  },
+  "Release to finish": {
+    "fr": "Relâcher pour terminer",
+    "ar": "ارفع إصبعك للإنهاء"
+  },
+  "Tap for photo": {
+    "fr": "Appuyer pour une photo",
+    "ar": "اضغط للصورة"
+  },
+  "Selected clip": {
+    "fr": "Extrait sélectionné",
+    "ar": "المقطع المحدد"
+  },
+  "Flip camera": {
+    "fr": "Inverser la caméra",
+    "ar": "قلب الكاميرا"
+  },
+  "Front camera": {
+    "fr": "Caméra avant",
+    "ar": "الكاميرا الأمامية"
+  },
+  "Switch to front camera": {
+    "fr": "Passer à la caméra avant",
+    "ar": "التبديل إلى الكاميرا الأمامية"
+  },
+  "Opening camera…": {
+    "fr": "Ouverture de la caméra…",
+    "ar": "جارٍ فتح الكاميرا…"
+  },
+  "Could not open this camera. Try the other lens or close and reopen.": {
+    "fr": "Impossible d’ouvrir cette caméra. Essayez l’autre objectif ou fermez puis rouvrez.",
+    "ar": "تعذّر فتح هذه الكاميرا. جرّب العدسة الأخرى أو أغلق وأعد الفتح."
+  },
+  "Microphone access is needed to record video with sound.": {
+    "fr": "L’accès au micro est nécessaire pour enregistrer une vidéo avec son.",
+    "ar": "يلزم الوصول إلى الميكroفون لتسجيل فيديو بصوت."
+  },
+  "On-media text": {
+    "fr": "Texte sur le média",
+    "ar": "نص على الوسائط"
+  },
+  "Tap a thumbnail to pick the slide, then add short text (shown on the post until publish burn-in).": {
+    "fr": "Touchez une vignette pour choisir la diapositive, puis ajoutez un court texte (visible sur la publication jusqu’à la gravure à la publication).",
+    "ar": "اضغط صورة مصغرة لاختيار الشريحة، ثم أضف نصاً قصيراً (يظهر على المنشور حتى الحرق عند النشر)."
+  },
+  "Drag text on the preview to reposition it.": {
+    "fr": "Faites glisser le texte sur l’aperçu pour le repositionner.",
+    "ar": "اسحب النص على المعاينة لإعادة وضعه."
+  },
+  "Short label on this slide": {
+    "fr": "Courte étiquette sur cette diapositive",
+    "ar": "تسمية قصيرة على هذه الشريحة"
+  },
+  "Popular sounds": {
+    "fr": "Sons populaires",
+    "ar": "أصوات شائعة"
+  },
+  "Your sounds": {
+    "fr": "Vos sons",
+    "ar": "أصواتك"
+  },
+  "Play preview": {
+    "fr": "Lire l’aperçu",
+    "ar": "تشغيل المعاينة"
+  },
+  "Stop preview": {
+    "fr": "Arrêter l’aperçu",
+    "ar": "إيقاف المعاينة"
+  },
+  "Leave empty for manual tracking": {
+    "fr": "Laisser vide pour un suivi manuel",
+    "ar": "اتركه فارغاً للتتبع اليدوي"
+  },
+  "None (manual tracking)": {
+    "fr": "Aucun (suivi manuel)",
+    "ar": "لا شيء (تتبع يدوي)"
+  },
+  "Charge · {{name}}": {
+    "fr": "Encaisser · {{name}}",
+    "ar": "خصم · {{name}}"
+  },
+  "Refer a business": {
+    "fr": "Parrainer un établissement",
+    "ar": "إحالة نشاط تجاري"
+  },
+  "Submit another salon or beauty business to Beautonomi": {
+    "fr": "Proposer un autre salon ou institut à Beautonomi",
+    "ar": "قدّم صالوناً أو نشاطاً للجمال إلى Beautonomi"
   }
 }

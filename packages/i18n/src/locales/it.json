@@ -13878,16 +13878,16 @@
           "covered": "Inclus"
         },
         "paystackReturn": {
-          "bookVerifying": "Confirming your payment…",
-          "bookReturning": "Returning to bookings…",
-          "bookFallbackCta": "Go to Bookings",
-          "bookContinueCta": "View booking",
-          "shopVerifying": "Confirming your order payment…",
-          "shopReturning": "Returning to shop…",
-          "shopFallbackCta": "Go to Orders",
-          "shopContinueCta": "View order",
-          "shopPendingSubtext": "We'll update your order within a few minutes. You can keep using the app while we confirm with your bank.",
-          "shopFailedSubtext": "If you were charged, your order will still be confirmed once the payment lands. Please check your Orders tab."
+          "bookVerifying": "confirmando your pago…",
+          "bookReturning": "Returning to reservas…",
+          "bookFallbackCta": "Go to reservas",
+          "bookContinueCta": "Ver reserva",
+          "shopVerifying": "confirmando your pedido pago…",
+          "shopReturning": "Returning to Tienda…",
+          "shopFallbackCta": "Go to pedidos",
+          "shopContinueCta": "Ver pedido",
+          "shopPendingSubtext": "Actualizaremos su pedido en unos minutos. Puedes seguir usando la aplicación mientras confirmamos con tu banco.",
+          "shopFailedSubtext": "Si se le cobró, su pedido aún se confirmará una vez que se realice el pago. Por favor revisa tu pestaña de Pedidos."
         }
       },
       "tabs": {
@@ -15530,9 +15530,9 @@
           "retry": "Réessayer",
           "goBack": "Retour",
           "sessionNotFound": "Séance introuvable",
-          "sessionGoneBody": "This réservation de groupe no longer exists or you may not have access to it.",
+          "sessionGoneBody": "Esta reserva de grupo ya no existe o es posible que no tengas acceso a ella.",
           "rescheduleSession": "Reprogrammer la séance",
-          "participants": "Participants",
+          "participants": "participantes",
           "sessionTotal": "Total de la séance",
           "payment": "Paiement",
           "invoicePendingHint": "Les détails de paiement apparaîtront une fois que le prestataire aura finalisé la facture de groupe.",

@@ -1650,7 +1650,7 @@
           "measureKg": "Amakhilogremu (kg)",
           "measureUnit": "Iyunithi",
           "defaultVariantType": "Usayizi",
-          "weightGrams": "Shipping weight (g)",
+          "weightGrams": "Ubukhulu besisindo bokuthumela (g)",
           "weightGramsPlaceholder": "500"
         },
         "ads": {
@@ -3988,10 +3988,10 @@
           "saving": "Iyalondoloza…",
           "confirmShipped": "Qinisekisa Kuthunyelwe",
           "estimatedDeliveryDate": "Estimated Ukulethwa usuku (okukhethekayo)",
-          "courierBooking": "Courier booking",
-          "bookCourier": "Book courier",
-          "retryCourierBooking": "Retry booking",
-          "printLabel": "Print label"
+          "courierBooking": "Courier ukubhuka",
+          "bookCourier": "bhuka courier",
+          "retryCourierBooking": "zama futhi ukubhuka",
+          "printLabel": "Phrinta label"
         },
         "yocoDevices": {
           "title": "Yoco amadivaysi",
@@ -5192,8 +5192,8 @@
           "categoryPickerTitle": "Isigaba",
           "runningBehindSheetTitle": "Usalele emuva?",
           "staffFilteredByService": "Kuboniswa amalungu eqembu anikezwe le nsizakalo.",
-          "addressOutsideArea": "This address is outside your service area.",
-          "addressValidateFailed": "Could not validate this address. Check your connection and try again."
+          "addressOutsideArea": "Leli ikheli likule ngaphandle kwendawo yakho yesevisi.",
+          "addressValidateFailed": "Ayikwazanga ukuqinisekisa leli kheli. Hlola ukuxhumeka kwakho bese uzama futhi."
         },
         "expressBooking": {
           "invalidJson": "JSON. engavumelekile.",
@@ -5456,15 +5456,15 @@
           "postAction": "Okushicilelwe",
           "commentsDisabled": "Amazwana nokuthandwa kucinyiwe kuzilungiselelo zakho zokuqukethwe nokuphepha.",
           "commentLength": "{{count}}/200",
-          "backgroundSoundOptional": "Background sound (optional)",
-          "addMusic": "Add music (optional)",
-          "originalAudio": "Original audio",
-          "soundViewerHint": "Viewers hear this music instead of your clip's audio on Explore.",
-          "soundsEmpty": "No catalog tracks yet — use original audio or ask your admin to add platform sounds.",
-          "soundsSectionPlatform": "Popular sounds",
-          "soundsSectionYours": "Your sounds",
-          "soundPreviewPlay": "Play preview",
-          "soundPreviewStop": "Stop preview"
+          "backgroundSoundOptional": "Emuvaground sound (okukhethekayo)",
+          "addMusic": "Engeza music (okukhethekayo)",
+          "originalAudio": "Umsindo wokuqala",
+          "soundViewerHint": "ababukeli bayizwa le ngoma esikhundleni somsindo we-clip yakho ku-Explore.",
+          "soundsEmpty": "Awekho amathrekhi ekhatalogi okwamanje — sebenzisa umsindo wokuqala noma cela umlawuli wakho afake imisindo yepulatifomu.",
+          "soundsSectionPlatform": "Okudumile sounds",
+          "soundsSectionYours": "sounds yakho",
+          "soundPreviewPlay": "Play pisibuyekezo",
+          "soundPreviewStop": "Stop pisibuyekezo"
         },
         "dashboard": {
           "title": "Ideshibhodi",
@@ -7432,10 +7432,10 @@
           "howFeesWork": "How izimali work",
           "howFeesWorkBody": "Ukuthatha kumahhala. Ukulethwa kusebenzisa imali yakho neyephulatifomu. Setha umgcele wokulethwa kwamahhala ukuze ama-oda ngaphezu kwalowo mkhawulo athole ukulethwa kwamahhala.",
           "saveChanges": "Londoloza izinguquko",
-          "courierPreference": "Courier",
-          "courierPreferencePlaceholder": "Leave empty for manual tracking",
-          "courierNone": "None (manual tracking)",
-          "courierKeysWebHint": "Connect API keys in the provider web app under Ecommerce → Shipping."
+          "courierPreference": "Umthumeli",
+          "courierPreferencePlaceholder": "Leave akunalutho for manual Ukulandelela",
+          "courierNone": "akukho (manual Ukulandelela)",
+          "courierKeysWebHint": "Xhuma amakhiye e-API ku-app yewebhu yomhlinzeki ngaphansi kwe-Ecommerce → Shipping."
         },
         "productSalesReport": {
           "factsDefinitions": "Amaqiniso nezincazelo",
@@ -10633,8 +10633,8 @@
           "itemGlobalSignOutDesc": "End every Iyasebenza Iseshini on your i-akhawunti",
           "itemDelete": "Sula i-akhawunti",
           "itemDeleteDesc": "Permanently Sula i-akhawunti and Idatha",
-          "itemReferBusiness": "Refer a business",
-          "itemReferBusinessDesc": "Submit another salon or beauty business to Beautonomi"
+          "itemReferBusiness": "Refer a Ibhizinisi",
+          "itemReferBusinessDesc": "thumela anokunye isaloni or beauty Ibhizinisi to Beautonomi"
         },
         "settingsBusinessDescription": {
           "validationTitle": "Ukuqinisekisa",
@@ -12699,11 +12699,11 @@
           "beautonomi": "Beautonomi",
           "yoco": "Yoco",
           "defaultBadge": "Okuzenzakalelayo",
-          "collectOnNamed": "Collect on {{name}} ({{provider}})",
-          "loadingMachines": "Loading machines…",
-          "selectMachine": "Select machine",
-          "chargeNamed": "Charge · {{name}}",
-          "switchMachine": "Switch machine"
+          "collectOnNamed": "Qoqa ku-{{name}} ({{provider}})",
+          "loadingMachines": "Iyalayisha machines…",
+          "selectMachine": "Khetha machine",
+          "chargeNamed": "khokhisa · {{name}}",
+          "switchMachine": "Shintsha imishini yekhadi"
         }
       }
     },
@@ -13125,7 +13125,7 @@
       "savedAddressesDesc": "ikhaya, work and okunye amakheli",
       "privacySharingTitle": "Privaatheid & Deling",
       "privacySharingDesc": "Idatha preferences, visibility & Sula i-akhawunti",
-      "contentSafetyTitle": "Parental controls — content & veiligheid",
+      "contentSafetyTitle": "Parental controls — content & ukuphepha",
       "contentSafetyDesc": "Ukuphakelwa komphakathi, ukuthumela imiyalezo namasethingi afanele ubudala",
       "bookingsMenuTitle": "Ukubhuka",
       "bookingsMenuDesc": "Okuzayo, past and kukhanseliwe",
@@ -13180,7 +13180,7 @@
       "appearanceDark": "Dark",
       "appearanceSystem": "System",
       "appearanceHintDark": "Donker modus is aan. Nuwe skerms sal die donker oppervlak aanneem terwyl jy navigeer.",
-      "appearanceHintSystem": "Following your toestel setting.",
+      "appearanceHintSystem": "Following your idivaysi setting.",
       "appearanceHintLight": "Ligmodus is aan.",
       "marketTitle": "Market",
       "marketSubtitle": "Kies watter markgasheer die toepassing vir huurderroetering gebruik",
@@ -13882,16 +13882,16 @@
           "covered": "Kuhlanganisiwe"
         },
         "paystackReturn": {
-          "bookVerifying": "Confirming your payment…",
-          "bookReturning": "Returning to bookings…",
-          "bookFallbackCta": "Go to Bookings",
-          "bookContinueCta": "View booking",
-          "shopVerifying": "Confirming your order payment…",
-          "shopReturning": "Returning to shop…",
-          "shopFallbackCta": "Go to Orders",
-          "shopContinueCta": "View order",
-          "shopPendingSubtext": "We'll update your order within a few minutes. You can keep using the app while we confirm with your bank.",
-          "shopFailedSubtext": "If you were charged, your order will still be confirmed once the payment lands. Please check your Orders tab."
+          "bookVerifying": "iqinisekisa your inkokhelo…",
+          "bookReturning": "Returning to ukubhuka…",
+          "bookFallbackCta": "Go to ukubhuka",
+          "bookContinueCta": "Buka Ukubhuka",
+          "shopVerifying": "iqinisekisa your i-oda inkokhelo…",
+          "shopReturning": "Returning to Isitolo…",
+          "shopFallbackCta": "Go to ama-oda",
+          "shopContinueCta": "Buka i-oda",
+          "shopPendingSubtext": "Sizobuyekeza i-oda lakho emizuzwini embalwa. Ungaqhubeka nokusebenzisa uhlelo lokusebenza ngenkathi siqinisekisa nebhange lakho.",
+          "shopFailedSubtext": "Uma ukhokhisiwe, i-oda lakho lisazoqinisekiswa uma inkokhelo isifikile. Sicela uhlole ithebhu yakho yama-oda."
         }
       },
       "tabs": {
@@ -15539,7 +15539,7 @@
           "participants": "abahlanganyeli",
           "sessionTotal": "Iseshini isamba",
           "payment": "Inkokhelo",
-          "invoicePendingHint": "inkokhelo imininingwane will appear once the umhlinzeki finalises the Iqembu i-invoyisi.",
+          "invoicePendingHint": "Imininingwane yokukhokha izovela uma umhlinzeki eseqedele i-invoyisi yeqembu.",
           "provider": "Umhlinzeki",
           "noParticipantsYet": "No abahlanganyeli listed yet.",
           "youBadge": "wena",
@@ -15566,7 +15566,7 @@
           "atSalon": "Esaloni",
           "addonFallback": "okungeziwe",
           "durationMinutes": "{{minutes}} imiz",
-          "checkedIn": "✓ Checked in",
+          "checkedIn": "✓ Ungenile",
           "notCheckedIn": "Awukajoyini",
           "checkedOutSuffix": " · ✓ Uphume",
           "bookingDetailsUnavailable": "imininingwane yokubhuka not iyatholakala",
@@ -31869,8 +31869,8 @@
         "soundOptional": "Engeza music (okukhethekayo)",
         "addMusic": "Engeza music (okukhethekayo)",
         "originalAudio": "Original audio",
-        "soundViewerHint": "Viewers hear this music instead of your clip's audio on Explore.",
-        "soundsEmpty": "No catalog tracks yet — use original audio or ask your admin to add platform sounds.",
+        "soundViewerHint": "ababukeli bayizwa le ngoma esikhundleni somsindo we-clip yakho ku-Explore.",
+        "soundsEmpty": "Awekho amathrekhi ekhatalogi okwamanje — sebenzisa umsindo wokuqala noma cela umlawuli wakho afake imisindo yepulatifomu.",
         "soundsSectionPlatform": "Okudumile sounds",
         "soundsSectionYours": "sounds yakho",
         "soundPreviewPlay": "Play pisibuyekezo",
