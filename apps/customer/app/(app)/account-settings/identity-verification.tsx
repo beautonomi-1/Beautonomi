@@ -26,7 +26,7 @@ import * as Linking from "expo-linking";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
-import { appendFormDataFileNative } from "@beautonomi/utils";
+import { appendUploadFile } from "@/lib/form-data-file";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { Colors } from "@/constants/colors";
@@ -267,7 +267,7 @@ export default function IdentityVerificationScreen() {
     setUploading(true);
     try {
       const formData = new FormData();
-      appendFormDataFileNative(formData, "file", {
+      await appendUploadFile(formData, "file", {
         uri: selectedFile.uri,
         name: selectedFile.fileName,
         type: selectedFile.mimeType || "image/jpeg",

@@ -15,8 +15,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const supabase = getSupabaseAdmin();
     const { id: ticketId } = await params;
 
-    const { data: ticket } = await supabase.from("support_tickets").select("id").eq("id", ticketId).maybeSingle();
+    const { data: ticket } = await supabase
+      .from("support_tickets")
+      .select("id, tenant_id")
+      .eq("id", ticketId)
+      .maybeSingle();
     if (!ticket) {
+      return errorResponse("Ticket not found", "NOT_FOUND", 404);
+    }
+    const { staffCanAccessSupportTicket } = await import("@/lib/support/assert-staff-ticket-access");
+    const allowed = await staffCanAccessSupportTicket(supabase, {
+      role: user.role,
+      userId: user.id,
+      tenantId: (ticket as { tenant_id?: string | null }).tenant_id,
+    });
+    if (!allowed) {
       return errorResponse("Ticket not found", "NOT_FOUND", 404);
     }
 

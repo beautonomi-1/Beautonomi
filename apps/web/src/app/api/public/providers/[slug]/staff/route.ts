@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { publicStaffSubtitle } from "@beautonomi/utils";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { freelancerPublicStaffName } from "@/lib/public-booking/freelancer-staff-name";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 import { resolveStaffLocationScope } from "@/lib/provider/staff-location-scope";
 
@@ -27,7 +29,7 @@ export async function GET(
     // Use admin client to bypass RLS — consistent with the SSR profile loader
     const { data: provider, error: providerError } = await supabase
       .from("providers")
-      .select("id, business_name")
+      .select("id, business_name, business_type, user_id")
       .eq("tenant_id", tenantId)
       .eq(isUuid ? "id" : "slug", slug)
       .maybeSingle();
@@ -50,7 +52,8 @@ export async function GET(
         role,
         avatar_url,
         bio,
-        is_active
+        is_active,
+        user_id
       `)
       .eq("provider_id", provider.id)
       .eq("is_active", true)
@@ -66,10 +69,29 @@ export async function GET(
       );
     }
 
+    const isFreelancer =
+      provider.business_type === "freelancer" || provider.business_type === "mobile";
+    let personName: string | null = null;
+    if (isFreelancer && provider.user_id) {
+      const { data: ownerUser } = await supabase
+        .from("users")
+        .select("full_name")
+        .eq("id", provider.user_id)
+        .maybeSingle();
+      personName = typeof ownerUser?.full_name === "string" ? ownerUser.full_name : null;
+    }
+
     let staffMembers = (staff || []).map((member: any) => ({
       id: member.id,
-      name: member.name || "Staff Member",
-      role: member.role || "Staff",
+      name:
+        isFreelancer && member.user_id && member.user_id === provider.user_id
+          ? freelancerPublicStaffName({
+              staffName: member.name,
+              personName,
+              businessName: provider.business_name,
+            })
+          : member.name || "Staff Member",
+      role: publicStaffSubtitle(member.role),
       avatar_url: member.avatar_url,
       bio: member.bio,
       specialties: member.specialties || [],
@@ -90,8 +112,12 @@ export async function GET(
       staffMembers = [
         {
           id: `provider-${provider.id}`,
-          name: provider.business_name,
-          role: "Your specialist",
+          name: freelancerPublicStaffName({
+            staffName: null,
+            personName: isFreelancer ? personName : null,
+            businessName: provider.business_name,
+          }),
+          role: null,
           avatar_url: null,
           bio: null,
           specialties: [],

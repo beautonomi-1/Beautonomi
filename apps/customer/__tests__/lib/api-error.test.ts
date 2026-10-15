@@ -52,6 +52,18 @@ describe("getBookingHoldSlotUnavailableMessage", () => {
   it("falls back when no slot code", () => {
     expect(getBookingHoldSlotUnavailableMessage({ message: "x" }, "fb")).toBe("x");
   });
+
+  it("shows wait minutes for RATE_LIMIT_EXCEEDED", () => {
+    const msg = getBookingHoldSlotUnavailableMessage(
+      {
+        code: "RATE_LIMIT_EXCEEDED",
+        details: { retry_after_seconds: 120 },
+      },
+      "fb",
+      (key, opts) => `${key}:${(opts as { minutes?: number })?.minutes}`,
+    );
+    expect(msg).toBe("checkout.holdRateLimitWait:2");
+  });
 });
 
 describe("getHttpErrorStatus", () => {

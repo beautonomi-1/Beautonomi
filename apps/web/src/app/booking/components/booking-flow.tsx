@@ -1163,7 +1163,7 @@ export default function BookingFlow() {
       return { holdId, expiresAt: res?.data?.expires_at ?? res?.expires_at ?? null };
     } catch (err) {
       console.warn("[booking] hold creation failed:", err);
-      toast.warning(getBookingHoldFailureMessage(err));
+      toast.warning(getBookingHoldFailureMessage(err, t));
       return null;
     }
   };
@@ -1324,6 +1324,25 @@ export default function BookingFlow() {
       return { ...prev, ...patch };
     });
   };
+
+  const handleNavigateToServices = useCallback(async () => {
+    const id = bookingState.holdId;
+    if (id) await releaseHold(id);
+    updateBookingState({
+      holdId: null,
+      holdExpiresAt: null,
+      selectedTimeSlot: null,
+      selectedSlotStart: null,
+      selectedSlotEnd: null,
+      selectedSlotAvailableStaffIds: null,
+      availabilityRefreshToken: Date.now(),
+    });
+    const idx = activeStepOrder.indexOf("services");
+    if (idx >= 0) {
+      setDirection(-1);
+      setCurrentStepIndex(idx);
+    }
+  }, [bookingState.holdId, activeStepOrder]);
 
   useEffect(() => {
     const link = parseBookingDeepLink(searchParams);
@@ -2054,6 +2073,7 @@ export default function BookingFlow() {
         canProceed={(canProceed() ?? false) && !isCreatingHold}
         onNext={handleNext}
         onBack={handleBack}
+        onNavigateToServices={() => void handleNavigateToServices()}
       />
 
       {isBookingEmbedEnabled(searchParams) ? (

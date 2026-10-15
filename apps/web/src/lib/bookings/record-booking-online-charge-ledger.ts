@@ -43,6 +43,8 @@ export type RecordBookingOnlineChargeLedgerInput = {
     travel?: number;
     platformFee?: number;
   };
+  /** Tip collected on this charge only (pay-remaining). Posted as its own leg; excluded from commission. */
+  incrementalTipAmount?: number;
   descriptions?: { payment?: string; providerEarnings?: string };
   paymentTransactionType?: string;
   auditLegStyle?: AuditLegDescriptionStyle;
@@ -194,8 +196,13 @@ export async function recordBookingOnlineChargeLedger(
   const totalCollectedForCommission =
     amountInCurrency + walletAmountFromMeta + giftCardAmountFromMeta;
 
-  const { tip: tipAmount, tax: taxAmount, travel: travelFee, platformFee: serviceFeeAmount } =
-    resolveBookingLevelAmounts(bookingData, input.bookingLevelAmountOverrides);
+  const resolvedLevels = resolveBookingLevelAmounts(bookingData, input.bookingLevelAmountOverrides);
+  const incrementalTip = Math.max(0, Number(input.incrementalTipAmount ?? 0));
+  const baseTip = Math.max(0, resolvedLevels.tip);
+  const tipAmount = baseTip + incrementalTip;
+  const taxAmount = resolvedLevels.tax;
+  const travelFee = resolvedLevels.travel;
+  const serviceFeeAmount = resolvedLevels.platformFee;
 
   const bookingTotal = Number(bookingData.total_amount || 0);
   const commissionContext = await fetchBookingCommissionContext(supabase, input.bookingId, {
@@ -208,12 +215,13 @@ export async function recordBookingOnlineChargeLedger(
   // Booking-level legs this run will still post (second-charge catch-up). Must be
   // netted off the residual before allocation, otherwise that cash is allocated to
   // provider_earnings and the catch-up insert counts it a second time.
-  const pendingCatchUpNet = sumPendingBookingLevelCatchUpNet({
-    tipAmount,
-    travelFee,
-    platformFee: serviceFeeAmount,
-    existingTypes: commissionContext.existingBookingLevelTypes,
-  });
+  const pendingCatchUpNet =
+    sumPendingBookingLevelCatchUpNet({
+      tipAmount: baseTip,
+      travelFee,
+      platformFee: serviceFeeAmount,
+      existingTypes: commissionContext.existingBookingLevelTypes,
+    }) + incrementalTip;
   const postedLegsForResidual =
     commissionContext.postedLegsSum +
     (commissionContext.bookingLevelItemsAlreadyPosted ? pendingCatchUpNet : 0);
@@ -419,6 +427,25 @@ export async function recordBookingOnlineChargeLedger(
             : []),
         ],
       );
+    } else if (incrementalTip > 0 && !input.isDeposit) {
+      await supabase.from("finance_transactions").insert(
+        withSourcePaymentId(
+          {
+            booking_id: input.bookingId,
+            provider_id: bookingData.provider_id ?? null,
+            tenant_id: financeTenantId,
+            transaction_type: "tip",
+            amount: incrementalTip,
+            fees: 0,
+            commission: 0,
+            net: incrementalTip,
+            description: `Tip for booking ${bookingNumber}`,
+            created_at: webhookNow,
+          },
+          sourcePaymentId,
+          bookingCurrency,
+        ),
+      );
     }
   } else {
     await supabase.from("finance_transactions").insert([
@@ -488,7 +515,8 @@ export async function recordBookingOnlineChargeLedger(
         ),
       );
     }
-    if (tipAmount > 0 && !existingTypes.has("tip")) {
+    const tipToPost = (existingTypes.has("tip") ? 0 : baseTip) + incrementalTip;
+    if (tipToPost > 0) {
       deferred.push(
         withSourcePaymentId(
           {
@@ -496,10 +524,10 @@ export async function recordBookingOnlineChargeLedger(
             provider_id: bookingData.provider_id ?? null,
             tenant_id: financeTenantId,
             transaction_type: "tip",
-            amount: tipAmount,
+            amount: tipToPost,
             fees: 0,
             commission: 0,
-            net: tipAmount,
+            net: tipToPost,
             description: `Tip for booking ${bookingNumber}`,
             created_at: webhookNow,
           },

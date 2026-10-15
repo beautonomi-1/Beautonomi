@@ -51,7 +51,8 @@ import { formatPhone } from "@/lib/format";
 import { useProvider } from "@/providers/ProviderContext";
 import { getApiErrorMessage, getApiErrorCode } from "@/lib/api-error";
 import { formatLegalDobDisplay, isMailableEmail } from "@beautonomi/utils";
-import { appendFormDataFileNative, countryFilterIso2FromStorage } from "@beautonomi/utils";
+import { countryFilterIso2FromStorage } from "@beautonomi/utils";
+import { appendUploadFile } from "@/lib/form-data-file";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { AddressMapPinModal } from "@/components/AddressMapPinModal";
 import { StaticMapImage } from "@/components/ui/StaticMapImage";
@@ -417,7 +418,7 @@ export default function ProfileScreen() {
       const uri = picked.uri;
       const name = picked.fileName || uri.split("/").pop() || "photo.jpg";
       const formData = new FormData();
-      appendFormDataFileNative(formData, "file", {
+      await appendUploadFile(formData, "file", {
         uri,
         name,
         type: picked.mimeType || "image/jpeg",

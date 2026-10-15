@@ -13,6 +13,18 @@ const mockRequirePermission = vi.fn();
 const mockSendCancellationNotification = vi.fn();
 const mockMatchWaitlistOnCancellation = vi.fn();
 
+const pendingAfter: Array<Promise<unknown>> = [];
+
+vi.mock("next/server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/server")>();
+  return {
+    ...actual,
+    after: (task: () => unknown) => {
+      pendingAfter.push(Promise.resolve().then(task));
+    },
+  };
+});
+
 vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: () => mockGetSupabaseAdmin(),
 }));
@@ -111,6 +123,7 @@ describe("DELETE /api/provider/group-bookings/[id]", () => {
     );
 
     expect(res.status).toBe(200);
+    await Promise.all(pendingAfter);
     expect(mockSendCancellationNotification).toHaveBeenCalledTimes(2);
     expect(mockSendCancellationNotification).toHaveBeenCalledWith(B1, { cancelledBy: "provider" });
     expect(mockSendCancellationNotification).toHaveBeenCalledWith(B2, { cancelledBy: "provider" });

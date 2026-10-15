@@ -538,6 +538,93 @@ describe("recordBookingOnlineChargeLedger", () => {
     expect(normalizeRows(inserts.payment_transactions)[0].net_amount).toBe(-5);
   });
 
+  it("posts a pay-link tip once, commission-free, on a booking already tipped at checkout", async () => {
+    // 208 already paid and fully posted (60 service + 10 tip + 120 travel + 18 fee).
+    // A 50 balance was added later; the customer pays it with a 25 tip (charge 75).
+    // After the webhook increments the tip, the booking total is 283 and tip 35.
+    const { supabase, inserts } = makeLedgerSupabase({
+      booking: { ...defaultBooking, total_amount: 283, tip_amount: 35 },
+      financeTransactions: [
+        { id: "ft-1", booking_id: "booking-1", transaction_type: "payment", net: 6 },
+        { id: "ft-2", booking_id: "booking-1", transaction_type: "provider_earnings", net: 54 },
+        { id: "ft-3", booking_id: "booking-1", transaction_type: "tip", net: 10 },
+        { id: "ft-4", booking_id: "booking-1", transaction_type: "travel_fee", net: 120 },
+        { id: "ft-5", booking_id: "booking-1", transaction_type: "platform_fee", net: 18 },
+      ],
+      bookingPayments: [
+        { id: "bp-1", booking_id: "booking-1", amount: 208, status: "completed", payment_provider_id: "ref-1" },
+      ],
+    });
+
+    await recordBookingOnlineChargeLedger(supabase as any, {
+      bookingId: "booking-1",
+      reference: "ref-remain-tip",
+      provider: "paystack",
+      amountMajor: 75,
+      sourcePaymentId: "bp-remain-tip",
+      incrementalTipAmount: 25,
+      bookingLevelAmountOverrides: { tip: 10, tax: 0, travel: 120, platformFee: 18 },
+      paymentTransactionType: "charge",
+      auditLegStyle: "paystack_pay_remaining",
+    });
+
+    const finance = normalizeRows(inserts.finance_transactions);
+    const tipRows = finance.filter((r) => r.transaction_type === "tip");
+    expect(tipRows).toHaveLength(1);
+    expect(Number(tipRows[0].amount)).toBe(25);
+    const payment = finance.find((r) => r.transaction_type === "payment");
+    const earnings = finance.find((r) => r.transaction_type === "provider_earnings");
+    // Commission base is the 50 balance only; the tip carries no commission.
+    expect(Number(payment?.amount)).toBeCloseTo(50, 2);
+    expect(Number(payment?.commission)).toBeCloseTo(5, 2);
+    expect(Number(payment?.net) + Number(earnings?.net) + Number(tipRows[0].net)).toBeCloseTo(75, 2);
+  });
+
+  it("posts the checkout tip and the pay-link tip together on a first charge", async () => {
+    const { supabase, inserts } = makeLedgerSupabase({
+      booking: { ...defaultBooking, total_amount: 233, tip_amount: 35 },
+    });
+
+    await recordBookingOnlineChargeLedger(supabase as any, {
+      bookingId: "booking-1",
+      reference: "ref-first-tip",
+      provider: "paystack",
+      amountMajor: 233,
+      sourcePaymentId: "bp-first-tip",
+      incrementalTipAmount: 25,
+      bookingLevelAmountOverrides: { tip: 10, tax: 0, travel: 120, platformFee: 18 },
+    });
+
+    const finance = normalizeRows(inserts.finance_transactions);
+    const tipRows = finance.filter((r) => r.transaction_type === "tip");
+    expect(tipRows).toHaveLength(1);
+    expect(Number(tipRows[0].amount)).toBe(35);
+    expect(Number(finance.find((r) => r.transaction_type === "payment")?.amount)).toBeCloseTo(60, 2);
+  });
+
+  it("does not repeat the booking tip on a second charge without a new tip", async () => {
+    const { supabase, inserts } = makeLedgerSupabase({
+      booking: defaultBooking,
+      financeTransactions: [
+        { id: "ft-1", booking_id: "booking-1", transaction_type: "payment", net: 6 },
+        { id: "ft-2", booking_id: "booking-1", transaction_type: "tip", net: 10 },
+      ],
+    });
+
+    await recordBookingOnlineChargeLedger(supabase as any, {
+      bookingId: "booking-1",
+      reference: "ref-remain-no-tip",
+      provider: "paystack",
+      amountMajor: 50,
+      sourcePaymentId: "bp-remain-no-tip",
+      paymentTransactionType: "charge",
+      auditLegStyle: "paystack_pay_remaining",
+    });
+
+    const types = normalizeRows(inserts.finance_transactions).map((r) => r.transaction_type);
+    expect(types).not.toContain("tip");
+  });
+
   it("treats existing service_fee as posted when catching up platform_fee", async () => {
     const { supabase, inserts } = makeLedgerSupabase({
       booking: defaultBooking,

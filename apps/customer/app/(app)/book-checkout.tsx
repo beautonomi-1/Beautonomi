@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Pressable, Platform, Alert, TextInput, Switch, Linking } from "react-native";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -22,6 +21,8 @@ import { groupGuestsServiceSubtotal } from "@/lib/group-booking-checkout-subtota
 import { Skeleton } from "@/components/Skeleton";
 import { PaymentProcessingOverlay } from "@/components/payment/PaymentProcessingOverlay";
 import { useSavedCards } from "@/hooks/useSavedCards";
+import { useOwnedGiftCards } from "@/features/gift-cards/useOwnedGiftCards";
+import { OwnedGiftCardPicker } from "@/features/gift-cards/OwnedGiftCardPicker";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import {
   extractPaystackReferenceFromUrl,
@@ -964,16 +965,18 @@ export default function BookCheckoutScreen() {
     null
   );
   const [giftCardError, setGiftCardError] = useState<string | null>(null);
-  type OwnedGiftCardRow = {
-    id: string;
-    code: string;
-    balance: number;
-    currency: string;
-    is_active?: boolean;
-    expires_at?: string | null;
-  };
-  const [ownedGiftCards, setOwnedGiftCards] = useState<OwnedGiftCardRow[]>([]);
-
+  const bookingGiftCardCurrency = useMemo(
+    () =>
+      hold?.booking_services_snapshot?.[0]?.currency?.trim() || getTenantDefaultCurrency(),
+    [hold],
+  );
+  const { cards: ownedGiftCards } = useOwnedGiftCards({
+    currency: bookingGiftCardCurrency,
+    userId: user?.id,
+    enabled: Boolean(
+      user && hold && hold.gift_cards !== false && giftCardsFlagBundle,
+    ),
+  });
   const {
     cards: savedCards,
     loading: cardsLoading,
@@ -2230,42 +2233,6 @@ export default function BookCheckoutScreen() {
     };
   }, [user]);
 
-  useEffect(() => {
-    if (!user || !hold) {
-      setOwnedGiftCards([]);
-      return;
-    }
-    if (hold.gift_cards === false || !giftCardsFlagBundle) {
-      setOwnedGiftCards([]);
-      return;
-    }
-    let cancelled = false;
-    const bookingCur =
-      hold.booking_services_snapshot?.[0]?.currency?.trim() || getTenantDefaultCurrency();
-    (async () => {
-      try {
-        const res = await api.get<{ gift_cards?: OwnedGiftCardRow[] }>("/api/me/gift-cards");
-        if (cancelled || res.error || !res.data) return;
-        const list = Array.isArray(res.data.gift_cards) ? res.data.gift_cards : [];
-        const now = Date.now();
-        const usable = list.filter((c) => {
-          if (!c?.code || Number(c.balance) <= 0) return false;
-          if (c.is_active === false) return false;
-          const cur = (c.currency || bookingCur).trim();
-          if (cur !== bookingCur.trim()) return false;
-          if (c.expires_at && new Date(c.expires_at).getTime() < now) return false;
-          return true;
-        });
-        setOwnedGiftCards(usable);
-      } catch {
-        if (!cancelled) setOwnedGiftCards([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [user, hold, giftCardsFlagBundle]);
-
   const applyLoyaltyPoints = useCallback(async () => {
     if (!user) return;
     const raw = parseInt(loyaltyPointsInput.trim(), 10);
@@ -2969,6 +2936,30 @@ export default function BookCheckoutScreen() {
               );
             }
             return;
+          }
+
+          if (authResult.outcome === "closed") {
+            setProcessingPayment(false);
+            setProcessingStep(undefined);
+            if (!returnedPaymentReference) {
+              if (bookingId) {
+                trackBookingConfirmed(bookingId, paymentMethod, total);
+                navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined, "pending_payment");
+              } else {
+                Alert.alert(
+                  t("checkout.paymentPendingPollTitle"),
+                  t("checkout.paymentPendingPollBody"),
+                  [
+                    {
+                      text: t("checkout.viewBookingsCta"),
+                      onPress: () => router.replace("/(app)/(tabs)/bookings" as never),
+                    },
+                    { text: t("common.ok"), style: "cancel" },
+                  ]
+                );
+              }
+              return;
+            }
           }
 
           if (authResult.outcome === "success" && authResult.url) {
@@ -5371,62 +5362,6 @@ export default function BookCheckoutScreen() {
               {/* Gift card code (gift-card-only or card + gift-card split) */}
               {(paymentMethod === "giftcard" || (paymentMethod === "card" && giftCardsEnabled)) && (
                 <View style={{ marginBottom: 12 }}>
-                  {user && ownedGiftCards.length > 0 && !giftCardValid && (
-                    <View style={{ marginBottom: 12 }}>
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontWeight: "600",
-                          color: "#374151",
-                          marginBottom: 8,
-                        }}
-                      >
-                        {t("checkout.yourGiftCredit")}
-                      </Text>
-                      {ownedGiftCards.map((gc) => (
-                        <TouchableOpacity
-                          key={gc.id}
-                          onPress={() => {
-                            setGiftCardCode(gc.code.trim().toUpperCase());
-                            setGiftCardValid(null);
-                            setGiftCardError(null);
-                            void applyGiftCard(gc.code);
-                          }}
-                          disabled={giftCardValidating}
-                          style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            paddingVertical: 10,
-                            paddingHorizontal: 12,
-                            marginBottom: 8,
-                            backgroundColor: "#FFF",
-                            borderRadius: 12,
-                            borderWidth: 1,
-                            borderColor: "#E5E7EB",
-                          }}
-                          accessibilityRole="button"
-                          accessibilityLabel={`${t("checkout.apply")} ${gc.code}`}
-                        >
-                          <Text
-                            style={{
-                              flex: 1,
-                              marginEnd: 10,
-                              fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-                              fontSize: 13,
-                              color: "#111827",
-                            }}
-                            selectable
-                          >
-                            {gc.code}
-                          </Text>
-                          <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.primary }}>
-                            {formatCurrency(gc.balance, gc.currency)} · {t("checkout.apply")}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
                   <Text
                     style={{ fontSize: 13, fontWeight: "500", color: "#374151", marginBottom: 8 }}
                   >
@@ -5488,6 +5423,19 @@ export default function BookCheckoutScreen() {
                         amount: giftCardValid.balance.toFixed(2),
                       })}
                     </Text>
+                  ) : null}
+                  {user && !giftCardValid ? (
+                    <OwnedGiftCardPicker
+                      cards={ownedGiftCards}
+                      disabled={giftCardValidating}
+                      formatCurrency={formatCurrency}
+                      onSelect={(code) => {
+                        setGiftCardCode(code);
+                        setGiftCardValid(null);
+                        setGiftCardError(null);
+                        void applyGiftCard(code);
+                      }}
+                    />
                   ) : null}
                 </View>
               )}
@@ -5928,14 +5876,11 @@ export default function BookCheckoutScreen() {
               {consuming ? (
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
                   <ActivityIndicator size="small" color="#fff" />
-                  <Animated.Text
-                    key="reserving"
-                    entering={FadeIn.duration(200)}
-                    exiting={FadeOut.duration(150)}
+                  <Text
                     style={{ color: "#fff", fontWeight: "700", fontSize: 16, marginStart: 8 }}
                   >
                     {t("checkout.reservingSlot", "Reserving your slot…")}
-                  </Animated.Text>
+                  </Text>
                 </View>
               ) : (
                 <>

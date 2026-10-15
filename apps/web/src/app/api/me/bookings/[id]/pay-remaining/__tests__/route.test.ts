@@ -141,18 +141,26 @@ function makeSupabaseMock(booking: ReturnType<typeof bookingRow> | null) {
   };
 }
 
-function makeAdminMock() {
+const adminInserts: Array<{ table: string; row: Record<string, unknown> }> = [];
+
+function makeAdminMock(providerRow: Record<string, unknown> | null = null) {
   return {
-    from: vi.fn(() => ({
+    from: vi.fn((table: string) => ({
+      insert: vi.fn(async (row: Record<string, unknown>) => {
+        adminInserts.push({ table, row });
+        return { error: null };
+      }),
       select: vi.fn(() => ({
         eq: vi.fn(() => ({
-          maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+          maybeSingle: vi.fn(async () => ({
+            data: table === "providers" ? providerRow : null,
+            error: null,
+          })),
         })),
       })),
       update: vi.fn(() => ({
         eq: vi.fn(async () => ({ error: null })),
       })),
-      insert: vi.fn(async () => ({ error: null })),
     })),
     rpc: vi.fn(async () => ({ data: true, error: null })),
   };
@@ -169,6 +177,7 @@ describe("POST /api/me/bookings/[id]/pay-remaining", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    adminInserts.length = 0;
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "user-1", role: "customer" } });
     mockResolvePaymentTenantForBookingRequest.mockResolvedValue({
       ok: true,
@@ -302,6 +311,109 @@ describe("POST /api/me/bookings/[id]/pay-remaining", () => {
     );
     expect(mockCompleteWalletGiftSyntheticPayments).toHaveBeenCalled();
     expect(mockSyncBookingAfterPaystackSuccess).toHaveBeenCalled();
+  });
+
+  function payRemainingRequest(body: Record<string, unknown>) {
+    return new NextRequest(`http://localhost/api/me/bookings/${BOOKING_ID}/pay-remaining`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("adds the tip to the gateway amount and records it in metadata", async () => {
+    mockGetSupabaseServer.mockResolvedValue(makeSupabaseMock(bookingRow()));
+    mockInitializeOnlinePayment.mockResolvedValue({
+      authorizationUrl: "https://checkout.paystack.com/tip",
+      accessCode: "access_tip",
+      provider: "paystack",
+    });
+
+    const res = await POST(payRemainingRequest({ tip_amount: 50 }), {
+      params: Promise.resolve({ id: BOOKING_ID }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body?.data?.paystack_amount).toBe(750);
+    expect(mockInitializeOnlinePayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amountInSmallestUnit: 75_000,
+        metadata: expect.objectContaining({ tip_amount: 50, balance_amount: 700 }),
+      }),
+    );
+    const pendingRows = adminInserts.filter((i) => i.table === "payments");
+    expect(pendingRows).toHaveLength(1);
+    expect(pendingRows[0].row).toMatchObject({
+      booking_id: BOOKING_ID,
+      amount: 750,
+      status: "pending",
+      payment_provider: "paystack",
+      payment_provider_transaction_id: "remaining_test_ref",
+      metadata: expect.objectContaining({ type: "booking_remaining", tip_amount: 50 }),
+    });
+  });
+
+  it("rejects a tip with TIPS_DISABLED when the provider has tips off", async () => {
+    mockGetSupabaseServer.mockResolvedValue(makeSupabaseMock(bookingRow()));
+    mockGetSupabaseAdmin.mockReturnValue(makeAdminMock({ tips_enabled: false }));
+
+    const res = await POST(payRemainingRequest({ tip_amount: 20 }), {
+      params: Promise.resolve({ id: BOOKING_ID }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body?.error?.code).toBe("TIPS_DISABLED");
+    expect(mockInitializeOnlinePayment).not.toHaveBeenCalled();
+  });
+
+  it("rejects a tip larger than the service base", async () => {
+    mockGetSupabaseServer.mockResolvedValue(makeSupabaseMock(bookingRow()));
+
+    const res = await POST(payRemainingRequest({ tip_amount: 5000 }), {
+      params: Promise.resolve({ id: BOOKING_ID }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body?.error?.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("charges only the tip online when wallet and gift cover the balance", async () => {
+    mockGetSupabaseServer.mockResolvedValue(makeSupabaseMock(bookingRow()));
+    mockApplyCollectibleGiftAndWallet.mockResolvedValue({
+      ok: true,
+      walletAmountApplied: 700,
+      giftCardAmountApplied: 0,
+      giftCardId: null,
+      paystackAmount: 0,
+      warnings: [],
+      fullySettled: true,
+    });
+    mockInitializeOnlinePayment.mockResolvedValue({
+      authorizationUrl: "https://checkout.paystack.com/tip-only",
+      accessCode: "access_tip_only",
+      provider: "paystack",
+    });
+
+    const res = await POST(payRemainingRequest({ use_wallet: true, tip_amount: 30 }), {
+      params: Promise.resolve({ id: BOOKING_ID }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body?.data?.fully_settled).toBe(false);
+    expect(body?.data?.paystack_amount).toBe(30);
+    expect(mockRecordCollectibleSettlementLedger).not.toHaveBeenCalled();
+    expect(mockInitializeOnlinePayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amountInSmallestUnit: 3_000,
+        metadata: expect.objectContaining({
+          wallet_amount_applied: 700,
+          tip_amount: 30,
+        }),
+      }),
+    );
   });
 
   it("returns NO_REMAINING_BALANCE when outstanding is zero", async () => {

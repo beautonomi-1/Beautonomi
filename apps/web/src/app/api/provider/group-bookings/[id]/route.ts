@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { addMinutes } from "date-fns";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -378,20 +378,43 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // Commit-time availability check when the slot / staff / location / duration
     // changes. Mirrors the single-booking PATCH behaviour so a provider cannot
     // silently shift a group onto a conflict.
-    const movingSlot =
+    const slotFieldPresent =
       "scheduled_at" in sanitized ||
       "staff_id" in sanitized ||
       "location_id" in sanitized ||
       "duration_minutes" in sanitized ||
       "service_id" in sanitized;
     const allowOverride = body?.allow_override === true;
-    if (movingSlot && !allowOverride) {
-      const { data: existing } = await admin
-        .from("group_bookings")
-        .select("scheduled_at, duration_minutes, staff_id, location_id, service_id, location_type")
-        .eq("id", id)
-        .eq("provider_id", providerId)
-        .maybeSingle();
+    const { data: existing } = slotFieldPresent
+      ? await admin
+          .from("group_bookings")
+          .select("scheduled_at, duration_minutes, staff_id, location_id, service_id, location_type")
+          .eq("id", id)
+          .eq("provider_id", providerId)
+          .maybeSingle()
+      : { data: null };
+
+    const movingSlot =
+      !allowOverride &&
+      !!existing &&
+      slotFieldPresent &&
+      (("scheduled_at" in sanitized &&
+        sanitized.scheduled_at != null &&
+        existing.scheduled_at != null &&
+        Math.abs(
+          new Date(String(sanitized.scheduled_at)).getTime() -
+            new Date(String(existing.scheduled_at)).getTime(),
+        ) > 1000) ||
+        ("scheduled_at" in sanitized &&
+          sanitized.scheduled_at != null &&
+          existing.scheduled_at == null) ||
+        ("staff_id" in sanitized && sanitized.staff_id !== existing.staff_id) ||
+        ("location_id" in sanitized && sanitized.location_id !== existing.location_id) ||
+        ("duration_minutes" in sanitized &&
+          Number(sanitized.duration_minutes) !== Number(existing.duration_minutes ?? 60)) ||
+        ("service_id" in sanitized && sanitized.service_id !== existing.service_id));
+
+    if (movingSlot) {
       const nextScheduledAt =
         (sanitized.scheduled_at as string | undefined) ?? existing?.scheduled_at ?? null;
       const nextDuration = Number(
@@ -1073,31 +1096,32 @@ export async function DELETE(
       throw error;
     }
 
-    // Notify waitlist for freed slots
     if (groupBookings?.length) {
-      try {
-        const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
-        await Promise.allSettled(
-          groupBookings.map((b: { id: string }) => matchWaitlistOnCancellation(supabase, b.id))
-        );
-      } catch (waitlistErr) {
-        console.error("[provider group cancel] waitlist matching failed:", waitlistErr);
-      }
+      const cancelledIds = groupBookings.map((b: { id: string }) => b.id);
+      after(async () => {
+        try {
+          const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
+          await Promise.allSettled(
+            cancelledIds.map((bookingId) => matchWaitlistOnCancellation(admin, bookingId))
+          );
+        } catch (waitlistErr) {
+          console.error("[provider group cancel] waitlist matching failed:", waitlistErr);
+        }
 
-      // Send cancellation notifications to the customer on each child booking.
-      // Best-effort: a notification failure must never block the cancel response.
-      try {
-        const { sendCancellationNotification } = await import("@/lib/bookings/notifications");
-        await Promise.allSettled(
-          groupBookings.map((b: { id: string }) =>
-            sendCancellationNotification(b.id, { cancelledBy: "provider" }).catch((e: unknown) =>
-              console.warn("[provider group cancel] notification failed for booking", b.id, e)
+        try {
+          const { sendCancellationNotification } = await import("@/lib/bookings/notifications");
+          await Promise.allSettled(
+            cancelledIds.map((bookingId) =>
+              sendCancellationNotification(bookingId, { cancelledBy: "provider" }).catch(
+                (e: unknown) =>
+                  console.warn("[provider group cancel] notification failed for booking", bookingId, e)
+              )
             )
-          )
-        );
-      } catch (notifyErr) {
-        console.error("[provider group cancel] notification dispatch failed:", notifyErr);
-      }
+          );
+        } catch (notifyErr) {
+          console.error("[provider group cancel] notification dispatch failed:", notifyErr);
+        }
+      });
     }
 
     return successResponse({ success: true, message: "Group booking cancelled" });

@@ -1508,7 +1508,7 @@ export async function POST(request: NextRequest) {
               .insert({
                 provider_id: providerId,
                 user_id: user.id,
-                name: business_name,
+                name: owner_name?.trim() || business_name,
                 email: owner_email || legacyEmail,
                 phone: owner_phone || legacyPhone,
                 role: "owner",
@@ -1551,6 +1551,21 @@ export async function POST(request: NextRequest) {
             console.error("Error marking freelancer as mobile-ready:", updateError);
           }
         }
+
+        // Clients book the person. Onboarding captures that as owner_name
+        // (users.full_name). The staff row must not keep the business name
+        // or the "Owner" placeholder.
+        const personName = owner_name?.trim();
+        if (personName) {
+          const { error: staffNameError } = await supabaseAdmin
+            .from("provider_staff")
+            .update({ name: personName })
+            .eq("provider_id", providerId)
+            .eq("user_id", user.id);
+          if (staffNameError) {
+            console.error("Error setting freelancer staff name:", staffNameError);
+          }
+        }
       } catch (error) {
         console.error("Error setting up freelancer:", error);
         // Don't fail the request - staff can be configured later
@@ -1588,7 +1603,7 @@ export async function POST(request: NextRequest) {
               .insert({
                 provider_id: providerId,
                 user_id: user.id,
-                name: business_name,
+                name: owner_name?.trim() || business_name,
                 email: owner_email || legacyEmail,
                 phone: owner_phone || legacyPhone,
                 role: "owner",

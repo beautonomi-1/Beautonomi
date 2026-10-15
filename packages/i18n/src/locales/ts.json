@@ -13978,7 +13978,10 @@
             "confirmOnMap": "Tiyisisa adirese leyi eka mepe u languta ku rhumeriwa.",
             "instructionsLabel": "Ku tisiwa instructions (swo tihlawulela)",
             "instructionsPlaceholder": "Khodi ya gete, swikombiso, laha u siyaka odara…"
-          }
+          },
+          "promoGiftCard": "xikhangelo & khadi ra nyiko",
+          "promotionCodePlaceholder": "Promotion khodi",
+          "giftCardCodePlaceholder": "khadi ra nyiko khodi"
         },
         "chats": {
           "searchPlaceholder": "Lavisisa vapfuneti or marungula",
@@ -15521,7 +15524,12 @@
           "cashRefundConfirm": "Ndzi yi amukerile",
           "cashRefundDispute": "Khohlano",
           "cashRefundConfirmed": "Thank you — your nxavo is tiyisisaed.",
-          "cashRefundDisputed": "We flagged this nxavo for xihlawulekisi."
+          "cashRefundDisputed": "We flagged this nxavo for xihlawulekisi.",
+          "payRemainingTipTitle": "Engetela thiphu (a swi bohi)",
+          "payRemainingNoTip": "A ku na thiphu",
+          "payRemainingCustomTip": "Ya wena",
+          "payRemainingCustomTipPlaceholder": "Mpimo wa thiphu",
+          "payRemainingTipLine": "Thiphu: {{amount}} — yi ya hi 100% eka muphakeli wa wena"
         },
         "groupBookingDetail": {
           "back": "Endzhaku",
@@ -15688,7 +15696,11 @@
           "travelAboutMinutes": "~{{count}} min",
           "currentLocation": "xa sweswi ndhawu",
           "missingHold": "Missing hxa khale. Please sungula your ku buka nakambe.",
-          "findProvider": "Find a mupfuneti"
+          "findProvider": "Find a mupfuneti",
+          "continueWithName": "yana emahlweni with {{name}}",
+          "continueWithCount": "yana emahlweni with {{count}} vukorhokeri",
+          "changeServiceA11y": "Cinca vukorhokeri",
+          "stickySelectionMore": " +{{count}}"
         },
         "identityVerificationBanner": {
           "requiredTitle": "Tiyisisa your Vutitivisi to buka",
@@ -18393,7 +18405,12 @@
         "total": "Hinkwaswo",
         "continue": "Yana emahlweni",
         "continueAriaLabel": "yana emahlweni to lexi landzelaka step",
-        "packageDiscount": "xipaketi ntsengo wo hunguta"
+        "packageDiscount": "xipaketi ntsengo wo hunguta",
+        "continueWithName": "yana emahlweni with {{name}}",
+        "continueWithCount": "yana emahlweni with {{count}} vukorhokeri",
+        "changeService": "Cinca",
+        "selectedServiceMore": " (+{{count}})",
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} timinete"
       },
       "confirmation": {
         "loadingMessage": "Yi loyida Ntiyiso wa ku buka...",

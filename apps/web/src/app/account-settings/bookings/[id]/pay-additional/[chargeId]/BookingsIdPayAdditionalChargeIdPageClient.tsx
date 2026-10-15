@@ -11,6 +11,12 @@ import { toast } from "sonner";
 import { useTranslation } from "@beautonomi/i18n";
 import Breadcrumb from "../../../../components/breadcrumb";
 import BackButton from "../../../../components/back-button";
+import { useAuth } from "@/providers/AuthProvider";
+import {
+  filterUsableGiftCards,
+  type GiftCardListRow,
+} from "@/lib/checkout/filter-usable-gift-cards";
+import { OwnedGiftCardPicker } from "@/components/checkout/OwnedGiftCardPicker";
 
 interface AdditionalCharge {
   id: string;
@@ -30,6 +36,7 @@ interface BookingWithCharges {
 
 export default function PayAdditionalChargePage() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const params = useParams();
   const router = useRouter();
   const bookingId = params.id as string;
@@ -42,6 +49,7 @@ export default function PayAdditionalChargePage() {
   const [error, setError] = useState<string | null>(null);
   const [useWallet, setUseWallet] = useState(false);
   const [giftCardCode, setGiftCardCode] = useState("");
+  const [ownedGiftCards, setOwnedGiftCards] = useState<GiftCardListRow[]>([]);
   const [walletBalance, setWalletBalance] = useState(0);
 
   useEffect(() => {
@@ -57,6 +65,32 @@ export default function PayAdditionalChargePage() {
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!user || !charge?.currency) {
+      setOwnedGiftCards([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const raw = await fetcher.get<unknown>("/api/me/gift-cards", { staleTimeMs: 0 });
+        const inner =
+          raw && typeof raw === "object" && "data" in (raw as object)
+            ? (raw as { data?: { gift_cards?: GiftCardListRow[] } }).data
+            : (raw as { gift_cards?: GiftCardListRow[] });
+        const list = inner?.gift_cards ?? [];
+        if (!cancelled) {
+          setOwnedGiftCards(filterUsableGiftCards(list, charge.currency));
+        }
+      } catch {
+        if (!cancelled) setOwnedGiftCards([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, charge?.currency]);
 
   const loadCharge = async () => {
     try {
@@ -270,8 +304,20 @@ export default function PayAdditionalChargePage() {
                 value={giftCardCode}
                 onChange={(e) => setGiftCardCode(e.target.value.toUpperCase())}
                 placeholder={t("web.accountSettings.payAdditionalCharge.giftCardPlaceholder")}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
               />
+              {user && ownedGiftCards.length > 0 && !giftCardCode.trim() && charge ? (
+                <div className="mb-4 mt-2">
+                  <OwnedGiftCardPicker
+                    cards={ownedGiftCards}
+                    currency={charge.currency}
+                    disabled={isProcessing}
+                    onSelect={(code) => setGiftCardCode(code)}
+                  />
+                </div>
+              ) : (
+                <div className="mb-4" />
+              )}
 
               <Button
                 onClick={handlePayNow}

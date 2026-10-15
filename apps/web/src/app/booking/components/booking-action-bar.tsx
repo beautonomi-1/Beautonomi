@@ -18,6 +18,7 @@ interface BookingActionBarProps {
   canProceed: boolean;
   onNext: () => void;
   onBack: () => void;
+  onNavigateToServices?: () => void;
 }
 
 const BookingActionBar = forwardRef<HTMLDivElement, BookingActionBarProps>(function BookingActionBar({
@@ -26,6 +27,7 @@ const BookingActionBar = forwardRef<HTMLDivElement, BookingActionBarProps>(funct
   canProceed,
   onNext,
   onBack: _onBack,
+  onNavigateToServices,
 }, ref) {
   const { t } = useTranslation();
   const { bundle } = useConfigBundle();
@@ -77,6 +79,37 @@ const BookingActionBar = forwardRef<HTMLDivElement, BookingActionBarProps>(funct
     return () => clearInterval(id);
   }, [holdExpiresAt]);
 
+  const selectedServiceSummary = useMemo(() => {
+    const svcs = bookingState.selectedServices;
+    if (svcs.length === 0) return null;
+    const first = svcs[0]!;
+    const moreCount = svcs.length - 1;
+    const minutes = svcs.reduce((sum, s) => sum + s.duration, 0);
+    const more =
+      moreCount > 0
+        ? t("web.booking.actionBar.selectedServiceMore", { count: moreCount })
+        : "";
+    return t("web.booking.actionBar.selectedServiceSummary", {
+      name: first.title,
+      more,
+      minutes,
+    });
+  }, [bookingState.selectedServices, t]);
+
+  const continueButtonLabel = useMemo(() => {
+    if (currentStep === "services" && bookingState.selectedServices.length > 0) {
+      if (bookingState.selectedServices.length === 1) {
+        return t("web.booking.actionBar.continueWithName", {
+          name: bookingState.selectedServices[0]!.title,
+        });
+      }
+      return t("web.booking.actionBar.continueWithCount", {
+        count: bookingState.selectedServices.length,
+      });
+    }
+    return t("web.booking.actionBar.continue");
+  }, [currentStep, bookingState.selectedServices, t]);
+
   if (currentStep === "payment") {
     return null; // Payment step handles its own action bar
   }
@@ -105,6 +138,22 @@ const BookingActionBar = forwardRef<HTMLDivElement, BookingActionBarProps>(funct
             </span>
           </div>
         )}
+        {selectedServiceSummary ? (
+          <div className="mb-3 flex items-start justify-between gap-2 text-sm">
+            <p className="min-w-0 flex-1 truncate font-medium text-gray-900">{selectedServiceSummary}</p>
+            {currentStep !== "services" &&
+            !bookingState.selectedPackage &&
+            onNavigateToServices ? (
+              <button
+                type="button"
+                onClick={onNavigateToServices}
+                className="shrink-0 font-semibold text-primary touch-target"
+              >
+                {t("web.booking.actionBar.changeService")}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         {/* Totals Summary */}
         <div className="mb-3 space-y-1 text-sm">
           <div className="flex justify-between text-gray-600">
@@ -195,9 +244,9 @@ const BookingActionBar = forwardRef<HTMLDivElement, BookingActionBarProps>(funct
           disabled={!canProceed}
           data-testid="booking-continue"
           className="w-full h-14 text-base font-semibold bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed touch-target"
-          aria-label={t("web.booking.actionBar.continueAriaLabel")}
+          aria-label={continueButtonLabel}
         >
-          {t("web.booking.actionBar.continue")}
+          <span className="truncate">{continueButtonLabel}</span>
         </Button>
       </div>
     </motion.div>

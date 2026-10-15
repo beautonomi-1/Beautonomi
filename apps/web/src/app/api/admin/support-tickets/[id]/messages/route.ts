@@ -20,6 +20,8 @@ export async function POST(
 ) {
   try {
     const { user } = await requireRoleInApi([...SUPPORT_TICKET_STAFF_ROLES] as UserRole[], request);
+    const { deliverSupportReplyByZoho } = await import("@/lib/support/deliver-zoho-support-reply");
+    const { staffCanAccessSupportTicket } = await import("@/lib/support/assert-staff-ticket-access");
     const supabase = getSupabaseAdmin();
     const { id } = await params;
 
@@ -45,7 +47,9 @@ export async function POST(
     // staff roles are enforced above via requireRoleInApi.)
     const { data: ticket, error: ticketErr } = await supabase
       .from("support_tickets")
-      .select("id, user_id, provider_id, ticket_number, subject, priority, first_staff_reply_at, status, requester_type, support_context_type, support_context_label")
+      .select(
+        "id, user_id, provider_id, ticket_number, subject, priority, first_staff_reply_at, status, requester_type, support_context_type, support_context_label, channel, tenant_id",
+      )
       .eq("id", id)
       .maybeSingle();
 
@@ -55,6 +59,15 @@ export async function POST(
         { error: "Ticket not found" },
         { status: 404 }
       );
+    }
+
+    const scoped = await staffCanAccessSupportTicket(supabase, {
+      role: user.role,
+      userId: user.id,
+      tenantId: (ticket as { tenant_id?: string | null }).tenant_id,
+    });
+    if (!scoped) {
+      return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
     }
 
     // Check access
@@ -98,8 +111,16 @@ export async function POST(
     }
     await supabase.from("support_tickets").update(ticketUpdate).eq("id", id);
 
-    // When admin/support_agent replies with a public message, notify the ticket owner (email + in-app for swift communication)
-    if (!isInternal && isAdmin && ticket.user_id) {
+    if (!isInternal && isAdmin) {
+      await deliverSupportReplyByZoho(supabase, {
+        ticketId: id,
+        messageId: data.id as string,
+        plainText: messageBody,
+      });
+    }
+
+    const isEmailTicket = String((ticket as { channel?: string }).channel ?? "app") === "email";
+    if (!isInternal && isAdmin && ticket.user_id && !isEmailTicket) {
       try {
         const previewText =
           message.slice(0, 200) ||
@@ -117,6 +138,21 @@ export async function POST(
         );
       } catch (notifyErr) {
         console.error("Support ticket reply notification failed:", notifyErr);
+      }
+    } else if (!isInternal && isAdmin && ticket.user_id && isEmailTicket) {
+      try {
+        await notifySupportTicketUpdated(
+          ticket.user_id,
+          ticket.ticket_number || id,
+          "Support replied to your ticket",
+          id,
+          ["push"],
+          String((ticket as { requester_type?: string | null }).requester_type ?? "") === "provider"
+            ? "provider"
+            : "customer"
+        );
+      } catch (notifyErr) {
+        console.error("Support ticket reply push failed:", notifyErr);
       }
     }
 

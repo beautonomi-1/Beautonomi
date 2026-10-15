@@ -95,6 +95,11 @@ type TicketRow = Record<string, unknown> & {
     created_at?: string | null;
   } | null;
   assigned_user?: { id?: string; email?: string; full_name?: string | null } | null;
+  channel?: "app" | "email" | null;
+  requester_email?: string | null;
+  tenant_id?: string | null;
+  tenant?: { name?: string; slug?: string; region_code?: string | null } | null;
+  mailbox?: { address?: string; outbound_enabled?: boolean } | null;
 };
 
 type AttachmentItem = { url: string; name?: string; type?: string; size?: number };
@@ -104,6 +109,8 @@ type MessageRow = Record<string, unknown> & {
   user_id?: string | null;
   message?: string;
   is_internal?: boolean;
+  is_auto_reply?: boolean;
+  email_delivery_status?: string | null;
   created_at?: string;
   attachments?: unknown;
   user?: { email?: string; full_name?: string | null } | null;
@@ -281,9 +288,16 @@ export function SupportTicketDetailView({
 
   useAdminDocumentTitle(isPanel ? "" : str(detailQ.data?.ticket?.subject) || "Support ticket");
 
+  const ticketTenantId = detailQ.data?.ticket?.tenant_id ?? null;
+
   const assigneesQ = useQuery({
-    queryKey: adminQueryKeys.supportTicketAssignees(),
-    queryFn: () => adminApi.getJson<{ assignees: Assignee[] }>("/api/admin/support-ticket-assignees", { timeoutMs: 30_000 }),
+    queryKey: [...adminQueryKeys.supportTicketAssignees(), ticketTenantId ?? "global"],
+    queryFn: () => {
+      const qs = ticketTenantId ? `?tenant_id=${encodeURIComponent(ticketTenantId)}` : "";
+      return adminApi.getJson<{ assignees: Assignee[] }>(`/api/admin/support-ticket-assignees${qs}`, {
+        timeoutMs: 30_000,
+      });
+    },
     enabled: allowed && !!id && !detailQ.isLoading,
     refetchOnWindowFocus: true,
     staleTime: 60_000,
@@ -847,6 +861,23 @@ export function SupportTicketDetailView({
         </div>
       </AdminPanel>
 
+      {ticket.channel === "email" ? (
+        <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+          Email from {ticket.requester_email || ticket.user?.email || "unknown sender"} to{" "}
+          {ticket.mailbox?.address || "support mailbox"}
+          {ticket.tenant?.name ? (
+            <>
+              , {ticket.tenant.name}
+              {ticket.tenant.region_code ? ` (${ticket.tenant.region_code})` : ""}
+            </>
+          ) : null}
+          . Public replies are sent from {ticket.mailbox?.address || "the mailbox"}.
+          {ticket.mailbox?.outbound_enabled === false ? (
+            <span className="mt-1 block font-medium text-amber-900">Outbound email is off for this mailbox.</span>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className={`grid gap-6 ${isPanel ? "grid-cols-1" : "lg:grid-cols-3"}`}>
         <AdminPanel className={isPanel ? "" : "lg:col-span-2"}>
           <h2 className="text-lg font-semibold text-gray-900">Conversation</h2>
@@ -923,7 +954,13 @@ export function SupportTicketDetailView({
                       ? "border-blue-200 bg-blue-50/90"
                       : "border-gray-200 bg-gray-50/90";
                 const atts = attachmentsFromRow(m.attachments);
-                const roleLabel = internal ? "Internal note" : fromCustomer ? "Customer" : "Support";
+                const roleLabel = m.is_auto_reply
+                  ? "Automatic acknowledgement"
+                  : internal
+                    ? "Internal note"
+                    : fromCustomer
+                      ? "Customer"
+                      : "Support";
                 const messageId = str(m.id);
                 return (
                   <Fragment key={item.id}>

@@ -1,14 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * support_tickets has no tenant_id column — tenant scope comes from the
- * provider the ticket belongs to, falling back to the default ZA tenant for
- * platform-level customer tickets.
+ * Tenant scope for support tickets: explicit tenant_id, then provider tenant,
+ * then the default ZA tenant for platform-level customer tickets.
  */
 export async function resolveSupportTicketTenantId(
   supabase: SupabaseClient,
-  ticket: { provider_id?: string | null },
+  ticket: { tenant_id?: string | null; provider_id?: string | null },
 ): Promise<string | null> {
+  if (ticket.tenant_id) {
+    return ticket.tenant_id;
+  }
   if (ticket.provider_id) {
     const { data } = await supabase
       .from("providers")

@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getBookingsAdminClient } from "@/lib/bookings/bookings-admin-write";
@@ -17,6 +17,59 @@ import type { Booking } from "@/types/beautonomi";
  * used by start-service/complete-service so arrived pushes are as reliable
  * as the rest of the booking lifecycle.
  */
+function scheduleArrivalSideEffects(params: {
+  bookingId: string;
+  hasOtp: boolean;
+  tenantId?: string | null;
+  customer?: {
+    id: string;
+    full_name?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  } | null;
+  bookingNumber?: string | null;
+  scheduledAt?: string | null;
+  providerName?: string | null;
+  supabaseAdmin: ReturnType<typeof getSupabaseAdmin>;
+}): void {
+  const {
+    bookingId,
+    hasOtp,
+    tenantId,
+    customer,
+    bookingNumber,
+    scheduledAt,
+    providerName,
+    supabaseAdmin,
+  } = params;
+  after(async () => {
+    await notifyArrivedAndLog(bookingId, hasOtp, tenantId ?? null);
+    if (!customer?.id) return;
+    try {
+      const { shouldDeliverGuestLinkForCustomer, deliverGuestBookingLink } = await import(
+        "@/lib/portal/guest-booking-link-delivery"
+      );
+      if (await shouldDeliverGuestLinkForCustomer(supabaseAdmin, customer.id)) {
+        await deliverGuestBookingLink({
+          supabaseAdmin,
+          bookingId,
+          bookingNumber: bookingNumber ?? null,
+          scheduledAt: scheduledAt ?? null,
+          customerId: customer.id,
+          customerName: customer.full_name || "Guest",
+          customerEmail: customer.email || null,
+          customerPhone: customer.phone || null,
+          providerName: providerName || "Provider",
+          tenantId: tenantId ?? null,
+          templateKey: "guest_arrival_verification",
+        });
+      }
+    } catch (guestArrivalErr) {
+      console.warn("Guest arrival portal link:", guestArrivalErr);
+    }
+  });
+}
+
 async function notifyArrivedAndLog(
   bookingId: string,
   hasOtp: boolean,
@@ -117,9 +170,28 @@ export async function POST(
     if (
       bookingData.status !== "confirmed" &&
       bookingData.status !== "booked" &&
-      bookingData.current_stage !== "provider_on_way"
+      bookingData.current_stage !== "provider_on_way" &&
+      bookingData.current_stage !== "provider_arrived"
     ) {
       return errorResponse("Booking must be confirmed before marking arrival", "INVALID_STATUS", 400);
+    }
+
+    if (
+      bookingData.current_stage === "provider_arrived" &&
+      bookingData.provider_arrived_at
+    ) {
+      const qrExpiresAtMs = bookingData.qr_code_expires_at
+        ? new Date(bookingData.qr_code_expires_at).getTime()
+        : null;
+      const storedQrValid = qrExpiresAtMs == null || qrExpiresAtMs > Date.now();
+      return successResponse({
+        booking: bookingData as Booking,
+        already_arrived: true,
+        otp: null,
+        qr_code: storedQrValid ? (bookingData.qr_code_data ?? null) : null,
+        verification_code: storedQrValid ? (bookingData.qr_code_verification_code ?? null) : null,
+        message: "Provider already marked as arrived",
+      });
     }
 
     // Get platform verification settings
@@ -168,12 +240,16 @@ export async function POST(
         throw updateError;
       }
 
-      // Notify customer via template pipeline (push + in-app bell row).
-      await notifyArrivedAndLog(
-        id,
-        false,
-        (bookingData as { tenant_id?: string | null }).tenant_id ?? null,
-      );
+      scheduleArrivalSideEffects({
+        bookingId: id,
+        hasOtp: false,
+        tenantId: (bookingData as { tenant_id?: string | null }).tenant_id ?? null,
+        customer: bookingData.customers ?? null,
+        bookingNumber: bookingData.booking_number,
+        scheduledAt: bookingData.scheduled_at,
+        providerName: providerData?.business_name,
+        supabaseAdmin: supabaseAdminArrive,
+      });
 
       // Fetch updated booking
       const { data: updatedBooking } = await supabase
@@ -246,12 +322,16 @@ export async function POST(
         throw updateError;
       }
 
-      // Notify customer via template pipeline (push + in-app bell row).
-      await notifyArrivedAndLog(
-        id,
-        false,
-        (bookingData as { tenant_id?: string | null }).tenant_id ?? null,
-      );
+      scheduleArrivalSideEffects({
+        bookingId: id,
+        hasOtp: false,
+        tenantId: (bookingData as { tenant_id?: string | null }).tenant_id ?? null,
+        customer: bookingData.customers ?? null,
+        bookingNumber: bookingData.booking_number,
+        scheduledAt: bookingData.scheduled_at,
+        providerName: providerData?.business_name,
+        supabaseAdmin: supabaseAdminArrive,
+      });
 
       // Fetch updated booking
       const { data: updatedBooking } = await supabase
@@ -365,42 +445,16 @@ export async function POST(
 
     const customer = bookingData.customers;
 
-    // Notify via template pipeline — push + in-app bell row. This must run
-    // regardless of whether the RLS-scoped `customers` join above resolved a
-    // row (it can be null even when bookings.customer_id is set), otherwise
-    // the arrived push is silently dropped while confirmed/started always fire.
-    // When OTP is enabled the wording hints the customer to open the app for their code;
-    // the actual PIN is shown only in-app on the booking detail screen.
-    await notifyArrivedAndLog(
-      id,
-      !!(otp_enabled && otp),
-      (bookingData as { tenant_id?: string | null }).tenant_id ?? null,
-    );
-
-    if (customer) {
-      try {
-        const { shouldDeliverGuestLinkForCustomer, deliverGuestBookingLink } = await import(
-          "@/lib/portal/guest-booking-link-delivery"
-        );
-        if (await shouldDeliverGuestLinkForCustomer(supabaseAdminArrive, customer.id)) {
-          await deliverGuestBookingLink({
-            supabaseAdmin: supabaseAdminArrive,
-            bookingId: id,
-            bookingNumber: bookingData.booking_number,
-            scheduledAt: bookingData.scheduled_at,
-            customerId: customer.id,
-            customerName: customer.full_name || "Guest",
-            customerEmail: customer.email || null,
-            customerPhone: customer.phone || null,
-            providerName: providerData?.business_name || "Provider",
-            tenantId: (bookingData as { tenant_id?: string | null }).tenant_id ?? null,
-            templateKey: "guest_arrival_verification",
-          });
-        }
-      } catch (guestArrivalErr) {
-        console.warn("Guest arrival portal link:", guestArrivalErr);
-      }
-    }
+    scheduleArrivalSideEffects({
+      bookingId: id,
+      hasOtp: !!(otp_enabled && otp),
+      tenantId: (bookingData as { tenant_id?: string | null }).tenant_id ?? null,
+      customer: customer ?? null,
+      bookingNumber: bookingData.booking_number,
+      scheduledAt: bookingData.scheduled_at,
+      providerName: providerData?.business_name,
+      supabaseAdmin: supabaseAdminArrive,
+    });
 
     // Fetch updated booking
     const { data: updatedBooking } = await supabase

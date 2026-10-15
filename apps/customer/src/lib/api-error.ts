@@ -22,10 +22,31 @@ function readBookingHoldSlotErrorCode(error: unknown): string | undefined {
  * Differentiated copy for POST /api/public/booking-holds when the server
  * returns `details.slot_error_code` alongside the generic slot message.
  */
+function readRetryAfterSeconds(error: unknown): number | null {
+  if (error == null || typeof error !== "object") return null;
+  const details = (error as { details?: unknown }).details;
+  if (!details || typeof details !== "object") return null;
+  const raw = (details as { retry_after_seconds?: unknown }).retry_after_seconds;
+  if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) return Math.ceil(raw);
+  return null;
+}
+
 export function getBookingHoldSlotUnavailableMessage(
   error: unknown,
   fallback: string = "Something went wrong. Please try again.",
+  t?: (key: string, opts?: Record<string, unknown>) => string,
 ): string {
+  const apiCode = getApiErrorCode(error);
+  if (apiCode === "RATE_LIMIT_EXCEEDED") {
+    const retrySec = readRetryAfterSeconds(error);
+    if (retrySec != null) {
+      const minutes = Math.max(1, Math.ceil(retrySec / 60));
+      return (
+        t?.("checkout.holdRateLimitWait", { minutes }) ??
+        `Too many attempts. Try again in ${minutes} min.`
+      );
+    }
+  }
   const code = readBookingHoldSlotErrorCode(error);
   if (code === "NO_STAFF_AVAILABLE") {
     return "No staff member can take this slot right now. Try a different time or pick a specific staff.";
@@ -115,6 +136,7 @@ export function isTransientApiFailure(err: unknown): boolean {
   const code = getApiErrorCode(err);
   if (code === "MISSING_API_BASE_URL") return false;
   if (code === "NETWORK_ERROR" || code === "TIMEOUT" || code === "CANCELLED") return true;
+  if (code === "RATE_LIMIT_EXCEEDED") return false;
   // Vercel Bot Protection / WAF can return HTML 429 pages; retry briefly like other transients.
   if (code === "HTML_ERROR" || status === 429) return true;
   if (typeof status === "number" && status >= 500) return true;

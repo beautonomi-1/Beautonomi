@@ -13978,7 +13978,10 @@
             "confirmOnMap": "أكّد هذا العنوان على الخريطة للتحقق من التوصيل.",
             "instructionsLabel": "Delivery instructions (اختياري)",
             "instructionsPlaceholder": "رمز البوابة، معالم، أين تترك الطلب…"
-          }
+          },
+          "promoGiftCard": "Promo & بطاقة هدايا",
+          "promotionCodePlaceholder": "رمز ترويجي",
+          "giftCardCodePlaceholder": "رمز بطاقة الهدايا"
         },
         "chats": {
           "searchPlaceholder": "بحث مزودو الخدمة or رسائل",
@@ -15521,7 +15524,12 @@
           "cashRefundConfirm": "استلمته",
           "cashRefundDispute": "نزاع",
           "cashRefundConfirmed": "Thank you — your استرداد is مؤكد.",
-          "cashRefundDisputed": "We flagged this استرداد for تقييم."
+          "cashRefundDisputed": "We flagged this استرداد for تقييم.",
+          "payRemainingTipTitle": "أضف إكرامية (اختياري)",
+          "payRemainingNoTip": "بدون إكرامية",
+          "payRemainingCustomTip": "مبلغ مخصص",
+          "payRemainingCustomTipPlaceholder": "مبلغ الإكرامية",
+          "payRemainingTipLine": "الإكرامية: {{amount}} — تذهب بالكامل إلى مقدم الخدمة"
         },
         "groupBookingDetail": {
           "back": "رجوع",
@@ -15688,7 +15696,11 @@
           "travelAboutMinutes": "~{{count}} د",
           "currentLocation": "الموقع الحالي",
           "missingHold": "الحجز المؤقت مفقود. يرجى بدء الحجز من جديد.",
-          "findProvider": "العثور على مزود"
+          "findProvider": "العثور على مزود",
+          "continueWithCount": "Continue with {{count}} خدمات",
+          "changeServiceA11y": "Change خدمة",
+          "stickySelectionMore": " +{{count}}",
+          "continueWithName": "المتابعة مع {{name}}"
         },
         "identityVerificationBanner": {
           "requiredTitle": "تحقق من هويتك للحجز",
@@ -18393,7 +18405,12 @@
         "total": "الإجمالي",
         "continue": "متابعة",
         "continueAriaLabel": "Continue to التالي step",
-        "packageDiscount": "Package خصم"
+        "packageDiscount": "Package خصم",
+        "continueWithCount": "Continue with {{count}} خدمات",
+        "changeService": "تغيير",
+        "selectedServiceMore": " (+{{count}})",
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} د",
+        "continueWithName": "المتابعة مع {{name}}"
       },
       "confirmation": {
         "loadingMessage": "جاري تحميل حجز confirmation...",

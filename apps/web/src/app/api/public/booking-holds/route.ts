@@ -298,14 +298,34 @@ async function handlePost(request: NextRequest) {
 
         const nowIso = new Date().toISOString();
 
+        let skipClientHoldRateLimit = false;
+        if (previous_hold_id && guest_fingerprint_hash) {
+          const { data: previousHoldRow } = await supabase
+            .from("booking_holds")
+            .select("id, guest_fingerprint_hash, hold_status")
+            .eq("id", previous_hold_id)
+            .maybeSingle();
+          if (
+            previousHoldRow &&
+            previousHoldRow.guest_fingerprint_hash === guest_fingerprint_hash &&
+            (previousHoldRow.hold_status === "active" ||
+              previousHoldRow.hold_status === "consuming")
+          ) {
+            skipClientHoldRateLimit = true;
+          }
+        }
+
         // Rate limiting
-        const rateLimit = await checkHoldRateLimit(request, guest_fingerprint_hash || null);
+        const rateLimit = await checkHoldRateLimit(request, guest_fingerprint_hash || null, {
+          userId: holdCaptchaSkipUserId,
+          skipClientLimit: skipClientHoldRateLimit,
+        });
         if (!rateLimit.allowed) {
-          const response = handleApiError(
-            new Error(rateLimit.reason),
+          const response = errorResponse(
             rateLimit.reason!,
             "RATE_LIMIT_EXCEEDED",
-            429
+            429,
+            { retry_after_seconds: rateLimit.retryAfterSeconds ?? null },
           );
           return applyRateLimitHeaders(response, {
             remaining: 0,
@@ -313,12 +333,13 @@ async function handlePost(request: NextRequest) {
           });
         }
 
-        // Release a specific previous hold if the client tells us about it
-        if (previous_hold_id) {
+        // Release a specific previous hold if the client tells us about it (same device only)
+        if (previous_hold_id && guest_fingerprint_hash) {
           await supabase
             .from("booking_holds")
             .update({ hold_status: "cancelled" })
             .eq("id", previous_hold_id)
+            .eq("guest_fingerprint_hash", guest_fingerprint_hash)
             .in("hold_status", ["active", "consuming"]);
         }
 

@@ -23,6 +23,24 @@ export async function POST(
       );
     }
 
+    const { data: ticket } = await supabase
+      .from("support_tickets")
+      .select("id, tenant_id")
+      .eq("id", id)
+      .maybeSingle();
+    if (!ticket) {
+      return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+    }
+    const { staffCanAccessSupportTicket } = await import("@/lib/support/assert-staff-ticket-access");
+    const allowed = await staffCanAccessSupportTicket(supabase, {
+      role: user.role,
+      userId: user.id,
+      tenantId: (ticket as { tenant_id?: string | null }).tenant_id,
+    });
+    if (!allowed) {
+      return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+    }
+
     const { data, error } = await supabase
       .from("support_ticket_notes")
       .insert({

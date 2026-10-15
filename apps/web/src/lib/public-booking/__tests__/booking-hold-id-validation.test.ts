@@ -98,4 +98,12 @@ describe("getBookingHoldFailureMessage", () => {
     ).toBe(DEFAULT_HOLD_FAILURE_MESSAGE);
     expect(getBookingHoldFailureMessage(null)).toBe(DEFAULT_HOLD_FAILURE_MESSAGE);
   });
+
+  it("shows rate-limit wait copy from retry_after_seconds", () => {
+    const msg = getBookingHoldFailureMessage(
+      { code: "RATE_LIMIT_EXCEEDED", details: { retry_after_seconds: 90 } },
+      (key, opts) => `${key}:${(opts as { minutes?: number })?.minutes}`,
+    );
+    expect(msg).toBe("checkout.holdRateLimitWait:2");
+  });
 });

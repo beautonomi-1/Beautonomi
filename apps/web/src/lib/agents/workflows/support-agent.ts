@@ -58,7 +58,7 @@ export function classifySupportTicketHeuristically(ticket: {
 
   const negative = escalationReasons.includes("high_negative_sentiment");
   return {
-    category: ticket.category ?? "general",
+    category: ticket.category ?? "general_inquiry",
     urgency: ticket.priority === "urgent" ? "urgent" : priorityUrgent || escalationReasons.length > 0 ? "high" : "medium",
     sentiment: negative ? "negative" : "neutral",
     needsHuman: escalationReasons.length > 0,
@@ -189,20 +189,26 @@ async function classifyAndDraftWithLlm(ticket: {
   };
 }
 
-/** Pick the support staffer with the fewest open assigned tickets. */
-async function pickLeastLoadedAssignee(): Promise<string | null> {
+/** Pick the support staffer with the fewest open assigned tickets in a tenant. */
+async function pickLeastLoadedAssignee(tenantId: string): Promise<string | null> {
   const supabase = getSupabaseAdmin();
-  const { data: staff } = await supabase
-    .from("users")
-    .select("id")
-    .in("role", ["support_agent", "admin_support"])
-    .limit(50);
-  const candidates = (staff ?? []).map((s: { id: string }) => s.id);
+  const { data: roles } = await supabase
+    .from("user_tenant_roles")
+    .select("user_id, users!inner(id, role)")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true);
+  const candidates = (roles ?? [])
+    .map((r) => r as { users?: { id?: string; role?: string } })
+    .map((r) => r.users)
+    .filter((u): u is { id: string; role?: string } => !!u?.id)
+    .filter((u) => u.role === "support_agent" || u.role === "admin_support")
+    .map((u) => u.id);
   if (candidates.length === 0) return null;
 
   const { data: openTickets } = await supabase
     .from("support_tickets")
     .select("assigned_to")
+    .eq("tenant_id", tenantId)
     .in("assigned_to", candidates)
     .in("status", ["open", "in_progress", "waiting_customer"]);
 
@@ -358,7 +364,7 @@ export async function classifyAndProposeForTicket(params: {
   }
 
   if (!ticket.assigned_to) {
-    const assignee = await pickLeastLoadedAssignee();
+    const assignee = await pickLeastLoadedAssignee(params.tenantId);
     if (assignee) {
       try {
         const assignPayload = {

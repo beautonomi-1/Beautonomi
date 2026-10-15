@@ -63,8 +63,8 @@ import { useProvider } from "@/providers/ProviderContext";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { appendUploadFile } from "@/lib/form-data-file";
 import {
-  appendFormDataFileNative,
   ARRIVAL_PIN_LENGTH_HINT,
   ARRIVAL_PIN_PLACEHOLDER,
   ARRIVAL_PIN_PROVIDER_HEADING,
@@ -1423,7 +1423,7 @@ export default function BookingDetailScreen() {
 
       const formData = new FormData();
       formData.append("form_id", formId);
-      appendFormDataFileNative(formData, "file", { uri, name: fileName, type: mimeType });
+      await appendUploadFile(formData, "file", { uri, name: fileName, type: mimeType });
 
       const res = await api.fetch<{ url: string }>(`/api/provider/bookings/${id}/consent-document`, {
         method: "POST",
@@ -2946,6 +2946,15 @@ export default function BookingDetailScreen() {
     }
     const res = await postMutation(`/api/provider/bookings/${id}/arrive`, body);
     if (res.error) {
+      const code = res.errorCode ?? (typeof res.error === "object" && res.error && "code" in res.error ? String((res.error as { code?: string }).code) : undefined);
+      if (code === "TIMEOUT" || code === "NETWORK_ERROR" || code === "CANCELLED") {
+        const refreshed = await api.get<BookingDetail>(`/api/provider/bookings/${id}`, { timeout: 30_000 });
+        if (refreshed.data?.current_stage === "provider_arrived") {
+          applyBookingFromResponse(refreshed.data);
+          await refresh();
+          return;
+        }
+      }
       Alert.alert(bk("arrivalNotRecordedTitle"), mapProviderBookingActionError(res.error, res.errorCode));
       return;
     }

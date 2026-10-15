@@ -49,6 +49,8 @@ import { distanceKmBetween, formatMoney } from "@beautonomi/utils";
 import { PickupStoreCard } from "@/components/shop/PickupStoreCard";
 import { useTranslation } from "@beautonomi/i18n";
 import { useSavedCards } from "@/hooks/useSavedCards";
+import { useOwnedGiftCards } from "@/features/gift-cards/useOwnedGiftCards";
+import { OwnedGiftCardPicker } from "@/features/gift-cards/OwnedGiftCardPicker";
 import { usePaystackPayment } from "@/hooks/usePaystackPayment";
 import { PaymentProcessingOverlay } from "@/components/payment/PaymentProcessingOverlay";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
@@ -206,6 +208,16 @@ export default function ProductCheckoutScreen() {
   const [useWallet, setUseWallet] = useState(false);
   const [promotionCode, setPromotionCode] = useState("");
   const [giftCardCode, setGiftCardCode] = useState("");
+  const [giftCardValidating, setGiftCardValidating] = useState(false);
+  const [giftCardValid, setGiftCardValid] = useState<{ balance: number; currency: string } | null>(
+    null,
+  );
+  const shopGiftCardCurrency = getTenantDefaultCurrency();
+  const { cards: ownedGiftCards } = useOwnedGiftCards({
+    currency: shopGiftCardCurrency,
+    userId: user?.id,
+    enabled: Boolean(user),
+  });
   const [walletBalance, setWalletBalance] = useState(0);
   const [platformFeeConfig, setPlatformFeeConfig] = useState<{
     type: string;
@@ -495,9 +507,50 @@ export default function ProductCheckoutScreen() {
   const total = subtotal + taxAmount + deliveryFee + platformFee;
   const walletCredit =
     paymentMethod === "paystack" && useWallet && user ? Math.min(walletBalance, total) : 0;
-  const cardPayTotal = Math.max(0, Math.round((total - walletCredit) * 100) / 100);
+  const giftCredit =
+    giftCardValid && giftCardCode.trim()
+      ? Math.min(giftCardValid.balance, Math.max(0, total - walletCredit))
+      : 0;
+  const cardPayTotal = Math.max(0, Math.round((total - walletCredit - giftCredit) * 100) / 100);
   const fb = getTenantDefaultCurrency();
   const fmt = (amount: number) => formatMoney(amount, fb);
+
+  const applyGiftCard = useCallback(
+    async (codeOverride?: string) => {
+      const code = (codeOverride ?? giftCardCode).trim().toUpperCase();
+      if (!code) return;
+      setGiftCardValidating(true);
+      try {
+        const res = await api.get<{
+          valid?: boolean;
+          balance?: number;
+          currency?: string;
+          message?: string;
+        }>(`/api/public/gift-cards/validate?code=${encodeURIComponent(code)}`);
+        if (res.error) {
+          setGiftCardValid(null);
+          setGiftCardValidating(false);
+          return;
+        }
+        const data = res.data;
+        if (data?.valid && data.balance != null) {
+          setGiftCardCode(code);
+          setGiftCardValid({
+            balance: Number(data.balance),
+            currency: data.currency || shopGiftCardCurrency,
+          });
+          haptic.success();
+        } else {
+          setGiftCardValid(null);
+        }
+      } catch {
+        setGiftCardValid(null);
+      } finally {
+        setGiftCardValidating(false);
+      }
+    },
+    [giftCardCode, shopGiftCardCurrency],
+  );
 
   const handlePlaceOrder = useCallback(async () => {
     if (!provider_id) return;
@@ -539,6 +592,13 @@ export default function ProductCheckoutScreen() {
     }
     if (fulfillment === "delivery" && user && selectedAddress && deliveryFeePending) {
       Alert.alert(pc("addressRequiredTitle"), pc("deliveryFeeCalculating"));
+      return;
+    }
+    if (giftCardCode.trim() && !giftCardValid) {
+      Alert.alert(
+        pc("giftCardCode", undefined, "Gift card"),
+        pc("giftCardApplyFirst", undefined, "Tap Apply to validate your gift card before checkout."),
+      );
       return;
     }
     if (
@@ -584,7 +644,7 @@ export default function ProductCheckoutScreen() {
         payment_method: paymentMethod,
         use_wallet: paymentMethod === "paystack" ? useWallet : false,
         ...(promotionCode.trim() ? { promotion_code: promotionCode.trim() } : {}),
-        ...(giftCardCode.trim()
+        ...(giftCardValid && giftCardCode.trim()
           ? { gift_card: { code: giftCardCode.trim().toUpperCase() } }
           : {}),
       },
@@ -1719,21 +1779,63 @@ export default function ProductCheckoutScreen() {
                 marginBottom: 8,
               }}
             />
-            <TextInput
-              value={giftCardCode}
-              onChangeText={setGiftCardCode}
-              autoCapitalize="characters"
-              placeholder={pc("giftCardCodePlaceholder")}
-              style={{
-                borderWidth: 1,
-                borderColor: "#E5E7EB",
-                borderRadius: 12,
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-                fontSize: 14,
-                color: "#111827",
-              }}
-            />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <TextInput
+                value={giftCardCode}
+                onChangeText={(v) => {
+                  setGiftCardCode(v);
+                  setGiftCardValid(null);
+                }}
+                autoCapitalize="characters"
+                placeholder={pc("giftCardCodePlaceholder")}
+                style={{
+                  flex: 1,
+                  borderWidth: 1,
+                  borderColor: "#E5E7EB",
+                  borderRadius: 12,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  fontSize: 14,
+                  color: "#111827",
+                }}
+              />
+              <TouchableOpacity
+                onPress={() => void applyGiftCard()}
+                disabled={!giftCardCode.trim() || giftCardValidating}
+                style={{
+                  backgroundColor:
+                    giftCardCode.trim() && !giftCardValidating ? Colors.primary : "#E5E7EB",
+                  paddingHorizontal: 16,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                }}
+              >
+                {giftCardValidating ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={{ color: "#fff", fontWeight: "600" }}>{t("checkout.apply")}</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+            {giftCardValid ? (
+              <Text style={{ fontSize: 12, color: "#059669", marginTop: 8 }}>
+                {t("checkout.giftCardApplied", {
+                  currency: giftCardValid.currency,
+                  amount: Math.min(giftCardValid.balance, total).toFixed(2),
+                })}
+              </Text>
+            ) : null}
+            {user && !giftCardValid ? (
+              <OwnedGiftCardPicker
+                cards={ownedGiftCards}
+                disabled={giftCardValidating}
+                formatCurrency={(amount, currency) => formatMoney(amount, currency || fb)}
+                onSelect={(code) => {
+                  setGiftCardCode(code);
+                  void applyGiftCard(code);
+                }}
+              />
+            ) : null}
           </View>
 
           {/* Payment method */}
@@ -2160,6 +2262,16 @@ export default function ProductCheckoutScreen() {
                   <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(platformFee)}</Text>
                 </View>
               )}
+              {giftCredit > 0 ? (
+                <View
+                  style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}
+                >
+                  <Text style={{ fontSize: 14, color: "#059669" }}>{t("checkout.giftCard")}</Text>
+                  <Text style={{ fontSize: 14, color: "#059669", fontWeight: "600" }}>
+                    −{fmt(giftCredit)}
+                  </Text>
+                </View>
+              ) : null}
               <View
                 style={{
                   flexDirection: "row",
@@ -2177,6 +2289,18 @@ export default function ProductCheckoutScreen() {
                   {fmt(total)}
                 </Text>
               </View>
+              {paymentMethod === "paystack" && cardPayTotal < total - 0.005 ? (
+                <View
+                  style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 8 }}
+                >
+                  <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827" }}>
+                    {pc("amountDue", undefined, "Amount due")}
+                  </Text>
+                  <Text style={{ fontSize: 15, fontWeight: "700", color: PRIMARY }}>
+                    {fmt(cardPayTotal)}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           </View>
         </ScrollView>

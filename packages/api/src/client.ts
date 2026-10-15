@@ -32,6 +32,16 @@ function responseBodyLooksLikeHtml(raw: string): boolean {
   );
 }
 
+/** True when our timeout (or AbortController) cancelled the fetch. Expo iOS uses FetchRequestCanceledException, not AbortError. */
+export function isAbortLikeTimeout(err: unknown, signal: AbortSignal): boolean {
+  if (signal.aborted) return true;
+  if (!(err instanceof Error)) return false;
+  return (
+    err.name === "AbortError" ||
+    /FetchRequestCanceled|request (was )?cancel+ed/i.test(`${err.name} ${err.message}`)
+  );
+}
+
 function parseJsonBody(raw: string): unknown | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
@@ -297,7 +307,7 @@ export async function apiFetch<T>(
         },
       };
     }
-    const isTimeout = err instanceof Error && err.name === "AbortError";
+    const isTimeout = isAbortLikeTimeout(err, controller.signal);
     const rawMessage = err instanceof Error ? err.message : "Request failed";
     const isNetworkFailure =
       !isTimeout &&

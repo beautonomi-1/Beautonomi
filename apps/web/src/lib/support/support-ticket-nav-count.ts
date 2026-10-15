@@ -1,11 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { SUPPORT_TICKET_STAFF_ROLES } from "@/lib/support/support-ticket-staff";
+import { isSupportAgentRole, isSuperadminRole } from "@/lib/support/support-agent-tenant-scope";
 import type { UserRole } from "@/types/beautonomi";
-
-function isSupportStaffGlobalQueue(role: string | null | undefined): boolean {
-  const normalized = String(role ?? "").toLowerCase();
-  return (SUPPORT_TICKET_STAFF_ROLES as readonly string[]).includes(normalized);
-}
 
 function isUndefinedColumnError(error: unknown): boolean {
   return (error as { code?: string })?.code === "42703";
@@ -17,38 +12,49 @@ function isUndefinedColumnError(error: unknown): boolean {
  */
 export async function countSupportTicketsForNav(
   supabase: SupabaseClient,
-  params: { role: string | null | undefined; tenantProviderIds: string[] },
+  params: {
+    role: string | null | undefined;
+    tenantProviderIds: string[];
+    supportAgentTenantIds?: string[];
+  },
 ): Promise<{ awaiting_response: number; sla_breached: number }> {
   const nowIso = new Date().toISOString();
-  const globalQueue = isSupportStaffGlobalQueue(params.role);
+  const scopedAgent =
+    isSupportAgentRole(params.role) && !isSuperadminRole(params.role);
+  const agentTenantIds = params.supportAgentTenantIds ?? [];
 
-  const countAwaiting = async (useAgentQueue: boolean) => {
+  type CountResult = { count: number | null; error: unknown };
+  type ScopedQuery<T> = T | CountResult;
+
+  const applyScope = <T extends { in: (col: string, vals: string[]) => T }>(
+    query: T,
+  ): ScopedQuery<T> => {
+    if (!scopedAgent) return query;
+    if (agentTenantIds.length === 0) return { count: 0, error: null };
+    return query.in("tenant_id", agentTenantIds);
+  };
+
+  const countAwaiting = async (useAgentQueue: boolean): Promise<CountResult> => {
     let query = supabase.from("support_tickets").select("id", { count: "exact", head: true });
     if (useAgentQueue) {
       query = query.eq("needs_agent_response", true);
     } else {
       query = query.eq("status", "open");
     }
-    if (!globalQueue && params.tenantProviderIds.length > 0) {
-      query = query.in("provider_id", params.tenantProviderIds);
-    } else if (!globalQueue) {
-      return { count: 0, error: null };
-    }
-    return query;
+    const scoped = applyScope(query);
+    if ("count" in scoped) return scoped;
+    return scoped;
   };
 
-  const countSlaBreached = async () => {
+  const countSlaBreached = async (): Promise<CountResult> => {
     let query = supabase
       .from("support_tickets")
       .select("id", { count: "exact", head: true })
       .lt("sla_resolution_due_at", nowIso)
       .not("status", "in", '("resolved","closed")');
-    if (!globalQueue && params.tenantProviderIds.length > 0) {
-      query = query.in("provider_id", params.tenantProviderIds);
-    } else if (!globalQueue) {
-      return { count: 0, error: null };
-    }
-    return query;
+    const scoped = applyScope(query);
+    if ("count" in scoped) return scoped;
+    return scoped;
   };
 
   let actionableResult = await countAwaiting(true);

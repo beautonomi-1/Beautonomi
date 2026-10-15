@@ -26,7 +26,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { getBackendUrl, withWebApiTenantHeaders } from "@/config/public-env";
 import { supabase } from "@/lib/supabase/client";
 import { twStyle } from "@/lib/twStyle";
-import { appendFormDataFileNative } from "@beautonomi/utils";
+import { appendUploadFile } from "@/lib/form-data-file";
 import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
 import { useTranslation } from "@beautonomi/i18n";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
@@ -206,7 +206,7 @@ export default function ServiceDetailScreen() {
       const token = sessionData.session?.access_token;
 
       const formData = new FormData();
-      appendFormDataFileNative(formData, "file", {
+      await appendUploadFile(formData, "file", {
         uri: asset.uri,
         name: asset.fileName ?? "service-photo.jpg",
         type: asset.mimeType ?? "image/jpeg",

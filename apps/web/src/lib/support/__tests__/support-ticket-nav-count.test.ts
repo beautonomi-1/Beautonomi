@@ -76,11 +76,12 @@ describe("countSupportTicketsForNav", () => {
     const result = await countSupportTicketsForNav(supabase, {
       role: "support_agent",
       tenantProviderIds: [],
+      supportAgentTenantIds: ["tenant-1"],
     });
     expect(result.awaiting_response).toBe(5);
   });
 
-  it("scopes to tenant providers for non-support global roles", async () => {
+  it("scopes support_agent counts to assigned tenant ids", async () => {
     const inSpy = vi.fn().mockReturnValue(makeCountChain(3, null));
     const supabase = {
       from: () => ({
@@ -98,18 +99,20 @@ describe("countSupportTicketsForNav", () => {
     } as never;
 
     await countSupportTicketsForNav(supabase, {
-      role: "finance_admin",
-      tenantProviderIds: ["prov-1", "prov-2"],
+      role: "support_agent",
+      tenantProviderIds: [],
+      supportAgentTenantIds: ["tenant-1", "tenant-2"],
     });
 
-    expect(inSpy).toHaveBeenCalledWith("provider_id", ["prov-1", "prov-2"]);
+    expect(inSpy).toHaveBeenCalledWith("tenant_id", ["tenant-1", "tenant-2"]);
   });
 
-  it("returns zero when tenant-scoped role has no providers", async () => {
+  it("returns zero when a support_agent has no assigned tenants", async () => {
     const supabase = makeSupabase() as never;
     const result = await countSupportTicketsForNav(supabase, {
-      role: "finance_admin",
+      role: "support_agent",
       tenantProviderIds: [],
+      supportAgentTenantIds: [],
     });
     expect(result).toEqual({ awaiting_response: 0, sla_breached: 0 });
   });

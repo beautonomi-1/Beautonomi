@@ -23,9 +23,18 @@ import { useAuth } from "@/providers/AuthProvider";
 
 type Props = {
   children: React.ReactNode;
+  /** When false, pass children through without EULA UI (keeps tree shape stable for guests). */
+  enabled?: boolean;
 };
 
-export function LegalAcceptanceGate({ children }: Props) {
+export function LegalAcceptanceGate({ children, enabled = true }: Props) {
+  if (!enabled) {
+    return <>{children}</>;
+  }
+  return <LegalAcceptanceGateActive>{children}</LegalAcceptanceGateActive>;
+}
+
+function LegalAcceptanceGateActive({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation();
   const lg = (key: string) => t(`customer.mobile.components.legalAcceptanceGate.${key}`) as string;
   const { session } = useAuth();

@@ -14,7 +14,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi([...SUPPORT_TICKET_STAFF_ROLES] as UserRole[], request);
+    const { user } = await requireRoleInApi([...SUPPORT_TICKET_STAFF_ROLES] as UserRole[], request);
     const supabase = getSupabaseAdmin();
 
     const { id } = await params;
@@ -26,13 +26,25 @@ export async function GET(
         user:users!support_tickets_user_id_fkey(id, email, full_name, phone, role, created_at),
         provider:providers(id, business_name, email, phone, status, user_id, created_at),
         assigned_user:users!support_tickets_assigned_to_fkey(id, email, full_name),
-        csat_agent:users!support_tickets_csat_agent_id_fkey(id, email, full_name)
+        csat_agent:users!support_tickets_csat_agent_id_fkey(id, email, full_name),
+        tenant:tenants!support_tickets_tenant_id_fkey(id, name, slug, region_code),
+        mailbox:support_mailboxes!support_tickets_mailbox_id_fkey(id, address, outbound_enabled)
       `)
       .eq("id", id)
       .maybeSingle();
 
     if (error) throw error;
     if (!ticket) {
+      return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+    }
+
+    const { staffCanAccessSupportTicket } = await import("@/lib/support/assert-staff-ticket-access");
+    const canAccess = await staffCanAccessSupportTicket(supabase, {
+      role: user.role,
+      userId: user.id,
+      tenantId: (ticket as { tenant_id?: string | null }).tenant_id,
+    });
+    if (!canAccess) {
       return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
     }
 
@@ -114,9 +126,25 @@ export async function PATCH(
 
     const { data: before } = await supabase
       .from("support_tickets")
-      .select("assigned_to, ticket_number, created_at, priority, status, resolved_at, updated_at, first_staff_reply_at")
+      .select(
+        "assigned_to, ticket_number, created_at, priority, status, resolved_at, updated_at, first_staff_reply_at, tenant_id",
+      )
       .eq("id", id)
       .maybeSingle();
+
+    if (!before) {
+      return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+    }
+
+    const { staffCanAccessSupportTicket } = await import("@/lib/support/assert-staff-ticket-access");
+    const patchAllowed = await staffCanAccessSupportTicket(supabase, {
+      role: user.role,
+      userId: user.id,
+      tenantId: (before as { tenant_id?: string | null }).tenant_id,
+    });
+    if (!patchAllowed) {
+      return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+    }
 
     if (
       expected_updated_at != null &&

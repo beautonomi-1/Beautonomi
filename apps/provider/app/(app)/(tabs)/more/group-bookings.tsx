@@ -1021,6 +1021,7 @@ export default function GroupBookingsScreen() {
   const [refundParticipant, setRefundParticipant] = useState<ParticipantRefundTarget | null>(null);
   const [paymentRecordedNotice, setPaymentRecordedNotice] = useState<string | null>(null);
   const previousGroupRef = useRef<GroupBooking | null>(null);
+  const createInFlightRef = useRef(false);
   const [createPaymentMethod, setCreatePaymentMethod] = useState<
     "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link" | "paystack_terminal" | "paycloud_terminal"
   >("pay_later");
@@ -1516,10 +1517,21 @@ export default function GroupBookingsScreen() {
         text: gb("cancelBooking"),
         style: "destructive",
         onPress: async () => {
-          const { error } = await cancelGroup(
+          const { error, errorCode } = await cancelGroup(
             `/api/provider/group-bookings/${encodeURIComponent(group.id)}`
           );
-          if (error) Alert.alert(gb("errorTitle"), error);
+          let cancelled = !error;
+          if (
+            error &&
+            (errorCode === "TIMEOUT" || errorCode === "NETWORK_ERROR" || errorCode === "CANCELLED")
+          ) {
+            const check = await api.get<{ status?: string | null }>(
+              `/api/provider/group-bookings/${encodeURIComponent(group.id)}`,
+              { timeout: 30_000 },
+            );
+            cancelled = check.data?.status === "cancelled";
+          }
+          if (!cancelled) Alert.alert(gb("errorTitle"), error ?? gb("errorTitle"));
           else {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             setSelectedGroup(null);
@@ -1798,9 +1810,13 @@ export default function GroupBookingsScreen() {
     const { error } = await updateGroup(
       `/api/provider/group-bookings/${encodeURIComponent(editingGroupId)}`,
       {
-        scheduled_date: editForm.date || undefined,
-        scheduled_time: editForm.time || undefined,
-        duration_minutes: editForm.duration ? Number(editForm.duration) : undefined,
+        ...(slotChanged
+          ? {
+              scheduled_date: editForm.date || undefined,
+              scheduled_time: editForm.time || undefined,
+              duration_minutes: editForm.duration ? Number(editForm.duration) : undefined,
+            }
+          : {}),
         notes: editForm.notes.trim() || undefined,
         max_participants: editForm.maxParticipants ? Number(editForm.maxParticipants) : undefined,
         ...packageIdPayload,
@@ -2333,7 +2349,21 @@ export default function GroupBookingsScreen() {
     }
   }
 
+  async function resolveGroupBalanceDue(groupId: string, fallback: number): Promise<number> {
+    try {
+      const res = await api.get<{ balance_due?: number | null }>(
+        `/api/provider/group-bookings/${encodeURIComponent(groupId)}`,
+      );
+      const due = Number(res.data?.balance_due ?? NaN);
+      return Number.isFinite(due) && due >= 0 ? due : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
   async function handleCreate() {
+    if (createInFlightRef.current) return;
+    createInFlightRef.current = true;
     const validationErr = validateGroupBookingCreateStepDetailed(buildCreateValidationInput());
     if (validationErr) {
       setCreateStep("form");
@@ -2342,6 +2372,7 @@ export default function GroupBookingsScreen() {
       setCreateFieldError(validationErr.field);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       requestAnimationFrame(() => scrollToCreateField(validationErr.field));
+      createInFlightRef.current = false;
       return;
     }
     const duration = Number(createForm.duration);
@@ -2367,6 +2398,7 @@ export default function GroupBookingsScreen() {
       setCreateFieldError("time");
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       requestAnimationFrame(() => scrollToCreateField("time"));
+      createInFlightRef.current = false;
       return;
     }
     const participantsToCreate = createParticipants
@@ -2616,7 +2648,9 @@ export default function GroupBookingsScreen() {
       InteractionManager.runAfterInteractions(() => {
         void refresh();
         // Determine total price from form state (mirroring the total_price in the payload above)
-        const totalAmt = participantTotal + productsTotal + (createForm.locationType === "at_home" ? travelFee : 0);
+        const fallbackTotal =
+          participantTotal + productsTotal + (createForm.locationType === "at_home" ? travelFee : 0);
+        void resolveGroupBalanceDue(createdGroupId, fallbackTotal).then((totalAmt) => {
         setIsPreparingTerminal(true);
         // api.post<T>: T is the inner data object returned by successResponse
         api.post<{
@@ -2641,6 +2675,7 @@ export default function GroupBookingsScreen() {
         }).catch(() => {
           Alert.alert(gb("groupCreated"), gb("usePaymentInbox"));
         }).finally(() => setIsPreparingTerminal(false));
+        });
       });
       return;
     }
@@ -2650,17 +2685,20 @@ export default function GroupBookingsScreen() {
       setCreateReviewError(null);
       setShowCreate(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      const totalAmt = participantTotal + productsTotal + (createForm.locationType === "at_home" ? travelFee : 0);
+      const fallbackTotal =
+        participantTotal + productsTotal + (createForm.locationType === "at_home" ? travelFee : 0);
       InteractionManager.runAfterInteractions(() => {
         void refresh();
-        openPaycloudCollect({
-          entityType: "group_booking",
-          entityId: createdGroupId,
-          amount: totalAmt,
-          groupBookingId: createdGroupId,
-          locationId: createForm.locationType === "at_home" ? null : createForm.locationId,
+        void resolveGroupBalanceDue(createdGroupId, fallbackTotal).then((totalAmt) => {
+          openPaycloudCollect({
+            entityType: "group_booking",
+            entityId: createdGroupId,
+            amount: totalAmt,
+            groupBookingId: createdGroupId,
+            locationId: createForm.locationType === "at_home" ? null : createForm.locationId,
+          });
+          router.setParams({ open_group_id: createdGroupId } as never);
         });
-        router.setParams({ open_group_id: createdGroupId } as never);
       });
       return;
     }
@@ -2670,15 +2708,18 @@ export default function GroupBookingsScreen() {
       setCreateReviewError(null);
       setShowCreate(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      const totalAmt = participantTotal + productsTotal + (createForm.locationType === "at_home" ? travelFee : 0);
+      const fallbackTotal =
+        participantTotal + productsTotal + (createForm.locationType === "at_home" ? travelFee : 0);
       InteractionManager.runAfterInteractions(() => {
         void refresh();
-        openYocoCollect({
-          groupId: createdGroupId,
-          amount: totalAmt,
-          locationId: createForm.locationType === "at_home" ? null : createForm.locationId,
+        void resolveGroupBalanceDue(createdGroupId, fallbackTotal).then((totalAmt) => {
+          openYocoCollect({
+            groupId: createdGroupId,
+            amount: totalAmt,
+            locationId: createForm.locationType === "at_home" ? null : createForm.locationId,
+          });
+          router.setParams({ open_group_id: createdGroupId } as never);
         });
-        router.setParams({ open_group_id: createdGroupId } as never);
       });
       return;
     }
@@ -2738,6 +2779,7 @@ export default function GroupBookingsScreen() {
     } finally {
       // Always clear progress so the confirm button never stays permanently disabled.
       setCreateParticipantProgress(null);
+      createInFlightRef.current = false;
     }
   }
 
@@ -3204,6 +3246,7 @@ export default function GroupBookingsScreen() {
       (current) => patchParticipantRefund(current, participantId, refundAmount, now) as GroupBooking
     );
     void refresh();
+    void refreshGroupDetail(selectedGroup);
   }
 
   async function handleRemoveParticipant(participant: Participant) {
@@ -3363,7 +3406,7 @@ export default function GroupBookingsScreen() {
 
       {/* Group detail sheet */}
       <BottomSheet
-        visible={!!selectedGroup && !showEdit && !showAddParticipant}
+        visible={!!selectedGroup && !showEdit && !showAddParticipant && !refundParticipant}
         onClose={() => {
           setSelectedGroup(null);
           router.setParams({ open_group_id: "" });

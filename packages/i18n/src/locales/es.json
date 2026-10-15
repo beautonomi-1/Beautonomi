@@ -13978,7 +13978,10 @@
             "confirmOnMap": "Confirmar this dirección on the mapa to check Entrega.",
             "instructionsLabel": "Entrega instructions (opcional)",
             "instructionsPlaceholder": "Code d'accès, repères, où déposer la commande…"
-          }
+          },
+          "promoGiftCard": "promoción & tarjeta de regalo",
+          "promotionCodePlaceholder": "Promotion código",
+          "giftCardCodePlaceholder": "tarjeta de regalo código"
         },
         "chats": {
           "searchPlaceholder": "Buscar profesionales or mensajes",
@@ -15688,7 +15691,11 @@
           "travelAboutMinutes": "~{{count}} min",
           "currentLocation": "actual ubicación",
           "missingHold": "Missing hantiguo. Please empezar your reserva de nuevo.",
-          "findProvider": "Find a profesional"
+          "findProvider": "Find a profesional",
+          "continueWithName": "continuar with {{name}}",
+          "continueWithCount": "continuar with {{count}} servicios",
+          "changeServiceA11y": "Cambiar servicio",
+          "stickySelectionMore": " +{{count}}"
         },
         "identityVerificationBanner": {
           "requiredTitle": "Verificar your Identidad to reservar",
@@ -18393,7 +18400,12 @@
         "total": "Total",
         "continue": "Continuar",
         "continueAriaLabel": "continuar to siguiente step",
-        "packageDiscount": "paquete descuento"
+        "packageDiscount": "paquete descuento",
+        "continueWithName": "continuar with {{name}}",
+        "continueWithCount": "continuar with {{count}} servicios",
+        "changeService": "cambiar",
+        "selectedServiceMore": " (+{{count}})",
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} minutos"
       },
       "confirmation": {
         "loadingMessage": "Cargando Confirmación de la reserva...",

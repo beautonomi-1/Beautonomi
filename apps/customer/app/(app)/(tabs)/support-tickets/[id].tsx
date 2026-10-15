@@ -13,7 +13,7 @@ import { labelForSupportTicketCategory } from "@/lib/supportTicketCategoryPreset
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useTranslation } from "@beautonomi/i18n";
 import { useImagePicker } from "@/hooks/useImagePicker";
-import { appendFormDataFileNative } from "@beautonomi/utils";
+import { appendUploadFile } from "@/lib/form-data-file";
 import { invalidateSupportTicketsListCache } from "@/lib/api-response-cache";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
@@ -336,7 +336,7 @@ export default function SupportTicketDetailScreen() {
       const picked = await pickFromLibrary();
       if (!picked) return;
       const formData = new FormData();
-      appendFormDataFileNative(formData, "files", {
+      await appendUploadFile(formData, "files", {
         uri: picked.uri,
         name: picked.fileName || "support-image.jpg",
         type: picked.mimeType || "image/jpeg",

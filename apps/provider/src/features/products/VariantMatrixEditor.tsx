@@ -15,7 +15,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { twStyle } from "@/lib/twStyle";
 import { api } from "@/lib/api-client";
-import { appendFormDataFileNative } from "@beautonomi/utils";
+import { appendUploadFile } from "@/lib/form-data-file";
 import { useImagePicker } from "@/hooks/useImagePicker";
 import type { ProductVariantRow, VariantOptionType } from "./types";
 import { generateVariantMatrixRows } from "./variantMatrix";
@@ -52,7 +52,7 @@ export function VariantMatrixEditor({
     try {
       const formData = new FormData();
       const name = asset.fileName || `variant-${rowIndex}-${Date.now()}.jpg`;
-      appendFormDataFileNative(formData, "file", { uri: asset.uri, type: asset.mimeType || "image/jpeg", name });
+      await appendUploadFile(formData, "file", { uri: asset.uri, type: asset.mimeType || "image/jpeg", name });
       formData.append("folder", "products");
       const res = await api.fetch<{ url?: string }>("/api/upload", { method: "POST", body: formData });
       if (res.error || !res.data?.url) {

@@ -5,16 +5,11 @@ import { cn } from "@/lib/cn";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminSearchResultSpaPath } from "@/lib/adminSearchSpaPaths";
 import { adminApi } from "@/lib/adminClient";
+import { rankNavMatches, type NavGroupConfig } from "@/config/nav";
+import { NAV_REVEAL_STATE } from "@/lib/navReveal";
 
 const RECENT_SEARCHES_KEY = "admin_recent_searches";
 const RECENT_MAX = 8;
-
-export type CommandPaletteNavMatch = {
-  title: string;
-  href: string;
-  group: string;
-  icon: LucideIcon;
-};
 
 type RecentSearch = {
   query: string;
@@ -63,10 +58,11 @@ type FlatTarget = { key: string; to: string; label: string; group: string; icon?
 type CommandPaletteProps = {
   open: boolean;
   onClose: () => void;
-  navMatches: CommandPaletteNavMatch[];
+  /** RBAC-filtered sidebar groups; pages are ranked against the palette's own query. */
+  navGroups: NavGroupConfig[];
 };
 
-export function CommandPalette({ open, onClose, navMatches }: CommandPaletteProps) {
+export function CommandPalette({ open, onClose, navGroups }: CommandPaletteProps) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -120,6 +116,8 @@ export function CommandPalette({ open, onClose, navMatches }: CommandPaletteProp
     }, 300);
     return () => clearTimeout(t);
   }, [query, open]);
+
+  const navMatches = useMemo(() => rankNavMatches(query, navGroups, 8), [query, navGroups]);
 
   const flatTargets = useMemo<FlatTarget[]>(() => {
     const items: FlatTarget[] = [];
@@ -212,11 +210,16 @@ export function CommandPalette({ open, onClose, navMatches }: CommandPaletteProp
       if (query.trim().length >= 2) {
         pushRecentSearch({ query: query.trim(), label: target.label, to: target.to });
       }
-      navigate(target.to);
+      navigate(target.to, { state: NAV_REVEAL_STATE });
       onClose();
     },
     [navigate, onClose, query],
   );
+
+  useEffect(() => {
+    if (!open) return;
+    document.getElementById(`admin-command-opt-${activeIndex}`)?.scrollIntoView({ block: "nearest" });
+  }, [open, activeIndex]);
 
   const onInputKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
@@ -239,7 +242,12 @@ export function CommandPalette({ open, onClose, navMatches }: CommandPaletteProp
   return (
     <div className="fixed inset-0 z-[100] flex items-start justify-center bg-black/40 px-4 pt-[12vh]">
       <button type="button" className="absolute inset-0" aria-label="Close command palette" onClick={onClose} />
-      <div className="relative w-full max-w-xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
+        className="relative w-full max-w-xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl"
+      >
         <div className="flex items-center gap-2 border-b border-gray-100 px-3">
           <Search className="h-4 w-4 shrink-0 text-gray-400" />
           <input
@@ -253,8 +261,11 @@ export function CommandPalette({ open, onClose, navMatches }: CommandPaletteProp
             }}
             onKeyDown={onInputKeyDown}
             role="combobox"
+            aria-label="Search pages and records"
             aria-expanded
             aria-controls="admin-command-palette-results"
+            aria-autocomplete="list"
+            aria-activedescendant={flatTargets.length ? `admin-command-opt-${activeIndex}` : undefined}
           />
           <kbd className="hidden rounded border border-gray-200 px-1.5 py-0.5 text-[10px] text-gray-400 sm:inline">Esc</kbd>
         </div>
@@ -273,6 +284,7 @@ export function CommandPalette({ open, onClose, navMatches }: CommandPaletteProp
               return (
                 <button
                   key={target.key}
+                  id={`admin-command-opt-${idx}`}
                   type="button"
                   role="option"
                   aria-selected={active}
@@ -295,6 +307,11 @@ export function CommandPalette({ open, onClose, navMatches }: CommandPaletteProp
               );
             })
           )}
+        </div>
+        <div className="hidden items-center gap-3 border-t border-gray-100 px-3 py-2 text-[11px] text-gray-400 sm:flex">
+          <span>↑↓ to move</span>
+          <span>Enter to open</span>
+          <span>Esc to close</span>
         </div>
       </div>
     </div>

@@ -34,6 +34,7 @@ import {
   flattenProviderServicesToMenu,
   formatBusinessDayYYYYMMDD,
   isPublicStaffIdForBooking,
+  publicStaffSubtitle,
   mergeExpressProductCartLines,
   resolvePackageOfferingsFromFlatMenu,
   startOfBusinessDayLocalDate,
@@ -367,24 +368,44 @@ function StepIndicator({ steps, current }: { steps: Step[]; current: Step }) {
 }
 
 /* ─── Provider Summary Header ─── */
-function BookingSummaryHeader({ provider, service, variant, selectedServices }: {
+function BookingSummaryHeader({
+  provider,
+  service,
+  variant,
+  selectedServices,
+  step,
+  onChangeService,
+  hideServiceChange,
+}: {
   provider: PublicProviderDetail;
   service: ProviderService | null;
   variant: { title?: string; price: number; duration_minutes: number } | null;
   selectedServices?: SelectedServiceItem[];
+  step?: Step;
+  onChangeService?: () => void;
+  hideServiceChange?: boolean;
 }) {
   const { t } = useTranslation();
+  const bf = (key: string, opts?: Record<string, unknown>) =>
+    t(`customer.mobile.screens.bookFlow.${key}`, opts ?? {}) as string;
   const items = selectedServices && selectedServices.length > 0 ? selectedServices : null;
   const displayName = items
-    ? items.length === 1 ? items[0].title : t("customer.mobile.screens.bookFlow.servicesCount", { count: items.length })
+    ? items.length === 1
+      ? items[0].title
+      : `${items[0].title}${bf("stickySelectionMore", { count: items.length - 1 })}`
     : (variant?.title ?? service?.title);
   const displayPrice = items ? items.reduce((s, i) => s + i.price, 0) : (variant?.price ?? service?.price);
   const displayDuration = items
-    ? (items.length > 1
-        ? buildSlotParamsFromSelectedServices(items).durationMinutes
-        : items.reduce((s, i) => s + i.duration_minutes, 0))
+    ? buildSlotParamsFromSelectedServices(items).durationMinutes
     : (variant?.duration_minutes ?? service?.duration_minutes);
   const currency = provider.currency ?? items?.[0]?.currency ?? getTenantDefaultCurrency();
+  const showServiceProminent =
+    Boolean(items) &&
+    (step === "staff" || step === "date" || step === "time" || step === "addons");
+  const serviceLine =
+    displayName && displayDuration != null
+      ? `${displayName} · ${t("booking.minutes", { count: displayDuration })} · ${currency} ${Number(displayPrice ?? 0).toFixed(2)}`
+      : null;
 
   return (
     <View style={{
@@ -400,12 +421,29 @@ function BookingSummaryHeader({ provider, service, variant, selectedServices }: 
       )}
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }} numberOfLines={1}>{provider.business_name}</Text>
-        {(displayName || displayDuration != null) && (
-          <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }} numberOfLines={1}>
-            {displayName} · {t("booking.minutes", { count: displayDuration ?? 0 })} · {currency} {Number(displayPrice ?? 0).toFixed(2)}
-          </Text>
+        {serviceLine && (
+          showServiceProminent ? (
+            <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827", marginTop: 4 }} numberOfLines={2}>
+              {serviceLine}
+            </Text>
+          ) : (
+            <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }} numberOfLines={1}>
+              {serviceLine}
+            </Text>
+          )
         )}
       </View>
+      {showServiceProminent && onChangeService && !hideServiceChange ? (
+        <TouchableOpacity
+          onPress={onChangeService}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={bf("changeServiceA11y")}
+          style={{ paddingVertical: 6, paddingHorizontal: 10, marginStart: 8 }}
+        >
+          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{t("common.change")}</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }
@@ -743,6 +781,24 @@ export default function BookScreen() {
   const [creatingHold, setCreatingHold] = useState(false);
   const [addonsList, setAddonsList] = useState<{ id: string; title?: string; name?: string; price: number; duration_minutes?: number; currency?: string; is_recommended?: boolean }[]>([]);
   const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
+  const invalidateDownstreamFromServiceChange = useCallback(() => {
+    setSelectedSlot(null);
+    setSelectedAddonIds([]);
+  }, []);
+  const syncSelectedServicesFromCart = useCallback(
+    (updater: (prev: SelectedServiceItem[]) => SelectedServiceItem[]) => {
+      invalidateDownstreamFromServiceChange();
+      setSelectedServices((prev) => {
+        const next = updater(prev);
+        if (next.length === 0) {
+          setSelectedService(null);
+          setSelectedVariant(null);
+        }
+        return next;
+      });
+    },
+    [invalidateDownstreamFromServiceChange],
+  );
   const [waitlistJoining, setWaitlistJoining] = useState(false);
   /** Category id -> true when collapsed (services hidden). Used on service step for long lists. */
   const [collapsedCategoryIds, setCollapsedCategoryIds] = useState<Record<string, boolean>>({});
@@ -1914,6 +1970,15 @@ export default function BookScreen() {
     setSelectedAddonIds(valid);
   }, [addonsParam, addonsList]);
 
+  useEffect(() => {
+    if (step !== "addons" || addonsList.length === 0) return;
+    setSelectedAddonIds((prev) => {
+      if (prev.length === 0) return prev;
+      const valid = prev.filter((id) => addonsList.some((a) => a.id === id));
+      return valid.length === prev.length ? prev : valid;
+    });
+  }, [step, addonsList]);
+
   // Debounced travel fee preview when at-home address is entered
   const atHomeAddressString = useMemo(
     () =>
@@ -2155,7 +2220,9 @@ export default function BookScreen() {
       const holdData = (res.data ?? {}) as { hold_id?: string; id?: string };
       const holdId = holdData.hold_id ?? holdData.id;
       if (res.error || !holdId) {
-        setError(getBookingHoldSlotUnavailableMessage(res.error, t("booking.failedToReserveSlot")));
+        setError(
+          getBookingHoldSlotUnavailableMessage(res.error, t("booking.failedToReserveSlot"), t),
+        );
         return;
       }
 
@@ -2255,6 +2322,26 @@ export default function BookScreen() {
     else if (step === "addons") setStep("time");
     else router.back();
   }, [step, staff.length]);
+
+  const serviceStepCtaLabel = useMemo(() => {
+    if (activePackage) return bf("bookPackage", { name: activePackage.name });
+    const n = selectedServices.length;
+    if (n === 0) return bf("next");
+    if (n === 1) return bf("continueWithName", { name: selectedServices[0]!.title });
+    return bf("continueWithCount", { count: n });
+  }, [activePackage, selectedServices, bf]);
+
+  const serviceStepStickyLine = useMemo(() => {
+    if (!selectedServices.length || activePackage) return null;
+    const first = selectedServices[0]!;
+    const more = selectedServices.length - 1;
+    const duration = buildSlotParamsFromSelectedServices(selectedServices).durationMinutes;
+    const price = selectedServices.reduce((sum, s) => sum + s.price, 0);
+    const currency = first.currency;
+    const title =
+      more > 0 ? `${first.title}${bf("stickySelectionMore", { count: more })}` : first.title;
+    return `${title} · ${t("booking.minutes", { count: duration })} · ${currency} ${price.toFixed(2)}`;
+  }, [selectedServices, activePackage, bf, t]);
 
   /* ═══ Loading skeleton ═══ */
   if (loading && !provider) {
@@ -2454,7 +2541,18 @@ export default function BookScreen() {
             <StepIndicator steps={visibleSteps} current={step} />
 
             {/* Provider Summary */}
-            <BookingSummaryHeader provider={provider} service={selectedService} variant={selectedVariant} selectedServices={selectedServices.length > 0 ? selectedServices : undefined} />
+            <BookingSummaryHeader
+              provider={provider}
+              service={selectedService}
+              variant={selectedVariant}
+              selectedServices={selectedServices.length > 0 ? selectedServices : undefined}
+              step={step}
+              onChangeService={() => {
+                haptic.light();
+                setStep("service");
+              }}
+              hideServiceChange={Boolean(activePackage || packageIdForCheckout)}
+            />
 
             {/* Error banner */}
             {error && (
@@ -2608,12 +2706,19 @@ export default function BookScreen() {
                     <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 4 }}>{bf("selectServices")}</Text>
                     <Text style={{ fontSize: 14, color: "#6B7280", marginBottom: 12 }}>{bf("selectServicesHint")}</Text>
                     {selectedServices.length > 0 && (
-                      <View style={{ marginBottom: 16, padding: 14, backgroundColor: "#F0FDF4", borderRadius: 12, borderWidth: 1, borderColor: "#BBF7D0" }}>
-                        <Text style={{ fontSize: 13, fontWeight: "600", color: "#166534", marginBottom: 8 }}>{bf("yourSelection", { count: selectedServices.length })}</Text>
+                      <View style={{ marginBottom: 16, padding: 14, backgroundColor: Colors.primaryLight, borderRadius: 12, borderWidth: 1.5, borderColor: Colors.primary }}>
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.primary, marginBottom: 8 }}>{bf("yourSelection", { count: selectedServices.length })}</Text>
                         {selectedServices.map((item, idx) => (
                           <View key={`${item.offeringId}-${idx}`} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: idx < selectedServices.length - 1 ? 1 : 0, borderColor: "rgba(0,0,0,0.06)" }}>
                             <Text style={{ fontSize: 14, color: "#111827", flex: 1 }} numberOfLines={1}>{item.title} · {t("booking.minutes", { count: item.duration_minutes })} · {item.currency} {item.price.toFixed(2)}</Text>
-                            <TouchableOpacity onPress={() => { haptic.light(); setSelectedServices((prev) => prev.filter((_, i) => i !== idx)); }} hitSlop={8} accessibilityLabel={bf("removeServiceA11y")}>
+                            <TouchableOpacity
+                              onPress={() => {
+                                haptic.light();
+                                syncSelectedServicesFromCart((prev) => prev.filter((_, i) => i !== idx));
+                              }}
+                              hitSlop={8}
+                              accessibilityLabel={bf("removeServiceA11y")}
+                            >
                               <Ionicons name="close-circle" size={22} color="#B91C1C" />
                             </TouchableOpacity>
                           </View>
@@ -2696,6 +2801,9 @@ export default function BookScreen() {
                         const isAnyVariantSelected = hasVariants && svc.variants!.some(
                           (v) => selectedServices.some((s) => s.offeringId === v.id)
                         );
+                        const isPlainSelected =
+                          !hasVariants && selectedServices.some((s) => s.offeringId === svc.id);
+                        const isRowSelected = isPlainSelected || isAnyVariantSelected;
                         return (
                           <View key={svc.id} style={{ marginBottom: 6, marginStart: 4 }}>
                             <Pressable
@@ -2704,6 +2812,10 @@ export default function BookScreen() {
                                 if (hasVariants) {
                                   // Toggle variant expansion
                                   setExpandedVariantSvcIds((prev) => ({ ...prev, [svc.id]: !variantsExpanded }));
+                                } else if (isPlainSelected) {
+                                  syncSelectedServicesFromCart((prev) =>
+                                    prev.filter((s) => s.offeringId !== svc.id),
+                                  );
                                 } else {
                                   setSelectedService(svc);
                                   setSelectedVariant(null);
@@ -2715,7 +2827,7 @@ export default function BookScreen() {
                                     locationType === "at_home"
                                   );
                                   const buf = resolveOfferingBufferMinutes(svc, null);
-                                  setSelectedServices((prev) => [
+                                  syncSelectedServicesFromCart((prev) => [
                                     ...prev,
                                     {
                                       offeringId,
@@ -2732,9 +2844,9 @@ export default function BookScreen() {
                               style={{
                                 flexDirection: "row", justifyContent: "space-between", alignItems: "center",
                                 paddingVertical: 14, paddingHorizontal: 14, borderRadius: 12,
-                                backgroundColor: isAnyVariantSelected ? "#F0FDF4" : "#fff",
-                                borderWidth: 1,
-                                borderColor: isAnyVariantSelected ? "#BBF7D0" : hasVariants ? "#E5E7EB" : "#E5E7EB",
+                                backgroundColor: isRowSelected ? Colors.primaryLight : "#fff",
+                                borderWidth: isRowSelected ? 1.5 : 1,
+                                borderColor: isRowSelected ? Colors.primary : "#E5E7EB",
                               }}
                               accessibilityRole="button"
                               accessibilityLabel={
@@ -2742,9 +2854,16 @@ export default function BookScreen() {
                                   ? (variantsExpanded
                                       ? bf("variantOptionsA11yHide", { name: svc.title, count: svc.variants!.length })
                                       : bf("variantOptionsA11yShow", { name: svc.title, count: svc.variants!.length }))
-                                  : bf("addServiceA11y", { name: svc.title, minutes: svc.duration_minutes })
+                                  : isPlainSelected
+                                    ? bf("removeVariantA11y", {
+                                        name: svc.title,
+                                        minutes: svc.duration_minutes ?? 0,
+                                      })
+                                    : bf("addServiceA11y", { name: svc.title, minutes: svc.duration_minutes })
                               }
-                              accessibilityState={hasVariants ? { expanded: variantsExpanded } : undefined}
+                              accessibilityState={
+                                hasVariants ? { expanded: variantsExpanded } : { selected: isPlainSelected }
+                              }
                             >
                               <View style={{ flex: 1 }}>
                                 <Text style={{ fontWeight: "600", color: "#111827", fontSize: 15 }}>{svc.title}</Text>
@@ -2763,7 +2882,14 @@ export default function BookScreen() {
                                   t={houseCallT}
                                 />
                               )}
-                              {!hasVariants && <Ionicons name="add-circle-outline" size={22} color={Colors.primary} style={{ marginStart: 8 }} />}
+                              {!hasVariants && (
+                                <Ionicons
+                                  name={isPlainSelected ? "checkmark-circle" : "add-circle-outline"}
+                                  size={22}
+                                  color={Colors.primary}
+                                  style={{ marginStart: 8 }}
+                                />
+                              )}
                               {hasVariants && (
                                 <Ionicons
                                   name={variantsExpanded ? "chevron-up" : "chevron-down"}
@@ -2785,14 +2911,16 @@ export default function BookScreen() {
                                         setSelectedVariant(v);
                                         if (isVariantSelected) {
                                           // Deselect this variant
-                                          setSelectedServices((prev) => prev.filter((s) => s.offeringId !== v.id));
+                                          syncSelectedServicesFromCart((prev) =>
+                                            prev.filter((s) => s.offeringId !== v.id),
+                                          );
                                         } else {
                                           const { displayPrice } = computeAtHomeLinePrice(
                                             v.price,
                                             svc.at_home_price_adjustment,
                                             locationType === "at_home"
                                           );
-                                          setSelectedServices((prev) => [
+                                          syncSelectedServicesFromCart((prev) => [
                                             ...prev,
                                             {
                                               offeringId: v.id,
@@ -3394,6 +3522,7 @@ export default function BookScreen() {
                 {staff.map((s) => {
                   const isSelected = selectedStaff?.id === s.id;
                   const initial = (s.name || "S").charAt(0).toUpperCase();
+                  const publicRole = publicStaffSubtitle(s.role);
                   return (
                     <Pressable
                       key={s.id}
@@ -3420,7 +3549,7 @@ export default function BookScreen() {
                       )}
                       <View style={{ flex: 1 }}>
                         <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827" }}>{s.name}</Text>
-                        {s.role && <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>{s.role}</Text>}
+                        {publicRole ? <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>{publicRole}</Text> : null}
                       </View>
                       {isSelected && <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />}
                     </Pressable>
@@ -4022,6 +4151,14 @@ export default function BookScreen() {
               paddingHorizontal: contentPadding, paddingTop: 12, paddingBottom: 12 + Math.max(insets.bottom, 8),
               borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",
             }}>
+              {serviceStepStickyLine ? (
+                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10, paddingHorizontal: 4 }}>
+                  <Ionicons name="checkmark-circle" size={18} color={Colors.primary} style={{ marginEnd: 8 }} />
+                  <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: "#111827" }} numberOfLines={1}>
+                    {serviceStepStickyLine}
+                  </Text>
+                </View>
+              ) : null}
               <TouchableOpacity
                 onPress={() => {
                   haptic.medium();
@@ -4032,14 +4169,13 @@ export default function BookScreen() {
                   backgroundColor: selectedServices.length > 0 ? Colors.primary : "#D1D5DB",
                   borderRadius: 14, paddingVertical: 16,
                   alignItems: "center", flexDirection: "row", justifyContent: "center",
+                  paddingHorizontal: 16,
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={
                   activePackage && loading && selectedServices.length === 0
                     ? t("booking.loadingPackage", "Loading package…")
-                    : activePackage
-                      ? bf("bookPackage", { name: activePackage.name })
-                      : bf("next")
+                    : serviceStepCtaLabel
                 }
                 accessibilityState={{ disabled: selectedServices.length === 0 }}
               >
@@ -4053,12 +4189,18 @@ export default function BookScreen() {
                 ) : activePackage ? (
                   <>
                     <Ionicons name="gift-outline" size={18} color="#fff" style={{ marginEnd: 8 }} />
-                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>{bf("bookPackage", { name: activePackage.name })}</Text>
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }} numberOfLines={1} ellipsizeMode="tail">
+                      {serviceStepCtaLabel}
+                    </Text>
                   </>
                 ) : (
                   <>
-                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>{bf("next")}</Text>
-                    <DirectionalIcon name="chevron-forward" size={20} color="#fff" style={{ marginStart: 6 }} />
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16, flexShrink: 1 }} numberOfLines={1} ellipsizeMode="tail">
+                      {serviceStepCtaLabel}
+                    </Text>
+                    {selectedServices.length > 0 ? (
+                      <DirectionalIcon name="chevron-forward" size={20} color="#fff" style={{ marginStart: 6 }} />
+                    ) : null}
                   </>
                 )}
               </TouchableOpacity>

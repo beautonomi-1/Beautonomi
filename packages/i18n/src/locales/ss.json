@@ -13978,7 +13978,10 @@
             "confirmOnMap": "Cinisekisa leli likheli emephini kucasha kuletfwa.",
             "instructionsLabel": "Kuletsa instructions (lokukhetsako)",
             "instructionsPlaceholder": "Ikhodi yesango, tiphawu, lapho ushiyela i-oda…"
-          }
+          },
+          "promoGiftCard": "phromoshini & ikhadi lesipho",
+          "promotionCodePlaceholder": "Promotion ikhodi",
+          "giftCardCodePlaceholder": "ikhadi lesipho ikhodi"
         },
         "chats": {
           "searchPlaceholder": "Sesha baniketi or milayeto",
@@ -15521,7 +15524,12 @@
           "cashRefundConfirm": "Ngiyitholile",
           "cashRefundDispute": "Impikiswano",
           "cashRefundConfirmed": "Thank you — your imali lebuye is cinisekisaed.",
-          "cashRefundDisputed": "We flagged this imali lebuye for sibuyekezo."
+          "cashRefundDisputed": "We flagged this imali lebuye for sibuyekezo.",
+          "payRemainingTipTitle": "Engeta ithiphu (akuphoceleleki)",
+          "payRemainingNoTip": "Ayikho ithiphu",
+          "payRemainingCustomTip": "Lokwakho",
+          "payRemainingCustomTipPlaceholder": "Linani lethiphu",
+          "payRemainingTipLine": "Ithiphu: {{amount}} — iya nge-100% kumhlinzeki wakho"
         },
         "groupBookingDetail": {
           "back": "Emuva",
@@ -15688,7 +15696,11 @@
           "travelAboutMinutes": "~{{count}} imiz",
           "currentLocation": "kwanyalo indzawo",
           "missingHold": "Missing hledzala. Please cala your kubhuka futsi.",
-          "findProvider": "Find a umniketi"
+          "findProvider": "Find a umniketi",
+          "continueWithName": "chubeka with {{name}}",
+          "continueWithCount": "chubeka with {{count}} tinsita",
+          "changeServiceA11y": "Gucula insita",
+          "stickySelectionMore": " +{{count}}"
         },
         "identityVerificationBanner": {
           "requiredTitle": "Cinisekisa your Buhle to bhuka",
@@ -18393,7 +18405,12 @@
         "total": "Siphelele",
         "continue": "Chubeka",
         "continueAriaLabel": "chubeka to lokulandzelako step",
-        "packageDiscount": "liphakethe saphulelo"
+        "packageDiscount": "liphakethe saphulelo",
+        "continueWithName": "chubeka with {{name}}",
+        "continueWithCount": "chubeka with {{count}} tinsita",
+        "changeService": "Shintja",
+        "selectedServiceMore": " (+{{count}})",
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} emizuzu"
       },
       "confirmation": {
         "loadingMessage": "Iyalayisha Kucinisekisa kubhuka...",

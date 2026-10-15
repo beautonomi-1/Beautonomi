@@ -26,7 +26,8 @@ export async function checkResourceAvailability(
   resourceIds: string[],
   startAt: Date,
   endAt: Date,
-  excludeBookingId?: string
+  excludeBookingId?: string,
+  excludeGroupBookingId?: string,
 ): Promise<{ available: boolean; conflicts: Array<{ resource_id: string; reason: string }> }> {
   if (resourceIds.length === 0) {
     return { available: true, conflicts: [] };
@@ -52,7 +53,7 @@ export async function checkResourceAvailability(
     // to match the SQL lock_booking_resources_for_update status filter
     const { data: existingBookings, error } = await supabase
       .from('booking_resources')
-      .select('id, booking_id, bookings!inner(status)')
+      .select('id, booking_id, bookings!inner(status, group_booking_id)')
       .eq('resource_id', resourceId)
       .lt('scheduled_start_at', endAt.toISOString())
       .gt('scheduled_end_at', startAt.toISOString())
@@ -71,8 +72,20 @@ export async function checkResourceAvailability(
       continue;
     }
 
+    const occupiedRows = (existingBookings ?? []).filter((row) => {
+      const booking = (row as { bookings?: { group_booking_id?: string | null } }).bookings;
+      if (
+        excludeGroupBookingId &&
+        booking?.group_booking_id &&
+        String(booking.group_booking_id) === excludeGroupBookingId
+      ) {
+        return false;
+      }
+      return true;
+    });
+
     // Check if at capacity
-    const concurrentCount = existingBookings?.length || 0;
+    const concurrentCount = occupiedRows.length;
     if (concurrentCount >= resource.capacity) {
       conflicts.push({ resource_id: resourceId, reason: `Resource at capacity (${resource.capacity})` });
     }

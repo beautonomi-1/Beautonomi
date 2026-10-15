@@ -12,7 +12,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 function readConfig(app) {
   const file = path.join(ROOT, "apps", app, "app.config.js");
   const src = fs.readFileSync(file, "utf8");
-  const version = src.match(/version:\s*"([^"]+)"/)?.[1];
+  const version =
+    src.match(/APP_MARKETING_VERSION\s*=\s*"([^"]+)"/)?.[1] ??
+    src.match(/version:\s*"([^"]+)"/)?.[1];
   const buildNumber = src.match(/buildNumber:\s*"([^"]+)"/)?.[1];
   const versionCode = src.match(/versionCode:\s*(\d+)/)?.[1];
   const bundleId =

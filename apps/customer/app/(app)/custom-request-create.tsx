@@ -11,10 +11,13 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { haptic } from "@/lib/haptics";
 import { Colors } from "@/constants/colors";
-import { appendFormDataFileNative, CUSTOM_REQUEST_SUBMIT_EXPIRY_DAYS } from "@beautonomi/utils";
+import { CUSTOM_REQUEST_SUBMIT_EXPIRY_DAYS } from "@beautonomi/utils";
+import { appendUploadFile } from "@/lib/form-data-file";
 import { ContextualHint } from "@/components/hints/ContextualHint";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { AddressPicker, type AddressPickerSelection } from "@/components/AddressPicker";
+import { useAddresses, type SavedAddress } from "@/hooks/useAddresses";
+import { useAtHomeAddressPrefill } from "@/hooks/useAtHomeAddressPrefill";
 import { resolveDefaultCountryName } from "@/lib/market-country";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { Ionicons } from "@expo/vector-icons";
@@ -123,6 +126,33 @@ export default function CustomRequestCreateScreen() {
   const [addressPickerVisible, setAddressPickerVisible] = useState(false);
   const { bundle } = useConfigBundle();
   const defaultCountryName = resolveDefaultCountryName(bundle?.meta ?? null);
+  const atHomeSelected = locationType === "at_home";
+  const {
+    addresses: savedAddresses,
+    loading: savedAddressesLoading,
+    error: savedAddressesError,
+    reload: reloadSavedAddresses,
+  } = useAddresses(atHomeSelected && Boolean(user));
+  const { state: atHomePrefillState, prefillFromCurrentLocation } = useAtHomeAddressPrefill({
+    defaultCountry: defaultCountryName,
+  });
+  const [atHomeShowArrivalDetails, setAtHomeShowArrivalDetails] = useState(false);
+  const hasAtHomeAddressSelected = useMemo(() => {
+    const lat = atHomeCoords?.latitude;
+    const lng = atHomeCoords?.longitude;
+    return Boolean(
+      addressLine1.trim() &&
+        addressCity.trim() &&
+        lat != null &&
+        lng != null &&
+        Number.isFinite(lat) &&
+        Number.isFinite(lng),
+    );
+  }, [addressLine1, addressCity, atHomeCoords]);
+  const atHomePlaceDisplayName = useMemo(() => {
+    const parts = [addressLine1.trim(), addressCity.trim()].filter(Boolean);
+    return parts.join(", ");
+  }, [addressLine1, addressCity]);
   const [serviceCategoryId, setServiceCategoryId] = useState<string | null>(null);
   const [categories, setCategories] = useState<GlobalCategory[]>([]);
   const [selectedDate, setSelectedDate] = useState(() => dateKey(new Date()));
@@ -240,7 +270,7 @@ export default function CustomRequestCreateScreen() {
             (result.mimeType && result.mimeType.toLowerCase()) ||
             inferMimeTypeFromName(result.fileName) ||
             "image/jpeg";
-          appendFormDataFileNative(formData, "files", {
+          await appendUploadFile(formData, "files", {
             uri: result.uri,
             name: result.fileName || "image.jpg",
             type: resolvedMime,
@@ -337,26 +367,87 @@ export default function CustomRequestCreateScreen() {
     setImageUrls((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  const handleAddressPickerSelect = useCallback((selection: AddressPickerSelection) => {
-    if (selection.structured) {
-      setAddressLine1(selection.structured.address_line1);
-      setAddressLine2(selection.structured.address_line2 ?? "");
-      setAddressCity(selection.structured.city);
-      setAddressState(selection.structured.state ?? "");
-      setAddressPostalCode(selection.structured.postal_code ?? "");
-      setAddressCountry(selection.structured.country || defaultCountryName);
-    } else {
-      const parts = (selection.displayName || selection.label || "")
-        .split(",")
-        .map((part) => part.trim())
-        .filter(Boolean);
-      setAddressLine1(parts[0] || selection.label || "");
-      setAddressCity(parts[1] || "");
-      setAddressCountry(defaultCountryName);
+  const handleAddressPickerSelect = useCallback(
+    (selection: AddressPickerSelection) => {
+      const city =
+        selection.structured?.city?.trim() ||
+        (() => {
+          const display = selection.displayName || selection.label || "";
+          const parts = display.split(",").map((s) => s.trim()).filter(Boolean);
+          return parts[1] || "";
+        })();
+      if (!city) {
+        Alert.alert(t("common.error"), cr("addressRequiredBody"));
+        return;
+      }
+      if (selection.structured) {
+        setAddressLine1(selection.structured.address_line1);
+        setAddressLine2(selection.structured.address_line2 ?? "");
+        setAddressCity(selection.structured.city);
+        setAddressState(selection.structured.state ?? "");
+        setAddressPostalCode(selection.structured.postal_code ?? "");
+        setAddressCountry(selection.structured.country || defaultCountryName);
+      } else {
+        const parts = (selection.displayName || selection.label || "")
+          .split(",")
+          .map((part) => part.trim())
+          .filter(Boolean);
+        setAddressLine1(parts[0] || selection.label || "");
+        setAddressCity(city);
+        setAddressCountry(defaultCountryName);
+      }
+      setAtHomeCoords({ latitude: selection.latitude, longitude: selection.longitude });
+      setAtHomeShowArrivalDetails(false);
+      setAddressPickerVisible(false);
+    },
+    [cr, defaultCountryName, t],
+  );
+
+  const applySavedAddress = useCallback(
+    (addr: SavedAddress) => {
+      if (
+        addr.latitude == null ||
+        addr.longitude == null ||
+        !Number.isFinite(addr.latitude) ||
+        !Number.isFinite(addr.longitude)
+      ) {
+        setAddressPickerVisible(true);
+        return;
+      }
+      setAddressLine1(addr.address_line1);
+      setAddressLine2(addr.address_line2 ?? "");
+      setAddressCity(addr.city);
+      setAddressState(addr.state ?? "");
+      setAddressPostalCode(addr.postal_code ?? "");
+      setAddressCountry(addr.country || defaultCountryName);
+      setAtHomeCoords({ latitude: addr.latitude, longitude: addr.longitude });
+      setAtHomeShowArrivalDetails(false);
+    },
+    [defaultCountryName],
+  );
+
+  const handleUseCurrentLocationForAtHome = useCallback(async () => {
+    haptic.light();
+    const result = await prefillFromCurrentLocation();
+    if (!result) {
+      if (atHomePrefillState.status === "error") {
+        Alert.alert(t("common.error"), atHomePrefillState.message);
+      }
+      return;
     }
-    setAtHomeCoords({ latitude: selection.latitude, longitude: selection.longitude });
-    setAddressPickerVisible(false);
-  }, [defaultCountryName]);
+    if (!result.address.city?.trim()) {
+      Alert.alert(t("common.error"), cr("addressRequiredBody"));
+      return;
+    }
+    setAddressLine1(result.address.line1 || "");
+    setAddressLine2(result.address.line2 ?? "");
+    setAddressCity(result.address.city);
+    setAddressState(result.address.state ?? "");
+    setAddressPostalCode(result.address.postal_code ?? "");
+    setAddressCountry(result.address.country || defaultCountryName);
+    setAtHomeCoords({ latitude: result.latitude, longitude: result.longitude });
+    setAtHomeShowArrivalDetails(false);
+  }, [atHomePrefillState, cr, defaultCountryName, prefillFromCurrentLocation, t]);
 
   const submit = async () => {
     if (!provider_id) {
@@ -571,44 +662,180 @@ export default function CustomRequestCreateScreen() {
         
         {locationType === "at_home" && (
           <View style={{ marginTop: 16 }}>
-            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>{cr("addressLabel", { defaultValue: "Your address" })}</Text>
-            <TouchableOpacity
-              onPress={() => {
-                haptic.light();
-                setAddressPickerVisible(true);
-              }}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                borderWidth: 1,
-                borderColor: Colors.primary,
-                borderRadius: 12,
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                marginBottom: 12,
-                backgroundColor: Colors.primaryLight,
-              }}
-            >
-              <Ionicons name="search-outline" size={18} color={Colors.primary} />
-              <Text style={{ marginStart: 10, fontSize: 14, fontWeight: "600", color: Colors.primary }}>
-                {cr("searchAddress", { defaultValue: "Search or use current location" })}
-              </Text>
-            </TouchableOpacity>
-            <TextInput style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 8 }} placeholder={cr("addressLine1", { defaultValue: "Street address" })} placeholderTextColor={Colors.gray[400]} value={addressLine1} onChangeText={setAddressLine1} />
-            <TextInput style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 8 }} placeholder={cr("addressLine2", { defaultValue: "Unit / Suite (optional)" })} placeholderTextColor={Colors.gray[400]} value={addressLine2} onChangeText={setAddressLine2} />
-            <View style={{ flexDirection: "row", marginBottom: 8 }}>
-              <TextInput style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginEnd: 8 }} placeholder={cr("addressCity", { defaultValue: "City" })} placeholderTextColor={Colors.gray[400]} value={addressCity} onChangeText={setAddressCity} />
-              <TextInput style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 }} placeholder={cr("addressPostalCode", { defaultValue: "Postal Code" })} placeholderTextColor={Colors.gray[400]} value={addressPostalCode} onChangeText={setAddressPostalCode} />
-            </View>
-            <TextInput style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 8 }} placeholder={cr("addressState", { defaultValue: "Province / State" })} placeholderTextColor={Colors.gray[400]} value={addressState} onChangeText={setAddressState} />
-            {atHomeCoords ? (
-              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
-                {cr("addressPinned", { defaultValue: "Location pinned on map" })}
-              </Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>
+              {cr("addressLabel", { defaultValue: "Your address" })}
+            </Text>
+            {!hasAtHomeAddressSelected ? (
+              <>
+                <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 12 }}>
+                  {cr("addressCoordsHint", {
+                    defaultValue: "Search for your address, pick a saved one, or use your current location.",
+                  })}
+                </Text>
+                {savedAddressesError ? (
+                  <View style={{ marginBottom: 12 }}>
+                    <Text style={{ fontSize: 13, color: "#991B1B", marginBottom: 8 }}>{savedAddressesError}</Text>
+                    <TouchableOpacity onPress={() => void reloadSavedAddresses()} accessibilityRole="button">
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{t("common.retry")}</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+                {user && savedAddresses.length > 0 ? (
+                  <View style={{ marginBottom: 8 }}>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: "#6B7280", marginBottom: 8 }}>
+                      {t("booking.savedAddresses")}
+                    </Text>
+                    {savedAddresses.map((addr) => {
+                      const isSelected =
+                        addressLine1 === addr.address_line1 && addressCity === addr.city && hasAtHomeAddressSelected;
+                      return (
+                        <Pressable
+                          key={addr.id}
+                          onPress={() => {
+                            haptic.light();
+                            applySavedAddress(addr);
+                          }}
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            paddingVertical: 12,
+                            paddingHorizontal: 14,
+                            marginBottom: 6,
+                            borderRadius: 12,
+                            borderWidth: 1.5,
+                            borderColor: isSelected ? Colors.primary : "#E5E7EB",
+                            backgroundColor: isSelected ? Colors.primaryLight : "#F9FAFB",
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: 18,
+                              backgroundColor: "#E5E7EB",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              marginEnd: 10,
+                            }}
+                          >
+                            <Ionicons
+                              name={addr.is_default ? "star" : "home-outline"}
+                              size={18}
+                              color={isSelected ? Colors.primary : "#6B7280"}
+                            />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{addr.label}</Text>
+                            <Text style={{ fontSize: 12, color: "#6B7280" }} numberOfLines={1}>
+                              {addr.address_line1}, {addr.city}
+                            </Text>
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : savedAddressesLoading ? (
+                  <ActivityIndicator size="small" color={Colors.primary} style={{ marginBottom: 12 }} />
+                ) : null}
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 4 }}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      haptic.light();
+                      setAddressPickerVisible(true);
+                    }}
+                    style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="search-outline" size={18} color={Colors.primary} style={{ marginEnd: 8 }} />
+                    <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.primary }}>
+                      {t("booking.searchAddress")}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => void handleUseCurrentLocationForAtHome()}
+                    disabled={atHomePrefillState.status === "locating"}
+                    style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}
+                    accessibilityRole="button"
+                  >
+                    {atHomePrefillState.status === "locating" ? (
+                      <ActivityIndicator size="small" color={Colors.primary} style={{ marginEnd: 8 }} />
+                    ) : (
+                      <Ionicons name="navigate-outline" size={18} color={Colors.primary} style={{ marginEnd: 8 }} />
+                    )}
+                    <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.primary }}>
+                      {t("booking.useCurrentLocation")}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {atHomePrefillState.status === "error" ? (
+                  <Text style={{ fontSize: 12, color: "#B45309", marginTop: 4 }}>{atHomePrefillState.message}</Text>
+                ) : null}
+              </>
             ) : (
-              <Text style={{ fontSize: 12, color: "#B45309" }}>
-                {cr("addressCoordsHint", { defaultValue: "Use search, current location, or map pin to set your location." })}
-              </Text>
+              <>
+                <View
+                  style={{
+                    padding: contentPadding,
+                    borderRadius: 16,
+                    borderWidth: 1.5,
+                    borderColor: Colors.primary,
+                    backgroundColor: Colors.primaryLight,
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[600], marginBottom: 4 }}>
+                        {cr("atHome")}
+                      </Text>
+                      <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{atHomePlaceDisplayName}</Text>
+                      <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 4 }}>
+                        {cr("addressPinned", { defaultValue: "Location pinned on map" })}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => {
+                        haptic.light();
+                        setAddressPickerVisible(true);
+                      }}
+                      accessibilityRole="button"
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>
+                        {t("common.change", { defaultValue: "Change" })}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                {!atHomeShowArrivalDetails ? (
+                  <TouchableOpacity
+                    onPress={() => setAtHomeShowArrivalDetails(true)}
+                    style={{ marginTop: 12, paddingVertical: 10 }}
+                    accessibilityRole="button"
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>
+                      {t("booking.additionalLocationTitle")}
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={{ marginTop: 12 }}>
+                    <Text style={{ fontSize: 13, color: Colors.gray[600], marginBottom: 8 }}>
+                      {cr("addressLine2", { defaultValue: "Unit / complex / gate code (optional)" })}
+                    </Text>
+                    <TextInput
+                      style={{
+                        borderWidth: 1,
+                        borderColor: Colors.gray[200],
+                        borderRadius: 12,
+                        paddingHorizontal: 16,
+                        paddingVertical: 12,
+                      }}
+                      placeholder={cr("addressLine2", { defaultValue: "Unit / Suite (optional)" })}
+                      placeholderTextColor={Colors.gray[400]}
+                      value={addressLine2}
+                      onChangeText={setAddressLine2}
+                    />
+                  </View>
+                )}
+              </>
             )}
           </View>
         )}

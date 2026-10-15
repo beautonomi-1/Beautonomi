@@ -16,15 +16,47 @@ const SLOT_ERROR_MESSAGES: Record<string, string> = {
 export const DEFAULT_HOLD_FAILURE_MESSAGE =
   "Could not reserve your time slot. Please choose another available time.";
 
-export function getBookingHoldFailureMessage(error: unknown): string {
+function readRetryAfterSeconds(error: unknown): number | null {
+  if (error == null || typeof error !== "object") return null;
+  const details = (error as { details?: unknown }).details;
+  if (!details || typeof details !== "object") return null;
+  const raw = (details as { retry_after_seconds?: unknown }).retry_after_seconds;
+  if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) return Math.ceil(raw);
+  return null;
+}
+
+export function getBookingHoldFailureMessage(
+  error: unknown,
+  t?: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  const code =
+    error != null && typeof error === "object"
+      ? ((error as { code?: string }).code ??
+        (error as { error?: { code?: string } }).error?.code)
+      : undefined;
+  if (code === "RATE_LIMIT_EXCEEDED") {
+    const retrySec = readRetryAfterSeconds(error);
+    if (retrySec != null) {
+      const minutes = Math.max(1, Math.ceil(retrySec / 60));
+      return (
+        t?.("checkout.holdRateLimitWait", { minutes }) ??
+        `Too many attempts. Try again in ${minutes} min.`
+      );
+    }
+    const serverMsg =
+      error != null && typeof error === "object" && typeof (error as { message?: string }).message === "string"
+        ? (error as { message: string }).message.trim()
+        : "";
+    if (serverMsg) return serverMsg;
+  }
   if (error == null || typeof error !== "object") return DEFAULT_HOLD_FAILURE_MESSAGE;
   const { details, status, message } = error as {
     details?: { slot_error_code?: unknown };
     status?: unknown;
     message?: unknown;
   };
-  const code = details && typeof details === "object" ? details.slot_error_code : undefined;
-  if (typeof code === "string" && SLOT_ERROR_MESSAGES[code]) return SLOT_ERROR_MESSAGES[code];
+  const slotCode = details && typeof details === "object" ? details.slot_error_code : undefined;
+  if (typeof slotCode === "string" && SLOT_ERROR_MESSAGES[slotCode]) return SLOT_ERROR_MESSAGES[slotCode];
   if (status === 409 && typeof message === "string" && message.trim()) return message.trim();
   return DEFAULT_HOLD_FAILURE_MESSAGE;
 }

@@ -36,8 +36,8 @@ import {
   splitPhoneForNationalInput,
   validateNationalPhoneDigits,
 } from "@/lib/phone-country-codes";
+import { appendUploadFile } from "@/lib/form-data-file";
 import {
-  appendFormDataFileNative,
   appleDisplayNameFallback,
   composeLegalDobIso,
   countryFilterIso2FromStorage,
@@ -2073,7 +2073,7 @@ async function uploadOnboardingImage(
   name: string
 ): Promise<string | null> {
   const formData = new FormData();
-  appendFormDataFileNative(formData, "file", { uri, type: mime, name });
+  await appendUploadFile(formData, "file", { uri, type: mime, name });
   formData.append("folder", "provider-onboarding");
   const res = await api.fetch<{ url?: string }>("/api/upload", {
     method: "POST",

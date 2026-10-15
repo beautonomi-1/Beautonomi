@@ -321,9 +321,5 @@ export default function AppLayout() {
     </MaintenanceGate>
   );
 
-  if (session) {
-    return <LegalAcceptanceGate>{shell}</LegalAcceptanceGate>;
-  }
-
-  return shell;
+  return <LegalAcceptanceGate enabled={!!session}>{shell}</LegalAcceptanceGate>;
 }

@@ -9,6 +9,7 @@ import { countAllOpenSafetyEvents, countOpenSafetyEventsForTenant } from "@/lib/
 import { USER_VERIFICATION_QUEUE_STATUSES } from "@/lib/admin/verification-queue-statuses";
 import { filterVerificationsForAdminTenant } from "@/lib/admin/verification-tenant-access";
 import { countSupportTicketsForNav } from "@/lib/support/support-ticket-nav-count";
+import { getSupportAgentTenantIds, isSupportAgentRole } from "@/lib/support/support-agent-tenant-scope";
 import { countAgentProposalsBySection, countAgentProposalsForNav } from "@/lib/ai/agent-proposal-nav-count";
 import {
   isStalledByThreshold,
@@ -74,9 +75,13 @@ export async function GET(request: NextRequest) {
         .eq("providers.tenant_id", tenantId),
       (async () => {
         // Human support staff queue depth (needs_agent_response when migration 726 applied).
+        const supportAgentTenantIds = isSupportAgentRole(user.role)
+          ? await getSupportAgentTenantIds(supabase, user.id)
+          : [];
         const { awaiting_response, sla_breached } = await countSupportTicketsForNav(supabase, {
           role: user.role,
           tenantProviderIds,
+          supportAgentTenantIds,
         });
         return { count: awaiting_response, sla_breached };
       })(),

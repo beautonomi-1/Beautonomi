@@ -16,7 +16,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
-import { appendFormDataFileNative } from "@beautonomi/utils";
+import { appendUploadFile } from "@/lib/form-data-file";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -112,7 +112,7 @@ export default function GalleryScreen() {
       const uri = asset.uri;
       const mime = asset.mimeType ?? "image/jpeg";
       const formData = new FormData();
-      appendFormDataFileNative(formData, "file", {
+      await appendUploadFile(formData, "file", {
         uri,
         name: asset.fileName ?? fileNameFromUri(uri),
         type: mime,

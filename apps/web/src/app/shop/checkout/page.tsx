@@ -25,6 +25,11 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { PickupStoreCard, type PickupStoreLocation } from "@/components/shop/PickupStoreCard";
 import { useTranslation } from "@beautonomi/i18n";
+import {
+  filterUsableGiftCards,
+  type GiftCardListRow,
+} from "@/lib/checkout/filter-usable-gift-cards";
+import { OwnedGiftCardPicker } from "@/components/checkout/OwnedGiftCardPicker";
 
 interface CartItem {
   id: string;
@@ -110,6 +115,7 @@ export default function ProductCheckoutPage() {
   const [useWallet, setUseWallet] = useState(false);
   const [promotionCode, setPromotionCode] = useState("");
   const [giftCardCode, setGiftCardCode] = useState("");
+  const [ownedGiftCards, setOwnedGiftCards] = useState<GiftCardListRow[]>([]);
   const [walletBalance, setWalletBalance] = useState(0);
   const [platformFeeConfig, setPlatformFeeConfig] = useState({
     type: "fixed",
@@ -128,6 +134,32 @@ export default function ProductCheckoutPage() {
     primaryOnlineGateway === "flutterwave";
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const providerTimezone = bundle?.meta?.tenant_region?.timezone ?? "Africa/Johannesburg";
+
+  useEffect(() => {
+    if (!user) {
+      setOwnedGiftCards([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const raw = await fetcher.get<unknown>("/api/me/gift-cards", { staleTimeMs: 0 });
+        const inner =
+          raw && typeof raw === "object" && "data" in (raw as object)
+            ? (raw as { data?: { gift_cards?: GiftCardListRow[] } }).data
+            : (raw as { gift_cards?: GiftCardListRow[] });
+        const list = inner?.gift_cards ?? [];
+        if (!cancelled) {
+          setOwnedGiftCards(filterUsableGiftCards(list, tenantCurrency));
+        }
+      } catch {
+        if (!cancelled) setOwnedGiftCards([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, tenantCurrency]);
 
   const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
   const [cardsLoading, setCardsLoading] = useState(false);
@@ -980,22 +1012,29 @@ export default function ProductCheckoutPage() {
           )}
 
           <div className="bg-white rounded-xl border p-6">
-            <h3 className="font-semibold text-gray-900 mb-4">Promo & gift card</h3>
+            <h3 className="font-semibold text-gray-900 mb-4">{shopT("promoGiftCard")}</h3>
             <div className="space-y-3">
               <input
                 value={promotionCode}
                 onChange={(e) => setPromotionCode(e.target.value)}
-                placeholder="Promotion code"
+                placeholder={shopT("promotionCodePlaceholder")}
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
                 autoCapitalize="characters"
               />
               <input
                 value={giftCardCode}
-                onChange={(e) => setGiftCardCode(e.target.value)}
-                placeholder="Gift card code"
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                onChange={(e) => setGiftCardCode(e.target.value.toUpperCase())}
+                placeholder={shopT("giftCardCodePlaceholder")}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono"
                 autoCapitalize="characters"
               />
+              {user && ownedGiftCards.length > 0 && !giftCardCode.trim() ? (
+                <OwnedGiftCardPicker
+                  cards={ownedGiftCards}
+                  currency={tenantCurrency}
+                  onSelect={(code) => setGiftCardCode(code)}
+                />
+              ) : null}
             </div>
           </div>
 

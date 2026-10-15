@@ -105,6 +105,7 @@ export async function resolveBookingPendingAmount(
     .eq("user_id", userId)
     .in("payment_provider", [...ONLINE_CARD_PAYMENT_PROVIDERS])
     .eq("status", "pending")
+    .or("metadata->>type.is.null,metadata->>type.not.in.(booking_remaining,additional_charge)")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();

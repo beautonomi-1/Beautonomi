@@ -13978,7 +13978,10 @@
             "confirmOnMap": "Confirmez cette adresse sur la carte pour vérifier la livraison.",
             "instructionsLabel": "Delivery instructions (si lazima)",
             "instructionsPlaceholder": "Code d'accès, repères, où déposer la commande…"
-          }
+          },
+          "promoGiftCard": "Promo & kadi ya zawadi",
+          "promotionCodePlaceholder": "Msimbo wa promosheni",
+          "giftCardCodePlaceholder": "Msimbo wa kadi ya zawadi"
         },
         "chats": {
           "searchPlaceholder": "Tafuta watoa huduma or ujumbe",
@@ -15688,7 +15691,11 @@
           "travelAboutMinutes": "~dakika {{count}}",
           "currentLocation": "Eneo la sasa",
           "missingHold": "Uhifadhi wa muda haupo. Tafadhali anza uhifadhi tena.",
-          "findProvider": "Tafuta mtoa huduma"
+          "findProvider": "Tafuta mtoa huduma",
+          "continueWithCount": "Continue with {{count}} huduma",
+          "changeServiceA11y": "Change huduma",
+          "stickySelectionMore": " +{{count}}",
+          "continueWithName": "Endelea na {{name}}"
         },
         "identityVerificationBanner": {
           "requiredTitle": "Thibitisha utambulisho wako ili kuweka nafasi",
@@ -18393,7 +18400,12 @@
         "total": "Jumla",
         "continue": "Endelea",
         "continueAriaLabel": "Continue to ifuatayo step",
-        "packageDiscount": "Package punguzo"
+        "packageDiscount": "Package punguzo",
+        "continueWithCount": "Continue with {{count}} huduma",
+        "changeService": "Badilisha",
+        "selectedServiceMore": " (+{{count}})",
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} dakika",
+        "continueWithName": "Endelea na {{name}}"
       },
       "confirmation": {
         "loadingMessage": "Inapakia uhifadhi confirmation...",

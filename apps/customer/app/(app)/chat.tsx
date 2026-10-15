@@ -19,7 +19,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { Ionicons } from "@expo/vector-icons";
 import { chatFlatListPerf } from "@/lib/flatListPerformance";
-import { appendFormDataFileNative } from "@beautonomi/utils";
+import { appendUploadFile } from "@/lib/form-data-file";
 import { CustomOfferCard } from "@beautonomi/ui/native";
 import { getApiErrorMessage, getApiErrorMessageWithSafety } from "@/lib/api-error";
 import { useTranslation, i18n } from "@beautonomi/i18n";
@@ -963,7 +963,7 @@ export default function ChatScreen() {
     if (!id) return;
     const formData = new FormData();
     formData.append("conversation_id", id);
-    appendFormDataFileNative(formData, "files", {
+    await appendUploadFile(formData, "files", {
       uri: file.uri,
       name: file.name,
       type: file.type || "application/octet-stream",

@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import Image from "next/image";
+import { publicStaffSubtitle } from "@beautonomi/utils";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
@@ -9,7 +10,7 @@ import { usePartnerProfileT } from "@/lib/i18n/use-partner-profile-t";
 type TeamMember = {
   id: string;
   name: string;
-  role: string;
+  role?: string | null;
   avatar_url?: string;
   bio?: string;
   specialties?: string[];
@@ -92,7 +93,9 @@ const PartnerTeam: React.FC<PartnerTeamProps> = ({ slug, id: _id }) => {
     <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-8">
       <h2 className="text-2xl font-semibold mb-6">{pp("tabTeam")}</h2>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        {teamMembers.map((member) => (
+        {teamMembers.map((member) => {
+          const publicRole = publicStaffSubtitle(member.role);
+          return (
           <div key={member.id} className="flex flex-col items-center text-center">
             <div className="relative w-20 h-20 mb-3">
               {member.avatar_url ? (
@@ -110,14 +113,15 @@ const PartnerTeam: React.FC<PartnerTeamProps> = ({ slug, id: _id }) => {
               )}
             </div>
             <p className="font-medium text-sm mb-1">{member.name}</p>
-            <p className="text-gray-500 text-xs">{member.role || pp("staffFallback")}</p>
+            {publicRole ? <p className="text-gray-500 text-xs">{publicRole}</p> : null}
             {member.specialties && member.specialties.length > 0 && (
               <p className="text-gray-400 text-xs mt-1">
                 {member.specialties.join(", ")}
               </p>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

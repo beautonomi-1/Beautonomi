@@ -177,6 +177,9 @@ export const AppleSettlementsPage = lazy(() =>
 export const ResendIntegrationPage = lazy(() =>
   import("@/routes/integrations/ResendIntegrationPage").then((m) => ({ default: m.ResendIntegrationPage }))
 );
+export const ZohoMailIntegrationPage = lazy(() =>
+  import("@/routes/integrations/ZohoMailIntegrationPage").then((m) => ({ default: m.ZohoMailIntegrationPage }))
+);
 export const PromotionsListPage = lazy(() =>
   import("@/routes/marketing/PromotionsListPage").then((m) => ({ default: m.PromotionsListPage }))
 );
