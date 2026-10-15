@@ -54,6 +54,7 @@ import {
   formatMoney,
   formatProviderDescriptionDisplay,
   formatProviderDescriptionForProfilePreview,
+  publicStaffSubtitle,
   PROVIDER_GALLERY_CONTENT_POSITION,
   providerGalleryFrameHeight,
 } from "@beautonomi/utils";
@@ -1045,6 +1046,7 @@ function getRelativeTime(date: Date, t: TFunction, locale: string): string {
 /* ─── Staff Card ─── */
 function StaffCard({ member, contentPadding }: { member: StaffMember; contentPadding: number }) {
   const initial = (member.name || "S").charAt(0).toUpperCase();
+  const publicRole = publicStaffSubtitle(member.role);
   return (
     <View style={{
       backgroundColor: "#fff", borderRadius: 16, padding: contentPadding, marginBottom: 10,
@@ -1061,9 +1063,9 @@ function StaffCard({ member, contentPadding }: { member: StaffMember; contentPad
         )}
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 16, fontWeight: "600", color: "#111827" }}>{member.name}</Text>
-          {member.role && (
-            <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>{member.role}</Text>
-          )}
+          {publicRole ? (
+            <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>{publicRole}</Text>
+          ) : null}
         </View>
       </View>
       {member.bio ? (

@@ -136,6 +136,80 @@ export function flattenNavItems(groups: NavGroupConfig[]): FlatNavItem[] {
   return out;
 }
 
+function navHrefToSpaPath(href: string): string {
+  const rest = href.trim().replace(/^\/admin\/?/, "").replace(/\/+$/, "");
+  return rest ? `/${rest.replace(/^\/+/, "")}` : "/";
+}
+
+function normalizeSpaPathname(pathname: string): string {
+  const p = pathname.replace(/^\/admin(?=\/|$)/, "").replace(/\/+$/, "");
+  return p || "/";
+}
+
+/**
+ * The single most specific nav href for a SPA pathname (longest prefix wins), so
+ * `/finance/ai-queue` selects "Finance AI queue" rather than also lighting up "Finance",
+ * and entity deep links like `/bookings/:id` select "Bookings".
+ */
+export function resolveActiveNavHref(pathname: string, groups: NavGroupConfig[]): string | null {
+  const path = normalizeSpaPathname(pathname);
+  let best: { href: string; len: number } | null = null;
+  for (const item of flattenNavItems(groups)) {
+    const spa = navHrefToSpaPath(item.href);
+    if (spa === "/") continue;
+    if (path !== spa && !path.startsWith(`${spa}/`)) continue;
+    if (!best || spa.length > best.len) best = { href: item.href, len: spa.length };
+  }
+  return best?.href ?? null;
+}
+
+/** True when `href` or any descendant is the active nav href. */
+export function navItemContainsHref(item: NavItemConfig, href: string | null): boolean {
+  if (!href) return false;
+  if (item.href === href) return true;
+  return (item.children ?? []).some((c) => navItemContainsHref(c, href));
+}
+
+export type NavSearchMatch = { title: string; href: string; group: string; icon: LucideIcon };
+
+/** Client-side page suggestions. Ranked: title-prefix > title-substring > parent/group match. */
+export function rankNavMatches(query: string, groups: NavGroupConfig[], limit = 6): NavSearchMatch[] {
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) return [];
+  const scored: Array<{ m: NavSearchMatch; score: number }> = [];
+  const seen = new Set<string>();
+  for (const group of groups) {
+    const walk = (items: NavItemConfig[], parentTitle: string | null) => {
+      for (const item of items) {
+        if (!seen.has(item.href)) {
+          const title = item.title.toLowerCase();
+          let score = -1;
+          if (title.startsWith(q)) score = 0;
+          else if (title.includes(q)) score = 1;
+          else if (parentTitle?.toLowerCase().includes(q) || group.label.toLowerCase().includes(q)) score = 2;
+          if (score >= 0) {
+            seen.add(item.href);
+            scored.push({
+              m: {
+                title: item.title,
+                href: item.href,
+                group:
+                  parentTitle && parentTitle !== group.label ? `${group.label} › ${parentTitle}` : group.label,
+                icon: item.icon,
+              },
+              score,
+            });
+          }
+        }
+        if (item.children?.length) walk(item.children, item.title);
+      }
+    };
+    walk(group.items, null);
+  }
+  scored.sort((a, b) => a.score - b.score || a.m.title.localeCompare(b.m.title));
+  return scored.slice(0, limit).map((s) => s.m);
+}
+
 /** RBAC-filter a nav tree; keeps hub rows when any child is visible. */
 export function filterNavTree(
   item: NavItemConfig,
@@ -409,6 +483,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
           { title: "API Keys", href: "/admin/api-keys", icon: Shield, section: ADMIN_SECTION_INTEGRATIONS_DEV },
           { title: "Paystack", href: "/admin/integrations/paystack", icon: CreditCard, section: ADMIN_SECTION_INTEGRATIONS_DEV },
           { title: "Resend", href: "/admin/integrations/resend", icon: Mail, section: ADMIN_SECTION_INTEGRATIONS_DEV },
+          { title: "Zoho Mail", href: "/admin/integrations/zoho-mail", icon: Mail, section: ADMIN_SECTION_INTEGRATIONS_DEV },
           { title: "Slack", href: "/admin/integrations/slack", icon: MessageSquare, section: ADMIN_SECTION_INTEGRATIONS_DEV },
           { title: "Calls (Voice / Salestrail)", href: "/admin/integrations/calls", icon: Phone, section: ADMIN_SECTION_INTEGRATIONS_DEV, superadminOnly: true },
           { title: "Amplitude", href: "/admin/integrations/amplitude", icon: BarChart3, section: ADMIN_SECTION_INTEGRATIONS_DEV },

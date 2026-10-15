@@ -37,7 +37,80 @@ const payRemainingBodySchema = z.object({
   callback_url: z.string().optional(),
   use_wallet: z.boolean().optional(),
   gift_card_code: z.string().optional(),
+  tip_amount: z.number().nonnegative().optional(),
 });
+
+function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+async function loadProviderTipsEnabled(providerId: string | null | undefined): Promise<boolean> {
+  if (!providerId) return true;
+  const { data } = await getSupabaseAdmin()
+    .from("providers")
+    .select("tips_enabled")
+    .eq("id", providerId)
+    .maybeSingle();
+  return (data as { tips_enabled?: boolean | null } | null)?.tips_enabled !== false;
+}
+
+/**
+ * GET /api/me/bookings/[id]/pay-remaining — preview balance and tip settings.
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id: bookingId } = await params;
+    const { user } = await requireRoleInApi(["customer"], request);
+    const supabase = await getSupabaseServer(request);
+
+    const { data: booking, error: bookingError } = await supabase
+      .from("bookings")
+      .select(
+        "id, customer_id, provider_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, currency, tip_amount, platform_fee_amount, service_fee_amount",
+      )
+      .eq("id", bookingId)
+      .eq("customer_id", user.id)
+      .single();
+
+    if (bookingError || !booking) {
+      return notFoundResponse("Booking not found");
+    }
+
+    const totalAmount = Number(booking.total_amount ?? 0);
+    const remaining = computeBookingOutstandingDisplay({
+      totalAmount,
+      totalPaid: Number(booking.total_paid ?? 0),
+      totalRefunded: Number((booking as { total_refunded?: number }).total_refunded ?? 0),
+      walletAmount: Number((booking as { wallet_amount?: number }).wallet_amount ?? 0),
+      giftCardAmount: Number((booking as { gift_card_amount?: number }).gift_card_amount ?? 0),
+      unpaidAdditionalCharges: 0,
+      paymentStatus: booking.payment_status,
+    });
+
+    const fee =
+      Number((booking as { platform_fee_amount?: number }).platform_fee_amount ?? 0) ||
+      Number((booking as { service_fee_amount?: number }).service_fee_amount ?? 0);
+    const serviceTipBase = Math.max(
+      0,
+      totalAmount - Number((booking as { tip_amount?: number }).tip_amount ?? 0) - fee,
+    );
+    const tipsEnabled = await loadProviderTipsEnabled(
+      (booking as { provider_id?: string | null }).provider_id,
+    );
+
+    return successResponse({
+      remaining_balance: remaining,
+      currency: booking.currency,
+      tips_enabled: tipsEnabled,
+      service_tip_base: roundMoney(serviceTipBase),
+    });
+  } catch (error) {
+    return handleApiError(error, "Failed to load pay-remaining preview");
+  }
+}
 
 /**
  * POST /api/me/bookings/[id]/pay-remaining
@@ -74,7 +147,7 @@ export async function POST(
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
       .select(
-        "id, customer_id, provider_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, currency, booking_number, ref_number, status, tenant_id, additional_charges:additional_charges(id, amount, status)"
+        "id, customer_id, provider_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, currency, booking_number, ref_number, status, tenant_id, tip_amount, tax_amount, travel_fee, service_fee_amount, platform_fee_amount, additional_charges:additional_charges(id, amount, status)",
       )
       .eq("id", bookingId)
       .eq("customer_id", user.id)
@@ -133,7 +206,27 @@ export async function POST(
       paymentStatus: booking.payment_status,
     });
 
-    if (remaining <= 0) {
+    const requestedTip = roundMoney(Number(body.tip_amount ?? 0));
+    const feeForTip =
+      Number((booking as { platform_fee_amount?: number }).platform_fee_amount ?? 0) ||
+      Number((booking as { service_fee_amount?: number }).service_fee_amount ?? 0);
+    const serviceTipBase = Math.max(
+      0,
+      totalAmount - Number((booking as { tip_amount?: number }).tip_amount ?? 0) - feeForTip,
+    );
+    const tipsEnabled =
+      requestedTip > 0
+        ? await loadProviderTipsEnabled((booking as { provider_id?: string | null }).provider_id)
+        : true;
+
+    if (requestedTip > 0 && !tipsEnabled) {
+      return errorResponse("Tips are not enabled for this provider", "TIPS_DISABLED", 400);
+    }
+    if (requestedTip > serviceTipBase + 0.01) {
+      return errorResponse("Tip amount is too large for this booking", "VALIDATION_ERROR", 400);
+    }
+
+    if (remaining <= 0 && requestedTip <= 0) {
       return errorResponse(
         "No remaining balance to pay",
         "NO_REMAINING_BALANCE",
@@ -161,7 +254,7 @@ export async function POST(
 
     let walletAmountApplied = 0;
     let giftCardAmountApplied = 0;
-    let paystackAmount = remaining;
+    let paystackAmount = roundMoney(remaining + requestedTip);
 
     if (useWallet || giftCardCode) {
       const applied = await applyCollectibleGiftAndWallet({
@@ -184,9 +277,9 @@ export async function POST(
       }
       walletAmountApplied = applied.walletAmountApplied;
       giftCardAmountApplied = applied.giftCardAmountApplied;
-      paystackAmount = applied.paystackAmount;
+      paystackAmount = roundMoney(applied.paystackAmount + requestedTip);
 
-      if (applied.fullySettled) {
+      if (applied.fullySettled && requestedTip <= 0) {
         try {
           if (giftCardAmountApplied > 0) {
             await (admin.rpc as any)("capture_gift_card_redemption", { p_booking_id: bookingId });
@@ -250,6 +343,12 @@ export async function POST(
           throw settleErr;
         }
       }
+
+      if (applied.fullySettled && requestedTip > 0) {
+        paystackAmount = requestedTip;
+        walletAmountApplied = applied.walletAmountApplied;
+        giftCardAmountApplied = applied.giftCardAmountApplied;
+      }
     }
 
     const { data: customer } = await supabase
@@ -297,6 +396,8 @@ export async function POST(
           cancel_action: remainingCancelAction,
           wallet_amount_applied: walletAmountApplied,
           gift_card_amount_applied: giftCardAmountApplied,
+          tip_amount: requestedTip,
+          balance_amount: remaining,
         },
       });
     } catch (initErr) {
@@ -331,6 +432,45 @@ export async function POST(
         });
       }
       throw new Error("Failed to generate payment link");
+    }
+
+    // verifyBookingCharge (webhook + verify-reference) only accepts a charge that
+    // matches a server-issued pending `payments` row for this reference.
+    const { error: pendingInsertError } = await (admin.from("payments") as any).insert({
+      booking_id: bookingId,
+      user_id: user.id,
+      provider_id: providerId || null,
+      payment_number: "",
+      amount: paystackAmount,
+      currency,
+      status: "pending",
+      payment_provider: onlineInit.provider,
+      payment_provider_transaction_id: reference,
+      payment_provider_response: onlineInit,
+      description: `Remaining balance for booking ${bookingNumber}`,
+      metadata: {
+        type: "booking_remaining",
+        wallet_amount_applied: walletAmountApplied,
+        gift_card_amount_applied: giftCardAmountApplied,
+        tip_amount: requestedTip,
+        balance_amount: remaining,
+      },
+    });
+    if (pendingInsertError) {
+      if (paymentLegSuffix && (walletAmountApplied > 0 || giftCardAmountApplied > 0)) {
+        await rollbackCollectibleSplitLeg(admin, {
+          bookingId,
+          customerId: user.id,
+          currency,
+          tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? null,
+          providerId,
+          walletAmountToReverse: walletAmountApplied,
+          giftCardAmountToReverse: giftCardAmountApplied,
+          paymentLegSuffix,
+          idempotencyKey: `pay_remaining_rollback:${reference}`,
+        });
+      }
+      throw new Error(`Failed to record pending payment: ${pendingInsertError.message}`);
     }
 
     const payRemainingBody = {

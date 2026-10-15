@@ -36,6 +36,18 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getSupabaseAdmin();
+    const { filterSupportTicketIdsForStaffAccess } = await import(
+      "@/lib/support/assert-staff-ticket-access"
+    );
+    const scopedIds = await filterSupportTicketIdsForStaffAccess(supabase, {
+      role: user.role,
+      userId: user.id,
+      ticketIds,
+    });
+    if (scopedIds.length === 0) {
+      return errorResponse("Ticket not found", "NOT_FOUND", 404);
+    }
+
     const updates: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
@@ -60,7 +72,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabase
       .from("support_tickets")
       .update(updates)
-      .in("id", ticketIds)
+      .in("id", scopedIds)
       .select("id");
 
     if (error) throw error;

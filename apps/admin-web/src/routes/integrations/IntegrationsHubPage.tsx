@@ -86,6 +86,13 @@ export function IntegrationsHubPage() {
           accent: "from-sky-600 to-blue-800",
         },
         {
+          to: adminSpaTo("/admin/integrations/zoho-mail"),
+          label: "Zoho Mail",
+          description: "Support inbox sync and desk replies.",
+          icon: Mail,
+          accent: "from-teal-600 to-cyan-800",
+        },
+        {
           to: adminSpaTo("/admin/integrations/slack"),
           label: "Slack",
           description: "Workspace alerts for ops teams.",

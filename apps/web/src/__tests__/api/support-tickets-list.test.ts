@@ -80,7 +80,7 @@ describe("GET /api/admin/support-tickets", () => {
     expect(builder.is).toHaveBeenCalledWith("assigned_to", null);
     expect(builder.eq).toHaveBeenCalledWith("user_id", "user-123");
     expect(builder.or).toHaveBeenCalledWith(
-      "subject.ilike.%abc123%,ticket_number.ilike.%abc123%,description.ilike.%abc123%,support_context_label.ilike.%abc123%"
+      "subject.ilike.%abc123%,ticket_number.ilike.%abc123%,description.ilike.%abc123%,support_context_label.ilike.%abc123%,requester_email.ilike.%abc123%"
     );
     expect(builder.range).toHaveBeenCalledWith(40, 59);
   });
@@ -102,7 +102,7 @@ describe("GET /api/admin/support-tickets", () => {
 
     await GET(req as NextRequest);
     expect(builder.or).toHaveBeenCalledWith(
-      `subject.ilike.%${uuid}%,ticket_number.ilike.%${uuid}%,description.ilike.%${uuid}%,support_context_label.ilike.%${uuid}%,support_context_id.eq.${uuid}`
+      `subject.ilike.%${uuid}%,ticket_number.ilike.%${uuid}%,description.ilike.%${uuid}%,support_context_label.ilike.%${uuid}%,requester_email.ilike.%${uuid}%,support_context_id.eq.${uuid}`
     );
   });
 

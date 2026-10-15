@@ -1432,9 +1432,30 @@ async function handleCreateProviderBooking(request: NextRequest) {
       membershipDiscountAmount = explicitMembershipDiscount;
     }
     const serverTipAmount = Number(body.tip_amount) || 0;
+    const groupBookingIdRaw = (body as { group_booking_id?: unknown }).group_booking_id;
+    const normalizedGroupBookingId =
+      typeof groupBookingIdRaw === "string" && /^[0-9a-f-]{36}$/i.test(groupBookingIdRaw.trim())
+        ? groupBookingIdRaw.trim()
+        : null;
+
+    if (normalizedGroupBookingId) {
+      const { data: groupRow, error: groupLookupError } = await supabaseAdmin
+        .from("group_bookings")
+        .select("id, status")
+        .eq("id", normalizedGroupBookingId)
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      if (groupLookupError || !groupRow) {
+        return errorResponse("Group booking not found for this provider", "INVALID_GROUP_BOOKING", 400);
+      }
+      if (String(groupRow.status ?? "") === "cancelled") {
+        return errorResponse("Cannot add bookings to a cancelled group", "INVALID_GROUP_BOOKING", 400);
+      }
+    }
+
     let platformFeeAmount = 0;
     let platformFeePercentage = 0;
-    if (!isWalkIn) {
+    if (!isWalkIn && !normalizedGroupBookingId) {
       const platformFeeBase = Math.max(
         0,
         serverSubtotal -
@@ -1505,12 +1526,6 @@ async function handleCreateProviderBooking(request: NextRequest) {
       );
     }
 
-    const groupBookingIdRaw = (body as { group_booking_id?: unknown }).group_booking_id;
-    const normalizedGroupBookingId =
-      typeof groupBookingIdRaw === "string" && /^[0-9a-f-]{36}$/i.test(groupBookingIdRaw.trim())
-        ? groupBookingIdRaw.trim()
-        : null;
-
     // Prepare booking data - only include columns that exist in the bookings table
     // Note: services and addons are stored in separate tables (booking_services, booking_addons)
     const bookingData: any = {
@@ -1571,14 +1586,16 @@ async function handleCreateProviderBooking(request: NextRequest) {
       travel_fee: serverTravelFee,
       platform_fee_percentage: platformFeePercentage,
       platform_fee_amount: platformFeeAmount,
-      platform_fee_paid_by: isWalkIn
-        ? null
-        : (body.platform_fee_paid_by ?? body.service_fee_paid_by ?? "customer"),
+      platform_fee_paid_by:
+        isWalkIn || normalizedGroupBookingId
+          ? null
+          : (body.platform_fee_paid_by ?? body.service_fee_paid_by ?? "customer"),
       service_fee_percentage: platformFeePercentage,
       service_fee_amount: platformFeeAmount,
-      service_fee_paid_by: isWalkIn
-        ? null
-        : (body.platform_fee_paid_by ?? body.service_fee_paid_by ?? "customer"),
+      service_fee_paid_by:
+        isWalkIn || normalizedGroupBookingId
+          ? null
+          : (body.platform_fee_paid_by ?? body.service_fee_paid_by ?? "customer"),
       referral_source_id: referralSourceId,
       ...(normalizedGroupBookingId
         ? { group_booking_id: normalizedGroupBookingId, is_group_booking: true }

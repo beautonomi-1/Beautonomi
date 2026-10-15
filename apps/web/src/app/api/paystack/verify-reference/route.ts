@@ -425,8 +425,9 @@ export async function GET(request: NextRequest) {
         paymentStatus: (booking as any).payment_status ?? null,
       });
 
+      const remainingTip = Math.max(0, Number(metadata.tip_amount ?? 0) || 0);
       if (remaining > 0.02) {
-        if (Math.abs(amountInCurrency - remaining) > 0.02) {
+        if (Math.abs(amountInCurrency - (remaining + remainingTip)) > 0.02) {
           return successResponse({
             verified: false,
             paystackStatus: txStatus,

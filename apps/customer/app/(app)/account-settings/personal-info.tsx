@@ -23,7 +23,8 @@ import {
   isCompleteSupabaseSmsOtp,
   SUPABASE_AUTH_OTP_LENGTH,
 } from "@/lib/supabase-sms-otp";
-import { appendFormDataFileNative, formatLegalDobDisplay } from "@beautonomi/utils";
+import { formatLegalDobDisplay } from "@beautonomi/utils";
+import { appendUploadFile } from "@/lib/form-data-file";
 import { useEmailChangeOtp } from "@/lib/auth/useEmailChangeOtp";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
@@ -223,7 +224,7 @@ export default function PersonalInfoScreen() {
     if (!result) return;
     try {
       const formData = new FormData();
-      appendFormDataFileNative(formData, "file", {
+      await appendUploadFile(formData, "file", {
         uri: result.uri,
         name: result.fileName || "avatar.jpg",
         type: result.mimeType?.trim() || "image/jpeg",

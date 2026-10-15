@@ -3798,6 +3798,14 @@ async function handleBookingRemainingSuccess(
     ? String(existingBookingPayment.id)
     : null;
 
+  const incrementalTipFromMeta = Math.max(
+    0,
+    Number(
+      payRemainMeta?.tip_amount ??
+        (metadata && typeof metadata === "object" ? (metadata as Record<string, unknown>).tip_amount : 0) ??
+        0,
+    ),
+  );
   if (!existingBookingPayment) {
     const railLabel = onlineGatewayRailLabel(paymentProvider);
     const recordedRemain = await recordGatewayBookingPayment(supabase, paymentProvider, {
@@ -3824,6 +3832,22 @@ async function handleBookingRemainingSuccess(
     bookingData as Record<string, unknown>,
     payRemainVerifiedPending as Parameters<typeof bookingFinancialsFromDb>[1] | undefined,
   );
+  let ledgerBaseTip = payRemainFinancials.tipAmount;
+  if (incrementalTipFromMeta > 0) {
+    if (!payRemainingSourcePaymentId) {
+      throw new Error(
+        `pay-remaining charge.success: tip ${incrementalTipFromMeta} has no booking payment row (reference=${reference})`,
+      );
+    }
+    const { applyBookingPaymentTip } = await import("@/lib/bookings/increment-booking-tip");
+    const { bookingLevelTip } = await applyBookingPaymentTip(
+      supabase,
+      bookingId,
+      payRemainingSourcePaymentId,
+      incrementalTipFromMeta,
+    );
+    ledgerBaseTip = bookingLevelTip;
+  }
   const walletAmountFromMeta = payRemainFinancials.walletAmountFromMeta;
   const giftCardAmountFromMeta = payRemainFinancials.giftCardAmountFromMeta;
   if (giftCardAmountFromMeta > 0) {
@@ -3835,7 +3859,6 @@ async function handleBookingRemainingSuccess(
   }
   await completeWalletGiftSyntheticPayments(supabase, bookingId);
 
-  const tipAmount = payRemainFinancials.tipAmount;
   const taxAmount = payRemainFinancials.taxAmount;
   const travelFee = payRemainFinancials.travelFee;
   const serviceFeeAmount = payRemainFinancials.serviceFeeAmount;
@@ -3852,8 +3875,9 @@ async function handleBookingRemainingSuccess(
     giftCardAmountApplied: giftCardAmountFromMeta,
     customerEmail: customer?.email ?? null,
     sourcePaymentId: payRemainingSourcePaymentId,
+    incrementalTipAmount: incrementalTipFromMeta > 0 ? incrementalTipFromMeta : undefined,
     bookingLevelAmountOverrides: {
-      tip: tipAmount,
+      tip: ledgerBaseTip,
       tax: taxAmount,
       travel: travelFee,
       platformFee: serviceFeeAmount,

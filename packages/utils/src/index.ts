@@ -75,6 +75,7 @@ export {
   PROVIDER_DESCRIPTION_CARD_MAX,
   PROVIDER_DESCRIPTION_PROFILE_PREVIEW_MAX,
 } from "./provider/formatProviderDescription";
+export { publicStaffSubtitle } from "./provider/publicStaffSubtitle";
 export {
   PROVIDER_GALLERY_ASPECT_RATIO,
   PROVIDER_GALLERY_CONTENT_POSITION,
@@ -326,7 +327,6 @@ export {
   coerceProfileStringList,
 } from "./coerceChipValues";
 export { buildZonedIsoForWallClock } from "./buildZonedIsoForWallClock";
-export { appendFormDataFileNative, type NativeFormDataFilePart } from "./formDataFileNative";
 export {
   DAY_NAMES,
   dayMinuteRanges,

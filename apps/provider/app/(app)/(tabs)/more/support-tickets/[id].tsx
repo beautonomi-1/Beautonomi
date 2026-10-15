@@ -15,7 +15,7 @@ import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
 import { trackSupportTicketDetailView, trackSupportTicketReply } from "@/lib/analytics";
 import { labelForSupportTicketCategory } from "@/lib/supportTicketCategoryPresets";
-import { appendFormDataFileNative } from "@beautonomi/utils";
+import { appendUploadFile } from "@/lib/form-data-file";
 import { invalidateSupportTicketsListCache } from "@/lib/api-response-cache";
 import { launchImageLibraryWithPermission, PERMISSION_COPY } from "@/lib/native-permissions";
 import { supabase } from "@/lib/supabase/client";
@@ -304,7 +304,7 @@ export default function SupportTicketDetailScreen() {
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
       const formData = new FormData();
-      appendFormDataFileNative(formData, "files", {
+      await appendUploadFile(formData, "files", {
         uri: asset.uri,
         name: asset.fileName || "support-image.jpg",
         type: asset.mimeType || "image/jpeg",

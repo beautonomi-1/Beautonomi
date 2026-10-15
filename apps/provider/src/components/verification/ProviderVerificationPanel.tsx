@@ -22,7 +22,7 @@ import { useApi } from "@/hooks/useApi";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
-import { appendFormDataFileNative } from "@beautonomi/utils";
+import { appendUploadFile } from "@/lib/form-data-file";
 import { launchDidit } from "@/lib/identity-verification/launchDidit";
 import { formatDiditLaunchError } from "@/lib/identity-verification/userFacingDiditErrors";
 import { useIdentityVerification } from "@/lib/identity-verification/useIdentityVerification";
@@ -251,7 +251,7 @@ export function ProviderVerificationPanel({
     setUploading(true);
     try {
       const formData = new FormData();
-      appendFormDataFileNative(formData, "file", { uri: selectedFile.uri, name: selectedFile.fileName, type: "image/jpeg" });
+      await appendUploadFile(formData, "file", { uri: selectedFile.uri, name: selectedFile.fileName, type: "image/jpeg" });
       formData.append("document_type", docType);
       formData.append("country", manualCountry);
       const res = await api.post<{ verification_id?: string }>("/api/me/verification", formData);

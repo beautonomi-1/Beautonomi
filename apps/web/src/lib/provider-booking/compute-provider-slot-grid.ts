@@ -271,6 +271,7 @@ export async function computeProviderBookingSlotGrid(
             startAt,
             endAt,
             excludeBookingId,
+            excludeGroupBookingId,
           );
           if (check.available) {
             filtered.push(slot);

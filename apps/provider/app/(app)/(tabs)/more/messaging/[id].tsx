@@ -31,7 +31,7 @@ import { api } from "@/lib/api-client";
 import { invalidateApiCacheForPath } from "@/lib/api-response-cache";
 import { emitChatBadgeRefresh, emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 import { useNotificationsCount } from "@/providers/NotificationsCountContext";
-import { appendFormDataFileNative } from "@beautonomi/utils";
+import { appendUploadFile } from "@/lib/form-data-file";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import {
   launchCameraWithPermission,
@@ -558,7 +558,7 @@ export default function ChatScreen() {
       try {
         const formData = new FormData();
         formData.append("conversation_id", conversationId);
-        appendFormDataFileNative(formData, "files", {
+        await appendUploadFile(formData, "files", {
           uri: file.uri,
           name: file.name,
           type: file.type || "application/octet-stream",

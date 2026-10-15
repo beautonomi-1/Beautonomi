@@ -175,7 +175,11 @@ export async function POST(
       }).format(amount);
 
     // Check if booking is paid or partially paid (can refund both)
-    if (booking.payment_status !== 'paid' && booking.payment_status !== 'partially_paid') {
+    if (
+      booking.payment_status !== "paid" &&
+      booking.payment_status !== "partially_paid" &&
+      booking.payment_status !== "partially_refunded"
+    ) {
       return errorResponse(
         "Can only refund paid or partially paid bookings",
         "INVALID_STATUS",

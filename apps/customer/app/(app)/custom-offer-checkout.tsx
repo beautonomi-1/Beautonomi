@@ -39,6 +39,8 @@ import { haptic } from "@/lib/haptics";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
 import { useSavedCards } from "@/hooks/useSavedCards";
+import { useOwnedGiftCards } from "@/features/gift-cards/useOwnedGiftCards";
+import { OwnedGiftCardPicker } from "@/features/gift-cards/OwnedGiftCardPicker";
 import { PaymentProcessingOverlay } from "@/components/payment/PaymentProcessingOverlay";
 import {
   PaymentSuccessOverlay,
@@ -155,6 +157,11 @@ export default function CustomOfferCheckoutScreen() {
 
   const currency = offer?.currency || getTenantDefaultCurrency();
   const fmt = useCallback((n: number) => formatMoney(n, currency), [currency]);
+  const { cards: ownedGiftCards } = useOwnedGiftCards({
+    currency,
+    userId: user?.id,
+    enabled: Boolean(user),
+  });
 
   const buildOfferSuccessRows = useCallback((): PaymentSuccessSummaryRow[] => {
     return [
@@ -1178,9 +1185,16 @@ export default function CustomOfferCheckoutScreen() {
                   paddingHorizontal: 12,
                   paddingVertical: 10,
                   color: "#111827",
-                  marginBottom: 12,
+                  marginBottom: 4,
                 }}
               />
+              {user && !giftCardCode.trim() ? (
+                <OwnedGiftCardPicker
+                  cards={ownedGiftCards}
+                  formatCurrency={(amount, cur) => formatMoney(amount, cur || currency)}
+                  onSelect={(code) => setGiftCardCode(code)}
+                />
+              ) : null}
               <Text style={{ fontSize: 12, fontWeight: "700", color: "#374151", marginBottom: 6 }}>
                 {coc("loyaltyPoints", undefined, "Loyalty points")}
               </Text>

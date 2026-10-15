@@ -28,7 +28,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
-import { appendFormDataFileNative } from "@beautonomi/utils";
+import { appendUploadFile } from "@/lib/form-data-file";
 import { localUriSizeBytes, putLocalUriToSignedUrl } from "@/lib/explore-upload-uri";
 import { Image, type ImageStyle as ExpoImageStyle } from "expo-image";
 import { getWebProviderBaseUrl } from "@/lib/web-url";
@@ -296,7 +296,7 @@ async function uploadExploreMediaAsset(asset: PickedAsset, index: number): Promi
   }
 
   const formData = new FormData();
-  appendFormDataFileNative(formData, "file", {
+  await appendUploadFile(formData, "file", {
     uri: asset.uri,
     type: safeType,
     name: fallbackName,

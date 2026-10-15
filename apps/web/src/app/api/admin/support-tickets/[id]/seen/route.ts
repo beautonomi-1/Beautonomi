@@ -16,17 +16,27 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi([...SUPPORT_TICKET_STAFF_ROLES] as UserRole[], request);
+    const { user } = await requireRoleInApi([...SUPPORT_TICKET_STAFF_ROLES] as UserRole[], request);
     const { id } = await params;
     const supabase = getSupabaseAdmin();
 
     const { data: ticket, error: ticketError } = await supabase
       .from("support_tickets")
-      .select("id")
+      .select("id, tenant_id")
       .eq("id", id)
       .maybeSingle();
 
     if (ticketError || !ticket) {
+      return errorResponse("Ticket not found", "NOT_FOUND", 404);
+    }
+
+    const { staffCanAccessSupportTicket } = await import("@/lib/support/assert-staff-ticket-access");
+    const ok = await staffCanAccessSupportTicket(supabase, {
+      role: user.role,
+      userId: user.id,
+      tenantId: (ticket as { tenant_id?: string | null }).tenant_id,
+    });
+    if (!ok) {
       return errorResponse("Ticket not found", "NOT_FOUND", 404);
     }
 

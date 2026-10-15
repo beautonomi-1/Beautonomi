@@ -13978,7 +13978,10 @@
             "confirmOnMap": "Tiisa aterese ye go mape go hlahloba go romela.",
             "instructionsLabel": "Go isišwa instructions (boikgethelo)",
             "instructionsPlaceholder": "Khoutu ya gare, matshwao, moo o tlogelago odara…"
-          }
+          },
+          "promoGiftCard": "papatšo & karata ya mpho",
+          "promotionCodePlaceholder": "Promotion khoutu",
+          "giftCardCodePlaceholder": "karata ya mpho khoutu"
         },
         "chats": {
           "searchPlaceholder": "Nyaka baphakeri or melaetsa",
@@ -15521,7 +15524,12 @@
           "cashRefundConfirm": "Ke e amogile",
           "cashRefundDispute": "Tseko",
           "cashRefundConfirmed": "Thank you — your pusetšo is netefatšaed.",
-          "cashRefundDisputed": "We flagged this pusetšo for tshekatsheko."
+          "cashRefundDisputed": "We flagged this pusetšo for tshekatsheko.",
+          "payRemainingTipTitle": "Oketša thipi (ga e gapeletšwe)",
+          "payRemainingNoTip": "Ga go thipi",
+          "payRemainingCustomTip": "Ya gago",
+          "payRemainingCustomTipPlaceholder": "Palo ya thipi",
+          "payRemainingTipLine": "Thipi: {{amount}} — e ya 100% go mofani wa gago"
         },
         "groupBookingDetail": {
           "back": "Morago",
@@ -15688,7 +15696,11 @@
           "travelAboutMinutes": "~{{count}} min",
           "currentLocation": "ya gabjale lefelo",
           "missingHold": "Missing hya kgale. Please thoma your bukingo gape.",
-          "findProvider": "Find a mophakeri"
+          "findProvider": "Find a mophakeri",
+          "continueWithName": "tšwela pele with {{name}}",
+          "continueWithCount": "tšwela pele with {{count}} ditirelo",
+          "changeServiceA11y": "Fetoša tirelo",
+          "stickySelectionMore": " +{{count}}"
         },
         "identityVerificationBanner": {
           "requiredTitle": "Netefatša your Boitsebišo to buka",
@@ -18393,7 +18405,12 @@
         "total": "Palomoka",
         "continue": "Tšwela pele",
         "continueAriaLabel": "tšwela pele to e latelago step",
-        "packageDiscount": "sephuthelwana theolelo"
+        "packageDiscount": "sephuthelwana theolelo",
+        "continueWithName": "tšwela pele with {{name}}",
+        "continueWithCount": "tšwela pele with {{count}} ditirelo",
+        "changeService": "Fetola",
+        "selectedServiceMore": " (+{{count}})",
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} metsotso"
       },
       "confirmation": {
         "loadingMessage": "E laiša Netefatšo ya bukingo...",

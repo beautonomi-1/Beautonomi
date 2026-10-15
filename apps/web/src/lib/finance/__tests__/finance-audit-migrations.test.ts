@@ -45,4 +45,15 @@ describe("finance audit migrations (static contract)", () => {
     expect(sql).toMatch(/DROP POLICY IF EXISTS "Providers can manage own booking payments"/);
     expect(sql).toMatch(/create_booking_payment/);
   });
+
+  it("999 fixes create_booking_payment status check and keeps service_role grant", () => {
+    const sql = readMigration("999_fix_create_booking_payment_status_enum.sql");
+    expect(sql).toMatch(/CREATE OR REPLACE FUNCTION public\.create_booking_payment/i);
+    expect(sql).toMatch(/status::text IN \('cancelled', 'no_show'\)/);
+    expect(sql).not.toMatch(/'refunded'.*INVALID_BOOKING_STATUS|status IN \('cancelled', 'refunded'/);
+    expect(sql).toMatch(/GRANT EXECUTE ON FUNCTION public\.create_booking_payment/i);
+    expect(sql).toMatch(/service_role/i);
+    expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.create_booking_payment/i);
+    expect(sql).toMatch(/FROM authenticated/i);
+  });
 });

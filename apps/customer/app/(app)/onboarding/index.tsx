@@ -29,7 +29,8 @@ import { RADIUS_BUTTON, RADIUS_CARD, RADIUS_INPUT, SCREEN_PADDING } from "@/cons
 import { PhoneInputWithCountry } from "@/components/PhoneInputWithCountry";
 import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
-import { appendFormDataFileNative, appleDisplayNameFallback, isApplePrimaryIdentity, isMailableEmail } from "@beautonomi/utils";
+import { appleDisplayNameFallback, isApplePrimaryIdentity, isMailableEmail } from "@beautonomi/utils";
+import { appendUploadFile } from "@/lib/form-data-file";
 import { parsePhoneToCountryAndNational } from "@/constants/phone";
 import { readAndClearCustomerPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
 import {
@@ -846,7 +847,7 @@ export default function CustomerOnboarding() {
         case 2:
           if (avatarUri && !avatarUri.startsWith("http")) {
             const fd = new FormData();
-            appendFormDataFileNative(fd, "file", {
+            await appendUploadFile(fd, "file", {
               uri: avatarUri,
               name: avatarFileName,
               type: avatarMimeType || "image/jpeg",

@@ -15,17 +15,53 @@ export async function GET(request: NextRequest) {
   try {
     await requireRoleInApi([...SUPPORT_TICKET_STAFF_ROLES] as UserRole[], request);
 
+    const tenantId = new URL(request.url).searchParams.get("tenant_id");
     const roles = [...SUPPORT_TICKET_ASSIGNEE_ROLES] as string[];
     const admin = getSupabaseAdmin();
-    const { data, error } = await admin
+
+    let assignees: Array<{ id: string; email: string | null; full_name: string | null; role: string }> = [];
+
+    if (tenantId) {
+      const { data: roleRows, error: roleErr } = await admin
+        .from("user_tenant_roles")
+        .select("user_id, users!inner(id, email, full_name, role)")
+        .eq("tenant_id", tenantId)
+        .eq("is_active", true);
+      if (roleErr) throw roleErr;
+      assignees = (roleRows ?? [])
+        .map((r) => {
+          const users = (r as { users?: unknown }).users;
+          const row = Array.isArray(users) ? users[0] : users;
+          if (!row || typeof row !== "object") return null;
+          const u = row as { id?: string; email?: string | null; full_name?: string | null; role?: string };
+          if (!u.id || !u.role) return null;
+          return {
+            id: u.id,
+            email: u.email ?? null,
+            full_name: u.full_name ?? null,
+            role: u.role,
+          };
+        })
+        .filter((u): u is { id: string; email: string | null; full_name: string | null; role: string } => u != null)
+        .filter((u) => roles.includes(u.role));
+    } else {
+      const { data, error } = await admin
+        .from("users")
+        .select("id, email, full_name, role")
+        .in("role", roles)
+        .order("full_name", { ascending: true, nullsFirst: false });
+      if (error) throw error;
+      assignees = (data ?? []) as typeof assignees;
+    }
+
+    const { data: supers } = await admin
       .from("users")
       .select("id, email, full_name, role")
-      .in("role", roles)
-      .order("full_name", { ascending: true, nullsFirst: false });
+      .eq("role", "superadmin");
+    const merged = [...assignees, ...((supers ?? []) as typeof assignees)];
+    const byId = new Map(merged.map((u) => [u.id, u]));
 
-    if (error) throw error;
-
-    return NextResponse.json({ assignees: data || [] });
+    return NextResponse.json({ assignees: [...byId.values()].sort((a, b) => (a.full_name ?? "").localeCompare(b.full_name ?? "")) });
   } catch (error: unknown) {
     return handleApiError(error, "Failed to load assignees");
   }

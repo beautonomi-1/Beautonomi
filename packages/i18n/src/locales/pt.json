@@ -13978,7 +13978,10 @@
             "confirmOnMap": "Confirmar this morada on the mapa to check Entrega.",
             "instructionsLabel": "Entrega instructions (opcional)",
             "instructionsPlaceholder": "Code d'accès, repères, où déposer la commande…"
-          }
+          },
+          "promoGiftCard": "promoção & cartão de oferta",
+          "promotionCodePlaceholder": "Promotion código",
+          "giftCardCodePlaceholder": "cartão de oferta código"
         },
         "chats": {
           "searchPlaceholder": "Pesquisar profissionais or mensagens",
@@ -15688,7 +15691,11 @@
           "travelAboutMinutes": "~{{count}} min",
           "currentLocation": "atual localização",
           "missingHold": "Missing hantigo. Please começar your marcação novamente.",
-          "findProvider": "Find a profissional"
+          "findProvider": "Find a profissional",
+          "continueWithName": "continuar with {{name}}",
+          "continueWithCount": "continuar with {{count}} serviços",
+          "changeServiceA11y": "Alterar serviço",
+          "stickySelectionMore": " +{{count}}"
         },
         "identityVerificationBanner": {
           "requiredTitle": "Verificar your Identidade to marcar",
@@ -18393,7 +18400,12 @@
         "total": "Total",
         "continue": "Continuar",
         "continueAriaLabel": "continuar to seguinte step",
-        "packageDiscount": "pacote desconto"
+        "packageDiscount": "pacote desconto",
+        "continueWithName": "continuar with {{name}}",
+        "continueWithCount": "continuar with {{count}} serviços",
+        "changeService": "alterar",
+        "selectedServiceMore": " (+{{count}})",
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} minutos"
       },
       "confirmation": {
         "loadingMessage": "A carregar Confirmação da marcação...",

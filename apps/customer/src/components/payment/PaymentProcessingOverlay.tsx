@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { View, Text, Modal, StyleSheet } from "react-native";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { Colors } from "@/constants/colors";
 import { BrandGlyphPulse } from "@/components/BrandGlyphPulse";
 import { useTranslation } from "@beautonomi/i18n";
@@ -51,14 +50,7 @@ export function PaymentProcessingOverlay({
 
         <Text style={styles.title}>{t("customer.mobile.screens.inAppBrowser.pleaseWait")}</Text>
 
-        <Animated.Text
-          key={message}
-          entering={FadeIn.duration(220)}
-          exiting={FadeOut.duration(180)}
-          style={styles.message}
-        >
-          {message}
-        </Animated.Text>
+        <Text style={styles.message}>{message}</Text>
 
         {step != null ? (
           <View style={styles.stepsWrap} accessibilityRole="progressbar">
@@ -98,12 +90,9 @@ export function PaymentProcessingOverlay({
         ) : null}
 
         {showSlowPath ? (
-          <Animated.Text
-            entering={FadeIn.duration(400)}
-            style={styles.slowPath}
-          >
+          <Text style={styles.slowPath}>
             {t("checkout.stillWorking", "Still working — don't close the app.")}
-          </Animated.Text>
+          </Text>
         ) : null}
       </View>
     </Modal>

@@ -414,6 +414,7 @@ export async function POST(
     let payment: any = null;
     let paymentError: any = null;
     let paymentAlreadyRecorded = false;
+    let baseAlreadyFullyPaidRace = false;
 
     if (paymentAmount > 0) {
       if (stableReference) {
@@ -483,16 +484,43 @@ export async function POST(
         const errorMessage = paymentError?.message || "Failed to create payment record";
         const errorDetails = paymentError?.details || paymentError;
 
-        if (errorMessage.includes("payment_status") && errorMessage.includes("enum")) {
+        if (errorMessage.includes("INVALID_BOOKING_STATUS")) {
           return errorResponse(
-            `Database enum error: The payment_status trigger needs to be updated to cast enum values properly. Please run migration 140_fix_payment_status_enum_cast.sql to fix this. Error: ${errorMessage}`,
-            "PAYMENT_ENUM_ERROR",
-            500,
+            "Cannot record payment for a cancelled or no-show booking",
+            "INVALID_STATUS",
+            400,
             errorDetails,
           );
         }
 
-        return errorResponse(errorMessage, "PAYMENT_CREATE_ERROR", 500, errorDetails);
+        if (errorMessage.includes("INVALID_AMOUNT")) {
+          return errorResponse("Invalid payment amount", "VALIDATION_ERROR", 400, errorDetails);
+        }
+
+        if (errorMessage.includes("NOTHING_OWING")) {
+          paymentAmount = 0;
+          payment = null;
+          paymentError = null;
+          paymentAlreadyRecorded = true;
+          baseAlreadyFullyPaidRace = true;
+          if (!(settleAllCharges && unpaidChargeRows.length > 0)) {
+            return successResponse({
+              message: "Booking is already fully paid (including wallet/gift card credits)",
+              already_paid: true,
+            });
+          }
+        } else {
+          if (errorMessage.includes("payment_status") && errorMessage.includes("enum")) {
+            return errorResponse(
+              `Database enum error: The payment_status trigger needs to be updated to cast enum values properly. Please run migration 140_fix_payment_status_enum_cast.sql to fix this. Error: ${errorMessage}`,
+              "PAYMENT_ENUM_ERROR",
+              500,
+              errorDetails,
+            );
+          }
+
+          return errorResponse(errorMessage, "PAYMENT_CREATE_ERROR", 500, errorDetails);
+        }
       }
 
       if (!paymentAlreadyRecorded) {
@@ -513,7 +541,7 @@ export async function POST(
         }
       }
 
-      if (payment.status !== "completed") {
+      if (payment && payment.status !== "completed") {
         console.warn(
           `Payment created with status '${payment.status}' instead of 'completed'. Attempting to fix...`,
         );
@@ -532,13 +560,15 @@ export async function POST(
         }
       }
 
-      const { data: updatedBooking } = await supabaseAdmin
-        .from("bookings")
-        .select("total_paid, payment_status")
-        .eq("id", bookingId)
-        .single();
+      const { data: updatedBooking } = payment
+        ? await supabaseAdmin
+            .from("bookings")
+            .select("total_paid, payment_status")
+            .eq("id", bookingId)
+            .single()
+        : { data: null };
 
-      if (updatedBooking) {
+      if (payment && updatedBooking) {
         console.log(
           `Payment created: ${formatMoney(paymentAmount)}. Booking total_paid: ${formatMoney(updatedBooking.total_paid || 0)}, status: ${updatedBooking.payment_status}`,
         );
@@ -551,7 +581,7 @@ export async function POST(
         }
       }
 
-      if (!paymentAlreadyRecorded) {
+      if (payment && !paymentAlreadyRecorded) {
         try {
           const { syncBookingAfterPaystackSuccess } = await import(
             "@/lib/bookings/sync-booking-after-paystack-success"
@@ -645,7 +675,10 @@ export async function POST(
       reference: string;
     }[] = [];
 
-    if (settleAllCharges && baseFullySettledAfterPayment && unpaidChargeRows.length > 0) {
+    const canSettleAdditionalCharges =
+      baseFullySettledAfterPayment || baseAlreadyFullyPaidRace;
+
+    if (settleAllCharges && canSettleAdditionalCharges && unpaidChargeRows.length > 0) {
       try {
         chargesSettled = await settleUnpaidAdditionalChargesForMarkPaid({
           supabaseAdmin,

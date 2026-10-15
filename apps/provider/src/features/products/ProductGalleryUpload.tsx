@@ -5,7 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { twStyle } from "@/lib/twStyle";
 import { api } from "@/lib/api-client";
-import { appendFormDataFileNative } from "@beautonomi/utils";
+import { appendUploadFile } from "@/lib/form-data-file";
 import { useImagePicker } from "@/hooks/useImagePicker";
 import { useTranslation } from "@beautonomi/i18n";
 
@@ -32,7 +32,7 @@ export function ProductGalleryUpload({ imageUrls, onChange }: Props) {
       try {
         const formData = new FormData();
         const name = asset.fileName || `product-${Date.now()}.jpg`;
-        appendFormDataFileNative(formData, "file", { uri: asset.uri, type: asset.mimeType || "image/jpeg", name });
+        await appendUploadFile(formData, "file", { uri: asset.uri, type: asset.mimeType || "image/jpeg", name });
         formData.append("folder", "products");
         const res = await api.fetch<{ url?: string }>("/api/upload", { method: "POST", body: formData });
         if (res.error || !res.data?.url) {

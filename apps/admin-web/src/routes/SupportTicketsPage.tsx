@@ -24,7 +24,11 @@ import {
   AdminTd,
   AdminTh,
 } from "@/components/admin/AdminDataTable";
-import { labelForSupportTicketCategory, SUPPORT_TICKET_CATEGORY_GROUPS } from "@/lib/supportTicketCategories";
+import {
+  groupLabelForSupportTicketCategory,
+  labelForSupportTicketCategory,
+  SUPPORT_TICKET_CATEGORY_GROUPS,
+} from "@/lib/supportTicketCategories";
 import {
   buildSupportTicketsSearchParams,
   matchSupportTicketSavedView,
@@ -81,6 +85,11 @@ interface SupportTicket {
   attention_state?: AttentionState | null;
   sla_state?: "none" | "ok" | "at_risk" | "breached" | null;
   agent_unread?: boolean | null;
+  channel?: "app" | "email" | null;
+  tenant_id?: string | null;
+  tenant?: { name?: string; slug?: string; region_code?: string | null } | null;
+  requester_email?: string | null;
+  latest_public_email_delivery_status?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -99,28 +108,28 @@ function AttentionBadge({ ticket }: { ticket: SupportTicket }) {
 
   if (state === "first_response_overdue") {
     return (
-      <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-800">
+      <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-800">
         First reply overdue
       </span>
     );
   }
   if (state === "sla_breached") {
     return (
-      <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-800">
+      <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-800">
         SLA overdue
       </span>
     );
   }
   if (state === "awaiting_agent") {
     return (
-      <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-800">
+      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
         Awaiting reply
       </span>
     );
   }
   if (state === "unassigned_new") {
     return (
-      <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-semibold text-orange-800">
+      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
         Unassigned
       </span>
     );
@@ -253,9 +262,9 @@ function SupportTicketCard({
       className={cn(
         "relative rounded-2xl border bg-white shadow-sm transition-all",
         isSelected
-          ? "border-gray-900 bg-gray-50 ring-2 ring-gray-900/15"
+          ? "border-primary bg-primary/5 ring-2 ring-primary/25"
           : "border-gray-200 ring-1 ring-gray-950/[0.03] hover:border-gray-300 hover:bg-gray-50",
-        ticket.agent_unread && "border-l-4 border-l-red-400",
+        ticket.agent_unread && "border-l-4 border-l-primary",
       )}
     >
       {selectable ? (
@@ -283,18 +292,31 @@ function SupportTicketCard({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             {ticket.agent_unread ? (
-              <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-red-500" aria-label="Unread" />
+              <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-primary" aria-label="Unread" />
             ) : null}
             <span className="font-mono text-xs font-medium text-gray-500">{ticket.ticket_number}</span>
-            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium capitalize text-gray-700">
-              {ticket.requester_type || (ticket.provider ? "provider" : "customer")}
-            </span>
+            {groupLabelForSupportTicketCategory(ticket.category) ? (
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700">
+                {groupLabelForSupportTicketCategory(ticket.category)}
+              </span>
+            ) : null}
+            {ticket.tenant?.name ? (
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700">
+                {ticket.tenant.name}
+                {ticket.tenant.region_code ? ` (${ticket.tenant.region_code})` : ""}
+              </span>
+            ) : null}
+            {ticket.channel === "email" ? (
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700">Email</span>
+            ) : null}
+            {ticket.latest_public_email_delivery_status === "failed" ? (
+              <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-800">
+                Send failed
+              </span>
+            ) : null}
             <AttentionBadge ticket={ticket} />
           </div>
           <p className={cn("mt-1 line-clamp-2 text-gray-900", ticket.agent_unread ? "font-bold" : "font-semibold")}>{ticket.subject}</p>
-          <p className="mt-1 text-xs text-gray-500">
-            {ticket.category ? labelForSupportTicketCategory(ticket.category) : "Uncategorized"}
-          </p>
           {ticket.support_context_type ? (
             <p className="mt-1 text-xs text-gray-600">
               About {ticket.support_context_type.replace(/_/g, " ")}
@@ -361,6 +383,7 @@ export function SupportTicketsPage() {
     "Support section access is required for support tickets."
   );
   const { bootstrap } = useAdminSession();
+  const isSuperadmin = bootstrap?.isSuperadmin === true;
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const isDesktop = useIsDesktop();
@@ -435,6 +458,23 @@ export function SupportTicketsPage() {
     };
   }, [allowed, qc]);
 
+  const zohoMailHealth = useQuery({
+    queryKey: adminQueryKeys.zohoMailConfig(),
+    queryFn: () =>
+      adminApi.getJson<{
+        mailboxes: Array<{ address?: string; inbound_enabled?: boolean; last_sync_at?: string | null }>;
+      }>("/api/admin/integrations/zoho-mail"),
+    enabled: allowed && isSuperadmin,
+    staleTime: 60_000,
+  });
+  const staleZohoInbound =
+    isSuperadmin &&
+    (zohoMailHealth.data?.mailboxes ?? []).some((mb) => {
+      if (!mb.inbound_enabled) return false;
+      const at = mb.last_sync_at ? new Date(mb.last_sync_at).getTime() : 0;
+      return !at || Date.now() - at > 15 * 60 * 1000;
+    });
+
   const statusFilter = searchParams.get("status") ?? "all";
   const priorityFilter = searchParams.get("priority") ?? "all";
   const categoryFilter = searchParams.get("category") ?? "all";
@@ -447,6 +487,8 @@ export function SupportTicketsPage() {
   const viewFilter = searchParams.get("view");
   const selectedId = searchParams.get("selected");
   const statusGroupFilter = searchParams.get("status_group") ?? "";
+  const categoryGroupFilter = searchParams.get("category_group") ?? "";
+  const channelFilter = searchParams.get("channel") ?? "all";
   const isTableView = viewFilter === "table";
   const isCardsView = !isTableView;
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
@@ -506,6 +548,8 @@ export function SupportTicketsPage() {
             sla_state: "",
             first_response_overdue: "0",
             status_group: "",
+            category_group: "",
+            channel: "all",
           };
           if (value === defaults[key]) n.delete(key);
           else n.set(key, value);
@@ -569,6 +613,8 @@ export function SupportTicketsPage() {
         slaState: slaStateFilter,
         firstResponseOverdue: firstResponseOverdueFilter,
         statusGroup: statusGroupFilter,
+        categoryGroup: categoryGroupFilter,
+        channel: channelFilter,
       })}&include_counts=1`,
     [
       pageIndex,
@@ -584,6 +630,8 @@ export function SupportTicketsPage() {
       firstResponseOverdueFilter,
       slaOverdueFilter,
       statusGroupFilter,
+      categoryGroupFilter,
+      channelFilter,
     ]
   );
 
@@ -813,7 +861,7 @@ export function SupportTicketsPage() {
             <button
               type="button"
               onClick={() => setShowCreate(true)}
-              className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
             >
               + New ticket
             </button>
@@ -821,12 +869,38 @@ export function SupportTicketsPage() {
         }
       />
 
+      {staleZohoInbound ? (
+        <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+          Zoho Mail inbound sync is stale (&gt;15 min). Check Integrations → Zoho Mail or the sync cron.
+        </p>
+      ) : null}
+
       {counts ? (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <AdminMetricCard label="Open tickets" value={counts.open.toLocaleString()} variant="slate" />
-          <AdminMetricCard label="Unassigned" value={counts.unassigned.toLocaleString()} variant="amber" />
-          <AdminMetricCard label="Breaching SLA" value={counts.breaching_sla.toLocaleString()} variant="rose" />
-          <AdminMetricCard label="Awaiting reply" value={counts.awaiting_reply.toLocaleString()} variant="violet" />
+          <AdminMetricCard
+            label="Open tickets"
+            value={counts.open.toLocaleString()}
+            variant="slate"
+            onClick={() => setFilter("status", "open")}
+          />
+          <AdminMetricCard
+            label="Unassigned"
+            value={counts.unassigned.toLocaleString()}
+            variant="amber"
+            onClick={() => setFilter("assign", "unassigned")}
+          />
+          <AdminMetricCard
+            label="Breaching SLA"
+            value={counts.breaching_sla.toLocaleString()}
+            variant="rose"
+            onClick={() => setAttentionFilter("sla_breached")}
+          />
+          <AdminMetricCard
+            label="Awaiting reply"
+            value={counts.awaiting_reply.toLocaleString()}
+            variant="violet"
+            onClick={() => setAttentionFilter("needs_response")}
+          />
         </div>
       ) : null}
 
@@ -894,7 +968,7 @@ export function SupportTicketsPage() {
           </div>
           <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
             <button type="button" onClick={() => setShowCreate(false)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">Cancel</button>
-            <button type="button" disabled={createMut.isPending || !newSubject.trim() || !newDescription.trim()} onClick={() => createMut.mutate()} className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50">
+            <button type="button" disabled={createMut.isPending || !newSubject.trim() || !newDescription.trim()} onClick={() => createMut.mutate()} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50">
               {createMut.isPending ? "Creating…" : "Create ticket"}
             </button>
           </div>
@@ -906,6 +980,24 @@ export function SupportTicketsPage() {
         activeViewId={activeSavedViewId}
         onSelect={applySavedView}
       />
+
+      <div className="flex flex-wrap gap-2">
+        {SUPPORT_TICKET_CATEGORY_GROUPS.map((group) => (
+          <button
+            key={group.label}
+            type="button"
+            onClick={() => setFilter("category_group", categoryGroupFilter === group.label ? "" : group.label)}
+            className={cn(
+              "rounded-full border px-3 py-1 text-xs font-medium",
+              categoryGroupFilter === group.label
+                ? "border-primary bg-primary/5 text-primary"
+                : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50",
+            )}
+          >
+            {group.label}
+          </button>
+        ))}
+      </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <button
@@ -921,7 +1013,7 @@ export function SupportTicketsPage() {
             type="button"
             onClick={() => setView("cards")}
             className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-l-xl px-3 ${
-              isCardsView ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"
+              isCardsView ? "bg-primary text-white" : "text-gray-600 hover:bg-gray-50"
             }`}
             aria-label="Card view"
           >
@@ -931,7 +1023,7 @@ export function SupportTicketsPage() {
             type="button"
             onClick={() => setView("table")}
             className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-r-xl px-3 ${
-              isTableView ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"
+              isTableView ? "bg-primary text-white" : "text-gray-600 hover:bg-gray-50"
             }`}
             aria-label="Table view"
           >

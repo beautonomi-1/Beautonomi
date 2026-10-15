@@ -13982,7 +13982,10 @@
             "confirmOnMap": "Confirm this address on the map to check delivery.",
             "instructionsLabel": "Delivery instructions (optional)",
             "instructionsPlaceholder": "Gate code, landmarks, where to leave the order…"
-          }
+          },
+          "promoGiftCard": "Promo & gift card",
+          "promotionCodePlaceholder": "Promotion code",
+          "giftCardCodePlaceholder": "Gift card code"
         },
         "chats": {
           "searchPlaceholder": "Search providers or messages",
@@ -15425,6 +15428,11 @@
           "paymentSectionTitle": "Payment",
           "paymentPayNow": "Pay now",
           "paymentPayRemainingBalance": "Pay remaining balance",
+          "payRemainingTipTitle": "Add a tip (optional)",
+          "payRemainingNoTip": "No tip",
+          "payRemainingCustomTip": "Custom",
+          "payRemainingCustomTipPlaceholder": "Tip amount",
+          "payRemainingTipLine": "Tip: {{amount}} — goes 100% to your provider",
           "paymentPayNowA11y": "Pay now",
           "paymentPayRemainingA11y": "Pay remaining balance",
           "loadingPaymentRequest": "Loading payment request…",
@@ -15650,6 +15658,10 @@
           "selectServices": "Select service(s)",
           "selectServicesHint": "Tap a category to expand or collapse. Add one or more services for yourself or your group.",
           "yourSelection": "Your selection ({{count}})",
+          "continueWithName": "Continue with {{name}}",
+          "continueWithCount": "Continue with {{count}} services",
+          "stickySelectionMore": "+{{count}}",
+          "changeServiceA11y": "Change service",
           "removeServiceA11y": "Remove service",
           "bookInBrowser": "Book in Browser",
           "staffRequiredWebHint": "Online booking for this provider requires staff selection. Book via the website instead.",
@@ -17594,6 +17606,8 @@
     "giftCardCode": "Gift card code",
     "yourGiftCredit": "Your Beautonomi gift credit",
     "giftCardApplied": "Gift card applied — {{currency}} {{amount}} available",
+    "apply": "Apply",
+    "holdRateLimitWait": "Too many attempts. Try again in {{minutes}} min.",
     "useWalletBalance": "Use wallet balance — {{amount}} available",
     "saveCardForFuture": "Save card for future payments",
     "saveCard": "Save card",
@@ -18415,7 +18429,12 @@
         "tip": "Tip",
         "total": "Total",
         "continue": "Continue",
-        "continueAriaLabel": "Continue to next step"
+        "continueAriaLabel": "Continue to next step",
+        "continueWithName": "Continue with {{name}}",
+        "continueWithCount": "Continue with {{count}} services",
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} min",
+        "selectedServiceMore": " +{{count}}",
+        "changeService": "Change"
       },
       "confirmation": {
         "loadingMessage": "Loading booking confirmation...",

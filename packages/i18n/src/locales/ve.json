@@ -13978,7 +13978,10 @@
             "confirmOnMap": "Tshimbidza aterese iyi kha mepe u sedzulusa u rumela.",
             "instructionsLabel": "U ṋetshedzwa instructions (zwo khethea)",
             "instructionsPlaceholder": "Khoutu ya gete, zwikombiso, he a u tshii odara…"
-          }
+          },
+          "promoGiftCard": "khangiso & khadi ḽa nyiko",
+          "promotionCodePlaceholder": "Promotion khoudu",
+          "giftCardCodePlaceholder": "khadi ḽa nyiko khoudu"
         },
         "chats": {
           "searchPlaceholder": "Ṱoḓa vaneḓi or milaedza",
@@ -15521,7 +15524,12 @@
           "cashRefundConfirm": "Ndi i wana",
           "cashRefundDispute": "Khohlano",
           "cashRefundConfirmed": "Thank you — your mbuyiso is khwaṱhisedzaed.",
-          "cashRefundDisputed": "We flagged this mbuyiso for mbono."
+          "cashRefundDisputed": "We flagged this mbuyiso for mbono.",
+          "payRemainingTipTitle": "Engedzani thiphu (a zwi kombetshedzwi)",
+          "payRemainingNoTip": "A hu na thiphu",
+          "payRemainingCustomTip": "Ya vhoiwe",
+          "payRemainingCustomTipPlaceholder": "Tshelede ya thiphu",
+          "payRemainingTipLine": "Thiphu: {{amount}} — i ya nga 100% kha mudzudzanyi wanu"
         },
         "groupBookingDetail": {
           "back": "Murahu",
@@ -15688,7 +15696,11 @@
           "travelAboutMinutes": "~{{count}} min",
           "currentLocation": "zwa zwino fhethu",
           "missingHold": "Missing hkha kale. Please thoma your u buka hafhu.",
-          "findProvider": "Find a muneḓi"
+          "findProvider": "Find a muneḓi",
+          "continueWithName": "bvela phanḓa with {{name}}",
+          "continueWithCount": "bvela phanḓa with {{count}} tshumelo",
+          "changeServiceA11y": "Shandukisa tshumelo",
+          "stickySelectionMore": " +{{count}}"
         },
         "identityVerificationBanner": {
           "requiredTitle": "Khwaṱhisedza your Vhune to buka",
@@ -18393,7 +18405,12 @@
         "total": "Yoṱhe",
         "continue": "Bvela phanḓa",
         "continueAriaLabel": "bvela phanḓa to zwi teaho step",
-        "packageDiscount": "tshiphuthelwa theolelo"
+        "packageDiscount": "tshiphuthelwa theolelo",
+        "continueWithName": "bvela phanḓa with {{name}}",
+        "continueWithCount": "bvela phanḓa with {{count}} tshumelo",
+        "changeService": "Shandukisa",
+        "selectedServiceMore": " (+{{count}})",
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} mithethe"
       },
       "confirmation": {
         "loadingMessage": "I khou ḽoḓa U khwaṱhisedza ha u buka...",

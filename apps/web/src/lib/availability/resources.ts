@@ -40,7 +40,8 @@ export async function checkResourceAvailability(
   resourceIds: string[],
   startAt: Date,
   endAt: Date,
-  excludeBookingId?: string
+  excludeBookingId?: string,
+  excludeGroupBookingId?: string,
 ): Promise<{ available: boolean; conflicts: ResourceConflict[] }> {
   const result = await checkAssignedResourceAvailability(
     supabase,
@@ -48,6 +49,7 @@ export async function checkResourceAvailability(
     startAt,
     endAt,
     excludeBookingId,
+    excludeGroupBookingId,
   );
   return {
     available: result.available,

@@ -268,6 +268,7 @@ export const adminQueryKeys = {
 
   paystackConfig: () => [...adminQueryKeys.root, "integrations", "paystack"] as const,
   resendConfig: () => [...adminQueryKeys.root, "integrations", "resend"] as const,
+  zohoMailConfig: () => [...adminQueryKeys.root, "integrations", "zoho-mail"] as const,
   callsConfig: () => [...adminQueryKeys.root, "integrations", "calls"] as const,
   yocoIntegrationStatus: () => [...adminQueryKeys.root, "integrations", "yoco"] as const,
   paycloudIntegrationStatus: () => [...adminQueryKeys.root, "integrations", "paycloud"] as const,

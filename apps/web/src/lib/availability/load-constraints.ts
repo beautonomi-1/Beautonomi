@@ -636,7 +636,8 @@ export async function loadExistingBookings(
   supabase: SupabaseClient,
   staffId: string | null,
   date: string,
-  excludeBookingId?: string
+  excludeBookingId?: string,
+  excludeGroupBookingId?: string,
 ): Promise<BookingService[]> {
   if (!staffId) {
     return [];
@@ -664,7 +665,8 @@ export async function loadExistingBookings(
       duration_minutes,
       bookings!inner (
         id,
-        status
+        status,
+        group_booking_id
       ),
       offerings!inner (
         buffer_minutes,
@@ -695,6 +697,13 @@ export async function loadExistingBookings(
   // Transform to BookingService format, applying staff overrides
   return bookingServices
     .filter((bs: any) => {
+      if (
+        excludeGroupBookingId &&
+        bs.bookings?.group_booking_id &&
+        String(bs.bookings.group_booking_id) === excludeGroupBookingId
+      ) {
+        return false;
+      }
       // Filter out cancelled bookings (should be handled by query but double-check)
       return bs.bookings?.status !== 'cancelled';
     })
@@ -726,7 +735,8 @@ async function loadExistingBookingsForProviderOnDate(
   supabase: SupabaseClient,
   providerId: string,
   date: string,
-  excludeBookingId?: string
+  excludeBookingId?: string,
+  excludeGroupBookingId?: string,
 ): Promise<BookingService[]> {
   let query = supabase
     .from('booking_services')
@@ -741,7 +751,8 @@ async function loadExistingBookingsForProviderOnDate(
       bookings!inner (
         id,
         status,
-        provider_id
+        provider_id,
+        group_booking_id
       ),
       offerings!inner (
         buffer_minutes,
@@ -770,7 +781,16 @@ async function loadExistingBookingsForProviderOnDate(
   }
 
   return bookingServices
-    .filter((bs: any) => bs.bookings?.status !== 'cancelled')
+    .filter((bs: any) => {
+      if (
+        excludeGroupBookingId &&
+        bs.bookings?.group_booking_id &&
+        String(bs.bookings.group_booking_id) === excludeGroupBookingId
+      ) {
+        return false;
+      }
+      return bs.bookings?.status !== 'cancelled';
+    })
     .map((bs: any) => {
       const bufferMinutes = bs.offerings?.buffer_minutes ?? 0;
       const processingMinutes = bs.offerings?.processing_minutes ?? 0;
@@ -1204,8 +1224,20 @@ export async function loadAvailabilityConstraints(
     loadEffectiveStaffShifts(db, staffId, date, resolvedProviderId, selectedLocationId),
     loadTimeBlocks(db, effectiveStaffId, date, resolvedProviderId),
     syntheticProviderId
-      ? loadExistingBookingsForProviderOnDate(db, syntheticProviderId, date, excludeBookingId)
-      : loadExistingBookings(db, effectiveStaffId, date, excludeBookingId),
+      ? loadExistingBookingsForProviderOnDate(
+          db,
+          syntheticProviderId,
+          date,
+          excludeBookingId,
+          options?.excludeGroupBookingId,
+        )
+      : loadExistingBookings(
+          db,
+          effectiveStaffId,
+          date,
+          excludeBookingId,
+          options?.excludeGroupBookingId,
+        ),
     resolvedProviderId ? loadProviderSettings(db, resolvedProviderId) : Promise.resolve(undefined),
     loadActiveBookingHoldsAsSyntheticBookings(db, {
       resolvedProviderId,

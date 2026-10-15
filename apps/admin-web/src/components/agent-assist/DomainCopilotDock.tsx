@@ -5,6 +5,7 @@ import type { AdminSection } from "@beautonomi/admin-access";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { useAdminCopilot, type CopilotPageContext } from "@/hooks/useAdminCopilot";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { NAV_REVEAL_STATE } from "@/lib/navReveal";
 
 export function DomainCopilotDock({
   section: _section,
@@ -115,7 +116,11 @@ export function DomainCopilotDock({
 
       {proposedAction ? (
         <p className="mt-3 text-sm">
-          <Link to={adminSpaTo(proposedAction.assistDeepLink)} className="font-medium text-primary underline">
+          <Link
+            to={adminSpaTo(proposedAction.assistDeepLink)}
+            state={NAV_REVEAL_STATE}
+            className="font-medium text-primary underline"
+          >
             Review draft in AI suggestion
           </Link>
         </p>

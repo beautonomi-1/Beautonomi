@@ -18,6 +18,7 @@ export function AdminMetricCard({
   footer,
   variant = "slate",
   className,
+  onClick,
 }: {
   label: string;
   value: ReactNode;
@@ -26,13 +27,19 @@ export function AdminMetricCard({
   footer?: ReactNode;
   variant?: AdminMetricCardVariant;
   className?: string;
+  onClick?: () => void;
 }) {
+  const Tag = onClick ? "button" : "div";
   return (
-    <div
+    <Tag
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
       className={cn(
-        "relative overflow-hidden rounded-2xl bg-gradient-to-br p-5 text-white shadow-lg ring-1",
+        "relative overflow-hidden rounded-2xl bg-gradient-to-br p-5 text-left text-white shadow-lg ring-1",
         variants[variant],
-        className
+        onClick &&
+          "cursor-pointer transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/80",
+        className,
       )}
     >
       <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10 blur-2xl" />
@@ -40,6 +47,6 @@ export function AdminMetricCard({
       <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{value}</p>
       {hint ? <p className="mt-1 text-xs text-white/60">{hint}</p> : null}
       {footer ? <div className="relative z-[1] mt-3 text-xs text-white/85">{footer}</div> : null}
-    </div>
+    </Tag>
   );
 }

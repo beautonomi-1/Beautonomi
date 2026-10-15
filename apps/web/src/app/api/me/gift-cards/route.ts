@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { chunkIds, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
+import { computeIsGiftCardForSomeoneElse } from "@/lib/gift-cards/is-gift-card-for-someone-else";
 
 const METADATA_OR_CHUNK = 40;
 
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
     // We fetch both so single AND bulk orders surface every code the buyer paid for.
     const { data: orders } = await supabase
       .from("gift_card_orders")
-      .select("id, gift_card_id")
+      .select("id, gift_card_id, recipient_email")
       .eq("purchaser_user_id", user.id)
       .eq("status", "paid");
 
@@ -50,8 +51,12 @@ export async function GET(request: NextRequest) {
       .select("gift_card_id")
       .eq("user_id", user.id);
 
+    const redeemedCardIds = new Set<string>();
     for (const r of redemptions || []) {
-      if (r.gift_card_id) giftCardIds.add(r.gift_card_id);
+      if (r.gift_card_id) {
+        giftCardIds.add(r.gift_card_id);
+        redeemedCardIds.add(r.gift_card_id as string);
+      }
     }
 
     // 3) Admin-created gift cards assigned to this user's email (metadata.recipient_email)
@@ -113,12 +118,21 @@ export async function GET(request: NextRequest) {
       string,
       { deliver_at: string | null; delivered_at: string | null; delivery_channel: string | null }
     >();
+    const recipientEmailByOrderId = new Map<string, string | null>();
+    for (const o of orders || []) {
+      if (o.id) {
+        recipientEmailByOrderId.set(
+          o.id as string,
+          typeof o.recipient_email === "string" ? o.recipient_email : null,
+        );
+      }
+    }
     if (orderIds.length > 0) {
       try {
         const orderRows = await fetchInIdChunks<Record<string, unknown>>(orderIds, (slice) =>
           supabaseAdmin
             .from("gift_card_orders")
-            .select("id, deliver_at, delivered_at, delivery_channel")
+            .select("id, deliver_at, delivered_at, delivery_channel, recipient_email")
             .in("id", slice),
         );
         for (const row of orderRows) {
@@ -127,6 +141,10 @@ export async function GET(request: NextRequest) {
             delivered_at: (row.delivered_at as string | null) ?? null,
             delivery_channel: (row.delivery_channel as string | null) ?? null,
           });
+          recipientEmailByOrderId.set(
+            row.id as string,
+            typeof row.recipient_email === "string" ? (row.recipient_email as string) : null,
+          );
         }
       } catch (deliveryLookupError) {
         // Delivery schedule is decorative for the wallet; never fail the list over it.
@@ -134,9 +152,18 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const userEmailLower = user.email?.trim().toLowerCase() ?? "";
+
     const enriched = (giftCards || []).map((card) => {
-      const orderId = orderIdByCard.get(card.id as string);
+      const cardId = card.id as string;
+      const orderId = orderIdByCard.get(cardId);
       const delivery = orderId ? deliveryByOrder.get(orderId) : undefined;
+      const recipientEmail = orderId ? recipientEmailByOrderId.get(orderId) : null;
+      const isForSomeoneElse = computeIsGiftCardForSomeoneElse({
+        recipientEmail,
+        userEmail: userEmailLower,
+        userRedeemedCard: redeemedCardIds.has(cardId),
+      });
       return {
         ...card,
         expires_at: (card as { expires_at?: string | null }).expires_at ?? null,
@@ -146,6 +173,8 @@ export async function GET(request: NextRequest) {
         delivered_at: delivery?.delivered_at ?? null,
         delivery_channel: delivery?.delivery_channel ?? null,
         can_resend: Boolean(orderId),
+        recipient_email: recipientEmail ?? null,
+        is_for_someone_else: isForSomeoneElse,
       };
     });
 

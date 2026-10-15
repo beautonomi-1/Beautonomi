@@ -108,3 +108,11 @@ export function labelForSupportTicketCategory(value: string): string {
   }
   return value;
 }
+
+export function groupLabelForSupportTicketCategory(value: string | null | undefined): string | null {
+  if (!value) return null;
+  for (const g of SUPPORT_TICKET_CATEGORY_GROUPS) {
+    if (g.items.some((i) => i.value === value)) return g.label;
+  }
+  return null;
+}

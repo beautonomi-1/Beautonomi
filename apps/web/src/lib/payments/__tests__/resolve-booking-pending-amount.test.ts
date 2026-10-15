@@ -6,6 +6,7 @@ function mockSupabase(payRow: Record<string, unknown> | null) {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
     in: vi.fn().mockReturnThis(),
+    or: vi.fn().mockReturnThis(),
     order: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),
     maybeSingle: vi.fn(),

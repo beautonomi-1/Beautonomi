@@ -72,6 +72,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { PayRemainingCheckout } from "@/components/checkout/PayRemainingCheckout";
 
 const COMPLETION_MODAL_STORAGE_KEY = "booking_completion_modal_seen_";
 
@@ -96,7 +97,7 @@ export default function BookingDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
-  const [isPayingOutstanding, setIsPayingOutstanding] = useState(false);
+  const [showPayRemainingCheckout, setShowPayRemainingCheckout] = useState(false);
   const [chargeApproveLoadingId, setChargeApproveLoadingId] = useState<string | null>(null);
   const [runningLateMinutes, setRunningLateMinutes] = useState<number>(15);
   const [isReportingLate, setIsReportingLate] = useState(false);
@@ -365,25 +366,9 @@ export default function BookingDetailPage() {
     }
   };
 
-  const handlePayOutstanding = async () => {
+  const handlePayOutstanding = () => {
     if (!bookingId) return;
-    try {
-      setIsPayingOutstanding(true);
-      const res = await fetcher.post<{
-        data: { authorization_url?: string };
-        error: null;
-      }>(`/api/me/bookings/${bookingId}/pay-remaining`, {}, { timeoutMs: 120_000 });
-      const url = res?.data?.authorization_url;
-      if (url) {
-        window.location.href = url;
-        return;
-      }
-      toast.error(t("web.accountSettings.bookings.paymentStartFailed"));
-    } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : t("web.accountSettings.bookings.paymentStartFailed"));
-    } finally {
-      setIsPayingOutstanding(false);
-    }
+    setShowPayRemainingCheckout(true);
   };
 
   const bookingTz = booking?.display_time_zone ?? undefined;
@@ -1167,10 +1152,9 @@ export default function BookingDetailPage() {
                     type="button"
                     className="w-full sm:w-auto bg-primary hover:bg-primary/90"
                     onClick={handlePayOutstanding}
-                    disabled={isPayingOutstanding}
                   >
                     <CreditCard className="w-4 h-4 me-2" aria-hidden />
-                    {isPayingOutstanding ? t("web.accountSettings.bookings.processing") : t("web.accountSettings.bookings.payOutstanding")}
+                    {t("web.accountSettings.bookings.payOutstanding")}
                   </Button>
                   <p className="text-xs text-gray-500 mt-2">
                     {t("web.accountSettings.bookings.paystackReturnHint")}
@@ -1307,6 +1291,16 @@ export default function BookingDetailPage() {
               {t("web.accountSettings.bookings.maybeLater")}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showPayRemainingCheckout} onOpenChange={setShowPayRemainingCheckout}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("web.accountSettings.bookings.payOutstanding")}</DialogTitle>
+            <DialogDescription>{t("web.accountSettings.bookings.paystackReturnHint")}</DialogDescription>
+          </DialogHeader>
+          {bookingId ? <PayRemainingCheckout bookingId={bookingId} /> : null}
         </DialogContent>
       </Dialog>
     </div>

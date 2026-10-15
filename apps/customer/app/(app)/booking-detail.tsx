@@ -72,6 +72,8 @@ import {
 import { markReferenceProcessing } from "@/lib/paystack-verify-guard";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { useSavedCards } from "@/hooks/useSavedCards";
+import { useOwnedGiftCards } from "@/features/gift-cards/useOwnedGiftCards";
+import { OwnedGiftCardPicker } from "@/features/gift-cards/OwnedGiftCardPicker";
 import { endTextAlign } from "@/lib/rtlText";
 import { getTenantLocaleTag } from "@/lib/locale";
 
@@ -309,6 +311,7 @@ export default function BookingDetailScreen() {
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [payRemainingLoading, setPayRemainingLoading] = useState(false);
   const [payRemainingUseWallet, setPayRemainingUseWallet] = useState(false);
+  const [payRemainingTipAmount, setPayRemainingTipAmount] = useState(0);
   const [payRemainingGiftCode, setPayRemainingGiftCode] = useState("");
   // Stable per-mount key so a double-tap or client retry of "Pay remaining
   // balance" can't create two Paystack sessions / wallet-gift debits for the
@@ -327,6 +330,12 @@ export default function BookingDetailScreen() {
   const [additionalChargeCardLoadingId, setAdditionalChargeCardLoadingId] = useState<string | null>(null);
   const [additionalPayUseWallet, setAdditionalPayUseWallet] = useState(false);
   const [additionalPayGiftCode, setAdditionalPayGiftCode] = useState("");
+  const giftPickerCurrency = booking?.currency || getTenantDefaultCurrency();
+  const { cards: ownedGiftCards } = useOwnedGiftCards({
+    currency: giftPickerCurrency,
+    userId: user?.id,
+    enabled: Boolean(user),
+  });
   const [myReview, setMyReview] = useState<BookingReviewSummary | null>(null);
   const [runningLateOpen, setRunningLateOpen] = useState(false);
   const [runningLateSubmitting, setRunningLateSubmitting] = useState(false);
@@ -1132,6 +1141,50 @@ export default function BookingDetailScreen() {
   const showPayRemaining = canPayOnline;
   const isFullyUnpaid = booking?.payment_status === "pending";
 
+  const [payRemainingTipPreview, setPayRemainingTipPreview] = useState<{
+    tips_enabled: boolean;
+    service_tip_base: number;
+  } | null>(null);
+  const [payRemainingTipChoice, setPayRemainingTipChoice] = useState<number | "custom">(0);
+  const [payRemainingCustomTip, setPayRemainingCustomTip] = useState("");
+
+  useEffect(() => {
+    if (!id || !showPayRemaining) {
+      setPayRemainingTipPreview(null);
+      return;
+    }
+    let cancelled = false;
+    void api
+      .get<{ tips_enabled?: boolean; service_tip_base?: number }>(
+        `/api/me/bookings/${id}/pay-remaining`,
+      )
+      .then((res) => {
+        if (cancelled || !res.data) return;
+        setPayRemainingTipPreview({
+          tips_enabled: res.data.tips_enabled !== false,
+          service_tip_base: Number(res.data.service_tip_base ?? 0),
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, showPayRemaining]);
+
+  useEffect(() => {
+    const base = payRemainingTipPreview?.service_tip_base ?? 0;
+    if (!payRemainingTipPreview?.tips_enabled || base <= 0) {
+      setPayRemainingTipAmount(0);
+      return;
+    }
+    if (payRemainingTipChoice === "custom") {
+      setPayRemainingTipAmount(
+        Math.round(Math.max(0, Number(payRemainingCustomTip) || 0) * 100) / 100,
+      );
+      return;
+    }
+    setPayRemainingTipAmount(Math.round(base * payRemainingTipChoice) / 100);
+  }, [payRemainingTipPreview, payRemainingTipChoice, payRemainingCustomTip]);
+
   const handlePayRemaining = async () => {
     if (!id || !booking) return;
     haptic.light();
@@ -1156,6 +1209,7 @@ export default function BookingDetailScreen() {
           `/account-settings/bookings/${encodeURIComponent(id)}/payment-callback`,
         ),
         use_wallet: payRemainingUseWallet,
+        tip_amount: payRemainingTipAmount,
         ...(payRemainingGiftCode.trim()
           ? { gift_card_code: payRemainingGiftCode.trim().toUpperCase() }
           : {}),
@@ -2182,6 +2236,13 @@ export default function BookingDetailScreen() {
             backgroundColor: "#fff",
           }}
         />
+        {user && !opts.giftCode.trim() ? (
+          <OwnedGiftCardPicker
+            cards={ownedGiftCards}
+            formatCurrency={(amount, cur) => formatMoney(amount, cur || giftPickerCurrency)}
+            onSelect={(code) => opts.onGiftCode(code)}
+          />
+        ) : null}
       </View>
     );
   };
@@ -3138,6 +3199,68 @@ export default function BookingDetailScreen() {
                   giftCode: payRemainingGiftCode,
                   onGiftCode: setPayRemainingGiftCode,
                 })}
+                {payRemainingTipPreview?.tips_enabled && payRemainingTipPreview.service_tip_base > 0 ? (
+                  <View style={{ marginBottom: 12 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>
+                      {bd("payRemainingTipTitle")}
+                    </Text>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                      {([0, 10, 15, 20, "custom"] as const).map((choice) => {
+                        const selected = payRemainingTipChoice === choice;
+                        const label =
+                          choice === 0
+                            ? bd("payRemainingNoTip")
+                            : choice === "custom"
+                              ? bd("payRemainingCustomTip")
+                              : `${choice}%`;
+                        return (
+                          <Pressable
+                            key={String(choice)}
+                            onPress={() => setPayRemainingTipChoice(choice)}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected }}
+                            style={{
+                              paddingVertical: 8,
+                              paddingHorizontal: 14,
+                              borderRadius: 999,
+                              borderWidth: 1,
+                              borderColor: selected ? Colors.primary : Colors.gray[300],
+                              backgroundColor: selected ? Colors.primary : Colors.white,
+                            }}
+                          >
+                            <Text style={{ color: selected ? Colors.white : Colors.gray[800], fontWeight: "600" }}>
+                              {label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                    {payRemainingTipChoice === "custom" ? (
+                      <TextInput
+                        value={payRemainingCustomTip}
+                        onChangeText={setPayRemainingCustomTip}
+                        keyboardType="decimal-pad"
+                        placeholder={bd("payRemainingCustomTipPlaceholder")}
+                        style={{
+                          marginTop: 8,
+                          borderWidth: 1,
+                          borderColor: Colors.gray[300],
+                          borderRadius: 10,
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                          fontSize: 15,
+                        }}
+                      />
+                    ) : null}
+                    {payRemainingTipAmount > 0 ? (
+                      <Text style={{ marginTop: 8, fontSize: 13, color: Colors.gray[600] }}>
+                        {bd("payRemainingTipLine", {
+                          amount: `${booking?.currency ?? ""} ${payRemainingTipAmount.toFixed(2)}`,
+                        })}
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
                 <Pressable
                   onPress={handlePayRemaining}
                   disabled={payRemainingLoading}

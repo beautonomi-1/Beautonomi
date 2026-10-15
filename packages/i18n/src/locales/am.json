@@ -13978,7 +13978,10 @@
             "confirmOnMap": "Confirmez cette adresse sur la carte pour vérifier la livraison.",
             "instructionsLabel": "Delivery instructions (facultatif)",
             "instructionsPlaceholder": "Code d'accès, repères, où déposer la commande…"
-          }
+          },
+          "promoGiftCard": "Promo & carte cadeau",
+          "promotionCodePlaceholder": "Code promotionnel",
+          "giftCardCodePlaceholder": "Code de la carte cadeau"
         },
         "chats": {
           "searchPlaceholder": "Rechercher prestataires or messages",
@@ -15688,7 +15691,11 @@
           "travelAboutMinutes": "~dakika {{count}}",
           "currentLocation": "Position actuelle",
           "missingHold": "Réservation temporaire introuvable. Veuillez recommencer.",
-          "findProvider": "Trouver un prestataire"
+          "findProvider": "Trouver un prestataire",
+          "continueWithCount": "Continue with {{count}} huduma",
+          "changeServiceA11y": "Change huduma",
+          "stickySelectionMore": " +{{count}}",
+          "continueWithName": "በ{{name}} ይቀጥሉ"
         },
         "identityVerificationBanner": {
           "requiredTitle": "Vérifiez votre identité pour réserver",
@@ -18393,7 +18400,12 @@
         "total": "Total",
         "continue": "Continuer",
         "continueAriaLabel": "Continue to suivant step",
-        "packageDiscount": "Package réduction"
+        "packageDiscount": "Package réduction",
+        "continueWithCount": "Continue with {{count}} huduma",
+        "changeService": "Modifier",
+        "selectedServiceMore": " (+{{count}})",
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} ደቂቃ",
+        "continueWithName": "በ{{name}} ይቀጥሉ"
       },
       "confirmation": {
         "loadingMessage": "Chargement de réservation confirmation...",

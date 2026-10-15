@@ -12,6 +12,12 @@ const FINGERPRINT_CONFIG = {
   windowSeconds: 60 * 60,
 } as const;
 
+const USER_CONFIG = {
+  prefix: "hold-user",
+  limit: 10,
+  windowSeconds: 15 * 60,
+} as const;
+
 export { getClientIp };
 
 export interface HoldRateLimitResult {
@@ -22,11 +28,20 @@ export interface HoldRateLimitResult {
   remainingFingerprint?: number;
 }
 
+export type CheckHoldRateLimitOptions = {
+  userId?: string | null;
+  /** Same-device hold replacement (edit date/time) — do not count against user/fingerprint limits. */
+  skipClientLimit?: boolean;
+};
+
 export async function checkHoldRateLimit(
   request: Request,
   guestFingerprint: string | null,
+  options?: CheckHoldRateLimitOptions,
 ): Promise<HoldRateLimitResult> {
   const ip = getClientIp(request);
+  const userId = options?.userId?.trim() || null;
+  const skipClientLimit = options?.skipClientLimit === true;
 
   const ipResult = await checkRateLimit(IP_CONFIG, ip);
   if (!ipResult.allowed) {
@@ -38,22 +53,40 @@ export async function checkHoldRateLimit(
     };
   }
 
-  if (guestFingerprint) {
-    const fpResult = await checkRateLimit(FINGERPRINT_CONFIG, guestFingerprint);
-    if (!fpResult.allowed) {
+  if (!skipClientLimit) {
+    if (userId) {
+      const userResult = await checkRateLimit(USER_CONFIG, userId);
+      if (!userResult.allowed) {
+        return {
+          allowed: false,
+          reason: "Too many booking attempts. Please try again later.",
+          retryAfterSeconds: userResult.retryAfterSeconds,
+          remainingIp: ipResult.remaining,
+        };
+      }
       return {
-        allowed: false,
-        reason: "Too many booking attempts from this device. Please try again later.",
-        retryAfterSeconds: fpResult.retryAfterSeconds,
+        allowed: true,
         remainingIp: ipResult.remaining,
-        remainingFingerprint: 0,
       };
     }
-    return {
-      allowed: true,
-      remainingIp: ipResult.remaining,
-      remainingFingerprint: fpResult.remaining,
-    };
+
+    if (guestFingerprint) {
+      const fpResult = await checkRateLimit(FINGERPRINT_CONFIG, guestFingerprint);
+      if (!fpResult.allowed) {
+        return {
+          allowed: false,
+          reason: "Too many booking attempts from this device. Please try again later.",
+          retryAfterSeconds: fpResult.retryAfterSeconds,
+          remainingIp: ipResult.remaining,
+          remainingFingerprint: 0,
+        };
+      }
+      return {
+        allowed: true,
+        remainingIp: ipResult.remaining,
+        remainingFingerprint: fpResult.remaining,
+      };
+    }
   }
 
   return {

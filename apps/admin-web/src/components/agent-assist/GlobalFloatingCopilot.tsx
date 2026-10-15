@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Bot, X } from "lucide-react";
 import { Link, useLocation } from "react-router";
 import { GLOBAL_COPILOT_STARTERS, useAdminCopilot, type CopilotPageContext } from "@/hooks/useAdminCopilot";
 import { useAgentShadowMode } from "@/hooks/useAgentShadowMode";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { NAV_REVEAL_STATE } from "@/lib/navReveal";
 import { copilotStartersForDesk, deskFromAdminPath } from "@/lib/adminCopilotDesk";
 
 function pageContextFromPath(pathname: string): CopilotPageContext | undefined {
@@ -40,6 +41,21 @@ export function GlobalFloatingCopilot() {
     pickDisambiguation,
     resetConversation,
   } = useAdminCopilot(pageContext, desk);
+  const messagesRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = messagesRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages.length, busy, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open]);
 
   if (!masterEnabled) return null;
 
@@ -64,7 +80,7 @@ export function GlobalFloatingCopilot() {
               <X className="h-5 w-5 text-gray-500" />
             </button>
           </div>
-          <div className="max-h-72 flex-1 space-y-2 overflow-y-auto p-3">
+          <div ref={messagesRef} className="max-h-72 flex-1 space-y-2 overflow-y-auto p-3" aria-live="polite">
             {messages.length === 0 ? (
               <div className="space-y-3">
                 <p className="text-sm text-gray-600">
@@ -92,6 +108,7 @@ export function GlobalFloatingCopilot() {
                 </div>
               ))
             )}
+            {busy ? <p className="text-xs text-gray-400">Copilot is thinking…</p> : null}
           </div>
           {suggestedPrompts?.length ? (
             <div className="flex flex-wrap gap-2 border-t border-gray-100 p-2">
@@ -152,7 +169,11 @@ export function GlobalFloatingCopilot() {
           </div>
           {proposedAction ? (
             <p className="border-t border-gray-100 px-3 pb-3 text-xs">
-              <Link to={adminSpaTo(proposedAction.assistDeepLink)} className="text-primary underline">
+              <Link
+                to={adminSpaTo(proposedAction.assistDeepLink)}
+                state={NAV_REVEAL_STATE}
+                className="text-primary underline"
+              >
                 Review draft
               </Link>
             </p>

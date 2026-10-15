@@ -178,21 +178,8 @@ async function settleCardMachineTip(
     throw error;
   }
 
-  const { data: booking } = await supabase
-    .from("bookings")
-    .select("tip_amount, total_amount")
-    .eq("id", params.bookingId)
-    .maybeSingle();
-  if (!booking) return;
-
-  await supabase
-    .from("bookings")
-    .update({
-      tip_amount: Number(booking.tip_amount ?? 0) + tip,
-      total_amount: Number(booking.total_amount ?? 0) + tip,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", params.bookingId);
+  const { incrementBookingTipAmount } = await import("@/lib/bookings/increment-booking-tip");
+  await incrementBookingTipAmount(supabase, params.bookingId, tip);
 }
 
 /**
@@ -465,20 +452,38 @@ async function settleGroupBookingPayment(
 ): Promise<{ settled: boolean; reason?: string }> {
   const groupId = input.entityId;
 
-  const { data: bookings } = await supabase
+  const { data: bookingsRaw } = await supabase
     .from("bookings")
     .select(
-      "id, tenant_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status, additional_charges(id, amount, status, description, currency)",
+      "id, tenant_id, created_at, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status, additional_charges(id, amount, status, description, currency)",
     )
     .eq("group_booking_id", groupId)
     .eq("provider_id", input.providerId)
-    .not("status", "in", "(cancelled,no_show)");
+    .not("status", "in", "(cancelled,no_show)")
+    .order("created_at", { ascending: true });
 
-  if (!bookings?.length) return { settled: false, reason: "no_child_bookings" };
+  const bookings = bookingsRaw ?? [];
+  if (!bookings.length) return { settled: false, reason: "no_child_bookings" };
+
+  const { data: groupParticipants } = await supabase
+    .from("group_booking_participants")
+    .select("booking_id, is_primary_contact")
+    .eq("group_booking_id", groupId);
+
+  const primaryParticipantBookingId =
+    (groupParticipants ?? []).find(
+      (p) => p.is_primary_contact && typeof p.booking_id === "string" && p.booking_id,
+    )?.booking_id ?? null;
+  const tipTargetBooking =
+    bookings.find((b) => b.id === primaryParticipantBookingId) ?? bookings[0];
 
   const tip = Math.max(0, Number(input.tipAmount ?? 0));
   const cashback = Math.max(0, Number(input.cashbackAmount ?? 0));
   const baseBudget = Math.max(0, input.amount - tip - cashback);
+  const totalBaseOwed = bookings.reduce(
+    (sum, booking) => sum + computeBaseRemaining(booking),
+    0,
+  );
 
   const rows: Record<string, unknown>[] = [];
   const addonSettlements: {
@@ -553,12 +558,13 @@ async function settleGroupBookingPayment(
     );
   }
 
-  const primary = bookings[0];
-  const baseFullyAllocated = remainingBudget <= 0.01;
-  if (primary && baseFullyAllocated) {
+  const totalBaseAllocated = Math.round((baseBudget - remainingBudget) * 100) / 100;
+  const baseFullyCovered =
+    totalBaseOwed <= 0.01 || totalBaseAllocated + 0.01 >= totalBaseOwed;
+  if (tipTargetBooking && baseFullyCovered) {
     await settleExtrasAfterBase(supabase, input, {
-      bookingId: primary.id,
-      tenantId: primary.tenant_id,
+      bookingId: tipTargetBooking.id,
+      tenantId: tipTargetBooking.tenant_id,
       providerPaymentId,
       baseFullySettled: true,
     });

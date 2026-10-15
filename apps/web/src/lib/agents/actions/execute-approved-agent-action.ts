@@ -172,7 +172,9 @@ export async function executeApprovedAgentAction(
 
     const { data: ticket } = await supabase
       .from("support_tickets")
-      .select("id, ticket_number, status, user_id, provider_id, requester_type, first_staff_reply_at")
+      .select(
+        "id, ticket_number, status, user_id, provider_id, requester_type, first_staff_reply_at, channel, tenant_id",
+      )
       .eq("id", targetId)
       .maybeSingle();
     if (!ticket) return { ok: false, reason: "ticket_not_found" };
@@ -220,22 +222,48 @@ export async function executeApprovedAgentAction(
       .update(ticketUpdate)
       .eq("id", targetId);
 
-    // Best-effort customer notification; the reply itself already landed.
-    try {
-      const { notifySupportTicketUpdated } = await import("@/lib/notifications/notification-service");
-      await notifySupportTicketUpdated(
-        String((ticket as { user_id?: string }).user_id ?? ""),
-        String((ticket as { ticket_number?: string }).ticket_number ?? targetId),
-        "Support has replied to your ticket",
-        targetId,
-        ["email", "push"],
-        (ticket as { requester_type?: string }).requester_type === "provider" ? "provider" : "customer",
-      );
-    } catch (notifyErr) {
-      console.error("[agent-execute] support.reply notify failed:", notifyErr);
+    const messageId = (message as { id?: string }).id;
+    if (messageId) {
+      const { deliverSupportReplyByZoho } = await import("@/lib/support/deliver-zoho-support-reply");
+      await deliverSupportReplyByZoho(supabase, {
+        ticketId: targetId,
+        messageId,
+        plainText: draft,
+      });
     }
 
-    return { ok: true, result: { ticketId: targetId, action: "reply_sent", messageId: (message as { id?: string }).id } };
+    const isEmailTicket = String((ticket as { channel?: string }).channel ?? "app") === "email";
+    if (!isEmailTicket) {
+      try {
+        const { notifySupportTicketUpdated } = await import("@/lib/notifications/notification-service");
+        await notifySupportTicketUpdated(
+          String((ticket as { user_id?: string }).user_id ?? ""),
+          String((ticket as { ticket_number?: string }).ticket_number ?? targetId),
+          "Support has replied to your ticket",
+          targetId,
+          ["email", "push"],
+          (ticket as { requester_type?: string }).requester_type === "provider" ? "provider" : "customer",
+        );
+      } catch (notifyErr) {
+        console.error("[agent-execute] support.reply notify failed:", notifyErr);
+      }
+    } else if ((ticket as { user_id?: string }).user_id) {
+      try {
+        const { notifySupportTicketUpdated } = await import("@/lib/notifications/notification-service");
+        await notifySupportTicketUpdated(
+          String((ticket as { user_id?: string }).user_id),
+          String((ticket as { ticket_number?: string }).ticket_number ?? targetId),
+          "Support has replied to your ticket",
+          targetId,
+          ["push"],
+          (ticket as { requester_type?: string }).requester_type === "provider" ? "provider" : "customer",
+        );
+      } catch (notifyErr) {
+        console.error("[agent-execute] support.reply push failed:", notifyErr);
+      }
+    }
+
+    return { ok: true, result: { ticketId: targetId, action: "reply_sent", messageId } };
   }
 
   if (actionType === "support.resolve" && targetType === "support_ticket") {

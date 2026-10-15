@@ -202,6 +202,7 @@ export default function App() {
           <Route path="monetization/apple/notifications" element={<P.AppleNotificationsPage />} />
           <Route path="monetization/apple/settlements" element={<P.AppleSettlementsPage />} />
           <Route path="integrations/resend" element={<P.ResendIntegrationPage />} />
+          <Route path="integrations/zoho-mail" element={<P.ZohoMailIntegrationPage />} />
           <Route path="mapbox" element={<P.MapboxConfigPage />} />
           <Route path="iso-codes" element={<P.IsoCodesPage />} />
           <Route path="ads/:id" element={<P.AdsCampaignDetailPage />} />

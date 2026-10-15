@@ -7,8 +7,10 @@ import { computeSlaResolutionDueIso, computeFirstResponseDueIso } from "@/lib/su
 import { computeTicketAttentionFields } from "@/lib/support/support-ticket-attention";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { slackNotifyNewSupportTicket } from "@/lib/integrations/slack/triggers";
-import { normalizeSupportTicketCategory } from "@/lib/support/ticket-categories";
+import { normalizeSupportTicketCategory, SUPPORT_TICKET_CATEGORY_GROUPS } from "@/lib/support/ticket-categories";
 import { isUuidString } from "@beautonomi/utils";
+import { applySupportAgentTicketScope } from "@/lib/support/support-agent-tenant-scope";
+import { enrichTicketsWithLatestEmailDeliveryStatus } from "@/lib/support/enrich-support-ticket-list";
 
 function sanitizeIlikeTerm(raw: string) {
   // Strip PostgREST/or filter metacharacters so q cannot break `.or(...)`.
@@ -17,10 +19,23 @@ function sanitizeIlikeTerm(raw: string) {
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi([...SUPPORT_TICKET_STAFF_ROLES] as UserRole[], request);
+    const { user } = await requireRoleInApi([...SUPPORT_TICKET_STAFF_ROLES] as UserRole[], request);
     const supabase = getSupabaseAdmin();
 
     const { searchParams } = new URL(request.url);
+    const categoryGroup = searchParams.get("category_group");
+    const tenantIdFilter = searchParams.get("tenant_id");
+    const channelFilter = searchParams.get("channel");
+    let categoryGroupValues: string[] | null = null;
+    if (categoryGroup) {
+      const group = SUPPORT_TICKET_CATEGORY_GROUPS.find(
+        (g) => g.label.toLowerCase() === categoryGroup.trim().toLowerCase(),
+      );
+      if (!group) {
+        return NextResponse.json({ error: "Unknown category_group" }, { status: 400 });
+      }
+      categoryGroupValues = group.items.map((i) => i.value);
+    }
     const status = searchParams.get("status");
     const statusGroup = searchParams.get("status_group");
     const priority = searchParams.get("priority");
@@ -50,7 +65,7 @@ export async function GET(request: NextRequest) {
     // migration), Postgres raises 42703 "undefined column" and we retry once
     // with agentQueue=false so the queue still loads with a graceful fallback
     // instead of a hard 500.
-    const buildQuery = (agentQueue: boolean) => {
+    const buildQuery = async (agentQueue: boolean) => {
       let query = supabase
         .from("support_tickets")
         .select(
@@ -58,7 +73,8 @@ export async function GET(request: NextRequest) {
           *,
           user:users!support_tickets_user_id_fkey(id, email, full_name),
           provider:providers(id, business_name),
-          assigned_user:users!support_tickets_assigned_to_fkey(id, email, full_name)
+          assigned_user:users!support_tickets_assigned_to_fkey(id, email, full_name),
+          tenant:tenants!support_tickets_tenant_id_fkey(id, name, slug, region_code)
         `,
           { count: "exact" }
         );
@@ -75,6 +91,18 @@ export async function GET(request: NextRequest) {
 
       if (category) {
         query = query.eq("category", category);
+      }
+
+      if (categoryGroupValues) {
+        query = query.in("category", categoryGroupValues);
+      }
+
+      if (tenantIdFilter && isUuidString(tenantIdFilter)) {
+        query = query.eq("tenant_id", tenantIdFilter);
+      }
+
+      if (channelFilter === "email" || channelFilter === "app") {
+        query = query.eq("channel", channelFilter);
       }
 
       if (assignedTo === "unassigned") {
@@ -94,6 +122,7 @@ export async function GET(request: NextRequest) {
           `ticket_number.ilike.${pattern}`,
           `description.ilike.${pattern}`,
           `support_context_label.ilike.${pattern}`,
+          `requester_email.ilike.${pattern}`,
         ];
         if (isUuidString(q)) {
           parts.push(`support_context_id.eq.${q}`);
@@ -165,21 +194,28 @@ export async function GET(request: NextRequest) {
             .order("last_message_at", { ascending: true, nullsFirst: false });
       }
 
+      query = (await applySupportAgentTicketScope(supabase, query, {
+        role: user.role,
+        userId: user.id,
+      })) as unknown as typeof query;
+
       return query.range(offset, offset + limit - 1);
     };
 
-    let { data, error, count } = await buildQuery(true);
+    let listQuery = await buildQuery(true);
+    let { data, error, count } = await listQuery;
 
     // 42703 = undefined_column: migration 726 not applied yet. Retry without
     // the agent-queue columns so the queue degrades gracefully.
     if (error && (error as { code?: string }).code === "42703") {
-      ({ data, error, count } = await buildQuery(false));
+      listQuery = await buildQuery(false);
+      ({ data, error, count } = await listQuery);
     }
 
     if (error) throw error;
 
     const nowMs = Date.now();
-    const tickets = (data || []).map((row) => {
+    const ticketsBase = (data || []).map((row) => {
       const attention = computeTicketAttentionFields(
         {
           status: row.status,
@@ -197,13 +233,19 @@ export async function GET(request: NextRequest) {
       );
       return {
         ...row,
-          needs_agent_response: (row as Record<string, unknown>).needs_agent_response ?? (attention.attention_state !== "waiting_customer" && attention.attention_state !== "resolved" && attention.attention_state !== "assigned_idle"),
+        needs_agent_response:
+          (row as Record<string, unknown>).needs_agent_response ??
+          (attention.attention_state !== "waiting_customer" &&
+            attention.attention_state !== "resolved" &&
+            attention.attention_state !== "assigned_idle"),
         first_response_due_at: (row as Record<string, unknown>).first_response_due_at,
         attention_state: attention.attention_state,
         sla_state: attention.sla_state,
         agent_unread: attention.agent_unread,
       };
     });
+
+    const tickets = await enrichTicketsWithLatestEmailDeliveryStatus(supabase, ticketsBase);
 
     return NextResponse.json({
       tickets,
@@ -212,7 +254,10 @@ export async function GET(request: NextRequest) {
       offset,
       ...(includeCounts
         ? {
-            counts: await loadSupportTicketCounts(supabase, true),
+            counts: await loadSupportTicketCounts(supabase, true, {
+              role: user.role,
+              userId: user.id,
+            }),
           }
         : {}),
     });
@@ -224,46 +269,50 @@ export async function GET(request: NextRequest) {
 async function loadSupportTicketCounts(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   agentQueue: boolean,
+  scope: { role: string | null | undefined; userId: string },
 ) {
   const nowIso = new Date().toISOString();
   const openStatuses = ["open", "in_progress", "waiting_customer"];
 
-  const { count: open } = await supabase
-    .from("support_tickets")
-    .select("id", { count: "exact", head: true })
-    .in("status", openStatuses);
+  const baseCountQuery = supabase.from("support_tickets").select("id", { count: "exact", head: true });
 
-  const { count: unassigned } = await supabase
-    .from("support_tickets")
-    .select("id", { count: "exact", head: true })
-    .in("status", openStatuses)
-    .is("assigned_to", null);
+  const runCount = async (mutate: (q: typeof baseCountQuery) => typeof baseCountQuery) => {
+    let query = baseCountQuery;
+    query = mutate(query);
+    query = (await applySupportAgentTicketScope(supabase, query, {
+      role: scope.role,
+      userId: scope.userId,
+    })) as unknown as typeof query;
+    const { count, error } = await query;
+    if (error) throw error;
+    return count ?? 0;
+  };
 
-  const { count: breachingSla } = await supabase
-    .from("support_tickets")
-    .select("id", { count: "exact", head: true })
-    .lt("sla_resolution_due_at", nowIso)
-    .in("status", openStatuses);
+  const open = await runCount((q) => q.in("status", openStatuses));
+  const unassigned = await runCount((q) => q.in("status", openStatuses).is("assigned_to", null));
+  const breachingSla = await runCount((q) =>
+    q.lt("sla_resolution_due_at", nowIso).in("status", openStatuses),
+  );
 
   let awaitingReply = 0;
   if (agentQueue) {
-    const { count } = await supabase
-      .from("support_tickets")
-      .select("id", { count: "exact", head: true })
-      .eq("needs_agent_response", true);
-    awaitingReply = count ?? 0;
+    try {
+      awaitingReply = await runCount((q) => q.eq("needs_agent_response", true));
+    } catch (err) {
+      if ((err as { code?: string }).code === "42703") {
+        awaitingReply = await runCount((q) => q.eq("status", "open"));
+      } else {
+        throw err;
+      }
+    }
   } else {
-    const { count } = await supabase
-      .from("support_tickets")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "open");
-    awaitingReply = count ?? 0;
+    awaitingReply = await runCount((q) => q.eq("status", "open"));
   }
 
   return {
-    open: open ?? 0,
-    unassigned: unassigned ?? 0,
-    breaching_sla: breachingSla ?? 0,
+    open,
+    unassigned,
+    breaching_sla: breachingSla,
     awaiting_reply: awaitingReply,
   };
 }

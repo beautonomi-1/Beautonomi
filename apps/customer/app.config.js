@@ -84,7 +84,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.100",
+  version: "1.0.101",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -98,7 +98,7 @@ const BASE_EXPO_CONFIG = {
     bundleIdentifier: "com.beautonomi",
     appleTeamId: "QW33CYPQX5",
     usesAppleSignIn: true,
-    buildNumber: "294",
+    buildNumber: "295",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       NSCalendarsUsageDescription:
@@ -176,7 +176,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.CAMERA",
       "android.permission.RECORD_AUDIO",
     ],
-    versionCode: 294,
+    versionCode: 295,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",
     intentFilters: [

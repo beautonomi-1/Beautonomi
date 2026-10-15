@@ -27,6 +27,9 @@ export interface SupportTicketsFilterState {
   firstResponseOverdue: boolean;
   /** Multi-status group — e.g. resolved + closed */
   statusGroup: string;
+  categoryGroup?: string;
+  channel?: string;
+  tenantId?: string;
 }
 
 /** Build query string for GET /api/admin/support-tickets (matches Next list page). */
@@ -47,6 +50,9 @@ export function buildSupportTicketsSearchParams(f: SupportTicketsFilterState): s
   if (f.needsResponse) params.set("needs_response", "1");
   if (f.slaState) params.set("sla_state", f.slaState);
   if (f.firstResponseOverdue) params.set("first_response_overdue", "1");
+  if (f.categoryGroup) params.set("category_group", f.categoryGroup);
+  if (f.channel && f.channel !== "all") params.set("channel", f.channel);
+  if (f.tenantId) params.set("tenant_id", f.tenantId);
   return params.toString();
 }
 
