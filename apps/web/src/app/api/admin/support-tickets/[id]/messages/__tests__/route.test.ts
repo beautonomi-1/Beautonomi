@@ -33,6 +33,18 @@ describe("POST /api/admin/support-tickets/[id]/messages", () => {
     const updatePayloads: Record<string, unknown>[] = [];
     const supabase = {
       from: vi.fn((table: string) => {
+        if (table === "user_tenant_roles") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn(async () => ({
+                  data: [{ tenant_id: "tenant-1" }],
+                  error: null,
+                })),
+              })),
+            })),
+          };
+        }
         if (table === "support_tickets") {
           return {
             select: vi.fn(() => ({
@@ -45,6 +57,8 @@ describe("POST /api/admin/support-tickets/[id]/messages", () => {
                     subject: "Help",
                     first_staff_reply_at: null,
                     status: "open",
+                    tenant_id: "tenant-1",
+                    channel: "app",
                   },
                   error: null,
                 })),
