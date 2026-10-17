@@ -1,8 +1,11 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { AppState, type AppStateStatus } from "react-native";
 import {
   fetchConfigBundle,
   getCachedConfigBundle,
   clearConfigBundleCache,
+  isConfigBundleStub,
+  isConfigBundleCacheFresh,
   DEFAULT_AUTH,
   DEFAULT_VERIFICATION_POLICY,
   type PublicConfigBundle,
@@ -17,6 +20,7 @@ interface ConfigBundleContextValue {
 }
 
 const defaultBundle: PublicConfigBundle = {
+  isStub: true,
   meta: { env: "production", platform: "customer", version: null, fetched_at: new Date().toISOString() },
   amplitude: {},
   third_party: {},
@@ -50,9 +54,27 @@ const defaultBundle: PublicConfigBundle = {
 const ConfigBundleContext = createContext<ConfigBundleContextValue | undefined>(undefined);
 
 export function ConfigBundleProvider({ children }: { children: React.ReactNode }) {
-  const [bundle, setBundle] = useState<PublicConfigBundle | null>(getCachedConfigBundle());
-  const [isLoading, setLoading] = useState(!getCachedConfigBundle());
-  const [error, setError] = useState<string | null>(null);
+  const initialCached = getCachedConfigBundle();
+  const [bundle, setBundle] = useState<PublicConfigBundle | null>(initialCached);
+  const [isLoading, setLoading] = useState(!initialCached || isConfigBundleStub(initialCached));
+  const [error, setError] = useState<string | null>(
+    initialCached && isConfigBundleStub(initialCached) ? "Config bundle unavailable" : null,
+  );
+  const bundleRef = useRef(bundle);
+  bundleRef.current = bundle;
+
+  const applyBundle = useCallback((data: PublicConfigBundle) => {
+    const stub = isConfigBundleStub(data);
+    if (!stub) void resyncLocaleFromBundle();
+    setBundle((prev) => {
+      if (stub && prev && !isConfigBundleStub(prev)) {
+        return prev;
+      }
+      return data;
+    });
+    setError(stub ? "Config bundle unavailable" : null);
+    setLoading(false);
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -63,25 +85,30 @@ export function ConfigBundleProvider({ children }: { children: React.ReactNode }
         platform: "customer",
         environment: __DEV__ ? "development" : "production",
       });
-      void resyncLocaleFromBundle();
-      requestAnimationFrame(() => {
-        setBundle(data);
-        setError(null);
-        setLoading(false);
-      });
+      applyBundle(data);
     } catch (e) {
-      requestAnimationFrame(() => {
-        setBundle(defaultBundle);
-        setError(e instanceof Error ? e.message : "Failed to load config");
-        setLoading(false);
-      });
+      applyBundle(defaultBundle);
+      setError(e instanceof Error ? e.message : "Failed to load config");
     }
+  }, [applyBundle]);
+
+  useEffect(() => {
+    if (!bundle || isConfigBundleStub(bundle)) {
+      void refresh();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial load only
   }, []);
 
   useEffect(() => {
-    if (!bundle && !error) refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount to load bundle
-  }, []);
+    const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
+      if (state !== "active") return;
+      const current = bundleRef.current;
+      if (isConfigBundleStub(current) || !isConfigBundleCacheFresh()) {
+        void refresh();
+      }
+    });
+    return () => sub.remove();
+  }, [refresh]);
 
   return (
     <ConfigBundleContext.Provider value={{ bundle, isLoading, error, refresh }}>
@@ -100,6 +127,7 @@ export function useConfigBundle(): ConfigBundleContextValue {
 
 export function useFeatureFlag(key: string): boolean {
   const { bundle } = useConfigBundle();
+  if (isConfigBundleStub(bundle)) return false;
   return bundle?.flags?.[key]?.enabled ?? false;
 }
 

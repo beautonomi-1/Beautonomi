@@ -13472,7 +13472,8 @@
       "giftCardRedeemedDefault": "Carte cadeau redeemed to portefeuille successfully",
       "giftRedeemHelp": "Faka ikhodi oyithengile noma othile akuthumelele yona — ibhalansi ephelele ifakwa esikhwameni sakho semali ngokushesha.",
       "yourGiftCards": "Tu tarjetas de regalo",
-      "checkoutOpenFailed": "Impossibile aprire il pagamento sicuro. Riprova."
+      "checkoutOpenFailed": "Impossibile aprire il pagamento sicuro. Riprova.",
+      "walletHelpLink": "monedero ayuda"
     },
     "paymentsScreen": {
       "saveCardExplainer": "Sizolondoloza ikhadi lakho ngokuphephile uma ukhokha. Ukuze uqinisekise ikhadi lakho, inkokhiso yesikhashana encane (isb. {{example}}) ingase ibekwe futhi ihlehliswe—lokhu kuqinisekisa ikhadi lakho ukuze ulisebenzise esikhathini esizayo.",
@@ -15524,7 +15525,9 @@
           "cashRefundConfirm": "I received it",
           "cashRefundDispute": "Dispute",
           "cashRefundConfirmed": "Thank you — your remboursement is confirmé.",
-          "cashRefundDisputed": "We flagged this remboursement for avis."
+          "cashRefundDisputed": "We flagged this remboursement for avis.",
+          "cancelPreviewSheetTitle": "Cancelar this reserva?",
+          "cancelPreviewInPersonRefund": "reembolso pendiente en persona: {{currency}} {{amount}}"
         },
         "groupBookingDetail": {
           "back": "Retour",
@@ -17078,7 +17081,14 @@
           "priorityLow": "Faible",
           "priorityMedium": "Moyen",
           "priorityHigh": "Élevé",
-          "priorityUrgent": "Urgent"
+          "priorityUrgent": "Urgent",
+          "chatDefaultSubject": "ayuda solicitud",
+          "continueToChat": "continuar to chat",
+          "useFullForm": "Use lleno form",
+          "startChat": "empezar chat",
+          "chatBack": "Atrás",
+          "safetyUseForm": "Los informes de seguridad van directamente a nuestro equipo; utilice el formulario completo.",
+          "chatAiDisclaimer": "La IA puede cometer errores: puedes hablar con una persona en cualquier momento después de crear tu ticket."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Écrivez votre message…",
@@ -17537,6 +17547,49 @@
     "exploreVideo": {
       "unmute": "Attiva audio",
       "mute": "Disattiva audio"
+    },
+    "bankAccounts": {
+      "failedLoadBanks": "No se pudo cargar banks. intentarlo de nuevo.",
+      "fillAllFields": "Elija un banco e ingrese el número de cuenta y el nombre del titular.",
+      "removeConfirmTitle": "Quitar cuenta bancaria?",
+      "removeConfirmBody": "Esta cuenta ya no estará disponible para reembolsos bancarios.",
+      "remove": "Quitar",
+      "intro": "Se utiliza únicamente para reembolsos bancarios de pagos con tarjeta elegibles. Los números de cuenta se almacenan cifrados.",
+      "empty": "No cuenta bancarias guardard yet.",
+      "bankLabel": "Banco",
+      "primary": "principal",
+      "makePrimary": "Make principal",
+      "verifiedBadge": "verificado",
+      "addAnother": "Añadir a cuenta bancaria",
+      "searchBanks": "Buscar banks",
+      "accountNumberLabel": "cuenta número",
+      "verifiedAs": "verificado: {{name}}",
+      "verify": "Verificar cuenta",
+      "verificationUnavailable": "La verificación automática no está disponible en su mercado: ingrese el nombre del titular de la cuenta exactamente como aparece en su banco.",
+      "accountNameLabel": "cuenta holder nombre",
+      "save": "Guardar cuenta bancaria",
+      "screenTitle": "Cuenta bancarias"
+    },
+    "walletBankRefund": {
+      "notEnabled": "Los reembolsos bancarios no están disponibles en su mercado en este momento.",
+      "invalidAmount": "Introduce a válido importe.",
+      "failed": "No se pudo enviar your solicitud. intentarlo de nuevo or Contacto ayuda.",
+      "openRequest": "Ya tienes una solicitud de reembolso bancario en curso ({{number}}).",
+      "cancelRequest": "Cancelar solicitud",
+      "retentionTitle": "Conservar it on Beautonomi",
+      "retentionBody": "Tienes {{amount}} listo para usar en tu próxima reserva: el crédito de billetera se aplica al momento del pago al instante.",
+      "keepInWallet": "Conservar in my monedero",
+      "continueToBank": "solicitud a Banco reembolso instead",
+      "eligibleLabel": "Eligible for Banco reembolso: {{amount}}",
+      "eligibleHint": "Sólo se pueden enviar a una cuenta bancaria los reembolsos de pagos con tarjeta realizados a través de Beautonomi. Las recargas, las tarjetas regalo y el crédito promocional permanecen en tu billetera.",
+      "noneEligible": "No tienes ningún reembolso de pago con tarjeta elegible para un reembolso bancario en este momento.",
+      "amountLabel": "How much should we enviar to your Banco?",
+      "feeLine": "procesando tarifa: {{fee}} · You receive: {{net}}",
+      "addBank": "Añadir a cuenta bancaria",
+      "submit": "enviar solicitud",
+      "submittedTitle": "solicitud enviarted",
+      "submittedBody": "El monto está retenido en su billetera mientras nuestro equipo financiero lo revisa. Los reembolsos aprobados se pagan mediante EFT, generalmente dentro de los {{days}} días hábiles.",
+      "screenTitle": "Banco reembolso"
     }
   },
   "checkout": {
@@ -17634,7 +17687,7 @@
     "lateCancellationWithinWindowNoRefund": "Within {{hours}} {{hourWord}} of your appointment: no refund will be issued.",
     "noRefundOnCancellation": "Cancellations are non-refundable per this provider's policy.",
     "policyEnforcedAutomatically": "This policy is enforced automatically at the time of cancellation.",
-    "refundsStoreCreditNote": "All refunds are issued as store credit to your Beautonomi wallet, limited to amounts already paid.",
+    "refundsStoreCreditNote": "I rimborsi dei pagamenti online vengono accreditati sul portafoglio Beautonomi. I pagamenti di persona non hanno commissione di cancellazione e vengono restituiti dal professionista.",
     "hour": "heure",
     "hours": "heures",
     "noShowFeeApplies": "No-show fee of {{amount}} applies if you miss your appointment without cancelling.",
@@ -17756,7 +17809,11 @@
     "paymentUnavailableTitle": "Pagamento non disponibile",
     "paymentBrowserFailed": "Impossibile aprire la finestra di pagamento sicuro. Riprova.",
     "paymentNotCompletedTitle": "Pagamento non completato",
-    "paymentNotCompletedBody": "La tua prenotazione non è stata confermata."
+    "paymentNotCompletedBody": "La tua prenotazione non è stata confermata.",
+    "tipPercentButtonA11y": "{{percent}}% propina, {{amount}}",
+    "cancelPreviousWithFeeBody": "Gastos de cancelación {{fee}}. {{refund}} regresará a su billetera Beautonomi. ¿Cancelar la cita anterior?",
+    "cancelPreviousFullRefundBody": "{{refund}} regresará a su billetera Beautonomi. ¿Cancelar la cita anterior?",
+    "confirmCancelPrevious": "Cancelar anterior"
   },
   "payments": {
     "pay": "Pay",

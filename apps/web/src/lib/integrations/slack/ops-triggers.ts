@@ -851,3 +851,29 @@ export function slackNotifySelfServiceAccountDeletionFailed(params: {
     console.error("[slack] account_deletion failed notify error", err);
   });
 }
+
+/** Customer submitted a wallet → bank refund request (manual EFT queue). */
+export function slackNotifyWalletBankRefundRequested(params: {
+  tenantId: string;
+  requestId: string;
+  requestNumber: string;
+  amountLabel: string;
+  netLabel: string;
+}) {
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId,
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.FINANCE_REFUND_REVIEW,
+    dedupeKey: `wallet_bank_refund:${params.requestId}:requested`,
+    entityType: "wallet_bank_refund_request",
+    entityId: params.requestId,
+    title: `Wallet bank refund requested — ${params.requestNumber}`,
+    detailLines: [
+      `Amount: ${params.amountLabel} (pay ${params.netLabel})`,
+      "Action: Admin → Refunds → Wallet bank refunds",
+    ],
+    actionUrl: "/refunds",
+  }).catch((err) => {
+    console.error("[slack] wallet_bank_refund requested notify error", err);
+  });
+}

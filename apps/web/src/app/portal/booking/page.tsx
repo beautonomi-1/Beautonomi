@@ -5,6 +5,16 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Calendar, MapPin, User, X, Plus, Printer } from "lucide-react";
 import { formatDate, formatTime } from "@/lib/utils";
 import {
@@ -70,6 +80,10 @@ export default function PortalBookingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelDialogMessage, setCancelDialogMessage] = useState(
+    "Are you sure you want to cancel this booking? This action cannot be undone.",
+  );
 
   const normalizeError = (msg: string): string => {
     if (!msg) return "Unable to load booking. The link may be invalid or expired.";
@@ -119,9 +133,8 @@ export default function PortalBookingPage() {
     }
   };
 
-  const handleCancel = async () => {
+  const openCancelDialog = async () => {
     if (!booking || !token) return;
-
     let promptMessage =
       "Are you sure you want to cancel this booking? This action cannot be undone.";
     try {
@@ -146,32 +159,32 @@ export default function PortalBookingPage() {
       const refund = Number(p.expected_wallet_refund ?? 0);
       const capNote =
         p.refund_capped_by_paid_amount === true
-          ? "\n\nYour wallet refund is capped by the amount you have already paid."
+          ? " Your wallet refund is capped by the amount you have already paid."
           : "";
       promptMessage =
-        `Cancel this booking now?\n\n` +
-        `Estimated cancellation fee: ${cur} ${fee.toFixed(2)}\n` +
-        `Estimated wallet refund: ${cur} ${refund.toFixed(2)}` +
-        capNote +
-        `\n\n` +
+        `Estimated cancellation fee: ${cur} ${fee.toFixed(2)}. ` +
+        `Estimated wallet refund: ${cur} ${refund.toFixed(2)}.${capNote} ` +
         (p.is_late_cancellation
           ? "You are inside the late-cancellation window."
           : "You are within the normal cancellation window.");
     } catch {
       // Fallback to generic confirmation
     }
+    setCancelDialogMessage(promptMessage);
+    setCancelDialogOpen(true);
+  };
 
-    if (!confirm(promptMessage)) {
-      return;
-    }
-
-    setActionLoading('cancel');
+  const confirmCancelBooking = async () => {
+    if (!token) return;
+    setCancelDialogOpen(false);
+    setActionLoading("cancel");
     try {
       await fetcher.post(`/api/portal/booking/cancel?token=${token}`);
       toast.success("Booking cancelled successfully");
-      await loadBooking(); // Reload to show updated status
-    } catch (err: any) {
-      toast.error(err.message || "Failed to cancel booking");
+      await loadBooking();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to cancel booking";
+      toast.error(message);
     } finally {
       setActionLoading(null);
     }
@@ -453,7 +466,7 @@ export default function PortalBookingPage() {
               </Button>
               <Button
                 variant="outline"
-                onClick={handleCancel}
+                onClick={openCancelDialog}
                 disabled={actionLoading === 'cancel'}
                 className="flex-1 text-red-600 hover:text-red-700"
               >
@@ -472,6 +485,24 @@ export default function PortalBookingPage() {
           )}
         </div>
       </div>
+
+      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel booking?</AlertDialogTitle>
+            <AlertDialogDescription>{cancelDialogMessage}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep booking</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmCancelBooking}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Cancel booking
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

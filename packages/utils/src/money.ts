@@ -100,6 +100,47 @@ export function percentOf(amount: number, percentage: number, currency: string =
   );
 }
 
+const DEFAULT_TIP_PERCENT_PRESETS = [10, 15, 20, 25] as const;
+const MAX_TIP_PERCENT_PRESET_COUNT = 5;
+
+/**
+ * Provider tip preset percentages for checkout UI (1–100, max 5, sorted).
+ */
+export function normalizeTipPercentPresets(input: unknown): number[] {
+  if (!Array.isArray(input)) {
+    return [...DEFAULT_TIP_PERCENT_PRESETS];
+  }
+  const seen = new Set<number>();
+  const valid: number[] = [];
+  for (const item of input) {
+    const n = Number(item);
+    if (!Number.isFinite(n) || n <= 0 || n > 100) continue;
+    const rounded = Math.round(n * 100) / 100;
+    if (seen.has(rounded)) continue;
+    seen.add(rounded);
+    valid.push(rounded);
+  }
+  valid.sort((a, b) => a - b);
+  if (valid.length === 0) {
+    return [...DEFAULT_TIP_PERCENT_PRESETS];
+  }
+  return valid.slice(0, MAX_TIP_PERCENT_PRESET_COUNT);
+}
+
+/** Validates provider PATCH body: 1–5 percents in (0, 100]. Returns null if invalid. */
+export function validateTipPercentPresetsForSave(input: unknown): number[] | null {
+  if (!Array.isArray(input) || input.length < 1 || input.length > MAX_TIP_PERCENT_PRESET_COUNT) {
+    return null;
+  }
+  for (const item of input) {
+    const n = Number(item);
+    if (!Number.isFinite(n) || n <= 0 || n > 100) {
+      return null;
+    }
+  }
+  return normalizeTipPercentPresets(input);
+}
+
 export function sumMoney(currency: string, ...amounts: number[]): number;
 export function sumMoney(...amounts: number[]): number;
 export function sumMoney(first: string | number, ...rest: number[]): number {

@@ -1115,11 +1115,25 @@ export default function GroupBookingsScreen() {
     return Array.from(byId.values());
   }, [groupData?.data, extraGroups]);
 
+  const createParticipantSlotKey = useMemo(
+    () =>
+      createParticipants
+        .map((p) => `${p.id}:${p.serviceId}:${(p.addOnIds ?? []).join(",")}`)
+        .join("|"),
+    [createParticipants],
+  );
+
   const createSlotParams = useMemo(() => {
+    const slotParticipants = createParticipantSlotKey
+      ? createParticipantSlotKey.split("|").map((row) => {
+          const [, serviceId = "", addOns = ""] = row.split(":");
+          return { serviceId, addOnIds: addOns ? addOns.split(",") : [] };
+        })
+      : [];
     const serviceIds = Array.from(
-      new Set([createForm.serviceId, ...createParticipants.map((p) => p.serviceId)].filter(Boolean))
+      new Set([createForm.serviceId, ...slotParticipants.map((p) => p.serviceId)].filter(Boolean))
     );
-    const participantDurations = createParticipants.map(
+    const participantDurations = slotParticipants.map(
       (p) => getParticipantLine(p, createForm.serviceId, services).durationMinutes
     );
     const duration = Math.max(Number(createForm.duration) || 60, ...participantDurations, 60);
@@ -1136,7 +1150,7 @@ export default function GroupBookingsScreen() {
     createForm.staffId,
     createForm.locationId,
     createForm.serviceId,
-    createParticipants,
+    createParticipantSlotKey,
     services,
     selectedLocationId,
   ]);
@@ -1405,6 +1419,11 @@ export default function GroupBookingsScreen() {
       setLoadingMoreGroups(false);
     }
   }, [groupData?.total_pages, loadedGroupPage, loadingMoreGroups, statusParam]);
+
+  useEffect(() => {
+    if (!showCreate) return;
+    createFormScrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [createStep, showCreate]);
 
   useEffect(() => {
     if (!createForm.date || !YMD_RE.test(createForm.date)) return;
@@ -4370,7 +4389,7 @@ export default function GroupBookingsScreen() {
           />
         }
       >
-        <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <View>
           {/* §Provider-audit 2026-04 (packages round 4 — mobile edit
               parity): package attach/swap row inside the edit sheet.
               Tapping opens the dedicated picker sheet, detach writes
@@ -4603,7 +4622,7 @@ export default function GroupBookingsScreen() {
             <Ionicons name="people-outline" size={18} color="#4338ca" style={{ marginEnd: 8 }} />
             <Text style={twStyle("text-sm font-semibold text-indigo-800")}>{gb("manageParticipants")}</Text>
           </TouchableOpacity>
-        </ScrollView>
+        </View>
       </BottomSheet>
 
       {/* §Provider-audit 2026-04 (packages round 4 — mobile edit parity):
@@ -4867,6 +4886,7 @@ export default function GroupBookingsScreen() {
       {/* B10: Create new group booking */}
       <BottomSheet
         visible={showCreate && !showProductPicker && !createMapPinOpen}
+        contentScrollRef={createFormScrollRef}
         onClose={() => {
           setShowCreate(false);
           setCreateStep("form");
@@ -4931,11 +4951,7 @@ export default function GroupBookingsScreen() {
         }
       >
         {createStep === "form" ? (
-        <ScrollView
-          ref={createFormScrollRef}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
+        <>
           {createReviewError ? (
             <View style={twStyle("mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3")}>
               <Text style={twStyle("text-sm font-medium text-red-800")}>{createReviewError}</Text>
@@ -5918,12 +5934,9 @@ export default function GroupBookingsScreen() {
               );
             })}
           </View>
-        </ScrollView>
+        </>
         ) : (
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingBottom: 32 }}
-        >
+        <>
           {createReviewError ? (
             <View style={twStyle("mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3")}>
               <Text style={twStyle("text-sm font-medium text-red-800")}>{createReviewError}</Text>
@@ -6200,7 +6213,7 @@ export default function GroupBookingsScreen() {
               </Text>
             </View>
           </TouchableOpacity>
-        </ScrollView>
+        </>
         )}
       </BottomSheet>
 
@@ -6503,7 +6516,7 @@ export default function GroupBookingsScreen() {
         title={gb("terminalPaymentTitle")}
       >
         {paystackTerminalSheet && (
-          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <View>
             {paystackTerminalSheet.expectedAmount > 0 && (
               <View style={twStyle("mb-4 rounded-xl bg-green-50 border border-green-200 p-4 items-center")}>
                 <Text style={twStyle("text-xs text-green-700 mb-1")}>{gb("amountDueLabel")}</Text>
@@ -6557,7 +6570,7 @@ export default function GroupBookingsScreen() {
               <Ionicons name="wallet-outline" size={18} color="#ffffff" />
               <Text style={twStyle("ms-2 text-sm font-semibold text-white")}>{gb("openPaymentInbox")}</Text>
             </TouchableOpacity>
-          </ScrollView>
+          </View>
         )}
       </BottomSheet>
 

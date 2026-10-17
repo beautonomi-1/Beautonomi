@@ -34,7 +34,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as Clipboard from "expo-clipboard";
 import * as Calendar from "expo-calendar";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { formatMoney } from "@beautonomi/utils";
+import { formatMoney, normalizeTipPercentPresets, percentOf } from "@beautonomi/utils";
 import { showPermissionRecoveryAlert } from "@/lib/native-permissions";
 import {
   ARRIVAL_PIN_CUSTOMER_HEADING,
@@ -59,6 +59,7 @@ import {
 import { pendingConfirmationSlaDisplay } from "@/lib/pending-confirmation-sla-copy";
 import QRCode from "react-native-qrcode-svg";
 import { useTranslation } from "@beautonomi/i18n";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
 import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import {
@@ -299,6 +300,17 @@ export default function BookingDetailScreen() {
   const [nativeCalLoading, setNativeCalLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"tracking" | "receipt" | "details">("tracking");
   const [cancelReasonModalOpen, setCancelReasonModalOpen] = useState(false);
+  const [cancelPreviewOpen, setCancelPreviewOpen] = useState(false);
+  const [cancelPreviewLoading, setCancelPreviewLoading] = useState(false);
+  const [cancelPreview, setCancelPreview] = useState<{
+    currency?: string;
+    expected_cancellation_fee?: number;
+    expected_wallet_refund?: number;
+    in_person_refund_due?: number;
+    penalty_waived_reason?: string;
+    is_late_cancellation?: boolean;
+    refund_capped_by_paid_amount?: boolean;
+  } | null>(null);
   const [cancelReasonText, setCancelReasonText] = useState("");
   const cancelPendingRef = useRef<{ version?: number } | null>(null);
   const [resendCooldownUntil, setResendCooldownUntil] = useState<number | null>(null);
@@ -933,9 +945,28 @@ export default function BookingDetailScreen() {
     return () => clearInterval(interval);
   }, [id, load, booking, activeTab, chargeIdParam, chargeFocusFetchStatus]);
 
+  const penaltyWaivedLine = useCallback(
+    (code?: string | null) => {
+      if (!code) return null;
+      const keyByCode: Record<string, string> = {
+        pending: "cancelPreviewPenaltyWaivedPending",
+        grace: "cancelPreviewPenaltyWaivedGrace",
+        provider_rescheduled: "cancelPreviewPenaltyWaivedRescheduled",
+        no_penalty_policy: "cancelPreviewPenaltyWaivedNoPenaltyPolicy",
+        provider_cancelled: "cancelPreviewPenaltyWaivedProvider",
+      };
+      const key = keyByCode[code];
+      if (!key) return null;
+      return bd(key);
+    },
+    [bd],
+  );
+
   const handleCancel = useCallback(async () => {
     if (!booking) return;
-    let message = bd("cancelDefaultConfirm");
+    setCancelPreviewLoading(true);
+    setCancelPreviewOpen(true);
+    setCancelPreview(null);
     try {
       const preview = await api.get<{
         allowed?: boolean;
@@ -943,46 +974,40 @@ export default function BookingDetailScreen() {
         currency?: string;
         expected_cancellation_fee?: number;
         expected_wallet_refund?: number;
+        in_person_refund_due?: number;
+        penalty_waived_reason?: string;
         is_late_cancellation?: boolean;
         refund_capped_by_paid_amount?: boolean;
       }>(`/api/me/bookings/${id}/cancel-preview`);
       const p = preview.data;
       if (preview.error || !p?.allowed) {
+        setCancelPreviewOpen(false);
         Alert.alert(bd("cannotCancelTitle"), preview.error?.message || p?.reason || bd("cancellationNotAllowed"));
         return;
       }
-      const cur = p.currency || booking.currency || getTenantDefaultCurrency();
-      const fee = Number(p.expected_cancellation_fee ?? 0);
-      const refund = Number(p.expected_wallet_refund ?? 0);
-      const capBlock =
-        p.refund_capped_by_paid_amount === true ? "\n\n" + bd("cancelPreviewCapNote") : "";
-      const windowLine = p.is_late_cancellation ? bd("cancelPreviewLate") : bd("cancelPreviewNormal");
-      message = bd("cancelPreviewMessage", {
-        currency: cur,
-        fee: fee.toFixed(2),
-        refund: refund.toFixed(2),
-        capBlock,
-        windowLine,
-      });
+      setCancelPreview(p);
+      const version = typeof booking.version === "number" ? booking.version : undefined;
+      cancelPendingRef.current = { version };
     } catch {
-      message += bd("cancelPreviewEstimateSuffix");
-    }
-
-    Alert.alert(bd("cancelBookingTitle"), message, [
-      { text: bd("keepBookingCta"), style: "cancel" },
-      {
-        text: bd("cancelBookingCta"),
-        style: "destructive",
-        onPress: () => {
-          const version = typeof booking.version === "number" ? booking.version : undefined;
-          cancelPendingRef.current = { version };
-          setCancelReasonText("");
-          setCancelReasonModalOpen(true);
+      setCancelPreviewOpen(false);
+      Alert.alert(bd("cancelBookingTitle"), bd("cancelDefaultConfirm"), [
+        { text: bd("keepBookingCta"), style: "cancel" },
+        {
+          text: bd("cancelBookingCta"),
+          style: "destructive",
+          onPress: () => {
+            const version = typeof booking.version === "number" ? booking.version : undefined;
+            cancelPendingRef.current = { version };
+            setCancelReasonText("");
+            setCancelReasonModalOpen(true);
+          },
         },
-      },
-    ]);
+      ]);
+    } finally {
+      setCancelPreviewLoading(false);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [booking, id, load, bd]);
+  }, [booking, id, bd]);
 
   const submitCancellation = useCallback(async (reason: string) => {
     setCancelReasonModalOpen(false);
@@ -1144,6 +1169,7 @@ export default function BookingDetailScreen() {
   const [payRemainingTipPreview, setPayRemainingTipPreview] = useState<{
     tips_enabled: boolean;
     service_tip_base: number;
+    tip_presets?: number[];
   } | null>(null);
   const [payRemainingTipChoice, setPayRemainingTipChoice] = useState<number | "custom">(0);
   const [payRemainingCustomTip, setPayRemainingCustomTip] = useState("");
@@ -1155,7 +1181,7 @@ export default function BookingDetailScreen() {
     }
     let cancelled = false;
     void api
-      .get<{ tips_enabled?: boolean; service_tip_base?: number }>(
+      .get<{ tips_enabled?: boolean; service_tip_base?: number; tip_presets?: number[] }>(
         `/api/me/bookings/${id}/pay-remaining`,
       )
       .then((res) => {
@@ -1163,12 +1189,20 @@ export default function BookingDetailScreen() {
         setPayRemainingTipPreview({
           tips_enabled: res.data.tips_enabled !== false,
           service_tip_base: Number(res.data.service_tip_base ?? 0),
+          tip_presets: Array.isArray(res.data.tip_presets) ? res.data.tip_presets : undefined,
         });
       });
     return () => {
       cancelled = true;
     };
   }, [id, showPayRemaining]);
+
+  const payRemainingTipPresets = useMemo(
+    () => normalizeTipPercentPresets(payRemainingTipPreview?.tip_presets),
+    [payRemainingTipPreview?.tip_presets],
+  );
+
+  const payRemainingTipCurrency = booking?.currency ?? getTenantDefaultCurrency();
 
   useEffect(() => {
     const base = payRemainingTipPreview?.service_tip_base ?? 0;
@@ -1182,8 +1216,17 @@ export default function BookingDetailScreen() {
       );
       return;
     }
-    setPayRemainingTipAmount(Math.round(base * payRemainingTipChoice) / 100);
-  }, [payRemainingTipPreview, payRemainingTipChoice, payRemainingCustomTip]);
+    if (payRemainingTipChoice === 0) {
+      setPayRemainingTipAmount(0);
+      return;
+    }
+    setPayRemainingTipAmount(percentOf(base, payRemainingTipChoice, payRemainingTipCurrency));
+  }, [
+    payRemainingTipPreview,
+    payRemainingTipChoice,
+    payRemainingCustomTip,
+    payRemainingTipCurrency,
+  ]);
 
   const handlePayRemaining = async () => {
     if (!id || !booking) return;
@@ -3205,8 +3248,13 @@ export default function BookingDetailScreen() {
                       {bd("payRemainingTipTitle")}
                     </Text>
                     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                      {([0, 10, 15, 20, "custom"] as const).map((choice) => {
+                      {([0, ...payRemainingTipPresets, "custom"] as const).map((choice) => {
                         const selected = payRemainingTipChoice === choice;
+                        const base = payRemainingTipPreview.service_tip_base;
+                        const isPercent = typeof choice === "number" && choice > 0;
+                        const computed = isPercent
+                          ? percentOf(base, choice, payRemainingTipCurrency)
+                          : 0;
                         const label =
                           choice === 0
                             ? bd("payRemainingNoTip")
@@ -3219,6 +3267,14 @@ export default function BookingDetailScreen() {
                             onPress={() => setPayRemainingTipChoice(choice)}
                             accessibilityRole="button"
                             accessibilityState={{ selected }}
+                            accessibilityLabel={
+                              isPercent
+                                ? bd("payRemainingTipPercentButtonA11y", {
+                                    percent: choice,
+                                    amount: formatMoney(computed, payRemainingTipCurrency),
+                                  })
+                                : label
+                            }
                             style={{
                               paddingVertical: 8,
                               paddingHorizontal: 14,
@@ -3226,11 +3282,24 @@ export default function BookingDetailScreen() {
                               borderWidth: 1,
                               borderColor: selected ? Colors.primary : Colors.gray[300],
                               backgroundColor: selected ? Colors.primary : Colors.white,
+                              alignItems: "center",
                             }}
                           >
                             <Text style={{ color: selected ? Colors.white : Colors.gray[800], fontWeight: "600" }}>
                               {label}
                             </Text>
+                            {isPercent ? (
+                              <Text
+                                style={{
+                                  color: selected ? Colors.white : Colors.gray[600],
+                                  fontSize: 11,
+                                  fontWeight: "600",
+                                  marginTop: 2,
+                                }}
+                              >
+                                {formatMoney(computed, payRemainingTipCurrency)}
+                              </Text>
+                            ) : null}
                           </Pressable>
                         );
                       })}
@@ -4151,6 +4220,90 @@ export default function BookingDetailScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <BottomSheet
+        visible={cancelPreviewOpen}
+        onClose={() => setCancelPreviewOpen(false)}
+        title={bd("cancelPreviewSheetTitle")}
+      >
+        {cancelPreviewLoading ? (
+          <ActivityIndicator color={Colors.primary} style={{ marginVertical: 16 }} />
+        ) : cancelPreview ? (
+          <View style={{ gap: 12, paddingBottom: 8 }}>
+            {(() => {
+              const cur =
+                cancelPreview.currency ||
+                booking?.currency ||
+                getTenantDefaultCurrency();
+              const fee = Number(cancelPreview.expected_cancellation_fee ?? 0);
+              const refund = Number(cancelPreview.expected_wallet_refund ?? 0);
+              const inPerson = Number(cancelPreview.in_person_refund_due ?? 0);
+              const windowLine = cancelPreview.is_late_cancellation
+                ? bd("cancelPreviewLate")
+                : bd("cancelPreviewNormal");
+              const waived = penaltyWaivedLine(cancelPreview.penalty_waived_reason);
+              return (
+                <>
+                  <Text style={{ fontSize: 14, color: "#374151", lineHeight: 20 }}>
+                    {bd("cancelPreviewMessage", {
+                      currency: cur,
+                      fee: fee.toFixed(2),
+                      refund: refund.toFixed(2),
+                      capBlock:
+                        cancelPreview.refund_capped_by_paid_amount === true
+                          ? `\n\n${bd("cancelPreviewCapNote")}`
+                          : "",
+                      windowLine,
+                    })}
+                  </Text>
+                  {inPerson > 0 ? (
+                    <Text style={{ fontSize: 14, color: "#374151" }}>
+                      {bd("cancelPreviewInPersonRefund", {
+                        currency: cur,
+                        amount: inPerson.toFixed(2),
+                      })}
+                    </Text>
+                  ) : null}
+                  {waived ? (
+                    <Text style={{ fontSize: 14, color: "#059669" }}>{waived}</Text>
+                  ) : null}
+                </>
+              );
+            })()}
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
+              <TouchableOpacity
+                onPress={() => setCancelPreviewOpen(false)}
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: "#D1D5DB",
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ fontWeight: "600", color: "#374151" }}>{bd("keepBookingCta")}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  setCancelPreviewOpen(false);
+                  setCancelReasonText("");
+                  setCancelReasonModalOpen(true);
+                }}
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: "#DC2626",
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ fontWeight: "600", color: "#fff" }}>{bd("cancelBookingCta")}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
+      </BottomSheet>
 
       {/* Cancel reason modal */}
       {/* §UI-audit 2026-04: wrapped in KeyboardAvoidingView so the

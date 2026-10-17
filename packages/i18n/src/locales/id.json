@@ -13472,7 +13472,8 @@
       "giftCardRedeemedDefault": "Carte cadeau redeemed to portefeuille successfully",
       "giftRedeemHelp": "Faka ikhodi oyithengile noma othile akuthumelele yona — ibhalansi ephelele ifakwa esikhwameni sakho semali ngokushesha.",
       "yourGiftCards": "Tu tarjetas de regalo",
-      "checkoutOpenFailed": "Kami tidak dapat membuka checkout aman. Silakan coba lagi."
+      "checkoutOpenFailed": "Kami tidak dapat membuka checkout aman. Silakan coba lagi.",
+      "walletHelpLink": "Bantuan dompet"
     },
     "paymentsScreen": {
       "saveCardExplainer": "Sizolondoloza ikhadi lakho ngokuphephile uma ukhokha. Ukuze uqinisekise ikhadi lakho, inkokhiso yesikhashana encane (isb. {{example}}) ingase ibekwe futhi ihlehliswe—lokhu kuqinisekisa ikhadi lakho ukuze ulisebenzise esikhathini esizayo.",
@@ -15524,7 +15525,9 @@
           "cashRefundConfirm": "I received it",
           "cashRefundDispute": "Dispute",
           "cashRefundConfirmed": "Thank you — your remboursement is confirmé.",
-          "cashRefundDisputed": "We flagged this remboursement for avis."
+          "cashRefundDisputed": "We flagged this remboursement for avis.",
+          "cancelPreviewSheetTitle": "Batalkan pemesanan ini?",
+          "cancelPreviewInPersonRefund": "Pengembalian dana yang harus dibayar secara langsung: {{currency}} {{amount}}"
         },
         "groupBookingDetail": {
           "back": "Retour",
@@ -17078,7 +17081,14 @@
           "priorityLow": "Faible",
           "priorityMedium": "Moyen",
           "priorityHigh": "Élevé",
-          "priorityUrgent": "Urgent"
+          "priorityUrgent": "Urgent",
+          "chatDefaultSubject": "ayuda solicitud",
+          "continueToChat": "continuar to chat",
+          "useFullForm": "Use lleno form",
+          "startChat": "empezar chat",
+          "chatBack": "Retour",
+          "safetyUseForm": "Les rapports de sécurité sont envoyés directement à notre équipe – veuillez utiliser le formulaire complet.",
+          "chatAiDisclaimer": "L'IA peut faire des erreurs : vous pouvez parler à une personne à tout moment après la création de votre ticket."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Écrivez votre message…",
@@ -17537,6 +17547,49 @@
     "exploreVideo": {
       "unmute": "Nyalakan suara",
       "mute": "Bisukan"
+    },
+    "bankAccounts": {
+      "failedLoadBanks": "Tidak dapat memuat bank. Coba lagi.",
+      "fillAllFields": "Pilih bank dan masukkan nomor rekening dan nama pemegang.",
+      "removeConfirmTitle": "Hapus rekening bank?",
+      "removeConfirmBody": "Rekening ini tidak lagi tersedia untuk pengembalian dana bank.",
+      "remove": "Menghapus",
+      "intro": "Hanya digunakan untuk pengembalian dana bank atas pembayaran kartu yang memenuhi syarat. Nomor akun disimpan terenkripsi.",
+      "empty": "Belum ada rekening bank yang disimpan.",
+      "primary": "Utama",
+      "makePrimary": "Jadikan yang utama",
+      "verifiedBadge": "Terverifikasi",
+      "addAnother": "Tambahkan rekening bank",
+      "searchBanks": "Cari bank",
+      "accountNumberLabel": "Nomor rekening",
+      "verifiedAs": "Terverifikasi: {{name}}",
+      "verify": "Verifikasi akun",
+      "verificationUnavailable": "Verifikasi otomatis tidak tersedia di pasar Anda — masukkan nama pemegang rekening persis seperti yang tertera di bank Anda.",
+      "accountNameLabel": "Nama pemegang rekening",
+      "save": "Simpan rekening bank",
+      "screenTitle": "Rekening bank",
+      "bankLabel": "Banque"
+    },
+    "walletBankRefund": {
+      "addBank": "Tambahkan rekening bank",
+      "notEnabled": "Pengembalian dana bank tidak tersedia di pasar Anda saat ini.",
+      "invalidAmount": "Masukkan jumlah yang valid.",
+      "failed": "Tidak dapat mengirimkan permintaan Anda. Coba lagi atau hubungi dukungan.",
+      "openRequest": "Anda sudah memiliki permintaan pengembalian dana bank yang sedang diproses ({{number}}).",
+      "cancelRequest": "Batalkan permintaan",
+      "retentionTitle": "Simpan di Beautonomi",
+      "keepInWallet": "Simpan di dompetku",
+      "continueToBank": "Minta pengembalian dana bank sebagai gantinya",
+      "eligibleLabel": "Memenuhi syarat untuk pengembalian dana bank: {{amount}}",
+      "eligibleHint": "Hanya pengembalian dana pembayaran kartu yang dilakukan melalui Beautonomi yang dapat dikirim ke rekening bank. Isi ulang, kartu hadiah, dan kredit promosi tetap ada di dompet Anda.",
+      "noneEligible": "Saat ini Anda tidak memiliki pengembalian dana pembayaran kartu yang memenuhi syarat untuk pengembalian dana bank.",
+      "amountLabel": "Berapa banyak yang harus kami kirim ke bank Anda?",
+      "feeLine": "Biaya pemrosesan: {{fee}} · Anda menerima: {{net}}",
+      "submit": "Kirim permintaan",
+      "submittedTitle": "Permintaan diajukan",
+      "submittedBody": "Jumlah tersebut ditahan di dompet Anda sementara tim keuangan kami meninjaunya. Pengembalian dana yang disetujui dibayarkan melalui EFT, biasanya dalam waktu {{days}} hari kerja.",
+      "screenTitle": "Pengembalian dana bank",
+      "retentionBody": "Vous disposez de {{amount}} prêts à être utilisés lors de votre prochaine réservation : le crédit de portefeuille s'applique instantanément au moment du paiement."
     }
   },
   "checkout": {
@@ -17634,7 +17687,7 @@
     "lateCancellationWithinWindowNoRefund": "Within {{hours}} {{hourWord}} of your appointment: no refund will be issued.",
     "noRefundOnCancellation": "Cancellations are non-refundable per this provider's policy.",
     "policyEnforcedAutomatically": "This policy is enforced automatically at the time of cancellation.",
-    "refundsStoreCreditNote": "All refunds are issued as store credit to your Beautonomi wallet, limited to amounts already paid.",
+    "refundsStoreCreditNote": "Pengembalian pembayaran online dikreditkan ke dompet Beautonomi Anda. Pembayaran langsung tidak dikenai biaya pembatalan dan dikembalikan oleh penyedia.",
     "hour": "heure",
     "hours": "heures",
     "noShowFeeApplies": "No-show fee of {{amount}} applies if you miss your appointment without cancelling.",
@@ -17756,7 +17809,11 @@
     "paymentUnavailableTitle": "Pembayaran tidak tersedia",
     "paymentBrowserFailed": "Kami tidak dapat membuka jendela pembayaran aman. Silakan coba lagi.",
     "paymentNotCompletedTitle": "Pembayaran belum selesai",
-    "paymentNotCompletedBody": "Pemesanan Anda belum dikonfirmasi."
+    "paymentNotCompletedBody": "Pemesanan Anda belum dikonfirmasi.",
+    "tipPercentButtonA11y": "{{percent}}% propina, {{amount}}",
+    "cancelPreviousWithFeeBody": "Biaya pembatalan {{fee}}. {{refund}} akan kembali ke dompet Beautonomi Anda. Batalkan janji temu sebelumnya?",
+    "cancelPreviousFullRefundBody": "{{refund}} akan kembali ke dompet Beautonomi Anda. Batalkan janji temu sebelumnya?",
+    "confirmCancelPrevious": "Batalkan sebelumnya"
   },
   "payments": {
     "pay": "Pay",

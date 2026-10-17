@@ -41,8 +41,11 @@ export async function applyNonBookingRefundFromTransaction(
   const productOrderId = metadata.product_order_id ?? null;
   const giftCardOrderId =
     metadata.kind === "gift_card_order" ? (metadata.gift_card_order_id ?? null) : null;
+  const membershipKind = String(metadata.kind ?? "");
   const membershipOrderId =
-    metadata.kind === "membership_order" ? (metadata.membership_order_id ?? null) : null;
+    membershipKind === "membership_order" || membershipKind === "membership_renewal"
+      ? (metadata.membership_order_id ?? null)
+      : null;
   const adsBudgetOrderId =
     metadata.kind === "ads_budget_order" ? (metadata.ads_budget_order_id ?? null) : null;
   const marketingTopup = metadata.kind === "marketing_credit_topup";
@@ -151,7 +154,7 @@ export async function applyNonBookingRefundFromTransaction(
   } else if (membershipOrderId) {
     const { data: orderRow } = await supabase
       .from("membership_orders")
-      .select("id, provider_id, tenant_id, user_id, total_amount, status")
+      .select("id, provider_id, tenant_id, user_id, amount, status")
       .eq("id", String(membershipOrderId))
       .maybeSingle();
 
@@ -163,9 +166,10 @@ export async function applyNonBookingRefundFromTransaction(
         provider_id: providerId,
       });
 
+      const refundedAt = new Date().toISOString();
       await supabase
         .from("membership_orders")
-        .update({ status: "refunded", updated_at: new Date().toISOString() })
+        .update({ status: "refunded", refunded_at: refundedAt, updated_at: refundedAt })
         .eq("id", String(membershipOrderId));
 
       if (providerId && userId) {

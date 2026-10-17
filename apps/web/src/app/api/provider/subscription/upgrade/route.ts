@@ -58,6 +58,8 @@ type ExistingSubRow = {
   paystack_customer_code?: string | null;
   expires_at?: string | null;
   next_payment_date?: string | null;
+  scheduled_plan_id?: string | null;
+  cancelled_at?: string | null;
   subscription_plans?: { name?: string; price_monthly?: number; price_yearly?: number } | null;
 };
 
@@ -179,6 +181,9 @@ export async function POST(request: NextRequest) {
             paystack_sync_note: null,
             paystack_subscription_code: null,
             next_payment_date: null,
+            scheduled_plan_id: null,
+            scheduled_change_at: null,
+            scheduled_billing_period: null,
             ...clearAppleMerchantOnFree(),
           },
           { onConflict: "provider_id" },
@@ -308,6 +313,8 @@ export async function POST(request: NextRequest) {
         plan_id,
         expires_at,
         next_payment_date,
+        scheduled_plan_id,
+        cancelled_at,
         subscription_plans:plan_id(name, price_monthly, price_yearly)
       `)
       .eq("provider_id", providerId)
@@ -335,18 +342,46 @@ export async function POST(request: NextRequest) {
     ) {
       const changeAt = existingRow.expires_at || existingRow.next_payment_date;
       if (changeAt) {
+        // A row that is already scheduled had its Paystack sub disabled when it was first scheduled;
+        // Paystack rejects a second disable, which would block changing the scheduled target.
+        if (previousSubscriptionCode && !existingRow.scheduled_plan_id) {
+          try {
+            await disableSubscriptionByCode(previousSubscriptionCode, { tenantId });
+          } catch (disableError) {
+            console.error(
+              "[subscription/upgrade] Paystack disable failed; downgrade not scheduled:",
+              previousSubscriptionCode,
+              disableError,
+            );
+            return errorResponse(
+              "We could not update your billing on Paystack. Try again in a moment.",
+              "PAYSTACK_DISABLE_FAILED",
+              502,
+            );
+          }
+        }
         const supabaseAdmin = createClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.SUPABASE_SERVICE_ROLE_KEY!,
           { auth: { autoRefreshToken: false, persistSession: false } },
         );
+        const schedulePatch: Record<string, unknown> = {
+          scheduled_plan_id: plan_id,
+          scheduled_change_at: changeAt,
+          scheduled_billing_period: billing_period,
+          updated_at: new Date().toISOString(),
+        };
+        if (!existingRow.expires_at) {
+          schedulePatch.expires_at = changeAt;
+        }
+        // Paystack sends subscription.not_renew right after the disable above; if it lands before
+        // this write it flips auto_renew off and the UI offers "Extend plan" on the old price.
+        if (!existingRow.cancelled_at) {
+          schedulePatch.auto_renew = true;
+        }
         const { error: scheduleErr } = await supabaseAdmin
           .from("provider_subscriptions")
-          .update({
-            scheduled_plan_id: plan_id,
-            scheduled_change_at: changeAt,
-            updated_at: new Date().toISOString(),
-          })
+          .update(schedulePatch)
           .eq("provider_id", providerId);
         if (scheduleErr) throw scheduleErr;
         return successResponse({
@@ -405,6 +440,9 @@ export async function POST(request: NextRequest) {
           paystack_authorization_code: authorizationCode,
           paystack_customer_code: customerCode,
           next_payment_date: paystackSubscription?.next_payment_date,
+          scheduled_plan_id: null,
+          scheduled_change_at: null,
+          scheduled_billing_period: null,
           ...paystackActivationFields(),
         }, { onConflict: "provider_id" })
         .select()

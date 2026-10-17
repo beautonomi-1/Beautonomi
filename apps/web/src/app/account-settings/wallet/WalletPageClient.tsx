@@ -37,6 +37,7 @@ export default function WalletPage({
     Array<{ id: string; code: string; balance: number; currency: string }>
   >([]);
   const [claimingCode, setClaimingCode] = useState<string | null>(null);
+  const [bankRefundHelp, setBankRefundHelp] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -99,6 +100,34 @@ export default function WalletPage({
 
   useEffect(() => {
     void loadPendingGiftCards();
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetcher.get<{
+          data?: {
+            settings?: { enabled?: boolean; help_text?: string | null };
+            eligible_amount?: number;
+            open_request?: { request_number?: string; status?: string } | null;
+          };
+        }>("/api/me/wallet/bank-refunds?limit=1", { staleTimeMs: 60_000 });
+        const settings = res.data?.settings;
+        const open = res.data?.open_request;
+        if (open?.request_number) {
+          setBankRefundHelp(
+            `Your bank refund request ${open.request_number} is ${open.status === "approved" ? "approved and awaiting transfer" : "being reviewed"}. The amount is on hold in your wallet.`,
+          );
+        } else if (settings?.enabled && Number(res.data?.eligible_amount ?? 0) > 0) {
+          setBankRefundHelp(
+            settings.help_text?.trim() ||
+              "Bank refund of an eligible card payment is available on request from the Wallet screen in the Beautonomi app.",
+          );
+        }
+      } catch {
+        setBankRefundHelp(null);
+      }
+    })();
   }, []);
 
   const claimPendingGiftCard = async (code: string) => {
@@ -188,6 +217,11 @@ export default function WalletPage({
               </div>
             ) : (
               <div className="space-y-6">
+                {bankRefundHelp ? (
+                  <div className="rounded-xl border border-blue-100 bg-blue-50/80 px-4 py-3 text-sm text-blue-950">
+                    {bankRefundHelp}
+                  </div>
+                ) : null}
                 {/* Available Balance Card */}
                 <div
                   className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8"

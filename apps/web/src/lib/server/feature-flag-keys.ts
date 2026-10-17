@@ -227,6 +227,10 @@ export const FEATURE_FLAG_KEYS = {
   EXPLORE_RENDOBAR_TIMELINE_COMPOSE: "explore.rendobar_timeline_compose",
   /** Future: Rendobar smart compression vs fixed CRF (default OFF). */
   EXPLORE_RENDOBAR_SMART_COMPRESSION: "explore.rendobar_smart_compression",
+  /** Customer-facing AI support on the ticket thread (web + customer app). */
+  SUPPORT_AI_ASSISTANT_CUSTOMER: "support.ai_assistant.customer",
+  /** Provider-facing AI support on the ticket thread (web + provider app). */
+  SUPPORT_AI_ASSISTANT_PROVIDER: "support.ai_assistant.provider",
 } as const;
 
 export type PaymentRelatedFeatureKey =

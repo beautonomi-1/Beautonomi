@@ -83,7 +83,7 @@ export default function ExploreMore() {
               <p className="text-base font-light ">
                 You can also{" "}
                 <Link
-                  href="/help-center?topic=feedback"
+                  href="/help/submit-ticket?category=feedback_feature"
                   className="underline font-light "
                   prefetch={false}
                 >

@@ -13472,7 +13472,8 @@
       "giftCardRedeemedDefault": "karete ya mpho redeemed to sepache katlehoe tletsey",
       "giftRedeemHelp": "Voer 'n kode in wat jy gekoop het of wat iemand met jou gedeel het - die volle balans word onmiddellik by jou beursie gevoeg.",
       "yourGiftCards": "likarete tsa mpho ya hau",
-      "checkoutOpenFailed": "Ha rea khona ho bula tefo e sireletsehileng. Ka kopo leka hape."
+      "checkoutOpenFailed": "Ha rea khona ho bula tefo e sireletsehileng. Ka kopo leka hape.",
+      "walletHelpLink": "sepache thuso"
     },
     "paymentsScreen": {
       "saveCardExplainer": "Ons sal jou kaart veilig stoor wanneer jy betaal. Om jou kaart te verifieer, kan 'n klein tydelike heffing (bv. {{example}}) geplaas en omgekeer word—dit bevestig jou kaart vir toekomstige gebruik.",
@@ -15529,7 +15530,9 @@
           "payRemainingNoTip": "Ha ho thipi",
           "payRemainingCustomTip": "Ya hao",
           "payRemainingCustomTipPlaceholder": "Palo ya thipi",
-          "payRemainingTipLine": "Thipi: {{amount}} — e ya 100% ho mofani wa hao"
+          "payRemainingTipLine": "Thipi: {{amount}} — e ya 100% ho mofani wa hao",
+          "cancelPreviewSheetTitle": "Hlakola this buking?",
+          "cancelPreviewInPersonRefund": "puseletso e kolotwang ka mahlo: {{currency}} {{amount}}"
         },
         "groupBookingDetail": {
           "back": "Morao",
@@ -17083,7 +17086,14 @@
           "priorityLow": "Tlase",
           "priorityMedium": "Bohare",
           "priorityHigh": "Holimo",
-          "priorityUrgent": "Kapele"
+          "priorityUrgent": "Kapele",
+          "chatDefaultSubject": "tšehetso kopo",
+          "continueToChat": "tsoela pele to chat",
+          "useFullForm": "Use e tletse form",
+          "startChat": "qala chat",
+          "chatBack": "Morao",
+          "safetyUseForm": "Litlaleho tsa polokeho li ea sehlopheng sa rona ka kotloloho - ka kopo sebelisa foromo e felletseng.",
+          "chatAiDisclaimer": "AI e ka etsa liphoso - o ka bua le motho nako efe kapa efe kamora hore tekete ea hau e thehoe."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Mofuta your molaetsa...",
@@ -17542,6 +17552,49 @@
     "exploreVideo": {
       "unmute": "Bula modumo",
       "mute": "Thulisa"
+    },
+    "bankAccounts": {
+      "failedLoadBanks": "Ha e a khona ho jaefa banks. leka hape.",
+      "fillAllFields": "Khetha banka ebe u kenya nomoro ea ak'haonte le lebitso la mong'a eona.",
+      "removeConfirmTitle": "Tlosa akhaonto ea banka?",
+      "removeConfirmBody": "Ak'haonte ena ha e sa tla hlola e fumaneha bakeng sa ho khutlisa chelete bankeng.",
+      "remove": "Tlosa",
+      "intro": "E sebelisoa feela bakeng sa pusetso ea banka ea litefo tse loketseng tsa likarete. Linomoro tsa ak'haonte li bolokiloe li patiloe.",
+      "empty": "No akhaonto ea bankas bolokad yet.",
+      "bankLabel": "Banka",
+      "primary": "ea mantlha",
+      "makePrimary": "Make ea mantlha",
+      "verifiedBadge": "e netefaditsoe",
+      "addAnother": "Kenya a akhaonto ea banka",
+      "searchBanks": "Batla banks",
+      "accountNumberLabel": "akhaonto nomoro",
+      "verifiedAs": "e netefaditsoe: {{name}}",
+      "verify": "Netefatsa akhaonto",
+      "verificationUnavailable": "Netefatso ea motlako ha e fumanehe 'marakeng oa hau - kenya lebitso la mong'a akhaonto hantle kamoo le hlahang bankeng ea hau.",
+      "accountNameLabel": "akhaonto holder lebitso",
+      "save": "Boloka akhaonto ea banka",
+      "screenTitle": "Akhaonto ea bankas"
+    },
+    "walletBankRefund": {
+      "addBank": "Kenya a akhaonto ea banka",
+      "notEnabled": "Puseletso ea banka ha e fumanehe 'marakeng oa hau hajoale.",
+      "invalidAmount": "Kenya a e nepahetse chelete.",
+      "failed": "Ha e a khona ho romela your kopo. leka hape or Ikopanye tšehetso.",
+      "openRequest": "O se o ntse o na le kopo ya ho buseletswa banka ({{number}}).",
+      "cancelRequest": "Hlakola kopo",
+      "retentionTitle": "Boloka it on Beautonomi",
+      "retentionBody": "U na le {{amount}} e se e loketse ho sebelisoa ha u etsa peeletso e latelang - mokoloto oa sepache o sebetsa ha o tsoa hanghang.",
+      "keepInWallet": "Boloka in my sepache",
+      "continueToBank": "kopo a Banka puseletso instead",
+      "eligibleLabel": "Eligible for Banka puseletso: {{amount}}",
+      "eligibleHint": "Ke pusetso feela ea litefello tsa likarete tse entsoeng ka Beautonomi tse ka romelloang akhaonteng ea banka. Lintlafatso, likarete tsa limpho le mokoloto oa papatso li lula sepacheng sa hau.",
+      "noneEligible": "Ha u na litefo tsa karete tse lokeloang ho khutlisetsoa bankeng hajoale.",
+      "amountLabel": "How much should we romela to your Banka?",
+      "feeLine": "e a sebetsa tefo: {{fee}} · You receive: {{net}}",
+      "submit": "romela kopo",
+      "submittedTitle": "kopo romelated",
+      "submittedBody": "Chelete e ntse e eme ka sepacheng sa hau ha sehlopha sa rona sa lichelete se ntse se e hlahloba. Lichelete tse amohetsoeng li lefshoa ke EFT, hangata matsatsing a {{days}} a khoebo.",
+      "screenTitle": "Banka puseletso"
     }
   },
   "checkout": {
@@ -17639,7 +17692,7 @@
     "lateCancellationWithinWindowNoRefund": "Ka mor'a lihora tse {{hours}} {{hourWord}} pele ho kopano ea hau: ha ho tla khutlisoa chelete.",
     "noRefundOnCancellation": "Hlakolalations are non-puseletsoable per this mofani's leano.",
     "policyEnforcedAutomatically": "Pholisi ena e sebetsa ka bo eona ka nako ea ho hlakoloa.",
-    "refundsStoreCreditNote": "Lichelete tsohle li fanoe e le mokitlane oa lebenkele sepacheng sa hau sa Beautonomi, tse lekantsoeng ho chelete e seng e lefshoa.",
+    "refundsStoreCreditNote": "Chelete e khutlisitsoeng ea litefo tsa inthanete e fanoa e le mokitlane sepacheng sa hau sa Beautonomi. Litefo tse entsoeng ka setsoha ha li na tefiso ea ho hlakoloa 'me li khutlisoa ke mofani.",
     "hour": "hora",
     "hours": "lihora",
     "noShowFeeApplies": "Chelete ea {{amount}} e sebetsa haeba u fetoa ke kopano ea hau ntle le ho hlakola.",
@@ -17761,7 +17814,11 @@
     "paymentUnavailableTitle": "tefo ha e fumanehe",
     "paymentBrowserFailed": "Ha rea khona ho bula fensetere e sireletsehileng ea tefo. Ka kopo leka hape.",
     "paymentNotCompletedTitle": "Tefo ha e so phethoe",
-    "paymentNotCompletedBody": "Pehelo ea hau ha e so netefatsoe."
+    "paymentNotCompletedBody": "Pehelo ea hau ha e so netefatsoe.",
+    "tipPercentButtonA11y": "{{percent}}% thepa, {{amount}}",
+    "cancelPreviousWithFeeBody": "Tefiso ea ho hlakoloa {{fee}}. {{refund}} tla kgutlela sepacheng sa Beautonomi hao. Hlakola kopano e fetileng?",
+    "cancelPreviousFullRefundBody": "{{refund}} e tla khutlela sepacheng sa Beautonomi sa hao. Hlakola kopano e fetileng?",
+    "confirmCancelPrevious": "Hlakola e fetileng"
   },
   "payments": {
     "pay": "Lefa",

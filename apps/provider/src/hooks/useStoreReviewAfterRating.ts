@@ -50,7 +50,10 @@ export function useStoreReviewAfterRating(source: StoreReviewSource = "client_ra
                 text: t("common.storeReview.lowScoreAction"),
                 onPress: () => {
                   completeRef.current();
-                  router.push("/(app)/(tabs)/more/support-tickets/new" as never);
+                  router.push({
+                    pathname: "/(app)/(tabs)/more/support-tickets/new",
+                    params: { category: "review_rating" },
+                  } as never);
                 },
               },
             ],

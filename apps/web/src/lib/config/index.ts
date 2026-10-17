@@ -238,7 +238,10 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
 
   const amplitudeRes = results[0].status === "fulfilled" ? results[0].value : { data: null, error: new Error("failed") };
   const platformSettingsRes = results[1].status === "fulfilled" ? results[1].value : { data: null, error: null };
-  const featureFlagsRes = results[2].status === "fulfilled" ? results[2].value : { data: [], error: null };
+  const featureFlagsRejected = results[2].status === "rejected";
+  const featureFlagsRes =
+    results[2].status === "fulfilled" ? results[2].value : { data: [], error: new Error("feature_flags_failed") };
+  const flagsUnavailable = featureFlagsRejected || Boolean(featureFlagsRes.error);
   const onDemandRes = results[3].status === "fulfilled" ? results[3].value : { data: null, error: null };
   const aiModuleRes = results[4].status === "fulfilled" ? results[4].value : { data: null, error: null };
   const adsRes = results[5].status === "fulfilled" ? results[5].value : { data: null, error: null };
@@ -561,6 +564,7 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
       platform,
       version: appVersion ?? null,
       fetched_at,
+      ...(flagsUnavailable ? { flags_unavailable: true as const } : {}),
       ...(tenantId
         ? {
             tenant_id: tenantId,

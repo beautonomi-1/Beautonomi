@@ -11,6 +11,7 @@ import {
   msToHours,
   msToMinutes,
 } from "@/lib/support/support-report-shared";
+import { firstResponseIntervalStartIso } from "@/lib/support/support-ticket-sla";
 
 const TICKET_ROW_CAP = 5000;
 const TOP_REQUESTERS_LIMIT = 25;
@@ -108,6 +109,8 @@ export async function GET(request: NextRequest) {
       "user_id",
       "provider_id",
       "assigned_to",
+      "handling_mode",
+      "assistant_handoff_at",
     ].join(", ");
 
     // Tickets created OR resolved within the period (period activity).
@@ -186,8 +189,11 @@ export async function GET(request: NextRequest) {
       const agg = ensureAgent(t.assigned_to || agentForCsat!);
       agg.assignedInPeriod.add(t.id);
       if (t.first_staff_reply_at && t.created_at) {
-        const ms =
-          new Date(t.first_staff_reply_at).getTime() - new Date(t.created_at).getTime();
+        const start = firstResponseIntervalStartIso({
+          created_at: String(t.created_at),
+          assistant_handoff_at: (t as { assistant_handoff_at?: string | null }).assistant_handoff_at,
+        });
+        const ms = new Date(t.first_staff_reply_at).getTime() - new Date(start).getTime();
         if (ms >= 0) agg.frtMs.push(ms);
       }
       if (typeof t.csat_score === "number" && agentForCsat) ensureAgent(agentForCsat).csatScores.push(t.csat_score);

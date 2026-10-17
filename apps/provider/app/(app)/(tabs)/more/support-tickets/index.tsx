@@ -10,7 +10,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
 import { trackSupportTicketsView } from "@/lib/analytics";
-import { labelForSupportTicketCategory } from "@/lib/supportTicketCategoryPresets";
+import { labelForSupportTicketCategoryI18n } from "@beautonomi/utils";
 import { SUPPORT_TICKETS_API_PREFIX } from "@/lib/support-ticket-api";
 
 type Ticket = {
@@ -56,9 +56,9 @@ function formatDateSafe(value: unknown, empty: string): string {
   return parsed.toLocaleDateString();
 }
 
-function categoryLabel(value: string | null | undefined): string {
+function categoryLabel(value: string | null | undefined, tr: (key: string) => string): string {
   if (!value) return "";
-  return labelForSupportTicketCategory(value);
+  return labelForSupportTicketCategoryI18n(value, tr);
 }
 
 function contextLabel(ticket: Ticket, st: (key: string) => string): string | null {
@@ -215,7 +215,9 @@ export default function SupportTicketsListScreen() {
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                   <Text style={{ fontFamily: "monospace", fontSize: 12, color: Colors.gray[500] }}>{ticket.ticket_number}</Text>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                    {ticket.has_unread_staff_reply || ticket.last_message_from === "staff" ? (
+                    {ticket.has_unread_staff_reply ||
+                    ticket.last_message_from === "staff" ||
+                    ticket.last_message_from === "assistant" ? (
                       <View style={{ borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: "#dbeafe" }}>
                         <Text style={{ fontSize: 11, fontWeight: "600", color: "#1d4ed8" }}>{st("newReply")}</Text>
                       </View>
@@ -237,7 +239,7 @@ export default function SupportTicketsListScreen() {
                 ) : null}
                 <Text style={{ marginTop: 6, fontSize: 12, color: Colors.gray[500] }}>
                   {ticket.category
-                    ? st("metaWithCategory", { category: categoryLabel(ticket.category), priority: ticket.priority, date: formatDateSafe(ticket.updated_at, st("emptyDate")) })
+                    ? st("metaWithCategory", { category: categoryLabel(ticket.category, st), priority: ticket.priority, date: formatDateSafe(ticket.updated_at, st("emptyDate")) })
                     : st("meta", { priority: ticket.priority, date: formatDateSafe(ticket.updated_at, st("emptyDate")) })}
                 </Text>
                 {shouldAskForCsat(ticket) ? (

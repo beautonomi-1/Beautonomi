@@ -155,6 +155,38 @@ export async function fetchSupportTicketContext(
       };
     }
 
+    if (type === "wallet_bank_refund") {
+      const { data: req } = await supabase
+        .from("wallet_bank_refund_requests")
+        .select(
+          "id, request_number, user_id, status, amount, net_amount, currency, bank_name, account_number_last4, tenant_id",
+        )
+        .eq("id", id)
+        .maybeSingle();
+      if (!req || req.user_id !== ticket.user_id) return null;
+      let slaDays: number | null = null;
+      try {
+        const { getEffectiveWalletBankRefundSettings } = await import("@/lib/wallet-bank-refunds/settings");
+        const settings = await getEffectiveWalletBankRefundSettings(supabase, String(req.tenant_id ?? ""));
+        slaDays = settings.sla_business_days;
+      } catch {
+        slaDays = 5;
+      }
+      return {
+        contextType: "wallet_bank_refund",
+        facts: {
+          request_number: req.request_number ?? null,
+          status: req.status ?? null,
+          amount: Number(req.amount ?? 0),
+          net_amount: Number(req.net_amount ?? 0),
+          currency: req.currency ?? null,
+          bank_name: req.bank_name ?? null,
+          bank_last4: req.account_number_last4 ?? null,
+          sla_business_days: slaDays,
+        },
+      };
+    }
+
     if (type === "payment") {
       const { data: payment } = await supabase
         .from("booking_payments")
@@ -194,4 +226,181 @@ export async function fetchSupportTicketContext(
     // Context is best-effort — a fetch failure must never block triage.
   }
   return null;
+}
+
+export type RecentSupportRecordSummary = {
+  kind: "booking" | "product_order";
+  id: string;
+  label: string;
+  status: string | null;
+  at: string | null;
+};
+
+/** Ownership-scoped recent records when the ticket has no linked id yet. */
+export async function listRequesterRecentSupportRecords(
+  supabase: SupabaseClient,
+  ticket: { user_id: string; provider_id?: string | null },
+  limit = 5,
+): Promise<RecentSupportRecordSummary[]> {
+  const out: RecentSupportRecordSummary[] = [];
+  try {
+    if (ticket.provider_id) {
+      const { data: bookings } = await supabase
+        .from("bookings")
+        .select("id, booking_number, status, scheduled_at, provider_id")
+        .eq("provider_id", ticket.provider_id)
+        .order("scheduled_at", { ascending: false, nullsFirst: false })
+        .limit(limit);
+      for (const b of bookings ?? []) {
+        out.push({
+          kind: "booking",
+          id: String(b.id),
+          label: String(b.booking_number ?? b.id),
+          status: (b.status as string) ?? null,
+          at: (b.scheduled_at as string) ?? null,
+        });
+      }
+    } else {
+      const { data: bookings } = await supabase
+        .from("bookings")
+        .select("id, booking_number, status, scheduled_at, customer_id")
+        .eq("customer_id", ticket.user_id)
+        .order("scheduled_at", { ascending: false, nullsFirst: false })
+        .limit(limit);
+      for (const b of bookings ?? []) {
+        out.push({
+          kind: "booking",
+          id: String(b.id),
+          label: String(b.booking_number ?? b.id),
+          status: (b.status as string) ?? null,
+          at: (b.scheduled_at as string) ?? null,
+        });
+      }
+      const { data: orders } = await supabase
+        .from("product_orders")
+        .select("id, order_number, status, created_at, customer_id")
+        .eq("customer_id", ticket.user_id)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      for (const o of orders ?? []) {
+        out.push({
+          kind: "product_order",
+          id: String(o.id),
+          label: String(o.order_number ?? o.id),
+          status: (o.status as string) ?? null,
+          at: (o.created_at as string) ?? null,
+        });
+      }
+    }
+  } catch {
+    return out;
+  }
+  return out.slice(0, limit * 2);
+}
+
+/** Admin attach UI: recent records or ilike search on booking/order numbers (requester-owned). */
+export async function searchRequesterSupportContextRecords(
+  supabase: SupabaseClient,
+  ticket: { user_id: string; provider_id?: string | null },
+  query: string,
+  limit = 8,
+): Promise<RecentSupportRecordSummary[]> {
+  const q = query.trim();
+  if (!q) {
+    return listRequesterRecentSupportRecords(supabase, ticket, limit);
+  }
+  const pattern = `%${q.replace(/%/g, "")}%`;
+  const out: RecentSupportRecordSummary[] = [];
+  try {
+    if (ticket.provider_id) {
+      const { data: bookings } = await supabase
+        .from("bookings")
+        .select("id, booking_number, status, scheduled_at, provider_id, customer_id")
+        .eq("provider_id", ticket.provider_id)
+        .ilike("booking_number", pattern)
+        .order("scheduled_at", { ascending: false, nullsFirst: false })
+        .limit(limit);
+      for (const b of bookings ?? []) {
+        if (
+          !ticketOwnsSupportRecord({
+            ticketUserId: ticket.user_id,
+            ticketProviderId: ticket.provider_id,
+            recordCustomerId: b.customer_id as string | null,
+            recordProviderId: b.provider_id as string | null,
+          })
+        ) {
+          continue;
+        }
+        out.push({
+          kind: "booking",
+          id: String(b.id),
+          label: String(b.booking_number ?? b.id),
+          status: (b.status as string) ?? null,
+          at: (b.scheduled_at as string) ?? null,
+        });
+      }
+      const { data: orders } = await supabase
+        .from("product_orders")
+        .select("id, order_number, status, created_at, provider_id, customer_id")
+        .eq("provider_id", ticket.provider_id)
+        .ilike("order_number", pattern)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      for (const o of orders ?? []) {
+        if (
+          !ticketOwnsSupportRecord({
+            ticketUserId: ticket.user_id,
+            ticketProviderId: ticket.provider_id,
+            recordCustomerId: o.customer_id as string | null,
+            recordProviderId: o.provider_id as string | null,
+          })
+        ) {
+          continue;
+        }
+        out.push({
+          kind: "product_order",
+          id: String(o.id),
+          label: String(o.order_number ?? o.id),
+          status: (o.status as string) ?? null,
+          at: (o.created_at as string) ?? null,
+        });
+      }
+    } else {
+      const { data: bookings } = await supabase
+        .from("bookings")
+        .select("id, booking_number, status, scheduled_at, customer_id, provider_id")
+        .eq("customer_id", ticket.user_id)
+        .ilike("booking_number", pattern)
+        .order("scheduled_at", { ascending: false, nullsFirst: false })
+        .limit(limit);
+      for (const b of bookings ?? []) {
+        out.push({
+          kind: "booking",
+          id: String(b.id),
+          label: String(b.booking_number ?? b.id),
+          status: (b.status as string) ?? null,
+          at: (b.scheduled_at as string) ?? null,
+        });
+      }
+      const { data: orders } = await supabase
+        .from("product_orders")
+        .select("id, order_number, status, created_at, customer_id, provider_id")
+        .eq("customer_id", ticket.user_id)
+        .ilike("order_number", pattern)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      for (const o of orders ?? []) {
+        out.push({
+          kind: "product_order",
+          id: String(o.id),
+          label: String(o.order_number ?? o.id),
+          status: (o.status as string) ?? null,
+          at: (o.created_at as string) ?? null,
+        });
+      }
+    }
+  } catch {
+    return out.slice(0, limit);
+  }
+  return out.slice(0, limit);
 }

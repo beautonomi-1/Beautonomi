@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { successResponse, handleApiError, getProviderIdForUser, notFoundResponse, errorResponse } from '@/lib/supabase/api-helpers';
 import { requirePermission } from "@/lib/auth/requirePermission";
-import { deriveEnforcementFields } from '../route';
+import { deriveEnforcementFields, normalizePolicyLocationType } from '../route';
 import { z } from "zod";
 
 const updatePolicySchema = z.object({
@@ -13,6 +13,7 @@ const updatePolicySchema = z.object({
   fee_type: z.enum(["fixed", "percentage"]).optional(),
   is_default: z.boolean().optional(),
   location_type: z.enum(["at_salon", "at_home", "both"]).nullable().optional(),
+  grace_window_minutes: z.number().int().min(0).max(120).optional(),
 });
 
 /**
@@ -118,7 +119,10 @@ export async function PATCH(
       updateData.is_default = validationResult.data.is_default;
     }
     if (validationResult.data.location_type !== undefined) {
-      updateData.location_type = validationResult.data.location_type;
+      updateData.location_type = normalizePolicyLocationType(validationResult.data.location_type);
+    }
+    if (validationResult.data.grace_window_minutes !== undefined) {
+      updateData.grace_window_minutes = validationResult.data.grace_window_minutes;
     }
     const enforcement = deriveEnforcementFields(merged);
     updateData.hours_before_cutoff = enforcement.hours_before_cutoff;

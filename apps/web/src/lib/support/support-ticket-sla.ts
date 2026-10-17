@@ -45,6 +45,16 @@ export function firstResponseSlaHoursForPriority(priority: string | null | undef
   }
 }
 
+/** Human first-response SLA starts at handoff when the ticket was AI-handled first. */
+export function firstResponseIntervalStartIso(ticket: {
+  created_at: string;
+  assistant_handoff_at?: string | null;
+}): string {
+  const handoff = ticket.assistant_handoff_at;
+  if (typeof handoff === "string" && handoff.trim()) return handoff;
+  return ticket.created_at;
+}
+
 export function computeFirstResponseDueIso(createdAtIso: string, priority: string | null | undefined): string {
   const created = new Date(createdAtIso);
   const hours = firstResponseSlaHoursForPriority(priority);

@@ -35,6 +35,7 @@ export interface ConfigBundleMeta {
     region_id?: string;
   };
   region_settings_public?: Record<string, unknown>;
+  flags_unavailable?: boolean;
 }
 
 export interface ResolvedFlag {
@@ -187,7 +188,10 @@ function createStubBundle(
 }
 
 export function isConfigBundleStub(bundle: PublicConfigBundle | null | undefined): boolean {
-  return bundle?.isStub === true;
+  if (!bundle) return true;
+  if (bundle.isStub === true) return true;
+  if (bundle.meta?.flags_unavailable === true) return true;
+  return false;
 }
 
 export function isConfigBundleCacheFresh(): boolean {
@@ -224,10 +228,13 @@ export async function fetchConfigBundle(params?: {
       return createStubBundle(environment, platform);
     }
     const data = (await res.json()) as PublicConfigBundle;
-    if (data?.meta) {
+    if (data?.meta && !isConfigBundleStub({ ...data, isStub: false })) {
       cached = { ...data, isStub: false };
       cacheTime = Date.now();
       return cached;
+    }
+    if (data?.meta) {
+      return { ...data, isStub: true };
     }
   } catch {
     // fallback below — do not cache

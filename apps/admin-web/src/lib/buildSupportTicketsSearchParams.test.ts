@@ -87,6 +87,11 @@ describe("buildSupportTicketsSearchParams", () => {
     expect(p.get("assigned_to")).toBe("user-123");
   });
 
+  it("includes handling_mode=assistant when aiHandling is set", () => {
+    const qs = buildSupportTicketsSearchParams({ ...defaults, aiHandling: true });
+    expect(qs).toContain("handling_mode=assistant");
+  });
+
   it("omits assigned_to for 'mine' when no staffUserId", () => {
     const qs = buildSupportTicketsSearchParams({
       ...defaults,
@@ -102,6 +107,11 @@ describe("SUPPORT_TICKET_SAVED_VIEWS", () => {
   it("has a needs_response view as first entry", () => {
     expect(SUPPORT_TICKET_SAVED_VIEWS[0]?.id).toBe("needs_response");
     expect(SUPPORT_TICKET_SAVED_VIEWS[0]?.params.needsResponse).toBe(true);
+  });
+
+  it("has an ai_handling view", () => {
+    const v = SUPPORT_TICKET_SAVED_VIEWS.find((x) => x.id === "ai_handling");
+    expect(v?.params.aiHandling).toBe(true);
   });
 
   it("has an unassigned view", () => {

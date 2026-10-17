@@ -13472,7 +13472,8 @@
       "giftCardRedeemedDefault": "ikhadi lesipho redeemed to sikhwama impumelelokugcweley",
       "giftRedeemHelp": "Voer 'n kode in wat jy gekoop het of wat iemand met jou gedeel het - die volle balans word onmiddellik by jou beursie gevoeg.",
       "yourGiftCards": "emakhadi etipho yakho",
-      "checkoutOpenFailed": "Asikwazanga kuvula inkhokhelo levikelekile. Sicela uzame futsi."
+      "checkoutOpenFailed": "Asikwazanga kuvula inkhokhelo levikelekile. Sicela uzame futsi.",
+      "walletHelpLink": "sikhwama lusito"
     },
     "paymentsScreen": {
       "saveCardExplainer": "Ons sal jou kaart veilig stoor wanneer jy betaal. Om jou kaart te verifieer, kan 'n klein tydelike heffing (bv. {{example}}) geplaas en omgekeer word—dit bevestig jou kaart vir toekomstige gebruik.",
@@ -15529,7 +15530,9 @@
           "payRemainingNoTip": "Ayikho ithiphu",
           "payRemainingCustomTip": "Lokwakho",
           "payRemainingCustomTipPlaceholder": "Linani lethiphu",
-          "payRemainingTipLine": "Ithiphu: {{amount}} — iya nge-100% kumhlinzeki wakho"
+          "payRemainingTipLine": "Ithiphu: {{amount}} — iya nge-100% kumhlinzeki wakho",
+          "cancelPreviewSheetTitle": "Khansela this kubhuka?",
+          "cancelPreviewInPersonRefund": "imali lebuye lokukhokhwa ebusweni: {{currency}} {{amount}}"
         },
         "groupBookingDetail": {
           "back": "Emuva",
@@ -17083,7 +17086,14 @@
           "priorityLow": "Phansi",
           "priorityMedium": "Maphakathi",
           "priorityHigh": "Phezulu",
-          "priorityUrgent": "Kuyaphuthuma"
+          "priorityUrgent": "Kuyaphuthuma",
+          "chatDefaultSubject": "lusito sicelo",
+          "continueToChat": "chubeka to chat",
+          "useFullForm": "Use kugcwele form",
+          "startChat": "cala chat",
+          "chatBack": "Emuva",
+          "safetyUseForm": "Imibiko yekuphepha iya ngco ecenjini letfu — sicela usebentise lifomu leliphelele.",
+          "chatAiDisclaimer": "AI ingenta emaphutsa — ungakhuluma nemuntfu noma nini ngemuva kwekutsi lithikithi lakho lidalwe."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Luhlobo your umlayeto...",
@@ -17542,6 +17552,49 @@
     "exploreVideo": {
       "unmute": "Vula umsindvo",
       "mute": "Thulisa"
+    },
+    "bankAccounts": {
+      "failedLoadBanks": "Ayikhonanga ku-layisha banks. zama futsi.",
+      "fillAllFields": "Khetsa ibhange bese ufaka inombolo ye-akhawunti kanye neligama lemnikati.",
+      "removeConfirmTitle": "Susa li-akhawunti yebhange?",
+      "removeConfirmBody": "Le-akhawunti angeke isatfolakala kute kubuyiselwe imali yasebhange.",
+      "remove": "Susa",
+      "intro": "Isetjentiselwa kuphela kubuyiselwa kwemali yasebhange yetinkhokhelo letifanele telikhadi. Tinombolo te-akhawunti tigcinwa ngekubhala.",
+      "empty": "No li-akhawunti yebhanges gcinad yet.",
+      "bankLabel": "Libhange",
+      "primary": "lekucala",
+      "makePrimary": "Make lekucala",
+      "verifiedBadge": "kucinisekisiwe",
+      "addAnother": "Ngeta a li-akhawunti yebhange",
+      "searchBanks": "Sesha banks",
+      "accountNumberLabel": "li-akhawunti inombolo",
+      "verifiedAs": "kucinisekisiwe: {{name}}",
+      "verify": "Cinisekisa li-akhawunti",
+      "verificationUnavailable": "Kucinisekisa lokutentakalelako akutfolakali emakethe yakho — faka ligama lemnikati we-akhawunti njengobe livela ebhange lakho.",
+      "accountNameLabel": "li-akhawunti holder ligama",
+      "save": "Gcina li-akhawunti yebhange",
+      "screenTitle": "Li-akhawunti yebhanges"
+    },
+    "walletBankRefund": {
+      "addBank": "Ngeta a li-akhawunti yebhange",
+      "notEnabled": "Imali lebuyiselwa ebhange ayikho emakethe yakho nyalo.",
+      "invalidAmount": "Faka a kuvumelekile linani.",
+      "failed": "Ayikhonanga ku-tfumela your sicelo. zama futsi or Tintsana lusito.",
+      "openRequest": "Sewuvele unesicelo sekubuyiselwa imali ebhange lesichubekako ({{number}}).",
+      "cancelRequest": "Khansela sicelo",
+      "retentionTitle": "Gcina it on Beautonomi",
+      "retentionBody": "Une {{amount}} lolungele kutisebentisa ekubhukheni kwakho lokulandzelako — sikweleti sesikhwama semali siyasebenta nawuphuma ngekushesha.",
+      "keepInWallet": "Gcina in my sikhwama",
+      "continueToBank": "sicelo a Libhange imali lebuye instead",
+      "eligibleLabel": "Eligible for Libhange imali lebuye: {{amount}}",
+      "eligibleHint": "Kubuyiselwa imali yetinkhokhelo telikhadi letentiwe nge Beautonomi kuphela lokungatfunyelwa ku-akhawunti yasebhange. Imali lefakwako, emakhadi esipho kanye nesikweleti sekupromotha kuhlala esikhwameni sakho semali.",
+      "noneEligible": "Awunayo imali yekukhokha ngelikhadi lefanele kutsi ubuyiselwe imali yasebhange nyalo.",
+      "amountLabel": "How much should we tfumela to your Libhange?",
+      "feeLine": "iyacubungula imali: {{fee}} · You receive: {{net}}",
+      "submit": "tfumela sicelo",
+      "submittedTitle": "sicelo tfumelated",
+      "submittedBody": "Lemali imisiwe esikhwameni sakho semali ngesikhatsi licembu letfu letetimali liyibuyeketa. Kubuyiselwa kwemali lokuvunyiwe kukhokhwa nge-EFT, kuvame kungakapheli emalanga {{days}} emsebenti.",
+      "screenTitle": "Libhange imali lebuye"
     }
   },
   "checkout": {
@@ -17639,7 +17692,7 @@
     "lateCancellationWithinWindowNoRefund": "Ngaphakatsi kwemahora langu-{{hours}} {{hourWord}} ngaphambi kwekuhlangana kwakho: akukho mbuyiselo lezokhishwa.",
     "noRefundOnCancellation": "Khanselalations are non-imali lebuyeable per this umniketi's inchubomgomo.",
     "policyEnforcedAutomatically": "Lenchubomgomo iphocelelwa ngekuzenzakalela ngesikhatsi sekukhansela.",
-    "refundsStoreCreditNote": "All imali lebuyes are issued as store crhlela to your Beautonomi sikhwama, limited to linanis already kukhokhelwe.",
+    "refundsStoreCreditNote": "Kubuyiselwa kwetimali tetikhokhelwe ku-inthanethi kukhishwa njengekhredithi esikhwameni sakho se-Beautonomi. Tinkhokhelo letentiwa mathupha atinakho imali yekukhansela futsi tibuyiswa umnikeleli.",
     "hour": "lihora",
     "hours": "emahora",
     "noShowFeeApplies": "Imali yekungafiki ye-{{amount}} iyasebenta uma ngabe uphutselwe sikhatsi sakho ngaphandle kwekukhansela.",
@@ -17761,7 +17814,11 @@
     "paymentUnavailableTitle": "inkokhelo ayatfolakali",
     "paymentBrowserFailed": "Asikwazanga kuvula lifestile lelivikelekile lembhadalweni. Sicela uzame futsi.",
     "paymentNotCompletedTitle": "Inkokhelo ayikacitfwa",
-    "paymentNotCompletedBody": "Kubhukha kwakho akukacinisekiswanga."
+    "paymentNotCompletedBody": "Kubhukha kwakho akukacinisekiswanga.",
+    "tipPercentButtonA11y": "{{percent}}% ithiphu, {{amount}}",
+    "cancelPreviousWithFeeBody": "Imali yekukhansela {{fee}}. {{refund}} itawubuyela esikhwameni sakho Beautonomi. Khansela sikhatsi lesibekiwe sangaphambilini?",
+    "cancelPreviousFullRefundBody": "{{refund}} itawubuyela esikhwameni sakho Beautonomi. Khansela sikhatsi lesibekiwe sangaphambilini?",
+    "confirmCancelPrevious": "Khansela lokudlulile"
   },
   "payments": {
     "pay": "Khokha",

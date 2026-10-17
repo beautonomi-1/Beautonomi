@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { toast } from "sonner";
+import { SupportTicketThread } from "@/components/support/SupportTicketThread";
 
 type Message = {
   id: string;
@@ -17,6 +18,7 @@ type Message = {
   created_at: string;
   author_name?: string | null;
   is_mine?: boolean;
+  author_kind?: string | null;
 };
 
 type TicketDetail = {
@@ -24,6 +26,7 @@ type TicketDetail = {
   ticket_number: string;
   subject: string;
   status: string;
+  handling_mode?: string | null;
 };
 
 export default function ProviderSupportTicketDetailPage() {
@@ -35,11 +38,12 @@ export default function ProviderSupportTicketDetailPage() {
   const [loading, setLoading] = useState(true);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
+  const [assistantPending, setAssistantPending] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!id) return;
     try {
-      setLoading(true);
+      if (!opts?.silent) setLoading(true);
       const res = await fetcher.get<{
         data: { ticket: TicketDetail; messages: Message[] };
       }>(`/api/provider/support-tickets/${id}`);
@@ -56,19 +60,62 @@ toast.error(err instanceof FetchError ? err.message : t("web.provider.pages.supp
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const ms = ticket?.handling_mode === "assistant" ? 2_000 : 30_000;
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load({ silent: true });
+    }, ms);
+    return () => window.clearInterval(interval);
+  }, [load, ticket?.handling_mode]);
+
   const sendReply = async () => {
-    if (!reply.trim()) return;
+    const msg = reply.trim();
+    if (!msg) return;
+    const isAssistant = (ticket?.handling_mode ?? "human") === "assistant";
     try {
       setSending(true);
-      await fetcher.post(`/api/provider/support-tickets/${id}/messages`, {
-        message: reply.trim(),
-      });
+      if (isAssistant) {
+        const streamAssistantId = `stream-assistant-${Date.now()}`;
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: streamAssistantId,
+            message: "",
+            created_at: new Date().toISOString(),
+            author_name: t("web.provider.pages.support-tickets/[id].assistantName"),
+            is_mine: false,
+            author_kind: "assistant",
+          },
+        ]);
+        const { streamAssistantReply } = await import("@/lib/support/support-assistant/client-stream-reply");
+        const streamResult = await streamAssistantReply({
+          streamUrl: `/api/provider/support-tickets/${id}/assistant-messages/stream`,
+          message: msg,
+          onAssistantChunk: (text) => {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === streamAssistantId ? { ...m, message: text } : m)),
+            );
+          },
+        });
+        if (!streamResult.ok) {
+          throw new Error(streamResult.errorMessage ?? "Assistant unavailable");
+        }
+        if (!streamResult.streamed) {
+          setAssistantPending(true);
+        }
+        if (streamResult.infoMessage) {
+          toast.info(streamResult.infoMessage);
+        }
+      } else {
+        await fetcher.post(`/api/provider/support-tickets/${id}/messages`, { message: msg });
+      }
       setReply("");
       await load();
     } catch (err) {
 toast.error(err instanceof FetchError ? err.message : t("web.provider.pages.support-tickets/[id].sendFailed"));
     } finally {
       setSending(false);
+      setAssistantPending(false);
     }
   };
 
@@ -99,21 +146,7 @@ return <LoadingTimeout loadingMessage={t("web.provider.pages.support-tickets/[id
         ]}
       />
 
-      <div className="mt-6 space-y-3 max-w-2xl">
-        {messages.map((m) => (
-          <div
-            key={m.id}
-            className={`rounded-xl border p-3 text-sm ${
-              m.is_mine ? "border-indigo-100 bg-indigo-50 ms-8" : "border-gray-100 bg-white me-8"
-            }`}
-          >
-            <p className="text-xs text-gray-500 mb-1">
-{m.author_name ?? t("web.provider.pages.support-tickets/[id].support")} · {new Date(m.created_at).toLocaleString()}
-            </p>
-            <p className="text-gray-800 whitespace-pre-wrap">{m.message}</p>
-          </div>
-        ))}
-      </div>
+      <SupportTicketThread className="mt-6 max-w-2xl" messages={messages} assistantPending={assistantPending} />
 
       <div className="mt-6 max-w-2xl space-y-3">
         <Textarea

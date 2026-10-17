@@ -12,6 +12,8 @@ export type PaidCheckoutStartResult =
       orderId?: string;
       reference?: string;
       alreadyActive?: boolean;
+      /** Paid-to-paid downgrade scheduled at period end (no checkout). */
+      scheduledChangeAt?: string;
     }
   | { ok: false; error: string; errorCode?: string | null; status?: number };
 
@@ -62,6 +64,9 @@ export async function startPaidSubscriptionCheckout(options: {
     requires_payment?: boolean;
     payment_url?: string;
     authorization_url?: string;
+    scheduled?: boolean;
+    changes_on?: string;
+    scheduled_change_at?: string;
   }>("/api/provider/subscription/upgrade", {
     plan_id: subscriptionPlanId,
     billing_period: billingPeriod,
@@ -78,6 +83,15 @@ export async function startPaidSubscriptionCheckout(options: {
   }
 
   const upgraded = upRes.data;
+  if (upgraded?.scheduled) {
+    const when =
+      typeof upgraded.changes_on === "string"
+        ? upgraded.changes_on
+        : typeof upgraded.scheduled_change_at === "string"
+          ? upgraded.scheduled_change_at
+          : undefined;
+    return { ok: true, authorizationUrl: "", alreadyActive: true, scheduledChangeAt: when };
+  }
   if (upgraded?.is_free) {
     return { ok: true, authorizationUrl: "", alreadyActive: true };
   }

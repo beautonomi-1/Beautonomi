@@ -38,9 +38,8 @@ import { useTranslation } from "@beautonomi/i18n";
 import { PreferencesTrigger } from "@/components/global/PreferencesTrigger";
 import { useOpenGlobalPreferences } from "@/components/global/GlobalPreferencesDialog";
 import { translatePublicCategory } from "@/lib/i18n/translate-public-category";
-import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
-import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { EXPLORE_CUSTOMER_WEB_PATH } from "@/lib/explore/explore-customer-entry";
+import { useExploreNavVisible } from "@/hooks/useExploreNavVisible";
 
 interface Category {
   id: string;
@@ -72,7 +71,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const isHomePage = pathname === "/" || pathname === "";
-  const exploreEnabled = useFeatureFlag(FEATURE_FLAG_KEYS.EXPLORE_ENABLED);
+  const showExploreNav = useExploreNavVisible();
   const isExplorePage = pathname?.startsWith(EXPLORE_CUSTOMER_WEB_PATH);
   
   // Get active category from URL if not provided
@@ -974,7 +973,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                 <div className="absolute bottom-0 left-1 right-1 md:left-2 md:right-2 h-1 bg-[#FF007F] rounded-full" aria-hidden />
               )}
             </Link>
-            {exploreEnabled ? (
+            {showExploreNav ? (
               <Link
                 href={EXPLORE_CUSTOMER_WEB_PATH}
                 className={cn(
@@ -1055,7 +1054,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                       <div
                         className={cn(
                           "grid gap-2 px-4 py-2 border-b border-gray-100 md:hidden",
-                          exploreEnabled ? "grid-cols-3" : "grid-cols-2",
+                          showExploreNav ? "grid-cols-3" : "grid-cols-2",
                         )}
                       >
                         <Link
@@ -1067,7 +1066,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                         >
                           {t("web.layout.header.home")}
                         </Link>
-                        {exploreEnabled ? (
+                        {showExploreNav ? (
                           <Link
                             href={EXPLORE_CUSTOMER_WEB_PATH}
                             className={`py-2 text-center text-sm font-medium rounded-lg ${

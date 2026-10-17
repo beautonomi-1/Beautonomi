@@ -2,10 +2,13 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, requireAuthInApi } from "@/lib/supabase/api-helpers";
-import { getCancellationPolicy, canCancelBooking } from "@/lib/bookings/cancellation-policy";
-import { describeCancellationRefund } from "@/lib/bookings/refund-processing";
+import { loadCancellationOutcomeForBooking } from "@/lib/bookings/load-cancellation-outcome";
 import {
-  computeReconciledCancellationAmounts,
+  assertCancellationAllowed,
+  describeRefundFromOutcome,
+  settleParamsFromCancellationOutcome,
+} from "@/lib/bookings/cancellation-outcome-bridge";
+import {
   settleBookingCancellation,
   type BookingFinancialSnapshot,
 } from "@/lib/bookings/settle-booking-cancellation";
@@ -60,62 +63,24 @@ export async function POST(
       );
     }
 
-    // Terminal / in-service states: no self-serve cancel (matches customer app)
-    const noSelfServeCancel = new Set([
-      "cancelled",
-      "completed",
-      "no_show",
-      "in_progress",
-      "started",
-    ]);
-    if (noSelfServeCancel.has(booking.status as string)) {
-      return handleApiError(
-        new Error("Booking cannot be cancelled online"),
-        booking.status === "cancelled"
-          ? "This booking has already been cancelled"
-          : "This booking can no longer be cancelled online. Please contact your provider.",
-        booking.status === "cancelled" ? "ALREADY_CANCELLED" : "CANCELLATION_BLOCKED",
-        booking.status === "cancelled" ? 400 : 403
-      );
-    }
-
-    // Load cancellation policy
-    const policy = await getCancellationPolicy(
+    const { outcome, error: outcomeError } = await loadCancellationOutcomeForBooking(
       supabase,
-      booking.provider_id,
-      booking.location_type as 'at_salon' | 'at_home'
+      bookingId,
+      "customer",
     );
-
-    if (!policy) {
+    if (outcomeError || !outcome) {
+      return handleApiError(new Error("Booking not found"), "Booking not found", "NOT_FOUND", 404);
+    }
+    const gate = assertCancellationAllowed(outcome);
+    if (!gate.ok) {
       return handleApiError(
-        new Error("Cancellation policy not found"),
-        "Cancellation policy not configured",
-        "POLICY_NOT_FOUND",
-        500
+        new Error(gate.message),
+        gate.message,
+        gate.code,
+        gate.httpStatus,
       );
     }
-
-    // Late window: allow cancel here (wallet refund follows policy); reschedule routes keep forbidLateSelfService default
-    const checkResult = canCancelBooking(
-      {
-        id: booking.id,
-        created_at: booking.created_at,
-        scheduled_at: booking.scheduled_at,
-        location_type: booking.location_type as 'at_salon' | 'at_home',
-      },
-      policy,
-      new Date(),
-      { forbidLateSelfService: false }
-    );
-
-    if (!checkResult.allowed) {
-      return handleApiError(
-        new Error(checkResult.reason || "Cancellation not allowed"),
-        checkResult.reason || "Cancellation not allowed",
-        "CANCELLATION_BLOCKED",
-        403
-      );
-    }
+    const policy = outcome.policy;
 
     // Get request body for optional fields
     let body: { reason?: string; version?: number } = {};
@@ -157,7 +122,9 @@ export async function POST(
     const cancelCurrency =
       (bFin.currency as string) || tenantRegionForCancel?.defaultCurrency || LAST_RESORT_CURRENCY;
     const bookingTotal = Number(bFin.total_amount ?? 0);
-    const isLate = checkResult.isLateCancellation === true;
+    const isLate = outcome.isLate;
+    const cancellationFeeApplied = outcome.feeRetained;
+    const walletRefundAmount = outcome.walletRefund;
 
     const financialSnapshot: BookingFinancialSnapshot = {
       id: bookingId,
@@ -184,15 +151,6 @@ export async function POST(
         .loyalty_points_redeemed,
       loyalty_points_earned: (booking as { loyalty_points_earned?: number | null }).loyalty_points_earned,
     };
-
-    const { cancellationFeeApplied, walletRefundAmount } = computeReconciledCancellationAmounts({
-      booking: financialSnapshot,
-      cancelledBy: "customer",
-      currency: cancelCurrency,
-      policy,
-      isLateCancellation: isLate,
-      refundBookingTotal: bookingTotal,
-    });
 
     const currentVersion = (booking as BookingRow).version ?? 0;
     const { data: updatedRows, error: updateError } = await adminSupabase
@@ -245,7 +203,8 @@ export async function POST(
       event_data: {
         cancelled_by: user.id,
         policy_applied: policy.id,
-        grace_window_used: checkResult.allowed && new Date(booking.created_at).getTime() + policy.grace_window_minutes * 60000 >= new Date().getTime(),
+        grace_window_used: outcome.penaltyWaivedReason === "grace",
+        penalty_waived_reason: outcome.penaltyWaivedReason ?? null,
         is_late_cancellation: isLate,
         cancellation_fee_applied: cancellationFeeApplied,
         wallet_refund_amount: walletRefundAmount,
@@ -299,13 +258,7 @@ export async function POST(
 
     // Send cancellation notification
     const { sendCancellationNotification } = await import('@/lib/bookings/notifications');
-    const refundInfo = describeCancellationRefund(
-      policy,
-      isLate,
-      walletRefundAmount,
-      bookingTotal,
-      cancelCurrency
-    );
+    const refundInfo = describeRefundFromOutcome(outcome, bookingTotal, cancelCurrency);
     
     await sendCancellationNotification(bookingId, {
       cancelledBy: 'customer',
@@ -345,6 +298,7 @@ export async function POST(
         await cancelGroupBooking(adminSupabase, groupBookingData.id, user.id, body.reason || 'Customer cancellation', {
           settleFinance: true,
           financeActor: "customer",
+          settleAlreadyCancelledBookingIds: [bookingId],
           financeContext: {
             policy,
             isLateCancellation: isLate,
@@ -425,16 +379,15 @@ export async function POST(
     // Skip for group primaries: cancelGroupBooking(settleFinance: true) above already settled
     // every participant booking (including this one); settling again would re-run
     // processBookingRefund against a stale snapshot and double-credit the wallet.
-    if (checkResult.allowed && !isGroupBooking) {
+    if (!isGroupBooking) {
       try {
-        const settlement = await settleBookingCancellation({
-          booking: financialSnapshot,
-          cancelledBy: "customer",
-          currency: cancelCurrency,
-          policy,
-          isLateCancellation: isLate,
-          refundBookingTotal: bookingTotal,
-        });
+        const settlement = await settleBookingCancellation(
+          settleParamsFromCancellationOutcome(outcome, "customer", {
+            booking: financialSnapshot,
+            currency: cancelCurrency,
+            refundBookingTotal: bookingTotal,
+          }),
+        );
         if (settlement.refundResult.success && settlement.refundResult.amount) {
           console.log(
             `Refund processed: ${settlement.refundResult.amount} ${bFin.currency}`,

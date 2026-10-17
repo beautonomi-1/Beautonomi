@@ -181,38 +181,44 @@ export function walletStoreCreditAmountWhenVoidingGiftOnFullRefund(params: {
 export function computeCancellationFeeForSettlement(
   params: SettleBookingCancellationParams,
 ): { cancellationFeeApplied: number; policyRefundAmount: number; isLate: boolean } {
-  const bookingTotal = Number(params.refundBookingTotal ?? params.booking.total_amount ?? 0);
+  const grossTotal = Math.max(
+    0,
+    Number(params.refundBookingTotal ?? params.booking.total_amount ?? 0),
+  );
+  const tip = Math.min(grossTotal, Math.max(0, Number(params.booking.tip_amount ?? 0)));
+  const basis = roundCurrency2(grossTotal - tip);
+  const collected = params.maxWalletCredit ?? computeEffectiveCollectedAmount(params.booking);
+  // Tip is treated as paid last and is always returned; fees only apply to the non-tip basis.
+  const tipPaid = roundCurrency2(Math.min(tip, Math.max(0, collected - basis)));
   const isLate = params.isLateCancellation === true;
 
-  if (params.cancelledBy === "provider" || params.cancelledBy === "admin") {
-    const explicit = params.explicitCancellationFee;
-    if (explicit != null && Number.isFinite(Number(explicit))) {
-      const fee = roundCurrency2(Math.max(0, Number(explicit)));
-      return {
-        cancellationFeeApplied: fee,
-        policyRefundAmount: roundCurrency2(Math.max(0, bookingTotal - fee)),
-        isLate,
-      };
-    }
-    return { cancellationFeeApplied: 0, policyRefundAmount: bookingTotal, isLate: false };
-  }
-
-  if (params.cancelledBy === "no_show") {
-    const fee = roundCurrency2(Math.max(0, Number(params.explicitCancellationFee ?? 0)));
+  const fromFee = (fee: number, late: boolean) => {
+    const f = roundCurrency2(Math.min(basis, Math.max(0, fee)));
     return {
-      cancellationFeeApplied: fee,
-      policyRefundAmount: roundCurrency2(Math.max(0, bookingTotal - fee)),
-      isLate: false,
+      cancellationFeeApplied: f,
+      policyRefundAmount: roundCurrency2(Math.max(0, basis - f) + tipPaid),
+      isLate: late,
     };
+  };
+
+  const explicit = params.explicitCancellationFee;
+  if (explicit != null && Number.isFinite(Number(explicit))) {
+    return fromFee(Number(explicit), params.cancelledBy === "no_show" ? false : isLate);
   }
 
+  if (
+    params.cancelledBy === "provider" ||
+    params.cancelledBy === "admin" ||
+    params.cancelledBy === "no_show"
+  ) {
+    return fromFee(0, false);
+  }
   if (!params.policy) {
-    return { cancellationFeeApplied: 0, policyRefundAmount: bookingTotal, isLate };
+    return fromFee(0, isLate);
   }
 
-  const policyRefundAmount = computeCancellationRefundAmount(bookingTotal, params.policy, isLate);
-  const cancellationFeeApplied = roundCurrency2(Math.max(0, bookingTotal - policyRefundAmount));
-  return { cancellationFeeApplied, policyRefundAmount, isLate };
+  const refundOnBasis = computeCancellationRefundAmount(basis, params.policy, isLate);
+  return fromFee(basis - refundOnBasis, isLate);
 }
 
 export async function insertCancellationFeeLedgerIdempotent(

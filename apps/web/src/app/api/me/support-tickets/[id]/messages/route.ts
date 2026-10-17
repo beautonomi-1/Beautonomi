@@ -12,6 +12,12 @@ import {
   notifySupportStaffInboxActivity,
   resolveSupportTicketStaffRecipients,
 } from "@/lib/notifications/notification-service";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { runSupportAssistantTurn } from "@/lib/support/support-assistant/run-turn";
+import {
+  assistantTurnFailureResponse,
+  precheckSupportAssistantTurn,
+} from "@/lib/support/support-assistant/turn-precheck";
 
 const attachmentSchema = z.object({
   url: z.string().url(),
@@ -54,7 +60,7 @@ export async function POST(
 
     const { data: ticket, error: ticketError } = await supabase
       .from("support_tickets")
-      .select("id, user_id, ticket_number, subject, priority, assigned_to, status, requester_type, support_context_type, support_context_label")
+      .select("id, user_id, ticket_number, subject, priority, assigned_to, status, requester_type, support_context_type, support_context_label, handling_mode")
       .eq("id", id)
       .single();
 
@@ -71,6 +77,59 @@ export async function POST(
       return errorResponse("This ticket is closed to new replies", "TICKET_CLOSED", 409);
     }
 
+    const handlingMode = String((ticket as { handling_mode?: string }).handling_mode ?? "human");
+    if (handlingMode === "assistant") {
+      if (attachments.length > 0) {
+        return errorResponse(
+          "Attachments are available after a specialist joins the conversation",
+          "ASSISTANT_NO_ATTACHMENTS",
+          400,
+        );
+      }
+      const admin = getSupabaseAdmin();
+      const pre = await precheckSupportAssistantTurn({ admin, ticketId: id, request });
+      if (pre.ok === false) {
+        return assistantTurnFailureResponse(pre.result);
+      }
+      const now = new Date().toISOString();
+      const { data: customerMsg, error: insertErr } = await admin
+        .from("support_ticket_messages")
+        .insert({
+          ticket_id: id,
+          user_id: user.id,
+          message: message.slice(0, 10000),
+          is_internal: false,
+          author_kind: "customer",
+        })
+        .select()
+        .single();
+      if (insertErr) throw insertErr;
+      await admin
+        .from("support_tickets")
+        .update({
+          last_message_at: customerMsg.created_at ?? now,
+          last_message_from: "customer",
+          last_customer_view_at: customerMsg.created_at ?? now,
+          updated_at: now,
+        })
+        .eq("id", id);
+
+      const turn = await runSupportAssistantTurn({
+        admin,
+        ticketId: id,
+        userText: message,
+        request,
+      });
+      if (turn.ok === false) {
+        return assistantTurnFailureResponse(turn);
+      }
+      return successResponse({
+        message: customerMsg,
+        assistantMessage: turn.assistantMessage,
+        handoff: turn.handoff,
+      });
+    }
+
     const bodyText = message.slice(0, 10000) || (attachments.length ? "(attachment)" : "");
 
     const { data: newMessage, error: insertError } = await supabase
@@ -81,6 +140,7 @@ export async function POST(
         message: bodyText,
         is_internal: false,
         attachments,
+        author_kind: "customer",
       })
       .select()
       .single();

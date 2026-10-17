@@ -13,6 +13,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import type { TerminalCommercialModel } from "@/lib/terminal/record-terminal-order-payment";
+import { SCHEDULED_DOWNGRADE_ENTITLED_OR } from "@/lib/subscriptions/feature-access";
 
 export type TerminalProductForEligibility = {
   id: string;
@@ -96,7 +97,7 @@ async function getProviderSubscriptionContext(
     )
     .eq("provider_id", providerId)
     .in("status", ["active", "trialing", "past_due"])
-    .or(`expires_at.gte.${nowIso},expires_at.is.null`)
+    .or(`expires_at.gte.${nowIso},expires_at.is.null,${SCHEDULED_DOWNGRADE_ENTITLED_OR}`)
     .order("status", { ascending: true })
     .maybeSingle();
 

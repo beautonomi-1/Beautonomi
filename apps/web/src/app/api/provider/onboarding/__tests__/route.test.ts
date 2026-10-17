@@ -378,6 +378,10 @@ describe("POST /api/provider/onboarding", () => {
           };
         }
 
+        if (table === "cancellation_policies") {
+          return { insert: vi.fn(async () => ({ error: null })) };
+        }
+
         throw new Error(`Unexpected table: ${table}`);
       }),
       rpc: vi.fn(async () => ({ data: null, error: { message: "does not exist" } })),
@@ -632,6 +636,10 @@ describe("POST /api/provider/onboarding", () => {
           };
         }
 
+        if (table === "cancellation_policies") {
+          return { insert: vi.fn(async () => ({ error: null })) };
+        }
+
         throw new Error(`Unexpected table: ${table}`);
       }),
       rpc: vi.fn(async () => ({ data: null, error: { message: "does not exist" } })),
@@ -835,6 +843,10 @@ describe("POST /api/provider/onboarding", () => {
             insert: vi.fn(async () => ({ error: null })),
           };
         }
+        if (table === "cancellation_policies") {
+          return { insert: vi.fn(async () => ({ error: null })) };
+        }
+
         throw new Error(`Unexpected table: ${table}`);
       }),
       rpc: vi.fn(async () => ({ data: null, error: { message: "does not exist" } })),
@@ -1020,6 +1032,10 @@ describe("POST /api/provider/onboarding", () => {
             insert: vi.fn(async () => ({ error: null })),
           };
         }
+        if (table === "cancellation_policies") {
+          return { insert: vi.fn(async () => ({ error: null })) };
+        }
+
         throw new Error(`Unexpected table: ${table}`);
       }),
       rpc: vi.fn(async () => ({ data: null, error: { message: "does not exist" } })),
@@ -1130,6 +1146,10 @@ describe("POST /api/provider/onboarding", () => {
         if (table === "subscription_plans") {
           return idempotentFreeSubMocks.subscriptionPlans;
         }
+        if (table === "cancellation_policies") {
+          return { insert: vi.fn(async () => ({ error: null })) };
+        }
+
         throw new Error(`Unexpected table: ${table}`);
       }),
       rpc: vi.fn(async () => ({ data: "tenant-za", error: null })),
@@ -1222,6 +1242,10 @@ describe("POST /api/provider/onboarding", () => {
         if (table === "subscription_plans") {
           return paidPendingSubMocks.subscriptionPlans;
         }
+        if (table === "cancellation_policies") {
+          return { insert: vi.fn(async () => ({ error: null })) };
+        }
+
         throw new Error(`Unexpected table: ${table}`);
       }),
       rpc: vi.fn(async () => ({ data: null, error: null })),
@@ -1311,6 +1335,10 @@ describe("POST /api/provider/onboarding", () => {
         if (table === "subscription_plans") {
           return paidDoneSubMocks.subscriptionPlans;
         }
+        if (table === "cancellation_policies") {
+          return { insert: vi.fn(async () => ({ error: null })) };
+        }
+
         throw new Error(`Unexpected table: ${table}`);
       }),
       rpc: vi.fn(async () => ({ data: null, error: null })),
@@ -1487,6 +1515,10 @@ describe("POST /api/provider/onboarding", () => {
             }),
           };
         }
+        if (table === "cancellation_policies") {
+          return { insert: vi.fn(async () => ({ error: null })) };
+        }
+
         throw new Error(`Unexpected table: ${table}`);
       }),
       rpc: vi.fn(async () => ({ data: null, error: { message: "does not exist" } })),
@@ -1717,6 +1749,10 @@ describe("POST /api/provider/onboarding", () => {
         if (table === "provider_travel_fee_settings") {
           return { upsert: vi.fn(async () => ({ error: null })) };
         }
+        if (table === "cancellation_policies") {
+          return { insert: vi.fn(async () => ({ error: null })) };
+        }
+
         throw new Error(`Unexpected table: ${table}`);
       }),
       rpc: vi.fn(async () => ({ data: null, error: { message: "does not exist" } })),

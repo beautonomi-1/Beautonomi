@@ -24,6 +24,7 @@ import {
   setAuthFlowTags,
   setSentryUser,
 } from "@/lib/sentry";
+import { isSameAuthUser } from "@/lib/auth/session-stability";
 import { clearApiCache } from "@/lib/api-response-cache";
 import { invalidateApiAccessTokenCache } from "@/lib/api-client";
 import { clearPortalCache } from "@/lib/portal-cache";
@@ -102,7 +103,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const updateSession = useCallback((newSession: Session | null) => {
     setSession(newSession);
-    setUser(newSession?.user ?? null);
+    setUser((prev) => {
+      const next = newSession?.user ?? null;
+      return isSameAuthUser(prev, next) ? prev : next;
+    });
     if (newSession?.user) {
       void import("@/lib/age-assurance/device-age-range").then(({ syncDeviceAgeSignalIfAvailable }) => {
         syncDeviceAgeSignalIfAvailable();
@@ -188,6 +192,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setAuthFlowTags({ auth_state: "signed_out" });
         } else if (event === "SIGNED_IN") {
           authFlowBreadcrumb("supabase_auth", { event: "SIGNED_IN" });
+        } else if (event === "TOKEN_REFRESHED") {
+          authFlowBreadcrumb("supabase_auth", { event: "TOKEN_REFRESHED" });
         }
       }
       if (

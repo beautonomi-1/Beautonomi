@@ -49,6 +49,7 @@ import { Colors } from "@/constants/colors";
 import { HomeSkeleton } from "@/components/Skeleton";
 import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { useSafetySettings } from "@/hooks/useSafetySettings";
+import { shouldShowExploreNav } from "@/lib/safety/explore-visibility";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 const GAP = 16;
@@ -444,9 +445,14 @@ export default function HomeScreen() {
     trackHomeView();
   }, []);
   const { user } = useAuth();
-  const { settings: safetySettings } = useSafetySettings();
+  const { settings: safetySettings, age_band } = useSafetySettings();
   const exploreEnabled = useFeatureFlag("explore.enabled");
-  const hideExploreFeed = !exploreEnabled || Boolean(user && safetySettings.hide_social_feed);
+  const showExploreNav = shouldShowExploreNav({
+    flagEnabled: exploreEnabled,
+    signedIn: !!user,
+    hideSocialFeed: safetySettings.hide_social_feed,
+    ageBand: age_band,
+  });
   const { unreadCount } = useNotifications();
   const { selectedAddress, setSelectedAddress, isLoading: selectedAddressLoading } = useSelectedAddress();
   const { addresses, reload: reloadAddresses } = useAddresses(!!user);
@@ -676,7 +682,7 @@ export default function HomeScreen() {
                 {t("customer.mobile.screens.homeTab.home")}
               </Text>
             </TouchableOpacity>
-            {!hideExploreFeed ? (
+            {showExploreNav ? (
             <TouchableOpacity
               style={[styles.navTab, { paddingHorizontal: navTabPadH }]}
               onPress={() => router.push("/(app)/(tabs)/explore")}

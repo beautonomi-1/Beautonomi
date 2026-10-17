@@ -132,10 +132,17 @@ export async function PATCH(request: NextRequest) {
         "ack_body",
         "lookback_hours",
         "inbox_folder_id",
-        "default_category",
         "blocked_senders",
       ] as const) {
         if (p[key] !== undefined) payload[key] = p[key];
+      }
+      if (p.default_category !== undefined) {
+        const { validateAdminCategoryValue } = await import("@/lib/support/ticket-categories");
+        const cat = validateAdminCategoryValue(p.default_category);
+        if (!cat.ok) {
+          return errorResponse("Invalid default_category", "VALIDATION", 400);
+        }
+        payload.default_category = cat.category;
       }
       if (p.rotate_webhook_token) {
         payload.webhook_token = randomBytes(24).toString("hex");

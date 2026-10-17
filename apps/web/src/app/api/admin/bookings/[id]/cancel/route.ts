@@ -5,12 +5,15 @@ import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchBookingInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
-import { getCancellationPolicy } from "@/lib/bookings/cancellation-policy";
+import { loadCancellationOutcomeForBooking } from "@/lib/bookings/load-cancellation-outcome";
+import {
+  describeRefundFromOutcome,
+  settleParamsFromCancellationOutcome,
+} from "@/lib/bookings/cancellation-outcome-bridge";
 import {
   settleBookingCancellation,
   type BookingFinancialSnapshot,
 } from "@/lib/bookings/settle-booking-cancellation";
-import { describeCancellationRefund } from "@/lib/bookings/refund-processing";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
@@ -55,8 +58,20 @@ export async function POST(
     }
 
     const bookingTotal = Number(bookingRow.total_amount ?? 0);
-    const locType = (bookingRow.location_type as "at_salon" | "at_home") || "at_salon";
-    const policy = await getCancellationPolicy(supabase, bookingRow.provider_id, locType);
+    const explicitFee =
+      body.cancellation_fee != null && Number.isFinite(Number(body.cancellation_fee))
+        ? Number(body.cancellation_fee)
+        : undefined;
+    const { outcome, error: outcomeError } = await loadCancellationOutcomeForBooking(
+      supabase,
+      id,
+      "admin",
+      { explicitCancellationFee: explicitFee ?? null },
+    );
+    if (outcomeError || !outcome) {
+      return errorResponse("Booking not found", "NOT_FOUND", 404);
+    }
+    const policy = outcome.policy;
     const tenantRegion = bookingRow.tenant_id
       ? await getTenantRegionConfig(bookingRow.tenant_id)
       : null;
@@ -93,7 +108,7 @@ export async function POST(
         cancellation_reason: body.reason || null,
         cancelled_at: new Date().toISOString(),
         cancelled_by: user.id,
-        cancellation_fee: 0,
+        cancellation_fee: outcome.feeRetained,
       })
       .eq("id", id)
       .select()
@@ -103,39 +118,56 @@ export async function POST(
       return handleApiError(updateError, "Failed to cancel booking");
     }
 
-    let settlementWalletRefund = 0;
+    let settlementWalletRefund = outcome.walletRefund;
     try {
-      const settlement = await settleBookingCancellation({
-        booking: financialSnapshot,
-        cancelledBy: "admin",
-        currency,
-        policy,
-        refundBookingTotal: bookingTotal,
-      });
+      const settlement = await settleBookingCancellation(
+        settleParamsFromCancellationOutcome(outcome, "admin", {
+          booking: financialSnapshot,
+          currency,
+          refundBookingTotal: bookingTotal,
+        }),
+      );
       settlementWalletRefund = settlement.walletRefundAmount;
     } catch (settleErr) {
       console.error("[admin cancel] finance settlement failed:", settleErr);
     }
 
     try {
-      const { notifyBookingCancelled } = await import("@/lib/notifications/notification-service");
+      const { notifyBookingCancelled, notifyEmergencyCancellation } = await import(
+        "@/lib/notifications/notification-service"
+      );
       const refundInfo =
         typeof body.refund_info === "string" && body.refund_info.trim()
           ? body.refund_info.trim()
-          : policy
-            ? describeCancellationRefund(policy, false, settlementWalletRefund, bookingTotal, currency)
-            : "This booking was cancelled by our team. A full refund has been credited to your Beautonomi wallet when payment was collected.";
+          : describeRefundFromOutcome(
+              { ...outcome, walletRefund: settlementWalletRefund },
+              bookingTotal,
+              currency,
+            );
       const { customerBookingChannels } = await import(
         "@/lib/notifications/customer-booking-channels"
       );
-      await notifyBookingCancelled(
-        id,
-        "system",
-        refundInfo,
-        await customerBookingChannels(
-          (bookingRow as { tenant_id?: string | null }).tenant_id ?? null,
-        ),
+      const channels = await customerBookingChannels(
+        (bookingRow as { tenant_id?: string | null }).tenant_id ?? null,
       );
+      const isEmergency = body.emergency_cancellation === true;
+      if (isEmergency) {
+        await notifyEmergencyCancellation(
+          id,
+          typeof body.reason === "string" && body.reason.trim()
+            ? body.reason.trim()
+            : "Emergency cancellation",
+          refundInfo,
+          channels,
+        );
+      } else {
+        await notifyBookingCancelled(id, "system", refundInfo, channels, {
+          cancellationReason: typeof body.reason === "string" ? body.reason : null,
+          feeRetained: outcome.feeRetained,
+          walletRefund: settlementWalletRefund,
+          currency,
+        });
+      }
     } catch (notifError) {
       console.error("Error sending notification:", notifError);
     }

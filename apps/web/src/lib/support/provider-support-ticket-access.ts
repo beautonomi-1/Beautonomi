@@ -25,6 +25,7 @@ export const PROVIDER_SUPPORT_TICKET_LIST_SELECT = `
   last_message_at,
   last_message_from,
   last_customer_view_at,
+  handling_mode,
   created_at,
   updated_at
 `;
@@ -49,6 +50,7 @@ export const PROVIDER_SUPPORT_TICKET_DETAIL_SELECT = `
   last_message_at,
   last_message_from,
   last_customer_view_at,
+  handling_mode,
   created_at,
   updated_at
 `;
@@ -57,7 +59,21 @@ export type ProviderSupportTicketAccessResult<T> =
   | { ticket: T; response: null }
   | { ticket: null; response: ApiErrorResponse };
 
-export async function requireProviderSupportTicketAccess<T extends { provider_id?: string | null; requester_type?: string | null }>(
+/** Columns the ownership check reads; always selected regardless of the caller's column list. */
+const ACCESS_CHECK_COLUMNS = ["provider_id", "requester_type"] as const;
+
+export function withProviderAccessColumns(select: string): string {
+  const present = new Set(
+    select
+      .split(",")
+      .map((c) => c.trim())
+      .filter(Boolean),
+  );
+  const missing = ACCESS_CHECK_COLUMNS.filter((c) => !present.has(c));
+  return missing.length ? `${select}, ${missing.join(", ")}` : select;
+}
+
+export async function requireProviderSupportTicketAccess<T extends object = Record<string, unknown>>(
   admin: AdminClient,
   userId: string,
   ticketId: string,
@@ -65,7 +81,7 @@ export async function requireProviderSupportTicketAccess<T extends { provider_id
 ): Promise<ProviderSupportTicketAccessResult<T>> {
   const { data: ticket, error } = await admin
     .from("support_tickets")
-    .select(select)
+    .select(withProviderAccessColumns(select))
     .eq("id", ticketId)
     .maybeSingle();
 
@@ -74,7 +90,7 @@ export async function requireProviderSupportTicketAccess<T extends { provider_id
     return { ticket: null, response: notFoundResponse("Ticket not found") };
   }
 
-  const row = ticket as unknown as T;
+  const row = ticket as unknown as T & { provider_id?: string | null; requester_type?: string | null };
   if (String(row.requester_type ?? "") !== "provider" || !row.provider_id) {
     return { ticket: null, response: notFoundResponse("Ticket not found") };
   }
@@ -98,6 +114,7 @@ export function withUnreadSupportFlag<T extends { last_message_at?: string | nul
   return {
     ...ticket,
     has_unread_staff_reply:
-      ticket.last_message_from === "staff" && lastMessageAt > Math.max(0, lastSeenAt),
+      (ticket.last_message_from === "staff" || ticket.last_message_from === "assistant") &&
+      lastMessageAt > Math.max(0, lastSeenAt),
   };
 }

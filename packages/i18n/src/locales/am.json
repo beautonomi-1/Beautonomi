@@ -13472,7 +13472,8 @@
       "giftCardRedeemedDefault": "Carte cadeau redeemed to portefeuille successfully",
       "giftRedeemHelp": "Faka ikhodi oyithengile noma othile akuthumelele yona — ibhalansi ephelele ifakwa esikhwameni sakho semali ngokushesha.",
       "yourGiftCards": "Tu tarjetas de regalo",
-      "checkoutOpenFailed": "ደህንነቱ የተጠበቀ ክፍያ መክፈት አልተቻለም። እባክዎ እንደገና ይሞክሩ።"
+      "checkoutOpenFailed": "ደህንነቱ የተጠበቀ ክፍያ መክፈት አልተቻለም። እባክዎ እንደገና ይሞክሩ።",
+      "walletHelpLink": "Portefeuille help"
     },
     "paymentsScreen": {
       "saveCardExplainer": "Sizolondoloza ikhadi lakho ngokuphephile uma ukhokha. Ukuze uqinisekise ikhadi lakho, inkokhiso yesikhashana encane (isb. {{example}}) ingase ibekwe futhi ihlehliswe—lokhu kuqinisekisa ikhadi lakho ukuze ulisebenzise esikhathini esizayo.",
@@ -15524,7 +15525,9 @@
           "cashRefundConfirm": "I received it",
           "cashRefundDispute": "Dispute",
           "cashRefundConfirmed": "Thank you — your remboursement is confirmé.",
-          "cashRefundDisputed": "We flagged this remboursement for avis."
+          "cashRefundDisputed": "We flagged this remboursement for avis.",
+          "cancelPreviewSheetTitle": "Annuler this réservation?",
+          "cancelPreviewInPersonRefund": "Remboursement due in person: {{currency}} {{amount}}"
         },
         "groupBookingDetail": {
           "back": "Retour",
@@ -17078,7 +17081,14 @@
           "priorityLow": "Faible",
           "priorityMedium": "Moyen",
           "priorityHigh": "Élevé",
-          "priorityUrgent": "Urgent"
+          "priorityUrgent": "Urgent",
+          "chatBack": "Retour",
+          "chatDefaultSubject": "Demande d'assistance",
+          "continueToChat": "Continuer à discuter",
+          "useFullForm": "Utiliser le formulaire complet",
+          "safetyUseForm": "Les rapports de sécurité sont envoyés directement à notre équipe – veuillez utiliser le formulaire complet.",
+          "chatAiDisclaimer": "L'IA peut faire des erreurs : vous pouvez parler à une personne à tout moment après la création de votre ticket.",
+          "startChat": "Démarrer le chat"
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Écrivez votre message…",
@@ -17537,6 +17547,49 @@
     "exploreVideo": {
       "unmute": "ድምፅ ክፈት",
       "mute": "ድምፅ ዝጋ"
+    },
+    "bankAccounts": {
+      "failedLoadBanks": "Impossible de load banks. Réessayer.",
+      "fillAllFields": "Choisissez une banque et entrez le numéro de compte et le nom du titulaire.",
+      "removeConfirmTitle": "Retirer bank account?",
+      "removeConfirmBody": "Ce compte ne sera plus disponible pour les remboursements bancaires.",
+      "remove": "Retirer",
+      "intro": "Utilisé uniquement pour les remboursements bancaires des paiements par carte éligibles. Les numéros de compte sont stockés cryptés.",
+      "empty": "Non bank accounts enregistré yet.",
+      "bankLabel": "Banque",
+      "primary": "Principal",
+      "makePrimary": "Rendre primaire",
+      "verifiedBadge": "Vérifié",
+      "addAnother": "Ajouter a bank account",
+      "searchBanks": "Rechercher banks",
+      "accountNumberLabel": "Numéro de compte",
+      "verifiedAs": "Vérifié: {{name}}",
+      "verify": "Vérifier le compte",
+      "verificationUnavailable": "La vérification automatique n'est pas disponible sur votre marché : saisissez le nom du titulaire du compte exactement tel qu'il apparaît dans votre banque.",
+      "accountNameLabel": "Account holder nom",
+      "save": "Enregistrer bank account",
+      "screenTitle": "Comptes bancaires"
+    },
+    "walletBankRefund": {
+      "notEnabled": "Les remboursements bancaires ne sont pas disponibles sur votre marché pour le moment.",
+      "invalidAmount": "Saisir a valid amount.",
+      "failed": "Impossible de soumettre votre demande. Réessayez ou contactez l'assistance.",
+      "openRequest": "Vous avez déjà une demande de remboursement bancaire en cours ({{number}}).",
+      "cancelRequest": "Annuler request",
+      "retentionTitle": "Gardez-le allumé Beautonomi",
+      "retentionBody": "Vous disposez de {{amount}} prêts à être utilisés lors de votre prochaine réservation : le crédit de portefeuille s'applique instantanément au moment du paiement.",
+      "keepInWallet": "Keep in my portefeuille",
+      "continueToBank": "Request a bank remboursement instead",
+      "eligibleLabel": "Eligible for bank remboursement: {{amount}}",
+      "eligibleHint": "Seuls les remboursements des paiements par carte effectués via Beautonomi peuvent être envoyés sur un compte bancaire. Les recharges, les cartes cadeaux et les crédits promotionnels restent dans votre portefeuille.",
+      "noneEligible": "Vous ne disposez actuellement d'aucun remboursement de paiement par carte éligible à un remboursement bancaire.",
+      "amountLabel": "Combien devons-nous envoyer à votre banque ?",
+      "feeLine": "Frais de traitement : {{fee}} · Vous recevez : {{net}}",
+      "addBank": "Ajouter a bank account",
+      "submit": "Envoyer request",
+      "submittedTitle": "Demande soumise",
+      "submittedBody": "Le montant est en attente dans votre portefeuille pendant que notre équipe financière l'examine. Les remboursements approuvés sont payés par EFT, généralement dans les {{days}} jours ouvrables.",
+      "screenTitle": "Bank remboursement"
     }
   },
   "checkout": {
@@ -17634,7 +17687,7 @@
     "lateCancellationWithinWindowNoRefund": "Within {{hours}} {{hourWord}} of your appointment: no refund will be issued.",
     "noRefundOnCancellation": "Cancellations are non-refundable per this provider's policy.",
     "policyEnforcedAutomatically": "This policy is enforced automatically at the time of cancellation.",
-    "refundsStoreCreditNote": "All refunds are issued as store credit to your Beautonomi wallet, limited to amounts already paid.",
+    "refundsStoreCreditNote": "የመስመር ላይ ክፍያ ተመላሾች ወደ Beautonomi ቦርሳዎ ክሬዲት ይደረጋሉ። በግል የተከፈሉ ክፍያዎች ምንም የመሰረዝ ክፍያ የላቸውም እና አቅራቢው ይመልሳቸዋል።",
     "hour": "heure",
     "hours": "heures",
     "noShowFeeApplies": "No-show fee of {{amount}} applies if you miss your appointment without cancelling.",
@@ -17756,7 +17809,11 @@
     "paymentUnavailableTitle": "ክፍያ አይገኝም",
     "paymentBrowserFailed": "ደህንነቱ የተጠበቀ የክፍያ መስኮት መክፈት አልተቻለም። እባክዎ እንደገና ይሞክሩ።",
     "paymentNotCompletedTitle": "ክፍያ አልተጠናቀቀም",
-    "paymentNotCompletedBody": "ቦታ ማስያዣዎ አልተረጋገጠም።"
+    "paymentNotCompletedBody": "ቦታ ማስያዣዎ አልተረጋገጠም።",
+    "tipPercentButtonA11y": "Pourboire {{percent}} %, {{amount}}",
+    "cancelPreviousWithFeeBody": "Frais d'annulation {{fee}}. {{refund}} reviendra dans votre portefeuille Beautonomi. Annuler le rendez-vous précédent ?",
+    "cancelPreviousFullRefundBody": "{{refund}} reviendra dans votre portefeuille Beautonomi. Annuler le rendez-vous précédent ?",
+    "confirmCancelPrevious": "Annuler previous"
   },
   "payments": {
     "pay": "Pay",

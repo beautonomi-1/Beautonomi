@@ -5,6 +5,7 @@
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
+  SCHEDULED_DOWNGRADE_ENTITLED_OR,
   SUBSCRIPTION_ENTITLED_STATUSES,
   SUBSCRIPTION_PAST_DUE_GRACE_DAYS,
 } from "@/lib/subscriptions/feature-access";
@@ -31,7 +32,7 @@ export async function determineProviderPlan(providerId: string): Promise<string 
     .eq("provider_id", providerId)
     .in("status", SUBSCRIPTION_ENTITLED_STATUSES as unknown as string[])
     .or(
-      `expires_at.gte.${nowIso},expires_at.is.null,apple_grace_period_expires_at.gte.${nowIso}`,
+      `expires_at.gte.${nowIso},expires_at.is.null,apple_grace_period_expires_at.gte.${nowIso},${SCHEDULED_DOWNGRADE_ENTITLED_OR}`,
     )
     .order("status", { ascending: true })
     .limit(1)

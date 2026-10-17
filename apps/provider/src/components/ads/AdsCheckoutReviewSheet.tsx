@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, Linking } from "react-native";
+import { View, Text, Linking } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomSheet } from "@/components/ui/BottomSheet";
@@ -59,10 +59,7 @@ export function AdsCheckoutReviewSheet({
       snapHeight="full"
     >
       {review ? (
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 28 + insets.bottom }}
-        >
+        <View style={{ paddingBottom: 28 + insets.bottom }}>
           <View style={twStyle("gap-4")}>
             <View style={twStyle("rounded-3xl border border-indigo-100 bg-indigo-50 p-4")}>
               <Text style={twStyle("text-[11px] font-semibold uppercase tracking-wider text-indigo-700")}>
@@ -166,7 +163,7 @@ export function AdsCheckoutReviewSheet({
               fullWidth
             />
           </View>
-        </ScrollView>
+        </View>
       ) : null}
     </BottomSheet>
   );

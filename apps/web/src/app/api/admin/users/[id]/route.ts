@@ -76,6 +76,34 @@ export async function GET(
       .eq("user_id", id)
       .maybeSingle();
 
+    const { data: bankAccountRows } = await admin
+      .from("customer_bank_accounts")
+      .select(
+        "id, bank_name, bank_code, account_name, account_number_last4, verified, name_match, is_primary, deleted_at",
+      )
+      .eq("user_id", id)
+      .is("deleted_at", null)
+      .order("is_primary", { ascending: false });
+
+    const bank_accounts = (bankAccountRows ?? []).map((row) => ({
+      id: row.id,
+      bank_name: row.bank_name ?? row.bank_code ?? null,
+      account_name: row.account_name ?? null,
+      account_number_last4: row.account_number_last4 ?? null,
+      verified: Boolean(row.verified),
+      name_match: row.name_match ?? null,
+      is_primary: Boolean(row.is_primary),
+    }));
+
+    const { data: openBankRefund } = await admin
+      .from("wallet_bank_refund_requests")
+      .select("id, request_number, status, amount, net_amount, currency")
+      .eq("user_id", id)
+      .in("status", ["pending", "approved"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
     if (userRow.role === "customer") {
       const { count: bookingCount } = await supabase
         .from("bookings")
@@ -413,6 +441,8 @@ export async function GET(
       addresses: addresses ?? [],
       payment_methods: payment_methods ?? [],
       wallet: wallet ?? null,
+      bank_accounts,
+      open_bank_refund: openBankRefund ?? null,
       support_tickets,
       recent_product_orders,
       trust_safety: {

@@ -230,6 +230,38 @@ describe("customer/portal cancel wallet cap", () => {
     expect(cancellationFeeApplied).toBe(0);
   });
 
+  it("excludes tip from cancellation fee basis on customer cancel", () => {
+    const booking = {
+      id: "b1",
+      provider_id: "p1",
+      total_amount: 120,
+      tip_amount: 20,
+      total_paid: 100,
+      wallet_amount: 0,
+      gift_card_amount: 0,
+      total_refunded: 0,
+    };
+    const { cancellationFeeApplied, walletRefundAmount } = computeReconciledCancellationAmounts({
+      booking,
+      cancelledBy: "customer",
+      currency: "ZAR",
+      policy: {
+        id: "p1",
+        name: "Strict",
+        hours_before: 24,
+        refund_percentage: 0,
+        fee_amount: 0,
+        fee_type: "fixed",
+        is_default: true,
+        late_cancellation_type: "no_refund",
+      },
+      isLateCancellation: true,
+      refundBookingTotal: 120,
+    });
+    expect(walletRefundAmount).toBe(0);
+    expect(cancellationFeeApplied).toBe(100);
+  });
+
   it("caps cancellation fee to collected minus wallet refund on deposit bookings", () => {
     const booking = {
       id: "b1",

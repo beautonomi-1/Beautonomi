@@ -104,6 +104,7 @@ export async function cancelBooking(
     await fetcher.patch(`/api/provider/bookings/${bookingId}`, {
       status: "cancelled",
       cancellation_reason: reason,
+      cancel_initiator: "provider",
       version,
     });
     toast.success("Booking cancelled");

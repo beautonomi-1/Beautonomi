@@ -17,6 +17,7 @@
     "lint:unused-report": "node scripts/lint-unused-report.mjs",
     "test": "vitest run --exclude \"**/account-status/**/__tests__/**\" && vitest run src/app/api/me/account-status/__tests__/route.test.ts",
     "test:account-status": "vitest run src/app/api/me/account-status/__tests__/route.test.ts",
+    "test:support-qa": "vitest run src/lib/support src/app/api/admin/support-tickets/__tests__ src/app/api/me/support-tickets/__tests__/post-category.route.test.ts src/app/api/provider/support-tickets/__tests__ src/lib/agents/__tests__/default-roster-seed.test.ts --fileParallelism=false",
     "test:run": "vitest run --exclude \"**/account-status/**/__tests__/**\" && vitest run src/app/api/me/account-status/__tests__/route.test.ts",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest watch",

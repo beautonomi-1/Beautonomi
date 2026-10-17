@@ -1,7 +1,12 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ADMIN_SECTION_SUPPORT } from "@beautonomi/admin-access";
+import {
+  ADMIN_SECTION_PROVIDERS_OPERATIONS,
+  ADMIN_SECTION_SUPPORT,
+  ADMIN_SECTION_USERS_TRUST,
+  canAccessSection,
+} from "@beautonomi/admin-access";
 import { AdminApiError } from "@beautonomi/admin-api-client";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
@@ -34,7 +39,12 @@ import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
 import { LearningArticlePicker } from "@/components/learning/LearningArticlePicker";
 import { publicLearnUrl, type KbArticleResult, type KbAudience } from "@/lib/learning";
-import { adminSupportContextActionLabel, adminSupportContextHref } from "@/lib/adminSupportContextHref";
+import {
+  adminSupportContextActionLabel,
+  adminSupportContextHrefForRole,
+} from "@/lib/adminSupportContextHref";
+import type { UserRole } from "@beautonomi/types";
+import { LinkifiedMessageText } from "@/lib/linkifyMessage";
 import { AlertTriangle, ArrowRight, Building2, BookOpen, CheckCircle2, Copy, ExternalLink, FileText, Paperclip, Send, UploadCloud, UserRound, X } from "lucide-react";
 import { AgentAssistPanel } from "@/components/agent-assist/AgentAssistPanel";
 import { DomainCopilotDock } from "@/components/agent-assist/DomainCopilotDock";
@@ -257,6 +267,7 @@ export function SupportTicketDetailView({
   const { shadowMode } = useAgentShadowMode();
   const { bootstrap } = useAdminSession();
   const myStaffUserId = bootstrap?.userId ?? "";
+  const viewerRole = (bootstrap?.role as UserRole) ?? "support_agent";
 
   const [reply, setReply] = useState("");
   const [replyInternal, setReplyInternal] = useState(false);
@@ -276,6 +287,10 @@ export function SupportTicketDetailView({
   const [refundAmount, setRefundAmount] = useState(0);
   const [refundReasonPreset, setRefundReasonPreset] = useState<RefundReasonPreset | "">("");
   const [refundReasonOther, setRefundReasonOther] = useState("");
+  const [attachBookingNumber, setAttachBookingNumber] = useState("");
+  const [attachOrderNumber, setAttachOrderNumber] = useState("");
+  const [attachGiftCode, setAttachGiftCode] = useState("");
+  const [contextAttachSearch, setContextAttachSearch] = useState("");
 
   const detailQ = useQuery({
     queryKey: adminQueryKeys.supportTicketDetail(id),
@@ -289,6 +304,38 @@ export function SupportTicketDetailView({
   useAdminDocumentTitle(isPanel ? "" : str(detailQ.data?.ticket?.subject) || "Support ticket");
 
   const ticketTenantId = detailQ.data?.ticket?.tenant_id ?? null;
+
+  const contextQ = useQuery({
+    queryKey: [...adminQueryKeys.supportTicketDetail(id), "context"],
+    queryFn: async () => {
+      const res = await adminApi.getJson<{
+        data?: {
+          facts?: Record<string, string | number | boolean | null> | null;
+          support_context_type?: string | null;
+          support_context_id?: string | null;
+          records?: Array<{ kind: string; id: string; label: string; status: string | null; at: string | null }>;
+        };
+      }>(`/api/admin/support-tickets/${encodeURIComponent(id)}/context`, { timeoutMs: 30_000 });
+      return res.data ?? null;
+    },
+    enabled: allowed && !!id,
+    staleTime: 30_000,
+  });
+
+  const contextRecordsQ = useQuery({
+    queryKey: [...adminQueryKeys.supportTicketDetail(id), "context", "search", contextAttachSearch],
+    queryFn: async () => {
+      const qs = contextAttachSearch.trim() ? `?q=${encodeURIComponent(contextAttachSearch.trim())}` : "";
+      const res = await adminApi.getJson<{
+        data?: {
+          records?: Array<{ kind: string; id: string; label: string; status: string | null; at: string | null }>;
+        };
+      }>(`/api/admin/support-tickets/${encodeURIComponent(id)}/context${qs}`, { timeoutMs: 30_000 });
+      return res.data?.records ?? [];
+    },
+    enabled: allowed && !!id,
+    staleTime: 10_000,
+  });
 
   const assigneesQ = useQuery({
     queryKey: [...adminQueryKeys.supportTicketAssignees(), ticketTenantId ?? "global"],
@@ -308,6 +355,31 @@ export function SupportTicketDetailView({
     void qc.invalidateQueries({ queryKey: adminQueryKeys.supportTickets.all() });
     invalidateAdminShellCounts(qc);
   }, [qc, id]);
+
+  const attachContextMut = useMutation({
+    mutationFn: async (pick?: { kind: string; id: string }) => {
+      const body: Record<string, string> = {};
+      if (pick?.kind === "booking") body.booking_id = pick.id;
+      else if (pick?.kind === "product_order") body.order_id = pick.id;
+      else if (attachBookingNumber.trim()) body.booking_number = attachBookingNumber.trim();
+      else if (attachOrderNumber.trim()) body.order_number = attachOrderNumber.trim();
+      else if (attachGiftCode.trim()) body.gift_card_code = attachGiftCode.trim();
+      else throw new Error("Enter a booking number, order number, or gift card code");
+      return adminApi.postJson(`/api/admin/support-tickets/${encodeURIComponent(id)}/context`, body);
+    },
+    onSuccess: () => {
+      adminToast.success("Linked record attached to ticket");
+      setAttachBookingNumber("");
+      setAttachOrderNumber("");
+      setAttachGiftCode("");
+      invalidateTicket();
+      void qc.invalidateQueries({ queryKey: [...adminQueryKeys.supportTicketDetail(id), "context"] });
+      void qc.invalidateQueries({ queryKey: [...adminQueryKeys.supportTicketDetail(id), "context", "search"] });
+    },
+    onError: (err: unknown) => {
+      adminToast.error(err instanceof Error ? err.message : "Could not attach record");
+    },
+  });
 
   // Stamp last_staff_view_at when the ticket loads so agent-unread clears.
   const seenStampedRef = useRef<string | null>(null);
@@ -515,6 +587,14 @@ export function SupportTicketDetailView({
       setShowCancelBooking(false);
       setCancelReason("");
       adminToast.success("Booking cancelled");
+      void adminApi
+        .postJson(`/api/admin/support-tickets/${encodeURIComponent(id)}/messages`, {
+          message:
+            "Staff action: booking cancelled. Online payments were credited to the customer wallet (admin cancel — no customer fee).",
+          is_internal: true,
+        })
+        .then(() => invalidateTicket())
+        .catch((err: Error) => adminToast.error(`Staff note failed: ${err.message}`));
     },
     onError: (e: Error) => adminToast.error(`Failed to cancel booking: ${e.message}`),
   });
@@ -522,13 +602,22 @@ export function SupportTicketDetailView({
   const refundBookingMut = useMutation({
     mutationFn: (payload: { amount: number; reason: string }) =>
       adminApi.postJson(`/api/admin/bookings/${encodeURIComponent(bookingContextId!)}/refund`, payload),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       void bookingQ.refetch();
       invalidateTicket();
       setShowRefundBooking(false);
       setRefundReasonPreset("");
       setRefundReasonOther("");
       adminToast.success("Refund credited to customer wallet");
+      const amount = Number((vars as { amount?: number }).amount ?? 0);
+      const reason = String((vars as { reason?: string }).reason ?? "");
+      void adminApi
+        .postJson(`/api/admin/support-tickets/${encodeURIComponent(id)}/messages`, {
+          message: `Staff action: ${amount.toFixed(2)} credited to the customer wallet. Reason: ${reason}.`,
+          is_internal: true,
+        })
+        .then(() => invalidateTicket())
+        .catch((err: Error) => adminToast.error(`Staff note failed: ${err.message}`));
     },
     onError: (e: Error) => adminToast.error(`Refund failed: ${e.message}`),
   });
@@ -608,7 +697,10 @@ export function SupportTicketDetailView({
   const assignees = assigneesQ.data?.assignees ?? [];
   const contextBooking = bookingQ.data;
   const availableRefund = contextBooking ? computeBookingAvailableRefund(contextBooking) : 0;
-  const showRefundAction = contextBooking ? canShowBookingRefund(contextBooking) : false;
+  const canProviderOps = canAccessSection(viewerRole, ADMIN_SECTION_PROVIDERS_OPERATIONS);
+  const canUsersTrust = canAccessSection(viewerRole, ADMIN_SECTION_USERS_TRUST);
+  const showRefundAction =
+    contextBooking && canProviderOps ? canShowBookingRefund(contextBooking) : false;
   const resolvedRefundReason = normalizeRefundReason(refundReasonPreset, refundReasonOther);
   const refundReasonValid = isRefundReasonValid(refundReasonPreset, refundReasonOther);
   const assignedId = ticket.assigned_to == null ? "" : str(ticket.assigned_to);
@@ -650,9 +742,14 @@ export function SupportTicketDetailView({
   const slaDue = ticket.sla_resolution_due_at ? new Date(str(ticket.sla_resolution_due_at)) : null;
   const nowMs = Date.now();
 
+  const handlingMode = str((ticket as { handling_mode?: string }).handling_mode ?? "human");
+
   const banner = ((): { text: string; style: "red" | "amber" | "blue" } | null => {
     const isDone = ticketStatus === "resolved" || ticketStatus === "closed";
     if (isDone) return null;
+    if (handlingMode === "assistant") {
+      return { text: "AI handling — bot is replying; human queue after handoff", style: "blue" };
+    }
     if (attentionState === "first_response_overdue" && firstRespDue) {
       const overdueMs = nowMs - firstRespDue.getTime();
       const overdueH = Math.floor(overdueMs / 3600_000);
@@ -945,22 +1042,27 @@ export function SupportTicketDetailView({
                 const m = item.row;
                 const internal = Boolean(m.is_internal);
                 const uid = m.user_id == null ? null : str(m.user_id);
-                const fromCustomer = !internal && customerUserId !== null && uid === customerUserId;
-                const fromStaff = !internal && !fromCustomer;
+                const isAssistant = !internal && str(m.author_kind) === "assistant";
+                const fromCustomer = !internal && !isAssistant && customerUserId !== null && uid === customerUserId;
+                const fromStaff = !internal && !fromCustomer && !isAssistant;
                 const bubble =
                   internal
                     ? "border-amber-200 bg-amber-50/90"
-                    : fromStaff
-                      ? "border-blue-200 bg-blue-50/90"
-                      : "border-gray-200 bg-gray-50/90";
+                    : isAssistant
+                      ? "border-violet-200 bg-violet-50/90"
+                      : fromStaff
+                        ? "border-blue-200 bg-blue-50/90"
+                        : "border-gray-200 bg-gray-50/90";
                 const atts = attachmentsFromRow(m.attachments);
                 const roleLabel = m.is_auto_reply
                   ? "Automatic acknowledgement"
                   : internal
                     ? "Internal note"
-                    : fromCustomer
-                      ? "Customer"
-                      : "Support";
+                    : isAssistant
+                      ? "Assistant"
+                      : fromCustomer
+                        ? "Customer"
+                        : "Support";
                 const messageId = str(m.id);
                 return (
                   <Fragment key={item.id}>
@@ -998,7 +1100,9 @@ export function SupportTicketDetailView({
                           Copy link
                         </button>
                       </div>
-                      <p className="mt-2 text-sm text-gray-800 whitespace-pre-wrap">{str(m.message)}</p>
+                      <p className="mt-2 text-sm text-gray-800 whitespace-pre-wrap">
+                        <LinkifiedMessageText text={str(m.message)} />
+                      </p>
                       {atts.length > 0 ? (
                         <ul className="mt-3 grid gap-2 border-t border-dashed border-gray-200 pt-2 text-xs sm:grid-cols-2">
                           {atts.map((a) => (
@@ -1472,7 +1576,7 @@ export function SupportTicketDetailView({
                   </div>
                 </dl>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {ticket.provider?.id ? (
+                  {ticket.provider?.id && canProviderOps ? (
                     <Link
                       className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-gray-900 px-3 text-sm font-medium text-white hover:bg-gray-800"
                       to={adminSpaTo(`/admin/providers/${ticket.provider.id}`)}
@@ -1481,7 +1585,7 @@ export function SupportTicketDetailView({
                       <ExternalLink className="h-4 w-4" aria-hidden />
                     </Link>
                   ) : null}
-                  {ticket.provider?.user_id ? (
+                  {ticket.provider?.user_id && canUsersTrust ? (
                     <Link
                       className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-800 hover:bg-gray-50"
                       to={adminSpaTo(`/admin/users/${ticket.provider.user_id}`)}
@@ -1504,20 +1608,109 @@ export function SupportTicketDetailView({
                 </dd>
                 {ticket.support_context_id ? (
                   <dd className="mt-1 break-all font-mono text-xs text-gray-600">{ticket.support_context_id}</dd>
+                ) : ticket.support_context_type ? (
+                  <dd className="mt-1 text-xs text-amber-800">Not linked to a live record</dd>
                 ) : null}
+                {contextQ.data?.facts ? (
+                  <dd className="mt-2 rounded-lg border border-gray-100 bg-gray-50 p-3 text-xs text-gray-800">
+                    <p className="mb-1 font-medium text-gray-600">Verified facts</p>
+                    <dl className="grid gap-1 sm:grid-cols-2">
+                      {Object.entries(contextQ.data.facts).map(([key, val]) => (
+                        <div key={key}>
+                          <dt className="text-gray-500">{key.replace(/_/g, " ")}</dt>
+                          <dd className="font-medium">{val == null ? "—" : String(val)}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </dd>
+                ) : null}
+                <dd className="mt-3 space-y-2 rounded-lg border border-dashed border-gray-200 bg-white p-3">
+                  <p className="text-xs font-medium text-gray-700">Attach record (requester-owned)</p>
+                  <input
+                    type="search"
+                    value={contextAttachSearch}
+                    onChange={(e) => setContextAttachSearch(e.target.value)}
+                    placeholder="Search booking or order number…"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                  />
+                  {contextRecordsQ.isFetching ? (
+                    <p className="text-xs text-gray-500">Searching…</p>
+                  ) : (contextRecordsQ.data?.length ?? 0) > 0 ? (
+                    <ul className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50 p-2 text-xs">
+                      {(contextRecordsQ.data ?? contextQ.data?.records ?? []).map((row) => (
+                        <li key={`${row.kind}-${row.id}`}>
+                          <button
+                            type="button"
+                            disabled={attachContextMut.isPending}
+                            className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left hover:bg-white disabled:opacity-50"
+                            onClick={() => attachContextMut.mutate({ kind: row.kind, id: row.id })}
+                          >
+                            <span className="font-medium text-gray-900">
+                              {row.kind === "product_order" ? "Order" : "Booking"} · {row.label}
+                            </span>
+                            <span className="shrink-0 text-gray-500">{row.status ?? "—"}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-xs text-gray-500">
+                      {contextAttachSearch.trim()
+                        ? "No matching bookings or orders for this requester."
+                        : "No recent bookings or orders for this requester."}
+                    </p>
+                  )}
+                  <input
+                    type="text"
+                    value={attachBookingNumber}
+                    onChange={(e) => setAttachBookingNumber(e.target.value)}
+                    placeholder="Booking number"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={attachOrderNumber}
+                    onChange={(e) => setAttachOrderNumber(e.target.value)}
+                    placeholder="Order number"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={attachGiftCode}
+                    onChange={(e) => setAttachGiftCode(e.target.value)}
+                    placeholder="Gift card code"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                  />
+                  <button
+                    type="button"
+                    disabled={attachContextMut.isPending}
+                    onClick={() => attachContextMut.mutate(undefined)}
+                    className="inline-flex min-h-10 items-center rounded-xl bg-gray-900 px-3 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+                  >
+                    {attachContextMut.isPending ? "Searching…" : "Attach to ticket"}
+                  </button>
+                </dd>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {adminSupportContextHref(ticket.support_context_type, ticket.support_context_id) ? (
+                  {adminSupportContextHrefForRole(
+                    viewerRole,
+                    ticket.support_context_type,
+                    ticket.support_context_id,
+                  ) ? (
                     <Link
                       className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-gray-900 px-3 text-sm font-medium text-white hover:bg-gray-800"
                       to={adminSpaTo(
-                        adminSupportContextHref(ticket.support_context_type, ticket.support_context_id) ?? "/",
+                        adminSupportContextHrefForRole(
+                          viewerRole,
+                          ticket.support_context_type,
+                          ticket.support_context_id,
+                        ) ?? "/",
                       )}
                     >
                       {adminSupportContextActionLabel(ticket.support_context_type)}
                       <ExternalLink className="h-4 w-4" aria-hidden />
                     </Link>
                   ) : null}
-                  {bookingContextId && contextBooking ? (
+                  {bookingContextId && contextBooking && canProviderOps ? (
                     <>
                       {contextBooking.status !== "cancelled" && contextBooking.status !== "completed" ? (
                         <button

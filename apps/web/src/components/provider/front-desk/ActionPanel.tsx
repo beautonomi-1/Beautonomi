@@ -5,6 +5,16 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 import React from "react";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageCircle, Phone, Copy, X } from "lucide-react";
 import { toast } from "sonner";
@@ -24,6 +34,7 @@ import {
   cancelBooking,
 } from "@/lib/front-desk/actions";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { fetcher } from "@/lib/http/fetcher";
 
 const BADGE_PILLS: Record<string, string> = {
   late: "bg-red-50/90 text-red-900/90",
@@ -66,6 +77,15 @@ interface ActionPanelProps {
 export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequestRating }: ActionPanelProps) {
   const { bundle } = useConfigBundle();
   const { t } = useTranslation();
+  const [cancelConfirmOpen, setCancelConfirmOpen] = React.useState(false);
+  const [cancelPreview, setCancelPreview] = React.useState<{
+    allowed?: boolean;
+    reason?: string;
+    expected_cancellation_fee?: number;
+    expected_wallet_refund?: number;
+    in_person_refund_due?: number;
+  } | null>(null);
+  const [cancelPreviewLoading, setCancelPreviewLoading] = React.useState(false);
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const customer = (booking as any).customers || {};
   const phone = customer.phone || customer.phone_number || "";
@@ -110,6 +130,32 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
       opts?.afterComplete?.();
     }
   };
+
+  React.useEffect(() => {
+    if (!cancelConfirmOpen) return;
+    let cancelled = false;
+    setCancelPreviewLoading(true);
+    fetcher
+      .get<{
+        allowed?: boolean;
+        reason?: string;
+        expected_cancellation_fee?: number;
+        expected_wallet_refund?: number;
+        in_person_refund_due?: number;
+      }>(`/api/provider/bookings/${booking.id}/cancel-preview?initiator=provider`)
+      .then((data) => {
+        if (!cancelled) setCancelPreview(data);
+      })
+      .catch(() => {
+        if (!cancelled) setCancelPreview(null);
+      })
+      .finally(() => {
+        if (!cancelled) setCancelPreviewLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cancelConfirmOpen, booking.id]);
 
   const isReadyToPay = badge === "ready_to_pay";
 
@@ -307,13 +353,48 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
               variant="outline"
               size="sm"
               className="w-full rounded-2xl border-red-200 text-red-800 hover:bg-red-50 font-medium"
-              onClick={() => runAction(() => cancelBooking(booking.id, undefined, (booking as any).version))}
+              onClick={() => setCancelConfirmOpen(true)}
             >
               {t("web.provider.frontDesk.cancelBooking")}
             </Button>
           )}
         </div>
       </ScrollArea>
+
+      <AlertDialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("web.provider.frontDesk.cancelBooking")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {cancelPreviewLoading
+                ? t("web.provider.bookings.cancelDialog.previewLoading")
+                : cancelPreview?.allowed === false
+                  ? cancelPreview.reason
+                  : cancelPreview
+                    ? `${t("web.provider.bookings.cancelDialog.previewWalletRefund", {
+                        currency: tenantCurrency,
+                        amount: Number(cancelPreview.expected_wallet_refund ?? 0).toFixed(2),
+                      })} ${t("web.provider.bookings.cancelDialog.previewFee", {
+                        currency: tenantCurrency,
+                        amount: Number(cancelPreview.expected_cancellation_fee ?? 0).toFixed(2),
+                      })}`
+                    : "This cancel is treated as you cancelling — the customer gets a full refund of online payments."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("web.provider.common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              disabled={cancelPreview?.allowed === false}
+              onClick={() =>
+                runAction(() => cancelBooking(booking.id, undefined, (booking as any).version))
+              }
+            >
+              {t("web.provider.frontDesk.cancelBooking")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

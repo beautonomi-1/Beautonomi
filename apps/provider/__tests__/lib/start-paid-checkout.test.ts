@@ -65,6 +65,26 @@ describe("startPaidSubscriptionCheckout", () => {
     });
   });
 
+  it("returns scheduledChangeAt when upgrade schedules a downgrade", async () => {
+    api.post.mockResolvedValueOnce({
+      data: { scheduled: true, changes_on: "2026-12-01T00:00:00.000Z" },
+      error: null,
+    });
+
+    const result = await startPaidSubscriptionCheckout({
+      subscriptionPlanId: "sub-plan-1",
+      billingPeriod: "monthly",
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      authorizationUrl: "",
+      alreadyActive: true,
+      scheduledChangeAt: "2026-12-01T00:00:00.000Z",
+    });
+    expect(api.post).toHaveBeenCalledTimes(1);
+  });
+
   it("returns alreadyActive when upgrade succeeds without payment", async () => {
     api.post.mockResolvedValueOnce({
       data: { subscription_id: "ps-1", requires_payment: false },

@@ -1,7 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Modal, Pressable, Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  Share,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import * as Clipboard from "expo-clipboard";
+import { providerPostCashCompleteShareLine, providerShareBookingLinkSms } from "@beautonomi/utils";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -28,6 +40,10 @@ type PostCompletionSheetProps = {
   primaryServiceName: string;
   primaryOfferingId?: string;
   hasExistingRating: boolean;
+  /** Walk-in / cash complete — show share booking link on choose step. */
+  showShareBookingLink?: boolean;
+  providerPublicBookUrl?: string | null;
+  clientDisplayName?: string | null;
   /** When returning from Explore (`step=rate`), open on the rating step. */
   initialStep?: PostCompletionStep;
   onDismiss: (markSeen: boolean) => void;
@@ -43,6 +59,9 @@ export function PostCompletionSheet({
   primaryServiceName,
   primaryOfferingId,
   hasExistingRating,
+  showShareBookingLink = false,
+  providerPublicBookUrl,
+  clientDisplayName,
   initialStep = "choose",
   onDismiss,
   onRated,
@@ -136,7 +155,10 @@ export function PostCompletionSheet({
                 text: t("common.storeReview.lowScoreAction"),
                 onPress: () => {
                   markSeen();
-                  router.push("/(app)/(tabs)/more/support-tickets/new" as never);
+                  router.push({
+                    pathname: "/(app)/(tabs)/more/support-tickets/new",
+                    params: { category: "client_conduct" },
+                  } as never);
                 },
               },
             ],
@@ -186,6 +208,33 @@ export function PostCompletionSheet({
                 >
                   <Text style={{ color: Colors.primary, fontWeight: "600" }}>{pc("rateClient")}</Text>
                 </TouchableOpacity>
+              ) : null}
+              {showShareBookingLink && providerPublicBookUrl ? (
+                <>
+                  <Text style={{ color: Colors.gray[600], fontSize: 13, marginBottom: 10, textAlign: "center" }}>
+                    {providerPostCashCompleteShareLine(clientDisplayName ?? "")}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      const msg = providerShareBookingLinkSms(providerPublicBookUrl);
+                      void Share.share({ message: msg, url: providerPublicBookUrl }).catch(() =>
+                        void Clipboard.setStringAsync(msg),
+                      );
+                    }}
+                    style={{
+                      borderWidth: 1.5,
+                      borderColor: Colors.primary,
+                      paddingVertical: 13,
+                      borderRadius: 12,
+                      alignItems: "center",
+                      marginBottom: 10,
+                    }}
+                  >
+                    <Text style={{ color: Colors.primary, fontWeight: "600" }}>
+                      {pc("shareBookingLink")}
+                    </Text>
+                  </TouchableOpacity>
+                </>
               ) : null}
               <TouchableOpacity onPress={markSeen} style={{ paddingVertical: 12, alignItems: "center" }}>
                 <Text style={{ color: Colors.gray[500] }}>{pc("doneForNow")}</Text>

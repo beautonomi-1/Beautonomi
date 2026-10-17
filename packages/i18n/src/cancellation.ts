@@ -56,6 +56,9 @@ export interface CancellationPolicyContent {
 type TFunc = (key: string, opts?: Record<string, string | number>) => string;
 type FormatCurrencyFunc = (amount: number, currency: string) => string;
 
+/** How the customer is expected to pay — adjusts refund / store-credit copy. */
+export type CancellationCopyPaymentMethod = "online" | "pay_at_venue" | "no_penalty";
+
 function defaultFmt(amount: number, currency: string): string {
   return `${currency} ${amount.toFixed(2)}`;
 }
@@ -92,11 +95,33 @@ export function cancellationRequiresAck(view: CancellationPolicyView | null | un
  * @param opts.t - i18next `t` function scoped to the translation namespace.
  * @param opts.formatCurrency - Currency formatter (e.g. `formatCurrency(amount, currency)`).
  */
+function resolveStoreCreditNoteKey(
+  view: CancellationPolicyView,
+  paymentMethod?: CancellationCopyPaymentMethod,
+): string {
+  if (paymentMethod === "pay_at_venue") {
+    return "checkout.refundsStoreCreditNotePayAtVenue";
+  }
+  if (paymentMethod === "no_penalty") {
+    return "checkout.refundsStoreCreditNoteNoPenalty";
+  }
+  const windowHrs = view.cancellationWindowHours;
+  const latePct = view.lateRefundPercentage;
+  const noPenaltyPolicy =
+    (windowHrs == null || windowHrs <= 0) &&
+    (latePct == null || Number(latePct) >= 100);
+  if (noPenaltyPolicy) {
+    return "checkout.refundsStoreCreditNoteNoPenalty";
+  }
+  return "checkout.refundsStoreCreditNote";
+}
+
 export function buildCancellationPolicyLines(
   view: CancellationPolicyView | null | undefined,
   opts?: {
     t?: TFunc;
     formatCurrency?: FormatCurrencyFunc;
+    paymentMethod?: CancellationCopyPaymentMethod;
   }
 ): CancellationPolicyContent {
   const t = opts?.t ?? ((key: string) => key);
@@ -182,11 +207,13 @@ export function buildCancellationPolicyLines(
     });
   }
 
+  const storeCreditNoteKey = resolveStoreCreditNoteKey(view, opts?.paymentMethod);
+
   return {
     lines,
     requiresAck: cancellationRequiresAck(view),
     ackText: t("checkout.acceptCancellationPolicy"),
     footerText: t("checkout.policyEnforcedAutomatically"),
-    storeCreditNote: t("checkout.refundsStoreCreditNote"),
+    storeCreditNote: t(storeCreditNoteKey),
   };
 }

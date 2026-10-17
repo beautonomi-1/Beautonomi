@@ -47,6 +47,7 @@ import {
   PAYCLOUD_SETUP_LABEL,
 } from "@/lib/payments/paycloud-collect-cta";
 import { useTranslation } from "@beautonomi/i18n";
+import { normalizeTipPercentPresets, percentOf } from "@beautonomi/utils";
 
 interface ServiceItem {
   id: string;
@@ -106,8 +107,6 @@ const PAYMENT_METHODS: { id: PaymentMethod; nameKey: string; descriptionKey: str
   { id: "split", nameKey: "methodSplit", descriptionKey: "methodSplitDesc", icon: Wallet },
 ];
 
-const TIP_PERCENTAGES = [0, 10, 15, 20, 25];
-
 export function CheckoutDialog({
   isOpen,
   onClose,
@@ -140,25 +139,40 @@ export function CheckoutDialog({
   const [splitPrimaryAmount, setSplitPrimaryAmount] = useState("");
   const [acceptCash, setAcceptCash] = useState(true);
   const [acceptCard, setAcceptCard] = useState(true);
+  const [tipPresetPercents, setTipPresetPercents] = useState<number[]>([0, 10, 15, 20, 25]);
+  const [paymentsCurrency, setPaymentsCurrency] = useState<string>(LAST_RESORT_CURRENCY);
 
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
     void import("@/lib/http/fetcher").then(({ fetcher }) =>
-      fetcher.get<{ data?: { acceptCash?: boolean; acceptCard?: boolean } }>(
-        "/api/provider/settings/payments",
-      ),
+      fetcher.get<{
+        data?: { acceptCash?: boolean; acceptCard?: boolean; tipPresets?: number[]; currency?: string };
+      }>("/api/provider/settings/payments"),
     )
       .then((res) => {
         if (cancelled) return;
-        const data = (res as { data?: { acceptCash?: boolean; acceptCard?: boolean } })?.data ?? res;
+        const data =
+          (res as {
+            data?: {
+              acceptCash?: boolean;
+              acceptCard?: boolean;
+              tipPresets?: number[];
+              currency?: string;
+            };
+          })?.data ?? res;
         setAcceptCash((data as { acceptCash?: boolean })?.acceptCash !== false);
         setAcceptCard((data as { acceptCard?: boolean })?.acceptCard !== false);
+        const presets = normalizeTipPercentPresets((data as { tipPresets?: number[] })?.tipPresets);
+        setTipPresetPercents([0, ...presets]);
+        const cur = (data as { currency?: string })?.currency?.trim();
+        if (cur) setPaymentsCurrency(cur);
       })
       .catch(() => {
         if (!cancelled) {
           setAcceptCash(true);
           setAcceptCard(true);
+          setTipPresetPercents([0, 10, 15, 20, 25]);
         }
       });
     return () => {
@@ -195,13 +209,13 @@ export function CheckoutDialog({
     if (customTip) {
       tip = parseFloat(customTip);
     } else if (tipPercentage > 0) {
-      tip = (afterDiscount * tipPercentage) / 100;
+      tip = percentOf(afterDiscount, tipPercentage, paymentsCurrency);
     }
 
     const total = afterDiscount + tip;
 
     return { subtotal, discount, tip, total };
-  }, [checkoutData, discountType, discountValue, tipPercentage, customTip]);
+  }, [checkoutData, discountType, discountValue, tipPercentage, customTip, paymentsCurrency]);
 
   const formatCurrency = (amount: number) => formatProviderMoney(amount);
 
@@ -560,8 +574,20 @@ export function CheckoutDialog({
                   {/* Tip Selection */}
                   <div className="space-y-3">
                     <Label className="text-sm font-semibold">{t("web.provider.portal.checkoutDialog.addTip")}</Label>
-                    <div className="grid grid-cols-5 gap-2">
-                      {TIP_PERCENTAGES.map((percent) => (
+                    <div
+                      className="grid gap-2"
+                      style={{
+                        gridTemplateColumns: `repeat(${Math.min(tipPresetPercents.length, 5)}, minmax(0, 1fr))`,
+                      }}
+                    >
+                      {tipPresetPercents.map((percent) => {
+                        const afterDiscount = Math.max(
+                          0,
+                          calculations.subtotal - calculations.discount,
+                        );
+                        const tipForPercent =
+                          percent > 0 ? percentOf(afterDiscount, percent, paymentsCurrency) : 0;
+                        return (
                         <Button
                           key={percent}
                           type="button"
@@ -577,10 +603,11 @@ export function CheckoutDialog({
                         >
                           <span className="text-xs">{percent}%</span>
                           <span className="text-[10px] opacity-70">
-                            {formatCurrency((calculations.subtotal - calculations.discount) * percent / 100)}
+                            {formatCurrency(tipForPercent)}
                           </span>
                         </Button>
-                      ))}
+                        );
+                      })}
                     </div>
                     <div className="flex items-center gap-2">
                       <Input

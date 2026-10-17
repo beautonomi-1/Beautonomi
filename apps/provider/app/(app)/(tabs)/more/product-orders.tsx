@@ -1,6 +1,5 @@
 import { useCallback, useState, useEffect, useMemo, useRef } from "react";
 import { View, Text, TouchableOpacity, TextInput, ScrollView, RefreshControl, Alert, Platform, Linking } from "react-native";
-import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -898,7 +897,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
               <LoadingState />
             </View>
           ) : activeOrder ? (
-            <KeyboardAvoidingView behavior="padding">
+            <View>
               {/* Status + payment status badges */}
               <View style={twStyle("mb-3 flex-row flex-wrap gap-2")}>
                 {(() => {
@@ -1480,7 +1479,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                   </View>
                 );
               })()}
-            </KeyboardAvoidingView>
+            </View>
           ) : null}
         </BottomSheet>
       )}

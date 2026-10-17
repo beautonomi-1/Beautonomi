@@ -25,8 +25,9 @@ export const SETUP_STATUS_ID_TO_WIZARD_STEP: Record<string, number> = {
   services: 12,
   // Operating hours → wizard "Hours"
   availability: 13,
-  // Card machine / payment terminal → wizard "Payment setup"
+  // Card machine / payment terminal → wizard "Payments & policies"
   payment: 4,
+  "cancellation-policy": 4,
   // `personal-profile`, `identity-verification`, `payment-methods`, and
   // `payout` have dedicated native screens — intentionally omitted so
   // resolveSetupStepRoute falls back to the setup hub instead of wizard

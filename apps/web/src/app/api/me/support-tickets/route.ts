@@ -7,6 +7,7 @@ import {
   requireRoleInApi,
   getOffsetPaginationParams,
   getProviderIdForUser,
+  errorResponse,
 } from "@/lib/supabase/api-helpers";
 import {
   notifySupportTicketCreated,
@@ -14,8 +15,15 @@ import {
   resolveSupportTicketStaffRecipients,
 } from "@/lib/notifications/notification-service";
 import { z } from "zod";
-import { normalizeSupportTicketCategory } from "@/lib/support/ticket-categories";
+import {
+  deriveSupportContextTypeForTicket,
+  parseUserSubmittedCategory,
+} from "@/lib/support/ticket-categories";
 import { computeSlaResolutionDueIso, computeFirstResponseDueIso } from "@/lib/support/support-ticket-sla";
+import { isSafetySupportCategory } from "@/lib/support/support-assistant/categories";
+import { isSupportAssistantEnabledForUser } from "@/lib/support/support-assistant/availability";
+import { runSupportAssistantTurn } from "@/lib/support/support-assistant/run-turn";
+import { handoffSupportTicketToHuman } from "@/lib/support/support-assistant/handoff";
 
 const createTicketSchema = z.object({
   subject: z.string().min(1, "Subject is required").max(200, "Subject too long"),
@@ -27,6 +35,7 @@ const createTicketSchema = z.object({
     .optional(),
   support_context_id: z.string().uuid().optional().nullable(),
   support_context_label: z.string().max(160).optional().nullable(),
+  handling_mode: z.enum(["assistant", "human"]).optional(),
 });
 
 /**
@@ -42,7 +51,17 @@ export async function POST(request: NextRequest) {
     );
     const body = await request.json();
     const validated = createTicketSchema.parse(body);
-    const category = normalizeSupportTicketCategory(validated.category);
+    const parsedCategory = parseUserSubmittedCategory(validated.category);
+    if (parsedCategory.ok === false) {
+      return errorResponse(parsedCategory.error, "INVALID_CATEGORY", 400);
+    }
+    const category = parsedCategory.category;
+    const supportContextType = deriveSupportContextTypeForTicket({
+      category,
+      supportContextId: validated.support_context_id,
+      supportContextLabel: validated.support_context_label,
+      clientContextType: validated.support_context_type ?? null,
+    });
     const requesterType =
       user.role === "provider_owner" || user.role === "provider_staff"
         ? "provider"
@@ -56,6 +75,17 @@ export async function POST(request: NextRequest) {
         ? await getProviderIdForUser(user.id, adminSupabase as never, { request })
         : null;
 
+    const safetyCategory = isSafetySupportCategory(category);
+    let handlingMode: "assistant" | "human" = "human";
+    if (!safetyCategory && validated.handling_mode === "assistant") {
+      const assistantOn = await isSupportAssistantEnabledForUser({
+        role: user.role,
+        userId: user.id,
+        platform: requesterType === "provider" ? "provider" : "web",
+      });
+      if (assistantOn) handlingMode = "assistant";
+    }
+
     // Create support ticket (description NOT NULL: use first message; ticket_number set by DB trigger if omitted)
     const { data: ticket, error: ticketError } = await adminSupabase
       .from("support_tickets")
@@ -68,9 +98,10 @@ export async function POST(request: NextRequest) {
         category,
         provider_id: providerId,
         requester_type: requesterType,
-        support_context_type: validated.support_context_type ?? null,
+        support_context_type: supportContextType,
         support_context_id: validated.support_context_id ?? null,
         support_context_label: validated.support_context_label?.trim() || null,
+        handling_mode: handlingMode,
       })
       .select()
       .single();
@@ -81,13 +112,13 @@ export async function POST(request: NextRequest) {
 
     const createdAt = ticket.created_at as string | undefined;
     if (createdAt) {
-      await adminSupabase
-        .from("support_tickets")
-        .update({
-          sla_resolution_due_at: computeSlaResolutionDueIso(createdAt, validated.priority),
-          first_response_due_at: computeFirstResponseDueIso(createdAt, validated.priority),
-        })
-        .eq("id", ticket.id);
+      const slaUpdate: Record<string, string> = {
+        sla_resolution_due_at: computeSlaResolutionDueIso(createdAt, validated.priority),
+      };
+      if (handlingMode !== "assistant") {
+        slaUpdate.first_response_due_at = computeFirstResponseDueIso(createdAt, validated.priority);
+      }
+      await adminSupabase.from("support_tickets").update(slaUpdate).eq("id", ticket.id);
     }
 
     // Create initial message
@@ -98,6 +129,7 @@ export async function POST(request: NextRequest) {
         user_id: user.id,
         message: validated.message,
         is_internal: false,
+        author_kind: "customer",
       })
       .select()
       .single();
@@ -131,43 +163,43 @@ export async function POST(request: NextRequest) {
       console.error("Support ticket created notification failed:", notifyErr);
     }
 
-    try {
-      const staffIds = await resolveSupportTicketStaffRecipients(null);
-      await notifySupportStaffInboxActivity(
-        staffIds,
-        ticket.ticket_number || ticket.id,
-        `New ticket: ${validated.subject.slice(0, 200)}`,
-        ticket.id,
-        ["email", "push"]
-      );
-    } catch (staffNotifyErr) {
-      console.error("Support staff new-ticket notification failed:", staffNotifyErr);
-    }
-
-    // Agent triage runs after the response is sent: classifies the ticket,
-    // drafts a first reply, and proposes assignment — all human-approved.
-    after(async () => {
+    if (handlingMode !== "assistant") {
       try {
-        const { startSupportTriageForTicket } = await import("@/workflows/start-support-triage");
-        await startSupportTriageForTicket(ticket.id);
-      } catch (triageErr) {
-        console.error("Support triage workflow failed:", triageErr);
+        const staffIds = await resolveSupportTicketStaffRecipients(null);
+        await notifySupportStaffInboxActivity(
+          staffIds,
+          ticket.ticket_number || ticket.id,
+          `New ticket: ${validated.subject.slice(0, 200)}`,
+          ticket.id,
+          ["email", "push"],
+        );
+      } catch (staffNotifyErr) {
+        console.error("Support staff new-ticket notification failed:", staffNotifyErr);
       }
-    });
 
-    try {
-      const { slackNotifyNewSupportTicket } = await import("@/lib/integrations/slack/triggers");
-      await slackNotifyNewSupportTicket(request, ticket as {
-        id: string;
-        ticket_number?: string;
-        subject?: string;
-        priority?: string;
-        requester_type?: string;
-        support_context_type?: string;
-        support_context_label?: string;
+      after(async () => {
+        try {
+          const { startSupportTriageForTicket } = await import("@/workflows/start-support-triage");
+          await startSupportTriageForTicket(ticket.id);
+        } catch (triageErr) {
+          console.error("Support triage workflow failed:", triageErr);
+        }
       });
-    } catch (slackErr) {
-      console.error("Slack notification failed:", slackErr);
+
+      try {
+        const { slackNotifyNewSupportTicket } = await import("@/lib/integrations/slack/triggers");
+        await slackNotifyNewSupportTicket(request, ticket as {
+          id: string;
+          ticket_number?: string;
+          subject?: string;
+          priority?: string;
+          requester_type?: string;
+          support_context_type?: string;
+          support_context_label?: string;
+        });
+      } catch (slackErr) {
+        console.error("Slack notification failed:", slackErr);
+      }
     }
 
     try {
@@ -187,9 +219,36 @@ export async function POST(request: NextRequest) {
       console.error("Fraud case from safety ticket failed:", fraudErr);
     }
 
+    let assistantMessage: Record<string, unknown> | null = null;
+    let handoff = false;
+    if (handlingMode === "assistant") {
+      const turn = await runSupportAssistantTurn({
+        admin: adminSupabase,
+        ticketId: ticket.id,
+        userText: validated.message,
+        request,
+      });
+      if (turn.ok === true) {
+        assistantMessage = turn.assistantMessage;
+        handoff = turn.handoff;
+      } else if (turn.handoff) {
+        handoff = true;
+      } else {
+        await handoffSupportTicketToHuman({
+          admin: adminSupabase,
+          ticketId: ticket.id,
+          request,
+          reason: turn.message,
+        });
+        handoff = true;
+      }
+    }
+
     return successResponse({
-      ticket,
+      ticket: { ...ticket, handling_mode: handoff ? "human" : handlingMode },
       initialMessage: message,
+      assistantMessage,
+      handoff,
       message: "Support ticket created successfully",
     });
   } catch (error) {
@@ -240,6 +299,7 @@ export async function GET(request: NextRequest) {
         last_message_at,
         last_message_from,
         last_customer_view_at,
+        handling_mode,
         created_at,
         updated_at
       `, { count: "exact" })
@@ -264,7 +324,8 @@ export async function GET(request: NextRequest) {
         return {
           ...ticket,
           has_unread_staff_reply:
-            ticket.last_message_from === "staff" && lastMessageAt > Math.max(0, lastSeenAt),
+            (ticket.last_message_from === "staff" || ticket.last_message_from === "assistant") &&
+            lastMessageAt > Math.max(0, lastSeenAt),
         };
       }),
       total: count ?? 0,

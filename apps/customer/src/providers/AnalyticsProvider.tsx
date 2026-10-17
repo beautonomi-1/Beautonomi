@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type MutableRefObject } from "react";
 import { AppState, InteractionManager, Linking } from "react-native";
 import { fetchAmplitudeConfig } from "@beautonomi/analytics";
 import {
@@ -21,11 +21,31 @@ import { attBootstrapPromise } from "@/lib/tracking/request-att-before-tracking"
 
 type AnalyticsClient = NonNullable<Awaited<ReturnType<typeof initAnalytics>>>;
 
+function resetAnalyticsIdentity(clientRef: MutableRefObject<AnalyticsClient | null>) {
+  try {
+    clientRef.current?.reset();
+  } catch {
+    /* ignore */
+  }
+  unsetSingularCustomUserId();
+  resetAnalyticsModule();
+  clientRef.current = null;
+  setAnalyticsInstance(null);
+}
+
 export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const userId = user?.id ?? null;
   const clientRef = useRef<AnalyticsClient | null>(null);
+  const prevUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
+    const prevUserId = prevUserIdRef.current;
+    if (prevUserId !== null && prevUserId !== userId) {
+      resetAnalyticsIdentity(clientRef);
+    }
+    prevUserIdRef.current = userId;
+
     let cancelled = false;
     let deferredHandle: { cancel?: () => void } | null = null;
 
@@ -36,7 +56,7 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
           await attBootstrapPromise;
           if (cancelled) return;
 
-          if (user) {
+          if (userId) {
             const consentRes = await api.get<{ analytics_consent?: boolean }>(
               "/api/me/analytics/consent"
             );
@@ -93,7 +113,7 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
             setAnalyticsInstance(null);
           }
 
-          if (user && client) {
+          if (userId && client) {
             try {
               const res = await api.post<Record<string, unknown>>("/api/me/analytics/identify", {
                 portal: "client",
@@ -109,12 +129,12 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
                 console.error("[Analytics] Identify API returned no properties (fail-closed)");
                 return;
               }
-              client.identify(user.id, res.data as Record<string, unknown>);
+              client.identify(userId, res.data as Record<string, unknown>);
               const providerId = (res.data as { provider_id?: unknown }).provider_id;
               if (typeof providerId === "string" && providerId) {
                 client.setGroup("provider", providerId);
               }
-              setSingularCustomUserId(user.id);
+              setSingularCustomUserId(userId);
             } catch (e) {
               console.error("[Analytics] Identify request failed:", e);
             }
@@ -126,7 +146,7 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
       })();
     };
 
-    if (!user) {
+    if (!userId) {
       deferredHandle = InteractionManager.runAfterInteractions(() => {
         if (cancelled) return;
         requestAnimationFrame(runBootstrap);
@@ -138,17 +158,8 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
       deferredHandle?.cancel?.();
-      try {
-        clientRef.current?.reset();
-      } catch {
-        /* ignore */
-      }
-      unsetSingularCustomUserId();
-      resetAnalyticsModule();
-      clientRef.current = null;
-      setAnalyticsInstance(null);
     };
-  }, [user]);
+  }, [userId]);
 
   // Deep links: Amplitude Guides/Surveys + marketing attribution (UTM / click ids).
   useEffect(() => {

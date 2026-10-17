@@ -32,6 +32,7 @@ import { Colors, Shadows } from "@/constants/colors";
 import { Skeleton } from "@/components/Skeleton";
 import { useTranslation } from "@beautonomi/i18n";
 import { useSocialCapability, useSafetySettings } from "@/hooks/useSafetySettings";
+import { shouldShowExploreNav } from "@/lib/safety/explore-visibility";
 import { useUserBlocks } from "@/hooks/useUserBlocks";
 import { ContentReportSheet, type ContentReportTargetType } from "@/components/safety/ContentReportSheet";
 import * as Clipboard from "expo-clipboard";
@@ -614,9 +615,15 @@ export default function ExploreScreen() {
   const { user } = useAuth();
   const exploreEnabled = useFeatureFlag("explore.enabled");
   const { confirmBlockUser } = useUserBlocks();
-  const { settings: safetySettings } = useSafetySettings();
+  const { settings: safetySettings, age_band } = useSafetySettings();
   const socialInteractions = useSocialCapability("like_or_save");
-  const hideSocialFeed = !exploreEnabled || Boolean(user && safetySettings.hide_social_feed);
+  const showExploreNav = shouldShowExploreNav({
+    flagEnabled: exploreEnabled,
+    signedIn: !!user,
+    hideSocialFeed: safetySettings.hide_social_feed,
+    ageBand: age_band,
+  });
+  const hideSocialFeed = !showExploreNav;
   const [reportTarget, setReportTarget] = useState<{
     type: ContentReportTargetType;
     id: string;

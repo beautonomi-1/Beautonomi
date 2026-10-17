@@ -4,12 +4,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
+import { normalizeTipPercentPresets, percentOf } from "@beautonomi/utils";
+import { formatCurrency } from "@/lib/utils";
 
 type Preview = {
   remaining_balance: number;
   currency: string;
   tips_enabled: boolean;
   service_tip_base: number;
+  tip_presets?: number[];
 };
 
 type PayRemainingCheckoutProps = {
@@ -18,8 +21,6 @@ type PayRemainingCheckoutProps = {
   preview?: Preview | null;
   autoStart?: boolean;
 };
-
-const TIP_PRESETS = [0, 10, 15, 20] as const;
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
@@ -64,13 +65,18 @@ export function PayRemainingCheckout({
     };
   }, [bookingId, previewProp]);
 
+  const tipPresets = useMemo(
+    () => normalizeTipPercentPresets(preview?.tip_presets),
+    [preview?.tip_presets],
+  );
+
   const tipAmount = useMemo(() => {
     if (!preview?.tips_enabled) return 0;
     if (tipMode === "custom") {
       return roundMoney(Math.max(0, Number(customTip) || 0));
     }
     if (tipMode === 0) return 0;
-    return roundMoney((preview.service_tip_base * tipMode) / 100);
+    return percentOf(preview.service_tip_base, tipMode, preview.currency);
   }, [preview, tipMode, customTip]);
 
   const payTotal = roundMoney((preview?.remaining_balance ?? 0) + tipAmount);
@@ -145,17 +151,33 @@ export function PayRemainingCheckout({
         <div className="space-y-3">
           <p className="text-sm font-medium">Add a tip (optional)</p>
           <div className="flex flex-wrap gap-2">
-            {TIP_PRESETS.map((p) => (
-              <Button
-                key={p}
-                type="button"
-                variant={tipMode === p ? "default" : "outline"}
-                size="sm"
-                onClick={() => setTipMode(p)}
-              >
-                {p === 0 ? "No tip" : `${p}%`}
-              </Button>
-            ))}
+            <Button
+              type="button"
+              variant={tipMode === 0 ? "default" : "outline"}
+              size="sm"
+              onClick={() => setTipMode(0)}
+            >
+              No tip
+            </Button>
+            {tipPresets.map((p) => {
+              const computed = percentOf(preview.service_tip_base, p, preview.currency);
+              return (
+                <Button
+                  key={p}
+                  type="button"
+                  variant={tipMode === p ? "default" : "outline"}
+                  size="sm"
+                  className="flex flex-col h-auto py-2 min-h-[44px]"
+                  onClick={() => setTipMode(p)}
+                  aria-label={`${p}% tip, ${formatCurrency(computed, preview.currency)}`}
+                >
+                  <span className="font-bold leading-tight">{p}%</span>
+                  <span className="text-[11px] opacity-90 leading-tight">
+                    {formatCurrency(computed, preview.currency)}
+                  </span>
+                </Button>
+              );
+            })}
             <Button
               type="button"
               variant={tipMode === "custom" ? "default" : "outline"}

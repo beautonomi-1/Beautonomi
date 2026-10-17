@@ -86,8 +86,14 @@ export async function GET(request: NextRequest) {
         return { count: awaiting_response, sla_breached };
       })(),
       (async () => {
-        const count = await countRefundsNeedingReview(supabase, tenantId);
-        return { count };
+        const walletReview = await countRefundsNeedingReview(supabase, tenantId);
+        const { count: bankQueue, error: bankErr } = await supabase
+          .from("wallet_bank_refund_requests")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenantId)
+          .in("status", ["pending", "approved"]);
+        const bankCount = bankErr ? 0 : bankQueue ?? 0;
+        return { count: walletReview + bankCount };
       })(),
       supabase
         .from("booking_disputes")

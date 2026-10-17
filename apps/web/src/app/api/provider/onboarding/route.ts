@@ -32,6 +32,11 @@ import {
   assertSupportedMarketAddressCountry,
   assertTransactionalMarketAllowedForTenantId,
 } from "@/lib/tenant/market-availability";
+import {
+  buildCancellationPolicyInsertFromPreset,
+  providerDepositFieldsFromPreset,
+  resolveOnboardingBookingPolicyPreset,
+} from "@/lib/provider/onboarding-booking-policy";
 
 const slugifyCategory = (value: string): string =>
   value
@@ -224,11 +229,12 @@ const onboardingSchema = z.object({
   website: z.string().url().optional().nullable(),
   tax_rate_percent: z.number().min(0).max(100).optional().nullable(),
   tips_enabled: z.boolean().optional().default(true),
-  cancellation_window_hours: z.number().int().min(0).optional().default(24),
-  requires_deposit: z.boolean().optional().default(false),
-  deposit_percentage: z.number().min(0).max(100).optional().nullable(),
-  no_show_fee_enabled: z.boolean().optional().default(false),
-  no_show_fee_amount: z.number().min(0).optional().nullable(),
+  booking_policy: z
+    .object({
+      preset: z.enum(["no_penalty", "flexible", "standard", "strict"]),
+    })
+    .optional()
+    .default({ preset: "standard" }),
   include_in_search_engines: z.boolean().optional().default(true),
   selected_plan_id: z.string().uuid("Invalid plan ID").optional().nullable(),
   // Provider Ops: invite token from an admin-sent onboarding invite link.
@@ -327,11 +333,7 @@ export async function POST(request: NextRequest) {
       website,
       tax_rate_percent,
       tips_enabled,
-      cancellation_window_hours,
-      requires_deposit,
-      deposit_percentage,
-      no_show_fee_enabled,
-      no_show_fee_amount,
+      booking_policy,
       include_in_search_engines,
       selected_plan_id,
       is_vat_registered,
@@ -454,6 +456,9 @@ export async function POST(request: NextRequest) {
 
     const autoApprove = (platformSettings as any)?.features?.auto_approve_providers === true;
 
+    const bookingPolicyPreset = resolveOnboardingBookingPolicyPreset(booking_policy?.preset);
+    const depositFields = providerDepositFieldsFromPreset(bookingPolicyPreset);
+
     // Create provider profile using admin client to avoid RLS issues
     // §Timezone-truthfulness audit 2026-06: set the provider's display zone
     // explicitly from the onboarding location so non-SA providers don't silently
@@ -503,11 +508,10 @@ export async function POST(request: NextRequest) {
         website: website || null,
         tax_rate_percent: is_vat_registered === true ? 15 : (tax_rate_percent ?? 0),
         tips_enabled: tips_enabled !== false,
-        cancellation_window_hours: cancellation_window_hours || 24,
-        requires_deposit: requires_deposit || false,
-        deposit_percentage: deposit_percentage || null,
-        no_show_fee_enabled: no_show_fee_enabled || false,
-        no_show_fee_amount: no_show_fee_amount || null,
+        requires_deposit: depositFields.requires_deposit,
+        deposit_percentage: depositFields.deposit_percentage,
+        no_show_fee_enabled: depositFields.no_show_fee_enabled,
+        no_show_fee_amount: depositFields.no_show_fee_amount,
         // Note: include_in_search_engines is stored in users table, not providers table
       })
       .select()
@@ -527,6 +531,22 @@ export async function POST(request: NextRequest) {
       return errorResponse("Failed to create provider profile", "PROVIDER_CREATION_ERROR", 500);
     }
     const providerId = provider.id as string;
+
+    {
+      const policyInsert = buildCancellationPolicyInsertFromPreset(providerId, bookingPolicyPreset);
+      const { error: policyErr } = await supabaseAdmin
+        .from("cancellation_policies")
+        .insert(policyInsert);
+      if (policyErr) {
+        console.error("Onboarding cancellation policy seed failed:", policyErr);
+        return errorResponse(
+          "Failed to save booking protection policy",
+          "CANCELLATION_POLICY_ERROR",
+          500,
+          policyErr,
+        );
+      }
+    }
 
     // Upsert terminal profile (gated: provider_terminal_capture_enabled, default ON)
     // Runs after provider row exists. Non-fatal if feature flag is off or data absent.

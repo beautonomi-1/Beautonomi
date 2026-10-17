@@ -21238,5 +21238,9 @@
   "Submit another salon or beauty business to Beautonomi": {
     "fr": "Proposer un autre salon ou institut à Beautonomi",
     "ar": "قدّم صالوناً أو نشاطاً للجمال إلى Beautonomi"
+  },
+  "Refunds of online payments are issued as credit to your Beautonomi wallet. Payments made in person have no cancellation fee and are returned by the provider.": {
+    "fr": "Les remboursements des paiements en ligne sont crédités sur votre portefeuille Beautonomi. Les paiements effectués en personne n'entraînent aucun frais d'annulation et sont restitués par le prestataire.",
+    "ar": "تُضاف المبالغ المستردة من المدفوعات عبر الإنترنت إلى محفظة Beautonomi. المدفوعات الشخصية لا تخضع لرسوم إلغاء ويُعيدها مقدّم الخدمة."
   }
 }

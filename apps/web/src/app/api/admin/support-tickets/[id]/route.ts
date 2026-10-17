@@ -82,6 +82,7 @@ export async function GET(
       assigned_to: t.assigned_to as string | null,
       last_staff_view_at: t.last_staff_view_at as string | null,
       needs_agent_response: t.needs_agent_response as boolean | null,
+      handling_mode: t.handling_mode as string | null,
     });
 
     return NextResponse.json({
@@ -127,7 +128,7 @@ export async function PATCH(
     const { data: before } = await supabase
       .from("support_tickets")
       .select(
-        "assigned_to, ticket_number, created_at, priority, status, resolved_at, updated_at, first_staff_reply_at, tenant_id",
+        "assigned_to, ticket_number, created_at, priority, status, resolved_at, updated_at, first_staff_reply_at, assistant_handoff_at, handling_mode, tenant_id",
       )
       .eq("id", id)
       .maybeSingle();
@@ -181,14 +182,27 @@ export async function PATCH(
       if (createdAt) {
         updateData.sla_resolution_due_at = computeSlaResolutionDueIso(createdAt, String(priority));
         // Only recompute first-response deadline while no staff reply has been sent yet.
-        if (!before?.first_staff_reply_at) {
-          updateData.first_response_due_at = computeFirstResponseDueIso(createdAt, String(priority));
+        if (
+          !before?.first_staff_reply_at &&
+          String((before as { handling_mode?: string }).handling_mode ?? "human") !== "assistant"
+        ) {
+          const slaAnchor =
+            typeof (before as { assistant_handoff_at?: string | null }).assistant_handoff_at === "string"
+              ? (before as { assistant_handoff_at: string }).assistant_handoff_at
+              : createdAt;
+          updateData.first_response_due_at = computeFirstResponseDueIso(slaAnchor, String(priority));
         }
       }
     }
     if (assigned_to !== undefined) updateData.assigned_to = assigned_to;
     if (tags !== undefined) updateData.tags = tags;
-    if (category !== undefined) updateData.category = category;
+    if (category !== undefined) {
+      const categoryParsed = (await import("@/lib/support/ticket-categories")).validateAdminCategoryValue(category);
+      if (!categoryParsed.ok) {
+        return NextResponse.json({ error: "Invalid category" }, { status: 400 });
+      }
+      updateData.category = categoryParsed.category;
+    }
     if (sla_resolution_due_at !== undefined) updateData.sla_resolution_due_at = sla_resolution_due_at;
     if (requester_type !== undefined) updateData.requester_type = requester_type;
     if (support_context_type !== undefined) updateData.support_context_type = support_context_type || null;

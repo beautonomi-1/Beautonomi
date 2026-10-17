@@ -50,6 +50,7 @@ import {
   isBookingEmbedEnabled,
   lineHasHouseCallAdjustment,
   percentOf,
+  normalizeTipPercentPresets,
   serverNowToClockOffsetMs,
   appendBookingEmbedQuery,
 } from "@beautonomi/utils";
@@ -148,13 +149,6 @@ function getSubtotalAfterDiscounts(state: BookingState, defaultCurrency: string)
     defaultCurrency,
   }).subtotalAfterDiscounts;
 }
-
-function roundTipAmount(amount: number): number {
-  return Math.round(amount * 100) / 100;
-}
-
-/** Common preset percentages for gratuity (computed from subtotal after discounts). */
-const TIP_PERCENT_PRESETS = [10, 15, 18, 20] as const;
 
 function HoldCountdown({
   expiresAt,
@@ -260,7 +254,6 @@ export default function StepPayment({
   const [tipPercentSelection, setTipPercentSelection] = useState<number | null>(
     bookingState.tipPercentSelection ?? null
   );
-  const [tipSuggestions, setTipSuggestions] = useState<number[]>([0, 50, 100, 150, 200]);
   const [paymentMethod, setPaymentMethod] = useState<"card" | "cash" | "giftcard">(
     bookingState.paymentMethod || "card"
   );
@@ -724,27 +717,6 @@ export default function StepPayment({
     }
   }, [bookingState.requiresDeposit, bookingState.depositPercentage]);
 
-  // Tip preset amounts from online booking settings only (deposit is not sourced here).
-  useEffect(() => {
-    if (!bookingState.providerId) return;
-    let cancelled = false;
-    fetcher
-      .get<{
-        data?: { tip_suggestions?: number[] };
-      }>(`/api/public/provider-online-booking-settings?provider_id=${bookingState.providerId}`)
-      .then((res) => {
-        if (cancelled) return;
-        const tips = res?.data?.tip_suggestions;
-        setTipSuggestions(Array.isArray(tips) && tips.length > 0 ? tips : [0, 50, 100, 150, 200]);
-      })
-      .catch(() => {
-        if (!cancelled) setTipSuggestions([0, 50, 100, 150, 200]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [bookingState.providerId]);
-
   // True when the user has a saved card selected (not entering a new card).
   // When true we pass payment_method_id to the booking API so the server charges it
   // at the correct deposit amount, avoiding a separate client-side charge.
@@ -756,12 +728,24 @@ export default function StepPayment({
     [bookingState, tenantCurrency],
   );
 
+  const checkoutTipPresets = useMemo(
+    () => normalizeTipPercentPresets(bookingState.tipPresets),
+    [bookingState.tipPresets],
+  );
+
   useEffect(() => {
     if (bookingState.tipsEnabled === false) {
       setTipAmount(0);
       setTipPercentSelection(null);
     }
   }, [bookingState.tipsEnabled]);
+
+  useEffect(() => {
+    if (tipPercentSelection === null) return;
+    if (!checkoutTipPresets.includes(tipPercentSelection)) {
+      setTipPercentSelection(null);
+    }
+  }, [checkoutTipPresets, tipPercentSelection]);
 
   // Keep tip amount in sync when user chose a % and the subtotal changes (e.g. promo applied earlier)
   useEffect(() => {
@@ -771,8 +755,8 @@ export default function StepPayment({
       setTipAmount(0);
       return;
     }
-    setTipAmount(roundTipAmount((tipPercentageBase * tipPercentSelection) / 100));
-  }, [tipPercentSelection, tipPercentageBase, bookingState.tipsEnabled]);
+    setTipAmount(percentOf(tipPercentageBase, tipPercentSelection, tenantCurrency));
+  }, [tipPercentSelection, tipPercentageBase, bookingState.tipsEnabled, tenantCurrency]);
 
   // Fetch saved payment methods
   useEffect(() => {
@@ -2115,9 +2099,9 @@ export default function StepPayment({
               >
                 <span>{t("web.booking.stepPayment.noTip")}</span>
               </button>
-              {TIP_PERCENT_PRESETS.map((p) => {
+              {checkoutTipPresets.map((p) => {
                 const computed =
-                  tipPercentageBase > 0 ? roundTipAmount((tipPercentageBase * p) / 100) : 0;
+                  tipPercentageBase > 0 ? percentOf(tipPercentageBase, p, totals.currency) : 0;
                 const selected = tipPercentSelection === p;
                 return (
                   <button
@@ -2158,41 +2142,6 @@ export default function StepPayment({
             )}
           </div>
 
-          {tipSuggestions.some((n) => n > 0) && (
-            <div className="space-y-2">
-              <p className="text-sm font-semibold text-gray-900">{t("web.booking.stepPayment.orChooseSetAmount")}</p>
-              <p className="text-xs text-gray-500">
-                {t("web.booking.stepPayment.quickAmountsHint")}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {tipSuggestions
-                  .filter((n) => n > 0)
-                  .map((n) => {
-                    const selected =
-                      tipPercentSelection === null && tipAmount === n && tipSuggestions.includes(n);
-                    return (
-                      <button
-                        key={n}
-                        type="button"
-                        onClick={() => {
-                          setTipPercentSelection(null);
-                          setTipAmount(n);
-                        }}
-                        className={cn(
-                          "rounded-xl px-4 py-2.5 text-sm font-semibold min-h-[44px] transition-colors border-2",
-                          selected
-                            ? "bg-primary text-white border-primary shadow-sm"
-                            : "bg-white text-gray-800 border-gray-200 hover:border-primary/50"
-                        )}
-                      >
-                        {formatCurrency(n, totals.currency)}
-                      </button>
-                    );
-                  })}
-              </div>
-            </div>
-          )}
-
           <div className="flex flex-wrap items-center gap-2">
             <Label htmlFor="booking-tip-custom" className="text-sm font-medium text-gray-700">
               {t("web.booking.stepPayment.customAmount")}
@@ -2205,11 +2154,7 @@ export default function StepPayment({
               placeholder="0"
               className="w-28 h-10 rounded-lg border-2 border-gray-200"
               value={
-                tipPercentSelection !== null
-                  ? ""
-                  : tipAmount > 0 && !tipSuggestions.includes(tipAmount)
-                    ? tipAmount
-                    : ""
+                tipPercentSelection !== null ? "" : tipAmount > 0 ? tipAmount : ""
               }
               onChange={(e) => {
                 setTipPercentSelection(null);

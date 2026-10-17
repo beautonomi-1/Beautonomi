@@ -350,7 +350,7 @@ async function handleRejectSetupRequest(
           `Your Paystack Terminal setup request was not approved yet.\n\nReason: ${body.reason}\n\n` +
           "Please update your WhatsApp number (use the international format, e.g. +27821234567) or other details on the Paystack Terminal settings page and submit a new request. Reply here if you need help.",
         priority: "medium",
-        category: "payments",
+        category: "terminal_onboarding",
         supportContextType: "payment",
         supportContextId: row.id,
         supportContextLabel: `Paystack Terminal setup · ${providerName}`,
@@ -413,7 +413,7 @@ async function handleCreateSupportTicketForRequest(
       body.message?.trim() ||
       "We're reaching out about your Paystack Terminal setup request. Reply here and our team will help you get it sorted.",
     priority: "medium",
-    category: "payments",
+    category: "terminal_onboarding",
     supportContextType: "payment",
     supportContextId: row.id,
     supportContextLabel: `Paystack Terminal setup · ${providerName}`,

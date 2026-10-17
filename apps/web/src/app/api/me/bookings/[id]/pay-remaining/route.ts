@@ -27,6 +27,7 @@ import {
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { getEffectiveCheckoutMethods } from "@/lib/payments/provider-checkout-methods";
 import { z } from "zod";
+import { normalizeTipPercentPresets } from "@beautonomi/utils";
 import {
   extractIdempotencyKey,
   lookupIdempotentResponse,
@@ -44,14 +45,22 @@ function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-async function loadProviderTipsEnabled(providerId: string | null | undefined): Promise<boolean> {
-  if (!providerId) return true;
+async function loadProviderTipSettings(
+  providerId: string | null | undefined,
+): Promise<{ tipsEnabled: boolean; tipPresets: number[] }> {
+  if (!providerId) {
+    return { tipsEnabled: true, tipPresets: normalizeTipPercentPresets(undefined) };
+  }
   const { data } = await getSupabaseAdmin()
     .from("providers")
-    .select("tips_enabled")
+    .select("tips_enabled, tip_presets")
     .eq("id", providerId)
     .maybeSingle();
-  return (data as { tips_enabled?: boolean | null } | null)?.tips_enabled !== false;
+  const row = data as { tips_enabled?: boolean | null; tip_presets?: unknown } | null;
+  return {
+    tipsEnabled: row?.tips_enabled !== false,
+    tipPresets: normalizeTipPercentPresets(row?.tip_presets),
+  };
 }
 
 /**
@@ -97,7 +106,7 @@ export async function GET(
       0,
       totalAmount - Number((booking as { tip_amount?: number }).tip_amount ?? 0) - fee,
     );
-    const tipsEnabled = await loadProviderTipsEnabled(
+    const { tipsEnabled, tipPresets } = await loadProviderTipSettings(
       (booking as { provider_id?: string | null }).provider_id,
     );
 
@@ -105,6 +114,7 @@ export async function GET(
       remaining_balance: remaining,
       currency: booking.currency,
       tips_enabled: tipsEnabled,
+      tip_presets: tipPresets,
       service_tip_base: roundMoney(serviceTipBase),
     });
   } catch (error) {
@@ -216,7 +226,11 @@ export async function POST(
     );
     const tipsEnabled =
       requestedTip > 0
-        ? await loadProviderTipsEnabled((booking as { provider_id?: string | null }).provider_id)
+        ? (
+            await loadProviderTipSettings(
+              (booking as { provider_id?: string | null }).provider_id,
+            )
+          ).tipsEnabled
         : true;
 
     if (requestedTip > 0 && !tipsEnabled) {

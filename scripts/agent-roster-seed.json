@@ -9,5 +9,6 @@
   { "key": "membership-shepherd", "task_default": "drafting", "vision_enabled": true },
   { "key": "trust-monitor", "task_default": "classification", "vision_enabled": true },
   { "key": "content-moderator", "task_default": "classification", "vision_enabled": true },
-  { "key": "admin-copilot", "task_default": "copilot", "vision_enabled": true }
+  { "key": "admin-copilot", "task_default": "copilot", "vision_enabled": true },
+  { "key": "support-assistant", "task_default": "drafting", "vision_enabled": false }
 ]

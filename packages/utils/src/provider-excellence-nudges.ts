@@ -3,6 +3,8 @@
  * Keep tone: identity-building, progress, trust — avoid guilt or spam.
  */
 
+import { providerOnPlatformPaymentNudgeText } from "./platform-value-claims";
+
 /** localStorage (web) / AsyncStorage key — dismiss hides the dashboard tip for ~7 days */
 export const PROVIDER_EXCELLENCE_DASHBOARD_STORAGE_KEY = "beautonomi_provider_excellence_dashboard_tip_v1";
 export const PROVIDER_EXCELLENCE_DASHBOARD_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
@@ -22,8 +24,7 @@ export function providerBookingPaymentNudgeSessionKey(bookingId: string): string
 export const PROVIDER_HOUSE_CALL_EXCELLENCE_NUDGE =
   "Punctuality, calm communication, and in-app verification build the trust clients remember—and that trust feeds ratings, your rewards tier, and how you surface in search.";
 
-export const PROVIDER_ON_PLATFORM_PAYMENT_NUDGE =
-  "Settling here keeps payouts, disputes, and points on one ledger. Off-platform cash doesn’t strengthen the score customers see.";
+export const PROVIDER_ON_PLATFORM_PAYMENT_NUDGE = providerOnPlatformPaymentNudgeText();
 
 export const PROVIDER_SALON_CHECKIN_EXCELLENCE_NUDGE =
   "Timely check-ins keep your day accurate and reviews tied to the right visit—small habits that lift your tier over time.";

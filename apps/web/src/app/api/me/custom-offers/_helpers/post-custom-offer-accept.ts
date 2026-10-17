@@ -28,6 +28,26 @@ import { finalizeCustomOfferPayment } from "@/lib/custom-offers/finalize-custom-
 import { convertFromSmallestUnit } from "@/lib/payments/paystack-complete";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+async function claimCustomOfferForPaymentPending(
+  adminSupabase: SupabaseClient,
+  offerId: string,
+  fields: Record<string, unknown>,
+): Promise<boolean> {
+  const { data, error } = await adminSupabase
+    .from("custom_offers")
+    .update({
+      status: "payment_pending",
+      ...fields,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", offerId)
+    .in("status", ["pending", "changes_requested"])
+    .select("id");
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0;
+}
 import {
   isWalletEnabledForTenant,
   isGiftCardsEnabledForTenant,
@@ -522,22 +542,27 @@ export async function postCustomOfferAccept(
       // finalizeCustomOfferPayment only settles from `payment_pending` (that gate
       // protects against the cancel-payment refund race), so claim that state
       // first — mirroring the saved-card path below.
-      const { error: zeroPendingErr } = await adminSupabase
-        .from("custom_offers")
-        .update({
-          status: "payment_pending",
+      let zeroClaimed = false;
+      try {
+        zeroClaimed = await claimCustomOfferForPaymentPending(adminSupabase, id, {
           payment_reference: finalizeRef,
           payment_url: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", id);
-      if (zeroPendingErr) {
+        });
+      } catch (zeroPendingErr) {
         for (const rb of reservedRollbacks) await rb();
         return handleApiError(
-          new Error("Failed to save payment state"),
+          zeroPendingErr instanceof Error ? zeroPendingErr : new Error("Failed to save payment state"),
           "Unable to process payment.",
           "DB_ERROR",
           500
+        );
+      }
+      if (!zeroClaimed) {
+        for (const rb of reservedRollbacks) await rb();
+        return errorResponse(
+          "Payment is already in progress for this offer. Wait a moment and try again.",
+          "PAYMENT_IN_PROGRESS",
+          409,
         );
       }
       await patchCustomOfferMessageAttachments(adminSupabase, id, { status: "payment_pending" });
@@ -641,22 +666,27 @@ export async function postCustomOfferAccept(
         );
       }
 
-      const { error: pendingErr } = await adminSupabase
-        .from("custom_offers")
-        .update({
-          status: "payment_pending",
+      let savedCardClaimed = false;
+      try {
+        savedCardClaimed = await claimCustomOfferForPaymentPending(adminSupabase, id, {
           payment_reference: reference,
           payment_url: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", id);
-      if (pendingErr) {
+        });
+      } catch (pendingErr) {
         for (const rb of reservedRollbacks) await rb();
         return handleApiError(
-          new Error("Failed to save payment state"),
+          pendingErr instanceof Error ? pendingErr : new Error("Failed to save payment state"),
           "Unable to process payment.",
           "DB_ERROR",
           500
+        );
+      }
+      if (!savedCardClaimed) {
+        for (const rb of reservedRollbacks) await rb();
+        return errorResponse(
+          "Payment is already in progress for this offer. Wait a moment and try again.",
+          "PAYMENT_IN_PROGRESS",
+          409,
         );
       }
 
@@ -838,27 +868,31 @@ export async function postCustomOfferAccept(
 
     const paymentUrl = init.authorizationUrl ?? null;
 
-    const { error: updateError } = await adminSupabase
-      .from("custom_offers")
-      .update({
-        status: "payment_pending",
+    let hostedClaimed = false;
+    try {
+      hostedClaimed = await claimCustomOfferForPaymentPending(adminSupabase, id, {
         payment_reference: reference,
         payment_url: paymentUrl,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id);
-
-    if (updateError) {
+      });
+    } catch (updateError) {
       for (const rb of reservedRollbacks) await rb();
       console.error(
         "[custom-offers/accept] failed to persist payment_pending:",
-        updateError.message
+        updateError instanceof Error ? updateError.message : updateError
       );
       return handleApiError(
-        new Error("Failed to save payment state"),
+        updateError instanceof Error ? updateError : new Error("Failed to save payment state"),
         "Unable to process payment. Please try again.",
         "DB_ERROR",
         500
+      );
+    }
+    if (!hostedClaimed) {
+      for (const rb of reservedRollbacks) await rb();
+      return errorResponse(
+        "Payment is already in progress for this offer. Wait a moment and try again.",
+        "PAYMENT_IN_PROGRESS",
+        409,
       );
     }
 

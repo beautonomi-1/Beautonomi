@@ -20,6 +20,7 @@
     "@beautonomi/maintenance-paths": "workspace:*",
     "@beautonomi/subscription-features": "workspace:*",
     "@beautonomi/types": "workspace:*",
+    "@beautonomi/utils": "workspace:*",
     "@mapbox/mapbox-gl-draw": "^1.5.1",
     "@sentry/react": "^10.50.0",
     "@supabase/ssr": "^0.8.0",

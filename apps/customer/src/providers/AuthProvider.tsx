@@ -47,6 +47,7 @@ import {
   setAuthFlowTags,
   setSentryUser,
 } from "@/lib/sentry";
+import { isSameAuthUser } from "@/lib/auth/session-stability";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -147,8 +148,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const claimCompletionAttemptedRef = useRef<string | null>(null);
 
   const updateSession = useCallback((newSession: Session | null) => {
+    if (currentUserIdRef.current && !newSession && isSentryEnabled()) {
+      authFlowBreadcrumb("auth_session_cleared", {});
+    }
     setSession(newSession);
-    setUser(newSession?.user ?? null);
+    setUser((prev) => {
+      const next = newSession?.user ?? null;
+      return isSameAuthUser(prev, next) ? prev : next;
+    });
     currentUserIdRef.current = newSession?.user?.id ?? null;
     if (newSession?.user) {
       void import("@/lib/age-assurance/device-age-range").then(({ syncDeviceAgeSignalIfAvailable }) => {
@@ -160,7 +167,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshSession = useCallback(async () => {
     const {
       data: { session: s },
+      error,
     } = await supabase.auth.getSession();
+    if (error || !s) {
+      if (isSentryEnabled()) {
+        authFlowBreadcrumb("refresh_session_skipped", { hasError: !!error, hasSession: !!s });
+      }
+      return;
+    }
     updateSession(s);
   }, [updateSession]);
 
@@ -246,6 +260,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setAuthFlowTags({ auth_state: "signed_out" });
         } else if (event === "SIGNED_IN") {
           authFlowBreadcrumb("supabase_auth", { event: "SIGNED_IN" });
+        } else if (event === "TOKEN_REFRESHED") {
+          authFlowBreadcrumb("supabase_auth", { event: "TOKEN_REFRESHED" });
         }
       }
       if (event === "SIGNED_OUT") {

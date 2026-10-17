@@ -89,6 +89,9 @@ export const adminQueryKeys = {
   fraudCases: (q: string) => [...adminQueryKeys.root, "fraud-cases", q] as const,
 
   refunds: (filters: { page: number; status: string }) => [...adminQueryKeys.root, "refunds", "list", filters] as const,
+  walletBankRefunds: (filters: { page: number; status: string }) =>
+    [...adminQueryKeys.root, "wallet-bank-refunds", "list", filters] as const,
+  walletBankRefundSettings: () => [...adminQueryKeys.root, "wallet-bank-refunds", "settings"] as const,
 
   supportTicketDetail: (id: string) => [...adminQueryKeys.root, "support-tickets", "detail", id] as const,
   agentActionsForTarget: (targetType: string, targetId: string) =>

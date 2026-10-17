@@ -14,6 +14,8 @@ export type ProviderSubscriptionRow = {
   status?: string | null;
   paystack_subscription_code?: string | null;
   cancelled_at?: string | null;
+  expires_at?: string | null;
+  scheduled_plan_id?: string | null;
   plan?: { is_free?: boolean | null } | null;
 };
 
@@ -205,7 +207,7 @@ export async function loadProviderSubscriptionByPaystackCode(
   const { data } = await supabase
     .from("provider_subscriptions")
     .select(
-      "id, provider_id, tenant_id, billing_provider, status, paystack_subscription_code, cancelled_at, expires_at, plan:subscription_plans!plan_id(is_free)",
+      "id, provider_id, tenant_id, billing_provider, status, paystack_subscription_code, cancelled_at, expires_at, scheduled_plan_id, plan:subscription_plans!plan_id(is_free)",
     )
     .eq("paystack_subscription_code", subscriptionCode)
     .maybeSingle();

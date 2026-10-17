@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { handleApiError, successResponse } from "@/lib/supabase/api-helpers";
 import { validatePortalToken } from "@/lib/portal/token";
-import { getCancellationPolicy, canCancelBooking } from "@/lib/bookings/cancellation-policy";
-import { computeReconciledCancellationAmounts } from "@/lib/bookings/settle-booking-cancellation";
+import { loadCancellationOutcomeForBooking } from "@/lib/bookings/load-cancellation-outcome";
+import { roundCurrency2 } from "@/lib/bookings/refund-processing";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
@@ -36,77 +36,37 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { data: booking, error } = await supabase
-      .from("bookings")
-      .select(
-        "id, provider_id, location_type, scheduled_at, created_at, status, total_amount, total_paid, total_refunded, currency, wallet_amount, gift_card_amount",
-      )
-      .eq("id", validation.bookingId)
-      .single();
+    const { booking, outcome, error } = await loadCancellationOutcomeForBooking(
+      supabase,
+      validation.bookingId,
+      "portal",
+    );
 
-    if (error || !booking) {
+    if (error || !booking || !outcome) {
       return handleApiError(new Error("Booking not found"), "Booking not found", "NOT_FOUND", 404);
     }
 
-    const noSelfServeCancel = new Set(["cancelled", "completed", "no_show", "in_progress", "started"]);
-    if (noSelfServeCancel.has(String(booking.status))) {
+    if (!outcome.allowed) {
       return successResponse({
         allowed: false,
-        reason:
-          booking.status === "cancelled"
-            ? "This booking has already been cancelled."
-            : "This booking can no longer be cancelled online. Please contact your provider.",
+        reason: outcome.blockReason,
+        block_code: outcome.blockCode,
       });
     }
 
-    const policy = await getCancellationPolicy(
-      supabase,
-      booking.provider_id as string,
-      (booking.location_type as "at_salon" | "at_home") || "at_salon",
-    );
-
-    const check = canCancelBooking(
-      {
-        id: booking.id as string,
-        created_at: booking.created_at as string,
-        scheduled_at: booking.scheduled_at as string,
-        location_type: (booking.location_type as "at_salon" | "at_home") || "at_salon",
-      },
-      policy,
-      new Date(),
-      { forbidLateSelfService: false },
-    );
-
-    if (!check.allowed) {
-      return successResponse({ allowed: false, reason: check.reason ?? "Cancellation not allowed" });
-    }
-
     const bookingTotal = Number(booking.total_amount ?? 0);
-    const isLate = check.isLateCancellation === true;
-    const { cancellationFeeApplied, walletRefundAmount } = computeReconciledCancellationAmounts({
-      booking: {
-        id: booking.id as string,
-        provider_id: booking.provider_id as string,
-        total_amount: bookingTotal,
-        total_paid: booking.total_paid as number | null,
-        total_refunded: booking.total_refunded as number | null,
-        wallet_amount: booking.wallet_amount as number | null,
-        gift_card_amount: booking.gift_card_amount as number | null,
-      },
-      cancelledBy: "portal",
-      currency: (booking.currency as string) || LAST_RESORT_CURRENCY,
-      policy,
-      isLateCancellation: isLate,
-      refundBookingTotal: bookingTotal,
-    });
 
     return successResponse({
       allowed: true,
-      is_late_cancellation: isLate,
+      is_late_cancellation: outcome.isLate,
       currency: booking.currency ?? LAST_RESORT_CURRENCY,
-      expected_cancellation_fee: cancellationFeeApplied,
-      expected_wallet_refund: walletRefundAmount,
-      refund_capped_by_paid_amount: walletRefundAmount < bookingTotal,
+      booking_total: roundCurrency2(bookingTotal),
+      expected_cancellation_fee: outcome.feeRetained,
+      expected_wallet_refund: outcome.walletRefund,
+      in_person_refund_due: outcome.inPersonRefundDue,
+      penalty_waived_reason: outcome.penaltyWaivedReason,
+      platform_collected: outcome.platformCollected,
+      refund_capped_by_paid_amount: outcome.walletRefund < bookingTotal,
     });
   } catch (error) {
     return handleApiError(error, "Failed to preview cancellation");

@@ -542,7 +542,12 @@ export default function TerminalMerchantApplicationScreen() {
             })}
             <TouchableOpacity
               style={twStyle("mt-2 rounded-lg border border-dashed border-gray-300 p-3")}
-              onPress={() => router.push("/(app)/(tabs)/more/support-tickets/new")}
+              onPress={() =>
+                router.push({
+                  pathname: "/(app)/(tabs)/more/support-tickets/new",
+                  params: { category: "terminal_onboarding" },
+                } as never)
+              }
             >
               <Text style={twStyle("text-sm text-gray-700")}>{tm("stuckSupport")}</Text>
             </TouchableOpacity>

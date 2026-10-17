@@ -97,6 +97,9 @@ interface Subscription {
     message: string;
     action: string;
   } | null;
+  scheduled_plan_id?: string | null;
+  scheduled_change_at?: string | null;
+  scheduled_plan?: { id: string; name: string | null } | null;
   plan?: {
     id: string;
     name: string;
@@ -914,7 +917,16 @@ export default function SubscriptionScreen() {
       }
       if (checkoutStart.alreadyActive) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert(sub("successTitle"), sub("subscriptionUpdated"));
+        if (checkoutStart.scheduledChangeAt) {
+          Alert.alert(
+            sub("successTitle"),
+            sub("planChangeScheduled", {
+              when: formatDate(checkoutStart.scheduledChangeAt),
+            }),
+          );
+        } else {
+          Alert.alert(sub("successTitle"), sub("subscriptionUpdated"));
+        }
         refresh();
         return;
       }
@@ -1146,6 +1158,16 @@ export default function SubscriptionScreen() {
               {currentSubscriptionPriceLine(subscription, sub) ? (
                 <Text style={twStyle("mt-3 text-2xl font-bold text-gray-900")}>
                   {currentSubscriptionPriceLine(subscription, sub)}
+                </Text>
+              ) : null}
+              {subscription.scheduled_plan_id && subscription.scheduled_change_at ? (
+                <Text style={twStyle("mt-2 text-sm text-amber-800")}>
+                  {sub("planChangeScheduled", {
+                    when: formatDate(subscription.scheduled_change_at),
+                  })}
+                  {subscription.scheduled_plan?.name
+                    ? ` → ${subscription.scheduled_plan.name}`
+                    : ""}
                 </Text>
               ) : null}
               {subscription.cancelled_at ? (

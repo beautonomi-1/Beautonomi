@@ -36,6 +36,8 @@ export interface ConfigBundleMeta {
   };
   /** Allowlisted subset of region_settings (support URLs, paystack_public_key, etc.). */
   region_settings_public?: Record<string, unknown>;
+  /** True when feature_flags could not be loaded — clients must not treat empty flags as authoritative. */
+  flags_unavailable?: boolean;
 }
 
 export interface ResolvedFlag {
@@ -143,14 +145,17 @@ export interface PublicConfigBundle {
   };
   verification?: PublicVerificationPolicy;
   content_safety?: PublicContentSafetyPolicy;
+  /** True when the network fetch failed — flags must not be trusted. */
+  isStub?: boolean;
 }
 
 let cached: PublicConfigBundle | null = null;
 let cacheTime = 0;
-const CACHE_MS = 30 * 60 * 1000; // 30 min — foreground listeners still refresh stale data
+export const CONFIG_BUNDLE_CACHE_MS = 30 * 60 * 1000; // 30 min — foreground listeners refresh stale data
 
-function defaultStubBundle(environment: Environment, platform: Platform): PublicConfigBundle {
+function createStubBundle(environment: Environment, platform: Platform): PublicConfigBundle {
   return {
+    isStub: true,
     meta: { env: environment, platform, version: null, fetched_at: new Date().toISOString() },
     amplitude: {},
     third_party: {},
@@ -183,6 +188,17 @@ function defaultStubBundle(environment: Environment, platform: Platform): Public
   };
 }
 
+export function isConfigBundleStub(bundle: PublicConfigBundle | null | undefined): boolean {
+  if (!bundle) return true;
+  if (bundle.isStub === true) return true;
+  if (bundle.meta?.flags_unavailable === true) return true;
+  return false;
+}
+
+export function isConfigBundleCacheFresh(): boolean {
+  return cached != null && !isConfigBundleStub(cached) && Date.now() - cacheTime < CONFIG_BUNDLE_CACHE_MS;
+}
+
 export async function fetchConfigBundle(params?: {
   platform?: Platform;
   environment?: Environment;
@@ -190,12 +206,12 @@ export async function fetchConfigBundle(params?: {
 }): Promise<PublicConfigBundle> {
   const platform = params?.platform ?? "customer";
   const environment = params?.environment ?? (__DEV__ ? "development" : "production");
-  if (cached && Date.now() - cacheTime < CACHE_MS) return cached;
+  if (isConfigBundleCacheFresh()) {
+    return cached as PublicConfigBundle;
+  }
   const base = getBackendUrl();
   if (!base) {
-    cached = defaultStubBundle(environment, platform);
-    cacheTime = Date.now();
-    return cached as PublicConfigBundle;
+    return createStubBundle(environment, platform);
   }
   const url = `${base.replace(/\/$/, "")}/api/public/config-bundle?platform=${platform}&environment=${environment}`;
   try {
@@ -208,18 +224,22 @@ export async function fetchConfigBundle(params?: {
         },
       }),
     );
+    if (!res.ok) {
+      return createStubBundle(environment, platform);
+    }
     const data = (await res.json()) as PublicConfigBundle;
-    if (data?.meta) {
-      cached = data;
+    if (data?.meta && !isConfigBundleStub({ ...data, isStub: false })) {
+      cached = { ...data, isStub: false };
       cacheTime = Date.now();
-      return data;
+      return cached;
+    }
+    if (data?.meta) {
+      return { ...data, isStub: true };
     }
   } catch {
-    // fallback
+    // fallback below — do not cache
   }
-  cached = defaultStubBundle(environment, platform);
-  cacheTime = Date.now();
-  return cached as PublicConfigBundle;
+  return createStubBundle(environment, platform);
 }
 
 export function getCachedConfigBundle(): PublicConfigBundle | null {

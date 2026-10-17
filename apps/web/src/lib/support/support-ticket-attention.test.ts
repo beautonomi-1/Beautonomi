@@ -220,6 +220,33 @@ describe("computeTicketAttention", () => {
     });
   });
 
+  describe("assistant handling_mode", () => {
+    it("does not mark assistant-last as waiting_customer", () => {
+      const r = computeTicketAttention(
+        base({
+          handling_mode: "assistant",
+          last_message_from: "assistant",
+          last_message_at: H_AGO(1),
+          needs_agent_response: false,
+        }),
+        NOW,
+      );
+      expect(r.attention_state).not.toBe("waiting_customer");
+    });
+
+    it("local fallback is false while assistant", () => {
+      const r = computeTicketAttention(
+        base({
+          handling_mode: "assistant",
+          last_message_from: "customer",
+          needs_agent_response: undefined,
+        }),
+        NOW,
+      );
+      expect(r.attention_state).not.toBe("awaiting_agent");
+    });
+  });
+
   describe("needs_agent_response shortcut", () => {
     it("uses the provided needs_agent_response column when available", () => {
       // Force needs_agent_response=true even though last_message_from=staff

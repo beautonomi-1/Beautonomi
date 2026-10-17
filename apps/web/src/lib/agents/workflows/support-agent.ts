@@ -245,6 +245,8 @@ export async function classifyAndProposeForTicket(params: {
   agentId: string;
   agentVersion: string;
   shadowMode: boolean;
+  /** After AI assistant handoff — propose assign only, no customer reply draft. */
+  skipReplyProposal?: boolean;
 }): Promise<{
   classification: SupportTriageClassification;
   proposals: SupportTriageProposal[];
@@ -325,7 +327,20 @@ export async function classifyAndProposeForTicket(params: {
 
   const proposals: SupportTriageProposal[] = [];
 
-  try {
+  if (params.skipReplyProposal) {
+    try {
+      await supabase.from("support_ticket_notes").insert({
+        ticket_id: ticket.id,
+        user_id: null,
+        note: `[Triage after assistant handoff] ${classification.category} / ${classification.urgency}. Context: ${context ? JSON.stringify(context.facts).slice(0, 1500) : "none"}`,
+        is_private: true,
+      });
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  if (!params.skipReplyProposal) try {
     const replyPayload = {
       ticketId: ticket.id,
       draftReply: replyDraft,
@@ -445,7 +460,7 @@ export async function runSupportTriageWorkflow(params: {
   const { data: ticket } = await supabase
     .from("support_tickets")
     .select(
-      "id, ticket_number, subject, description, status, priority, category, provider_id, user_id, assigned_to, requester_type, support_context_type, support_context_id",
+      "id, ticket_number, subject, description, status, priority, category, provider_id, user_id, assigned_to, requester_type, support_context_type, support_context_id, assistant_handoff_at",
     )
     .eq("id", params.ticketId)
     .maybeSingle();
@@ -466,6 +481,7 @@ export async function runSupportTriageWorkflow(params: {
     agentId: def.id,
     agentVersion: def.active_version,
     shadowMode: agentModule.shadowMode,
+    skipReplyProposal: Boolean((ticket as { assistant_handoff_at?: string | null }).assistant_handoff_at),
   });
 
   return {

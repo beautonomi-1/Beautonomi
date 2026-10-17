@@ -13472,7 +13472,8 @@
       "giftCardRedeemedDefault": "karata ya mpho redeemed to sepatši katlegoe tletsey",
       "giftRedeemHelp": "Voer 'n kode in wat jy gekoop het of wat iemand met jou gedeel het - die volle balans word onmiddellik by jou beursie gevoeg.",
       "yourGiftCards": "dikarata tsa mpho ya gago",
-      "checkoutOpenFailed": "Ga re kgone go bula tuelo e sireletsegileng. Tsweetswee leka gape."
+      "checkoutOpenFailed": "Ga re kgone go bula tuelo e sireletsegileng. Tsweetswee leka gape.",
+      "walletHelpLink": "sepatši thuso"
     },
     "paymentsScreen": {
       "saveCardExplainer": "Ons sal jou kaart veilig stoor wanneer jy betaal. Om jou kaart te verifieer, kan 'n klein tydelike heffing (bv. {{example}}) geplaas en omgekeer word—dit bevestig jou kaart vir toekomstige gebruik.",
@@ -15529,7 +15530,9 @@
           "payRemainingNoTip": "Ga go thipi",
           "payRemainingCustomTip": "Ya gago",
           "payRemainingCustomTipPlaceholder": "Palo ya thipi",
-          "payRemainingTipLine": "Thipi: {{amount}} — e ya 100% kwa motlamedi wa gago"
+          "payRemainingTipLine": "Thipi: {{amount}} — e ya 100% kwa motlamedi wa gago",
+          "cancelPreviewSheetTitle": "Khansela this bukingo?",
+          "cancelPreviewInPersonRefund": "pusetso e kolotwang ka sefatlhego: {{currency}} {{amount}}"
         },
         "groupBookingDetail": {
           "back": "Morago",
@@ -17083,7 +17086,14 @@
           "priorityLow": "Tlase",
           "priorityMedium": "Bohare",
           "priorityHigh": "Holimo",
-          "priorityUrgent": "Kapele"
+          "priorityUrgent": "Kapele",
+          "chatDefaultSubject": "thekgo kopo",
+          "continueToChat": "tswelela to chat",
+          "useFullForm": "Use e tletse form",
+          "startChat": "simolola chat",
+          "chatBack": "Morago",
+          "safetyUseForm": "Dipegelo tsa pabalesego di tlhamalalela kwa setlhopheng sa rona — tsweetswee dirisa foromo e e feletseng.",
+          "chatAiDisclaimer": "AI e ka dira diphoso — o ka bua le motho nako nngwe le nngwe morago ga gore thekete ya gago e tlhamiwe."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Mofuta your molaetsa...",
@@ -17542,6 +17552,49 @@
     "exploreVideo": {
       "unmute": "Bula modumo",
       "mute": "Didimatsa"
+    },
+    "bankAccounts": {
+      "failedLoadBanks": "Ga e kgona go laiša banks. leka gape.",
+      "fillAllFields": "Tlhopha banka mme o tsenye nomoro ya akhaonto le leina la motshodi.",
+      "removeConfirmTitle": "Tlosetsa akhauunte ya banka?",
+      "removeConfirmBody": "Akhaonto eno ga e kitla e tlhola e nna teng go busediwa madi kwa bankeng.",
+      "remove": "Tlosetsa",
+      "intro": "E dirisiwa fela go busetsa madi a banka a dituelo tse di tshwanelegang tsa karata. Dinomoro tsa akhaonto di bolokwa di tsentswe khoutu.",
+      "empty": "No akhauunte ya bankas bolokad yet.",
+      "bankLabel": "Banka",
+      "primary": "ya ntlha",
+      "makePrimary": "Make ya ntlha",
+      "verifiedBadge": "e netefaditswe",
+      "addAnother": "Tsenya a akhauunte ya banka",
+      "searchBanks": "Batla banks",
+      "accountNumberLabel": "akhauunte nomoro",
+      "verifiedAs": "e netefaditswe: {{name}}",
+      "verify": "Netefatsa akhauunte",
+      "verificationUnavailable": "Netefatso e e itirisang ga e yo mo mmarakeng wa gago — tsenya leina la mong wa akhaonto fela jaaka le tlhagelela kwa bankeng ya gago.",
+      "accountNameLabel": "akhauunte holder leina",
+      "save": "Boloka akhauunte ya banka",
+      "screenTitle": "Akhauunte ya bankas"
+    },
+    "walletBankRefund": {
+      "addBank": "Tsenya a akhauunte ya banka",
+      "notEnabled": "Dipusetso tsa banka ga di yo mo mmarakeng wa gago gone jaanong.",
+      "invalidAmount": "Tsenya a e siame palo.",
+      "failed": "Ga e kgona go romela your kopo. leka gape or Ikgolaganye thekgo.",
+      "openRequest": "O setse o na le kopo ya go busediwa madi kwa bankeng e e tsweletseng ({{number}}).",
+      "cancelRequest": "Khansela kopo",
+      "retentionTitle": "Boloka it on Beautonomi",
+      "retentionBody": "O na le {{amount}} e e siametseng go dirisiwa mo peeletso ya gago e e latelang — sekoloto sa sepatšhe se dira fa o tswa ka bonako.",
+      "keepInWallet": "Boloka in my sepatši",
+      "continueToBank": "kopo a Banka pusetso instead",
+      "eligibleLabel": "Eligible for Banka pusetso: {{amount}}",
+      "eligibleHint": "Ke fela dipusetso tsa dituelo tsa karata tse di dirilweng ka Beautonomi tse di ka romelwang kwa akhaontong ya banka. Ditlaleletso, dikarata tsa dimpho le sekoloto sa papatso di nna mo sepatšheng sa gago.",
+      "noneEligible": "Ga o na dipusetso dipe tsa tuelo ya karata tse di tshwanelegang go busediwa madi a banka gone jaanong.",
+      "amountLabel": "How much should we romela to your Banka?",
+      "feeLine": "e a dira tefo: {{fee}} · You receive: {{net}}",
+      "submit": "romela kopo",
+      "submittedTitle": "kopo romelated",
+      "submittedBody": "Madi a eme mo sepatšheng sa gago fa setlhopha sa rona sa tsa madi se ntse se a sekaseka. Dipusetso tse di amogetsweng di duelwa ka EFT, gantsi mo malatsing a {{days}} a tiro.",
+      "screenTitle": "Banka pusetso"
     }
   },
   "checkout": {
@@ -17639,7 +17692,7 @@
     "lateCancellationWithinWindowNoRefund": "Mo dihorong tse {{hours}} {{hourWord}} pele ga peelanonako ya gago: ga go tla busetswa tefo.",
     "noRefundOnCancellation": "Khanselalations are non-pusetsoable per this mophatlhalatsi's pholisi.",
     "policyEnforcedAutomatically": "Pholisi eno e diragadiwa ka go itirisa ka nako ya go khansela.",
-    "refundsStoreCreditNote": "All pusetsos are issued as store crlokisa to your Beautonomi sepatši, limited to palos already e duetswe.",
+    "refundsStoreCreditNote": "Ditsuelelo tsa ditefo tsa inthanete di newa jaaka mokitlana mo sepacheng sa gago sa Beautonomi. Ditefo tse di dirwang ka motho ga di na tuelo ya go khansela mme di busediwa ke motlamedi.",
     "hour": "iri",
     "hours": "diiri",
     "noShowFeeApplies": "Tuediso ya go sa tle ya {{amount}} e a dira fa o foswa ke peelanonako ya gago kwantle ga go khansela.",
@@ -17761,7 +17814,11 @@
     "paymentUnavailableTitle": "tefo ga e yo",
     "paymentBrowserFailed": "Ga re kgone go bula fensetere e sireletsegileng ya tuelo. Tsweetswee leka gape.",
     "paymentNotCompletedTitle": "Tuelo ga e ise e phethagale",
-    "paymentNotCompletedBody": "Peeletso ya gago ga e ise e netefadiwe."
+    "paymentNotCompletedBody": "Peeletso ya gago ga e ise e netefadiwe.",
+    "tipPercentButtonA11y": "{{percent}}% thepa, {{amount}}",
+    "cancelPreviousWithFeeBody": "Tuelo ya go khansela {{fee}}. {{refund}} e tla boela mo sepatšheng sa gago sa Beautonomi. A o khansela peelanonako e e fetileng?",
+    "cancelPreviousFullRefundBody": "{{refund}} e tla boela mo sepatšheng sa gago sa Beautonomi. A o khansela peelanonako e e fetileng?",
+    "confirmCancelPrevious": "Khansela e fetileng"
   },
   "payments": {
     "pay": "Duela",

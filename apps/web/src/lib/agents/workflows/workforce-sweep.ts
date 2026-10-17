@@ -311,6 +311,7 @@ export async function runSupportTriageBackstop(environment: string): Promise<{
     .from("support_tickets")
     .select("id")
     .eq("status", "open")
+    .eq("handling_mode", "human")
     .is("first_staff_reply_at", null)
     .is("assigned_to", null)
     .order("created_at", { ascending: true })

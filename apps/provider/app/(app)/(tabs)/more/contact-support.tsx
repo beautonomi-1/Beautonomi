@@ -1,10 +1,7 @@
 import { useCallback, useState } from "react";
 import { View, Text, TouchableOpacity, TextInput, ScrollView, Alert, Platform } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
-import {
-  SUPPORT_TICKET_DEFAULT_CATEGORY,
-  SUPPORT_TICKET_PRIORITIES,
-} from "@/lib/supportTicketCategoryPresets";
+import { SUPPORT_TICKET_PRIORITIES } from "@/lib/supportTicketCategoryPresets";
 import { SupportTicketCategoryPicker } from "@/components/SupportTicketCategoryPicker";
 import { useRouter } from "expo-router";
 import { useTranslation } from "@beautonomi/i18n";
@@ -36,14 +33,14 @@ export default function ContactSupportScreen() {
   const router = useRouter();
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
-  const [category, setCategory] = useState(SUPPORT_TICKET_DEFAULT_CATEGORY);
+  const [category, setCategory] = useState("");
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium");
   const { execute: createTicket, loading: submitting } = useApiMutation("post");
 
   const handleSubmit = async () => {
     const sub = subject.trim();
     const msg = message.trim();
-    if (!sub || !msg) {
+    if (!sub || !msg || !category.trim()) {
       Alert.alert(cs("missingFieldsTitle"), cs("missingFieldsBody"));
       return;
     }
@@ -164,7 +161,7 @@ export default function ContactSupportScreen() {
           />
           <TouchableOpacity
             onPress={handleSubmit}
-            disabled={submitting || !subject.trim() || !message.trim()}
+            disabled={submitting || !subject.trim() || !message.trim() || !category.trim()}
             style={{ borderRadius: 12, backgroundColor: Colors.gray[900], paddingVertical: 12, alignItems: "center" }}
             activeOpacity={0.8}
             accessibilityLabel={submitting ? cs("sendingA11y") : cs("sendA11y")}

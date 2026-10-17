@@ -13472,7 +13472,8 @@
       "giftCardRedeemedDefault": "Carte cadeau redeemed to portefeuille successfully",
       "giftRedeemHelp": "Faka ikhodi oyithengile noma othile akuthumelele yona — ibhalansi ephelele ifakwa esikhwameni sakho semali ngokushesha.",
       "yourGiftCards": "Tu tarjetas de regalo",
-      "checkoutOpenFailed": "हम सुरक्षित चेकआउट नहीं खोल सके। कृपया पुनः प्रयास करें।"
+      "checkoutOpenFailed": "हम सुरक्षित चेकआउट नहीं खोल सके। कृपया पुनः प्रयास करें।",
+      "walletHelpLink": "बटुआ सहायता"
     },
     "paymentsScreen": {
       "saveCardExplainer": "Sizolondoloza ikhadi lakho ngokuphephile uma ukhokha. Ukuze uqinisekise ikhadi lakho, inkokhiso yesikhashana encane (isb. {{example}}) ingase ibekwe futhi ihlehliswe—lokhu kuqinisekisa ikhadi lakho ukuze ulisebenzise esikhathini esizayo.",
@@ -15524,7 +15525,9 @@
           "cashRefundConfirm": "I received it",
           "cashRefundDispute": "Dispute",
           "cashRefundConfirmed": "Thank you — your remboursement is confirmé.",
-          "cashRefundDisputed": "We flagged this remboursement for avis."
+          "cashRefundDisputed": "We flagged this remboursement for avis.",
+          "cancelPreviewSheetTitle": "यह बुकिंग रद्द करें?",
+          "cancelPreviewInPersonRefund": "व्यक्तिगत रूप से देय धनवापसी: {{currency}} {{amount}}"
         },
         "groupBookingDetail": {
           "back": "Retour",
@@ -17078,7 +17081,14 @@
           "priorityLow": "Faible",
           "priorityMedium": "Moyen",
           "priorityHigh": "Élevé",
-          "priorityUrgent": "Urgent"
+          "priorityUrgent": "Urgent",
+          "chatBack": "Retour",
+          "chatDefaultSubject": "Demande d'assistance",
+          "continueToChat": "Continuer à discuter",
+          "useFullForm": "Utiliser le formulaire complet",
+          "safetyUseForm": "Les rapports de sécurité sont envoyés directement à notre équipe – veuillez utiliser le formulaire complet.",
+          "chatAiDisclaimer": "L'IA peut faire des erreurs : vous pouvez parler à une personne à tout moment après la création de votre ticket.",
+          "startChat": "Démarrer le chat"
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Écrivez votre message…",
@@ -17537,6 +17547,49 @@
     "exploreVideo": {
       "unmute": "आवाज़ चालू करें",
       "mute": "आवाज़ बंद करें"
+    },
+    "bankAccounts": {
+      "failedLoadBanks": "बैंक लोड नहीं कर सके. पुनः प्रयास करें।",
+      "fillAllFields": "एक बैंक चुनें और खाता संख्या और धारक का नाम दर्ज करें।",
+      "removeConfirmTitle": "बैंक खाता हटाएँ?",
+      "removeConfirmBody": "यह खाता अब बैंक रिफंड के लिए उपलब्ध नहीं होगा।",
+      "remove": "निकालना",
+      "intro": "केवल पात्र कार्ड भुगतान के बैंक रिफंड के लिए उपयोग किया जाता है। खाता संख्या एन्क्रिप्टेड संग्रहीत हैं.",
+      "empty": "अभी तक कोई बैंक खाता सहेजा नहीं गया.",
+      "bankLabel": "किनारा",
+      "primary": "प्राथमिक",
+      "makePrimary": "प्राथमिक बनाना",
+      "verifiedBadge": "सत्यापित",
+      "addAnother": "एक बैंक खाता जोड़ें",
+      "searchBanks": "बैंक खोजें",
+      "accountNumberLabel": "खाता संख्या",
+      "verifiedAs": "सत्यापित: {{name}}",
+      "verify": "खाता सत्यापित करें",
+      "verificationUnavailable": "आपके बाज़ार में स्वचालित सत्यापन उपलब्ध नहीं है - खाताधारक का नाम बिल्कुल वैसा ही दर्ज करें जैसा वह आपके बैंक में दिखता है।",
+      "accountNameLabel": "खाता धारक का नाम",
+      "save": "बैंक खाता सहेजें",
+      "screenTitle": "बैंक खाते"
+    },
+    "walletBankRefund": {
+      "addBank": "एक बैंक खाता जोड़ें",
+      "notEnabled": "अभी आपके बाज़ार में बैंक रिफंड उपलब्ध नहीं हैं।",
+      "invalidAmount": "एक वैध राशि दर्ज करें.",
+      "failed": "आपका अनुरोध सबमिट नहीं किया जा सका. पुनः प्रयास करें या सहायता से संपर्क करें.",
+      "openRequest": "आपके पास पहले से ही बैंक रिफंड अनुरोध प्रगति पर है ({{number}})।",
+      "cancelRequest": "अनुरोध को रद्द करें",
+      "retentionTitle": "इसे Beautonomi पर रखें",
+      "keepInWallet": "मेरे बटुए में रखो",
+      "continueToBank": "इसके बजाय बैंक रिफंड का अनुरोध करें",
+      "eligibleLabel": "बैंक रिफंड के लिए पात्र: {{amount}}",
+      "eligibleHint": "केवल Beautonomi के माध्यम से किए गए कार्ड भुगतान का रिफंड ही बैंक खाते में भेजा जा सकता है। टॉप-अप, उपहार कार्ड और प्रमोशनल क्रेडिट आपके बटुए में रहते हैं।",
+      "noneEligible": "आपके पास अभी कोई भी कार्ड-भुगतान रिफंड बैंक रिफंड के लिए पात्र नहीं है।",
+      "amountLabel": "हमें आपके बैंक को कितना भेजना चाहिए?",
+      "feeLine": "प्रोसेसिंग शुल्क: {{fee}} · आपको प्राप्त होता है: {{net}}",
+      "submit": "अनुरोध सबमिट करें",
+      "submittedTitle": "अनुरोध सबमिट किया गया",
+      "submittedBody": "जब तक हमारी वित्त टीम इसकी समीक्षा करती है, तब तक राशि आपके बटुए में रुकी रहती है। स्वीकृत रिफंड का भुगतान ईएफ़टी द्वारा किया जाता है, आमतौर पर {{days}} व्यावसायिक दिनों के भीतर।",
+      "screenTitle": "बैंक रिफंड",
+      "retentionBody": "Vous disposez de {{amount}} prêts à être utilisés lors de votre prochaine réservation : le crédit de portefeuille s'applique instantanément au moment du paiement."
     }
   },
   "checkout": {
@@ -17634,7 +17687,7 @@
     "lateCancellationWithinWindowNoRefund": "Within {{hours}} {{hourWord}} of your appointment: no refund will be issued.",
     "noRefundOnCancellation": "Cancellations are non-refundable per this provider's policy.",
     "policyEnforcedAutomatically": "This policy is enforced automatically at the time of cancellation.",
-    "refundsStoreCreditNote": "All refunds are issued as store credit to your Beautonomi wallet, limited to amounts already paid.",
+    "refundsStoreCreditNote": "ऑनलाइन भुगतान की वापसी आपके Beautonomi वॉलेट में क्रेडिट होती है। व्यक्तिगत भुगतान पर कोई रद्दीकरण शुल्क नहीं लगता और प्रदाता उसे लौटाता है।",
     "hour": "heure",
     "hours": "heures",
     "noShowFeeApplies": "No-show fee of {{amount}} applies if you miss your appointment without cancelling.",
@@ -17756,7 +17809,11 @@
     "paymentUnavailableTitle": "भुगतान उपलब्ध नहीं है",
     "paymentBrowserFailed": "हम सुरक्षित भुगतान विंडो नहीं खोल सके। कृपया पुनः प्रयास करें।",
     "paymentNotCompletedTitle": "भुगतान पूरा नहीं हुआ",
-    "paymentNotCompletedBody": "आपकी बुकिंग की पुष्टि नहीं हुई है।"
+    "paymentNotCompletedBody": "आपकी बुकिंग की पुष्टि नहीं हुई है।",
+    "tipPercentButtonA11y": "Pourboire {{percent}} %, {{amount}}",
+    "cancelPreviousWithFeeBody": "रद्दीकरण शुल्क {{fee}}. {{refund}} आपके Beautonomi बटुए में वापस आ जाएगा। पिछली नियुक्ति रद्द करें?",
+    "cancelPreviousFullRefundBody": "{{refund}} आपके Beautonomi बटुए में वापस आ जाएगा। पिछली नियुक्ति रद्द करें?",
+    "confirmCancelPrevious": "पिछला रद्द करें"
   },
   "payments": {
     "pay": "Pay",

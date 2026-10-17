@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { fetcher } from "@/lib/http/fetcher";
@@ -13,10 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
-  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -32,23 +29,30 @@ import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
 import { PLATFORM_CONTACT_HREF } from "@/lib/routes/platform-contact";
-import { SUPPORT_TICKET_CATEGORY_GROUPS } from "@/lib/support/ticket-categories";
+import {
+  contextTypeForCategory,
+  isSelectableForAudience,
+  supportTicketPresetFromCategory,
+  type SupportTicketCategoryAudience,
+} from "@/lib/support/ticket-categories";
+import { SupportTicketCategoryPicker } from "@/components/support/SupportTicketCategoryPicker";
 import { resolveSupportTicketPrefillFromSearch, shouldSendSupportContextId, supportPrefillNoun } from "@beautonomi/utils";
+import { useAuth } from "@/providers/AuthProvider";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { isSafetySupportCategory } from "@/lib/support/support-assistant/categories";
 
-const SUPPORT_CONTEXT_OPTIONS = [
-  { value: "booking", label: "Booking or appointment", hint: "Booking ID, date, provider, or service" },
-  { value: "product_order", label: "Product / ecommerce order", hint: "Order number, product, delivery, or stock issue" },
-  { value: "gift_card", label: "Gift card", hint: "Gift card order or redemption issue" },
-  { value: "payment", label: "Payment, refund, or wallet", hint: "Payment reference or refund detail" },
-  { value: "provider_onboarding", label: "Provider onboarding", hint: "Verification, setup, marketplace profile" },
-  { value: "account", label: "Account or login", hint: "Profile, login, notifications, or data" },
-  { value: "technical", label: "App / website technical issue", hint: "Device, browser, error message" },
-  { value: "other", label: "Something else", hint: "Tell us what this relates to" },
-] as const;
+function resolvePickerAudience(role: string | null | undefined): SupportTicketCategoryAudience {
+  if (role === "provider_owner" || role === "provider_staff") return "provider";
+  if (role === "superadmin") return "both";
+  return "customer";
+}
 
 export default function SubmitTicketPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { role } = useAuth();
+  const pickerAudience = resolvePickerAudience(role);
+
   const bookingPrefill = useMemo(
     () =>
       resolveSupportTicketPrefillFromSearch({
@@ -64,12 +68,41 @@ export default function SubmitTicketPage() {
   );
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
-  const [priority, setPriority] = useState<"low" | "medium" | "high">("medium");
+  const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium");
   const [category, setCategory] = useState("");
-  const [supportContextType, setSupportContextType] = useState<(typeof SUPPORT_CONTEXT_OPTIONS)[number]["value"]>("booking");
+  const [supportContextType, setSupportContextType] = useState<string | null>(null);
   const [supportContextLabel, setSupportContextLabel] = useState("");
   const [supportContextId, setSupportContextId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [subjectTouched, setSubjectTouched] = useState(false);
+  const [priorityTouched, setPriorityTouched] = useState(false);
+  const assistantFlagKey =
+    pickerAudience === "provider" ? "support.ai_assistant.provider" : "support.ai_assistant.customer";
+  const assistantEnabled = useFeatureFlag(assistantFlagKey);
+  const [chatStep, setChatStep] = useState<"category" | "chat" | "form">("form");
+  const [chatSending, setChatSending] = useState(false);
+
+  useEffect(() => {
+    if (assistantEnabled) {
+      setChatStep("category");
+    } else {
+      setChatStep("form");
+    }
+  }, [assistantEnabled]);
+
+  const applyCategory = useCallback(
+    (value: string) => {
+      setCategory(value);
+      const preset = supportTicketPresetFromCategory(value);
+      if (preset.priority && !priorityTouched) {
+        setPriority(preset.priority);
+      }
+      if (preset.subject && !subjectTouched) {
+        setSubject(preset.subject);
+      }
+    },
+    [priorityTouched, subjectTouched],
+  );
 
   useEffect(() => {
     if (bookingPrefill.supportContextType) {
@@ -83,10 +116,60 @@ export default function SubmitTicketPage() {
           : `Help with ${kind} ${bookingPrefill.supportContextLabel.split(" (")[0]}`,
       );
     }
-    if (bookingPrefill.category) {
-      setCategory(bookingPrefill.category);
+    const fromUrl = bookingPrefill.category ?? searchParams.get("category");
+    if (fromUrl && isSelectableForAudience(fromUrl, pickerAudience)) {
+      applyCategory(fromUrl);
     }
-  }, [bookingPrefill]);
+  }, [bookingPrefill, searchParams, pickerAudience, applyCategory]);
+
+  const sendChatFirstTicket = async () => {
+    if (!category.trim() || !message.trim()) {
+      toast.error("Please choose a category and describe your issue");
+      return;
+    }
+    const hasRef = Boolean(supportContextId) || Boolean(supportContextLabel.trim());
+    const contextType =
+      hasRef && supportContextType
+        ? supportContextType
+        : contextTypeForCategory(category) ?? supportContextType ?? undefined;
+    const preset = supportTicketPresetFromCategory(category);
+    const subjectLine =
+      subject.trim() ||
+      preset.subject ||
+      message.trim().slice(0, 120) ||
+      "Support request";
+
+    try {
+      setChatSending(true);
+      const createPath =
+        pickerAudience === "provider" ? "/api/provider/support-tickets" : "/api/me/support-tickets";
+      const res = await fetcher.post<{ data?: { ticket?: { id?: string; ticket_number?: string } } }>(
+        createPath,
+        {
+          subject: subjectLine,
+          message: message.trim(),
+          priority: preset.priority ?? priority,
+          category,
+          support_context_type: contextType,
+          support_context_id: contextType && shouldSendSupportContextId(contextType) ? supportContextId : null,
+          support_context_label: supportContextLabel.trim() || null,
+          handling_mode: "assistant",
+        },
+      );
+      const ticketId = (res as { data?: { ticket?: { id?: string } } })?.data?.ticket?.id;
+      const ticketNumber = (res as { data?: { ticket?: { ticket_number?: string } } })?.data?.ticket?.ticket_number;
+      toast.success(
+        ticketNumber
+          ? `Ticket ${ticketNumber} — chat with our assistant below.`
+          : "Ticket created — continuing in chat.",
+      );
+      router.push(ticketId ? `/help/my-tickets/${ticketId}` : "/help/my-tickets");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to start support chat");
+    } finally {
+      setChatSending(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,6 +183,12 @@ export default function SubmitTicketPage() {
       return;
     }
 
+    const hasRef = Boolean(supportContextId) || Boolean(supportContextLabel.trim());
+    const contextType =
+      hasRef && supportContextType
+        ? supportContextType
+        : contextTypeForCategory(category) ?? supportContextType ?? undefined;
+
     try {
       setIsSubmitting(true);
       const res = await fetcher.post<{ data?: { ticket?: { ticket_number?: string } }; message?: string }>(
@@ -109,16 +198,16 @@ export default function SubmitTicketPage() {
           message: message.trim(),
           priority,
           category,
-          support_context_type: supportContextType,
-          support_context_id: shouldSendSupportContextId(supportContextType) ? supportContextId : null,
+          support_context_type: contextType,
+          support_context_id: contextType && shouldSendSupportContextId(contextType) ? supportContextId : null,
           support_context_label: supportContextLabel.trim() || null,
-        }
+        },
       );
       const ticketNumber = (res as { data?: { ticket?: { ticket_number?: string } } })?.data?.ticket?.ticket_number;
       toast.success(
         ticketNumber
           ? `Ticket submitted. Reference: ${ticketNumber}. We’ll email you a confirmation.`
-          : "Ticket submitted — we’ll email you a confirmation shortly."
+          : "Ticket submitted — we’ll email you a confirmation shortly.",
       );
       router.push("/help/my-tickets");
     } catch (error: unknown) {
@@ -136,7 +225,7 @@ export default function SubmitTicketPage() {
     <AuthGuard>
       <div className="min-h-screen bg-gradient-to-b from-zinc-50 via-white to-zinc-50/80 pb-24 md:pb-8">
         <BeautonomiHeader />
-        <div className="mx-auto w-full max-w-xl px-4 py-8 md:py-10 md:max-w-2xl">
+        <div className="mx-auto w-full max-w-xl px-4 py-8 md:max-w-2xl md:py-10">
           <Button
             variant="ghost"
             asChild
@@ -170,27 +259,90 @@ export default function SubmitTicketPage() {
               </p>
             </CardHeader>
             <CardContent className="px-5 py-8 sm:px-8">
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="space-y-2">
-                  <Label htmlFor="support-context" className="text-xs font-medium text-zinc-700">
-                    What is this about?
-                  </Label>
-                  <Select value={supportContextType} onValueChange={(value: typeof supportContextType) => setSupportContextType(value)}>
-                    <SelectTrigger id="support-context" className={`h-11 w-full ${inputClass}`}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent position="popper" className="rounded-2xl border-zinc-200 bg-white shadow-lg">
-                      {SUPPORT_CONTEXT_OPTIONS.map((item) => (
-                        <SelectItem key={item.value} value={item.value} className="rounded-lg text-[13px] text-zinc-700">
-                          {item.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-[11px] text-zinc-500">
-                    {SUPPORT_CONTEXT_OPTIONS.find((item) => item.value === supportContextType)?.hint}
-                  </p>
+              {chatStep === "category" && assistantEnabled ? (
+                <div className="space-y-6">
+                  {bookingPrefill.supportContextLabel ? (
+                    <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm text-zinc-700">
+                      Related: <span className="font-medium">{bookingPrefill.supportContextLabel}</span>
+                    </div>
+                  ) : null}
+                  <div className="space-y-2">
+                    <Label htmlFor="category-chat" className="text-xs font-medium text-zinc-700">
+                      Category <span className="text-[#FF0077]">*</span>
+                    </Label>
+                    <SupportTicketCategoryPicker
+                      id="category-chat"
+                      value={category}
+                      onChange={applyCategory}
+                      audience={pickerAudience}
+                      triggerClassName={inputClass}
+                    />
+                  </div>
+                  <div className="flex justify-end gap-3">
+                    <Button type="button" variant="outline" onClick={() => setChatStep("form")}>
+                      Use full form
+                    </Button>
+                    <Button
+                      type="button"
+                      disabled={!category.trim() || isSafetySupportCategory(category)}
+                      onClick={() => setChatStep(isSafetySupportCategory(category) ? "form" : "chat")}
+                    >
+                      Continue to chat
+                    </Button>
+                  </div>
+                  {isSafetySupportCategory(category) ? (
+                    <p className="text-xs text-amber-700">
+                      Safety reports go straight to our team — please use the full form.
+                    </p>
+                  ) : null}
                 </div>
+              ) : chatStep === "chat" && assistantEnabled ? (
+                <div className="space-y-6">
+                  <p className="text-sm text-zinc-600">
+                    Ticket category: <span className="font-medium text-zinc-900">{category || "—"}</span>
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    AI can make mistakes — you can talk to a person anytime after your ticket is created.
+                  </p>
+                  <Textarea
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    placeholder="Describe what happened…"
+                    rows={8}
+                    maxLength={5000}
+                    className={`min-h-[180px] resize-y rounded-2xl ${inputClass}`}
+                    aria-label="Your message to support"
+                  />
+                  <div className="flex flex-wrap justify-end gap-3">
+                    <Button type="button" variant="outline" onClick={() => setChatStep("category")}>
+                      Back
+                    </Button>
+                    <Button
+                      type="button"
+                      disabled={chatSending || !message.trim()}
+                      onClick={() => void sendChatFirstTicket()}
+                    >
+                      {chatSending ? (
+                        <>
+                          <Loader2 className="me-2 h-4 w-4 animate-spin" />
+                          Starting…
+                        </>
+                      ) : (
+                        <>
+                          <Send className="me-2 h-4 w-4" />
+                          Send
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+              <form onSubmit={handleSubmit} className="space-y-6">
+                {bookingPrefill.supportContextLabel ? (
+                  <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm text-zinc-700">
+                    Related: <span className="font-medium">{bookingPrefill.supportContextLabel}</span>
+                  </div>
+                ) : null}
 
                 <div className="space-y-2">
                   <Label htmlFor="context-label" className="text-xs font-medium text-zinc-700">
@@ -210,39 +362,13 @@ export default function SubmitTicketPage() {
                   <Label htmlFor="category" className="text-xs font-medium text-zinc-700">
                     Category <span className="text-[#FF0077]">*</span>
                   </Label>
-                  <Select value={category || undefined} onValueChange={setCategory}>
-                    <SelectTrigger id="category" className={`h-11 w-full ${inputClass}`}>
-                      <SelectValue placeholder="Choose what this is mostly about…" />
-                    </SelectTrigger>
-                    <SelectContent
-                      position="popper"
-                      side="bottom"
-                      align="start"
-                      sideOffset={6}
-                      avoidCollisions={false}
-                      className="max-h-[min(24rem,60vh)] overscroll-contain rounded-2xl border-zinc-200 bg-white shadow-lg [&_[data-radix-select-viewport]]:max-h-[min(24rem,60vh)] [&_[data-radix-select-viewport]]:overflow-y-auto [&_[data-radix-select-viewport]]:overscroll-contain [&_[data-radix-select-viewport]]:pe-1"
-                    >
-                      {SUPPORT_TICKET_CATEGORY_GROUPS.map((group, gi) => (
-                        <Fragment key={group.label}>
-                          {gi > 0 ? <SelectSeparator className="my-1 bg-zinc-200" /> : null}
-                          <SelectGroup>
-                            <SelectLabel className="px-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                              {group.label}
-                            </SelectLabel>
-                            {group.items.map((item) => (
-                              <SelectItem
-                                key={item.value}
-                                value={item.value}
-                                className="cursor-pointer rounded-lg py-2 ps-8 pe-2 text-[13px] leading-snug text-zinc-700 focus:bg-[#FF0077]/8"
-                              >
-                                {item.label}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </Fragment>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SupportTicketCategoryPicker
+                    id="category"
+                    value={category}
+                    onChange={applyCategory}
+                    audience={pickerAudience}
+                    triggerClassName={inputClass}
+                  />
                   <p className="text-[11px] text-zinc-500">
                     This routes your ticket to the right team — you can add detail below.
                   </p>
@@ -255,7 +381,10 @@ export default function SubmitTicketPage() {
                   <Input
                     id="subject"
                     value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
+                    onChange={(e) => {
+                      setSubjectTouched(true);
+                      setSubject(e.target.value);
+                    }}
                     placeholder="Short summary, e.g. “Refund not received after cancellation”"
                     maxLength={200}
                     required
@@ -270,7 +399,10 @@ export default function SubmitTicketPage() {
                     </Label>
                     <Select
                       value={priority}
-                      onValueChange={(value: "low" | "medium" | "high") => setPriority(value)}
+                      onValueChange={(value: "low" | "medium" | "high" | "urgent") => {
+                        setPriorityTouched(true);
+                        setPriority(value);
+                      }}
                     >
                       <SelectTrigger id="priority" className={`h-11 ${inputClass}`}>
                         <SelectValue />
@@ -284,6 +416,9 @@ export default function SubmitTicketPage() {
                         </SelectItem>
                         <SelectItem value="high" className="rounded-lg text-[13px] text-zinc-700">
                           High — blocking or urgent
+                        </SelectItem>
+                        <SelectItem value="urgent" className="rounded-lg text-[13px] text-zinc-700">
+                          Urgent — safety or immediate harm
                         </SelectItem>
                       </SelectContent>
                     </Select>
@@ -337,6 +472,7 @@ export default function SubmitTicketPage() {
                   </Button>
                 </div>
               </form>
+              )}
             </CardContent>
           </Card>
         </div>

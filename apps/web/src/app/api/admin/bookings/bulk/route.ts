@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
 
     switch (action) {
       case "cancel":
-        updateData = { status: "cancelled" };
+        updateData = {};
         break;
       case "complete":
         updateData = { status: "completed" };
@@ -73,16 +73,17 @@ export async function POST(request: NextRequest) {
         });
     }
 
-    // Perform bulk update
     const bookingsAdmin = getBookingsAdminClient();
-    const { error: updateError } = await bookingsAdmin
-      .from("bookings")
-      .update(updateData)
-      .in("id", booking_ids)
-      .eq("tenant_id", tenantId);
+    if (action !== "cancel") {
+      const { error: updateError } = await bookingsAdmin
+        .from("bookings")
+        .update(updateData)
+        .in("id", booking_ids)
+        .eq("tenant_id", tenantId);
 
-    if (updateError) {
-      throw updateError;
+      if (updateError) {
+        throw updateError;
+      }
     }
 
     results.success = booking_ids.length;
@@ -99,6 +100,97 @@ export async function POST(request: NextRequest) {
 
     if (action === "cancel") {
       try {
+        const adminClient = getBookingsAdminClient();
+        const { loadCancellationOutcomeForBooking } = await import(
+          "@/lib/bookings/load-cancellation-outcome"
+        );
+        const { settleParamsFromCancellationOutcome } = await import(
+          "@/lib/bookings/cancellation-outcome-bridge"
+        );
+        const { settleBookingCancellation } = await import(
+          "@/lib/bookings/settle-booking-cancellation"
+        );
+        const { describeRefundFromOutcome } = await import("@/lib/bookings/cancellation-outcome-bridge");
+        const { notifyBookingCancelled } = await import("@/lib/notifications/notification-service");
+        const { customerBookingChannels } = await import("@/lib/notifications/customer-booking-channels");
+        const channels = await customerBookingChannels(tenantId);
+        const now = new Date().toISOString();
+        results.success = 0;
+        for (const bid of booking_ids) {
+          const { data: finRow } = await adminClient
+            .from("bookings")
+            .select(
+              "id, status, provider_id, customer_id, booking_number, tenant_id, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, currency, loyalty_points_used, loyalty_points_redeemed, loyalty_points_earned",
+            )
+            .eq("id", bid)
+            .eq("tenant_id", tenantId)
+            .maybeSingle();
+          const currentStatus = String(finRow?.status ?? "");
+          if (!finRow || ["cancelled", "completed", "no_show"].includes(currentStatus)) {
+            results.failed += 1;
+            results.errors.push(`${bid}: skipped (status ${currentStatus || "unknown"})`);
+            continue;
+          }
+          const { outcome } = await loadCancellationOutcomeForBooking(adminClient, bid, "admin");
+          if (!outcome || !outcome.allowed) {
+            results.failed += 1;
+            results.errors.push(`${bid}: ${outcome?.blockReason ?? "could not load booking"}`);
+            continue;
+          }
+          const { error: cancelErr } = await adminClient
+            .from("bookings")
+            .update({
+              status: "cancelled",
+              cancelled_at: now,
+              cancelled_by: user.id,
+              cancellation_reason: reason ?? "Bulk cancelled by admin",
+              cancellation_fee: outcome.feeRetained,
+              updated_at: now,
+            })
+            .eq("id", bid)
+            .eq("tenant_id", tenantId)
+            .neq("status", "cancelled");
+          if (cancelErr) {
+            results.failed += 1;
+            results.errors.push(`${bid}: ${cancelErr.message}`);
+            continue;
+          }
+          results.success += 1;
+
+          const grossTotal = Number(finRow.total_amount ?? 0);
+          const currency = (finRow.currency as string) || "ZAR";
+          let walletRefund = outcome.walletRefund;
+          try {
+            const { status: _status, ...financial } = finRow;
+            const settlement = await settleBookingCancellation(
+              settleParamsFromCancellationOutcome(outcome, "admin", {
+                booking: { ...financial, total_amount: grossTotal },
+                currency,
+                refundBookingTotal: grossTotal,
+              }),
+            );
+            walletRefund = settlement.walletRefundAmount;
+          } catch (settleErr) {
+            console.error("[admin bulk cancel] settlement failed for", bid, settleErr);
+          }
+
+          try {
+            await notifyBookingCancelled(
+              bid,
+              "system",
+              describeRefundFromOutcome({ ...outcome, walletRefund }, grossTotal, currency),
+              channels,
+              {
+                cancellationReason: reason ?? null,
+                feeRetained: outcome.feeRetained,
+                walletRefund,
+                currency,
+              },
+            );
+          } catch (notifyErr) {
+            console.error("[admin bulk cancel] notification failed for", bid, notifyErr);
+          }
+        }
         const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
         await Promise.allSettled(
           booking_ids.map((bid: string) => matchWaitlistOnCancellation(supabase, bid))

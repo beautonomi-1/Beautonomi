@@ -55,6 +55,7 @@ import {
   getHoldTimeRemaining,
   getMissingRequiredProviderFormField,
   percentOf,
+  normalizeTipPercentPresets,
   serverNowToClockOffsetMs,
   lineHasHouseCallAdjustment,
   checkoutCatalogPackageMatchesCart,
@@ -1024,6 +1025,7 @@ export default function BookCheckoutScreen() {
   const [membershipPlanName, setMembershipPlanName] = useState<string | null>(null);
   const [membershipDiscountPercent, setMembershipDiscountPercent] = useState(0);
   const [tipAmount, setTipAmount] = useState(0);
+  const [tipPercentSelection, setTipPercentSelection] = useState<number | null>(null);
   const [tipCustomInput, setTipCustomInput] = useState("");
   const [isSlotExpired, setIsSlotExpired] = useState(false);
   const [serverClockOffsetMs, setServerClockOffsetMs] = useState(0);
@@ -1958,6 +1960,25 @@ export default function BookCheckoutScreen() {
     ? Math.max(0, subtotalAfterLoyalty + tipAmount + serviceFeeAmount)
     : Math.max(0, subtotalAfterLoyalty + taxAmount + tipAmount + serviceFeeAmount);
 
+  const checkoutTipPresets = useMemo(
+    () => normalizeTipPercentPresets(hold?.tip_presets),
+    [hold?.tip_presets],
+  );
+
+  useEffect(() => {
+    if (!hold?.tips_enabled) {
+      setTipAmount(0);
+      setTipPercentSelection(null);
+      return;
+    }
+    if (tipPercentSelection === null) return;
+    if (subtotalAfterLoyalty <= 0) {
+      setTipAmount(0);
+      return;
+    }
+    setTipAmount(percentOf(subtotalAfterLoyalty, tipPercentSelection, currency));
+  }, [hold?.tips_enabled, tipPercentSelection, subtotalAfterLoyalty, currency]);
+
   const bookingSubtotalForLoyalty = subtotalAfterMembership;
   const maxRedeemablePointsOnBooking = useMemo(() => {
     if (bookingSubtotalForLoyalty <= 0) return 0;
@@ -2415,14 +2436,56 @@ export default function BookCheckoutScreen() {
               style: "destructive",
               onPress: async () => {
                 try {
-                  const res = await api.post(`/api/me/bookings/${previousBookingId}/cancel`, {
-                    reason: "Reschedule - previous appointment replaced",
-                  });
-                  if (res.error) {
-                    Alert.alert(t("checkout.noteTitle"), t("checkout.cancelPreviousBookingNote"));
-                  } else {
-                    haptic.success();
+                  const preview = await api.get<{
+                    allowed?: boolean;
+                    reason?: string;
+                    expected_wallet_refund?: number;
+                    expected_cancellation_fee?: number;
+                    currency?: string;
+                  }>(`/api/me/bookings/${previousBookingId}/cancel-preview`);
+                  if (preview.data && preview.data.allowed === false) {
+                    Alert.alert(
+                      t("checkout.noteTitle"),
+                      preview.data.reason ?? t("checkout.cancelPreviousBookingNote"),
+                    );
+                    router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
+                    return;
                   }
+                  const fee = Number(preview.data?.expected_cancellation_fee ?? 0);
+                  const refund = Number(preview.data?.expected_wallet_refund ?? 0);
+                  const cur = preview.data?.currency ?? currency;
+                  const confirmBody =
+                    fee > 0
+                      ? t("checkout.cancelPreviousWithFeeBody", {
+                          fee: formatCurrency(fee, cur),
+                          refund: formatCurrency(refund, cur),
+                        })
+                      : t("checkout.cancelPreviousFullRefundBody", {
+                          refund: formatCurrency(refund, cur),
+                        });
+                  Alert.alert(t("checkout.cancelPreviousAppointment"), confirmBody, [
+                    { text: t("common.cancel"), style: "cancel" },
+                    {
+                      text: t("checkout.confirmCancelPrevious"),
+                      style: "destructive",
+                      onPress: async () => {
+                        try {
+                          const res = await api.post(`/api/me/bookings/${previousBookingId}/cancel`, {
+                            reason: "Reschedule - previous appointment replaced",
+                          });
+                          if (res.error) {
+                            Alert.alert(t("checkout.noteTitle"), t("checkout.cancelPreviousBookingNote"));
+                          } else {
+                            haptic.success();
+                          }
+                        } catch {
+                          Alert.alert(t("checkout.noteTitle"), t("checkout.cancelPreviousBookingNote"));
+                        }
+                        router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
+                      },
+                    },
+                  ]);
+                  return;
                 } catch {
                   Alert.alert(t("checkout.noteTitle"), t("checkout.cancelPreviousBookingNote"));
                 }
@@ -4726,20 +4789,59 @@ export default function BookCheckoutScreen() {
                   {t("checkout.addTipOptional")}
                 </Text>
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-                  {[0, ...(hold.tip_presets ?? [10, 15, 20, 25])].map((preset) => {
-                    const isCustomActive =
-                      tipCustomInput.trim().length > 0 &&
-                      !hold.tip_presets?.concat([0]).includes(tipAmount) &&
-                      tipAmount > 0;
-                    const isPresetActive = !isCustomActive && tipAmount === preset;
+                  <TouchableOpacity
+                    key="no-tip"
+                    onPress={() => {
+                      haptic.light();
+                      setTipPercentSelection(null);
+                      setTipAmount(0);
+                      setTipCustomInput("");
+                    }}
+                    style={{
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                      borderRadius: 12,
+                      borderWidth: 1.5,
+                      borderColor:
+                        tipPercentSelection === null && tipAmount === 0 && !tipCustomInput.trim()
+                          ? Colors.primary
+                          : "#E5E7EB",
+                      backgroundColor:
+                        tipPercentSelection === null && tipAmount === 0 && !tipCustomInput.trim()
+                          ? Colors.primaryLight
+                          : "#F9FAFB",
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("checkout.noTip")}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 14,
+                        fontWeight: "600",
+                        color:
+                          tipPercentSelection === null && tipAmount === 0 && !tipCustomInput.trim()
+                            ? Colors.primary
+                            : "#374151",
+                      }}
+                    >
+                      {t("checkout.noTip")}
+                    </Text>
+                  </TouchableOpacity>
+                  {checkoutTipPresets.map((pct) => {
+                    const computed =
+                      subtotalAfterLoyalty > 0
+                        ? percentOf(subtotalAfterLoyalty, pct, currency)
+                        : 0;
+                    const isPresetActive = tipPercentSelection === pct;
                     return (
                       <TouchableOpacity
-                        key={preset}
+                        key={pct}
                         onPress={() => {
                           haptic.light();
-                          setTipAmount(preset);
+                          setTipPercentSelection(pct);
                           setTipCustomInput("");
                         }}
+                        disabled={subtotalAfterLoyalty <= 0}
                         style={{
                           paddingHorizontal: 14,
                           paddingVertical: 10,
@@ -4747,16 +4849,32 @@ export default function BookCheckoutScreen() {
                           borderWidth: 1.5,
                           borderColor: isPresetActive ? Colors.primary : "#E5E7EB",
                           backgroundColor: isPresetActive ? Colors.primaryLight : "#F9FAFB",
+                          opacity: subtotalAfterLoyalty <= 0 ? 0.5 : 1,
                         }}
+                        accessibilityRole="button"
+                        accessibilityLabel={t("checkout.tipPercentButtonA11y", {
+                          percent: pct,
+                          amount: formatCurrency(computed, currency),
+                        })}
                       >
                         <Text
                           style={{
                             fontSize: 14,
-                            fontWeight: "600",
+                            fontWeight: "700",
                             color: isPresetActive ? Colors.primary : "#374151",
                           }}
                         >
-                          {preset === 0 ? t("checkout.noTip") : formatCurrency(preset, currency)}
+                          {pct}%
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            fontWeight: "600",
+                            color: isPresetActive ? Colors.primary : "#6B7280",
+                            marginTop: 2,
+                          }}
+                        >
+                          {subtotalAfterLoyalty <= 0 ? "—" : formatCurrency(computed, currency)}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -4770,6 +4888,7 @@ export default function BookCheckoutScreen() {
                     value={tipCustomInput}
                     onChangeText={(v) => {
                       setTipCustomInput(v);
+                      setTipPercentSelection(null);
                       const parsed = parseFloat(v);
                       setTipAmount(
                         Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 100) / 100 : 0

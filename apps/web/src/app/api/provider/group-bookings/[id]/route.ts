@@ -36,6 +36,7 @@ import { computeGroupPaymentRollupFields } from "@/lib/bookings/group-booking-pa
 import { participantRowCountsTowardGroupTotal } from "@/lib/bookings/recalculate-group-total";
 import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
 import { evaluateGroupCapacity, normalizeGroupCapacity } from "@/lib/bookings/group-capacity";
+import { cancelGroupBooking } from "@/lib/bookings/group-booking-cancellation";
 
 function normalizeGroupBookingId(rawId: string): string {
   return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
@@ -1050,73 +1051,31 @@ export async function DELETE(
       return notFoundResponse("Group booking not found");
     }
 
-    // Fetch booking IDs before cancelling so we can trigger waitlist.
-    // Use the admin client for the write path: provider staff can manage
-    // groups through this API, while legacy RLS only allowed provider owners.
-    const { data: groupBookings, error: bookingFetchError } = await admin
-      .from("bookings")
-      .select("id")
-      .eq("group_booking_id", id)
-      .eq("provider_id", providerId)
-      .not("status", "in", "(cancelled,no_show)");
-
-    if (bookingFetchError) {
-      throw bookingFetchError;
-    }
-
     const childCancellationReason =
       cancellationReasonFromClient ?? "Group booking cancelled by provider";
 
-    // Cancel all associated bookings first
-    const now = new Date().toISOString();
-    const { error: bookingsCancelError } = await admin
-      .from("bookings")
-      .update({
-        status: "cancelled",
-        cancelled_at: now,
-        cancellation_reason: childCancellationReason,
-        updated_at: now,
-      })
-      .eq("group_booking_id", id)
-      .eq("provider_id", providerId)
-      .not("status", "in", "(cancelled,no_show)");
+    const childSettlements = await cancelGroupBooking(admin, id, user.id, childCancellationReason, {
+      settleFinance: true,
+      financeActor: "provider",
+      matchWaitlist: false,
+    });
 
-    if (bookingsCancelError) {
-      throw bookingsCancelError;
-    }
-
-    // Then cancel the group booking
-    const { error } = await admin
-      .from("group_bookings")
-      .update({ status: "cancelled", updated_at: now })
-      .eq("id", id)
-      .eq("provider_id", providerId);
-
-    if (error) {
-      throw error;
-    }
-
-    if (groupBookings?.length) {
-      const cancelledIds = groupBookings.map((b: { id: string }) => b.id);
+    if (childSettlements.length) {
+      const cancelledIds = childSettlements.map((c) => c.bookingId);
       after(async () => {
         try {
+          const { sendCancellationNotification } = await import("@/lib/bookings/notifications");
           const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
           await Promise.allSettled(
-            cancelledIds.map((bookingId) => matchWaitlistOnCancellation(admin, bookingId))
-          );
-        } catch (waitlistErr) {
-          console.error("[provider group cancel] waitlist matching failed:", waitlistErr);
-        }
-
-        try {
-          const { sendCancellationNotification } = await import("@/lib/bookings/notifications");
-          await Promise.allSettled(
-            cancelledIds.map((bookingId) =>
-              sendCancellationNotification(bookingId, { cancelledBy: "provider" }).catch(
+            cancelledIds.map(async (bookingId) => {
+              await sendCancellationNotification(bookingId, { cancelledBy: "provider" }).catch(
                 (e: unknown) =>
                   console.warn("[provider group cancel] notification failed for booking", bookingId, e)
-              )
-            )
+              );
+              await matchWaitlistOnCancellation(admin, bookingId).catch((e: unknown) =>
+                console.warn("[provider group cancel] waitlist match failed for booking", bookingId, e)
+              );
+            })
           );
         } catch (notifyErr) {
           console.error("[provider group cancel] notification dispatch failed:", notifyErr);
@@ -1124,7 +1083,15 @@ export async function DELETE(
       });
     }
 
-    return successResponse({ success: true, message: "Group booking cancelled" });
+    return successResponse({
+      success: true,
+      message: "Group booking cancelled",
+      children: childSettlements.map((c) => ({
+        booking_id: c.bookingId,
+        wallet_refund: c.walletRefund,
+        in_person_refund_due: c.inPersonRefundDue,
+      })),
+    });
   } catch (error) {
     return handleApiError(error, "Failed to delete group booking");
   }

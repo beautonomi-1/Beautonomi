@@ -13472,7 +13472,8 @@
       "giftCardRedeemedDefault": "khadi ḽa nyiko redeemed to sipaji nungoyo ḓalay",
       "giftRedeemHelp": "Voer 'n kode in wat jy gekoop het of wat iemand met jou gedeel het - die volle balans word onmiddellik by jou beursie gevoeg.",
       "yourGiftCards": "khadi dza nyiko yau",
-      "checkoutOpenFailed": "A ri ngo kona u vula mbadelo yo ṱhonifhadzaho. Ndi khou humbela uri u lingedze hafhu."
+      "checkoutOpenFailed": "A ri ngo kona u vula mbadelo yo ṱhonifhadzaho. Ndi khou humbela uri u lingedze hafhu.",
+      "walletHelpLink": "sipaji thuso"
     },
     "paymentsScreen": {
       "saveCardExplainer": "Ons sal jou kaart veilig stoor wanneer jy betaal. Om jou kaart te verifieer, kan 'n klein tydelike heffing (bv. {{example}}) geplaas en omgekeer word—dit bevestig jou kaart vir toekomstige gebruik.",
@@ -15529,7 +15530,9 @@
           "payRemainingNoTip": "A hu na thiphu",
           "payRemainingCustomTip": "Ya vhoiwe",
           "payRemainingCustomTipPlaceholder": "Tshelede ya thiphu",
-          "payRemainingTipLine": "Thiphu: {{amount}} — i ya nga 100% kha mudzudzanyi wanu"
+          "payRemainingTipLine": "Thiphu: {{amount}} — i ya nga 100% kha mudzudzanyi wanu",
+          "cancelPreviewSheetTitle": "Khansela this u buka?",
+          "cancelPreviewInPersonRefund": "mbuyiso i tshi tea nga u ḓiima: {{currency}} {{amount}}"
         },
         "groupBookingDetail": {
           "back": "Murahu",
@@ -17083,7 +17086,14 @@
           "priorityLow": "Fhasi",
           "priorityMedium": "Exikarhi",
           "priorityHigh": "Ntha",
-          "priorityUrgent": "Bya xihatla"
+          "priorityUrgent": "Bya xihatla",
+          "chatDefaultSubject": "thusedzo khumbelo",
+          "continueToChat": "bvela phanḓa to chat",
+          "useFullForm": "Use yo ḓala form",
+          "startChat": "thoma chat",
+          "chatBack": "Murahu",
+          "safetyUseForm": "Mivhigo ya tsireledzo i ya thwii kha tshigwada tshashu — kha vha shumise fomo yo fhelelaho.",
+          "chatAiDisclaimer": "AI i nga ita vhukhakhi — u nga amba na muthu tshifhinga tshiṅwe na tshiṅwe nga murahu ha musi thikhithi yaṋu yo no sikwa."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Lushaka your mulaedza...",
@@ -17542,6 +17552,49 @@
     "exploreVideo": {
       "unmute": "Vula mubvumo",
       "mute": "Thulisa"
+    },
+    "bankAccounts": {
+      "failedLoadBanks": "A zwo koni u ḽoḓa banks. lingedza hafhu.",
+      "fillAllFields": "Khethani bannga ni ṅwale nomboro ya akhaunthu na dzina ḽa mufari.",
+      "removeConfirmTitle": "Bvisa akhaunte ya banga?",
+      "removeConfirmBody": "Akhaunthu iyi a i nga tsha vha hone u itela u vhuisa tshelede ya bannga.",
+      "remove": "Bvisa",
+      "intro": "I shumiswa fhedzi kha u vhuisa masheleni a bannga a mbadelo dza khadi dzo teaho. Nomboro dza akhaunthu dzi vhewa dzo ṅwaliwa.",
+      "empty": "No akhaunte ya bangas vhulungad yet.",
+      "bankLabel": "Banga",
+      "primary": "ṱhoho",
+      "makePrimary": "Make ṱhoho",
+      "verifiedBadge": "yo khwaṱhisedzwa",
+      "addAnother": "Engedza a akhaunte ya banga",
+      "searchBanks": "Ṱoḓa banks",
+      "accountNumberLabel": "akhaunte nombolo",
+      "verifiedAs": "yo khwaṱhisedzwa: {{name}}",
+      "verify": "Khwaṱhisedza akhaunte",
+      "verificationUnavailable": "U khwaṱhisedza nga vhuḓiitisi a hu wanali kha makete waṋu — ṅwalani dzina ḽa muṋe wa akhaunthu nga nḓila ine ḽa vhonala ngayo kha bannga yaṋu.",
+      "accountNameLabel": "akhaunte holder dzina",
+      "save": "Vhulunga akhaunte ya banga",
+      "screenTitle": "Akhaunte ya bangas"
+    },
+    "walletBankRefund": {
+      "addBank": "Engedza a akhaunte ya banga",
+      "notEnabled": "U vhuiswa ha tshelede nga bannga a hu wanali kha makete waṋu zwa zwino.",
+      "invalidAmount": "Ṅwališa a i tshi khwaṱhisea tshivhalo.",
+      "failed": "A zwo koni u ruma your khumbelo. lingedza hafhu or Ikwane thusedzo.",
+      "openRequest": "Vho no vha na khumbelo ya u vhuedzedzwa ha masheleni kha bannga ine ya khou bvela phanḓa ({{number}}).",
+      "cancelRequest": "Khansela khumbelo",
+      "retentionTitle": "Vhulunga it on Beautonomi",
+      "retentionBody": "Ni na {{amount}} dzo lugelaho u dzi shumisa kha u buka haṋu hu tevhelaho — tshikolodo tsha tshipatshi tshi shuma musi ni tshi bva nga u ṱavhanya.",
+      "keepInWallet": "Vhulunga in my sipaji",
+      "continueToBank": "khumbelo a Banga mbuyiso instead",
+      "eligibleLabel": "Eligible for Banga mbuyiso: {{amount}}",
+      "eligibleHint": "Ndi mbuelo dza mbadelo dza khadi fhedzi dzo itwaho nga Beautonomi dzine dza nga rumelwa kha akhaunthu ya bannga. Top-ups, garaṱa dza mpho na tshikolodo tsha u ṱuṱuwedza zwi dzula kha tshipatshi tshaṋu.",
+      "noneEligible": "A vha na tshelede ya u badela nga khadi yo teaho u vhuiswa nga bannga zwa zwino.",
+      "amountLabel": "How much should we ruma to your Banga?",
+      "feeLine": "i khou ita mbadelo: {{fee}} · You receive: {{net}}",
+      "submit": "ruma khumbelo",
+      "submittedTitle": "khumbelo rumated",
+      "submittedBody": "Tshelede yo lindelwa kha tshipatshi tshaṋu musi tshigwada tshashu tsha zwa masheleni tshi tshi khou i sedzulusa. U vhuiswa ha masheleni ho tendelwaho hu badelwa nga EFT, kanzhi hu sa athu fhela maḓuvha a mushumo a {{days}}.",
+      "screenTitle": "Banga mbuyiso"
     }
   },
   "checkout": {
@@ -17639,7 +17692,7 @@
     "lateCancellationWithinWindowNoRefund": "Ngomu ha {{hours}} {{hourWord}} u si tshi fika u vhewa haṋu: a hu na u vhuyiswa mali.",
     "noRefundOnCancellation": "Khanselalations are non-mbuyisoable per this muneḓi's pholisi.",
     "policyEnforcedAutomatically": "Mbekanyamaitele iyi i kombetshedzwa nga vhuḓiitisi nga tshifhinga tsha u khansela.",
-    "refundsStoreCreditNote": "All mbuyisos are issued as store crlulamisisa to your Beautonomi sipaji, limited to tshivhalos already yo badelwa.",
+    "refundsStoreCreditNote": "U vhuisa tshelede ya u badela online hu newa sa khiredithi kha wallet ya Beautonomi yanu. Tshelede yo badelwaho phanda a i na tshelede ya u fhelisa, nahone i vhuedzedzwa nga muthusi.",
     "hour": "awara",
     "hours": "uwara",
     "noShowFeeApplies": "Mbadelo ya u sa ḓa ya {{amount}} i shuma arali vha ṱahela kha mbeo yavho vha songo khansela.",
@@ -17761,7 +17814,11 @@
     "paymentUnavailableTitle": "mbadedzo a i ho",
     "paymentBrowserFailed": "A ri ngo kona u vula fensetere yo ṱhonifhadzaho ya mbadelo. Ndi khou humbela uri u lingedze hafhu.",
     "paymentNotCompletedTitle": "Mbadelo a i athu u fhela",
-    "paymentNotCompletedBody": "U buka havho a hu athu khwaṱhisedzwa."
+    "paymentNotCompletedBody": "U buka havho a hu athu khwaṱhisedzwa.",
+    "tipPercentButtonA11y": "{{percent}}% thiphu, {{amount}}",
+    "cancelPreviousWithFeeBody": "Mbadelo ya u khansela {{fee}}. {{refund}} i ḓo vhuyelela kha tshipatshi tshaṋu tsha Beautonomi. U khansela mbeo yo fhiraho?",
+    "cancelPreviousFullRefundBody": "{{refund}} i ḓo vhuyelela kha tshipatshi tshaṋu tsha Beautonomi. U khansela mbeo yo fhiraho?",
+    "confirmCancelPrevious": "Khansela zwo fhelaho"
   },
   "payments": {
     "pay": "Badela",

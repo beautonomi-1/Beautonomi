@@ -58,6 +58,7 @@ export const NATIVE_ROUTE_BY_ID: Record<string, string> = {
   "travel-fees": "/(app)/(tabs)/more/settings/travel-fees",
   payment: "/(app)/(tabs)/more/settings/yoco-devices",
   "payment-methods": "/(app)/(tabs)/more/settings/payments",
+  "cancellation-policy": "/(app)/(tabs)/more/settings/cancellation-policies",
   payout: "/(app)/(tabs)/more/settings/payout-accounts",
   gallery: "/(app)/(tabs)/more/gallery",
   "identity-verification": "/(app)/(tabs)/more/settings/verification",
@@ -215,6 +216,7 @@ export async function GET(request: NextRequest) {
       zoneSelectionsResult,
       yocoResult,
       bankAccountResult,
+      cancellationPoliciesResult,
     ] = await Promise.all([
       supabaseAdmin
         .from("offerings")
@@ -247,6 +249,11 @@ export async function GET(request: NextRequest) {
         .select("id", { count: "exact", head: true })
         .eq("provider_id", providerId)
         .eq("active", true),
+      supabaseAdmin
+        .from("cancellation_policies")
+        .select("id", { count: "exact", head: true })
+        .eq("provider_id", providerId)
+        .eq("is_active", true),
     ]);
 
     const hasServices = (servicesResult.count ?? 0) > 0;
@@ -294,6 +301,7 @@ export async function GET(request: NextRequest) {
     const acceptOnline = provider.accept_online === true;
     const hasPaymentMethods =
       acceptCash || acceptCard || acceptOnline || effectiveGiftCardsEnabled === true;
+    const hasCancellationPolicy = (cancellationPoliciesResult.count ?? 0) > 0;
 
     // Identity verification — use the full verification plan (person KYC + KYB /
     // manual business review when required). Legacy person-only signals must not
@@ -469,6 +477,14 @@ export async function GET(request: NextRequest) {
         completed: hasPaymentMethods,
         required: true,
         link: "/provider/settings/payments",
+      },
+      {
+        id: "cancellation-policy",
+        title: "Cancellation policy",
+        description: "Set how late cancellations and no-shows are handled",
+        completed: hasCancellationPolicy,
+        required: true,
+        link: "/provider/settings/cancellation-policies",
       },
       {
         id: "payout",

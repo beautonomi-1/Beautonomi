@@ -41,6 +41,28 @@ vi.mock("@/lib/bookings/cancellation-policy", () => ({
   canCancelBooking: (...args: unknown[]) => mockCanCancelBooking(...args),
 }));
 
+vi.mock("@/lib/bookings/load-cancellation-outcome", () => ({
+  loadCancellationOutcomeForBooking: vi.fn(async () => ({
+    outcome: {
+      allowed: true,
+      isLate: false,
+      platformCollected: 0,
+      inPersonCollected: 0,
+      feeRetained: 0,
+      walletRefund: 0,
+      inPersonRefundDue: 0,
+      policy: {
+        hours_before_cutoff: 24,
+        grace_window_minutes: 15,
+        refund_percentage: 100,
+        late_cancellation_type: "full_refund",
+      },
+      noShowAvailableAt: new Date().toISOString(),
+    },
+    error: null,
+  })),
+}));
+
 vi.mock("@/lib/bookings/group-booking-cancellation", () => ({
   cancelGroupBooking: (...args: unknown[]) => mockCancelGroupBooking(...args),
   getGroupBookingParticipantsForCancellation: vi.fn(async () => []),
@@ -225,7 +247,17 @@ describe("POST /api/me/bookings/[id]/cancel — group bookings", () => {
     expect(res.status).toBe(500);
     const body = await res.json();
     expect(JSON.stringify(body)).toMatch(/GROUP_CANCEL_INCOMPLETE/);
-    expect(mockCancelGroupBooking).toHaveBeenCalled();
+    expect(mockCancelGroupBooking).toHaveBeenCalledWith(
+      adminClient,
+      GROUP_ID,
+      USER_ID,
+      "Customer cancellation",
+      expect.objectContaining({
+        settleFinance: true,
+        financeActor: "customer",
+        settleAlreadyCancelledBookingIds: [BOOKING_ID],
+      }),
+    );
   }, ROUTE_TEST_TIMEOUT_MS);
 
   it("recalculates total and syncs group status after non-primary cancel", async () => {

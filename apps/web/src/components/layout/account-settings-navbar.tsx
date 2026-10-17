@@ -16,9 +16,8 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useTranslation } from "@beautonomi/i18n";
 import LoginModal from "@/components/global/login-modal";
 import { CustomerNotificationsDropdown } from "@/components/customer/CustomerNotificationsDropdown";
-import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
-import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { EXPLORE_CUSTOMER_WEB_PATH } from "@/lib/explore/explore-customer-entry";
+import { useExploreNavVisible } from "@/hooks/useExploreNavVisible";
 
 const AccountSettingsNavbar: React.FC = () => {
   const router = useRouter();
@@ -28,7 +27,7 @@ const AccountSettingsNavbar: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
-  const exploreEnabled = useFeatureFlag(FEATURE_FLAG_KEYS.EXPLORE_ENABLED);
+  const showExploreNav = useExploreNavVisible();
 
   // Ensure component only renders Sheet after hydration to avoid ID mismatch
   useEffect(() => {
@@ -81,7 +80,7 @@ const AccountSettingsNavbar: React.FC = () => {
                 >
                   <User className="h-6 w-6 text-gray-700" />
                 </Link>
-                {exploreEnabled ? (
+                {showExploreNav ? (
                   <Link
                     href={`${EXPLORE_CUSTOMER_WEB_PATH}/saved`}
                     className="hidden md:inline-flex text-sm text-gray-600 hover:text-gray-900 px-1"
@@ -126,7 +125,7 @@ const AccountSettingsNavbar: React.FC = () => {
                     <SheetTitle>{t("web.layout.landingNavbar.menu")}</SheetTitle>
                   </SheetHeader>
                   <div className="mt-6 space-y-2">
-                    {exploreEnabled ? (
+                    {showExploreNav ? (
                       <Link
                         href={EXPLORE_CUSTOMER_WEB_PATH}
                         className="block px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded"
@@ -135,7 +134,7 @@ const AccountSettingsNavbar: React.FC = () => {
                         {t("web.layout.explore")}
                       </Link>
                     ) : null}
-                    {exploreEnabled && user ? (
+                    {showExploreNav && user ? (
                       <Link
                         href={`${EXPLORE_CUSTOMER_WEB_PATH}/saved`}
                         className="block px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded"

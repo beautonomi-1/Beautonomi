@@ -5691,6 +5691,15 @@ export default function BookingDetailScreen() {
         primaryServiceName={primaryServiceName}
         primaryOfferingId={services[0]?.offering_id ?? services[0]?.service_id ?? undefined}
         hasExistingRating={hasProviderClientRating === true}
+        showShareBookingLink={
+          b?.status === "completed" && Number(b?.total_paid ?? 0) <= 0.009
+        }
+        providerPublicBookUrl={
+          providerProfile?.id
+            ? `${APP_URL.replace(/\/$/, "")}/booking?provider_id=${encodeURIComponent(providerProfile.id)}`
+            : null
+        }
+        clientDisplayName={b?.customers?.full_name ?? null}
         initialStep={step === "rate" ? "rate" : "choose"}
         onDismiss={(markSeen) => dismissProviderCompletionModal(markSeen)}
         onRated={() => {
