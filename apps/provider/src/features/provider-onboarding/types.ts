@@ -2,6 +2,8 @@
  * Provider onboarding draft + submit shape (aligned with web /api/provider/onboarding).
  */
 
+import type { BookingPolicyPresetId } from "@beautonomi/i18n";
+
 export type TeamSize = "freelancer" | "small" | "medium" | "large";
 export type BusinessType = "salon" | "mobile" | "both";
 /** @deprecated Use TerminalOwnershipStatus from terminal types. Kept for backcompat during migration. */
@@ -216,6 +218,9 @@ export interface OnboardingFormData {
    * provider made on the sales-settings step.
    */
   tips_enabled?: boolean;
+  booking_policy?: {
+    preset: Exclude<BookingPolicyPresetId, "custom">;
+  };
 }
 
 export type ZoneSuggestStatus = "matched" | "none" | "error" | "no_coords";

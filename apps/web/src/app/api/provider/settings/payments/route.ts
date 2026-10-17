@@ -25,6 +25,10 @@ import {
   handlePaystackTerminalSettingsPost,
   loadPaystackTerminalMobileDetail,
 } from "@/lib/payments/paystack-terminal-provider-mobile-api";
+import {
+  normalizeTipPercentPresets,
+  validateTipPercentPresetsForSave,
+} from "@beautonomi/utils";
 
 const PROVIDER_SETTINGS_ROLES = [
   "provider_owner",
@@ -130,7 +134,7 @@ export async function GET(request: NextRequest) {
       acceptPaycloud: paycloudEnabled ? (provider.accept_paycloud ?? false) : false,
       taxInclusive: provider.tax_inclusive ?? true,
       tipsEnabled: provider.tips_enabled ?? true,
-      tipPresets: provider.tip_presets ?? [10, 15, 20, 25],
+      tipPresets: normalizeTipPercentPresets(provider.tip_presets),
       receiptAutoSend: provider.receipt_auto_send ?? true,
       tipsDistribution: provider.tips_distribution ?? "staff",
       yoco: {
@@ -245,7 +249,15 @@ export async function PATCH(request: NextRequest) {
       updates.tips_enabled = body.tipsEnabled;
     }
     if (body.tipPresets !== undefined) {
-      updates.tip_presets = body.tipPresets;
+      const validated = validateTipPercentPresetsForSave(body.tipPresets);
+      if (!validated) {
+        return errorResponse(
+          "tipPresets must be an array of 1 to 5 numbers, each greater than 0 and at most 100",
+          "VALIDATION_ERROR",
+          400,
+        );
+      }
+      updates.tip_presets = validated;
     }
     if (body.receiptAutoSend !== undefined) {
       updates.receipt_auto_send = body.receiptAutoSend;

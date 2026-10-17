@@ -1911,12 +1911,7 @@ export default function ExplorePostsScreen() {
           }
         >
           {editMode ? (
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              nestedScrollEnabled
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={twStyle("pb-2")}
-            >
+            <View style={twStyle("pb-2")}>
               <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{ep("photosAndVideos")}</Text>
               <Text style={twStyle("mb-3 text-xs text-gray-500")}>
                 {ep("editMediaHint")}
@@ -2277,7 +2272,7 @@ export default function ExplorePostsScreen() {
               >
                 <Text style={twStyle("text-center text-sm font-medium text-gray-700")}>{ep("cancel")}</Text>
               </TouchableOpacity>
-            </ScrollView>
+            </View>
           ) : (
             <>
               {(() => {

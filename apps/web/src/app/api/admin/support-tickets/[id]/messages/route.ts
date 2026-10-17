@@ -48,7 +48,7 @@ export async function POST(
     const { data: ticket, error: ticketErr } = await supabase
       .from("support_tickets")
       .select(
-        "id, user_id, provider_id, ticket_number, subject, priority, first_staff_reply_at, status, requester_type, support_context_type, support_context_label, channel, tenant_id",
+        "id, user_id, provider_id, ticket_number, subject, priority, first_staff_reply_at, status, requester_type, support_context_type, support_context_label, channel, tenant_id, handling_mode",
       )
       .eq("id", id)
       .maybeSingle();
@@ -101,6 +101,10 @@ export async function POST(
     if (!isInternal && isAdmin) {
       ticketUpdate.last_message_at = data.created_at ?? new Date().toISOString();
       ticketUpdate.last_message_from = "staff";
+      if (String((ticket as { handling_mode?: string }).handling_mode ?? "human") === "assistant") {
+        ticketUpdate.handling_mode = "human";
+        ticketUpdate.assistant_handoff_at = new Date().toISOString();
+      }
       if (!(ticket as { first_staff_reply_at?: string | null }).first_staff_reply_at) {
         ticketUpdate.first_staff_reply_at = new Date().toISOString();
       }

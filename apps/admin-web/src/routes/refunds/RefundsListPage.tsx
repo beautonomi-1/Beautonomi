@@ -33,6 +33,7 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { AdminAuditTrailLink } from "@/components/admin/AdminAuditTrailLink";
+import { WalletBankRefundsQueue } from "@/routes/refunds/WalletBankRefundsQueue";
 import {
   REFUND_REASON_PRESETS,
   parseRefundAmount,
@@ -154,6 +155,7 @@ export function RefundsListPage() {
   const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10) || 1);
+  const refundView = sp.get("view") === "wallet_bank" ? "wallet_bank" : "booking";
   const status = sp.get("status") || "needs_action";
   const sortBy = sp.get("sort") || "created_at";
   const sortDir = (sp.get("dir") === "asc" ? "asc" : "desc") as "asc" | "desc";
@@ -552,12 +554,61 @@ export function RefundsListPage() {
     },
   ];
 
+  const setRefundView = (view: "booking" | "wallet_bank") => {
+    const next = new URLSearchParams(sp);
+    next.set("view", view);
+    next.set("page", "1");
+    setSp(next, { replace: true });
+  };
+
+  if (refundView === "wallet_bank") {
+    return (
+      <div className="space-y-6">
+        <AdminPageHeader
+          title="Refunds"
+          description="Wallet → bank requests are manual EFT payouts after finance approves and debits the customer wallet."
+        />
+        <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+          <button
+            type="button"
+            className="rounded-md px-3 py-1.5 text-sm text-gray-600 hover:bg-white"
+            onClick={() => setRefundView("booking")}
+          >
+            Booking refunds
+          </button>
+          <button
+            type="button"
+            className="rounded-md bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm"
+          >
+            Wallet → bank
+          </button>
+        </div>
+        <WalletBankRefundsQueue page={page} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <AdminPageHeader
         title="Refunds"
         description="Cancelled bookings are refunded to the customer wallet automatically. This queue shows exceptions and manual support credits — not every paid booking."
       />
+      <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+        <button
+          type="button"
+          className="rounded-md bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm"
+        >
+          Booking refunds
+        </button>
+        <button
+          type="button"
+          className="rounded-md px-3 py-1.5 text-sm text-gray-600 hover:bg-white"
+          onClick={() => setRefundView("wallet_bank")}
+        >
+          Wallet → bank
+        </button>
+      </div>
       <AgentAssistEntitySection targetType="refund" actionTypes={["refund.briefing"]} />
 
       <AdminPanel>

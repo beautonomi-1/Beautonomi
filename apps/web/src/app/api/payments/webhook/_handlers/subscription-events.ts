@@ -190,6 +190,21 @@ async function handleSubscriptionCreate(payload: any, supabase: SupabaseClient) 
   );
 }
 
+/**
+ * Paid-to-paid downgrade: the old Paystack sub is disabled at schedule time and the cron creates
+ * the cheaper sub at period end. Disable / not_renew events for the old code must not end access
+ * or flip auto_renew (web would offer "Extend plan" on the old price).
+ *
+ * Not bounded by expires_at: Paystack sends subscription.disable when renewals stop, i.e. at period
+ * end, which is after expires_at but before the daily cron runs. The cron resolves every scheduled
+ * row (applies it, falls back to free, or retries), so the webhook never needs to.
+ */
+export function isScheduledDowngradePending(
+  row: { scheduled_plan_id?: string | null } | null | undefined,
+): boolean {
+  return Boolean(row?.scheduled_plan_id);
+}
+
 async function handleSubscriptionDisable(payload: any, supabase: SupabaseClient) {
   const subscriptionCode = payload.subscription_code;
 
@@ -216,10 +231,17 @@ async function handleSubscriptionDisable(payload: any, supabase: SupabaseClient)
     status?: string;
     cancelled_at?: string | null;
     expires_at?: string | null;
+    scheduled_plan_id?: string | null;
   };
 
   const now = new Date();
   const expiresAt = row.expires_at ? new Date(row.expires_at as string) : null;
+  if (isScheduledDowngradePending(row)) {
+    console.log(
+      `[subscription] Paystack disable ignored — scheduled downgrade pending for ${subscriptionCode}; cron applies it`,
+    );
+    return;
+  }
   const cancelledAt = row.cancelled_at ? new Date(row.cancelled_at as string) : null;
   const retainAccessUntilPeriodEnd =
     (row as { status?: string }).status === "active" &&
@@ -289,6 +311,12 @@ async function handleSubscriptionNotRenew(payload: any, supabase: SupabaseClient
 
   const merchantRow = await loadProviderSubscriptionByPaystackCode(supabase, subscriptionCode);
   if (shouldIgnorePaystackEventForRow(merchantRow)) return;
+  if (isScheduledDowngradePending(merchantRow)) {
+    console.log(
+      `[subscription] subscription.not_renew ignored — scheduled downgrade in progress for ${subscriptionCode}`,
+    );
+    return;
+  }
 
   await supabase.from("provider_subscriptions")
     .update({

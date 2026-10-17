@@ -24,6 +24,7 @@ import { repairSubscriptionPlanFromPayments } from "@/lib/subscriptions/repair-s
 import { clearAppleMerchantOnFree } from "@/lib/subscriptions/provider-billing-merchant";
 import { enforceStaffCapForProviderPlan } from "@/lib/provider/enforce-staff-cap-after-downgrade";
 import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
+import { applyScheduledProviderSubscriptionDowngrades } from "@/lib/subscriptions/apply-scheduled-provider-subscription-downgrades";
 
 async function enforceStaffCapsForProviders(
   supabase: ReturnType<typeof getSupabaseAdmin>,
@@ -76,30 +77,14 @@ async function runJob(request: NextRequest) {
     });
 
     // 0a. Apply scheduled paid-to-paid downgrades at period end (no proration).
-    const { data: scheduledRows } = await supabase
-      .from("provider_subscriptions")
-      .select("id, provider_id, scheduled_plan_id, scheduled_change_at, plan_id")
-      .not("scheduled_plan_id", "is", null)
-      .not("scheduled_change_at", "is", null)
-      .lte("scheduled_change_at", now)
-      .in("status", ["active", "trialing"]);
-
-    let downgradesApplied = 0;
-    const downgradedProviderIds: string[] = [];
-    for (const row of scheduledRows ?? []) {
-      const r = row as { id: string; provider_id?: string; scheduled_plan_id: string; plan_id: string };
-      await supabase
-        .from("provider_subscriptions")
-        .update({
-          plan_id: r.scheduled_plan_id,
-          scheduled_plan_id: null,
-          scheduled_change_at: null,
-          updated_at: now,
-        })
-        .eq("id", r.id);
-      downgradesApplied++;
-      if (r.provider_id) downgradedProviderIds.push(r.provider_id);
-    }
+    const scheduledDowngradeResult = await applyScheduledProviderSubscriptionDowngrades(
+      supabase,
+      now,
+      expirePatch,
+    );
+    let downgradesApplied = scheduledDowngradeResult.downgradesApplied;
+    const downgradedProviderIds = scheduledDowngradeResult.downgradedProviderIds;
+    const failedScheduledDowngrades = scheduledDowngradeResult.expiredFromFailed;
     let staffCapsEnforced = await enforceStaffCapsForProviders(supabase, downgradedProviderIds);
 
     // 0b. End trials past trial_ends_at — charge if card on file, else lapse to free.
@@ -223,6 +208,7 @@ async function runJob(request: NextRequest) {
 
     // Notify affected providers about their expired subscriptions
     const allExpired = [
+      ...failedScheduledDowngrades.map((s) => ({ ...s, reason: "payment_failed" as const })),
       ...(expired ?? []).map((s) => ({ ...s, reason: "cancelled_at_period_end" as const })),
       ...(naturalExpired ?? []).map((s) => ({ ...s, reason: "expired" as const })),
       ...(pastDueExpired ?? []).map((s) => ({ ...s, reason: "payment_failed" as const })),

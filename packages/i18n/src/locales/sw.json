@@ -13472,7 +13472,8 @@
       "giftCardRedeemedDefault": "Kadi ya zawadi redeemed to pochi successfully",
       "giftRedeemHelp": "Faka ikhodi oyithengile noma othile akuthumelele yona — ibhalansi ephelele ifakwa esikhwameni sakho semali ngokushesha.",
       "yourGiftCards": "Tu tarjetas de regalo",
-      "checkoutOpenFailed": "Hatukuweza kufungua malipo salama. Tafadhali jaribu tena."
+      "checkoutOpenFailed": "Hatukuweza kufungua malipo salama. Tafadhali jaribu tena.",
+      "walletHelpLink": "Pochi help"
     },
     "paymentsScreen": {
       "saveCardExplainer": "Sizolondoloza ikhadi lakho ngokuphephile uma ukhokha. Ukuze uqinisekise ikhadi lakho, inkokhiso yesikhashana encane (isb. {{example}}) ingase ibekwe futhi ihlehliswe—lokhu kuqinisekisa ikhadi lakho ukuze ulisebenzise esikhathini esizayo.",
@@ -15524,7 +15525,9 @@
           "cashRefundConfirm": "I received it",
           "cashRefundDispute": "Dispute",
           "cashRefundConfirmed": "Thank you — your rejesho is imethibitishwa.",
-          "cashRefundDisputed": "We flagged this rejesho for tathmini."
+          "cashRefundDisputed": "We flagged this rejesho for tathmini.",
+          "cancelPreviewSheetTitle": "Ghairi this uhifadhi?",
+          "cancelPreviewInPersonRefund": "Rejesho due in person: {{currency}} {{amount}}"
         },
         "groupBookingDetail": {
           "back": "Rudi",
@@ -17078,7 +17081,14 @@
           "priorityLow": "Chini",
           "priorityMedium": "Wastani",
           "priorityHigh": "Juu",
-          "priorityUrgent": "Dharura"
+          "priorityUrgent": "Dharura",
+          "chatBack": "Rudi",
+          "chatDefaultSubject": "Ombi la usaidizi",
+          "continueToChat": "Endelea kupiga gumzo",
+          "useFullForm": "Tumia fomu kamili",
+          "safetyUseForm": "Ripoti za usalama huenda moja kwa moja kwa timu yetu - tafadhali tumia fomu kamili.",
+          "chatAiDisclaimer": "AI inaweza kufanya makosa — unaweza kuzungumza na mtu wakati wowote baada ya tikiti yako kutengenezwa.",
+          "startChat": "Anzisha gumzo"
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Andika ujumbe wako...",
@@ -17537,6 +17547,49 @@
     "exploreVideo": {
       "unmute": "Washa sauti",
       "mute": "Zima sauti"
+    },
+    "bankAccounts": {
+      "failedLoadBanks": "Imeshindwa load banks. Jaribu tena.",
+      "fillAllFields": "Chagua benki na uweke nambari ya akaunti na jina la mmiliki.",
+      "removeConfirmTitle": "Ondoa bank account?",
+      "removeConfirmBody": "Akaunti hii haitapatikana tena kwa kurejeshewa pesa za benki.",
+      "remove": "Ondoa",
+      "intro": "Inatumika tu kwa marejesho ya benki ya malipo yanayostahiki ya kadi. Nambari za akaunti huhifadhiwa kwa njia fiche.",
+      "empty": "Hapana bank accounts imehifadhiwa yet.",
+      "bankLabel": "Benki",
+      "primary": "Kuu",
+      "makePrimary": "Fanya msingi",
+      "verifiedBadge": "Imethibitishwa",
+      "addAnother": "Ongeza a bank account",
+      "searchBanks": "Tafuta banks",
+      "accountNumberLabel": "Nambari ya akaunti",
+      "verifiedAs": "Imethibitishwa: {{name}}",
+      "verify": "Thibitisha akaunti",
+      "verificationUnavailable": "Uthibitishaji wa kiotomatiki haupatikani katika soko lako - weka jina la mmiliki wa akaunti jinsi linavyoonekana katika benki yako.",
+      "accountNameLabel": "Account holder jina",
+      "save": "Hifadhi bank account",
+      "screenTitle": "Akaunti za benki"
+    },
+    "walletBankRefund": {
+      "addBank": "Ongeza a bank account",
+      "notEnabled": "Pesa za benki hazipatikani katika soko lako kwa sasa.",
+      "invalidAmount": "Weka a valid amount.",
+      "failed": "Haikuweza kuwasilisha ombi lako. Jaribu tena au uwasiliane na usaidizi.",
+      "openRequest": "Tayari una ombi la kurejesha pesa benki linaloendelea ({{number}}).",
+      "cancelRequest": "Ghairi request",
+      "retentionTitle": "Weka kwenye Beautonomi",
+      "retentionBody": "Uko {{amount}} tayari kutumika katika kuhifadhi nafasi yako ijayo - salio la pochi litatumika wakati wa kulipa papo hapo.",
+      "keepInWallet": "Keep in my pochi",
+      "continueToBank": "Request a bank rejesho instead",
+      "eligibleLabel": "Eligible for bank rejesho: {{amount}}",
+      "eligibleHint": "Marejesho ya malipo ya kadi pekee yaliyofanywa kupitia Beautonomi yanaweza kutumwa kwa akaunti ya benki. Viongezeo, kadi za zawadi na mkopo wa matangazo hukaa kwenye pochi yako.",
+      "noneEligible": "Huna urejeshaji wowote wa malipo ya kadi unaostahiki kurejeshewa pesa benki kwa sasa.",
+      "amountLabel": "Je, tunapaswa kutuma kiasi gani kwa benki yako?",
+      "feeLine": "Ada ya usindikaji: {{fee}} · Unapokea: {{net}}",
+      "submit": "Wasilisha request",
+      "submittedTitle": "Ombi limewasilishwa",
+      "submittedBody": "Kiasi hicho kimesimamishwa kwenye pochi yako huku timu yetu ya fedha ikikagua. Marejesho yaliyoidhinishwa hulipwa na EFT, kwa kawaida ndani ya siku {{days}} za kazi.",
+      "screenTitle": "Bank rejesho"
     }
   },
   "checkout": {
@@ -17634,7 +17687,7 @@
     "lateCancellationWithinWindowNoRefund": "Within {{hours}} {{hourWord}} of your appointment: no refund will be issued.",
     "noRefundOnCancellation": "Ghairilations are hapanan-rejeshoable per this mtoa huduma's policy.",
     "policyEnforcedAutomatically": "This policy is enforced automatically at the time of cancellation.",
-    "refundsStoreCreditNote": "All refunds are issued as store credit to your Beautonomi wallet, limited to amounts already paid.",
+    "refundsStoreCreditNote": "Marejesho ya malipo ya mtandaoni yanatolewa kama salio kwenye pochi yako ya Beautonomi. Malipo yanayofanywa moja kwa moja hayana ada ya kughairi na hurejeshwa na mtoa huduma.",
     "hour": "saa",
     "hours": "saa",
     "noShowFeeApplies": "No-show fee of {{amount}} applies if you miss your appointment without cancelling.",
@@ -17756,7 +17809,11 @@
     "paymentUnavailableTitle": "Malipo hayapatikani",
     "paymentBrowserFailed": "Hatukuweza kufungua dirisha salama la malipo. Tafadhali jaribu tena.",
     "paymentNotCompletedTitle": "Malipo hayajakamilika",
-    "paymentNotCompletedBody": "Uhifadhi wako haujathibitishwa."
+    "paymentNotCompletedBody": "Uhifadhi wako haujathibitishwa.",
+    "tipPercentButtonA11y": "{{percent}}% kidokezo, {{amount}}",
+    "cancelPreviousWithFeeBody": "Ada ya kughairi {{fee}}. {{refund}} itarudi kwa Beautonomi pochi yako. Ungependa kughairi miadi iliyotangulia?",
+    "cancelPreviousFullRefundBody": "{{refund}} itarudi kwa Beautonomi pochi yako. Ungependa kughairi miadi iliyotangulia?",
+    "confirmCancelPrevious": "Ghairi previous"
   },
   "payments": {
     "pay": "Pay",

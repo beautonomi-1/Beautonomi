@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { GET } from "../route";
+import * as configModule from "@/lib/config";
 import { resolveFlagsForUser } from "@/lib/config";
 import type { ResolveFlagsForUserParams } from "@/lib/config/types";
 
@@ -17,9 +18,77 @@ const FORBIDDEN_KEYS = [
   "api_key_secret",
 ];
 
+function mockSuccessfulBundle(overrides?: { platform?: string; env?: string; version?: string | null }) {
+  return {
+    meta: {
+      env: overrides?.env ?? "production",
+      platform: overrides?.platform ?? "web",
+      version: overrides?.version ?? null,
+      fetched_at: "2026-01-01T00:00:00.000Z",
+    },
+    amplitude: {
+      api_key_public: null,
+      environment: "production",
+      enabled_client_portal: false,
+      enabled_provider_portal: false,
+      enabled_admin_portal: false,
+      guides_enabled: false,
+      surveys_enabled: false,
+      sampling_rate: 1,
+      debug_mode: false,
+    },
+    third_party: {},
+    branding: {
+      site_name: "Beautonomi",
+      logo_url: "/images/logo.svg",
+      favicon_url: "/icon.svg",
+      primary_color: "#FF0077",
+      secondary_color: "#D60565",
+    },
+    auth: {},
+    flags: {},
+    modules: {
+      on_demand: { enabled: false, ringtone_asset_path: null, ring_duration_seconds: 20, ring_repeat: true, normal_booking_ringtone_asset_path: null, normal_booking_ring_duration_seconds: 20, normal_booking_ring_repeat: true, waiting_screen_timeout_seconds: 45, provider_accept_window_seconds: 30, ui_copy: {} },
+      ai: { enabled: false, sampling_rate: 0, cache_ttl_seconds: 86400, default_model_tier: "cheap", max_tokens: 600, temperature: 0.3, daily_budget_credits: 0, per_provider_calls_per_day: 0, per_user_calls_per_day: 0 },
+      ads: { enabled: false },
+      ranking: { enabled: false, weights: {} },
+      distance: { enabled: false },
+      sumsub: { enabled: false },
+      identity_verification: { enabled: false, provider: "none" },
+      aura: { enabled: false },
+      safety: { enabled: false, check_in_enabled: true, escalation_enabled: true, cooldown_seconds: 300, ui_copy: {} },
+      agents: { enabled: false, shadow_mode: true },
+    },
+    verification: {
+      mode: "off",
+      sumsub_enabled: false,
+      didit_enabled: false,
+      manual_enabled: true,
+      required_for_providers: false,
+      required_for_payouts: false,
+      required_for_customers: false,
+      cross_validate: false,
+      min_age: 18,
+      kyb_enabled: false,
+      kyb_required_for_business: false,
+    },
+    content_safety: {
+      social_min_age: 13,
+      social_age_gate_mode: "enforce",
+      controls_enabled: true,
+    },
+  };
+}
+
 describe("GET /api/public/config-bundle", () => {
   beforeEach(() => {
-    vi.resetModules();
+    vi.spyOn(configModule, "getPublicConfigBundle").mockResolvedValue(mockSuccessfulBundle() as Awaited<
+      ReturnType<typeof configModule.getPublicConfigBundle>
+    >);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("returns 200 and does not include any secret fields", async () => {
@@ -62,6 +131,11 @@ describe("GET /api/public/config-bundle", () => {
   });
 
   it("returns meta with env, platform, version, fetched_at", async () => {
+    vi.mocked(configModule.getPublicConfigBundle).mockResolvedValueOnce(
+      mockSuccessfulBundle({ platform: "provider", env: "staging", version: "1.2.3" }) as Awaited<
+        ReturnType<typeof configModule.getPublicConfigBundle>
+      >,
+    );
     const request = new NextRequest("http://localhost/api/public/config-bundle?platform=provider&environment=staging&app_version=1.2.3");
     const response = await GET(request);
     const data = await response.json();
@@ -82,6 +156,16 @@ describe("GET /api/public/config-bundle", () => {
     const cacheControl = response.headers.get("Cache-Control") ?? "";
     expect(cacheControl).toContain("s-maxage=300");
     expect(response.headers.get("ETag")).toBeDefined();
+  });
+
+  it("returns 503 with no-store when getPublicConfigBundle throws", async () => {
+    vi.mocked(configModule.getPublicConfigBundle).mockRejectedValueOnce(new Error("db down"));
+
+    const request = new NextRequest("http://localhost/api/public/config-bundle?platform=customer");
+    const response = await GET(request);
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
   });
 });
 

@@ -25,9 +25,14 @@ import {
   AdminTh,
 } from "@/components/admin/AdminDataTable";
 import {
+  contextTypeForCategory,
   groupLabelForSupportTicketCategory,
   labelForSupportTicketCategory,
+  SUPPORT_CONTEXT_TYPE_OPTIONS,
   SUPPORT_TICKET_CATEGORY_GROUPS,
+  SUPPORT_TICKET_CATEGORY_GROUPS_RICH,
+  supportTicketPresetFromCategory,
+  type SupportContextType,
 } from "@/lib/supportTicketCategories";
 import {
   buildSupportTicketsSearchParams,
@@ -78,7 +83,8 @@ interface SupportTicket {
   provider: { id: string; business_name: string } | null;
   assigned_user: { id: string; email: string; full_name: string | null } | null;
   has_unread_staff_reply?: boolean;
-  last_message_from?: "customer" | "staff" | null;
+  last_message_from?: "customer" | "staff" | "assistant" | null;
+  handling_mode?: "assistant" | "human" | string | null;
   last_message_at?: string | null;
   // Computed by server (migration 726 + attention helper)
   needs_agent_response?: boolean | null;
@@ -102,6 +108,29 @@ function assigneeInitials(name: string | null | undefined, email: string | null 
 }
 
 /** Returns badge JSX for the attention state returned by the server. */
+function SupportTicketListChips({ ticket }: { ticket: SupportTicket }) {
+  const handling = ticket.handling_mode === "assistant";
+  const lastFrom = ticket.last_message_from;
+  return (
+    <>
+      {handling ? (
+        <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-900">
+          AI handling
+        </span>
+      ) : null}
+      {lastFrom === "assistant" ? (
+        <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-800">
+          AI replied
+        </span>
+      ) : lastFrom === "staff" ? (
+        <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-800">
+          Support replied
+        </span>
+      ) : null}
+    </>
+  );
+}
+
 function AttentionBadge({ ticket }: { ticket: SupportTicket }) {
   const state = ticket.attention_state;
   if (!state || state === "assigned_idle" || state === "resolved") return null;
@@ -315,6 +344,7 @@ function SupportTicketCard({
               </span>
             ) : null}
             <AttentionBadge ticket={ticket} />
+            <SupportTicketListChips ticket={ticket} />
           </div>
           <p className={cn("mt-1 line-clamp-2 text-gray-900", ticket.agent_unread ? "font-bold" : "font-semibold")}>{ticket.subject}</p>
           {ticket.support_context_type ? (
@@ -365,17 +395,6 @@ function SupportTicketCard({
   );
 }
 
-const SUPPORT_CONTEXT_OPTIONS = [
-  { value: "booking", label: "Booking" },
-  { value: "product_order", label: "Product / ecommerce order" },
-  { value: "gift_card", label: "Gift card" },
-  { value: "payment", label: "Payment / refund" },
-  { value: "provider_onboarding", label: "Provider onboarding" },
-  { value: "account", label: "Account" },
-  { value: "technical", label: "Technical" },
-  { value: "other", label: "Other" },
-] as const;
-
 export function SupportTicketsPage() {
   useAdminDocumentTitle("Support Tickets");
   const { allowed, denied } = useAdminSectionPage(
@@ -396,7 +415,15 @@ export function SupportTicketsPage() {
   const [newPriority, setNewPriority] = useState("medium");
   const [newCategory, setNewCategory] = useState("");
   const [newRequesterType, setNewRequesterType] = useState("admin");
-  const [newContextType, setNewContextType] = useState<(typeof SUPPORT_CONTEXT_OPTIONS)[number]["value"]>("booking");
+  const [newContextType, setNewContextType] = useState<SupportContextType>("other");
+  const applyCreateCategory = useCallback((value: string) => {
+    setNewCategory(value);
+    if (!value.trim()) return;
+    const ctx = contextTypeForCategory(value);
+    if (ctx) setNewContextType(ctx);
+    const preset = supportTicketPresetFromCategory(value);
+    if (preset.priority) setNewPriority(preset.priority);
+  }, []);
   const [newContextLabel, setNewContextLabel] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -422,7 +449,7 @@ export function SupportTicketsPage() {
       setNewPriority("medium");
       setNewCategory("");
       setNewRequesterType("admin");
-      setNewContextType("booking");
+      setNewContextType("other");
       setNewContextLabel("");
       void qc.invalidateQueries({ queryKey: adminQueryKeys.supportTickets.all() });
       invalidateAdminShellCounts(qc);
@@ -484,6 +511,7 @@ export function SupportTicketsPage() {
   const needsResponseFilter = searchParams.get("needs_response") === "1";
   const slaStateFilter = searchParams.get("sla_state") ?? "";
   const firstResponseOverdueFilter = searchParams.get("first_response_overdue") === "1";
+  const aiHandlingFilter = searchParams.get("handling_mode") === "assistant";
   const viewFilter = searchParams.get("view");
   const selectedId = searchParams.get("selected");
   const statusGroupFilter = searchParams.get("status_group") ?? "";
@@ -579,6 +607,7 @@ export function SupportTicketsPage() {
         slaState: slaStateFilter,
         firstResponseOverdue: firstResponseOverdueFilter,
         statusGroup: statusGroupFilter,
+        aiHandling: aiHandlingFilter,
       }),
     [
       pageIndex,
@@ -594,6 +623,7 @@ export function SupportTicketsPage() {
       slaStateFilter,
       firstResponseOverdueFilter,
       statusGroupFilter,
+      aiHandlingFilter,
     ],
   );
 
@@ -615,6 +645,7 @@ export function SupportTicketsPage() {
         statusGroup: statusGroupFilter,
         categoryGroup: categoryGroupFilter,
         channel: channelFilter,
+        aiHandling: aiHandlingFilter,
       })}&include_counts=1`,
     [
       pageIndex,
@@ -632,6 +663,7 @@ export function SupportTicketsPage() {
       statusGroupFilter,
       categoryGroupFilter,
       channelFilter,
+      aiHandlingFilter,
     ]
   );
 
@@ -760,6 +792,7 @@ export function SupportTicketsPage() {
           n.delete("needs_response");
           n.delete("sla_state");
           n.delete("first_response_overdue");
+          n.delete("handling_mode");
           n.delete("status_group");
           if (view) {
             const p = view.params;
@@ -772,6 +805,7 @@ export function SupportTicketsPage() {
             if (p.needsResponse) n.set("needs_response", "1");
             if (p.slaState) n.set("sla_state", p.slaState);
             if (p.firstResponseOverdue) n.set("first_response_overdue", "1");
+            if (p.aiHandling) n.set("handling_mode", "assistant");
           }
           return n;
         },
@@ -925,9 +959,16 @@ export function SupportTicketsPage() {
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Related area</label>
-              <select value={newContextType} onChange={(e) => setNewContextType(e.target.value as typeof newContextType)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none">
-                {SUPPORT_CONTEXT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
+              <p className="mb-1 text-[11px] text-gray-500">Defaults from category; override if needed.</p>
+              <select
+                value={newContextType}
+                onChange={(e) => setNewContextType(e.target.value as SupportContextType)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
+              >
+                {SUPPORT_CONTEXT_TYPE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
                 ))}
               </select>
             </div>
@@ -950,7 +991,7 @@ export function SupportTicketsPage() {
               <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
               <select
                 value={newCategory}
-                onChange={(e) => setNewCategory(e.target.value)}
+                onChange={(e) => applyCreateCategory(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
               >
                 <option value="">Uncategorized</option>
@@ -982,21 +1023,26 @@ export function SupportTicketsPage() {
       />
 
       <div className="flex flex-wrap gap-2">
-        {SUPPORT_TICKET_CATEGORY_GROUPS.map((group) => (
-          <button
-            key={group.label}
-            type="button"
-            onClick={() => setFilter("category_group", categoryGroupFilter === group.label ? "" : group.label)}
-            className={cn(
-              "rounded-full border px-3 py-1 text-xs font-medium",
-              categoryGroupFilter === group.label
-                ? "border-primary bg-primary/5 text-primary"
-                : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50",
-            )}
-          >
-            {group.label}
-          </button>
-        ))}
+        {SUPPORT_TICKET_CATEGORY_GROUPS_RICH.map((group) => {
+          const active =
+            categoryGroupFilter === group.id ||
+            categoryGroupFilter.toLowerCase() === group.label.toLowerCase();
+          return (
+            <button
+              key={group.id}
+              type="button"
+              onClick={() => setFilter("category_group", active ? "" : group.id)}
+              className={cn(
+                "rounded-full border px-3 py-1 text-xs font-medium",
+                active
+                  ? "border-primary bg-primary/5 text-primary"
+                  : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50",
+              )}
+            >
+              {group.label}
+            </button>
+          );
+        })}
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1312,6 +1358,7 @@ export function SupportTicketsPage() {
                           <span className="text-xs text-gray-500">{labelForSupportTicketCategory(ticket.category)}</span>
                         ) : null}
                         <AttentionBadge ticket={ticket} />
+                        <SupportTicketListChips ticket={ticket} />
                       </div>
                     </div>
                   </AdminTd>

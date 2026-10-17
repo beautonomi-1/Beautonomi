@@ -1,44 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { adminSpaTo } from "./adminSpaPath";
-import {
-  adminSupportContextActionLabel,
-  adminSupportContextHref,
-  adminSupportTicketsSearchHref,
-} from "./adminSupportContextHref";
+import { adminSupportContextHrefForRole } from "./adminSupportContextHref";
 
-describe("adminSupportContextHref", () => {
-  it("maps booking, order, and gift card ids to admin pages", () => {
-    expect(adminSupportContextHref("booking", "b1")).toBe("/admin/bookings/b1");
-    expect(adminSupportContextHref("product_order", "o1")).toBe("/admin/ecommerce/orders/o1");
-    expect(adminSupportContextHref("gift_card", "g1")).toBe("/admin/gift-cards/g1");
+describe("adminSupportContextHrefForRole", () => {
+  const bookingId = "00000000-0000-4000-8000-000000000001";
+
+  it("hides booking deep link for support_agent", () => {
+    expect(adminSupportContextHrefForRole("support_agent", "booking", bookingId)).toBeNull();
   });
 
-  it("maps extended support context types", () => {
-    expect(adminSupportContextHref("provider_onboarding", "u1")).toBe("/admin/provider-ops/tracker/u1");
-    expect(adminSupportContextHref("user", "u1")).toBe("/admin/users/u1");
-    expect(adminSupportContextHref("provider", "p1")).toBe("/admin/providers/p1");
-    expect(adminSupportContextHref("lead", "l1")).toBe("/admin/provider-ops/leads/l1");
-    expect(adminSupportContextHref("payment", "pay-1")).toBe("/admin/refunds?q=pay-1");
-    expect(adminSupportContextHref("account", "u1")).toBe("/admin/users/u1");
+  it("allows booking deep link for admin_support", () => {
+    expect(adminSupportContextHrefForRole("admin_support", "booking", bookingId)).toContain("/admin/bookings/");
   });
 
-  it("returns null when type or id is missing", () => {
-    expect(adminSupportContextHref("booking", "")).toBeNull();
-    expect(adminSupportContextHref("technical", "x1")).toBeNull();
+  it("hides payment refunds search for support roles", () => {
+    expect(adminSupportContextHrefForRole("support_agent", "payment", bookingId)).toBeNull();
+    expect(adminSupportContextHrefForRole("admin_support", "payment", bookingId)).toBeNull();
   });
 
-  it("labels the open action", () => {
-    expect(adminSupportContextActionLabel("booking")).toBe("Open booking");
-    expect(adminSupportContextActionLabel("product_order")).toBe("Open product order");
-  });
-
-  it("builds a ticket search href", () => {
-    expect(adminSupportTicketsSearchHref("BTN-1042")).toBe("/admin/support-tickets?q=BTN-1042");
-    expect(adminSupportTicketsSearchHref("")).toBe("/admin/support-tickets");
-  });
-
-  it("composes with adminSpaTo so Related tickets keep the search query", () => {
-    expect(adminSpaTo(adminSupportTicketsSearchHref("BTN-1042"))).toBe("/support-tickets?q=BTN-1042");
-    expect(adminSpaTo(adminSupportTicketsSearchHref("GIFT-9X"))).toBe("/support-tickets?q=GIFT-9X");
+  it("gates wallet bank refund deep link to finance", () => {
+    expect(adminSupportContextHrefForRole("support_agent", "wallet_bank_refund", bookingId)).toBeNull();
+    expect(adminSupportContextHrefForRole("admin_support", "wallet_bank_refund", bookingId)).toBeNull();
+    expect(adminSupportContextHrefForRole("admin_finance", "wallet_bank_refund", bookingId)).toBe(
+      `/admin/refunds?tab=bank&id=${bookingId}`,
+    );
+    expect(adminSupportContextHrefForRole("superadmin", "wallet_bank_refund", bookingId)).toContain("tab=bank");
   });
 });

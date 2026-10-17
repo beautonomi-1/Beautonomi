@@ -46,7 +46,7 @@ function CancelledContent() {
   let backLabel = t("checkout.cancelledGoHome");
 
   if (paymentType === "custom_offer" && offerId) {
-    backHref = `/offers/${encodeURIComponent(offerId)}`;
+    backHref = "/account-settings/custom-requests";
     backLabel = t("checkout.cancelledBackToOffer");
   } else if (bookingId) {
     backHref = `/bookings/${encodeURIComponent(bookingId)}/pay`;

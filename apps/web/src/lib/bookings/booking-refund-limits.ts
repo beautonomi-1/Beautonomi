@@ -9,16 +9,8 @@ export type BookingPaymentForRefundCap = {
   status?: string | null;
 };
 
-function isInPersonCollected(
-  payment: Pick<BookingPaymentForRefundCap, "payment_method" | "payment_provider">,
-): boolean {
-  const method = (payment.payment_method ?? "").toLowerCase();
-  const provider = (payment.payment_provider ?? "").toLowerCase();
-  if (method === "cash" || provider === "cash") return true;
-  if (provider === "paycloud" || provider === "yoco") return true;
-  if (method === "card" && provider !== "paystack") return true;
-  return false;
-}
+export { isInPersonCollected, isPlatformCollected } from "@/lib/bookings/payment-collected-classifier";
+import { isInPersonCollected } from "@/lib/bookings/payment-collected-classifier";
 
 export function computeInPersonRefundableCap(
   payments: BookingPaymentForRefundCap[],

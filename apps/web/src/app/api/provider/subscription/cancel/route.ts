@@ -67,6 +67,9 @@ export async function POST(request: NextRequest) {
       .update({
         cancelled_at: new Date().toISOString(),
         auto_renew: false,
+        scheduled_plan_id: null,
+        scheduled_change_at: null,
+        scheduled_billing_period: null,
         updated_at: new Date().toISOString(),
       })
       .eq('provider_id', providerId)

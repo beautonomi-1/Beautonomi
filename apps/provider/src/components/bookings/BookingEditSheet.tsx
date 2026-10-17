@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
-  ScrollView,
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
@@ -365,11 +364,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
   return (
     <>
       <BottomSheet visible={visible} onClose={onClose} title={be("title")} snapHeight="full">
-        <ScrollView
-          style={twStyle("flex-1")}
-          contentContainerStyle={{ paddingBottom: 24 }}
-          keyboardShouldPersistTaps="handled"
-        >
+        <View style={{ paddingBottom: 24 }}>
           <Text style={twStyle("mb-3 text-xs text-gray-500")}>
             {be("intro")}
           </Text>
@@ -576,7 +571,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
               loading={saving}
             />
           </View>
-        </ScrollView>
+        </View>
       </BottomSheet>
 
       <BottomSheet
@@ -585,7 +580,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
         title={be("assignStaff")}
         snapHeight="half"
       >
-        <ScrollView>
+        <View>
           {staffList.map((member) => (
             <TouchableOpacity
               key={member.id}
@@ -603,7 +598,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
               <Text style={twStyle("text-base text-gray-900")}>{member.name}</Text>
             </TouchableOpacity>
           ))}
-        </ScrollView>
+        </View>
       </BottomSheet>
 
       <BottomSheet
@@ -612,7 +607,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
         title={be("addProduct")}
         snapHeight="full"
       >
-        <ScrollView>
+        <View>
           {productsList.map((product) => {
             const variants = product.variants ?? [];
             const hasVariants = variants.length > 0;
@@ -656,7 +651,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
               );})}
             </View>
           );})}
-        </ScrollView>
+        </View>
       </BottomSheet>
     </>
   );

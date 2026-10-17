@@ -440,13 +440,18 @@ export async function executeReschedule(
     .single();
   const currentVersion = (currentRow as { version?: number } | null)?.version ?? 0;
 
+  const bookingUpdate: Record<string, unknown> = {
+    scheduled_at: newDatetime.toISOString(),
+    version: currentVersion + 1,
+    updated_at: new Date().toISOString(),
+  };
+  if (actor === "provider") {
+    bookingUpdate.provider_rescheduled_at = new Date().toISOString();
+  }
+
   const { data: updatedBooking, error: updateError } = await adminSupabase
     .from("bookings")
-    .update({
-      scheduled_at: newDatetime.toISOString(),
-      version: currentVersion + 1,
-      updated_at: new Date().toISOString(),
-    })
+    .update(bookingUpdate)
     .eq("id", bookingId)
     .eq("version", currentVersion)
     .select()

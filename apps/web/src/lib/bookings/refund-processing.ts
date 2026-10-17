@@ -82,28 +82,35 @@ export function describeCancellationRefund(
   isLateCancellation: boolean,
   refundAmount: number,
   bookingTotal: number,
-  currency: string
+  currency: string,
+  options?: {
+    inPersonRefundDue?: number;
+  },
 ): string {
   if (refundAmount <= 0) {
+    const inPerson = Math.max(0, Number(options?.inPersonRefundDue ?? 0));
+    if (inPerson > 0.01) {
+      return `No cancellation fee applies to in-person payments. The ${currency} ${inPerson.toFixed(2)} you paid in person will be returned to you by the provider.`;
+    }
     return "No refund will be credited for this cancellation per the provider's policy.";
   }
+  let message: string;
   if (!isLateCancellation) {
-    return `A full refund of ${currency} ${refundAmount.toFixed(2)} will be credited to your wallet.`;
-  }
-  if (
+    message = `A full refund of ${currency} ${refundAmount.toFixed(2)} will be credited to your wallet.`;
+  } else if (
     policy.refund_percentage !== undefined &&
     policy.refund_percentage !== null &&
     !Number.isNaN(Number(policy.refund_percentage))
   ) {
-    return `Approximately ${policy.refund_percentage}% (${currency} ${refundAmount.toFixed(2)}) will be credited to your wallet for this late cancellation.`;
+    message = `Approximately ${policy.refund_percentage}% (${currency} ${refundAmount.toFixed(2)}) will be credited to your wallet for this late cancellation.`;
+  } else if (policy.late_cancellation_type === "full_refund") {
+    message = `A full refund of ${currency} ${refundAmount.toFixed(2)} will be credited to your wallet.`;
+  } else if (policy.late_cancellation_type === "partial_refund") {
+    message = `A partial refund of ${currency} ${refundAmount.toFixed(2)} will be credited to your wallet.`;
+  } else {
+    message = `A refund of ${currency} ${refundAmount.toFixed(2)} will be credited to your wallet.`;
   }
-  if (policy.late_cancellation_type === "full_refund") {
-    return `A full refund of ${currency} ${refundAmount.toFixed(2)} will be credited to your wallet.`;
-  }
-  if (policy.late_cancellation_type === "partial_refund") {
-    return `A partial refund of ${currency} ${refundAmount.toFixed(2)} will be credited to your wallet.`;
-  }
-  return `A refund of ${currency} ${refundAmount.toFixed(2)} will be credited to your wallet.`;
+  return message;
 }
 
 export interface ProcessBookingRefundOptions {

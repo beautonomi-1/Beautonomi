@@ -32,7 +32,7 @@ export async function GET(
 
     const { data: ticket, error: ticketError } = await supabase
       .from("support_tickets")
-      .select("id, ticket_number, subject, description, user_id, status, priority, category, requester_type, support_context_type, support_context_id, support_context_label, csat_score, csat_comment, csat_submitted_at, last_message_at, last_message_from, last_customer_view_at, created_at, updated_at")
+      .select("id, ticket_number, subject, description, user_id, status, priority, category, requester_type, support_context_type, support_context_id, support_context_label, csat_score, csat_comment, csat_submitted_at, last_message_at, last_message_from, last_customer_view_at, handling_mode, created_at, updated_at")
       .eq("id", id)
       .eq("user_id", user.id)
       .single();
@@ -48,7 +48,7 @@ export async function GET(
     // resolve author display names separately with the service-role client.
     const { data: messages, error: messagesError } = await supabase
       .from("support_ticket_messages")
-      .select("id, message, is_internal, created_at, user_id, attachments")
+      .select("id, message, is_internal, created_at, user_id, attachments, author_kind")
       .eq("ticket_id", id)
       .eq("is_internal", false)
       .order("created_at", { ascending: true });

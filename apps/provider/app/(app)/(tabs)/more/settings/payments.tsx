@@ -215,6 +215,9 @@ export default function PaymentSettingsScreen() {
   function togglePreset(preset: number) {
     setForm((prev) => {
       const current = prev.tip_presets;
+      if (current.includes(preset) && current.length <= 1) {
+        return prev;
+      }
       const next = current.includes(preset)
         ? current.filter((p) => p !== preset)
         : [...current, preset].sort((a, b) => a - b);

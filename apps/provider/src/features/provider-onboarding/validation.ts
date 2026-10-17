@@ -1,3 +1,4 @@
+import { DEFAULT_BOOKING_POLICY_PRESET } from "@beautonomi/i18n";
 import { countryFilterIso2FromStorage, parseLegalDobIso, validateLegalDobParts } from "@beautonomi/utils";
 import type { OnboardingFormData } from "./types";
 import { coerceOwnerPhoneToE164ForForm, isValidOwnerPhoneE164 } from "./onboarding-phone";
@@ -43,6 +44,9 @@ export function validateStep(
       if (!formData.business_name?.trim()) errors.push("Business name is required");
       break;
     case 4:
+      if (!formData.booking_policy?.preset) {
+        errors.push("Please choose a booking protection preset");
+      }
       if (formData.is_vat_registered === true) {
         const addressCountry = formData.address?.country?.trim() || "South Africa";
         const isZa = countryFilterIso2FromStorage(addressCountry) === "ZA";
@@ -262,11 +266,9 @@ export function buildSubmitPayload(formData: Partial<OnboardingFormData>): Recor
     website: formData.website ?? null,
     tax_rate_percent: null,
     tips_enabled: formData.tips_enabled ?? true,
-    cancellation_window_hours: 24,
-    requires_deposit: false,
-    deposit_percentage: null,
-    no_show_fee_enabled: false,
-    no_show_fee_amount: null,
+    booking_policy: {
+      preset: formData.booking_policy?.preset ?? DEFAULT_BOOKING_POLICY_PRESET,
+    },
     include_in_search_engines: true,
     selected_plan_id: formData.selected_plan_id ?? null,
   };

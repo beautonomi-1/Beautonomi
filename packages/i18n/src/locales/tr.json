@@ -13472,7 +13472,8 @@
       "giftCardRedeemedDefault": "Carte cadeau redeemed to portefeuille successfully",
       "giftRedeemHelp": "Faka ikhodi oyithengile noma othile akuthumelele yona — ibhalansi ephelele ifakwa esikhwameni sakho semali ngokushesha.",
       "yourGiftCards": "Tu tarjetas de regalo",
-      "checkoutOpenFailed": "Güvenli ödeme açılamadı. Lütfen tekrar deneyin."
+      "checkoutOpenFailed": "Güvenli ödeme açılamadı. Lütfen tekrar deneyin.",
+      "walletHelpLink": "Cüzdan yardımı"
     },
     "paymentsScreen": {
       "saveCardExplainer": "Sizolondoloza ikhadi lakho ngokuphephile uma ukhokha. Ukuze uqinisekise ikhadi lakho, inkokhiso yesikhashana encane (isb. {{example}}) ingase ibekwe futhi ihlehliswe—lokhu kuqinisekisa ikhadi lakho ukuze ulisebenzise esikhathini esizayo.",
@@ -15524,7 +15525,9 @@
           "cashRefundConfirm": "I received it",
           "cashRefundDispute": "Dispute",
           "cashRefundConfirmed": "Thank you — your remboursement is confirmé.",
-          "cashRefundDisputed": "We flagged this remboursement for avis."
+          "cashRefundDisputed": "We flagged this remboursement for avis.",
+          "cancelPreviewSheetTitle": "Bu rezervasyon iptal edilsin mi?",
+          "cancelPreviewInPersonRefund": "Şahsa yapılan geri ödeme: {{currency}} {{amount}}"
         },
         "groupBookingDetail": {
           "back": "Retour",
@@ -17078,7 +17081,14 @@
           "priorityLow": "Faible",
           "priorityMedium": "Moyen",
           "priorityHigh": "Élevé",
-          "priorityUrgent": "Urgent"
+          "priorityUrgent": "Urgent",
+          "chatDefaultSubject": "ayuda solicitud",
+          "continueToChat": "continuar to chat",
+          "useFullForm": "Use lleno form",
+          "startChat": "empezar chat",
+          "chatBack": "Retour",
+          "safetyUseForm": "Les rapports de sécurité sont envoyés directement à notre équipe – veuillez utiliser le formulaire complet.",
+          "chatAiDisclaimer": "L'IA peut faire des erreurs : vous pouvez parler à une personne à tout moment après la création de votre ticket."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Écrivez votre message…",
@@ -17537,6 +17547,49 @@
     "exploreVideo": {
       "unmute": "Sesi aç",
       "mute": "Sessize al"
+    },
+    "bankAccounts": {
+      "failedLoadBanks": "Bankalar yüklenemedi. Tekrar deneyin.",
+      "fillAllFields": "Bir banka seçin ve hesap numarasını ve sahibinin adını girin.",
+      "removeConfirmTitle": "Banka hesabı kaldırılsın mı?",
+      "removeConfirmBody": "Bu hesap artık banka iadeleri için kullanılamayacak.",
+      "remove": "Kaldırmak",
+      "intro": "Yalnızca uygun kart ödemelerinin banka iadeleri için kullanılır. Hesap numaraları şifreli olarak saklanır.",
+      "empty": "Henüz kayıtlı banka hesabı yok.",
+      "bankLabel": "Banka",
+      "primary": "Öncelik",
+      "makePrimary": "Birincil yap",
+      "verifiedBadge": "Doğrulandı",
+      "addAnother": "Banka hesabı ekleyin",
+      "searchBanks": "Bankaları ara",
+      "accountNumberLabel": "Hesap numarası",
+      "verifiedAs": "Doğrulandı: {{name}}",
+      "verify": "Hesabı doğrula",
+      "verificationUnavailable": "Otomatik doğrulama, bulunduğunuz pazarda mevcut değildir; hesap sahibinin adını tam olarak bankanızda göründüğü şekliyle girin.",
+      "accountNameLabel": "Hesap sahibinin adı",
+      "save": "Banka hesabını kaydet",
+      "screenTitle": "Banka hesapları"
+    },
+    "walletBankRefund": {
+      "addBank": "Banka hesabı ekleyin",
+      "notEnabled": "Banka iadeleri şu anda pazarınızda kullanılamıyor.",
+      "invalidAmount": "Geçerli bir tutar girin.",
+      "failed": "İsteğiniz gönderilemedi. Tekrar deneyin veya destek ekibiyle iletişime geçin.",
+      "openRequest": "Halihazırda devam eden bir banka geri ödeme talebiniz var ({{number}}).",
+      "cancelRequest": "İsteği iptal et",
+      "retentionTitle": "Beautonomi açık tutun",
+      "retentionBody": "Bir sonraki rezervasyonunuzda {{amount}} kullanıma hazırsınız; cüzdan kredisi ödeme sırasında anında uygulanır.",
+      "keepInWallet": "Cüzdanımda sakla",
+      "continueToBank": "Bunun yerine banka geri ödemesi isteyin",
+      "eligibleLabel": "Banka iadesine uygun: {{amount}}",
+      "eligibleHint": "Yalnızca Beautonomi üzerinden yapılan kart ödemelerinin iadeleri banka hesabına gönderilebilir. Yüklemeler, hediye kartları ve promosyon kredileri cüzdanınızda kalır.",
+      "noneEligible": "Şu anda banka geri ödemesine uygun herhangi bir kart ödemesi geri ödemeniz yok.",
+      "amountLabel": "Bankanıza ne kadar göndermeliyiz?",
+      "feeLine": "İşlem ücreti: {{fee}} · Aldığınız tutar: {{net}}",
+      "submit": "İsteği gönder",
+      "submittedTitle": "İstek gönderildi",
+      "submittedBody": "Finans ekibimiz incelerken tutar cüzdanınızda beklemede kalacaktır. Onaylanan geri ödemeler genellikle {{days}} iş günü içinde EFT yoluyla ödenir.",
+      "screenTitle": "Banka iadesi"
     }
   },
   "checkout": {
@@ -17634,7 +17687,7 @@
     "lateCancellationWithinWindowNoRefund": "Within {{hours}} {{hourWord}} of your appointment: no refund will be issued.",
     "noRefundOnCancellation": "Cancellations are non-refundable per this provider's policy.",
     "policyEnforcedAutomatically": "This policy is enforced automatically at the time of cancellation.",
-    "refundsStoreCreditNote": "All refunds are issued as store credit to your Beautonomi wallet, limited to amounts already paid.",
+    "refundsStoreCreditNote": "Çevrimiçi ödemelerin iadesi Beautonomi cüzdanınıza kredi olarak tanımlanır. Şahsen yapılan ödemelerde iptal ücreti yoktur ve tutarı sağlayıcı iade eder.",
     "hour": "heure",
     "hours": "heures",
     "noShowFeeApplies": "No-show fee of {{amount}} applies if you miss your appointment without cancelling.",
@@ -17756,7 +17809,11 @@
     "paymentUnavailableTitle": "Ödeme kullanılamıyor",
     "paymentBrowserFailed": "Güvenli ödeme penceresi açılamadı. Lütfen tekrar deneyin.",
     "paymentNotCompletedTitle": "Ödeme tamamlanmadı",
-    "paymentNotCompletedBody": "Rezervasyonunuz onaylanmadı."
+    "paymentNotCompletedBody": "Rezervasyonunuz onaylanmadı.",
+    "tipPercentButtonA11y": "{{percent}}% propina, {{amount}}",
+    "cancelPreviousWithFeeBody": "İptal ücreti {{fee}}. {{refund}} Beautonomi cüzdanınıza geri dönecektir. Önceki randevuyu iptal etmek mi istiyorsunuz?",
+    "cancelPreviousFullRefundBody": "{{refund}} Beautonomi cüzdanınıza geri dönecektir. Önceki randevuyu iptal etmek mi istiyorsunuz?",
+    "confirmCancelPrevious": "Öncekini iptal et"
   },
   "payments": {
     "pay": "Pay",

@@ -1,5 +1,22 @@
-import { useEffect, useCallback, useState, type ComponentType, type PropsWithChildren } from "react";
-import { View, Text, TouchableOpacity, Modal, Pressable, ScrollView, Platform, Keyboard, Dimensions, useWindowDimensions } from "react-native";
+import {
+  useEffect,
+  useCallback,
+  useRef,
+  type ComponentType,
+  type PropsWithChildren,
+  type RefObject,
+} from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Modal,
+  Pressable,
+  ScrollView,
+  Keyboard,
+  Dimensions,
+  useWindowDimensions,
+} from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import Animated, {
   useSharedValue,
@@ -29,6 +46,8 @@ interface BottomSheetProps {
   footer?: React.ReactNode;
   snapHeight?: "auto" | "half" | "full";
   showHandle?: boolean;
+  /** Optional ref for the sheet's main vertical ScrollView (section jump / scroll reset). */
+  contentScrollRef?: RefObject<ScrollView | null>;
 }
 
 const GestureRoot = GestureHandlerRootView as ComponentType<
@@ -45,17 +64,16 @@ export function BottomSheet({
   footer,
   snapHeight = "auto",
   showHandle = true,
+  contentScrollRef,
 }: BottomSheetProps) {
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
-  
-  /** Android modals do not lift like iOS KAV; pad container so the sheet stays above the keyboard. */
-  const [androidKeyboardInset, setAndroidKeyboardInset] = useState(0);
-  
+  const wasVisibleRef = useRef(false);
+
   // Initialize with a large enough value to be off-screen
   const translateY = useSharedValue(Dimensions.get("window").height * 2);
   const backdropOpacity = useSharedValue(0);
-  
+
   const snapHeights = {
     auto: screenHeight * 0.8,
     half: screenHeight * 0.55,
@@ -76,32 +94,14 @@ export function BottomSheet({
   }, [onClose, translateY, backdropOpacity, screenHeight]);
 
   useEffect(() => {
-    if (visible) {
-      translateY.value = screenHeight;
-      backdropOpacity.value = 0;
-      translateY.value = withSpring(0, { damping: 20, stiffness: 90 });
-      backdropOpacity.value = withTiming(1, { duration: 250 });
-    }
+    const opening = visible && !wasVisibleRef.current;
+    wasVisibleRef.current = visible;
+    if (!opening) return;
+    translateY.value = screenHeight;
+    backdropOpacity.value = 0;
+    translateY.value = withSpring(0, { damping: 20, stiffness: 90 });
+    backdropOpacity.value = withTiming(1, { duration: 250 });
   }, [visible, translateY, backdropOpacity, screenHeight]);
-
-  useEffect(() => {
-    if (Platform.OS !== "android") return;
-    const showEvt = "keyboardDidShow";
-    const hideEvt = "keyboardDidHide";
-    const subShow = Keyboard.addListener(showEvt, (e) => {
-      const h = e.endCoordinates?.height;
-      setAndroidKeyboardInset(typeof h === "number" && Number.isFinite(h) ? h : 0);
-    });
-    const subHide = Keyboard.addListener(hideEvt, () => setAndroidKeyboardInset(0));
-    return () => {
-      subShow.remove();
-      subHide.remove();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!visible) setAndroidKeyboardInset(0);
-  }, [visible]);
 
   useEffect(() => {
     if (visible || !onModalHide) return;
@@ -144,17 +144,14 @@ export function BottomSheet({
             />
           </Animated.View>
 
-          {/* Keyboard avoidance applies to the sheet only (not the backdrop), so the form stays above the keyboard. */}
           <KeyboardAvoidingView
-            style={{ 
-              flex: 1, 
+            style={{
+              flex: 1,
               justifyContent: "flex-end",
-              paddingBottom: Platform.OS === "android" ? androidKeyboardInset : 0
             }}
             behavior="padding"
             keyboardVerticalOffset={0}
           >
-            {/* Animated sheet - explicit opaque background for form content */}
             <Animated.View
               style={[
                 {
@@ -173,7 +170,6 @@ export function BottomSheet({
                 sheetAnimatedStyle,
               ]}
             >
-              {/* Drag handle */}
               {showHandle && (
                 <GestureDetector gesture={panGesture}>
                   <Animated.View style={{ alignItems: "center", paddingBottom: 4, paddingTop: 12 }}>
@@ -202,6 +198,7 @@ export function BottomSheet({
               )}
 
               <ScrollView
+                ref={contentScrollRef}
                 style={{ flexShrink: 1, backgroundColor: "#ffffff" }}
                 contentContainerStyle={{
                   padding: 20,

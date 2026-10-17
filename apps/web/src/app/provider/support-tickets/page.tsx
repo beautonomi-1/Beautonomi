@@ -10,7 +10,7 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { ChevronRight, LifeBuoy, Plus } from "lucide-react";
-import { labelForSupportTicketCategory } from "@/lib/support/ticket-categories";
+import { labelForSupportTicketCategoryI18n } from "@/lib/support/ticket-categories";
 
 type Ticket = {
   id: string;
@@ -99,7 +99,7 @@ label: t("web.provider.pages.support-tickets/new.title"),
                   <p className="text-xs text-gray-500 mt-1">
                     #{ticket.ticket_number} · {ticket.status.replace(/_/g, " ")}
                     {ticket.category
-                      ? ` · ${labelForSupportTicketCategory(ticket.category)}`
+                      ? ` · ${labelForSupportTicketCategoryI18n(ticket.category, t)}`
                       : ""}
                   </p>
                 </div>

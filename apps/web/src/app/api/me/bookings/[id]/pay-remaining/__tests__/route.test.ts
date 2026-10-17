@@ -143,7 +143,12 @@ function makeSupabaseMock(booking: ReturnType<typeof bookingRow> | null) {
 
 const adminInserts: Array<{ table: string; row: Record<string, unknown> }> = [];
 
-function makeAdminMock(providerRow: Record<string, unknown> | null = null) {
+const DEFAULT_PROVIDER_ROW = {
+  tips_enabled: true,
+  tip_presets: [10, 15, 20, 25],
+};
+
+function makeAdminMock(providerRow: Record<string, unknown> | null = DEFAULT_PROVIDER_ROW) {
   return {
     from: vi.fn((table: string) => ({
       insert: vi.fn(async (row: Record<string, unknown>) => {
@@ -167,8 +172,37 @@ function makeAdminMock(providerRow: Record<string, unknown> | null = null) {
 }
 
 type PayRemainingPost = typeof import("../route").POST;
+type PayRemainingGet = typeof import("../route").GET;
 
 let POST: PayRemainingPost;
+let GET: PayRemainingGet;
+
+describe("GET /api/me/bookings/[id]/pay-remaining", () => {
+  beforeAll(async () => {
+    ({ GET } = await import("../route"));
+  }, 90_000);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRequireRoleInApi.mockResolvedValue({ user: { id: "user-1", role: "customer" } });
+    mockGetSupabaseAdmin.mockReturnValue(makeAdminMock());
+    mockGetSupabaseServer.mockResolvedValue(makeSupabaseMock(bookingRow()));
+  });
+
+  it("returns normalized tip_presets on preview", async () => {
+    mockGetSupabaseAdmin.mockReturnValue(
+      makeAdminMock({ tips_enabled: true, tip_presets: [25, 10, 15] }),
+    );
+
+    const req = new NextRequest(`http://localhost/api/me/bookings/${BOOKING_ID}/pay-remaining`);
+    const res = await GET(req, { params: Promise.resolve({ id: BOOKING_ID }) });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body?.data?.tip_presets).toEqual([10, 15, 25]);
+    expect(body?.data?.tips_enabled).toBe(true);
+  });
+});
 
 describe("POST /api/me/bookings/[id]/pay-remaining", () => {
   beforeAll(async () => {

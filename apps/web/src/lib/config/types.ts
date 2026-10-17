@@ -61,6 +61,8 @@ export interface ConfigBundleMeta {
    * Used for market-specific URLs/copy without exposing control-plane keys.
    */
   region_settings_public?: Record<string, unknown>;
+  /** True when feature_flags could not be loaded — clients must not treat empty flags as authoritative. */
+  flags_unavailable?: boolean;
 }
 
 export interface SafeAmplitudeConfig {

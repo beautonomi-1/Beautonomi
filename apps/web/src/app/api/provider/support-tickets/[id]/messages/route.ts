@@ -12,6 +12,11 @@ import {
   resolveSupportTicketStaffRecipients,
 } from "@/lib/notifications/notification-service";
 import { requireProviderSupportTicketAccess } from "@/lib/support/provider-support-ticket-access";
+import { runSupportAssistantTurn } from "@/lib/support/support-assistant/run-turn";
+import {
+  assistantTurnFailureResponse,
+  precheckSupportAssistantTurn,
+} from "@/lib/support/support-assistant/turn-precheck";
 
 const attachmentSchema = z.object({
   url: z.string().url(),
@@ -54,17 +59,70 @@ export async function POST(
       status?: string | null;
       support_context_type?: string | null;
       support_context_label?: string | null;
+      handling_mode?: string | null;
     }>(
       admin,
       user.id,
       id,
-      "id, provider_id, requester_type, ticket_number, subject, priority, assigned_to, status, support_context_type, support_context_label",
+      "id, provider_id, requester_type, ticket_number, subject, priority, assigned_to, status, support_context_type, support_context_label, handling_mode",
     );
     if (access.response) return access.response;
 
     const currentStatus = String(access.ticket.status ?? "");
     if (currentStatus === "resolved" || currentStatus === "closed") {
       return errorResponse("This ticket is closed to new replies", "TICKET_CLOSED", 409);
+    }
+
+    const handlingMode = String(access.ticket.handling_mode ?? "human");
+    if (handlingMode === "assistant") {
+      if (attachments.length > 0) {
+        return errorResponse(
+          "Attachments are available after a specialist joins the conversation",
+          "ASSISTANT_NO_ATTACHMENTS",
+          400,
+        );
+      }
+      const pre = await precheckSupportAssistantTurn({ admin, ticketId: id, request });
+      if (pre.ok === false) {
+        return assistantTurnFailureResponse(pre.result);
+      }
+      const now = new Date().toISOString();
+      const { data: customerMsg, error: insertErr } = await admin
+        .from("support_ticket_messages")
+        .insert({
+          ticket_id: id,
+          user_id: user.id,
+          message: message.slice(0, 10000),
+          is_internal: false,
+          author_kind: "customer",
+        })
+        .select()
+        .single();
+      if (insertErr) throw insertErr;
+      await admin
+        .from("support_tickets")
+        .update({
+          last_message_at: customerMsg.created_at ?? now,
+          last_message_from: "customer",
+          last_customer_view_at: customerMsg.created_at ?? now,
+          updated_at: now,
+        })
+        .eq("id", id);
+
+      const turn = await runSupportAssistantTurn({
+        admin,
+        ticketId: id,
+        userText: message,
+        request,
+      });
+      if (turn.ok === false) {
+        return assistantTurnFailureResponse(turn);
+      }
+      return successResponse({
+        message: customerMsg,
+        assistantMessage: turn.assistantMessage,
+        handoff: turn.handoff,
+      });
     }
 
     const bodyText = message.slice(0, 10000) || (attachments.length ? "(attachment)" : "");
@@ -75,6 +133,7 @@ export async function POST(
         user_id: user.id,
         message: bodyText,
         is_internal: false,
+        author_kind: "customer",
         attachments,
       })
       .select()

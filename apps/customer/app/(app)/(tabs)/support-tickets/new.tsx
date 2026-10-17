@@ -2,32 +2,25 @@ import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "@beautonomi/i18n";
 import { View, Text, TextInput, ScrollView, Alert, Platform, TouchableOpacity, StyleSheet } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
-import { Stack, useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import * as Haptics from "expo-haptics";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { Colors } from "@/constants/colors";
 import { useSafetyStackBack } from "@/lib/customer-safety-navigation";
-import {
-  SUPPORT_TICKET_DEFAULT_CATEGORY,
-  SUPPORT_TICKET_PRIORITIES,
-  supportTicketPresetFromCategory,
-} from "@/lib/supportTicketCategoryPresets";
+import { SUPPORT_TICKET_PRIORITIES, supportTicketPresetFromCategory } from "@/lib/supportTicketCategoryPresets";
 import { SupportTicketCategoryPicker } from "@/components/SupportTicketCategoryPicker";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { trackSupportTicketCreated } from "@/lib/analytics";
-import { resolveSupportTicketPrefillFromSearch, shouldSendSupportContextId } from "@beautonomi/utils";
-
-const SUPPORT_CONTEXT_OPTIONS = [
-  { value: "booking", labelKey: "contextBooking" },
-  { value: "product_order", labelKey: "contextProductOrder" },
-  { value: "gift_card", labelKey: "contextGiftCard" },
-  { value: "payment", labelKey: "contextPayment" },
-  { value: "account", labelKey: "contextAccount" },
-  { value: "technical", labelKey: "contextTechnical" },
-  { value: "other", labelKey: "contextOther" },
-] as const;
+import {
+  contextTypeForCategory,
+  isSelectableForAudience,
+  resolveSupportTicketPrefillFromSearch,
+  shouldSendSupportContextId,
+  isSafetySupportCategory,
+} from "@beautonomi/utils";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 const PRIORITY_LABEL_KEYS: Record<(typeof SUPPORT_TICKET_PRIORITIES)[number]["value"], string> = {
   low: "priorityLow",
@@ -61,6 +54,9 @@ export default function NewSupportTicketScreen() {
     [t],
   );
   const handleBack = useSafetyStackBack();
+  const router = useRouter();
+  const assistantEnabled = useFeatureFlag("support.ai_assistant.customer");
+  const [chatStep, setChatStep] = useState<"category" | "chat" | "form">("form");
   const params = useLocalSearchParams<{
     category?: string;
     booking_id?: string;
@@ -72,16 +68,17 @@ export default function NewSupportTicketScreen() {
   }>();
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
-  const [category, setCategory] = useState(SUPPORT_TICKET_DEFAULT_CATEGORY);
-  const [supportContextType, setSupportContextType] = useState<(typeof SUPPORT_CONTEXT_OPTIONS)[number]["value"]>("booking");
+  const [category, setCategory] = useState("");
+  const [supportContextType, setSupportContextType] = useState<string | null>(null);
   const [supportContextLabel, setSupportContextLabel] = useState("");
   const [supportContextId, setSupportContextId] = useState<string | null>(null);
+  const [prefillLocked, setPrefillLocked] = useState(false);
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     const preset = typeof params.category === "string" ? params.category.trim() : "";
-    if (preset) {
+    if (preset && isSelectableForAudience(preset, "customer")) {
       setCategory(preset);
       const derived = supportTicketPresetFromCategory(preset);
       if (derived.priority) setPriority(derived.priority);
@@ -100,6 +97,7 @@ export default function NewSupportTicketScreen() {
       setSupportContextType(prefill.supportContextType);
       setSupportContextLabel(prefill.supportContextLabel);
       setSupportContextId(prefill.supportContextId);
+      setPrefillLocked(true);
       if (!preset) {
         const kind =
           prefill.supportContextType === "product_order"
@@ -116,20 +114,77 @@ export default function NewSupportTicketScreen() {
     }
   }, [params.category, params.booking_id, params.booking_number, params.order_id, params.order_number, params.gift_card_id, params.gift_card_code, sn]);
 
-  const canSubmit = subject.trim().length >= 4 && message.trim().length >= 10;
+  useEffect(() => {
+    setChatStep(assistantEnabled ? "category" : "form");
+  }, [assistantEnabled]);
+
+  const canSubmit = category.trim().length > 0 && subject.trim().length >= 4 && message.trim().length >= 10;
+  const canStartChat =
+    category.trim().length > 0 && message.trim().length >= 10 && !isSafetySupportCategory(category);
+
+  const sendChatFirstTicket = async () => {
+    if (!canStartChat) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSubmitting(true);
+    try {
+      const hasRef = Boolean(supportContextId) || Boolean(supportContextLabel.trim());
+      const contextType =
+        hasRef && supportContextType
+          ? supportContextType
+          : contextTypeForCategory(category) ?? supportContextType ?? undefined;
+      const preset = supportTicketPresetFromCategory(category);
+      const subjectLine =
+        subject.trim() || preset.subject || message.trim().slice(0, 120) || sn("chatDefaultSubject");
+      const res = await api.post<{ ticket?: { id?: string; ticket_number?: string } }>("/api/me/support-tickets", {
+        subject: subjectLine,
+        message: message.trim(),
+        category,
+        priority: preset.priority ?? priority,
+        support_context_type: contextType,
+        support_context_id: contextType && shouldSendSupportContextId(contextType) ? supportContextId : null,
+        support_context_label: supportContextLabel.trim() || null,
+        handling_mode: "assistant",
+      });
+      if (res.error) {
+        Alert.alert(sn("submitFailedTitle"), getApiErrorMessage(res.error, sn("submitFailedFallback")));
+        return;
+      }
+      const ticketId = res.data?.ticket?.id;
+      const ticketNumber = res.data?.ticket?.ticket_number;
+      if (ticketNumber) trackSupportTicketCreated(ticketNumber);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (ticketId) {
+        router.replace(`/(app)/(tabs)/support-tickets/${ticketId}` as never);
+      } else {
+        Alert.alert(sn("submittedTitle"), sn("submittedBody"), [{ text: t("common.ok"), onPress: handleBack }]);
+      }
+    } catch (e) {
+      Alert.alert(
+        t("customer.mobile.screens.authLogin.errorTitle"),
+        e instanceof Error ? e.message : sn("submitGenericError"),
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSubmitting(true);
     try {
+      const hasRef = Boolean(supportContextId) || Boolean(supportContextLabel.trim());
+      const contextType =
+        hasRef && supportContextType
+          ? supportContextType
+          : contextTypeForCategory(category) ?? supportContextType ?? undefined;
       const res = await api.post<{ ticket?: { ticket_number?: string } }>("/api/me/support-tickets", {
         subject: subject.trim(),
         message: message.trim(),
         category,
         priority,
-        support_context_type: supportContextType,
-        support_context_id: shouldSendSupportContextId(supportContextType) ? supportContextId : null,
+        support_context_type: contextType,
+        support_context_id: contextType && shouldSendSupportContextId(contextType) ? supportContextId : null,
         support_context_label: supportContextLabel.trim() || null,
       });
       if (res.error) {
@@ -169,36 +224,126 @@ export default function NewSupportTicketScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.fieldGap}>
-          <Text style={styles.label}>{sn("aboutLabel")}</Text>
-          <View style={styles.contextRow}>
-            {SUPPORT_CONTEXT_OPTIONS.map((option) => (
+        {assistantEnabled && chatStep === "category" ? (
+          <View style={styles.fieldGap}>
+            {prefillLocked && supportContextLabel ? (
+              <View style={styles.prefillCard}>
+                <Text style={styles.prefillLabel}>{sn("referenceLabel")}</Text>
+                <Text style={styles.prefillValue}>{supportContextLabel}</Text>
+              </View>
+            ) : null}
+            <SupportTicketCategoryPicker
+              value={category}
+              onChange={(v) => {
+                setCategory(v);
+                const derived = supportTicketPresetFromCategory(v);
+                if (derived.priority) setPriority(derived.priority);
+                if (derived.subject && !subject.trim()) setSubject(derived.subject);
+              }}
+              audience="customer"
+            />
+            {isSafetySupportCategory(category) ? (
+              <Text style={styles.safetyHint}>{sn("safetyUseForm")}</Text>
+            ) : null}
+            <View style={styles.chatActionsRow}>
               <TouchableOpacity
-                key={option.value}
-                onPress={() => setSupportContextType(option.value)}
+                onPress={() => setChatStep("form")}
+                style={styles.chatSecondaryBtn}
                 accessibilityRole="button"
-                accessibilityState={{ selected: supportContextType === option.value }}
-                style={[
-                  styles.contextChip,
-                  supportContextType === option.value ? styles.priorityChipActive : styles.priorityChipInactive,
-                ]}
               >
-                <Text style={[styles.priorityChipText, supportContextType === option.value && styles.priorityChipTextActive]}>
-                  {sn(option.labelKey)}
-                </Text>
+                <Text style={styles.chatSecondaryBtnText}>{sn("useFullForm")}</Text>
               </TouchableOpacity>
-            ))}
+              <TouchableOpacity
+                onPress={() => setChatStep(isSafetySupportCategory(category) ? "form" : "chat")}
+                disabled={!category.trim() || isSafetySupportCategory(category)}
+                style={[
+                  styles.submitBtn,
+                  styles.chatPrimaryBtnFlex,
+                  (!category.trim() || isSafetySupportCategory(category)) && styles.submitBtnDisabled,
+                ]}
+                accessibilityRole="button"
+              >
+                <Text style={styles.submitBtnText}>{sn("continueToChat")}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-          <Text style={styles.label}>{sn("referenceLabel")}</Text>
-          <TextInput
-            style={styles.input}
-            placeholder={sn("referencePlaceholder")}
-            placeholderTextColor="#9CA3AF"
-            value={supportContextLabel}
-            onChangeText={setSupportContextLabel}
-            maxLength={160}
+        ) : assistantEnabled && chatStep === "chat" ? (
+          <View>
+            <Text style={styles.chatDisclaimer}>{sn("chatAiDisclaimer")}</Text>
+            <Text style={styles.label}>{sn("detailsLabel")}</Text>
+            <TextInput
+              style={[styles.input, styles.inputMultiline]}
+              placeholder={sn("detailPlaceholder")}
+              placeholderTextColor="#9CA3AF"
+              value={message}
+              onChangeText={setMessage}
+              multiline
+              maxLength={5000}
+            />
+            <View style={styles.chatActionsRow}>
+              <TouchableOpacity
+                onPress={() => setChatStep("category")}
+                style={styles.chatSecondaryBtn}
+                accessibilityRole="button"
+              >
+                <Text style={styles.chatSecondaryBtnText}>{sn("chatBack")}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => void sendChatFirstTicket()}
+                disabled={!canStartChat || submitting}
+                style={[
+                  styles.submitBtn,
+                  styles.chatPrimaryBtnFlex,
+                  (!canStartChat || submitting) && styles.submitBtnDisabled,
+                ]}
+                accessibilityRole="button"
+              >
+                <Text style={styles.submitBtnText}>{submitting ? sn("submitting") : sn("startChat")}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+        <>
+        <View style={styles.fieldGap}>
+          {prefillLocked && supportContextLabel ? (
+            <View style={styles.prefillCard}>
+              <Text style={styles.prefillLabel}>{sn("referenceLabel")}</Text>
+              <Text style={styles.prefillValue}>{supportContextLabel}</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setPrefillLocked(false);
+                  setSupportContextLabel("");
+                  setSupportContextId(null);
+                  setSupportContextType(null);
+                }}
+                accessibilityRole="button"
+              >
+                <Text style={styles.prefillRemove}>{t("common.clear")}</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              <Text style={styles.label}>{sn("referenceLabel")}</Text>
+              <TextInput
+                style={styles.input}
+                placeholder={sn("referencePlaceholder")}
+                placeholderTextColor="#9CA3AF"
+                value={supportContextLabel}
+                onChangeText={setSupportContextLabel}
+                maxLength={160}
+              />
+            </>
+          )}
+          <SupportTicketCategoryPicker
+            value={category}
+            onChange={(v) => {
+              setCategory(v);
+              const derived = supportTicketPresetFromCategory(v);
+              if (derived.priority) setPriority(derived.priority);
+              if (derived.subject && !subject.trim()) setSubject(derived.subject);
+            }}
+            audience="customer"
           />
-          <SupportTicketCategoryPicker value={category} onChange={setCategory} />
         </View>
 
         <Text style={styles.label}>{sn("priorityLabel")}</Text>
@@ -251,7 +396,18 @@ export default function NewSupportTicketScreen() {
         >
           <Text style={styles.submitBtnText}>{submitting ? sn("submitting") : sn("submitTicket")}</Text>
         </TouchableOpacity>
+        {assistantEnabled ? (
+          <TouchableOpacity
+            onPress={() => setChatStep("category")}
+            style={styles.chatLinkBtn}
+            accessibilityRole="button"
+          >
+            <Text style={styles.chatLinkText}>{sn("continueToChat")}</Text>
+          </TouchableOpacity>
+        ) : null}
         <Text style={styles.hint}>{sn("responseHint")}</Text>
+        </>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -263,8 +419,17 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 220 },
   fieldGap: { marginBottom: 16 },
   label: { marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] },
-  contextRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 },
-  contextChip: { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1.5 },
+  prefillCard: {
+    marginBottom: 16,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.gray[50],
+  },
+  prefillLabel: { fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginBottom: 4 },
+  prefillValue: { fontSize: 15, fontWeight: "600", color: Colors.gray[900] },
+  prefillRemove: { marginTop: 8, fontSize: 14, fontWeight: "600", color: Colors.primary },
   priorityRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 20 },
   priorityChip: { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1.5 },
   priorityChipActive: { borderColor: Colors.primary, backgroundColor: `${Colors.primary}12` },
@@ -292,4 +457,20 @@ const styles = StyleSheet.create({
   submitBtnDisabled: { opacity: 0.5 },
   submitBtnText: { fontWeight: "600", color: "#fff", fontSize: 16 },
   hint: { marginTop: 12, textAlign: "center", fontSize: 12, color: Colors.gray[400] },
+  chatDisclaimer: { marginBottom: 12, fontSize: 12, color: Colors.gray[600], lineHeight: 18 },
+  safetyHint: { marginTop: 8, fontSize: 12, color: "#B45309", lineHeight: 18 },
+  chatActionsRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 16 },
+  chatSecondaryBtn: {
+    flex: 1,
+    minWidth: 120,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  chatSecondaryBtnText: { fontWeight: "600", color: Colors.gray[700], fontSize: 15 },
+  chatPrimaryBtnFlex: { flex: 1, minWidth: 120 },
+  chatLinkBtn: { marginTop: 10, alignItems: "center", paddingVertical: 8 },
+  chatLinkText: { fontSize: 14, fontWeight: "600", color: Colors.primary },
 });

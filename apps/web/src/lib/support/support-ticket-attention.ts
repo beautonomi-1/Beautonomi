@@ -33,6 +33,8 @@ export interface TicketAttentionInput {
   last_staff_view_at: string | null | undefined;
   /** needs_agent_response GENERATED column from DB — use when available. */
   needs_agent_response?: boolean | null;
+  /** assistant-handled tickets are not in the human queue. */
+  handling_mode?: string | null;
 }
 
 export interface TicketAttentionResult {
@@ -106,9 +108,11 @@ export function computeTicketAttention(
     attention_state = "sla_breached";
   } else {
     // Derive needs_agent_response locally if the DB-generated column is absent.
+    const isAssistantHandling = ticket.handling_mode === "assistant";
     const needsResponse =
       ticket.needs_agent_response ??
-      (lastMsgFromCustomer || (status === "open" && !ticket.first_staff_reply_at));
+      (!isAssistantHandling &&
+        (lastMsgFromCustomer || (status === "open" && !ticket.first_staff_reply_at)));
 
     if (needsResponse) {
       // Distinguish: brand-new ticket vs. customer reply
@@ -126,8 +130,11 @@ export function computeTicketAttention(
       // SLA at-risk floats above waiting_customer — agent must be aware
       // even when staff replied last.
       attention_state = "sla_at_risk";
-    } else if (ticket.last_message_from === "staff") {
-      attention_state = "waiting_customer";
+    } else if (
+      ticket.last_message_from === "staff" ||
+      ticket.last_message_from === "assistant"
+    ) {
+      attention_state = isAssistantHandling ? "assigned_idle" : "waiting_customer";
     } else {
       attention_state = "assigned_idle";
     }

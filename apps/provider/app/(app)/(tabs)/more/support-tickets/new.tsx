@@ -10,25 +10,18 @@ import { TrustScreenShell } from "@/components/safety/TrustScreenShell";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { Colors } from "@/constants/colors";
 import { twStyle } from "@/lib/twStyle";
-import {
-  SUPPORT_TICKET_DEFAULT_CATEGORY,
-  SUPPORT_TICKET_PRIORITIES,
-  supportTicketPresetFromCategory,
-} from "@/lib/supportTicketCategoryPresets";
+import { SUPPORT_TICKET_PRIORITIES, supportTicketPresetFromCategory } from "@/lib/supportTicketCategoryPresets";
 import { SupportTicketCategoryPicker } from "@/components/SupportTicketCategoryPicker";
 import { SUPPORT_TICKETS_API_PREFIX } from "@/lib/support-ticket-api";
 import { invalidateSupportTicketsListCache } from "@/lib/api-response-cache";
-import { resolveSupportTicketPrefillFromSearch, shouldSendSupportContextId } from "@beautonomi/utils";
-
-const SUPPORT_CONTEXT_OPTIONS = [
-  { value: "booking", labelKey: "contextBooking" },
-  { value: "product_order", labelKey: "contextProductOrder" },
-  { value: "payment", labelKey: "contextPayment" },
-  { value: "provider_onboarding", labelKey: "contextProviderOnboarding" },
-  { value: "account", labelKey: "contextAccount" },
-  { value: "technical", labelKey: "contextTechnical" },
-  { value: "other", labelKey: "contextOther" },
-] as const;
+import {
+  contextTypeForCategory,
+  isSelectableForAudience,
+  resolveSupportTicketPrefillFromSearch,
+  shouldSendSupportContextId,
+  isSafetySupportCategory,
+} from "@beautonomi/utils";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 const PRIORITY_LABEL_KEYS: Record<(typeof SUPPORT_TICKET_PRIORITIES)[number]["value"], string> = {
   low: "priorityLow",
@@ -45,19 +38,22 @@ export default function NewSupportTicketScreen() {
     [t],
   );
   const router = useRouter();
+  const assistantEnabled = useFeatureFlag("support.ai_assistant.provider");
+  const [chatStep, setChatStep] = useState<"category" | "chat" | "form">("form");
   const params = useLocalSearchParams<{ category?: string; booking_id?: string; booking_number?: string }>();
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
-  const [category, setCategory] = useState(SUPPORT_TICKET_DEFAULT_CATEGORY);
-  const [supportContextType, setSupportContextType] = useState<(typeof SUPPORT_CONTEXT_OPTIONS)[number]["value"]>("booking");
+  const [category, setCategory] = useState("");
+  const [supportContextType, setSupportContextType] = useState<string | null>(null);
   const [supportContextLabel, setSupportContextLabel] = useState("");
   const [supportContextId, setSupportContextId] = useState<string | null>(null);
+  const [prefillLocked, setPrefillLocked] = useState(false);
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     const preset = typeof params.category === "string" ? params.category.trim() : "";
-    if (preset) {
+    if (preset && isSelectableForAudience(preset, "provider")) {
       setCategory(preset);
       const derived = supportTicketPresetFromCategory(preset);
       if (derived.priority) setPriority(derived.priority);
@@ -72,6 +68,7 @@ export default function NewSupportTicketScreen() {
       setSupportContextType(prefill.supportContextType);
       setSupportContextLabel(prefill.supportContextLabel);
       setSupportContextId(prefill.supportContextId);
+      setPrefillLocked(true);
       if (!preset) {
         setSubject((current) =>
           current.trim()
@@ -81,6 +78,10 @@ export default function NewSupportTicketScreen() {
       }
     }
   }, [params.category, params.booking_id, params.booking_number, st]);
+
+  useEffect(() => {
+    setChatStep(assistantEnabled ? "category" : "form");
+  }, [assistantEnabled]);
 
   /**
    * §Provider-audit 2026-05: previously the Submit button silently stayed
@@ -94,7 +95,8 @@ export default function NewSupportTicketScreen() {
   const messageTrimmed = message.trim();
   const subjectOk = subjectTrimmed.length >= 1;
   const messageOk = messageTrimmed.length >= 1;
-  const canSubmit = subjectOk && messageOk;
+  const categoryOk = category.trim().length > 0;
+  const canSubmit = categoryOk && subjectOk && messageOk;
   const subjectHint =
     subjectTrimmed.length === 0
       ? st("subjectHintRequired")
@@ -108,11 +110,60 @@ export default function NewSupportTicketScreen() {
         ? st("messageHintTip")
         : null;
 
+  const canStartChat =
+    category.trim().length > 0 && messageTrimmed.length >= 10 && !isSafetySupportCategory(category);
+
+  const sendChatFirstTicket = async () => {
+    if (!canStartChat) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSubmitting(true);
+    try {
+      const hasRef = Boolean(supportContextId) || Boolean(supportContextLabel.trim());
+      const contextType =
+        hasRef && supportContextType
+          ? supportContextType
+          : contextTypeForCategory(category) ?? supportContextType ?? undefined;
+      const preset = supportTicketPresetFromCategory(category);
+      const subjectLine =
+        subjectTrimmed || preset.subject || messageTrimmed.slice(0, 120) || st("chatDefaultSubject");
+      const res = await api.post<{ ticket?: { id?: string; ticket_number?: string } }>(
+        SUPPORT_TICKETS_API_PREFIX,
+        {
+          subject: subjectLine,
+          message: messageTrimmed,
+          category,
+          priority: preset.priority ?? priority,
+          support_context_type: contextType,
+          support_context_id: contextType && shouldSendSupportContextId(contextType) ? supportContextId : null,
+          support_context_label: supportContextLabel.trim() || null,
+          handling_mode: "assistant",
+        },
+      );
+      if (res.error) {
+        Alert.alert(st("submitFailedTitle"), res.error.message ?? st("submitFailedFallback"));
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      invalidateSupportTicketsListCache();
+      const ticketId = res.data?.ticket?.id;
+      if (ticketId) {
+        router.replace(`/(app)/(tabs)/more/support-tickets/${ticketId}` as never);
+      } else {
+        Alert.alert(st("submittedTitle"), st("submittedBody"), [{ text: st("ok"), onPress: () => router.back() }]);
+      }
+    } catch (e) {
+      Alert.alert(st("errorTitle"), e instanceof Error ? e.message : st("submitGenericError"));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!canSubmit) {
       const missing: string[] = [];
       if (!subjectOk) missing.push(st("missingSubject"));
       if (!messageOk) missing.push(st("missingDescription"));
+      if (!categoryOk) missing.push(st("missingCategory"));
       Alert.alert(
         st("moreInfoTitle"),
         st("moreInfoBody", { missing: missing.join(st("missingJoin")) }),
@@ -122,6 +173,11 @@ export default function NewSupportTicketScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSubmitting(true);
     try {
+      const hasRef = Boolean(supportContextId) || Boolean(supportContextLabel.trim());
+      const contextType =
+        hasRef && supportContextType
+          ? supportContextType
+          : contextTypeForCategory(category) ?? supportContextType ?? undefined;
       const res = await api.post<{ ticket?: { id?: string; ticket_number?: string } }>(
         SUPPORT_TICKETS_API_PREFIX,
         {
@@ -129,8 +185,8 @@ export default function NewSupportTicketScreen() {
           message: messageTrimmed,
           category,
           priority,
-          support_context_type: supportContextType,
-          support_context_id: shouldSendSupportContextId(supportContextType) ? supportContextId : null,
+          support_context_type: contextType,
+          support_context_id: contextType && shouldSendSupportContextId(contextType) ? supportContextId : null,
           support_context_label: supportContextLabel.trim() || null,
         }
       );
@@ -175,50 +231,190 @@ export default function NewSupportTicketScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={{ marginBottom: 16 }}>
-            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{st("aboutLabel")}</Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-              {SUPPORT_CONTEXT_OPTIONS.map((option) => (
-                <TouchableOpacity
-                  key={option.value}
-                  onPress={() => setSupportContextType(option.value)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: supportContextType === option.value }}
+          {assistantEnabled && chatStep === "category" ? (
+            <View style={{ marginBottom: 16 }}>
+              {prefillLocked && supportContextLabel ? (
+                <View
                   style={{
-                    borderRadius: 20,
-                    paddingHorizontal: 14,
-                    paddingVertical: 10,
-                    borderWidth: 1.5,
-                    borderColor: supportContextType === option.value ? Colors.primary : Colors.gray[200],
-                    backgroundColor: supportContextType === option.value ? `${Colors.primary}12` : "#fff",
+                    marginBottom: 16,
+                    padding: 14,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: Colors.gray[200],
+                    backgroundColor: Colors.gray[50],
                   }}
                 >
-                  <Text style={{ fontSize: 13, fontWeight: "600", color: supportContextType === option.value ? Colors.primary : Colors.gray[600] }}>
-                    {st(option.labelKey)}
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginBottom: 4 }}>
+                    {st("referenceLabel")}
                   </Text>
+                  <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[900] }}>{supportContextLabel}</Text>
+                </View>
+              ) : null}
+              <SupportTicketCategoryPicker
+                value={category}
+                onChange={(v) => {
+                  setCategory(v);
+                  const derived = supportTicketPresetFromCategory(v);
+                  if (derived.priority) setPriority(derived.priority);
+                  if (derived.subject && !subject.trim()) setSubject(derived.subject);
+                }}
+                audience="provider"
+              />
+              {isSafetySupportCategory(category) ? (
+                <Text style={{ marginTop: 8, fontSize: 12, color: "#B45309", lineHeight: 18 }}>{st("safetyUseForm")}</Text>
+              ) : null}
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 16 }}>
+                <TouchableOpacity
+                  onPress={() => setChatStep("form")}
+                  style={{
+                    flex: 1,
+                    minWidth: 120,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: Colors.gray[200],
+                    paddingVertical: 14,
+                    alignItems: "center",
+                  }}
+                  accessibilityRole="button"
+                >
+                  <Text style={{ fontWeight: "600", color: Colors.gray[700], fontSize: 15 }}>{st("useFullForm")}</Text>
                 </TouchableOpacity>
-              ))}
+                <TouchableOpacity
+                  onPress={() => setChatStep(isSafetySupportCategory(category) ? "form" : "chat")}
+                  disabled={!category.trim() || isSafetySupportCategory(category)}
+                  style={{
+                    flex: 1,
+                    minWidth: 120,
+                    borderRadius: 12,
+                    backgroundColor: Colors.primary,
+                    paddingVertical: 14,
+                    alignItems: "center",
+                    opacity: !category.trim() || isSafetySupportCategory(category) ? 0.5 : 1,
+                  }}
+                  accessibilityRole="button"
+                >
+                  <Text style={{ fontWeight: "600", color: "#fff", fontSize: 15 }}>{st("continueToChat")}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{st("referenceLabel")}</Text>
-            <TextInput
-              style={{
-                marginBottom: 20,
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: Colors.gray[200],
-                backgroundColor: "#FAFAFA",
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-                fontSize: 15,
-                color: "#111827",
+          ) : assistantEnabled && chatStep === "chat" ? (
+            <View>
+              <Text style={{ marginBottom: 12, fontSize: 12, color: Colors.gray[600], lineHeight: 18 }}>
+                {st("chatAiDisclaimer")}
+              </Text>
+              <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{st("detailsLabel")}</Text>
+              <TextInput
+                style={{
+                  marginBottom: 16,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: Colors.gray[200],
+                  backgroundColor: "#FAFAFA",
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  fontSize: 15,
+                  color: "#111827",
+                  minHeight: 140,
+                  textAlignVertical: "top",
+                }}
+                placeholder={st("detailPlaceholder")}
+                placeholderTextColor="#9CA3AF"
+                value={message}
+                onChangeText={setMessage}
+                multiline
+                maxLength={5000}
+              />
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                <TouchableOpacity
+                  onPress={() => setChatStep("category")}
+                  style={{
+                    flex: 1,
+                    minWidth: 120,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: Colors.gray[200],
+                    paddingVertical: 14,
+                    alignItems: "center",
+                  }}
+                  accessibilityRole="button"
+                >
+                  <Text style={{ fontWeight: "600", color: Colors.gray[700], fontSize: 15 }}>{st("chatBack")}</Text>
+                </TouchableOpacity>
+                <View style={{ flex: 1, minWidth: 120 }}>
+                  <ActionButton
+                    label={submitting ? st("submitting") : st("startChat")}
+                    onPress={sendChatFirstTicket}
+                    variant="brand"
+                    fullWidth
+                    disabled={submitting || !canStartChat}
+                  />
+                </View>
+              </View>
+            </View>
+          ) : (
+          <>
+          <View style={{ marginBottom: 16 }}>
+            {prefillLocked && supportContextLabel ? (
+              <View
+                style={{
+                  marginBottom: 16,
+                  padding: 14,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: Colors.gray[200],
+                  backgroundColor: Colors.gray[50],
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginBottom: 4 }}>
+                  {st("referenceLabel")}
+                </Text>
+                <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[900] }}>{supportContextLabel}</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setPrefillLocked(false);
+                    setSupportContextLabel("");
+                    setSupportContextId(null);
+                    setSupportContextType(null);
+                  }}
+                  accessibilityRole="button"
+                  style={{ marginTop: 8 }}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{t("common.clear")}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{st("referenceLabel")}</Text>
+                <TextInput
+                  style={{
+                    marginBottom: 20,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: Colors.gray[200],
+                    backgroundColor: "#FAFAFA",
+                    paddingHorizontal: 14,
+                    paddingVertical: 12,
+                    fontSize: 15,
+                    color: "#111827",
+                  }}
+                  placeholder={st("referencePlaceholder")}
+                  placeholderTextColor="#9CA3AF"
+                  value={supportContextLabel}
+                  onChangeText={setSupportContextLabel}
+                  maxLength={160}
+                />
+              </>
+            )}
+            <SupportTicketCategoryPicker
+              value={category}
+              onChange={(v) => {
+                setCategory(v);
+                const derived = supportTicketPresetFromCategory(v);
+                if (derived.priority) setPriority(derived.priority);
+                if (derived.subject && !subject.trim()) setSubject(derived.subject);
               }}
-              placeholder={st("referencePlaceholder")}
-              placeholderTextColor="#9CA3AF"
-              value={supportContextLabel}
-              onChangeText={setSupportContextLabel}
-              maxLength={160}
+              audience="provider"
             />
-            <SupportTicketCategoryPicker value={category} onChange={setCategory} />
           </View>
 
           <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{st("priorityLabel")}</Text>
@@ -304,9 +500,20 @@ export default function NewSupportTicketScreen() {
             fullWidth
             disabled={submitting}
           />
+          {assistantEnabled ? (
+            <TouchableOpacity
+              onPress={() => setChatStep("category")}
+              style={{ marginTop: 10, alignItems: "center", paddingVertical: 8 }}
+              accessibilityRole="button"
+            >
+              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{st("continueToChat")}</Text>
+            </TouchableOpacity>
+          ) : null}
           <Text style={{ marginTop: 12, textAlign: "center", fontSize: 12, color: Colors.gray[400] }}>
             {st("responseHint")}
           </Text>
+          </>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </ScreenContainer>

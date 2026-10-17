@@ -8,8 +8,8 @@ const JSON_ROSTER = JSON.parse(
 ) as Array<{ key: string; task_default: string; vision_enabled: boolean }>;
 
 describe("AGENT_ROSTER_SEED", () => {
-  it("covers all 11 workforce agents with default routing", () => {
-    expect(AGENT_ROSTER_SEED).toHaveLength(11);
+  it("covers all 12 workforce agents with default routing", () => {
+    expect(AGENT_ROSTER_SEED).toHaveLength(12);
     expect(AGENT_ROSTER_SEED_KEYS).toEqual([
       "ops-sentinel",
       "support-triage",
@@ -22,12 +22,18 @@ describe("AGENT_ROSTER_SEED", () => {
       "trust-monitor",
       "content-moderator",
       "admin-copilot",
+      "support-assistant",
     ]);
     for (const row of AGENT_ROSTER_SEED) {
       expect(row.preferred_model_id).toBeNull();
       expect(row.fallback_model_id).toBeNull();
-      expect(row.operational_state).toBe("active");
-      expect(row.vision_enabled).toBe(true);
+      if (row.key === "support-assistant") {
+        expect(row.operational_state).toBe("disabled");
+        expect(row.vision_enabled).toBe(false);
+      } else {
+        expect(row.operational_state).toBe("active");
+        expect(row.vision_enabled).toBe(true);
+      }
     }
   });
 

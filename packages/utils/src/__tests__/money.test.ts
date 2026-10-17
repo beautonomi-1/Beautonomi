@@ -3,6 +3,8 @@ import {
   toMinorUnits,
   fromMinorUnits,
   percentOf,
+  normalizeTipPercentPresets,
+  validateTipPercentPresetsForSave,
   sumMoney,
   splitMoneyProportionally,
   roundCurrency,
@@ -26,6 +28,28 @@ describe("currency-aware money", () => {
 
   it("percentOf avoids float drift for ZAR", () => {
     expect(percentOf(200, 15, "ZAR")).toBe(30);
+    expect(percentOf(600, 15, "ZAR")).toBe(90);
+    expect(percentOf(149.99, 10, "ZAR")).toBe(15);
+  });
+
+  it("normalizeTipPercentPresets returns defaults for invalid input", () => {
+    expect(normalizeTipPercentPresets(null)).toEqual([10, 15, 20, 25]);
+    expect(normalizeTipPercentPresets([])).toEqual([10, 15, 20, 25]);
+    expect(normalizeTipPercentPresets(["10", "x"])).toEqual([10]);
+    expect(normalizeTipPercentPresets([0, 150])).toEqual([10, 15, 20, 25]);
+  });
+
+  it("normalizeTipPercentPresets dedupes, sorts, and caps at 5", () => {
+    expect(normalizeTipPercentPresets([25, 10, 15, 10, 20])).toEqual([10, 15, 20, 25]);
+    expect(normalizeTipPercentPresets([5, 10, 15, 20, 25, 30])).toEqual([5, 10, 15, 20, 25]);
+  });
+
+  it("validateTipPercentPresetsForSave rejects invalid PATCH payloads", () => {
+    expect(validateTipPercentPresetsForSave([])).toBeNull();
+    expect(validateTipPercentPresetsForSave([0])).toBeNull();
+    expect(validateTipPercentPresetsForSave([150])).toBeNull();
+    expect(validateTipPercentPresetsForSave([10, 15, 20, 25, 30, 5])).toBeNull();
+    expect(validateTipPercentPresetsForSave([10, 15, 20])).toEqual([10, 15, 20]);
   });
 
   it("sumMoney defaults to ZAR when currency omitted", () => {

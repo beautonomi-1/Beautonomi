@@ -3,10 +3,13 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { validatePortalToken } from "@/lib/portal/token";
-import { getCancellationPolicy, canCancelBooking } from "@/lib/bookings/cancellation-policy";
-import { describeCancellationRefund, roundCurrency2 } from "@/lib/bookings/refund-processing";
+import { loadCancellationOutcomeForBooking } from "@/lib/bookings/load-cancellation-outcome";
 import {
-  computeReconciledCancellationAmounts,
+  assertCancellationAllowed,
+  describeRefundFromOutcome,
+  settleParamsFromCancellationOutcome,
+} from "@/lib/bookings/cancellation-outcome-bridge";
+import {
   settleBookingCancellation,
   type BookingFinancialSnapshot,
 } from "@/lib/bookings/settle-booking-cancellation";
@@ -62,56 +65,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (booking.status === "cancelled") {
-      return handleApiError(
-        new Error("Booking already cancelled"),
-        "This booking has already been cancelled",
-        "ALREADY_CANCELLED",
-        400
-      );
-    }
-
-    const noSelfServeCancel = new Set([
-      "completed",
-      "no_show",
-      "in_progress",
-      "started",
-    ]);
-    if (noSelfServeCancel.has(booking.status as string)) {
-      return handleApiError(
-        new Error("Booking cannot be cancelled online"),
-        "This booking can no longer be cancelled online. Please contact your provider.",
-        "CANCELLATION_BLOCKED",
-        403
-      );
-    }
-
-    const policy = await getCancellationPolicy(
+    const { outcome, error: outcomeError } = await loadCancellationOutcomeForBooking(
       supabase,
-      booking.provider_id,
-      booking.location_type as "at_salon" | "at_home"
+      validation.bookingId,
+      "portal",
     );
-
-    const checkResult = canCancelBooking(
-      {
-        id: booking.id,
-        created_at: booking.created_at,
-        scheduled_at: booking.scheduled_at,
-        location_type: booking.location_type as "at_salon" | "at_home",
-      },
-      policy,
-      new Date(),
-      { forbidLateSelfService: false }
-    );
-
-    if (!checkResult.allowed) {
+    if (outcomeError || !outcome) {
+      return handleApiError(new Error("Booking not found"), "Booking not found", "NOT_FOUND", 404);
+    }
+    const gate = assertCancellationAllowed(outcome);
+    if (!gate.ok) {
       return handleApiError(
-        new Error(checkResult.reason || "Cancellation not allowed"),
-        checkResult.reason || "Cancellation not allowed",
-        "CANCELLATION_BLOCKED",
-        403
+        new Error(gate.message),
+        gate.message,
+        gate.code,
+        gate.httpStatus,
       );
     }
+    const policy = outcome.policy;
 
     type FinancialBooking = {
       subtotal?: number | null;
@@ -135,7 +106,9 @@ export async function POST(request: NextRequest) {
     const cancelCurrency =
       (bFin.currency as string) || tenantRegionForCancel?.defaultCurrency || LAST_RESORT_CURRENCY;
     const bookingTotal = Number(bFin.total_amount ?? 0);
-    const isLate = checkResult.isLateCancellation === true;
+    const isLate = outcome.isLate;
+    const cancellationFeeApplied = outcome.feeRetained;
+    const walletRefundAmount = outcome.walletRefund;
 
     const financialSnapshot: BookingFinancialSnapshot = {
       id: validation.bookingId,
@@ -163,15 +136,6 @@ export async function POST(request: NextRequest) {
       loyalty_points_earned: (booking as { loyalty_points_earned?: number | null }).loyalty_points_earned,
     };
 
-    const { cancellationFeeApplied, walletRefundAmount } = computeReconciledCancellationAmounts({
-      booking: financialSnapshot,
-      cancelledBy: "portal",
-      currency: cancelCurrency,
-      policy,
-      isLateCancellation: isLate,
-      refundBookingTotal: bookingTotal,
-    });
-
     const { data: updatedBooking, error: updateError } = await adminSupabase
       .from("bookings")
       .update({
@@ -198,32 +162,24 @@ export async function POST(request: NextRequest) {
         is_late_cancellation: isLate,
         cancellation_fee_applied: cancellationFeeApplied,
         wallet_refund_amount: walletRefundAmount,
+        penalty_waived_reason: outcome.penaltyWaivedReason ?? null,
       },
     });
 
-    if (checkResult.allowed) {
-      try {
-        await settleBookingCancellation({
+    try {
+      await settleBookingCancellation(
+        settleParamsFromCancellationOutcome(outcome, "portal", {
           booking: financialSnapshot,
-          cancelledBy: "portal",
           currency: cancelCurrency,
-          policy,
-          isLateCancellation: isLate,
           refundBookingTotal: bookingTotal,
-        });
-      } catch (settleErr) {
-        console.error("Error processing portal cancellation settlement:", settleErr);
-      }
+        }),
+      );
+    } catch (settleErr) {
+      console.error("Error processing portal cancellation settlement:", settleErr);
     }
 
     const { sendCancellationNotification } = await import("@/lib/bookings/notifications");
-    const refundInfo = describeCancellationRefund(
-      policy,
-      isLate,
-      walletRefundAmount,
-      bookingTotal,
-      cancelCurrency
-    );
+    const refundInfo = describeRefundFromOutcome(outcome, bookingTotal, cancelCurrency);
 
     await sendCancellationNotification(validation.bookingId, {
       cancelledBy: "customer",

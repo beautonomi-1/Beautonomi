@@ -19,6 +19,7 @@ import { getRequestNowAvailability } from "@/lib/on-demand/request-now-availabil
 import { withNoStore } from "@/lib/http/no-store";
 import { getPlatformDefaultTaxRateAndInclusive } from "@/lib/pricing/checkout-tax-defaults";
 import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-payment-types";
+import { normalizeTipPercentPresets } from "@beautonomi/utils";
 
 /** Hold state is per-session; responses are `Cache-Control: no-store` (never edge-cached). */
 export const GET = withNoStore(handleGet);
@@ -143,9 +144,7 @@ async function handleGet(
 
     const tenantDefaultCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const tips_enabled = Boolean((providerRow as any)?.tips_enabled ?? true);
-    const tip_presets = Array.isArray((providerRow as any)?.tip_presets)
-      ? (providerRow as any).tip_presets.map((p: unknown) => Number(p)).filter((n: number) => !Number.isNaN(n) && n >= 0)
-      : [10, 15, 20, 25];
+    const tip_presets = normalizeTipPercentPresets((providerRow as any)?.tip_presets);
     const prov = providerRow as {
       currency?: string;
       no_show_fee_enabled?: boolean;
@@ -163,20 +162,22 @@ async function handleGet(
           ? 30
           : 0;
 
-    const lateRefundPct =
-      cancellationPolicyRow.refund_percentage !== undefined &&
-      cancellationPolicyRow.refund_percentage !== null
-        ? Number(cancellationPolicyRow.refund_percentage)
-        : cancellationPolicyRow.late_cancellation_type === "full_refund"
-          ? 100
-          : cancellationPolicyRow.late_cancellation_type === "partial_refund"
-            ? 50
-            : 0;
+    const { buildPublicPolicyView } = await import("@/lib/bookings/public-policy-view");
+    const policyView = buildPublicPolicyView({
+      policy: cancellationPolicyRow,
+      provider: {
+        requires_deposit: prov?.requires_deposit,
+        deposit_percentage: prov?.deposit_percentage,
+        no_show_fee_enabled: prov?.no_show_fee_enabled,
+        no_show_fee_amount: prov?.no_show_fee_amount,
+        currency: prov?.currency ?? tenantDefaultCurrency,
+      },
+    });
     const cancellation_policy = {
-      cancellation_window_hours: cancellationPolicyRow.hours_before_cutoff,
-      grace_window_minutes: cancellationPolicyRow.grace_window_minutes,
-      policy_text: cancellationPolicyRow.policy_text,
-      late_refund_percentage: lateRefundPct,
+      cancellation_window_hours: policyView.cancellationWindowHours ?? cancellationPolicyRow.hours_before_cutoff,
+      grace_window_minutes: policyView.graceWindowMinutes ?? cancellationPolicyRow.grace_window_minutes,
+      policy_text: policyView.policyText ?? cancellationPolicyRow.policy_text,
+      late_refund_percentage: policyView.lateRefundPercentage ?? 0,
       fee_amount:
         cancellationPolicyRow.fee_amount != null && Number(cancellationPolicyRow.fee_amount) > 0
           ? Number(cancellationPolicyRow.fee_amount)

@@ -1,3 +1,4 @@
+import { DEFAULT_BOOKING_POLICY_PRESET } from "@beautonomi/i18n";
 import type { OnboardingFormData, OnboardingStepMeta, WizardStepKey, ZoneSuggestStatus } from "./types";
 
 export const DEFAULT_COUNTRY_NAME = "South Africa";
@@ -116,6 +117,7 @@ export const INITIAL_FORM: OnboardingFormData = {
     country: DEFAULT_COUNTRY_NAME,
   },
   accepts_custom_requests: true,
+  booking_policy: { preset: DEFAULT_BOOKING_POLICY_PRESET },
   // §provider-launch (2026-06): travel fees collected in-wizard for mobile/both
   // providers. Defaults to the platform standard so skipping keeps prior
   // behavior (auto-seeded platform default on submit).
@@ -135,7 +137,7 @@ export const STEPS: OnboardingStepMeta[] = [
   { id: 1, title: "Team size", description: "Tell us about your team" },
   { id: 2, title: "Your identity", description: "Name, verified email, and verified phone" },
   { id: 3, title: "Business details", description: "How customers see your business" },
-  { id: 4, title: "Payment setup", description: "Card machine & VAT" },
+  { id: 4, title: "Payments & policies", description: "Terminals, VAT & booking protection" },
   { id: 5, title: "Current software", description: "Optional — previous booking system" },
   {
     id: 6,

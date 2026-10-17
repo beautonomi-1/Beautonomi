@@ -182,9 +182,17 @@ function buildSupabaseMock(fixture: OfferFixture) {
   };
 }
 
-function buildAdminMock() {
-  const updateChain = {
-    eq: vi.fn().mockResolvedValue({ error: null }),
+/** `claimed: false` simulates a concurrent accept that already moved the offer out of pending. */
+function buildAdminMock(options: { claimed?: boolean } = {}) {
+  const claimed = options.claimed ?? true;
+  const updateChain: any = {
+    eq: vi.fn(() => updateChain),
+    in: vi.fn(() => updateChain),
+    select: vi.fn().mockResolvedValue({
+      data: claimed ? [{ id: OFFER_ID }] : [],
+      error: null,
+    }),
+    then: (resolve: (v: unknown) => void) => resolve({ error: null }),
   };
   return {
     from: vi.fn().mockReturnValue({
@@ -321,6 +329,35 @@ describe("postCustomOfferAccept — save_card metadata contract", () => {
     expect(res.status).toBe(502);
     expect(body.error.code).toBe("PAYMENT_INIT_FAILED");
   });
+
+  it("returns 409 PAYMENT_IN_PROGRESS and does not charge when a concurrent accept already claimed the offer", async () => {
+    mockGetSupabaseAdmin.mockReturnValue(buildAdminMock({ claimed: false }));
+    mockGetSupabaseServer.mockResolvedValue(
+      buildSupabaseMock({
+        paymentMethod: {
+          data: {
+            id: "pm-1",
+            user_id: CUSTOMER_ID,
+            provider_payment_method_id: "AUTH_test123",
+            expiry_month: 12,
+            expiry_year: 2099,
+            is_active: true,
+            provider: "paystack",
+          },
+          error: null,
+        },
+      }),
+    );
+    const { postCustomOfferAccept } = await import("../post-custom-offer-accept");
+    const res = await postCustomOfferAccept(
+      buildPostRequest({ payment_option: "full", payment_method_id: "pm-1" }),
+      { params: Promise.resolve({ id: OFFER_ID }) },
+    );
+    const body = await res.json();
+    expect(res.status).toBe(409);
+    expect(body.error.code).toBe("PAYMENT_IN_PROGRESS");
+    expect(mockChargeAuthorization).not.toHaveBeenCalled();
+  });
 });
 
 /**
@@ -336,6 +373,8 @@ describe("postCustomOfferAccept — zero-Paystack (wallet fully covers)", () => 
       updates.push(payload);
       const chain: any = {
         eq: vi.fn(() => chain),
+        in: vi.fn(() => chain),
+        select: vi.fn().mockResolvedValue({ data: [{ id: OFFER_ID }], error: null }),
         then: (resolve: (v: unknown) => void) => resolve({ error: null }),
       };
       return chain;

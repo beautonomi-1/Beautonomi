@@ -43,6 +43,8 @@ export default function AccountSettingsLayout() {
       <Stack.Screen name="identity-verification" options={{ title: t("customer.accountSettings.identityVerificationTitle") }} />
       <Stack.Screen name="payments" options={{ title: t("customer.accountSettings.stackPayments") }} />
       <Stack.Screen name="wallet" options={{ title: t("customer.wallet") }} />
+      <Stack.Screen name="wallet-bank-refund" options={{ title: t("customer.walletBankRefund.screenTitle") }} />
+      <Stack.Screen name="bank-accounts" options={{ title: t("customer.bankAccounts.screenTitle") }} />
       <Stack.Screen name="taxes" options={{ title: t("customer.accountSettings.taxDocumentsTitle") }} />
       <Stack.Screen name="addresses" options={{ title: t("customer.accountSettings.savedAddressesTitle") }} />
       <Stack.Screen name="bookings" options={{ title: t("customer.accountSettings.bookingsMenuTitle") }} />

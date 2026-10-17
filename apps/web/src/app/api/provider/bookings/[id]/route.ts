@@ -849,6 +849,8 @@ export async function PATCH(
       // Note: service_customization is stored in booking_services.customization, not bookings table
       cancellation_reason,
       cancellation_fee,
+      cancel_initiator,
+      emergency_cancellation,
       refund_rail,
       // Location and address fields
       location_type,
@@ -927,6 +929,38 @@ export async function PATCH(
     }
 
     const supabaseAdminPatch = getSupabaseAdmin();
+
+    let cancelOutcome: import("@/lib/bookings/resolve-cancellation-outcome").CancellationOutcome | null =
+      null;
+    let cancelOutcomeActor: import("@/lib/bookings/resolve-cancellation-outcome").CancelActor | null =
+      null;
+    if (requestedDbStatus === "cancelled" || requestedDbStatus === "no_show") {
+      const { loadCancellationOutcomeForBooking } = await import(
+        "@/lib/bookings/load-cancellation-outcome"
+      );
+      const { assertCancellationAllowed, providerCancelInitiatorToActor } = await import(
+        "@/lib/bookings/cancellation-outcome-bridge"
+      );
+      cancelOutcomeActor =
+        requestedDbStatus === "no_show"
+          ? "no_show"
+          : providerCancelInitiatorToActor(
+              typeof cancel_initiator === "string" ? cancel_initiator : null,
+            );
+      const { outcome } = await loadCancellationOutcomeForBooking(
+        supabaseAdminPatch,
+        id,
+        cancelOutcomeActor,
+      );
+      if (!outcome) {
+        return errorResponse("Could not evaluate cancellation policy", "INTERNAL", 500);
+      }
+      const gate = assertCancellationAllowed(outcome);
+      if (!gate.ok) {
+        return errorResponse(gate.message, gate.code, gate.httpStatus);
+      }
+      cancelOutcome = outcome;
+    }
     const branchAccessPatch = await assertProviderUserCanAccessBookingBranch(
       supabaseAdminPatch,
       user.id,
@@ -1242,11 +1276,10 @@ export async function PATCH(
       updateData.cancellation_reason = cancellation_reason;
     }
     
-    // Provider-initiated cancel: full customer refund by default (fee only when explicitly sent).
     if (cancellation_fee !== undefined) {
       updateData.cancellation_fee = cancellation_fee;
-    } else if (requestedDbStatus === "cancelled") {
-      updateData.cancellation_fee = 0;
+    } else if (cancelOutcome && (requestedDbStatus === "cancelled" || requestedDbStatus === "no_show")) {
+      updateData.cancellation_fee = cancelOutcome.feeRetained;
     }
 
     // Keep total_amount consistent with cancellation_fee math (DB trigger-enforced formula).
@@ -1456,17 +1489,14 @@ export async function PATCH(
 
     if (updatedToCancelled || updatedToNoShow) {
       try {
-        const { getCancellationPolicy } = await import("@/lib/bookings/cancellation-policy");
-        const {
-          settleBookingCancellation,
-          settleBookingNoShow,
-        } = await import("@/lib/bookings/settle-booking-cancellation");
+        const { settleBookingCancellation } = await import("@/lib/bookings/settle-booking-cancellation");
+        const { settleParamsFromCancellationOutcome } = await import(
+          "@/lib/bookings/cancellation-outcome-bridge"
+        );
         const { getTenantRegionConfig } = await import("@/lib/regions/config");
         const { LAST_RESORT_CURRENCY } = await import("@/lib/regions/last-resort-currency");
 
         const cb = currentBooking as Record<string, unknown>;
-        const locType = (cb.location_type as "at_salon" | "at_home") || "at_salon";
-        const policy = await getCancellationPolicy(getSupabaseAdmin(), providerId, locType);
         const bookingTenantId = cb.tenant_id as string | null;
         const tenantRegion = bookingTenantId ? await getTenantRegionConfig(bookingTenantId) : null;
         const currency =
@@ -1495,25 +1525,31 @@ export async function PATCH(
           loyalty_points_earned: cb.loyalty_points_earned as number | null,
         };
 
-        if (updatedToNoShow) {
-          const { data: provRow } = await getSupabaseAdmin()
-            .from("providers")
-            .select("no_show_fee_enabled, no_show_fee_amount")
-            .eq("id", providerId)
-            .maybeSingle();
-          cancellationSettlementResult = await settleBookingNoShow({
+        if (cancelOutcome && cancelOutcomeActor) {
+          cancellationSettlementResult = await settleBookingCancellation({
+            ...settleParamsFromCancellationOutcome(cancelOutcome, cancelOutcomeActor, {
+              booking: financialSnapshot,
+              currency,
+              refundBookingTotal: preCancelGrossTotal,
+              refundRail:
+                refund_rail === "terminal" || refund_rail === "wallet" ? refund_rail : undefined,
+            }),
+          });
+        } else if (updatedToNoShow) {
+          cancellationSettlementResult = await settleBookingCancellation({
             booking: financialSnapshot,
+            cancelledBy: "no_show",
             currency,
-            noShowFeeEnabled: Boolean((provRow as { no_show_fee_enabled?: boolean } | null)?.no_show_fee_enabled),
-            noShowFeeAmount: Number((provRow as { no_show_fee_amount?: number } | null)?.no_show_fee_amount ?? 0),
-            policy,
+            policy: null,
+            explicitCancellationFee: Number(updateData.cancellation_fee ?? 0),
+            refundBookingTotal: preCancelGrossTotal,
           });
         } else {
           cancellationSettlementResult = await settleBookingCancellation({
             booking: financialSnapshot,
             cancelledBy: "provider",
             currency,
-            policy,
+            policy: null,
             explicitCancellationFee: Number(updateData.cancellation_fee ?? 0),
             refundBookingTotal: preCancelGrossTotal,
             refundRail:
@@ -2025,19 +2061,47 @@ export async function PATCH(
         }
 
         if (dbStatus === "cancelled") {
-          await sendCancellationNotification(id, {
-            cancelledBy: 'provider',
-            refundInfo:
-              (cancellationSettlementResult?.terminalRefundDue ?? 0) > 0.01
+          const { describeRefundFromOutcome } = await import(
+            "@/lib/bookings/cancellation-outcome-bridge"
+          );
+          const refundInfo =
+            cancelOutcome && cancelNotifyCurrency
+              ? describeRefundFromOutcome(
+                  cancelOutcome,
+                  preCancelGrossTotal,
+                  cancelNotifyCurrency,
+                )
+              : (cancellationSettlementResult?.terminalRefundDue ?? 0) > 0.01
                 ? (cancellationSettlementResult?.walletRefundAmount ?? 0) > 0.01
-                  ? 'Card payments are being refunded to the card you paid with; the rest has been credited to your Beautonomi wallet.'
-                  : 'Your payment is being refunded to the card you paid with.'
-                : 'A full refund has been credited to the customer Beautonomi wallet for amounts already paid.',
-            cancellationReason: cancellation_reason || null,
-            walletRefund: cancellationSettlementResult?.walletRefundAmount,
-            feeRetained: cancellationSettlementResult?.cancellationFeeApplied,
-            currency: cancelNotifyCurrency,
-          });
+                  ? "Card payments are being refunded to the card you paid with; the rest has been credited to your Beautonomi wallet."
+                  : "Your payment is being refunded to the card you paid with."
+                : "A full refund has been credited to the customer Beautonomi wallet for amounts already paid.";
+          if (emergency_cancellation === true) {
+            const { notifyEmergencyCancellation } = await import(
+              "@/lib/notifications/notification-service"
+            );
+            const { customerBookingChannels } = await import(
+              "@/lib/notifications/customer-booking-channels"
+            );
+            const bookingTenantId = (currentBooking as { tenant_id?: string | null }).tenant_id;
+            await notifyEmergencyCancellation(
+              id,
+              typeof cancellation_reason === "string" && cancellation_reason.trim()
+                ? cancellation_reason.trim()
+                : "Emergency cancellation",
+              refundInfo,
+              await customerBookingChannels(bookingTenantId ?? null),
+            );
+          } else {
+            await sendCancellationNotification(id, {
+              cancelledBy: "provider",
+              refundInfo,
+              cancellationReason: cancellation_reason || null,
+              walletRefund: cancellationSettlementResult?.walletRefundAmount,
+              feeRetained: cancellationSettlementResult?.cancellationFeeApplied,
+              currency: cancelNotifyCurrency,
+            });
+          }
 
           try {
             const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");

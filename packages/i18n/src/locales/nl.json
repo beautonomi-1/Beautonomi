@@ -13472,7 +13472,8 @@
       "giftCardRedeemedDefault": "Carte cadeau redeemed to portefeuille successfully",
       "giftRedeemHelp": "Faka ikhodi oyithengile noma othile akuthumelele yona — ibhalansi ephelele ifakwa esikhwameni sakho semali ngokushesha.",
       "yourGiftCards": "Tu tarjetas de regalo",
-      "checkoutOpenFailed": "We konden beveiligd afrekenen niet openen. Probeer het opnieuw."
+      "checkoutOpenFailed": "We konden beveiligd afrekenen niet openen. Probeer het opnieuw.",
+      "walletHelpLink": "Wallet-Hilfe"
     },
     "paymentsScreen": {
       "saveCardExplainer": "Sizolondoloza ikhadi lakho ngokuphephile uma ukhokha. Ukuze uqinisekise ikhadi lakho, inkokhiso yesikhashana encane (isb. {{example}}) ingase ibekwe futhi ihlehliswe—lokhu kuqinisekisa ikhadi lakho ukuze ulisebenzise esikhathini esizayo.",
@@ -15524,7 +15525,9 @@
           "cashRefundConfirm": "I received it",
           "cashRefundDispute": "Dispute",
           "cashRefundConfirmed": "Thank you — your remboursement is confirmé.",
-          "cashRefundDisputed": "We flagged this remboursement for avis."
+          "cashRefundDisputed": "We flagged this remboursement for avis.",
+          "cancelPreviewSheetTitle": "Diese Buchung stornieren?",
+          "cancelPreviewInPersonRefund": "Persönlich fällige Rückerstattung: {{currency}} {{amount}}"
         },
         "groupBookingDetail": {
           "back": "Retour",
@@ -17078,7 +17081,14 @@
           "priorityLow": "Faible",
           "priorityMedium": "Moyen",
           "priorityHigh": "Élevé",
-          "priorityUrgent": "Urgent"
+          "priorityUrgent": "Urgent",
+          "chatDefaultSubject": "ayuda solicitud",
+          "continueToChat": "continuar to chat",
+          "useFullForm": "Use lleno form",
+          "startChat": "empezar chat",
+          "chatBack": "Retour",
+          "safetyUseForm": "Les rapports de sécurité sont envoyés directement à notre équipe – veuillez utiliser le formulaire complet.",
+          "chatAiDisclaimer": "L'IA peut faire des erreurs : vous pouvez parler à une personne à tout moment après la création de votre ticket."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Écrivez votre message…",
@@ -17537,6 +17547,49 @@
     "exploreVideo": {
       "unmute": "Geluid aan",
       "mute": "Dempen"
+    },
+    "bankAccounts": {
+      "failedLoadBanks": "Die Banken konnten nicht geladen werden. Versuchen Sie es erneut.",
+      "fillAllFields": "Wählen Sie eine Bank und geben Sie die Kontonummer und den Namen des Inhabers ein.",
+      "removeConfirmTitle": "Bankkonto entfernen?",
+      "removeConfirmBody": "Dieses Konto steht für Bankrückerstattungen nicht mehr zur Verfügung.",
+      "remove": "Entfernen",
+      "intro": "Wird nur für Bankrückerstattungen berechtigter Kartenzahlungen verwendet. Kontonummern werden verschlüsselt gespeichert.",
+      "empty": "Noch keine Bankkonten gespeichert.",
+      "bankLabel": "Banque",
+      "primary": "Primär",
+      "makePrimary": "Machen Sie primär",
+      "verifiedBadge": "Verifiziert",
+      "addAnother": "Fügen Sie ein Bankkonto hinzu",
+      "searchBanks": "Banken durchsuchen",
+      "accountNumberLabel": "Kontonummer",
+      "verifiedAs": "Verifiziert: {{name}}",
+      "verify": "Konto bestätigen",
+      "verificationUnavailable": "Die automatische Verifizierung ist in Ihrem Markt nicht verfügbar. Geben Sie den Namen des Kontoinhabers genau so ein, wie er bei Ihrer Bank erscheint.",
+      "accountNameLabel": "Name des Kontoinhabers",
+      "save": "Bankkonto speichern",
+      "screenTitle": "Bankkonten"
+    },
+    "walletBankRefund": {
+      "notEnabled": "Derzeit sind in Ihrem Markt keine Bankrückerstattungen möglich.",
+      "invalidAmount": "Geben Sie einen gültigen Betrag ein.",
+      "failed": "Ihre Anfrage konnte nicht übermittelt werden. Versuchen Sie es erneut oder wenden Sie sich an den Support.",
+      "openRequest": "Sie haben bereits einen Bankrückerstattungsantrag in Bearbeitung ({{number}}).",
+      "cancelRequest": "Anfrage abbrechen",
+      "retentionTitle": "Lassen Sie es auf Beautonomi",
+      "retentionBody": "Sie haben {{amount}} bereit, die Sie bei Ihrer nächsten Buchung verwenden können – das Guthaben wird beim Bezahlvorgang sofort verrechnet.",
+      "keepInWallet": "Behalte es in meiner Brieftasche",
+      "continueToBank": "Fordern Sie stattdessen eine Rückerstattung per Bank an",
+      "eligibleLabel": "Anspruch auf Rückerstattung durch die Bank: {{amount}}",
+      "eligibleHint": "Es können nur Rückerstattungen von Kartenzahlungen über Beautonomi auf ein Bankkonto erfolgen. Aufladungen, Geschenkkarten und Aktionsguthaben bleiben in Ihrem Portemonnaie.",
+      "noneEligible": "Sie verfügen derzeit über keine Erstattungen von Kartenzahlungen, die für eine Bankrückerstattung infrage kommen.",
+      "amountLabel": "Wie viel sollen wir an Ihre Bank überweisen?",
+      "feeLine": "Bearbeitungsgebühr: {{fee}} · Sie erhalten: {{net}}",
+      "addBank": "Fügen Sie ein Bankkonto hinzu",
+      "submit": "Anfrage abschicken",
+      "submittedTitle": "Antrag eingereicht",
+      "submittedBody": "Der Betrag wird in Ihrer Brieftasche zurückgehalten, während unser Finanzteam ihn überprüft. Genehmigte Rückerstattungen werden per EFT ausgezahlt, in der Regel innerhalb von {{days}} Werktagen.",
+      "screenTitle": "Rückerstattung durch die Bank"
     }
   },
   "checkout": {
@@ -17634,7 +17687,7 @@
     "lateCancellationWithinWindowNoRefund": "Within {{hours}} {{hourWord}} of your appointment: no refund will be issued.",
     "noRefundOnCancellation": "Cancellations are non-refundable per this provider's policy.",
     "policyEnforcedAutomatically": "This policy is enforced automatically at the time of cancellation.",
-    "refundsStoreCreditNote": "All refunds are issued as store credit to your Beautonomi wallet, limited to amounts already paid.",
+    "refundsStoreCreditNote": "Terugbetalingen van online betalingen worden als tegoed op je Beautonomi-portemonnee gezet. Betalingen ter plaatse hebben geen annuleringskosten en worden door de aanbieder teruggegeven.",
     "hour": "heure",
     "hours": "heures",
     "noShowFeeApplies": "No-show fee of {{amount}} applies if you miss your appointment without cancelling.",
@@ -17756,7 +17809,11 @@
     "paymentUnavailableTitle": "Betaling niet beschikbaar",
     "paymentBrowserFailed": "We konden het beveiligde betaalvenster niet openen. Probeer het opnieuw.",
     "paymentNotCompletedTitle": "Betaling niet voltooid",
-    "paymentNotCompletedBody": "Je boeking is niet bevestigd."
+    "paymentNotCompletedBody": "Je boeking is niet bevestigd.",
+    "tipPercentButtonA11y": "{{percent}}% propina, {{amount}}",
+    "cancelPreviousWithFeeBody": "Stornogebühr {{fee}}. {{refund}} wird Ihrem Beautonomi-Guthaben gutgeschrieben. Den vorherigen Termin absagen?",
+    "cancelPreviousFullRefundBody": "{{refund}} werden Ihrem Beautonomi-Guthaben gutgeschrieben. Den vorherigen Termin absagen?",
+    "confirmCancelPrevious": "Vorheriges abbrechen"
   },
   "payments": {
     "pay": "Pay",

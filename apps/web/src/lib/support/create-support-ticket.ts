@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { isValidSupportTicketCategory } from "@/lib/support/ticket-categories";
 import { computeSlaResolutionDueIso, computeFirstResponseDueIso } from "@/lib/support/support-ticket-sla";
 import {
   notifySupportStaffInboxActivity,
@@ -48,6 +49,13 @@ export async function createProviderSupportTicket(
   const admin = getSupabaseAdmin();
   const priority: SupportTicketPriority = params.priority ?? "medium";
   const messageFrom = params.messageFrom ?? "staff";
+
+  if (params.category != null && String(params.category).trim()) {
+    const cat = String(params.category).trim();
+    if (!isValidSupportTicketCategory(cat)) {
+      throw new Error(`Invalid support ticket category: ${cat}`);
+    }
+  }
 
   const { data: ticket, error: ticketError } = await admin
     .from("support_tickets")

@@ -251,6 +251,10 @@ describe("POST /api/provider/onboarding verification hold", () => {
             insert: vi.fn(async () => ({ error: null })),
           };
         }
+        if (table === "cancellation_policies") {
+          return { insert: vi.fn(async () => ({ error: null })) };
+        }
+
         throw new Error(`Unexpected table: ${table}`);
       }),
       rpc: vi.fn(async () => ({ data: null, error: { message: "does not exist" } })),

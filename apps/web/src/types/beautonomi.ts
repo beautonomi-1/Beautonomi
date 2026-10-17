@@ -182,6 +182,8 @@ export interface PublicProviderDetail extends PublicProviderCard {
   tax_rate_percent?: number;
   /** Whether the provider accepts tips. */
   tips_enabled?: boolean;
+  /** Tip preset percentages (e.g. 10, 15, 20). */
+  tip_presets?: number[];
   /** IANA timezone for interpreting booking slot wall times (e.g. Africa/Johannesburg). */
   timezone?: string | null;
   /** Provider-owned discount codes currently valid—shown on profile for customers to use at checkout. */
@@ -316,6 +318,9 @@ export interface ProviderPolicies {
   no_show_fee_enabled: boolean;
   no_show_fee_amount?: number;
   currency: string;
+  grace_window_minutes?: number;
+  late_refund_percentage?: number;
+  policy_text?: string | null;
 }
 
 // Booking Types

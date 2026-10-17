@@ -13472,7 +13472,8 @@
       "giftCardRedeemedDefault": "khadi ra nyiko redeemed to xikhwama ku humelelayi teley",
       "giftRedeemHelp": "Voer 'n kode in wat jy gekoop het of wat iemand met jou gedeel het - die volle balans word onmiddellik by jou beursie gevoeg.",
       "yourGiftCards": "tikhadi ta nyiko ya wena",
-      "checkoutOpenFailed": "A hi nge koti ku pfula xihakelo lexi sirhelelekeke. Hi kombela u ringeta nakambe."
+      "checkoutOpenFailed": "A hi nge koti ku pfula xihakelo lexi sirhelelekeke. Hi kombela u ringeta nakambe.",
+      "walletHelpLink": "xikhwama mpfuno"
     },
     "paymentsScreen": {
       "saveCardExplainer": "Ons sal jou kaart veilig stoor wanneer jy betaal. Om jou kaart te verifieer, kan 'n klein tydelike heffing (bv. {{example}}) geplaas en omgekeer word—dit bevestig jou kaart vir toekomstige gebruik.",
@@ -15529,7 +15530,9 @@
           "payRemainingNoTip": "A ku na thiphu",
           "payRemainingCustomTip": "Ya wena",
           "payRemainingCustomTipPlaceholder": "Mpimo wa thiphu",
-          "payRemainingTipLine": "Thiphu: {{amount}} — yi ya hi 100% eka muphakeli wa wena"
+          "payRemainingTipLine": "Thiphu: {{amount}} — yi ya hi 100% eka muphakeli wa wena",
+          "cancelPreviewSheetTitle": "Khansela this ku buka?",
+          "cancelPreviewInPersonRefund": "nxavo lexi faneleke hi xikandza: {{currency}} {{amount}}"
         },
         "groupBookingDetail": {
           "back": "Endzhaku",
@@ -17083,7 +17086,14 @@
           "priorityLow": "Hansi",
           "priorityMedium": "Exikarhi",
           "priorityHigh": "Henhla",
-          "priorityUrgent": "Bya xihatla"
+          "priorityUrgent": "Bya xihatla",
+          "chatDefaultSubject": "nseketelo xikombelo",
+          "continueToChat": "yana emahlweni to chat",
+          "useFullForm": "Use yi tele form",
+          "startChat": "sungula chat",
+          "chatBack": "Endzhaku",
+          "safetyUseForm": "Swiviko swa vuhlayiseki swi kongoma eka xipano xa hina — hi kombela u tirhisa fomo leyi heleleke.",
+          "chatAiDisclaimer": "AI yi nga endla swihoxo — u nga vulavula na munhu nkarhi wihi na wihi endzhaku ka loko thikithi ra wena ri endliwile."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Muxaka your rungula...",
@@ -17542,6 +17552,49 @@
     "exploreVideo": {
       "unmute": "Pfula mpfumawulo",
       "mute": "Tshula"
+    },
+    "bankAccounts": {
+      "failedLoadBanks": "A swi koteki ku loyida banks. ringa nakambe.",
+      "fillAllFields": "Hlawula bangi kutani u nghenisa nomboro ya akhawunti na vito ra n’wini.",
+      "removeConfirmTitle": "Susa akhawunti ya bhangi?",
+      "removeConfirmBody": "Akhawunti leyi a yi nge he kumeki ku tlheriseriwa mali ya le bangi.",
+      "remove": "Susa",
+      "intro": "Yi tirhisiwa ntsena eka ku tlheriseriwa ka mali ya le bangi ya tihakelo ta khadi leti faneleke. Tinomboro ta akhawunti ti hlayisiwa ti pfaleriwile.",
+      "empty": "No akhawunti ya bhangis hlayisad yet.",
+      "bankLabel": "Bhangi",
+      "primary": "xo sungula",
+      "makePrimary": "Make xo sungula",
+      "verifiedBadge": "yi tiyisisiwile",
+      "addAnother": "Engetela a akhawunti ya bhangi",
+      "searchBanks": "Lavisisa banks",
+      "accountNumberLabel": "akhawunti nomboro",
+      "verifiedAs": "yi tiyisisiwile: {{name}}",
+      "verify": "Tiyisisa akhawunti",
+      "verificationUnavailable": "Ku tiyisisiwa ka otomatiki a ku kumeki eka makete wa wena — nghenisa vito ra n’wini wa akhawunti hi ku kongoma tanihilaha ri humelelaka hakona ebangi ya wena.",
+      "accountNameLabel": "akhawunti holder vito",
+      "save": "Hlayisa akhawunti ya bhangi",
+      "screenTitle": "Akhawunti ya bhangis"
+    },
+    "walletBankRefund": {
+      "addBank": "Engetela a akhawunti ya bhangi",
+      "notEnabled": "Ku tlheriseriwa mali ya le bangi a swi kumeki eka makete wa wena sweswi.",
+      "invalidAmount": "Nghenisa a ya ntiyiso mpimo.",
+      "failed": "A swi koteki ku rhumela your xikombelo. ringa nakambe or Hlangana nseketelo.",
+      "openRequest": "Se u na xikombelo xo tlheriseriwa mali ya le bangi lexi nga eku endliweni ({{number}}).",
+      "cancelRequest": "Khansela xikombelo",
+      "retentionTitle": "Hlayisa it on Beautonomi",
+      "retentionBody": "U na {{amount}} lunghekele ku tirhisa eka ku bukuta ka wena loku landzelaka — xikweleti xa xipachi xi tirha loko u xava hi xihatla.",
+      "keepInWallet": "Hlayisa in my xikhwama",
+      "continueToBank": "xikombelo a Bhangi nxavo instead",
+      "eligibleLabel": "Eligible for Bhangi nxavo: {{amount}}",
+      "eligibleHint": "I ku tlheriseriwa ntsena ka tihakelo ta khadi leti endliweke hi ku tirhisa Beautonomi loku nga rhumeriwaka eka akhawunti ya le bangi. Ti-top-up, makhadi ya tinyiko na xikweleti xa ku tlakusa swi tshama eka xipachi xa wena.",
+      "noneEligible": "A wu na mali yo tlheriseriwa mali ya hakelo ya khadi leyi faneleke ku tlheriseriwa mali ya le bangi sweswi.",
+      "amountLabel": "How much should we rhumela to your Bhangi?",
+      "feeLine": "yi endla xihakelo: {{fee}} · You receive: {{net}}",
+      "submit": "rhumela xikombelo",
+      "submittedTitle": "xikombelo rhumelated",
+      "submittedBody": "Mali yi yimisiwile eka xipachi xa wena loko ntlawa wa hina wa swa timali wu ri karhi wu yi kambisisa. Ku tlheriseriwa mali loku pfumeleriweke ku hakeriwa hi EFT, hi ntolovelo ku nga si hela masiku ya {{days}} ntirho.",
+      "screenTitle": "Bhangi nxavo"
     }
   },
   "checkout": {
@@ -17639,7 +17692,7 @@
     "lateCancellationWithinWindowNoRefund": "Endzhaku ka tiawara ta {{hours}} {{hourWord}} ku nga si hela ku hlangana ka wena: a ku na ku vuyisela mali.",
     "noRefundOnCancellation": "Khanselalations are non-nxavoable per this mupfuneti's pholisi.",
     "policyEnforcedAutomatically": "Pholisi leyi yi sindzisiwa hi ku tisungulela hi nkarhi wa ku khansela.",
-    "refundsStoreCreditNote": "All nxavos are issued as store crhlela to your Beautonomi xikhwama, limited to mpimos already yi hakeleriwile.",
+    "refundsStoreCreditNote": "Ku tlheriseriwa ka swikweleti swa le ka netiweki swi nyikiwa tanihi xikweleti xa walece ya wena ya Beautonomi. Swikweleti leswi endliwaka hi munhu a swi na ntirho wo khansela naswona swi tlheriseriwa hi mupfuni.",
     "hour": "awara",
     "hours": "tiawara",
     "noShowFeeApplies": "Mali yo ka yi nga humeleli ya {{amount}} ya tirha loko u hundza nkarhi wa ku hlangana ka wena handle ko khansela.",
@@ -17761,7 +17814,11 @@
     "paymentUnavailableTitle": "xihakelo a yi kumeki",
     "paymentBrowserFailed": "A hi nge koti ku pfula fensetere leyi sirhelelekeke ya xihakelo. Hi kombela u ringeta nakambe.",
     "paymentNotCompletedTitle": "Xihakelo a xi hetiwanga",
-    "paymentNotCompletedBody": "Ku bukuta ka wena a ku tiyisisiwanga."
+    "paymentNotCompletedBody": "Ku bukuta ka wena a ku tiyisisiwanga.",
+    "tipPercentButtonA11y": "{{percent}}% xipfuno, {{amount}}",
+    "cancelPreviousWithFeeBody": "Mali yo khansela {{fee}}. {{refund}} u ta tlhelela eka xipachi xa wena Beautonomi. Khansela nkarhi lowu u wu hlanganeke khale?",
+    "cancelPreviousFullRefundBody": "{{refund}} u ta tlhelela eka xipachi xa wena Beautonomi. Khansela nkarhi lowu u wu hlanganeke khale?",
+    "confirmCancelPrevious": "Khansela lexi hundzeke"
   },
   "payments": {
     "pay": "Hakela",

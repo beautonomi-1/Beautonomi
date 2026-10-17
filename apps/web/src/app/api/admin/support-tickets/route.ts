@@ -7,7 +7,11 @@ import { computeSlaResolutionDueIso, computeFirstResponseDueIso } from "@/lib/su
 import { computeTicketAttentionFields } from "@/lib/support/support-ticket-attention";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { slackNotifyNewSupportTicket } from "@/lib/integrations/slack/triggers";
-import { normalizeSupportTicketCategory, SUPPORT_TICKET_CATEGORY_GROUPS } from "@/lib/support/ticket-categories";
+import {
+  deriveSupportContextTypeForTicket,
+  resolveGroupFilter,
+  validateAdminCategoryValue,
+} from "@/lib/support/ticket-categories";
 import { isUuidString } from "@beautonomi/utils";
 import { applySupportAgentTicketScope } from "@/lib/support/support-agent-tenant-scope";
 import { enrichTicketsWithLatestEmailDeliveryStatus } from "@/lib/support/enrich-support-ticket-list";
@@ -28,9 +32,7 @@ export async function GET(request: NextRequest) {
     const channelFilter = searchParams.get("channel");
     let categoryGroupValues: string[] | null = null;
     if (categoryGroup) {
-      const group = SUPPORT_TICKET_CATEGORY_GROUPS.find(
-        (g) => g.label.toLowerCase() === categoryGroup.trim().toLowerCase(),
-      );
+      const group = resolveGroupFilter(categoryGroup);
       if (!group) {
         return NextResponse.json({ error: "Unknown category_group" }, { status: 400 });
       }
@@ -58,6 +60,7 @@ export async function GET(request: NextRequest) {
     const includeCounts =
       searchParams.get("include_counts") === "1" ||
       searchParams.get("include_counts") === "true";
+    const handlingModeFilter = searchParams.get("handling_mode");
 
     // Build the list query. `agentQueue` gates every column introduced by
     // migration 726 (needs_agent_response, first_response_due_at). When that
@@ -141,6 +144,12 @@ export async function GET(request: NextRequest) {
         query = query.eq("needs_agent_response", true);
       }
 
+      if (handlingModeFilter === "assistant" && agentQueue) {
+        query = query.eq("handling_mode", "assistant");
+      } else if (handlingModeFilter === "human" && agentQueue) {
+        query = query.eq("handling_mode", "human");
+      }
+
       if (slaStateFilter === "breached") {
         const nowIso = new Date().toISOString();
         query = query
@@ -164,6 +173,7 @@ export async function GET(request: NextRequest) {
         query = query
           .lt("first_response_due_at", nowIso)
           .is("first_staff_reply_at", null)
+          .eq("handling_mode", "human")
           .not("status", "in", '("resolved","closed")');
       }
 
@@ -228,6 +238,7 @@ export async function GET(request: NextRequest) {
           assigned_to: row.assigned_to,
           last_staff_view_at: (row as Record<string, unknown>).last_staff_view_at as string | null,
           needs_agent_response: (row as Record<string, unknown>).needs_agent_response as boolean | null,
+          handling_mode: (row as Record<string, unknown>).handling_mode as string | null,
         },
         nowMs,
       );
@@ -344,6 +355,18 @@ export async function POST(request: NextRequest) {
 
     const priorityVal = typeof priority === "string" && priority.trim() ? priority.trim() : "medium";
 
+    const categoryParsed = validateAdminCategoryValue(category);
+    if (!categoryParsed.ok) {
+      return NextResponse.json({ error: "Invalid category" }, { status: 400 });
+    }
+    const storedCategory = categoryParsed.category;
+    const supportContextTypeResolved = deriveSupportContextTypeForTicket({
+      category: storedCategory ?? "",
+      supportContextId: support_context_id,
+      supportContextLabel: support_context_label,
+      clientContextType: support_context_type ?? null,
+    });
+
     const { data, error } = await supabase
       .from("support_tickets")
       .insert({
@@ -351,11 +374,11 @@ export async function POST(request: NextRequest) {
         provider_id: provider_id || null,
         subject,
         description,
-        category: category || null,
+        category: storedCategory,
         priority: priorityVal,
         status: "open",
         requester_type: requester_type || (provider_id ? "provider" : "admin"),
-        support_context_type: support_context_type || null,
+        support_context_type: supportContextTypeResolved,
         support_context_id: support_context_id || null,
         support_context_label: typeof support_context_label === "string" ? support_context_label.trim() || null : null,
       })
@@ -365,14 +388,13 @@ export async function POST(request: NextRequest) {
     if (error) throw error;
 
     const ticketId = (data as { id: string }).id;
-    const normalizedCategory = normalizeSupportTicketCategory(category);
     try {
       const { maybeOpenFraudCaseFromSafetyTicket } = await import(
         "@/lib/fraud/maybe-open-fraud-from-support-ticket"
       );
       await maybeOpenFraudCaseFromSafetyTicket({
         ticketId,
-        category: normalizedCategory,
+        category: storedCategory,
         userId: user.id,
         providerId: provider_id || null,
         subject: String(subject),

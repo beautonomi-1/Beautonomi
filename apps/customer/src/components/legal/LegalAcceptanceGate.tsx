@@ -28,16 +28,22 @@ type Props = {
 };
 
 export function LegalAcceptanceGate({ children, enabled = true }: Props) {
-  if (!enabled) {
-    return <>{children}</>;
-  }
-  return <LegalAcceptanceGateActive>{children}</LegalAcceptanceGateActive>;
+  return (
+    <LegalAcceptanceGateActive enabled={enabled}>{children}</LegalAcceptanceGateActive>
+  );
 }
 
-function LegalAcceptanceGateActive({ children }: { children: React.ReactNode }) {
+function LegalAcceptanceGateActive({
+  children,
+  enabled,
+}: {
+  children: React.ReactNode;
+  enabled: boolean;
+}) {
   const { t } = useTranslation();
   const lg = (key: string) => t(`customer.mobile.components.legalAcceptanceGate.${key}`) as string;
   const { session } = useAuth();
+  const userId = session?.user?.id ?? null;
   const [loading, setLoading] = useState(true);
   const [accepted, setAccepted] = useState(false);
   const [checked, setChecked] = useState(false);
@@ -58,16 +64,16 @@ function LegalAcceptanceGateActive({ children }: { children: React.ReactNode }) 
   }, []);
 
   const syncServerAcceptance = useCallback(async () => {
-    if (!session) return;
+    if (!userId) return;
     const res = await api.post("/api/me/legal-acceptance", {
       app: "customer",
       version: CUSTOMER_EULA_VERSION,
     });
     if (res.error) throw new Error(res.error.message ?? "legal acceptance sync failed");
-  }, [session]);
+  }, [userId]);
 
   useEffect(() => {
-    if (!session || !accepted) return;
+    if (!enabled || !userId || !accepted) return;
     let cancelled = false;
     const run = async (attempt: number) => {
       try {
@@ -82,7 +88,7 @@ function LegalAcceptanceGateActive({ children }: { children: React.ReactNode }) 
     return () => {
       cancelled = true;
     };
-  }, [session, accepted, syncServerAcceptance]);
+  }, [enabled, userId, accepted, syncServerAcceptance]);
 
   const onContinue = useCallback(async () => {
     if (!checked || submitting) return;
@@ -95,16 +101,16 @@ function LegalAcceptanceGateActive({ children }: { children: React.ReactNode }) 
     }
   }, [checked, submitting]);
 
+  if (!enabled || accepted) {
+    return <>{children}</>;
+  }
+
   if (loading) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#fff" }}>
         <ActivityIndicator size="large" color={Colors.primary} />
       </View>
     );
-  }
-
-  if (accepted) {
-    return <>{children}</>;
   }
 
   return (

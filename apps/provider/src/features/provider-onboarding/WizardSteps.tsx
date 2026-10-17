@@ -1,5 +1,10 @@
 import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useTranslation } from "@beautonomi/i18n";
+import {
+  useTranslation,
+  BOOKING_POLICY_PRESETS,
+  DEFAULT_BOOKING_POLICY_PRESET,
+  type BookingPolicyPresetId,
+} from "@beautonomi/i18n";
 import * as Location from "expo-location";
 import {
   View,
@@ -1203,7 +1208,14 @@ placeholder={ow("business.descriptionPlaceholder")}
   );
 }
 
-// ─── Step 4: Payment setup (generic terminal capture) ────────────────────────
+const BOOKING_POLICY_PRESET_ORDER: Exclude<BookingPolicyPresetId, "custom">[] = [
+  "no_penalty",
+  "flexible",
+  "standard",
+  "strict",
+];
+
+// ─── Step 4: Payments & policies (terminal capture + booking protection) ─────
 
 type TerminalOpt = {
   id: TerminalOwnershipStatus;
@@ -1285,8 +1297,11 @@ function ChipRow<T extends string>({
 }
 
 function Step4Payment() {
+  const { t } = useTranslation();
   const ow = useOw();
   const { formData, updateFormData } = useOnboardingWizard();
+  const selectedPreset =
+    formData.booking_policy?.preset ?? DEFAULT_BOOKING_POLICY_PRESET;
   const vendorOtherRef = useRef<TextInput>(null);
   const vatNumberRef = useRef<TextInput>(null);
   useAutoFocus(vendorOtherRef, formData.terminal_provider === "other");
@@ -1464,6 +1479,48 @@ placeholder={ow("payment.vatPlaceholder")}
         <Text style={twStyle("flex-1 text-[13px] leading-5 text-amber-900")}>
 {ow("payment.payoutHint")}
         </Text>
+      </View>
+
+      <View style={twStyle("gap-3")}>
+        <Text style={twStyle(labelCls)}>{ow("payment.bookingProtectionTitle")}</Text>
+        <Text style={twStyle("text-[14px] text-slate-500")}>
+          {ow("payment.bookingProtectionHint")}
+        </Text>
+        <View style={twStyle("gap-3")}>
+          {BOOKING_POLICY_PRESET_ORDER.map((presetId) => {
+            const preset = BOOKING_POLICY_PRESETS[presetId];
+            const sel = selectedPreset === presetId;
+            const title = t(preset.labelKey);
+            const descKey = `provider.bookingPolicy.${presetId}Desc`;
+            const description = t(descKey);
+            return (
+              <TouchableOpacity
+                key={presetId}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  updateFormData({ booking_policy: { preset: presetId } });
+                }}
+                style={twStyle(
+                  `rounded-[1.5rem] border p-5 ${sel ? "border-primary bg-primary/10 shadow-sm" : "border-slate-100 bg-white shadow-sm"}`,
+                )}
+                accessibilityRole="button"
+                accessibilityState={{ selected: sel }}
+                accessibilityLabel={title}
+              >
+                <Text
+                  style={twStyle(
+                    `text-[15px] font-semibold ${sel ? "text-slate-900" : "text-slate-800"}`,
+                  )}
+                >
+                  {title}
+                </Text>
+                <Text style={twStyle("mt-1 text-[13px] leading-5 text-slate-500")}>
+                  {description}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
     </View>
   );

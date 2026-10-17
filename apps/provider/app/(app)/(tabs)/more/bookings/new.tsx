@@ -67,7 +67,14 @@ import { useDefaultPhoneDial } from "@/hooks/useDefaultPhoneDial";
 import { Colors } from "@/constants/colors";
 import { isPlanGateErrorCode, showPlanGateAlert } from "@/lib/plan-gate";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { calculateBookingTotals, effectiveTravelFee, percentOf, safeNum, manualCardCollectOptionLabel } from "@beautonomi/utils";
+import {
+  calculateBookingTotals,
+  effectiveTravelFee,
+  normalizeTipPercentPresets,
+  percentOf,
+  safeNum,
+  manualCardCollectOptionLabel,
+} from "@beautonomi/utils";
 import { BookingDateStrip, BookingTimeSlotGrid } from "@/components/bookings/BookingDateTimePicker";
 import {
   ProviderBookingCreatedSuccessSheet,
@@ -353,7 +360,6 @@ const PAYMENT_METHODS: { label: string; value: PaymentMethod; icon: keyof typeof
   { label: "Paystack Terminal", value: "paystack_terminal", icon: "qr-code-outline" },
   { label: "Payment Link", value: "payment_link", icon: "send-outline" },
 ];
-const TIP_PERCENTAGES = [0, 10, 15, 20] as const;
 const UNCATEGORIZED_PRODUCT_CATEGORY = "__uncategorized_product__";
 
 /* ------------------------------------------------------------------ */
@@ -376,6 +382,7 @@ function SectionLabel({ label, required }: { label: string; required?: boolean }
 interface PaymentSettings {
   taxRatePercent?: number;
   taxInclusive?: boolean;
+  tipPresets?: number[];
 }
 
 /** Matches `/api/provider/bookings/available-slots` (shared web availability engine). */
@@ -480,6 +487,10 @@ export default function NewBookingScreen() {
     (createPermissionData?.isOwner === true ||
       createPermissionData?.permissions?.create_appointments === true);
   const { data: paymentSettings } = useApi<PaymentSettings>("/api/provider/settings/payments");
+  const tipPercentOptions = useMemo(
+    () => [0, ...normalizeTipPercentPresets(paymentSettings?.tipPresets)] as const,
+    [paymentSettings?.tipPresets],
+  );
   const { data: referralSourcesRaw } = useApi<{ id: string; name: string; is_active?: boolean }[]>("/api/provider/referral-sources");
   const referralSources = useMemo(
     () => (Array.isArray(referralSourcesRaw) ? referralSourcesRaw.filter((s) => s.is_active !== false) : []),
@@ -1754,7 +1765,8 @@ export default function NewBookingScreen() {
       setTipAmount("");
       return;
     }
-    const amount = Math.max(0, (summary.afterDiscount || summary.subtotal) * (percent / 100));
+    const base = Math.max(0, summary.afterDiscount || summary.subtotal);
+    const amount = percentOf(base, percent, tenantCurrency);
     setTipAmount(amount > 0 ? amount.toFixed(2) : "");
   }
 
@@ -3947,25 +3959,42 @@ export default function NewBookingScreen() {
               <SectionLabel label={nb("tipOptional", { currency: tenantCurrency })} />
               <View style={twStyle("mb-4")}>
                 <View style={twStyle("mb-2 flex-row flex-wrap")}>
-                  {TIP_PERCENTAGES.map((pct) => {
-                    const target = pct > 0 ? ((summary.afterDiscount || summary.subtotal) * pct) / 100 : 0;
+                  {tipPercentOptions.map((pct) => {
+                    const base = Math.max(0, summary.afterDiscount || summary.subtotal);
+                    const target = pct > 0 ? percentOf(base, pct, tenantCurrency) : 0;
                     const isActive = pct === 0 ? safeNum(tipAmount) === 0 : Math.abs(safeNum(tipAmount) - target) < 0.01;
                     return (
                       <TouchableOpacity
                         key={pct}
                         style={[
-                          twStyle(`rounded-full border px-3 py-2 ${
+                          twStyle(`rounded-full border px-3 py-2 items-center ${
                             isActive ? "border-emerald-600 bg-emerald-600" : "border-emerald-200 bg-emerald-50"
                           }`),
                           { marginEnd: 8, marginBottom: 8 },
                         ]}
                         onPress={() => applyTipPercentage(pct)}
                         accessibilityRole="button"
-                        accessibilityLabel={pct === 0 ? nb("noTipA11y") : nb("tipPercentA11y", { percent: pct })}
+                        accessibilityLabel={
+                          pct === 0
+                            ? nb("noTipA11y")
+                            : nb("tipPercentWithAmountA11y", {
+                                percent: pct,
+                                amount: formatCurrency(target, tenantCurrency),
+                              })
+                        }
                       >
                         <Text style={twStyle(`text-xs font-semibold ${isActive ? "text-white" : "text-emerald-700"}`)}>
                           {pct === 0 ? nb("noTip") : `${pct}%`}
                         </Text>
+                        {pct > 0 ? (
+                          <Text
+                            style={twStyle(
+                              `text-[10px] font-semibold ${isActive ? "text-white/90" : "text-emerald-600"}`,
+                            )}
+                          >
+                            {formatCurrency(target, tenantCurrency)}
+                          </Text>
+                        ) : null}
                       </TouchableOpacity>
                     );
                   })}

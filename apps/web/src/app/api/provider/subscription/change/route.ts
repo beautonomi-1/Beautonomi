@@ -122,6 +122,9 @@ export async function POST(request: NextRequest) {
       paystack_sync_note: null,
       paystack_subscription_code: null,
       next_payment_date: null,
+      scheduled_plan_id: null,
+      scheduled_change_at: null,
+      scheduled_billing_period: null,
       ...clearAppleMerchantOnFree(),
     };
 

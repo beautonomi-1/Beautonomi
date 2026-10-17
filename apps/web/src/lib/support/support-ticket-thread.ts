@@ -46,16 +46,24 @@ type AuthorProfile = {
 export function enrichSupportTicketMessageForViewer(
   message: {
     user_id: string;
+    author_kind?: string | null;
     author?: AuthorProfile | AuthorProfile[] | null;
     [key: string]: unknown;
   },
   currentUserId: string,
+  labels?: { assistantName?: string },
 ): Record<string, unknown> {
   const authorProfile = Array.isArray(message.author) ? message.author[0] : message.author;
-  const isCurrentUser = message.user_id === currentUserId;
-  const authorName = isCurrentUser
-    ? "You"
-    : (authorProfile?.display_name || authorProfile?.full_name || "Support Team");
+  const kind = message.author_kind ?? null;
+  const isCurrentUser = kind !== "assistant" && message.user_id === currentUserId;
+  let authorName: string;
+  if (kind === "assistant") {
+    authorName = labels?.assistantName ?? "Beautonomi Assistant";
+  } else if (isCurrentUser) {
+    authorName = "You";
+  } else {
+    authorName = authorProfile?.display_name || authorProfile?.full_name || "Support Team";
+  }
   const { author: _drop, ...rest } = message;
   return { ...rest, author_name: authorName, is_mine: isCurrentUser };
 }

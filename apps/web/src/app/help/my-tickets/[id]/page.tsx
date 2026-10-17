@@ -15,7 +15,9 @@ import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { toast } from "sonner";
-import { labelForSupportTicketCategory } from "@/lib/support/ticket-categories";
+import { labelForSupportTicketCategoryI18n } from "@/lib/support/ticket-categories";
+import { useTranslation } from "@beautonomi/i18n";
+import { SupportTicketThread } from "@/components/support/SupportTicketThread";
 
 type Message = {
   id: string;
@@ -25,6 +27,7 @@ type Message = {
   user_id: string;
   author_name?: string;
   is_mine?: boolean;
+  author_kind?: string | null;
   attachments?: SupportAttachment[];
 };
 
@@ -47,6 +50,7 @@ type Ticket = {
   support_context_label?: string | null;
   csat_score?: number | null;
   csat_comment?: string | null;
+  handling_mode?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -62,6 +66,7 @@ function fileSizeLabel(size?: number): string {
 }
 
 export default function MyTicketDetailPage() {
+  const { t: tr } = useTranslation();
   const router = useRouter();
   const params = useParams();
   const id = params?.id as string;
@@ -76,6 +81,7 @@ export default function MyTicketDetailPage() {
   const [csatEditing, setCsatEditing] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<SupportAttachment[]>([]);
+  const [assistantPending, setAssistantPending] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadTicket = useCallback(async () => {
@@ -107,11 +113,12 @@ export default function MyTicketDetailPage() {
   }, [loadTicket]);
 
   useEffect(() => {
+    const ms = ticket?.handling_mode === "assistant" ? 2_000 : 30_000;
     const interval = window.setInterval(() => {
       if (document.visibilityState === "visible") void loadTicket();
-    }, 30_000);
+    }, ms);
     return () => window.clearInterval(interval);
-  }, [loadTicket]);
+  }, [loadTicket, ticket?.handling_mode]);
 
   const uploadFiles = async (files: FileList | null) => {
     if (!files?.length || !id || uploadingAttachment) return;
@@ -148,8 +155,64 @@ export default function MyTicketDetailPage() {
     const msg = reply.trim();
     if ((!msg && pendingAttachments.length === 0) || !id) return;
     setSending(true);
+    const isAssistant = (ticket?.handling_mode ?? "human") === "assistant";
+    const optimisticId = `local-${Date.now()}`;
+    if (msg) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: optimisticId,
+          message: msg,
+          is_internal: false,
+          created_at: new Date().toISOString(),
+          user_id: "",
+          author_name: "You",
+          is_mine: true,
+          author_kind: "customer",
+        },
+      ]);
+    }
     try {
-      await fetcher.post(`/api/me/support-tickets/${id}/messages`, { message: msg, attachments: pendingAttachments });
+      if (isAssistant && msg) {
+        const streamAssistantId = `stream-assistant-${Date.now()}`;
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: streamAssistantId,
+            message: "",
+            is_internal: false,
+            created_at: new Date().toISOString(),
+            user_id: "",
+            author_name: "Beautonomi Assistant",
+            is_mine: false,
+            author_kind: "assistant",
+          },
+        ]);
+        const { streamAssistantReply } = await import("@/lib/support/support-assistant/client-stream-reply");
+        const streamResult = await streamAssistantReply({
+          streamUrl: `/api/me/support-tickets/${id}/assistant-messages/stream`,
+          message: msg,
+          onAssistantChunk: (text) => {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === streamAssistantId ? { ...m, message: text } : m)),
+            );
+          },
+        });
+        if (!streamResult.ok) {
+          throw new Error(streamResult.errorMessage ?? "Assistant unavailable");
+        }
+        if (!streamResult.streamed) {
+          setAssistantPending(true);
+        }
+        if (streamResult.infoMessage) {
+          toast.info(streamResult.infoMessage);
+        }
+      } else {
+        await fetcher.post(`/api/me/support-tickets/${id}/messages`, {
+          message: msg,
+          attachments: isAssistant ? [] : pendingAttachments,
+        });
+      }
       setReply("");
       setPendingAttachments([]);
       await loadTicket();
@@ -158,6 +221,29 @@ export default function MyTicketDetailPage() {
       toast.error(err instanceof Error ? err.message : "Failed to send reply");
     } finally {
       setSending(false);
+      setAssistantPending(false);
+    }
+  };
+
+  const handoffToHuman = async () => {
+    if (!id) return;
+    try {
+      await fetcher.post(`/api/me/support-tickets/${id}/handoff`, {});
+      await loadTicket();
+      toast.success("A specialist will join this thread shortly.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not connect you to support");
+    }
+  };
+
+  const resolveViaAssistant = async () => {
+    if (!id) return;
+    try {
+      await fetcher.post(`/api/me/support-tickets/${id}/assistant-resolve`, {});
+      await loadTicket();
+      toast.success("Glad we could help!");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not resolve this ticket");
     }
   };
 
@@ -231,6 +317,7 @@ export default function MyTicketDetailPage() {
   }
 
   const canReply = ticket.status !== "closed" && ticket.status !== "resolved";
+  const isAssistantMode = ticket.handling_mode === "assistant";
 
   return (
     <AuthGuard>
@@ -253,7 +340,7 @@ export default function MyTicketDetailPage() {
                 <p className="text-sm text-zinc-600">
                   Category:{" "}
                   <span className="font-medium text-zinc-800">
-                    {labelForSupportTicketCategory(ticket.category)}
+                    {labelForSupportTicketCategoryI18n(ticket.category, tr)}
                   </span>
                 </p>
               ) : null}
@@ -272,65 +359,28 @@ export default function MyTicketDetailPage() {
             </CardHeader>
           </Card>
 
-          <div className="space-y-3 mb-8">
-            {messages.map((m) => {
-              const isOwn = m.is_mine === true;
-              const authorLabel = m.author_name ?? (isOwn ? "You" : "Support Team");
-              const attachments = Array.isArray(m.attachments) ? m.attachments : [];
-              return (
-                <div
-                  key={m.id}
-                  className={`flex ${isOwn ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
-                      isOwn
-                        ? "bg-[#FF0077] text-white rounded-br-sm"
-                        : "border border-blue-100 bg-blue-50 text-gray-900 rounded-bl-sm"
-                    }`}
-                  >
-                    <p className={`mb-1 flex items-center gap-2 text-xs font-semibold ${isOwn ? "text-pink-100" : "text-blue-700"}`}>
-                      <span>{authorLabel}</span>
-                      {!isOwn ? <span className="rounded-full bg-white px-2 py-0.5 text-[10px] text-blue-700">Support team</span> : null}
-                    </p>
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{m.message}</p>
-                    {attachments.length > 0 ? (
-                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                        {attachments.map((attachment, index) => (
-                          <a
-                            key={`${m.id}-attachment-${index}`}
-                            href={attachment.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={`overflow-hidden rounded-xl border text-xs ${
-                              isOwn ? "border-white/25 bg-white/10 text-white" : "border-blue-100 bg-white text-gray-800"
-                            }`}
-                          >
-                            {isImageAttachment(attachment) ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={attachment.url} alt={attachment.name || "Attachment"} className="h-28 w-full object-cover" />
-                            ) : (
-                              <span className="flex h-16 items-center justify-center">
-                                <FileText className="h-6 w-6 opacity-70" />
-                              </span>
-                            )}
-                            <span className="flex items-center gap-2 px-2 py-2">
-                              {isImageAttachment(attachment) ? <ImageIcon className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
-                              <span className="min-w-0 flex-1 truncate">{attachment.name || `Attachment ${index + 1}`}</span>
-                              {attachment.size != null ? <span className="shrink-0 opacity-70">{fileSizeLabel(attachment.size)}</span> : null}
-                            </span>
-                          </a>
-                        ))}
-                      </div>
-                    ) : null}
-                    <p className={`text-xs mt-1.5 ${isOwn ? "text-pink-200" : "text-gray-400"}`}>
-                      {new Date(m.created_at).toLocaleString()}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          {isAssistantMode ? (
+            <p className="mb-4 text-xs text-zinc-500">
+              AI can make mistakes — a specialist can take over at any time.
+            </p>
+          ) : null}
+
+          <SupportTicketThread
+            className="space-y-3 mb-8"
+            messages={messages}
+            assistantPending={assistantPending}
+          />
+
+          {isAssistantMode && canReply ? (
+            <div className="mb-6 flex flex-wrap items-center gap-2">
+              <Button type="button" variant="outline" onClick={() => void handoffToHuman()}>
+                Talk to a person
+              </Button>
+              <Button type="button" variant="secondary" onClick={() => void resolveViaAssistant()}>
+                Did this help? Yes
+              </Button>
+            </div>
+          ) : null}
 
           {canReply && (
             <Card>
@@ -348,6 +398,7 @@ export default function MyTicketDetailPage() {
                     disabled={sending}
                     className="resize-none"
                   />
+                  {!isAssistantMode ? (
                   <div className="space-y-3 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-3">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="text-sm text-zinc-600">
@@ -394,9 +445,12 @@ export default function MyTicketDetailPage() {
                       </div>
                     ) : null}
                   </div>
+                  ) : (
+                    <p className="text-xs text-zinc-500">Attachments are available after a specialist joins the conversation.</p>
+                  )}
                   <Button
                     type="submit"
-                    disabled={sending || (!reply.trim() && pendingAttachments.length === 0)}
+                    disabled={sending || (!reply.trim() && (!isAssistantMode && pendingAttachments.length === 0))}
                     className="bg-[#FF0077] hover:bg-[#D60565]"
                   >
                     {sending ? (

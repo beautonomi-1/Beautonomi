@@ -4,6 +4,7 @@ import { requireAdminSection, successResponse, handleApiError } from "@/lib/supa
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchAllPages } from "@/lib/admin/finance-ledger-tenant";
+import { WALLET_BANK_REFUND_TX_LABELS } from "@/lib/wallet-bank-refunds/labels";
 
 interface WalletReconciliationRow {
   user_id: string;
@@ -270,6 +271,7 @@ export async function GET(request: NextRequest) {
       checked: walletRows.length,
       healthy,
       wallets_truncated: walletsTruncated,
+      reference_type_labels: WALLET_BANK_REFUND_TX_LABELS,
     });
   } catch (error) {
     return handleApiError(error, "Failed to run wallet reconciliation");

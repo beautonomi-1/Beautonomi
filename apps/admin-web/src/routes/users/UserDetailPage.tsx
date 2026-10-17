@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ADMIN_SECTION_PROVIDER_OPS, ADMIN_SECTION_USERS_TRUST } from "@beautonomi/admin-access";
+import { ADMIN_SECTION_FINANCE, ADMIN_SECTION_PROVIDER_OPS, ADMIN_SECTION_USERS_TRUST } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
@@ -135,6 +135,22 @@ type UserDetail = Record<string, unknown> & {
   addresses?: Record<string, unknown>[];
   payment_methods?: Record<string, unknown>[];
   wallet?: Record<string, unknown> | null;
+  bank_accounts?: {
+    id?: string;
+    bank_name?: string | null;
+    account_name?: string | null;
+    account_number_last4?: string | null;
+    verified?: boolean;
+    name_match?: string | null;
+    is_primary?: boolean;
+  }[];
+  open_bank_refund?: {
+    id?: string;
+    request_number?: string | null;
+    status?: string | null;
+    amount?: number;
+    currency?: string | null;
+  } | null;
   support_tickets?: Record<string, unknown>[];
   recent_product_orders?: Record<string, unknown>[];
   trust_safety?: {
@@ -251,6 +267,7 @@ export function UserDetailPage() {
   const qc = useQueryClient();
   const { bootstrap, canAccess } = useAdminSession();
   const canAccessProviderOps = canAccess(ADMIN_SECTION_PROVIDER_OPS);
+  const canAccessFinance = canAccess(ADMIN_SECTION_FINANCE);
   const isSuperadmin = bootstrap?.isSuperadmin === true;
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_USERS_TRUST, "Users & trust access is required.");
   const [suspendReason, setSuspendReason] = useState("");
@@ -1376,6 +1393,49 @@ export function UserDetailPage() {
             </>
           ) : (
             <p className="mt-2 text-sm text-gray-500">No wallet record.</p>
+          )}
+        </AdminPanel>
+        <AdminPanel>
+          <h2 className="text-lg font-semibold text-gray-900">Saved bank accounts (masked)</h2>
+          {data.open_bank_refund ? (
+            <p className="mt-2 text-sm text-amber-800">
+              Open bank refund {str(data.open_bank_refund.request_number) || str(data.open_bank_refund.id)} ·{" "}
+              {str(data.open_bank_refund.status)} ·{" "}
+              {formatAdminCurrency(Number(data.open_bank_refund.amount ?? 0), data.open_bank_refund.currency ?? undefined)}
+              {canAccessFinance ? (
+                <>
+                  {" "}
+                  <Link
+                    to={adminSpaTo(
+                      `/admin/refunds?tab=bank&id=${encodeURIComponent(str(data.open_bank_refund.id))}`,
+                    )}
+                    className="font-medium underline"
+                  >
+                    Open in finance
+                  </Link>
+                </>
+              ) : null}
+            </p>
+          ) : null}
+          {(data.bank_accounts ?? []).length === 0 ? (
+            <p className="mt-2 text-sm text-gray-500">None on file.</p>
+          ) : (
+            <ul className="mt-3 space-y-2 text-sm">
+              {(data.bank_accounts ?? []).map((acct) => (
+                <li key={str(acct.id)} className="rounded border border-gray-100 px-3 py-2">
+                  <span className="font-medium">{str(acct.bank_name) || "Bank"}</span>
+                  {acct.account_number_last4 ? (
+                    <span className="text-gray-600"> · •••• {str(acct.account_number_last4)}</span>
+                  ) : null}
+                  {acct.account_name ? <span className="text-gray-600"> · {str(acct.account_name)}</span> : null}
+                  {acct.verified ? <span className="ml-2 text-xs text-green-800">verified</span> : null}
+                  {acct.name_match ? (
+                    <span className="ml-2 text-xs text-gray-500">name {str(acct.name_match)}</span>
+                  ) : null}
+                  {acct.is_primary ? <span className="ml-2 text-xs text-primary">primary</span> : null}
+                </li>
+              ))}
+            </ul>
           )}
         </AdminPanel>
         <AdminPanel>

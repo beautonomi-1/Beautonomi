@@ -69,6 +69,7 @@ type Fixture = {
   payoutCount: number;
   travelFeeCount: number;
   zoneSelectionCount: number;
+  cancellationPolicyCount: number;
   userProfile: Record<string, unknown> | null;
 };
 
@@ -129,6 +130,8 @@ function makeSupabase(fixture: Fixture) {
           return makeBuilder({ count: fixture.zoneSelectionCount, data: [] });
         case "provider_payout_accounts":
           return makeBuilder({ count: fixture.payoutCount, data: [] });
+        case "cancellation_policies":
+          return makeBuilder({ count: fixture.cancellationPolicyCount, data: [] });
         case "user_profiles":
           return makeBuilder({ data: fixture.userProfile });
         default:
@@ -174,6 +177,7 @@ function emptyFixture(overrides: Partial<Fixture> = {}): Fixture {
     payoutCount: 1,
     travelFeeCount: 0,
     zoneSelectionCount: 0,
+    cancellationPolicyCount: 1,
     userProfile: {
       about: "I am a freelancer offering bespoke services",
       languages: ["en"],

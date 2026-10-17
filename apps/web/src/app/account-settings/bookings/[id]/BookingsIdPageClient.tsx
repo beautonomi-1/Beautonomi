@@ -96,6 +96,17 @@ export default function BookingDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [cancelPreviewOpen, setCancelPreviewOpen] = useState(false);
+  const [cancelPreviewLoading, setCancelPreviewLoading] = useState(false);
+  const [cancelPreview, setCancelPreview] = useState<{
+    currency?: string;
+    expected_cancellation_fee?: number;
+    expected_wallet_refund?: number;
+    in_person_refund_due?: number;
+    penalty_waived_reason?: string;
+    is_late_cancellation?: boolean;
+    refund_capped_by_paid_amount?: boolean;
+  } | null>(null);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [showPayRemainingCheckout, setShowPayRemainingCheckout] = useState(false);
   const [chargeApproveLoadingId, setChargeApproveLoadingId] = useState<string | null>(null);
@@ -274,51 +285,21 @@ export default function BookingDetailPage() {
     }
   };
 
-  const handleCancel = async () => {
+  const penaltyWaivedLine = (code?: string | null) => {
+    if (!code) return null;
+    const keyByCode: Record<string, string> = {
+      pending: "customer.mobile.screens.bookingDetail.cancelPreviewPenaltyWaivedPending",
+      grace: "customer.mobile.screens.bookingDetail.cancelPreviewPenaltyWaivedGrace",
+      provider_rescheduled: "customer.mobile.screens.bookingDetail.cancelPreviewPenaltyWaivedRescheduled",
+      no_penalty_policy: "customer.mobile.screens.bookingDetail.cancelPreviewPenaltyWaivedNoPenaltyPolicy",
+      provider_cancelled: "customer.mobile.screens.bookingDetail.cancelPreviewPenaltyWaivedProvider",
+    };
+    const key = keyByCode[code];
+    return key ? t(key) : null;
+  };
+
+  const confirmCancelBooking = async () => {
     if (!booking) return;
-
-    let promptMessage = t("customer.mobile.screens.bookingDetail.cancelDefaultConfirm");
-    try {
-      const preview = await fetcher.get<{
-        data: {
-          allowed: boolean;
-          reason?: string;
-          currency?: string;
-          expected_cancellation_fee?: number;
-          expected_wallet_refund?: number;
-          is_late_cancellation?: boolean;
-          refund_capped_by_paid_amount?: boolean;
-        };
-        error: null;
-      }>(`/api/me/bookings/${bookingId}/cancel-preview`, { cache: "no-store", staleTimeMs: 0 });
-      const p = preview.data;
-      if (!p?.allowed) {
-        toast.error(p?.reason || t("customer.mobile.screens.bookingDetail.cancellationNotAllowed"));
-        return;
-      }
-      const cur = p.currency || booking.currency;
-      const fee = Number(p.expected_cancellation_fee ?? 0);
-      const refund = Number(p.expected_wallet_refund ?? 0);
-      const capBlock = p.refund_capped_by_paid_amount
-        ? `\n\n${t("customer.mobile.screens.bookingDetail.cancelPreviewCapNote")}`
-        : "";
-      const windowLine = p.is_late_cancellation
-        ? t("customer.mobile.screens.bookingDetail.cancelPreviewLate")
-        : t("customer.mobile.screens.bookingDetail.cancelPreviewNormal");
-      promptMessage = t("customer.mobile.screens.bookingDetail.cancelPreviewMessage", {
-        currency: cur,
-        fee: fee.toFixed(2),
-        refund: refund.toFixed(2),
-        capBlock,
-        windowLine,
-      });
-    } catch {
-      // Fallback to generic confirmation text
-    }
-
-    const confirmed = window.confirm(promptMessage);
-    if (!confirmed) return;
-
     try {
       setIsCancelling(true);
       const response = await fetcher.post<{
@@ -326,15 +307,15 @@ export default function BookingDetailPage() {
         error: null;
       }>(`/api/me/bookings/${bookingId}/cancel`, {
         reason: "Customer request",
-        version: booking.version, // Include version for conflict detection
+        version: booking.version,
       });
 
       setBooking(response.data.booking);
+      setCancelPreviewOpen(false);
       toast.success(t("web.accountSettings.bookings.cancelledSuccess"));
     } catch (err) {
       if (err instanceof FetchError && err.status === 409) {
         toast.error(t("web.accountSettings.bookings.conflictRefresh"));
-        // Reload booking to get latest version
         const refreshResponse = await fetcher.get<{
           data: BookingDetail;
           error: null;
@@ -347,6 +328,43 @@ export default function BookingDetailPage() {
       }
     } finally {
       setIsCancelling(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!booking) return;
+    setCancelPreviewLoading(true);
+    setCancelPreviewOpen(true);
+    setCancelPreview(null);
+    try {
+      const preview = await fetcher.get<{
+        data: {
+          allowed: boolean;
+          reason?: string;
+          currency?: string;
+          expected_cancellation_fee?: number;
+          expected_wallet_refund?: number;
+          in_person_refund_due?: number;
+          penalty_waived_reason?: string;
+          is_late_cancellation?: boolean;
+          refund_capped_by_paid_amount?: boolean;
+        };
+        error: null;
+      }>(`/api/me/bookings/${bookingId}/cancel-preview`, { cache: "no-store", staleTimeMs: 0 });
+      const p = preview.data;
+      if (!p?.allowed) {
+        setCancelPreviewOpen(false);
+        toast.error(p?.reason || t("customer.mobile.screens.bookingDetail.cancellationNotAllowed"));
+        return;
+      }
+      setCancelPreview(p);
+    } catch {
+      setCancelPreviewOpen(false);
+      if (window.confirm(t("customer.mobile.screens.bookingDetail.cancelDefaultConfirm"))) {
+        await confirmCancelBooking();
+      }
+    } finally {
+      setCancelPreviewLoading(false);
     }
   };
 
@@ -1301,6 +1319,71 @@ export default function BookingDetailPage() {
             <DialogDescription>{t("web.accountSettings.bookings.paystackReturnHint")}</DialogDescription>
           </DialogHeader>
           {bookingId ? <PayRemainingCheckout bookingId={bookingId} /> : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={cancelPreviewOpen} onOpenChange={setCancelPreviewOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("customer.mobile.screens.bookingDetail.cancelPreviewSheetTitle")}</DialogTitle>
+            <DialogDescription>
+              {cancelPreviewLoading
+                ? t("web.provider.bookings.cancelDialog.previewLoading")
+                : t("customer.mobile.screens.bookingDetail.cancelDefaultConfirm")}
+            </DialogDescription>
+          </DialogHeader>
+          {cancelPreviewLoading ? null : cancelPreview && booking ? (
+            <div className="space-y-2 text-sm text-gray-700">
+              {(() => {
+                const cur = cancelPreview.currency || booking.currency;
+                const fee = Number(cancelPreview.expected_cancellation_fee ?? 0);
+                const refund = Number(cancelPreview.expected_wallet_refund ?? 0);
+                const inPerson = Number(cancelPreview.in_person_refund_due ?? 0);
+                const windowLine = cancelPreview.is_late_cancellation
+                  ? t("customer.mobile.screens.bookingDetail.cancelPreviewLate")
+                  : t("customer.mobile.screens.bookingDetail.cancelPreviewNormal");
+                const waived = penaltyWaivedLine(cancelPreview.penalty_waived_reason);
+                return (
+                  <>
+                    <p className="whitespace-pre-line">
+                      {t("customer.mobile.screens.bookingDetail.cancelPreviewMessage", {
+                        currency: cur,
+                        fee: fee.toFixed(2),
+                        refund: refund.toFixed(2),
+                        capBlock: cancelPreview.refund_capped_by_paid_amount
+                          ? `\n\n${t("customer.mobile.screens.bookingDetail.cancelPreviewCapNote")}`
+                          : "",
+                        windowLine,
+                      })}
+                    </p>
+                    {inPerson > 0 ? (
+                      <p>
+                        {t("customer.mobile.screens.bookingDetail.cancelPreviewInPersonRefund", {
+                          currency: cur,
+                          amount: inPerson.toFixed(2),
+                        })}
+                      </p>
+                    ) : null}
+                    {waived ? <p className="text-emerald-800">{waived}</p> : null}
+                  </>
+                );
+              })()}
+            </div>
+          ) : null}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setCancelPreviewOpen(false)}>
+              {t("customer.mobile.screens.bookingDetail.keepBookingCta")}
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={cancelPreviewLoading || isCancelling}
+              onClick={() => void confirmCancelBooking()}
+            >
+              {isCancelling
+                ? t("web.accountSettings.bookings.cancelling")
+                : t("customer.mobile.screens.bookingDetail.cancelBookingCta")}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

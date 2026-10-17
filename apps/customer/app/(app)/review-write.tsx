@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "@beautonomi/i18n";
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, ScrollView, Alert, Platform, Keyboard } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, ScrollView, Alert, Platform } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, Stack, router } from "expo-router";
@@ -54,7 +54,6 @@ export default function ReviewWriteScreen() {
   const [staffRatings, setStaffRatings] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [loadingContext, setLoadingContext] = useState(false);
-  const [androidKb, setAndroidKb] = useState(0);
   /** Set when `/api/me/reviews?booking_id=` returns a review (navigate with bookingId only). */
   const [hasExistingReview, setHasExistingReview] = useState(false);
   const [storeReviewOpen, setStoreReviewOpen] = useState(false);
@@ -68,19 +67,6 @@ export default function ReviewWriteScreen() {
     }
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [services, rw]);
-
-  useEffect(() => {
-    if (Platform.OS !== "android") return;
-    const s = Keyboard.addListener("keyboardDidShow", (e) => {
-      const h = e.endCoordinates?.height;
-      setAndroidKb(typeof h === "number" && Number.isFinite(h) ? h : 0);
-    });
-    const h = Keyboard.addListener("keyboardDidHide", () => setAndroidKb(0));
-    return () => {
-      s.remove();
-      h.remove();
-    };
-  }, []);
 
   useEffect(() => {
     if (!bookingId) return;
@@ -228,7 +214,10 @@ export default function ReviewWriteScreen() {
                 {
                   text: t("common.storeReview.lowScoreAction"),
                   onPress: () =>
-                    router.replace("/(app)/(tabs)/support-tickets/new" as never),
+                    router.replace({
+                      pathname: "/(app)/(tabs)/support-tickets/new",
+                      params: { category: "booking_quality" },
+                    } as never),
                 },
               ],
             );
@@ -287,7 +276,7 @@ export default function ReviewWriteScreen() {
         style={{ flex: 1, backgroundColor: Colors.white }}
         contentContainerStyle={{
           padding: contentPadding,
-          paddingBottom: Math.max(insets.bottom, 12) + 120 + (Platform.OS === "android" ? androidKb : 0),
+          paddingBottom: Math.max(insets.bottom, 12) + 120,
           ...constraint,
         }}
         keyboardShouldPersistTaps="handled"

@@ -30,6 +30,8 @@ export interface SupportTicketsFilterState {
   categoryGroup?: string;
   channel?: string;
   tenantId?: string;
+  /** Segment: AI assistant handling (handling_mode=assistant) */
+  aiHandling?: boolean;
 }
 
 /** Build query string for GET /api/admin/support-tickets (matches Next list page). */
@@ -53,6 +55,7 @@ export function buildSupportTicketsSearchParams(f: SupportTicketsFilterState): s
   if (f.categoryGroup) params.set("category_group", f.categoryGroup);
   if (f.channel && f.channel !== "all") params.set("channel", f.channel);
   if (f.tenantId) params.set("tenant_id", f.tenantId);
+  if (f.aiHandling) params.set("handling_mode", "assistant");
   return params.toString();
 }
 
@@ -74,6 +77,20 @@ export const SUPPORT_TICKET_SAVED_VIEWS: SavedView[] = [
       slaOverdue: false,
       slaState: "",
       firstResponseOverdue: false,
+    },
+  },
+  {
+    id: "ai_handling",
+    label: "AI handling",
+    params: {
+      aiHandling: true,
+      status: "all",
+      sort: "updated_desc",
+      slaOverdue: false,
+      needsResponse: false,
+      slaState: "",
+      firstResponseOverdue: false,
+      assign: "all",
     },
   },
   {
@@ -185,8 +202,12 @@ export function matchSupportTicketSavedView(f: SupportTicketsFilterState): strin
       "needsResponse",
       "slaState",
       "firstResponseOverdue",
+      "aiHandling",
     ],
     (current, paramValue, key) => {
+      if (key === "aiHandling") {
+        return Boolean(current.aiHandling) === Boolean(paramValue);
+      }
       if (key === "statusGroup") {
         return (current.statusGroup || "") === (String(paramValue ?? "") || "");
       }

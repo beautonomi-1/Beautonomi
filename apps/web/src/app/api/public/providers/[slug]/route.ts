@@ -8,6 +8,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveActiveBadge } from "@/lib/provider/active-badge";
 import { isProviderPubliclyVisible } from "@/lib/providers/public-provider-visibility";
 import { redactProviderDetailForTier } from "@/lib/providers/provider-disclosure";
+import { normalizeTipPercentPresets } from "@beautonomi/utils";
 
 function mapPublicProfilePromotions(rows: unknown, currency: string): PublicProfilePromotion[] {
   if (!Array.isArray(rows)) return [];
@@ -93,7 +94,7 @@ export async function GET(
       id, slug, business_name, business_type, description,
       rating_average, review_count, thumbnail_url, avatar_url,
       gallery, is_featured, is_verified, currency,
-      years_in_business, tax_rate_percent, tax_inclusive, tips_enabled, timezone, website,
+      years_in_business, tax_rate_percent, tax_inclusive, tips_enabled, tip_presets, timezone, website,
       social_media_links, accepts_custom_requests,
       response_rate, response_time_hours, languages_spoken,
       offers_mobile_services, minimum_mobile_booking_amount,
@@ -227,7 +228,18 @@ export async function GET(
     const offerings = offeringsResult.data || [];
     const staffCount = staffCountResult.count || undefined;
     const { getCancellationPolicy } = await import("@/lib/bookings/cancellation-policy");
+    const { buildPublicPolicyView } = await import("@/lib/bookings/public-policy-view");
     const cancellationPolicy = await getCancellationPolicy(supabase, providerData.id, "at_salon");
+    const policyView = buildPublicPolicyView({
+      policy: cancellationPolicy,
+      provider: {
+        requires_deposit: providerData.requires_deposit,
+        deposit_percentage: providerData.deposit_percentage,
+        no_show_fee_enabled: providerData.no_show_fee_enabled,
+        no_show_fee_amount: providerData.no_show_fee_amount,
+        currency: providerData.currency || defaultCurrency,
+      },
+    });
     const pointsData = pointsResult.data;
     const profile_promotions = mapPublicProfilePromotions(
       providerPromotionsResult.data,
@@ -413,15 +425,15 @@ export async function GET(
         updated_at: loc.updated_at,
       })),
       policies: {
-        cancellation_window_hours: cancellationPolicy?.hours_before_cutoff ?? 24,
-        grace_window_minutes: cancellationPolicy?.grace_window_minutes ?? 15,
-        late_refund_percentage: cancellationPolicy?.refund_percentage ?? 0,
+        cancellation_window_hours: policyView.cancellationWindowHours ?? 24,
+        grace_window_minutes: policyView.graceWindowMinutes ?? 15,
+        late_refund_percentage: policyView.lateRefundPercentage ?? 0,
         requires_deposit: Boolean(providerData.requires_deposit),
         deposit_percentage: providerData.deposit_percentage ?? null,
-        no_show_fee_enabled: Boolean(providerData.no_show_fee_enabled),
-        no_show_fee_amount: providerData.no_show_fee_amount ?? null,
-        currency: providerData.currency,
-        policy_text: cancellationPolicy?.policy_text ?? null,
+        no_show_fee_enabled: policyView.noShowFeeEnabled,
+        no_show_fee_amount: policyView.noShowFeeAmount,
+        currency: policyView.currency ?? providerData.currency,
+        policy_text: policyView.policyText,
       },
       staff_count: staffCount,
       years_in_business: providerData.years_in_business,
@@ -439,6 +451,7 @@ export async function GET(
       tax_rate_percent: taxRatePercent,
       tax_inclusive: taxInclusive,
       tips_enabled: providerData.tips_enabled ?? true,
+      tip_presets: normalizeTipPercentPresets(providerData.tip_presets),
       timezone: providerData.timezone ?? "Africa/Johannesburg",
       profile_promotions,
     } as PublicProviderDetail;

@@ -16,7 +16,7 @@ import { pushCustomerLogin } from "@/lib/guest-browse-policy";
 import { useApi } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
-import { labelForSupportTicketCategory } from "@/lib/supportTicketCategoryPresets";
+import { labelForSupportTicketCategoryI18n } from "@beautonomi/utils";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { trackSupportTicketsView } from "@/lib/analytics";
 
@@ -31,7 +31,7 @@ type Ticket = {
   support_context_label?: string | null;
   csat_score?: number | null;
   has_unread_staff_reply?: boolean;
-  last_message_from?: "customer" | "staff" | null;
+  last_message_from?: "customer" | "staff" | "assistant" | null;
   last_message_at?: string | null;
   created_at: string;
   updated_at: string;
@@ -80,9 +80,9 @@ function formatDateSafe(value: unknown): string {
   return parsed.toLocaleDateString();
 }
 
-function categoryLabel(value: string | null | undefined): string {
+function categoryLabel(value: string | null | undefined, tr: TranslateFn): string {
   if (!value) return "";
-  return labelForSupportTicketCategory(value);
+  return labelForSupportTicketCategoryI18n(value, tr);
 }
 
 function contextLabel(ticket: Ticket, st: TranslateFn): string | null {
@@ -313,7 +313,9 @@ export default function SupportTicketsListScreen() {
                 <View style={styles.cardTop}>
                   <Text style={styles.ticketNum}>{ticket.ticket_number}</Text>
                   <View style={styles.pillRow}>
-                    {ticket.has_unread_staff_reply || ticket.last_message_from === "staff" ? (
+                    {ticket.has_unread_staff_reply ||
+                    ticket.last_message_from === "staff" ||
+                    ticket.last_message_from === "assistant" ? (
                       <View style={styles.replyPill}>
                         <Text style={styles.replyPillText}>{st("newReply")}</Text>
                       </View>
@@ -332,7 +334,7 @@ export default function SupportTicketsListScreen() {
                   </Text>
                 ) : null}
                 <Text style={styles.meta}>
-                  {ticket.category ? `${categoryLabel(ticket.category)} · ` : ""}
+                  {ticket.category ? `${categoryLabel(ticket.category, st)} · ` : ""}
                   {st("priorityLabel", { priority: priorityLabel(ticket.priority, st) })}
                   {" · "}
                   {st("updatedLabel", { date: formatDateSafe(ticket.updated_at) })}

@@ -5,6 +5,7 @@ import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
 import SearchBox from "./components/searchbox";
 import CTA from "./components/cta";
+import ExploreMore from "./components/explore-more";
 import {
   getPublicPageContent,
   type PublicPageContent,
@@ -36,6 +37,7 @@ const Page = async () => {
         </div>
         <SearchBox content={content} />
         <CTA content={content} />
+        <ExploreMore />
       </div>
       <Footer />
       <BottomNav />

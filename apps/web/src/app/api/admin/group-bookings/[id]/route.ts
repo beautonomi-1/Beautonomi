@@ -225,10 +225,11 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const group = await assertAdminCanAccessGroup(admin, id, tenantId);
     if (!group) return errorResponse("Group booking not found", "NOT_FOUND", 404);
 
-    const now = new Date().toISOString();
-    await admin.from("bookings").update({ status: "cancelled", cancelled_at: now, cancellation_reason: "Group booking cancelled by admin", updated_at: now }).eq("group_booking_id", id).not("status", "in", "(cancelled,no_show)");
-    const { error } = await admin.from("group_bookings").update({ status: "cancelled", updated_at: now }).eq("id", id);
-    if (error) throw error;
+    const { cancelGroupBooking } = await import("@/lib/bookings/group-booking-cancellation");
+    await cancelGroupBooking(admin, id, "admin", "Group booking cancelled by admin", {
+      settleFinance: true,
+      financeActor: "admin",
+    });
 
     return successResponse({ success: true });
   } catch (error) {

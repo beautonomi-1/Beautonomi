@@ -12,6 +12,7 @@ import {
   msToHours,
   msToMinutes,
 } from "@/lib/support/support-report-shared";
+import { firstResponseIntervalStartIso } from "@/lib/support/support-ticket-sla";
 
 const TICKET_ROW_CAP = 5000;
 
@@ -119,6 +120,8 @@ export async function GET(request: NextRequest) {
       "user_id",
       "provider_id",
       "assigned_to",
+      "handling_mode",
+      "assistant_handoff_at",
     ].join(", ");
 
     const [createdRes, resolvedRes, openRes] = await Promise.all([
@@ -178,11 +181,15 @@ export async function GET(request: NextRequest) {
 
     const frtMs = periodTickets
       .filter((t) => t.first_staff_reply_at && t.created_at)
-      .map(
-        (t) =>
-          new Date(t.first_staff_reply_at as string).getTime() -
-          new Date(t.created_at as string).getTime()
-      )
+      .map((t) => {
+        const start = firstResponseIntervalStartIso({
+          created_at: String(t.created_at),
+          assistant_handoff_at: (t as { assistant_handoff_at?: string | null }).assistant_handoff_at,
+        });
+        return (
+          new Date(t.first_staff_reply_at as string).getTime() - new Date(start).getTime()
+        );
+      })
       .filter((ms) => ms >= 0);
     const mttrMs = resolved
       .filter((t) => t.resolved_at && t.created_at)
@@ -340,7 +347,10 @@ export async function GET(request: NextRequest) {
       priorityMix,
       dailyOpenedVsResolved,
       ticketsWithoutFirstResponse: periodTickets.filter(
-        (t) => !t.first_staff_reply_at && !isClosedLike(t.status)
+        (t) =>
+          !t.first_staff_reply_at &&
+          !isClosedLike(t.status) &&
+          String((t as { handling_mode?: string }).handling_mode ?? "human") === "human",
       ).length,
       ticketRowCap: TICKET_ROW_CAP,
       agentCsat,

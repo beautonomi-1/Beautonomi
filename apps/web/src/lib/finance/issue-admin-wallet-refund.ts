@@ -395,6 +395,13 @@ export async function issueAdminWalletRefund(
     console.error("[issueAdminWalletRefund] push notification failed:", notifErr);
   }
 
+  try {
+    const { notifyRefundProcessed } = await import("@/lib/notifications/notification-service");
+    await notifyRefundProcessed(bookingId, walletCreditAmount, reason);
+  } catch (templateErr) {
+    console.error("[issueAdminWalletRefund] refund_processed template failed:", templateErr);
+  }
+
   // 10. Check provider balance for negative post-payout risk (best-effort)
   let providerBalanceWarning: string | null = null;
   if (providerId) {

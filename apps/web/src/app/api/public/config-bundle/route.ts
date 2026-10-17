@@ -69,12 +69,15 @@ export async function GET(request: NextRequest) {
       },
     });
     const etag = `"${Buffer.from(body).toString("base64").slice(0, 32)}"`;
+    const flagsUnavailable = bundle.meta.flags_unavailable === true;
 
     return new NextResponse(body, {
       status: 200,
       headers: {
         "Content-Type": "application/json",
-        "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+        "Cache-Control": flagsUnavailable
+          ? "no-store"
+          : "public, s-maxage=300, stale-while-revalidate=600",
         ETag: etag,
       },
     });
@@ -168,10 +171,10 @@ export async function GET(request: NextRequest) {
     const body = JSON.stringify(fallback);
     const etag = `"${Buffer.from(body).toString("base64").slice(0, 32)}"`;
     return new NextResponse(body, {
-      status: 200,
+      status: 503,
       headers: {
         "Content-Type": "application/json",
-        "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+        "Cache-Control": "no-store",
         ETag: etag,
       },
     });

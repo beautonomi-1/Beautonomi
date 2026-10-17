@@ -13,7 +13,8 @@ import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
 import LoadingTimeout from "@/components/ui/loading-timeout";
-import { labelForSupportTicketCategory } from "@/lib/support/ticket-categories";
+import { labelForSupportTicketCategoryI18n } from "@/lib/support/ticket-categories";
+import { useTranslation } from "@beautonomi/i18n";
 
 type Ticket = {
   id: string;
@@ -26,7 +27,7 @@ type Ticket = {
   support_context_label?: string | null;
   csat_score?: number | null;
   has_unread_staff_reply?: boolean;
-  last_message_from?: "customer" | "staff" | null;
+  last_message_from?: "customer" | "staff" | "assistant" | null;
   last_message_at?: string | null;
   created_at: string;
   updated_at: string;
@@ -57,6 +58,7 @@ function shouldAskForCsat(ticket: Ticket): boolean {
 }
 
 export default function MyTicketsPage() {
+  const { t: tr } = useTranslation();
   const router = useRouter();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
@@ -148,8 +150,12 @@ export default function MyTicketsPage() {
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <span className="font-mono text-sm text-gray-500">{t.ticket_number}</span>
                           <div className="flex flex-wrap items-center gap-2">
-                            {t.has_unread_staff_reply || t.last_message_from === "staff" ? (
-                              <Badge className="bg-blue-100 text-blue-800">Support replied</Badge>
+                            {t.has_unread_staff_reply ||
+                            t.last_message_from === "staff" ||
+                            t.last_message_from === "assistant" ? (
+                              <Badge className="bg-blue-100 text-blue-800">
+                                {t.last_message_from === "assistant" ? "AI replied" : "Support replied"}
+                              </Badge>
                             ) : null}
                             <Badge className={statusColor(t.status)}>{t.status.replace("_", " ")}</Badge>
                           </div>
@@ -163,7 +169,7 @@ export default function MyTicketsPage() {
                           ) : null}
                           {t.category ? (
                             <span className="block text-zinc-600">
-                              {labelForSupportTicketCategory(t.category)}
+                              {labelForSupportTicketCategoryI18n(t.category, tr)}
                             </span>
                           ) : null}
                           {shouldAskForCsat(t) ? (

@@ -28,7 +28,7 @@ export async function PATCH(
     }
     const { data: existing } = await supabase
       .from("ads_campaigns")
-      .select("id, provider_id, pack_impressions, budget, spent, billing_model, start_at, end_at, funded_at")
+      .select("id, provider_id, status, pack_impressions, budget, spent, billing_model, start_at, end_at, funded_at")
       .eq("id", campaignId)
       .maybeSingle();
     if (!existing) {
@@ -100,7 +100,7 @@ export async function PATCH(
         const newBudget = Math.max(0, Number(body.budget));
         if (newBudget > Number(existing.budget ?? 0)) {
           return errorResponse(
-            "Budget increases require a new payment. Use the top-up flow to add funds.",
+            "Budget can only be lowered. To add spend, start a new campaign or buy another pack.",
             "BUDGET_INCREASE_REQUIRES_PAYMENT",
             400
           );

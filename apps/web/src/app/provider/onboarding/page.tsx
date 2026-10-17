@@ -1,6 +1,11 @@
 "use client";
 
-import { useTranslation } from "@beautonomi/i18n";
+import {
+  useTranslation,
+  BOOKING_POLICY_PRESETS,
+  DEFAULT_BOOKING_POLICY_PRESET,
+  type BookingPolicyPresetId,
+} from "@beautonomi/i18n";
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { countryFilterIso2FromStorage, getDefaultMoneyLocale, isMailableEmail } from "@beautonomi/utils";
@@ -219,11 +224,9 @@ interface OnboardingData {
   response_time_hours?: number;
   tax_rate_percent?: number | null;
   tips_enabled?: boolean;
-  cancellation_window_hours?: number;
-  requires_deposit?: boolean;
-  deposit_percentage?: number | null;
-  no_show_fee_enabled?: boolean;
-  no_show_fee_amount?: number | null;
+  booking_policy?: {
+    preset: Exclude<BookingPolicyPresetId, "custom">;
+  };
   include_in_search_engines?: boolean;
 
   // Step 9: Service Zones
@@ -418,6 +421,7 @@ const INITIAL_ONBOARDING_DATA: Partial<OnboardingData> = {
     sunday: { open: "09:00", close: "18:00", closed: false },
   },
   selected_zone_ids: [],
+  booking_policy: { preset: DEFAULT_BOOKING_POLICY_PRESET },
 };
 
 const ONBOARDING_DRAFT_STORAGE_KEY = "beautonomi_provider_onboarding_draft";
@@ -760,7 +764,10 @@ export default function ProviderOnboarding() {
       case 3: // Business Details
         if (!formData.business_name?.trim()) errors.push(t("web.provider.onboarding.validation.businessName"));
         break;
-      case 4: // Payment Setup
+      case 4: // Payments & policies
+        if (!formData.booking_policy?.preset) {
+          errors.push(t("web.provider.onboarding.validation.bookingPolicyRequired"));
+        }
         // Validate VAT registration if selected (South Africa only)
         if (formData.is_vat_registered === true) {
           const addressCountry = formData.address?.country?.trim() || "South Africa";
@@ -1046,11 +1053,9 @@ export default function ProviderOnboarding() {
         website: formData.website || null,
         tax_rate_percent: formData.tax_rate_percent || null,
         tips_enabled: formData.tips_enabled ?? true,
-        cancellation_window_hours: formData.cancellation_window_hours || 24,
-        requires_deposit: formData.requires_deposit || false,
-        deposit_percentage: formData.deposit_percentage || null,
-        no_show_fee_enabled: formData.no_show_fee_enabled || false,
-        no_show_fee_amount: formData.no_show_fee_amount || null,
+        booking_policy: {
+          preset: formData.booking_policy?.preset ?? DEFAULT_BOOKING_POLICY_PRESET,
+        },
         include_in_search_engines: formData.include_in_search_engines !== false, // Default to true
         selected_plan_id: formData.selected_plan_id || null,
         // Provider Ops: deterministic lead matching for admin-sent invites.
@@ -2869,6 +2874,13 @@ function Step4PaymentSetup({
   updateData: (updates: Partial<OnboardingData>) => void;
 }) {
   const { t } = useTranslation();
+  const selectedPreset = data.booking_policy?.preset ?? DEFAULT_BOOKING_POLICY_PRESET;
+  const bookingPolicyPresetOrder: Exclude<BookingPolicyPresetId, "custom">[] = [
+    "no_penalty",
+    "flexible",
+    "standard",
+    "strict",
+  ];
   const isZaBusiness =
     countryFilterIso2FromStorage(data.address?.country?.trim() || "South Africa") === "ZA";
   const TERMINAL_OWNERSHIP_OPTIONS = [
@@ -3195,6 +3207,38 @@ function Step4PaymentSetup({
             </p>
           </div>
         )}
+      </div>
+
+      <div className="mt-8 pt-6 border-t border-gray-200 space-y-3">
+        <h3 className="text-lg font-semibold text-gray-900">
+          {t("web.provider.onboarding.payment.bookingProtectionTitle")}
+        </h3>
+        <p className="text-sm text-gray-600">
+          {t("web.provider.onboarding.payment.bookingProtectionHint")}
+        </p>
+        <div className="space-y-3">
+          {bookingPolicyPresetOrder.map((presetId) => {
+            const preset = BOOKING_POLICY_PRESETS[presetId];
+            const isSelected = selectedPreset === presetId;
+            const title = t(preset.labelKey);
+            const description = t(`provider.bookingPolicy.${presetId}Desc`);
+            return (
+              <button
+                key={presetId}
+                type="button"
+                onClick={() => updateData({ booking_policy: { preset: presetId } })}
+                className={`w-full rounded-[1.5rem] border p-5 text-start transition-all duration-200 ${
+                  isSelected
+                    ? "border-slate-900 bg-slate-900/5 shadow-sm"
+                    : "border-slate-100 bg-white hover:border-slate-200 hover:shadow-sm"
+                }`}
+              >
+                <p className="font-semibold text-slate-900">{title}</p>
+                <p className="mt-1 text-sm text-slate-600">{description}</p>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Payout — deferred to post-wizard setup checklist */}

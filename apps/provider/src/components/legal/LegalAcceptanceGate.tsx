@@ -29,6 +29,7 @@ export function LegalAcceptanceGate({ children }: Props) {
   const { t } = useTranslation();
   const lg = (key: string) => t(`provider.mobile.components.legalAcceptanceGate.${key}`) as string;
   const { session } = useAuth();
+  const userId = session?.user?.id ?? null;
   const [loading, setLoading] = useState(true);
   const [accepted, setAccepted] = useState(false);
   const [checked, setChecked] = useState(false);
@@ -49,18 +50,18 @@ export function LegalAcceptanceGate({ children }: Props) {
   }, []);
 
   const syncServerAcceptance = useCallback(async () => {
-    if (!session) return;
+    if (!userId) return;
     await api.post("/api/me/legal-acceptance", {
       app: "partner",
       version: PARTNER_EULA_VERSION,
     });
-  }, [session]);
+  }, [userId]);
 
   useEffect(() => {
-    if (session && accepted) {
+    if (userId && accepted) {
       void syncServerAcceptance().catch(() => {});
     }
-  }, [session, accepted, syncServerAcceptance]);
+  }, [userId, accepted, syncServerAcceptance]);
 
   const onContinue = useCallback(async () => {
     if (!checked || submitting) return;
@@ -68,13 +69,13 @@ export function LegalAcceptanceGate({ children }: Props) {
     try {
       await storePartnerEulaAcceptance();
       setAccepted(true);
-      if (session) {
+      if (userId) {
         await syncServerAcceptance();
       }
     } finally {
       setSubmitting(false);
     }
-  }, [checked, submitting, session, syncServerAcceptance]);
+  }, [checked, submitting, userId, syncServerAcceptance]);
 
   if (loading) {
     return (

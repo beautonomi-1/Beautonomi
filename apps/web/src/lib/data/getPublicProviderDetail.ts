@@ -12,6 +12,7 @@ import {
   type ProviderVisibilityRow,
 } from "@/lib/providers/public-provider-visibility";
 import { redactProviderDetailForTier } from "@/lib/providers/provider-disclosure";
+import { buildPublicPolicyView } from "@/lib/bookings/public-policy-view";
 
 function isUnmappedPreviewOrDevHost(host: string): boolean {
   const h = host.toLowerCase();
@@ -132,9 +133,14 @@ export const getPublicProviderDetail = cache(
                 .eq("is_active", true)
             : Promise.resolve({ count: 0 }),
           supabase
-            .from("provider_policies")
-            .select("*")
+            .from("cancellation_policies")
+            .select(
+              "hours_before, hours_before_cutoff, grace_window_minutes, refund_percentage, policy_text",
+            )
             .eq("provider_id", providerData.id)
+            .eq("is_active", true)
+            .order("is_default", { ascending: false })
+            .limit(1)
             .maybeSingle(),
           supabase
             .from("provider_points")
@@ -151,7 +157,17 @@ export const getPublicProviderDetail = cache(
       const locations = locationsResult.data || [];
       const offerings = offeringsResult.data || [];
       const staffCount = staffCountResult.count || undefined;
-      const policies = policiesResult.data;
+      const cancellationPolicyRow = policiesResult.data;
+      const policyView = buildPublicPolicyView({
+        policy: cancellationPolicyRow,
+        provider: {
+          requires_deposit: providerData.requires_deposit,
+          deposit_percentage: providerData.deposit_percentage,
+          no_show_fee_enabled: providerData.no_show_fee_enabled,
+          no_show_fee_amount: providerData.no_show_fee_amount,
+          currency: providerData.currency || defaultCurrency,
+        },
+      });
       const pointsData = pointsResult.data as Record<string, any> | null;
 
       // Badge (guarded: hide once the maintenance window has elapsed)
@@ -315,21 +331,17 @@ export const getPublicProviderDetail = cache(
           created_at: loc.created_at,
           updated_at: loc.updated_at,
         })),
-        policies: policies
-          ? {
-              cancellation_window_hours: (policies as any).cancellation_window_hours,
-              requires_deposit: (policies as any).requires_deposit,
-              deposit_percentage: (policies as any).deposit_percentage,
-              no_show_fee_enabled: (policies as any).no_show_fee_enabled,
-              no_show_fee_amount: (policies as any).no_show_fee_amount,
-              currency: (policies as any).currency,
-            }
-          : {
-              cancellation_window_hours: 24,
-              requires_deposit: false,
-              no_show_fee_enabled: false,
-              currency: providerData.currency,
-            },
+        policies: {
+          cancellation_window_hours: policyView.cancellationWindowHours ?? 24,
+          grace_window_minutes: policyView.graceWindowMinutes ?? 15,
+          late_refund_percentage: policyView.lateRefundPercentage ?? 0,
+          requires_deposit: Boolean(providerData.requires_deposit),
+          deposit_percentage: providerData.deposit_percentage ?? null,
+          no_show_fee_enabled: policyView.noShowFeeEnabled,
+          no_show_fee_amount: policyView.noShowFeeAmount,
+          currency: policyView.currency ?? providerData.currency,
+          policy_text: policyView.policyText,
+        },
         staff_count: staffCount,
         years_in_business: providerData.years_in_business,
         accepts_custom_requests: acceptsCustomRequests,

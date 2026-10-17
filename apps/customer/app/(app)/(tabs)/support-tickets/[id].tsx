@@ -9,7 +9,7 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import { useAuth } from "@/providers/AuthProvider";
 import { Colors } from "@/constants/colors";
 import { trackSupportTicketDetailView, trackSupportTicketReply } from "@/lib/analytics";
-import { labelForSupportTicketCategory } from "@/lib/supportTicketCategoryPresets";
+import { labelForSupportTicketCategoryI18n } from "@beautonomi/utils";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useTranslation } from "@beautonomi/i18n";
 import { useImagePicker } from "@/hooks/useImagePicker";
@@ -18,6 +18,7 @@ import { invalidateSupportTicketsListCache } from "@/lib/api-response-cache";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { endTextAlign } from "@/lib/rtlText";
+import { LinkifiedMessageText } from "@/components/support/LinkifiedMessageText";
 
 type Message = {
   id: string;
@@ -27,6 +28,7 @@ type Message = {
   user_id: string;
   author_name?: string | null;
   is_mine?: boolean;
+  author_kind?: string | null;
   attachments?: SupportAttachment[];
 };
 
@@ -48,6 +50,7 @@ type Ticket = {
   support_context_label?: string | null;
   csat_score?: number | null;
   csat_comment?: string | null;
+  handling_mode?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -216,14 +219,15 @@ export default function SupportTicketDetailScreen() {
       active = state === "active";
       if (active) void loadTicket();
     });
+    const pollMs = ticket?.handling_mode === "assistant" ? 2_000 : 30_000;
     const timer = setInterval(() => {
       if (active) void loadTicket();
-    }, 30_000);
+    }, pollMs);
     return () => {
       sub.remove();
       clearInterval(timer);
     };
-  }, [loadTicket]);
+  }, [loadTicket, ticket?.handling_mode]);
 
   useEffect(() => {
     const tid = typeof id === "string" ? id : Array.isArray(id) ? id[0] : "";
@@ -287,10 +291,41 @@ export default function SupportTicketDetailScreen() {
     }
   }, [messages.length]);
 
+  const isAssistantMode = ticket?.handling_mode === "assistant";
+
+  const handoffToHuman = async () => {
+    if (!id) return;
+    try {
+      await api.post(`/api/me/support-tickets/${id}/handoff`, {});
+      await loadTicket();
+      Alert.alert("Connecting you to support", "A specialist will join this thread shortly.");
+    } catch (e) {
+      Alert.alert(sd("sendFailedTitle"), e instanceof Error ? e.message : sd("sendReplyFallback"));
+    }
+  };
+
+  const resolveViaAssistant = async () => {
+    if (!id) return;
+    try {
+      const res = await api.post(`/api/me/support-tickets/${id}/assistant-resolve`, {});
+      if (res.error) {
+        Alert.alert(sd("sendFailedTitle"), getApiErrorMessage(res.error, sd("sendReplyFallback")));
+        return;
+      }
+      await loadTicket();
+    } catch (e) {
+      Alert.alert(sd("sendFailedTitle"), e instanceof Error ? e.message : sd("sendReplyFallback"));
+    }
+  };
+
   const handleReply = async () => {
     const msg = reply.trim();
     if ((!msg && pendingAttachments.length === 0) || !id) return;
-    const attachmentsToSend = pendingAttachments;
+    if (isAssistantMode && pendingAttachments.length > 0) {
+      Alert.alert(sd("uploadFailedTitle"), "Attachments are available after a specialist joins the conversation.");
+      return;
+    }
+    const attachmentsToSend = isAssistantMode ? [] : pendingAttachments;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSending(true);
     try {
@@ -304,7 +339,8 @@ export default function SupportTicketDetailScreen() {
       }
       setReply("");
       setPendingAttachments([]);
-      const sentMessage = (res.data as { message?: Message } | null | undefined)?.message;
+      const payload = res.data as { message?: Message; assistantMessage?: Message } | null | undefined;
+      const sentMessage = payload?.message;
       const localMessage: Message = {
         id: sentMessage?.id ?? `local-${Date.now()}`,
         message: sentMessage?.message ?? (msg || (attachmentsToSend.length ? sd("attachmentOnlyMessage") : "")),
@@ -315,7 +351,22 @@ export default function SupportTicketDetailScreen() {
         is_mine: true,
         attachments: sentMessage?.attachments ?? attachmentsToSend,
       };
-      setMessages((prev) => (prev.some((m) => m.id === localMessage.id) ? prev : [...prev, localMessage]));
+      setMessages((prev) => {
+        let next = prev.some((m) => m.id === localMessage.id) ? prev : [...prev, localMessage];
+        const assistantRow = payload?.assistantMessage;
+        if (assistantRow && !next.some((m) => m.id === assistantRow.id)) {
+          next = [
+            ...next,
+            {
+              ...assistantRow,
+              author_kind: "assistant",
+              author_name: "Beautonomi Assistant",
+              is_mine: false,
+            },
+          ];
+        }
+        return next;
+      });
       invalidateSupportTicketsListCache();
       trackSupportTicketReply(id);
       await loadTicket();
@@ -467,7 +518,7 @@ export default function SupportTicketDetailScreen() {
           <Text style={styles.subMeta}>
             {ticket.category
               ? sd("categoryPriority", {
-                  category: labelForSupportTicketCategory(String(ticket.category)),
+                  category: labelForSupportTicketCategoryI18n(String(ticket.category), t),
                   priority: priorityLabel(ticket.priority, sd),
                 })
               : sd("priorityOnly", { priority: priorityLabel(ticket.priority, sd) })}
@@ -482,9 +533,18 @@ export default function SupportTicketDetailScreen() {
             </Text>
           ) : null}
 
+          {isAssistantMode ? (
+            <Text style={styles.aiDisclaimer}>AI can make mistakes — you can request a person anytime.</Text>
+          ) : null}
+
           {messages.map((m) => {
             const isOwn = m.is_mine ?? m.user_id === user?.id;
-            const authorLabel = isOwn ? sd("you") : m.author_name ?? sd("supportTeam");
+            const isAssistant = m.author_kind === "assistant";
+            const authorLabel = isOwn
+              ? sd("you")
+              : isAssistant
+                ? "Beautonomi Assistant"
+                : m.author_name ?? sd("supportTeam");
             const initials = isOwn
               ? sd("youInitials")
               : authorLabel
@@ -510,7 +570,12 @@ export default function SupportTicketDetailScreen() {
                     isOwn ? styles.bubbleRadiusOwn : styles.bubbleRadiusOther,
                   ]}
                 >
-                  <Text style={[styles.bubbleText, isOwn && styles.bubbleTextOwn]}>{m.message}</Text>
+                  <LinkifiedMessageText
+                    text={m.message}
+                    style={[styles.bubbleText, isOwn && styles.bubbleTextOwn]}
+                    linkStyle={isOwn ? { color: "#fff", textDecorationLine: "underline" } : undefined}
+                    onOpenError={() => Alert.alert(sd("openFailedTitle"), sd("openFailedBody"))}
+                  />
                   {Array.isArray(m.attachments) && m.attachments.length > 0 && (
                     <View style={styles.attachmentList}>
                       {m.attachments.map((attachment, index) => (
@@ -537,6 +602,17 @@ export default function SupportTicketDetailScreen() {
 
           {messages.length === 0 ? (
             <Text style={styles.emptyThreadText}>{sd("emptyThread")}</Text>
+          ) : null}
+
+          {canReply && isAssistantMode ? (
+            <View style={styles.assistantActions}>
+              <TouchableOpacity onPress={() => void handoffToHuman()} style={styles.assistantBtn} accessibilityRole="button">
+                <Text style={styles.assistantBtnText}>Talk to a person</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => void resolveViaAssistant()} style={styles.assistantBtnSecondary} accessibilityRole="button">
+                <Text style={styles.assistantBtnText}>Did this help? Yes</Text>
+              </TouchableOpacity>
+            </View>
           ) : null}
 
           {canReply && (
@@ -568,6 +644,7 @@ export default function SupportTicketDetailScreen() {
                   ))}
                 </View>
               )}
+              {!isAssistantMode ? (
               <TouchableOpacity
                 onPress={attachImage}
                 disabled={sending || uploadingAttachment || pendingAttachments.length >= 6}
@@ -580,9 +657,13 @@ export default function SupportTicketDetailScreen() {
                   <Text style={styles.attachBtnText}>{sd("attachImage")}</Text>
                 )}
               </TouchableOpacity>
+              ) : null}
               <TouchableOpacity
                 onPress={handleReply}
-                disabled={sending || (!reply.trim() && pendingAttachments.length === 0)}
+                disabled={
+                  sending ||
+                  (!reply.trim() && (isAssistantMode ? true : pendingAttachments.length === 0))
+                }
                 style={[
                   styles.sendBtn,
                   (sending || (!reply.trim() && pendingAttachments.length === 0)) && styles.sendBtnDisabled,
@@ -827,4 +908,20 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     color: Colors.gray[900],
   },
+  aiDisclaimer: { marginBottom: 10, fontSize: 12, color: Colors.gray[500], lineHeight: 18 },
+  assistantActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 },
+  assistantBtn: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  assistantBtnSecondary: {
+    borderRadius: 10,
+    backgroundColor: Colors.gray[100],
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  assistantBtnText: { fontSize: 13, fontWeight: "600", color: Colors.gray[800] },
 });

@@ -13472,7 +13472,8 @@
       "giftCardRedeemedDefault": "بطاقة هدايا redeemed to محفظة successfully",
       "giftRedeemHelp": "Faka ikhodi oyithengile noma othile akuthumelele yona — ibhalansi ephelele ifakwa esikhwameni sakho semali ngokushesha.",
       "yourGiftCards": "Tu tarjetas de regalo",
-      "checkoutOpenFailed": "تعذّر فتح الدفع الآمن. يُرجى المحاولة مرة أخرى."
+      "checkoutOpenFailed": "تعذّر فتح الدفع الآمن. يُرجى المحاولة مرة أخرى.",
+      "walletHelpLink": "محفظة help"
     },
     "paymentsScreen": {
       "saveCardExplainer": "Sizolondoloza ikhadi lakho ngokuphephile uma ukhokha. Ukuze uqinisekise ikhadi lakho, inkokhiso yesikhashana encane (isb. {{example}}) ingase ibekwe futhi ihlehliswe—lokhu kuqinisekisa ikhadi lakho ukuze ulisebenzise esikhathini esizayo.",
@@ -15529,7 +15530,9 @@
           "payRemainingNoTip": "بدون إكرامية",
           "payRemainingCustomTip": "مبلغ مخصص",
           "payRemainingCustomTipPlaceholder": "مبلغ الإكرامية",
-          "payRemainingTipLine": "الإكرامية: {{amount}} — تذهب بالكامل إلى مقدم الخدمة"
+          "payRemainingTipLine": "الإكرامية: {{amount}} — تذهب بالكامل إلى مقدم الخدمة",
+          "cancelPreviewSheetTitle": "إلغاء this حجز?",
+          "cancelPreviewInPersonRefund": "استرداد due in person: {{currency}} {{amount}}"
         },
         "groupBookingDetail": {
           "back": "رجوع",
@@ -17083,7 +17086,14 @@
           "priorityLow": "منخفض",
           "priorityMedium": "متوسط",
           "priorityHigh": "مرتفع",
-          "priorityUrgent": "عاجل"
+          "priorityUrgent": "عاجل",
+          "chatBack": "رجوع",
+          "chatDefaultSubject": "طلب الدعم",
+          "continueToChat": "استمر في الدردشة",
+          "useFullForm": "استخدم النموذج الكامل",
+          "safetyUseForm": "يتم إرسال تقارير السلامة مباشرة إلى فريقنا - يرجى استخدام النموذج الكامل.",
+          "chatAiDisclaimer": "يمكن للذكاء الاصطناعي أن يرتكب أخطاء — يمكنك التحدث إلى أي شخص في أي وقت بعد إنشاء تذكرتك.",
+          "startChat": "ابدأ الدردشة"
         },
         "supportTicketDetail": {
           "messagePlaceholder": "اكتب رسالتك...",
@@ -17542,6 +17552,49 @@
     "exploreVideo": {
       "unmute": "إلغاء كتم الصوت",
       "mute": "كتم الصوت"
+    },
+    "bankAccounts": {
+      "failedLoadBanks": "تعذر load banks. حاول مرة أخرى.",
+      "fillAllFields": "اختر بنكًا وأدخل رقم الحساب واسم صاحبه.",
+      "removeConfirmTitle": "إزالة bank account?",
+      "removeConfirmBody": "لن يكون هذا الحساب متاحًا لاسترداد المبالغ البنكية بعد الآن.",
+      "remove": "إزالة",
+      "intro": "يُستخدم فقط لاسترداد المبالغ البنكية لمدفوعات البطاقات المؤهلة. يتم تخزين أرقام الحسابات مشفرة.",
+      "empty": "لا bank accounts محفوظ yet.",
+      "bankLabel": "بنك",
+      "primary": "أساسي",
+      "makePrimary": "جعل الابتدائي",
+      "verifiedBadge": "موثّق",
+      "addAnother": "إضافة a bank account",
+      "searchBanks": "بحث banks",
+      "accountNumberLabel": "رقم الحساب",
+      "verifiedAs": "موثّق: {{name}}",
+      "verify": "التحقق من الحساب",
+      "verificationUnavailable": "التحقق التلقائي غير متوفر في السوق الخاص بك - أدخل اسم صاحب الحساب تمامًا كما يظهر في البنك الذي تتعامل معه.",
+      "accountNameLabel": "Account holder اسم",
+      "save": "حفظ bank account",
+      "screenTitle": "الحسابات البنكية"
+    },
+    "walletBankRefund": {
+      "addBank": "إضافة a bank account",
+      "notEnabled": "المبالغ المستردة من البنك غير متوفرة في السوق الخاص بك في الوقت الحالي.",
+      "invalidAmount": "أدخل a valid amount.",
+      "failed": "لا يمكن تقديم طلبك. حاول مرة أخرى أو اتصل بالدعم.",
+      "openRequest": "لديك بالفعل طلب استرداد بنكي قيد التقدم ({{number}}).",
+      "cancelRequest": "إلغاء request",
+      "retentionTitle": "يبقيه على Beautonomi",
+      "keepInWallet": "Keep in my محفظة",
+      "continueToBank": "Request a bank استرداد instead",
+      "eligibleLabel": "Eligible for bank استرداد: {{amount}}",
+      "eligibleHint": "يمكن فقط إرسال المبالغ المستردة من مدفوعات البطاقة التي تمت من خلال Beautonomi إلى حساب مصرفي. تظل عمليات إعادة التعبئة وبطاقات الهدايا والائتمان الترويجي في محفظتك.",
+      "noneEligible": "ليس لديك أي مبالغ مستردة لدفعات البطاقة مؤهلة لاسترداد الأموال البنكية في الوقت الحالي.",
+      "amountLabel": "كم يجب أن نرسل إلى البنك الذي تتعامل معه؟",
+      "feeLine": "رسوم المعالجة: {{fee}} · تتلقى: {{net}}",
+      "submit": "إرسال request",
+      "submittedTitle": "تم تقديم الطلب",
+      "screenTitle": "Bank استرداد",
+      "retentionBody": "لديك {{amount}} جاهز للاستخدام في حجزك القادم — يُطبَّق رصيد المحفظة فورًا عند الدفع.",
+      "submittedBody": "المبلغ محتجز في محفظتك ريثما يراجعه فريق المالية. تُدفع المبالغ المستردة المعتمدة بالتحويل الإلكتروني، عادة خلال {{days}} أيام عمل."
     }
   },
   "checkout": {
@@ -17583,6 +17636,7 @@
     "total": "الإجمالي",
     "addTipOptional": "إضافة a tip (اختياري)",
     "noTip": "لا tip",
+    "tipPercentButtonA11y": "إكرامية {{percent}}%، {{amount}}",
     "specialRequestsOptional": "Special requests (اختياري)",
     "specialRequestsPlaceholder": "Allergies, accessibilité, styliste préféré, etc.",
     "promoCodeOptional": "Promo code (اختياري)",
@@ -17639,7 +17693,7 @@
     "lateCancellationWithinWindowNoRefund": "خلال {{hours}} {{hourWord}} قبل موعدك: لن يُصدر استرداد.",
     "noRefundOnCancellation": "Cancellations are non-refundable per this مزود's سياسة.",
     "policyEnforcedAutomatically": "This سياسة is enforced تلقائيًا at the وقت of cancellation.",
-    "refundsStoreCreditNote": "All refunds are issued as store credit to your Beautonomi wallet, limited to amounts already paid.",
+    "refundsStoreCreditNote": "تُضاف المبالغ المستردة من المدفوعات عبر الإنترنت إلى محفظة Beautonomi. المدفوعات الشخصية لا تخضع لرسوم إلغاء ويُعيدها مقدّم الخدمة.",
     "hour": "ساعة",
     "hours": "ساعات",
     "noShowFeeApplies": "رسوم عدم حضور {{amount}} إذا فاتك الموعد دون إلغاء.",
@@ -17761,7 +17815,10 @@
     "paymentUnavailableTitle": "الدفع غير متاح",
     "paymentBrowserFailed": "تعذّر فتح نافذة الدفع الآمن. يُرجى المحاولة مرة أخرى.",
     "paymentNotCompletedTitle": "لم يكتمل الدفع",
-    "paymentNotCompletedBody": "لم يتم تأكيد حجزك."
+    "paymentNotCompletedBody": "لم يتم تأكيد حجزك.",
+    "cancelPreviousFullRefundBody": "سوف يعود {{refund}} إلى محفظتك Beautonomi. إلغاء الموعد السابق؟",
+    "confirmCancelPrevious": "إلغاء previous",
+    "cancelPreviousWithFeeBody": "رسوم الإلغاء {{fee}}. سيُعاد {{refund}} إلى محفظة Beautonomi. هل تريد إلغاء الموعد السابق؟"
   },
   "payments": {
     "pay": "دفع",

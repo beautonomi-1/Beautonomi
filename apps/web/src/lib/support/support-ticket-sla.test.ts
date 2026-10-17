@@ -4,6 +4,7 @@ import {
   computeFirstResponseDueIso,
   resolutionSlaHoursForPriority,
   computeSlaResolutionDueIso,
+  firstResponseIntervalStartIso,
 } from "./support-ticket-sla";
 
 describe("firstResponseSlaHoursForPriority", () => {
@@ -54,6 +55,23 @@ describe("resolutionSlaHoursForPriority (regression)", () => {
   });
   it("returns 72h for medium", () => {
     expect(resolutionSlaHoursForPriority("medium")).toBe(72);
+  });
+});
+
+describe("firstResponseIntervalStartIso", () => {
+  it("uses created_at when no handoff", () => {
+    expect(
+      firstResponseIntervalStartIso({ created_at: "2024-01-01T00:00:00.000Z", assistant_handoff_at: null }),
+    ).toBe("2024-01-01T00:00:00.000Z");
+  });
+
+  it("uses assistant_handoff_at when set", () => {
+    expect(
+      firstResponseIntervalStartIso({
+        created_at: "2024-01-01T00:00:00.000Z",
+        assistant_handoff_at: "2024-01-02T12:00:00.000Z",
+      }),
+    ).toBe("2024-01-02T12:00:00.000Z");
   });
 });
 

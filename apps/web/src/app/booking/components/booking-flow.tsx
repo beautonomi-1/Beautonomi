@@ -198,6 +198,7 @@ export interface BookingState {
   requiresDeposit?: boolean;
   depositPercentage?: number | null;
   tipsEnabled?: boolean;
+  tipPresets?: number[];
   tipAmount?: number;
   /** When set, percentage tip buttons stay highlighted after refresh (synced from payment step). */
   tipPercentSelection?: number | null;
@@ -853,6 +854,7 @@ export default function BookingFlow() {
                 ? Number(data.data.policies.deposit_percentage)
                 : null,
             tipsEnabled: data.data.tips_enabled !== false,
+            tipPresets: Array.isArray(data.data.tip_presets) ? data.data.tip_presets : undefined,
             providerTimezone: data.data.timezone ?? null,
           });
           try {

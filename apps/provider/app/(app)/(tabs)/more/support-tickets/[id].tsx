@@ -14,7 +14,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
 import { trackSupportTicketDetailView, trackSupportTicketReply } from "@/lib/analytics";
-import { labelForSupportTicketCategory } from "@/lib/supportTicketCategoryPresets";
+import { labelForSupportTicketCategoryI18n } from "@beautonomi/utils";
 import { appendUploadFile } from "@/lib/form-data-file";
 import { invalidateSupportTicketsListCache } from "@/lib/api-response-cache";
 import { launchImageLibraryWithPermission, PERMISSION_COPY } from "@/lib/native-permissions";
@@ -22,6 +22,7 @@ import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { SUPPORT_TICKETS_API_PREFIX } from "@/lib/support-ticket-api";
 import { useTranslation } from "@beautonomi/i18n";
+import { LinkifiedMessageText } from "@/components/support/LinkifiedMessageText";
 
 type Message = {
   id: string;
@@ -31,6 +32,7 @@ type Message = {
   user_id: string;
   author_name?: string | null;
   is_mine?: boolean;
+  author_kind?: string | null;
   attachments?: SupportAttachment[];
 };
 
@@ -52,6 +54,7 @@ type Ticket = {
   support_context_label?: string | null;
   csat_score?: number | null;
   csat_comment?: string | null;
+  handling_mode?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -191,14 +194,15 @@ export default function SupportTicketDetailScreen() {
       active = state === "active";
       if (active) void loadTicket();
     });
+    const pollMs = ticket?.handling_mode === "assistant" ? 2_000 : 30_000;
     const timer = setInterval(() => {
       if (active) void loadTicket();
-    }, 30_000);
+    }, pollMs);
     return () => {
       sub.remove();
       clearInterval(timer);
     };
-  }, [loadTicket]);
+  }, [loadTicket, ticket?.handling_mode]);
 
   useEffect(() => {
     const tid = typeof id === "string" ? id : Array.isArray(id) ? id[0] : "";
@@ -248,10 +252,44 @@ export default function SupportTicketDetailScreen() {
     }
   }, [messages.length]);
 
+  const isAssistantMode = ticket?.handling_mode === "assistant";
+
+  const handoffToHuman = async () => {
+    if (!id) return;
+    try {
+      await api.post(`${SUPPORT_TICKETS_API_PREFIX}/${id}/handoff`, {});
+      await loadTicket();
+      Alert.alert(st("handoffTitle"), st("handoffBody"));
+    } catch (e) {
+      Alert.alert(st("sendFailedTitle"), e instanceof Error ? e.message : st("sendReplyFallback"));
+    }
+  };
+
+  const resolveViaAssistant = async () => {
+    if (!id) return;
+    try {
+      const res = await api.post(`${SUPPORT_TICKETS_API_PREFIX}/${id}/assistant-resolve`, {});
+      if (res.error) {
+        Alert.alert(
+          st("sendFailedTitle"),
+          typeof res.error === "string" ? res.error : res.error.message || st("sendReplyFallback"),
+        );
+        return;
+      }
+      await loadTicket();
+    } catch (e) {
+      Alert.alert(st("sendFailedTitle"), e instanceof Error ? e.message : st("sendReplyFallback"));
+    }
+  };
+
   const handleReply = async () => {
     const msg = reply.trim();
     if ((!msg && pendingAttachments.length === 0) || !id) return;
-    const attachmentsToSend = pendingAttachments;
+    if (isAssistantMode && pendingAttachments.length > 0) {
+      Alert.alert(st("uploadFailedTitle"), st("attachmentsAfterHuman"));
+      return;
+    }
+    const attachmentsToSend = isAssistantMode ? [] : pendingAttachments;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSending(true);
     try {
@@ -267,7 +305,8 @@ export default function SupportTicketDetailScreen() {
       }
       setReply("");
       setPendingAttachments([]);
-      const sentMessage = (res.data as { message?: Message } | null | undefined)?.message;
+      const payload = res.data as { message?: Message; assistantMessage?: Message } | null | undefined;
+      const sentMessage = payload?.message;
       const localMessage: Message = {
         id: sentMessage?.id ?? `local-${Date.now()}`,
         message: sentMessage?.message ?? (msg || (attachmentsToSend.length ? st("attachmentOnlyMessage") : "")),
@@ -278,7 +317,22 @@ export default function SupportTicketDetailScreen() {
         is_mine: true,
         attachments: sentMessage?.attachments ?? attachmentsToSend,
       };
-      setMessages((prev) => (prev.some((m) => m.id === localMessage.id) ? prev : [...prev, localMessage]));
+      setMessages((prev) => {
+        let next = prev.some((m) => m.id === localMessage.id) ? prev : [...prev, localMessage];
+        const assistantRow = payload?.assistantMessage;
+        if (assistantRow && !next.some((m) => m.id === assistantRow.id)) {
+          next = [
+            ...next,
+            {
+              ...assistantRow,
+              author_kind: "assistant",
+              author_name: st("assistantName"),
+              is_mine: false,
+            },
+          ];
+        }
+        return next;
+      });
       invalidateSupportTicketsListCache();
       trackSupportTicketReply(id);
       await loadTicket();
@@ -442,7 +496,7 @@ export default function SupportTicketDetailScreen() {
             <Text style={twStyle("mb-4 text-xs text-gray-500")}>
               {ticket.category
                 ? st("categoryPriority", {
-                    category: labelForSupportTicketCategory(String(ticket.category)),
+                    category: labelForSupportTicketCategoryI18n(String(ticket.category), t),
                     priority: priorityLabel(ticket.priority),
                   })
                 : st("priorityOnly", { priority: priorityLabel(ticket.priority) })}
@@ -458,9 +512,18 @@ export default function SupportTicketDetailScreen() {
               </Text>
             ) : null}
 
+            {isAssistantMode ? (
+              <Text style={twStyle("mb-3 text-xs text-amber-800")}>{st("aiDisclaimer")}</Text>
+            ) : null}
+
             {messages.map((m) => {
               const isOwn = m.is_mine ?? (m.user_id === user?.id);
-              const authorLabel = isOwn ? st("you") : (m.author_name ?? st("supportTeam"));
+              const isAssistant = m.author_kind === "assistant";
+              const authorLabel = isOwn
+                ? st("you")
+                : isAssistant
+                  ? st("assistantName")
+                  : (m.author_name ?? st("supportTeam"));
               const initials = isOwn ? st("youInitials") : authorLabel.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
               const attachments = Array.isArray(m.attachments) ? m.attachments : [];
               return (
@@ -490,9 +553,12 @@ export default function SupportTicketDetailScreen() {
                       backgroundColor: isOwn ? Colors.primary : "#F3F4F6",
                     }}
                   >
-                    <Text style={{ fontSize: 14, color: isOwn ? "#fff" : "#111827", lineHeight: 20 }}>
-                      {m.message}
-                    </Text>
+                    <LinkifiedMessageText
+                      text={m.message}
+                      style={{ fontSize: 14, color: isOwn ? "#fff" : "#111827", lineHeight: 20 }}
+                      linkStyle={isOwn ? { color: "#fff", textDecorationLine: "underline" } : undefined}
+                      onOpenError={() => Alert.alert(st("openFailedTitle"))}
+                    />
                     {attachments.length > 0 && (
                       <View style={{ marginTop: 8, gap: 6 }}>
                         {attachments.map((attachment, index) => {
@@ -542,6 +608,38 @@ export default function SupportTicketDetailScreen() {
               </Text>
             ) : null}
 
+            {canReply && isAssistantMode ? (
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12, marginBottom: 8 }}>
+                <TouchableOpacity
+                  onPress={() => void handoffToHuman()}
+                  style={{
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: Colors.gray[300],
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                  }}
+                  accessibilityRole="button"
+                >
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[800] }}>{st("talkToPerson")}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => void resolveViaAssistant()}
+                  style={{
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: Colors.gray[200],
+                    backgroundColor: Colors.gray[50],
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                  }}
+                  accessibilityRole="button"
+                >
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[800] }}>{st("didThisHelp")}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
             {canReply && (
               <View style={twStyle("mt-4")}>
                 <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{st("addReply")}</Text>
@@ -582,23 +680,28 @@ export default function SupportTicketDetailScreen() {
                     ))}
                   </View>
                 )}
-                <TouchableOpacity
-                  onPress={attachImage}
-                  disabled={sending || uploadingAttachment || pendingAttachments.length >= 6}
-                  style={twStyle("mb-3 rounded-xl border border-gray-200 py-3 items-center")}
-                  accessibilityRole="button"
-                >
-                  {uploadingAttachment ? (
-                    <ActivityIndicator size="small" color={Colors.primary} />
-                  ) : (
-                    <Text style={twStyle("text-indigo-600 font-semibold")}>{st("attachImage")}</Text>
-                  )}
-                </TouchableOpacity>
+                {!isAssistantMode ? (
+                  <TouchableOpacity
+                    onPress={attachImage}
+                    disabled={sending || uploadingAttachment || pendingAttachments.length >= 6}
+                    style={twStyle("mb-3 rounded-xl border border-gray-200 py-3 items-center")}
+                    accessibilityRole="button"
+                  >
+                    {uploadingAttachment ? (
+                      <ActivityIndicator size="small" color={Colors.primary} />
+                    ) : (
+                      <Text style={twStyle("text-indigo-600 font-semibold")}>{st("attachImage")}</Text>
+                    )}
+                  </TouchableOpacity>
+                ) : null}
                 <ActionButton
                   label={sending ? st("sending") : st("sendReply")}
                   onPress={handleReply}
                   fullWidth
-                  disabled={sending || (!reply.trim() && pendingAttachments.length === 0)}
+                  disabled={
+                    sending ||
+                    (!reply.trim() && (isAssistantMode ? true : pendingAttachments.length === 0))
+                  }
                 />
               </View>
             )}

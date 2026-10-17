@@ -195,6 +195,59 @@ export async function DELETE(
       throw error;
     }
 
+    try {
+      const { data: series } = await supabase
+        .from("recurring_appointments")
+        .select("id, customer_id, provider_id, service_id, offerings(title), providers(business_name, user_id)")
+        .eq("id", id)
+        .maybeSingle();
+      if (series?.customer_id) {
+        const { dispatchTemplateNotification } = await import(
+          "@/lib/notifications/dispatch-template-notification"
+        );
+        const offering = Array.isArray((series as { offerings?: unknown }).offerings)
+          ? (series as { offerings: { title?: string }[] }).offerings[0]
+          : (series as { offerings?: { title?: string } | null }).offerings;
+        type ProviderJoin = { business_name?: string; user_id?: string | null };
+        const provider = Array.isArray((series as { providers?: unknown }).providers)
+          ? (series as { providers: ProviderJoin[] }).providers[0]
+          : (series as { providers?: ProviderJoin | null }).providers;
+        const { data: customerRow } = await supabase
+          .from("users")
+          .select("full_name")
+          .eq("id", series.customer_id as string)
+          .maybeSingle();
+        const vars = {
+          customer_name: (customerRow as { full_name?: string | null } | null)?.full_name || "there",
+          service_name: offering?.title ?? "appointment",
+          provider_name: provider?.business_name ?? "your provider",
+          recurring_series_id: id,
+        };
+        await dispatchTemplateNotification(
+          "recurring_series_cancelled",
+          [series.customer_id as string],
+          vars,
+          ["email", "push"],
+          { appType: "customer" },
+        );
+        if (provider?.user_id) {
+          await dispatchTemplateNotification(
+            "provider_recurring_series_cancelled",
+            [provider.user_id],
+            {
+              ...vars,
+              customer_name:
+                (customerRow as { full_name?: string | null } | null)?.full_name || "A client",
+            },
+            ["email", "push"],
+            { appType: "provider" },
+          );
+        }
+      }
+    } catch (notifyErr) {
+      console.error("[recurring DELETE] cancellation notification failed:", notifyErr);
+    }
+
     return successResponse({
       message: "Recurring booking cancelled successfully",
     });

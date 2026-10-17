@@ -354,7 +354,18 @@
       "payment-methods": "Choose accepted payment methods",
       "payout": "Add a payout bank account",
       "availability": "Set operating hours",
-      "identity-verification": "Verify your identity for the trust badge"
+      "identity-verification": "Verify your identity for the trust badge",
+      "cancellation-policy": "Set your cancellation policy"
+    },
+    "bookingPolicy": {
+      "noPenalty": "No penalty",
+      "noPenaltyDesc": "Clients can cancel anytime with a full refund of amounts paid online.",
+      "flexible": "Flexible",
+      "flexibleDesc": "Free cancel until 4 hours before; 50% wallet refund if later.",
+      "standard": "Standard",
+      "standardDesc": "Free cancel until 24 hours before; 50% wallet refund if later.",
+      "strict": "Strict",
+      "strictDesc": "48-hour notice, 50% deposit, and no-show protection."
     },
     "waitlistScreen": {
       "title": "Waitlist",
@@ -2791,7 +2802,7 @@
           "sentToCardMachineDefault": "Follow the prompts on the card machine. The booking updates when the refund is confirmed.",
           "cancelRefundTo": "Refund the paid amount to",
           "cancelRefundCardHint": "Card machine payments go back to the client's card (Beautonomi machines automatically; Yoco you refund on the machine and record). Online payments are credited to their wallet.",
-          "cancelRefundWalletHint": "The client receives a full refund to their Beautonomi wallet. Your cancellation policy does not apply to cancellations you initiate.",
+          "cancelRefundWalletHint": "The client receives a full refund of online payments to their Beautonomi wallet. Return any in-person payment to them directly. Your cancellation policy does not apply to cancellations you initiate.",
           "continue": "Continue",
           "yocoRefundOnMachineTitle": "Refund on your Yoco machine",
           "yocoRefundOnMachineBody": "Yoco refunds can't be started from Beautonomi. Refund {{amount}} in the Yoco app or on the machine first, then record it here so the booking balance and reports stay correct.",
@@ -2804,7 +2815,7 @@
           "refundCashHint": "Hand the money back to the customer in person. Recorded for your books; no wallet credit is issued. The booking balance updates after this succeeds.",
           "refundWalletHint": "Use when the customer is not present or the payment was made online. The refund is credited to their wallet.",
           "refundOriginalMachineHint": "The money returns to the customer's card through the card machine it was paid on.",
-          "cancelWalletNote": "The client will receive a full refund to their Beautonomi wallet for amounts already paid. Your cancellation policy does not apply to cancellations you initiate.",
+          "cancelWalletNote": "The client will receive a full refund of online payments to their Beautonomi wallet. Return any in-person payment to them directly. Your cancellation policy does not apply to cancellations you initiate.",
           "refundRecordedTitle": "Refund recorded",
           "refundRecordedBody": "The customer will be asked to confirm they received this cash refund.",
           "journeyNotStartedTitle": "Journey not started",
@@ -3189,6 +3200,7 @@
           "activatePlanFailedBody": "Please try again or contact support.",
           "accountLoading": "Your business account is still loading. Try again in a moment.",
           "subscriptionUpdated": "Subscription updated!",
+          "planChangeScheduled": "Plan change scheduled. Changes on {{when}}.",
           "subscriptionActivatedAppStore": "Subscription activated through the App Store.",
           "restoreComplete": "Restore complete",
           "restoreCompleteBody": "Your App Store purchases were synced.",
@@ -4615,7 +4627,9 @@
               "yes": "Yes",
               "maybe_later": "Maybe later",
               "no": "No"
-            }
+            },
+            "bookingProtectionTitle": "Booking protection",
+            "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings."
           },
           "software": {
             "intro": "Optional — helps us understand where you're coming from. We'll tailor import tips and onboarding hints.",
@@ -5103,6 +5117,7 @@
           "tipOptional": "Tip (optional, {{currency}})",
           "noTipA11y": "No tip",
           "tipPercentA11y": "Tip {{percent}} percent",
+          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}",
           "noTip": "No tip",
           "customAmountPlaceholder": "Custom amount",
           "tipAmountA11y": "Tip amount",
@@ -7933,7 +7948,8 @@
           "optionalComment": "Optional comment",
           "submitRating": "Submit rating",
           "thanks": "Thanks!",
-          "freshCaption": "Fresh {{name}}"
+          "freshCaption": "Fresh {{name}}",
+          "shareBookingLink": "Share booking link"
         },
         "advancedPricing": {
           "title": "Advanced pricing",
@@ -8962,7 +8978,14 @@
           "priorityLow": "low",
           "priorityMedium": "medium",
           "priorityHigh": "high",
-          "priorityUrgent": "urgent"
+          "priorityUrgent": "urgent",
+          "handoffTitle": "Connecting you to support",
+          "handoffBody": "A specialist will join this thread shortly.",
+          "aiDisclaimer": "AI can make mistakes — you can request a person anytime.",
+          "assistantName": "Beautonomi Assistant",
+          "talkToPerson": "Talk to a person",
+          "didThisHelp": "Did this help? Yes",
+          "attachmentsAfterHuman": "Attachments are available after a specialist joins the conversation."
         },
         "providerVerificationPanel": {
           "statusNotStarted": "Not started",
@@ -9435,6 +9458,7 @@
           "moreInfoBody": "Please add {{missing}} so we can help.",
           "missingSubject": "a short subject",
           "missingDescription": "a description of the issue",
+          "missingCategory": "a category",
           "missingJoin": " and ",
           "submitFailedTitle": "Could not submit",
           "submitFailedFallback": "Please try again",
@@ -9457,7 +9481,14 @@
           "priorityLow": "Low",
           "priorityMedium": "Medium",
           "priorityHigh": "High",
-          "priorityUrgent": "Urgent"
+          "priorityUrgent": "Urgent",
+          "chatDefaultSubject": "Support request",
+          "continueToChat": "Continue to chat",
+          "useFullForm": "Use full form",
+          "safetyUseForm": "Safety reports go straight to our team — please use the full form.",
+          "chatAiDisclaimer": "AI can make mistakes — you can talk to a person anytime after your ticket is created.",
+          "startChat": "Start chat",
+          "chatBack": "Back"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -12591,7 +12622,7 @@
         },
         "contactSupport": {
           "missingFieldsTitle": "Missing fields",
-          "missingFieldsBody": "Please enter a subject and message.",
+          "missingFieldsBody": "Please choose a category, subject, and message.",
           "ticketSentTitle": "Ticket sent",
           "ticketSentBodyWithNumber": "Your support ticket has been created. Your ticket number is {{ticketNumber}}. We'll get back to you soon.",
           "ticketSentBody": "Your support ticket has been created. We'll get back to you soon.",
@@ -13432,8 +13463,53 @@
       "requestChangesEmpty": "Please describe the changes you want.",
       "requestChangesFailed": "Failed to request changes"
     },
+    "bankAccounts": {
+      "screenTitle": "Bank accounts",
+      "intro": "Used only for bank refunds of eligible card payments. Account numbers are stored encrypted.",
+      "empty": "No bank accounts saved yet.",
+      "bankLabel": "Bank",
+      "selectBank": "Select your bank",
+      "searchBanks": "Search banks",
+      "accountNumberLabel": "Account number",
+      "accountNameLabel": "Account holder name",
+      "verify": "Verify account",
+      "verifiedAs": "Verified: {{name}}",
+      "verificationUnavailable": "Automatic verification isn't available in your market — enter the account holder name exactly as it appears at your bank.",
+      "save": "Save bank account",
+      "addAnother": "Add a bank account",
+      "remove": "Remove",
+      "removeConfirmTitle": "Remove bank account?",
+      "removeConfirmBody": "This account will no longer be available for bank refunds.",
+      "primary": "Primary",
+      "makePrimary": "Make primary",
+      "verifiedBadge": "Verified",
+      "failedLoadBanks": "Could not load banks. Try again.",
+      "fillAllFields": "Choose a bank and enter the account number and holder name."
+    },
+    "walletBankRefund": {
+      "screenTitle": "Bank refund",
+      "notEnabled": "Bank refunds are not available in your market right now.",
+      "invalidAmount": "Enter a valid amount.",
+      "failed": "Could not submit your request. Try again or contact support.",
+      "retentionTitle": "Keep it on Beautonomi",
+      "retentionBody": "You have {{amount}} ready to use on your next booking — wallet credit applies at checkout instantly.",
+      "keepInWallet": "Keep in my wallet",
+      "continueToBank": "Request a bank refund instead",
+      "eligibleLabel": "Eligible for bank refund: {{amount}}",
+      "eligibleHint": "Only refunds of card payments made through Beautonomi can be sent to a bank account. Top-ups, gift cards and promotional credit stay in your wallet.",
+      "noneEligible": "You don't have any card-payment refunds eligible for a bank refund right now.",
+      "amountLabel": "How much should we send to your bank?",
+      "feeLine": "Processing fee: {{fee}} · You receive: {{net}}",
+      "addBank": "Add a bank account",
+      "submit": "Submit request",
+      "openRequest": "You already have a bank refund request in progress ({{number}}).",
+      "cancelRequest": "Cancel request",
+      "submittedTitle": "Request submitted",
+      "submittedBody": "The amount is on hold in your wallet while our finance team reviews it. Approved refunds are paid by EFT, usually within {{days}} business days."
+    },
     "walletScreen": {
       "balanceLabel": "Wallet balance",
+      "walletHelpLink": "Wallet help",
       "topUp": "Top up",
       "amountPlaceholder": "Amount ({{currency}})",
       "topUpWithCard": "Top up with card",
@@ -15219,6 +15295,13 @@
           "cancelPreviewLate": "You are inside the late-cancellation window.",
           "cancelPreviewNormal": "You are within the normal cancellation window.",
           "cancelPreviewEstimateSuffix": "\n\n(Could not load refund estimate. You can still cancel.)",
+          "cancelPreviewSheetTitle": "Cancel this booking?",
+          "cancelPreviewInPersonRefund": "Refund due in person: {{currency}} {{amount}}",
+          "cancelPreviewPenaltyWaivedPending": "No fee while payment is still pending.",
+          "cancelPreviewPenaltyWaivedGrace": "You're within the grace period — no cancellation fee.",
+          "cancelPreviewPenaltyWaivedRescheduled": "No fee — the provider rescheduled this appointment.",
+          "cancelPreviewPenaltyWaivedNoPenaltyPolicy": "This provider's policy has no cancellation penalty.",
+          "cancelPreviewPenaltyWaivedProvider": "The provider will cancel without a customer penalty.",
           "cancelBookingTitle": "Cancel booking",
           "keepBookingCta": "Keep booking",
           "cancelBookingCta": "Cancel booking",
@@ -15430,6 +15513,7 @@
           "paymentPayRemainingBalance": "Pay remaining balance",
           "payRemainingTipTitle": "Add a tip (optional)",
           "payRemainingNoTip": "No tip",
+          "payRemainingTipPercentButtonA11y": "{{percent}}% tip, {{amount}}",
           "payRemainingCustomTip": "Custom",
           "payRemainingCustomTipPlaceholder": "Tip amount",
           "payRemainingTipLine": "Tip: {{amount}} — goes 100% to your provider",
@@ -17087,7 +17171,14 @@
           "priorityLow": "Low",
           "priorityMedium": "Medium",
           "priorityHigh": "High",
-          "priorityUrgent": "Urgent"
+          "priorityUrgent": "Urgent",
+          "chatDefaultSubject": "Support request",
+          "continueToChat": "Continue to chat",
+          "useFullForm": "Use full form",
+          "safetyUseForm": "Safety reports go straight to our team — please use the full form.",
+          "chatAiDisclaimer": "AI can make mistakes — you can talk to a person anytime after your ticket is created.",
+          "startChat": "Start chat",
+          "chatBack": "Back"
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Type your message...",
@@ -17588,6 +17679,7 @@
     "total": "Total",
     "addTipOptional": "Add a tip (optional)",
     "noTip": "No tip",
+    "tipPercentButtonA11y": "{{percent}}% tip, {{amount}}",
     "specialRequestsOptional": "Special requests (optional)",
     "specialRequestsPlaceholder": "Allergies, accessibility, preferred stylist, etc.",
     "promoCodeOptional": "Promo code (optional)",
@@ -17606,7 +17698,6 @@
     "giftCardCode": "Gift card code",
     "yourGiftCredit": "Your Beautonomi gift credit",
     "giftCardApplied": "Gift card applied — {{currency}} {{amount}} available",
-    "apply": "Apply",
     "holdRateLimitWait": "Too many attempts. Try again in {{minutes}} min.",
     "useWalletBalance": "Use wallet balance — {{amount}} available",
     "saveCardForFuture": "Save card for future payments",
@@ -17646,7 +17737,9 @@
     "lateCancellationWithinWindowNoRefund": "Within {{hours}} {{hourWord}} of your appointment: no refund will be issued.",
     "noRefundOnCancellation": "Cancellations are non-refundable per this provider's policy.",
     "policyEnforcedAutomatically": "This policy is enforced automatically at the time of cancellation.",
-    "refundsStoreCreditNote": "All refunds are issued as store credit to your Beautonomi wallet, limited to amounts already paid.",
+    "refundsStoreCreditNote": "Refunds of online payments are issued as credit to your Beautonomi wallet. Payments made in person have no cancellation fee and are returned by the provider.",
+    "refundsStoreCreditNotePayAtVenue": "If you pay at the venue, refunds are handled directly with the provider — not to your card or wallet.",
+    "refundsStoreCreditNoteNoPenalty": "This provider does not charge cancellation penalties. Amounts paid online are refunded to your Beautonomi wallet.",
     "hour": "hour",
     "hours": "hours",
     "noShowFeeApplies": "No-show fee of {{amount}} applies if you miss your appointment without cancelling.",
@@ -17667,6 +17760,9 @@
     "keepBothAppointments": "Keep both",
     "cancelPreviousAppointment": "Cancel previous",
     "cancelPreviousBookingNote": "Could not cancel the previous booking. You can cancel it manually from your bookings.",
+    "cancelPreviousWithFeeBody": "Cancellation fee {{fee}}. {{refund}} will return to your Beautonomi wallet. Cancel the previous appointment?",
+    "cancelPreviousFullRefundBody": "{{refund}} will return to your Beautonomi wallet. Cancel the previous appointment?",
+    "confirmCancelPrevious": "Cancel previous",
     "recurringScheduleSavedTitle": "Repeating schedule saved",
     "recurringScheduleSavedBody": "Manage it anytime under Account settings → Recurring bookings.",
     "recurringScheduleAfterPaymentTitle": "Repeating schedule",
@@ -21230,7 +21326,7 @@
         "faqHowMuch": "How much can I earn from referrals?",
         "faqHowMuchAnswer": "You earn {{amount}} {{currency}} for each successful referral. The amount may vary based on current promotions. Check your referral dashboard for the latest reward amounts.",
         "faqWhenRewards": "When do I receive my referral rewards?",
-        "faqWhenRewardsAnswer": "You receive your referral reward after the person you referred completes their first booking on Beautonomi. The reward is credited to your wallet and can be used for future bookings or withdrawn according to our payout policy.",
+        "faqWhenRewardsAnswer": "You receive your referral reward after the person you referred completes their first booking on Beautonomi. The reward is credited to your wallet and can be used for future bookings.",
         "faqSamePerson": "Can I refer the same person multiple times?",
         "faqSamePersonAnswer": "No, each person can only be referred once. If someone has already signed up for Beautonomi, they cannot use your referral link to earn rewards.",
         "faqTrack": "How do I track my referrals?",
@@ -23333,7 +23429,15 @@
           "keepBooking": "Keep booking",
           "cancelled": "Booking cancelled",
           "cancelFailed": "Failed to cancel booking",
-          "cancelledNotifyFailed": "Booking cancelled but notification could not be sent"
+          "cancelledNotifyFailed": "Booking cancelled but notification could not be sent",
+          "initiatorLabel": "Who is cancelling?",
+          "initiatorProvider": "Provider (full refund on platform)",
+          "initiatorCustomerRequested": "Customer asked to cancel",
+          "previewLoading": "Loading refund estimate…",
+          "previewFee": "Estimated fee retained: {{currency}} {{amount}}",
+          "previewWalletRefund": "Estimated wallet refund: {{currency}} {{amount}}",
+          "previewInPersonRefund": "Refund due in person: {{currency}} {{amount}}",
+          "previewBlocked": "Cancellation is not allowed for this booking."
         },
         "statusActions": {
           "noPermission": "You do not have permission for this action",
@@ -23633,7 +23737,7 @@
             "confirmPayment": "Confirm Payment",
             "cancelTitle": "Cancel Booking",
             "cancelBody": "This action cannot be undone. Please provide a reason for cancellation.",
-            "cancelRefundNote": "The client will receive a full refund to their Beautonomi wallet for amounts already paid. Your cancellation policy does not apply to cancellations you initiate.",
+            "cancelRefundNote": "The client will receive a full refund of online payments to their Beautonomi wallet. Return any in-person payment to them directly. Your cancellation policy does not apply to cancellations you initiate.",
             "cancelRefundTo": "Refund the paid amount to",
             "cancelRefundCardHint": "Amounts taken on a card machine go back to the client's card (Beautonomi machines automatically; Yoco you refund on the machine and record). Anything paid online is credited to their wallet.",
             "cancellationReason": "Cancellation reason",
@@ -24212,8 +24316,8 @@
             "description": "Tell us about your business"
           },
           "payment": {
-            "title": "Payment Setup",
-            "description": "Do you have a card machine or payment terminal?"
+            "title": "Payments & policies",
+            "description": "Terminals, VAT, and booking protection"
           },
           "software": {
             "title": "Current Software",
@@ -24336,6 +24440,7 @@
           "verifyPhone": "Please verify your phone number",
           "dobRequired": "Date of birth is required for identity verification",
           "businessName": "Business name is required",
+          "bookingPolicyRequired": "Please choose a booking protection preset",
           "vatRequired": "VAT number is required when VAT registered",
           "vatDigits": "VAT number must be 10 digits",
           "vatStartsWith4": "South African VAT numbers must start with 4",
@@ -24543,7 +24648,9 @@
           "payoutAccountTitle": "Bank payout account (required before go-live)",
           "payoutAccountBody": "Add your bank details in the setup checklist after this wizard — under {{path}}. Platform-held earnings cannot be withdrawn until your payout account is verified.",
           "paymentHint": "This helps us understand how you accept in-person card payments and whether we can offer better terminal options in future.",
-          "vatSarsHint": "Are you VAT registered with SARS? VAT registration is mandatory if your annual turnover is R1 million or more. If you make less than R1 million per year, you don't need to be VAT registered."
+          "vatSarsHint": "Are you VAT registered with SARS? VAT registration is mandatory if your annual turnover is R1 million or more. If you make less than R1 million per year, you don't need to be VAT registered.",
+          "bookingProtectionTitle": "Booking protection",
+          "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings."
         },
         "software": {
           "selectPlaceholder": "Select or type software name...",
@@ -26133,7 +26240,7 @@
             "failedToSetDefault": "Failed to set default policy",
             "deleteConfirm": "Are you sure you want to delete this cancellation policy? This action cannot be undone.",
             "howTitle": "How Cancellation Policies Work",
-            "howBody": "Customers can cancel for free within 15 minutes of booking, or more than the hours below before their appointment — they receive a full refund to their Beautonomi wallet. Cancellations inside that window are late: the refund percentage below applies to amounts already paid. A cancellation fee only applies when the late refund percentage is 0%. No-show fees are configured separately under Payment Settings.",
+            "howBody": "Customers can cancel for free during the grace period after booking, or more than the hours below before their appointment — online payments are refunded in full to their Beautonomi wallet. Later cancellations are late: the client gets the late refund percentage below and the rest is your cancellation fee. Fees apply only to the service amount (never tips) and only to money paid online — cash and card-machine payments are never charged a fee. No-show fees are configured separately under Payment Settings.",
             "empty": "No cancellation policies configured",
             "createFirst": "Create First Policy",
             "moreThanHours": "More than {{hours}} hours before:",
@@ -28445,6 +28552,7 @@
           "reply": "Reply"
         },
         "support-tickets/new": {
+          "chooseCategory": "Choose a category so we can route your request",
           "enterSubjectAndMessage": "Enter a subject and message",
           "ticketSubmittedNumber": "Ticket {{number}} submitted",
           "ticketSubmitted": "Ticket submitted",
@@ -29327,7 +29435,8 @@
           "support": "Support",
           "replyPlaceholder": "Write a reply…",
           "sending": "Sending…",
-          "sendReply": "Send reply"
+          "sendReply": "Send reply",
+          "assistantName": "Beautonomi Assistant"
         },
         "embed": {
           "clientUnavailable": "Client not available",
@@ -35386,6 +35495,88 @@
       "fallback_reply": "{{greeting}}\n\nThank you for contacting Beautonomi support about \"{{subject}}\" (ticket {{ticketNumber}}).\n\n{{escalationLine}}\n\nIf you have any additional details or screenshots that could help, just reply to this ticket.\n\nWarm regards,\nBeautonomi Support",
       "nudge": "Hi there,\n\nJust checking in on ticket {{ticketNumber}} — we replied {{daysSinceReply}} day(s) ago and want to make sure you saw it.\nIf our answer solved the problem, no action is needed. If you still need help, reply here and we'll pick it right back up.\n\nWarm regards,\nBeautonomi Support",
       "csat_recovery": "{{greeting}}\n\nThank you for your honest feedback on ticket {{ticketNumber}}. I'm sorry the experience fell short.\nA senior member of our support team is personally reviewing what happened.\n\nWarm regards,\nBeautonomi Support"
+    }
+  },
+  "support": {
+    "ticketCategories": {
+      "groups": {
+        "account_security": "Account & security",
+        "bookings": "Bookings & appointments",
+        "payments": "Payments & billing",
+        "messaging_providers": "Messaging & providers",
+        "products": "Products & delivery",
+        "tech": "App, website & notifications",
+        "safety": "Trust & safety",
+        "partners": "For beauty partners (providers)",
+        "feedback": "Feedback & general",
+        "legacy": "Legacy"
+      },
+      "items": {
+        "account_sign_in": "Sign-in, password & access",
+        "account_verification": "Email / phone verification",
+        "account_profile": "Profile, name, photo, or email change",
+        "account_privacy_data": "Privacy, data export, or GDPR request",
+        "account_delete": "Delete or deactivate account",
+        "account_security": "Suspicious activity or hacked account",
+        "booking_issue": "Booking details wrong or not visible",
+        "booking_reschedule_cancel": "Reschedule, cancel, or refund request",
+        "booking_provider_no_show": "Provider no-show or late arrival",
+        "marked_no_show_incorrectly": "I was marked as a no-show but I attended",
+        "booking_quality": "Service quality or didn’t match description",
+        "booking_group": "Group booking or multiple clients",
+        "booking_waitlist": "Waitlist or availability question",
+        "booking_recurring": "Recurring appointment",
+        "payment_failed_charge": "Payment failed, declined, or wrong amount",
+        "payment_refund": "Refund status or request",
+        "payment_duplicate": "Duplicate charge or billing error",
+        "payment_invoice_receipt": "Invoice, receipt, or tax document",
+        "payment_subscription": "Subscription or recurring billing (provider)",
+        "payment_gift_card": "Gift card purchase or redemption",
+        "payment_tips_wallet": "Tips, wallet, or loyalty credits",
+        "membership_billing": "Membership plan, credits, or renewal",
+        "messaging_provider_chat": "Chat with a provider (in-app messages)",
+        "provider_conduct": "Provider behaviour or professionalism",
+        "client_conduct": "Client behaviour or client no-show",
+        "provider_listing": "Wrong services, prices, or location on listing",
+        "provider_verification": "Provider verification or badge",
+        "review_rating": "Review or rating",
+        "order_status_shipping": "Product order status or shipping",
+        "order_return_product": "Return, exchange, or damaged product",
+        "order_product_question": "Product question before purchase",
+        "tech_bug_error": "Error message, crash, or page won’t load",
+        "tech_mobile_app": "Customer or provider mobile app issue",
+        "tech_notifications": "Push, email, or SMS notifications",
+        "tech_upload_media": "Photos, files, or attachments won’t upload",
+        "tech_calendar_sync": "Calendar sync (Google, Apple, etc.)",
+        "safety_report_user": "Report a user, harassment, or abuse",
+        "safety_fraud": "Fraud, scam, or suspicious listing",
+        "safety_emergency": "Urgent safety concern",
+        "provider_payouts": "Payouts or bank account",
+        "provider_dashboard": "Dashboard, analytics, or staff access",
+        "provider_catalog": "Services, add-ons, or pricing in catalogue",
+        "provider_booking_settings": "Online booking, hours, or buffers",
+        "provider_fees_commission": "Platform fees, commission, or invoices",
+        "provider_marketing_ads": "Ads, promotions, or visibility",
+        "provider_onboarding": "Verification, KYB, or setup",
+        "provider_staff_payroll": "Staff, shifts, or payroll",
+        "terminal_onboarding": "Card terminal setup",
+        "feedback_feature": "Feature idea or product feedback",
+        "feedback_complaint_platform": "Complaint about Beautonomi",
+        "feedback_accessibility": "Accessibility or assistive technology",
+        "partnership_press": "Partnership, press, or media",
+        "general_inquiry": "General question (not listed above)",
+        "payments": "Payments (legacy)"
+      },
+      "contextTypes": {
+        "booking": "Booking",
+        "product_order": "Product / ecommerce order",
+        "gift_card": "Gift card",
+        "payment": "Payment / refund",
+        "provider_onboarding": "Provider onboarding",
+        "account": "Account",
+        "technical": "Technical",
+        "other": "Other"
+      }
     }
   }
 }

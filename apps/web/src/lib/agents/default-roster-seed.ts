@@ -16,7 +16,7 @@ export type AgentRosterSeedRow = {
   preferred_model_id: null;
   fallback_model_id: null;
   max_cost_usd_per_run: number;
-  operational_state: "active";
+  operational_state: "active" | "disabled";
 };
 
 /** Default routing: null preferred/fallback — routeModel + module policy pick catalog models. */
@@ -32,6 +32,7 @@ export const AGENT_ROSTER_SEED: AgentRosterSeedRow[] = [
   { key: "trust-monitor", task_default: "classification", vision_enabled: true, preferred_model_id: null, fallback_model_id: null, max_cost_usd_per_run: 0.25, operational_state: "active" },
   { key: "content-moderator", task_default: "classification", vision_enabled: true, preferred_model_id: null, fallback_model_id: null, max_cost_usd_per_run: 0.25, operational_state: "active" },
   { key: "admin-copilot", task_default: "copilot", vision_enabled: true, preferred_model_id: null, fallback_model_id: null, max_cost_usd_per_run: 0.25, operational_state: "active" },
+  { key: "support-assistant", task_default: "drafting", vision_enabled: false, preferred_model_id: null, fallback_model_id: null, max_cost_usd_per_run: 0.25, operational_state: "disabled" },
 ];
 
 export const AGENT_ROSTER_SEED_KEYS = AGENT_ROSTER_SEED.map((r) => r.key);

@@ -37,6 +37,14 @@ export const SUBSCRIPTION_ENTITLED_STATUSES = ["active", "trialing", "past_due"]
 export const SUBSCRIPTION_PAST_DUE_GRACE_DAYS = 3;
 
 /**
+ * PostgREST `.or()` term: a row with a scheduled paid-to-paid downgrade stays entitled after
+ * expires_at. Its old Paystack sub is disabled, so no renewal extends expires_at; the daily
+ * expire-cancelled-subscriptions cron applies the cheaper plan (or falls back to free) at its next
+ * run. Mirrored in SQL `get_provider_subscription_plan` (migration 1010).
+ */
+export const SCHEDULED_DOWNGRADE_ENTITLED_OR = "scheduled_plan_id.not.is.null";
+
+/**
  * Request-aware Supabase client for feature-access checks.
  * Always pass the route `request` so Bearer tokens (mobile) resolve; never call
  * cookie-only `getSupabaseServer()` from a provider API route.
@@ -188,7 +196,7 @@ export async function getProviderSubscriptionTier(
     // StoreKit grace window is still open, so that window has to be part of the
     // filter or the grace handling below would never see the row.
     .or(
-      `expires_at.gte.${nowIso},expires_at.is.null,apple_grace_period_expires_at.gte.${nowIso}`,
+      `expires_at.gte.${nowIso},expires_at.is.null,apple_grace_period_expires_at.gte.${nowIso},${SCHEDULED_DOWNGRADE_ENTITLED_OR}`,
     )
     .order("status", { ascending: true })
     .maybeSingle();

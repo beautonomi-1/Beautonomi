@@ -95,6 +95,7 @@ export default function WalletScreen() {
     Array<{ id: string; code: string; balance: number; currency: string }>
   >([]);
   const [claimingCode, setClaimingCode] = useState<string | null>(null);
+  const [bankRefundHelp, setBankRefundHelp] = useState<string | null>(null);
 
   const params = useLocalSearchParams<{ giftCode?: string }>();
 
@@ -112,6 +113,21 @@ export default function WalletScreen() {
         const d = res.data;
         setWallet(d?.wallet ?? d);
         setTxs(d?.transactions ?? []);
+      }
+      const bankRefunds = await api.get<{
+        settings?: { enabled?: boolean; help_text?: string | null };
+        eligible_amount?: number;
+        open_request?: { request_number?: string } | null;
+      }>("/api/me/wallet/bank-refunds?limit=1");
+      const settings = bankRefunds.data?.settings;
+      const hasEligible = Number(bankRefunds.data?.eligible_amount ?? 0) > 0;
+      if (settings?.enabled && (hasEligible || bankRefunds.data?.open_request)) {
+        setBankRefundHelp(
+          settings.help_text?.trim() ||
+            "Bank refund of an eligible card payment is available on request.",
+        );
+      } else {
+        setBankRefundHelp(null);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : t("common.error"));
@@ -499,6 +515,29 @@ export default function WalletScreen() {
           <Text style={{ fontSize: 14, color: Colors.gray[600] }}>{t("customer.walletScreen.balanceLabel")}</Text>
           <Text style={{ fontSize: 30, fontWeight: "700", color: Colors.gray[900], marginTop: 4 }}>{balanceLabel}</Text>
         </View>
+
+        {bankRefundHelp ? (
+          <View
+            style={{
+              marginTop: 12,
+              padding: 14,
+              borderRadius: 12,
+              backgroundColor: "#EFF6FF",
+              borderWidth: 1,
+              borderColor: "#BFDBFE",
+            }}
+          >
+            <Text style={{ fontSize: 13, color: "#1E3A5F", lineHeight: 18 }}>{bankRefundHelp}</Text>
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/account-settings/wallet-bank-refund")}
+              style={{ marginTop: 10 }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.primary }}>
+                {t("customer.walletScreen.walletHelpLink")}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         {pendingGiftCards.length > 0 ? (
           <View

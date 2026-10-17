@@ -11,7 +11,7 @@ const mockGetSupabaseServer = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 const mockRequirePermission = vi.fn();
 const mockSendCancellationNotification = vi.fn();
-const mockMatchWaitlistOnCancellation = vi.fn();
+const mockCancelGroupBooking = vi.fn();
 
 const pendingAfter: Array<Promise<unknown>> = [];
 
@@ -50,13 +50,14 @@ vi.mock("@/lib/bookings/notifications", () => ({
   sendCancellationNotification: (...args: unknown[]) => mockSendCancellationNotification(...args),
 }));
 
-vi.mock("@/lib/waitlist/matching", () => ({
-  matchWaitlistOnCancellation: (...args: unknown[]) => mockMatchWaitlistOnCancellation(...args),
+vi.mock("@/lib/bookings/group-booking-cancellation", () => ({
+  cancelGroupBooking: (...args: unknown[]) => mockCancelGroupBooking(...args),
 }));
 
 describe("DELETE /api/provider/group-bookings/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    pendingAfter.length = 0;
     mockRequirePermission.mockResolvedValue({
       authorized: true,
       user: { id: "user-1", role: "provider_owner" },
@@ -64,12 +65,10 @@ describe("DELETE /api/provider/group-bookings/[id]", () => {
     mockGetProviderIdForUser.mockResolvedValue(PROVIDER_ID);
     mockGetSupabaseServer.mockResolvedValue({});
     mockSendCancellationNotification.mockResolvedValue(undefined);
-    mockMatchWaitlistOnCancellation.mockResolvedValue(undefined);
-
-    const bookingsCancelChain = {
-      eq: vi.fn().mockReturnThis(),
-      not: vi.fn().mockResolvedValue({ error: null }),
-    };
+    mockCancelGroupBooking.mockResolvedValue([
+      { bookingId: B1, walletRefund: 50, inPersonRefundDue: 0 },
+      { bookingId: B2, walletRefund: 0, inPersonRefundDue: 120 },
+    ]);
 
     mockGetSupabaseAdmin.mockReturnValue({
       from: vi.fn().mockImplementation((table: string) => {
@@ -85,26 +84,6 @@ describe("DELETE /api/provider/group-bookings/[id]", () => {
                 }),
               }),
             }),
-            update: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                eq: vi.fn().mockResolvedValue({ error: null }),
-              }),
-            }),
-          };
-        }
-        if (table === "bookings") {
-          return {
-            select: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                eq: vi.fn().mockReturnValue({
-                  not: vi.fn().mockResolvedValue({
-                    data: [{ id: B1 }, { id: B2 }],
-                    error: null,
-                  }),
-                }),
-              }),
-            }),
-            update: vi.fn().mockReturnValue(bookingsCancelChain),
           };
         }
         throw new Error(`unexpected table ${table}`);
@@ -112,7 +91,7 @@ describe("DELETE /api/provider/group-bookings/[id]", () => {
     });
   });
 
-  it("cancels child bookings by group_booking_id and notifies each customer", async () => {
+  it("settles finance via cancelGroupBooking and notifies each cancelled child", async () => {
     const { DELETE } = await import("../route");
     const res = await DELETE(
       new NextRequest(`http://localhost/api/provider/group-bookings/${GROUP_ID}`, {
@@ -123,10 +102,18 @@ describe("DELETE /api/provider/group-bookings/[id]", () => {
     );
 
     expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.data?.children).toHaveLength(2);
+    expect(mockCancelGroupBooking).toHaveBeenCalledWith(
+      expect.anything(),
+      GROUP_ID,
+      "user-1",
+      "Provider cancelled session",
+      { settleFinance: true, financeActor: "provider" },
+    );
     await Promise.all(pendingAfter);
     expect(mockSendCancellationNotification).toHaveBeenCalledTimes(2);
     expect(mockSendCancellationNotification).toHaveBeenCalledWith(B1, { cancelledBy: "provider" });
     expect(mockSendCancellationNotification).toHaveBeenCalledWith(B2, { cancelledBy: "provider" });
-    expect(mockMatchWaitlistOnCancellation).toHaveBeenCalledTimes(2);
   });
 });

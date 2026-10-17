@@ -13476,7 +13476,8 @@
       "giftCardRedeemedDefault": "geskenkkaart redeemed to beursie suksesvoly",
       "giftRedeemHelp": "Voer 'n kode in wat jy gekoop het of wat iemand met jou gedeel het - die volle balans word onmiddellik by jou beursie gevoeg.",
       "yourGiftCards": "Jou geskenkkaarte",
-      "checkoutOpenFailed": "Ons kon nie veilige betaaling oopmaak nie. Probeer asseblief weer."
+      "checkoutOpenFailed": "Ons kon nie veilige betaaling oopmaak nie. Probeer asseblief weer.",
+      "walletHelpLink": "beursie hulp"
     },
     "paymentsScreen": {
       "saveCardExplainer": "Ons sal jou kaart veilig stoor wanneer jy betaal. Om jou kaart te verifieer, kan 'n klein tydelike heffing (bv. {{example}}) geplaas en omgekeer word—dit bevestig jou kaart vir toekomstige gebruik.",
@@ -15533,7 +15534,9 @@
           "payRemainingNoTip": "Geen fooitjie",
           "payRemainingCustomTip": "Pasgemaak",
           "payRemainingCustomTipPlaceholder": "Fooitjiebedrag",
-          "payRemainingTipLine": "Fooitjie: {{amount}} — gaan 100% na jou verskaffer"
+          "payRemainingTipLine": "Fooitjie: {{amount}} — gaan 100% na jou verskaffer",
+          "cancelPreviewSheetTitle": "Kanselleer this bespreking?",
+          "cancelPreviewInPersonRefund": "terugbetaling verskuldig persoonlik: {{currency}} {{amount}}"
         },
         "groupBookingDetail": {
           "back": "Terug",
@@ -17087,7 +17090,14 @@
           "priorityLow": "Laag",
           "priorityMedium": "Gemiddeld",
           "priorityHigh": "Hoog",
-          "priorityUrgent": "Dringend"
+          "priorityUrgent": "Dringend",
+          "chatDefaultSubject": "ondersteuning versoek",
+          "continueToChat": "gaan voort to chat",
+          "useFullForm": "Use vol form",
+          "startChat": "begin chat",
+          "chatBack": "Terug",
+          "safetyUseForm": "Veiligheidsverslae gaan reguit na ons span - gebruik asseblief die volledige vorm.",
+          "chatAiDisclaimer": "KI kan foute maak - jy kan enige tyd met 'n persoon praat nadat jou kaartjie geskep is."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Tipe your boodskap...",
@@ -17542,7 +17552,50 @@
         }
       }
     },
-    "cart": "Mandjie"
+    "cart": "Mandjie",
+    "bankAccounts": {
+      "failedLoadBanks": "Kon nie laai banks. probeer weer nie.",
+      "fillAllFields": "Kies 'n bank en voer die rekeningnommer en houernaam in.",
+      "removeConfirmTitle": "Verwyder bankrekening?",
+      "removeConfirmBody": "Hierdie rekening sal nie meer beskikbaar wees vir bankterugbetalings nie.",
+      "remove": "Verwyder",
+      "intro": "Word slegs gebruik vir bankterugbetalings van kwalifiserende kaartbetalings. Rekeningnommers word geïnkripteer gestoor.",
+      "empty": "No bankrekenings stoord yet.",
+      "primary": "primêr",
+      "makePrimary": "Make primêr",
+      "verifiedBadge": "geverifieer",
+      "addAnother": "Voeg a bankrekening by",
+      "searchBanks": "Soek banks",
+      "accountNumberLabel": "rekening nommer",
+      "verifiedAs": "geverifieer: {{name}}",
+      "verify": "Verifieer rekening",
+      "verificationUnavailable": "Outomatiese verifikasie is nie in jou mark beskikbaar nie – voer die rekeninghouer se naam in presies soos dit by jou bank verskyn.",
+      "accountNameLabel": "rekening holder naam",
+      "save": "Stoor bankrekening",
+      "screenTitle": "Bankrekenings",
+      "bankLabel": "Bank"
+    },
+    "walletBankRefund": {
+      "addBank": "Voeg a bankrekening by",
+      "notEnabled": "Bankterugbetalings is nie tans in jou mark beskikbaar nie.",
+      "invalidAmount": "Voer a geldig bedrag in.",
+      "failed": "Kon nie dien in your versoek. probeer weer or Kontak ondersteuning nie.",
+      "openRequest": "Jy het reeds 'n bankterugbetalingversoek aan die gang ({{number}}).",
+      "cancelRequest": "Kanselleer versoek",
+      "retentionTitle": "Hou it on Beautonomi",
+      "retentionBody": "Jy het {{amount}} gereed om met jou volgende bespreking te gebruik — beursiekrediet word onmiddellik by die betaalpunt van toepassing.",
+      "keepInWallet": "Hou in my beursie",
+      "continueToBank": "versoek a Bank terugbetaling instead",
+      "eligibleLabel": "Eligible for Bank terugbetaling: {{amount}}",
+      "eligibleHint": "Slegs terugbetalings van kaartbetalings wat deur Beautonomi gemaak is, kan na 'n bankrekening gestuur word. Aanvullings, geskenkbewyse en promosiekrediet bly in jou beursie.",
+      "noneEligible": "Jy het geen kaartbetalingterugbetalings wat tans vir 'n bankterugbetaling kwalifiseer nie.",
+      "amountLabel": "How much should we stuur to your Bank?",
+      "feeLine": "verwerk tans fooi: {{fee}} · You receive: {{net}}",
+      "submit": "dien in versoek",
+      "submittedTitle": "versoek dien inted",
+      "submittedBody": "Die bedrag word in jou beursie vasgehou terwyl ons finansiële span dit hersien. Goedgekeurde terugbetalings word per EFT betaal, gewoonlik binne {{days}} werksdae.",
+      "screenTitle": "Bank terugbetaling"
+    }
   },
   "checkout": {
     "title": "Afhandeling",
@@ -17640,7 +17693,7 @@
     "lateCancellationWithinWindowNoRefund": "Binne {{hours}} {{hourWord}} van jou afspraak: geen terugbetaling sal uitgereik word nie.",
     "noRefundOnCancellation": "Kanselleerlations are non-terugbetalingable per this diensverskaffer's beleid.",
     "policyEnforcedAutomatically": "Hierdie beleid word outomaties afgedwing ten tye van kansellasie.",
-    "refundsStoreCreditNote": "All terugbetalings are issued as store crwysig to your Beautonomi beursie, limited to bedrags already betaal.",
+    "refundsStoreCreditNote": "Terugbetalings van aanlyn betalings word as krediet in jou Beautonomi-beursie uitgereik. Betalings persoonlik gemaak het geen kansellasiefooi nie en word deur die verskaffer terugbesorg.",
     "hour": "uur",
     "hours": "ure",
     "noShowFeeApplies": "Geen-opdaagfooi van {{amount}} geld as jy jou afspraak mis sonder om te kanselleer.",
@@ -17762,7 +17815,11 @@
     "paymentUnavailableTitle": "betaling onbeskikbaar",
     "paymentBrowserFailed": "Ons kon nie die veilige betalingsvenster oopmaak nie. Probeer asseblief weer.",
     "paymentNotCompletedTitle": "Betaling nie voltooi nie",
-    "paymentNotCompletedBody": "Jou bespreking is nie bevestig nie."
+    "paymentNotCompletedBody": "Jou bespreking is nie bevestig nie.",
+    "tipPercentButtonA11y": "{{percent}}% fooitjie, {{amount}}",
+    "cancelPreviousWithFeeBody": "Kansellasiefooi {{fee}}. {{refund}} sal na jou Beautonomi-beursie terugkeer. Kanselleer die vorige afspraak?",
+    "cancelPreviousFullRefundBody": "{{refund}} sal na jou Beautonomi beursie terugkeer. Kanselleer die vorige afspraak?",
+    "confirmCancelPrevious": "Kanselleer vorige"
   },
   "payments": {
     "pay": "Betaal",

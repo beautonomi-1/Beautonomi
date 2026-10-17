@@ -188,4 +188,31 @@ describe("GET /api/admin/support-tickets", () => {
     expect(builder.lt).toHaveBeenCalledWith("first_response_due_at", expect.any(String));
     expect(builder.is).toHaveBeenCalledWith("first_staff_reply_at", null);
   });
+
+  it("filters by category_group id or legacy English label", async () => {
+    const result: QueryResult = { data: [], error: null, count: 0 };
+    const builder = createQueryBuilder(result);
+    mockGetSupabaseAdmin.mockReturnValue({ from: vi.fn().mockReturnValue(builder) });
+
+    const { GET } = await import("@/app/api/admin/support-tickets/route");
+    const reqById = createMockNextRequest({
+      method: "GET",
+      url: "http://localhost:3000/api/admin/support-tickets",
+      searchParams: { category_group: "bookings" },
+    });
+    await GET(reqById as NextRequest);
+    expect(builder.in).toHaveBeenCalledWith("category", expect.arrayContaining(["booking_issue"]));
+
+    vi.clearAllMocks();
+    mockRequireRoleInApi.mockResolvedValue({ user: MOCK_USERS.superadmin });
+    const builder2 = createQueryBuilder(result);
+    mockGetSupabaseAdmin.mockReturnValue({ from: vi.fn().mockReturnValue(builder2) });
+    const reqByLabel = createMockNextRequest({
+      method: "GET",
+      url: "http://localhost:3000/api/admin/support-tickets",
+      searchParams: { category_group: "Bookings & appointments" },
+    });
+    await GET(reqByLabel as NextRequest);
+    expect(builder2.in).toHaveBeenCalledWith("category", expect.arrayContaining(["booking_issue"]));
+  });
 });
