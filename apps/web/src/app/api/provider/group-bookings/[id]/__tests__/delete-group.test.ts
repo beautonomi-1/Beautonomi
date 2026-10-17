@@ -11,6 +11,7 @@ const mockGetSupabaseServer = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 const mockRequirePermission = vi.fn();
 const mockSendCancellationNotification = vi.fn();
+const mockMatchWaitlistOnCancellation = vi.fn();
 const mockCancelGroupBooking = vi.fn();
 
 const pendingAfter: Array<Promise<unknown>> = [];
@@ -50,6 +51,10 @@ vi.mock("@/lib/bookings/notifications", () => ({
   sendCancellationNotification: (...args: unknown[]) => mockSendCancellationNotification(...args),
 }));
 
+vi.mock("@/lib/waitlist/matching", () => ({
+  matchWaitlistOnCancellation: (...args: unknown[]) => mockMatchWaitlistOnCancellation(...args),
+}));
+
 vi.mock("@/lib/bookings/group-booking-cancellation", () => ({
   cancelGroupBooking: (...args: unknown[]) => mockCancelGroupBooking(...args),
 }));
@@ -65,6 +70,7 @@ describe("DELETE /api/provider/group-bookings/[id]", () => {
     mockGetProviderIdForUser.mockResolvedValue(PROVIDER_ID);
     mockGetSupabaseServer.mockResolvedValue({});
     mockSendCancellationNotification.mockResolvedValue(undefined);
+    mockMatchWaitlistOnCancellation.mockResolvedValue(undefined);
     mockCancelGroupBooking.mockResolvedValue([
       { bookingId: B1, walletRefund: 50, inPersonRefundDue: 0 },
       { bookingId: B2, walletRefund: 0, inPersonRefundDue: 120 },
@@ -109,11 +115,14 @@ describe("DELETE /api/provider/group-bookings/[id]", () => {
       GROUP_ID,
       "user-1",
       "Provider cancelled session",
-      { settleFinance: true, financeActor: "provider" },
+      { settleFinance: true, financeActor: "provider", matchWaitlist: false },
     );
     await Promise.all(pendingAfter);
     expect(mockSendCancellationNotification).toHaveBeenCalledTimes(2);
     expect(mockSendCancellationNotification).toHaveBeenCalledWith(B1, { cancelledBy: "provider" });
     expect(mockSendCancellationNotification).toHaveBeenCalledWith(B2, { cancelledBy: "provider" });
+    expect(mockMatchWaitlistOnCancellation).toHaveBeenCalledTimes(2);
+    expect(mockMatchWaitlistOnCancellation).toHaveBeenCalledWith(expect.anything(), B1);
+    expect(mockMatchWaitlistOnCancellation).toHaveBeenCalledWith(expect.anything(), B2);
   });
 });

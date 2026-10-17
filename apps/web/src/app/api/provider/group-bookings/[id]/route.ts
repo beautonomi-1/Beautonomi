@@ -1057,6 +1057,7 @@ export async function DELETE(
     const childSettlements = await cancelGroupBooking(admin, id, user.id, childCancellationReason, {
       settleFinance: true,
       financeActor: "provider",
+      matchWaitlist: false,
     });
 
     if (childSettlements.length) {
@@ -1064,13 +1065,17 @@ export async function DELETE(
       after(async () => {
         try {
           const { sendCancellationNotification } = await import("@/lib/bookings/notifications");
+          const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
           await Promise.allSettled(
-            cancelledIds.map((bookingId) =>
-              sendCancellationNotification(bookingId, { cancelledBy: "provider" }).catch(
+            cancelledIds.map(async (bookingId) => {
+              await sendCancellationNotification(bookingId, { cancelledBy: "provider" }).catch(
                 (e: unknown) =>
                   console.warn("[provider group cancel] notification failed for booking", bookingId, e)
-              )
-            )
+              );
+              await matchWaitlistOnCancellation(admin, bookingId).catch((e: unknown) =>
+                console.warn("[provider group cancel] waitlist match failed for booking", bookingId, e)
+              );
+            })
           );
         } catch (notifyErr) {
           console.error("[provider group cancel] notification dispatch failed:", notifyErr);

@@ -56,6 +56,11 @@ export async function cancelGroupBooking(
      * need finance settlement here. Without this they are skipped as terminal.
      */
     settleAlreadyCancelledBookingIds?: string[];
+    /**
+     * When false, the caller matches the waitlist after the HTTP response.
+     * Default true so admin and customer cancels still free the slot here.
+     */
+    matchWaitlist?: boolean;
   },
 ): Promise<GroupBookingChildSettlement[]> {
   const groupBooking = await getGroupBooking(supabase, groupBookingId);
@@ -171,14 +176,16 @@ export async function cancelGroupBooking(
     }
   }
 
-  // Notify waitlist for freed slots
-  try {
-    const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
-    await Promise.allSettled(
-      cancelledBookingIds.map((bid) => matchWaitlistOnCancellation(supabase, bid))
-    );
-  } catch (waitlistErr) {
-    console.error("[group cancel] waitlist matching failed:", waitlistErr);
+  // Notify waitlist for freed slots. Provider group delete defers this until after the response.
+  if (options?.matchWaitlist !== false) {
+    try {
+      const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
+      await Promise.allSettled(
+        cancelledBookingIds.map((bid) => matchWaitlistOnCancellation(supabase, bid))
+      );
+    } catch (waitlistErr) {
+      console.error("[group cancel] waitlist matching failed:", waitlistErr);
+    }
   }
 
   // Update group booking status
