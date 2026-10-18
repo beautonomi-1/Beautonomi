@@ -121,7 +121,12 @@ const BASE_EXPO_CONFIG = {
     ],
     [
       "onesignal-expo-plugin",
-      { mode: oneSignalMode },
+      {
+        mode: oneSignalMode,
+        // NSE defaults to iOS 11.0, which Xcode 27 rejects (minimum 15.0).
+        // Keep this equal to expo-build-properties ios.deploymentTarget.
+        iPhoneDeploymentTarget: "16.4",
+      },
     ],
     "expo-notifications",
     "expo-router",
