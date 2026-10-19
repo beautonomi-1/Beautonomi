@@ -60,6 +60,26 @@ const PROVIDER_ID = "22222222-2222-4222-8222-222222222222";
 const PRODUCT_ID = "11111111-1111-4111-8111-111111111111";
 const USER_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
+/** Fluent stub for `resolveWalkInStaffId` (no matching staff row). */
+function providerStaffLookupChain() {
+  const chain: Record<string, unknown> = {};
+  const self = () => chain;
+  for (const method of ["select", "eq", "order", "limit", "in"] as const) {
+    chain[method] = vi.fn(self);
+  }
+  chain.maybeSingle = vi.fn(async () => ({ data: null, error: null }));
+  return chain;
+}
+
+function adminWithStaffLookup(fromImpl?: (table: string) => unknown) {
+  return {
+    from: vi.fn((table: string) => {
+      if (table === "provider_staff") return providerStaffLookupChain();
+      return fromImpl ? fromImpl(table) : {};
+    }),
+  };
+}
+
 function buildWalkInSupabase(opts: { providerTenantId: string | null }) {
   const insertCalls: unknown[] = [];
 
@@ -157,7 +177,7 @@ describe("POST /api/provider/product-sales", () => {
       tenantId: "tenant-from-provider-row",
       defaultCurrency: "ZAR",
     });
-    mockGetSupabaseAdmin.mockReturnValue({});
+    mockGetSupabaseAdmin.mockReturnValue(adminWithStaffLookup());
     mockHasProviderActivity.mockReset();
     mockHasProviderActivity.mockResolvedValue(false);
   });
@@ -230,7 +250,7 @@ describe("POST /api/provider/product-sales", () => {
         },
       },
       rpc: vi.fn(),
-      from: vi.fn((table: string) => {
+      ...adminWithStaffLookup((table: string) => {
         if (table === "users") {
           return {
             select: vi.fn(() => ({
@@ -331,14 +351,14 @@ describe("POST /api/provider/product-sales", () => {
     const linkedCustomerId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
     mockHasProviderActivity.mockResolvedValue(true);
     const pcInsert = vi.fn(async () => ({ error: null }));
-    mockGetSupabaseAdmin.mockReturnValue({
-      from: vi.fn((table: string) => {
+    mockGetSupabaseAdmin.mockReturnValue(
+      adminWithStaffLookup((table: string) => {
         if (table === "provider_clients") {
           return { insert: pcInsert };
         }
         return {};
       }),
-    });
+    );
 
     const { mockSupabase, insertCalls } = buildWalkInSupabase({
       providerTenantId: "tenant-from-provider-row",
