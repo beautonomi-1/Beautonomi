@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import { normalizePaycloudMajorAmount } from "@/lib/payments/paycloud-cloud-amount";
+import { resolveSaleEntityTarget } from "@/lib/provider-sales/resolve-sale-entity-target";
 
 /** Provider-collected card-machine rails that share settle/reverse semantics. */
 export type CardMachinePaymentProvider = "paycloud" | "yoco";
@@ -282,18 +283,32 @@ export async function settleCardMachinePayment(
   input: SettleCardMachinePaymentInput,
 ): Promise<{ settled: boolean; reason?: string; bookingId?: string }> {
   const providerPaymentId = input.providerPaymentId;
+  let entityType = input.entityType;
+  let entityId = input.entityId;
+  if (entityType === "sale") {
+    const admin = getSupabaseAdmin();
+    const resolved = await resolveSaleEntityTarget(
+      admin,
+      input.providerId,
+      entityType,
+      entityId,
+    );
+    entityType = resolved.entityType as CardMachineEntityType;
+    entityId = resolved.entityId;
+  }
+  const resolvedInput: SettleCardMachinePaymentInput = { ...input, entityType, entityId };
 
-  switch (input.entityType) {
+  switch (resolvedInput.entityType) {
     case "booking":
-      return settleBookingPayment(supabase, input, providerPaymentId);
+      return settleBookingPayment(supabase, resolvedInput, providerPaymentId);
     case "group_booking":
-      return settleGroupBookingPayment(supabase, input, providerPaymentId);
+      return settleGroupBookingPayment(supabase, resolvedInput, providerPaymentId);
     case "sale":
-      return settleSalePayment(supabase, input, providerPaymentId);
+      return settleSalePayment(supabase, resolvedInput, providerPaymentId);
     case "product_order":
-      return settleProductOrderPayment(supabase, input, providerPaymentId);
+      return settleProductOrderPayment(supabase, resolvedInput, providerPaymentId);
     case "additional_charge":
-      return settleAdditionalChargePayment(supabase, input, providerPaymentId);
+      return settleAdditionalChargePayment(supabase, resolvedInput, providerPaymentId);
     default:
       return { settled: false, reason: `Unsupported entity type: ${input.entityType}` };
   }
@@ -699,17 +714,32 @@ export async function reverseCardMachineSettlement(
   supabase: SupabaseClient,
   input: ReverseCardMachineSettlementInput,
 ): Promise<{ reversed: boolean; reason?: string }> {
-  switch (input.entityType) {
+  let entityType = input.entityType;
+  let entityId = input.entityId;
+  if (entityType === "sale") {
+    const admin = getSupabaseAdmin();
+    const resolved = await resolveSaleEntityTarget(
+      admin,
+      input.providerId,
+      entityType,
+      entityId,
+    );
+    entityType = resolved.entityType as CardMachineEntityType;
+    entityId = resolved.entityId;
+  }
+  const resolvedInput: ReverseCardMachineSettlementInput = { ...input, entityType, entityId };
+
+  switch (resolvedInput.entityType) {
     case "booking":
     case "group_booking":
     case "additional_charge":
-      return reverseBookingCardMachinePayments(supabase, input);
+      return reverseBookingCardMachinePayments(supabase, resolvedInput);
     case "sale":
-      return reverseSaleCardMachinePayment(supabase, input);
+      return reverseSaleCardMachinePayment(supabase, resolvedInput);
     case "product_order":
-      return reverseProductOrderCardMachinePayment(supabase, input);
+      return reverseProductOrderCardMachinePayment(supabase, resolvedInput);
     default:
-      return { reversed: false, reason: `unsupported_${input.entityType}` };
+      return { reversed: false, reason: `unsupported_${resolvedInput.entityType}` };
   }
 }
 

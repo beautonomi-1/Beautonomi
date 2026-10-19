@@ -157,10 +157,16 @@ export async function GET(request: NextRequest) {
     const admin = getSupabaseAdmin();
     const { timezone: tz } = await getProviderReportContext(admin, providerId);
     const ymdParam = /^\d{4}-\d{2}-\d{2}$/;
-    const aggregateStats = await computeCompletedGroupBookingStats(admin, providerId);
+    const emptyAggregateStats = {
+      completed_count: 0,
+      session_booked_gross: 0,
+      participant_booked_gross: 0,
+      recognized_earnings: 0,
+    };
 
     let groupBookings: any[] = [];
     let total = 0;
+    let aggregateStats = emptyAggregateStats;
 
     try {
       let query = admin
@@ -191,7 +197,14 @@ export async function GET(request: NextRequest) {
 
       query = query.range(offset, offset + limit - 1);
 
-      const { data, error, count } = await query;
+      const [listResult, statsResult] = await Promise.all([
+        query,
+        page === 1 ? computeCompletedGroupBookingStats(admin, providerId) : Promise.resolve(null),
+      ]);
+      const { data, error, count } = listResult;
+      if (statsResult) {
+        aggregateStats = statsResult;
+      }
 
       if (error) {
         if (
@@ -224,32 +237,33 @@ export async function GET(request: NextRequest) {
       ]);
       const offeringTitle = new Map((offeringsRes.data || []).map((o: any) => [o.id, o.title]));
       const staffName = new Map((staffRes.data || []).map((s: any) => [s.id, s.name]));
-      const participantBookingIds = [
-        ...new Set(
-          raw
-            .flatMap((r: any) =>
-              Array.isArray(r.booking_participants) ? r.booking_participants : []
-            )
-            .map((p: any) => p.booking_id)
-            .filter(Boolean)
-        ),
-      ];
-      const participantPayments =
-        participantBookingIds.length > 0
-          ? await fetchInIdChunks<any>(participantBookingIds, (slice) =>
+
+      const groupIds = raw.map((r: any) => r.id).filter(Boolean);
+      const childBookingsByGroupId = new Map<string, any[]>();
+      const childBookingsForRollup =
+        groupIds.length > 0
+          ? await fetchInIdChunks<any>(groupIds, (slice) =>
               admin
                 .from("bookings")
                 .select(
-                  "id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, additional_charges(amount,status)"
+                  "id, group_booking_id, status, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, tip_amount, additional_charges(amount,status)",
                 )
-                .in("id", slice),
+                .in("group_booking_id", slice),
             )
           : [];
+      for (const child of childBookingsForRollup) {
+        const gid = (child as { group_booking_id?: string | null }).group_booking_id;
+        if (!gid) continue;
+        const bucket = childBookingsByGroupId.get(gid) ?? [];
+        bucket.push(child);
+        childBookingsByGroupId.set(gid, bucket);
+      }
+
       const participantPaymentByBookingId = new Map(
-        participantPayments.map((booking: any) => {
+        childBookingsForRollup.map((booking: any) => {
           const paidAfterRefunds = Math.max(
             0,
-            Number(booking.total_paid ?? 0) - Number(booking.total_refunded ?? 0)
+            Number(booking.total_paid ?? 0) - Number(booking.total_refunded ?? 0),
           );
           const walletGiftCoverage =
             Number(booking.wallet_amount ?? 0) + Number(booking.gift_card_amount ?? 0);
@@ -286,34 +300,14 @@ export async function GET(request: NextRequest) {
               paid: Number(booking.total_amount ?? 0) > 0 && balanceDue <= 0,
             },
           ];
-        })
+        }),
       );
       const participantBookingTotalById = new Map(
-        participantPayments.map((booking: any) => [
+        childBookingsForRollup.map((booking: any) => [
           booking.id,
           Number(booking.total_amount ?? 0) || 0,
-        ])
+        ]),
       );
-
-      const groupIds = raw.map((r: any) => r.id).filter(Boolean);
-      const childBookingsByGroupId = new Map<string, any[]>();
-      if (groupIds.length > 0) {
-        const childBookingsForRollup = await fetchInIdChunks<any>(groupIds, (slice) =>
-          admin
-            .from("bookings")
-            .select(
-              "id, group_booking_id, status, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, tip_amount, additional_charges(amount,status)",
-            )
-            .in("group_booking_id", slice),
-        );
-        for (const child of childBookingsForRollup) {
-          const gid = (child as { group_booking_id?: string | null }).group_booking_id;
-          if (!gid) continue;
-          const bucket = childBookingsByGroupId.get(gid) ?? [];
-          bucket.push(child);
-          childBookingsByGroupId.set(gid, bucket);
-        }
-      }
 
       groupBookings = raw.map((row: any) => {
         const at = row.scheduled_at ? new Date(row.scheduled_at) : null;
@@ -731,7 +725,7 @@ export async function POST(request: NextRequest) {
             (p.phone || p.participant_phone || p.client_phone || "").toString().trim();
           const participantEmail =
             (p.email || p.participant_email || p.client_email || "").toString().trim();
-          if (participantName && (participantPhone || participantEmail)) {
+          if (participantName) {
             try {
               const shadow = await createOrResolveShadowCustomer({
                 supabaseAdmin: admin,
@@ -754,6 +748,10 @@ export async function POST(request: NextRequest) {
         }
 
         const carriesTravelFee = wantsTravelFee && idx === primaryIdxResolved;
+        const participantStaffId =
+          (typeof p.staff_id === "string" && p.staff_id.trim()) ||
+          (typeof p.staffId === "string" && p.staffId.trim()) ||
+          sessionContext.staffId;
         const created = await createGroupParticipantChildBooking(admin, sessionContext, {
           customerId,
           serviceId: String(svcId),
@@ -764,6 +762,15 @@ export async function POST(request: NextRequest) {
               ? p.duration_minutes
               : duration_minutes || 60,
           addons: Array.isArray(p.addons) ? p.addons : [],
+          staffId: participantStaffId,
+          notes:
+            typeof p.notes === "string" && p.notes.trim().length > 0 ? p.notes.trim() : null,
+          products:
+            idx === primaryIdxResolved && normalizedProducts.length > 0
+              ? normalizedProducts
+              : Array.isArray(p.products)
+                ? p.products
+                : [],
           includeSessionTravelFee: carriesTravelFee,
         });
         if ("error" in created) {

@@ -2806,7 +2806,7 @@ export default function BookCheckoutScreen() {
         haptic.error();
         const errStatus = (res.error as { status?: number }).status;
         const errCode = (res.error as { code?: string }).code;
-        if (redirectLoginIfAuthRequired(bookContinueReturnTo, res.error)) {
+        if (await redirectLoginIfAuthRequired(bookContinueReturnTo, res.error)) {
           setError(null);
           return;
         }
@@ -3870,8 +3870,27 @@ export default function BookCheckoutScreen() {
                   <Pressable
                     onPress={() => {
                       haptic.selection();
-                      setIsGroupBooking((b) => !b);
-                      if (!isGroupBooking) setGroupParticipants([]);
+                      setIsGroupBooking((b) => {
+                        const next = !b;
+                        if (next) {
+                          setGroupParticipants((prev) =>
+                            prev.length > 0
+                              ? prev
+                              : [
+                                  {
+                                    id: `p-${Date.now()}`,
+                                    name: "",
+                                    phone: "",
+                                    notes: "",
+                                    service_ids: [...snapshotOfferingIds],
+                                  },
+                                ],
+                          );
+                        } else {
+                          setGroupParticipants([]);
+                        }
+                        return next;
+                      });
                     }}
                     style={{ flexDirection: "row", alignItems: "center", minHeight: 44 }}
                     accessibilityRole="switch"
@@ -4062,6 +4081,7 @@ export default function BookCheckoutScreen() {
                                             const next = isSelected
                                               ? x.service_ids.filter((id) => id !== off.id)
                                               : [...x.service_ids, off.id];
+                                            if (next.length === 0) return x;
                                             return { ...x, service_ids: next };
                                           })
                                         );
@@ -5854,6 +5874,21 @@ export default function BookCheckoutScreen() {
               backgroundColor: "#fff",
             }}
           >
+            {error && hold ? (
+              <View
+                style={{
+                  backgroundColor: "#FEF2F2",
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  marginBottom: 10,
+                  borderWidth: 1,
+                  borderColor: "#FECACA",
+                }}
+              >
+                <Text style={{ color: "#B91C1C", fontSize: 13, lineHeight: 18 }}>{error}</Text>
+              </View>
+            ) : null}
             {/* Price summary */}
             <View
               style={{

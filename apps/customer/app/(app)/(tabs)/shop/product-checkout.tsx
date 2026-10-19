@@ -714,7 +714,7 @@ export default function ProductCheckoutScreen() {
         placingRef.current = false;
         setPlacing(false);
         setProcessingPayment(false);
-        if (redirectLoginIfAuthRequired(checkoutReturnTo, result.error)) {
+        if (await redirectLoginIfAuthRequired(checkoutReturnTo, result.error)) {
           return;
         }
         Alert.alert(pc("orderFailedTitle"), result.error.message || pc("orderFailedBody"));

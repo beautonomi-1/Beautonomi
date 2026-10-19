@@ -392,7 +392,7 @@ export default function CustomOfferCheckoutScreen() {
             return;
           }
           const offerReturnTo = `/(app)/custom-offer-checkout?offer_id=${encodeURIComponent(offerId)}`;
-          if (redirectLoginIfAuthRequired(offerReturnTo, res.error)) {
+          if (await redirectLoginIfAuthRequired(offerReturnTo, res.error)) {
             return;
           }
           const msg = getApiErrorMessage(

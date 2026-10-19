@@ -513,8 +513,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const hasSplitPayments =
+      Array.isArray(paymentLegsInput) && paymentLegsInput.length > 0;
+    const hasGiftCard =
+      Boolean(giftCardCodeInput?.trim()) || Number(giftCardAmountInput || 0) > 0;
+    const hasTip = Number(tip_amount || 0) > 0;
+
     // Product-only POS sales → walk_in product_orders (Part I migration path).
-    if (isProductOnlyLegacySale(items)) {
+    if (
+      isProductOnlyLegacySale(items) &&
+      !hasSplitPayments &&
+      !hasGiftCard &&
+      !hasTip
+    ) {
       const { data: providerRow } = await supabase
         .from("providers")
         .select("tenant_id")
@@ -523,6 +534,13 @@ export async function POST(request: NextRequest) {
       let tenantId = (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
       if (!tenantId) {
         tenantId = await resolveTenantIdWithZaFallback(request);
+      }
+      if (!tenantId) {
+        return handleApiError(
+          new Error("Tenant could not be resolved for this sale. Check provider tenant settings."),
+          "TENANT_ERROR",
+          500,
+        );
       }
 
       const calculatedSubtotal = subtotal || items.reduce((sum: number, item: any) =>
@@ -539,6 +557,7 @@ export async function POST(request: NextRequest) {
         supabase,
         providerId,
         userId: user.id,
+        staffId: staff_id || null,
         tenantId,
         locationId: location_id || null,
         customerId: customer_id || null,

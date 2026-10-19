@@ -12,6 +12,8 @@ import {
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { requirePaystackVirtualTerminalEnabledForProvider } from "@/lib/payments/paystack-virtual-terminal-feature-gate";
 import { getPaystackTerminalAvailability } from "@/lib/payments/paystack-terminal-availability";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { resolveSaleEntityTarget } from "@/lib/provider-sales/resolve-sale-entity-target";
 
 const collectionIntentSchema = z.object({
   terminal_id: z.string().uuid().optional(),
@@ -92,7 +94,21 @@ export async function POST(request: NextRequest) {
     const gate = await requirePaystackVirtualTerminalEnabledForProvider(supabase, providerId);
     if (gate) return gate;
 
-    const body = collectionIntentSchema.parse(await request.json());
+    const parsedBody = collectionIntentSchema.parse(await request.json());
+    const paymentTarget =
+      parsedBody.entity_type && parsedBody.entity_id
+        ? await resolveSaleEntityTarget(
+            getSupabaseAdmin(),
+            providerId,
+            parsedBody.entity_type,
+            parsedBody.entity_id,
+          )
+        : null;
+    const body = {
+      ...parsedBody,
+      entity_type: paymentTarget?.entityType ?? parsedBody.entity_type,
+      entity_id: paymentTarget?.entityId ?? parsedBody.entity_id,
+    };
 
     const availability = await getPaystackTerminalAvailability({ supabase, providerId });
     const selectableTerminals = availability.selectableTerminals;

@@ -23,8 +23,7 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { getBackendUrl, withWebApiTenantHeaders } from "@/config/public-env";
-import { supabase } from "@/lib/supabase/client";
+import { api } from "@/lib/api-client";
 import { twStyle } from "@/lib/twStyle";
 import { appendUploadFile } from "@/lib/form-data-file";
 import { launchImageLibraryWithPermission } from "@/lib/native-permissions";
@@ -202,9 +201,6 @@ export default function ServiceDetailScreen() {
     const asset = result.assets[0];
     setUploadingImage(true);
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-
       const formData = new FormData();
       await appendUploadFile(formData, "file", {
         uri: asset.uri,
@@ -213,29 +209,16 @@ export default function ServiceDetailScreen() {
       });
       formData.append("folder", "services");
 
-      const base = getBackendUrl().replace(/\/$/, "");
-      if (!base) {
-        Alert.alert(cd("uploadErrorTitle"), cd("apiUrlNotConfigured"));
-        return;
-      }
-      const uploadRes = await fetch(
-        `${base}/api/upload`,
-        withWebApiTenantHeaders({
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
-        }),
-      );
+      const uploadRes = await api.fetch<{ url?: string }>("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
 
-      if (!uploadRes.ok) {
-        const err = await uploadRes.json().catch(() => null);
-        throw new Error(err?.error?.message ?? cd("uploadFailed"));
+      if (uploadRes.error) {
+        throw new Error(uploadRes.error.message ?? cd("uploadFailed"));
       }
 
-      const uploadJson = await uploadRes.json();
-      const imageUrl = uploadJson.data?.url;
+      const imageUrl = uploadRes.data?.url;
 
       if (!imageUrl) throw new Error(cd("noUrlReturned"));
 

@@ -22,6 +22,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 const createPaymentSchema = z
   .object({
@@ -419,7 +420,7 @@ export async function POST(request: Request) {
               : appointmentId
                 ? "booking"
                 : undefined);
-    const resolvedEntityId =
+    let resolvedEntityId =
       validationResult.data.entity_id ??
       groupBookingId ??
       productOrderId ??
@@ -427,17 +428,40 @@ export async function POST(request: Request) {
       validationResult.data.sale_id ??
       appointmentId ??
       null;
+    let resolvedEntityTypeFinal = resolvedEntityType;
+    if (resolvedEntityTypeFinal === "sale" && resolvedEntityId) {
+      const { resolveSaleEntityTarget } = await import(
+        "@/lib/provider-sales/resolve-sale-entity-target"
+      );
+      const admin = getSupabaseAdmin();
+      const target = await resolveSaleEntityTarget(
+        admin,
+        providerId,
+        resolvedEntityTypeFinal,
+        resolvedEntityId,
+      );
+      if (
+        target.entityType === "booking" ||
+        target.entityType === "group_booking" ||
+        target.entityType === "sale" ||
+        target.entityType === "product_order" ||
+        target.entityType === "additional_charge"
+      ) {
+        resolvedEntityTypeFinal = target.entityType;
+      }
+      resolvedEntityId = target.entityId;
+    }
 
     // In-flight resume: a recent pending charge for the same entity + amount is returned
     // (client keeps polling) instead of sending a second charge to the machine.
     const PENDING_WINDOW_MINUTES = 15;
-    if (resolvedEntityType && resolvedEntityId) {
+    if (resolvedEntityTypeFinal && resolvedEntityId) {
       const { data: existingPending } = await supabase
         .from("provider_yoco_payments")
         .select("*")
         .eq("provider_id", providerId)
         .eq("status", "pending")
-        .eq("entity_type", resolvedEntityType)
+        .eq("entity_type", resolvedEntityTypeFinal)
         .eq("entity_id", resolvedEntityId)
         .eq("amount", amountInCents)
         .gte("created_at", new Date(Date.now() - PENDING_WINDOW_MINUTES * 60 * 1000).toISOString())
@@ -544,7 +568,7 @@ export async function POST(request: Request) {
       ...(appointmentId ? { appointment_id: appointmentId } : {}),
       ...(validationResult.data.sale_id ? { sale_id: validationResult.data.sale_id } : {}),
       ...(tipAmount > 0 ? { tip_amount: String(tipAmount) } : {}),
-      ...(resolvedEntityType ? { entity_type: resolvedEntityType } : {}),
+      ...(resolvedEntityTypeFinal ? { entity_type: resolvedEntityTypeFinal } : {}),
       ...(resolvedEntityId ? { entity_id: resolvedEntityId } : {}),
       ...(groupBookingId ? { group_booking_id: groupBookingId } : {}),
       ...(productOrderId ? { product_order_id: productOrderId } : {}),
@@ -730,7 +754,7 @@ export async function POST(request: Request) {
         appointment_id: appointmentId,
         sale_id: validationResult.data.sale_id,
         tip_amount: tipAmount,
-        entity_type: resolvedEntityType ?? null,
+        entity_type: resolvedEntityTypeFinal ?? null,
         entity_id: resolvedEntityId,
         group_booking_id: groupBookingId,
         metadata: {
@@ -741,7 +765,7 @@ export async function POST(request: Request) {
           ...(checkoutUrl ? { checkout_url: checkoutUrl } : {}),
           ...(qrPayload ? { qr_payload: qrPayload } : {}),
           ...(tipAmount > 0 ? { tip_amount: tipAmount } : {}),
-          ...(resolvedEntityType ? { entity_type: resolvedEntityType } : {}),
+          ...(resolvedEntityTypeFinal ? { entity_type: resolvedEntityTypeFinal } : {}),
           ...(resolvedEntityId ? { entity_id: resolvedEntityId } : {}),
           ...validationResult.data.metadata,
         },

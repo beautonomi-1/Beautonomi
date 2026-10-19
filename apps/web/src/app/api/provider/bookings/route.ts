@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -1995,6 +1996,12 @@ async function handleCreateProviderBooking(request: NextRequest) {
       if (error) {
         console.error("Error inserting booking:", error);
         console.error("Error details:", JSON.stringify(error, null, 2));
+        Sentry.captureException(error, {
+          extra: {
+            area: "provider.bookings.insert",
+            provider_id: providerId,
+          },
+        });
         // §Group-booking-audit 2026-05: surface the real Postgres message
         // (validate_booking_total CHECK violation, FK violation, etc.) so
         // provider clients — especially the mobile group-creation flow —

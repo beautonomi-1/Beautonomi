@@ -12,12 +12,10 @@ export function groupGuestsServiceSubtotal(
   snapshotOfferingIds: string[],
   priceByOfferingId: ReadonlyMap<string, number>,
 ): number {
-  return participants
-    .filter((p) => p.name.trim())
-    .reduce((sum, p) => {
-      const ids = p.service_ids.length > 0 ? p.service_ids : snapshotOfferingIds;
-      return sum + ids.reduce((s, id) => s + (priceByOfferingId.get(id) ?? 0), 0);
-    }, 0);
+  return participants.reduce((sum, p) => {
+    const ids = p.service_ids.length > 0 ? p.service_ids : snapshotOfferingIds;
+    return sum + ids.reduce((s, id) => s + (priceByOfferingId.get(id) ?? 0), 0);
+  }, 0);
 }
 
 export type GroupParticipantServiceLine = {

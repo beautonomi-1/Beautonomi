@@ -35,6 +35,7 @@ if (sentryDsn) {
     Sentry.init({
       dsn: sentryDsn,
       environment: publicEnv.sentryEnvironment || import.meta.env.MODE,
+      release: import.meta.env.VITE_SENTRY_RELEASE || undefined,
       sendDefaultPii: false,
       tracesSampleRate: 0.1,
       ignoreErrors: [/ResizeObserver loop/i, /^Non-Error promise rejection captured/],

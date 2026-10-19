@@ -273,7 +273,7 @@ export default function WalletScreen() {
           );
           return;
         }
-        if (redirectLoginIfAuthRequired(walletReturnTo, res.error)) {
+        if (await redirectLoginIfAuthRequired(walletReturnTo, res.error)) {
           return;
         }
         Alert.alert(t("common.error"), res.error.message || t("customer.walletScreen.failedStartTopup"));
@@ -464,7 +464,7 @@ export default function WalletScreen() {
         { code: giftCardCode }
       );
       if (res.error) {
-        if (redirectLoginIfAuthRequired(walletReturnTo, res.error)) {
+        if (await redirectLoginIfAuthRequired(walletReturnTo, res.error)) {
           return;
         }
         Alert.alert(t("common.error"), res.error.message || t("customer.walletScreen.failedRedeemGiftCard"));

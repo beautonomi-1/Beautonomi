@@ -1262,7 +1262,7 @@ export default function BookingDetailScreen() {
         timeout: 120_000,
       });
       if (res.error) {
-        if (redirectLoginIfAuthRequired(payRemainingReturnTo, res.error)) {
+        if (await redirectLoginIfAuthRequired(payRemainingReturnTo, res.error)) {
           setPayRemainingLoading(false);
           return;
         }
@@ -2014,7 +2014,7 @@ export default function BookingDetailScreen() {
           : {}),
       }, { timeout: 120_000 });
       if (res.error) {
-        if (redirectLoginIfAuthRequired(chargeReturnTo, res.error)) {
+        if (await redirectLoginIfAuthRequired(chargeReturnTo, res.error)) {
           setAdditionalChargePayLoadingId(null);
           return;
         }
@@ -2168,7 +2168,7 @@ export default function BookingDetailScreen() {
         { timeout: 120_000 },
       );
       if (res.error) {
-        if (redirectLoginIfAuthRequired(cardChargeReturnTo, res.error)) {
+        if (await redirectLoginIfAuthRequired(cardChargeReturnTo, res.error)) {
           setAdditionalChargeCardLoadingId(null);
           return;
         }

@@ -89,7 +89,7 @@ export async function effectiveSafetySettings(
 ): Promise<EffectiveSafetySettings> {
   const policy = await resolveAgeAssurancePolicy(tenantId);
   const forcedDefaults =
-    band === "13_17" || band === "unknown"
+    policy.socialAgeGateMode === "enforce" && band === "13_17"
       ? policy.restrictedModeDefaults
       : {};
 

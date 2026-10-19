@@ -12,6 +12,7 @@ import {
 } from "@/lib/provider-sales/pos-product-stock";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import { logSaleStockMovements } from "@/lib/products/stock-movements";
+import { resolveWalkInStaffId } from "@/lib/provider-sales/resolve-walk-in-staff-id";
 
 type LegacySaleItem = {
   type?: string;
@@ -26,6 +27,7 @@ export type CreateWalkInOrderFromLegacySaleInput = {
   supabase: SupabaseClient;
   providerId: string;
   userId: string;
+  staffId?: string | null;
   locationId?: string | null;
   customerId?: string | null;
   items: LegacySaleItem[];
@@ -71,6 +73,7 @@ export async function createWalkInOrderFromLegacySale(
     supabase,
     providerId,
     userId,
+    staffId = null,
     locationId = null,
     customerId = null,
     items,
@@ -155,6 +158,9 @@ export async function createWalkInOrderFromLegacySale(
   const { data: seqData } = await supabase.rpc("nextval", { seq_name: "product_order_number_seq" });
   const orderNum = `BO-W${seqData ?? Date.now()}`;
 
+  const admin = getSupabaseAdmin();
+  const walkInStaffId = await resolveWalkInStaffId(admin, providerId, userId, staffId);
+
   const { data: order, error: orderErr } = await supabase
     .from("product_orders")
     .insert({
@@ -175,7 +181,7 @@ export async function createWalkInOrderFromLegacySale(
       payment_status: isPaid ? "paid" : "pending",
       status: isPaid ? "delivered" : "confirmed",
       order_source: "walk_in",
-      staff_id: userId,
+      staff_id: walkInStaffId,
       legacy_sale_id: legacySaleId,
       confirmed_at: new Date().toISOString(),
       delivered_at: isPaid ? new Date().toISOString() : null,
@@ -199,7 +205,11 @@ export async function createWalkInOrderFromLegacySale(
 
   const { error: insertErr } = await supabase.from("product_order_items").insert(itemsToInsert);
   if (insertErr) {
-    await supabase.from("product_orders").delete().eq("id", order.id);
+    await admin
+      .from("product_orders")
+      .delete()
+      .eq("id", order.id)
+      .eq("provider_id", providerId);
     throw insertErr;
   }
 

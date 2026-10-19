@@ -486,8 +486,16 @@ export default function SalesScreen() {
   }, [rawClients, sl]);
   const { execute: createSale, loading: creatingSale } = useApiPost<
     object,
-    { id: string; ref_number?: string | null }
+    {
+      id: string;
+      ref_number?: string | null;
+      migrated_to_product_order?: boolean;
+      product_order_id?: string | null;
+    }
   >("/api/provider/sales");
+  const [posCollectEntityType, setPosCollectEntityType] = useState<"sale" | "product_order">(
+    "sale",
+  );
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -856,6 +864,10 @@ export default function SalesScreen() {
         Alert.alert(sl("errorTitle"), sl("couldNotPreparePaystack"));
         return;
       }
+      const payEntity =
+        data.migrated_to_product_order && data.product_order_id
+          ? { entity_type: "product_order" as const, entity_id: data.product_order_id }
+          : { entity_type: "sale" as const, entity_id: data.id };
       const res = await api.post<{
         terminal?: {
           terminal_code?: string;
@@ -867,8 +879,8 @@ export default function SalesScreen() {
       }>(
         PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH,
         paystackTerminalCollectionIntentPayload({
-          entity_type: "sale",
-          entity_id: data.id,
+          entity_type: payEntity.entity_type,
+          entity_id: payEntity.entity_id,
           expected_amount: Number(grandTotal.toFixed(2)),
           customer_reference: selectedClient?.full_name
             ? sl("saleForClient", { name: selectedClient.full_name })
@@ -936,6 +948,9 @@ export default function SalesScreen() {
           return;
         }
         saleId = data.id;
+        setPosCollectEntityType(
+          data.migrated_to_product_order && data.product_order_id ? "product_order" : "sale",
+        );
         cardMachinePendingSaleIdRef.current = saleId;
         setCardMachineLinkedSaleId(saleId);
       }
@@ -1879,9 +1894,9 @@ export default function SalesScreen() {
         onClose={() => setShowCardMachineCollect(false)}
         amount={grandTotal}
         currency={tenantCurrency}
-        entityType="sale"
+        entityType={posCollectEntityType}
         entityId={cardMachineLinkedSaleId ?? ""}
-        saleId={cardMachineLinkedSaleId ?? undefined}
+        saleId={posCollectEntityType === "sale" ? cardMachineLinkedSaleId ?? undefined : undefined}
         bookingLocationId={selectedLocationId}
         tipIncludedInAmount={tipAmount > 0}
         onSuccess={() => finalizeCardMachineSale()}

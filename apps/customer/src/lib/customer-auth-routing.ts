@@ -27,8 +27,12 @@ export function pushLoginWithReturnTo(returnTo: string): void {
 }
 
 /** When a payment/booking API rejects the session, send the user to sign in and resume. */
-export function redirectLoginIfAuthRequired(returnTo: string, err: unknown): boolean {
+export async function redirectLoginIfAuthRequired(
+  returnTo: string,
+  err: unknown,
+): Promise<boolean> {
   if (!isAuthRequiredApiError(err)) return false;
+  if (await hasSupabaseAccessToken()) return false;
   pushLoginWithReturnTo(returnTo);
   return true;
 }

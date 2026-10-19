@@ -2,6 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { applyPosProductStockDecrements } from "@/lib/provider-sales/pos-product-stock";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import { resolveYocoSettleEntity, settleYocoPayment } from "@/lib/payments/settle-yoco-payment";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { resolveSaleEntityTarget } from "@/lib/provider-sales/resolve-sale-entity-target";
+import { settleCardMachinePayment } from "@/lib/payments/settle-card-machine-payment";
 
 export type YocoPaymentRowForSettle = {
   id?: string | null;
@@ -42,11 +45,31 @@ export async function applyYocoSuccessfulSettlement(
     (mergedMeta.sale_id as string | undefined) ?? existingPayment?.sale_id ?? null;
 
   if (saleId) {
+    const providerIdForSale = String(existingPayment?.provider_id ?? mergedMeta.provider_id ?? "");
     const { data: saleBefore } = await supabase
       .from("sales")
       .select("id, payment_status")
       .eq("id", saleId)
       .maybeSingle();
+
+    if (!saleBefore && providerIdForSale) {
+      const admin = getSupabaseAdmin();
+      const target = await resolveSaleEntityTarget(admin, providerIdForSale, "sale", saleId);
+      if (target.entityType === "product_order") {
+        const amountInCurrency = convertFromSmallestUnit(amountCents, currency);
+        await settleCardMachinePayment(supabase, {
+          paymentProvider: "yoco",
+          paymentId: yocoPaymentId,
+          providerId: providerIdForSale,
+          entityType: "product_order",
+          entityId: target.entityId,
+          amount: amountInCurrency,
+          providerPaymentId: yocoPaymentId,
+        });
+        return;
+      }
+    }
+
     const shouldDecrementStock =
       (saleBefore as { payment_status?: string } | null)?.payment_status !== "completed";
 

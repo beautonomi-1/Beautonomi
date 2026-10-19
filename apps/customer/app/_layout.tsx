@@ -19,6 +19,7 @@ import { ErrorBoundary as AppErrorBoundary } from "@/components/ErrorBoundary";
 import { OfflineBar } from "@/components/OfflineBar";
 import { useForceUpdate } from "@/hooks/useForceUpdate";
 import { initSentry, setMobileAppTag, Sentry } from "@/lib/sentry";
+import { initConnectivityTracking } from "@/lib/connectivity";
 import { i18n, I18nextProvider, useTranslation } from "@beautonomi/i18n";
 import MarketAvailabilityGate from "@/components/MarketAvailabilityGate";
 import { AttTrackingBootstrap } from "@/components/AttTrackingBootstrap";
@@ -43,6 +44,9 @@ const MAX_SPLASH_MS = 4000;
 try {
   initSentry();
   setMobileAppTag("customer");
+} catch {}
+try {
+  initConnectivityTracking();
 } catch {}
 if (Platform.OS !== "web") {
   configureNativePushNotifications();

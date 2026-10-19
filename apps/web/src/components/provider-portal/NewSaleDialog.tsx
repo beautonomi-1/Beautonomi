@@ -80,6 +80,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { BarcodeLookup, type BarcodeLookupResult } from "@/components/provider-portal/BarcodeLookup";
 import { resolveBarcodeForPosSale } from "@/lib/provider-portal/resolveBarcodeForPosSale";
+import { posPaymentEntityFromCreateResponse } from "@/lib/provider-sales/pos-payment-entity-from-create-response";
 import { toast } from "sonner";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -256,6 +257,9 @@ export function NewSaleDialog({
   // Yoco payment — pending sale row links terminal payment via sale_id
   const [cardMachineOpen, setCardMachineOpen] = useState(false);
   const [cardMachineLinkedSaleId, setCardMachineLinkedSaleId] = useState<string | null>(null);
+  const [cardMachineEntityType, setCardMachineEntityType] = useState<"sale" | "product_order">(
+    "sale",
+  );
   const cardMachinePendingSaleIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -952,8 +956,15 @@ export function NewSaleDialog({
             payment_status: "pending",
           } as Partial<Sale>);
           saleId = pending.id;
+          const collectEntity = posPaymentEntityFromCreateResponse({
+            id: pending.id,
+            migrated_to_product_order: (pending as { migrated_to_product_order?: boolean })
+              .migrated_to_product_order,
+            product_order_id: (pending as { product_order_id?: string | null }).product_order_id,
+          });
+          setCardMachineEntityType(collectEntity.entityType);
           cardMachinePendingSaleIdRef.current = saleId;
-          setCardMachineLinkedSaleId(saleId);
+          setCardMachineLinkedSaleId(collectEntity.entityId);
         }
         setCardMachineOpen(true);
       } catch (error) {
@@ -2057,9 +2068,9 @@ export function NewSaleDialog({
           autoStart
           tipIncludedInAmount={tipAmount > 0}
           entity={{
-            entityType: "sale",
+            entityType: cardMachineEntityType,
             entityId: cardMachineLinkedSaleId,
-            saleId: cardMachineLinkedSaleId,
+            saleId: cardMachineEntityType === "sale" ? cardMachineLinkedSaleId : undefined,
             bookingLocationId: serviceLocationType === "at-salon" ? selectedLocationId : undefined,
           }}
           onSuccess={handleCardMachineSuccess}

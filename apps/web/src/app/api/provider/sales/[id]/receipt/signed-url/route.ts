@@ -27,13 +27,22 @@ export async function POST(
     if (!id) return errorResponse("Sale id is required", "VALIDATION_ERROR", 400);
 
     const admin = getSupabaseAdmin();
-    const { data: sale } = await admin
+    let { data: sale } = await admin
       .from("sales")
       .select("id, provider_id")
       .eq("id", id)
       .maybeSingle();
 
-    if (!sale) return errorResponse("Sale not found", "NOT_FOUND", 404);
+    if (!sale) {
+      const { data: walkInOrder } = await admin
+        .from("product_orders")
+        .select("id, provider_id")
+        .eq("id", id)
+        .eq("order_source", "walk_in")
+        .maybeSingle();
+      if (!walkInOrder) return errorResponse("Sale not found", "NOT_FOUND", 404);
+      sale = walkInOrder;
+    }
 
     const { data: userRow } = await admin
       .from("users")

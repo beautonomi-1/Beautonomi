@@ -8,6 +8,7 @@ import { DeviceEventEmitter } from "react-native";
 import type { ApiError } from "@beautonomi/types";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { captureApiFailure } from "@/lib/sentry";
 import {
   buildApiCacheKey,
   isNeverCachePath,
@@ -184,6 +185,15 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
       if (!mountedRef.current || id !== requestIdRef.current) return;
 
       if (payload.cancelled || isTransientFetchErrorCode(payload.errorCode)) {
+        const existing = responseCache.get(cacheKey) as
+          | { data: T | null; error: string | null; expiresAt: number }
+          | undefined;
+        const hasFallbackData = silent || existing?.data != null;
+        captureApiFailure(
+          new Error(payload.error ?? "Request failed"),
+          { area: "useApi", path, code: payload.errorCode },
+          { uiHandled: hasFallbackData || payload.cancelled },
+        );
         return;
       }
 

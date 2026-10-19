@@ -18,6 +18,7 @@ import {
 } from "@/lib/provider-sales/pos-product-stock";
 import { settleAdditionalChargePlatformHeld } from "@/lib/bookings/settle-additional-charge-platform-held";
 import { convertToSmallestUnit } from "@/lib/payments/paystack-complete";
+import { resolveSaleEntityTarget } from "@/lib/provider-sales/resolve-sale-entity-target";
 import {
   providerBelongsToTenantScope,
   resolvePaystackTerminalTenantScope,
@@ -101,6 +102,15 @@ export async function PATCH(
         return errorResponse("Terminal payment is already fully allocated.", "ALREADY_ALLOCATED", 409);
       }
 
+      const allocationTarget = await resolveSaleEntityTarget(
+        supabase,
+        payment.provider_id,
+        body.entity_type,
+        body.entity_id,
+      );
+      body.entity_type = allocationTarget.entityType;
+      body.entity_id = allocationTarget.entityId;
+
       if (body.entity_type === "booking") {
         const { data: booking } = await supabase
           .from("bookings")
@@ -177,6 +187,26 @@ export async function PATCH(
           provider: "paystack",
           platformHeld: true,
         });
+
+        const { data: walkInOrder } = await (supabase.from("product_orders") as any)
+          .select("id, order_source, status")
+          .eq("id", body.entity_id)
+          .eq("provider_id", payment.provider_id)
+          .maybeSingle();
+        if (
+          walkInOrder &&
+          String(walkInOrder.order_source ?? "") === "walk_in" &&
+          String(walkInOrder.status ?? "") !== "delivered"
+        ) {
+          const { fulfillWalkInProductOrderDelivery } = await import(
+            "@/lib/provider-sales/fulfill-walk-in-product-order-delivery"
+          );
+          await fulfillWalkInProductOrderDelivery({
+            supabase: supabase as any,
+            providerId: payment.provider_id,
+            orderId: body.entity_id,
+          });
+        }
       }
 
       if (body.entity_type === "sale") {

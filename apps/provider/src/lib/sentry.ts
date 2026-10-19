@@ -1,21 +1,59 @@
 import * as Sentry from "@sentry/react-native";
 import Constants from "expo-constants";
+import { Platform } from "react-native";
 import { isDeviceOffline } from "@/lib/connectivity";
 import { getApiErrorCode, getApiErrorMessage, isTransientApiFailure } from "@/lib/api-error";
 
 let sentryRecording = false;
 
+function getExpoExtra(): Record<string, string | undefined> {
+  return (Constants.expoConfig?.extra ?? {}) as Record<string, string | undefined>;
+}
+
 /** DSN for mobile-provider project (from .env.local / app.config.js extra or process.env). */
 function getSentryDsn(): string {
-  const fromExtra = (Constants.expoConfig?.extra as Record<string, string> | undefined)
-    ?.EXPO_PUBLIC_SENTRY_DSN;
+  const fromExtra = getExpoExtra().EXPO_PUBLIC_SENTRY_DSN;
   return fromExtra ?? process.env.EXPO_PUBLIC_SENTRY_DSN ?? "";
 }
 
 function sentryEnableInDev(): boolean {
-  return (
-    process.env.EXPO_PUBLIC_SENTRY_ENABLE_IN_DEV === "1" ||
-    process.env.EXPO_PUBLIC_SENTRY_ENABLE_IN_DEV === "true"
+  const v =
+    getExpoExtra().EXPO_PUBLIC_SENTRY_ENABLE_IN_DEV ??
+    process.env.EXPO_PUBLIC_SENTRY_ENABLE_IN_DEV;
+  return v === "1" || v === "true";
+}
+
+/** Release + dist help Sentry group events and match source maps (EAS builds). */
+function getSentryReleaseAndDist(): { release?: string; dist?: string } {
+  const cfg = Constants.expoConfig;
+  if (!cfg) return {};
+  const slug = cfg.slug ?? "provider";
+  const version = cfg.version ?? "0.0.0";
+  const release = `${slug}@${version}`;
+  const dist =
+    Platform.OS === "ios"
+      ? (cfg.ios as { buildNumber?: string } | undefined)?.buildNumber
+      : (cfg.android as { versionCode?: number } | undefined)?.versionCode != null
+        ? String((cfg.android as { versionCode: number }).versionCode)
+        : undefined;
+  return { release, ...(dist ? { dist } : {}) };
+}
+
+function getSentryAppEnvironment(): string {
+  const appEnv = getExpoExtra().APP_ENV ?? process.env.APP_ENV;
+  if (appEnv === "production" || appEnv === "preview" || appEnv === "development") {
+    return appEnv;
+  }
+  return __DEV__ ? "development" : "production";
+}
+
+/** Fabric/Reanimated race during navigation — recoverable, not actionable. */
+function isRetryableMountingLayerNoise(event: Sentry.Event): boolean {
+  const values = event.exception?.values ?? [];
+  return values.some(
+    (ex) =>
+      ex.type === "RetryableMountingLayerException" ||
+      (typeof ex.value === "string" && ex.value.includes("Unable to find viewState for tag")),
   );
 }
 
@@ -30,12 +68,18 @@ export function initSentry() {
     return;
   }
   const enabled = !__DEV__ || sentryEnableInDev();
+  const { release, dist } = getSentryReleaseAndDist();
   Sentry.init({
     dsn,
     enabled,
     tracesSampleRate: 0.2,
-    environment: __DEV__ ? "development" : "production",
+    environment: getSentryAppEnvironment(),
+    ...(release ? { release } : {}),
+    ...(dist ? { dist } : {}),
     beforeSend(event) {
+      if (isRetryableMountingLayerNoise(event)) {
+        return null;
+      }
       if (event.user) {
         delete event.user.ip_address;
       }
@@ -112,13 +156,10 @@ export function captureError(error: unknown, context?: Record<string, unknown>) 
     });
     return;
   }
-  if (context) {
-    Sentry.setContext("extra", context);
-  }
   if (error instanceof Error) {
-    Sentry.captureException(error);
+    Sentry.captureException(error, context ? { extra: context } : undefined);
   } else {
-    Sentry.captureMessage(message);
+    Sentry.captureMessage(message, context ? { extra: context } : undefined);
   }
 }
 
