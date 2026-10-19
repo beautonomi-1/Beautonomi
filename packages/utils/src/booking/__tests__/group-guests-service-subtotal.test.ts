@@ -30,7 +30,7 @@ describe("groupGuestsServiceSubtotal", () => {
     );
   });
 
-  it("ignores unnamed guests", () => {
+  it("includes unnamed guests in the live preview as soon as a row is added", () => {
     expect(
       groupGuestsServiceSubtotal(
         [
@@ -40,7 +40,7 @@ describe("groupGuestsServiceSubtotal", () => {
         snapshotIds,
         prices,
       ),
-    ).toBe(100);
+    ).toBe(350);
   });
 });
 

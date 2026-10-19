@@ -18,6 +18,7 @@ import { requirePermission } from "@/lib/auth/requirePermission";
 import { requirePaystackVirtualTerminalEnabledForProvider } from "@/lib/payments/paystack-virtual-terminal-feature-gate";
 import { settleAdditionalChargePlatformHeld } from "@/lib/bookings/settle-additional-charge-platform-held";
 import { convertToSmallestUnit } from "@/lib/payments/paystack-complete";
+import { resolveSaleEntityTarget } from "@/lib/provider-sales/resolve-sale-entity-target";
 
 const allocationSchema = z.discriminatedUnion("action", [
   z.object({
@@ -125,11 +126,20 @@ export async function POST(
     }
 
     const now = new Date().toISOString();
-    if (body.entity_type === "booking") {
+    const allocationTarget = await resolveSaleEntityTarget(
+      admin,
+      providerId,
+      body.entity_type,
+      body.entity_id,
+    );
+    const entityType = allocationTarget.entityType;
+    const entityId = allocationTarget.entityId;
+
+    if (entityType === "booking") {
       const { data: booking } = await admin
         .from("bookings")
         .select("id, tenant_id")
-        .eq("id", body.entity_id)
+        .eq("id", entityId)
         .eq("provider_id", providerId)
         .maybeSingle();
       if (!booking) {
@@ -137,7 +147,7 @@ export async function POST(
       }
 
       const recorded = await recordBookingPaystackPayment(admin as any, {
-        bookingId: body.entity_id,
+        bookingId: entityId,
         tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? null,
         reference: payment.paystack_reference,
         transactionId: payment.paystack_transaction_id ?? null,
@@ -157,7 +167,7 @@ export async function POST(
 
       const gatewayFee = Number(payment.gateway_fee_amount ?? 0);
       const settlement = await recordPaystackBookingSettlement(admin as any, {
-        bookingId: body.entity_id,
+        bookingId: entityId,
         reference: payment.paystack_reference,
         amountMajor: requestedAmount,
         feesSmallestOrMajor: gatewayFee,
@@ -175,13 +185,13 @@ export async function POST(
         .update({ payment_method: "paystack_terminal" })
         .eq("payment_provider", "paystack")
         .eq("payment_provider_id", payment.paystack_reference);
-      await syncBookingAfterPaystackSuccess(admin as any, body.entity_id);
+      await syncBookingAfterPaystackSuccess(admin as any, entityId);
     }
 
-    if (body.entity_type === "product_order") {
+    if (entityType === "product_order") {
       const { data: order } = await (admin.from("product_orders") as any)
         .select("id, provider_id")
-        .eq("id", body.entity_id)
+        .eq("id", entityId)
         .eq("provider_id", providerId)
         .maybeSingle();
       if (!order) {
@@ -190,7 +200,7 @@ export async function POST(
 
       const payRecord = await recordProductOrderPayment({
         supabase: admin as any,
-        productOrderId: body.entity_id,
+        productOrderId: entityId,
         reference: payment.paystack_reference,
         amountMajor: requestedAmount,
         feesMajor: Number(payment.gateway_fee_amount ?? 0),
@@ -201,13 +211,13 @@ export async function POST(
       const { notifyProductOrderPaidIfTransitioned } = await import(
         "@/lib/notifications/notify-product-order-paid"
       );
-      await notifyProductOrderPaidIfTransitioned(getSupabaseAdmin() as never, body.entity_id, {
+      await notifyProductOrderPaidIfTransitioned(getSupabaseAdmin() as never, entityId, {
         transitionedToPaid: payRecord.transitionedToPaid,
       });
 
       const { data: walkInOrder } = await (admin.from("product_orders") as any)
         .select("id, order_source, status")
-        .eq("id", body.entity_id)
+        .eq("id", entityId)
         .eq("provider_id", providerId)
         .maybeSingle();
       if (
@@ -221,15 +231,15 @@ export async function POST(
         await fulfillWalkInProductOrderDelivery({
           supabase: admin as any,
           providerId,
-          orderId: body.entity_id,
+          orderId: entityId,
         });
       }
     }
 
-    if (body.entity_type === "additional_charge") {
+    if (entityType === "additional_charge") {
       const { data: acRow } = await (admin.from("additional_charges") as any)
         .select("id, booking_id, status, amount")
-        .eq("id", body.entity_id)
+        .eq("id", entityId)
         .maybeSingle();
       if (!acRow) {
         return errorResponse("Additional charge not found for this provider.", "TARGET_NOT_FOUND", 404);
@@ -255,7 +265,7 @@ export async function POST(
           amountSmallestUnit: convertToSmallestUnit(requestedAmount, payment.currency ?? "ZAR"),
           feesSmallestUnit: convertToSmallestUnit(Number(payment.gateway_fee_amount ?? 0), payment.currency ?? "ZAR"),
           bookingId: acBookingId,
-          chargeId: body.entity_id,
+          chargeId: entityId,
           paystackTransactionId: payment.paystack_transaction_id ?? null,
           customerId,
         });
@@ -269,11 +279,11 @@ export async function POST(
       }
     }
 
-    if (body.entity_type === "sale") {
+    if (entityType === "sale") {
       const { data: sale } = await admin
         .from("sales")
         .select("id, provider_id, payment_status")
-        .eq("id", body.entity_id)
+        .eq("id", entityId)
         .eq("provider_id", providerId)
         .maybeSingle();
       if (!sale) {
@@ -291,7 +301,7 @@ export async function POST(
         const { data: lineRows, error: lineError } = await admin
           .from("sale_items")
           .select("item_type, item_id, product_variant_id, quantity")
-          .eq("sale_id", body.entity_id);
+          .eq("sale_id", entityId);
         if (lineError) throw lineError;
         itemsForStock = (lineRows ?? []).map((row: Record<string, unknown>) => ({
           type: row.item_type as string,
@@ -310,16 +320,16 @@ export async function POST(
           payment_provider: "paystack_virtual_terminal",
           payment_provider_id: payment.paystack_reference,
         })
-        .eq("id", body.entity_id)
+        .eq("id", entityId)
         .eq("provider_id", providerId);
       if (saleUpdateError) throw saleUpdateError;
       if (becomingCompleted) await applyPosProductStockDecrements(admin as any, itemsForStock);
     }
 
-    if (body.entity_type === "group_booking") {
+    if (entityType === "group_booking") {
       const { data: groupRow } = await (admin.from("group_bookings") as any)
         .select("id, provider_id")
-        .eq("id", body.entity_id)
+        .eq("id", entityId)
         .eq("provider_id", providerId)
         .maybeSingle();
       if (!groupRow) {
@@ -329,7 +339,7 @@ export async function POST(
       const { data: groupBooking } = await admin
         .from("bookings")
         .select("id, tenant_id, created_at")
-        .eq("group_booking_id", body.entity_id)
+        .eq("group_booking_id", entityId)
         .eq("provider_id", providerId)
         .order("created_at", { ascending: true })
         .limit(1)
@@ -384,17 +394,17 @@ export async function POST(
       await syncBookingAfterPaystackSuccess(admin as any, (groupBooking as { id: string }).id);
     }
 
-    if (body.entity_type === "invoice") {
+    if (entityType === "invoice") {
       const { data: invoice } = await (admin.from("provider_invoices") as any)
         .select("id, provider_id, total_amount, amount_paid")
-        .eq("id", body.entity_id)
+        .eq("id", entityId)
         .eq("provider_id", providerId)
         .maybeSingle();
       if (!invoice) {
         return errorResponse("Invoice target not found for this provider.", "TARGET_NOT_FOUND", 404);
       }
       const { error: invoicePayError } = await (admin.from("provider_invoice_payments") as any).insert({
-        invoice_id: body.entity_id,
+        invoice_id: entityId,
         amount: requestedAmount,
         payment_date: now.slice(0, 10),
         payment_reference: payment.paystack_reference,
@@ -409,8 +419,8 @@ export async function POST(
       .insert({
         terminal_payment_id: id,
         provider_id: providerId,
-        entity_type: body.entity_type,
-        entity_id: body.entity_id,
+        entity_type: entityType,
+        entity_id: entityId,
         amount: requestedAmount,
         currency: payment.currency ?? "ZAR",
         status: "confirmed",
@@ -431,8 +441,8 @@ export async function POST(
         allocation_status: fullyAllocated ? "allocated" : "split_allocated",
         allocated_amount: nextAllocatedAmount,
         remaining_balance: Math.max(0, paidAmount - nextAllocatedAmount),
-        provider_assigned_entity_type: body.entity_type,
-        provider_assigned_entity_id: body.entity_id,
+        provider_assigned_entity_type: entityType,
+        provider_assigned_entity_id: entityId,
         provider_assignment_reason: body.reason ?? null,
         provider_assigned_by: user.id,
         provider_assigned_at: now,

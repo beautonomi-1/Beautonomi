@@ -1,6 +1,8 @@
 import * as Sentry from "@sentry/react-native";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
+import { isDeviceOffline } from "@/lib/connectivity";
+import { getApiErrorCode, getApiErrorMessage, isTransientApiFailure } from "@/lib/api-error";
 
 /** True after init when DSN exists and SDK is enabled (preview/prod, or dev with EXPO_PUBLIC_SENTRY_ENABLE_IN_DEV). */
 let sentryRecording = false;
@@ -38,6 +40,14 @@ function getSentryReleaseAndDist(): { release?: string; dist?: string } {
   return { release, ...(dist ? { dist } : {}) };
 }
 
+function getSentryAppEnvironment(): string {
+  const appEnv = getExpoExtra().APP_ENV ?? process.env.APP_ENV;
+  if (appEnv === "production" || appEnv === "preview" || appEnv === "development") {
+    return appEnv;
+  }
+  return __DEV__ ? "development" : "production";
+}
+
 /** Fabric/Reanimated race during navigation — recoverable, not actionable. */
 function isRetryableMountingLayerNoise(event: Sentry.Event): boolean {
   const values = event.exception?.values ?? [];
@@ -65,7 +75,7 @@ export function initSentry() {
     dsn,
     enabled,
     tracesSampleRate: 0.2,
-    environment: __DEV__ ? "development" : "production",
+    environment: getSentryAppEnvironment(),
     ...(release ? { release } : {}),
     ...(dist ? { dist } : {}),
     beforeSend(event) {
@@ -144,14 +154,51 @@ export function clearSentryUser() {
 /** Capture a non-fatal error */
 export function captureError(error: unknown, context?: Record<string, unknown>) {
   if (!isSentryEnabled()) return;
-  if (context) {
-    Sentry.setContext("extra", context);
+  const message = getApiErrorMessage(error, "Unknown error");
+  if (isDeviceOffline() && isTransientApiFailure(error)) {
+    Sentry.captureMessage(message, {
+      level: "warning",
+      extra: context,
+      tags: { failure_kind: "offline_transient" },
+    });
+    return;
   }
   if (error instanceof Error) {
-    Sentry.captureException(error);
+    Sentry.captureException(error, context ? { extra: context } : undefined);
   } else {
-    Sentry.captureMessage(String(error));
+    Sentry.captureMessage(message, context ? { extra: context } : undefined);
   }
+}
+
+/**
+ * Record API failures in Sentry without coupling observability to UI blocking.
+ */
+export function captureApiFailure(
+  error: unknown,
+  context?: Record<string, unknown>,
+  options?: { uiHandled?: boolean },
+): void {
+  if (!isSentryEnabled()) return;
+
+  const code = getApiErrorCode(error) ?? (typeof context?.code === "string" ? context.code : undefined);
+  const message = getApiErrorMessage(error, "API request failed");
+  const uiHandled = options?.uiHandled ?? false;
+
+  addBreadcrumb(message, "api_failure", {
+    ...context,
+    code,
+    uiHandled,
+    offline: isDeviceOffline(),
+    transient: isTransientApiFailure(error),
+  });
+
+  if (code === "CANCELLED") return;
+
+  captureError(error instanceof Error ? error : new Error(message), {
+    ...context,
+    code,
+    uiHandled,
+  });
 }
 
 /** Warning/info diagnostics for hangs, timeouts, or ambiguous states (not always exceptions). */

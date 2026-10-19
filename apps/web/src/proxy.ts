@@ -257,7 +257,7 @@ export async function proxy(request: NextRequest) {
     }
 
     const wwwHost = host ? APEX_TO_WWW[host] : undefined;
-    if (wwwHost) {
+    if (wwwHost && !pathname.startsWith("/api/")) {
       const url = request.nextUrl.clone();
       url.hostname = wwwHost;
       return NextResponse.redirect(url, 308);

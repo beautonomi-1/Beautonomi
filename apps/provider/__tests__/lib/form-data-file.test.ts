@@ -14,6 +14,11 @@ jest.mock("expo-file-system", () => ({
   }),
 }));
 
+jest.mock("expo-file-system/legacy", () => ({
+  EncodingType: { Base64: "base64" },
+  readAsStringAsync: jest.fn(),
+}));
+
 describe("appendUploadFile", () => {
   const originalOS = Platform.OS;
 
@@ -22,17 +27,23 @@ describe("appendUploadFile", () => {
     mockBytes.mockClear();
   });
 
-  it("appends typed Blob from file bytes on native", async () => {
+  it("appends expo/fetch bytes part from file bytes on native", async () => {
     Object.defineProperty(Platform, "OS", { configurable: true, value: "android" });
     const fd = new FormData();
-    const appendSpy = jest.spyOn(fd, "append");
+    const appendSpy = jest.spyOn(fd, "append").mockImplementation(() => undefined);
     await appendUploadFile(fd, "file", {
       uri: "file:///tmp/x.png",
       name: "x.png",
       type: "image/png",
     });
     expect(mockBytes).toHaveBeenCalled();
-    const blob = appendSpy.mock.calls[0]?.[1] as Blob;
-    expect(blob.type).toBe("image/png");
+    const part = appendSpy.mock.calls[0]?.[1] as {
+      uri?: string;
+      bytes?: () => Promise<Uint8Array>;
+      type?: string;
+    };
+    expect(part.uri).toBe("file:///tmp/x.png");
+    expect(part.type).toBe("image/png");
+    await expect(part.bytes?.()).resolves.toEqual(new Uint8Array([0xff, 0xd8, 0xff]));
   });
 });

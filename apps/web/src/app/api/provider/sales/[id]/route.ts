@@ -13,6 +13,9 @@ import {
   applyPosProductStockDecrements,
   validatePosProductStock,
 } from "@/lib/provider-sales/pos-product-stock";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
+import { fulfillWalkInProductOrderDelivery } from "@/lib/provider-sales/fulfill-walk-in-product-order-delivery";
 
 const patchBodySchema = z.object({
   payment_status: z.enum(["pending", "completed", "failed", "refunded"]).optional(),
@@ -79,6 +82,49 @@ export async function PATCH(
       .maybeSingle();
 
     if (existingErr || !existingSale) {
+      if (parsed.data.payment_status === "completed") {
+        const admin = getSupabaseAdmin();
+        const { data: walkInOrder } = await admin
+          .from("product_orders")
+          .select("id, payment_status, total_amount, order_source, status")
+          .eq("id", saleId)
+          .eq("provider_id", providerId)
+          .eq("order_source", "walk_in")
+          .maybeSingle();
+        if (walkInOrder) {
+          const totalAmount = Number((walkInOrder as { total_amount?: number }).total_amount ?? 0);
+          const payRef =
+            parsed.data.payment_provider_id?.trim() ||
+            `walk_in_pos_patch_${walkInOrder.id}`;
+          await recordProductOrderPayment({
+            supabase: admin as never,
+            productOrderId: walkInOrder.id as string,
+            reference: payRef,
+            amountMajor: totalAmount,
+            feesMajor: 0,
+            source: "walk_in_pos",
+            provider:
+              parsed.data.payment_provider === "yoco"
+                ? "yoco"
+                : parsed.data.payment_provider
+                  ? "card_on_delivery"
+                  : "cash",
+            platformHeld: false,
+          });
+          if (String((walkInOrder as { status?: string }).status ?? "") !== "delivered") {
+            await fulfillWalkInProductOrderDelivery({
+              supabase: admin as never,
+              providerId,
+              orderId: walkInOrder.id as string,
+            });
+          }
+          return successResponse({
+            id: walkInOrder.id,
+            payment_status: "completed",
+            migrated_from_product_order: true,
+          });
+        }
+      }
       return notFoundResponse("Sale not found");
     }
 

@@ -249,6 +249,19 @@ export function handleApiError(
     );
   }
 
+  const postgrestLike =
+    error &&
+    typeof error === "object" &&
+    typeof (error as { message?: unknown }).message === "string" &&
+    typeof (error as { code?: unknown }).code === "string";
+  if (postgrestLike) {
+    const pg = error as { message: string; code: string; details?: string; hint?: string };
+    Sentry.captureException(new Error(pg.message), {
+      extra: { code, status, dbCode: pg.code, details: pg.details, hint: pg.hint },
+    });
+    return errorResponse(defaultMessage, code, status);
+  }
+
   Sentry.captureMessage(String(error), { level: "error", extra: { code, status } });
   return errorResponse(defaultMessage, code, status);
 }

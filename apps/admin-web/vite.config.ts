@@ -40,6 +40,15 @@ function buildAdminImportMetaDefine(mode: string): Record<string, string> {
     VITE_SENTRY_DSN: pick(merged, "VITE_SENTRY_DSN", "NEXT_PUBLIC_SENTRY_DSN"),
     VITE_SENTRY_ENVIRONMENT:
       merged.VITE_SENTRY_ENVIRONMENT || process.env.VITE_SENTRY_ENVIRONMENT || "",
+    VITE_SENTRY_RELEASE: pick(
+      merged,
+      "VITE_SENTRY_RELEASE",
+      "NEXT_PUBLIC_SENTRY_RELEASE",
+    ) ||
+      merged.SENTRY_RELEASE ||
+      process.env.VERCEL_GIT_COMMIT_SHA ||
+      process.env.SENTRY_RELEASE ||
+      "",
     VITE_GOOGLE_ANALYTICS_ID: pick(merged, "VITE_GOOGLE_ANALYTICS_ID", "NEXT_PUBLIC_GOOGLE_ANALYTICS_ID"),
     VITE_AMPLITUDE_API_KEY: pick(merged, "VITE_AMPLITUDE_API_KEY", "NEXT_PUBLIC_AMPLITUDE_API_KEY"),
     VITE_MAPBOX_ACCESS_TOKEN: pick(merged, "VITE_MAPBOX_ACCESS_TOKEN", "NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN"),

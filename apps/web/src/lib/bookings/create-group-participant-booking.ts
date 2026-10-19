@@ -9,6 +9,9 @@ export type GroupParticipantBookingInput = {
   price: number;
   durationMinutes: number;
   addons?: unknown[];
+  staffId?: string | null;
+  notes?: string | null;
+  products?: unknown[];
   /**
    * When true, the session travel fee (`GroupSessionContext.travelFee`) is added
    * to this child booking's total and stored on `bookings.travel_fee`. Used for
@@ -71,7 +74,21 @@ export async function createGroupParticipantChildBooking(
     participant.includeSessionTravelFee && locType === "at_home"
       ? Math.max(0, Number(session.travelFee) || 0)
       : 0;
-  const totalAmount = price + travelFee;
+  const addonRows = Array.isArray(participant.addons) ? participant.addons : [];
+  const addonTotal = addonRows.reduce<number>((sum, row) => {
+    if (!row || typeof row !== "object") return sum;
+    const priceVal = Number((row as { price?: unknown }).price ?? 0);
+    return sum + (Number.isFinite(priceVal) ? Math.max(0, priceVal) : 0);
+  }, 0);
+  const totalAmount = price + travelFee + addonTotal;
+
+  const noteTrim =
+    typeof participant.notes === "string" && participant.notes.trim().length > 0
+      ? participant.notes.trim()
+      : null;
+  const specialRequests = noteTrim
+    ? `Group booking ${session.groupRef}: ${noteTrim}`
+    : `Group booking ${session.groupRef}`;
 
   const bookingData: Record<string, unknown> = {
     provider_id: session.providerId,
@@ -95,7 +112,7 @@ export async function createGroupParticipantChildBooking(
       locType === "at_home" && session.address?.longitude != null
         ? Number(session.address.longitude)
         : null,
-    subtotal: price,
+    subtotal: price + addonTotal,
     discount_amount: 0,
     promotion_discount_amount: 0,
     membership_discount_amount: 0,
@@ -106,7 +123,7 @@ export async function createGroupParticipantChildBooking(
     currency: session.currency,
     status: "confirmed",
     payment_status: "pending",
-    special_requests: `Group booking ${session.groupRef}`,
+    special_requests: specialRequests,
     loyalty_points_earned: 0,
     travel_fee: travelFee,
     group_booking_id: session.groupBookingId,
@@ -129,11 +146,15 @@ export async function createGroupParticipantChildBooking(
   }
 
   const id = String(insertedBooking.id);
+  const staffId =
+    (typeof participant.staffId === "string" && participant.staffId.trim()) ||
+    session.staffId ||
+    null;
 
   const { error: bsError } = await admin.from("booking_services").insert({
     booking_id: id,
     offering_id: offeringId,
-    staff_id: session.staffId,
+    staff_id: staffId,
     duration_minutes: duration,
     price,
     currency: session.currency,
@@ -144,6 +165,82 @@ export async function createGroupParticipantChildBooking(
   if (bsError) {
     await admin.from("bookings").delete().eq("id", id);
     return { error: bsError.message ?? "Failed to create participant service line" };
+  }
+
+  if (addonRows.length > 0) {
+    const bookingAddonsData = addonRows
+      .map((row) => {
+        if (!row || typeof row !== "object") return null;
+        const r = row as Record<string, unknown>;
+        const addonId =
+          (typeof r.addon_id === "string" && r.addon_id) ||
+          (typeof r.addonId === "string" && r.addonId) ||
+          (typeof r.id === "string" && r.id) ||
+          null;
+        if (!addonId) return null;
+        const addonName =
+          (typeof r.addon_name === "string" && r.addon_name) ||
+          (typeof r.name === "string" && r.name) ||
+          "Add-on";
+        const addonPrice = Math.max(0, Number(r.price ?? 0) || 0);
+        return {
+          booking_id: id,
+          addon_id: addonId,
+          addon_name: addonName,
+          quantity: 1,
+          price: addonPrice,
+          currency: session.currency,
+        };
+      })
+      .filter(Boolean);
+    if (bookingAddonsData.length > 0) {
+      const { error: baError } = await admin.from("booking_addons").insert(bookingAddonsData);
+      if (baError) {
+        await admin.from("bookings").delete().eq("id", id);
+        return { error: baError.message ?? "Failed to create participant add-ons" };
+      }
+    }
+  }
+
+  const productRows = Array.isArray(participant.products) ? participant.products : [];
+  if (productRows.length > 0) {
+    const bookingProductsData = productRows
+      .map((row) => {
+        if (!row || typeof row !== "object") return null;
+        const r = row as Record<string, unknown>;
+        const productId =
+          (typeof r.product_id === "string" && r.product_id) ||
+          (typeof r.productId === "string" && r.productId) ||
+          null;
+        if (!productId) return null;
+        const quantity = Math.max(1, Number(r.quantity ?? 1) || 1);
+        const unitPrice = Math.max(0, Number(r.unit_price ?? r.unitPrice ?? 0) || 0);
+        const totalPrice = Math.max(
+          0,
+          Number(r.total_price ?? r.totalPrice ?? unitPrice * quantity) || 0,
+        );
+        return {
+          booking_id: id,
+          product_id: productId,
+          product_variant_id:
+            (typeof r.product_variant_id === "string" && r.product_variant_id) ||
+            (typeof r.productVariantId === "string" && r.productVariantId) ||
+            null,
+          quantity,
+          unit_price: unitPrice,
+          total_price: totalPrice,
+          currency: session.currency,
+          staff_id: staffId,
+        };
+      })
+      .filter(Boolean);
+    if (bookingProductsData.length > 0) {
+      const { error: bpError } = await admin.from("booking_products").insert(bookingProductsData);
+      if (bpError) {
+        await admin.from("bookings").delete().eq("id", id);
+        return { error: bpError.message ?? "Failed to create participant products" };
+      }
+    }
   }
 
   return { bookingId: id };

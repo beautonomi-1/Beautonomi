@@ -1040,6 +1040,7 @@ export default function GroupBookingsScreen() {
     locationId?: string | null;
   } | null>(null);
   const [showCardMachineCollect, setShowCardMachineCollect] = useState(false);
+  const pendingOpenGroupAfterCardMachineRef = useRef<string | null>(null);
 
   const openPaycloudCollect = useCallback(
     (target: {
@@ -1350,9 +1351,9 @@ export default function GroupBookingsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (!selectedGroup?.id) return;
-      void openGroupDetailRef.current(selectedGroup);
-    }, [selectedGroup?.id])
+      if (!selectedGroupRef.current?.id || showCreate || showEdit) return;
+      void openGroupDetailRef.current(selectedGroupRef.current);
+    }, [showCreate, showEdit])
   );
 
   useGroupBookingPaymentRealtime(
@@ -2399,27 +2400,6 @@ export default function GroupBookingsScreen() {
       Math.max(1, createParticipants.length),
       Number(createForm.maxParticipants) || 10,
     );
-    const createAvailabilityError = await verifyGroupSlotAvailability({
-      date: createForm.date,
-      time: createForm.time,
-      durationMinutes: duration,
-      staffId: createForm.staffId,
-      locationId:
-        createForm.locationType === "at_home"
-          ? null
-          : createForm.locationId || selectedLocationId || null,
-      serviceId: createForm.serviceId,
-      locationType: createForm.locationType,
-    });
-    if (createAvailabilityError) {
-      setCreateStep("form");
-      setCreateReviewError(createAvailabilityError);
-      setCreateFieldError("time");
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      requestAnimationFrame(() => scrollToCreateField("time"));
-      createInFlightRef.current = false;
-      return;
-    }
     const participantsToCreate = createParticipants
       .map((p) => ({
         id: p.id,
@@ -2513,6 +2493,34 @@ export default function GroupBookingsScreen() {
     // matching the web `GroupBookingDialog` submit path.
     if (createForm.packageId) payload.package_id = createForm.packageId;
 
+    if (participantsToCreate.length > 0) {
+      payload.participants = participantsToCreate.map((p, idx) => {
+        const line = participantLines[idx];
+        return {
+          name: p.name,
+          phone: p.phone || undefined,
+          email: p.email || undefined,
+          customer_id: p.customerId || undefined,
+          service_id: p.serviceId || createForm.serviceId,
+          staff_id: p.staffId || createForm.staffId || undefined,
+          service_name: line.service ? sl(line.service) : undefined,
+          price: line.price,
+          duration_minutes: line.durationMinutes,
+          addons: (line.addOns ?? []).map((ao) => ({
+            id: ao.id,
+            addon_id: ao.id,
+            name: ao.name,
+            price: ao.price,
+          })),
+          notes: p.notes || undefined,
+          is_primary_contact: idx === 0,
+        };
+      });
+    }
+    if (createPaymentMethod === "payment_link") {
+      payload.payment_method = "payment_link";
+    }
+
     const { data: createdGroup, error } = await createGroup(
       "/api/provider/group-bookings",
       payload
@@ -2533,119 +2541,7 @@ export default function GroupBookingsScreen() {
     }
 
     const groupRef = createdGroup?.ref_number || createdGroup?.data?.ref_number || null;
-    // §Group-booking-audit 2026-05: track whether participant bookings + links
-    // all succeeded before we attempt any follow-up actions (mark_paid, open).
-    // Without this guard the previous code would catch errors and roll the
-    // group back, but a stale createdGroupId could still leak to actions that
-    // expected the group to exist.
-    let participantsSucceeded = false;
-    const participantFailures: { name: string; error: string }[] = [];
-    const createdBookings: Awaited<ReturnType<typeof createParticipantBookingAndLink>>[] = [];
-
-    for (let idx = 0; idx < participantsToCreate.length; idx++) {
-      const participant = participantsToCreate[idx];
-      const line = participantLines[idx];
-      setCreateParticipantProgress({
-        current: idx + 1,
-        total: participantsToCreate.length,
-        name: participant.name || gb("participantFallback", { n: idx + 1 }),
-      });
-      const res = await createParticipantBookingAndLink({
-        groupId: createdGroupId,
-        groupRef,
-        scheduledDate: createForm.date,
-        scheduledTime: createForm.time,
-        serviceId: line.serviceId,
-        serviceName: line.service ? sl(line.service) : undefined,
-        addOns: line.addOns,
-        packageId: createForm.packageId || null,
-        staffId: participant.staffId || createForm.staffId,
-        locationId: createForm.locationType === "at_home" ? null : createForm.locationId,
-        locationType: createForm.locationType,
-        address:
-          createForm.locationType === "at_home"
-            ? {
-                address_line1: createForm.addressLine1.trim(),
-                address_city: createForm.addressCity.trim(),
-                address_state: createForm.addressState.trim(),
-                address_postal_code: createForm.addressPostalCode.trim(),
-                address_country: createForm.addressCountry.trim() || "South Africa",
-                address_latitude: createForm.addressLatitude,
-                address_longitude: createForm.addressLongitude,
-                travel_fee: idx === 0 ? travelFee : 0,
-              }
-            : undefined,
-        products: idx === 0 ? createProducts : [],
-        durationMinutes: line.durationMinutes,
-        unitPrice: line.price,
-        participant: { ...participant, customerId: participant.customerId },
-        isPrimary: idx === 0,
-        paymentMethod: createPaymentMethod === "payment_link" ? "payment_link" : undefined,
-      });
-      if (res.error) {
-        participantFailures.push({
-          name: participant.name,
-          error: res.error,
-        });
-      } else {
-        createdBookings.push(res);
-      }
-    }
-
-    if (createdBookings.length === 0) {
-      setCreateStep("form");
-      setCreateReviewError(null);
-      const { error: deleteErr } = await cancelGroup(
-        `/api/provider/group-bookings/${encodeURIComponent(createdGroupId)}`,
-      );
-      const failSummary = participantFailures.map((f) => `${f.name}: ${f.error}`).join("\n");
-      if (deleteErr) {
-        Alert.alert(
-          gb("groupCreationFailed"),
-          gb("groupCreationFailedRollback", {
-            summary: failSummary || gb("couldNotAddParticipants"),
-            error: deleteErr,
-          }),
-        );
-      } else {
-        Alert.alert(gb("groupCreationFailed"), failSummary || gb("couldNotAddParticipantsToGroup"));
-      }
-      setCreateParticipantProgress(null);
-      refresh();
-      return;
-    }
-
-    if (participantFailures.length > 0) {
-      participantsSucceeded = true;
-      setCreateParticipantProgress(null);
-      setCreateStep("form");
-      setCreateReviewError(null);
-      setShowCreate(false);
-      const failSummary = participantFailures.map((f) => `${f.name}: ${f.error}`).join("\n");
-      Alert.alert(
-        gb("groupPartiallyCreated"),
-        gb("groupPartiallyCreatedBody", {
-          created: createdBookings.length,
-          total: participantsToCreate.length,
-          summary: failSummary,
-        }),
-        [
-          {
-            text: gb("openGroup"),
-            onPress: () => {
-              router.setParams({ open_group_id: createdGroupId } as never);
-            },
-          },
-          { text: gb("ok") },
-        ],
-      );
-      InteractionManager.runAfterInteractions(() => {
-        void refresh();
-      });
-      return;
-    }
-
-    participantsSucceeded = true;
+    const participantsSucceeded = true;
     setCreateParticipantProgress(null);
 
     // §Group-booking-audit 2026-05 (auto mark_paid): only attempt to mark
@@ -2709,6 +2605,7 @@ export default function GroupBookingsScreen() {
       InteractionManager.runAfterInteractions(() => {
         void refresh();
         void resolveGroupBalanceDue(createdGroupId, fallbackTotal).then((totalAmt) => {
+          pendingOpenGroupAfterCardMachineRef.current = createdGroupId;
           openPaycloudCollect({
             entityType: "group_booking",
             entityId: createdGroupId,
@@ -2716,7 +2613,6 @@ export default function GroupBookingsScreen() {
             groupBookingId: createdGroupId,
             locationId: createForm.locationType === "at_home" ? null : createForm.locationId,
           });
-          router.setParams({ open_group_id: createdGroupId } as never);
         });
       });
       return;
@@ -2732,12 +2628,12 @@ export default function GroupBookingsScreen() {
       InteractionManager.runAfterInteractions(() => {
         void refresh();
         void resolveGroupBalanceDue(createdGroupId, fallbackTotal).then((totalAmt) => {
+          pendingOpenGroupAfterCardMachineRef.current = createdGroupId;
           openYocoCollect({
             groupId: createdGroupId,
             amount: totalAmt,
             locationId: createForm.locationType === "at_home" ? null : createForm.locationId,
           });
-          router.setParams({ open_group_id: createdGroupId } as never);
         });
       });
       return;
@@ -3425,7 +3321,14 @@ export default function GroupBookingsScreen() {
 
       {/* Group detail sheet */}
       <BottomSheet
-        visible={!!selectedGroup && !showEdit && !showAddParticipant && !refundParticipant}
+        visible={
+          !!selectedGroup &&
+          !showEdit &&
+          !showAddParticipant &&
+          !refundParticipant &&
+          !paystackTerminalSheet &&
+          !showCardMachineCollect
+        }
         onClose={() => {
           setSelectedGroup(null);
           router.setParams({ open_group_id: "" });
@@ -4885,7 +4788,14 @@ export default function GroupBookingsScreen() {
 
       {/* B10: Create new group booking */}
       <BottomSheet
-        visible={showCreate && !showProductPicker && !createMapPinOpen}
+        visible={
+          showCreate &&
+          !showProductPicker &&
+          !createMapPinOpen &&
+          !showPackagePicker &&
+          !showServiceCategorySheet &&
+          !showCardMachineCollect
+        }
         contentScrollRef={createFormScrollRef}
         onClose={() => {
           setShowCreate(false);
@@ -6584,10 +6494,15 @@ export default function GroupBookingsScreen() {
 
       {cardMachineCollect ? (
         <CardMachineCollectSheet
-          visible={showCardMachineCollect}
+          visible={showCardMachineCollect && !showCreate && !showEdit}
           onClose={() => {
             setShowCardMachineCollect(false);
             setCardMachineCollect(null);
+            const pendingGroupId = pendingOpenGroupAfterCardMachineRef.current;
+            pendingOpenGroupAfterCardMachineRef.current = null;
+            if (pendingGroupId) {
+              router.setParams({ open_group_id: pendingGroupId } as never);
+            }
           }}
           amount={cardMachineCollect.amount}
           currency={getTenantDefaultCurrency()}
@@ -6603,7 +6518,11 @@ export default function GroupBookingsScreen() {
             setShowCardMachineCollect(false);
             setCardMachineCollect(null);
             setPaymentRecordedNotice(gb("cardMachineReceived"));
-            if (selectedGroup) {
+            const pendingGroupId = pendingOpenGroupAfterCardMachineRef.current;
+            pendingOpenGroupAfterCardMachineRef.current = null;
+            if (pendingGroupId) {
+              router.setParams({ open_group_id: pendingGroupId } as never);
+            } else if (selectedGroup) {
               await openGroupDetail(selectedGroup);
             }
             await refresh();

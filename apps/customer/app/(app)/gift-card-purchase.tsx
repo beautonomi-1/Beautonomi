@@ -189,7 +189,7 @@ export default function GiftCardPurchaseScreen() {
             setSuccessState("pending");
             return;
           }
-          if (redirectLoginIfAuthRequired(giftReturnTo, res.error)) {
+          if (await redirectLoginIfAuthRequired(giftReturnTo, res.error)) {
             return;
           }
           Alert.alert(errTitle, getApiErrorMessage(res.error, gc("startPurchaseError")));

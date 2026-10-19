@@ -24,6 +24,7 @@ import { computeExpectedAmountForEntity } from "@/lib/payments/paycloud-amount-g
 import { normalizePaycloudMajorAmount } from "@/lib/payments/paycloud-cloud-amount";
 import { paycloudTipIncludedInChargeAmount } from "@/lib/payments/paycloud-booking-charge";
 import { validatePaycloudPaymentInitiate } from "@/lib/payments/paycloud-initiate-guards";
+import { resolveSaleEntityTarget } from "@/lib/provider-sales/resolve-sale-entity-target";
 import { humanizePaycloudResponse } from "@/lib/payments/paycloud-scenarios";
 import {
   buildSameTerminalIntentPayload,
@@ -120,7 +121,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const expected = await computeExpectedAmountForEntity(supabase, providerId, parsed.data.entity_type, parsed.data.entity_id);
+    const adminEarly = getSupabaseAdmin();
+    const paymentEntity = await resolveSaleEntityTarget(
+      adminEarly,
+      providerId,
+      parsed.data.entity_type,
+      parsed.data.entity_id,
+    );
+    const paymentEntityType = paymentEntity.entityType;
+    const paymentEntityId = paymentEntity.entityId;
+
+    const expected = await computeExpectedAmountForEntity(
+      supabase,
+      providerId,
+      paymentEntityType,
+      paymentEntityId,
+    );
     const defaultChargeAmount =
       expected?.depositAmount != null && expected.depositAmount > 0.01
         ? expected.depositAmount
@@ -134,11 +150,11 @@ export async function POST(request: NextRequest) {
     const tipAmount =
       parsed.data.tip_amount != null ? normalizePaycloudMajorAmount(parsed.data.tip_amount) : 0;
 
-    if (tipAmount > 0.01 && parsed.data.entity_type === "booking") {
+    if (tipAmount > 0.01 && paymentEntityType === "booking") {
       const { data: bookingTipRow } = await supabase
         .from("bookings")
         .select("tip_amount")
-        .eq("id", parsed.data.entity_id)
+        .eq("id", paymentEntityId)
         .eq("provider_id", providerId)
         .maybeSingle();
       if (paycloudTipIncludedInChargeAmount(Number(bookingTipRow?.tip_amount ?? 0))) {
@@ -190,8 +206,8 @@ export async function POST(request: NextRequest) {
     const guard = await validatePaycloudPaymentInitiate(supabase, {
       providerId,
       terminalId: parsed.data.terminal_id,
-      entityType: parsed.data.entity_type,
-      entityId: parsed.data.entity_id,
+      entityType: paymentEntityType,
+      entityId: paymentEntityId,
       environment: ctx.environment,
     });
     if (!guard.ok) {
@@ -351,13 +367,16 @@ export async function POST(request: NextRequest) {
         cashback_amount: normalizedCashbackAmount,
         expected_amount: chargeAmount,
         currency,
-        entity_type: parsed.data.entity_type,
-        entity_id: parsed.data.entity_id,
-        booking_id: parsed.data.booking_id ?? (parsed.data.entity_type === "booking" ? parsed.data.entity_id : null),
-        sale_id: parsed.data.sale_id ?? (parsed.data.entity_type === "sale" ? parsed.data.entity_id : null),
-        group_booking_id: parsed.data.group_booking_id ?? (parsed.data.entity_type === "group_booking" ? parsed.data.entity_id : null),
-        product_order_id: parsed.data.entity_type === "product_order" ? parsed.data.entity_id : null,
-        additional_charge_id: parsed.data.entity_type === "additional_charge" ? parsed.data.entity_id : null,
+        entity_type: paymentEntityType,
+        entity_id: paymentEntityId,
+        booking_id: parsed.data.booking_id ?? (paymentEntityType === "booking" ? paymentEntityId : null),
+        sale_id: parsed.data.sale_id ?? (paymentEntityType === "sale" ? paymentEntityId : null),
+        group_booking_id:
+          parsed.data.group_booking_id ??
+          (paymentEntityType === "group_booking" ? paymentEntityId : null),
+        product_order_id: paymentEntityType === "product_order" ? paymentEntityId : null,
+        additional_charge_id:
+          paymentEntityType === "additional_charge" ? paymentEntityId : null,
         pay_scenario: scenario.pay_scenario,
         pay_method_id: scenario.pay_method_id ?? null,
         trans_type: normalizedCashbackAmount > 0 ? 11 : 1,
@@ -488,7 +507,7 @@ export async function POST(request: NextRequest) {
       pay_scenario: scenario.pay_scenario,
       pay_method_id: scenario.pay_method_id,
       notify_url: notifyUrl,
-      description: `Beautonomi ${parsed.data.entity_type}`,
+      description: `Beautonomi ${paymentEntityType}`,
       attach: JSON.stringify({ payment_id: paymentRow.id, provider_id: providerId }),
       reject_trade_when_terminal_offline: true,
     });
@@ -514,8 +533,8 @@ export async function POST(request: NextRequest) {
           .from("provider_paycloud_payments")
           .select("id, merchant_order_no, status, amount, currency, initiation_channel")
           .eq("provider_id", providerId)
-          .eq("entity_type", parsed.data.entity_type)
-          .eq("entity_id", parsed.data.entity_id)
+          .eq("entity_type", paymentEntityType)
+          .eq("entity_id", paymentEntityId)
           .in("status", ["pending", "processing"])
           .neq("id", paymentRow.id)
           .order("created_at", { ascending: false })

@@ -18,8 +18,8 @@ import {
 } from "@/config/public-env";
 import { getDeviceLocaleCountryIso } from "@/lib/device-default-country-dial";
 import { getShopMarketHeaderSync } from "@/lib/market/shop-market-opt-in";
-import { authFlowBreadcrumb, captureError, isSentryEnabled } from "@/lib/sentry";
-import { getHttpErrorStatus } from "@/lib/api-error";
+import { authFlowBreadcrumb, captureApiFailure, captureError, isSentryEnabled } from "@/lib/sentry";
+import { getApiErrorCode, getApiErrorMessage, getHttpErrorStatus } from "@/lib/api-error";
 
 /**
  * §Customer-audit 2026-04 (P1 PERF): previously every single API call did
@@ -261,19 +261,45 @@ async function withSessionRecovery<T>(
   return retry;
 }
 
+function reportObservedApiFailure(path: string, error: unknown): void {
+  if (!isSentryEnabled()) return;
+  const status = getHttpErrorStatus(error);
+  const code = getApiErrorCode(error);
+  const serverOrNetwork =
+    (typeof status === "number" && status >= 500) ||
+    code === "NETWORK_ERROR" ||
+    code === "TIMEOUT";
+  if (!serverOrNetwork) return;
+  captureApiFailure(
+    error instanceof Error ? error : new Error(getApiErrorMessage(error, "API request failed")),
+    { area: "api-client", path, status, code },
+  );
+}
+
+async function withSessionRecoveryAndObservability<T>(
+  path: string,
+  fn: () => Promise<ApiResponse<T>>,
+): Promise<ApiResponse<T>> {
+  const res = await withSessionRecovery(fn);
+  if (res.error) {
+    reportObservedApiFailure(path, res.error);
+  }
+  return res;
+}
+
 export const api = {
   get: <T>(path: string, init?: ApiClientExtraOptions) =>
-    withSessionRecovery<T>(() => baseApi.get<T>(path, init)),
+    withSessionRecoveryAndObservability<T>(path, () => baseApi.get<T>(path, init)),
   post: <T>(path: string, body?: ApiClientRequestBody, init?: ApiClientExtraOptions) =>
-    withSessionRecovery<T>(() => baseApi.post<T>(path, body, init)),
+    withSessionRecoveryAndObservability<T>(path, () => baseApi.post<T>(path, body, init)),
   put: <T>(path: string, body?: ApiClientRequestBody, init?: ApiClientExtraOptions) =>
-    withSessionRecovery<T>(() => baseApi.put<T>(path, body, init)),
+    withSessionRecoveryAndObservability<T>(path, () => baseApi.put<T>(path, body, init)),
   patch: <T>(path: string, body?: ApiClientRequestBody, init?: ApiClientExtraOptions) =>
-    withSessionRecovery<T>(() => baseApi.patch<T>(path, body, init)),
+    withSessionRecoveryAndObservability<T>(path, () => baseApi.patch<T>(path, body, init)),
   delete: <T>(path: string, init?: ApiClientExtraOptions) =>
-    withSessionRecovery<T>(() => baseApi.delete<T>(path, init)),
+    withSessionRecoveryAndObservability<T>(path, () => baseApi.delete<T>(path, init)),
   fetch: <T>(path: string, options?: Omit<RequestOptions, "baseUrl" | "getAccessToken">) =>
-    withSessionRecovery<T>(() => baseApi.fetch<T>(path, options)),
+    withSessionRecoveryAndObservability<T>(path, () => baseApi.fetch<T>(path, options)),
 };
 
 /**

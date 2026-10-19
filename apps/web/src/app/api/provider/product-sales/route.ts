@@ -24,6 +24,7 @@ import { ensureWalkInCustomerLinkedForProductSale } from "@/lib/provider/ensure-
 import { hasProviderCustomerActivityRelationship } from "@/lib/provider/client-access";
 import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
 import { requirePaycloudPlatformEnabledForProvider } from "@/lib/payments/paycloud-feature-gate";
+import { resolveWalkInStaffId } from "@/lib/provider-sales/resolve-walk-in-staff-id";
 
 /**
  * GET /api/provider/product-sales — list walk-in sales history
@@ -105,6 +106,8 @@ const walkInSaleSchema = z
     customer_id: z.string().uuid().optional(),
     /** Salon branch for walk-in attribution (matches provider dashboard location filter). */
     location_id: z.string().uuid().optional(),
+    /** Attributing team member (provider_staff.id). */
+    staff_id: z.string().uuid().optional().nullable(),
   })
   .superRefine((data, ctx) => {
     if (data.finalize_paycloud_order_id || data.finalize_walk_in_order_id) return;
@@ -530,6 +533,14 @@ export async function POST(request: NextRequest) {
     });
     const orderNum = `BO-W${seqData ?? Date.now()}`;
 
+    const admin = getSupabaseAdmin();
+    const walkInStaffId = await resolveWalkInStaffId(
+      admin,
+      providerId,
+      user.id,
+      parsed.staff_id ?? null,
+    );
+
     const { data: order, error: orderErr } = await supabase
       .from("product_orders")
       .insert({
@@ -549,7 +560,7 @@ export async function POST(request: NextRequest) {
         status: isPendingTerminal ? "confirmed" : "delivered",
         order_source: "walk_in",
         collection_location_id: parsed.location_id ?? null,
-        staff_id: user.id,
+        staff_id: walkInStaffId,
         customer_name: parsed.customer_name ?? null,
         customer_phone: parsed.customer_phone ?? null,
         confirmed_at: isPendingTerminal ? new Date().toISOString() : undefined,
@@ -574,7 +585,11 @@ export async function POST(request: NextRequest) {
 
     const { error: insertErr } = await supabase.from("product_order_items").insert(itemsToInsert);
     if (insertErr) {
-      await supabase.from("product_orders").delete().eq("id", order.id);
+      await admin
+        .from("product_orders")
+        .delete()
+        .eq("id", order.id)
+        .eq("provider_id", providerId);
       throw insertErr;
     }
 

@@ -213,7 +213,16 @@ export async function fetchConfigBundle(params?: {
   if (!base) {
     return createStubBundle(environment, platform);
   }
-  const url = `${base.replace(/\/$/, "")}/api/public/config-bundle?platform=${platform}&environment=${environment}`;
+  const appVersion =
+    params?.appVersion?.trim() ||
+    (await import("expo-constants")).default.expoConfig?.version?.trim() ||
+    null;
+  const urlParams = new URLSearchParams({
+    platform,
+    environment,
+  });
+  if (appVersion) urlParams.set("app_version", appVersion);
+  const url = `${base.replace(/\/$/, "")}/api/public/config-bundle?${urlParams.toString()}`;
   try {
     const res = await fetch(
       url,

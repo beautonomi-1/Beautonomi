@@ -26,11 +26,11 @@ BEGIN
   WHERE cp.provider_id = NEW.provider_id
     AND cp.is_active = true
     AND (
-      cp.location_type = NEW.location_type
+      cp.location_type = NEW.location_type::text
       OR cp.location_type IS NULL
     )
   ORDER BY
-    CASE WHEN cp.location_type = NEW.location_type THEN 0 ELSE 1 END,
+    CASE WHEN cp.location_type = NEW.location_type::text THEN 0 ELSE 1 END,
     cp.is_default DESC,
     cp.created_at DESC
   LIMIT 1;

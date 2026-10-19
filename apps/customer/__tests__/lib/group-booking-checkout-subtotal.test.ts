@@ -26,7 +26,7 @@ describe("groupGuestsServiceSubtotal", () => {
     ).toBe(350);
   });
 
-  it("ignores unnamed guests, which the consume payload drops", () => {
+  it("includes unnamed guests in the live preview as soon as a row is added", () => {
     expect(
       groupGuestsServiceSubtotal(
         [
@@ -36,7 +36,7 @@ describe("groupGuestsServiceSubtotal", () => {
         snapshotIds,
         prices,
       ),
-    ).toBe(100);
+    ).toBe(350);
   });
 
   it("is zero with no guests", () => {

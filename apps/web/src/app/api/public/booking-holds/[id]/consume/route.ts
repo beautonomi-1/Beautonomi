@@ -625,46 +625,25 @@ async function handlePost(
       draft.paystack_callback_url = paystackCallbackUrl;
     }
 
-    const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL
-        ? process.env.NEXT_PUBLIC_APP_URL
-        : process.env.VERCEL_URL
-          ? `https://${process.env.VERCEL_URL}`
-          : new URL(request.url).origin;
-
-    const cookieHeader = request.headers.get("cookie") || "";
-    /** Mobile apps authenticate with Bearer tokens only (no session cookies). Inner fetch must forward them or /api/public/bookings sees no user → 401 and checkout fails. */
-    const authorizationHeader = request.headers.get("authorization")?.trim();
-    const activeMarketCountry = request.headers.get("x-active-market-country")?.trim();
-
-    const forwardHost =
-      request.headers.get("x-forwarded-host")?.trim() ||
-      request.headers.get("host")?.trim() ||
-      "";
-
-    const paymentForwardAbort = new AbortController();
-    const paymentForwardTimer = setTimeout(() => paymentForwardAbort.abort(), 120_000);
+    const { POST: createPublicBookingPost } = await import(
+      "@/app/api/public/bookings/route"
+    );
+    const innerHeaders = new Headers(request.headers);
+    innerHeaders.delete("content-length");
+    innerHeaders.delete("transfer-encoding");
+    innerHeaders.set("Content-Type", "application/json");
+    if (idempotencyKey) innerHeaders.set("Idempotency-Key", idempotencyKey);
+    const innerRequest = new NextRequest(new URL("/api/public/bookings", request.url), {
+      method: "POST",
+      headers: innerHeaders,
+      body: JSON.stringify(draft),
+    });
     let bookingRes: Response;
     try {
-      bookingRes = await fetch(`${baseUrl}/api/public/bookings`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(cookieHeader ? { Cookie: cookieHeader } : {}),
-          ...(authorizationHeader ? { Authorization: authorizationHeader } : {}),
-          ...(forwardHost ? { "x-forwarded-host": forwardHost } : {}),
-          ...(activeMarketCountry ? { "x-active-market-country": activeMarketCountry } : {}),
-          ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
-        },
-        body: JSON.stringify(draft),
-        signal: paymentForwardAbort.signal,
-      });
+      bookingRes = await createPublicBookingPost(innerRequest);
     } catch (fetchErr) {
-      clearTimeout(paymentForwardTimer);
       await releaseHold();
       throw fetchErr;
-    } finally {
-      clearTimeout(paymentForwardTimer);
     }
 
     const bookingData = await bookingRes.json();

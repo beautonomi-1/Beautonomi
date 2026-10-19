@@ -62,7 +62,7 @@ export async function resolveAgeAssurancePolicy(
 
     const { data: rows, error } = await supabase
       .from("feature_flags")
-      .select("feature_key, metadata, tenant_id")
+      .select("feature_key, metadata, tenant_id, enabled")
       .in("feature_key", keys)
       .or(
         tenantId
@@ -72,27 +72,46 @@ export async function resolveAgeAssurancePolicy(
 
     if (error) throw error;
 
-    const byKey = new Map<string, Record<string, unknown>>();
+    const byKey = new Map<
+      string,
+      { metadata: Record<string, unknown>; enabled: boolean }
+    >();
     for (const row of rows ?? []) {
       const key = row.feature_key as string;
       const existing = byKey.get(key);
       // Tenant row overrides global
       if (!existing || row.tenant_id != null) {
-        byKey.set(key, (row.metadata as Record<string, unknown>) ?? {});
+        byKey.set(key, {
+          metadata: (row.metadata as Record<string, unknown>) ?? {},
+          enabled: row.enabled !== false,
+        });
       }
     }
 
-    const minAgeMeta = byKey.get(FEATURE_FLAG_KEYS.SAFETY_SOCIAL_MIN_AGE) ?? {};
-    const modeMeta = byKey.get(FEATURE_FLAG_KEYS.SAFETY_SOCIAL_AGE_GATE_MODE) ?? {};
-    const defaultsMeta = byKey.get(FEATURE_FLAG_KEYS.SAFETY_RESTRICTED_MODE_DEFAULTS) ?? {};
+    const minAgeRow = byKey.get(FEATURE_FLAG_KEYS.SAFETY_SOCIAL_MIN_AGE);
+    const modeRow = byKey.get(FEATURE_FLAG_KEYS.SAFETY_SOCIAL_AGE_GATE_MODE);
+    const defaultsRow = byKey.get(FEATURE_FLAG_KEYS.SAFETY_RESTRICTED_MODE_DEFAULTS);
+
+    const minAgeMeta = minAgeRow?.enabled ? minAgeRow.metadata : {};
+    const modeMeta = modeRow?.enabled ? modeRow.metadata : {};
+    const defaultsMeta = defaultsRow?.enabled ? defaultsRow.metadata : {};
+
+    const gateMode = modeRow?.enabled ? parseGateMode(modeMeta.mode) : "off";
 
     return {
-      socialMinAge: parseMinAge(minAgeMeta.min_age),
-      socialAgeGateMode: parseGateMode(modeMeta.mode),
-      restrictedModeDefaults: parseDefaults(defaultsMeta),
+      socialMinAge: minAgeRow?.enabled ? parseMinAge(minAgeMeta.min_age) : DEFAULT_POLICY.socialMinAge,
+      socialAgeGateMode: gateMode,
+      restrictedModeDefaults:
+        defaultsRow?.enabled && gateMode === "enforce"
+          ? parseDefaults(defaultsMeta)
+          : {},
     };
   } catch (err) {
     console.warn("[age-assurance] resolveAgeAssurancePolicy fallback:", err);
-    return DEFAULT_POLICY;
+    return {
+      ...DEFAULT_POLICY,
+      socialAgeGateMode: "off",
+      restrictedModeDefaults: {},
+    };
   }
 }

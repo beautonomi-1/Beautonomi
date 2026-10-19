@@ -14,6 +14,11 @@ jest.mock("expo-file-system", () => ({
   }),
 }));
 
+jest.mock("expo-file-system/legacy", () => ({
+  EncodingType: { Base64: "base64" },
+  readAsStringAsync: jest.fn(),
+}));
+
 describe("appendUploadFile", () => {
   const originalOS = Platform.OS;
 
@@ -22,23 +27,25 @@ describe("appendUploadFile", () => {
     mockBytes.mockClear();
   });
 
-  it("appends typed Blob from file bytes on native", async () => {
+  it("appends expo/fetch bytes part from file bytes on native", async () => {
     Object.defineProperty(Platform, "OS", { configurable: true, value: "ios" });
     const fd = new FormData();
-    const appendSpy = jest.spyOn(fd, "append");
+    const appendSpy = jest.spyOn(fd, "append").mockImplementation(() => undefined);
     await appendUploadFile(fd, "files", {
       uri: "file:///tmp/photo.jpg",
       name: "photo.jpg",
       type: "image/jpeg",
     });
     expect(mockBytes).toHaveBeenCalled();
-    expect(appendSpy).toHaveBeenCalledWith(
-      "files",
-      expect.any(Blob),
-      "photo.jpg",
-    );
-    const blob = appendSpy.mock.calls[0]?.[1] as Blob;
-    expect(blob.type).toBe("image/jpeg");
+    expect(appendSpy).toHaveBeenCalledWith("files", expect.any(Object), "photo.jpg");
+    const part = appendSpy.mock.calls[0]?.[1] as {
+      uri?: string;
+      bytes?: () => Promise<Uint8Array>;
+      type?: string;
+    };
+    expect(part.uri).toBe("file:///tmp/photo.jpg");
+    expect(part.type).toBe("image/jpeg");
+    await expect(part.bytes?.()).resolves.toEqual(new Uint8Array([0xff, 0xd8, 0xff]));
   });
 
   it("appends Blob with filename on web", async () => {
@@ -46,7 +53,7 @@ describe("appendUploadFile", () => {
     const blob = new Blob(["x"], { type: "image/jpeg" });
     global.fetch = jest.fn().mockResolvedValue({ blob: () => Promise.resolve(blob) }) as typeof fetch;
     const fd = new FormData();
-    const appendSpy = jest.spyOn(fd, "append");
+    const appendSpy = jest.spyOn(fd, "append").mockImplementation(() => undefined);
     await appendUploadFile(fd, "file", {
       uri: "blob:http://localhost/x",
       name: "photo.jpg",
