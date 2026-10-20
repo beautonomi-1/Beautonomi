@@ -295,4 +295,44 @@ describe("GET /api/admin/support-tickets", () => {
     expect(countBuilder.eq).toHaveBeenCalledWith("tenant_id", tenantId);
     expect(from.mock.calls.filter((call) => call[0] === "support_tickets").length).toBeGreaterThan(1);
   });
+
+  it("pages a thenable PostgREST builder instead of executing it before range()", async () => {
+    const result: QueryResult = { data: [{ id: "t1", status: "open", priority: "medium" }], error: null, count: 1 };
+    const builder = createQueryBuilder(result);
+    let rangeCalled = false;
+    let thenCallsBeforeRange = 0;
+    Object.assign(builder, {
+      then(
+        onfulfilled?: (value: QueryResult) => unknown,
+        onrejected?: (reason: unknown) => unknown,
+      ) {
+        if (!rangeCalled) thenCallsBeforeRange += 1;
+        return Promise.resolve(result).then(onfulfilled, onrejected);
+      },
+    });
+    builder.range.mockImplementation(() => {
+      rangeCalled = true;
+      return Promise.resolve(result);
+    });
+    mockGetSupabaseAdmin.mockReturnValue({ from: vi.fn().mockReturnValue(builder) });
+
+    const { GET } = await import("@/app/api/admin/support-tickets/route");
+    const req = createMockNextRequest({
+      method: "GET",
+      url: "http://localhost:3000/api/admin/support-tickets",
+      searchParams: {
+        limit: "25",
+        offset: "0",
+        include_counts: "1",
+        scope: "tenant",
+        tenant_id: "c43f7511-ca1b-4ccd-a0b9-27056531c65b",
+      },
+    });
+    const res = await GET(req as NextRequest);
+    expect(res.status).toBe(200);
+    expect(builder.range).toHaveBeenCalledWith(0, 24);
+    expect(thenCallsBeforeRange).toBe(0);
+    const body = await res.json();
+    expect(body.tickets).toHaveLength(1);
+  });
 });
