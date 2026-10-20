@@ -13,7 +13,10 @@ import {
   validateAdminCategoryValue,
 } from "@/lib/support/ticket-categories";
 import { isUuidString } from "@beautonomi/utils";
-import { applySupportAgentTicketScope } from "@/lib/support/support-agent-tenant-scope";
+import {
+  applySupportAgentTicketScope,
+  resolveSupportAgentTicketTenantIds,
+} from "@/lib/support/support-agent-tenant-scope";
 import { enrichTicketsWithLatestEmailDeliveryStatus } from "@/lib/support/enrich-support-ticket-list";
 
 function sanitizeIlikeTerm(raw: string) {
@@ -81,6 +84,10 @@ export async function GET(request: NextRequest) {
 
     const tenantId =
       tenantIdFilter && isUuidString(tenantIdFilter) ? tenantIdFilter : null;
+    const agentTenantIds = await resolveSupportAgentTicketTenantIds(supabase, {
+      role: user.role,
+      userId: user.id,
+    });
 
     // Build the list query. `agentQueue` gates every column introduced by
     // migration 726 (needs_agent_response, first_response_due_at). When that
@@ -228,10 +235,7 @@ export async function GET(request: NextRequest) {
             .order("last_message_at", { ascending: true, nullsFirst: false });
       }
 
-      query = (await applySupportAgentTicketScope(supabase, query, {
-        role: user.role,
-        userId: user.id,
-      })) as unknown as typeof query;
+      query = applySupportAgentTicketScope(query, agentTenantIds);
 
       return query.range(offset, offset + limit - 1);
     };
@@ -303,9 +307,8 @@ export async function GET(request: NextRequest) {
 
     const counts = includeCounts
       ? await loadSupportTicketCounts(supabase, agentQueue, {
-          role: user.role,
-          userId: user.id,
           tenantId,
+          agentTenantIds,
         })
       : null;
 
@@ -324,7 +327,7 @@ export async function GET(request: NextRequest) {
 async function loadSupportTicketCounts(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   agentQueue: boolean,
-  scope: { role: string | null | undefined; userId: string; tenantId: string | null },
+  scope: { tenantId: string | null; agentTenantIds: string[] | null },
 ) {
   const nowIso = new Date().toISOString();
   const openStatuses = ["open", "in_progress", "waiting_customer"];
@@ -344,10 +347,7 @@ async function loadSupportTicketCounts(
       query = query.eq("tenant_id", scope.tenantId);
     }
     query = mutate(query as unknown as CountQuery) as unknown as typeof query;
-    query = (await applySupportAgentTicketScope(supabase, query, {
-      role: scope.role,
-      userId: scope.userId,
-    })) as unknown as typeof query;
+    query = applySupportAgentTicketScope(query, scope.agentTenantIds);
     const { count, error } = await query;
     if (error) throw error;
     return count ?? 0;

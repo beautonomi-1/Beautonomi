@@ -25,26 +25,39 @@ export function isSuperadminRole(role: string | null | undefined): boolean {
   return String(role ?? "").toLowerCase() === "superadmin";
 }
 
+const SUPPORT_AGENT_NO_TENANT = "00000000-0000-0000-0000-000000000000";
+
 /**
- * When role is support_agent, restrict support_tickets queries to assigned tenant regions.
- * Superadmin and other staff roles are unchanged (global).
+ * Tenant ids a support_agent may see. Null means the caller should not add a
+ * tenant filter (superadmin and other staff stay global).
+ *
+ * An agent with no active tenant assignments gets a sentinel id so the query
+ * matches nothing.
+ *
+ * Resolved separately from the PostgREST builder: builders are thenable, and
+ * returning one from an async function executes the request before `.range()`.
  */
-export async function applySupportAgentTicketScope<T>(
+export async function resolveSupportAgentTicketTenantIds(
   supabase: SupabaseClient,
-  query: T,
   params: { role: string | null | undefined; userId: string },
-): Promise<T> {
+): Promise<string[] | null> {
   if (!isSupportAgentRole(params.role)) {
-    return query;
+    return null;
   }
   const tenantIds = await getSupportAgentTenantIds(supabase, params.userId);
   if (tenantIds.length === 0) {
-    return (query as { in: (col: string, vals: string[]) => T }).in(
-      "tenant_id",
-      ["00000000-0000-0000-0000-000000000000"],
-    );
+    return [SUPPORT_AGENT_NO_TENANT];
   }
-  return (query as { in: (col: string, vals: string[]) => T }).in("tenant_id", tenantIds);
+  return tenantIds;
+}
+
+/** Restrict a support_tickets query to the agent's tenants. Synchronous on purpose. */
+export function applySupportAgentTicketScope<T extends { in: (column: string, values: string[]) => T }>(
+  query: T,
+  tenantIds: string[] | null,
+): T {
+  if (!tenantIds) return query;
+  return query.in("tenant_id", tenantIds);
 }
 
 /** Returns false when support_agent cannot access this ticket (service-role detail checks). */
