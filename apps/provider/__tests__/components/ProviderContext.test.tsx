@@ -75,6 +75,9 @@ describe("ProviderProvider first-run profile loading", () => {
     jest.clearAllMocks();
   });
 
+  // First render of this tree is slow on a loaded CI runner (the assertion
+  // itself passes in a couple of seconds locally). Jest's 5s default kills
+  // the test before waitFor can report a real mismatch.
   it("keeps customer onboarding entrants out of the profile error state on expected 403s", async () => {
     mockApiGet.mockImplementation((path: string) => {
       if (path === "/api/provider/profile") {
@@ -97,7 +100,7 @@ describe("ProviderProvider first-run profile loading", () => {
     await waitFor(() => expect(screen.getByTestId("role").props.children).toBe("customer"));
     expect(screen.getByTestId("provider").props.children).toBe("none");
     expect(screen.getByTestId("error").props.children).toBe("none");
-  });
+  }, 20_000);
 
   it("still surfaces real profile failures for established provider roles", async () => {
     mockApiGet.mockImplementation((path: string) => {
