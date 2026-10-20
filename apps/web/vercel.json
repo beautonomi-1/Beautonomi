@@ -18,6 +18,7 @@
     { "path": "/api/cron/send-reminders", "schedule": "0 * * * *" },
     { "path": "/api/cron/send-provider-notification-digests", "schedule": "0 8 * * *" },
     { "path": "/api/cron/expire-booking-holds", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/support-assistant-stale", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/expire-pending-payment-bookings", "schedule": "*/10 * * * *" },
     { "path": "/api/cron/expire-stale-pending-bookings", "schedule": "*/15 * * * *" },
     { "path": "/api/cron/pending-confirmation-nudges", "schedule": "*/15 * * * *" },

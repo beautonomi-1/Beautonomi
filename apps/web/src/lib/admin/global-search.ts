@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { phoneIlikeClauses, sanitizeIlikeTerm } from "@/lib/search/phone-ilike";
 import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 
 export type AdminSearchUser = {
@@ -93,6 +94,7 @@ async function runLegacySearch(
   searchTerm: string,
 ): Promise<AdminGlobalSearchResults> {
   const term = searchTerm.toLowerCase();
+  const safe = sanitizeIlikeTerm(term);
 
   const { data: userSearchPayload } = await admin.rpc("admin_users_list_for_tenant", {
     p_tenant_id: tenantId,
@@ -111,7 +113,7 @@ async function runLegacySearch(
     .from("bookings")
     .select("id")
     .eq("tenant_id", tenantId)
-    .ilike("booking_number", `%${term}%`)
+    .ilike("booking_number", `%${safe}%`)
     .limit(5);
   bookingIds = (bookingsByNumber || []).map((b: { id: string }) => b.id);
 
@@ -180,7 +182,13 @@ async function runLegacySearch(
     const { data: ownerRows } = await admin
       .from("users")
       .select("id, full_name, email")
-      .or(`full_name.ilike.%${term}%,email.ilike.%${term}%`)
+      .or(
+        [
+          `full_name.ilike.%${safe}%`,
+          `email.ilike.%${safe}%`,
+          ...phoneIlikeClauses(["phone"], searchTerm),
+        ].join(","),
+      )
       .limit(25);
     const ownerIds = (ownerRows || []).map((u) => (u as { id: string }).id);
     if (ownerIds.length > 0) {
@@ -193,7 +201,11 @@ async function runLegacySearch(
     }
   }
 
-  const providerOrClauses = [`business_name.ilike.%${term}%`, `phone.ilike.%${term}%`];
+  const providerOrClauses = [
+    `business_name.ilike.%${safe}%`,
+    `phone.ilike.%${safe}%`,
+    ...phoneIlikeClauses(["phone"], searchTerm),
+  ];
   if (ownerMatchedProviderIds.length > 0) {
     providerOrClauses.push(`id.in.(${ownerMatchedProviderIds.join(",")})`);
   }

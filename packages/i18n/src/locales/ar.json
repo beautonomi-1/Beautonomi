@@ -8945,7 +8945,15 @@
           "priorityLow": "منخفض",
           "priorityMedium": "متوسط",
           "priorityHigh": "مرتفع",
-          "priorityUrgent": "عاجل"
+          "priorityUrgent": "عاجل",
+          "assistantTyping": "المساعد يكتب…",
+          "handoffTitle": "نوصلك بالدعم",
+          "handoffBody": "سينضم مختص إلى هذا النقاش قريبًا.",
+          "aiDisclaimer": "قد يخطئ الذكاء الاصطناعي — يمكنك طلب شخص في أي وقت.",
+          "assistantName": "مساعد Beautonomi",
+          "talkToPerson": "تحدث إلى شخص",
+          "didThisHelp": "هل أفادك هذا؟ نعم",
+          "attachmentsAfterHuman": "تتوفر المرفقات بعد انضمام مختص إلى المحادثة."
         },
         "providerVerificationPanel": {
           "statusNotStarted": "Not started",
@@ -9440,7 +9448,15 @@
           "priorityLow": "منخفض",
           "priorityMedium": "متوسط",
           "priorityHigh": "مرتفع",
-          "priorityUrgent": "عاجل"
+          "priorityUrgent": "عاجل",
+          "sentToTeam": "أُرسلت تذكرتك إلى فريق الدعم. سنرد في هذا النقاش.",
+          "chatDefaultSubject": "طلب الدعم",
+          "continueToChat": "استمر في الدردشة",
+          "useFullForm": "استخدم النموذج الكامل",
+          "safetyUseForm": "يتم إرسال تقارير السلامة مباشرة إلى فريقنا - يرجى استخدام النموذج الكامل.",
+          "chatAiDisclaimer": "يمكن للذكاء الاصطناعي أن يرتكب أخطاء — يمكنك التحدث إلى أي شخص في أي وقت بعد إنشاء تذكرتك.",
+          "startChat": "ابدأ الدردشة",
+          "chatBack": "رجوع"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -17093,7 +17109,8 @@
           "useFullForm": "استخدم النموذج الكامل",
           "safetyUseForm": "يتم إرسال تقارير السلامة مباشرة إلى فريقنا - يرجى استخدام النموذج الكامل.",
           "chatAiDisclaimer": "يمكن للذكاء الاصطناعي أن يرتكب أخطاء — يمكنك التحدث إلى أي شخص في أي وقت بعد إنشاء تذكرتك.",
-          "startChat": "ابدأ الدردشة"
+          "startChat": "ابدأ الدردشة",
+          "sentToTeam": "أُرسلت تذكرتك إلى فريق الدعم. سنرد في هذا النقاش."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "اكتب رسالتك...",
@@ -17156,7 +17173,15 @@
           "priorityLow": "منخفض",
           "priorityMedium": "متوسط",
           "priorityHigh": "مرتفع",
-          "priorityUrgent": "عاجل"
+          "priorityUrgent": "عاجل",
+          "handoffTitle": "نوصلك بالدعم",
+          "handoffBody": "سينضم مختص إلى هذا النقاش قريبًا.",
+          "aiDisclaimer": "قد يخطئ الذكاء الاصطناعي — يمكنك طلب شخص في أي وقت.",
+          "assistantName": "مساعد Beautonomi",
+          "talkToPerson": "تحدث إلى شخص",
+          "didThisHelp": "هل أفادك هذا؟ نعم",
+          "attachmentsAfterHuman": "تتوفر المرفقات بعد انضمام مختص إلى المحادثة.",
+          "assistantTyping": "المساعد يكتب…"
         },
         "giftCardAmountPlaceholder": "مثال: 350",
         "partnerProfileReportPlaceholder": "يرجى وصف ما حدث...",
@@ -20257,7 +20282,10 @@
         "createOfferFailed": "تعذر إنشاء custom offer",
         "offerUpdated": "Offer محدّث successfully!",
         "offerCreated": "Offer تم الإنشاء successfully!",
-        "createOfferFailedShort": "تعذر إنشاء offer"
+        "createOfferFailedShort": "تعذر إنشاء offer",
+        "changeClient": "تغيير",
+        "searchClientPlaceholder": "ابحث بالاسم أو البريد أو الهاتف (مثال 082…)",
+        "searchClientHint": "اكتب حرفين على الأقل"
       },
       "privacyAndSharing": {
         "tabAccount": "الحساب",

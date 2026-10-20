@@ -48,6 +48,7 @@ export type ProviderClientRow = {
     id: string;
     full_name?: string | null;
     email?: string | null;
+    phone?: string | null;
     avatar_url?: string | null;
   } | null;
 };
@@ -55,7 +56,6 @@ export type ProviderClientRow = {
 export type CustomRequestsPageInitial = {
   mode: "customer" | "provider";
   items: CustomRequestListItem[];
-  clients?: ProviderClientRow[];
   staffList?: Array<{ id: string; name: string }>;
   locationsList?: Array<{ id: string; name: string }>;
 };

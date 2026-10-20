@@ -11,6 +11,7 @@ import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator 
 import { useTranslation } from "@beautonomi/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
+import { clientContactMatches } from "@/lib/phone";
 import { Colors } from "@/constants/colors";
 
 /** Indigo accent to match the surrounding campaign create sheet. */
@@ -93,7 +94,20 @@ export function AudienceSelector({ value, onChange }: Props) {
   );
   const { recipientType, segmentCriteria, recipientIds } = value;
   const [search, setSearch] = useState("");
-  const clientsApi = useApi<ClientsResponse>("/api/provider/clients?limit=200", {
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const clientsApiPath = useMemo(() => {
+    if (debouncedSearch.length >= 2) {
+      return `/api/provider/clients?limit=200&search=${encodeURIComponent(debouncedSearch)}`;
+    }
+    return "/api/provider/clients?limit=200";
+  }, [debouncedSearch]);
+
+  const clientsApi = useApi<ClientsResponse>(clientsApiPath, {
     enabled: recipientType === "custom",
     staleTimeMs: 60_000,
   });
@@ -106,15 +120,17 @@ export function AudienceSelector({ value, onChange }: Props) {
   }, [clientsApi.data]);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = search.trim();
     if (!q) return clients;
-    return clients.filter((c) => {
-      const name = c.customer?.full_name?.toLowerCase() ?? "";
-      const email = c.customer?.email?.toLowerCase() ?? "";
-      const phone = c.customer?.phone ?? "";
-      return name.includes(q) || email.includes(q) || phone.includes(q);
-    });
-  }, [clients, search]);
+    if (q === debouncedSearch && q.length >= 2) return clients;
+    return clients.filter((c) =>
+      clientContactMatches(q, {
+        name: c.customer?.full_name,
+        email: c.customer?.email,
+        phone: c.customer?.phone,
+      })
+    );
+  }, [clients, search, debouncedSearch]);
 
   const setType = useCallback(
     (t: RecipientType) => onChange({ ...value, recipientType: t }),

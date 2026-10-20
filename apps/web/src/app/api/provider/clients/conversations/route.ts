@@ -13,6 +13,7 @@ import {
   attachSalonMembership,
   buildSalonMembershipMap,
 } from "@/lib/provider/attach-salon-membership-to-clients";
+import { contactMatchesSearchQuery } from "@/lib/provider/client-contact-search";
 
 /**
  * GET /api/provider/clients/conversations
@@ -202,20 +203,18 @@ export async function GET(request: NextRequest) {
     // If search query is provided, filter by name, email, or phone
     let filteredCustomers = enrichedConversationCustomers;
     if (searchQuery && searchQuery.trim().length > 0) {
-      const searchLower = searchQuery.toLowerCase().trim();
+      const trimmedSearch = searchQuery.trim();
       filteredCustomers = enrichedConversationCustomers.filter((item) => {
         const customer = item.customer;
         if (!customer) return false;
-        
         const da = (customer as { default_address?: { address_line1?: string; city?: string } | null })
           .default_address;
-        const addrBlob = [da?.address_line1, da?.city].filter(Boolean).join(" ").toLowerCase();
-
-        const nameMatch = customer.full_name?.toLowerCase().includes(searchLower);
-        const emailMatch = customer.email?.toLowerCase().includes(searchLower);
-        const phoneMatch = customer.phone?.toLowerCase().includes(searchLower);
-
-        return nameMatch || emailMatch || phoneMatch || addrBlob.includes(searchLower);
+        return contactMatchesSearchQuery(trimmedSearch, {
+          full_name: customer.full_name,
+          email: customer.email,
+          phone: customer.phone,
+          default_address: da,
+        });
       });
     }
 

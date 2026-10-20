@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { phoneMatchesQuery } from "@/lib/phone";
+import { phoneIlikeClauses, sanitizeIlikeTerm } from "@/lib/search/phone-ilike";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, handleApiError } from "@/lib/supabase/api-helpers";
@@ -215,6 +217,7 @@ async function runLegacySearch(
   searchTerm: string
 ): Promise<SearchResults> {
   const term = searchTerm.toLowerCase();
+  const safe = sanitizeIlikeTerm(term);
 
   const { data: userSearchPayload } = await admin.rpc("admin_users_list_for_tenant", {
     p_tenant_id: tenantId,
@@ -243,7 +246,7 @@ async function runLegacySearch(
     .from("bookings")
     .select("id")
     .eq("tenant_id", tenantId)
-    .ilike("booking_number", `%${term}%`)
+    .ilike("booking_number", `%${safe}%`)
     .limit(5);
   bookingIds = (bookingsByNumber || []).map((b: { id: string }) => b.id);
 
@@ -311,7 +314,13 @@ async function runLegacySearch(
     const { data: ownerRows } = await supabase
       .from("users")
       .select("id, full_name, email")
-      .or(`full_name.ilike.%${term}%,email.ilike.%${term}%`)
+      .or(
+        [
+          `full_name.ilike.%${safe}%`,
+          `email.ilike.%${safe}%`,
+          ...phoneIlikeClauses(["phone"], searchTerm),
+        ].join(","),
+      )
       .limit(25);
     const ownerIds = (ownerRows || []).map((u) => (u as { id: string }).id);
     if (ownerIds.length > 0) {
@@ -324,7 +333,11 @@ async function runLegacySearch(
     }
   }
 
-  const providerOrClauses = [`business_name.ilike.%${term}%`, `phone.ilike.%${term}%`];
+  const providerOrClauses = [
+    `business_name.ilike.%${safe}%`,
+    `phone.ilike.%${safe}%`,
+    ...phoneIlikeClauses(["phone"], searchTerm),
+  ];
   if (ownerMatchedProviderIds.length > 0) {
     providerOrClauses.push(`id.in.(${ownerMatchedProviderIds.join(",")})`);
   }
@@ -376,6 +389,7 @@ async function searchProviderOpsRecords(
   searchTerm: string,
 ): Promise<{ leads: LeadResult[]; onboarding_drafts: OnboardingDraftResult[] }> {
   const term = searchTerm.toLowerCase();
+  const safe = sanitizeIlikeTerm(searchTerm);
 
   const { data: leadRows } = await admin
     .from("provider_leads")
@@ -384,11 +398,12 @@ async function searchProviderOpsRecords(
     .is("deleted_at", null)
     .or(
       [
-        `business_name.ilike.%${term}%`,
-        `lead_name.ilike.%${term}%`,
-        `email.ilike.%${term}%`,
-        `phone_e164.ilike.%${term}%`,
-        `contact_person_name.ilike.%${term}%`,
+        `business_name.ilike.%${safe}%`,
+        `lead_name.ilike.%${safe}%`,
+        `email.ilike.%${safe}%`,
+        `phone_e164.ilike.%${safe}%`,
+        `contact_person_name.ilike.%${safe}%`,
+        ...phoneIlikeClauses(["phone_e164"], searchTerm),
       ].join(","),
     )
     .limit(5);
@@ -423,7 +438,8 @@ async function searchProviderOpsRecords(
     const ownerName = draftData.owner_name != null ? String(draftData.owner_name) : "";
     const ownerEmail = draftData.owner_email != null ? String(draftData.owner_email) : "";
     const haystack = [businessName, ownerName, ownerEmail, row.user_id].join(" ").toLowerCase();
-    if (!haystack.includes(term)) continue;
+    const ownerPhone = draftData.owner_phone != null ? String(draftData.owner_phone) : "";
+    if (!haystack.includes(term) && !phoneMatchesQuery(ownerPhone, searchTerm)) continue;
 
     const userRow = await getUserRowIfAccessibleToAdminTenant(admin, tenantId, row.user_id);
     if (!userRow) continue;

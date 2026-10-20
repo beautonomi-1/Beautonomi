@@ -8945,7 +8945,15 @@
           "priorityLow": "low",
           "priorityMedium": "medium",
           "priorityHigh": "high",
-          "priorityUrgent": "urgent"
+          "priorityUrgent": "urgent",
+          "assistantTyping": "Umufasha ari kwandika…",
+          "handoffTitle": "Turaguhuza n'ubufasha",
+          "handoffBody": "Impuguke izinjira muri iki kiganiro vuba.",
+          "aiDisclaimer": "AI irashobora kwibeshya — ushobora gusaba umuntu igihe cyose.",
+          "assistantName": "Umufasha wa Beautonomi",
+          "talkToPerson": "Vugana n'umuntu",
+          "didThisHelp": "Ibi byagufashije? Yego",
+          "attachmentsAfterHuman": "Imigereka iboneka nyuma y'uko impuguke yinjiye mu kiganiro."
         },
         "providerVerificationPanel": {
           "statusNotStarted": "Not started",
@@ -9440,7 +9448,15 @@
           "priorityLow": "Low",
           "priorityMedium": "Medium",
           "priorityHigh": "High",
-          "priorityUrgent": "Urgent"
+          "priorityUrgent": "Urgent",
+          "sentToTeam": "Itike yawe yoherejwe ku itsinda ryacu ry'ubufasha. Tuzasubiza muri iki kiganiro.",
+          "chatDefaultSubject": "Demande d'assistance",
+          "continueToChat": "Continuer à discuter",
+          "useFullForm": "Utiliser le formulaire complet",
+          "safetyUseForm": "Les rapports de sécurité sont envoyés directement à notre équipe – veuillez utiliser le formulaire complet.",
+          "chatAiDisclaimer": "L'IA peut faire des erreurs : vous pouvez parler à une personne à tout moment après la création de votre ticket.",
+          "startChat": "Démarrer le chat",
+          "chatBack": "Retour"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -17088,7 +17104,8 @@
           "useFullForm": "Utiliser le formulaire complet",
           "safetyUseForm": "Les rapports de sécurité sont envoyés directement à notre équipe – veuillez utiliser le formulaire complet.",
           "chatAiDisclaimer": "L'IA peut faire des erreurs : vous pouvez parler à une personne à tout moment après la création de votre ticket.",
-          "startChat": "Démarrer le chat"
+          "startChat": "Démarrer le chat",
+          "sentToTeam": "Itike yawe yoherejwe ku itsinda ryacu ry'ubufasha. Tuzasubiza muri iki kiganiro."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Écrivez votre message…",
@@ -17151,7 +17168,15 @@
           "priorityLow": "faible",
           "priorityMedium": "moyen",
           "priorityHigh": "élevé",
-          "priorityUrgent": "urgent"
+          "priorityUrgent": "urgent",
+          "handoffTitle": "Turaguhuza n'ubufasha",
+          "handoffBody": "Impuguke izinjira muri iki kiganiro vuba.",
+          "aiDisclaimer": "AI irashobora kwibeshya — ushobora gusaba umuntu igihe cyose.",
+          "assistantName": "Umufasha wa Beautonomi",
+          "talkToPerson": "Vugana n'umuntu",
+          "didThisHelp": "Ibi byagufashije? Yego",
+          "attachmentsAfterHuman": "Imigereka iboneka nyuma y'uko impuguke yinjiye mu kiganiro.",
+          "assistantTyping": "Umufasha ari kwandika…"
         },
         "giftCardAmountPlaceholder": "ex. 350",
         "partnerProfileReportPlaceholder": "Décrivez ce qui s’est passé…",
@@ -20252,7 +20277,10 @@
         "createOfferFailed": "Impossible de créer custom offer",
         "offerUpdated": "Offer mis à jour successfully!",
         "offerCreated": "Offer créé successfully!",
-        "createOfferFailedShort": "Impossible de créer offer"
+        "createOfferFailedShort": "Impossible de créer offer",
+        "changeClient": "Hindura",
+        "searchClientPlaceholder": "Shakisha izina, imeri cyangwa telefoni (urug. 082…)",
+        "searchClientHint": "Andika byibuze inyuguti 2"
       },
       "privacyAndSharing": {
         "tabAccount": "Compte",

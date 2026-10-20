@@ -8945,7 +8945,15 @@
           "priorityLow": "phansi",
           "priorityMedium": "maphakathi",
           "priorityHigh": "phezulu",
-          "priorityUrgent": "kuyaphuthuma"
+          "priorityUrgent": "kuyaphuthuma",
+          "assistantTyping": "Umsiti uyatiphaya…",
+          "handoffTitle": "Sikuhlanganisa nelusito",
+          "handoffBody": "Luchwephesha lutawujoyina lenkhulumo masinyane.",
+          "aiDisclaimer": "AI ingenta emaphutsa — ungacela umuntfu noma nini.",
+          "assistantName": "Umsiti we-Beautonomi",
+          "talkToPerson": "Khuluma nemuntfu",
+          "didThisHelp": "Ngabe loku kusitile? Yebo",
+          "attachmentsAfterHuman": "Lokunamatsiselwe kuyatfolakala ngemuva kwekutsi luchwephesha lujoyine inkhulumo."
         },
         "providerVerificationPanel": {
           "statusNotStarted": "Not calaed",
@@ -9440,7 +9448,15 @@
           "priorityLow": "Phansi",
           "priorityMedium": "Maphakathi",
           "priorityHigh": "Phezulu",
-          "priorityUrgent": "Kuyaphuthuma"
+          "priorityUrgent": "Kuyaphuthuma",
+          "sentToTeam": "Lithikithi lakho litfunyelwe ecenjini letfu lelusito. Sitawuphendvula kulenkhulumo.",
+          "chatDefaultSubject": "lusito sicelo",
+          "continueToChat": "chubeka to chat",
+          "useFullForm": "Use kugcwele form",
+          "safetyUseForm": "Imibiko yekuphepha iya ngco ecenjini letfu — sicela usebentise lifomu leliphelele.",
+          "chatAiDisclaimer": "AI ingenta emaphutsa — ungakhuluma nemuntfu noma nini ngemuva kwekutsi lithikithi lakho lidalwe.",
+          "startChat": "cala chat",
+          "chatBack": "Emuva"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -17093,7 +17109,8 @@
           "startChat": "cala chat",
           "chatBack": "Emuva",
           "safetyUseForm": "Imibiko yekuphepha iya ngco ecenjini letfu — sicela usebentise lifomu leliphelele.",
-          "chatAiDisclaimer": "AI ingenta emaphutsa — ungakhuluma nemuntfu noma nini ngemuva kwekutsi lithikithi lakho lidalwe."
+          "chatAiDisclaimer": "AI ingenta emaphutsa — ungakhuluma nemuntfu noma nini ngemuva kwekutsi lithikithi lakho lidalwe.",
+          "sentToTeam": "Lithikithi lakho litfunyelwe ecenjini letfu lelusito. Sitawuphendvula kulenkhulumo."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Luhlobo your umlayeto...",
@@ -17156,7 +17173,15 @@
           "priorityLow": "phansi",
           "priorityMedium": "maphakathi",
           "priorityHigh": "phezulu",
-          "priorityUrgent": "kuyaphuthuma"
+          "priorityUrgent": "kuyaphuthuma",
+          "handoffTitle": "Sikuhlanganisa nelusito",
+          "handoffBody": "Luchwephesha lutawujoyina lenkhulumo masinyane.",
+          "aiDisclaimer": "AI ingenta emaphutsa — ungacela umuntfu noma nini.",
+          "assistantName": "Umsiti we-Beautonomi",
+          "talkToPerson": "Khuluma nemuntfu",
+          "didThisHelp": "Ngabe loku kusitile? Yebo",
+          "attachmentsAfterHuman": "Lokunamatsiselwe kuyatfolakala ngemuva kwekutsi luchwephesha lujoyine inkhulumo.",
+          "assistantTyping": "Umsiti uyatiphaya…"
         },
         "giftCardAmountPlaceholder": "e.g. 350",
         "partnerProfileReportPlaceholder": "Sicela uchaze lokwentiwe...",
@@ -20257,7 +20282,10 @@
         "createOfferFailed": "Kwehlulekile ku-yakha Lwekhefiso offer",
         "offerUpdated": "Offer buyekisad impumelelokugcweley!",
         "offerCreated": "Offer yakhad impumelelokugcweley!",
-        "createOfferFailedShort": "Kwehlulekile ku-yakha offer"
+        "createOfferFailedShort": "Kwehlulekile ku-yakha offer",
+        "changeClient": "Shintja",
+        "searchClientPlaceholder": "Sesha ngegama, i-imeyili noma lucingo (sib. 082…)",
+        "searchClientHint": "Thayipha lokungenani tinhla leti-2"
       },
       "privacyAndSharing": {
         "tabAccount": "Li-akhawunti",

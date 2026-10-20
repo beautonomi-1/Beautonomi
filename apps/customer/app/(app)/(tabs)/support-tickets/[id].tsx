@@ -19,6 +19,7 @@ import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { endTextAlign } from "@/lib/rtlText";
 import { LinkifiedMessageText } from "@/components/support/LinkifiedMessageText";
+import { streamCustomerSupportAssistantReply } from "@/lib/support-assistant-stream";
 
 type Message = {
   id: string;
@@ -159,11 +160,13 @@ export default function SupportTicketDetailScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const knownMessageIdsRef = useRef<Set<string>>(new Set());
   const loadedOnceRef = useRef(false);
+  const assistantStreamingRef = useRef(false);
+  const initialAssistantStreamRef = useRef(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const { pickFromLibrary } = useImagePicker();
 
   const loadTicket = useCallback(async () => {
-    if (!id) return;
+    if (!id || assistantStreamingRef.current) return;
     setLoadError(null);
     try {
       const res = await api.get<{ ticket: Ticket; messages: Message[] }>(`/api/me/support-tickets/${id}`);
@@ -209,9 +212,62 @@ export default function SupportTicketDetailScreen() {
     }
   }, [id, sd, user?.id]);
 
+  const runAssistantStream = useCallback(
+    async (mode: "initial" | "follow_up", userMessage: string) => {
+      if (!id) return;
+      assistantStreamingRef.current = true;
+      const streamAssistantId = `stream-assistant-${Date.now()}`;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: streamAssistantId,
+          message: "",
+          is_internal: false,
+          created_at: new Date().toISOString(),
+          user_id: "",
+          author_kind: "assistant",
+          author_name: sd("assistantName"),
+          is_mine: false,
+        },
+      ]);
+      try {
+        const result = await streamCustomerSupportAssistantReply({
+          ticketId: id,
+          message: userMessage,
+          mode,
+          onAssistantChunk: (text) => {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === streamAssistantId ? { ...m, message: text } : m)),
+            );
+          },
+        });
+        if (result.handoff) {
+          Alert.alert(sd("handoffTitle"), result.infoMessage ?? sd("handoffBody"));
+        } else if (result.errorMessage && result.errorCode !== "IN_FLIGHT") {
+          Alert.alert(sd("sendFailedTitle"), result.errorMessage);
+        }
+      } finally {
+        assistantStreamingRef.current = false;
+        await loadTicket();
+      }
+    },
+    [id, sd, loadTicket],
+  );
+
   useEffect(() => {
     loadTicket();
   }, [loadTicket]);
+
+  useEffect(() => {
+    if (!ticket || !id || initialAssistantStreamRef.current) return;
+    if (ticket.handling_mode !== "assistant" || messages.length === 0) return;
+    const last = messages[messages.length - 1];
+    if (last.author_kind === "assistant") return;
+    const isMine = last.is_mine ?? last.user_id === user?.id;
+    if (!isMine) return;
+    initialAssistantStreamRef.current = true;
+    void runAssistantStream("initial", last.message);
+  }, [ticket, messages, id, user?.id, runAssistantStream]);
 
   useEffect(() => {
     let active = AppState.currentState === "active";
@@ -221,7 +277,7 @@ export default function SupportTicketDetailScreen() {
     });
     const pollMs = ticket?.handling_mode === "assistant" ? 2_000 : 30_000;
     const timer = setInterval(() => {
-      if (active) void loadTicket();
+      if (active && !assistantStreamingRef.current) void loadTicket();
     }, pollMs);
     return () => {
       sub.remove();
@@ -239,14 +295,14 @@ export default function SupportTicketDetailScreen() {
         "postgres_changes",
         { event: "*", schema: "public", table: "support_ticket_messages", filter: `ticket_id=eq.${tid}` },
         () => {
-          void loadTicket();
+          if (!assistantStreamingRef.current) void loadTicket();
         },
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "support_tickets", filter: `id=eq.${tid}` },
         () => {
-          void loadTicket();
+          if (!assistantStreamingRef.current) void loadTicket();
         },
       )
       .subscribe();
@@ -298,7 +354,7 @@ export default function SupportTicketDetailScreen() {
     try {
       await api.post(`/api/me/support-tickets/${id}/handoff`, {});
       await loadTicket();
-      Alert.alert("Connecting you to support", "A specialist will join this thread shortly.");
+      Alert.alert(sd("handoffTitle"), sd("handoffBody"));
     } catch (e) {
       Alert.alert(sd("sendFailedTitle"), e instanceof Error ? e.message : sd("sendReplyFallback"));
     }
@@ -322,13 +378,31 @@ export default function SupportTicketDetailScreen() {
     const msg = reply.trim();
     if ((!msg && pendingAttachments.length === 0) || !id) return;
     if (isAssistantMode && pendingAttachments.length > 0) {
-      Alert.alert(sd("uploadFailedTitle"), "Attachments are available after a specialist joins the conversation.");
+      Alert.alert(sd("uploadFailedTitle"), sd("attachmentsAfterHuman"));
       return;
     }
     const attachmentsToSend = isAssistantMode ? [] : pendingAttachments;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSending(true);
     try {
+      if (isAssistantMode && msg) {
+        const localMessage: Message = {
+          id: `local-${Date.now()}`,
+          message: msg,
+          is_internal: false,
+          created_at: new Date().toISOString(),
+          user_id: user?.id ?? "",
+          author_name: sd("you"),
+          is_mine: true,
+        };
+        setMessages((prev) => [...prev, localMessage]);
+        setReply("");
+        setPendingAttachments([]);
+        invalidateSupportTicketsListCache();
+        trackSupportTicketReply(id);
+        await runAssistantStream("follow_up", msg);
+        return;
+      }
       const res = await api.post(`/api/me/support-tickets/${id}/messages`, {
         message: msg,
         attachments: attachmentsToSend,
@@ -360,7 +434,7 @@ export default function SupportTicketDetailScreen() {
             {
               ...assistantRow,
               author_kind: "assistant",
-              author_name: "Beautonomi Assistant",
+              author_name: sd("assistantName"),
               is_mine: false,
             },
           ];
@@ -534,7 +608,7 @@ export default function SupportTicketDetailScreen() {
           ) : null}
 
           {isAssistantMode ? (
-            <Text style={styles.aiDisclaimer}>AI can make mistakes — you can request a person anytime.</Text>
+            <Text style={styles.aiDisclaimer}>{sd("aiDisclaimer")}</Text>
           ) : null}
 
           {messages.map((m) => {
@@ -543,7 +617,7 @@ export default function SupportTicketDetailScreen() {
             const authorLabel = isOwn
               ? sd("you")
               : isAssistant
-                ? "Beautonomi Assistant"
+                ? sd("assistantName")
                 : m.author_name ?? sd("supportTeam");
             const initials = isOwn
               ? sd("youInitials")
@@ -571,7 +645,7 @@ export default function SupportTicketDetailScreen() {
                   ]}
                 >
                   <LinkifiedMessageText
-                    text={m.message}
+                    text={m.message || (isAssistant ? sd("assistantTyping") : "")}
                     style={[styles.bubbleText, isOwn && styles.bubbleTextOwn]}
                     linkStyle={isOwn ? { color: "#fff", textDecorationLine: "underline" } : undefined}
                     onOpenError={() => Alert.alert(sd("openFailedTitle"), sd("openFailedBody"))}
@@ -607,10 +681,10 @@ export default function SupportTicketDetailScreen() {
           {canReply && isAssistantMode ? (
             <View style={styles.assistantActions}>
               <TouchableOpacity onPress={() => void handoffToHuman()} style={styles.assistantBtn} accessibilityRole="button">
-                <Text style={styles.assistantBtnText}>Talk to a person</Text>
+                <Text style={styles.assistantBtnText}>{sd("talkToPerson")}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => void resolveViaAssistant()} style={styles.assistantBtnSecondary} accessibilityRole="button">
-                <Text style={styles.assistantBtnText}>Did this help? Yes</Text>
+                <Text style={styles.assistantBtnText}>{sd("didThisHelp")}</Text>
               </TouchableOpacity>
             </View>
           ) : null}

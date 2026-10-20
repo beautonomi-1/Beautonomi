@@ -8945,7 +8945,15 @@
           "priorityLow": "chini",
           "priorityMedium": "wastani",
           "priorityHigh": "juu",
-          "priorityUrgent": "dharura"
+          "priorityUrgent": "dharura",
+          "assistantTyping": "Msaidizi anaandika…",
+          "handoffTitle": "Tunakuunganisha na usaidizi",
+          "handoffBody": "Mtaalamu atajiunga na mazungumzo haya hivi karibuni.",
+          "aiDisclaimer": "AI inaweza kukosea — unaweza kuomba mtu wakati wowote.",
+          "assistantName": "Msaidizi wa Beautonomi",
+          "talkToPerson": "Zungumza na mtu",
+          "didThisHelp": "Je, hii ilisaidia? Ndiyo",
+          "attachmentsAfterHuman": "Viambatisho vinapatikana baada ya mtaalamu kujiunga na mazungumzo."
         },
         "providerVerificationPanel": {
           "statusNotStarted": "Not started",
@@ -9440,7 +9448,15 @@
           "priorityLow": "Chini",
           "priorityMedium": "Wastani",
           "priorityHigh": "Juu",
-          "priorityUrgent": "Dharura"
+          "priorityUrgent": "Dharura",
+          "sentToTeam": "Tiketi yako imetumwa kwa timu yetu ya usaidizi. Tutajibu katika mazungumzo haya.",
+          "chatDefaultSubject": "Ombi la usaidizi",
+          "continueToChat": "Endelea kupiga gumzo",
+          "useFullForm": "Tumia fomu kamili",
+          "safetyUseForm": "Ripoti za usalama huenda moja kwa moja kwa timu yetu - tafadhali tumia fomu kamili.",
+          "chatAiDisclaimer": "AI inaweza kufanya makosa — unaweza kuzungumza na mtu wakati wowote baada ya tikiti yako kutengenezwa.",
+          "startChat": "Anzisha gumzo",
+          "chatBack": "Rudi"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -17088,7 +17104,8 @@
           "useFullForm": "Tumia fomu kamili",
           "safetyUseForm": "Ripoti za usalama huenda moja kwa moja kwa timu yetu - tafadhali tumia fomu kamili.",
           "chatAiDisclaimer": "AI inaweza kufanya makosa — unaweza kuzungumza na mtu wakati wowote baada ya tikiti yako kutengenezwa.",
-          "startChat": "Anzisha gumzo"
+          "startChat": "Anzisha gumzo",
+          "sentToTeam": "Tiketi yako imetumwa kwa timu yetu ya usaidizi. Tutajibu katika mazungumzo haya."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Andika ujumbe wako...",
@@ -17151,7 +17168,15 @@
           "priorityLow": "chini",
           "priorityMedium": "wastani",
           "priorityHigh": "juu",
-          "priorityUrgent": "dharura"
+          "priorityUrgent": "dharura",
+          "handoffTitle": "Tunakuunganisha na usaidizi",
+          "handoffBody": "Mtaalamu atajiunga na mazungumzo haya hivi karibuni.",
+          "aiDisclaimer": "AI inaweza kukosea — unaweza kuomba mtu wakati wowote.",
+          "assistantName": "Msaidizi wa Beautonomi",
+          "talkToPerson": "Zungumza na mtu",
+          "didThisHelp": "Je, hii ilisaidia? Ndiyo",
+          "attachmentsAfterHuman": "Viambatisho vinapatikana baada ya mtaalamu kujiunga na mazungumzo.",
+          "assistantTyping": "Msaidizi anaandika…"
         },
         "giftCardAmountPlaceholder": "k.m. 350",
         "partnerProfileReportPlaceholder": "Tafadhali eleza kilichotokea...",
@@ -20252,7 +20277,10 @@
         "createOfferFailed": "Imeshindwa unda custom offer",
         "offerUpdated": "Offer imesasishwa successfully!",
         "offerCreated": "Offer imeundwa successfully!",
-        "createOfferFailedShort": "Imeshindwa unda offer"
+        "createOfferFailedShort": "Imeshindwa unda offer",
+        "changeClient": "Badilisha",
+        "searchClientPlaceholder": "Tafuta kwa jina, barua pepe au simu (mf. 082…)",
+        "searchClientHint": "Andika angalau herufi 2"
       },
       "privacyAndSharing": {
         "tabAccount": "Akaunti",

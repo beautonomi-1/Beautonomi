@@ -120,6 +120,10 @@ export interface SafeAgentModuleConfig {
   shadow_mode: boolean;
 }
 
+export interface SafeSupportAssistantModuleConfig {
+  active: boolean;
+}
+
 export interface SafeAiModuleConfig {
   enabled: boolean;
   sampling_rate: number;
@@ -220,6 +224,7 @@ export interface PublicConfigBundle {
     aura: SafeAuraModuleConfig;
     safety: SafeSafetyModuleConfig;
     agents: SafeAgentModuleConfig;
+    support_assistant: SafeSupportAssistantModuleConfig;
   };
   /**
    * Tenant-aware verification policy snapshot.

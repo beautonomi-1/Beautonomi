@@ -25,6 +25,11 @@ import {
 } from "@/lib/provider-sales/map-walk-in-order-to-sale";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
+import {
+  findCustomerIdsByContactSearchAmongIds,
+  loadDistinctSaleCustomerIdsForProvider,
+  MAX_INLINE_MATCH_IDS,
+} from "@/lib/provider/client-contact-search";
 
 export const maxDuration = 60;
 
@@ -102,19 +107,16 @@ export async function GET(request: NextRequest) {
     const customerIdsMatchingSearch: string[] = [];
 
     if (searchTerm) {
-      const { data: matchingCustomers, error: matchingCustomersError } = await supabaseAdmin
-        .from("users")
-        .select("id")
-        .or(`full_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`)
-        .limit(100);
-
-      if (matchingCustomersError) {
-        console.warn("Error fetching sales search customers:", matchingCustomersError);
-      } else {
-        matchingCustomers?.forEach((customer: { id?: string | null }) => {
-          if (customer.id) customerIdsMatchingSearch.push(customer.id);
-        });
-      }
+      const saleCustomerIds = await loadDistinctSaleCustomerIdsForProvider(
+        supabaseAdmin,
+        providerId,
+      );
+      const matched = await findCustomerIdsByContactSearchAmongIds(
+        supabaseAdmin,
+        saleCustomerIds,
+        searchTerm,
+      );
+      customerIdsMatchingSearch.push(...matched);
     }
 
     const applySalesListFilters = (query: any) => {
@@ -137,7 +139,9 @@ export async function GET(request: NextRequest) {
           `sale_number.ilike.%${searchTerm}%`,
         ];
         if (customerIdsMatchingSearch.length > 0) {
-          clauses.push(`customer_id.in.(${customerIdsMatchingSearch.join(",")})`);
+          clauses.push(
+            `customer_id.in.(${customerIdsMatchingSearch.slice(0, MAX_INLINE_MATCH_IDS).join(",")})`,
+          );
         }
         salesQuery = salesQuery.or(clauses.join(","));
       }

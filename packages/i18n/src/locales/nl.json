@@ -8945,7 +8945,15 @@
           "priorityLow": "low",
           "priorityMedium": "medium",
           "priorityHigh": "high",
-          "priorityUrgent": "urgent"
+          "priorityUrgent": "urgent",
+          "assistantTyping": "Assistent is aan het typen…",
+          "handoffTitle": "We verbinden je met support",
+          "handoffBody": "Een specialist sluit zo meteen aan bij dit gesprek.",
+          "aiDisclaimer": "AI kan fouten maken — je kunt op elk moment een persoon vragen.",
+          "assistantName": "Beautonomi-assistent",
+          "talkToPerson": "Praat met een persoon",
+          "didThisHelp": "Heeft dit geholpen? Ja",
+          "attachmentsAfterHuman": "Bijlagen zijn beschikbaar zodra een specialist aan het gesprek deelneemt."
         },
         "providerVerificationPanel": {
           "statusNotStarted": "Not started",
@@ -9440,7 +9448,15 @@
           "priorityLow": "Low",
           "priorityMedium": "Medium",
           "priorityHigh": "High",
-          "priorityUrgent": "Urgent"
+          "priorityUrgent": "Urgent",
+          "sentToTeam": "Je verzoek is naar ons ondersteuningsteam gestuurd. We antwoorden in dit gesprek.",
+          "chatDefaultSubject": "ayuda solicitud",
+          "continueToChat": "continuar to chat",
+          "useFullForm": "Use lleno form",
+          "safetyUseForm": "Les rapports de sécurité sont envoyés directement à notre équipe – veuillez utiliser le formulaire complet.",
+          "chatAiDisclaimer": "L'IA peut faire des erreurs : vous pouvez parler à une personne à tout moment après la création de votre ticket.",
+          "startChat": "empezar chat",
+          "chatBack": "Retour"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -17088,7 +17104,8 @@
           "startChat": "empezar chat",
           "chatBack": "Retour",
           "safetyUseForm": "Les rapports de sécurité sont envoyés directement à notre équipe – veuillez utiliser le formulaire complet.",
-          "chatAiDisclaimer": "L'IA peut faire des erreurs : vous pouvez parler à une personne à tout moment après la création de votre ticket."
+          "chatAiDisclaimer": "L'IA peut faire des erreurs : vous pouvez parler à une personne à tout moment après la création de votre ticket.",
+          "sentToTeam": "Je verzoek is naar ons ondersteuningsteam gestuurd. We antwoorden in dit gesprek."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Écrivez votre message…",
@@ -17151,7 +17168,15 @@
           "priorityLow": "faible",
           "priorityMedium": "moyen",
           "priorityHigh": "élevé",
-          "priorityUrgent": "urgent"
+          "priorityUrgent": "urgent",
+          "handoffTitle": "We verbinden je met support",
+          "handoffBody": "Een specialist sluit zo meteen aan bij dit gesprek.",
+          "aiDisclaimer": "AI kan fouten maken — je kunt op elk moment een persoon vragen.",
+          "assistantName": "Beautonomi-assistent",
+          "talkToPerson": "Praat met een persoon",
+          "didThisHelp": "Heeft dit geholpen? Ja",
+          "attachmentsAfterHuman": "Bijlagen zijn beschikbaar zodra een specialist aan het gesprek deelneemt.",
+          "assistantTyping": "Assistent is aan het typen…"
         },
         "giftCardAmountPlaceholder": "ex. 350",
         "partnerProfileReportPlaceholder": "Décrivez ce qui s’est passé…",
@@ -20252,7 +20277,10 @@
         "createOfferFailed": "Impossible de créer custom offer",
         "offerUpdated": "Offer mis à jour successfully!",
         "offerCreated": "Offer créé successfully!",
-        "createOfferFailedShort": "Impossible de créer offer"
+        "createOfferFailedShort": "Impossible de créer offer",
+        "changeClient": "Wijzigen",
+        "searchClientPlaceholder": "Zoek op naam, e-mail of telefoon (bijv. 082…)",
+        "searchClientHint": "Typ minstens 2 tekens"
       },
       "privacyAndSharing": {
         "tabAccount": "Compte",

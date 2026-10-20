@@ -491,3 +491,5 @@ export {
   type PaycloudPaymentErrorOwner,
 } from "./payments/paycloud-payment-errors";
 export { CUSTOM_REQUEST_SUBMIT_EXPIRY_DAYS } from "./custom-requests/constants";
+export { streamAssistantReply } from "./support/stream-assistant-reply";
+export type { StreamAssistantReplyOptions } from "./support/stream-assistant-reply";

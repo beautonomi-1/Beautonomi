@@ -51,6 +51,26 @@
         },
         "inAppBrowser": {
           "subscriptionPaymentPending": "Your payment was received and confirmation is still syncing with your bank. Return to Subscription and pull to refresh in a moment."
+        },
+        "supportTicketNew": {
+          "sentToTeam": "Your ticket was sent to our support team. We'll reply in this thread.",
+          "chatDefaultSubject": "Support request",
+          "continueToChat": "Continue to chat",
+          "useFullForm": "Use full form",
+          "safetyUseForm": "Safety reports go straight to our team — please use the full form.",
+          "chatAiDisclaimer": "AI can make mistakes — you can talk to a person anytime after your ticket is created.",
+          "startChat": "Start chat",
+          "chatBack": "Back"
+        },
+        "supportTicketDetail": {
+          "assistantTyping": "Assistant is typing…",
+          "handoffTitle": "Connecting you to support",
+          "handoffBody": "A specialist will join this thread shortly.",
+          "aiDisclaimer": "AI can make mistakes — you can request a person anytime.",
+          "assistantName": "Beautonomi Assistant",
+          "talkToPerson": "Talk to a person",
+          "didThisHelp": "Did this help? Yes",
+          "attachmentsAfterHuman": "Attachments are available after a specialist joins the conversation."
         }
       }
     }
@@ -194,6 +214,26 @@
           "customSending": "Sending request...",
           "customSend": "Send request",
           "messageProvider": "Message"
+        },
+        "supportTicketNew": {
+          "sentToTeam": "Your ticket was sent to our support team. We'll reply in this thread.",
+          "chatDefaultSubject": "Support request",
+          "continueToChat": "Continue to chat",
+          "useFullForm": "Use full form",
+          "safetyUseForm": "Safety reports go straight to our team — please use the full form.",
+          "chatAiDisclaimer": "AI can make mistakes — you can talk to a person anytime after your ticket is created.",
+          "startChat": "Start chat",
+          "chatBack": "Back"
+        },
+        "supportTicketDetail": {
+          "handoffTitle": "Connecting you to support",
+          "handoffBody": "A specialist will join this thread shortly.",
+          "aiDisclaimer": "AI can make mistakes — you can request a person anytime.",
+          "assistantName": "Beautonomi Assistant",
+          "talkToPerson": "Talk to a person",
+          "didThisHelp": "Did this help? Yes",
+          "attachmentsAfterHuman": "Attachments are available after a specialist joins the conversation.",
+          "assistantTyping": "Assistant is typing…"
         }
       }
     }

@@ -8945,7 +8945,15 @@
           "priorityLow": "low",
           "priorityMedium": "medium",
           "priorityHigh": "high",
-          "priorityUrgent": "urgent"
+          "priorityUrgent": "urgent",
+          "assistantTyping": "Asisten sedang mengetik…",
+          "handoffTitle": "Menghubungkan Anda ke dukungan",
+          "handoffBody": "Seorang spesialis akan segera bergabung dalam percakapan ini.",
+          "aiDisclaimer": "AI bisa keliru — Anda dapat meminta seseorang kapan saja.",
+          "assistantName": "Asisten Beautonomi",
+          "talkToPerson": "Bicara dengan seseorang",
+          "didThisHelp": "Apakah ini membantu? Ya",
+          "attachmentsAfterHuman": "Lampiran tersedia setelah seorang spesialis bergabung dalam percakapan."
         },
         "providerVerificationPanel": {
           "statusNotStarted": "Not started",
@@ -9440,7 +9448,15 @@
           "priorityLow": "Low",
           "priorityMedium": "Medium",
           "priorityHigh": "High",
-          "priorityUrgent": "Urgent"
+          "priorityUrgent": "Urgent",
+          "sentToTeam": "Tiket Anda sudah dikirim ke tim dukungan kami. Kami akan membalas di percakapan ini.",
+          "chatDefaultSubject": "ayuda solicitud",
+          "continueToChat": "continuar to chat",
+          "useFullForm": "Use lleno form",
+          "safetyUseForm": "Les rapports de sécurité sont envoyés directement à notre équipe – veuillez utiliser le formulaire complet.",
+          "chatAiDisclaimer": "L'IA peut faire des erreurs : vous pouvez parler à une personne à tout moment après la création de votre ticket.",
+          "startChat": "empezar chat",
+          "chatBack": "Retour"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -17088,7 +17104,8 @@
           "startChat": "empezar chat",
           "chatBack": "Retour",
           "safetyUseForm": "Les rapports de sécurité sont envoyés directement à notre équipe – veuillez utiliser le formulaire complet.",
-          "chatAiDisclaimer": "L'IA peut faire des erreurs : vous pouvez parler à une personne à tout moment après la création de votre ticket."
+          "chatAiDisclaimer": "L'IA peut faire des erreurs : vous pouvez parler à une personne à tout moment après la création de votre ticket.",
+          "sentToTeam": "Tiket Anda sudah dikirim ke tim dukungan kami. Kami akan membalas di percakapan ini."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Écrivez votre message…",
@@ -17151,7 +17168,15 @@
           "priorityLow": "faible",
           "priorityMedium": "moyen",
           "priorityHigh": "élevé",
-          "priorityUrgent": "urgent"
+          "priorityUrgent": "urgent",
+          "handoffTitle": "Menghubungkan Anda ke dukungan",
+          "handoffBody": "Seorang spesialis akan segera bergabung dalam percakapan ini.",
+          "aiDisclaimer": "AI bisa keliru — Anda dapat meminta seseorang kapan saja.",
+          "assistantName": "Asisten Beautonomi",
+          "talkToPerson": "Bicara dengan seseorang",
+          "didThisHelp": "Apakah ini membantu? Ya",
+          "attachmentsAfterHuman": "Lampiran tersedia setelah seorang spesialis bergabung dalam percakapan.",
+          "assistantTyping": "Asisten sedang mengetik…"
         },
         "giftCardAmountPlaceholder": "ex. 350",
         "partnerProfileReportPlaceholder": "Décrivez ce qui s’est passé…",
@@ -20252,7 +20277,10 @@
         "createOfferFailed": "Impossible de créer custom offer",
         "offerUpdated": "Offer mis à jour successfully!",
         "offerCreated": "Offer créé successfully!",
-        "createOfferFailedShort": "Impossible de créer offer"
+        "createOfferFailedShort": "Impossible de créer offer",
+        "changeClient": "Ubah",
+        "searchClientPlaceholder": "Cari menurut nama, surel, atau telepon (mis. 082…)",
+        "searchClientHint": "Ketik minimal 2 karakter"
       },
       "privacyAndSharing": {
         "tabAccount": "Compte",

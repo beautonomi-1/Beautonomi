@@ -4,13 +4,14 @@ import {
   fetchConfigBundle,
   getCachedConfigBundle,
   clearConfigBundleCache,
-  isConfigBundleStub,
   isConfigBundleCacheFresh,
+  isConfigBundleStub,
   type PublicConfigBundle,
   DEFAULT_AUTH,
   DEFAULT_VERIFICATION_POLICY,
 } from "@/lib/config-bundle";
 import { resyncLocaleFromBundle } from "@/lib/i18n";
+import { useAuth } from "@/providers/AuthProvider";
 
 interface ConfigBundleContextValue {
   bundle: PublicConfigBundle | null;
@@ -51,6 +52,7 @@ const defaultBundle: PublicConfigBundle = {
     identity_verification: {},
     aura: {},
     safety: {},
+    support_assistant: { active: false },
   },
   verification: { ...DEFAULT_VERIFICATION_POLICY },
 };
@@ -58,6 +60,8 @@ const defaultBundle: PublicConfigBundle = {
 const ConfigBundleContext = createContext<ConfigBundleContextValue | undefined>(undefined);
 
 export function ConfigBundleProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
   const initialCached = getCachedConfigBundle();
   const [bundle, setBundle] = useState<PublicConfigBundle | null>(initialCached);
   const [isLoading, setLoading] = useState(
@@ -87,13 +91,14 @@ export function ConfigBundleProvider({ children }: { children: React.ReactNode }
       const data = await fetchConfigBundle({
         platform: "provider",
         environment: __DEV__ ? "development" : "production",
+        userId,
       });
       applyBundle(data);
     } catch (e) {
       applyBundle(defaultBundle);
       setError(e instanceof Error ? e.message : "Failed to load config");
     }
-  }, [applyBundle]);
+  }, [applyBundle, userId]);
 
   useEffect(() => {
     void refresh();
@@ -103,12 +108,12 @@ export function ConfigBundleProvider({ children }: { children: React.ReactNode }
     const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
       if (state !== "active") return;
       const current = bundleRef.current;
-      if (isConfigBundleStub(current) || !isConfigBundleCacheFresh()) {
+      if (isConfigBundleStub(current) || !isConfigBundleCacheFresh(userId)) {
         void refresh();
       }
     });
     return () => sub.remove();
-  }, [refresh]);
+  }, [refresh, userId]);
 
   return (
     <ConfigBundleContext.Provider
@@ -141,6 +146,12 @@ export function useFeatureFlag(key: string): boolean {
   const { bundle } = useConfigBundle();
   const flag = bundle?.flags?.[key];
   return flag?.enabled ?? false;
+}
+
+export function useSupportAssistantActive(): boolean {
+  const { bundle } = useConfigBundle();
+  if (isConfigBundleStub(bundle)) return false;
+  return bundle?.modules?.support_assistant?.active ?? false;
 }
 
 export function useModuleConfig<K extends keyof PublicConfigBundle["modules"]>(

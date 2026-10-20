@@ -508,7 +508,7 @@ export default function NewBookingScreen() {
   const [clientSearch, setClientSearch] = useState("");
   const [clientMode, setClientMode] = useState<"search" | "new">("search");
   const { data: rawSearchedClients, loading: clientsLoading } = useApi<ApiClient[]>(
-    `/api/provider/clients?search=${encodeURIComponent(clientSearch)}`,
+    `/api/provider/clients?search=${encodeURIComponent(clientSearch)}&include_serviced=1`,
     { enabled: clientSearch.trim().length >= 2 }
   );
   const { data: rawBrowseClients, loading: browseClientsLoading } = useApi<ApiClient[]>(
@@ -654,7 +654,7 @@ export default function NewBookingScreen() {
       // API may return array filtered by customer_id; take first match
       const raw = rawPreselectedClients.find(
         (c) => c.customer_id === preselectedClientId || c.id === preselectedClientId
-      ) ?? rawPreselectedClients[0];
+      );
       if (raw) {
         setSelectedClient({
           id: raw.id,

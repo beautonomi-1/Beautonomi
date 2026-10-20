@@ -351,7 +351,7 @@ export function NewSaleDialog({
     const searchClients = async () => {
       if (clientSearchQuery.length >= 1) {
         try {
-          const response = await providerPortalFetch(`/api/provider/clients?search=${encodeURIComponent(clientSearchQuery)}`);
+          const response = await providerPortalFetch(`/api/provider/clients?search=${encodeURIComponent(clientSearchQuery)}&include_serviced=1`);
           if (response.ok) {
             const data = await response.json();
             const clients = data.data || [];

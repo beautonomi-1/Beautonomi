@@ -21,9 +21,10 @@ import {
 } from "@/lib/support/ticket-categories";
 import { computeSlaResolutionDueIso, computeFirstResponseDueIso } from "@/lib/support/support-ticket-sla";
 import { isSafetySupportCategory } from "@/lib/support/support-assistant/categories";
-import { isSupportAssistantEnabledForUser } from "@/lib/support/support-assistant/availability";
-import { runSupportAssistantTurn } from "@/lib/support/support-assistant/run-turn";
-import { handoffSupportTicketToHuman } from "@/lib/support/support-assistant/handoff";
+import {
+  resolveSupportAssistantAvailability,
+  supportAssistantPlatformForRequest,
+} from "@/lib/support/support-assistant/availability";
 
 const createTicketSchema = z.object({
   subject: z.string().min(1, "Subject is required").max(200, "Subject too long"),
@@ -76,14 +77,21 @@ export async function POST(request: NextRequest) {
         : null;
 
     const safetyCategory = isSafetySupportCategory(category);
+    const requestedAssistant = !safetyCategory && validated.handling_mode === "assistant";
     let handlingMode: "assistant" | "human" = "human";
-    if (!safetyCategory && validated.handling_mode === "assistant") {
-      const assistantOn = await isSupportAssistantEnabledForUser({
+    let assistantUnavailable: { code: string } | undefined;
+    if (requestedAssistant) {
+      const availability = await resolveSupportAssistantAvailability({
         role: user.role,
+        requesterType,
         userId: user.id,
-        platform: requesterType === "provider" ? "provider" : "web",
+        platform: supportAssistantPlatformForRequest({ request, requesterType }),
       });
-      if (assistantOn) handlingMode = "assistant";
+      if (availability.enabled) {
+        handlingMode = "assistant";
+      } else if (availability.code) {
+        assistantUnavailable = { code: availability.code };
+      }
     }
 
     // Create support ticket (description NOT NULL: use first message; ticket_number set by DB trigger if omitted)
@@ -219,36 +227,11 @@ export async function POST(request: NextRequest) {
       console.error("Fraud case from safety ticket failed:", fraudErr);
     }
 
-    let assistantMessage: Record<string, unknown> | null = null;
-    let handoff = false;
-    if (handlingMode === "assistant") {
-      const turn = await runSupportAssistantTurn({
-        admin: adminSupabase,
-        ticketId: ticket.id,
-        userText: validated.message,
-        request,
-      });
-      if (turn.ok === true) {
-        assistantMessage = turn.assistantMessage;
-        handoff = turn.handoff;
-      } else if (turn.handoff) {
-        handoff = true;
-      } else {
-        await handoffSupportTicketToHuman({
-          admin: adminSupabase,
-          ticketId: ticket.id,
-          request,
-          reason: turn.message,
-        });
-        handoff = true;
-      }
-    }
-
     return successResponse({
-      ticket: { ...ticket, handling_mode: handoff ? "human" : handlingMode },
+      ticket: { ...ticket, handling_mode: handlingMode },
       initialMessage: message,
-      assistantMessage,
-      handoff,
+      assistantPending: handlingMode === "assistant",
+      assistantUnavailable,
       message: "Support ticket created successfully",
     });
   } catch (error) {

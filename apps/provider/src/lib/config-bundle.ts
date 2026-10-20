@@ -139,6 +139,7 @@ export interface PublicConfigBundle {
     identity_verification: Record<string, unknown>;
     aura: Record<string, unknown>;
     safety: Record<string, unknown>;
+    support_assistant?: { active: boolean };
   };
   verification?: PublicVerificationPolicy;
   content_safety?: PublicContentSafetyPolicy;
@@ -148,6 +149,7 @@ export interface PublicConfigBundle {
 
 let cached: PublicConfigBundle | null = null;
 let cacheTime = 0;
+let cachedUserId: string | null = null;
 export const CONFIG_BUNDLE_CACHE_MS = 30 * 60 * 1000; // 30 min — foreground listeners refresh stale data
 
 function createStubBundle(
@@ -181,6 +183,7 @@ function createStubBundle(
       identity_verification: {},
       aura: {},
       safety: {},
+      support_assistant: { active: false },
     },
     verification: { ...DEFAULT_VERIFICATION_POLICY },
     content_safety: { ...DEFAULT_CONTENT_SAFETY_POLICY },
@@ -194,7 +197,9 @@ export function isConfigBundleStub(bundle: PublicConfigBundle | null | undefined
   return false;
 }
 
-export function isConfigBundleCacheFresh(): boolean {
+export function isConfigBundleCacheFresh(forUserId?: string | null): boolean {
+  const wantUserId = forUserId ?? null;
+  if (cachedUserId !== wantUserId) return false;
   return cached != null && !isConfigBundleStub(cached) && Date.now() - cacheTime < CONFIG_BUNDLE_CACHE_MS;
 }
 
@@ -202,17 +207,21 @@ export async function fetchConfigBundle(params?: {
   platform?: Platform;
   environment?: Environment;
   appVersion?: string | null;
+  userId?: string | null;
 }): Promise<PublicConfigBundle> {
   const platform = params?.platform ?? "provider";
   const environment = params?.environment ?? (__DEV__ ? "development" : "production");
-  if (isConfigBundleCacheFresh()) {
+  const userId = params?.userId ?? null;
+  if (isConfigBundleCacheFresh(userId)) {
     return cached as PublicConfigBundle;
   }
   const base = getBackendUrl().replace(/\/$/, "");
   if (!base) {
     return createStubBundle(environment, platform);
   }
-  const url = `${base}/api/public/config-bundle?platform=${platform}&environment=${environment}`;
+  const urlParams = new URLSearchParams({ platform, environment });
+  if (userId) urlParams.set("user_id", userId);
+  const url = `${base}/api/public/config-bundle?${urlParams.toString()}`;
   try {
     const res = await fetch(
       url,
@@ -231,6 +240,7 @@ export async function fetchConfigBundle(params?: {
     if (data?.meta && !isConfigBundleStub({ ...data, isStub: false })) {
       cached = { ...data, isStub: false };
       cacheTime = Date.now();
+      cachedUserId = userId;
       return cached;
     }
     if (data?.meta) {
@@ -261,4 +271,5 @@ export function getTenantRegionCode(): string {
 export function clearConfigBundleCache(): void {
   cached = null;
   cacheTime = 0;
+  cachedUserId = null;
 }

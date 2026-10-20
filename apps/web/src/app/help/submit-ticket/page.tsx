@@ -38,7 +38,7 @@ import {
 import { SupportTicketCategoryPicker } from "@/components/support/SupportTicketCategoryPicker";
 import { resolveSupportTicketPrefillFromSearch, shouldSendSupportContextId, supportPrefillNoun } from "@beautonomi/utils";
 import { useAuth } from "@/providers/AuthProvider";
-import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { useFeatureFlag, useSupportAssistantActive } from "@/providers/ConfigBundleProvider";
 import { isSafetySupportCategory } from "@/lib/support/support-assistant/categories";
 
 function resolvePickerAudience(role: string | null | undefined): SupportTicketCategoryAudience {
@@ -78,17 +78,19 @@ export default function SubmitTicketPage() {
   const [priorityTouched, setPriorityTouched] = useState(false);
   const assistantFlagKey =
     pickerAudience === "provider" ? "support.ai_assistant.provider" : "support.ai_assistant.customer";
-  const assistantEnabled = useFeatureFlag(assistantFlagKey);
+  const assistantFlagOn = useFeatureFlag(assistantFlagKey);
+  const assistantAgentActive = useSupportAssistantActive();
+  const assistantChatAvailable = assistantFlagOn && assistantAgentActive;
   const [chatStep, setChatStep] = useState<"category" | "chat" | "form">("form");
   const [chatSending, setChatSending] = useState(false);
 
   useEffect(() => {
-    if (assistantEnabled) {
+    if (assistantChatAvailable) {
       setChatStep("category");
     } else {
       setChatStep("form");
     }
-  }, [assistantEnabled]);
+  }, [assistantChatAvailable]);
 
   const applyCategory = useCallback(
     (value: string) => {
@@ -143,26 +145,35 @@ export default function SubmitTicketPage() {
       setChatSending(true);
       const createPath =
         pickerAudience === "provider" ? "/api/provider/support-tickets" : "/api/me/support-tickets";
-      const res = await fetcher.post<{ data?: { ticket?: { id?: string; ticket_number?: string } } }>(
-        createPath,
-        {
-          subject: subjectLine,
-          message: message.trim(),
-          priority: preset.priority ?? priority,
-          category,
-          support_context_type: contextType,
-          support_context_id: contextType && shouldSendSupportContextId(contextType) ? supportContextId : null,
-          support_context_label: supportContextLabel.trim() || null,
-          handling_mode: "assistant",
-        },
-      );
+      const res = await fetcher.post<{
+        data?: {
+          ticket?: { id?: string; ticket_number?: string };
+          assistantUnavailable?: { code?: string };
+          assistantPending?: boolean;
+        };
+      }>(createPath, {
+        subject: subjectLine,
+        message: message.trim(),
+        priority: preset.priority ?? priority,
+        category,
+        support_context_type: contextType,
+        support_context_id: contextType && shouldSendSupportContextId(contextType) ? supportContextId : null,
+        support_context_label: supportContextLabel.trim() || null,
+        handling_mode: "assistant",
+      });
       const ticketId = (res as { data?: { ticket?: { id?: string } } })?.data?.ticket?.id;
       const ticketNumber = (res as { data?: { ticket?: { ticket_number?: string } } })?.data?.ticket?.ticket_number;
-      toast.success(
-        ticketNumber
-          ? `Ticket ${ticketNumber} — chat with our assistant below.`
-          : "Ticket created — continuing in chat.",
-      );
+      const assistantUnavailable = (res as { data?: { assistantUnavailable?: { code?: string } } })?.data
+        ?.assistantUnavailable;
+      if (assistantUnavailable) {
+        toast.info("Your ticket was sent to our support team. We'll reply in this thread.");
+      } else {
+        toast.success(
+          ticketNumber
+            ? `Ticket ${ticketNumber} — chat with our assistant below.`
+            : "Ticket created — continuing in chat.",
+        );
+      }
       router.push(ticketId ? `/help/my-tickets/${ticketId}` : "/help/my-tickets");
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : "Failed to start support chat");
@@ -259,7 +270,7 @@ export default function SubmitTicketPage() {
               </p>
             </CardHeader>
             <CardContent className="px-5 py-8 sm:px-8">
-              {chatStep === "category" && assistantEnabled ? (
+              {chatStep === "category" && assistantChatAvailable ? (
                 <div className="space-y-6">
                   {bookingPrefill.supportContextLabel ? (
                     <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm text-zinc-700">
@@ -296,7 +307,7 @@ export default function SubmitTicketPage() {
                     </p>
                   ) : null}
                 </div>
-              ) : chatStep === "chat" && assistantEnabled ? (
+              ) : chatStep === "chat" && assistantChatAvailable ? (
                 <div className="space-y-6">
                   <p className="text-sm text-zinc-600">
                     Ticket category: <span className="font-medium text-zinc-900">{category || "—"}</span>

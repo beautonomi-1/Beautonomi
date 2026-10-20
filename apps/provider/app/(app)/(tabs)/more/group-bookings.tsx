@@ -879,7 +879,7 @@ export default function GroupBookingsScreen() {
     date: "",
     time: "",
     duration: "60",
-    maxParticipants: "10",
+    maxParticipants: "2",
     notes: "",
     serviceId: "" as string,
     staffId: "" as string,
@@ -1878,7 +1878,7 @@ export default function GroupBookingsScreen() {
       date: requestedDate,
       time: requestedTime,
       duration: "60",
-      maxParticipants: "10",
+      maxParticipants: "2",
       notes: "",
       serviceId: "",
       staffId: requestedStaffId,
@@ -2066,7 +2066,7 @@ export default function GroupBookingsScreen() {
     participantSearchTimers.current[participantId] = setTimeout(async () => {
       try {
         const res = await api.get<any>(
-          `/api/provider/clients?search=${encodeURIComponent(query.trim())}&limit=8`
+          `/api/provider/clients?search=${encodeURIComponent(query.trim())}&limit=8&include_serviced=1`
         );
         const rows = (res.data || []).map((c: any) => ({
           id: c.id,
@@ -2398,7 +2398,7 @@ export default function GroupBookingsScreen() {
     const duration = Number(createForm.duration);
     const maxParticipants = Math.max(
       Math.max(1, createParticipants.length),
-      Number(createForm.maxParticipants) || 10,
+      Number(createForm.maxParticipants) || 2,
     );
     const participantsToCreate = createParticipants
       .map((p) => ({
@@ -5456,7 +5456,7 @@ export default function GroupBookingsScreen() {
               }}>
                 <TouchableOpacity
                   onPress={() => {
-                    const current = Number(createForm.maxParticipants) || 10;
+                    const current = Number(createForm.maxParticipants) || 2;
                     const minAllowed = Math.max(1, createParticipants.length);
                     setCreateForm((p) => ({ ...p, maxParticipants: String(Math.max(minAllowed, current - 1)) }));
                     Haptics.selectionAsync().catch(() => {});
@@ -5476,12 +5476,12 @@ export default function GroupBookingsScreen() {
                     if (Number.isFinite(n) && n >= 1) setCreateForm((p) => ({ ...p, maxParticipants: String(Math.max(minAllowed, n)) }));
                   }}
                   keyboardType="number-pad"
-                  placeholder="10"
+                  placeholder="2"
                   placeholderTextColor="#9ca3af"
                 />
                 <TouchableOpacity
                   onPress={() => {
-                    const current = Number(createForm.maxParticipants) || 10;
+                    const current = Number(createForm.maxParticipants) || 2;
                     setCreateForm((p) => ({ ...p, maxParticipants: String(Math.min(200, current + 1)) }));
                     Haptics.selectionAsync().catch(() => {});
                   }}
@@ -5812,7 +5812,7 @@ export default function GroupBookingsScreen() {
                   />
                   {/* Add another participant inline after the last row */}
                   {isLast && (() => {
-                    const cap = Number(createForm.maxParticipants) || 200;
+                    const cap = Number(createForm.maxParticipants) || 2;
                     const filledRows = createParticipants.filter(
                       (p) => p.name.trim() || p.phone.trim() || p.email.trim()
                     ).length;
@@ -5923,7 +5923,7 @@ export default function GroupBookingsScreen() {
 
                 {/* Capacity summary row */}
                 {(() => {
-                  const cap = Number(createForm.maxParticipants) || 10;
+                  const cap = Number(createForm.maxParticipants) || 2;
                   const count = participantsList.length;
                   const remaining = cap - count;
                   return (

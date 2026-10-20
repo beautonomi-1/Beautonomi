@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Search, X } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import { clientContactMatches } from "@/lib/phone";
 
 interface Client {
   id: string;
@@ -39,16 +40,41 @@ export default function ClientSelector({ selectedIds, onSelectionChange }: Clien
   const [clients, setClients] = useState<Client[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  /** Names of clients seen in any result set, so selected badges survive a new search. */
+  const [knownNames, setKnownNames] = useState<Map<string, string>>(() => new Map());
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const q = searchQuery.trim();
+      setDebouncedSearchQuery(q.length >= 2 ? q : "");
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   useEffect(() => {
     loadClients();
-  }, []);
+  }, [debouncedSearchQuery]);
 
   const loadClients = async () => {
     try {
       setIsLoading(true);
-      const response = await fetcher.get<{ data: Client[] }>("/api/provider/clients");
-      setClients(response.data || []);
+      const searchParam =
+        debouncedSearchQuery.length >= 2
+          ? `?search=${encodeURIComponent(debouncedSearchQuery)}`
+          : "";
+      const response = await fetcher.get<{ data: Client[] }>(
+        `/api/provider/clients${searchParam}`,
+      );
+      const loaded = response.data || [];
+      setClients(loaded);
+      setKnownNames((prev) => {
+        const next = new Map(prev);
+        for (const c of loaded) {
+          if (c.customer?.full_name) next.set(c.customer_id, c.customer.full_name);
+        }
+        return next;
+      });
     } catch (error) {
       console.error("Failed to load clients:", error);
 toast.error(t("web.provider.settings.pages.clients/list.failedToLoadClients"));
@@ -58,12 +84,17 @@ toast.error(t("web.provider.settings.pages.clients/list.failedToLoadClients"));
   };
 
   const filteredClients = clients.filter((client) => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
+    const q = searchQuery.trim();
+    if (!q) return true;
+    // The server already applied this exact search (it also matches tags and notes).
+    if (debouncedSearchQuery === q) return true;
     return (
-      client.customer?.full_name?.toLowerCase().includes(query) ||
-      client.customer?.email?.toLowerCase().includes(query) ||
-      client.customer?.phone?.includes(query)
+      clientContactMatches(q, {
+        name: client.customer?.full_name,
+        email: client.customer?.email,
+        phone: client.customer?.phone,
+      }) ||
+      Boolean(client.tags?.some((tag) => tag.toLowerCase().includes(q.toLowerCase())))
     );
   });
 
@@ -110,10 +141,11 @@ placeholder={t("web.provider.clientsPage.searchPlaceholder")}
       {selectedIds.length > 0 && (
         <div className="flex flex-wrap gap-2 p-2 bg-gray-50 rounded-md">
           {selectedIds.slice(0, 5).map((id) => {
-            const client = clients.find((c) => c.customer_id === id);
+            const name =
+              clients.find((c) => c.customer_id === id)?.customer?.full_name || knownNames.get(id);
             return (
               <Badge key={id} variant="secondary" className="flex items-center gap-1">
-{client?.customer?.full_name || t("web.provider.pages.marketing/campaigns.unknown")}
+{name || t("web.provider.pages.marketing/campaigns.unknown")}
                 <X
                   className="w-3 h-3 cursor-pointer"
                   onClick={() => toggleClient(id)}

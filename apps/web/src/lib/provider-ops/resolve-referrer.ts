@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { phoneIlikeClauses, sanitizeIlikeTerm } from "@/lib/search/phone-ilike";
 import { normalizePhone } from "@/lib/provider-ops/leads-csv-import";
 
 export interface ResolvedReferrer {
@@ -259,7 +260,7 @@ export async function searchReferrersInTenant(
   if (q.length < 2) return [];
 
   const scopedUserIds = await loadScopedUserIds(supabase, tenantId);
-  const safe = q.replace(/[%_]/g, "");
+  const safe = sanitizeIlikeTerm(q);
   const results: ReferrerSearchResult[] = [];
   const seen = new Set<string>();
 
@@ -268,7 +269,14 @@ export async function searchReferrersInTenant(
     .select("id, user_id, business_name, email, billing_email, phone, billing_phone")
     .eq("tenant_id", tenantId)
     .or(
-      `business_name.ilike.%${safe}%,email.ilike.%${safe}%,billing_email.ilike.%${safe}%,phone.ilike.%${safe}%,billing_phone.ilike.%${safe}%`,
+      [
+        `business_name.ilike.%${safe}%`,
+        `email.ilike.%${safe}%`,
+        `billing_email.ilike.%${safe}%`,
+        `phone.ilike.%${safe}%`,
+        `billing_phone.ilike.%${safe}%`,
+        ...phoneIlikeClauses(["phone", "billing_phone"], q),
+      ].join(","),
     )
     .limit(limit);
   if (providerErr) throw providerErr;
@@ -295,7 +303,14 @@ export async function searchReferrersInTenant(
   const { data: users, error: userErr } = await supabase
     .from("users")
     .select("id, full_name, email, phone")
-    .or(`full_name.ilike.%${safe}%,email.ilike.%${safe}%,phone.ilike.%${safe}%`)
+    .or(
+      [
+        `full_name.ilike.%${safe}%`,
+        `email.ilike.%${safe}%`,
+        `phone.ilike.%${safe}%`,
+        ...phoneIlikeClauses(["phone"], q),
+      ].join(","),
+    )
     .limit(limit * 2);
   if (userErr) throw userErr;
 

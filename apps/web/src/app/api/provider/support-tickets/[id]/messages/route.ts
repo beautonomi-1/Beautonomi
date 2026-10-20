@@ -73,7 +73,9 @@ export async function POST(
       return errorResponse("This ticket is closed to new replies", "TICKET_CLOSED", 409);
     }
 
-    const handlingMode = String(access.ticket.handling_mode ?? "human");
+    let handlingMode = String(access.ticket.handling_mode ?? "human");
+    let fallThroughToHuman = handlingMode !== "assistant";
+    let handoffFromAssistant = false;
     if (handlingMode === "assistant") {
       if (attachments.length > 0) {
         return errorResponse(
@@ -84,8 +86,14 @@ export async function POST(
       }
       const pre = await precheckSupportAssistantTurn({ admin, ticketId: id, request });
       if (pre.ok === false) {
-        return assistantTurnFailureResponse(pre.result);
-      }
+        if (pre.result.handoff) {
+          fallThroughToHuman = true;
+          handoffFromAssistant = true;
+          handlingMode = "human";
+        } else {
+          return assistantTurnFailureResponse(pre.result);
+        }
+      } else if (!fallThroughToHuman) {
       const now = new Date().toISOString();
       const { data: customerMsg, error: insertErr } = await admin
         .from("support_ticket_messages")
@@ -123,6 +131,7 @@ export async function POST(
         assistantMessage: turn.assistantMessage,
         handoff: turn.handoff,
       });
+      }
     }
 
     const bodyText = message.slice(0, 10000) || (attachments.length ? "(attachment)" : "");
@@ -191,6 +200,7 @@ export async function POST(
         author_name: "You",
         is_mine: true,
       },
+      ...(handoffFromAssistant ? { handoff: true } : {}),
     });
   } catch (error) {
     return handleApiError(error, "Failed to add provider support message");

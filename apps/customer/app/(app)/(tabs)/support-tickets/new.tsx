@@ -20,7 +20,7 @@ import {
   shouldSendSupportContextId,
   isSafetySupportCategory,
 } from "@beautonomi/utils";
-import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { useFeatureFlag, useSupportAssistantActive } from "@/providers/ConfigBundleProvider";
 
 const PRIORITY_LABEL_KEYS: Record<(typeof SUPPORT_TICKET_PRIORITIES)[number]["value"], string> = {
   low: "priorityLow",
@@ -55,7 +55,9 @@ export default function NewSupportTicketScreen() {
   );
   const handleBack = useSafetyStackBack();
   const router = useRouter();
-  const assistantEnabled = useFeatureFlag("support.ai_assistant.customer");
+  const assistantFlagOn = useFeatureFlag("support.ai_assistant.customer");
+  const assistantAgentActive = useSupportAssistantActive();
+  const assistantEnabled = assistantFlagOn && assistantAgentActive;
   const [chatStep, setChatStep] = useState<"category" | "chat" | "form">("form");
   const params = useLocalSearchParams<{
     category?: string;
@@ -135,7 +137,10 @@ export default function NewSupportTicketScreen() {
       const preset = supportTicketPresetFromCategory(category);
       const subjectLine =
         subject.trim() || preset.subject || message.trim().slice(0, 120) || sn("chatDefaultSubject");
-      const res = await api.post<{ ticket?: { id?: string; ticket_number?: string } }>("/api/me/support-tickets", {
+      const res = await api.post<{
+        ticket?: { id?: string; ticket_number?: string };
+        assistantUnavailable?: { code: string };
+      }>("/api/me/support-tickets", {
         subject: subjectLine,
         message: message.trim(),
         category,
@@ -148,6 +153,9 @@ export default function NewSupportTicketScreen() {
       if (res.error) {
         Alert.alert(sn("submitFailedTitle"), getApiErrorMessage(res.error, sn("submitFailedFallback")));
         return;
+      }
+      if (res.data?.assistantUnavailable) {
+        Alert.alert(sn("submittedTitle"), sn("sentToTeam"));
       }
       const ticketId = res.data?.ticket?.id;
       const ticketNumber = res.data?.ticket?.ticket_number;

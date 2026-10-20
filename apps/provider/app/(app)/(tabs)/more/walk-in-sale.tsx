@@ -337,7 +337,7 @@ export default function WalkInSaleScreen() {
   const clientsPickPath = useMemo(() => {
     const q = clientPickSearch.trim();
     return q
-      ? `/api/provider/clients?search=${encodeURIComponent(q)}&limit=40`
+      ? `/api/provider/clients?search=${encodeURIComponent(q)}&limit=40&include_serviced=1`
       : "/api/provider/clients?limit=40";
   }, [clientPickSearch]);
 

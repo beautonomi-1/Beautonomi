@@ -8985,7 +8985,8 @@
           "assistantName": "Beautonomi Assistant",
           "talkToPerson": "Talk to a person",
           "didThisHelp": "Did this help? Yes",
-          "attachmentsAfterHuman": "Attachments are available after a specialist joins the conversation."
+          "attachmentsAfterHuman": "Attachments are available after a specialist joins the conversation.",
+          "assistantTyping": "Assistant is typing…"
         },
         "providerVerificationPanel": {
           "statusNotStarted": "Not started",
@@ -9488,7 +9489,8 @@
           "safetyUseForm": "Safety reports go straight to our team — please use the full form.",
           "chatAiDisclaimer": "AI can make mistakes — you can talk to a person anytime after your ticket is created.",
           "startChat": "Start chat",
-          "chatBack": "Back"
+          "chatBack": "Back",
+          "sentToTeam": "Your ticket was sent to our support team. We'll reply in this thread."
         },
         "vatReports": {
           "emptyValue": "—",
@@ -17178,7 +17180,8 @@
           "safetyUseForm": "Safety reports go straight to our team — please use the full form.",
           "chatAiDisclaimer": "AI can make mistakes — you can talk to a person anytime after your ticket is created.",
           "startChat": "Start chat",
-          "chatBack": "Back"
+          "chatBack": "Back",
+          "sentToTeam": "Your ticket was sent to our support team. We'll reply in this thread."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Type your message...",
@@ -17241,7 +17244,15 @@
           "priorityLow": "low",
           "priorityMedium": "medium",
           "priorityHigh": "high",
-          "priorityUrgent": "urgent"
+          "priorityUrgent": "urgent",
+          "handoffTitle": "Connecting you to support",
+          "handoffBody": "A specialist will join this thread shortly.",
+          "aiDisclaimer": "AI can make mistakes — you can request a person anytime.",
+          "assistantName": "Beautonomi Assistant",
+          "talkToPerson": "Talk to a person",
+          "didThisHelp": "Did this help? Yes",
+          "attachmentsAfterHuman": "Attachments are available after a specialist joins the conversation.",
+          "assistantTyping": "Assistant is typing…"
         },
         "giftCardAmountPlaceholder": "e.g. 350",
         "partnerProfileReportPlaceholder": "Please describe what happened...",
@@ -20214,6 +20225,9 @@
         "createOfferDesc": "Send a tailored service offer to a client. They can review and accept it to create a booking.",
         "clientRequired": "Client *",
         "selectClient": "Select a client",
+        "searchClientPlaceholder": "Search by name, email, or phone (e.g. 082…)",
+        "searchClientHint": "Type at least 2 characters",
+        "changeClient": "Change",
         "loadingClients": "Loading clients...",
         "noClientsFound": "No clients found",
         "unknownClient": "Unknown",

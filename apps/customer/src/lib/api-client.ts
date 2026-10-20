@@ -123,7 +123,7 @@ async function resolveAccessToken(): Promise<string | null> {
   return token;
 }
 
-async function getAccessToken(): Promise<string | null> {
+export async function getAccessToken(): Promise<string | null> {
   if (inflightToken) return inflightToken;
   const p = (async () => {
     try {

@@ -8945,7 +8945,15 @@
           "priorityLow": "fhasi",
           "priorityMedium": "exikarhi",
           "priorityHigh": "ntha",
-          "priorityUrgent": "bya xihatla"
+          "priorityUrgent": "bya xihatla",
+          "assistantTyping": "Muthusi u khou nwala…",
+          "handoffTitle": "Ri ni ṱumanya na thusedzo",
+          "handoffBody": "Tshihulwane tshi ḓo dzhena kha nyambedzano iyi nga u sa leli.",
+          "aiDisclaimer": "AI i nga ita vhukhakhi — ni nga humbela muthu tshifhinga tshiṅwe na tshiṅwe.",
+          "assistantName": "Muthusi wa Beautonomi",
+          "talkToPerson": "Amba na muthu",
+          "didThisHelp": "Zwo thusa naa? Ee",
+          "attachmentsAfterHuman": "Zwi ṱumanywaho zwi wanala nga murahu ha musi tshihulwane tsho dzhena nyambedzanoni."
         },
         "providerVerificationPanel": {
           "statusNotStarted": "Not thomaed",
@@ -9440,7 +9448,15 @@
           "priorityLow": "Fhasi",
           "priorityMedium": "Exikarhi",
           "priorityHigh": "Ntha",
-          "priorityUrgent": "Bya xihatla"
+          "priorityUrgent": "Bya xihatla",
+          "sentToTeam": "Thikhithi yaṋu yo rumelwa kha tshigwada tshashu tsha thusedzo. Ri ḓo fhindula kha nyambedzano iyi.",
+          "chatDefaultSubject": "thusedzo khumbelo",
+          "continueToChat": "bvela phanḓa to chat",
+          "useFullForm": "Use yo ḓala form",
+          "safetyUseForm": "Mivhigo ya tsireledzo i ya thwii kha tshigwada tshashu — kha vha shumise fomo yo fhelelaho.",
+          "chatAiDisclaimer": "AI i nga ita vhukhakhi — u nga amba na muthu tshifhinga tshiṅwe na tshiṅwe nga murahu ha musi thikhithi yaṋu yo no sikwa.",
+          "startChat": "thoma chat",
+          "chatBack": "Murahu"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -17093,7 +17109,8 @@
           "startChat": "thoma chat",
           "chatBack": "Murahu",
           "safetyUseForm": "Mivhigo ya tsireledzo i ya thwii kha tshigwada tshashu — kha vha shumise fomo yo fhelelaho.",
-          "chatAiDisclaimer": "AI i nga ita vhukhakhi — u nga amba na muthu tshifhinga tshiṅwe na tshiṅwe nga murahu ha musi thikhithi yaṋu yo no sikwa."
+          "chatAiDisclaimer": "AI i nga ita vhukhakhi — u nga amba na muthu tshifhinga tshiṅwe na tshiṅwe nga murahu ha musi thikhithi yaṋu yo no sikwa.",
+          "sentToTeam": "Thikhithi yaṋu yo rumelwa kha tshigwada tshashu tsha thusedzo. Ri ḓo fhindula kha nyambedzano iyi."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Lushaka your mulaedza...",
@@ -17156,7 +17173,15 @@
           "priorityLow": "fhasi",
           "priorityMedium": "exikarhi",
           "priorityHigh": "ntha",
-          "priorityUrgent": "bya xihatla"
+          "priorityUrgent": "bya xihatla",
+          "handoffTitle": "Ri ni ṱumanya na thusedzo",
+          "handoffBody": "Tshihulwane tshi ḓo dzhena kha nyambedzano iyi nga u sa leli.",
+          "aiDisclaimer": "AI i nga ita vhukhakhi — ni nga humbela muthu tshifhinga tshiṅwe na tshiṅwe.",
+          "assistantName": "Muthusi wa Beautonomi",
+          "talkToPerson": "Amba na muthu",
+          "didThisHelp": "Zwo thusa naa? Ee",
+          "attachmentsAfterHuman": "Zwi ṱumanywaho zwi wanala nga murahu ha musi tshihulwane tsho dzhena nyambedzanoni.",
+          "assistantTyping": "Muthusi u khou nwala…"
         },
         "giftCardAmountPlaceholder": "e.g. 350",
         "partnerProfileReportPlaceholder": "Ndi khou humbela uri u ṅwalise zwo itea...",
@@ -20257,7 +20282,10 @@
         "createOfferFailed": "Zwo kundelwa u vumba Zwo itelwa offer",
         "offerUpdated": "Offer khwinisad nungoyo ḓalay!",
         "offerCreated": "Offer vumbad nungoyo ḓalay!",
-        "createOfferFailedShort": "Zwo kundelwa u vumba offer"
+        "createOfferFailedShort": "Zwo kundelwa u vumba offer",
+        "changeClient": "Shandukisa",
+        "searchClientPlaceholder": "Todani nga dzina, imeiḽi kana luṱingo (tsumbo 082…)",
+        "searchClientHint": "Nwalani vhulapfu ha zwifanyiso zwi 2"
       },
       "privacyAndSharing": {
         "tabAccount": "Akhaunte",

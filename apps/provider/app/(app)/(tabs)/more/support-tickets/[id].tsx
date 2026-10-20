@@ -23,6 +23,7 @@ import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { SUPPORT_TICKETS_API_PREFIX } from "@/lib/support-ticket-api";
 import { useTranslation } from "@beautonomi/i18n";
 import { LinkifiedMessageText } from "@/components/support/LinkifiedMessageText";
+import { streamProviderSupportAssistantReply } from "@/lib/support-assistant-stream";
 
 type Message = {
   id: string;
@@ -141,6 +142,8 @@ export default function SupportTicketDetailScreen() {
   const [submittingCsat, setSubmittingCsat] = useState(false);
   const [csatExpanded, setCsatExpanded] = useState(true);
   const scrollViewRef = useRef<ScrollView>(null);
+  const assistantStreamingRef = useRef(false);
+  const initialAssistantStreamRef = useRef(false);
 
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -154,7 +157,7 @@ export default function SupportTicketDetailScreen() {
   }, [id]);
 
   const loadTicket = useCallback(async () => {
-    if (!id) return;
+    if (!id || assistantStreamingRef.current) return;
     setLoadError(null);
     try {
       const res = await api.get<{ ticket: Ticket; messages: Message[] }>(
@@ -182,11 +185,64 @@ export default function SupportTicketDetailScreen() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, st]);
+
+  const runAssistantStream = useCallback(
+    async (mode: "initial" | "follow_up", userMessage: string) => {
+      if (!id) return;
+      assistantStreamingRef.current = true;
+      const streamAssistantId = `stream-assistant-${Date.now()}`;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: streamAssistantId,
+          message: "",
+          is_internal: false,
+          created_at: new Date().toISOString(),
+          user_id: "",
+          author_kind: "assistant",
+          author_name: st("assistantName"),
+          is_mine: false,
+        },
+      ]);
+      try {
+        const result = await streamProviderSupportAssistantReply({
+          ticketId: id,
+          message: userMessage,
+          mode,
+          onAssistantChunk: (text) => {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === streamAssistantId ? { ...m, message: text } : m)),
+            );
+          },
+        });
+        if (result.handoff) {
+          Alert.alert(st("handoffTitle"), result.infoMessage ?? st("handoffBody"));
+        } else if (result.errorMessage && result.errorCode !== "IN_FLIGHT") {
+          Alert.alert(st("sendFailedTitle"), result.errorMessage);
+        }
+      } finally {
+        assistantStreamingRef.current = false;
+        await loadTicket();
+      }
+    },
+    [id, st, loadTicket],
+  );
 
   useEffect(() => {
     loadTicket();
   }, [loadTicket]);
+
+  useEffect(() => {
+    if (!ticket || !id || initialAssistantStreamRef.current) return;
+    if (ticket.handling_mode !== "assistant" || messages.length === 0) return;
+    const last = messages[messages.length - 1];
+    if (last.author_kind === "assistant") return;
+    const isMine = last.is_mine ?? last.user_id === user?.id;
+    if (!isMine) return;
+    initialAssistantStreamRef.current = true;
+    void runAssistantStream("initial", last.message);
+  }, [ticket, messages, id, user?.id, runAssistantStream]);
 
   useEffect(() => {
     let active = AppState.currentState === "active";
@@ -196,7 +252,7 @@ export default function SupportTicketDetailScreen() {
     });
     const pollMs = ticket?.handling_mode === "assistant" ? 2_000 : 30_000;
     const timer = setInterval(() => {
-      if (active) void loadTicket();
+      if (active && !assistantStreamingRef.current) void loadTicket();
     }, pollMs);
     return () => {
       sub.remove();
@@ -214,14 +270,14 @@ export default function SupportTicketDetailScreen() {
         "postgres_changes",
         { event: "*", schema: "public", table: "support_ticket_messages", filter: `ticket_id=eq.${tid}` },
         () => {
-          void loadTicket();
+          if (!assistantStreamingRef.current) void loadTicket();
         },
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "support_tickets", filter: `id=eq.${tid}` },
         () => {
-          void loadTicket();
+          if (!assistantStreamingRef.current) void loadTicket();
         },
       )
       .subscribe();
@@ -293,6 +349,24 @@ export default function SupportTicketDetailScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSending(true);
     try {
+      if (isAssistantMode && msg) {
+        const localMessage: Message = {
+          id: `local-${Date.now()}`,
+          message: msg,
+          is_internal: false,
+          created_at: new Date().toISOString(),
+          user_id: user?.id ?? "",
+          author_name: st("you"),
+          is_mine: true,
+        };
+        setMessages((prev) => [...prev, localMessage]);
+        setReply("");
+        setPendingAttachments([]);
+        invalidateSupportTicketsListCache();
+        trackSupportTicketReply(id);
+        await runAssistantStream("follow_up", msg);
+        return;
+      }
       const res = await api.post(`${SUPPORT_TICKETS_API_PREFIX}/${id}/messages`, {
         message: msg,
         attachments: attachmentsToSend,
@@ -554,7 +628,7 @@ export default function SupportTicketDetailScreen() {
                     }}
                   >
                     <LinkifiedMessageText
-                      text={m.message}
+                      text={m.message || (isAssistant ? st("assistantTyping") : "")}
                       style={{ fontSize: 14, color: isOwn ? "#fff" : "#111827", lineHeight: 20 }}
                       linkStyle={isOwn ? { color: "#fff", textDecorationLine: "underline" } : undefined}
                       onOpenError={() => Alert.alert(st("openFailedTitle"))}

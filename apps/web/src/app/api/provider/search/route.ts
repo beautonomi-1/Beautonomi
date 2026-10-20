@@ -16,6 +16,12 @@ import {
   expandSearchTokens,
   fuzzyTextRelevanceScore,
 } from "@/lib/search/fuzzy-rank";
+import {
+  findCustomerIdsByContactSearchAmongIds,
+  loadDistinctBookingCustomerIdsForProvider,
+  loadProviderClientIndexRows,
+} from "@/lib/provider/client-contact-search";
+import { fetchInIdChunks, POSTGREST_IN_CHUNK } from "@/lib/provider-ops/postgrest-unbounded";
 
 export interface ProviderSearchSuggestion {
   type: "client" | "appointment" | "service";
@@ -82,54 +88,39 @@ export async function GET(request: NextRequest) {
     }
 
     const tokens = expandSearchTokens(q);
-    const userOr =
-      tokens.length > 0
-        ? tokens
-            .flatMap((tok) => {
-              const t = `%${tok}%`;
-              return [
-                `full_name.ilike.${t}`,
-                `email.ilike.${t}`,
-                `phone.ilike.${t}`,
-              ];
-            })
-            .join(",")
-        : "";
     const suggestions: ProviderSearchSuggestion[] = [];
 
-    // 1. Search clients (provider_clients + users)
-    const { data: providerClients } = await supabaseAdmin
-      .from("provider_clients")
-      .select("id, customer_id")
-      .eq("provider_id", providerId)
-      .limit(100);
-
-    if (providerClients && providerClients.length > 0) {
-      const customerIds = providerClients.map((c) => c.customer_id);
+    // 1. Search clients (all saved provider_clients + users)
+    const providerClientRows = await loadProviderClientIndexRows(supabaseAdmin, providerId);
+    if (providerClientRows.length > 0) {
+      const customerIds = providerClientRows.map((c) => c.customer_id);
       const clientMap = new Map(
-        providerClients.map((c) => [c.customer_id, c.id])
+        providerClientRows.map((c) => [c.customer_id, c.id ?? c.customer_id]),
+      );
+      const matchedCustomerIds = await findCustomerIdsByContactSearchAmongIds(
+        supabaseAdmin,
+        customerIds,
+        q,
+        tokens,
+      );
+      const customers = await fetchInIdChunks<{
+        id: string;
+        full_name: string | null;
+        email: string | null;
+        phone: string | null;
+      }>(matchedCustomerIds.slice(0, Math.min(limit * 3, 60)), (slice) =>
+        supabaseAdmin.from("users").select("id, full_name, email, phone").in("id", slice)
       );
 
-      const { data: customers } = userOr
-        ? await supabaseAdmin
-            .from("users")
-            .select("id, full_name, email, phone")
-            .in("id", customerIds)
-            .or(userOr)
-            .limit(Math.min(limit * 3, 60))
-        : { data: null as null };
-
-      if (customers) {
-        for (const c of customers) {
-          const providerClientId = clientMap.get(c.id);
-          suggestions.push({
-            type: "client",
-            id: providerClientId || c.id,
-            title: (c as any).full_name || (c as any).email || "Unknown",
-            subtitle: (c as any).email || (c as any).phone,
-            url: `/provider/clients/${providerClientId || (c as any).id}`,
-          });
-        }
+      for (const c of customers) {
+        const providerClientId = clientMap.get(c.id);
+        suggestions.push({
+          type: "client",
+          id: providerClientId || c.id,
+          title: c.full_name || c.email || "Unknown",
+          subtitle: c.email || c.phone || undefined,
+          url: `/provider/clients/${providerClientId || c.id}`,
+        });
       }
     }
 
@@ -185,21 +176,25 @@ export async function GET(request: NextRequest) {
       for (const b of bookings) pushBookingSuggestion(b as unknown as Record<string, unknown>);
     }
 
-    // If we didn't find bookings by number, try by customer name
-    if (bookings?.length === 0 && userOr) {
-      const { data: matchingCustomers } = await supabaseAdmin
-        .from("users")
-        .select("id")
-        .or(userOr)
-        .limit(8);
+    // If we didn't find bookings by number, try by customer name / email / phone (scoped)
+    if (bookings?.length === 0) {
+      const bookingCustomerIds = await loadDistinctBookingCustomerIdsForProvider(
+        supabaseAdmin,
+        providerId,
+      );
+      const customerIds = await findCustomerIdsByContactSearchAmongIds(
+        supabaseAdmin,
+        bookingCustomerIds,
+        q,
+        tokens,
+      );
 
-      if (matchingCustomers && matchingCustomers.length > 0) {
-        const customerIds = matchingCustomers.map((c) => (c as any).id);
+      if (customerIds.length > 0) {
         const { data: customerBookings } = await supabaseAdmin
           .from("bookings")
           .select(BOOKING_SELECT)
           .eq("provider_id", providerId)
-          .in("customer_id", customerIds)
+          .in("customer_id", customerIds.slice(0, POSTGREST_IN_CHUNK))
           .order("scheduled_start_at", { ascending: false })
           .limit(limit);
 

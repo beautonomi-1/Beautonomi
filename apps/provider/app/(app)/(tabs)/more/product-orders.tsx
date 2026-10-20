@@ -28,6 +28,7 @@ import { useProvider } from "@/providers/ProviderContext";
 import { formatCurrency } from "@/lib/format";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
+import { phoneMatchesQuery } from "@/lib/phone";
 import { useTranslation } from "@beautonomi/i18n";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
@@ -436,7 +437,8 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
           (o.customer?.full_name ?? "").toLowerCase().includes(q) ||
           (o.customer?.email ?? "").toLowerCase().includes(q) ||
           (o.customer_name ?? "").toLowerCase().includes(q) ||
-          (o.customer_phone ?? "").toLowerCase().includes(q)
+          phoneMatchesQuery(o.customer_phone, search) ||
+          phoneMatchesQuery(o.customer?.phone, search)
         );
       })
     : allOrders;

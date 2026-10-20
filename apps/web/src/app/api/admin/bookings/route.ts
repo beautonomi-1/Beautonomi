@@ -6,6 +6,7 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { computeAdminBookingsListStats } from "@/lib/admin/bookings-list-stats";
+import { phoneIlikeClauses, sanitizeIlikeTerm } from "@/lib/search/phone-ilike";
 
 /**
  * GET /api/admin/bookings
@@ -47,7 +48,7 @@ export async function GET(request: NextRequest) {
     };
 
     if (search) {
-      const safe = search.replace(/[%_]/g, "");
+      const safe = sanitizeIlikeTerm(search);
       const { data: matchingBookings } = await supabase
         .from("bookings")
         .select("id")
@@ -58,7 +59,14 @@ export async function GET(request: NextRequest) {
       const { data: matchingCustomers } = await supabase
         .from("users")
         .select("id")
-        .or(`full_name.ilike.%${safe}%,email.ilike.%${safe}%,phone.ilike.%${safe}%`)
+        .or(
+          [
+            `full_name.ilike.%${safe}%`,
+            `email.ilike.%${safe}%`,
+            `phone.ilike.%${safe}%`,
+            ...phoneIlikeClauses(["phone"], search),
+          ].join(","),
+        )
         .limit(200);
       const searchCustomerIds = (matchingCustomers ?? []).map((u: { id: string }) => u.id);
 

@@ -14,7 +14,10 @@ import {
   precheckSupportAssistantTurn,
 } from "@/lib/support/support-assistant/turn-precheck";
 import { handoffSupportTicketToHuman } from "@/lib/support/support-assistant/handoff";
-import { isSupportAssistantEnabledForUser } from "@/lib/support/support-assistant/availability";
+import {
+  isSupportAssistantEnabledForUser,
+  supportAssistantPlatformForRequest,
+} from "@/lib/support/support-assistant/availability";
 
 const bodySchema = z.object({
   message: z.string().min(1).max(5000),
@@ -97,7 +100,7 @@ export async function POST(
     const assistantOn = await isSupportAssistantEnabledForUser({
       role: user.role,
       userId: user.id,
-      platform: "web",
+      platform: supportAssistantPlatformForRequest({ request, role: user.role }),
     });
     if (assistantOn && handlingMode === "human") {
       await handoffSupportTicketToHuman({

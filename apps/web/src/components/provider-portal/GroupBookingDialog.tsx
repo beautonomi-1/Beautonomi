@@ -274,7 +274,7 @@ export function GroupBookingDialog({
     setParticipantClientSearchState(idx, { loading: true });
     clientSearchTimers.current[idx] = setTimeout(async () => {
       try {
-        const res = await providerPortalFetch(`/api/provider/clients?search=${encodeURIComponent(query.trim())}&limit=8`);
+        const res = await providerPortalFetch(`/api/provider/clients?search=${encodeURIComponent(query.trim())}&limit=8&include_serviced=1`);
         if (!res.ok) throw new Error(t("web.provider.portal.groupBookingDialog.searchFailed"));
         const json = await res.json();
         const rows: ClientSearchResult[] = (json.data || []).map((c: any) => ({
@@ -306,7 +306,7 @@ export function GroupBookingDialog({
     team_member_id: "",
     service_id: "",
     service_name: "",
-    max_participants: 10,
+    max_participants: 2,
     notes: "",
     location_type: "at_salon" as "at_salon" | "at_home",
     location_id: "",
@@ -543,7 +543,7 @@ export function GroupBookingDialog({
         team_member_id: defaultTeamMemberId || "",
         service_id: "",
         service_name: "",
-        max_participants: 10,
+        max_participants: 2,
         notes: "",
         location_type: "at_salon",
         location_id: "",

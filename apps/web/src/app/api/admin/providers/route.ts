@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { phoneIlikeClauses, sanitizeIlikeTerm } from "@/lib/search/phone-ilike";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -55,7 +56,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (searchTerm) {
-      const safe = searchTerm.replace(/[%_]/g, "");
+      const safe = sanitizeIlikeTerm(searchTerm);
       const providerOrClauses: string[] = [];
 
       if (UUID_REGEX.test(searchTerm)) {
@@ -67,12 +68,20 @@ export async function GET(request: NextRequest) {
           `billing_email.ilike.%${safe}%`,
           `billing_phone.ilike.%${safe}%`,
           `phone.ilike.%${safe}%`,
+          ...phoneIlikeClauses(["phone", "billing_phone"], searchTerm),
         );
 
         const { data: ownerRows } = await supabase
           .from("users")
           .select("id")
-          .or(`full_name.ilike.%${safe}%,email.ilike.%${safe}%,phone.ilike.%${safe}%`)
+          .or(
+            [
+              `full_name.ilike.%${safe}%`,
+              `email.ilike.%${safe}%`,
+              `phone.ilike.%${safe}%`,
+              ...phoneIlikeClauses(["phone"], searchTerm),
+            ].join(","),
+          )
           .limit(50);
         const ownerIds = (ownerRows || []).map((u) => (u as { id: string }).id);
         if (ownerIds.length > 0) {

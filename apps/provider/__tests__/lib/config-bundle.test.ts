@@ -158,4 +158,48 @@ describe("fetchConfigBundle", () => {
       }),
     );
   });
+
+  it("includes user_id in the config-bundle URL and does not reuse cache across users", async () => {
+    const payload = {
+      meta: {
+        env: "production",
+        platform: "provider",
+        version: null,
+        fetched_at: "2026-01-01T00:00:00.000Z",
+        tenant_id: "tenant-1",
+      },
+      amplitude: {},
+      third_party: {},
+      branding: {},
+      auth: {},
+      flags: { payment_paycloud: { enabled: true } },
+      modules: {
+        on_demand: { enabled: false, ringtone_asset_path: null, ring_duration_seconds: 20, ring_repeat: true, normal_booking_ringtone_asset_path: null, normal_booking_ring_duration_seconds: 20, normal_booking_ring_repeat: true, waiting_screen_timeout_seconds: 45, provider_accept_window_seconds: 30, ui_copy: {} },
+        ai: {},
+        ads: {},
+        ranking: {},
+        identity_verification: {},
+        aura: {},
+        safety: {},
+      },
+    };
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => payload,
+    });
+    await fetchConfigBundle({ platform: "provider", environment: "production", userId: "user-a" });
+    expect(mockFetch.mock.calls[0][0]).toContain("user_id=user-a");
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...payload,
+        flags: { payment_paycloud: { enabled: false } },
+      }),
+    });
+    await fetchConfigBundle({ platform: "provider", environment: "production", userId: "user-b" });
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch.mock.calls[1][0]).toContain("user_id=user-b");
+  });
 });

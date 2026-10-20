@@ -3,7 +3,9 @@
  * Never returns secret keys; all shapes are whitelisted.
  */
 
-import { createHash } from "crypto";
+import { featureFlagRolloutBucket } from "@/lib/server/feature-flag-rollout-bucket";
+import { loadAgentOperationalState } from "@/lib/agents/config-loader";
+import { SUPPORT_ASSISTANT_AGENT_KEY } from "@/lib/support/support-assistant/availability";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolvePublicAuthPolicyForTenant } from "@/lib/config/resolve-public-auth-policy";
@@ -23,6 +25,7 @@ import type {
   SafeSumsubModuleConfig,
   SafeAuraModuleConfig,
   SafeSafetyModuleConfig,
+  SafeSupportAssistantModuleConfig,
   SafeAgentModuleConfig,
   SafeVerificationPolicy,
   SafeIdentityVerificationModuleConfig,
@@ -138,7 +141,7 @@ export function resolveFlagsForUser(params: ResolveFlagsForUserParams): Record<s
       if (!userId) {
         enabled = false;
       } else {
-        const bucket = hashToBucket(userId, flag.feature_key);
+        const bucket = featureFlagRolloutBucket(userId, flag.feature_key);
         if (bucket >= (flag.rollout_percent ?? 0)) {
           enabled = false;
         }
@@ -156,12 +159,6 @@ export function resolveFlagsForUser(params: ResolveFlagsForUserParams): Record<s
   }
 
   return result;
-}
-
-function hashToBucket(userId: string, flagKey: string): number {
-  const h = createHash("sha256").update(`${userId}:${flagKey}`).digest("hex");
-  const n = parseInt(h.slice(0, 8), 16);
-  return n % 100;
 }
 
 function compareSemver(a: string, b: string): number {
@@ -541,6 +538,14 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
       }
     : DEFAULT_AGENT_MODULE;
 
+  let support_assistant: SafeSupportAssistantModuleConfig = { active: false };
+  try {
+    const op = await loadAgentOperationalState(SUPPORT_ASSISTANT_AGENT_KEY);
+    support_assistant = { active: op.state === "active" };
+  } catch {
+    support_assistant = { active: false };
+  }
+
   const flagsWithCalV2: Record<string, ResolvedFlag> = {
     ...flags,
     // V2 is the new standard. Default to true. Can still be disabled per-tenant if an emergency rollback is needed.
@@ -594,6 +599,7 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
       aura,
       safety,
       agents,
+      support_assistant,
     },
     verification,
     content_safety,

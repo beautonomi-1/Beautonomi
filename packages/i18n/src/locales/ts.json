@@ -8945,7 +8945,15 @@
           "priorityLow": "hansi",
           "priorityMedium": "exikarhi",
           "priorityHigh": "henhla",
-          "priorityUrgent": "bya xihatla"
+          "priorityUrgent": "bya xihatla",
+          "assistantTyping": "Mupfuni u tsala…",
+          "handoffTitle": "Hi ku hlanganisa na nseketelo",
+          "handoffBody": "Mutivi u ta nghena eka mbulavulo lowu ku nga ri khale.",
+          "aiDisclaimer": "AI yi nga endla swihoxo — u nga kombela munhu nkarhi wihi na wihi.",
+          "assistantName": "Mupfuni wa Beautonomi",
+          "talkToPerson": "Vulavula na munhu",
+          "didThisHelp": "Xana leswi swi pfunile? Ina",
+          "attachmentsAfterHuman": "Swi khomanisiweke swi kumeka endzhaku ka loko mutivi a nghena eka mbulavulo."
         },
         "providerVerificationPanel": {
           "statusNotStarted": "Not sungulaed",
@@ -9440,7 +9448,15 @@
           "priorityLow": "Hansi",
           "priorityMedium": "Exikarhi",
           "priorityHigh": "Henhla",
-          "priorityUrgent": "Bya xihatla"
+          "priorityUrgent": "Bya xihatla",
+          "sentToTeam": "Thikithi ra wena ri rhumeriwe eka xipano xa hina xa nseketelo. Hi ta hlamula eka mbulavulo lowu.",
+          "chatDefaultSubject": "nseketelo xikombelo",
+          "continueToChat": "yana emahlweni to chat",
+          "useFullForm": "Use yi tele form",
+          "safetyUseForm": "Swiviko swa vuhlayiseki swi kongoma eka xipano xa hina — hi kombela u tirhisa fomo leyi heleleke.",
+          "chatAiDisclaimer": "AI yi nga endla swihoxo — u nga vulavula na munhu nkarhi wihi na wihi endzhaku ka loko thikithi ra wena ri endliwile.",
+          "startChat": "sungula chat",
+          "chatBack": "Endzhaku"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -17093,7 +17109,8 @@
           "startChat": "sungula chat",
           "chatBack": "Endzhaku",
           "safetyUseForm": "Swiviko swa vuhlayiseki swi kongoma eka xipano xa hina — hi kombela u tirhisa fomo leyi heleleke.",
-          "chatAiDisclaimer": "AI yi nga endla swihoxo — u nga vulavula na munhu nkarhi wihi na wihi endzhaku ka loko thikithi ra wena ri endliwile."
+          "chatAiDisclaimer": "AI yi nga endla swihoxo — u nga vulavula na munhu nkarhi wihi na wihi endzhaku ka loko thikithi ra wena ri endliwile.",
+          "sentToTeam": "Thikithi ra wena ri rhumeriwe eka xipano xa hina xa nseketelo. Hi ta hlamula eka mbulavulo lowu."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Muxaka your rungula...",
@@ -17156,7 +17173,15 @@
           "priorityLow": "hansi",
           "priorityMedium": "exikarhi",
           "priorityHigh": "henhla",
-          "priorityUrgent": "bya xihatla"
+          "priorityUrgent": "bya xihatla",
+          "handoffTitle": "Hi ku hlanganisa na nseketelo",
+          "handoffBody": "Mutivi u ta nghena eka mbulavulo lowu ku nga ri khale.",
+          "aiDisclaimer": "AI yi nga endla swihoxo — u nga kombela munhu nkarhi wihi na wihi.",
+          "assistantName": "Mupfuni wa Beautonomi",
+          "talkToPerson": "Vulavula na munhu",
+          "didThisHelp": "Xana leswi swi pfunile? Ina",
+          "attachmentsAfterHuman": "Swi khomanisiweke swi kumeka endzhaku ka loko mutivi a nghena eka mbulavulo.",
+          "assistantTyping": "Mupfuni u tsala…"
         },
         "giftCardAmountPlaceholder": "e.g. 350",
         "partnerProfileReportPlaceholder": "Hi kombela u hlamusela leswi humelekeke...",
@@ -20257,7 +20282,10 @@
         "createOfferFailed": "Swi tsandzile ku tumbuluxa Xo tiendlela offer",
         "offerUpdated": "Offer pfuxad ku humelelayi teley!",
         "offerCreated": "Offer tumbuluxad ku humelelayi teley!",
-        "createOfferFailedShort": "Swi tsandzile ku tumbuluxa offer"
+        "createOfferFailedShort": "Swi tsandzile ku tumbuluxa offer",
+        "changeClient": "Cinca",
+        "searchClientPlaceholder": "Lava hi vito, imeyili kumbe riqingho (xik. 082…)",
+        "searchClientHint": "Tsala kwalomu ka swihlawulekisi swi 2"
       },
       "privacyAndSharing": {
         "tabAccount": "Akhawunti",

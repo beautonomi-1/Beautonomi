@@ -21,6 +21,23 @@ function sanitizeIlikeTerm(raw: string) {
   return raw.trim().replace(/[%_\\,]/g, "");
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AdminSupportTicketRow = Record<string, any> & { id: string; channel?: string | null };
+
+/** Missing column / FK embed (migration or schema cache behind the deployed code). */
+function isRecoverableSchemaError(error: unknown): boolean {
+  const code = (error as { code?: string } | null)?.code;
+  if (code === "42703" || code === "PGRST200" || code === "PGRST201" || code === "PGRST204") {
+    return true;
+  }
+  const message = String((error as { message?: string } | null)?.message ?? "").toLowerCase();
+  return (
+    message.includes("schema cache") ||
+    message.includes("does not exist") ||
+    message.includes("could not find a relationship")
+  );
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi([...SUPPORT_TICKET_STAFF_ROLES] as UserRole[], request);
@@ -62,13 +79,21 @@ export async function GET(request: NextRequest) {
       searchParams.get("include_counts") === "true";
     const handlingModeFilter = searchParams.get("handling_mode");
 
+    const tenantId =
+      tenantIdFilter && isUuidString(tenantIdFilter) ? tenantIdFilter : null;
+
     // Build the list query. `agentQueue` gates every column introduced by
     // migration 726 (needs_agent_response, first_response_due_at). When that
     // migration has not been applied yet (e.g. code deployed ahead of the DB
-    // migration), Postgres raises 42703 "undefined column" and we retry once
-    // with agentQueue=false so the queue still loads with a graceful fallback
-    // instead of a hard 500.
-    const buildQuery = async (agentQueue: boolean) => {
+    // migration), Postgres raises 42703 "undefined column" and we retry
+    // without those columns. `includeTenantEmbed` drops the tenants FK hint
+    // when PostgREST reports the relationship is missing (PGRST200) so the
+    // queue still loads.
+    const buildQuery = async (agentQueue: boolean, includeTenantEmbed: boolean) => {
+      const tenantEmbed = includeTenantEmbed
+        ? `,
+          tenant:tenants!support_tickets_tenant_id_fkey(id, name, slug, region_code)`
+        : "";
       let query = supabase
         .from("support_tickets")
         .select(
@@ -76,8 +101,7 @@ export async function GET(request: NextRequest) {
           *,
           user:users!support_tickets_user_id_fkey(id, email, full_name),
           provider:providers(id, business_name),
-          assigned_user:users!support_tickets_assigned_to_fkey(id, email, full_name),
-          tenant:tenants!support_tickets_tenant_id_fkey(id, name, slug, region_code)
+          assigned_user:users!support_tickets_assigned_to_fkey(id, email, full_name)${tenantEmbed}
         `,
           { count: "exact" }
         );
@@ -100,8 +124,8 @@ export async function GET(request: NextRequest) {
         query = query.in("category", categoryGroupValues);
       }
 
-      if (tenantIdFilter && isUuidString(tenantIdFilter)) {
-        query = query.eq("tenant_id", tenantIdFilter);
+      if (tenantId) {
+        query = query.eq("tenant_id", tenantId);
       }
 
       if (channelFilter === "email" || channelFilter === "app") {
@@ -212,20 +236,33 @@ export async function GET(request: NextRequest) {
       return query.range(offset, offset + limit - 1);
     };
 
-    let listQuery = await buildQuery(true);
-    let { data, error, count } = await listQuery;
-
-    // 42703 = undefined_column: migration 726 not applied yet. Retry without
-    // the agent-queue columns so the queue degrades gracefully.
-    if (error && (error as { code?: string }).code === "42703") {
-      listQuery = await buildQuery(false);
-      ({ data, error, count } = await listQuery);
+    const listPlans = [
+      { agentQueue: true, includeTenantEmbed: true },
+      { agentQueue: false, includeTenantEmbed: true },
+      { agentQueue: false, includeTenantEmbed: false },
+    ] as const;
+    let data: AdminSupportTicketRow[] | null = null;
+    let error: { code?: string; message?: string } | null = null;
+    let count: number | null = null;
+    let agentQueue = true;
+    for (let i = 0; i < listPlans.length; i++) {
+      const plan = listPlans[i];
+      const listQuery = await buildQuery(plan.agentQueue, plan.includeTenantEmbed);
+      const result = await listQuery;
+      data = (result.data ?? null) as unknown as AdminSupportTicketRow[] | null;
+      error = (result.error ?? null) as { code?: string; message?: string } | null;
+      count = result.count ?? null;
+      if (!error) {
+        agentQueue = plan.agentQueue;
+        break;
+      }
+      if (!isRecoverableSchemaError(error) || i === listPlans.length - 1) break;
     }
 
     if (error) throw error;
 
     const nowMs = Date.now();
-    const ticketsBase = (data || []).map((row) => {
+    const ticketsBase = (data || []).map((row): AdminSupportTicketRow => {
       const attention = computeTicketAttentionFields(
         {
           status: row.status,
@@ -256,21 +293,28 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const tickets = await enrichTicketsWithLatestEmailDeliveryStatus(supabase, ticketsBase);
+    let tickets: AdminSupportTicketRow[] = ticketsBase;
+    try {
+      tickets = await enrichTicketsWithLatestEmailDeliveryStatus(supabase, ticketsBase);
+    } catch (enrichError) {
+      if (!isRecoverableSchemaError(enrichError)) throw enrichError;
+      console.warn("[admin/support-tickets] email delivery status unavailable:", enrichError);
+    }
+
+    const counts = includeCounts
+      ? await loadSupportTicketCounts(supabase, agentQueue, {
+          role: user.role,
+          userId: user.id,
+          tenantId,
+        })
+      : null;
 
     return NextResponse.json({
       tickets,
       total: count ?? 0,
       limit,
       offset,
-      ...(includeCounts
-        ? {
-            counts: await loadSupportTicketCounts(supabase, true, {
-              role: user.role,
-              userId: user.id,
-            }),
-          }
-        : {}),
+      ...(counts ? { counts } : {}),
     });
   } catch (error: unknown) {
     return handleApiError(error, "Failed to fetch support tickets");
@@ -280,16 +324,26 @@ export async function GET(request: NextRequest) {
 async function loadSupportTicketCounts(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   agentQueue: boolean,
-  scope: { role: string | null | undefined; userId: string },
+  scope: { role: string | null | undefined; userId: string; tenantId: string | null },
 ) {
   const nowIso = new Date().toISOString();
   const openStatuses = ["open", "in_progress", "waiting_customer"];
 
-  const baseCountQuery = supabase.from("support_tickets").select("id", { count: "exact", head: true });
+  type CountQuery = {
+    eq: (col: string, val: string | boolean) => CountQuery;
+    in: (col: string, vals: string[]) => CountQuery;
+    is: (col: string, val: null) => CountQuery;
+    lt: (col: string, val: string) => CountQuery;
+  };
 
-  const runCount = async (mutate: (q: typeof baseCountQuery) => typeof baseCountQuery) => {
-    let query = baseCountQuery;
-    query = mutate(query);
+  const runCount = async (mutate: (q: CountQuery) => CountQuery) => {
+    // Fresh builder per count. PostgREST filters mutate the builder in place,
+    // so reusing one query ANDs every previous count's predicates together.
+    let query = supabase.from("support_tickets").select("id", { count: "exact", head: true });
+    if (scope.tenantId) {
+      query = query.eq("tenant_id", scope.tenantId);
+    }
+    query = mutate(query as unknown as CountQuery) as unknown as typeof query;
     query = (await applySupportAgentTicketScope(supabase, query, {
       role: scope.role,
       userId: scope.userId,
@@ -299,33 +353,39 @@ async function loadSupportTicketCounts(
     return count ?? 0;
   };
 
-  const open = await runCount((q) => q.in("status", openStatuses));
-  const unassigned = await runCount((q) => q.in("status", openStatuses).is("assigned_to", null));
-  const breachingSla = await runCount((q) =>
-    q.lt("sla_resolution_due_at", nowIso).in("status", openStatuses),
-  );
+  try {
+    const open = await runCount((q) => q.in("status", openStatuses));
+    const unassigned = await runCount((q) => q.in("status", openStatuses).is("assigned_to", null));
+    const breachingSla = await runCount((q) =>
+      q.lt("sla_resolution_due_at", nowIso).in("status", openStatuses),
+    );
 
-  let awaitingReply = 0;
-  if (agentQueue) {
-    try {
-      awaitingReply = await runCount((q) => q.eq("needs_agent_response", true));
-    } catch (err) {
-      if ((err as { code?: string }).code === "42703") {
-        awaitingReply = await runCount((q) => q.eq("status", "open"));
-      } else {
-        throw err;
+    let awaitingReply = 0;
+    if (agentQueue) {
+      try {
+        awaitingReply = await runCount((q) => q.eq("needs_agent_response", true));
+      } catch (err) {
+        if (isRecoverableSchemaError(err)) {
+          awaitingReply = await runCount((q) => q.eq("status", "open"));
+        } else {
+          throw err;
+        }
       }
+    } else {
+      awaitingReply = await runCount((q) => q.eq("status", "open"));
     }
-  } else {
-    awaitingReply = await runCount((q) => q.eq("status", "open"));
-  }
 
-  return {
-    open,
-    unassigned,
-    breaching_sla: breachingSla,
-    awaiting_reply: awaitingReply,
-  };
+    return {
+      open,
+      unassigned,
+      breaching_sla: breachingSla,
+      awaiting_reply: awaitingReply,
+    };
+  } catch (countError) {
+    // The list is already loaded. A count failure must not 500 the queue.
+    console.warn("[admin/support-tickets] counts unavailable:", countError);
+    return null;
+  }
 }
 
 export async function POST(request: NextRequest) {

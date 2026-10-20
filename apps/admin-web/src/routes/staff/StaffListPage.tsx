@@ -10,6 +10,7 @@ import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { phoneMatchesQuery } from "@beautonomi/phone/search";
 import {
   AdminDataTable,
   AdminTableBody,
@@ -115,7 +116,7 @@ export function StaffListPage() {
       (m) =>
         (m.name ?? "").toLowerCase().includes(qv) ||
         (m.email ?? "").toLowerCase().includes(qv) ||
-        (m.phone ?? "").toLowerCase().includes(qv) ||
+        phoneMatchesQuery(m.phone, searchQuery) ||
         (m.provider?.business_name ?? "").toLowerCase().includes(qv)
     );
   }, [staff, userRoleFilter, searchQuery]);

@@ -38,6 +38,7 @@ CREATE INDEX IF NOT EXISTS idx_booking_audit_log_created_by ON booking_audit_log
 ALTER TABLE booking_audit_log ENABLE ROW LEVEL SECURITY;
 
 -- Policy: Providers can view audit logs for their bookings
+DROP POLICY IF EXISTS "Providers can view audit logs for their bookings" ON booking_audit_log;
 CREATE POLICY "Providers can view audit logs for their bookings"
   ON booking_audit_log
   FOR SELECT
@@ -54,6 +55,7 @@ CREATE POLICY "Providers can view audit logs for their bookings"
   );
 
 -- Policy: System can insert audit log entries
+DROP POLICY IF EXISTS "System can insert audit log entries" ON booking_audit_log;
 CREATE POLICY "System can insert audit log entries"
   ON booking_audit_log
   FOR INSERT
@@ -69,6 +71,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger to auto-increment version on updates (if not already set)
+DROP TRIGGER IF EXISTS booking_version_increment ON bookings;
 CREATE TRIGGER booking_version_increment
   BEFORE UPDATE ON bookings
   FOR EACH ROW
@@ -118,6 +121,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Trigger to auto-create audit log on status changes
+DROP TRIGGER IF EXISTS booking_status_change_audit ON bookings;
 CREATE TRIGGER booking_status_change_audit
   AFTER UPDATE OF status ON bookings
   FOR EACH ROW

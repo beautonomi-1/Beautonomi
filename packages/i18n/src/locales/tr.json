@@ -8945,7 +8945,15 @@
           "priorityLow": "low",
           "priorityMedium": "medium",
           "priorityHigh": "high",
-          "priorityUrgent": "urgent"
+          "priorityUrgent": "urgent",
+          "assistantTyping": "Asistan yazıyor…",
+          "handoffTitle": "Destek ekibine bağlanıyorsunuz",
+          "handoffBody": "Bir uzman kısa süre içinde bu yazışmaya katılacak.",
+          "aiDisclaimer": "Yapay zeka hata yapabilir — istediğiniz zaman bir kişi isteyebilirsiniz.",
+          "assistantName": "Beautonomi Asistanı",
+          "talkToPerson": "Bir kişiyle konuş",
+          "didThisHelp": "Bu yardımcı oldu mu? Evet",
+          "attachmentsAfterHuman": "Ekler, bir uzman yazışmaya katıldıktan sonra kullanılabilir."
         },
         "providerVerificationPanel": {
           "statusNotStarted": "Not started",
@@ -9440,7 +9448,15 @@
           "priorityLow": "Low",
           "priorityMedium": "Medium",
           "priorityHigh": "High",
-          "priorityUrgent": "Urgent"
+          "priorityUrgent": "Urgent",
+          "sentToTeam": "Biletiniz destek ekibimize iletildi. Bu yazışmada yanıt vereceğiz.",
+          "chatDefaultSubject": "ayuda solicitud",
+          "continueToChat": "continuar to chat",
+          "useFullForm": "Use lleno form",
+          "safetyUseForm": "Les rapports de sécurité sont envoyés directement à notre équipe – veuillez utiliser le formulaire complet.",
+          "chatAiDisclaimer": "L'IA peut faire des erreurs : vous pouvez parler à une personne à tout moment après la création de votre ticket.",
+          "startChat": "empezar chat",
+          "chatBack": "Retour"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -17088,7 +17104,8 @@
           "startChat": "empezar chat",
           "chatBack": "Retour",
           "safetyUseForm": "Les rapports de sécurité sont envoyés directement à notre équipe – veuillez utiliser le formulaire complet.",
-          "chatAiDisclaimer": "L'IA peut faire des erreurs : vous pouvez parler à une personne à tout moment après la création de votre ticket."
+          "chatAiDisclaimer": "L'IA peut faire des erreurs : vous pouvez parler à une personne à tout moment après la création de votre ticket.",
+          "sentToTeam": "Biletiniz destek ekibimize iletildi. Bu yazışmada yanıt vereceğiz."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Écrivez votre message…",
@@ -17151,7 +17168,15 @@
           "priorityLow": "faible",
           "priorityMedium": "moyen",
           "priorityHigh": "élevé",
-          "priorityUrgent": "urgent"
+          "priorityUrgent": "urgent",
+          "handoffTitle": "Destek ekibine bağlanıyorsunuz",
+          "handoffBody": "Bir uzman kısa süre içinde bu yazışmaya katılacak.",
+          "aiDisclaimer": "Yapay zeka hata yapabilir — istediğiniz zaman bir kişi isteyebilirsiniz.",
+          "assistantName": "Beautonomi Asistanı",
+          "talkToPerson": "Bir kişiyle konuş",
+          "didThisHelp": "Bu yardımcı oldu mu? Evet",
+          "attachmentsAfterHuman": "Ekler, bir uzman yazışmaya katıldıktan sonra kullanılabilir.",
+          "assistantTyping": "Asistan yazıyor…"
         },
         "giftCardAmountPlaceholder": "ex. 350",
         "partnerProfileReportPlaceholder": "Décrivez ce qui s’est passé…",
@@ -20252,7 +20277,10 @@
         "createOfferFailed": "Impossible de créer custom offer",
         "offerUpdated": "Offer mis à jour successfully!",
         "offerCreated": "Offer créé successfully!",
-        "createOfferFailedShort": "Impossible de créer offer"
+        "createOfferFailedShort": "Impossible de créer offer",
+        "changeClient": "Değiştir",
+        "searchClientPlaceholder": "Ad, e-posta veya telefonla ara (ör. 082…)",
+        "searchClientHint": "En az 2 karakter yazın"
       },
       "privacyAndSharing": {
         "tabAccount": "Compte",

@@ -35,6 +35,28 @@ describe("applyProviderLeadListFilters", () => {
     expect(calls.some((c) => c.startsWith("in:id:"))).toBe(true);
   });
 
+  it("adds unscoped phone needles for national 0 search", () => {
+    const orFilters: string[] = [];
+    const q = {
+      is: () => q,
+      eq: () => q,
+      in: () => q,
+      or: (filters: string) => {
+        orFilters.push(filters);
+        return q;
+      },
+      not: () => q,
+      neq: () => q,
+    };
+    applyProviderLeadListFilters(
+      q,
+      parseLeadListFilters(new URLSearchParams("search=0821234567")),
+      null,
+      null,
+    );
+    expect(orFilters.some((f) => f.includes("phone_e164.ilike.%821234567%"))).toBe(true);
+  });
+
   it("omits stage when omitStage is set", () => {
     const q = {
       is: () => q,

@@ -16,6 +16,7 @@ import {
   draftHasAddressLine,
   isOnboardingWizardUserRole,
 } from "@/lib/provider-ops/onboarding-wizard-roles";
+import { phoneMatchesQuery } from "@/lib/phone";
 import {
   computeStallStatus,
   loadProviderOpsStallSettings,
@@ -329,7 +330,11 @@ export async function GET(request: NextRequest) {
         return (
           r.full_name?.toLowerCase().includes(search) ||
           r.email?.toLowerCase().includes(search) ||
-          r.phone?.includes(search) ||
+          phoneMatchesQuery(r.phone, search) ||
+          phoneMatchesQuery(
+            (r.draft_summary?.owner_phone as string | null | undefined) ?? null,
+            search,
+          ) ||
           r.draft_summary?.business_name?.toString().toLowerCase().includes(search)
         );
       });
