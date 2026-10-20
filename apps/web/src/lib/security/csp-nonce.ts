@@ -7,25 +7,17 @@ export function generateCspNonce(): string {
   return randomBytes(16).toString("base64");
 }
 
-/**
- * Report-only CSP that mirrors the enforced policy in `next.config.mjs`, but
- * replaces `unsafe-inline` script allowances with a per-request nonce.
- * Violations are reported without blocking while we validate compatibility.
- */
-export function buildReportOnlyCsp(nonce: string): string {
-  const scriptSrc = [
-    "'self'",
-    `'nonce-${nonce}'`,
-    "'strict-dynamic'",
-    "https://*.sentry.io",
-    "https://cdn.onesignal.com",
-    "https://cdn.amplitude.com",
-    "https://maps.googleapis.com",
-    "https://api.mapbox.com",
-    "https://va.vercel-scripts.com",
-    "https://vercel.live",
-  ].join(" ");
+const REPORT_ONLY_SCRIPT_HOSTS = [
+  "https://*.sentry.io",
+  "https://cdn.onesignal.com",
+  "https://cdn.amplitude.com",
+  "https://maps.googleapis.com",
+  "https://api.mapbox.com",
+  "https://va.vercel-scripts.com",
+  "https://vercel.live",
+];
 
+function joinReportOnlyCsp(scriptSrc: string): string {
   return [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
@@ -40,4 +32,27 @@ export function buildReportOnlyCsp(nonce: string): string {
     "form-action 'self'",
     "upgrade-insecure-requests",
   ].join("; ");
+}
+
+/**
+ * Report-only CSP that mirrors the enforced policy in `next.config.mjs`, but
+ * replaces `unsafe-inline` script allowances with a per-request nonce.
+ * Violations are reported without blocking while we validate compatibility.
+ */
+export function buildReportOnlyCsp(nonce: string): string {
+  const scriptSrc = ["'self'", `'nonce-${nonce}'`, "'strict-dynamic'", ...REPORT_ONLY_SCRIPT_HOSTS].join(
+    " ",
+  );
+  return joinReportOnlyCsp(scriptSrc);
+}
+
+/**
+ * Report-only policy for the Vite admin shell (`/admin` HTML).
+ * That document loads `/admin/assets/*.js` with no nonce. `strict-dynamic` ignores
+ * `'self'`, so every shell script is reported, and the bundle still evaluates
+ * strings. Match the enforced CSP for this document instead of the Next.js nonce trial.
+ */
+export function buildAdminSpaReportOnlyCsp(): string {
+  const scriptSrc = ["'self'", "'unsafe-inline'", "'unsafe-eval'", ...REPORT_ONLY_SCRIPT_HOSTS].join(" ");
+  return joinReportOnlyCsp(scriptSrc);
 }

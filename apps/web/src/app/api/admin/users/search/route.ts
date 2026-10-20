@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
+import { DEFAULT_PHONE_COUNTRY_CODE, normalizePhoneToE164 } from "@beautonomi/phone";
+import { phoneIlikeClauses, sanitizeIlikeTerm } from "@/lib/search/phone-ilike";
 
 /**
  * GET /api/admin/users/search
- * 
+ *
  * Search for a user by email or phone number
  */
 export async function GET(request: NextRequest) {
@@ -29,19 +31,50 @@ export async function GET(request: NextRequest) {
             code: "VALIDATION_ERROR",
           },
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const searchTerm = query.trim();
+    const e164 = normalizePhoneToE164(searchTerm, DEFAULT_PHONE_COUNTRY_CODE);
 
-    // Try to find user by email or phone
-    const { data: users, error } = await supabase
-      .from("users")
-      .select("id, email, phone, full_name")
-      .or(`email.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`)
-      .limit(1)
-      .maybeSingle();
+    if (e164) {
+      const { data: byExactPhone, error: exactErr } = await supabase
+        .from("users")
+        .select("id, email, phone, full_name")
+        .eq("phone", e164)
+        .limit(1)
+        .maybeSingle();
+
+      if (exactErr) {
+        console.error("Error searching user by exact phone:", exactErr);
+        return handleApiError(exactErr, "Failed to search user");
+      }
+
+      if (byExactPhone) {
+        return successResponse({
+          id: byExactPhone.id,
+          email: byExactPhone.email,
+          phone: byExactPhone.phone,
+          full_name: byExactPhone.full_name,
+        });
+      }
+    }
+
+    const safe = sanitizeIlikeTerm(searchTerm).trim();
+    const orClauses = [
+      ...(safe ? [`email.ilike.%${safe}%`, `phone.ilike.%${safe}%`] : []),
+      ...phoneIlikeClauses(["phone"], searchTerm),
+    ];
+
+    const { data: users, error } = orClauses.length
+      ? await supabase
+          .from("users")
+          .select("id, email, phone, full_name")
+          .or(orClauses.join(","))
+          .limit(1)
+          .maybeSingle()
+      : { data: null, error: null };
 
     if (error) {
       console.error("Error searching user:", error);
@@ -57,7 +90,7 @@ export async function GET(request: NextRequest) {
             code: "NOT_FOUND",
           },
         },
-        { status: 404 }
+        { status: 404 },
       );
     }
 

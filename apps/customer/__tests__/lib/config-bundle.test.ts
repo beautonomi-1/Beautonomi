@@ -99,6 +99,26 @@ describe("fetchConfigBundle (customer)", () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
+  it("includes user_id in the config-bundle URL and does not reuse cache across users", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => basePayload,
+    });
+    await fetchConfigBundle({ platform: "customer", environment: "production", userId: "user-a" });
+    expect(mockFetch.mock.calls[0][0]).toContain("user_id=user-a");
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...basePayload,
+        flags: { "explore.enabled": { enabled: false } },
+      }),
+    });
+    await fetchConfigBundle({ platform: "customer", environment: "production", userId: "user-b" });
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch.mock.calls[1][0]).toContain("user_id=user-b");
+  });
+
   it("treats flags_unavailable meta as a stub and does not cache", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,

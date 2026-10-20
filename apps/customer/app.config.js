@@ -84,7 +84,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.103",
+  version: "1.0.104",
   orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -98,7 +98,7 @@ const BASE_EXPO_CONFIG = {
     bundleIdentifier: "com.beautonomi",
     appleTeamId: "QW33CYPQX5",
     usesAppleSignIn: true,
-    buildNumber: "297",
+    buildNumber: "298",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       NSCalendarsUsageDescription:
@@ -176,7 +176,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.CAMERA",
       "android.permission.RECORD_AUDIO",
     ],
-    versionCode: 297,
+    versionCode: 298,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",
     intentFilters: [
@@ -235,6 +235,10 @@ const BASE_EXPO_CONFIG = {
         ios: {
           deploymentTarget: "16.4",
           privacyManifestAggregationEnabled: true,
+          // Xcode 27 / iOS 27 SDK: apps that skip the UIKit scene lifecycle
+          // SIGTRAP at launch (___UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption).
+          // SDK 57 opt-in; remove when upgrading to SDK 58+ (default there).
+          enableSceneSupport: true,
         },
         android: {
           minSdkVersion: 24,

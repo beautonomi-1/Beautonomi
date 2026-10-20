@@ -21,7 +21,7 @@ import {
   shouldSendSupportContextId,
   isSafetySupportCategory,
 } from "@beautonomi/utils";
-import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { useFeatureFlag, useSupportAssistantActive } from "@/providers/ConfigBundleProvider";
 
 const PRIORITY_LABEL_KEYS: Record<(typeof SUPPORT_TICKET_PRIORITIES)[number]["value"], string> = {
   low: "priorityLow",
@@ -38,7 +38,9 @@ export default function NewSupportTicketScreen() {
     [t],
   );
   const router = useRouter();
-  const assistantEnabled = useFeatureFlag("support.ai_assistant.provider");
+  const assistantFlagOn = useFeatureFlag("support.ai_assistant.provider");
+  const assistantAgentActive = useSupportAssistantActive();
+  const assistantEnabled = assistantFlagOn && assistantAgentActive;
   const [chatStep, setChatStep] = useState<"category" | "chat" | "form">("form");
   const params = useLocalSearchParams<{ category?: string; booking_id?: string; booking_number?: string }>();
   const [subject, setSubject] = useState("");
@@ -126,7 +128,10 @@ export default function NewSupportTicketScreen() {
       const preset = supportTicketPresetFromCategory(category);
       const subjectLine =
         subjectTrimmed || preset.subject || messageTrimmed.slice(0, 120) || st("chatDefaultSubject");
-      const res = await api.post<{ ticket?: { id?: string; ticket_number?: string } }>(
+      const res = await api.post<{
+        ticket?: { id?: string; ticket_number?: string };
+        assistantUnavailable?: { code: string };
+      }>(
         SUPPORT_TICKETS_API_PREFIX,
         {
           subject: subjectLine,
@@ -142,6 +147,9 @@ export default function NewSupportTicketScreen() {
       if (res.error) {
         Alert.alert(st("submitFailedTitle"), res.error.message ?? st("submitFailedFallback"));
         return;
+      }
+      if (res.data?.assistantUnavailable) {
+        Alert.alert(st("submittedTitle"), st("sentToTeam"));
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       invalidateSupportTicketsListCache();

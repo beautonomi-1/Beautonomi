@@ -13,6 +13,7 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { phoneMatchesQuery } from "@beautonomi/phone/search";
 import { adminToast } from "@/lib/adminToast";
 import { cn } from "@/lib/cn";
 
@@ -140,7 +141,7 @@ export function ProviderOpsDuplicatesPage() {
           (l.business_name ?? "").toLowerCase().includes(needle) ||
           (l.contact_person_name ?? "").toLowerCase().includes(needle) ||
           (l.email ?? "").toLowerCase().includes(needle) ||
-          (l.phone_e164 ?? "").includes(needle)
+          phoneMatchesQuery(l.phone_e164, searchQuery)
         ) {
           return true;
         }
@@ -148,7 +149,7 @@ export function ProviderOpsDuplicatesPage() {
       if (
         g.existing_provider?.business_name?.toLowerCase().includes(needle) ||
         g.existing_provider?.email?.toLowerCase().includes(needle) ||
-        g.existing_provider?.phone?.toLowerCase().includes(needle)
+        phoneMatchesQuery(g.existing_provider?.phone, searchQuery)
       ) {
         return true;
       }

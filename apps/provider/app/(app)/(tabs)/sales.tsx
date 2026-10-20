@@ -23,6 +23,7 @@ import { useFocusedApi } from "@/hooks/useFocusedApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useConfigBundle, useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { useProvider } from "@/providers/ProviderContext";
+import { clientContactMatches } from "@/lib/phone";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { StatCard } from "@/components/ui/StatCard";
@@ -362,6 +363,11 @@ export default function SalesScreen() {
   }, [paycloudCollectEnabled, paycloudEnabled, yocoEnabled, manualCardEnabled, paymentMethod]);
 
   const [clientSearch, setClientSearch] = useState("");
+  const [clientSearchDebounced, setClientSearchDebounced] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setClientSearchDebounced(clientSearch.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [clientSearch]);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
   const [cartTab, setCartTab] = useState<"services" | "products">("services");
   const variantsCacheRef = useRef<Map<string, ServiceVariantRow[]>>(new Map());
@@ -470,7 +476,15 @@ export default function SalesScreen() {
     selectedLocationId ? `/api/provider/staff?location_id=${selectedLocationId}` : "/api/provider/staff",
     { enabled: isFocused, staleTimeMs: 30_000 },
   );
-  const { data: rawClients } = useApi<ApiClient[]>(`/api/provider/clients${locQFirst}`, {
+  const clientsApiPath = useMemo(() => {
+    let path = `/api/provider/clients${locQFirst}`;
+    if (clientSearchDebounced.length >= 2) {
+      const join = path.includes("?") ? "&" : "?";
+      path += `${join}search=${encodeURIComponent(clientSearchDebounced)}`;
+    }
+    return path;
+  }, [locQFirst, clientSearchDebounced]);
+  const { data: rawClients } = useApi<ApiClient[]>(clientsApiPath, {
     enabled: isFocused,
     staleTimeMs: 30_000,
   });
@@ -991,15 +1005,17 @@ export default function SalesScreen() {
 
   const filteredClients = useMemo(() => {
     if (!clients) return [];
-    if (!clientSearch.trim()) return clients;
-    const q = clientSearch.toLowerCase();
-    return clients.filter(
-      (c) =>
-        c.full_name.toLowerCase().includes(q) ||
-        c.phone?.includes(q) ||
-        c.email?.toLowerCase().includes(q)
+    const q = clientSearch.trim();
+    if (!q) return clients;
+    if (q === clientSearchDebounced && q.length >= 2) return clients;
+    return clients.filter((c) =>
+      clientContactMatches(q, {
+        name: c.full_name,
+        email: c.email,
+        phone: c.phone,
+      })
     );
-  }, [clients, clientSearch]);
+  }, [clients, clientSearch, clientSearchDebounced]);
 
   // Client selection step
   function renderClientStep() {

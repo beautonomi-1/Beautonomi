@@ -16,10 +16,185 @@ import {
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { hasProviderCustomerRelationship } from "@/lib/provider/client-access";
 import { buildSalonMembershipMap } from "@/lib/provider/attach-salon-membership-to-clients";
+import {
+  findProviderSavedClientMatches,
+  findServicedOnlyCustomerIdsBySearch,
+} from "@/lib/provider/client-contact-search";
+import { fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
+
+const PROVIDER_CLIENT_COLUMNS =
+  "id, notes, tags, is_favorite, last_service_date, total_bookings, total_spent, created_at, customer_id, relationship_source, privacy_level, source_metadata, linked_existing_platform_user";
+
+const CLIENT_USER_COLUMNS =
+  "id, full_name, email, phone, avatar_url, identity_verified, identity_verification_status, rating_average, review_count, customer_review_rating_avg, customer_review_rating_count, customer_booking_rating_avg, customer_booking_rating_count, date_of_birth, email_notifications_enabled, sms_notifications_enabled";
+
+function computeIsRegistered(email: string | null | undefined): boolean {
+  if (!email) return false;
+  if (email.includes("beautonomi.invalid")) return false;
+  if (email.includes("beautonomi.local")) return false;
+  return true;
+}
+
+/** Same ordering as the unsearched list: favourites first, then most recent service (nulls last). */
+function compareSavedClients(
+  a: { is_favorite?: boolean | null; last_service_date?: string | null },
+  b: { is_favorite?: boolean | null; last_service_date?: string | null },
+): number {
+  const fav = Number(Boolean(b.is_favorite)) - Number(Boolean(a.is_favorite));
+  if (fav !== 0) return fav;
+  const ad = a.last_service_date ?? null;
+  const bd = b.last_service_date ?? null;
+  if (ad === bd) return 0;
+  if (ad === null) return 1;
+  if (bd === null) return -1;
+  return ad < bd ? 1 : -1;
+}
+
+function redactLimitedLinkedCustomer(
+  client: {
+    relationship_source?: string | null;
+    privacy_level?: string | null;
+    source_metadata?: unknown;
+    total_bookings?: number | null;
+  },
+  customer: Record<string, any>,
+) {
+  const hasServiceHistory = Number(client.total_bookings ?? 0) > 0;
+  if (
+    client.relationship_source !== "manual_existing_platform" ||
+    client.privacy_level !== "limited" ||
+    hasServiceHistory
+  ) {
+    return customer;
+  }
+
+  const metadata =
+    client.source_metadata && typeof client.source_metadata === "object"
+      ? (client.source_metadata as Record<string, unknown>)
+      : {};
+
+  return {
+    id: customer.id,
+    full_name: metadata.provider_supplied_name || customer.full_name || "Existing Beautonomi customer",
+    email: metadata.matched_on === "email" ? customer.email : metadata.provider_supplied_email ?? null,
+    phone: metadata.matched_on === "phone" ? customer.phone : metadata.provider_supplied_phone ?? null,
+    avatar_url: null,
+    rating_average: null,
+    review_count: 0,
+    customer_review_rating_avg: null,
+    customer_review_rating_count: null,
+    customer_booking_rating_avg: null,
+    customer_booking_rating_count: null,
+    date_of_birth: null,
+    email_notifications_enabled: null,
+    sms_notifications_enabled: null,
+    is_registered: true,
+    is_limited_platform_link: true,
+  };
+}
+
+/** Serviced customer who has no `provider_clients` row yet (shape matches a saved row). */
+function syntheticServicedClientRow(customerId: string) {
+  return {
+    id: customerId,
+    customer_id: customerId,
+    notes: null,
+    tags: null,
+    is_favorite: false,
+    last_service_date: null,
+    total_bookings: null,
+    total_spent: null,
+    created_at: null,
+    relationship_source: null,
+    privacy_level: "standard",
+    source_metadata: null,
+    linked_existing_platform_user: false,
+  };
+}
+
+/**
+ * Attach `customer` (redacted for limited links), `salon_membership`, and
+ * `customer.default_address` to provider client rows.
+ */
+async function enrichClientRows(
+  supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
+  providerId: string,
+  rows: Record<string, any>[],
+): Promise<any[]> {
+  if (rows.length === 0) return [];
+  const customerIds = [...new Set(rows.map((r) => String(r.customer_id)))];
+
+  const customers = await fetchInIdChunks<Record<string, any>>(
+    customerIds,
+    (slice) => supabaseAdmin.from("users").select(CLIENT_USER_COLUMNS).in("id", slice),
+    { throwOnError: true },
+  );
+  const customerById = new Map(customers.map((c) => [String(c.id), c]));
+
+  if (customers.length < customerIds.length) {
+    const missingIds = customerIds.filter((id) => !customerById.has(id));
+    if (missingIds.length > 0) {
+      console.warn(`⚠️ ${missingIds.length} customer IDs in provider_clients but not found in users table:`, missingIds);
+    }
+  }
+
+  const membershipByUserId = await buildSalonMembershipMap(providerId, customerIds, supabaseAdmin);
+  const defaultAddrByUser = await fetchDefaultAddressesForUsers(supabaseAdmin, customerIds);
+
+  // §Provider-audit 2026-04: tag each customer with `is_registered` so the
+  // mobile app can disable messaging / custom offer CTAs for walk-in
+  // placeholders (walkin+xxx@beautonomi.invalid or @beautonomi.local).
+  return rows.map((client) => {
+    const cid = String(client.customer_id);
+    const customer = customerById.get(cid);
+    const default_address = defaultAddrByUser.get(cid) ?? null;
+    const salon_membership = membershipByUserId.get(cid) ?? null;
+
+    if (!customer) {
+      return {
+        ...client,
+        salon_membership,
+        customer: {
+          id: cid,
+          full_name: null,
+          email: null,
+          phone: null,
+          avatar_url: null,
+          rating_average: null,
+          review_count: 0,
+          customer_review_rating_avg: null,
+          customer_review_rating_count: null,
+          customer_booking_rating_avg: null,
+          customer_booking_rating_count: null,
+          is_registered: false,
+          default_address,
+        },
+      };
+    }
+
+    return {
+      ...client,
+      salon_membership,
+      customer: {
+        ...redactLimitedLinkedCustomer(client, {
+          ...customer,
+          is_registered: computeIsRegistered(customer.email),
+        }),
+        default_address,
+      },
+    };
+  });
+}
 
 /**
  * GET /api/provider/clients
- * Get all saved clients for the provider
+ * Get all saved clients for the provider.
+ *
+ * - `search`: provider-scoped match on name, email, phone (national `0…` or
+ *   `+27…`), provider-typed contact on limited links, notes and tags.
+ * - `include_serviced=1` (with `search`): also return customers who booked
+ *   (not cancelled / no-show) but were never saved, after the saved matches.
+ * - `customer_id`: return just that client (saved or serviced) for preselect.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -30,8 +205,11 @@ export async function GET(request: NextRequest) {
     const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
-    const locationId = searchParams.get("location_id");
-    const searchQuery = searchParams.get("search");
+    const trimmedSearch = searchParams.get("search")?.trim() ?? "";
+    const customerIdParam = searchParams.get("customer_id")?.trim() || null;
+    const includeServiced =
+      searchParams.get("include_serviced") === "1" ||
+      searchParams.get("include_serviced") === "true";
     // §Provider-audit 2026-04 (round 3): add bounded pagination so
     // providers with 500+ clients don't hit the implicit PostgREST page
     // cap before search runs. Defaults preserve the previous behaviour
@@ -51,260 +229,79 @@ export async function GET(request: NextRequest) {
       return handleApiError(new Error("Provider not found"), "Provider account required", 403);
     }
 
-    const supabaseAdminForSearch = getSupabaseAdmin();
+    const supabaseAdmin = getSupabaseAdmin();
 
-    // §Provider-audit 2026-04 (round 3): push the search predicate down
-    // to SQL when a query is supplied. Previously we fetched the whole
-    // provider_clients set, enriched with users, then filtered in JS —
-    // which silently missed matches beyond the row cap. For a search we
-    // now look up users first (name/email/phone), then restrict
-    // provider_clients by that customer_id set.
-    let customerIdAllowList: Set<string> | null = null;
-    if (searchQuery && searchQuery.trim().length > 0) {
-      const trimmed = searchQuery.trim();
-      const digitsOnly = trimmed.replace(/\D+/g, "");
-      // Sanitise: strip PostgREST .or() reserved chars so a rogue comma
-      // or paren in the query can't break clause parsing.
-      const safe = trimmed.replace(/[%_,()]/g, "");
-      const orClauses: string[] = [
-        `full_name.ilike.%${safe}%`,
-        `email.ilike.%${safe}%`,
-      ];
-      if (digitsOnly.length > 0) {
-        orClauses.push(`phone.ilike.%${digitsOnly}%`);
-      }
-      const { data: matchedUsers, error: searchErr } = await supabaseAdminForSearch
-        .from("users")
-        .select("id")
-        .or(orClauses.join(","))
-        .limit(500);
-      if (searchErr) {
-        console.error("[provider/clients] user search failed:", searchErr);
-      }
-      customerIdAllowList = new Set(
-        (matchedUsers ?? []).map((u: { id: string }) => u.id).filter(Boolean),
+    if (customerIdParam) {
+      return await buildPreselectedClientResponse(
+        supabase,
+        supabaseAdmin,
+        providerId,
+        customerIdParam,
       );
-      // Short-circuit: no matches → empty result without the heavier enrichment.
-      if (customerIdAllowList.size === 0) {
-        const resp = successResponse([]);
-        resp.headers.set("X-Total-Count", "0");
-        return resp;
-      }
     }
 
-    let clientsQuery = supabase
-      .from("provider_clients")
-      .select(
-        "id, notes, tags, is_favorite, last_service_date, total_bookings, total_spent, created_at, customer_id, relationship_source, privacy_level, source_metadata, linked_existing_platform_user",
-        { count: "exact" },
-      )
-      .eq("provider_id", providerId);
+    let pageRows: Record<string, any>[];
+    let totalCount: number;
 
-    if (customerIdAllowList) {
-      clientsQuery = clientsQuery.in("customer_id", Array.from(customerIdAllowList));
-    }
+    if (trimmedSearch) {
+      const { matchedCustomerIds, savedRows } = await findProviderSavedClientMatches(
+        supabaseAdmin,
+        providerId,
+        trimmedSearch,
+      );
 
-    // If location_id is provided (and no search), also fetch customer IDs with bookings at that location
-    // We still show ALL saved clients but can mark which ones have location-specific bookings
-    let _locationCustomerIds: Set<string> | null = null;
-    if (locationId && !searchQuery) {
-      const { data: locationBookings } = await supabase
-        .from("bookings")
-        .select("customer_id")
+      const servicedOnlyIds = includeServiced
+        ? await findServicedOnlyCustomerIdsBySearch(
+            supabaseAdmin,
+            providerId,
+            trimmedSearch,
+            new Set(savedRows.map((r) => r.customer_id)),
+          )
+        : [];
+
+      const savedMatches =
+        matchedCustomerIds.size > 0
+          ? await fetchInIdChunks<Record<string, any>>(
+              [...matchedCustomerIds],
+              (slice) =>
+                supabase
+                  .from("provider_clients")
+                  .select(PROVIDER_CLIENT_COLUMNS)
+                  .eq("provider_id", providerId)
+                  .in("customer_id", slice),
+              { throwOnError: true },
+            )
+          : [];
+      savedMatches.sort(compareSavedClients);
+
+      // Saved matches first, then serviced-only, paginated as one list.
+      totalCount = savedMatches.length + servicedOnlyIds.length;
+      const savedPage = savedMatches.slice(pageOffset, pageOffset + pageLimit);
+      const servicedStart = Math.max(0, pageOffset - savedMatches.length);
+      const servicedPage = servicedOnlyIds
+        .slice(servicedStart, servicedStart + (pageLimit - savedPage.length))
+        .map(syntheticServicedClientRow);
+      pageRows = [...savedPage, ...servicedPage];
+    } else {
+      const { data: clients, error, count } = await supabase
+        .from("provider_clients")
+        .select(PROVIDER_CLIENT_COLUMNS, { count: "exact" })
         .eq("provider_id", providerId)
-        .or(`location_id.eq.${locationId},location_id.is.null`);
-      
-      _locationCustomerIds = new Set((locationBookings || []).map((b: { customer_id: string }) => b.customer_id));
-    }
+        .order("is_favorite", { ascending: false })
+        .order("last_service_date", { ascending: false, nullsFirst: false })
+        .range(pageOffset, pageOffset + pageLimit - 1);
 
-    const { data: clients, error, count: totalCount } = await clientsQuery
-      .order("is_favorite", { ascending: false })
-      .order("last_service_date", { ascending: false, nullsFirst: false })
-      .range(pageOffset, pageOffset + pageLimit - 1);
-
-    if (error) {
-      throw error;
-    }
-
-    if (!clients || clients.length === 0) {
-      const empty = successResponse([]);
-      empty.headers.set("X-Total-Count", String(totalCount ?? 0));
-      return empty;
-    }
-
-    // Fetch customer details using admin client to bypass RLS
-    const customerIds = clients.map((c) => c.customer_id);
-    const supabaseAdmin = supabaseAdminForSearch;
-    const { data: customers, error: customersError } = await supabaseAdmin
-      .from("users")
-      .select(
-        "id, full_name, email, phone, avatar_url, identity_verified, identity_verification_status, rating_average, review_count, customer_review_rating_avg, customer_review_rating_count, customer_booking_rating_avg, customer_booking_rating_count, date_of_birth, email_notifications_enabled, sms_notifications_enabled",
-      )
-      .in("id", customerIds);
-
-    if (customersError) {
-      console.error("Error fetching customer data from users table (admin client):", customersError);
-      throw customersError;
-    }
-
-    /** Salon `user_memberships` (one row per customer per provider). */
-    const membershipByUserId = await buildSalonMembershipMap(
-      providerId,
-      customerIds,
-      supabaseAdmin,
-    );
-
-    // Log missing customers for debugging
-    if (customers && customers.length < customerIds.length) {
-      const foundIds = new Set(customers.map((c: { id: string }) => c.id));
-      const missingIds = customerIds.filter(id => !foundIds.has(id));
-      if (missingIds.length > 0) {
-        console.warn(`⚠️ ${missingIds.length} customer IDs in provider_clients but not found in users table:`, missingIds);
+      if (error) {
+        throw error;
       }
+      pageRows = clients ?? [];
+      totalCount = count ?? pageRows.length;
     }
 
-    // Combine data - include all clients even if customer data is missing.
-    // §Provider-audit 2026-04: tag each customer with `is_registered` so the
-    // mobile app can disable messaging / custom offer CTAs for walk-in
-    // placeholders (walkin+xxx@beautonomi.invalid or @beautonomi.local).
-    // Previously the mobile Message button blindly POSTed to
-    // /api/provider/conversations/create and we surfaced the raw
-    // 404 "Customer not found" alert.
-    const _foundCustomerIds = new Set(customers?.map((c: { id: string }) => c.id) || []);
-    const computeIsRegistered = (email: string | null | undefined): boolean => {
-      if (!email) return false;
-      if (email.includes("beautonomi.invalid")) return false;
-      if (email.includes("beautonomi.local")) return false;
-      return true;
-    };
-    const redactLimitedLinkedCustomer = (client: {
-      relationship_source?: string | null;
-      privacy_level?: string | null;
-      source_metadata?: unknown;
-      total_bookings?: number | null;
-    }, customer: Record<string, unknown>) => {
-      const hasServiceHistory = Number(client.total_bookings ?? 0) > 0;
-      if (
-        client.relationship_source !== "manual_existing_platform" ||
-        client.privacy_level !== "limited" ||
-        hasServiceHistory
-      ) {
-        return customer;
-      }
-
-      const metadata =
-        client.source_metadata && typeof client.source_metadata === "object"
-          ? (client.source_metadata as Record<string, unknown>)
-          : {};
-
-      return {
-        id: customer.id,
-        full_name: metadata.provider_supplied_name || customer.full_name || "Existing Beautonomi customer",
-        email: metadata.matched_on === "email" ? customer.email : metadata.provider_supplied_email ?? null,
-        phone: metadata.matched_on === "phone" ? customer.phone : metadata.provider_supplied_phone ?? null,
-        avatar_url: null,
-        rating_average: null,
-        review_count: 0,
-        customer_review_rating_avg: null,
-        customer_review_rating_count: null,
-        customer_booking_rating_avg: null,
-        customer_booking_rating_count: null,
-        date_of_birth: null,
-        email_notifications_enabled: null,
-        sms_notifications_enabled: null,
-        is_registered: true,
-        is_limited_platform_link: true,
-      };
-    };
-    let clientsWithCustomers: any[] = clients.map((client) => {
-      const customer = customers?.find((c) => c.id === client.customer_id);
-      const salon_membership = membershipByUserId.get(client.customer_id) ?? null;
-
-      // If customer not found, create minimal customer object.
-      if (!customer) {
-        return {
-          ...client,
-          salon_membership,
-          customer: {
-            id: client.customer_id,
-            full_name: null,
-            email: null,
-            phone: null,
-            avatar_url: null,
-            rating_average: null,
-            review_count: 0,
-            customer_review_rating_avg: null,
-            customer_review_rating_count: null,
-            customer_booking_rating_avg: null,
-            customer_booking_rating_count: null,
-            is_registered: false,
-          },
-        };
-      }
-
-      return {
-        ...client,
-        salon_membership,
-        customer: {
-          ...redactLimitedLinkedCustomer(client, {
-            ...customer,
-            is_registered: computeIsRegistered(customer.email),
-          }),
-        },
-      };
-    });
-
-    const customerIdsForAddr = [
-      ...new Set(
-        clientsWithCustomers
-          .map((c) => c.customer?.id)
-          .filter((id): id is string => typeof id === "string" && id.length > 0),
-      ),
-    ];
-    const defaultAddrByUser = await fetchDefaultAddressesForUsers(
-      supabaseAdmin,
-      customerIdsForAddr,
-    );
-    clientsWithCustomers = clientsWithCustomers.map((row) => {
-      const cid = row.customer?.id;
-      const default_address = cid ? defaultAddrByUser.get(cid) ?? null : null;
-      return {
-        ...row,
-        customer: row.customer ? { ...row.customer, default_address } : row.customer,
-      };
-    });
-
-    // §Provider-audit 2026-04 (round 3): search predicate is now enforced
-    // server-side via the `users` pre-query (see `customerIdAllowList`
-    // above). Address-blob match remains as a local refinement when
-    // needed, but we don't want it to hide otherwise-valid matches.
-    if (searchQuery && searchQuery.trim().length > 0) {
-      const searchLower = searchQuery.toLowerCase().trim();
-      const refined = clientsWithCustomers.filter((client) => {
-        const customer = client.customer;
-        if (!customer) return false;
-        const da = (customer as { default_address?: { address_line1?: string; city?: string } | null })
-          .default_address;
-        const addrBlob = [da?.address_line1, da?.city].filter(Boolean).join(" ").toLowerCase();
-        const nameMatch = customer.full_name?.toLowerCase().includes(searchLower);
-        const emailMatch = customer.email?.toLowerCase().includes(searchLower);
-        const phoneDigits = customer.phone?.replace(/\D+/g, "") ?? "";
-        const queryDigits = searchLower.replace(/\D+/g, "");
-        const phoneMatch =
-          customer.phone?.toLowerCase().includes(searchLower) ||
-          (queryDigits.length >= 3 && phoneDigits.includes(queryDigits));
-        const addrMatch = addrBlob.includes(searchLower);
-        return Boolean(nameMatch || emailMatch || phoneMatch || addrMatch);
-      });
-      // If the address-blob refinement happened to filter everything out,
-      // fall back to the SQL match set so users still get something useful.
-      if (refined.length > 0) {
-        clientsWithCustomers = refined;
-      }
-    }
+    const clientsWithCustomers = await enrichClientRows(supabaseAdmin, providerId, pageRows);
 
     const resp = successResponse(clientsWithCustomers);
-    resp.headers.set("X-Total-Count", String(totalCount ?? clientsWithCustomers.length));
+    resp.headers.set("X-Total-Count", String(totalCount));
     resp.headers.set("X-Page-Limit", String(pageLimit));
     resp.headers.set("X-Page-Offset", String(pageOffset));
     return resp;
@@ -441,4 +438,37 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return handleApiError(error, "Failed to save client");
   }
+}
+
+/** `GET ?customer_id=` — the saved row, or a serviced-only row, or `[]`. */
+async function buildPreselectedClientResponse(
+  supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
+  supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
+  providerId: string,
+  customerId: string,
+) {
+  const { data: clientRow } = await supabase
+    .from("provider_clients")
+    .select(PROVIDER_CLIENT_COLUMNS)
+    .eq("provider_id", providerId)
+    .eq("customer_id", customerId)
+    .maybeSingle();
+
+  let row: Record<string, any> | null = clientRow;
+  if (!row) {
+    const { data: servicedHit } = await supabaseAdmin
+      .from("bookings")
+      .select("customer_id")
+      .eq("provider_id", providerId)
+      .eq("customer_id", customerId)
+      .not("status", "in", '("cancelled","no_show")')
+      .limit(1)
+      .maybeSingle();
+    if (servicedHit) row = syntheticServicedClientRow(customerId);
+  }
+
+  const payload = row ? await enrichClientRows(supabaseAdmin, providerId, [row]) : [];
+  const resp = successResponse(payload);
+  resp.headers.set("X-Total-Count", String(payload.length));
+  return resp;
 }

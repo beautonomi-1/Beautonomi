@@ -8945,7 +8945,15 @@
           "priorityLow": "tlase",
           "priorityMedium": "bohare",
           "priorityHigh": "holimo",
-          "priorityUrgent": "kapele"
+          "priorityUrgent": "kapele",
+          "assistantTyping": "Mothuši o a ngwala…",
+          "handoffTitle": "Re go kgokaganya le thekgo",
+          "handoffBody": "Setsebi se tla tsenela poledišanong ye kapejana.",
+          "aiDisclaimer": "AI e ka dira diphošo — o ka kgopela motho nako efe goba efe.",
+          "assistantName": "Mothuši wa Beautonomi",
+          "talkToPerson": "Bolela le motho",
+          "didThisHelp": "Na se se thušitše? Ee",
+          "attachmentsAfterHuman": "Dikgomaretšwa di a hwetšagala ka morago ga ge setsebi se tsene poledišanong."
         },
         "providerVerificationPanel": {
           "statusNotStarted": "Not thomaed",
@@ -9440,7 +9448,15 @@
           "priorityLow": "Tlase",
           "priorityMedium": "Bohare",
           "priorityHigh": "Holimo",
-          "priorityUrgent": "Kapele"
+          "priorityUrgent": "Kapele",
+          "sentToTeam": "Tekete ya gago e rometšwe sehlopheng sa rena sa thekgo. Re tla araba poledišanong ye.",
+          "chatDefaultSubject": "thekgo kgopelo",
+          "continueToChat": "tšwela pele to chat",
+          "useFullForm": "Use e tletše form",
+          "safetyUseForm": "Dipego tša polokego di ya thwii sehlopheng sa rena — hle šomiša foromo ye e tletšego.",
+          "chatAiDisclaimer": "AI e ka dira diphošo — o ka bolela le motho nako efe goba efe ka morago ga ge tekete ya gago e hlotšwe.",
+          "startChat": "thoma chat",
+          "chatBack": "Morago"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -17093,7 +17109,8 @@
           "startChat": "thoma chat",
           "chatBack": "Morago",
           "safetyUseForm": "Dipego tša polokego di ya thwii sehlopheng sa rena — hle šomiša foromo ye e tletšego.",
-          "chatAiDisclaimer": "AI e ka dira diphošo — o ka bolela le motho nako efe goba efe ka morago ga ge tekete ya gago e hlotšwe."
+          "chatAiDisclaimer": "AI e ka dira diphošo — o ka bolela le motho nako efe goba efe ka morago ga ge tekete ya gago e hlotšwe.",
+          "sentToTeam": "Tekete ya gago e rometšwe sehlopheng sa rena sa thekgo. Re tla araba poledišanong ye."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Mohuta your molaetsa...",
@@ -17156,7 +17173,15 @@
           "priorityLow": "tlase",
           "priorityMedium": "bohare",
           "priorityHigh": "holimo",
-          "priorityUrgent": "kapele"
+          "priorityUrgent": "kapele",
+          "handoffTitle": "Re go kgokaganya le thekgo",
+          "handoffBody": "Setsebi se tla tsenela poledišanong ye kapejana.",
+          "aiDisclaimer": "AI e ka dira diphošo — o ka kgopela motho nako efe goba efe.",
+          "assistantName": "Mothuši wa Beautonomi",
+          "talkToPerson": "Bolela le motho",
+          "didThisHelp": "Na se se thušitše? Ee",
+          "attachmentsAfterHuman": "Dikgomaretšwa di a hwetšagala ka morago ga ge setsebi se tsene poledišanong.",
+          "assistantTyping": "Mothuši o a ngwala…"
         },
         "giftCardAmountPlaceholder": "e.g. 350",
         "partnerProfileReportPlaceholder": "Hle hlaloša se se diregilego...",
@@ -20257,7 +20282,10 @@
         "createOfferFailed": "E paletšwe go hlama Ya tlwaelo offer",
         "offerUpdated": "Offer mpshafatšad katlegoe tletšey!",
         "offerCreated": "Offer hlamad katlegoe tletšey!",
-        "createOfferFailedShort": "E paletšwe go hlama offer"
+        "createOfferFailedShort": "E paletšwe go hlama offer",
+        "changeClient": "Fetola",
+        "searchClientPlaceholder": "Nyaka ka leina, imeile goba mogala (mohl. 082…)",
+        "searchClientHint": "Ngwala bonyane ditlhaka tše 2"
       },
       "privacyAndSharing": {
         "tabAccount": "Akhauute",

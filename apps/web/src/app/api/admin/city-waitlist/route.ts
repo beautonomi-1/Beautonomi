@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { handleApiError, requireAdminSection, unauthorizedResponse } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
+import { phoneIlikeClauses, sanitizeIlikeTerm } from "@/lib/search/phone-ilike";
 
 /**
  * GET /api/admin/city-waitlist
@@ -35,9 +36,16 @@ export async function GET(request: NextRequest) {
     if (source) query = query.eq("source", source);
     if (persona) query = query.eq("persona", persona);
     if (search) {
-      const q = `%${search.replace(/%/g, "")}%`;
+      const safe = sanitizeIlikeTerm(search);
+      const q = `%${safe}%`;
       query = query.or(
-        `name.ilike.${q},email.ilike.${q},phone.ilike.${q},city_name.ilike.${q}`,
+        [
+          `name.ilike.${q}`,
+          `email.ilike.${q}`,
+          `phone.ilike.${q}`,
+          `city_name.ilike.${q}`,
+          ...phoneIlikeClauses(["phone"], search),
+        ].join(","),
       );
     }
 

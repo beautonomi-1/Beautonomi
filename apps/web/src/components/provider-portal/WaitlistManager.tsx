@@ -45,7 +45,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/ui/phone-input";
-import { isCompleteE164 } from "@/lib/phone";
+import { isCompleteE164, phoneMatchesQuery } from "@/lib/phone";
 import { Separator } from "@/components/ui/separator";
 import { format, formatDistanceToNow, parseISO, isToday, isTomorrow } from "date-fns";
 import { RADIX_SELECT_ANY } from "@/lib/ui/select-radix-sentinels";
@@ -555,7 +555,7 @@ export function WaitlistManager({
         entry.client_name.toLowerCase().includes(query) ||
         entry.service_name.toLowerCase().includes(query) ||
         entry.client_email?.toLowerCase().includes(query) ||
-        entry.client_phone?.includes(query)
+        phoneMatchesQuery(entry.client_phone, searchQuery)
       );
     })
     .sort((a, b) => {

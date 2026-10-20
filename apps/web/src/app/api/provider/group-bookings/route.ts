@@ -23,6 +23,10 @@ import {
 import { evaluateGroupCapacity, normalizeGroupCapacity } from "@/lib/bookings/group-capacity";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
+import {
+  findGroupBookingIdsByParticipantContactSearch,
+  MAX_INLINE_MATCH_IDS,
+} from "@/lib/provider/client-contact-search";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -192,7 +196,17 @@ export async function GET(request: NextRequest) {
       }
 
       if (search) {
-        query = query.or(`ref_number.ilike.%${search}%,title.ilike.%${search}%`);
+        const safe = search.replace(/[%_,()]/g, "");
+        const participantGroupIds = await findGroupBookingIdsByParticipantContactSearch(
+          admin,
+          providerId,
+          search,
+        );
+        const orParts = [`ref_number.ilike.%${safe}%`, `title.ilike.%${safe}%`];
+        if (participantGroupIds.length > 0) {
+          orParts.push(`id.in.(${participantGroupIds.slice(0, MAX_INLINE_MATCH_IDS).join(",")})`);
+        }
+        query = query.or(orParts.join(","));
       }
 
       query = query.range(offset, offset + limit - 1);

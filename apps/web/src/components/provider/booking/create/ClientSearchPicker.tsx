@@ -61,10 +61,9 @@ export function ClientSearchPicker({
     const timer = setTimeout(async () => {
       setSearching(true);
       try {
-        const [savedRes, servicedRes] = await Promise.all([
-          providerPortalFetch(`/api/provider/clients?search=${encodeURIComponent(query)}`),
-          providerPortalFetch(`/api/provider/clients/serviced?search=${encodeURIComponent(query)}`),
-        ]);
+        const savedRes = await providerPortalFetch(
+          `/api/provider/clients?search=${encodeURIComponent(query)}&include_serviced=1`,
+        );
 
         const all: ClientSearchResult[] = [];
 
@@ -74,22 +73,6 @@ export function ClientSearchPicker({
             const customer = client.customer || {};
             all.push({
               id: customer.id || client.customer_id,
-              full_name: customer.full_name || t("web.messagingList.unknown"),
-              email: customer.email || "",
-              phone: customer.phone || "",
-            });
-          }
-        }
-
-        if (servicedRes.ok) {
-          const servicedData = await servicedRes.json();
-          const existing = new Set(all.map((c) => c.id));
-          for (const item of servicedData.data || []) {
-            const id = item.customer?.id || item.customer_id;
-            if (existing.has(id)) continue;
-            const customer = item.customer || {};
-            all.push({
-              id,
               full_name: customer.full_name || t("web.messagingList.unknown"),
               email: customer.email || "",
               phone: customer.phone || "",

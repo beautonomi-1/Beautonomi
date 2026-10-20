@@ -148,6 +148,7 @@ export async function GET(request: NextRequest) {
           sumsub: { enabled: false },
           aura: { enabled: false },
           safety: { enabled: false, check_in_enabled: true, escalation_enabled: true, cooldown_seconds: 300, ui_copy: {} },
+          support_assistant: { active: false },
         },
         verification: {
           mode: "off",

@@ -26,6 +26,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { formatPhone, formatTimeAgo, formatCurrency } from "@/lib/format";
+import { clientContactMatches } from "@/lib/phone";
 import { api } from "@/lib/api-client";
 import { useProvider } from "@/providers/ProviderContext";
 import { Colors } from "@/constants/colors";
@@ -387,7 +388,12 @@ export default function ClientsScreen() {
     if (debouncedSearch.length > 0) parts.push(`search=${encodeURIComponent(debouncedSearch)}`);
     return `?${parts.join("&")}`;
   }, [selectedLocationId, debouncedSearch]);
-  const secondaryLocQ = selectedLocationId ? `?location_id=${selectedLocationId}` : "";
+  const secondaryLocQ = useMemo(() => {
+    const parts: string[] = [];
+    if (selectedLocationId) parts.push(`location_id=${encodeURIComponent(selectedLocationId)}`);
+    if (debouncedSearch.length > 0) parts.push(`search=${encodeURIComponent(debouncedSearch)}`);
+    return parts.length > 0 ? `?${parts.join("&")}` : "";
+  }, [selectedLocationId, debouncedSearch]);
 
   // Form state - separate first/last name fields
   const [firstName, setFirstName] = useState("");
@@ -573,27 +579,23 @@ export default function ClientsScreen() {
       result = result.filter((c) => clientHasBookableSalonMembership(c));
     }
 
-    // §Provider-audit 2026-04 (round 2): normalise phone search — providers
-    // type "0721234567" expecting to hit "+27721234567" (SA national vs
-    // E.164). Match on the trailing significant digits rather than a raw
-    // substring. Name/email keep the plain includes-check.
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      const digitsOnly = q.replace(/\D+/g, "");
-      const digitsSuffix = digitsOnly.length >= 7 ? digitsOnly.slice(-9) : digitsOnly;
-      result = result.filter((c) => {
-        if (c.full_name?.toLowerCase().includes(q)) return true;
-        if (c.email?.toLowerCase().includes(q)) return true;
-        if (!c.phone) return false;
-        const phoneDigits = c.phone.replace(/\D+/g, "");
-        if (digitsOnly.length > 0 && phoneDigits.includes(digitsOnly)) return true;
-        if (digitsSuffix.length > 0 && phoneDigits.endsWith(digitsSuffix)) return true;
-        return false;
-      });
+    const q = search.trim();
+    if (q && q !== debouncedSearch) {
+      const lower = q.toLowerCase();
+      result = result.filter(
+        (c) =>
+          clientContactMatches(q, {
+            name: c.full_name,
+            email: c.email,
+            phone: c.phone,
+          }) ||
+          Boolean(c.notes?.toLowerCase().includes(lower)) ||
+          Boolean(c.tags?.some((tag) => tag.toLowerCase().includes(lower)))
+      );
     }
 
     return result;
-  }, [clients, search, clientFilter]);
+  }, [clients, search, debouncedSearch, clientFilter]);
 
   // Filter counts
   const filterCounts = useMemo(() => {

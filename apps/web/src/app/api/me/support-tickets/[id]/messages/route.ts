@@ -77,7 +77,9 @@ export async function POST(
       return errorResponse("This ticket is closed to new replies", "TICKET_CLOSED", 409);
     }
 
-    const handlingMode = String((ticket as { handling_mode?: string }).handling_mode ?? "human");
+    let handlingMode = String((ticket as { handling_mode?: string }).handling_mode ?? "human");
+    let fallThroughToHuman = handlingMode !== "assistant";
+    let handoffFromAssistant = false;
     if (handlingMode === "assistant") {
       if (attachments.length > 0) {
         return errorResponse(
@@ -89,8 +91,14 @@ export async function POST(
       const admin = getSupabaseAdmin();
       const pre = await precheckSupportAssistantTurn({ admin, ticketId: id, request });
       if (pre.ok === false) {
-        return assistantTurnFailureResponse(pre.result);
-      }
+        if (pre.result.handoff) {
+          fallThroughToHuman = true;
+          handoffFromAssistant = true;
+          handlingMode = "human";
+        } else {
+          return assistantTurnFailureResponse(pre.result);
+        }
+      } else if (!fallThroughToHuman) {
       const now = new Date().toISOString();
       const { data: customerMsg, error: insertErr } = await admin
         .from("support_ticket_messages")
@@ -128,6 +136,7 @@ export async function POST(
         assistantMessage: turn.assistantMessage,
         handoff: turn.handoff,
       });
+      }
     }
 
     const bodyText = message.slice(0, 10000) || (attachments.length ? "(attachment)" : "");
@@ -202,7 +211,10 @@ export async function POST(
       console.error("Slack reply notification failed:", slackErr);
     }
 
-    return successResponse({ message: newMessage });
+    return successResponse({
+      message: newMessage,
+      ...(handoffFromAssistant ? { handoff: true } : {}),
+    });
   } catch (error) {
     return handleApiError(error, "Failed to add message");
   }

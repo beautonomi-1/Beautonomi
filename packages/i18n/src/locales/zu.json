@@ -8945,7 +8945,15 @@
           "priorityLow": "phansi",
           "priorityMedium": "maphakathi",
           "priorityHigh": "phezulu",
-          "priorityUrgent": "kuyaphuthuma"
+          "priorityUrgent": "kuyaphuthuma",
+          "assistantTyping": "Umsizi uyathayipha…",
+          "handoffTitle": "Sikuxhumanisa nosekelo",
+          "handoffBody": "Uchwepheshe uzojoyina le ngxoxo maduzane.",
+          "aiDisclaimer": "I-AI ingenza amaphutha — ungacela umuntu noma nini.",
+          "assistantName": "Umsizi we-Beautonomi",
+          "talkToPerson": "Khuluma nomuntu",
+          "didThisHelp": "Ngabe lokhu kusizile? Yebo",
+          "attachmentsAfterHuman": "Okunamathiselwe kutholakala ngemuva kokuthi uchwepheshe ajoyine ingxoxo."
         },
         "providerVerificationPanel": {
           "statusNotStarted": "Not qalaed",
@@ -9440,7 +9448,15 @@
           "priorityLow": "Phansi",
           "priorityMedium": "Maphakathi",
           "priorityHigh": "Phezulu",
-          "priorityUrgent": "Kuyaphuthuma"
+          "priorityUrgent": "Kuyaphuthuma",
+          "sentToTeam": "Ithikithi lakho lithunyelwe ethimbeni lethu losekelo. Sizophendula kule ngxoxo.",
+          "chatDefaultSubject": "usizo isicelo",
+          "continueToChat": "qhubeka to chat",
+          "useFullForm": "Use kugcwele form",
+          "safetyUseForm": "Imibiko yokuphepha iya ngqo ethimbeni lethu — sicela usebenzise ifomu eligcwele.",
+          "chatAiDisclaimer": "I-AI ingenza amaphutha — ungakhuluma nomuntu noma nini ngemuva kokuthi ithikithi lakho selidaliwe.",
+          "startChat": "qala chat",
+          "chatBack": "Emuva"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -17097,7 +17113,8 @@
           "startChat": "qala chat",
           "chatBack": "Emuva",
           "safetyUseForm": "Imibiko yokuphepha iya ngqo ethimbeni lethu — sicela usebenzise ifomu eligcwele.",
-          "chatAiDisclaimer": "I-AI ingenza amaphutha — ungakhuluma nomuntu noma nini ngemuva kokuthi ithikithi lakho selidaliwe."
+          "chatAiDisclaimer": "I-AI ingenza amaphutha — ungakhuluma nomuntu noma nini ngemuva kokuthi ithikithi lakho selidaliwe.",
+          "sentToTeam": "Ithikithi lakho lithunyelwe ethimbeni lethu losekelo. Sizophendula kule ngxoxo."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Uhlobo your umlayezo...",
@@ -17160,7 +17177,15 @@
           "priorityLow": "phansi",
           "priorityMedium": "maphakathi",
           "priorityHigh": "phezulu",
-          "priorityUrgent": "kuyaphuthuma"
+          "priorityUrgent": "kuyaphuthuma",
+          "handoffTitle": "Sikuxhumanisa nosekelo",
+          "handoffBody": "Uchwepheshe uzojoyina le ngxoxo maduzane.",
+          "aiDisclaimer": "I-AI ingenza amaphutha — ungacela umuntu noma nini.",
+          "assistantName": "Umsizi we-Beautonomi",
+          "talkToPerson": "Khuluma nomuntu",
+          "didThisHelp": "Ngabe lokhu kusizile? Yebo",
+          "attachmentsAfterHuman": "Okunamathiselwe kutholakala ngemuva kokuthi uchwepheshe ajoyine ingxoxo.",
+          "assistantTyping": "Umsizi uyathayipha…"
         },
         "giftCardAmountPlaceholder": "isib. 350",
         "partnerProfileReportPlaceholder": "Sicela uchaze okwenzekile...",
@@ -20258,7 +20283,10 @@
         "createOfferFailed": "Kwehlulekile uku-dala Okwezifiso offer",
         "offerUpdated": "Offer buyekezad impumelelokugcweley!",
         "offerCreated": "Offer dalad impumelelokugcweley!",
-        "createOfferFailedShort": "Kwehlulekile uku-dala offer"
+        "createOfferFailedShort": "Kwehlulekile uku-dala offer",
+        "changeClient": "Shintsha",
+        "searchClientPlaceholder": "Sesha ngegama, i-imeyili noma ucingo (isb. 082…)",
+        "searchClientHint": "Thayipha okungenani izinhlamvu ezingu-2"
       },
       "privacyAndSharing": {
         "tabAccount": "I-akhawunti",

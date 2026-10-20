@@ -8945,7 +8945,15 @@
           "priorityLow": "low",
           "priorityMedium": "medium",
           "priorityHigh": "high",
-          "priorityUrgent": "urgent"
+          "priorityUrgent": "urgent",
+          "assistantTyping": "El asistente está escribiendo…",
+          "handoffTitle": "Conectándote con soporte",
+          "handoffBody": "Un especialista se unirá a esta conversación en breve.",
+          "aiDisclaimer": "La IA puede equivocarse — puedes pedir una persona en cualquier momento.",
+          "assistantName": "Asistente de Beautonomi",
+          "talkToPerson": "Hablar con una persona",
+          "didThisHelp": "¿Esto ayudó? Sí",
+          "attachmentsAfterHuman": "Los archivos adjuntos están disponibles cuando un especialista se une a la conversación."
         },
         "providerVerificationPanel": {
           "statusNotStarted": "Not empezared",
@@ -9440,7 +9448,15 @@
           "priorityLow": "Low",
           "priorityMedium": "Medium",
           "priorityHigh": "High",
-          "priorityUrgent": "Urgent"
+          "priorityUrgent": "Urgent",
+          "sentToTeam": "Tu solicitud se envió a nuestro equipo de soporte. Responderemos en esta conversación.",
+          "chatDefaultSubject": "ayuda solicitud",
+          "continueToChat": "continuar to chat",
+          "useFullForm": "Use lleno form",
+          "safetyUseForm": "Los informes de seguridad van directamente a nuestro equipo; utilice el formulario completo.",
+          "chatAiDisclaimer": "La IA puede cometer errores: puedes hablar con una persona en cualquier momento después de crear tu ticket.",
+          "startChat": "empezar chat",
+          "chatBack": "Atrás"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -17088,7 +17104,8 @@
           "startChat": "empezar chat",
           "chatBack": "Atrás",
           "safetyUseForm": "Los informes de seguridad van directamente a nuestro equipo; utilice el formulario completo.",
-          "chatAiDisclaimer": "La IA puede cometer errores: puedes hablar con una persona en cualquier momento después de crear tu ticket."
+          "chatAiDisclaimer": "La IA puede cometer errores: puedes hablar con una persona en cualquier momento después de crear tu ticket.",
+          "sentToTeam": "Tu solicitud se envió a nuestro equipo de soporte. Responderemos en esta conversación."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Tipo your mensaje...",
@@ -17151,7 +17168,15 @@
           "priorityLow": "low",
           "priorityMedium": "medium",
           "priorityHigh": "high",
-          "priorityUrgent": "urgent"
+          "priorityUrgent": "urgent",
+          "handoffTitle": "Conectándote con soporte",
+          "handoffBody": "Un especialista se unirá a esta conversación en breve.",
+          "aiDisclaimer": "La IA puede equivocarse — puedes pedir una persona en cualquier momento.",
+          "assistantName": "Asistente de Beautonomi",
+          "talkToPerson": "Hablar con una persona",
+          "didThisHelp": "¿Esto ayudó? Sí",
+          "attachmentsAfterHuman": "Los archivos adjuntos están disponibles cuando un especialista se une a la conversación.",
+          "assistantTyping": "El asistente está escribiendo…"
         },
         "giftCardAmountPlaceholder": "e.g. 350",
         "partnerProfileReportPlaceholder": "Describe what happened..",
@@ -20252,7 +20277,10 @@
         "createOfferFailed": "No se pudo crear Personalizado offer",
         "offerUpdated": "Offer actualizard listollenoy!",
         "offerCreated": "Offer creard listollenoy!",
-        "createOfferFailedShort": "No se pudo crear offer"
+        "createOfferFailedShort": "No se pudo crear offer",
+        "changeClient": "Cambiar",
+        "searchClientPlaceholder": "Buscar por nombre, correo o teléfono (p. ej. 082…)",
+        "searchClientHint": "Escribe al menos 2 caracteres"
       },
       "privacyAndSharing": {
         "tabAccount": "Cuenta",

@@ -8945,7 +8945,15 @@
           "priorityLow": "tlase",
           "priorityMedium": "bohare",
           "priorityHigh": "holimo",
-          "priorityUrgent": "kapele"
+          "priorityUrgent": "kapele",
+          "assistantTyping": "Mothusi oa ngola…",
+          "handoffTitle": "Re o hokahanya le tšehetso",
+          "handoffBody": "Setsebi se tla kenella moqoqong ona haufinyane.",
+          "aiDisclaimer": "AI e ka etsa liphoso — o ka kopa motho nako efe kapa efe.",
+          "assistantName": "Mothusi oa Beautonomi",
+          "talkToPerson": "Bua le motho",
+          "didThisHelp": "Na see se thusitse? Ee",
+          "attachmentsAfterHuman": "Lihokelo lia fumaneha kamora hore setsebi se kenele moqoqong."
         },
         "providerVerificationPanel": {
           "statusNotStarted": "Not qalaed",
@@ -9440,7 +9448,15 @@
           "priorityLow": "Tlase",
           "priorityMedium": "Bohare",
           "priorityHigh": "Holimo",
-          "priorityUrgent": "Kapele"
+          "priorityUrgent": "Kapele",
+          "sentToTeam": "Tekete ea hau e rometsoe sehlopheng sa rona sa tšehetso. Re tla araba moqoqong ona.",
+          "chatDefaultSubject": "tšehetso kopo",
+          "continueToChat": "tsoela pele to chat",
+          "useFullForm": "Use e tletse form",
+          "safetyUseForm": "Litlaleho tsa polokeho li ea sehlopheng sa rona ka kotloloho - ka kopo sebelisa foromo e felletseng.",
+          "chatAiDisclaimer": "AI e ka etsa liphoso - o ka bua le motho nako efe kapa efe kamora hore tekete ea hau e thehoe.",
+          "startChat": "qala chat",
+          "chatBack": "Morao"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -17093,7 +17109,8 @@
           "startChat": "qala chat",
           "chatBack": "Morao",
           "safetyUseForm": "Litlaleho tsa polokeho li ea sehlopheng sa rona ka kotloloho - ka kopo sebelisa foromo e felletseng.",
-          "chatAiDisclaimer": "AI e ka etsa liphoso - o ka bua le motho nako efe kapa efe kamora hore tekete ea hau e thehoe."
+          "chatAiDisclaimer": "AI e ka etsa liphoso - o ka bua le motho nako efe kapa efe kamora hore tekete ea hau e thehoe.",
+          "sentToTeam": "Tekete ea hau e rometsoe sehlopheng sa rona sa tšehetso. Re tla araba moqoqong ona."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Mofuta your molaetsa...",
@@ -17156,7 +17173,15 @@
           "priorityLow": "tlase",
           "priorityMedium": "bohare",
           "priorityHigh": "holimo",
-          "priorityUrgent": "kapele"
+          "priorityUrgent": "kapele",
+          "handoffTitle": "Re o hokahanya le tšehetso",
+          "handoffBody": "Setsebi se tla kenella moqoqong ona haufinyane.",
+          "aiDisclaimer": "AI e ka etsa liphoso — o ka kopa motho nako efe kapa efe.",
+          "assistantName": "Mothusi oa Beautonomi",
+          "talkToPerson": "Bua le motho",
+          "didThisHelp": "Na see se thusitse? Ee",
+          "attachmentsAfterHuman": "Lihokelo lia fumaneha kamora hore setsebi se kenele moqoqong.",
+          "assistantTyping": "Mothusi oa ngola…"
         },
         "giftCardAmountPlaceholder": "mohlala 350",
         "partnerProfileReportPlaceholder": "Ka kopo hlalosa se etsahetseng...",
@@ -20257,7 +20282,10 @@
         "createOfferFailed": "E hlolehile ho theha Ea khethehileng offer",
         "offerUpdated": "Offer ntlafatsad katlehoe tletsey!",
         "offerCreated": "Offer thehad katlehoe tletsey!",
-        "createOfferFailedShort": "E hlolehile ho theha offer"
+        "createOfferFailedShort": "E hlolehile ho theha offer",
+        "changeClient": "Fetola",
+        "searchClientPlaceholder": "Batla ka lebitso, imeile kapa mohala (mohl. 082…)",
+        "searchClientHint": "Ngola bonyane litlhaku tse 2"
       },
       "privacyAndSharing": {
         "tabAccount": "Akhaonto",

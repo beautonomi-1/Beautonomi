@@ -5,6 +5,7 @@ import { formatMoney, getDefaultMoneyLocale } from "@beautonomi/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 import React, { useState, useEffect } from "react";
+import { clientContactMatches } from "@/lib/phone";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { Button } from "@/components/ui/button";
@@ -83,6 +84,7 @@ export default function ClientListPage() {
   const [servicedCustomers, setServicedCustomers] = useState<ServicedCustomer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [isAddClientModalOpen, setIsAddClientModalOpen] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [clientNotes, setClientNotes] = useState("");
@@ -90,17 +92,26 @@ export default function ClientListPage() {
   const [tagInput, setTagInput] = useState("");
 
   useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
     loadClients();
-  }, [activeTab]);
+  }, [activeTab, debouncedSearchQuery]);
 
   const loadClients = async () => {
     try {
       setIsLoading(true);
       
+      const searchParam = debouncedSearchQuery
+        ? `?search=${encodeURIComponent(debouncedSearchQuery)}`
+        : "";
+
       if (activeTab === "saved" || activeTab === "all") {
         try {
           const savedResponse = await fetcher.get<{ data: Client[] }>(
-            "/api/provider/clients"
+            `/api/provider/clients${searchParam}`
           );
           setClients(savedResponse.data || []);
         } catch (error: any) {
@@ -116,7 +127,7 @@ export default function ClientListPage() {
       if (activeTab === "serviced" || activeTab === "all") {
         try {
           const servicedResponse = await fetcher.get<{ data: ServicedCustomer[] }>(
-            "/api/provider/clients/serviced"
+            `/api/provider/clients/serviced${searchParam}`
           );
           setServicedCustomers(servicedResponse.data || []);
         } catch (error: any) {
@@ -186,25 +197,29 @@ export default function ClientListPage() {
   };
 
   const filteredClients = clients.filter((client) => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      client.customer.full_name?.toLowerCase().includes(query) ||
-      client.customer.email.toLowerCase().includes(query) ||
-      client.customer.phone?.toLowerCase().includes(query) ||
-      client.notes?.toLowerCase().includes(query) ||
-      client.tags?.some((tag) => tag.toLowerCase().includes(query))
-    );
+    const q = searchQuery.trim();
+    if (!q) return true;
+    if (q === debouncedSearchQuery) return true;
+    const notesTagsMatch =
+      client.notes?.toLowerCase().includes(q.toLowerCase()) ||
+      client.tags?.some((tag) => tag.toLowerCase().includes(q.toLowerCase()));
+    if (notesTagsMatch) return true;
+    return clientContactMatches(q, {
+      name: client.customer.full_name,
+      email: client.customer.email,
+      phone: client.customer.phone,
+    });
   });
 
   const filteredServiced = servicedCustomers.filter((customer) => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      customer.customer.full_name?.toLowerCase().includes(query) ||
-      customer.customer.email.toLowerCase().includes(query) ||
-      customer.customer.phone?.toLowerCase().includes(query)
-    );
+    const q = searchQuery.trim();
+    if (!q) return true;
+    if (q === debouncedSearchQuery) return true;
+    return clientContactMatches(q, {
+      name: customer.customer.full_name,
+      email: customer.customer.email,
+      phone: customer.customer.phone,
+    });
   });
 
   const formatDate = (dateString: string | null) => {

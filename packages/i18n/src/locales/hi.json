@@ -8945,7 +8945,15 @@
           "priorityLow": "low",
           "priorityMedium": "medium",
           "priorityHigh": "high",
-          "priorityUrgent": "urgent"
+          "priorityUrgent": "urgent",
+          "assistantTyping": "सहायक लिख रहा है…",
+          "handoffTitle": "आपको सहायता से जोड़ा जा रहा है",
+          "handoffBody": "एक विशेषज्ञ जल्द ही इस बातचीत में शामिल होगा।",
+          "aiDisclaimer": "एआई गलती कर सकता है — आप कभी भी किसी व्यक्ति से बात माँग सकते हैं।",
+          "assistantName": "Beautonomi सहायक",
+          "talkToPerson": "किसी व्यक्ति से बात करें",
+          "didThisHelp": "क्या इससे मदद मिली? हाँ",
+          "attachmentsAfterHuman": "विशेषज्ञ के जुड़ने के बाद संलग्नक उपलब्ध होते हैं।"
         },
         "providerVerificationPanel": {
           "statusNotStarted": "Not started",
@@ -9440,7 +9448,15 @@
           "priorityLow": "Low",
           "priorityMedium": "Medium",
           "priorityHigh": "High",
-          "priorityUrgent": "Urgent"
+          "priorityUrgent": "Urgent",
+          "sentToTeam": "आपका टिकट हमारी सहायता टीम को भेज दिया गया है। हम इसी बातचीत में जवाब देंगे।",
+          "chatDefaultSubject": "Demande d'assistance",
+          "continueToChat": "Continuer à discuter",
+          "useFullForm": "Utiliser le formulaire complet",
+          "safetyUseForm": "Les rapports de sécurité sont envoyés directement à notre équipe – veuillez utiliser le formulaire complet.",
+          "chatAiDisclaimer": "L'IA peut faire des erreurs : vous pouvez parler à une personne à tout moment après la création de votre ticket.",
+          "startChat": "Démarrer le chat",
+          "chatBack": "Retour"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -17088,7 +17104,8 @@
           "useFullForm": "Utiliser le formulaire complet",
           "safetyUseForm": "Les rapports de sécurité sont envoyés directement à notre équipe – veuillez utiliser le formulaire complet.",
           "chatAiDisclaimer": "L'IA peut faire des erreurs : vous pouvez parler à une personne à tout moment après la création de votre ticket.",
-          "startChat": "Démarrer le chat"
+          "startChat": "Démarrer le chat",
+          "sentToTeam": "आपका टिकट हमारी सहायता टीम को भेज दिया गया है। हम इसी बातचीत में जवाब देंगे।"
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Écrivez votre message…",
@@ -17151,7 +17168,15 @@
           "priorityLow": "faible",
           "priorityMedium": "moyen",
           "priorityHigh": "élevé",
-          "priorityUrgent": "urgent"
+          "priorityUrgent": "urgent",
+          "handoffTitle": "आपको सहायता से जोड़ा जा रहा है",
+          "handoffBody": "एक विशेषज्ञ जल्द ही इस बातचीत में शामिल होगा।",
+          "aiDisclaimer": "एआई गलती कर सकता है — आप कभी भी किसी व्यक्ति से बात माँग सकते हैं।",
+          "assistantName": "Beautonomi सहायक",
+          "talkToPerson": "किसी व्यक्ति से बात करें",
+          "didThisHelp": "क्या इससे मदद मिली? हाँ",
+          "attachmentsAfterHuman": "विशेषज्ञ के जुड़ने के बाद संलग्नक उपलब्ध होते हैं।",
+          "assistantTyping": "सहायक लिख रहा है…"
         },
         "giftCardAmountPlaceholder": "ex. 350",
         "partnerProfileReportPlaceholder": "Décrivez ce qui s’est passé…",
@@ -20252,7 +20277,10 @@
         "createOfferFailed": "Impossible de créer custom offer",
         "offerUpdated": "Offer mis à jour successfully!",
         "offerCreated": "Offer créé successfully!",
-        "createOfferFailedShort": "Impossible de créer offer"
+        "createOfferFailedShort": "Impossible de créer offer",
+        "changeClient": "बदलें",
+        "searchClientPlaceholder": "नाम, ईमेल या फ़ोन से खोजें (उदा. 082…)",
+        "searchClientHint": "कम से कम 2 अक्षर लिखें"
       },
       "privacyAndSharing": {
         "tabAccount": "Compte",

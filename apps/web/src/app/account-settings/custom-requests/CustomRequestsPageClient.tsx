@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CustomOfferClientPicker, type SelectedCustomOfferClient } from "./CustomOfferClientPicker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -37,12 +38,9 @@ import { useTranslation } from "@beautonomi/i18n";
 import type {
   CustomRequestListItem,
   CustomRequestsPageInitial,
-  ProviderClientRow,
 } from "./custom-requests-page-types";
 
 type CustomRequest = CustomRequestListItem;
-type Client = ProviderClientRow;
-
 type GlobalCategory = { id: string; name: string };
 type ProviderSlotRow = { time: string; available?: boolean };
 
@@ -112,8 +110,7 @@ export default function CustomRequestsPageClient({
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showOfferModal, setShowOfferModal] = useState(false);
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
-  const [clients, setClients] = useState<Client[]>(() => initial?.clients ?? []);
-  const [isLoadingClients, setIsLoadingClients] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<SelectedCustomOfferClient | null>(null);
   const [staffList, setStaffList] = useState<Array<{ id: string; name: string }>>(
     () => initial?.staffList ?? [],
   );
@@ -193,20 +190,6 @@ export default function CustomRequestsPageClient({
     }
   };
 
-  const loadClients = async () => {
-    if (!isProvider) return;
-    try {
-      setIsLoadingClients(true);
-      const res = await fetcher.get<{ data: Client[] }>("/api/provider/clients", { staleTimeMs: 15_000 });
-      setClients(res.data || []);
-    } catch (err) {
-      console.error("Failed to load clients:", err);
-      toast.error(t("web.accountSettings.customRequests.loadClientsFailed"));
-    } finally {
-      setIsLoadingClients(false);
-    }
-  };
-
   const loadStaffAndLocations = async () => {
     if (!isProvider) return;
     try {
@@ -240,7 +223,6 @@ export default function CustomRequestsPageClient({
     void Promise.resolve().then(() => load());
     if (isProvider) {
       void Promise.resolve().then(() => {
-        void loadClients();
         void loadStaffAndLocations();
         void loadCategories();
       });
@@ -496,6 +478,12 @@ export default function CustomRequestsPageClient({
     }
   }, [isLoading, isProvider, items, searchParams]);
 
+  const closeCreateModal = () => {
+    setShowCreateModal(false);
+    setSelectedClient(null);
+    setFormData((prev) => ({ ...prev, customer_id: "" }));
+  };
+
   const handleCreateOffer = async () => {
     if (!formData.customer_id || !formData.description || !formData.price) {
       toast.error(t("web.accountSettings.customRequests.requiredFields"));
@@ -525,6 +513,7 @@ export default function CustomRequestsPageClient({
       await fetcher.post("/api/provider/custom-offers/create", payload);
       toast.success(t("web.accountSettings.customRequests.offerSent"));
       setShowCreateModal(false);
+      setSelectedClient(null);
       setFormData({
         customer_id: "",
         description: "",
@@ -878,7 +867,10 @@ export default function CustomRequestsPageClient({
         )}
 
         {/* Create Custom Offer Modal */}
-        <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
+        <Dialog
+          open={showCreateModal}
+          onOpenChange={(open) => (open ? setShowCreateModal(true) : closeCreateModal())}
+        >
           <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[95vh] overflow-y-auto p-4 sm:p-6">
             <DialogHeader>
               <DialogTitle>{t("web.accountSettings.customRequests.createOfferTitle")}</DialogTitle>
@@ -889,27 +881,13 @@ export default function CustomRequestsPageClient({
             <div className="space-y-4 mt-4">
               <div>
                 <Label htmlFor="customer">{t("web.accountSettings.customRequests.clientRequired")}</Label>
-                <Select
-                  value={formData.customer_id}
-                  onValueChange={(value) => setFormData({ ...formData, customer_id: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={t("web.accountSettings.customRequests.selectClient")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {isLoadingClients ? (
-                      <SelectItem value="loading" disabled>{t("web.accountSettings.customRequests.loadingClients")}</SelectItem>
-                    ) : clients.length === 0 ? (
-                      <SelectItem value="none" disabled>{t("web.accountSettings.customRequests.noClientsFound")}</SelectItem>
-                    ) : (
-                      clients.map((client) => (
-                        <SelectItem key={client.customer_id} value={client.customer_id}>
-                          {client.customer?.full_name || client.customer?.email || t("web.accountSettings.customRequests.unknownClient")}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                <CustomOfferClientPicker
+                  value={selectedClient}
+                  onChange={(next) => {
+                    setSelectedClient(next);
+                    setFormData((prev) => ({ ...prev, customer_id: next?.customer_id ?? "" }));
+                  }}
+                />
               </div>
 
               <div>
@@ -1127,7 +1105,7 @@ export default function CustomRequestsPageClient({
               </div>
 
               <div className="flex justify-end gap-2 pt-4">
-                <Button variant="outline" onClick={() => setShowCreateModal(false)}>
+                <Button variant="outline" onClick={closeCreateModal}>
                   {t("web.accountSettings.customRequests.cancel")}
                 </Button>
                 <Button onClick={handleCreateOffer} disabled={isSubmitting}>

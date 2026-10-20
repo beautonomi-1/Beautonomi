@@ -29,7 +29,7 @@ const CRON_LABELS_BY_AGENT: Record<string, string[]> = {
   "provider-success": ["agent-provider-ops (daily)", "agent-provider-digest (weekly Mon)"],
   "membership-shepherd": ["agent-provider-ops (daily)"],
   "admin-copilot": ["On-demand (Admin Copilot API)"],
-  "support-assistant": ["On-demand (ticket thread)"],
+  "support-assistant": ["On-demand (ticket thread)", "support-assistant-stale (every 5m)"],
 };
 
 const EXPECTED_AGENT_KEYS = [

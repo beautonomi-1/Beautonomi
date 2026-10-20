@@ -5,6 +5,7 @@ import { csrfCheck, requestHasAuthSessionCookie, setCsrfCookie } from '@/lib/csr
 import { maybeMarketGeoRedirect } from '@/lib/seo/maybe-market-geo-redirect';
 import { isProviderOnboardingRouteAllowed } from '@/lib/provider/onboarding-route-allowlist';
 import {
+  buildAdminSpaReportOnlyCsp,
   buildReportOnlyCsp,
   CSP_NONCE_HEADER,
   generateCspNonce,
@@ -171,8 +172,16 @@ function withCspReportOnly(request: NextRequest, response: NextResponse): NextRe
       out.headers.set(key, value);
     }
   });
-  out.headers.set('Content-Security-Policy-Report-Only', buildReportOnlyCsp(nonce));
+  const reportOnly = isAdminSpaDocument(request.nextUrl.pathname)
+    ? buildAdminSpaReportOnlyCsp()
+    : buildReportOnlyCsp(nonce);
+  out.headers.set('Content-Security-Policy-Report-Only', reportOnly);
   return out;
+}
+
+/** Vite admin shell: static module scripts, not nonce-injected Next.js HTML. */
+function isAdminSpaDocument(pathname: string): boolean {
+  return pathname === '/admin' || pathname.startsWith('/admin/');
 }
 
 function finalizePageResponse(request: NextRequest, response: NextResponse): NextResponse {

@@ -9,6 +9,11 @@ export {
   DEFAULT_PHONE_COUNTRY_CODE,
   nationalDigitsValidationMessage,
   splitValueForPhoneInput,
+  phoneSearchNeedles,
+  phoneSearchNeedlesUnscoped,
+  phoneMatchesQuery,
+  clientContactMatches,
+  digitsOnlyPhone,
 } from "@beautonomi/phone";
 
 /** Regional indicator for flag emoji (e.g. "ZA" -> 🇿🇦). */

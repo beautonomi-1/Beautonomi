@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { phoneIlikeClauses, sanitizeIlikeTerm } from "@/lib/search/phone-ilike";
 import { fetchSlaBreachedLeadIds } from "@/lib/provider-ops/lead-sla";
 import {
   applyActiveLeadFilter,
@@ -102,9 +103,15 @@ export function applyProviderLeadListFilters(
     );
   }
   if (params.search) {
-    const safe = escapeLike(params.search);
+    const safe = sanitizeIlikeTerm(params.search);
     q = q.or(
-      `business_name.ilike.%${safe}%,contact_person_name.ilike.%${safe}%,email.ilike.%${safe}%,phone_e164.ilike.%${safe}%`,
+      [
+        `business_name.ilike.%${safe}%`,
+        `contact_person_name.ilike.%${safe}%`,
+        `email.ilike.%${safe}%`,
+        `phone_e164.ilike.%${safe}%`,
+        ...phoneIlikeClauses(["phone_e164"], params.search),
+      ].join(","),
     );
   }
   q = applyContactFilter(q, params.contactFilter);

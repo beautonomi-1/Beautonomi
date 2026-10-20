@@ -5,6 +5,7 @@
 
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { featureFlagRolloutBucket } from "./feature-flag-rollout-bucket";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export interface FeatureFlag {
@@ -52,17 +53,6 @@ type FlagRowDb = {
 
 // ─── Rollout bucketing ────────────────────────────────────────────────────────
 
-/** Stable 0–99 bucket for a given feature + bucketId pair (deterministic, no DB). */
-function getBucket(featureKey: string, bucketId: string): number {
-  let hash = 5381;
-  const str = `${featureKey}:${bucketId}`;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) + hash) ^ str.charCodeAt(i);
-    hash = hash >>> 0; // keep unsigned 32-bit
-  }
-  return hash % 100;
-}
-
 /** Returns true if the flag row passes all advanced targeting for the given context. */
 function compareAppVersions(a: string, b: string): number {
   const parse = (value: string) =>
@@ -104,9 +94,9 @@ function passesContext(row: FlagRowDb, ctx: FeatureFlagCheckContext | undefined)
     if (compareAppVersions(ctx.appVersion, row.min_app_version) < 0) return false;
   }
 
-  // Rollout percent
+  // Rollout percent (same bucket as public config bundle: sha256 userId:featureKey)
   if (ctx.bucketId && row.rollout_percent != null && row.rollout_percent < 100) {
-    const bucket = getBucket(row.feature_key, ctx.bucketId);
+    const bucket = featureFlagRolloutBucket(ctx.bucketId, row.feature_key);
     if (bucket >= row.rollout_percent) return false;
   }
 

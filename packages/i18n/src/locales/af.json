@@ -8945,7 +8945,15 @@
           "priorityLow": "laag",
           "priorityMedium": "medium",
           "priorityHigh": "hoog",
-          "priorityUrgent": "dringend"
+          "priorityUrgent": "dringend",
+          "assistantTyping": "Assistent tik…",
+          "handoffTitle": "Koppel jou aan ondersteuning",
+          "handoffBody": "’n Spesialis sal binnekort by hierdie gesprek aansluit.",
+          "aiDisclaimer": "KI kan foute maak — jy kan enige tyd ’n mens vra.",
+          "assistantName": "Beautonomi-assistent",
+          "talkToPerson": "Praat met ’n mens",
+          "didThisHelp": "Het dit gehelp? Ja",
+          "attachmentsAfterHuman": "Aanhegsels is beskikbaar nadat ’n spesialis by die gesprek aangesluit het."
         },
         "providerVerificationPanel": {
           "statusNotStarted": "Not begined",
@@ -9440,7 +9448,15 @@
           "priorityLow": "Laag",
           "priorityMedium": "Gemiddeld",
           "priorityHigh": "Hoog",
-          "priorityUrgent": "Dringend"
+          "priorityUrgent": "Dringend",
+          "sentToTeam": "Jou kaartjie is na ons ondersteuningspan gestuur. Ons antwoord in hierdie gesprek.",
+          "chatDefaultSubject": "ondersteuning versoek",
+          "continueToChat": "gaan voort to chat",
+          "useFullForm": "Use vol form",
+          "safetyUseForm": "Veiligheidsverslae gaan reguit na ons span - gebruik asseblief die volledige vorm.",
+          "chatAiDisclaimer": "KI kan foute maak - jy kan enige tyd met 'n persoon praat nadat jou kaartjie geskep is.",
+          "startChat": "begin chat",
+          "chatBack": "Terug"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -17097,7 +17113,8 @@
           "startChat": "begin chat",
           "chatBack": "Terug",
           "safetyUseForm": "Veiligheidsverslae gaan reguit na ons span - gebruik asseblief die volledige vorm.",
-          "chatAiDisclaimer": "KI kan foute maak - jy kan enige tyd met 'n persoon praat nadat jou kaartjie geskep is."
+          "chatAiDisclaimer": "KI kan foute maak - jy kan enige tyd met 'n persoon praat nadat jou kaartjie geskep is.",
+          "sentToTeam": "Jou kaartjie is na ons ondersteuningspan gestuur. Ons antwoord in hierdie gesprek."
         },
         "supportTicketDetail": {
           "messagePlaceholder": "Tipe your boodskap...",
@@ -17160,7 +17177,15 @@
           "priorityLow": "laag",
           "priorityMedium": "medium",
           "priorityHigh": "hoog",
-          "priorityUrgent": "dringend"
+          "priorityUrgent": "dringend",
+          "handoffTitle": "Koppel jou aan ondersteuning",
+          "handoffBody": "’n Spesialis sal binnekort by hierdie gesprek aansluit.",
+          "aiDisclaimer": "KI kan foute maak — jy kan enige tyd ’n mens vra.",
+          "assistantName": "Beautonomi-assistent",
+          "talkToPerson": "Praat met ’n mens",
+          "didThisHelp": "Het dit gehelp? Ja",
+          "attachmentsAfterHuman": "Aanhegsels is beskikbaar nadat ’n spesialis by die gesprek aangesluit het.",
+          "assistantTyping": "Assistent tik…"
         },
         "giftCardAmountPlaceholder": "bv. 350",
         "partnerProfileReportPlaceholder": "Beskryf asseblief wat gebeur het...",
@@ -20258,7 +20283,10 @@
         "createOfferFailed": "Kon nie skep Pasgemaak offer nie",
         "offerUpdated": "Offer dateer opd suksesvoly!",
         "offerCreated": "Offer skepd suksesvoly!",
-        "createOfferFailedShort": "Kon nie skep offer nie"
+        "createOfferFailedShort": "Kon nie skep offer nie",
+        "changeClient": "Verander",
+        "searchClientPlaceholder": "Soek volgens naam, e-pos of foon (bv. 082…)",
+        "searchClientHint": "Tik minstens 2 karakters"
       },
       "privacyAndSharing": {
         "tabAccount": "Rekening",

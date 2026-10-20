@@ -371,7 +371,7 @@ export function AppointmentDialog({
     const t = setTimeout(async () => {
       try {
         const res = await providerPortalFetch(
-          `/api/provider/clients?search=${encodeURIComponent(clientQuery)}`
+          `/api/provider/clients?search=${encodeURIComponent(clientQuery)}&include_serviced=1`
         );
         if (res.ok) {
           const d = await res.json();

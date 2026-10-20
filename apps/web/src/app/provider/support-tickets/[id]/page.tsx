@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslation } from "@beautonomi/i18n";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { PageHeader } from "@/components/provider/PageHeader";
@@ -39,9 +39,11 @@ export default function ProviderSupportTicketDetailPage() {
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
   const [assistantPending, setAssistantPending] = useState(false);
+  const assistantStreamingRef = useRef(false);
+  const initialAssistantStreamRef = useRef(false);
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
-    if (!id) return;
+    if (!id || assistantStreamingRef.current) return;
     try {
       if (!opts?.silent) setLoading(true);
       const res = await fetcher.get<{
@@ -63,10 +65,66 @@ toast.error(err instanceof FetchError ? err.message : t("web.provider.pages.supp
   useEffect(() => {
     const ms = ticket?.handling_mode === "assistant" ? 2_000 : 30_000;
     const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") void load({ silent: true });
+      if (document.visibilityState === "visible" && !assistantStreamingRef.current) {
+        void load({ silent: true });
+      }
     }, ms);
     return () => window.clearInterval(interval);
   }, [load, ticket?.handling_mode]);
+
+  const runAssistantStream = useCallback(
+    async (mode: "initial" | "follow_up", userMessage: string) => {
+      if (!id) return;
+      assistantStreamingRef.current = true;
+      setAssistantPending(false);
+      const streamAssistantId = `stream-assistant-${Date.now()}`;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: streamAssistantId,
+          message: "",
+          created_at: new Date().toISOString(),
+          author_name: t("web.provider.pages.support-tickets/[id].assistantName"),
+          is_mine: false,
+          author_kind: "assistant",
+        },
+      ]);
+      try {
+        const { streamAssistantReply } = await import("@/lib/support/support-assistant/client-stream-reply");
+        const streamResult = await streamAssistantReply({
+          streamUrl: `/api/provider/support-tickets/${id}/assistant-messages/stream`,
+          message: userMessage,
+          body: { mode },
+          onAssistantChunk: (text) => {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === streamAssistantId ? { ...m, message: text } : m)),
+            );
+          },
+        });
+        if (streamResult.handoff) {
+          toast.info(streamResult.infoMessage ?? "Connecting you to support.");
+        } else if (!streamResult.ok && streamResult.errorCode !== "IN_FLIGHT") {
+          toast.error(streamResult.errorMessage ?? "Assistant unavailable");
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Assistant unavailable");
+      } finally {
+        assistantStreamingRef.current = false;
+        await load();
+      }
+    },
+    [id, load, t],
+  );
+
+  useEffect(() => {
+    if (!ticket || !id || initialAssistantStreamRef.current) return;
+    if (ticket.handling_mode !== "assistant" || messages.length === 0) return;
+    const last = messages[messages.length - 1];
+    if (last.author_kind === "assistant") return;
+    if (!last.is_mine) return;
+    initialAssistantStreamRef.current = true;
+    void runAssistantStream("initial", last.message);
+  }, [ticket, messages, id, runAssistantStream]);
 
   const sendReply = async () => {
     const msg = reply.trim();
@@ -75,44 +133,26 @@ toast.error(err instanceof FetchError ? err.message : t("web.provider.pages.supp
     try {
       setSending(true);
       if (isAssistant) {
-        const streamAssistantId = `stream-assistant-${Date.now()}`;
         setMessages((prev) => [
           ...prev,
           {
-            id: streamAssistantId,
-            message: "",
+            id: `local-${Date.now()}`,
+            message: msg,
             created_at: new Date().toISOString(),
-            author_name: t("web.provider.pages.support-tickets/[id].assistantName"),
-            is_mine: false,
-            author_kind: "assistant",
+            author_name: "You",
+            is_mine: true,
+            author_kind: "customer",
           },
         ]);
-        const { streamAssistantReply } = await import("@/lib/support/support-assistant/client-stream-reply");
-        const streamResult = await streamAssistantReply({
-          streamUrl: `/api/provider/support-tickets/${id}/assistant-messages/stream`,
-          message: msg,
-          onAssistantChunk: (text) => {
-            setMessages((prev) =>
-              prev.map((m) => (m.id === streamAssistantId ? { ...m, message: text } : m)),
-            );
-          },
-        });
-        if (!streamResult.ok) {
-          throw new Error(streamResult.errorMessage ?? "Assistant unavailable");
-        }
-        if (!streamResult.streamed) {
-          setAssistantPending(true);
-        }
-        if (streamResult.infoMessage) {
-          toast.info(streamResult.infoMessage);
-        }
+        setReply("");
+        await runAssistantStream("follow_up", msg);
       } else {
         await fetcher.post(`/api/provider/support-tickets/${id}/messages`, { message: msg });
+        setReply("");
+        await load();
       }
-      setReply("");
-      await load();
     } catch (err) {
-toast.error(err instanceof FetchError ? err.message : t("web.provider.pages.support-tickets/[id].sendFailed"));
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.pages.support-tickets/[id].sendFailed"));
     } finally {
       setSending(false);
       setAssistantPending(false);

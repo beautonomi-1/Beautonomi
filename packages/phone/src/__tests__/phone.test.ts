@@ -4,6 +4,10 @@ import {
   normalizeFullPhoneToE164,
   isCompleteE164,
   splitValueForPhoneInput,
+  phoneSearchNeedles,
+  phoneSearchNeedlesUnscoped,
+  phoneMatchesQuery,
+  clientContactMatches,
 } from "../index";
 
 describe("normalizePhoneToE164", () => {
@@ -70,5 +74,88 @@ describe("splitValueForPhoneInput", () => {
     const result = splitValueForPhoneInput(undefined, "+27");
     expect(result.countryCode).toBe("+27");
     expect(result.national).toBe("");
+  });
+});
+
+describe("phoneSearchNeedles", () => {
+  it("returns empty for fewer than 4 digits", () => {
+    expect(phoneSearchNeedles("0")).toEqual([]);
+    expect(phoneSearchNeedles("08")).toEqual([]);
+    expect(phoneSearchNeedles("082")).toEqual([]);
+    expect(phoneSearchNeedles("+27")).toEqual([]);
+  });
+
+  it("adds trunk-stripped tail for leading 0", () => {
+    const needles = phoneSearchNeedles("0821");
+    expect(needles).toContain("0821");
+    expect(needles).toContain("821");
+  });
+
+  it("adds last 9 digits for long national input", () => {
+    const needles = phoneSearchNeedles("0821234567");
+    expect(needles).toContain("821234567");
+  });
+});
+
+describe("phoneSearchNeedlesUnscoped", () => {
+  it("keeps full local numbers searchable", () => {
+    expect(phoneSearchNeedlesUnscoped("082 123 4567")).toEqual(["0821234567", "821234567"]);
+  });
+  it("drops the 3-digit trunk tail", () => {
+    expect(phoneSearchNeedlesUnscoped("0821")).toEqual(["0821"]);
+  });
+  it("returns nothing under 4 digits", () => {
+    expect(phoneSearchNeedlesUnscoped("+27")).toEqual([]);
+  });
+});
+
+describe("phoneMatchesQuery", () => {
+  const stored = "+27821234567";
+
+  it("matches national 0 prefix against E.164", () => {
+    expect(phoneMatchesQuery(stored, "0821234567")).toBe(true);
+    expect(phoneMatchesQuery(stored, "082 123 4567")).toBe(true);
+  });
+
+  it("matches E.164 and international digit forms", () => {
+    expect(phoneMatchesQuery(stored, "+27821234567")).toBe(true);
+    expect(phoneMatchesQuery(stored, "27821234567")).toBe(true);
+    expect(phoneMatchesQuery(stored, "821234567")).toBe(true);
+  });
+
+  it("matches partial from 4 digits", () => {
+    expect(phoneMatchesQuery(stored, "0821")).toBe(true);
+  });
+
+  it("rejects overly short phone-only queries", () => {
+    expect(phoneMatchesQuery(stored, "0")).toBe(false);
+    expect(phoneMatchesQuery(stored, "27")).toBe(false);
+  });
+
+  it("matches legacy national storage", () => {
+    expect(phoneMatchesQuery("0821234567", "+27821234567")).toBe(true);
+  });
+
+  it("matches spaced stored value", () => {
+    expect(phoneMatchesQuery("+27 82 123 4567", "0821234567")).toBe(true);
+  });
+});
+
+describe("clientContactMatches", () => {
+  it("matches email and phone independently", () => {
+    expect(
+      clientContactMatches("thandi@", {
+        name: "Thandi",
+        email: "thandi@example.com",
+        phone: null,
+      })
+    ).toBe(true);
+    expect(
+      clientContactMatches("0821234567", {
+        name: "Thandi",
+        email: "",
+        phone: "+27821234567",
+      })
+    ).toBe(true);
   });
 });

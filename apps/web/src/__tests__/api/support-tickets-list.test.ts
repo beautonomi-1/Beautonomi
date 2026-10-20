@@ -215,4 +215,84 @@ describe("GET /api/admin/support-tickets", () => {
     await GET(reqByLabel as NextRequest);
     expect(builder2.in).toHaveBeenCalledWith("category", expect.arrayContaining(["booking_issue"]));
   });
+
+  it("retries without the tenant embed when PostgREST cannot resolve the FK", async () => {
+    const result: QueryResult = { data: [], error: null, count: 0 };
+    const builder = createQueryBuilder(result);
+    let selected = "";
+    builder.select.mockImplementation((cols: string) => {
+      selected = String(cols);
+      return builder;
+    });
+    builder.range.mockImplementation(async () => {
+      if (selected.includes("support_tickets_tenant_id_fkey")) {
+        return {
+          data: null,
+          error: {
+            code: "PGRST200",
+            message: "Could not find a relationship between 'support_tickets' and 'tenants'",
+          },
+          count: null,
+        };
+      }
+      return result;
+    });
+    mockGetSupabaseAdmin.mockReturnValue({ from: vi.fn().mockReturnValue(builder) });
+
+    const { GET } = await import("@/app/api/admin/support-tickets/route");
+    const req = createMockNextRequest({
+      method: "GET",
+      url: "http://localhost:3000/api/admin/support-tickets",
+      searchParams: { limit: "25", offset: "0" },
+    });
+    const res = await GET(req as NextRequest);
+    expect(res.status).toBe(200);
+    const selects = builder.select.mock.calls.map((call) => String(call[0]));
+    expect(selects.some((sql) => sql.includes("support_tickets_tenant_id_fkey"))).toBe(true);
+    expect(selects.some((sql) => !sql.includes("support_tickets_tenant_id_fkey"))).toBe(true);
+  });
+
+  it("still returns the ticket list when count queries fail", async () => {
+    const rows = [{ id: "t1", status: "open", priority: "medium", channel: "app" }];
+    const listResult: QueryResult = { data: rows, error: null, count: 1 };
+    const listBuilder = createQueryBuilder(listResult);
+    const countResult: QueryResult = {
+      data: null,
+      error: new Error("canceling statement due to statement timeout"),
+      count: null,
+    };
+    const countBuilder = Object.assign(createQueryBuilder(countResult), {
+      then(
+        onfulfilled?: (value: QueryResult) => unknown,
+        onrejected?: (reason: unknown) => unknown,
+      ) {
+        return Promise.resolve(countResult).then(onfulfilled, onrejected);
+      },
+    });
+    const from = vi.fn((table: string) => {
+      if (table === "support_tickets" && from.mock.calls.length > 1) return countBuilder;
+      return listBuilder;
+    });
+    mockGetSupabaseAdmin.mockReturnValue({ from });
+
+    const { GET } = await import("@/app/api/admin/support-tickets/route");
+    const tenantId = "c43f7511-ca1b-4ccd-a0b9-27056531c65b";
+    const req = createMockNextRequest({
+      method: "GET",
+      url: "http://localhost:3000/api/admin/support-tickets",
+      searchParams: {
+        limit: "25",
+        offset: "0",
+        include_counts: "1",
+        tenant_id: tenantId,
+      },
+    });
+    const res = await GET(req as NextRequest);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.tickets).toHaveLength(1);
+    expect(body.counts).toBeUndefined();
+    expect(countBuilder.eq).toHaveBeenCalledWith("tenant_id", tenantId);
+    expect(from.mock.calls.filter((call) => call[0] === "support_tickets").length).toBeGreaterThan(1);
+  });
 });

@@ -51,9 +51,14 @@ vi.mock("@/lib/fraud/maybe-open-fraud-from-support-ticket", () => ({
   maybeOpenFraudCaseFromSafetyTicket: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("@/lib/support/support-assistant/availability", () => ({
-  isSupportAssistantEnabledForUser: vi.fn().mockResolvedValue(true),
-}));
+vi.mock("@/lib/support/support-assistant/availability", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/support/support-assistant/availability")>();
+  return {
+    ...actual,
+    resolveSupportAssistantAvailability: vi.fn().mockResolvedValue({ enabled: true }),
+    isSupportAssistantEnabledForUser: vi.fn().mockResolvedValue(true),
+  };
+});
 
 vi.mock("@/lib/support/support-assistant/run-turn", () => ({
   runSupportAssistantTurn: vi.fn().mockResolvedValue({
@@ -67,14 +72,14 @@ vi.mock("@/lib/support/support-assistant/handoff", () => ({
   handoffSupportTicketToHuman: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { isSupportAssistantEnabledForUser } from "@/lib/support/support-assistant/availability";
+import { resolveSupportAssistantAvailability } from "@/lib/support/support-assistant/availability";
 import { runSupportAssistantTurn } from "@/lib/support/support-assistant/run-turn";
 import { handoffSupportTicketToHuman } from "@/lib/support/support-assistant/handoff";
 import { startSupportTriageForTicket } from "@/workflows/start-support-triage";
 import { slackNotifyNewSupportTicket } from "@/lib/integrations/slack/triggers";
 
 function resetModuleMocks() {
-  vi.mocked(isSupportAssistantEnabledForUser).mockResolvedValue(true);
+  vi.mocked(resolveSupportAssistantAvailability).mockResolvedValue({ enabled: true });
   vi.mocked(runSupportAssistantTurn).mockResolvedValue({
     ok: true,
     assistantMessage: { id: "asst-1", message: "Hi", created_at: "2026-01-01T12:00:02.000Z" },
@@ -196,6 +201,55 @@ describe("POST /api/me/support-tickets category", () => {
     await Promise.all(pendingAfter);
     const { startSupportTriageForTicket } = await import("@/workflows/start-support-triage");
     expect(startSupportTriageForTicket).not.toHaveBeenCalled();
+    expect(runSupportAssistantTurn).not.toHaveBeenCalled();
+    const json = await res.json();
+    expect(json.data?.assistantPending).toBe(true);
+  });
+
+  it("checks the flag with the customer platform when the request comes from the customer app", async () => {
+    mockGetSupabaseAdmin.mockReturnValue(buildAdminMock({ ticketUpdates: [] }));
+
+    const { POST } = await import("../route");
+    const req = new NextRequest("http://localhost/api/me/support-tickets", {
+      method: "POST",
+      headers: { "X-App": "customer" },
+      body: JSON.stringify({
+        subject: "Chat help",
+        message: "Need help with my booking payment status please.",
+        category: "payment_refund",
+        handling_mode: "assistant",
+      }),
+    });
+
+    await POST(req);
+    expect(resolveSupportAssistantAvailability).toHaveBeenCalledWith(
+      expect.objectContaining({ platform: "customer", userId: "user-1" }),
+    );
+  });
+
+  it("returns assistantUnavailable when agent is inactive but still creates ticket", async () => {
+    vi.mocked(resolveSupportAssistantAvailability).mockResolvedValue({ enabled: false, code: "AGENT_INACTIVE" });
+    const captured: Captured = { ticketUpdates: [] };
+    mockGetSupabaseAdmin.mockReturnValue(buildAdminMock(captured));
+
+    const { POST } = await import("../route");
+    const req = new NextRequest("http://localhost/api/me/support-tickets", {
+      method: "POST",
+      body: JSON.stringify({
+        subject: "Chat help",
+        message: "Need help with my booking payment status please.",
+        category: "payment_refund",
+        handling_mode: "assistant",
+      }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    expect(captured.ticketInsert?.handling_mode).toBe("human");
+    expect(runSupportAssistantTurn).not.toHaveBeenCalled();
+    const json = await res.json();
+    expect(json.data?.assistantUnavailable).toBeDefined();
+    expect(json.data?.assistantPending).toBeFalsy();
   });
 
   it("returns 400 for legacy non-selectable category", async () => {

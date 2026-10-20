@@ -83,9 +83,11 @@ export default function MyTicketDetailPage() {
   const [pendingAttachments, setPendingAttachments] = useState<SupportAttachment[]>([]);
   const [assistantPending, setAssistantPending] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const assistantStreamingRef = useRef(false);
+  const initialAssistantStreamRef = useRef(false);
 
   const loadTicket = useCallback(async () => {
-    if (!id) return;
+    if (!id || assistantStreamingRef.current) return;
     try {
       const res = await fetcher.get<{ data?: { ticket?: Ticket; messages?: Message[] } }>(
         `/api/me/support-tickets/${id}`,
@@ -115,10 +117,68 @@ export default function MyTicketDetailPage() {
   useEffect(() => {
     const ms = ticket?.handling_mode === "assistant" ? 2_000 : 30_000;
     const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") void loadTicket();
+      if (document.visibilityState === "visible" && !assistantStreamingRef.current) void loadTicket();
     }, ms);
     return () => window.clearInterval(interval);
   }, [loadTicket, ticket?.handling_mode]);
+
+  const runAssistantStream = useCallback(
+    async (mode: "initial" | "follow_up", userMessage: string) => {
+      if (!id) return;
+      assistantStreamingRef.current = true;
+      setAssistantPending(false);
+      const streamAssistantId = `stream-assistant-${Date.now()}`;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: streamAssistantId,
+          message: "",
+          is_internal: false,
+          created_at: new Date().toISOString(),
+          user_id: "",
+          author_name: "Beautonomi Assistant",
+          is_mine: false,
+          author_kind: "assistant",
+        },
+      ]);
+      try {
+        const { streamAssistantReply } = await import("@/lib/support/support-assistant/client-stream-reply");
+        const streamResult = await streamAssistantReply({
+          streamUrl: `/api/me/support-tickets/${id}/assistant-messages/stream`,
+          message: userMessage,
+          body: { mode },
+          onAssistantChunk: (text) => {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === streamAssistantId ? { ...m, message: text } : m)),
+            );
+          },
+        });
+        if (streamResult.handoff) {
+          toast.info(streamResult.infoMessage ?? "Connecting you to support.");
+        } else if (!streamResult.ok && streamResult.errorCode !== "IN_FLIGHT") {
+          toast.error(streamResult.errorMessage ?? "Assistant unavailable");
+        }
+        return streamResult;
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Assistant unavailable");
+        return { ok: false, streamed: false as const };
+      } finally {
+        assistantStreamingRef.current = false;
+        await loadTicket();
+      }
+    },
+    [id, loadTicket],
+  );
+
+  useEffect(() => {
+    if (!ticket || !id || initialAssistantStreamRef.current) return;
+    if (ticket.handling_mode !== "assistant" || messages.length === 0) return;
+    const last = messages[messages.length - 1];
+    if (last.author_kind === "assistant") return;
+    if (!last.is_mine) return;
+    initialAssistantStreamRef.current = true;
+    void runAssistantStream("initial", last.message);
+  }, [ticket, messages, id, runAssistantStream]);
 
   const uploadFiles = async (files: FileList | null) => {
     if (!files?.length || !id || uploadingAttachment) return;
@@ -157,7 +217,7 @@ export default function MyTicketDetailPage() {
     setSending(true);
     const isAssistant = (ticket?.handling_mode ?? "human") === "assistant";
     const optimisticId = `local-${Date.now()}`;
-    if (msg) {
+    if (msg && isAssistant) {
       setMessages((prev) => [
         ...prev,
         {
@@ -174,49 +234,22 @@ export default function MyTicketDetailPage() {
     }
     try {
       if (isAssistant && msg) {
-        const streamAssistantId = `stream-assistant-${Date.now()}`;
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: streamAssistantId,
-            message: "",
-            is_internal: false,
-            created_at: new Date().toISOString(),
-            user_id: "",
-            author_name: "Beautonomi Assistant",
-            is_mine: false,
-            author_kind: "assistant",
-          },
-        ]);
-        const { streamAssistantReply } = await import("@/lib/support/support-assistant/client-stream-reply");
-        const streamResult = await streamAssistantReply({
-          streamUrl: `/api/me/support-tickets/${id}/assistant-messages/stream`,
-          message: msg,
-          onAssistantChunk: (text) => {
-            setMessages((prev) =>
-              prev.map((m) => (m.id === streamAssistantId ? { ...m, message: text } : m)),
-            );
-          },
-        });
-        if (!streamResult.ok) {
-          throw new Error(streamResult.errorMessage ?? "Assistant unavailable");
-        }
-        if (!streamResult.streamed) {
-          setAssistantPending(true);
-        }
-        if (streamResult.infoMessage) {
-          toast.info(streamResult.infoMessage);
+        setReply("");
+        setPendingAttachments([]);
+        const streamResult = await runAssistantStream("follow_up", msg);
+        if (streamResult?.ok && !streamResult.handoff) {
+          toast.success("Reply sent");
         }
       } else {
         await fetcher.post(`/api/me/support-tickets/${id}/messages`, {
           message: msg,
           attachments: isAssistant ? [] : pendingAttachments,
         });
+        setReply("");
+        setPendingAttachments([]);
+        await loadTicket();
+        toast.success("Reply sent");
       }
-      setReply("");
-      setPendingAttachments([]);
-      await loadTicket();
-      toast.success("Reply sent");
     } catch (err: any) {
       toast.error(err instanceof Error ? err.message : "Failed to send reply");
     } finally {

@@ -71,6 +71,7 @@ import { VerifiedBadge } from "@/components/ui/verified-badge";
 import { mergeProviderClientsListFromSources } from "@/lib/provider-portal/merge-provider-clients-list";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
 import { getDefaultMoneyLocale } from "@beautonomi/utils";
+import { clientContactMatches } from "@/lib/phone";
 
 type Client = MergedProviderClient;
 
@@ -182,6 +183,7 @@ export function ClientsClient({
   });
   const [loadFailed, setLoadFailed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isDetailSheetOpen, setIsDetailSheetOpen] = useState(false);
@@ -193,17 +195,22 @@ export function ClientsClient({
   }, [initialError]);
 
   useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
     if (selectedLocationId) {
       void loadClients();
       return;
     }
-    if (fromServer && !initialError) {
+    if (fromServer && !initialError && debouncedSearchQuery.length === 0) {
       void loadClients({ silent: true });
       return;
     }
     void loadClients();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- location + SSR bootstrap
-  }, [selectedLocationId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- location + search bootstrap
+  }, [selectedLocationId, debouncedSearchQuery]);
 
   const loadClients = async (options?: { silent?: boolean }) => {
     try {
@@ -212,16 +219,18 @@ export function ClientsClient({
       }
       setLoadFailed(false);
       
-      // Build URLs with location_id if provided
-      const savedUrl = selectedLocationId
-        ? `/api/provider/clients?location_id=${selectedLocationId}`
-        : "/api/provider/clients";
-      const servicedUrl = selectedLocationId
-        ? `/api/provider/clients/serviced?location_id=${selectedLocationId}`
-        : "/api/provider/clients/serviced";
-      const conversationsUrl = selectedLocationId
-        ? `/api/provider/clients/conversations?location_id=${selectedLocationId}`
-        : "/api/provider/clients/conversations";
+      const searchSuffix = debouncedSearchQuery
+        ? `search=${encodeURIComponent(debouncedSearchQuery)}`
+        : "";
+      const buildUrl = (base: string) => {
+        const params: string[] = [];
+        if (selectedLocationId) params.push(`location_id=${encodeURIComponent(selectedLocationId)}`);
+        if (searchSuffix) params.push(searchSuffix);
+        return params.length > 0 ? `${base}?${params.join("&")}` : base;
+      };
+      const savedUrl = buildUrl("/api/provider/clients");
+      const servicedUrl = buildUrl("/api/provider/clients/serviced");
+      const conversationsUrl = buildUrl("/api/provider/clients/conversations");
       
       const errors: string[] = [];
       const safeGet = async (url: string, label: string) => {
@@ -267,15 +276,27 @@ export function ClientsClient({
     }
   };
 
-  const filteredClients = useMemo(() => clients.filter((client) => {
-    const fullName = `${client.first_name} ${client.last_name}`.toLowerCase();
-    const query = searchQuery.toLowerCase();
-    return (
-      fullName.includes(query) ||
-      client.email?.toLowerCase().includes(query) ||
-      client.phone?.includes(query)
-    );
-  }), [clients, searchQuery]);
+  const filteredClients = useMemo(
+    () =>
+      clients.filter((client) => {
+        const q = searchQuery.trim();
+        if (!q) return true;
+        // Loaded rows already match this query, including limited-link emails the payload redacts.
+        if (q === debouncedSearchQuery) return true;
+        const lower = q.toLowerCase();
+        const fullName = `${client.first_name} ${client.last_name}`.trim();
+        return (
+          clientContactMatches(q, {
+            name: fullName,
+            email: client.email,
+            phone: client.phone,
+          }) ||
+          Boolean(client.notes?.toLowerCase().includes(lower)) ||
+          Boolean(client.tags?.some((tag) => tag.toLowerCase().includes(lower)))
+        );
+      }),
+    [clients, searchQuery, debouncedSearchQuery],
+  );
 
   const handleCreate = () => {
     setSelectedClient(null);

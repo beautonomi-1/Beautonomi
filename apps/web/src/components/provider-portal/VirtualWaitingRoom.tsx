@@ -13,6 +13,7 @@ import { format } from "date-fns";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { playRingtone } from "@/lib/on-demand/ringtone";
 import { useTranslation } from "@beautonomi/i18n";
+import { phoneMatchesQuery } from "@/lib/phone";
 
 interface VirtualWaitingRoomProps {
   onEntrySelect?: (entry: WaitingRoomEntry) => void;
@@ -92,7 +93,7 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }
     const matchesSearch =
       (entry?.client_name ?? "").toLowerCase().includes((searchQuery ?? "").toLowerCase()) ||
       (entry?.service_name ?? "").toLowerCase().includes((searchQuery ?? "").toLowerCase()) ||
-      (entry?.client_phone ?? "").includes(searchQuery ?? "");
+      phoneMatchesQuery(entry?.client_phone, searchQuery ?? "");
 
     const matchesStatus = statusFilter === "all" || entry.status === statusFilter;
 

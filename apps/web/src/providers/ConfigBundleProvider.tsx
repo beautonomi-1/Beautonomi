@@ -19,6 +19,10 @@ export interface ResolvedFlag {
   environments_allowed?: string[] | null;
 }
 
+export interface SupportAssistantModuleConfig {
+  active: boolean;
+}
+
 export interface OnDemandModuleConfig {
   enabled: boolean;
   ringtone_asset_path: string | null;
@@ -48,6 +52,7 @@ export interface PublicConfigBundle {
     sumsub: Record<string, any>;
     aura: Record<string, any>;
     safety: Record<string, any>;
+    support_assistant?: SupportAssistantModuleConfig;
   };
   verification?: SafeVerificationPolicy;
 }
@@ -93,6 +98,7 @@ const defaultBundle: PublicConfigBundle = {
     sumsub: {},
     aura: {},
     safety: {},
+    support_assistant: { active: false },
   },
   verification: {
     mode: "manual",
@@ -201,4 +207,9 @@ export function useThirdPartyConfig(): PublicConfigBundle["third_party"] {
 export function useAmplitudeConfig(): PublicConfigBundle["amplitude"] {
   const { bundle } = useConfigBundle();
   return bundle?.amplitude ?? defaultBundle.amplitude;
+}
+
+export function useSupportAssistantActive(): boolean {
+  const { bundle } = useConfigBundle();
+  return bundle?.modules?.support_assistant?.active ?? false;
 }

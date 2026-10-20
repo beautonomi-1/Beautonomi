@@ -19,6 +19,7 @@
     "@beautonomi/learning-mockups": "workspace:*",
     "@beautonomi/maintenance-paths": "workspace:*",
     "@beautonomi/subscription-features": "workspace:*",
+    "@beautonomi/phone": "workspace:*",
     "@beautonomi/types": "workspace:*",
     "@beautonomi/utils": "workspace:*",
     "@mapbox/mapbox-gl-draw": "^1.5.1",

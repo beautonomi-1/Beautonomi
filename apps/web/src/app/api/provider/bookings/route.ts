@@ -35,6 +35,12 @@ import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 import {
+  findCustomerIdsByContactSearchAmongIds,
+  findGroupBookingIdsByParticipantContactSearch,
+  loadDistinctBookingCustomerIdsForProvider,
+  MAX_INLINE_MATCH_IDS,
+} from "@/lib/provider/client-contact-search";
+import {
   BOOKING_ADDONS_SELECT,
   mapBookingAddonsForApi,
   type BookingAddonJoinRow,
@@ -312,27 +318,22 @@ async function handleGetProviderBookings(request: NextRequest) {
     if (searchRaw && searchRaw.trim().length > 0) {
       const trimmed = searchRaw.trim();
       const safe = trimmed.replace(/[%_,()]/g, "");
-      const digitsOnly = trimmed.replace(/\D+/g, "");
 
-      const { data: matchedUsers } = await supabaseAdmin
-        .from("users")
-        .select("id")
-        .or(
-          [
-            `full_name.ilike.%${safe}%`,
-            `email.ilike.%${safe}%`,
-            ...(digitsOnly.length > 0 ? [`phone.ilike.%${digitsOnly}%`] : []),
-          ].join(",")
-        )
-        .limit(500);
-
-      const customerIds = (matchedUsers ?? [])
-        .map((u: { id?: string | null }) => u?.id)
-        .filter((v): v is string => typeof v === "string");
+      const bookingCustomerIds = await loadDistinctBookingCustomerIdsForProvider(
+        supabaseAdmin,
+        providerId,
+      );
+      const customerIds = await findCustomerIdsByContactSearchAmongIds(
+        supabaseAdmin,
+        bookingCustomerIds,
+        trimmed,
+      );
 
       const orClauses: string[] = [`booking_number.ilike.%${safe}%`];
       if (customerIds.length > 0) {
-        orClauses.push(`customer_id.in.(${customerIds.join(",")})`);
+        orClauses.push(
+          `customer_id.in.(${customerIds.slice(0, MAX_INLINE_MATCH_IDS).join(",")})`,
+        );
       }
       query = query.or(orClauses.join(","));
     }
@@ -634,7 +635,18 @@ async function handleGetProviderBookings(request: NextRequest) {
     if (locationId) groupQuery = groupQuery.or(dashboardGroupBookingLocationOrFilter(locationId));
     if (searchRaw && searchRaw.trim().length > 0) {
       const safe = searchRaw.trim().replace(/[%_,()]/g, "");
-      groupQuery = groupQuery.or(`ref_number.ilike.%${safe}%,title.ilike.%${safe}%`);
+      const participantGroupIds = await findGroupBookingIdsByParticipantContactSearch(
+        supabaseAdmin,
+        providerId,
+        searchRaw,
+      );
+      const orParts = [`ref_number.ilike.%${safe}%`, `title.ilike.%${safe}%`];
+      if (participantGroupIds.length > 0) {
+        orParts.push(
+          `id.in.(${participantGroupIds.slice(0, MAX_INLINE_MATCH_IDS).join(",")})`,
+        );
+      }
+      groupQuery = groupQuery.or(orParts.join(","));
     }
     const { data: groupRows, error: groupErr } = await groupQuery
       .order(orderColumn, { ascending })

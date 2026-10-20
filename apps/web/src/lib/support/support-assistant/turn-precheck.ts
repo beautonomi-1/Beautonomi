@@ -4,7 +4,11 @@ import { loadAgentOperationalState } from "@/lib/agents/config-loader";
 import { checkRateLimit } from "@/lib/rate-limit/store";
 import { errorResponse } from "@/lib/supabase/api-helpers";
 import { handoffSupportTicketToHuman } from "./handoff";
-import { SUPPORT_ASSISTANT_AGENT_KEY } from "./availability";
+import {
+  resolveSupportAssistantAvailability,
+  SUPPORT_ASSISTANT_AGENT_KEY,
+  supportAssistantPlatformForRequest,
+} from "./availability";
 export type RunAssistantTurnResult =
   | { ok: true; assistantMessage: Record<string, unknown>; handoff: boolean }
   | { ok: false; code: string; message: string; handoff?: boolean };
@@ -105,22 +109,34 @@ export async function precheckSupportAssistantTurn(params: {
     };
   }
 
+  const requesterType = String(row.requester_type ?? "customer");
+  const availability = await resolveSupportAssistantAvailability({
+    userId,
+    requesterType,
+    platform: supportAssistantPlatformForRequest({ request: params.request, requesterType }),
+  });
+  if (!availability.enabled) {
+    await handoffSupportTicketToHuman({
+      admin: params.admin,
+      ticketId: params.ticketId,
+      request: params.request,
+      reason: availability.code ?? "Assistant disabled",
+    });
+    return {
+      ok: false,
+      result: {
+        ok: false,
+        code: availability.code === "FLAG_OFF" ? "ASSISTANT_DISABLED" : availability.code ?? "ASSISTANT_DISABLED",
+        message: "Connecting you to support.",
+        handoff: true,
+      },
+    };
+  }
+
   let agentId: string;
   try {
     const op = await loadAgentOperationalState(SUPPORT_ASSISTANT_AGENT_KEY);
     agentId = op.agentId;
-    if (op.state !== "active") {
-      await handoffSupportTicketToHuman({
-        admin: params.admin,
-        ticketId: params.ticketId,
-        request: params.request,
-        reason: "Assistant not active",
-      });
-      return {
-        ok: false,
-        result: { ok: false, code: "AGENT_INACTIVE", message: "Assistant unavailable.", handoff: true },
-      };
-    }
   } catch {
     await handoffSupportTicketToHuman({
       admin: params.admin,

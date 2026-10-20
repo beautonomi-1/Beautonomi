@@ -9,6 +9,11 @@ export {
   dialCodeForIso3166Alpha2,
   nationalDigitsValidationMessage,
   splitValueForPhoneInput,
+  phoneSearchNeedles,
+  phoneSearchNeedlesUnscoped,
+  phoneMatchesQuery,
+  clientContactMatches,
+  digitsOnlyPhone,
 } from "@beautonomi/phone";
 
 export { getDeviceDefaultCountryDial } from "./device-default-country-dial";
