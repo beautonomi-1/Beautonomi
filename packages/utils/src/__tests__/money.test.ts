@@ -8,6 +8,8 @@ import {
   sumMoney,
   splitMoneyProportionally,
   roundCurrency,
+  formatMoney,
+  formatMoneyCompact,
 } from "../money";
 
 describe("currency-aware money", () => {
@@ -65,5 +67,34 @@ describe("currency-aware money", () => {
   it("roundCurrency respects currency minor units", () => {
     expect(roundCurrency(1.234, "KWD")).toBe(1.234);
     expect(roundCurrency(1.234, "ZAR")).toBe(1.23);
+  });
+
+  it("formatMoney matches a fresh Intl.NumberFormat and is stable across calls", () => {
+    const expected = new Intl.NumberFormat("en-ZA", { style: "currency", currency: "ZAR" }).format(
+      1234.5,
+    );
+    expect(formatMoney(1234.5, "ZAR", "en-ZA")).toBe(expected);
+    expect(formatMoney(1234.5, "ZAR", "en-ZA")).toBe(expected);
+  });
+
+  it("formatMoney caches per locale and currency", () => {
+    expect(formatMoney(10, "USD", "en-US")).toBe(
+      new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(10),
+    );
+    expect(formatMoney(10, "ZAR", "en-US")).not.toBe(formatMoney(10, "USD", "en-US"));
+  });
+
+  it("formatMoneyCompact does not share a formatter with formatMoney", () => {
+    expect(formatMoneyCompact(1_250_000, "ZAR", "en-ZA")).toBe(
+      new Intl.NumberFormat("en-ZA", {
+        style: "currency",
+        currency: "ZAR",
+        notation: "compact",
+        maximumFractionDigits: 1,
+      }).format(1_250_000),
+    );
+    expect(formatMoneyCompact(1_250_000, "ZAR", "en-ZA")).not.toBe(
+      formatMoney(1_250_000, "ZAR", "en-ZA"),
+    );
   });
 });

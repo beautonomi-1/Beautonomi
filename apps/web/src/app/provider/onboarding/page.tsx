@@ -8,13 +8,20 @@ import {
 } from "@beautonomi/i18n";
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { countryFilterIso2FromStorage, getDefaultMoneyLocale, isMailableEmail } from "@beautonomi/utils";
+import {
+  countryFilterIso2FromStorage,
+  getDefaultMoneyLocale,
+  isMailableEmail,
+  parseLegalDobIso,
+  validateLegalDobParts,
+} from "@beautonomi/utils";
 import {
   ONBOARDING_STEP_MAP_VERSION,
   remapLegacyWebDraftNumericStep,
   effectiveZoneSuggestStatus,
   hasValidAddressCoords,
   ensureHttpsUrl,
+  normalizeSocialUrl,
   wizardStepIdForKey,
   wizardStepKeyForId,
   zoneSuggestInvalidationPatch,
@@ -253,6 +260,7 @@ interface OnboardingData {
   // Step 14: Plan Selection (planName from URL for display only)
   selected_plan_id?: string;
   selected_plan_name?: string;
+  no_plans_available?: boolean;
 }
 
 function digitsOnlyPhone(s: string | null | undefined): string {
@@ -558,6 +566,7 @@ export default function ProviderOnboarding() {
   // team size, or business/address — so verification state survives a refresh
   // even before the business-details step.
   useEffect(() => {
+    if (isSubmitting) return;
     const saveTimer = setTimeout(() => {
       const hasProgress =
         formData.business_name ||
@@ -574,7 +583,7 @@ export default function ProviderOnboarding() {
     }, 2000); // Debounce: save 2 seconds after last change
 
     return () => clearTimeout(saveTimer);
-  }, [formData, currentStep]);
+  }, [formData, currentStep, isSubmitting]);
 
   const loadDraft = async () => {
     const merged: Partial<OnboardingData> = { ...INITIAL_ONBOARDING_DATA };
@@ -759,6 +768,11 @@ export default function ProviderOnboarding() {
         if (!formData.phone_verified) errors.push(t("web.provider.onboarding.validation.verifyPhone"));
         if (!formData.date_of_birth?.trim()) {
           errors.push(t("web.provider.onboarding.validation.dobRequired"));
+        } else {
+          const dobError = validateLegalDobParts(parseLegalDobIso(formData.date_of_birth), {
+            minAge: 13,
+          });
+          if (dobError) errors.push(dobError);
         }
         break;
       case 3: // Business Details
@@ -849,7 +863,7 @@ export default function ProviderOnboarding() {
         // Optional - no validation
         break;
       case 15: // Plan Selection
-        if (!formData.selected_plan_id?.trim()) {
+        if (!formData.selected_plan_id?.trim() && !formData.no_plans_available) {
           errors.push(t("web.provider.onboarding.validation.selectPlan"));
         }
         break;
@@ -991,6 +1005,24 @@ export default function ProviderOnboarding() {
       const safeThumbnail = stripDataUrl(formData.thumbnail_url);
       const safeAvatar = stripDataUrl(formData.avatar_url);
       const safeGallery = stripDataUrlsFromArray(formData.gallery);
+      const rawLinks = formData.social_media_links || {};
+      const normalizedSocial = {
+        facebook: rawLinks.facebook?.trim()
+          ? normalizeSocialUrl("facebook", rawLinks.facebook)
+          : undefined,
+        instagram: rawLinks.instagram?.trim()
+          ? normalizeSocialUrl("instagram", rawLinks.instagram)
+          : undefined,
+        twitter: rawLinks.twitter?.trim()
+          ? normalizeSocialUrl("twitter", rawLinks.twitter)
+          : undefined,
+        linkedin: rawLinks.linkedin?.trim()
+          ? normalizeSocialUrl("linkedin", rawLinks.linkedin)
+          : undefined,
+      };
+      const normalizedWebsite = formData.website?.trim()
+        ? ensureHttpsUrl(formData.website.trim())
+        : null;
       const onboardingData = {
         // New fields
         team_size: formData.team_size,
@@ -1049,8 +1081,8 @@ export default function ProviderOnboarding() {
         response_rate: formData.response_rate || 100,
         response_time_hours: formData.response_time_hours || 1,
         languages_spoken: formData.languages_spoken || ["English"],
-        social_media_links: formData.social_media_links || {},
-        website: formData.website || null,
+        social_media_links: normalizedSocial,
+        website: normalizedWebsite,
         tax_rate_percent: formData.tax_rate_percent || null,
         tips_enabled: formData.tips_enabled ?? true,
         booking_policy: {
@@ -2729,12 +2761,10 @@ function Step3BusinessDetails({
               id="website"
               type="url"
               value={data.website || ""}
-              onChange={(e) => {
-                let value = e.target.value.trim();
-                if (value && !value.match(/^https?:\/\//)) {
-                  value = `https://${value}`;
-                }
-                updateData({ website: value || undefined });
+              onChange={(e) => updateData({ website: e.target.value || undefined })}
+              onBlur={() => {
+                const v = data.website?.trim();
+                if (v) updateData({ website: ensureHttpsUrl(v) });
               }}
               placeholder={t("web.provider.onboarding.business.websitePlaceholder")}
               className={inputClass}
@@ -2781,13 +2811,24 @@ function Step3BusinessDetails({
                 value={data.social_media_links?.facebook || ""}
                 onChange={(e) => {
                   const current = data.social_media_links || {};
-                  const value = ensureHttpsUrl(e.target.value);
                   updateData({
                     social_media_links: {
                       ...current,
-                      facebook: value || undefined,
+                      facebook: e.target.value || undefined,
                     },
                   });
+                }}
+                onBlur={() => {
+                  const current = data.social_media_links || {};
+                  const v = current.facebook?.trim();
+                  if (v) {
+                    updateData({
+                      social_media_links: {
+                        ...current,
+                        facebook: normalizeSocialUrl("facebook", v),
+                      },
+                    });
+                  }
                 }}
                 placeholder={t("web.provider.onboarding.business.facebookPlaceholder")}
                 className={inputClass}
@@ -2803,13 +2844,24 @@ function Step3BusinessDetails({
                 value={data.social_media_links?.instagram || ""}
                 onChange={(e) => {
                   const current = data.social_media_links || {};
-                  const value = ensureHttpsUrl(e.target.value);
                   updateData({
                     social_media_links: {
                       ...current,
-                      instagram: value || undefined,
+                      instagram: e.target.value || undefined,
                     },
                   });
+                }}
+                onBlur={() => {
+                  const current = data.social_media_links || {};
+                  const v = current.instagram?.trim();
+                  if (v) {
+                    updateData({
+                      social_media_links: {
+                        ...current,
+                        instagram: normalizeSocialUrl("instagram", v),
+                      },
+                    });
+                  }
                 }}
                 placeholder={t("web.provider.onboarding.business.instagramPlaceholder")}
                 className={inputClass}
@@ -2825,13 +2877,24 @@ function Step3BusinessDetails({
                 value={data.social_media_links?.twitter || ""}
                 onChange={(e) => {
                   const current = data.social_media_links || {};
-                  const value = ensureHttpsUrl(e.target.value);
                   updateData({
                     social_media_links: {
                       ...current,
-                      twitter: value || undefined,
+                      twitter: e.target.value || undefined,
                     },
                   });
+                }}
+                onBlur={() => {
+                  const current = data.social_media_links || {};
+                  const v = current.twitter?.trim();
+                  if (v) {
+                    updateData({
+                      social_media_links: {
+                        ...current,
+                        twitter: normalizeSocialUrl("twitter", v),
+                      },
+                    });
+                  }
                 }}
                 placeholder={t("web.provider.onboarding.business.xPlaceholder")}
                 className={inputClass}
@@ -2847,13 +2910,24 @@ function Step3BusinessDetails({
                 value={data.social_media_links?.linkedin || ""}
                 onChange={(e) => {
                   const current = data.social_media_links || {};
-                  const value = ensureHttpsUrl(e.target.value);
                   updateData({
                     social_media_links: {
                       ...current,
-                      linkedin: value || undefined,
+                      linkedin: e.target.value || undefined,
                     },
                   });
+                }}
+                onBlur={() => {
+                  const current = data.social_media_links || {};
+                  const v = current.linkedin?.trim();
+                  if (v) {
+                    updateData({
+                      social_media_links: {
+                        ...current,
+                        linkedin: normalizeSocialUrl("linkedin", v),
+                      },
+                    });
+                  }
                 }}
                 placeholder={t("web.provider.onboarding.business.linkedinPlaceholder")}
                 className={inputClass}

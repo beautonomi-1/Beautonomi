@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "@beautonomi/i18n";
 import { Check, AlertCircle, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { PricingFeatureHtml } from "@/components/pricing/PricingFeatureHtml";
 import { ONBOARDING_BTN_PRIMARY } from "./onboarding-styles";
 
@@ -26,6 +27,7 @@ type PublicPricingPlan = {
 
 export type PlanSelectionData = {
   selected_plan_id?: string;
+  no_plans_available?: boolean;
 };
 
 type Props = {
@@ -56,40 +58,63 @@ function planDisplayPrice(plan: PublicPricingPlan, t: (k: string) => string): {
   return { main: plan.price, caption: plan.period };
 }
 
+function sortPlansFreeFirst(plans: PublicPricingPlan[]): PublicPricingPlan[] {
+  return [...plans].sort((a, b) => {
+    const aFree = a.is_free ? 1 : 0;
+    const bFree = b.is_free ? 1 : 0;
+    if (aFree !== bFree) return bFree - aFree;
+    return 0;
+  });
+}
+
 export function Step14PlanSelection({ data, updateData }: Props) {
   const { t } = useTranslation();
   const [pricingPlans, setPricingPlans] = useState<PublicPricingPlan[]>([]);
   const [isLoadingPlans, setIsLoadingPlans] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [expandedPlanIds, setExpandedPlanIds] = useState<Set<string>>(new Set());
+  const selectedPlanIdRef = useRef(data.selected_plan_id);
+  selectedPlanIdRef.current = data.selected_plan_id;
+
+  const loadPlans = useCallback(async () => {
+    try {
+      setIsLoadingPlans(true);
+      setLoadError(false);
+      const res = await fetcher.get<{ data: PublicPricingPlan[] }>("/api/public/pricing/plans");
+      const raw = Array.isArray(res.data) ? res.data : [];
+      const sorted = sortPlansFreeFirst(raw);
+      setPricingPlans(sorted);
+      const sel = selectedPlanIdRef.current;
+      if (sel && !sorted.find((p) => p.id === sel)) {
+        updateData({ selected_plan_id: undefined });
+      }
+      updateData({ no_plans_available: sorted.length === 0 });
+    } catch (error) {
+      console.error("Error loading pricing plans:", error);
+      setLoadError(true);
+      toast.error(t("web.provider.onboarding.toast.plansFailed"));
+    } finally {
+      setIsLoadingPlans(false);
+    }
+  }, [t, updateData]);
 
   useEffect(() => {
-    async function loadPlans() {
-      try {
-        setIsLoadingPlans(true);
-        const res = await fetcher.get<{ data: PublicPricingPlan[] }>("/api/public/pricing/plans");
-        const plans = Array.isArray(res.data) ? res.data : [];
-        setPricingPlans(plans);
-        if (data.selected_plan_id && !plans.find((p) => p.id === data.selected_plan_id)) {
-          updateData({ selected_plan_id: undefined });
-        }
-      } catch (error) {
-        console.error("Error loading pricing plans:", error);
-        toast.error(t("web.provider.onboarding.toast.plansFailed"));
-      } finally {
-        setIsLoadingPlans(false);
-      }
-    }
-    loadPlans();
+    void loadPlans();
+    // Mount-only initial load; retry uses loadPlans() explicitly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (pricingPlans.length === 0) return;
     if (data.selected_plan_id?.trim()) return;
-    updateData({ selected_plan_id: pricingPlans[0].id });
+    const free = pricingPlans.find((p) => p.is_free);
+    const popular = pricingPlans.find((p) => p.is_popular);
+    const chosen = free ?? popular ?? pricingPlans[0];
+    updateData({ selected_plan_id: chosen.id, no_plans_available: false });
   }, [pricingPlans, data.selected_plan_id, updateData]);
 
   const selectPlan = useCallback(
-    (id: string) => updateData({ selected_plan_id: id }),
+    (id: string) => updateData({ selected_plan_id: id, no_plans_available: false }),
     [updateData],
   );
 
@@ -120,6 +145,20 @@ export function Step14PlanSelection({ data, updateData }: Props) {
             {t("web.provider.onboarding.review.loadingPlans")}
           </span>
         </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="py-12 text-center space-y-4">
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{t("web.provider.onboarding.toast.plansFailed")}</AlertDescription>
+        </Alert>
+        <Button type="button" variant="outline" onClick={() => void loadPlans()}>
+          {t("web.provider.common.tryAgain")}
+        </Button>
       </div>
     );
   }

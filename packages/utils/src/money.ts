@@ -23,16 +23,33 @@ export function getDefaultMoneyLocale(): string {
   return defaultMoneyLocale;
 }
 
+const numberFormatCache = new Map<string, Intl.NumberFormat>();
+
+function getCurrencyNumberFormat(
+  locale: string,
+  code: string,
+  compact: boolean,
+): Intl.NumberFormat {
+  const key = `${locale}|${code}|${compact ? "compact" : "standard"}`;
+  let formatter = numberFormatCache.get(key);
+  if (!formatter) {
+    formatter = new Intl.NumberFormat(
+      locale,
+      compact
+        ? { style: "currency", currency: code, notation: "compact", maximumFractionDigits: 1 }
+        : { style: "currency", currency: code },
+    );
+    numberFormatCache.set(key, formatter);
+  }
+  return formatter;
+}
+
 export function formatMoney(
   amount: number,
   currency: string = "ZAR",
   locale: string = defaultMoneyLocale,
 ): string {
-  const code = normalizeCurrencyCode(currency);
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: code,
-  }).format(amount);
+  return getCurrencyNumberFormat(locale, normalizeCurrencyCode(currency), false).format(amount);
 }
 
 export function formatMoneyCompact(
@@ -40,13 +57,7 @@ export function formatMoneyCompact(
   currency: string = "ZAR",
   locale: string = defaultMoneyLocale,
 ): string {
-  const code = normalizeCurrencyCode(currency);
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: code,
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(amount);
+  return getCurrencyNumberFormat(locale, normalizeCurrencyCode(currency), true).format(amount);
 }
 
 /**

@@ -19,6 +19,7 @@ import { isApplePrimaryIdentity } from "@beautonomi/utils";
 import { isAppReviewDemoUserId } from "@/lib/auth/app-review-demo";
 import { useTranslation } from "@beautonomi/i18n";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+import { useRouter } from "expo-router";
 
 /**
  * Named milestone ranges that appear as a segmented progress strip.
@@ -52,6 +53,7 @@ function getMilestoneProgress(stepId: number): number {
 export function WizardChrome() {
   const { t } = useTranslation();
   const wc = (key: string, opts?: Record<string, unknown>) => t(`provider.mobile.components.wizardChrome.${key}`, opts) as string;
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const { offset: keyboardOffset, onLayout: onKeyboardLayout } = useKeyboardOffset();
@@ -72,6 +74,7 @@ export function WizardChrome() {
     formData,
     submitLabel,
     submitBusyLabel,
+    providerProfileExists,
   } = useOnboardingWizard();
   const { user } = useAuth();
   const validateOptions = {
@@ -138,6 +141,28 @@ export function WizardChrome() {
         onBack={goBack}
         subtitle={headerSubtitle}
       />
+      {providerProfileExists ? (
+        <View
+          style={twStyle(
+            "mx-5 mb-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3",
+          )}
+        >
+          <Text style={twStyle("text-[14px] font-semibold text-amber-950")}>
+            {wc("existingProfileTitle")}
+          </Text>
+          <Text style={twStyle("mt-1 text-[13px] leading-relaxed text-amber-900")}>
+            {wc("existingProfileBody")}
+          </Text>
+          <TouchableOpacity
+            onPress={() => router.replace("/(app)/onboarding" as never)}
+            style={twStyle("mt-3 self-start rounded-full bg-primary px-4 py-2")}
+            accessibilityRole="button"
+            accessibilityLabel={wc("openChecklist")}
+          >
+            <Text style={twStyle("text-[13px] font-semibold text-white")}>{wc("openChecklist")}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
       <KeyboardAvoidingView
         behavior="padding"
         style={twStyle("flex-1")}

@@ -100,11 +100,6 @@ export default function OnboardingHubScreen() {
     router.push(target as never);
   };
 
-  const openGuidedWizard = () => {
-    hapticLight();
-    router.push(GUIDED_WIZARD_ROUTE as never);
-  };
-
   const confirmSignOut = () => {
     hapticLight();
     Alert.alert(
@@ -501,20 +496,6 @@ export default function OnboardingHubScreen() {
               </Text>
             </TouchableOpacity>
           )}
-
-          {!isComplete && hasSetupSteps ? (
-            <TouchableOpacity
-              onPress={openGuidedWizard}
-              style={twStyle("mb-4 items-center py-2")}
-              activeOpacity={0.85}
-              accessibilityLabel={oh("guidedWizardA11y")}
-              accessibilityRole="button"
-            >
-              <Text style={twStyle("text-[14px] font-medium text-primary")}>
-                {oh("guidedWizard")}
-              </Text>
-            </TouchableOpacity>
-          ) : null}
 
           {!isComplete && hasSetupSteps ? (
             <TouchableOpacity

@@ -679,6 +679,312 @@ function getParticipantLine(
   };
 }
 
+const EMPTY_PARTICIPANT_SEARCH: ParticipantClientSearchState = {
+  query: "",
+  results: [],
+  loading: false,
+  open: false,
+};
+
+type ParticipantClient = ParticipantClientSearchState["results"][number];
+
+type CreateParticipantRowProps = {
+  participant: ParticipantFormRow;
+  index: number;
+  search: ParticipantClientSearchState | undefined;
+  defaultServiceId: string;
+  services: ServiceRow[];
+  servicesForPicking: ServiceRow[];
+  serviceChipLabels: Map<string, string>;
+  teamMembers: TeamRow[];
+  footer: "add" | "cap" | null;
+  cap: number;
+  gb: (key: string, opts?: Record<string, unknown>) => string;
+  sl: (svc: ServiceRow) => string;
+  onUpdate: (id: string, patch: Partial<ParticipantFormRow>) => void;
+  onRemove: (id: string) => void;
+  onSearch: (id: string, query: string) => void;
+  onSelectClient: (id: string, client: ParticipantClient) => void;
+  onAdd: () => void;
+  onRowLayout: (index: number, y: number) => void;
+};
+
+const CreateParticipantRow = memo(function CreateParticipantRow({
+  participant,
+  index,
+  search: searchState,
+  defaultServiceId,
+  services,
+  servicesForPicking,
+  serviceChipLabels,
+  teamMembers,
+  footer,
+  cap,
+  gb,
+  sl,
+  onUpdate,
+  onRemove,
+  onSearch,
+  onSelectClient,
+  onAdd,
+  onRowLayout,
+}: CreateParticipantRowProps) {
+  const id = participant.id;
+  const search = searchState ?? EMPTY_PARTICIPANT_SEARCH;
+  const handlePhone = useCallback((phone: string) => onUpdate(id, { phone }), [id, onUpdate]);
+  const line = getParticipantLine(participant, defaultServiceId, services);
+  const addOns = line.service?.add_ons ?? [];
+
+  return (
+    <View
+      style={twStyle("mb-3 rounded-xl border border-purple-100 bg-white p-3")}
+      onLayout={(e) => onRowLayout(index, e.nativeEvent.layout.y)}
+    >
+      <View style={twStyle("mb-2 flex-row items-center justify-between")}>
+        <View style={twStyle("flex-row items-center gap-2")}>
+          <Text style={twStyle("text-xs font-semibold uppercase text-gray-400")}>
+            {gb("participantN", { n: index + 1 })}
+          </Text>
+          {participant.customerId ? (
+            <View
+              style={twStyle("rounded-full bg-purple-50 border border-purple-200 px-2 py-0.5")}
+            >
+              <Text style={twStyle("text-[10px] font-medium text-purple-700")}>
+                {gb("existingClient")}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+        <TouchableOpacity
+          onPress={() => onRemove(id)}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={gb("removeParticipantNA11y", { n: index + 1 })}
+        >
+          <Ionicons name="close-circle-outline" size={18} color="#ef4444" />
+        </TouchableOpacity>
+      </View>
+
+      {!participant.customerId ? (
+        <View style={twStyle("mb-2")}>
+          <View
+            style={twStyle(
+              "flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-3 py-2",
+            )}
+          >
+            <Ionicons name="search-outline" size={14} color="#9ca3af" />
+            <TextInput
+              style={[twStyle("ms-2 flex-1 text-sm text-gray-900"), { paddingVertical: 0 }]}
+              placeholder={gb("searchExistingClient")}
+              placeholderTextColor="#9ca3af"
+              value={search.query}
+              onChangeText={(q) => onSearch(id, q)}
+              autoCapitalize="words"
+              returnKeyType="search"
+              accessibilityLabel={gb("searchClientsA11y", { n: index + 1 })}
+            />
+            {search.loading ? <ActivityIndicator size="small" color="#7c3aed" /> : null}
+          </View>
+          {search.open && search.results.length > 0 ? (
+            <View
+              style={twStyle("mt-1 rounded-xl border border-gray-100 bg-white overflow-hidden")}
+            >
+              {search.results.map((c) => (
+                <TouchableOpacity
+                  key={c.id}
+                  style={twStyle("flex-row items-center border-b border-gray-50 px-3 py-2.5")}
+                  onPress={() => onSelectClient(id, c)}
+                  accessibilityLabel={gb("selectClientA11y", { name: c.full_name })}
+                >
+                  <Avatar name={c.full_name} size="sm" />
+                  <View style={twStyle("ms-2 flex-1")}>
+                    <Text style={twStyle("text-sm font-medium text-gray-900")}>{c.full_name}</Text>
+                    <Text style={twStyle("text-xs text-gray-500")} numberOfLines={1}>
+                      {c.phone || c.email || "—"}
+                    </Text>
+                  </View>
+                  <DirectionalIcon name="chevron-forward" size={14} color="#d1d5db" />
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
+          {search.open && !search.loading && search.results.length === 0 && search.query.length >= 2 ? (
+            <Text style={twStyle("mt-1 text-center text-xs text-gray-400")}>
+              {gb("noExistingClients")}
+            </Text>
+          ) : null}
+        </View>
+      ) : (
+        <TouchableOpacity
+          onPress={() => onUpdate(id, { customerId: undefined })}
+          style={twStyle("mb-2")}
+          accessibilityRole="button"
+        >
+          <Text style={twStyle("text-xs text-purple-600 underline")}>{gb("changeClient")}</Text>
+        </TouchableOpacity>
+      )}
+
+      <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>{gb("nameRequired")}</Text>
+      <TextInput
+        style={twStyle(
+          "mb-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900",
+        )}
+        value={participant.name}
+        onChangeText={(name) => onUpdate(id, { name })}
+        placeholder={gb("clientNamePlaceholder")}
+        placeholderTextColor="#9ca3af"
+      />
+      <E164PhoneField
+        label={gb("phone")}
+        valueE164={participant.phone}
+        onChangeE164={handlePhone}
+        muted
+        accessibilityLabel={gb("participantPhoneNA11y", { n: index + 1 })}
+      />
+      <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>{gb("email")}</Text>
+      <TextInput
+        style={twStyle(
+          "rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900",
+        )}
+        value={participant.email}
+        onChangeText={(email) => onUpdate(id, { email })}
+        placeholder={gb("optionalPlaceholder")}
+        placeholderTextColor="#9ca3af"
+        keyboardType="email-address"
+        autoCapitalize="none"
+      />
+      <View style={twStyle("mt-3")}>
+        <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>
+          {gb("whatParticipantWants")}
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {servicesForPicking.map((svc) => (
+            <SelectChip
+              key={`${id}-${svc.id}`}
+              label={serviceChipLabels.get(svc.id) ?? sl(svc)}
+              selected={(participant.serviceId || defaultServiceId) === svc.id}
+              onPress={() => onUpdate(id, { serviceId: svc.id, addOnIds: [] })}
+            />
+          ))}
+        </ScrollView>
+        {!line.service ? (
+          <Text style={twStyle("mt-1 text-[11px] text-red-600")}>
+            {gb("selectServiceForParticipant")}
+          </Text>
+        ) : (
+          <View>
+            {addOns.length > 0 ? (
+              <View style={twStyle("mt-2")}>
+                <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>{gb("addOns")}</Text>
+                <View style={twStyle("flex-row flex-wrap")}>
+                  {addOns.map((ao) => {
+                    const checked = participant.addOnIds.includes(ao.id);
+                    return (
+                      <TouchableOpacity
+                        key={`${id}-ao-${ao.id}`}
+                        onPress={() => {
+                          onUpdate(id, {
+                            addOnIds: checked
+                              ? participant.addOnIds.filter((aid) => aid !== ao.id)
+                              : [...participant.addOnIds, ao.id],
+                          });
+                        }}
+                        style={[
+                          twStyle(
+                            `mb-2 rounded-full border px-3 py-1.5 ${checked ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white"}`,
+                          ),
+                          { marginEnd: 8 },
+                        ]}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked }}
+                      >
+                        <Text
+                          style={twStyle(
+                            `text-xs font-medium ${checked ? "text-indigo-700" : "text-gray-600"}`,
+                          )}
+                        >
+                          {ao.name}
+                          {ao.price ? ` · ${formatCurrency(Number(ao.price) || 0)}` : ""}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : null}
+            <Text style={twStyle("mt-1 text-[11px] font-medium text-purple-800")}>
+              {gb("serviceDurationPrice", {
+                name: sl(line.service),
+                minutes: line.durationMinutes,
+                amount: formatCurrency(line.price),
+              })}
+            </Text>
+          </View>
+        )}
+      </View>
+      {teamMembers.length > 0 ? (
+        <View style={twStyle("mt-3")}>
+          <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>{gb("staffOptional")}</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <SelectChip
+              label={gb("groupDefault")}
+              selected={!participant.staffId}
+              onPress={() => onUpdate(id, { staffId: "" })}
+            />
+            {teamMembers.map((m) => (
+              <SelectChip
+                key={`${id}-staff-${m.id}`}
+                label={m.name ?? gb("staffFallback")}
+                selected={participant.staffId === m.id}
+                onPress={() => onUpdate(id, { staffId: m.id })}
+              />
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
+      <Text style={twStyle("mb-1 mt-3 text-xs font-medium text-gray-600")}>
+        {gb("participantNotes")}
+      </Text>
+      <TextInput
+        style={twStyle(
+          "rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900",
+        )}
+        value={participant.notes}
+        onChangeText={(notes) => onUpdate(id, { notes })}
+        placeholder={gb("participantNotesPlaceholder")}
+        placeholderTextColor="#9ca3af"
+        multiline
+      />
+      {footer === "cap" ? (
+        <View
+          style={twStyle(
+            "mt-3 flex-row items-center justify-center rounded-xl border border-dashed border-gray-200 py-2",
+          )}
+        >
+          <Ionicons name="lock-closed-outline" size={13} color="#9ca3af" />
+          <Text style={twStyle("ms-1 text-xs text-gray-400")}>
+            {gb("capacityReachedHint", { cap })}
+          </Text>
+        </View>
+      ) : footer === "add" ? (
+        <TouchableOpacity
+          onPress={onAdd}
+          style={twStyle(
+            "mt-3 flex-row items-center justify-center rounded-xl border border-dashed border-purple-200 py-2",
+          )}
+          accessibilityRole="button"
+          accessibilityLabel={gb("addAnotherParticipantA11y")}
+        >
+          <Ionicons name="add" size={14} color="#7c3aed" />
+          <Text style={twStyle("ms-1 text-xs font-semibold text-purple-700")}>
+            {gb("addAnotherParticipant")}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+});
+
 export default function GroupBookingsScreen() {
   const { t } = useTranslation();
   const gb = useGroupBookingsI18n();
@@ -824,6 +1130,31 @@ export default function GroupBookingsScreen() {
         : parentServices.filter((s) => getServiceCategoryInfo(s, gb("otherCategory")).id === selectedServiceCategory),
     [parentServices, selectedServiceCategory, gb]
   );
+  const tenantCurrency = getTenantDefaultCurrency();
+  const serviceChipLabels = useMemo(() => {
+    const labels = new Map<string, string>();
+    for (const svc of servicesForPicking) {
+      labels.set(
+        svc.id,
+        svc.price != null
+          ? gb("serviceWithPrice", { name: sl(svc), amount: formatCurrency(Number(svc.price) || 0) })
+          : sl(svc),
+      );
+    }
+    return labels;
+  }, [servicesForPicking, gb, sl, tenantCurrency]);
+
+  const variantsByParentId = useMemo(() => {
+    const map = new Map<string, ServiceRow[]>();
+    for (const v of variantServices) {
+      if (!v.parent_service_id) continue;
+      const list = map.get(v.parent_service_id);
+      if (list) list.push(v);
+      else map.set(v.parent_service_id, [v]);
+    }
+    return map;
+  }, [variantServices]);
+
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
@@ -897,6 +1228,8 @@ export default function GroupBookingsScreen() {
     travelPreviewDistanceKm: null as number | null,
     packageId: "" as string,
   });
+  const createDefaultServiceIdRef = useRef(createForm.serviceId);
+  createDefaultServiceIdRef.current = createForm.serviceId;
   const createFormServiceResources = useMemo(() => {
     if (!createForm.serviceId) return [];
     const svc = services.find((s) => s.id === createForm.serviceId);
@@ -1863,7 +2196,7 @@ export default function GroupBookingsScreen() {
     const requestedDate =
       typeof params.default_date === "string" && YMD_RE.test(params.default_date)
         ? params.default_date
-        : now.toISOString().slice(0, 10);
+        : formatDateFns(now, "yyyy-MM-dd");
     const requestedTime =
       typeof params.default_time === "string" && HHMM_RE.test(params.default_time)
         ? params.default_time
@@ -1909,6 +2242,7 @@ export default function GroupBookingsScreen() {
     setCreatePaymentMethod("pay_later");
     setCreateSendNotification(true);
     setValidatingCreateAddress(false);
+    setParticipantSearchMap({});
     resetSections();
     setShowCreate(true);
   }
@@ -2011,24 +2345,29 @@ export default function GroupBookingsScreen() {
     previousGroupRef.current = null;
   }
 
-  function addCreateParticipantRow() {
+  const updateCreateParticipantRow = useCallback(
+    (id: string, patch: Partial<ParticipantFormRow>) => {
+      setCreateParticipants((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+    },
+    [],
+  );
+
+  const addCreateParticipantRow = useCallback(() => {
     setCreateParticipants((prev) => [
       ...prev,
-      createBlankParticipant(`participant-${Date.now()}-${prev.length}`, createForm.serviceId),
+      createBlankParticipant(
+        `participant-${Date.now()}-${prev.length}`,
+        createDefaultServiceIdRef.current,
+      ),
     ]);
-  }
+  }, []);
 
-  function updateCreateParticipantRow(id: string, patch: Partial<ParticipantFormRow>) {
-    setCreateParticipants((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
-  }
-
-  function removeCreateParticipantRow(id: string) {
+  const removeCreateParticipantRow = useCallback((id: string) => {
     setCreateParticipants((prev) =>
       prev.length <= 1
-        ? [createBlankParticipant(`participant-${Date.now()}`, createForm.serviceId)]
-        : prev.filter((p) => p.id !== id)
+        ? [createBlankParticipant(`participant-${Date.now()}`, createDefaultServiceIdRef.current)]
+        : prev.filter((p) => p.id !== id),
     );
-    // Clean up search state for this participant
     setParticipantSearchMap((prev) => {
       const next = { ...prev };
       delete next[id];
@@ -2038,9 +2377,9 @@ export default function GroupBookingsScreen() {
       clearTimeout(participantSearchTimers.current[id]);
       delete participantSearchTimers.current[id];
     }
-  }
+  }, []);
 
-  function searchClientsForParticipant(participantId: string, query: string) {
+  const searchClientsForParticipant = useCallback((participantId: string, query: string) => {
     setParticipantSearchMap((prev) => ({
       ...prev,
       [participantId]: {
@@ -2066,7 +2405,7 @@ export default function GroupBookingsScreen() {
     participantSearchTimers.current[participantId] = setTimeout(async () => {
       try {
         const res = await api.get<any>(
-          `/api/provider/clients?search=${encodeURIComponent(query.trim())}&limit=8&include_serviced=1`
+          `/api/provider/clients?search=${encodeURIComponent(query.trim())}&limit=8&include_serviced=1`,
         );
         const rows = (res.data || []).map((c: any) => ({
           id: c.id,
@@ -2086,23 +2425,23 @@ export default function GroupBookingsScreen() {
         }));
       }
     }, 300);
-  }
+  }, []);
 
-  function selectClientForParticipant(
-    participantId: string,
-    client: { id: string; customer_id: string; full_name: string; email?: string; phone?: string }
-  ) {
-    updateCreateParticipantRow(participantId, {
-      name: client.full_name,
-      email: client.email || "",
-      phone: client.phone || "",
-      customerId: client.customer_id,
-    });
-    setParticipantSearchMap((prev) => ({
-      ...prev,
-      [participantId]: { query: "", results: [], loading: false, open: false },
-    }));
-  }
+  const selectClientForParticipant = useCallback(
+    (participantId: string, client: ParticipantClient) => {
+      updateCreateParticipantRow(participantId, {
+        name: client.full_name,
+        email: client.email || "",
+        phone: client.phone || "",
+        customerId: client.customer_id,
+      });
+      setParticipantSearchMap((prev) => ({
+        ...prev,
+        [participantId]: { query: "", results: [], loading: false, open: false },
+      }));
+    },
+    [updateCreateParticipantRow],
+  );
 
   async function createParticipantBookingAndLink(args: {
     groupId: string;
@@ -4292,6 +4631,7 @@ export default function GroupBookingsScreen() {
           />
         }
       >
+        {showEdit ? (
         <View>
           {/* §Provider-audit 2026-04 (packages round 4 — mobile edit
               parity): package attach/swap row inside the edit sheet.
@@ -4526,6 +4866,7 @@ export default function GroupBookingsScreen() {
             <Text style={twStyle("text-sm font-semibold text-indigo-800")}>{gb("manageParticipants")}</Text>
           </TouchableOpacity>
         </View>
+        ) : null}
       </BottomSheet>
 
       {/* §Provider-audit 2026-04 (packages round 4 — mobile edit parity):
@@ -4537,7 +4878,8 @@ export default function GroupBookingsScreen() {
         onClose={() => setShowEditPackagePicker(false)}
         title={gb("changePackage")}
       >
-        {packagesList.length === 0 ? (
+        {showEditPackagePicker ? (
+        packagesList.length === 0 ? (
           <EmptyState
             icon="cube-outline"
             title={gb("noPackagesYet")}
@@ -4655,7 +4997,8 @@ export default function GroupBookingsScreen() {
               );
             })}
           </ScrollView>
-        )}
+        )
+        ) : null}
       </BottomSheet>
 
       {/* Add participant */}
@@ -4672,6 +5015,7 @@ export default function GroupBookingsScreen() {
           />
         }
       >
+        {showAddParticipant ? (
         <View>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{gb("nameRequired")}</Text>
           <TextInput
@@ -4710,7 +5054,7 @@ export default function GroupBookingsScreen() {
                 {servicesForPicking.map((svc) => (
                   <SelectChip
                     key={`add-participant-service-${svc.id}`}
-                    label={svc.price != null ? gb("serviceWithPrice", { name: sl(svc), amount: formatCurrency(Number(svc.price) || 0) }) : sl(svc)}
+                    label={serviceChipLabels.get(svc.id) ?? sl(svc)}
                     selected={participantForm.serviceId === svc.id}
                     onPress={() =>
                       setParticipantForm((p) => ({ ...p, serviceId: svc.id, addOnIds: [] }))
@@ -4784,6 +5128,7 @@ export default function GroupBookingsScreen() {
             multiline
           />
         </View>
+        ) : null}
       </BottomSheet>
 
       {/* B10: Create new group booking */}
@@ -4860,7 +5205,8 @@ export default function GroupBookingsScreen() {
           )
         }
       >
-        {createStep === "form" ? (
+        {showCreate ? (
+        createStep === "form" ? (
         <>
           {createReviewError ? (
             <View style={twStyle("mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3")}>
@@ -5210,7 +5556,7 @@ export default function GroupBookingsScreen() {
                   onPress={() => setCreateForm((p) => ({ ...p, serviceId: "" }))}
                 />
                 {visibleParentServices.map((svc) => {
-                  const variants = variantServices.filter((v) => v.parent_service_id === svc.id);
+                  const variants = variantsByParentId.get(svc.id) ?? [];
                   const serviceChoices = variants.length > 0 ? [svc, ...variants] : [svc];
                   return serviceChoices.map((choice) => (
                     <SelectChip
@@ -5544,305 +5890,36 @@ export default function GroupBookingsScreen() {
               </Text>
             ) : null}
 
-            {createParticipants.map((participant, idx) => {
-              const search = participantSearchMap[participant.id] || {
-                query: "",
-                results: [],
-                loading: false,
-                open: false,
-              };
-              const isLast = idx === createParticipants.length - 1;
-              return (
-                <View
+            {(() => {
+              const cap = Number(createForm.maxParticipants) || 2;
+              const filledRows = createParticipants.filter(
+                (p) => p.name.trim() || p.phone.trim() || p.email.trim(),
+              ).length;
+              const lastIndex = createParticipants.length - 1;
+              return createParticipants.map((participant, idx) => (
+                <CreateParticipantRow
                   key={participant.id}
-                  style={twStyle("mb-3 rounded-xl border border-purple-100 bg-white p-3")}
-                  onLayout={(e) => registerParticipantRow(idx, e.nativeEvent.layout.y)}
-                >
-                  <View style={twStyle("mb-2 flex-row items-center justify-between")}>
-                    <View style={twStyle("flex-row items-center gap-2")}>
-                      <Text style={twStyle("text-xs font-semibold uppercase text-gray-400")}>
-                        {gb("participantN", { n: idx + 1 })}
-                      </Text>
-                      {participant.customerId ? (
-                        <View
-                          style={twStyle(
-                            "rounded-full bg-purple-50 border border-purple-200 px-2 py-0.5"
-                          )}
-                        >
-                          <Text style={twStyle("text-[10px] font-medium text-purple-700")}>
-                            {gb("existingClient")}
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => removeCreateParticipantRow(participant.id)}
-                      hitSlop={8}
-                      accessibilityRole="button"
-                      accessibilityLabel={gb("removeParticipantNA11y", { n: idx + 1 })}
-                    >
-                      <Ionicons name="close-circle-outline" size={18} color="#ef4444" />
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* ── Client search ── */}
-                  {!participant.customerId ? (
-                    <View style={twStyle("mb-2")}>
-                      <View
-                        style={twStyle(
-                          "flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-3 py-2"
-                        )}
-                      >
-                        <Ionicons name="search-outline" size={14} color="#9ca3af" />
-                        <TextInput
-                          style={[
-                            twStyle("ms-2 flex-1 text-sm text-gray-900"),
-                            { paddingVertical: 0 },
-                          ]}
-                          placeholder={gb("searchExistingClient")}
-                          placeholderTextColor="#9ca3af"
-                          value={search.query}
-                          onChangeText={(q) => searchClientsForParticipant(participant.id, q)}
-                          autoCapitalize="words"
-                          returnKeyType="search"
-                          accessibilityLabel={gb("searchClientsA11y", { n: idx + 1 })}
-                        />
-                        {search.loading && <ActivityIndicator size="small" color="#7c3aed" />}
-                      </View>
-                      {search.open && search.results.length > 0 && (
-                        <View
-                          style={twStyle(
-                            "mt-1 rounded-xl border border-gray-100 bg-white overflow-hidden"
-                          )}
-                        >
-                          {search.results.map((c) => (
-                            <TouchableOpacity
-                              key={c.id}
-                              style={twStyle(
-                                "flex-row items-center border-b border-gray-50 px-3 py-2.5"
-                              )}
-                              onPress={() => selectClientForParticipant(participant.id, c)}
-                              accessibilityLabel={gb("selectClientA11y", { name: c.full_name })}
-                            >
-                              <Avatar name={c.full_name} size="sm" />
-                              <View style={twStyle("ms-2 flex-1")}>
-                                <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                                  {c.full_name}
-                                </Text>
-                                <Text style={twStyle("text-xs text-gray-500")} numberOfLines={1}>
-                                  {c.phone || c.email || "—"}
-                                </Text>
-                              </View>
-                              <DirectionalIcon name="chevron-forward" size={14} color="#d1d5db" />
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      )}
-                      {search.open &&
-                        !search.loading &&
-                        search.results.length === 0 &&
-                        search.query.length >= 2 && (
-                          <Text style={twStyle("mt-1 text-center text-xs text-gray-400")}>
-                            {gb("noExistingClients")}
-                          </Text>
-                        )}
-                    </View>
-                  ) : (
-                    <TouchableOpacity
-                      onPress={() =>
-                        updateCreateParticipantRow(participant.id, { customerId: undefined })
-                      }
-                      style={twStyle("mb-2")}
-                      accessibilityRole="button"
-                    >
-                      <Text style={twStyle("text-xs text-purple-600 underline")}>
-                        {gb("changeClient")}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-
-                  <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>{gb("nameRequired")}</Text>
-                  <TextInput
-                    style={twStyle(
-                      "mb-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900"
-                    )}
-                    value={participant.name}
-                    onChangeText={(name) => updateCreateParticipantRow(participant.id, { name })}
-                    placeholder={gb("clientNamePlaceholder")}
-                    placeholderTextColor="#9ca3af"
-                  />
-                  <E164PhoneField
-                    label={gb("phone")}
-                    valueE164={participant.phone}
-                    onChangeE164={(phone) => updateCreateParticipantRow(participant.id, { phone })}
-                    muted
-                    accessibilityLabel={gb("participantPhoneNA11y", { n: idx + 1 })}
-                  />
-                  <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>{gb("email")}</Text>
-                  <TextInput
-                    style={twStyle(
-                      "rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900"
-                    )}
-                    value={participant.email}
-                    onChangeText={(email) => updateCreateParticipantRow(participant.id, { email })}
-                    placeholder={gb("optionalPlaceholder")}
-                    placeholderTextColor="#9ca3af"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                  />
-                  <View style={twStyle("mt-3")}>
-                    <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>
-                      {gb("whatParticipantWants")}
-                    </Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                      {servicesForPicking.map((svc) => (
-                        <SelectChip
-                          key={`${participant.id}-${svc.id}`}
-                          label={svc.price != null ? gb("serviceWithPrice", { name: sl(svc), amount: formatCurrency(Number(svc.price) || 0) }) : sl(svc)}
-                          selected={(participant.serviceId || createForm.serviceId) === svc.id}
-                          onPress={() =>
-                            updateCreateParticipantRow(participant.id, {
-                              serviceId: svc.id,
-                              addOnIds: [],
-                            })
-                          }
-                        />
-                      ))}
-                    </ScrollView>
-                    {(() => {
-                      const line = getParticipantLine(participant, createForm.serviceId, services);
-                      const addOns = line.service?.add_ons ?? [];
-                      if (!line.service) {
-                        return (
-                          <Text style={twStyle("mt-1 text-[11px] text-red-600")}>
-                            {gb("selectServiceForParticipant")}
-                          </Text>
-                        );
-                      }
-                      return (
-                        <View>
-                          {addOns.length > 0 ? (
-                            <View style={twStyle("mt-2")}>
-                              <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>
-                                {gb("addOns")}
-                              </Text>
-                              <View style={twStyle("flex-row flex-wrap")}>
-                                {addOns.map((ao) => {
-                                  const checked = participant.addOnIds.includes(ao.id);
-                                  return (
-                                    <TouchableOpacity
-                                      key={`${participant.id}-ao-${ao.id}`}
-                                      onPress={() => {
-                                        updateCreateParticipantRow(participant.id, {
-                                          addOnIds: checked
-                                            ? participant.addOnIds.filter((id) => id !== ao.id)
-                                            : [...participant.addOnIds, ao.id],
-                                        });
-                                      }}
-                                      style={[
-                                        twStyle(
-                                          `mb-2 rounded-full border px-3 py-1.5 ${checked ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white"}`
-                                        ),
-                                        { marginEnd: 8 },
-                                      ]}
-                                      accessibilityRole="checkbox"
-                                      accessibilityState={{ checked }}
-                                    >
-                                      <Text
-                                        style={twStyle(
-                                          `text-xs font-medium ${checked ? "text-indigo-700" : "text-gray-600"}`
-                                        )}
-                                      >
-                                        {ao.name}
-                                        {ao.price
-                                          ? ` · ${formatCurrency(Number(ao.price) || 0)}`
-                                          : ""}
-                                      </Text>
-                                    </TouchableOpacity>
-                                  );
-                                })}
-                              </View>
-                            </View>
-                          ) : null}
-                          <Text style={twStyle("mt-1 text-[11px] font-medium text-purple-800")}>
-                            {gb("serviceDurationPrice", {
-                              name: sl(line.service),
-                              minutes: line.durationMinutes,
-                              amount: formatCurrency(line.price),
-                            })}
-                          </Text>
-                        </View>
-                      );
-                    })()}
-                  </View>
-                  {teamMembers.length > 0 ? (
-                    <View style={twStyle("mt-3")}>
-                      <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>
-                        {gb("staffOptional")}
-                      </Text>
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                        <SelectChip
-                          label={gb("groupDefault")}
-                          selected={!participant.staffId}
-                          onPress={() => updateCreateParticipantRow(participant.id, { staffId: "" })}
-                        />
-                        {teamMembers.map((m) => (
-                          <SelectChip
-                            key={`${participant.id}-staff-${m.id}`}
-                            label={m.name ?? gb("staffFallback")}
-                            selected={participant.staffId === m.id}
-                            onPress={() => updateCreateParticipantRow(participant.id, { staffId: m.id })}
-                          />
-                        ))}
-                      </ScrollView>
-                    </View>
-                  ) : null}
-                  <Text style={twStyle("mb-1 mt-3 text-xs font-medium text-gray-600")}>
-                    {gb("participantNotes")}
-                  </Text>
-                  <TextInput
-                    style={twStyle(
-                      "rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900"
-                    )}
-                    value={participant.notes}
-                    onChangeText={(notes) => updateCreateParticipantRow(participant.id, { notes })}
-                    placeholder={gb("participantNotesPlaceholder")}
-                    placeholderTextColor="#9ca3af"
-                    multiline
-                  />
-                  {/* Add another participant inline after the last row */}
-                  {isLast && (() => {
-                    const cap = Number(createForm.maxParticipants) || 2;
-                    const filledRows = createParticipants.filter(
-                      (p) => p.name.trim() || p.phone.trim() || p.email.trim()
-                    ).length;
-                    const atCap = filledRows >= cap;
-                    return atCap ? (
-                      <View style={twStyle("mt-3 flex-row items-center justify-center rounded-xl border border-dashed border-gray-200 py-2")}>
-                        <Ionicons name="lock-closed-outline" size={13} color="#9ca3af" />
-                        <Text style={twStyle("ms-1 text-xs text-gray-400")}>
-                          {gb("capacityReachedHint", { cap })}
-                        </Text>
-                      </View>
-                    ) : (
-                      <TouchableOpacity
-                        onPress={addCreateParticipantRow}
-                        style={twStyle(
-                          "mt-3 flex-row items-center justify-center rounded-xl border border-dashed border-purple-200 py-2"
-                        )}
-                        accessibilityRole="button"
-                        accessibilityLabel={gb("addAnotherParticipantA11y")}
-                      >
-                        <Ionicons name="add" size={14} color="#7c3aed" />
-                        <Text style={twStyle("ms-1 text-xs font-semibold text-purple-700")}>
-                          {gb("addAnotherParticipant")}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })()}
-                </View>
-              );
-            })}
+                  participant={participant}
+                  index={idx}
+                  search={participantSearchMap[participant.id]}
+                  defaultServiceId={createForm.serviceId}
+                  services={services}
+                  servicesForPicking={servicesForPicking}
+                  serviceChipLabels={serviceChipLabels}
+                  teamMembers={teamMembers}
+                  footer={idx === lastIndex ? (filledRows >= cap ? "cap" : "add") : null}
+                  cap={idx === lastIndex ? cap : 0}
+                  gb={gb}
+                  sl={sl}
+                  onUpdate={updateCreateParticipantRow}
+                  onRemove={removeCreateParticipantRow}
+                  onSearch={searchClientsForParticipant}
+                  onSelectClient={selectClientForParticipant}
+                  onAdd={addCreateParticipantRow}
+                  onRowLayout={registerParticipantRow}
+                />
+              ));
+            })()}
           </View>
         </>
         ) : (
@@ -6124,7 +6201,8 @@ export default function GroupBookingsScreen() {
             </View>
           </TouchableOpacity>
         </>
-        )}
+        )
+        ) : null}
       </BottomSheet>
 
       <BottomSheet
@@ -6132,29 +6210,33 @@ export default function GroupBookingsScreen() {
         onClose={() => setShowServiceCategorySheet(false)}
         title={t("provider.mobile.screens.newBooking.filterByCategory")}
       >
-        <TouchableOpacity
-          style={twStyle("mb-2 rounded-xl border border-gray-100 bg-white px-4 py-3")}
-          onPress={() => {
-            setSelectedServiceCategory("all");
-            setShowServiceCategorySheet(false);
-          }}
-        >
-          <Text style={twStyle("text-sm font-medium text-gray-900")}>{gb("statusAll")}</Text>
-        </TouchableOpacity>
-        {serviceCategoryOptions.map((category) => (
-          <TouchableOpacity
-            key={category.id}
-            style={twStyle("mb-2 rounded-xl border border-gray-100 bg-white px-4 py-3")}
-            onPress={() => {
-              setSelectedServiceCategory(category.id);
-              setShowServiceCategorySheet(false);
-            }}
-          >
-            <Text style={twStyle("text-sm font-medium text-gray-900")}>
-              {gb("categoryWithCount", { label: category.label, count: category.count })}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        {showServiceCategorySheet ? (
+          <>
+            <TouchableOpacity
+              style={twStyle("mb-2 rounded-xl border border-gray-100 bg-white px-4 py-3")}
+              onPress={() => {
+                setSelectedServiceCategory("all");
+                setShowServiceCategorySheet(false);
+              }}
+            >
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>{gb("statusAll")}</Text>
+            </TouchableOpacity>
+            {serviceCategoryOptions.map((category) => (
+              <TouchableOpacity
+                key={category.id}
+                style={twStyle("mb-2 rounded-xl border border-gray-100 bg-white px-4 py-3")}
+                onPress={() => {
+                  setSelectedServiceCategory(category.id);
+                  setShowServiceCategorySheet(false);
+                }}
+              >
+                <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                  {gb("categoryWithCount", { label: category.label, count: category.count })}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </>
+        ) : null}
       </BottomSheet>
 
       <AddressMapPinModal
@@ -6175,7 +6257,8 @@ export default function GroupBookingsScreen() {
         onClose={finishProductPicker}
         title={gb("addProduct")}
       >
-        {productsList.length === 0 ? (
+        {showProductPicker ? (
+        productsList.length === 0 ? (
           <EmptyState
             icon="bag-outline"
             title={gb("noProducts")}
@@ -6286,7 +6369,8 @@ export default function GroupBookingsScreen() {
               );
             })}
           </ScrollView>
-        )}
+        )
+        ) : null}
       </BottomSheet>
 
       {/* §Provider-audit 2026-04 (packages round 3 — mobile parity):
@@ -6298,7 +6382,8 @@ export default function GroupBookingsScreen() {
         onClose={() => setShowPackagePicker(false)}
         title={gb("choosePackage")}
       >
-        {packagesList.length === 0 ? (
+        {showPackagePicker ? (
+        packagesList.length === 0 ? (
           <EmptyState
             icon="cube-outline"
             title={gb("noPackagesYet")}
@@ -6416,7 +6501,8 @@ export default function GroupBookingsScreen() {
               );
             })}
           </ScrollView>
-        )}
+        )
+        ) : null}
       </BottomSheet>
 
       {/* Paystack Terminal QR sheet */}

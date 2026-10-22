@@ -354,7 +354,8 @@
       "payment-methods": "Choose accepted طريقة الدفعs",
       "payout": "إضافة a payout bank account",
       "availability": "Set operating ساعات",
-      "identity-verification": "Verify your identity for the trust badge"
+      "identity-verification": "Verify your identity for the trust badge",
+      "cancellation-policy": "Set your cancellation policy"
     },
     "waitlistScreen": {
       "title": "قائمة الانتظار",
@@ -941,7 +942,10 @@
           "skipForNow": "تخطَّ الآن",
           "skipA11y": "تخطي this خطوة",
           "submitA11y": "إرسال setup",
-          "nextA11y": "التالي step"
+          "nextA11y": "التالي step",
+          "existingProfileTitle": "Profile already created",
+          "existingProfileBody": "Your business profile is set up. Use the setup checklist to change details — edits here are not saved.",
+          "openChecklist": "Open setup checklist"
         },
         "accountStatusGuard": {
           "title": "يلزم التحقق من الحساب",
@@ -3310,7 +3314,8 @@
           "billedThroughStripeTitle": "تتم الفوترة عبر Stripe",
           "billedThroughStripeBody": "حدّث بطاقتك أو اعرض الفواتير في بوابة الفوترة الآمنة لـ Stripe. اضغط «إدارة الفوترة» أدناه.",
           "stripeManageUnavailable": "لم يتم إعداد فوترة Stripe بعد. أكمل الدفع أولاً ثم حاول مرة أخرى.",
-          "paystackManageUnavailable": "هذه الخطة ليست على فوترة Paystack المتكررة. أكمل الدفع أو تواصل مع الدعم."
+          "paystackManageUnavailable": "هذه الخطة ليست على فوترة Paystack المتكررة. أكمل الدفع أو تواصل مع الدعم.",
+          "planChangeScheduled": "Plan change scheduled. Changes on {{when}}."
         },
         "moreTab": {
           "sectionGrowBusiness": "Grow your business",
@@ -4615,7 +4620,9 @@
               "yes": "نعم",
               "maybe_later": "ربما لاحقًا",
               "no": "لا"
-            }
+            },
+            "bookingProtectionTitle": "Booking protection",
+            "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings."
           },
           "software": {
             "intro": "Optional — helps us understand where you're coming from. We'll tailor import tips and onboarding hints.",
@@ -5193,7 +5200,8 @@
           "runningBehindSheetTitle": "متأخر عن الجدول؟",
           "staffFilteredByService": "عرض أعضاء الفريق المعيّنين لهذه الخدمة.",
           "addressOutsideArea": "هذا العنوان خارج منطقة خدمتك.",
-          "addressValidateFailed": "تعذّر التحقق من هذا العنوان. تحقق من اتصالك وحاول مرة أخرى."
+          "addressValidateFailed": "تعذّر التحقق من هذا العنوان. تحقق من اتصالك وحاول مرة أخرى.",
+          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}"
         },
         "expressBooking": {
           "invalidJson": "JSON غير صالح.",
@@ -7933,7 +7941,8 @@
           "optionalComment": "اختياري comment",
           "submitRating": "إرسال rating",
           "thanks": "شكرًا!",
-          "freshCaption": "{{name}} جديد"
+          "freshCaption": "{{name}} جديد",
+          "shareBookingLink": "Share booking link"
         },
         "advancedPricing": {
           "title": "متقدم pricing",
@@ -9456,7 +9465,8 @@
           "safetyUseForm": "يتم إرسال تقارير السلامة مباشرة إلى فريقنا - يرجى استخدام النموذج الكامل.",
           "chatAiDisclaimer": "يمكن للذكاء الاصطناعي أن يرتكب أخطاء — يمكنك التحدث إلى أي شخص في أي وقت بعد إنشاء تذكرتك.",
           "startChat": "ابدأ الدردشة",
-          "chatBack": "رجوع"
+          "chatBack": "رجوع",
+          "missingCategory": "a category"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -13028,6 +13038,16 @@
         "slotUnavailableTitle": "Slot لاt متاح",
         "slotOverlapBody": "Another booking or block overlaps this time."
       }
+    },
+    "bookingPolicy": {
+      "noPenalty": "No penalty",
+      "noPenaltyDesc": "Clients can cancel anytime with a full refund of amounts paid online.",
+      "flexible": "Flexible",
+      "flexibleDesc": "Free cancel until 4 hours before; 50% wallet refund if later.",
+      "standard": "Standard",
+      "standardDesc": "Free cancel until 24 hours before; 50% wallet refund if later.",
+      "strict": "Strict",
+      "strictDesc": "48-hour notice, 50% deposit, and no-show protection."
     }
   },
   "customer": {
@@ -15548,7 +15568,13 @@
           "payRemainingCustomTipPlaceholder": "مبلغ الإكرامية",
           "payRemainingTipLine": "الإكرامية: {{amount}} — تذهب بالكامل إلى مقدم الخدمة",
           "cancelPreviewSheetTitle": "إلغاء this حجز?",
-          "cancelPreviewInPersonRefund": "استرداد due in person: {{currency}} {{amount}}"
+          "cancelPreviewInPersonRefund": "استرداد due in person: {{currency}} {{amount}}",
+          "cancelPreviewPenaltyWaivedPending": "No fee while payment is still pending.",
+          "cancelPreviewPenaltyWaivedGrace": "You're within the grace period — no cancellation fee.",
+          "cancelPreviewPenaltyWaivedRescheduled": "No fee — the provider rescheduled this appointment.",
+          "cancelPreviewPenaltyWaivedNoPenaltyPolicy": "This provider's policy has no cancellation penalty.",
+          "cancelPreviewPenaltyWaivedProvider": "The provider will cancel without a customer penalty.",
+          "payRemainingTipPercentButtonA11y": "{{percent}}% tip, {{amount}}"
         },
         "groupBookingDetail": {
           "back": "رجوع",
@@ -17598,7 +17624,8 @@
       "verificationUnavailable": "التحقق التلقائي غير متوفر في السوق الخاص بك - أدخل اسم صاحب الحساب تمامًا كما يظهر في البنك الذي تتعامل معه.",
       "accountNameLabel": "Account holder اسم",
       "save": "حفظ bank account",
-      "screenTitle": "الحسابات البنكية"
+      "screenTitle": "الحسابات البنكية",
+      "selectBank": "Select your bank"
     },
     "walletBankRefund": {
       "addBank": "إضافة a bank account",
@@ -17843,7 +17870,10 @@
     "paymentNotCompletedBody": "لم يتم تأكيد حجزك.",
     "cancelPreviousFullRefundBody": "سوف يعود {{refund}} إلى محفظتك Beautonomi. إلغاء الموعد السابق؟",
     "confirmCancelPrevious": "إلغاء previous",
-    "cancelPreviousWithFeeBody": "رسوم الإلغاء {{fee}}. سيُعاد {{refund}} إلى محفظة Beautonomi. هل تريد إلغاء الموعد السابق؟"
+    "cancelPreviousWithFeeBody": "رسوم الإلغاء {{fee}}. سيُعاد {{refund}} إلى محفظة Beautonomi. هل تريد إلغاء الموعد السابق؟",
+    "holdRateLimitWait": "Too many attempts. Try again in {{minutes}} min.",
+    "refundsStoreCreditNotePayAtVenue": "If you pay at the venue, refunds are handled directly with the provider — not to your card or wallet.",
+    "refundsStoreCreditNoteNoPenalty": "This provider does not charge cancellation penalties. Amounts paid online are refunded to your Beautonomi wallet."
   },
   "payments": {
     "pay": "دفع",
@@ -23394,7 +23424,15 @@
           "keepBooking": "Keep حجز",
           "cancelled": "حجز إلغاءled",
           "cancelFailed": "تعذر إلغاء حجز",
-          "cancelledNotifyFailed": "حجز إلغاءled but إشعار تعذر be sent"
+          "cancelledNotifyFailed": "حجز إلغاءled but إشعار تعذر be sent",
+          "initiatorLabel": "Who is cancelling?",
+          "initiatorProvider": "Provider (full refund on platform)",
+          "initiatorCustomerRequested": "Customer asked to cancel",
+          "previewLoading": "Loading refund estimate…",
+          "previewFee": "Estimated fee retained: {{currency}} {{amount}}",
+          "previewWalletRefund": "Estimated wallet refund: {{currency}} {{amount}}",
+          "previewInPersonRefund": "Refund due in person: {{currency}} {{amount}}",
+          "previewBlocked": "Cancellation is not allowed for this booking."
         },
         "statusActions": {
           "noPermission": "You do not have permission for this action",
@@ -24386,7 +24424,8 @@
           "oneDayOpen": "At least one day must be open",
           "selectPlan": "يرجى الاختيار a subscription plan",
           "andMoreSeeConsole": " (and {{count}} more - see console)",
-          "dobRequired": "تاريخ الميلاد is required for identity verification"
+          "dobRequired": "تاريخ الميلاد is required for identity verification",
+          "bookingPolicyRequired": "Please choose a booking protection preset"
         },
         "successHeadline": "You're all set!",
         "continueVerification": "Continue to verification",
@@ -24580,7 +24619,9 @@
           "payoutAccountTitle": "Bank payout account (required before go-live)",
           "payoutAccountBody": "إضافة your bank details in the setup checklist after this wizard — under {{path}}. Platform-held earnings cannot be withdrawn until your payout account is verified.",
           "paymentHint": "This helps us understand how you accept in-person card payments and whether we can offer better terminal options in future.",
-          "vatSarsHint": "Are you VAT registered with SARS? VAT registration is mandatory if your annual turnover is R1 million or more. If you make less than R1 million per year, you don't need to be VAT registered."
+          "vatSarsHint": "Are you VAT registered with SARS? VAT registration is mandatory if your annual turnover is R1 million or more. If you make less than R1 million per year, you don't need to be VAT registered.",
+          "bookingProtectionTitle": "Booking protection",
+          "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings."
         },
         "software": {
           "selectPlaceholder": "اختيار or type software اسم...",
@@ -28525,7 +28566,8 @@
           "priorityLow": "منخفض",
           "priorityMedium": "متوسط",
           "priorityHigh": "مرتفع",
-          "priorityUrgent": "عاجل"
+          "priorityUrgent": "عاجل",
+          "chooseCategory": "Choose a category so we can route your request"
         },
         "team/payroll/[id]": {
           "failedToLoadPayRun": "تعذر load pay run",
@@ -29388,7 +29430,8 @@
           "support": "الدعم",
           "replyPlaceholder": "Write a reply…",
           "sending": "جارٍ الإرسال…",
-          "sendReply": "إرسال الرد"
+          "sendReply": "إرسال الرد",
+          "assistantName": "Beautonomi Assistant"
         },
         "embed": {
           "clientUnavailable": "Client not متاح",
@@ -35469,6 +35512,88 @@
       "fallback_reply": "{{greeting}}\n\nDankie dat jy Beautonomi-ondersteuning gekontak het oor \"{{subject}}\" (kaartjie {{ticketNumber}}).\n\n{{escalationLine}}\n\n\n\n hierdie kaartjie.\n\nVarige groete,\nBeautonomi Ondersteuning",
       "nudge": "Sawubona,\n\nNjengoba singena ithikithi {{ticketNumber}} — siphendule {{daysSinceReply}} izinsuku ezidlule futhi sifuna ukwenza isiqiniseko sokuthi ukubonile.\nUma impendulo yethu iyixazulule inkinga, asikho isinyathelo esidingekayo. Uma usadinga usizo, phendula lapha futhi sizokucosha khona manje.",
       "csat_recovery": "{{greeting}}\n\nSiyabonga ngempendulo yakho eqotho ngethikithi {{ticketNumber}}. Ngiyaxolisa ukuthi ulwazi aluphumelelanga.\nIlungu eliphezulu lethimba lethu labasekeli libuyekeza ngokwalo okwenzekile.\n\nSinibingelela ngokufudumele, \nBeautonomi Sekela"
+    }
+  },
+  "support": {
+    "ticketCategories": {
+      "groups": {
+        "account_security": "Account & security",
+        "bookings": "Bookings & appointments",
+        "payments": "Payments & billing",
+        "messaging_providers": "Messaging & providers",
+        "products": "Products & delivery",
+        "tech": "App, website & notifications",
+        "safety": "Trust & safety",
+        "partners": "For beauty partners (providers)",
+        "feedback": "Feedback & general",
+        "legacy": "Legacy"
+      },
+      "items": {
+        "account_sign_in": "Sign-in, password & access",
+        "account_verification": "Email / phone verification",
+        "account_profile": "Profile, name, photo, or email change",
+        "account_privacy_data": "Privacy, data export, or GDPR request",
+        "account_delete": "Delete or deactivate account",
+        "account_security": "Suspicious activity or hacked account",
+        "booking_issue": "Booking details wrong or not visible",
+        "booking_reschedule_cancel": "Reschedule, cancel, or refund request",
+        "booking_provider_no_show": "Provider no-show or late arrival",
+        "marked_no_show_incorrectly": "I was marked as a no-show but I attended",
+        "booking_quality": "Service quality or didn’t match description",
+        "booking_group": "Group booking or multiple clients",
+        "booking_waitlist": "Waitlist or availability question",
+        "booking_recurring": "Recurring appointment",
+        "payment_failed_charge": "Payment failed, declined, or wrong amount",
+        "payment_refund": "Refund status or request",
+        "payment_duplicate": "Duplicate charge or billing error",
+        "payment_invoice_receipt": "Invoice, receipt, or tax document",
+        "payment_subscription": "Subscription or recurring billing (provider)",
+        "payment_gift_card": "Gift card purchase or redemption",
+        "payment_tips_wallet": "Tips, wallet, or loyalty credits",
+        "membership_billing": "Membership plan, credits, or renewal",
+        "messaging_provider_chat": "Chat with a provider (in-app messages)",
+        "provider_conduct": "Provider behaviour or professionalism",
+        "client_conduct": "Client behaviour or client no-show",
+        "provider_listing": "Wrong services, prices, or location on listing",
+        "provider_verification": "Provider verification or badge",
+        "review_rating": "Review or rating",
+        "order_status_shipping": "Product order status or shipping",
+        "order_return_product": "Return, exchange, or damaged product",
+        "order_product_question": "Product question before purchase",
+        "tech_bug_error": "Error message, crash, or page won’t load",
+        "tech_mobile_app": "Customer or provider mobile app issue",
+        "tech_notifications": "Push, email, or SMS notifications",
+        "tech_upload_media": "Photos, files, or attachments won’t upload",
+        "tech_calendar_sync": "Calendar sync (Google, Apple, etc.)",
+        "safety_report_user": "Report a user, harassment, or abuse",
+        "safety_fraud": "Fraud, scam, or suspicious listing",
+        "safety_emergency": "Urgent safety concern",
+        "provider_payouts": "Payouts or bank account",
+        "provider_dashboard": "Dashboard, analytics, or staff access",
+        "provider_catalog": "Services, add-ons, or pricing in catalogue",
+        "provider_booking_settings": "Online booking, hours, or buffers",
+        "provider_fees_commission": "Platform fees, commission, or invoices",
+        "provider_marketing_ads": "Ads, promotions, or visibility",
+        "provider_onboarding": "Verification, KYB, or setup",
+        "provider_staff_payroll": "Staff, shifts, or payroll",
+        "terminal_onboarding": "Card terminal setup",
+        "feedback_feature": "Feature idea or product feedback",
+        "feedback_complaint_platform": "Complaint about Beautonomi",
+        "feedback_accessibility": "Accessibility or assistive technology",
+        "partnership_press": "Partnership, press, or media",
+        "general_inquiry": "General question (not listed above)",
+        "payments": "Payments (legacy)"
+      },
+      "contextTypes": {
+        "booking": "Booking",
+        "product_order": "Product / ecommerce order",
+        "gift_card": "Gift card",
+        "payment": "Payment / refund",
+        "provider_onboarding": "Provider onboarding",
+        "account": "Account",
+        "technical": "Technical",
+        "other": "Other"
+      }
     }
   }
 }

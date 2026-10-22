@@ -37,6 +37,9 @@ import {
   providerDepositFieldsFromPreset,
   resolveOnboardingBookingPolicyPreset,
 } from "@/lib/provider/onboarding-booking-policy";
+import { isTrustedOnboardingImageUrl } from "@/lib/provider/onboarding-image-url";
+import { rollbackPartialProvider } from "@/lib/provider/rollback-partial-provider";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const slugifyCategory = (value: string): string =>
   value
@@ -263,6 +266,7 @@ function attachActiveProviderCookie(
  * Complete provider onboarding - create provider profile and associate with global categories
  */
 export async function POST(request: NextRequest) {
+  let pendingRollback: { admin: SupabaseClient; providerId: string } | null = null;
   try {
     const { user } = await requireRoleInApi(
       ["customer", "provider_owner", "provider_staff", "provider_onboarding", "superadmin"],
@@ -271,8 +275,62 @@ export async function POST(request: NextRequest) {
 
     const _supabase = await getSupabaseServer(request);
     const body = await request.json();
-    
+
     console.log("Onboarding request received for user:", user.id, "role:", user.role);
+
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      },
+    );
+
+    const { data: existingProviderEarly, error: existingCheckError } = await supabaseAdmin
+      .from("providers")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (existingCheckError && existingCheckError.code !== "PGRST116") {
+      console.error("Error checking existing provider:", existingCheckError);
+      return errorResponse("Failed to check existing provider", "CHECK_ERROR", 500, existingCheckError);
+    }
+
+    if (existingProviderEarly) {
+      const planParse = z
+        .object({ selected_plan_id: z.string().uuid().optional().nullable() })
+        .safeParse(body);
+      const selectedPlanIdEarly = planParse.success ? planParse.data.selected_plan_id : null;
+      const tenantIdEarly = await resolveTenantIdWithZaFallback(request);
+
+      const { data: providerRow, error: providerLoadError } = await supabaseAdmin
+        .from("providers")
+        .select("*")
+        .eq("id", existingProviderEarly.id)
+        .single();
+
+      if (providerLoadError || !providerRow) {
+        console.error("Error loading existing provider for idempotent onboarding:", providerLoadError);
+        return errorResponse("Failed to load existing provider", "LOAD_ERROR", 500, providerLoadError);
+      }
+
+      const completion = await buildOnboardingCompletionResponse({
+        supabaseAdmin,
+        tenantId: tenantIdEarly,
+        provider: providerRow as Record<string, unknown>,
+        selectedPlanId: selectedPlanIdEarly,
+        message:
+          "Your provider profile is already set up. Continue in the app to finish any remaining steps.",
+        autoApprove: (providerRow as { status?: string }).status === "active",
+        alreadyCompleted: true,
+      });
+
+      return attachActiveProviderCookie(successResponse(completion), existingProviderEarly.id);
+    }
 
     // Validate request body
     const validationResult = onboardingSchema.safeParse(body);
@@ -341,18 +399,17 @@ export async function POST(request: NextRequest) {
       invite_token,
     } = validationResult.data;
 
-    // Use service role client to bypass RLS for checking existing provider
-    // This avoids infinite recursion in RLS policies
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    const imageIssues = [
+      ["thumbnail_url", thumbnail_url],
+      ["avatar_url", avatar_url],
+      ...gallery.map((g, i) => [`gallery.${i}`, g] as const),
+    ]
+      .filter(([, v]) => !isTrustedOnboardingImageUrl(v))
+      .map(([path]) => ({ path, message: "Please re-upload this photo" }));
+    if (imageIssues.length) {
+      return errorResponse("Validation failed", "VALIDATION_ERROR", 400, imageIssues);
+    }
+
     const tenantId = await resolveTenantIdWithZaFallback(request);
 
     const addressCountryGuard = assertSupportedMarketAddressCountry(address.country);
@@ -365,44 +422,6 @@ export async function POST(request: NextRequest) {
       { messageContext: "provider" },
     );
     if (marketGuard) return marketGuard;
-
-    // Check if provider already exists using admin client to avoid RLS recursion
-    const { data: existingProvider, error: checkError } = await supabaseAdmin
-      .from("providers")
-      .select("id")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (checkError && checkError.code !== 'PGRST116') {
-      console.error("Error checking existing provider:", checkError);
-      return errorResponse("Failed to check existing provider", "CHECK_ERROR", 500, checkError);
-    }
-
-    if (existingProvider) {
-      const { data: providerRow, error: providerLoadError } = await supabaseAdmin
-        .from("providers")
-        .select("*")
-        .eq("id", existingProvider.id)
-        .single();
-
-      if (providerLoadError || !providerRow) {
-        console.error("Error loading existing provider for idempotent onboarding:", providerLoadError);
-        return errorResponse("Failed to load existing provider", "LOAD_ERROR", 500, providerLoadError);
-      }
-
-      const completion = await buildOnboardingCompletionResponse({
-        supabaseAdmin,
-        tenantId,
-        provider: providerRow as Record<string, unknown>,
-        selectedPlanId: selected_plan_id,
-        message:
-          "Your provider profile is already set up. Continue in the app to finish any remaining steps.",
-        autoApprove: (providerRow as { status?: string }).status === "active",
-        alreadyCompleted: true,
-      });
-
-      return attachActiveProviderCookie(successResponse(completion), existingProvider.id);
-    }
 
     const { data: tenantRow } = await supabaseAdmin
       .from("tenants")
@@ -531,6 +550,14 @@ export async function POST(request: NextRequest) {
       return errorResponse("Failed to create provider profile", "PROVIDER_CREATION_ERROR", 500);
     }
     const providerId = provider.id as string;
+    pendingRollback = { admin: supabaseAdmin, providerId };
+    const failWithRollback = async (res: ReturnType<typeof errorResponse>) => {
+      if (pendingRollback) {
+        await rollbackPartialProvider(pendingRollback.admin, pendingRollback.providerId);
+        pendingRollback = null;
+      }
+      return res;
+    };
 
     {
       const policyInsert = buildCancellationPolicyInsertFromPreset(providerId, bookingPolicyPreset);
@@ -539,11 +566,13 @@ export async function POST(request: NextRequest) {
         .insert(policyInsert);
       if (policyErr) {
         console.error("Onboarding cancellation policy seed failed:", policyErr);
-        return errorResponse(
-          "Failed to save booking protection policy",
-          "CANCELLATION_POLICY_ERROR",
-          500,
-          policyErr,
+        return failWithRollback(
+          errorResponse(
+            "Failed to save booking protection policy",
+            "CANCELLATION_POLICY_ERROR",
+            500,
+            policyErr,
+          ),
         );
       }
     }
@@ -604,106 +633,109 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Notify the provider that they are approved and live when auto-approve activates them.
-    if (providerWentLive) {
-      try {
-        const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
-        await sendTemplateNotification(
-          "provider_approved",
-          [user.id],
-          { business_name: business_name || "" },
-          ["push", "email", "sms"],
-          { appType: "provider" },
-        );
-      } catch (notifErr) {
-        console.warn("[onboarding] auto-approve notification failed:", notifErr);
-      }
-    }
-
     // Upload thumbnail, avatar (profile circle), and gallery images to storage
     let uploadedThumbnailUrl: string | null = null;
     let uploadedAvatarUrl: string | null = null;
     const uploadedGalleryUrls: string[] = [];
 
     if (thumbnail_url) {
+      const thumbFallback = thumbnail_url.trim().startsWith("data:") ? null : thumbnail_url.trim();
       try {
-        // Convert data URL to Blob
         const response = await fetch(thumbnail_url);
-        const blob = await response.blob();
-        
-        // Upload to storage
-        const fileExt = blob.type.split('/')[1] || 'jpg';
-        const fileName = `${providerId}/thumbnail-${Date.now()}.${fileExt}`;
-        
-        const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-          .from('provider-gallery')
-          .upload(fileName, blob, {
-            contentType: blob.type,
-            cacheControl: '3600',
-            upsert: true,
-          });
-
-        if (uploadError) {
-          console.error("Error uploading thumbnail:", uploadError);
-        } else {
-          const { data: { publicUrl } } = supabaseAdmin.storage
-            .from('provider-gallery')
-            .getPublicUrl(uploadData.path);
-          uploadedThumbnailUrl = publicUrl;
+        if (response.ok) {
+          const blob = await response.blob();
+          if (blob.type.startsWith("image/")) {
+            const fileExt = blob.type.split("/")[1] || "jpg";
+            const fileName = `${providerId}/thumbnail-${Date.now()}.${fileExt}`;
+            const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+              .from("provider-gallery")
+              .upload(fileName, blob, {
+                contentType: blob.type,
+                cacheControl: "3600",
+                upsert: true,
+              });
+            if (!uploadError && uploadData) {
+              const {
+                data: { publicUrl },
+              } = supabaseAdmin.storage.from("provider-gallery").getPublicUrl(uploadData.path);
+              uploadedThumbnailUrl = publicUrl;
+            }
+          }
+        }
+        if (!uploadedThumbnailUrl && thumbFallback) {
+          uploadedThumbnailUrl = thumbFallback;
         }
       } catch (error) {
         console.error("Error processing thumbnail upload:", error);
-        // Don't fail the entire request if image upload fails
+        if (!uploadedThumbnailUrl && thumbFallback) {
+          uploadedThumbnailUrl = thumbFallback;
+        }
       }
     }
 
     if (avatar_url) {
+      const avatarFallback = avatar_url.trim().startsWith("data:") ? null : avatar_url.trim();
       try {
         const response = await fetch(avatar_url);
-        const blob = await response.blob();
-        const _fileExt = blob.type.split("/")[1] || "jpg";
-        const fileName = `${providerId}/avatar`;
-        const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-          .from("provider-gallery")
-          .upload(fileName, blob, { contentType: blob.type, cacheControl: "3600", upsert: true });
-        if (!uploadError) {
-          const { data: { publicUrl } } = supabaseAdmin.storage.from("provider-gallery").getPublicUrl(uploadData.path);
-          uploadedAvatarUrl = publicUrl;
+        if (response.ok) {
+          const blob = await response.blob();
+          if (blob.type.startsWith("image/")) {
+            const fileName = `${providerId}/avatar`;
+            const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+              .from("provider-gallery")
+              .upload(fileName, blob, { contentType: blob.type, cacheControl: "3600", upsert: true });
+            if (!uploadError && uploadData) {
+              const {
+                data: { publicUrl },
+              } = supabaseAdmin.storage.from("provider-gallery").getPublicUrl(uploadData.path);
+              uploadedAvatarUrl = publicUrl;
+            }
+          }
+        }
+        if (!uploadedAvatarUrl && avatarFallback) {
+          uploadedAvatarUrl = avatarFallback;
         }
       } catch (err) {
         console.error("Error processing avatar upload:", err);
+        if (!uploadedAvatarUrl && avatarFallback) {
+          uploadedAvatarUrl = avatarFallback;
+        }
       }
     }
 
     if (gallery && gallery.length > 0) {
       for (const imageUrl of gallery) {
+        const galleryFallback = imageUrl.trim().startsWith("data:") ? null : imageUrl.trim();
         try {
-          // Convert data URL to Blob
           const response = await fetch(imageUrl);
-          const blob = await response.blob();
-          
-          // Upload to storage
-          const fileExt = blob.type.split('/')[1] || 'jpg';
-          const fileName = `${providerId}/gallery-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-          
-          const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-            .from('provider-gallery')
-            .upload(fileName, blob, {
-              contentType: blob.type,
-              cacheControl: '3600',
-            });
-
-          if (uploadError) {
-            console.error("Error uploading gallery image:", uploadError);
-          } else {
-            const { data: { publicUrl } } = supabaseAdmin.storage
-              .from('provider-gallery')
-              .getPublicUrl(uploadData.path);
-            uploadedGalleryUrls.push(publicUrl);
+          if (response.ok) {
+            const blob = await response.blob();
+            if (blob.type.startsWith("image/")) {
+              const fileExt = blob.type.split("/")[1] || "jpg";
+              const fileName = `${providerId}/gallery-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+              const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+                .from("provider-gallery")
+                .upload(fileName, blob, {
+                  contentType: blob.type,
+                  cacheControl: "3600",
+                });
+              if (!uploadError && uploadData) {
+                const {
+                  data: { publicUrl },
+                } = supabaseAdmin.storage.from("provider-gallery").getPublicUrl(uploadData.path);
+                uploadedGalleryUrls.push(publicUrl);
+                continue;
+              }
+            }
+          }
+          if (galleryFallback) {
+            uploadedGalleryUrls.push(galleryFallback);
           }
         } catch (error) {
           console.error("Error processing gallery image upload:", error);
-          // Continue with other images even if one fails
+          if (galleryFallback) {
+            uploadedGalleryUrls.push(galleryFallback);
+          }
         }
       }
     }
@@ -828,11 +860,13 @@ export async function POST(request: NextRequest) {
 
     if (locationError) {
       console.error("Error creating provider location:", locationError);
-      return errorResponse(
-        `Failed to create provider location: ${locationError.message}`,
-        "LOCATION_CREATION_ERROR",
-        500,
-        locationError
+      return failWithRollback(
+        errorResponse(
+          `Failed to create provider location: ${locationError.message}`,
+          "LOCATION_CREATION_ERROR",
+          500,
+          locationError,
+        ),
       );
     }
 
@@ -1301,10 +1335,12 @@ export async function POST(request: NextRequest) {
         if (userSuppliedServices) {
           // Hard fail so the provider can address the error instead of going
           // live with an empty catalogue.
-          return errorResponse(
-            "Failed to create your services. Please review and try again.",
-            "ONBOARDING_SERVICES_FAILED",
-            422,
+          return failWithRollback(
+            errorResponse(
+              "Failed to create your services. Please review and try again.",
+              "ONBOARDING_SERVICES_FAILED",
+              422,
+            ),
           );
         }
         // Auto-generated fallback: don't fail the entire request
@@ -1377,6 +1413,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    pendingRollback = null;
+
+    if (providerWentLive) {
+      try {
+        const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+        await sendTemplateNotification(
+          "provider_approved",
+          [user.id],
+          { business_name: business_name || "" },
+          ["push", "email", "sms"],
+          { appType: "provider" },
+        );
+      } catch (notifErr) {
+        console.warn("[onboarding] auto-approve notification failed:", notifErr);
+      }
+    }
+
     // Owner-first persist: staff who just created their own salon become
     // provider_owner without demoting anyone who already was.
     try {
@@ -1386,6 +1439,7 @@ export async function POST(request: NextRequest) {
     }
 
     const supportsHouseCalls = business_type === "mobile" || business_type === "both";
+    let travelFeesCustomized = false;
 
     if (supportsHouseCalls) {
       const platformTravelFees = (platformSettings as any)?.travel_fees || {};
@@ -1424,6 +1478,7 @@ export async function POST(request: NextRequest) {
           // Guard: a tiered choice with no valid tiers reverts to platform default.
           if (tiers.length > 0) {
             travelFeeRow.tiers = tiers;
+            travelFeesCustomized = travelFeeRow.use_platform_default === false;
           } else {
             travelFeeRow.use_platform_default = true;
             travelFeeRow.pricing_model = "per_km";
@@ -1436,6 +1491,7 @@ export async function POST(request: NextRequest) {
             travel_fees!.maximum_fee != null ? travel_fees!.maximum_fee : null;
           travelFeeRow.free_within_km =
             travel_fees!.free_within_km != null ? travel_fees!.free_within_km : null;
+          travelFeesCustomized = travelFeeRow.use_platform_default === false;
         }
       }
 
@@ -1735,7 +1791,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (supportsHouseCalls) {
-      autoConfigDetails.push("travel fees set to platform defaults");
+      autoConfigDetails.push(
+        travelFeesCustomized ? "custom travel fees saved" : "travel fees set to platform defaults",
+      );
     }
     
     if (autoConfigDetails.length > 0) {
@@ -1768,6 +1826,9 @@ export async function POST(request: NextRequest) {
       (provider as { id?: string } | null)?.id,
     );
   } catch (error) {
+    if (pendingRollback) {
+      await rollbackPartialProvider(pendingRollback.admin, pendingRollback.providerId);
+    }
     return handleApiError(error, "Failed to complete onboarding");
   }
 }

@@ -961,7 +961,10 @@
           "skipForNow": "Skip for now",
           "skipA11y": "Skip this step",
           "submitA11y": "Submit setup",
-          "nextA11y": "Next step"
+          "nextA11y": "Next step",
+          "existingProfileTitle": "Profile already created",
+          "existingProfileBody": "Your business profile is set up. Use the setup checklist to change details — edits here are not saved.",
+          "openChecklist": "Open setup checklist"
         },
         "accountStatusGuard": {
           "title": "Account check needed",

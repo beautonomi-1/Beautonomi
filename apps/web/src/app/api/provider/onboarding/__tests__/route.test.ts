@@ -46,10 +46,34 @@ vi.mock("@/lib/tenant/market-availability", () => ({
   assertSupportedMarketAddressCountry: vi.fn().mockReturnValue(null),
 }));
 
+const mockSendTemplateNotification = vi.fn();
+vi.mock("@/lib/notifications/onesignal", () => ({
+  sendTemplateNotification: (...args: unknown[]) => mockSendTemplateNotification(...args),
+}));
+
+const SUPABASE_TEST_ORIGIN = "https://proj.supabase.co";
+
 /** Required by onboardingSchema since provider card images became mandatory. */
 const onboardingProfileImages = {
-  thumbnail_url: "https://example.com/thumbnail.jpg",
-  avatar_url: "https://example.com/avatar.jpg",
+  thumbnail_url: `${SUPABASE_TEST_ORIGIN}/storage/v1/object/public/product-images/thumb.jpg`,
+  avatar_url: `${SUPABASE_TEST_ORIGIN}/storage/v1/object/public/product-images/avatar.jpg`,
+};
+
+const minimalOnboardingBody = {
+  business_name: "Glow Studio",
+  business_type: "salon" as const,
+  address: {
+    line1: "1 Main Road",
+    city: "London",
+    country: "GB",
+    latitude: 51.5074,
+    longitude: -0.1278,
+  },
+  global_category_ids: ["11111111-1111-4111-8111-111111111111"],
+  selected_zone_ids: [] as string[],
+  operating_hours: {},
+  services: [] as unknown[],
+  ...onboardingProfileImages,
 };
 
 /**
@@ -175,10 +199,116 @@ function makeSubscriptionCompletionMocks(options?: {
 
 const defaultSubscriptionMocks = makeSubscriptionCompletionMocks();
 
+/** Chainable query stub: every builder method returns itself; awaiting resolves `result`. */
+function chainResult(result: { data: unknown; error: unknown } = { data: null, error: null }) {
+  const chain: unknown = new Proxy(function () {}, {
+    get(_target, prop) {
+      if (prop === "then") {
+        return (resolve: (v: unknown) => void) => resolve(result);
+      }
+      return () => chain;
+    },
+  });
+  return chain;
+}
+
+/** Admin client that lets a salon onboarding run end to end; tables not listed resolve empty. */
+function makeHappyPathAdmin(opts: {
+  providerId: string;
+  providerUpdates?: Array<Record<string, unknown>>;
+  offeringsError?: { message: string; code?: string } | null;
+  providersDeleteEq?: ReturnType<typeof vi.fn>;
+}) {
+  const deleteEq = opts.providersDeleteEq ?? vi.fn(async () => ({ error: null }));
+  return {
+    storage: makeStorageMock(),
+    from: vi.fn((table: string) => {
+      if (table === "providers") {
+        let insertPayload: Record<string, unknown> | null = null;
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+              single: vi.fn(async () => ({
+                data: { id: opts.providerId, status: "pending_approval" },
+                error: null,
+              })),
+            })),
+          })),
+          insert: vi.fn((payload: Record<string, unknown>) => {
+            insertPayload = payload;
+            return {
+              select: vi.fn(() => ({
+                single: vi.fn(async () => ({
+                  data: { id: opts.providerId, ...insertPayload },
+                  error: null,
+                })),
+              })),
+            };
+          }),
+          update: vi.fn((payload: Record<string, unknown>) => {
+            opts.providerUpdates?.push(payload);
+            return { eq: vi.fn(async () => ({ error: null })) };
+          }),
+          delete: vi.fn(() => ({ eq: deleteEq })),
+        };
+      }
+      if (table === "tenants") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(async () => ({
+                data: { default_currency: "ZAR" },
+                error: null,
+              })),
+            })),
+          })),
+        };
+      }
+      if (table === "provider_locations") {
+        return {
+          insert: vi.fn(() => ({
+            select: vi.fn(() => ({
+              single: vi.fn(async () => ({ data: { id: "loc-1" }, error: null })),
+            })),
+          })),
+        };
+      }
+      if (table === "offerings") {
+        return {
+          insert: vi.fn(() => ({
+            select: vi.fn(async () =>
+              opts.offeringsError
+                ? { data: null, error: opts.offeringsError }
+                : { data: [], error: null },
+            ),
+          })),
+        };
+      }
+      if (table === "provider_subscriptions") {
+        return defaultSubscriptionMocks.providerSubscriptions;
+      }
+      if (table === "subscription_plans") {
+        return defaultSubscriptionMocks.subscriptionPlans;
+      }
+      return chainResult();
+    }),
+    rpc: vi.fn(async () => ({ data: null, error: { message: "does not exist" } })),
+  };
+}
+
 describe("POST /api/provider/onboarding", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = SUPABASE_TEST_ORIGIN;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        blob: async () => ({ type: "image/jpeg" }),
+      })) as unknown as typeof fetch,
+    );
   });
 
   it("creates provider with tenant_id and tenant-scoped travel currency defaults", async () => {
@@ -1186,6 +1316,158 @@ describe("POST /api/provider/onboarding", () => {
     expect(subscriptionInserts.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("returns 200 for existing provider with only selected_plan_id in body (no full validation)", async () => {
+    mockRequireRoleInApi.mockResolvedValue({
+      user: { id: "user-idempotent-partial", role: "customer" },
+    });
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: { getUser: vi.fn(async () => ({ data: { user: null }, error: null })) },
+    });
+    mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
+
+    const freePlanId = "44444444-4444-4444-8444-444444444444";
+    const linkedSubscriptionPlanId = "55555555-5555-4555-8555-555555555555";
+    const existingProviderId = "provider-existing-partial";
+
+    mockFetchScopedSingle.mockResolvedValue({
+      data: {
+        id: freePlanId,
+        price: "Free",
+        paystack_plan_code_monthly: null,
+        paystack_plan_code_yearly: null,
+        subscription_plan_id: linkedSubscriptionPlanId,
+      },
+      source: "tenant",
+    });
+
+    const subscriptionInserts: Array<Record<string, unknown>> = [];
+    const partialSubMocks = makeSubscriptionCompletionMocks({
+      linkedPlanId: linkedSubscriptionPlanId,
+      onSubscriptionInsert: (payload) => subscriptionInserts.push(payload),
+    });
+
+    const mockSupabaseAdmin = {
+      storage: makeStorageMock(),
+      from: vi.fn((table: string) => {
+        if (table === "providers") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn((col: string) => {
+                if (col === "user_id") {
+                  return {
+                    maybeSingle: vi.fn(async () => ({
+                      data: { id: existingProviderId },
+                      error: null,
+                    })),
+                  };
+                }
+                return {
+                  single: vi.fn(async () => ({
+                    data: {
+                      id: existingProviderId,
+                      status: "active",
+                      business_name: "Existing Partial Studio",
+                    },
+                    error: null,
+                  })),
+                };
+              }),
+            })),
+          };
+        }
+        if (table === "provider_subscriptions") {
+          return partialSubMocks.providerSubscriptions;
+        }
+        if (table === "subscription_plans") {
+          return partialSubMocks.subscriptionPlans;
+        }
+        throw new Error(`Unexpected table: ${table}`);
+      }),
+      rpc: vi.fn(async () => ({ data: "tenant-za", error: null })),
+    };
+    mockCreateClient.mockReturnValue(mockSupabaseAdmin);
+
+    const { POST } = await import("../route");
+    const req = new NextRequest("http://localhost/api/provider/onboarding", {
+      method: "POST",
+      body: JSON.stringify({ selected_plan_id: freePlanId }),
+    });
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json?.data?.already_completed).toBe(true);
+    expect(subscriptionInserts).toHaveLength(1);
+    expect(subscriptionInserts[0]?.plan_id).toBe(linkedSubscriptionPlanId);
+  });
+
+  it("returns 200 for existing provider when selected_plan_id is not a valid uuid", async () => {
+    mockRequireRoleInApi.mockResolvedValue({
+      user: { id: "user-idempotent-bad-plan", role: "customer" },
+    });
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: { getUser: vi.fn(async () => ({ data: { user: null }, error: null })) },
+    });
+    mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
+
+    const existingProviderId = "provider-existing-bad-plan";
+    const badPlanSubMocks = makeSubscriptionCompletionMocks();
+
+    const mockSupabaseAdmin = {
+      storage: makeStorageMock(),
+      from: vi.fn((table: string) => {
+        if (table === "providers") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn((col: string) => {
+                if (col === "user_id") {
+                  return {
+                    maybeSingle: vi.fn(async () => ({
+                      data: { id: existingProviderId },
+                      error: null,
+                    })),
+                  };
+                }
+                return {
+                  single: vi.fn(async () => ({
+                    data: {
+                      id: existingProviderId,
+                      status: "pending_approval",
+                      business_name: "Existing Bad Plan",
+                    },
+                    error: null,
+                  })),
+                };
+              }),
+            })),
+          };
+        }
+        if (table === "provider_subscriptions") {
+          return badPlanSubMocks.providerSubscriptions;
+        }
+        if (table === "subscription_plans") {
+          return badPlanSubMocks.subscriptionPlans;
+        }
+        throw new Error(`Unexpected table: ${table}`);
+      }),
+      rpc: vi.fn(async () => ({ data: "tenant-za", error: null })),
+    };
+    mockCreateClient.mockReturnValue(mockSupabaseAdmin);
+
+    const { POST } = await import("../route");
+    const req = new NextRequest("http://localhost/api/provider/onboarding", {
+      method: "POST",
+      body: JSON.stringify({ selected_plan_id: "not-a-uuid" }),
+    });
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json?.data?.already_completed).toBe(true);
+    expect(json?.data?.selected_plan_id).toBeNull();
+    expect(json?.data?.requires_checkout).toBe(false);
+  });
+
   it("returns 200 idempotently for paid plan when no subscription yet (requires checkout)", async () => {
     mockRequireRoleInApi.mockResolvedValue({
       user: { id: "user-idempotent-paid", role: "customer" },
@@ -1793,6 +2075,395 @@ describe("POST /api/provider/onboarding", () => {
       expect(row.provider_category_id).toBeTruthy();
     }
     expect(firstBatch.some((row) => row.title === "Haircut")).toBe(true);
+  }, 120_000);
+
+  it("returns 400 when thumbnail URL is not from trusted storage", async () => {
+    mockRequireRoleInApi.mockResolvedValue({
+      user: { id: "user-ssrf", role: "customer" },
+    });
+
+    const { POST } = await import("../route");
+    const req = new NextRequest("http://localhost/api/provider/onboarding", {
+      method: "POST",
+      body: JSON.stringify({
+        ...minimalOnboardingBody,
+        thumbnail_url: "http://169.254.169.254/latest/meta-data",
+      }),
+    });
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(json?.error?.code).toBe("VALIDATION_ERROR");
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("rolls back provider row when primary location insert fails", async () => {
+    mockRequireRoleInApi.mockResolvedValue({
+      user: { id: "user-rollback-loc", role: "customer" },
+    });
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: { getUser: vi.fn(async () => ({ data: { user: null }, error: null })) },
+    });
+    mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
+    mockFetchScopedSingle.mockResolvedValue({
+      data: { settings: { features: { auto_approve_providers: true } } },
+      source: "tenant",
+    });
+
+    const deleteEq = vi.fn(async () => ({ error: null }));
+    const providersDelete = vi.fn(() => ({ eq: deleteEq }));
+
+    const mockSupabaseAdmin = {
+      storage: makeStorageMock(),
+      from: vi.fn((table: string) => {
+        if (table === "providers") {
+          let insertPayload: Record<string, unknown> | null = null;
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+              })),
+            })),
+            insert: vi.fn((payload: Record<string, unknown>) => {
+              insertPayload = payload;
+              return {
+                select: vi.fn(() => ({
+                  single: vi.fn(async () => ({
+                    data: { id: "provider-rollback", ...insertPayload },
+                    error: null,
+                  })),
+                })),
+              };
+            }),
+            update: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })),
+            delete: providersDelete,
+          };
+        }
+        if (table === "tenants") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(async () => ({
+                  data: { default_currency: "ZAR" },
+                  error: null,
+                })),
+              })),
+            })),
+          };
+        }
+        if (table === "users") {
+          return { update: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })) };
+        }
+        if (table === "cancellation_policies") {
+          return { insert: vi.fn(async () => ({ error: null })) };
+        }
+        if (table === "provider_locations") {
+          return {
+            insert: vi.fn(() => ({
+              select: vi.fn(() => ({
+                single: vi.fn(async () => ({
+                  data: null,
+                  error: { message: "location failed" },
+                })),
+              })),
+            })),
+          };
+        }
+        if (table === "global_categories") {
+          return {
+            select: vi.fn(() => ({
+              in: vi.fn(async () => ({ data: [], error: null })),
+            })),
+          };
+        }
+        throw new Error(`Unexpected table: ${table}`);
+      }),
+      rpc: vi.fn(async () => ({ data: null, error: { message: "does not exist" } })),
+    };
+    mockCreateClient.mockReturnValue(mockSupabaseAdmin);
+
+    const { POST } = await import("../route");
+    const req = new NextRequest("http://localhost/api/provider/onboarding", {
+      method: "POST",
+      body: JSON.stringify(minimalOnboardingBody),
+    });
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(json?.error?.code).toBe("LOCATION_CREATION_ERROR");
+    expect(providersDelete).toHaveBeenCalled();
+    expect(deleteEq).toHaveBeenCalledWith("id", "provider-rollback");
+    expect(mockSendTemplateNotification).not.toHaveBeenCalled();
+  }, 120_000);
+
+  it("rolls back provider and returns 422 when user-supplied services fail to insert", async () => {
+    mockRequireRoleInApi.mockResolvedValue({
+      user: { id: "user-rollback-svc", role: "customer" },
+    });
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: { getUser: vi.fn(async () => ({ data: { user: null }, error: null })) },
+    });
+    mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
+    mockFetchScopedSingle.mockResolvedValue({
+      data: { settings: { features: { auto_approve_providers: true } } },
+      source: "tenant",
+    });
+
+    const deleteEq = vi.fn(async () => ({ error: null }));
+    mockCreateClient.mockReturnValue(
+      makeHappyPathAdmin({
+        providerId: "provider-rollback-svc",
+        offeringsError: { message: "offerings insert failed" },
+        providersDeleteEq: deleteEq,
+      }),
+    );
+
+    const { POST } = await import("../route");
+    const req = new NextRequest("http://localhost/api/provider/onboarding", {
+      method: "POST",
+      body: JSON.stringify({
+        ...minimalOnboardingBody,
+        services: [{ title: "Haircut", duration_minutes: 45, price: 200 }],
+      }),
+    });
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(422);
+    expect(json?.error?.code).toBe("ONBOARDING_SERVICES_FAILED");
+    expect(deleteEq).toHaveBeenCalledWith("id", "provider-rollback-svc");
+    expect(mockSendTemplateNotification).not.toHaveBeenCalled();
+  }, 120_000);
+
+  it("keeps the original storage URLs when copying images to the gallery bucket fails", async () => {
+    mockRequireRoleInApi.mockResolvedValue({
+      user: { id: "user-copy-fail", role: "customer" },
+    });
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: { getUser: vi.fn(async () => ({ data: { user: null }, error: null })) },
+    });
+    mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
+    mockFetchScopedSingle.mockResolvedValue({
+      data: { settings: { features: { auto_approve_providers: false } } },
+      source: "tenant",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: false, blob: async () => ({ type: "text/html" }) })) as unknown as typeof fetch,
+    );
+
+    const providerUpdates: Array<Record<string, unknown>> = [];
+    mockCreateClient.mockReturnValue(
+      makeHappyPathAdmin({ providerId: "provider-copy-fail", providerUpdates }),
+    );
+
+    const { POST } = await import("../route");
+    const req = new NextRequest("http://localhost/api/provider/onboarding", {
+      method: "POST",
+      body: JSON.stringify(minimalOnboardingBody),
+    });
+    const res = await POST(req);
+
+    expect(res.status).toBe(200);
+    const imageUpdate = providerUpdates.find((u) => "thumbnail_url" in u);
+    expect(imageUpdate?.thumbnail_url).toBe(onboardingProfileImages.thumbnail_url);
+    expect(imageUpdate?.avatar_url).toBe(onboardingProfileImages.avatar_url);
+  }, 120_000);
+
+  it("includes custom travel fees in success message when customized", async () => {
+    mockRequireRoleInApi.mockResolvedValue({
+      user: { id: "user-travel-msg", role: "customer" },
+    });
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: { getUser: vi.fn(async () => ({ data: { user: null }, error: null })) },
+    });
+    mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
+    mockFetchScopedSingle.mockResolvedValue({
+      data: {
+        settings: {
+          features: { auto_approve_providers: true },
+          travel_fees: {
+            default_rate_per_km: 8,
+            default_minimum_fee: 20,
+            default_currency: "ZAR",
+            allow_provider_customization: true,
+            allow_provider_tiered: true,
+          },
+        },
+      },
+      source: "tenant",
+    });
+
+    const travelFeeUpsertPayloads: Array<Record<string, unknown>> = [];
+
+    const mockSupabaseAdmin = {
+      storage: makeStorageMock(),
+      from: vi.fn((table: string) => {
+        if (table === "providers") {
+          let insertPayload: Record<string, unknown> | null = null;
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+                single: vi.fn(async () => ({
+                  data: { id: "provider-travel-msg", status: "active" },
+                  error: null,
+                })),
+              })),
+            })),
+            insert: vi.fn((payload: Record<string, unknown>) => {
+              insertPayload = payload;
+              return {
+                select: vi.fn(() => ({
+                  single: vi.fn(async () => ({
+                    data: { id: "provider-travel-msg", ...insertPayload },
+                    error: null,
+                  })),
+                })),
+              };
+            }),
+            update: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })),
+          };
+        }
+        if (table === "tenants") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(async () => ({
+                  data: { default_currency: "ZAR" },
+                  error: null,
+                })),
+              })),
+            })),
+          };
+        }
+        if (table === "users") {
+          return { update: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })) };
+        }
+        if (table === "provider_locations") {
+          return {
+            insert: vi.fn(() => ({
+              select: vi.fn(() => ({
+                single: vi.fn(async () => ({ data: { id: "loc-1" }, error: null })),
+              })),
+            })),
+          };
+        }
+        if (table === "provider_global_category_associations") {
+          return { insert: vi.fn(async () => ({ error: null })) };
+        }
+        if (table === "global_categories") {
+          return {
+            select: vi.fn(() => ({
+              in: vi.fn(async () => ({ data: [], error: null })),
+            })),
+          };
+        }
+        if (table === "provider_onboarding_drafts") {
+          return { delete: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })) };
+        }
+        if (table === "provider_onboarding_tracking") {
+          return {
+            upsert: vi.fn(async () => ({ error: null })),
+            update: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })),
+          };
+        }
+        if (table === "provider_leads") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                is: vi.fn(() => ({
+                  or: vi.fn(() => ({
+                    limit: vi.fn(async () => ({ data: [], error: null })),
+                  })),
+                })),
+              })),
+            })),
+            update: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })),
+          };
+        }
+        if (table === "provider_lead_activities") {
+          return { insert: vi.fn(async () => ({ error: null })) };
+        }
+        if (table === "provider_subscriptions") {
+          return defaultSubscriptionMocks.providerSubscriptions;
+        }
+        if (table === "subscription_plans") {
+          return defaultSubscriptionMocks.subscriptionPlans;
+        }
+        if (table === "offerings") {
+          return {
+            insert: vi.fn(() => ({
+              select: vi.fn(async () => ({ data: [], error: null })),
+            })),
+          };
+        }
+        if (table === "provider_travel_fee_settings") {
+          return {
+            upsert: vi.fn(async (payload: Record<string, unknown>) => {
+              travelFeeUpsertPayloads.push(payload);
+              return { error: null };
+            }),
+          };
+        }
+        if (table === "cancellation_policies") {
+          return { insert: vi.fn(async () => ({ error: null })) };
+        }
+        if (table === "provider_staff") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+                })),
+                in: vi.fn(() => ({
+                  limit: vi.fn(() => ({
+                    maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+                  })),
+                })),
+              })),
+            })),
+            insert: vi.fn(async () => ({ error: null })),
+          };
+        }
+
+        throw new Error(`Unexpected table: ${table}`);
+      }),
+      rpc: vi.fn(async () => ({ data: null, error: { message: "does not exist" } })),
+    };
+    mockCreateClient.mockReturnValue(mockSupabaseAdmin);
+
+    const tiers = [{ max_km: 5, fee: 50 }];
+
+    const { POST } = await import("../route");
+    const req = new NextRequest("http://localhost/api/provider/onboarding", {
+      method: "POST",
+      body: JSON.stringify({
+        ...minimalOnboardingBody,
+        business_type: "mobile",
+        travel_fees: {
+          enabled: true,
+          use_platform_default: false,
+          pricing_model: "tiered",
+          tiers,
+        },
+      }),
+    });
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(String(json?.data?.message ?? "")).toContain("custom travel fees saved");
+    expect(travelFeeUpsertPayloads[0]?.use_platform_default).toBe(false);
+    expect(mockSendTemplateNotification).toHaveBeenCalledWith(
+      "provider_approved",
+      ["user-travel-msg"],
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
   }, 120_000);
 });
 

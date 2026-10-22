@@ -1,4 +1,5 @@
 import * as Localization from "expo-localization";
+import { AppState } from "react-native";
 import { dialCodeForIso3166Alpha2 } from "@beautonomi/phone";
 
 const FALLBACK_ISO = "ZA";
@@ -17,7 +18,10 @@ function getRegionIsoFromTimeZone(): string | null {
   return null;
 }
 
-function resolveLocaleCountryIso(): string {
+let cachedLocaleCountryIso: string | null = null;
+let appStateListenerAttached = false;
+
+function computeLocaleCountryIso(): string {
   try {
     const localeIso = Localization.getLocales?.()?.[0]?.regionCode?.toUpperCase();
     const tzIso = getRegionIsoFromTimeZone();
@@ -27,6 +31,17 @@ function resolveLocaleCountryIso(): string {
     /* ignore */
   }
   return FALLBACK_ISO;
+}
+
+function resolveLocaleCountryIso(): string {
+  if (!appStateListenerAttached) {
+    appStateListenerAttached = true;
+    AppState.addEventListener("change", (state) => {
+      if (state === "active") cachedLocaleCountryIso = null;
+    });
+  }
+  if (cachedLocaleCountryIso == null) cachedLocaleCountryIso = computeLocaleCountryIso();
+  return cachedLocaleCountryIso;
 }
 
 export function getDeviceLocaleCountryIso(): string {

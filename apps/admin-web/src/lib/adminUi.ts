@@ -15,3 +15,11 @@ export function adminToolbarButtonClass(disabled?: boolean): string {
     disabled ? "pointer-events-none opacity-40" : "hover:bg-gray-50 active:bg-gray-100"
   );
 }
+
+/** Primary actions (send, save, confirm) — min 44px height. */
+export function adminPrimaryButtonClass(disabled?: boolean): string {
+  return cn(
+    "inline-flex min-h-11 touch-manipulation items-center justify-center rounded-xl bg-gray-900 px-4 text-sm font-medium text-white shadow-sm transition-colors",
+    disabled ? "pointer-events-none opacity-40" : "hover:bg-gray-800 active:bg-gray-950"
+  );
+}

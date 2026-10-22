@@ -102,6 +102,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const { data: ownedProvider } = await getSupabaseAdmin()
+      .from("providers")
+      .select("id")
+      .eq("user_id", user.id)
+      .limit(1)
+      .maybeSingle();
+    if (ownedProvider) {
+      return successResponse({ skipped: true, reason: "PROVIDER_EXISTS" });
+    }
+
     // §Provider-launch (2026-05): strip any inline `data:` images that may
     // still be lingering on a legacy client. Without this guard, reloading
     // such a draft would re-hydrate the bloated state and re-trigger the

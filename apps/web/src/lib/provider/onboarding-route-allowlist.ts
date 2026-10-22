@@ -10,6 +10,7 @@ export const PROVIDER_ONBOARDING_ROUTE_PREFIXES = [
   "/provider/subscription-checkout",
   "/provider/subscription",
   "/provider/settings/appointment-activity/business-details",
+  "/provider/settings/business-description",
   "/provider/settings/locations",
   "/provider/settings/gallery",
   "/provider/settings/operating-hours",
@@ -17,6 +18,8 @@ export const PROVIDER_ONBOARDING_ROUTE_PREFIXES = [
   "/provider/settings/sales/card-machines/yoco",
   "/provider/settings/sales/yoco-integration",
   "/provider/settings/sales/yoco-devices",
+  "/provider/settings/sales/travel-fees",
+  "/provider/settings/cancellation-policies",
   "/provider/settings/payments",
   "/provider/settings/payout-accounts",
   "/provider/catalogue/services",
@@ -24,7 +27,13 @@ export const PROVIDER_ONBOARDING_ROUTE_PREFIXES = [
   "/provider/settings/verification",
 ] as const;
 
+/** Exact match only — do not treat `/provider/settings/*` as allowed via prefix. */
+export const PROVIDER_ONBOARDING_EXACT_ROUTES = ["/provider/settings"] as const;
+
 export function isProviderOnboardingRouteAllowed(pathname: string): boolean {
+  if ((PROVIDER_ONBOARDING_EXACT_ROUTES as readonly string[]).includes(pathname)) {
+    return true;
+  }
   return PROVIDER_ONBOARDING_ROUTE_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`),
   );

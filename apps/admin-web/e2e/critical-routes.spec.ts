@@ -26,6 +26,7 @@ const CRITICAL_ROUTE_PATHS = [
   "/admin/integrations-hub",
   "/admin/operations",
   "/admin/platform-config",
+  "/admin/support-tickets/00000000-0000-4000-8000-000000000001",
   "/admin/support-tickets/ai-drafts",
   "/admin/finance/ai-queue",
   "/admin/trust-safety-ops/ai-queue",
