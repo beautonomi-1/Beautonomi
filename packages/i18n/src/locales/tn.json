@@ -354,7 +354,8 @@
       "payment-methods": "Choose accepted payment methods",
       "payout": "Add a payout bank account",
       "availability": "Set operating hours",
-      "identity-verification": "Verify your identity for the trust badge"
+      "identity-verification": "Verify your identity for the trust badge",
+      "cancellation-policy": "Set your cancellation policy"
     },
     "waitlistScreen": {
       "title": "Waitlist",
@@ -941,7 +942,10 @@
           "skipForNow": "Tlola for gajaana",
           "skipA11y": "Tlola this step",
           "submitA11y": "romela setup",
-          "nextA11y": "e latelang step"
+          "nextA11y": "e latelang step",
+          "existingProfileTitle": "Porofaele e setse e dirilwe",
+          "existingProfileBody": "Porofaele ya kgwebo ya gago e setse e siamile. Dirisa lenaane la go baakanya go fetola dintlha — diphetogo fa ga di bolokwe.",
+          "openChecklist": "Bula lenaane la go baakanya"
         },
         "accountStatusGuard": {
           "title": "akhauunte check needed",
@@ -3310,7 +3314,8 @@
           "billedThroughStripeTitle": "Gefaktureer deur Stripe",
           "billedThroughStripeBody": "Dateer jou kaart op of sien fakture in die veilige Stripe-faktureringsportaal. Tik Bestuur fakturering hieronder.",
           "stripeManageUnavailable": "Stripe Tefiso is Ga e a beiwa up yet. khutlisa go duela first, then leka gape.",
-          "paystackManageUnavailable": "Hierdie plan is nie op Paystack-herhalende fakturering nie. Voltooi afhandeling of kontak ondersteuning."
+          "paystackManageUnavailable": "Hierdie plan is nie op Paystack-herhalende fakturering nie. Voltooi afhandeling of kontak ondersteuning.",
+          "planChangeScheduled": "Phetogo ya lenaneo e rulagantswe. Diphetogo di simolola ka {{when}}."
         },
         "moreTab": {
           "sectionGrowBusiness": "Grow your Kgwebo",
@@ -4615,7 +4620,9 @@
               "yes": "Ee",
               "maybe_later": "Maybe moragonyana",
               "no": "Nnyaa"
-            }
+            },
+            "bookingProtectionTitle": "Tshireletso ya peeletso",
+            "bookingProtectionHint": "Tlhopha gore go phimolwa le go sa goroge go tshwarwa jang. O ka e baakanya morago mo dithulaganyong."
           },
           "software": {
             "intro": "boikgethelo — thusos us understand wfano you're coming from. We'll tailor import dithepa and onboarding hints.",
@@ -5193,7 +5200,8 @@
           "runningBehindSheetTitle": "O saletswe ke nako?",
           "staffFilteredByService": "Go bontshiwa maloko a setlhopha a a abetsweng tirelo e.",
           "addressOutsideArea": "Aterese eno e fa kgaogano ya tiragalo ya gago.",
-          "addressValidateFailed": "Ga re kgone go netefatsa aterese eno. Lekola kgokaganyo ya gago o leke gape."
+          "addressValidateFailed": "Ga re kgone go netefatsa aterese eno. Lekola kgokaganyo ya gago o leke gape.",
+          "tipPercentWithAmountA11y": "{{percent}}% thiphu, {{amount}}"
         },
         "expressBooking": {
           "invalidJson": "JSON. e e sa siamang.",
@@ -7933,7 +7941,8 @@
           "optionalComment": "boikgethelo tlhaloso",
           "submitRating": "romela tekanyo",
           "thanks": "Ke a leboga!",
-          "freshCaption": "{{name}} e ntšha"
+          "freshCaption": "{{name}} e ntšha",
+          "shareBookingLink": "Arolelana kgolagano ya peeletso"
         },
         "advancedPricing": {
           "title": "E tswelelang ditheko",
@@ -9456,7 +9465,8 @@
           "safetyUseForm": "Dipegelo tsa pabalesego di tlhamalalela kwa setlhopheng sa rona — tsweetswee dirisa foromo e e feletseng.",
           "chatAiDisclaimer": "AI e ka dira diphoso — o ka bua le motho nako nngwe le nngwe morago ga gore thekete ya gago e tlhamiwe.",
           "startChat": "simolola chat",
-          "chatBack": "Morago"
+          "chatBack": "Morago",
+          "missingCategory": "setlhopha"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -13028,6 +13038,16 @@
         "slotUnavailableTitle": "Slot not available",
         "slotOverlapBody": "Another booking or block overlaps this time."
       }
+    },
+    "bookingPolicy": {
+      "noPenalty": "No penalty",
+      "noPenaltyDesc": "Clients can cancel anytime with a full refund of amounts paid online.",
+      "flexible": "Flexible",
+      "flexibleDesc": "Free cancel until 4 hours before; 50% wallet refund if later.",
+      "standard": "Standard",
+      "standardDesc": "Free cancel until 24 hours before; 50% wallet refund if later.",
+      "strict": "Strict",
+      "strictDesc": "48-hour notice, 50% deposit, and no-show protection."
     }
   },
   "customer": {
@@ -15548,7 +15568,13 @@
           "payRemainingCustomTipPlaceholder": "Palo ya thipi",
           "payRemainingTipLine": "Thipi: {{amount}} — e ya 100% kwa motlamedi wa gago",
           "cancelPreviewSheetTitle": "Khansela this bukingo?",
-          "cancelPreviewInPersonRefund": "pusetso e kolotwang ka sefatlhego: {{currency}} {{amount}}"
+          "cancelPreviewInPersonRefund": "pusetso e kolotwang ka sefatlhego: {{currency}} {{amount}}",
+          "cancelPreviewPenaltyWaivedPending": "Ga go na tuelo fa tuelo e sa letile.",
+          "cancelPreviewPenaltyWaivedGrace": "O mo nakong ya tshwarelo — ga go na tuelo ya go phimola.",
+          "cancelPreviewPenaltyWaivedRescheduled": "Ga go na tuelo — moabi o fetotse nako ya kopano e.",
+          "cancelPreviewPenaltyWaivedNoPenaltyPolicy": "Pholisi ya moabi yo ga e na kotlhao ya go phimola.",
+          "cancelPreviewPenaltyWaivedProvider": "Moabi o tla phimola ntle le kotlhao ya moreki.",
+          "payRemainingTipPercentButtonA11y": "{{percent}}% thiphu, {{amount}}"
         },
         "groupBookingDetail": {
           "back": "Morago",
@@ -17598,7 +17624,8 @@
       "verificationUnavailable": "Netefatso e e itirisang ga e yo mo mmarakeng wa gago — tsenya leina la mong wa akhaonto fela jaaka le tlhagelela kwa bankeng ya gago.",
       "accountNameLabel": "akhauunte holder leina",
       "save": "Boloka akhauunte ya banka",
-      "screenTitle": "Akhauunte ya bankas"
+      "screenTitle": "Akhauunte ya bankas",
+      "selectBank": "Select your bank"
     },
     "walletBankRefund": {
       "addBank": "Tsenya a akhauunte ya banka",
@@ -17843,7 +17870,10 @@
     "tipPercentButtonA11y": "{{percent}}% thepa, {{amount}}",
     "cancelPreviousWithFeeBody": "Tuelo ya go khansela {{fee}}. {{refund}} e tla boela mo sepatšheng sa gago sa Beautonomi. A o khansela peelanonako e e fetileng?",
     "cancelPreviousFullRefundBody": "{{refund}} e tla boela mo sepatšheng sa gago sa Beautonomi. A o khansela peelanonako e e fetileng?",
-    "confirmCancelPrevious": "Khansela e fetileng"
+    "confirmCancelPrevious": "Khansela e fetileng",
+    "holdRateLimitWait": "Diteko di dintsi thata. Leka gape morago ga metsotso e {{minutes}}.",
+    "refundsStoreCreditNotePayAtVenue": "Fa o duela mo lefelong, dipusetso di tshwarwa ka tlhamalalo le moabi — e seng mo karating kgotsa mo sepaching sa gago.",
+    "refundsStoreCreditNoteNoPenalty": "Moabi yo ga a duele dikotlhao tsa go phimola. Dituelo tse di duelweng mo inthaneteng di busediwa mo sepaching sa gago sa Beautonomi."
   },
   "payments": {
     "pay": "Duela",
@@ -23394,7 +23424,15 @@
           "keepBooking": "Boloka bukingo",
           "cancelled": "bukingo e khansetswe",
           "cancelFailed": "E reteletswe go Khansela bukingo",
-          "cancelledNotifyFailed": "bukingo e khansetswe but kitsiso could not be E rometswe"
+          "cancelledNotifyFailed": "bukingo e khansetswe but kitsiso could not be E rometswe",
+          "initiatorLabel": "Who is cancelling?",
+          "initiatorProvider": "Provider (full refund on platform)",
+          "initiatorCustomerRequested": "Customer asked to cancel",
+          "previewLoading": "Loading refund estimate…",
+          "previewFee": "Estimated fee retained: {{currency}} {{amount}}",
+          "previewWalletRefund": "Estimated wallet refund: {{currency}} {{amount}}",
+          "previewInPersonRefund": "Refund due in person: {{currency}} {{amount}}",
+          "previewBlocked": "Cancellation is not allowed for this booking."
         },
         "statusActions": {
           "noPermission": "You do not have permission for this action",
@@ -24386,7 +24424,8 @@
           "oneDayOpen": "At least one letsatsi must be bula",
           "selectPlan": "Tsweetswee tlhopha a ngodiso Leano",
           "andMoreSeeConsole": " (and {{count}} tse dingwe - see console)",
-          "dobRequired": "letsatsi la matsalo is go a tlhokega for netefatso ya boitsebo"
+          "dobRequired": "letsatsi la matsalo is go a tlhokega for netefatso ya boitsebo",
+          "bookingPolicyRequired": "Please choose a booking protection preset"
         },
         "successHeadline": "You're all set!",
         "continueVerification": "tswelela to verification",
@@ -24580,7 +24619,9 @@
           "payoutAccountTitle": "Banka akhauunte ya tefo (go a tlhokega before go-Ya nnete)",
           "payoutAccountBody": "Add your bank details in the setup checklist after this wizard — under {{path}}. Platform-held earnings cannot be withdrawn until your payout account is verified.",
           "paymentHint": "This helps us understand how you accept in-person card payments and whether we can offer better terminal options in future.",
-          "vatSarsHint": "Are you VAT registered with SARS? VAT registration is mandatory if your annual turnover is R1 million or more. If you make less than R1 million per year, you don't need to be VAT registered."
+          "vatSarsHint": "Are you VAT registered with SARS? VAT registration is mandatory if your annual turnover is R1 million or more. If you make less than R1 million per year, you don't need to be VAT registered.",
+          "bookingProtectionTitle": "Booking protection",
+          "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings."
         },
         "software": {
           "selectPlaceholder": "Tlhopha or Mofuta software leina...",
@@ -28525,7 +28566,8 @@
           "priorityLow": "Tlase",
           "priorityMedium": "Bohare",
           "priorityHigh": "Holimo",
-          "priorityUrgent": "Kapele"
+          "priorityUrgent": "Kapele",
+          "chooseCategory": "Choose a category so we can route your request"
         },
         "team/payroll/[id]": {
           "failedToLoadPayRun": "E reteletswe go laiša duela run",
@@ -29388,7 +29430,8 @@
           "support": "Thekgo",
           "replyPlaceholder": "Write a karabo…",
           "sending": "Romelaing…",
-          "sendReply": "Romela karabo"
+          "sendReply": "Romela karabo",
+          "assistantName": "Beautonomi Assistant"
         },
         "embed": {
           "clientUnavailable": "moreki not e teng",
@@ -35469,6 +35512,88 @@
       "fallback_reply": "{{greeting}}\n\nDankie dat jy Beautonomi-ondersteuning gekontak het oor \"{{subject}}\" (kaartjie {{ticketNumber}}).\n\n{{escalationLine}}\n\n\n\n hierdie kaartjie.\n\nVarige groete,\nBeautonomi Ondersteuning",
       "nudge": "Hallo daar,\n\nKyk net in op kaartjie {{ticketNumber}} — ons het {{daysSinceReply}} dag(e) gelede geantwoord en wil seker maak dat jy dit gesien het.\nAs ons antwoord die probleem opgelos het, is geen aksie nodig nie. As jy nog hulp nodig het, antwoord hier en ons sal dit dadelik weer optel.\n\nVarige groete,\nBeautonomi Ondersteuning",
       "csat_recovery": "{{greeting}}\n\nDankie vir jou eerlike terugvoer oor kaartjie {{ticketNumber}}. Ek is jammer dat die ervaring te kort geskiet het.\n'n Senior lid van ons ondersteuningspan hersien persoonlik wat gebeur het.\n\nVarige groete,\nBeautonomi Ondersteuning"
+    }
+  },
+  "support": {
+    "ticketCategories": {
+      "groups": {
+        "account_security": "Account & security",
+        "bookings": "Bookings & appointments",
+        "payments": "Payments & billing",
+        "messaging_providers": "Messaging & providers",
+        "products": "Products & delivery",
+        "tech": "App, website & notifications",
+        "safety": "Trust & safety",
+        "partners": "For beauty partners (providers)",
+        "feedback": "Feedback & general",
+        "legacy": "Legacy"
+      },
+      "items": {
+        "account_sign_in": "Sign-in, password & access",
+        "account_verification": "Email / phone verification",
+        "account_profile": "Profile, name, photo, or email change",
+        "account_privacy_data": "Privacy, data export, or GDPR request",
+        "account_delete": "Delete or deactivate account",
+        "account_security": "Suspicious activity or hacked account",
+        "booking_issue": "Booking details wrong or not visible",
+        "booking_reschedule_cancel": "Reschedule, cancel, or refund request",
+        "booking_provider_no_show": "Provider no-show or late arrival",
+        "marked_no_show_incorrectly": "I was marked as a no-show but I attended",
+        "booking_quality": "Service quality or didn’t match description",
+        "booking_group": "Group booking or multiple clients",
+        "booking_waitlist": "Waitlist or availability question",
+        "booking_recurring": "Recurring appointment",
+        "payment_failed_charge": "Payment failed, declined, or wrong amount",
+        "payment_refund": "Refund status or request",
+        "payment_duplicate": "Duplicate charge or billing error",
+        "payment_invoice_receipt": "Invoice, receipt, or tax document",
+        "payment_subscription": "Subscription or recurring billing (provider)",
+        "payment_gift_card": "Gift card purchase or redemption",
+        "payment_tips_wallet": "Tips, wallet, or loyalty credits",
+        "membership_billing": "Membership plan, credits, or renewal",
+        "messaging_provider_chat": "Chat with a provider (in-app messages)",
+        "provider_conduct": "Provider behaviour or professionalism",
+        "client_conduct": "Client behaviour or client no-show",
+        "provider_listing": "Wrong services, prices, or location on listing",
+        "provider_verification": "Provider verification or badge",
+        "review_rating": "Review or rating",
+        "order_status_shipping": "Product order status or shipping",
+        "order_return_product": "Return, exchange, or damaged product",
+        "order_product_question": "Product question before purchase",
+        "tech_bug_error": "Error message, crash, or page won’t load",
+        "tech_mobile_app": "Customer or provider mobile app issue",
+        "tech_notifications": "Push, email, or SMS notifications",
+        "tech_upload_media": "Photos, files, or attachments won’t upload",
+        "tech_calendar_sync": "Calendar sync (Google, Apple, etc.)",
+        "safety_report_user": "Report a user, harassment, or abuse",
+        "safety_fraud": "Fraud, scam, or suspicious listing",
+        "safety_emergency": "Urgent safety concern",
+        "provider_payouts": "Payouts or bank account",
+        "provider_dashboard": "Dashboard, analytics, or staff access",
+        "provider_catalog": "Services, add-ons, or pricing in catalogue",
+        "provider_booking_settings": "Online booking, hours, or buffers",
+        "provider_fees_commission": "Platform fees, commission, or invoices",
+        "provider_marketing_ads": "Ads, promotions, or visibility",
+        "provider_onboarding": "Verification, KYB, or setup",
+        "provider_staff_payroll": "Staff, shifts, or payroll",
+        "terminal_onboarding": "Card terminal setup",
+        "feedback_feature": "Feature idea or product feedback",
+        "feedback_complaint_platform": "Complaint about Beautonomi",
+        "feedback_accessibility": "Accessibility or assistive technology",
+        "partnership_press": "Partnership, press, or media",
+        "general_inquiry": "General question (not listed above)",
+        "payments": "Payments (legacy)"
+      },
+      "contextTypes": {
+        "booking": "Booking",
+        "product_order": "Product / ecommerce order",
+        "gift_card": "Gift card",
+        "payment": "Payment / refund",
+        "provider_onboarding": "Provider onboarding",
+        "account": "Account",
+        "technical": "Technical",
+        "other": "Other"
+      }
     }
   }
 }

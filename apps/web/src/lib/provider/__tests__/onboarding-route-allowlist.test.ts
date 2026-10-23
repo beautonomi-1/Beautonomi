@@ -17,4 +17,15 @@ describe("isProviderOnboardingRouteAllowed", () => {
     expect(isProviderOnboardingRouteAllowed("/provider/bookings")).toBe(false);
     expect(isProviderOnboardingRouteAllowed("/provider/finance")).toBe(false);
   });
+
+  it("allows exact /provider/settings but not arbitrary settings subpaths", () => {
+    expect(isProviderOnboardingRouteAllowed("/provider/settings")).toBe(true);
+    expect(isProviderOnboardingRouteAllowed("/provider/settings/team")).toBe(false);
+  });
+
+  it("allows travel fees and cancellation policy setup routes", () => {
+    expect(isProviderOnboardingRouteAllowed("/provider/settings/sales/travel-fees")).toBe(true);
+    expect(isProviderOnboardingRouteAllowed("/provider/settings/cancellation-policies")).toBe(true);
+    expect(isProviderOnboardingRouteAllowed("/provider/settings/business-description")).toBe(true);
+  });
 });

@@ -67,9 +67,10 @@ vi.mock("@/lib/provider-ops/apply-provider-signup-case-hooks", () => ({
   applyProviderSignupCaseHooks: vi.fn().mockResolvedValue(undefined),
 }));
 
+const SUPABASE_TEST_ORIGIN = "https://proj.supabase.co";
 const onboardingProfileImages = {
-  thumbnail_url: "https://example.com/thumbnail.jpg",
-  avatar_url: "https://example.com/avatar.jpg",
+  thumbnail_url: `${SUPABASE_TEST_ORIGIN}/storage/v1/object/public/product-images/thumb.jpg`,
+  avatar_url: `${SUPABASE_TEST_ORIGIN}/storage/v1/object/public/product-images/avatar.jpg`,
 };
 
 function makeStorageMock() {
@@ -88,7 +89,16 @@ function makeStorageMock() {
 
 describe("POST /api/provider/onboarding verification hold", () => {
   beforeEach(() => {
+    vi.resetModules();
     vi.clearAllMocks();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = SUPABASE_TEST_ORIGIN;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        blob: async () => ({ type: "image/jpeg" }),
+      })) as unknown as typeof fetch,
+    );
     mockRequireRoleInApi.mockResolvedValue({
       user: { id: "user-1", email: "owner@example.com" },
     });

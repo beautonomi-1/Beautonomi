@@ -354,7 +354,8 @@
       "payment-methods": "Choose accepted payment methods",
       "payout": "Add a payout bank account",
       "availability": "Set operating hours",
-      "identity-verification": "Verify your identity for the trust badge"
+      "identity-verification": "Verify your identity for the trust badge",
+      "cancellation-policy": "Set your cancellation policy"
     },
     "waitlistScreen": {
       "title": "Waitlist",
@@ -941,7 +942,10 @@
           "skipForNow": "Yeqa for manje",
           "skipA11y": "Yeqa this step",
           "submitA11y": "thumela setup",
-          "nextA11y": "okulandelayo step"
+          "nextA11y": "okulandelayo step",
+          "existingProfileTitle": "Iphrofayela isivele idaliwe",
+          "existingProfileBody": "Iphrofayela yebhizinisi yakho isilungisiwe. Sebenzisa uhlu lokusetha ukuze ushintshe imininingwane — izinguquko lapha azigciniwe.",
+          "openChecklist": "Vula uhlu lokusetha"
         },
         "accountStatusGuard": {
           "title": "i-akhawunti check needed",
@@ -3310,7 +3314,8 @@
           "billedThroughStripeTitle": "Kukhokhiswa nge-Stripe",
           "billedThroughStripeBody": "Buyekeza ikhadi lakho noma ubuke ama-invoyisi ku-portali yokukhokha ye-Stripe evikelekile. Thepha Phatha ukukhokha ngezansi.",
           "stripeManageUnavailable": "Stripe Ukukhokhisa is Akusethiwe up yet. qeda ukukhokha first, then zama futhi.",
-          "paystackManageUnavailable": "Lo mhlelo awubhaliswanga nge-Paystack njalo. Qedela ukukhokha noma uxhumane nosizo."
+          "paystackManageUnavailable": "Lo mhlelo awubhaliswanga nge-Paystack njalo. Qedela ukukhokha noma uxhumane nosizo.",
+          "planChangeScheduled": "Ukushintsha kohlelo kuhleliwe. Izinguquko ziqala ngo-{{when}}."
         },
         "moreTab": {
           "sectionGrowBusiness": "Grow your Ibhizinisi",
@@ -4615,7 +4620,9 @@
               "yes": "Yebo",
               "maybe_later": "Maybe kamuva",
               "no": "Cha"
-            }
+            },
+            "bookingProtectionTitle": "Ukuvikelwa kokubhuka",
+            "bookingProtectionHint": "Khetha ukuthi ukukhansela nokungafiki kuphathwa kanjani. Ungakulungisa lokhu kamuva kuzilungiselelo."
           },
           "software": {
             "intro": "Ongakukhetha — kusisiza ukuthi siqonde lapho uvela khona. Sizokwenza amathiphu okungenisa kanye namacebiso okugibela.",
@@ -5193,7 +5200,8 @@
           "runningBehindSheetTitle": "Usalele emuva?",
           "staffFilteredByService": "Kuboniswa amalungu eqembu anikezwe le nsizakalo.",
           "addressOutsideArea": "Leli ikheli likule ngaphandle kwendawo yakho yesevisi.",
-          "addressValidateFailed": "Ayikwazanga ukuqinisekisa leli kheli. Hlola ukuxhumeka kwakho bese uzama futhi."
+          "addressValidateFailed": "Ayikwazanga ukuqinisekisa leli kheli. Hlola ukuxhumeka kwakho bese uzama futhi.",
+          "tipPercentWithAmountA11y": "{{percent}}% ithiphu, {{amount}}"
         },
         "expressBooking": {
           "invalidJson": "JSON. engavumelekile.",
@@ -7933,7 +7941,8 @@
           "optionalComment": "okukhethekayo amazwana",
           "submitRating": "thumela isilinganiso",
           "thanks": "Ngiyabonga!",
-          "freshCaption": "{{name}} okusha"
+          "freshCaption": "{{name}} okusha",
+          "shareBookingLink": "Yabelana ngesixhumanisi sokubhuka"
         },
         "advancedPricing": {
           "title": "Okuthuthukile amanani",
@@ -9456,7 +9465,8 @@
           "safetyUseForm": "Imibiko yokuphepha iya ngqo ethimbeni lethu — sicela usebenzise ifomu eligcwele.",
           "chatAiDisclaimer": "I-AI ingenza amaphutha — ungakhuluma nomuntu noma nini ngemuva kokuthi ithikithi lakho selidaliwe.",
           "startChat": "qala chat",
-          "chatBack": "Emuva"
+          "chatBack": "Emuva",
+          "missingCategory": "isigaba"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -13028,6 +13038,16 @@
         "slotUnavailableTitle": "Slot not available",
         "slotOverlapBody": "Another booking or block overlaps this time."
       }
+    },
+    "bookingPolicy": {
+      "noPenalty": "No penalty",
+      "noPenaltyDesc": "Clients can cancel anytime with a full refund of amounts paid online.",
+      "flexible": "Flexible",
+      "flexibleDesc": "Free cancel until 4 hours before; 50% wallet refund if later.",
+      "standard": "Standard",
+      "standardDesc": "Free cancel until 24 hours before; 50% wallet refund if later.",
+      "strict": "Strict",
+      "strictDesc": "48-hour notice, 50% deposit, and no-show protection."
     }
   },
   "customer": {
@@ -15552,7 +15572,13 @@
           "payRemainingCustomTipPlaceholder": "Inani lethiphu",
           "payRemainingTipLine": "Ithiphu: {{amount}} — iya ngo-100% kumhlinzeki wakho",
           "cancelPreviewSheetTitle": "Khansela this ukubhuka?",
-          "cancelPreviewInPersonRefund": "imali ebuyisiwe okukhokhwayo ubuso nobuso: {{currency}} {{amount}}"
+          "cancelPreviewInPersonRefund": "imali ebuyisiwe okukhokhwayo ubuso nobuso: {{currency}} {{amount}}",
+          "cancelPreviewPenaltyWaivedPending": "Ayikho imali uma inkokhelo isalindile.",
+          "cancelPreviewPenaltyWaivedGrace": "Usenkathini yesikhathi sokuxolelwa — ayikho imali yokukhansela.",
+          "cancelPreviewPenaltyWaivedRescheduled": "Ayikho imali — umhlinzeki usikushintshe lesi sikhathi.",
+          "cancelPreviewPenaltyWaivedNoPenaltyPolicy": "Inqubomgomo yalo mhlinzeki ayinayo inhlawulo yokukhansela.",
+          "cancelPreviewPenaltyWaivedProvider": "Umhlinzeki uzokhansela ngaphandle kwenhlawulo yekhasimende.",
+          "payRemainingTipPercentButtonA11y": "{{percent}}% ithiphu, {{amount}}"
         },
         "groupBookingDetail": {
           "back": "Emuva",
@@ -17598,7 +17624,8 @@
       "verificationUnavailable": "Ukuqinisekiswa okuzenzakalelayo akutholakali emakethe yakho — faka igama lomphathi we-akhawunti njengoba livela ebhange lakho.",
       "accountNameLabel": "i-akhawunti holder igama",
       "save": "Londoloza i-akhawunti yasebhange",
-      "screenTitle": "I-akhawunti yasebhanges"
+      "screenTitle": "I-akhawunti yasebhanges",
+      "selectBank": "Select your bank"
     },
     "walletBankRefund": {
       "addBank": "Engeza a i-akhawunti yasebhange",
@@ -17844,7 +17871,9 @@
     "tipPercentButtonA11y": "{{percent}}% ithiphu, {{amount}}",
     "cancelPreviousWithFeeBody": "Imali yokukhansela {{fee}}. {{refund}} izobuyela esikhwameni sakho Beautonomi. Khansela i-aphoyintimenti yangaphambilini?",
     "cancelPreviousFullRefundBody": "{{refund}} izobuyela esikhwameni sakho Beautonomi. Khansela i-aphoyintimenti yangaphambilini?",
-    "confirmCancelPrevious": "Khansela okudlule"
+    "confirmCancelPrevious": "Khansela okudlule",
+    "refundsStoreCreditNotePayAtVenue": "Uma ukhokha endaweni, imbuyiselo iphathwa ngqo nomhlinzeki — hhayi ekhadini noma esikhwameni sakho.",
+    "refundsStoreCreditNoteNoPenalty": "Lo mhlinzeki akakhokhisi inhlawulo yokukhansela. Izimali ezikhokhwe ku-inthanethi zibuyiselwa esikhwameni sakho se-Beautonomi."
   },
   "payments": {
     "pay": "Khokha",
@@ -23395,7 +23424,15 @@
           "keepBooking": "Gcina ukubhuka",
           "cancelled": "ukubhuka kukhanseliwe",
           "cancelFailed": "Kwehlulekile uku-Khansela ukubhuka",
-          "cancelledNotifyFailed": "ukubhuka kukhanseliwe but isaziso could not be Kuthunyelwe"
+          "cancelledNotifyFailed": "ukubhuka kukhanseliwe but isaziso could not be Kuthunyelwe",
+          "initiatorLabel": "Who is cancelling?",
+          "initiatorProvider": "Provider (full refund on platform)",
+          "initiatorCustomerRequested": "Customer asked to cancel",
+          "previewLoading": "Loading refund estimate…",
+          "previewFee": "Estimated fee retained: {{currency}} {{amount}}",
+          "previewWalletRefund": "Estimated wallet refund: {{currency}} {{amount}}",
+          "previewInPersonRefund": "Refund due in person: {{currency}} {{amount}}",
+          "previewBlocked": "Cancellation is not allowed for this booking."
         },
         "statusActions": {
           "noPermission": "You do not have permission for this action",
@@ -24387,7 +24424,8 @@
           "oneDayOpen": "At least one usuku must be vula",
           "selectPlan": "Sicela khetha a ukubhalisa Uhlelo",
           "andMoreSeeConsole": " (and {{count}} okuningi - see console)",
-          "dobRequired": "usuku lokuzalwa is kuyadingeka for ukuqinisekisa ubuwena"
+          "dobRequired": "usuku lokuzalwa is kuyadingeka for ukuqinisekisa ubuwena",
+          "bookingPolicyRequired": "Please choose a booking protection preset"
         },
         "successHeadline": "You're all set!",
         "continueVerification": "qhubeka to verification",
@@ -24581,7 +24619,9 @@
           "payoutAccountTitle": "Ibhange i-akhawunti yokukhokhelwa (kuyadingeka before go-Bukhoma)",
           "payoutAccountBody": "Add your bank details in the setup checklist after this wizard — under {{path}}. Platform-held earnings cannot be withdrawn until your payout account is verified.",
           "paymentHint": "This helps us understand how you accept in-person card payments and whether we can offer better terminal options in future.",
-          "vatSarsHint": "Are you VAT registered with SARS? VAT registration is mandatory if your annual turnover is R1 million or more. If you make less than R1 million per year, you don't need to be VAT registered."
+          "vatSarsHint": "Are you VAT registered with SARS? VAT registration is mandatory if your annual turnover is R1 million or more. If you make less than R1 million per year, you don't need to be VAT registered.",
+          "bookingProtectionTitle": "Booking protection",
+          "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings."
         },
         "software": {
           "selectPlaceholder": "Khetha or Uhlobo software igama...",
@@ -28526,7 +28566,8 @@
           "priorityLow": "Phansi",
           "priorityMedium": "Maphakathi",
           "priorityHigh": "Phezulu",
-          "priorityUrgent": "Kuyaphuthuma"
+          "priorityUrgent": "Kuyaphuthuma",
+          "chooseCategory": "Choose a category so we can route your request"
         },
         "team/payroll/[id]": {
           "failedToLoadPayRun": "Kwehlulekile uku-ulayisha khokha run",
@@ -29389,7 +29430,8 @@
           "support": "Usizo",
           "replyPlaceholder": "Write a impendulo…",
           "sending": "Thumelaing…",
-          "sendReply": "Thumela impendulo"
+          "sendReply": "Thumela impendulo",
+          "assistantName": "Beautonomi Assistant"
         },
         "embed": {
           "clientUnavailable": "iklayenti not iyatholakala",
@@ -35470,6 +35512,88 @@
       "fallback_reply": "{{greeting}}\n\nDankie dat jy Beautonomi-ondersteuning gekontak het oor \"{{subject}}\" (kaartjie {{ticketNumber}}).\n\n{{escalationLine}}\n\n\n\n hierdie kaartjie.\n\nVarige groete,\nBeautonomi Ondersteuning",
       "nudge": "Sawubona,\n\nNjengoba singena ithikithi {{ticketNumber}} — siphendule {{daysSinceReply}} izinsuku ezidlule futhi sifuna ukwenza isiqiniseko sokuthi ukubonile.\nUma impendulo yethu iyixazulule inkinga, asikho isinyathelo esidingekayo. Uma usadinga usizo, phendula lapha futhi sizokucosha khona manje.",
       "csat_recovery": "{{greeting}}\n\nSiyabonga ngempendulo yakho eqotho ngethikithi {{ticketNumber}}. Ngiyaxolisa ukuthi ulwazi aluphumelelanga.\nIlungu eliphezulu lethimba lethu labasekeli libuyekeza ngokwalo okwenzekile.\n\nSinibingelela ngokufudumele, \nBeautonomi Sekela"
+    }
+  },
+  "support": {
+    "ticketCategories": {
+      "groups": {
+        "account_security": "Account & security",
+        "bookings": "Bookings & appointments",
+        "payments": "Payments & billing",
+        "messaging_providers": "Messaging & providers",
+        "products": "Products & delivery",
+        "tech": "App, website & notifications",
+        "safety": "Trust & safety",
+        "partners": "For beauty partners (providers)",
+        "feedback": "Feedback & general",
+        "legacy": "Legacy"
+      },
+      "items": {
+        "account_sign_in": "Sign-in, password & access",
+        "account_verification": "Email / phone verification",
+        "account_profile": "Profile, name, photo, or email change",
+        "account_privacy_data": "Privacy, data export, or GDPR request",
+        "account_delete": "Delete or deactivate account",
+        "account_security": "Suspicious activity or hacked account",
+        "booking_issue": "Booking details wrong or not visible",
+        "booking_reschedule_cancel": "Reschedule, cancel, or refund request",
+        "booking_provider_no_show": "Provider no-show or late arrival",
+        "marked_no_show_incorrectly": "I was marked as a no-show but I attended",
+        "booking_quality": "Service quality or didn’t match description",
+        "booking_group": "Group booking or multiple clients",
+        "booking_waitlist": "Waitlist or availability question",
+        "booking_recurring": "Recurring appointment",
+        "payment_failed_charge": "Payment failed, declined, or wrong amount",
+        "payment_refund": "Refund status or request",
+        "payment_duplicate": "Duplicate charge or billing error",
+        "payment_invoice_receipt": "Invoice, receipt, or tax document",
+        "payment_subscription": "Subscription or recurring billing (provider)",
+        "payment_gift_card": "Gift card purchase or redemption",
+        "payment_tips_wallet": "Tips, wallet, or loyalty credits",
+        "membership_billing": "Membership plan, credits, or renewal",
+        "messaging_provider_chat": "Chat with a provider (in-app messages)",
+        "provider_conduct": "Provider behaviour or professionalism",
+        "client_conduct": "Client behaviour or client no-show",
+        "provider_listing": "Wrong services, prices, or location on listing",
+        "provider_verification": "Provider verification or badge",
+        "review_rating": "Review or rating",
+        "order_status_shipping": "Product order status or shipping",
+        "order_return_product": "Return, exchange, or damaged product",
+        "order_product_question": "Product question before purchase",
+        "tech_bug_error": "Error message, crash, or page won’t load",
+        "tech_mobile_app": "Customer or provider mobile app issue",
+        "tech_notifications": "Push, email, or SMS notifications",
+        "tech_upload_media": "Photos, files, or attachments won’t upload",
+        "tech_calendar_sync": "Calendar sync (Google, Apple, etc.)",
+        "safety_report_user": "Report a user, harassment, or abuse",
+        "safety_fraud": "Fraud, scam, or suspicious listing",
+        "safety_emergency": "Urgent safety concern",
+        "provider_payouts": "Payouts or bank account",
+        "provider_dashboard": "Dashboard, analytics, or staff access",
+        "provider_catalog": "Services, add-ons, or pricing in catalogue",
+        "provider_booking_settings": "Online booking, hours, or buffers",
+        "provider_fees_commission": "Platform fees, commission, or invoices",
+        "provider_marketing_ads": "Ads, promotions, or visibility",
+        "provider_onboarding": "Verification, KYB, or setup",
+        "provider_staff_payroll": "Staff, shifts, or payroll",
+        "terminal_onboarding": "Card terminal setup",
+        "feedback_feature": "Feature idea or product feedback",
+        "feedback_complaint_platform": "Complaint about Beautonomi",
+        "feedback_accessibility": "Accessibility or assistive technology",
+        "partnership_press": "Partnership, press, or media",
+        "general_inquiry": "General question (not listed above)",
+        "payments": "Payments (legacy)"
+      },
+      "contextTypes": {
+        "booking": "Booking",
+        "product_order": "Product / ecommerce order",
+        "gift_card": "Gift card",
+        "payment": "Payment / refund",
+        "provider_onboarding": "Provider onboarding",
+        "account": "Account",
+        "technical": "Technical",
+        "other": "Other"
+      }
     }
   }
 }

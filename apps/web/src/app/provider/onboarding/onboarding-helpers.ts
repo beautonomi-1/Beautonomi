@@ -21,6 +21,26 @@ export function ensureHttpsUrl(raw: string): string {
   return `https://${trimmed}`;
 }
 
+const SOCIAL_BASE = {
+  facebook: "facebook.com",
+  instagram: "instagram.com",
+  twitter: "x.com",
+  linkedin: "linkedin.com/in",
+} as const;
+
+export type SocialPlatform = keyof typeof SOCIAL_BASE;
+
+export function normalizeSocialUrl(platform: SocialPlatform, raw: string): string {
+  const v = raw.trim();
+  if (!v) return "";
+  if (/^https?:\/\//i.test(v)) return v;
+  const handle = v.replace(/^@/, "");
+  if (!handle.includes(".") && !handle.includes("/")) {
+    return `https://${SOCIAL_BASE[platform]}/${handle}`;
+  }
+  return `https://${handle}`;
+}
+
 export type ZoneSuggestStatus = "matched" | "none" | "error" | "no_coords";
 
 export type WizardStepKey =

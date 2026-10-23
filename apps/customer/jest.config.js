@@ -25,6 +25,13 @@ module.exports = {
     "^@/(.*)$": "<rootDir>/src/$1",
     "^expo-modules-core$": expoModulesCore,
   },
+  // @sentry/core 10.76+ exposes an ESM build on the react-native export condition.
+  // jest-expo already compiles @sentry/react-native; the shared core package must be too.
+  transformIgnorePatterns: [
+    "/node_modules/(?!(.pnpm|react-native|@react-native|@react-native-community|expo|@expo|@expo-google-fonts|react-navigation|@react-navigation|@sentry|native-base|standard-navigation))",
+    "/node_modules/react-native-reanimated/plugin/",
+    "/node_modules/@react-native/babel-preset/",
+  ],
   testPathIgnorePatterns: ["<rootDir>/node_modules/", "<rootDir>/.expo/"],
   collectCoverageFrom: [
     "src/**/*.{ts,tsx}",

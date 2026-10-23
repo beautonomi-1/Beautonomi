@@ -11,10 +11,13 @@ export function DomainCopilotDock({
   section: _section,
   starters,
   pageContext,
+  compact = false,
 }: {
   section: AdminSection;
   starters?: string[];
   pageContext?: CopilotPageContext;
+  /** Render the open panel as a popover so it does not grow the host layout. */
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
@@ -28,20 +31,24 @@ export function DomainCopilotDock({
     setQuestion("");
   };
 
-  if (!open) {
-    return (
-      <button
-        type="button"
-        className="inline-flex min-h-11 touch-manipulation items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 text-sm font-medium text-primary"
-        onClick={() => setOpen(true)}
-      >
-        <Bot className="h-4 w-4" aria-hidden />
-        Ask Copilot
-      </button>
-    );
-  }
+  const trigger = (
+    <button
+      type="button"
+      className={
+        compact
+          ? "inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-2.5 text-xs font-medium text-primary"
+          : "inline-flex min-h-11 touch-manipulation items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 text-sm font-medium text-primary"
+      }
+      onClick={() => setOpen((v) => !v)}
+    >
+      <Bot className="h-4 w-4" aria-hidden />
+      Ask Copilot
+    </button>
+  );
 
-  return (
+  if (!open) return trigger;
+
+  const panel = (
     <AdminPanel title="Copilot (read-only)" className="border-primary/20">
       {pageContext?.label ? (
         <p className="mb-3 text-sm text-gray-600">Context: {pageContext.label}</p>
@@ -136,4 +143,17 @@ export function DomainCopilotDock({
       </div>
     </AdminPanel>
   );
+
+  if (compact) {
+    return (
+      <div className="relative">
+        {trigger}
+        <div className="absolute bottom-full left-0 z-30 mb-2 w-[min(22rem,calc(100vw-2rem))] shadow-xl">
+          {panel}
+        </div>
+      </div>
+    );
+  }
+
+  return panel;
 }

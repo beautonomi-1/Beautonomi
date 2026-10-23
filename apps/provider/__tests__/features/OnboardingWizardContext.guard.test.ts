@@ -18,5 +18,9 @@ describe("OnboardingWizardContext mount guard", () => {
     expect(src).toContain('errCode === "TIMEOUT"');
     expect(src).toContain("buildSubmitPayloadWithInvite");
     expect(src).not.toContain('errCode === "ALREADY_EXISTS"');
+    expect(src).toContain("if (providerExists) {");
+    expect(src).toContain("resolved = STEPS.length");
+    expect(src).toContain("if (loadingDraft || providerProfileExists) return");
+    expect(src).toContain("if (isSubmittingRef.current) return");
   });
 });

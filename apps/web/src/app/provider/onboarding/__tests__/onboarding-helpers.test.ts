@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ensureHttpsUrl,
+  normalizeSocialUrl,
   effectiveZoneSuggestStatus,
   zonesStepVisible,
   wizardStepIdForKey,
@@ -11,6 +12,13 @@ describe("onboarding-helpers", () => {
   it("ensureHttpsUrl prefixes bare domains", () => {
     expect(ensureHttpsUrl("instagram.com/x")).toBe("https://instagram.com/x");
     expect(ensureHttpsUrl("https://x.com/a")).toBe("https://x.com/a");
+  });
+
+  it("normalizeSocialUrl maps handles to profile URLs", () => {
+    expect(normalizeSocialUrl("instagram", "@glow")).toBe("https://instagram.com/glow");
+    expect(normalizeSocialUrl("instagram", "https://instagram.com/glow")).toBe(
+      "https://instagram.com/glow",
+    );
   });
 
   it("wizardStepIdForKey uses travel_fees as step 10 on web and mobile", () => {

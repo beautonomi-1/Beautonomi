@@ -1236,7 +1236,7 @@ export function SupportTicketsPage() {
                   />
                 )}
               />
-              <div className="sticky top-4 max-h-[calc(100dvh-14rem)] min-h-[24rem] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-4 shadow-sm ring-1 ring-gray-950/[0.03]">
+              <div className="sticky top-4 flex h-[calc(100dvh-14rem)] min-h-[24rem] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm ring-1 ring-gray-950/[0.03]">
                 {selectedId && tickets.some((t) => t.id === selectedId) ? (
                   <SupportTicketDetailView
                     id={selectedId}
@@ -1251,10 +1251,12 @@ export function SupportTicketsPage() {
                     }}
                   />
                 ) : (
-                  <EmptyState
-                    title="Select a ticket"
-                    description="Choose a ticket from the list to read and reply without leaving the queue."
-                  />
+                  <div className="p-4">
+                    <EmptyState
+                      title="Select a ticket"
+                      description="Choose a ticket from the list to read and reply without leaving the queue."
+                    />
+                  </div>
                 )}
               </div>
             </div>

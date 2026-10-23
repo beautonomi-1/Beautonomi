@@ -209,14 +209,18 @@ export function validateStep(
   return { valid: errors.length === 0, errors };
 }
 
+const optionalText = (v?: string | null) => (v && v.trim() ? v.trim() : undefined);
+
 export function buildSubmitPayload(formData: Partial<OnboardingFormData>): Record<string, unknown> {
-  const ownerE164 = coerceOwnerPhoneToE164ForForm(formData.owner_phone) || formData.owner_phone || "";
+  const ownerE164 = optionalText(
+    coerceOwnerPhoneToE164ForForm(formData.owner_phone) || formData.owner_phone,
+  );
   return {
     team_size: formData.team_size ?? null,
-    owner_name: formData.owner_name,
-    owner_email: formData.owner_email,
+    owner_name: optionalText(formData.owner_name),
+    owner_email: optionalText(formData.owner_email),
     owner_phone: ownerE164,
-    date_of_birth: formData.date_of_birth ?? null,
+    date_of_birth: optionalText(formData.date_of_birth) ?? null,
     terminal_ownership_status: formData.terminal_ownership_status ?? null,
     terminal_provider: formData.terminal_provider ?? null,
     terminal_provider_other: formData.terminal_provider_other ?? null,
@@ -234,7 +238,7 @@ export function buildSubmitPayload(formData: Partial<OnboardingFormData>): Recor
     previous_software: formData.previous_software ?? null,
     previous_software_other: formData.previous_software_other ?? null,
     phone: ownerE164,
-    email: formData.owner_email,
+    email: optionalText(formData.owner_email),
     address: {
       line1: formData.address?.line1 || "",
       line2: formData.address?.line2 ?? null,

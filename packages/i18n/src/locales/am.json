@@ -354,7 +354,8 @@
       "payment-methods": "Choose accepted payment methods",
       "payout": "Add a payout bank account",
       "availability": "Set operating hours",
-      "identity-verification": "Verify your identity for the trust badge"
+      "identity-verification": "Verify your identity for the trust badge",
+      "cancellation-policy": "Set your cancellation policy"
     },
     "waitlistScreen": {
       "title": "Waitlist",
@@ -941,7 +942,10 @@
           "skipForNow": "Skip for now",
           "skipA11y": "Skip this step",
           "submitA11y": "Submit setup",
-          "nextA11y": "Next step"
+          "nextA11y": "Next step",
+          "existingProfileTitle": "Profile already created",
+          "existingProfileBody": "Your business profile is set up. Use the setup checklist to change details — edits here are not saved.",
+          "openChecklist": "Open setup checklist"
         },
         "accountStatusGuard": {
           "title": "Account check needed",
@@ -3310,7 +3314,8 @@
           "billedThroughStripeTitle": "Billed through Stripe",
           "billedThroughStripeBody": "Update your card or view invoices in the secure Stripe billing portal. Tap Manage billing below.",
           "stripeManageUnavailable": "Stripe billing is not set up yet. Complete checkout first, then try again.",
-          "paystackManageUnavailable": "This plan is not on Paystack recurring billing. Complete checkout or contact support."
+          "paystackManageUnavailable": "This plan is not on Paystack recurring billing. Complete checkout or contact support.",
+          "planChangeScheduled": "Plan change scheduled. Changes on {{when}}."
         },
         "moreTab": {
           "sectionGrowBusiness": "Grow your business",
@@ -4615,7 +4620,9 @@
               "yes": "Yes",
               "maybe_later": "Maybe later",
               "no": "No"
-            }
+            },
+            "bookingProtectionTitle": "Booking protection",
+            "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings."
           },
           "software": {
             "intro": "Optional — helps us understand where you're coming from. We'll tailor import tips and onboarding hints.",
@@ -5193,7 +5200,8 @@
           "runningBehindSheetTitle": "Running behind?",
           "staffFilteredByService": "Showing team members assigned to this service.",
           "addressOutsideArea": "This address is outside your service area.",
-          "addressValidateFailed": "Could not validate this address. Check your connection and try again."
+          "addressValidateFailed": "Could not validate this address. Check your connection and try again.",
+          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}"
         },
         "expressBooking": {
           "invalidJson": "Invalid JSON.",
@@ -7933,7 +7941,8 @@
           "optionalComment": "Optional comment",
           "submitRating": "Submit rating",
           "thanks": "Thanks!",
-          "freshCaption": "Fresh {{name}}"
+          "freshCaption": "Fresh {{name}}",
+          "shareBookingLink": "Share booking link"
         },
         "advancedPricing": {
           "title": "Advanced pricing",
@@ -9456,7 +9465,8 @@
           "safetyUseForm": "Les rapports de sécurité sont envoyés directement à notre équipe – veuillez utiliser le formulaire complet.",
           "chatAiDisclaimer": "L'IA peut faire des erreurs : vous pouvez parler à une personne à tout moment après la création de votre ticket.",
           "startChat": "Démarrer le chat",
-          "chatBack": "Retour"
+          "chatBack": "Retour",
+          "missingCategory": "a category"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -13028,6 +13038,16 @@
         "slotUnavailableTitle": "Slot not available",
         "slotOverlapBody": "Another booking or block overlaps this time."
       }
+    },
+    "bookingPolicy": {
+      "noPenalty": "No penalty",
+      "noPenaltyDesc": "Clients can cancel anytime with a full refund of amounts paid online.",
+      "flexible": "Flexible",
+      "flexibleDesc": "Free cancel until 4 hours before; 50% wallet refund if later.",
+      "standard": "Standard",
+      "standardDesc": "Free cancel until 24 hours before; 50% wallet refund if later.",
+      "strict": "Strict",
+      "strictDesc": "48-hour notice, 50% deposit, and no-show protection."
     }
   },
   "customer": {
@@ -15543,7 +15563,18 @@
           "cashRefundConfirmed": "Thank you — your remboursement is confirmé.",
           "cashRefundDisputed": "We flagged this remboursement for avis.",
           "cancelPreviewSheetTitle": "Annuler this réservation?",
-          "cancelPreviewInPersonRefund": "Remboursement due in person: {{currency}} {{amount}}"
+          "cancelPreviewInPersonRefund": "Remboursement due in person: {{currency}} {{amount}}",
+          "cancelPreviewPenaltyWaivedPending": "No fee while payment is still pending.",
+          "cancelPreviewPenaltyWaivedGrace": "You're within the grace period — no cancellation fee.",
+          "cancelPreviewPenaltyWaivedRescheduled": "No fee — the provider rescheduled this appointment.",
+          "cancelPreviewPenaltyWaivedNoPenaltyPolicy": "This provider's policy has no cancellation penalty.",
+          "cancelPreviewPenaltyWaivedProvider": "The provider will cancel without a customer penalty.",
+          "payRemainingTipTitle": "Add a tip (optional)",
+          "payRemainingNoTip": "No tip",
+          "payRemainingTipPercentButtonA11y": "{{percent}}% tip, {{amount}}",
+          "payRemainingCustomTip": "Custom",
+          "payRemainingCustomTipPlaceholder": "Tip amount",
+          "payRemainingTipLine": "Tip: {{amount}} — goes 100% to your provider"
         },
         "groupBookingDetail": {
           "back": "Retour",
@@ -17593,7 +17624,8 @@
       "verificationUnavailable": "La vérification automatique n'est pas disponible sur votre marché : saisissez le nom du titulaire du compte exactement tel qu'il apparaît dans votre banque.",
       "accountNameLabel": "Account holder nom",
       "save": "Enregistrer bank account",
-      "screenTitle": "Comptes bancaires"
+      "screenTitle": "Comptes bancaires",
+      "selectBank": "Select your bank"
     },
     "walletBankRefund": {
       "notEnabled": "Les remboursements bancaires ne sont pas disponibles sur votre marché pour le moment.",
@@ -17838,7 +17870,10 @@
     "tipPercentButtonA11y": "Pourboire {{percent}} %, {{amount}}",
     "cancelPreviousWithFeeBody": "Frais d'annulation {{fee}}. {{refund}} reviendra dans votre portefeuille Beautonomi. Annuler le rendez-vous précédent ?",
     "cancelPreviousFullRefundBody": "{{refund}} reviendra dans votre portefeuille Beautonomi. Annuler le rendez-vous précédent ?",
-    "confirmCancelPrevious": "Annuler previous"
+    "confirmCancelPrevious": "Annuler previous",
+    "holdRateLimitWait": "Too many attempts. Try again in {{minutes}} min.",
+    "refundsStoreCreditNotePayAtVenue": "If you pay at the venue, refunds are handled directly with the provider — not to your card or wallet.",
+    "refundsStoreCreditNoteNoPenalty": "This provider does not charge cancellation penalties. Amounts paid online are refunded to your Beautonomi wallet."
   },
   "payments": {
     "pay": "Pay",
@@ -23389,7 +23424,15 @@
           "keepBooking": "Keep booking",
           "cancelled": "Booking cancelled",
           "cancelFailed": "Failed to cancel booking",
-          "cancelledNotifyFailed": "Booking cancelled but notification could not be sent"
+          "cancelledNotifyFailed": "Booking cancelled but notification could not be sent",
+          "initiatorLabel": "Who is cancelling?",
+          "initiatorProvider": "Provider (full refund on platform)",
+          "initiatorCustomerRequested": "Customer asked to cancel",
+          "previewLoading": "Loading refund estimate…",
+          "previewFee": "Estimated fee retained: {{currency}} {{amount}}",
+          "previewWalletRefund": "Estimated wallet refund: {{currency}} {{amount}}",
+          "previewInPersonRefund": "Refund due in person: {{currency}} {{amount}}",
+          "previewBlocked": "Cancellation is not allowed for this booking."
         },
         "statusActions": {
           "noPermission": "You do not have permission for this action",
@@ -24381,7 +24424,8 @@
           "oneDayOpen": "At least one day must be open",
           "selectPlan": "Please select a subscription plan",
           "andMoreSeeConsole": " (and {{count}} more - see console)",
-          "dobRequired": "Date of birth is required for identity verification"
+          "dobRequired": "Date of birth is required for identity verification",
+          "bookingPolicyRequired": "Please choose a booking protection preset"
         },
         "successHeadline": "You're all set!",
         "continueVerification": "Continue to verification",
@@ -24575,7 +24619,9 @@
           "payoutAccountTitle": "Bank payout account (required before go-live)",
           "payoutAccountBody": "Add your bank details in the setup checklist after this wizard — under {{path}}. Platform-held earnings cannot be withdrawn until your payout account is verified.",
           "paymentHint": "This helps us understand how you accept in-person card payments and whether we can offer better terminal options in future.",
-          "vatSarsHint": "Are you VAT registered with SARS? VAT registration is mandatory if your annual turnover is R1 million or more. If you make less than R1 million per year, you don't need to be VAT registered."
+          "vatSarsHint": "Are you VAT registered with SARS? VAT registration is mandatory if your annual turnover is R1 million or more. If you make less than R1 million per year, you don't need to be VAT registered.",
+          "bookingProtectionTitle": "Booking protection",
+          "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings."
         },
         "software": {
           "selectPlaceholder": "Select or type software name...",
@@ -28520,7 +28566,8 @@
           "priorityLow": "Low",
           "priorityMedium": "Medium",
           "priorityHigh": "High",
-          "priorityUrgent": "Urgent"
+          "priorityUrgent": "Urgent",
+          "chooseCategory": "Choose a category so we can route your request"
         },
         "team/payroll/[id]": {
           "failedToLoadPayRun": "Failed to load pay run",
@@ -29383,7 +29430,8 @@
           "support": "Support",
           "replyPlaceholder": "Write a reply…",
           "sending": "Sending…",
-          "sendReply": "Send reply"
+          "sendReply": "Send reply",
+          "assistantName": "Beautonomi Assistant"
         },
         "embed": {
           "clientUnavailable": "Client not available",
@@ -35464,6 +35512,88 @@
       "fallback_reply": "{{greeting}}\n\nDankie dat jy Beautonomi-ondersteuning gekontak het oor \"{{subject}}\" (kaartjie {{ticketNumber}}).\n\n{{escalationLine}}\n\n\n\n hierdie kaartjie.\n\nVarige groete,\nBeautonomi Ondersteuning",
       "nudge": "Sawubona,\n\nNjengoba singena ithikithi {{ticketNumber}} — siphendule {{daysSinceReply}} izinsuku ezidlule futhi sifuna ukwenza isiqiniseko sokuthi ukubonile.\nUma impendulo yethu iyixazulule inkinga, asikho isinyathelo esidingekayo. Uma usadinga usizo, phendula lapha futhi sizokucosha khona manje.",
       "csat_recovery": "{{greeting}}\n\nSiyabonga ngempendulo yakho eqotho ngethikithi {{ticketNumber}}. Ngiyaxolisa ukuthi ulwazi aluphumelelanga.\nIlungu eliphezulu lethimba lethu labasekeli libuyekeza ngokwalo okwenzekile.\n\nSinibingelela ngokufudumele, \nBeautonomi Sekela"
+    }
+  },
+  "support": {
+    "ticketCategories": {
+      "groups": {
+        "account_security": "Account & security",
+        "bookings": "Bookings & appointments",
+        "payments": "Payments & billing",
+        "messaging_providers": "Messaging & providers",
+        "products": "Products & delivery",
+        "tech": "App, website & notifications",
+        "safety": "Trust & safety",
+        "partners": "For beauty partners (providers)",
+        "feedback": "Feedback & general",
+        "legacy": "Legacy"
+      },
+      "items": {
+        "account_sign_in": "Sign-in, password & access",
+        "account_verification": "Email / phone verification",
+        "account_profile": "Profile, name, photo, or email change",
+        "account_privacy_data": "Privacy, data export, or GDPR request",
+        "account_delete": "Delete or deactivate account",
+        "account_security": "Suspicious activity or hacked account",
+        "booking_issue": "Booking details wrong or not visible",
+        "booking_reschedule_cancel": "Reschedule, cancel, or refund request",
+        "booking_provider_no_show": "Provider no-show or late arrival",
+        "marked_no_show_incorrectly": "I was marked as a no-show but I attended",
+        "booking_quality": "Service quality or didn’t match description",
+        "booking_group": "Group booking or multiple clients",
+        "booking_waitlist": "Waitlist or availability question",
+        "booking_recurring": "Recurring appointment",
+        "payment_failed_charge": "Payment failed, declined, or wrong amount",
+        "payment_refund": "Refund status or request",
+        "payment_duplicate": "Duplicate charge or billing error",
+        "payment_invoice_receipt": "Invoice, receipt, or tax document",
+        "payment_subscription": "Subscription or recurring billing (provider)",
+        "payment_gift_card": "Gift card purchase or redemption",
+        "payment_tips_wallet": "Tips, wallet, or loyalty credits",
+        "membership_billing": "Membership plan, credits, or renewal",
+        "messaging_provider_chat": "Chat with a provider (in-app messages)",
+        "provider_conduct": "Provider behaviour or professionalism",
+        "client_conduct": "Client behaviour or client no-show",
+        "provider_listing": "Wrong services, prices, or location on listing",
+        "provider_verification": "Provider verification or badge",
+        "review_rating": "Review or rating",
+        "order_status_shipping": "Product order status or shipping",
+        "order_return_product": "Return, exchange, or damaged product",
+        "order_product_question": "Product question before purchase",
+        "tech_bug_error": "Error message, crash, or page won’t load",
+        "tech_mobile_app": "Customer or provider mobile app issue",
+        "tech_notifications": "Push, email, or SMS notifications",
+        "tech_upload_media": "Photos, files, or attachments won’t upload",
+        "tech_calendar_sync": "Calendar sync (Google, Apple, etc.)",
+        "safety_report_user": "Report a user, harassment, or abuse",
+        "safety_fraud": "Fraud, scam, or suspicious listing",
+        "safety_emergency": "Urgent safety concern",
+        "provider_payouts": "Payouts or bank account",
+        "provider_dashboard": "Dashboard, analytics, or staff access",
+        "provider_catalog": "Services, add-ons, or pricing in catalogue",
+        "provider_booking_settings": "Online booking, hours, or buffers",
+        "provider_fees_commission": "Platform fees, commission, or invoices",
+        "provider_marketing_ads": "Ads, promotions, or visibility",
+        "provider_onboarding": "Verification, KYB, or setup",
+        "provider_staff_payroll": "Staff, shifts, or payroll",
+        "terminal_onboarding": "Card terminal setup",
+        "feedback_feature": "Feature idea or product feedback",
+        "feedback_complaint_platform": "Complaint about Beautonomi",
+        "feedback_accessibility": "Accessibility or assistive technology",
+        "partnership_press": "Partnership, press, or media",
+        "general_inquiry": "General question (not listed above)",
+        "payments": "Payments (legacy)"
+      },
+      "contextTypes": {
+        "booking": "Booking",
+        "product_order": "Product / ecommerce order",
+        "gift_card": "Gift card",
+        "payment": "Payment / refund",
+        "provider_onboarding": "Provider onboarding",
+        "account": "Account",
+        "technical": "Technical",
+        "other": "Other"
+      }
     }
   }
 }

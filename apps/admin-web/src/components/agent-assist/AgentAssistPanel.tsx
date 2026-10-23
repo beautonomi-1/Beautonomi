@@ -19,6 +19,7 @@ export function AgentAssistPanel({
   shadowMode,
   emptyTitle = "No AI suggestions for this item",
   emptyDescription = "When an agent drafts something for review, it will appear here.",
+  hideWhenEmpty = false,
 }: {
   targetType: string;
   targetId: string;
@@ -27,6 +28,8 @@ export function AgentAssistPanel({
   shadowMode?: boolean;
   emptyTitle?: string;
   emptyDescription?: string;
+  /** When true, render nothing if there are no pending or recent decided actions. */
+  hideWhenEmpty?: boolean;
 }) {
   const [searchParams] = useSearchParams();
   const assistId = searchParams.get("assist");
@@ -50,7 +53,7 @@ export function AgentAssistPanel({
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [assistId, q.isLoading, q.data]);
 
-  if (q.isLoading) return <AdminPageSkeleton rows={3} />;
+  if (q.isLoading) return hideWhenEmpty ? null : <AdminPageSkeleton rows={3} />;
   if (q.error) {
     if (isAdminApiAuthFailure(q.error)) return null;
     return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
@@ -64,6 +67,7 @@ export function AgentAssistPanel({
   const decided = actions.filter((a) => !PENDING_AGENT_STATUSES.has(a.status)).slice(0, 3);
 
   if (!pending.length && !decided.length) {
+    if (hideWhenEmpty) return null;
     return <EmptyState title={emptyTitle} description={emptyDescription} />;
   }
 

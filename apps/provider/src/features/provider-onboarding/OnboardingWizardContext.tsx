@@ -359,6 +359,9 @@ export function OnboardingWizardProvider({
             focusUnmappedRef.current,
             merged,
           );
+          if (providerExists) {
+            resolved = STEPS.length;
+          }
           while (resolved <= STEPS.length && !stepIsVisible(resolved, merged)) {
             const n = getNextStep(resolved, merged);
             if (n == null) {
@@ -430,9 +433,10 @@ export function OnboardingWizardProvider({
   }, []);
 
   useEffect(() => {
-    if (loadingDraft) return;
+    if (loadingDraft || providerProfileExists) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
+      if (isSubmittingRef.current) return;
       // Save once the user has made any meaningful progress — identity (name/email/
       // phone or a verified flag), team size, or business/address — so verification
       // state survives an app restart even before the business-details step.
@@ -452,7 +456,7 @@ export function OnboardingWizardProvider({
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [formData, currentStep, loadingDraft, persistDraft]);
+  }, [formData, currentStep, loadingDraft, persistDraft, providerProfileExists]);
 
   // Auto-migrate currentStep when the form changes make it invisible — e.g.
   // toggling business_type away from "mobile" hides step 9 (Service zones).
@@ -674,7 +678,16 @@ export function OnboardingWizardProvider({
       isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
-  }, [formData, refreshProvider, router, user?.id, providerProfileExists, currentStep]);
+  }, [
+    formData,
+    refreshProvider,
+    router,
+    user?.id,
+    providerProfileExists,
+    currentStep,
+    validateOptions,
+    paystackCheckout.waitForCheckout,
+  ]);
 
   const selectedPlanIsFree =
     formData.selected_plan_is_free ??
