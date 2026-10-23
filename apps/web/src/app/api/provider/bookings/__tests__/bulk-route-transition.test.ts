@@ -145,4 +145,32 @@ describe("POST /api/provider/bookings/bulk transition gating", () => {
       }),
     );
   });
+
+  it("bulk delete sets cancelled_by to the provider user", async () => {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    vi.mocked(getSupabaseAdmin).mockReturnValue(
+      createAdminClient([
+        {
+          id: "booking-del",
+          status: "confirmed",
+          payment_status: "paid",
+          version: 1,
+        },
+      ]) as never,
+    );
+
+    const response = await POST(
+      bulkRequest({ action: "delete", booking_ids: ["booking-del"] }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.success_count).toBe(1);
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "cancelled",
+        cancelled_by: "provider-user-1",
+      }),
+    );
+  });
 });

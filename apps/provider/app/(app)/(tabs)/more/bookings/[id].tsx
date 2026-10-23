@@ -2378,7 +2378,10 @@ export default function BookingDetailScreen() {
   }
 
   const isConflictError = (msg: string | null) =>
-    msg != null && msg.includes("modified by another user");
+    msg != null &&
+    (msg.includes("modified by another user") ||
+      msg.includes("This booking changed, reload") ||
+      msg.includes("CONFLICT"));
 
   /**
    * Uses the same DB transition rules as PATCH /api/provider/bookings/[id] on web

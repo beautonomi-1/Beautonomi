@@ -181,6 +181,8 @@ export async function DELETE(
       .from("bookings")
       .update({
         status: "cancelled",
+        cancelled_at: new Date().toISOString(),
+        cancelled_by: user.id,
         cancellation_reason: "Client left waiting room",
       })
       .eq("id", id);

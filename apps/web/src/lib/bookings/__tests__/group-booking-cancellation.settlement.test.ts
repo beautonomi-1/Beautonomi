@@ -10,6 +10,8 @@ const mockMatchWaitlist = vi.fn();
 
 let claimableIds = new Set<string>();
 const statusUpdates: string[] = [];
+let childUpdateShouldError = false;
+let groupStatusUpdated = false;
 
 vi.mock("../group-booking", () => ({
   getGroupBooking: (...args: unknown[]) => mockGetGroupBooking(...args),
@@ -48,6 +50,9 @@ vi.mock("@/lib/bookings/bookings-admin-write", () => ({
           },
           not: () => chain,
           select: async () => {
+            if (childUpdateShouldError) {
+              return { data: null, error: { message: "check violation" } };
+            }
             if (!claimableIds.has(id)) return { data: [], error: null };
             claimableIds.delete(id);
             statusUpdates.push(id);
@@ -96,7 +101,14 @@ function supabaseFor(linkedByGroup: Array<{ id: string; status: string }>) {
         };
       }
       if (table === "group_bookings") {
-        return { update: () => ({ eq: async () => ({ error: null }) }) };
+        return {
+          update: () => ({
+            eq: async () => {
+              groupStatusUpdated = true;
+              return { error: null };
+            },
+          }),
+        };
       }
       throw new Error(`unexpected table ${table}`);
     },
@@ -107,6 +119,8 @@ describe("cancelGroupBooking settlement", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     statusUpdates.length = 0;
+    childUpdateShouldError = false;
+    groupStatusUpdated = false;
     mockMatchWaitlist.mockResolvedValue(undefined);
   });
 
@@ -123,6 +137,7 @@ describe("cancelGroupBooking settlement", () => {
     });
 
     expect(result).toEqual([{ bookingId: "b-cash", walletRefund: 0, inPersonRefundDue: 200 }]);
+    expect(groupStatusUpdated).toBe(true);
   });
 
   it("online host payment: refunded to the wallet", async () => {
@@ -200,5 +215,21 @@ describe("cancelGroupBooking settlement", () => {
     expect(result.map((r) => r.bookingId).sort()).toEqual(["b-guest", "b-primary"]);
     expect(statusUpdates).toEqual(["b-guest"]);
     expect(mockSettleBookingCancellation).toHaveBeenCalledTimes(2);
+  });
+
+  it("throws when a child update errors and does not mark the group cancelled", async () => {
+    claimableIds = new Set(["b-fail"]);
+    childUpdateShouldError = true;
+    mockGetGroupBooking.mockResolvedValue({ bookings: [{ id: "b-fail", status: "confirmed" }] });
+    mockLoadOutcome.mockResolvedValue({ outcome: outcome(0, 0) });
+
+    const { cancelGroupBooking } = await import("../group-booking-cancellation");
+    await expect(
+      cancelGroupBooking(supabaseFor([]) as never, GROUP_ID, "user-1", "r", {
+        settleFinance: true,
+        financeActor: "provider",
+      }),
+    ).rejects.toThrow(/Failed to cancel group booking child b-fail/);
+    expect(groupStatusUpdated).toBe(false);
   });
 });
