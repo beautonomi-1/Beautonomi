@@ -943,9 +943,9 @@
           "skipA11y": "تخطي this خطوة",
           "submitA11y": "إرسال setup",
           "nextA11y": "التالي step",
-          "existingProfileTitle": "Profile already created",
-          "existingProfileBody": "Your business profile is set up. Use the setup checklist to change details — edits here are not saved.",
-          "openChecklist": "Open setup checklist"
+          "existingProfileTitle": "تم إنشاء الملف الشخصي بالفعل",
+          "existingProfileBody": "تم إعداد ملف نشاطك التجاري. استخدم قائمة الإعداد لتغيير التفاصيل — التعديلات هنا لا تُحفظ.",
+          "openChecklist": "فتح قائمة الإعداد"
         },
         "accountStatusGuard": {
           "title": "يلزم التحقق من الحساب",
@@ -3315,7 +3315,7 @@
           "billedThroughStripeBody": "حدّث بطاقتك أو اعرض الفواتير في بوابة الفوترة الآمنة لـ Stripe. اضغط «إدارة الفوترة» أدناه.",
           "stripeManageUnavailable": "لم يتم إعداد فوترة Stripe بعد. أكمل الدفع أولاً ثم حاول مرة أخرى.",
           "paystackManageUnavailable": "هذه الخطة ليست على فوترة Paystack المتكررة. أكمل الدفع أو تواصل مع الدعم.",
-          "planChangeScheduled": "Plan change scheduled. Changes on {{when}}."
+          "planChangeScheduled": "تمت جدولة تغيير الخطة. تسري التغييرات في {{when}}."
         },
         "moreTab": {
           "sectionGrowBusiness": "Grow your business",
@@ -4621,8 +4621,8 @@
               "maybe_later": "ربما لاحقًا",
               "no": "لا"
             },
-            "bookingProtectionTitle": "Booking protection",
-            "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings."
+            "bookingProtectionTitle": "حماية الحجز",
+            "bookingProtectionHint": "اختر كيفية التعامل مع الإلغاءات وعدم الحضور. يمكنك ضبط ذلك لاحقًا في الإعدادات."
           },
           "software": {
             "intro": "Optional — helps us understand where you're coming from. We'll tailor import tips and onboarding hints.",
@@ -5201,7 +5201,7 @@
           "staffFilteredByService": "عرض أعضاء الفريق المعيّنين لهذه الخدمة.",
           "addressOutsideArea": "هذا العنوان خارج منطقة خدمتك.",
           "addressValidateFailed": "تعذّر التحقق من هذا العنوان. تحقق من اتصالك وحاول مرة أخرى.",
-          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}"
+          "tipPercentWithAmountA11y": "إكرامية {{percent}}٪، {{amount}}"
         },
         "expressBooking": {
           "invalidJson": "JSON غير صالح.",
@@ -7942,7 +7942,7 @@
           "submitRating": "إرسال rating",
           "thanks": "شكرًا!",
           "freshCaption": "{{name}} جديد",
-          "shareBookingLink": "Share booking link"
+          "shareBookingLink": "مشاركة رابط الحجز"
         },
         "advancedPricing": {
           "title": "متقدم pricing",
@@ -9466,7 +9466,7 @@
           "chatAiDisclaimer": "يمكن للذكاء الاصطناعي أن يرتكب أخطاء — يمكنك التحدث إلى أي شخص في أي وقت بعد إنشاء تذكرتك.",
           "startChat": "ابدأ الدردشة",
           "chatBack": "رجوع",
-          "missingCategory": "a category"
+          "missingCategory": "فئة"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -15569,12 +15569,12 @@
           "payRemainingTipLine": "الإكرامية: {{amount}} — تذهب بالكامل إلى مقدم الخدمة",
           "cancelPreviewSheetTitle": "إلغاء this حجز?",
           "cancelPreviewInPersonRefund": "استرداد due in person: {{currency}} {{amount}}",
-          "cancelPreviewPenaltyWaivedPending": "No fee while payment is still pending.",
-          "cancelPreviewPenaltyWaivedGrace": "You're within the grace period — no cancellation fee.",
-          "cancelPreviewPenaltyWaivedRescheduled": "No fee — the provider rescheduled this appointment.",
-          "cancelPreviewPenaltyWaivedNoPenaltyPolicy": "This provider's policy has no cancellation penalty.",
-          "cancelPreviewPenaltyWaivedProvider": "The provider will cancel without a customer penalty.",
-          "payRemainingTipPercentButtonA11y": "{{percent}}% tip, {{amount}}"
+          "cancelPreviewPenaltyWaivedPending": "لا توجد رسوم ما دام الدفع معلّقًا.",
+          "cancelPreviewPenaltyWaivedGrace": "أنت ضمن فترة السماح — لا رسوم إلغاء.",
+          "cancelPreviewPenaltyWaivedRescheduled": "لا رسوم — أعاد مقدّم الخدمة جدولة هذا الموعد.",
+          "cancelPreviewPenaltyWaivedNoPenaltyPolicy": "سياسة مقدّم الخدمة هذا لا تتضمن غرامة إلغاء.",
+          "cancelPreviewPenaltyWaivedProvider": "سيلغي مقدّم الخدمة دون غرامة على العميل.",
+          "payRemainingTipPercentButtonA11y": "إكرامية {{percent}}٪، {{amount}}"
         },
         "groupBookingDetail": {
           "back": "رجوع",
@@ -17871,9 +17871,9 @@
     "cancelPreviousFullRefundBody": "سوف يعود {{refund}} إلى محفظتك Beautonomi. إلغاء الموعد السابق؟",
     "confirmCancelPrevious": "إلغاء previous",
     "cancelPreviousWithFeeBody": "رسوم الإلغاء {{fee}}. سيُعاد {{refund}} إلى محفظة Beautonomi. هل تريد إلغاء الموعد السابق؟",
-    "holdRateLimitWait": "Too many attempts. Try again in {{minutes}} min.",
-    "refundsStoreCreditNotePayAtVenue": "If you pay at the venue, refunds are handled directly with the provider — not to your card or wallet.",
-    "refundsStoreCreditNoteNoPenalty": "This provider does not charge cancellation penalties. Amounts paid online are refunded to your Beautonomi wallet."
+    "holdRateLimitWait": "محاولات كثيرة جدًا. أعد المحاولة خلال {{minutes}} د.",
+    "refundsStoreCreditNotePayAtVenue": "إذا دفعت في المكان، تُعالج المبالغ المستردة مباشرة مع مقدّم الخدمة — وليس إلى بطاقتك أو محفظتك.",
+    "refundsStoreCreditNoteNoPenalty": "لا يفرض مقدّم الخدمة هذا غرامات إلغاء. تُرد المبالغ المدفوعة عبر الإنترنت إلى محفظة Beautonomi."
   },
   "payments": {
     "pay": "دفع",

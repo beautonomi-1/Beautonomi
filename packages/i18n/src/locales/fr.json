@@ -943,9 +943,9 @@
           "skipA11y": "Passer this étape",
           "submitA11y": "Envoyer setup",
           "nextA11y": "Suivant step",
-          "existingProfileTitle": "Profile already created",
-          "existingProfileBody": "Your business profile is set up. Use the setup checklist to change details — edits here are not saved.",
-          "openChecklist": "Open setup checklist"
+          "existingProfileTitle": "Profil déjà créé",
+          "existingProfileBody": "Votre profil d’entreprise est prêt. Utilisez la liste de configuration pour modifier les détails — les changements ici ne sont pas enregistrés.",
+          "openChecklist": "Ouvrir la liste de configuration"
         },
         "accountStatusGuard": {
           "title": "Vérification du compte requise",
@@ -3315,7 +3315,7 @@
           "billedThroughStripeBody": "Mettez à jour votre carte ou consultez vos factures dans le portail de facturation Stripe sécurisé. Touchez Gérer la facturation ci-dessous.",
           "stripeManageUnavailable": "La facturation Stripe n’est pas encore configurée. Terminez d’abord le paiement, puis réessayez.",
           "paystackManageUnavailable": "Ce forfait n’utilise pas la facturation récurrente Paystack. Terminez le paiement ou contactez l’assistance.",
-          "planChangeScheduled": "Plan change scheduled. Changes on {{when}}."
+          "planChangeScheduled": "Changement de forfait planifié. Modifications le {{when}}."
         },
         "moreTab": {
           "sectionGrowBusiness": "Grow your business",
@@ -4621,8 +4621,8 @@
               "maybe_later": "Peut-être plus tard",
               "no": "Non"
             },
-            "bookingProtectionTitle": "Booking protection",
-            "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings."
+            "bookingProtectionTitle": "Protection des réservations",
+            "bookingProtectionHint": "Choisissez comment les annulations et les absences sont gérées. Vous pourrez affiner cela plus tard dans les paramètres."
           },
           "software": {
             "intro": "Optional — helps us understand where you're coming from. We'll tailor import tips and onboarding hints.",
@@ -5201,7 +5201,7 @@
           "staffFilteredByService": "Affichage des membres d’équipe assignés à ce service.",
           "addressOutsideArea": "Cette adresse est en dehors de votre zone de service.",
           "addressValidateFailed": "Impossible de valider cette adresse. Vérifiez votre connexion et réessayez.",
-          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}"
+          "tipPercentWithAmountA11y": "Pourboire {{percent}} %, {{amount}}"
         },
         "expressBooking": {
           "invalidJson": "JSON invalide.",
@@ -7942,7 +7942,7 @@
           "submitRating": "Envoyer rating",
           "thanks": "Merci !",
           "freshCaption": "Nouveau {{name}}",
-          "shareBookingLink": "Share booking link"
+          "shareBookingLink": "Partager le lien de réservation"
         },
         "advancedPricing": {
           "title": "Avancé pricing",
@@ -9466,7 +9466,7 @@
           "chatAiDisclaimer": "L'IA peut faire des erreurs : vous pouvez parler à une personne à tout moment après la création de votre ticket.",
           "startChat": "Démarrer le chat",
           "chatBack": "Retour",
-          "missingCategory": "a category"
+          "missingCategory": "une catégorie"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -15569,12 +15569,12 @@
           "payRemainingTipLine": "Pourboire : {{amount}} — 100 % pour votre prestataire",
           "cancelPreviewSheetTitle": "Annuler this réservation?",
           "cancelPreviewInPersonRefund": "Remboursement due in person: {{currency}} {{amount}}",
-          "cancelPreviewPenaltyWaivedPending": "No fee while payment is still pending.",
-          "cancelPreviewPenaltyWaivedGrace": "You're within the grace period — no cancellation fee.",
-          "cancelPreviewPenaltyWaivedRescheduled": "No fee — the provider rescheduled this appointment.",
-          "cancelPreviewPenaltyWaivedNoPenaltyPolicy": "This provider's policy has no cancellation penalty.",
-          "cancelPreviewPenaltyWaivedProvider": "The provider will cancel without a customer penalty.",
-          "payRemainingTipPercentButtonA11y": "{{percent}}% tip, {{amount}}"
+          "cancelPreviewPenaltyWaivedPending": "Aucuns frais tant que le paiement est encore en attente.",
+          "cancelPreviewPenaltyWaivedGrace": "Vous êtes dans la période de grâce — aucuns frais d’annulation.",
+          "cancelPreviewPenaltyWaivedRescheduled": "Aucuns frais — le prestataire a reporté ce rendez-vous.",
+          "cancelPreviewPenaltyWaivedNoPenaltyPolicy": "La politique de ce prestataire ne prévoit aucune pénalité d’annulation.",
+          "cancelPreviewPenaltyWaivedProvider": "Le prestataire annulera sans pénalité pour le client.",
+          "payRemainingTipPercentButtonA11y": "Pourboire {{percent}} %, {{amount}}"
         },
         "groupBookingDetail": {
           "back": "Retour",
@@ -17872,8 +17872,8 @@
     "cancelPreviousWithFeeBody": "Frais d'annulation {{fee}}. {{refund}} reviendra dans votre portefeuille Beautonomi. Annuler le rendez-vous précédent ?",
     "cancelPreviousFullRefundBody": "{{refund}} reviendra dans votre portefeuille Beautonomi. Annuler le rendez-vous précédent ?",
     "confirmCancelPrevious": "Annuler previous",
-    "refundsStoreCreditNotePayAtVenue": "If you pay at the venue, refunds are handled directly with the provider — not to your card or wallet.",
-    "refundsStoreCreditNoteNoPenalty": "This provider does not charge cancellation penalties. Amounts paid online are refunded to your Beautonomi wallet."
+    "refundsStoreCreditNotePayAtVenue": "Si vous payez sur place, les remboursements se font directement avec le prestataire — pas vers votre carte ou portefeuille.",
+    "refundsStoreCreditNoteNoPenalty": "Ce prestataire ne facture pas de pénalités d’annulation. Les montants payés en ligne sont remboursés sur votre portefeuille Beautonomi."
   },
   "payments": {
     "pay": "Payer",

@@ -943,9 +943,9 @@
           "skipA11y": "Tlola this step",
           "submitA11y": "romela setup",
           "nextA11y": "e latelang step",
-          "existingProfileTitle": "Profile already created",
-          "existingProfileBody": "Your business profile is set up. Use the setup checklist to change details — edits here are not saved.",
-          "openChecklist": "Open setup checklist"
+          "existingProfileTitle": "Profaele e se e entsoe",
+          "existingProfileBody": "Profaele ea khoebo ea hau e se e lokile. Sebelisa lenane la ho seta ho fetola lintlha — liphetoho mona ha li bolokoe.",
+          "openChecklist": "Bula lenane la ho seta"
         },
         "accountStatusGuard": {
           "title": "akhaonto check needed",
@@ -3315,7 +3315,7 @@
           "billedThroughStripeBody": "Dateer jou kaart op of sien fakture in die veilige Stripe-faktureringsportaal. Tik Bestuur fakturering hieronder.",
           "stripeManageUnavailable": "Stripe Tefiso is Ha e a behoa up yet. qeta ho lefa first, then leka hape.",
           "paystackManageUnavailable": "Hierdie plan is nie op Paystack-herhalende fakturering nie. Voltooi afhandeling of kontak ondersteuning.",
-          "planChangeScheduled": "Plan change scheduled. Changes on {{when}}."
+          "planChangeScheduled": "Phetoho ea moralo e reriloe. Liphetoho li qala ka {{when}}."
         },
         "moreTab": {
           "sectionGrowBusiness": "Grow your Khoebo",
@@ -4621,8 +4621,8 @@
               "maybe_later": "Maybe hamorao",
               "no": "Che"
             },
-            "bookingProtectionTitle": "Booking protection",
-            "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings."
+            "bookingProtectionTitle": "Tšireletso ea pehelo",
+            "bookingProtectionHint": "Khetha hore na ho hlakoloa le ho se fihle ho sebetsoa joang. O ka e lokisa hamorao ho Litlhophiso."
           },
           "software": {
             "intro": "Taba ea boikhethelo — e re thusa ho utloisisa hore na u tsoa hokae. Re tla hlophisa malebela a tsoang kantle ho naha le malebela a ho kena.",
@@ -5201,7 +5201,7 @@
           "staffFilteredByService": "Ho bontšoa litho tsa sehlopha tse abetsoeng tšebeletso ena.",
           "addressOutsideArea": "Aterese ena e kantle ho sebaka sa hau sa tshebeletso.",
           "addressValidateFailed": "Ha re khone ho netefatsa aterese ena. Sheba khokahanyo ea hau u leke hape.",
-          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}"
+          "tipPercentWithAmountA11y": "{{percent}}% thiphu, {{amount}}"
         },
         "expressBooking": {
           "invalidJson": "JSON. e fosahetseng.",
@@ -7942,7 +7942,7 @@
           "submitRating": "romela tekanyo",
           "thanks": "Ke a leboha!",
           "freshCaption": "{{name}} e ncha",
-          "shareBookingLink": "Share booking link"
+          "shareBookingLink": "Arolelana lehokelo la pehelo"
         },
         "advancedPricing": {
           "title": "E tsoetseng pele litheko",
@@ -9466,7 +9466,7 @@
           "chatAiDisclaimer": "AI e ka etsa liphoso - o ka bua le motho nako efe kapa efe kamora hore tekete ea hau e thehoe.",
           "startChat": "qala chat",
           "chatBack": "Morao",
-          "missingCategory": "a category"
+          "missingCategory": "sehlopha"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -15569,12 +15569,12 @@
           "payRemainingTipLine": "Thipi: {{amount}} — e ya 100% ho mofani wa hao",
           "cancelPreviewSheetTitle": "Hlakola this buking?",
           "cancelPreviewInPersonRefund": "puseletso e kolotwang ka mahlo: {{currency}} {{amount}}",
-          "cancelPreviewPenaltyWaivedPending": "No fee while payment is still pending.",
-          "cancelPreviewPenaltyWaivedGrace": "You're within the grace period — no cancellation fee.",
-          "cancelPreviewPenaltyWaivedRescheduled": "No fee — the provider rescheduled this appointment.",
-          "cancelPreviewPenaltyWaivedNoPenaltyPolicy": "This provider's policy has no cancellation penalty.",
-          "cancelPreviewPenaltyWaivedProvider": "The provider will cancel without a customer penalty.",
-          "payRemainingTipPercentButtonA11y": "{{percent}}% tip, {{amount}}"
+          "cancelPreviewPenaltyWaivedPending": "Ha ho tefiso ha kopo ea tefo e sa emetse.",
+          "cancelPreviewPenaltyWaivedGrace": "U ka hare ho nako ea mohau — ha ho tefiso ea ho hlakola.",
+          "cancelPreviewPenaltyWaivedRescheduled": "Ha ho tefiso — mofani o fetotse nako ea kopano ena.",
+          "cancelPreviewPenaltyWaivedNoPenaltyPolicy": "Leano la mofani enoa ha le na kotlo ea ho hlakola.",
+          "cancelPreviewPenaltyWaivedProvider": "Mofani o tla hlakola ntle le kotlo ea moreki.",
+          "payRemainingTipPercentButtonA11y": "{{percent}}% thiphu, {{amount}}"
         },
         "groupBookingDetail": {
           "back": "Morao",
@@ -17871,9 +17871,9 @@
     "cancelPreviousWithFeeBody": "Tefiso ea ho hlakoloa {{fee}}. {{refund}} tla kgutlela sepacheng sa Beautonomi hao. Hlakola kopano e fetileng?",
     "cancelPreviousFullRefundBody": "{{refund}} e tla khutlela sepacheng sa Beautonomi sa hao. Hlakola kopano e fetileng?",
     "confirmCancelPrevious": "Hlakola e fetileng",
-    "holdRateLimitWait": "Too many attempts. Try again in {{minutes}} min.",
-    "refundsStoreCreditNotePayAtVenue": "If you pay at the venue, refunds are handled directly with the provider — not to your card or wallet.",
-    "refundsStoreCreditNoteNoPenalty": "This provider does not charge cancellation penalties. Amounts paid online are refunded to your Beautonomi wallet."
+    "holdRateLimitWait": "Liteko tse ngata haholo. Leka hape ka mor'a metsotso e {{minutes}}.",
+    "refundsStoreCreditNotePayAtVenue": "Haeba u lefa sebakeng, dipusetso di sebetswa ka kotloloho le mofani — eseng kareteng kapa sepacheng sa hau.",
+    "refundsStoreCreditNoteNoPenalty": "Mofani enoa ha a lefise dikotlo tsa ho hlakola. Ditefiso tse lefiloeng inthaneteng di khutlisetswa sepacheng sa hau sa Beautonomi."
   },
   "payments": {
     "pay": "Lefa",

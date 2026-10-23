@@ -943,9 +943,9 @@
           "skipA11y": "Slaan oor this step",
           "submitA11y": "dien in setup",
           "nextA11y": "volgende step",
-          "existingProfileTitle": "Profile already created",
-          "existingProfileBody": "Your business profile is set up. Use the setup checklist to change details — edits here are not saved.",
-          "openChecklist": "Open setup checklist"
+          "existingProfileTitle": "Profiel reeds geskep",
+          "existingProfileBody": "Jou besigheidsprofiel is gereed. Gebruik die opstelkontrolelys om besonderhede te wysig — veranderings hier word nie gestoor nie.",
+          "openChecklist": "Maak opstelkontrolelys oop"
         },
         "accountStatusGuard": {
           "title": "rekening check needed",
@@ -3315,7 +3315,7 @@
           "billedThroughStripeBody": "Dateer jou kaart op of sien fakture in die veilige Stripe-faktureringsportaal. Tik Bestuur fakturering hieronder.",
           "stripeManageUnavailable": "Stripe Fakturering is Nie gestel nie up yet. voltooi afhandeling first, then probeer weer.",
           "paystackManageUnavailable": "Hierdie plan is nie op Paystack-herhalende fakturering nie. Voltooi afhandeling of kontak ondersteuning.",
-          "planChangeScheduled": "Plan change scheduled. Changes on {{when}}."
+          "planChangeScheduled": "Planverandering geskeduleer. Wysigings op {{when}}."
         },
         "moreTab": {
           "sectionGrowBusiness": "Grow your Besigheid",
@@ -4621,8 +4621,8 @@
               "maybe_later": "Meibe later",
               "no": "Nee"
             },
-            "bookingProtectionTitle": "Booking protection",
-            "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings."
+            "bookingProtectionTitle": "Besprekingsbeskerming",
+            "bookingProtectionHint": "Kies hoe kansellasies en wegblyers hanteer word. Jy kan dit later in Instellings verfyn."
           },
           "software": {
             "intro": "Opsioneel — help ons om te verstaan waar jy vandaan kom. Ons sal op maat invoer wenke en aan boord wenke.",
@@ -5201,7 +5201,7 @@
           "staffFilteredByService": "Wys spanlede wat aan hierdie diens toegeken is.",
           "addressOutsideArea": "Hierdie adres is buite jou diensgebied.",
           "addressValidateFailed": "Kon nie hierdie adres bevestig nie. Gaan jou verbinding na en probeer weer.",
-          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}"
+          "tipPercentWithAmountA11y": "{{percent}}% fooitjie, {{amount}}"
         },
         "expressBooking": {
           "invalidJson": "Ongeldige JSON.",
@@ -7942,7 +7942,7 @@
           "submitRating": "dien in gradering",
           "thanks": "Dankie!",
           "freshCaption": "Vars {{name}}",
-          "shareBookingLink": "Share booking link"
+          "shareBookingLink": "Deel besprekingskakel"
         },
         "advancedPricing": {
           "title": "Gevorderd pryse",
@@ -9466,7 +9466,7 @@
           "chatAiDisclaimer": "KI kan foute maak - jy kan enige tyd met 'n persoon praat nadat jou kaartjie geskep is.",
           "startChat": "begin chat",
           "chatBack": "Terug",
-          "missingCategory": "a category"
+          "missingCategory": "'n kategorie"
         },
         "vatReports": {
           "emptyValue": "—",
@@ -15573,12 +15573,12 @@
           "payRemainingTipLine": "Fooitjie: {{amount}} — gaan 100% na jou verskaffer",
           "cancelPreviewSheetTitle": "Kanselleer this bespreking?",
           "cancelPreviewInPersonRefund": "terugbetaling verskuldig persoonlik: {{currency}} {{amount}}",
-          "cancelPreviewPenaltyWaivedPending": "No fee while payment is still pending.",
-          "cancelPreviewPenaltyWaivedGrace": "You're within the grace period — no cancellation fee.",
-          "cancelPreviewPenaltyWaivedRescheduled": "No fee — the provider rescheduled this appointment.",
-          "cancelPreviewPenaltyWaivedNoPenaltyPolicy": "This provider's policy has no cancellation penalty.",
-          "cancelPreviewPenaltyWaivedProvider": "The provider will cancel without a customer penalty.",
-          "payRemainingTipPercentButtonA11y": "{{percent}}% tip, {{amount}}"
+          "cancelPreviewPenaltyWaivedPending": "Geen heffing terwyl betaling nog hangende is nie.",
+          "cancelPreviewPenaltyWaivedGrace": "Jy is binne die genadeperiode — geen kansellasiefooi nie.",
+          "cancelPreviewPenaltyWaivedRescheduled": "Geen heffing nie — die diensverskaffer het hierdie afspraak verskuif.",
+          "cancelPreviewPenaltyWaivedNoPenaltyPolicy": "Hierdie diensverskaffer se beleid het geen kansellasiestraf nie.",
+          "cancelPreviewPenaltyWaivedProvider": "Die diensverskaffer kanselleer sonder ’n kliëntestraf.",
+          "payRemainingTipPercentButtonA11y": "{{percent}}% fooitjie, {{amount}}"
         },
         "groupBookingDetail": {
           "back": "Terug",
@@ -17872,8 +17872,8 @@
     "cancelPreviousWithFeeBody": "Kansellasiefooi {{fee}}. {{refund}} sal na jou Beautonomi-beursie terugkeer. Kanselleer die vorige afspraak?",
     "cancelPreviousFullRefundBody": "{{refund}} sal na jou Beautonomi beursie terugkeer. Kanselleer die vorige afspraak?",
     "confirmCancelPrevious": "Kanselleer vorige",
-    "refundsStoreCreditNotePayAtVenue": "If you pay at the venue, refunds are handled directly with the provider — not to your card or wallet.",
-    "refundsStoreCreditNoteNoPenalty": "This provider does not charge cancellation penalties. Amounts paid online are refunded to your Beautonomi wallet."
+    "refundsStoreCreditNotePayAtVenue": "As jy by die lokaal betaal, word terugbetalings direk met die diensverskaffer hanteer — nie na jou kaart of beursie nie.",
+    "refundsStoreCreditNoteNoPenalty": "Hierdie diensverskaffer hef nie kansellasiestraf nie. Bedrae wat aanlyn betaal is, word na jou Beautonomi-beursie terugbetaal."
   },
   "payments": {
     "pay": "Betaal",
