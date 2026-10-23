@@ -130,8 +130,13 @@ export async function cancelGroupBooking(
         .eq('id', bookingId)
         .not('status', 'in', '(completed,cancelled,no_show)')
         .select('id');
+      if (error) {
+        throw new Error(
+          `Failed to cancel group booking child ${bookingId}: ${error.message}`,
+        );
+      }
       // Zero rows: a concurrent cancel already claimed this child and owns its settlement.
-      claimedForSettlement = !error && Array.isArray(claimed) && claimed.length > 0;
+      claimedForSettlement = Array.isArray(claimed) && claimed.length > 0;
     }
     if (claimedForSettlement) {
       cancelledBookingIds.push(bookingId);
@@ -188,14 +193,19 @@ export async function cancelGroupBooking(
     }
   }
 
-  // Update group booking status
-  await supabase
+  const { error: groupUpdateError } = await supabase
     .from('group_bookings')
     .update({
       status: 'cancelled',
       updated_at: new Date().toISOString(),
     })
     .eq('id', groupBookingId);
+
+  if (groupUpdateError) {
+    throw new Error(
+      `Failed to cancel group booking ${groupBookingId}: ${groupUpdateError.message}`,
+    );
+  }
 
   return childSettlements;
 }

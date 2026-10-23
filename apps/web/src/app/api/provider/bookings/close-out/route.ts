@@ -20,6 +20,10 @@ import {
   dashboardBookingLocationOrFilter,
   normalizeDashboardLocationId,
 } from "@/lib/server/provider/dashboard-booking-location-filter";
+import {
+  CLOSE_OUT_BOOKING_SELECT,
+  mirrorOfferingAliasOnCloseOutRows,
+} from "@/lib/bookings/close-out-booking-select";
 
 const OPEN_STATUSES = ["confirmed", "checked_in", "waiting", "in_progress"];
 
@@ -40,27 +44,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from("bookings")
-      .select(
-        `
-        id,
-        booking_number,
-        scheduled_at,
-        status,
-        location_type,
-        current_stage,
-        staff_id,
-        customer_id,
-        customer_running_late_at,
-        customer_running_late_minutes,
-        customer:users!bookings_customer_id_fkey(id, full_name),
-        booking_services(
-          scheduled_end_at,
-          duration_minutes,
-          staff_id,
-          offering:offerings(title, duration_minutes)
-        )
-      `,
-      )
+      .select(CLOSE_OUT_BOOKING_SELECT)
       .eq("provider_id", providerId)
       .in("status", OPEN_STATUSES)
       .gte("scheduled_at", lookbackIso)
@@ -72,12 +56,20 @@ export async function GET(request: NextRequest) {
     }
 
     const { data, error } = await query;
-    if (error) throw error;
+    if (error) {
+      console.error("[close-out] query failed", {
+        code: error.code,
+        message: error.message,
+      });
+      throw error;
+    }
 
     const { scope, staffId } = await getCalendarScopeForUser(user.id, request);
+    const withOfferingAlias = mirrorOfferingAliasOnCloseOutRows(
+      (data ?? []) as Parameters<typeof mirrorOfferingAliasOnCloseOutRows>[0],
+    );
     const scopedRows = filterBookingsByCalendarScope(
-      (data ?? []) as Array<{
-        staff_id?: string | null;
+      withOfferingAlias as Array<{
         booking_services?: Array<{ staff_id?: string | null }> | null;
       }>,
       scope,

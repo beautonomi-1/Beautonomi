@@ -106,6 +106,7 @@ export async function POST(request: NextRequest) {
             .update({
               status: "cancelled",
               cancelled_at: new Date().toISOString(),
+              cancelled_by: user.id,
               updated_at: new Date().toISOString(),
             })
             .eq("id", booking.id);

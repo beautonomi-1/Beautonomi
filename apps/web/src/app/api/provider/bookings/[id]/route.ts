@@ -29,6 +29,8 @@ import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking
 import {
   enrichBookingLifecycleFields,
 } from "@/lib/bookings/lifecycle-booking-enrichment";
+import { totalAmountAfterCancellationFeeChange } from "@/lib/bookings/cancellation-total";
+import { providerBookingUpdateErrorResponse } from "@/lib/bookings/provider-booking-update-error";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
@@ -1281,41 +1283,31 @@ export async function PATCH(
     } else if (cancelOutcome && (requestedDbStatus === "cancelled" || requestedDbStatus === "no_show")) {
       updateData.cancellation_fee = cancelOutcome.feeRetained;
     }
+    const resolvedCancellationFee = Number(
+      updateData.cancellation_fee ??
+        (currentBooking as Record<string, unknown>).cancellation_fee ??
+        0,
+    );
 
-    // Keep total_amount consistent with cancellation_fee math (DB trigger-enforced formula).
-    // This makes status-only or fee-only cancellation updates safe across web + app clients.
-    if (cancellation_fee !== undefined || requestedDbStatus === "cancelled") {
+    if (
+      requestedDbStatus === "cancelled" ||
+      requestedDbStatus === "no_show" ||
+      cancellation_fee !== undefined
+    ) {
       const current = currentBooking as Record<string, unknown>;
-      const effectiveSubtotal = Number(
-        updateData.subtotal ?? current.subtotal ?? 0
+      const currentTotal = Number(current.total_amount ?? 0);
+      const currentFee = Number(current.cancellation_fee ?? 0);
+      const adjustedTotal = totalAmountAfterCancellationFeeChange(
+        currentTotal,
+        currentFee,
+        resolvedCancellationFee,
       );
-      const effectiveDiscount = Number(
-        updateData.discount_amount ?? current.discount_amount ?? 0
-      );
-      const effectiveTax = Number(
-        updateData.tax_amount ?? current.tax_amount ?? 0
-      );
-      const effectiveServiceFee = Number(
-        updateData.service_fee_amount ?? current.service_fee_amount ?? 0
-      );
-      const effectiveTravel = Number(
-        updateData.travel_fee ?? current.travel_fee ?? 0
-      );
-      const effectiveTip = Number(
-        updateData.tip_amount ?? current.tip_amount ?? 0
-      );
-      const effectiveCancellationFee = Number(
-        updateData.cancellation_fee ?? current.cancellation_fee ?? 0
-      );
-      const normalizedTotal =
-        effectiveSubtotal -
-        effectiveDiscount +
-        effectiveTax +
-        effectiveServiceFee +
-        effectiveTravel +
-        effectiveTip -
-        Math.max(0, effectiveCancellationFee);
-      updateData.total_amount = Math.round(normalizedTotal * 100) / 100;
+      if (adjustedTotal !== undefined) {
+        updateData.total_amount = adjustedTotal;
+      } else {
+        // Same fee: leave money columns out of SET so UPDATE OF validation triggers skip.
+        delete updateData.cancellation_fee;
+      }
     }
     
     // Update location type if provided
@@ -1375,7 +1367,11 @@ export async function PATCH(
     // Use the mapped database status for the check
     const dbStatus = updateData.status;
     const locationType = (currentBooking as BookingRow)?.location_type;
-    
+
+    if (requestedDbStatus === "cancelled" || requestedDbStatus === "no_show") {
+      updateData.cancelled_by = user.id;
+    }
+
     if (dbStatus && locationType === "at_home") {
       // At-home bookings have additional stages
       if (dbStatus === "confirmed") {
@@ -1412,6 +1408,18 @@ export async function PATCH(
       .select("id");
 
     if (updateError) {
+      const mapped = providerBookingUpdateErrorResponse(
+        id,
+        updateError as {
+          code?: string;
+          message?: string;
+          details?: string;
+          hint?: string;
+        },
+      );
+      if (mapped) {
+        return mapped;
+      }
       throw updateError;
     }
 
@@ -1541,7 +1549,7 @@ export async function PATCH(
             cancelledBy: "no_show",
             currency,
             policy: null,
-            explicitCancellationFee: Number(updateData.cancellation_fee ?? 0),
+            explicitCancellationFee: resolvedCancellationFee,
             refundBookingTotal: preCancelGrossTotal,
           });
         } else {
@@ -1550,7 +1558,7 @@ export async function PATCH(
             cancelledBy: "provider",
             currency,
             policy: null,
-            explicitCancellationFee: Number(updateData.cancellation_fee ?? 0),
+            explicitCancellationFee: resolvedCancellationFee,
             refundBookingTotal: preCancelGrossTotal,
             refundRail:
               refund_rail === "terminal" || refund_rail === "wallet" ? refund_rail : undefined,
