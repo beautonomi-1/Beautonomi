@@ -15679,7 +15679,7 @@
           "cancelRunningLateA11y": "إلغاء متأخر report",
           "completionTitle": "حجز إكمال",
           "completionBody": "أنت جاهز. شكرًا لحجزك معنا.",
-          "loyaltyEarned": "لقد حصلت على 0 نقطة ولاء. لقد تمت إضافتها إلى رصيدك.",
+          "loyaltyEarned": "لقد حصلت على {{points}} نقطة ولاء. لقد تمت إضافتها إلى رصيدك.",
           "writeReviewCta": "Write a تقييم",
           "maybeLater": "ربما لاحقًا",
           "cancelReasonDefault": "عميل request",
@@ -15798,7 +15798,7 @@
           "statusPendingPayment": "قيد الانتظار دفع",
           "yourBookingCancelled": "Your حجز is ملغى",
           "participantBookingStatus": "حجز حالة",
-          "sessionStatus": "الجلسة · 0",
+          "sessionStatus": "الجلسة · {{status}}",
           "yourBookingNoShow": "تم وضع علامة على حجزك على أنه عدم حضور"
         },
         "announcements": {

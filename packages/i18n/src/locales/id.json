@@ -15650,7 +15650,7 @@
           "calTitle": "Rendez-vous with {{name}}",
           "calHouseCall": "Visite à domicile",
           "calInSalon": "Visite au salon",
-          "calServiceLine": "0 ({{minutes}} menit)",
+          "calServiceLine": "{{name}} ({{minutes}} menit)",
           "calBookingLine": "Réservation #{{number}}",
           "rescheduleCta": "Reprogrammer",
           "rescheduleA11y": "Reschedule réservation",
