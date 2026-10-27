@@ -7,12 +7,12 @@ import {
   userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
-import { recordProviderInvoicePayment } from "@/lib/invoices/record-provider-invoice-payment";
+import { invoiceAmountDue } from "@/lib/invoices/provider-invoice-status";
 
 /**
  * POST /api/provider/invoices/[id]/pay
- * Record a payment made outside the platform (EFT, cash, card machine) against
- * an invoice. Online card payment goes through `/initialize-payment` instead.
+ * Submit an off-platform payment claim (EFT, bank transfer). Creates a pending
+ * row for superadmin confirmation — it does not settle the invoice.
  */
 export async function POST(
   request: NextRequest,
@@ -40,7 +40,7 @@ export async function POST(
 
     const { data: invoice, error: invoiceError } = await admin
       .from("provider_invoices")
-      .select("id, provider_id")
+      .select("id, provider_id, total_amount, amount_paid, amount_due, status")
       .eq("id", id)
       .maybeSingle();
 
@@ -53,7 +53,11 @@ export async function POST(
       );
     }
 
-    const invPid = (invoice as { provider_id?: string | null }).provider_id;
+    const inv = invoice as {
+      provider_id?: string | null;
+      status?: string | null;
+    };
+    const invPid = inv.provider_id;
     if (!invPid) {
       return forbiddenResponse("Invalid invoice record");
     }
@@ -67,18 +71,64 @@ export async function POST(
       return forbiddenResponse("You do not have access to this invoice");
     }
 
-    // Amount validation, idempotency and the amount_paid/status trigger all live
-    // in the shared recorder so offline and gateway payments cannot diverge.
-    const result = await recordProviderInvoicePayment({
-      supabase: admin,
-      invoiceId: id,
-      amount: Number(amount),
-      paymentMethodId: paymentMethodId || null,
-      paymentDate: paymentDate || null,
-      paymentReference: paymentReference || null,
-      createdBy: permissionCheck.user!.id,
-      metadata: { source: "provider_manual" },
+    if (inv.status === "cancelled" || inv.status === "refunded" || inv.status === "paid") {
+      return handleApiError(
+        new Error("Invoice cannot accept a payment claim in this status"),
+        "Invoice cannot accept a payment claim in this status",
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+
+    const due = invoiceAmountDue(invoice as Parameters<typeof invoiceAmountDue>[0]);
+    const claimAmount = Number(amount);
+    if (claimAmount > due + 0.005) {
+      return handleApiError(
+        new Error(`Payment amount cannot exceed ${due.toFixed(2)}`),
+        `Payment amount cannot exceed ${due.toFixed(2)}`,
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+
+    const { data: existingPending } = await admin
+      .from("provider_invoice_payments")
+      .select("id")
+      .eq("invoice_id", id)
+      .eq("status", "pending")
+      .maybeSingle();
+
+    if (existingPending) {
+      return handleApiError(
+        new Error("A payment claim is already pending confirmation for this invoice"),
+        "A payment claim is already pending confirmation for this invoice",
+        "VALIDATION_ERROR",
+        409,
+      );
+    }
+
+    const { error: insertError } = await admin.from("provider_invoice_payments").insert({
+      invoice_id: id,
+      payment_method_id: paymentMethodId || null,
+      amount: claimAmount,
+      payment_date: paymentDate || new Date().toISOString().split("T")[0],
+      payment_reference: paymentReference?.trim() || null,
+      status: "pending",
+      created_by: permissionCheck.user!.id,
+      metadata: { source: "provider_eft_claim" },
     });
+
+    if (insertError) {
+      if ((insertError as { code?: string }).code === "23505") {
+        return handleApiError(
+          new Error("A payment claim is already pending confirmation for this invoice"),
+          "A payment claim is already pending confirmation for this invoice",
+          "VALIDATION_ERROR",
+          409,
+        );
+      }
+      throw insertError;
+    }
 
     const { data: updatedInvoice } = await admin
       .from("provider_invoices")
@@ -87,18 +137,11 @@ export async function POST(
       .maybeSingle();
 
     return successResponse({
-      applied: result.applied,
-      amount_applied: result.amountApplied,
+      pending: true,
+      amount_claimed: claimAmount,
       invoice: updatedInvoice,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "";
-    if (/cannot exceed|greater than 0/i.test(message)) {
-      return handleApiError(error, message, "VALIDATION_ERROR", 400);
-    }
-    if (/Invoice not found/i.test(message)) {
-      return handleApiError(error, message, "NOT_FOUND", 404);
-    }
-    return handleApiError(error, "Failed to record payment");
+    return handleApiError(error, "Failed to submit payment claim");
   }
 }

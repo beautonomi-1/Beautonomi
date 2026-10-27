@@ -20,4 +20,9 @@ describe("AdminChrome sidebar layout", () => {
   it("persists nav scroll position in session storage", () => {
     expect(chromeSource).toMatch(/admin_nav_scroll/);
   });
+
+  it("rethrows nav-counts errors so TanStack Query keeps stale badge counts", () => {
+    expect(chromeSource).toMatch(/throw e;/);
+    expect(chromeSource).not.toMatch(/status === 500[\s\S]*return \{\}/);
+  });
 });

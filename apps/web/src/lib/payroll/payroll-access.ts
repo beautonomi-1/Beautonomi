@@ -1,4 +1,10 @@
+import type { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  getStaffPermissions,
+  isProviderOwner,
+  type PermissionRequestContext,
+} from "@/lib/auth/permissions";
 
 export type PayrollAccessGate =
   | { readonly ok: true }
@@ -29,4 +35,14 @@ export async function payrollDisabledMessage(
 ): Promise<string | null> {
   const gate = await assertPayrollEnabledForProvider(supabase, providerId);
   return gate.ok === false ? gate.message : null;
+}
+
+/** Business owner or explicit `manage_payroll` (not superadmin by role alone). */
+export async function userCanManagePayroll(
+  userId: string,
+  request?: PermissionRequestContext | NextRequest,
+): Promise<boolean> {
+  if (await isProviderOwner(userId, request)) return true;
+  const perms = await getStaffPermissions(userId, undefined, request);
+  return perms.manage_payroll === true;
 }

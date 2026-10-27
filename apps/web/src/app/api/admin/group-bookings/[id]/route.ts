@@ -71,6 +71,24 @@ async function loadGroupDetail(admin: ReturnType<typeof getSupabaseAdmin>, group
     total_price?: number | null;
   };
   const participants = mapParticipants(row.booking_participants);
+  const bookingIds = participants
+    .map((p) => p.booking_id)
+    .filter((id): id is string => Boolean(id));
+  const bookingStatusById = new Map<string, string>();
+  if (bookingIds.length > 0) {
+    const { data: bookingRows, error: bookingStatusError } = await admin
+      .from("bookings")
+      .select("id, status")
+      .in("id", bookingIds);
+    if (bookingStatusError) throw bookingStatusError;
+    for (const booking of bookingRows ?? []) {
+      bookingStatusById.set(booking.id, String(booking.status ?? "").toLowerCase());
+    }
+  }
+  const participantsWithStatus = participants.map((p) => ({
+    ...p,
+    booking_status: p.booking_id ? bookingStatusById.get(p.booking_id) ?? null : null,
+  }));
 
   return {
     ...row,
@@ -81,7 +99,7 @@ async function loadGroupDetail(admin: ReturnType<typeof getSupabaseAdmin>, group
     participant_count: participants.length,
     max_participants: Number(row.max_participants ?? 0) || null,
     total_price: Number(row.total_price ?? 0),
-    participants,
+    participants: participantsWithStatus,
   };
 }
 

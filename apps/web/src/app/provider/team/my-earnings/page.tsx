@@ -30,6 +30,9 @@ interface PayStub {
   uif_contribution: number;
   net_pay: number;
   notes?: string;
+  commission_clawback?: number;
+  carry_forward_in?: number;
+  carry_forward_out?: number;
 }
 
 export default function MyEarningsPage() {
@@ -164,6 +167,24 @@ export default function MyEarningsPage() {
                       <span className="text-gray-600">{t("web.provider.pages.team/payroll/[id].tips")}</span>
                       <span>{fmtMoney(Number(stub.tips_amount))}</span>
                     </div>
+                    {Number(stub.commission_clawback) !== 0 ? (
+                      <div className="flex justify-between text-red-600">
+                        <span>{t("web.provider.pages.team/my-earnings.clawback")}</span>
+                        <span>{fmtMoney(Number(stub.commission_clawback))}</span>
+                      </div>
+                    ) : null}
+                    {Number(stub.carry_forward_in) !== 0 ? (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">{t("web.provider.pages.team/my-earnings.carryForwardIn")}</span>
+                        <span>{fmtMoney(Number(stub.carry_forward_in))}</span>
+                      </div>
+                    ) : null}
+                    {Number(stub.carry_forward_out) !== 0 ? (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">{t("web.provider.pages.team/my-earnings.carryForwardOut")}</span>
+                        <span>{fmtMoney(Number(stub.carry_forward_out))}</span>
+                      </div>
+                    ) : null}
                     <div className="flex justify-between text-red-600">
                       <span>{t("web.provider.pages.team/my-earnings.deductions")}</span>
                       <span>

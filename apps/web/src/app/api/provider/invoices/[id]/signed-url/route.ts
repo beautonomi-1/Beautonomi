@@ -8,12 +8,12 @@
 
 import { NextRequest } from "next/server";
 import {
-  requireAuthInApi,
   successResponse,
   handleApiError,
   errorResponse,
   userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   hasReceiptDownloadSigningSecret,
@@ -26,7 +26,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { user: authUser } = await requireAuthInApi(request);
+    const permissionCheck = await requirePermission("manage_finance", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const authUser = permissionCheck.user!;
+
     const { id } = await params;
     if (!id) return errorResponse("Invoice id is required", "VALIDATION_ERROR", 400);
 

@@ -137,6 +137,8 @@ describe("GET /api/me/group-bookings/[id]", () => {
     expect(body.data.paid_by).toBe("Jane Doe");
     expect(body.data.is_primary_payer).toBe(true);
     expect(body.data.participants).toHaveLength(2);
+    expect(body.data.participants[0].booking_status).toBe("confirmed");
+    expect(body.data.participants[1].booking_status).toBe("confirmed");
   }, ROUTE_TEST_TIMEOUT_MS);
 
   it("returns 404 when the user is not a participant", async () => {

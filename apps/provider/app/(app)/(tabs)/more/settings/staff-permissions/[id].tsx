@@ -4,7 +4,7 @@
  * PATCH /api/provider/staff/[id]/permissions
  */
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { View, Text, Switch, ScrollView, Alert } from "react-native";
+import { View, Text, Switch, ScrollView, Alert, TouchableOpacity } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useTranslation } from "@beautonomi/i18n";
@@ -18,12 +18,18 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
 
 interface PermissionsResponse {
-  permissions: Record<string, boolean>;
+  permissions: Record<string, boolean | string>;
+  role_id?: string | null;
+  role_name?: string | null;
 }
 interface TeamAccessPayload {
   staff_id: string | null;
   is_business_owner?: boolean;
   can_manage_team: boolean;
+}
+interface StaffSettingsPayload {
+  role?: string;
+  is_admin?: boolean;
 }
 
 /** All permissions grouped by category to match web. Order and keys align with backend StaffPermissions. */
@@ -48,6 +54,10 @@ const PERMISSION_CATEGORIES: {
       { id: "create_sales", labelKey: "createSales" },
       { id: "process_payments", labelKey: "processPayments" },
       { id: "view_reports", labelKey: "viewReports" },
+      { id: "manage_finance", labelKey: "manageFinance" },
+      { id: "manage_payroll", labelKey: "managePayroll" },
+      { id: "view_own_earnings", labelKey: "viewOwnEarnings" },
+      { id: "manage_marketing", labelKey: "manageMarketing" },
     ],
   },
   {
@@ -112,16 +122,27 @@ export default function StaffPermissionEditScreen() {
   const pe = (key: string) => t(`provider.mobile.screens.staffPermissionsEdit.${key}`) as string;
   const { id } = useLocalSearchParams<{ id: string }>();
   const [local, setLocal] = useState<Record<string, boolean>>({});
+  const [calendarScope, setCalendarScope] = useState<"own" | "all">("own");
+  const [attachedRoleId, setAttachedRoleId] = useState<string | null>(null);
+  const [attachedRoleName, setAttachedRoleName] = useState<string | null>(null);
   const { data: access } = useApi<TeamAccessPayload>("/api/provider/team-access");
   const canManageTeam =
     access?.is_business_owner === true || access?.can_manage_team === true;
+  const { data: staffSettings } = useApi<StaffSettingsPayload>(
+    id ? `/api/provider/staff/${id}/settings` : "",
+    { enabled: !!id },
+  );
+  const memberFullAccess =
+    staffSettings?.role === "provider_owner" || staffSettings?.is_admin === true;
   const isSelf = Boolean(id && access?.staff_id === id);
-  const canEdit = canManageTeam;
-  const readOnlyReason = !canEdit && isSelf
-    ? pe("readOnlySelf")
-    : !canEdit
-      ? pe("readOnlyOther")
-      : null;
+  const canEdit = canManageTeam && !memberFullAccess;
+  const readOnlyReason = memberFullAccess
+    ? pe("fullAccessMemberHint")
+    : !canManageTeam && isSelf
+      ? pe("readOnlySelf")
+      : !canManageTeam
+        ? pe("readOnlyOther")
+        : null;
   const { data, loading, error, refresh } = useApi<PermissionsResponse>(
     id ? `/api/provider/staff/${id}/permissions` : "",
     { enabled: !!id }
@@ -135,7 +156,16 @@ export default function StaffPermissionEditScreen() {
 
   useEffect(() => {
     if (data?.permissions && typeof data.permissions === "object") {
-      setLocal({ ...defaultPermissions, ...data.permissions });
+      const raw = data.permissions as Record<string, boolean | string>;
+      setCalendarScope(raw.calendar_scope === "all" ? "all" : "own");
+      const booleans = { ...defaultPermissions };
+      for (const [k, v] of Object.entries(raw)) {
+        if (k === "calendar_scope") continue;
+        if (typeof v === "boolean") booleans[k] = v;
+      }
+      setLocal(booleans);
+      setAttachedRoleId(data.role_id ?? null);
+      setAttachedRoleName(data.role_name ?? null);
     }
   }, [data, defaultPermissions]);
 
@@ -145,25 +175,47 @@ export default function StaffPermissionEditScreen() {
       Alert.alert(pe("readOnlyTitle"), readOnlyReason ?? pe("readOnlyFallback"));
       return;
     }
-    const { error } = await updatePerms(
-      `/api/provider/staff/${id}/permissions`,
-      { permissions: local }
-    );
-    if (error) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert(pe("couldNotSave"), error);
+    const saveNow = async () => {
+      const { error } = await updatePerms(
+        `/api/provider/staff/${id}/permissions`,
+        { permissions: local, calendar_scope: calendarScope },
+      );
+      if (error) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert(pe("couldNotSave"), error);
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await refresh();
+      Alert.alert(pe("updatedTitle"), pe("updatedBody"));
+    };
+    if (attachedRoleId && attachedRoleName) {
+      Alert.alert(
+        pe("detachRoleTitle"),
+        pe("detachRoleBody", { role: attachedRoleName }),
+        [
+          { text: pe("cancel"), style: "cancel" },
+          { text: pe("continueSave"), onPress: () => void saveNow() },
+        ],
+      );
       return;
     }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await refresh();
-    // §Provider-audit 2026-04: previously this screen only fired a haptic on
-    // success, so staff owners pressing Save saw no visible confirmation and
-    // repeatedly re-tapped. Surface a short confirmation alert mirroring the
-    // feedback pattern used across the provider app.
-    Alert.alert(pe("updatedTitle"), pe("updatedBody"));
-  }, [id, local, updatePerms, refresh, canEdit, readOnlyReason, t]);
+    await saveNow();
+  }, [
+    id,
+    local,
+    calendarScope,
+    updatePerms,
+    refresh,
+    canEdit,
+    readOnlyReason,
+    attachedRoleId,
+    attachedRoleName,
+    pe,
+  ]);
 
   function setPermission(key: string, value: boolean) {
+    if (!canEdit) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setLocal((p) => ({ ...p, [key]: value }));
   }
@@ -206,6 +258,32 @@ export default function StaffPermissionEditScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={twStyle("pb-8")}
       >
+        {memberFullAccess ? (
+          <Text style={twStyle("mb-4 text-sm text-gray-600")}>{pe("fullAccessMemberHint")}</Text>
+        ) : null}
+        <View style={twStyle("mb-6")}>
+          <SectionHeader title={pe("calendarScopeLabel")} />
+          <View style={twStyle("flex-row rounded-xl border border-gray-200 bg-gray-50 p-1")}>
+            {(["own", "all"] as const).map((scope) => (
+              <TouchableOpacity
+                key={scope}
+                style={twStyle(
+                  `flex-1 rounded-lg py-2.5 ${calendarScope === scope ? "bg-white shadow-sm" : ""}`,
+                )}
+                onPress={() => canEdit && setCalendarScope(scope)}
+                disabled={!canEdit}
+              >
+                <Text
+                  style={twStyle(
+                    `text-center text-xs font-medium ${calendarScope === scope ? "text-indigo-600" : "text-gray-500"}`,
+                  )}
+                >
+                  {pe(scope === "own" ? "calendarScopeOwn" : "calendarScopeAll")}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
         {PERMISSION_CATEGORIES.map((group) => (
           <View key={group.titleKey} style={twStyle("mb-6")}>
             <SectionHeader title={pe(group.titleKey)} />
@@ -240,7 +318,7 @@ export default function StaffPermissionEditScreen() {
             </View>
           </View>
         ))}
-        {readOnlyReason ? (
+        {readOnlyReason && !memberFullAccess ? (
           <Text style={twStyle("mb-3 text-xs text-gray-500")}>{readOnlyReason}</Text>
         ) : null}
         <ActionButton

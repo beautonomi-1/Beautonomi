@@ -86,6 +86,54 @@ describe("notifyAdminOps", () => {
     expect(ids).toEqual([]);
   });
 
+  it("skips users who already received the dedupe key in the last 24 hours", async () => {
+    mockGetSupabaseAdmin.mockReturnValue({
+      from: (table: string) => {
+        if (table === "notifications") {
+          return {
+            select: () => ({
+              in: () => ({
+                gte: () => ({
+                  filter: async () => ({
+                    data: [{ user_id: "u2" }],
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        return {
+          select: () => ({
+            in: () => ({
+              limit: async () => ({
+                data: [{ id: "u1" }, { id: "u2" }],
+                error: null,
+              }),
+            }),
+          }),
+        };
+      },
+    });
+
+    const result = await notifyAdminOps({
+      roles: ["superadmin"],
+      type: "admin_ops_alert",
+      title: "Payout",
+      message: "Review",
+      link: "/admin/payouts",
+      dedupeKey: "payout:p1:staff_requested",
+    });
+
+    expect(result).toEqual({ inserted: 1, skipped: false });
+    expect(mockInsertNotifications).toHaveBeenCalledWith([
+      expect.objectContaining({
+        user_id: "u1",
+        data: expect.objectContaining({ dedupe_key: "payout:p1:staff_requested" }),
+      }),
+    ]);
+  });
+
   it("delegates insert to insertNotifications without swallowing await", async () => {
     mockGetSupabaseAdmin.mockReturnValue({
       from: () => ({

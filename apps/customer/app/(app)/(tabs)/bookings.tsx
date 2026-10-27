@@ -24,7 +24,8 @@ import { BookingCardSkeleton } from "@/components/Skeleton";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { getTenantLocaleTag } from "@/lib/locale";
-import { getBookingLifecycleDisplay, getBookingPaymentDisplay } from "@beautonomi/utils";
+import { getBookingPaymentDisplay } from "@beautonomi/utils";
+import { customerPaymentDisplayLabel, customerStatusPillLabel } from "@/lib/customer-booking-display-labels";
 import { useTranslation } from "@beautonomi/i18n";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
@@ -67,12 +68,12 @@ function useStatusStyles(): Record<string, { bg: string; text: string; label?: s
   const { t } = useTranslation();
   const bk = (key: string) => t(`customer.mobile.tabs.bookings.${key}`) as string;
   return {
-    confirmed: { bg: "#DCFCE7", text: "#15803D" },
+    confirmed: { bg: "#DCFCE7", text: "#15803D", label: bk("statusConfirmed") },
     pending: { bg: "#FEF9C3", text: "#A16207", label: bk("statusAwaitingProvider") },
     pending_payment: { bg: "#FEF3C7", text: "#92400E", label: bk("statusPendingPayment") },
-    cancelled: { bg: "#FEE2E2", text: "#B91C1C" },
-    completed: { bg: "#DBEAFE", text: "#1E40AF" },
-    started: { bg: "#E0E7FF", text: "#3730A3" },
+    cancelled: { bg: "#FEE2E2", text: "#B91C1C", label: bk("statusCancelled") },
+    completed: { bg: "#DBEAFE", text: "#1E40AF", label: bk("statusCompleted") },
+    started: { bg: "#E0E7FF", text: "#3730A3", label: bk("statusInProgress") },
     in_progress: { bg: "#E0E7FF", text: "#3730A3", label: bk("statusInProgress") },
     no_show: { bg: "#F3F4F6", text: "#6B7280", label: bk("statusNoShow") },
   };
@@ -147,13 +148,6 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
   const statusStyle = statusEntry;
   const lifecycleHint = (booking as { lifecycle_hint?: "upcoming" | "late_window" | "awaiting_close_out" | "past" | null })
     .lifecycle_hint;
-  const lifecycleDisplay = getBookingLifecycleDisplay({
-    status: booking.status,
-    providerName: name,
-    paymentStatus: _bookingPaymentStatus,
-    outstandingBalance: _bookingOutstanding,
-    lifecycleHint,
-  });
   const paymentDisplay = getBookingPaymentDisplay({
     paymentStatus: _bookingPaymentStatus,
     paymentProvider: (booking as unknown as { payment_provider?: string }).payment_provider,
@@ -161,10 +155,24 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
     paymentOption: (booking as unknown as { payment_option?: string }).payment_option,
     depositRequired: (booking as unknown as { deposit_required?: boolean }).deposit_required,
   });
+  const paymentChipLabel = customerPaymentDisplayLabel(
+    {
+      paymentStatus: _bookingPaymentStatus,
+      paymentProvider: (booking as unknown as { payment_provider?: string }).payment_provider,
+      outstandingBalance: _bookingOutstanding,
+      paymentOption: (booking as unknown as { payment_option?: string }).payment_option,
+      depositRequired: (booking as unknown as { deposit_required?: boolean }).deposit_required,
+    },
+    (key, opts) =>
+      String(t(`customer.mobile.screens.bookingDetail.${key}`, opts as never)),
+  );
+  const td = (key: string, opts?: Record<string, string | number>) =>
+    String(t(`customer.mobile.screens.bookingDetail.${key}`, opts as never));
   const statusLabel =
     lifecycleHint === "awaiting_close_out"
-      ? lifecycleDisplay.label
-      : statusEntry.label || lifecycleDisplay.label;
+      ? bk("statusAwaitingCloseOut")
+      : statusEntry.label ??
+        customerStatusPillLabel(_resolvedStatus, _resolvedStatus, td);
 
   return (
     <AnimatedPressable
@@ -217,7 +225,7 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
           )}
           {(paymentDisplay.isPaymentSettled || paymentDisplay.isDepositPaid) && (
             <View style={{ backgroundColor: "#ECFDF5", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 }}>
-              <Text style={{ fontSize: 11, fontWeight: "600", color: "#047857" }}>{paymentDisplay.label}</Text>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: "#047857" }}>{paymentChipLabel}</Text>
             </View>
           )}
           {!booking.is_group_booking && booking.booking_source === "walk_in" && (

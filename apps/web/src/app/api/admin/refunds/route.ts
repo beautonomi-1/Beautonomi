@@ -23,60 +23,11 @@ import {
   type RefundQueueRow,
 } from "@/lib/admin/refund-queue-rows";
 import { parseRefundAmount } from "@/lib/admin/booking-refund-context";
-import { fetchBookingTenderSyntheticRows } from "@/lib/admin/fetch-booking-tender-rows";
 import { fetchAllPages, type PageableQuery } from "@/lib/admin/finance-ledger-tenant";
+import { buildNeedsActionRefundQueueRows } from "@/lib/admin/refund-needs-action-pipeline";
 
 const REFUND_ELIGIBLE_OR =
   "transaction_type.eq.refund,refund_amount.not.is.null,status.eq.success";
-
-async function fetchNeedsActionBookingIds(
-  supabase: ReturnType<typeof getSupabaseAdmin>,
-  tenantId: string,
-): Promise<Set<string>> {
-  const ids = new Set<string>();
-
-  const [disputes, tickets, problemRefunds, cancelledBookings] = await Promise.all([
-    supabase
-      .from("booking_disputes")
-      .select("booking_id, bookings!inner(tenant_id)")
-      .eq("status", "open")
-      .eq("bookings.tenant_id", tenantId),
-    supabase
-      .from("support_tickets")
-      .select("support_context_id")
-      .eq("support_context_type", "booking")
-      .in("category", ["payment_refund", "booking_reschedule_cancel"])
-      .in("status", ["open", "pending", "in_progress", "new"]),
-    supabase
-      .from("booking_refunds")
-      .select("booking_id, bookings!inner(tenant_id)")
-      .in("status", ["pending", "failed"])
-      .eq("bookings.tenant_id", tenantId),
-    supabase
-      .from("bookings")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .in("status", ["cancelled", "no_show"]),
-  ]);
-
-  for (const d of disputes.data ?? []) {
-    const bid = (d as { booking_id?: string }).booking_id;
-    if (bid) ids.add(String(bid));
-  }
-  for (const t of tickets.data ?? []) {
-    const bid = (t as { support_context_id?: string }).support_context_id;
-    if (bid) ids.add(String(bid));
-  }
-  for (const r of problemRefunds.data ?? []) {
-    const bid = (r as { booking_id?: string }).booking_id;
-    if (bid) ids.add(String(bid));
-  }
-  for (const b of cancelledBookings.data ?? []) {
-    ids.add(String((b as { id: string }).id));
-  }
-
-  return ids;
-}
 
 function filterQueueByTab(rows: RefundQueueRow[], status: string | null): RefundQueueRow[] {
   if (!status || status === "all") return rows;
@@ -126,8 +77,64 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
 
-    const needsActionIds =
-      status === "needs_action" ? await fetchNeedsActionBookingIds(supabase, tenantId) : null;
+    if (status === "needs_action") {
+      const { queueRows: allQueueRows, scanTruncated } = await buildNeedsActionRefundQueueRows(
+        supabase,
+        tenantId,
+        { forListPage: true },
+      );
+      const filtered = filterQueueByTab(allQueueRows, status);
+      const total = filtered.length;
+      const pageRows = filtered.slice(offset, offset + limit);
+
+      const rowsWithRefund = allQueueRows.filter((r) => r.refunded > 0);
+      const totalRefundedAmount = rowsWithRefund.reduce((sum, r) => sum + r.refunded, 0);
+
+      const statistics = {
+        total_transactions: allQueueRows.length,
+        actionable_refundable: countRefundsNeedingReviewFromQueue(allQueueRows),
+        needs_review: countRefundsNeedingReviewFromQueue(allQueueRows),
+        total_refunded_amount: totalRefundedAmount,
+        rows_with_refund_recorded: rowsWithRefund.length,
+        by_status: {
+          needs_action: countRefundsNeedingReviewFromQueue(allQueueRows),
+          explained: allQueueRows.filter(
+            (r) =>
+              !r.needs_action &&
+              r.queue_reason !== "not_applicable" &&
+              r.remaining_refundable <= 0,
+          ).length,
+          success: allQueueRows.filter((r) => r.captures.some((c) => c.status === "success")).length,
+          failed: allQueueRows.filter((r) => r.captures.some((c) => c.status === "failed")).length,
+          pending: allQueueRows.filter((r) => r.captures.some((c) => c.status === "pending")).length,
+          refunded: allQueueRows.filter((r) => r.captures.some((c) => c.status === "refunded")).length,
+          partially_refunded: allQueueRows.filter((r) =>
+            r.captures.some((c) => c.status === "partially_refunded"),
+          ).length,
+        },
+        average_refund_among_recorded:
+          rowsWithRefund.length > 0
+            ? (totalRefundedAmount / rowsWithRefund.length).toFixed(2)
+            : "0.00",
+      };
+
+      const refunds = pageRows.map((row) => ({
+        ...serializeQueueRow(row),
+        booking_refunds: (row.enriched?.booking_refunds ?? []) as unknown[],
+      }));
+
+      return successResponse({
+        refunds,
+        pagination: {
+          page,
+          limit,
+          total,
+          total_pages: Math.ceil(total / limit) || 0,
+          is_estimate: scanTruncated,
+        },
+        statistics,
+      });
+    }
 
     let bookingQuery = supabase
       .from("payment_transactions")
@@ -169,12 +176,6 @@ export async function GET(request: NextRequest) {
       .eq("booking.tenant_id", tenantId)
       .order("created_at", { ascending: false });
 
-    if (needsActionIds && needsActionIds.size > 0) {
-      bookingQuery = bookingQuery.in("booking_id", [...needsActionIds]);
-    } else if (status === "needs_action") {
-      bookingQuery = bookingQuery.in("booking.status", ["cancelled", "no_show"]);
-    }
-
     if (status && status !== "all" && status !== "needs_action" && status !== "explained") {
       bookingQuery = bookingQuery.eq("status", status);
     }
@@ -185,15 +186,13 @@ export async function GET(request: NextRequest) {
     if (endDate) bookingQuery = bookingQuery.lte("created_at", endDate);
 
     bookingQuery = bookingQuery.order("id", { ascending: false });
-    const scanMaxRows = status === "needs_action" ? 500 : 20_000;
+    const scanMaxRows = 20_000;
 
     const [bookingPage, orphanRows] = await Promise.all([
       fetchAllPages(bookingQuery as unknown as PageableQuery<RefundListRow>, {
         maxRows: scanMaxRows,
       }),
-      status === "needs_action"
-        ? Promise.resolve([])
-        : fetchOrphanRefundPaymentTxsForTenant(supabase, tenantId, {
+      fetchOrphanRefundPaymentTxsForTenant(supabase, tenantId, {
             startDate,
             endDate,
             status: status === "explained" ? null : status,
@@ -219,19 +218,6 @@ export async function GET(request: NextRequest) {
     let merged = Array.from(byId.values());
     let bookingIds = extractBookingIdsFromRefundRows(merged);
 
-    if (needsActionIds && needsActionIds.size > 0) {
-      const missing = [...needsActionIds].filter((id) => !bookingIds.includes(id));
-      if (missing.length > 0) {
-        const tenderRows = await fetchBookingTenderSyntheticRows(supabase, tenantId, missing);
-        for (const row of tenderRows) {
-          if (!byId.has(row.id)) {
-            byId.set(row.id, row);
-          }
-        }
-        merged = Array.from(byId.values());
-        bookingIds = extractBookingIdsFromRefundRows(merged);
-      }
-    }
     const refundsByBookingId = await fetchBookingRefundsForBookingIds(supabase, bookingIds);
     const withBookingRefunds = attachBookingRefundsToRows(merged, refundsByBookingId);
 

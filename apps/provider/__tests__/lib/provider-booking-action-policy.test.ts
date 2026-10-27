@@ -34,6 +34,19 @@ describe("buildProviderBookingActionModel", () => {
     expect(model.currentDbStatus).toBe("pending");
   });
 
+  it("treats pending_payment with zero outstanding like paid for confirm eligibility", () => {
+    const model = buildProviderBookingActionModel({
+      id: "booking-refunded-zero",
+      db_status: "pending_payment",
+      payment_status: "refunded",
+      outstanding_balance: 0,
+      scheduled_at: new Date().toISOString(),
+    });
+
+    expect(model.primaryListAction?.label).toBe("Confirm");
+    expect(model.currentDbStatus).toBe("pending");
+  });
+
   it("keeps pending_payment + unpaid in the cancel-only graph with a verification message", () => {
     const model = buildProviderBookingActionModel({
       id: "booking-3",
@@ -44,6 +57,19 @@ describe("buildProviderBookingActionModel", () => {
 
     expect(model.statusTargets).toEqual(["cancelled"]);
     expect(model.disabledReasons.join(" ")).toMatch(/Payment is still being verified/);
+  });
+
+  it("blocks confirm when pending_payment is unpaid and outstanding balance remains", () => {
+    const model = buildProviderBookingActionModel({
+      id: "booking-due",
+      db_status: "pending_payment",
+      payment_status: "pending",
+      outstanding_balance: 250,
+      scheduled_at: new Date().toISOString(),
+    });
+
+    expect(model.primaryListAction?.id).not.toBe("confirm");
+    expect(model.statusTargets).toEqual(["cancelled"]);
   });
 
   it("blocks at-home start service until arrival is verified", () => {

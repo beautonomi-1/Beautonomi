@@ -95,6 +95,7 @@ function buildAdminMock(rows: {
   participant?: Record<string, unknown> | null;
   updateParticipant?: Record<string, unknown> | null;
   groupUpdateError?: { message: string } | null;
+  linkedBookingStatus?: string | null;
 }) {
   const makeQuery = (result: { data: unknown; error: unknown }) => {
     const query: Record<string, unknown> = {};
@@ -135,7 +136,23 @@ function buildAdminMock(rows: {
         update: vi.fn().mockReturnValue(updateQuery),
       };
     }
-    // Linked booking sync or group status update (best-effort).
+    if (table === "bookings") {
+      const selectQuery = makeQuery({
+        data: rows.linkedBookingStatus
+          ? { status: rows.linkedBookingStatus }
+          : { status: "confirmed" },
+        error: null,
+      });
+      const updateQuery = makeQuery({
+        data: null,
+        error: rows.groupUpdateError ?? null,
+      });
+      return {
+        select: vi.fn().mockReturnValue(selectQuery),
+        update: vi.fn().mockReturnValue(updateQuery),
+      };
+    }
+    // Group status update (best-effort).
     const updateQuery = makeQuery({
       data: null,
       error: rows.groupUpdateError ?? null,
@@ -188,6 +205,20 @@ describe("POST check-in", () => {
     expect(res.status).toBe(404);
   });
 
+  it("returns 409 when the linked booking is cancelled", async () => {
+    const notCheckedIn = {
+      id: PARTICIPANT_ID,
+      booking_id: BOOKING_ID,
+      checked_in_at: null,
+    };
+    getSupabaseAdminMock.mockReturnValue(
+      buildAdminMock({ participant: notCheckedIn, linkedBookingStatus: "cancelled" }),
+    );
+
+    const res = await POST_checkIn(makeRequest(), makeParams());
+    expect(res.status).toBe(409);
+  });
+
   it("writes checked_in_at when participant has not been checked in yet", async () => {
     const notCheckedIn = {
       id: PARTICIPANT_ID,
@@ -228,6 +259,21 @@ describe("POST check-out", () => {
     POST_checkOut = mod.POST;
   });
 
+  it("returns 409 when the linked booking is a no-show", async () => {
+    const checkedIn = {
+      id: PARTICIPANT_ID,
+      booking_id: BOOKING_ID,
+      checked_in_at: "2026-05-20T08:00:00.000Z",
+      checked_out_at: null,
+    };
+    getSupabaseAdminMock.mockReturnValue(
+      buildAdminMock({ participant: checkedIn, linkedBookingStatus: "no_show" }),
+    );
+
+    const res = await POST_checkOut(makeRequest(), makeParams());
+    expect(res.status).toBe(409);
+  });
+
   it("returns 400 NOT_CHECKED_IN when participant has not been checked in", async () => {
     const notCheckedIn = {
       id: PARTICIPANT_ID,
@@ -266,5 +312,95 @@ describe("POST check-out", () => {
 
     const res = await POST_checkOut(makeRequest(), makeParams());
     expect(res.status).toBe(404);
+  });
+
+  it("marks the group completed when the last active participant checks out and another is cancelled", async () => {
+    const checkedIn = {
+      id: PARTICIPANT_ID,
+      booking_id: BOOKING_ID,
+      checked_in_at: "2026-05-20T08:00:00.000Z",
+      checked_out_at: null,
+    };
+    const afterUpdate = {
+      id: PARTICIPANT_ID,
+      booking_id: BOOKING_ID,
+      checked_out_at: "2026-05-20T09:30:00.000Z",
+    };
+    const cancelledBookingId = "booking-cancelled-999";
+    const groupCompletedUpdates: Array<Record<string, unknown>> = [];
+
+    const makeQuery = (result: { data: unknown; error: unknown }) => {
+      const query: Record<string, unknown> = {};
+      query.eq = vi.fn().mockReturnValue(query);
+      query.is = vi.fn().mockReturnValue(query);
+      query.not = vi.fn().mockReturnValue(query);
+      query.in = vi.fn().mockReturnValue(query);
+      query.select = vi.fn().mockReturnValue(query);
+      query.maybeSingle = vi.fn().mockResolvedValue(result);
+      query.single = vi.fn().mockResolvedValue(result);
+      query.then = (resolve: (value: typeof result) => unknown) => resolve(result);
+      return query;
+    };
+
+    let participantSelectCount = 0;
+    const fromMock = vi.fn().mockImplementation((table: string) => {
+      if (table === "group_bookings") {
+        return {
+          select: vi.fn().mockReturnValue(
+            makeQuery({ data: { id: GROUP_ID, provider_id: PROVIDER_ID }, error: null }),
+          ),
+          update: vi.fn().mockImplementation((payload: Record<string, unknown>) => {
+            if (payload.status === "completed") {
+              groupCompletedUpdates.push(payload);
+            }
+            return makeQuery({ data: null, error: null });
+          }),
+        };
+      }
+      if (table === "booking_participants") {
+        participantSelectCount += 1;
+        if (participantSelectCount === 1) {
+          return {
+            select: vi.fn().mockReturnValue(
+              makeQuery({ data: checkedIn, error: null }),
+            ),
+          };
+        }
+        if (participantSelectCount === 2) {
+          return {
+            update: vi.fn().mockReturnValue(makeQuery({ data: afterUpdate, error: null })),
+          };
+        }
+        return {
+          select: vi.fn().mockReturnValue(
+            makeQuery({
+              data: [
+                { id: PARTICIPANT_ID, booking_id: BOOKING_ID, checked_out_at: afterUpdate.checked_out_at },
+                { id: "p-cancelled", booking_id: cancelledBookingId, checked_out_at: null },
+              ],
+              error: null,
+            }),
+          ),
+        };
+      }
+      if (table === "bookings") {
+        return {
+          select: vi.fn().mockReturnValue(
+            makeQuery({
+              data: [{ id: cancelledBookingId, status: "cancelled" }],
+              error: null,
+            }),
+          ),
+          update: vi.fn().mockReturnValue(makeQuery({ data: null, error: null })),
+        };
+      }
+      return { update: vi.fn().mockReturnValue(makeQuery({ data: null, error: null })) };
+    });
+
+    getSupabaseAdminMock.mockReturnValue({ from: fromMock });
+
+    const res = await POST_checkOut(makeRequest(), makeParams());
+    expect(res.status).toBe(200);
+    expect(groupCompletedUpdates.some((u) => u.status === "completed")).toBe(true);
   });
 });

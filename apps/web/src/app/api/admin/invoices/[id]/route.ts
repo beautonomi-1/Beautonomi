@@ -1,29 +1,55 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireAdminSection,
+import {
+  requireSuperadmin,
   successResponse,
   handleApiError,
   notFoundResponse,
- } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
+} from "@/lib/supabase/api-helpers";
+
+const BLOCKED_STATUSES = new Set(["paid", "partially_paid", "refunded"]);
 
 /**
  * PATCH /api/admin/invoices/[id]
- * Update invoice (e.g. mark as sent) — superadmin only.
+ * Update invoice metadata — superadmin only. Settlement is via payment rows.
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
+    await requireSuperadmin(request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = await request.json();
     const { status, notes } = body;
 
-    const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (status) {
+      if (BLOCKED_STATUSES.has(String(status))) {
+        return handleApiError(
+          new Error("Settlement status is derived from payments"),
+          "Settlement status is derived from payments",
+          "VALIDATION_ERROR",
+          400,
+        );
+      }
+      if (status === "cancelled") {
+        const { data: pays } = await supabase
+          .from("provider_invoice_payments")
+          .select("amount")
+          .eq("invoice_id", id)
+          .eq("status", "completed");
+        const sum = (pays ?? []).reduce((s, p) => s + Number((p as { amount?: number }).amount ?? 0), 0);
+        if (sum > 0) {
+          return handleApiError(
+            new Error("Cannot cancel an invoice with completed payments"),
+            "Cannot cancel an invoice with completed payments",
+            "VALIDATION_ERROR",
+            400,
+          );
+        }
+      }
       updates.status = status;
       if (status === "sent") {
         updates.sent_at = new Date().toISOString();

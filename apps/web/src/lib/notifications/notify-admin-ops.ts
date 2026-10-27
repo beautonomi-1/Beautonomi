@@ -9,6 +9,28 @@ import { insertNotifications } from "@/lib/notifications/insert-notification";
 export type AdminOpsNotificationType = "admin_ops_alert" | "agent_proposal" | "support_queue";
 
 const DEFAULT_RECIPIENT_CAP = 40;
+const DEDUPE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+
+async function filterRecipientsByDedupeKey(
+  userIds: string[],
+  dedupeKey: string | undefined,
+): Promise<string[]> {
+  if (!dedupeKey || userIds.length === 0) return userIds;
+  const supabase = getSupabaseAdmin();
+  const since = new Date(Date.now() - DEDUPE_LOOKBACK_MS).toISOString();
+  const { data, error } = await supabase
+    .from("notifications")
+    .select("user_id")
+    .in("user_id", userIds)
+    .gte("created_at", since)
+    .filter("data->>dedupe_key", "eq", dedupeKey);
+  if (error) {
+    console.warn("[notifyAdminOps] dedupe lookup failed:", error.message);
+    return userIds;
+  }
+  const seen = new Set((data ?? []).map((r: { user_id: string }) => r.user_id));
+  return userIds.filter((id) => !seen.has(id));
+}
 
 export async function resolveAdminUserIdsByRoles(
   roles: UserRole[],
@@ -59,13 +81,21 @@ export async function notifyAdminOps(input: {
   data?: Record<string, unknown>;
   recipientCap?: number;
   tenantId?: string | null;
+  /** When set, skip users who received this key in the last 24 hours (read or unread). */
+  dedupeKey?: string;
 }): Promise<{ inserted: number; skipped: boolean }> {
-  const userIds = await resolveAdminUserIdsByRoles(
+  let userIds = await resolveAdminUserIdsByRoles(
     input.roles,
     input.recipientCap ?? DEFAULT_RECIPIENT_CAP,
     input.tenantId,
   );
+  userIds = await filterRecipientsByDedupeKey(userIds, input.dedupeKey);
   if (userIds.length === 0) return { inserted: 0, skipped: true };
+
+  const payloadData = {
+    ...(input.data ?? {}),
+    ...(input.dedupeKey ? { dedupe_key: input.dedupeKey } : {}),
+  };
 
   try {
     await insertNotifications(
@@ -76,7 +106,7 @@ export async function notifyAdminOps(input: {
         message: input.message,
         action_url: input.link,
         link: input.link,
-        data: input.data ?? {},
+        data: payloadData,
       })),
     );
   } catch (err) {

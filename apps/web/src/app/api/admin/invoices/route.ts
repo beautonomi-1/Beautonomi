@@ -1,8 +1,12 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireAdminSection, successResponse, handleApiError, getPaginationParams  } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
+import { requireSuperadmin, successResponse, handleApiError, getPaginationParams  } from "@/lib/supabase/api-helpers";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import {
+  applyInvoiceStatusFilter,
+  todayUtcYmd,
+  withEffectiveStatus,
+} from "@/lib/invoices/provider-invoices-query";
 
 /**
  * GET /api/admin/invoices
@@ -10,7 +14,7 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
+    await requireSuperadmin(request);
 
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
@@ -24,7 +28,8 @@ export async function GET(request: NextRequest) {
       .select(
         `
         *,
-        providers!inner(id, business_name, billing_email, billing_phone, tenant_id)
+        providers!inner(id, business_name, billing_email, billing_phone, tenant_id),
+        payments:provider_invoice_payments(id, amount, status, payment_reference, payment_date, payment_method)
       `,
         { count: "exact" }
       )
@@ -32,9 +37,8 @@ export async function GET(request: NextRequest) {
       .order("issue_date", { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (status) {
-      query = query.eq("status", status);
-    }
+    const today = todayUtcYmd();
+    query = applyInvoiceStatusFilter(query, status, today);
 
     if (providerId) {
       query = query.eq("provider_id", providerId);
@@ -47,12 +51,15 @@ export async function GET(request: NextRequest) {
     }
 
     type InvoiceRow = { providers?: { business_name?: string; [key: string]: unknown } | null; [key: string]: unknown };
-    const transformedInvoices = (invoices || []).map((invoice: InvoiceRow) => ({
-      ...invoice,
-      provider: invoice.providers
-        ? { ...invoice.providers, name: invoice.providers.business_name }
-        : null,
-    }));
+    const transformedInvoices = (invoices || []).map((invoice: InvoiceRow) => {
+      const enriched = withEffectiveStatus(invoice as Record<string, unknown>, today);
+      return {
+        ...enriched,
+        provider: invoice.providers
+          ? { ...invoice.providers, name: invoice.providers.business_name }
+          : null,
+      };
+    });
 
     return successResponse({
       invoices: transformedInvoices,

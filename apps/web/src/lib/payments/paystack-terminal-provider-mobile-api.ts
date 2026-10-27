@@ -814,15 +814,18 @@ export async function allocatePaystackTerminalPaymentMobile(
     if (!invoice) {
       return errorResponse("Invoice target not found for this provider.", "TARGET_NOT_FOUND", 404);
     }
-    const { error: invoicePayError } = await (admin.from("provider_invoice_payments") as any).insert({
-      invoice_id: entityId,
+    const { recordProviderInvoicePayment } = await import(
+      "@/lib/invoices/record-provider-invoice-payment"
+    );
+    await recordProviderInvoicePayment({
+      supabase: admin as any,
+      invoiceId: entityId,
       amount: requestedAmount,
-      payment_date: now.slice(0, 10),
-      payment_reference: payment.paystack_reference,
-      status: "completed",
-      created_by: user.id,
+      paymentReference: payment.paystack_reference,
+      paymentDate: now.slice(0, 10),
+      createdBy: user.id,
+      metadata: { source: "paystack_terminal_mobile_allocation" },
     });
-    if (invoicePayError) throw invoicePayError;
   }
 
   const { data: allocation, error: allocationError } = await (admin

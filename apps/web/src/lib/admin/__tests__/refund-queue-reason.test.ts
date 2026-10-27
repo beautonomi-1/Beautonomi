@@ -28,6 +28,18 @@ describe("deriveQueueReason", () => {
     expect(result.needs_action).toBe(false);
   });
 
+  it("still needs action when cancelled unrefunded and an open dispute exists", () => {
+    const result = deriveQueueReason({
+      bookingStatus: "cancelled",
+      paymentStatus: "paid",
+      remainingRefundable: 120,
+      hasOpenDispute: true,
+      hasGatewayCapture: true,
+    });
+    expect(result.queue_reason).toBe("open_dispute");
+    expect(result.needs_action).toBe(true);
+  });
+
   it("flags cancelled bookings with unrefunded balance", () => {
     const result = deriveQueueReason({
       bookingStatus: "cancelled",

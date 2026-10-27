@@ -98,10 +98,6 @@ export function AdminChrome() {
         if (e instanceof AdminApiError && (e.status === 403 || e.status === 401)) {
           return {} as Record<string, number>;
         }
-        // Degrade quietly: stale counts are better than a flashing error state / retry storms on 5xx.
-        if (e instanceof AdminApiError && e.status >= 500) {
-          return {} as Record<string, number>;
-        }
         throw e;
       }
     },

@@ -17,7 +17,8 @@ export async function generatePayslipHtml(
     .select(
       `
       id, gross_pay, commission_amount, hourly_amount, salary_amount, tips_amount,
-      manual_deductions, tax_deduction, uif_contribution, net_pay, notes,
+      manual_deductions, tax_deduction, uif_contribution, taxable_income,
+      commission_clawback, carry_forward_in, carry_forward_out, net_pay, notes,
       provider_pay_runs(pay_period_start, pay_period_end, currency, provider_id),
       provider_staff(id, users(full_name))
     `,
@@ -67,11 +68,15 @@ td,th{padding:8px;border-bottom:1px solid #e5e7eb;text-align:left}
 <tr><td>Salary</td><td>${num(item.salary_amount)}</td></tr>
 <tr><td>Tips</td><td>${num(item.tips_amount)}</td></tr>
 <tr class="total"><td>Gross pay</td><td>${num(item.gross_pay)}</td></tr>
+<tr><th>Adjustments</th><th></th></tr>
+<tr><td>Commission clawback</td><td>${num((item as { commission_clawback?: number }).commission_clawback)}</td></tr>
+<tr><td>Carry-forward in</td><td>${num((item as { carry_forward_in?: number }).carry_forward_in)}</td></tr>
 <tr><th>Deductions</th><th></th></tr>
 <tr><td>Manual</td><td>${num(item.manual_deductions)}</td></tr>
 <tr><td>PAYE (estimate)</td><td>${num(item.tax_deduction)}</td></tr>
 <tr><td>UIF</td><td>${num(item.uif_contribution)}</td></tr>
 <tr class="total"><td>Net pay</td><td>${num(item.net_pay)}</td></tr>
+<tr><td>Carry-forward out</td><td>${num((item as { carry_forward_out?: number }).carry_forward_out)}</td></tr>
 </table>
 ${item.notes ? `<p><em>${escapeHtml(String(item.notes))}</em></p>` : ""}
 </body></html>`;

@@ -863,17 +863,45 @@ export function slackNotifyWalletBankRefundRequested(params: {
   void tryNotifySlackEvent({
     tenantId: params.tenantId,
     environment: eventEnv(),
-    eventKey: SLACK_EVENT_KEYS.FINANCE_REFUND_REVIEW,
+    eventKey: SLACK_EVENT_KEYS.FINANCE_WALLET_BANK_REFUND_REQUESTED,
     dedupeKey: `wallet_bank_refund:${params.requestId}:requested`,
     entityType: "wallet_bank_refund_request",
     entityId: params.requestId,
     title: `Wallet bank refund requested — ${params.requestNumber}`,
     detailLines: [
       `Amount: ${params.amountLabel} (pay ${params.netLabel})`,
-      "Action: Admin → Refunds → Wallet bank refunds",
+      "Action: Admin → Refunds → Wallet → bank",
     ],
-    actionUrl: "/refunds",
+    actionUrl: "/refunds?view=wallet_bank",
   }).catch((err) => {
     console.error("[slack] wallet_bank_refund requested notify error", err);
+  });
+}
+
+/** Automatic wallet credit failed during cancellation settlement. */
+export function slackNotifyWalletCreditFailed(params: {
+  tenantId: string;
+  refundId: string;
+  bookingId: string;
+  bookingNumber?: string | null;
+  amount: number;
+  currency?: string | null;
+}) {
+  const label = params.bookingNumber || params.bookingId.slice(0, 8);
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId,
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.FINANCE_REFUND_REVIEW,
+    dedupeKey: `booking_refund:${params.refundId}:wallet_credit_failed`,
+    entityType: "booking_refund",
+    entityId: params.refundId,
+    title: `Wallet credit failed — booking ${label}`,
+    detailLines: [
+      `Amount: ${params.currency || "ZAR"} ${params.amount}`,
+      "Action: Admin → Refunds → Needs action",
+    ],
+    actionUrl: "/refunds?status=needs_action",
+  }).catch((err) => {
+    console.error("[slack] wallet_credit_failed notify error", err);
   });
 }

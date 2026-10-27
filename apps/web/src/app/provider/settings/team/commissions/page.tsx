@@ -18,6 +18,14 @@ import type { TeamMember } from "@/lib/provider-portal/types";
 import { toast } from "sonner";
 import { DollarSign, Percent, Clock, Calendar, TrendingUp, Plus, Trash2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usePermissions } from "@/hooks/usePermissions";
+import { StaffPayPlanFields } from "@/components/provider/team/StaffPayPlanFields";
+import type { PayPlanFormState } from "@/lib/payroll/pay-plan-form-state";
+import {
+  defaultPayPlanFormState,
+  payPlanFromApiRow,
+  payPlanToPostBody,
+} from "@/lib/payroll/pay-plan-form-state";
 
 interface CommissionTier {
   id?: string;
@@ -38,6 +46,9 @@ interface CommissionSettings {
 
 export default function CommissionsSettings() {
   const { t } = useTranslation();
+  const { hasPermission, isOwner } = usePermissions();
+  const canManagePayroll = isOwner || hasPermission("manage_payroll");
+  const payFieldsDisabled = !canManagePayroll;
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [settings, setSettings] = useState<CommissionSettings>({
@@ -54,6 +65,7 @@ export default function CommissionsSettings() {
   const [isSaving, setIsSaving] = useState(false);
   const [shareCancellationFee, setShareCancellationFee] = useState(false);
   const [savingPolicy, setSavingPolicy] = useState(false);
+  const [payPlan, setPayPlan] = useState<PayPlanFormState>(defaultPayPlanFormState);
   const [checklist, setChecklist] = useState<{
     staff_with_commission_enabled: number;
     staff_enabled_zero_rate: number;
@@ -132,6 +144,22 @@ export default function CommissionsSettings() {
         tips_enabled: response.data.tipsEnabled,
         tiers,
       });
+      try {
+        const plans = await fetcher.get<{ data: Record<string, unknown>[] }>(
+          `/api/provider/staff/${memberId}/pay-plans`,
+        );
+        const latest = plans.data?.[0] as Record<string, unknown> | undefined;
+        setPayPlan(
+          payPlanFromApiRow(latest, {
+            service_rate: response.data.serviceCommissionRate,
+            product_rate: response.data.productCommissionRate,
+            hourly_rate: response.data.hourlyRate,
+            base_amount: response.data.salary,
+          }),
+        );
+      } catch {
+        setPayPlan(defaultPayPlanFormState());
+      }
       // Determine compensation type based on what's set
       if (response.data.salary > 0) {
         setCompensationType("salary");
@@ -163,6 +191,21 @@ export default function CommissionsSettings() {
 
     setIsSaving(true);
     try {
+      if (!canManagePayroll) {
+        toast.error(t("web.provider.settings.pages.team/commissions.payPlanReadOnly"));
+        return;
+      }
+      await fetcher.post(
+        `/api/provider/staff/${selectedMember}/pay-plans`,
+        payPlanToPostBody(
+          payPlan,
+          settings.tiers.map((tier, i) => ({
+            min_revenue: tier.min_revenue,
+            commission_rate: tier.commission_rate,
+            tier_order: tier.tier_order ?? i,
+          })),
+        ),
+      );
       await fetcher.patch(`/api/provider/staff/${selectedMember}/commission`, {
         commission_enabled: settings.enabled,
         service_commission_rate: settings.service_commission_rate,
@@ -191,7 +234,7 @@ export default function CommissionsSettings() {
     <SettingsDetailLayout
       title={t("web.provider.settings.categories.team.items.commissions.title")}
       subtitle={t("web.provider.settings.categories.team.items.commissions.description")}
-      onSave={handleSave}
+      onSave={canManagePayroll ? handleSave : undefined}
       saveLabel={isSaving ? t("web.provider.common.saving") : t("web.provider.common.saveSettings")}
       breadcrumbs={[
         { label: t("web.provider.common.breadcrumbHome"), href: "/" },
@@ -319,9 +362,33 @@ export default function CommissionsSettings() {
             </div>
           </SectionCard>
 
+          {selectedMember && (
+            <SectionCard>
+              <h3 className="text-sm font-semibold mb-1">
+                {t("web.provider.settings.pages.team/commissions.payPlanSection")}
+              </h3>
+              {!canManagePayroll && (
+                <p className="text-xs text-gray-500 mb-3">
+                  {t("web.provider.settings.pages.team/commissions.payPlanReadOnly")}
+                </p>
+              )}
+              <StaffPayPlanFields
+                value={payPlan}
+                onChange={setPayPlan}
+                disabled={!canManagePayroll}
+              />
+            </SectionCard>
+          )}
+
           {/* Compensation Settings */}
           {selectedMember && (
             <Tabs defaultValue="commission" className="w-full">
+              {payFieldsDisabled && (
+                <p className="text-xs text-gray-500 mb-3">
+                  {t("web.provider.settings.pages.team/commissions.legacyCompensationReadOnly")}
+                </p>
+              )}
+              <fieldset disabled={payFieldsDisabled} className="min-w-0 border-0 p-0 m-0">
               <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-4 sm:mb-6">
                 <TabsTrigger value="commission" className="text-xs sm:text-sm">{t("web.provider.settings.pages.team/commissions.commission")}</TabsTrigger>
                 <TabsTrigger value="hourly" className="text-xs sm:text-sm">{t("web.provider.settings.pages.team/commissions.hourly")}</TabsTrigger>
@@ -628,6 +695,7 @@ export default function CommissionsSettings() {
                   </div>
                 </SectionCard>
               </TabsContent>
+              </fieldset>
             </Tabs>
           )}
         </div>

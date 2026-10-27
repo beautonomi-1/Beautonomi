@@ -378,15 +378,18 @@ export async function PATCH(
         if (!invoice) {
           return errorResponse("Invoice target not found for this provider.", "TARGET_NOT_FOUND", 404);
         }
-        const { error: invoicePayError } = await (supabase.from("provider_invoice_payments") as any).insert({
-          invoice_id: body.entity_id,
+        const { recordProviderInvoicePayment } = await import(
+          "@/lib/invoices/record-provider-invoice-payment"
+        );
+        await recordProviderInvoicePayment({
+          supabase: supabase as any,
+          invoiceId: body.entity_id,
           amount: allocationAmount,
-          payment_date: new Date().toISOString().slice(0, 10),
-          payment_reference: payment.paystack_reference,
-          status: "completed",
-          created_by: user.id,
+          paymentReference: payment.paystack_reference,
+          paymentDate: new Date().toISOString().slice(0, 10),
+          createdBy: user.id,
+          metadata: { source: "paystack_terminal_admin_resolve" },
         });
-        if (invoicePayError) throw invoicePayError;
       }
 
       const now = new Date().toISOString();

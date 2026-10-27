@@ -65,5 +65,15 @@ export async function notifyWalletBankRefund(
       amountLabel,
       netLabel,
     });
+    void import("@/lib/notifications/notify-finance-staff").then(({ notifyFinanceStaff }) =>
+      notifyFinanceStaff({
+        tenantId: request.tenant_id,
+        title: "Wallet → bank refund requested",
+        message: `${request.request_number}: ${amountLabel} (pay ${netLabel}). Approve and send EFT.`,
+        link: "/admin/refunds?view=wallet_bank",
+        dedupeKey: `wallet_bank_refund:${request.id}:requested`,
+        data: { request_id: request.id, request_number: request.request_number },
+      }),
+    );
   }
 }

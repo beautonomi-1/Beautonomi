@@ -43,6 +43,7 @@ type GroupBookingDetail = GroupBookingRow & {
     price: number;
     checked_in_at: string | null;
     checked_out_at: string | null;
+    booking_status?: string | null;
   }>;
   bookings?: Array<{
     id: string;
@@ -507,6 +508,11 @@ export function GroupBookingsPage() {
                           <div className="text-gray-500">
                             {p.service_name} · {formatAdminCurrency(p.price)}
                           </div>
+                          {p.booking_status ? (
+                            <span className="mt-1 inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-700">
+                              {p.booking_status.replace(/_/g, " ")}
+                            </span>
+                          ) : null}
                           <div className="text-xs text-gray-500">
                             {p.checked_in_at
                               ? `Checked in ${new Date(p.checked_in_at).toLocaleTimeString()}`

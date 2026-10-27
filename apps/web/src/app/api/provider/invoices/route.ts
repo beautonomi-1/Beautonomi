@@ -8,8 +8,15 @@ import {
   getProviderIdForUser,
   getPaginationParams,
 } from "@/lib/supabase/api-helpers";
-import { requireAnyPermission } from "@/lib/auth/requirePermission";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
+import { insertWithInvoiceNumber } from "@/lib/invoices/insert-with-invoice-number";
+import {
+  applyInvoiceStatusFilter,
+  computeInvoiceSummary,
+  todayUtcYmd,
+  withEffectiveStatus,
+} from "@/lib/invoices/provider-invoices-query";
 
 const invoiceLineItemSchema = z.object({
   id: z.string().uuid().optional(),
@@ -28,7 +35,7 @@ const createInvoiceSchema = z.object({
   issue_date: z.string().min(1),
   due_date: z.string().min(1),
   tax_rate: z.coerce.number().min(0).max(100).optional().default(0),
-  status: z.enum(["draft", "sent", "paid", "partially_paid", "overdue", "cancelled", "refunded"]).optional().default("draft"),
+  status: z.enum(["draft", "sent"]).optional().default("draft"),
   description: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
   line_items: z.array(invoiceLineItemSchema).min(1),
@@ -62,7 +69,7 @@ function currentYear() {
  */
 export async function GET(request: NextRequest) {
   try {
-    const permissionCheck = await requireAnyPermission(["view_sales", "process_payments"], request);
+    const permissionCheck = await requirePermission("manage_finance", request);
     if (!permissionCheck.authorized) return permissionCheck.response!;
     const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
@@ -83,6 +90,8 @@ export async function GET(request: NextRequest) {
     const invoiceType = searchParams.get("type");
     const dateFrom = searchParams.get("date_from");
     const dateTo = searchParams.get("date_to");
+    const q = searchParams.get("q")?.trim();
+    const today = todayUtcYmd();
 
     let query = supabase
       .from("provider_invoices")
@@ -96,8 +105,9 @@ export async function GET(request: NextRequest) {
         { count: "exact" }
       )
       .eq("provider_id", providerId);
-    if (status) {
-      query = query.eq("status", status);
+    query = applyInvoiceStatusFilter(query, status, today);
+    if (q) {
+      query = query.or(`invoice_number.ilike.%${q}%,description.ilike.%${q}%`);
     }
     if (invoiceType) {
       query = query.eq("invoice_type", invoiceType);
@@ -120,11 +130,8 @@ export async function GET(request: NextRequest) {
 
     let summaryQuery = supabase
       .from("provider_invoices")
-      .select("status, total_amount, amount_paid, amount_due")
+      .select("status, due_date, total_amount, amount_paid, amount_due")
       .eq("provider_id", providerId);
-    if (status) {
-      summaryQuery = summaryQuery.eq("status", status);
-    }
     if (invoiceType) {
       summaryQuery = summaryQuery.eq("invoice_type", invoiceType);
     }
@@ -136,42 +143,11 @@ export async function GET(request: NextRequest) {
     }
     const { data: summaryRows } = await summaryQuery;
 
-    const summary = (summaryRows || []).reduce(
-      (acc, invoice) => {
-        const row = invoice as {
-          status?: string | null;
-          total_amount?: number | null;
-          amount_paid?: number | null;
-          amount_due?: number | null;
-        };
-        const total = Number(row.total_amount ?? 0);
-        const paid = Number(row.amount_paid ?? 0);
-        // `amount_due` is a generated column; fall back for safety.
-        const due = Number.isFinite(Number(row.amount_due))
-          ? Number(row.amount_due)
-          : total - paid;
-
-        // Track money, not invoice count: a part-paid invoice contributes to
-        // both buckets, and billing the full total as outstanding would tell the
-        // provider they owe more than they do.
-        acc.paid_amount += paid;
-        if (
-          row.status === "sent" ||
-          row.status === "partially_paid" ||
-          row.status === "overdue"
-        ) {
-          acc.outstanding_amount += Math.max(0, due);
-        }
-        if (row.status === "overdue") {
-          acc.overdue_count += 1;
-        }
-        return acc;
-      },
-      { paid_amount: 0, outstanding_amount: 0, overdue_count: 0 }
-    );
+    const summary = computeInvoiceSummary(summaryRows ?? [], today);
+    const enriched = (invoices ?? []).map((inv) => withEffectiveStatus(inv as Record<string, unknown>, today));
 
     return successResponse({
-      invoices: invoices || [],
+      invoices: enriched,
       total: count || 0,
       page,
       limit,
@@ -205,61 +181,58 @@ export async function POST(request: NextRequest) {
       );
     }
     const admin = getSupabaseAdmin();
-    const { normalizedItems, subtotal, taxAmount, totalAmount } = calculateInvoiceTotals(validated.line_items, validated.tax_rate);
-    const year = currentYear();
-    const { data: lastInvoice } = await admin
-      .from("provider_invoices")
-      .select("invoice_number")
-      .like("invoice_number", `INV-${year}-%`)
-      .order("invoice_number", { ascending: false })
-      .limit(1)
+    const { data: providerRow } = await admin
+      .from("providers")
+      .select("currency")
+      .eq("id", providerId)
       .maybeSingle();
+    const currency =
+      (providerRow as { currency?: string | null } | null)?.currency ?? "ZAR";
 
-    const match = typeof lastInvoice?.invoice_number === "string" ? lastInvoice.invoice_number.match(/INV-\d{4}-(\d+)/) : null;
-    const next = match ? Number.parseInt(match[1] ?? "0", 10) + 1 : 1;
-    const invoiceNumber = `INV-${year}-${String(next).padStart(6, "0")}`;
+    const { normalizedItems, subtotal, taxAmount, totalAmount } = calculateInvoiceTotals(
+      validated.line_items,
+      validated.tax_rate,
+    );
+    const year = currentYear();
 
-    const { data: invoice, error } = await admin
-      .from("provider_invoices")
-      .insert({
-        provider_id: providerId,
-        generated_by: "admin",
-        invoice_number: invoiceNumber,
-        invoice_type: validated.invoice_type,
-        period_start: validated.period_start,
-        period_end: validated.period_end,
-        issue_date: validated.issue_date,
-        due_date: validated.due_date,
-        subtotal,
-        tax_rate: validated.tax_rate,
-        tax_amount: taxAmount,
-        total_amount: totalAmount,
-        status: validated.status,
-        description: validated.description ?? null,
-        notes: validated.notes ?? null,
-        line_items: normalizedItems,
-        created_by: user.id,
-        sent_at: validated.status === "sent" ? new Date().toISOString() : null,
-      })
-      .select()
-      .single();
+    const invoice = await insertWithInvoiceNumber(admin, year, {
+      provider_id: providerId,
+      generated_by: "admin",
+      invoice_type: validated.invoice_type,
+      period_start: validated.period_start,
+      period_end: validated.period_end,
+      issue_date: validated.issue_date,
+      due_date: validated.due_date,
+      subtotal,
+      tax_rate: validated.tax_rate,
+      tax_amount: taxAmount,
+      total_amount: totalAmount,
+      currency,
+      status: validated.status,
+      description: validated.description ?? null,
+      notes: validated.notes ?? null,
+      line_items: normalizedItems,
+      created_by: user.id,
+      sent_at: validated.status === "sent" ? new Date().toISOString() : null,
+    });
 
-    if (error) throw error;
-
-    if (invoice && normalizedItems.length) {
+    if (normalizedItems.length) {
       const { error: lineItemError } = await admin.from("provider_invoice_line_items").insert(
         normalizedItems.map((item) => ({
           invoice_id: invoice.id,
           ...item,
-        }))
+        })),
       );
-      if (lineItemError) throw lineItemError;
+      if (lineItemError) {
+        await admin.from("provider_invoices").delete().eq("id", invoice.id as string);
+        throw lineItemError;
+      }
     }
 
     const { data: created } = await admin
       .from("provider_invoices")
       .select("*, payment_methods:provider_payment_methods(id, name, type, last4), line_items:provider_invoice_line_items(*), payments:provider_invoice_payments(*)")
-      .eq("id", invoice.id)
+      .eq("id", invoice.id as string)
       .single();
 
     return successResponse(created ?? invoice);

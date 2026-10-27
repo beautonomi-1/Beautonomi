@@ -6,6 +6,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { assertPayrollEnabledForProvider } from "@/lib/payroll/payroll-access";
+import { requireManagePayroll } from "@/lib/payroll/require-manage-payroll";
 
 /**
  * GET /api/provider/reports/payroll/journal-export?pay_run_id=
@@ -13,7 +14,11 @@ import { assertPayrollEnabledForProvider } from "@/lib/payroll/payroll-access";
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner"], request);
+    const payrollCheck = await requireManagePayroll(request);
+    if (!payrollCheck.authorized) {
+      return payrollCheck.response!;
+    }
+    const { user } = payrollCheck;
     const admin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, admin, { request });
     if (!providerId) {

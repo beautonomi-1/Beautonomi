@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { addDays } from "date-fns";
 import { percentOf, sumMoney } from "@beautonomi/utils";
 import { formatDateYmd, resolveTz } from "@/lib/dates/provider-tz";
+import { insertWithInvoiceNumber } from "@/lib/invoices/insert-with-invoice-number";
 
 export type ProviderInvoiceType =
   | "platform_fee"
@@ -28,7 +29,7 @@ export interface GenerateProviderInvoiceInput {
 export interface GenerateProviderInvoiceResult {
   invoice: Record<string, unknown> | null;
   /** Set when nothing was billable and `skipIfEmpty` suppressed the invoice. */
-  skipped?: "no_billable_activity" | "already_exists";
+  skipped?: "no_billable_activity" | "already_exists" | "already_collected";
 }
 
 export class ProviderInvoiceGenerationError extends Error {
@@ -50,55 +51,6 @@ interface LineItem {
   reference_type: string | null;
   reference_id: string | null;
   metadata: Record<string, unknown>;
-}
-
-/** Postgres unique-violation. */
-function isUniqueViolation(error: unknown): boolean {
-  return String((error as { code?: string } | null)?.code ?? "") === "23505";
-}
-
-/**
- * `INV-<year>-<sequence>` is derived from the highest existing number, which two
- * concurrent generations will read identically. The unique index on
- * `invoice_number` is the real guard; this just re-reads and retries when it fires.
- */
-async function insertWithInvoiceNumber(
-  supabase: SupabaseClient,
-  year: number,
-  payload: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
-  let lastError: unknown = null;
-
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const { data: lastInvoice } = await supabase
-      .from("provider_invoices")
-      .select("invoice_number")
-      .like("invoice_number", `INV-${year}-%`)
-      .order("invoice_number", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    let sequenceNum = 1;
-    const lastNumber = (lastInvoice as { invoice_number?: string } | null)?.invoice_number;
-    if (lastNumber) {
-      const match = lastNumber.match(/INV-\d{4}-(\d+)/);
-      if (match) sequenceNum = parseInt(match[1], 10) + 1;
-    }
-    sequenceNum += attempt;
-
-    const invoiceNumber = `INV-${year}-${sequenceNum.toString().padStart(6, "0")}`;
-    const { data, error } = await supabase
-      .from("provider_invoices")
-      .insert({ ...payload, invoice_number: invoiceNumber })
-      .select()
-      .single();
-
-    if (!error && data) return data as Record<string, unknown>;
-    if (!isUniqueViolation(error)) throw error;
-    lastError = error;
-  }
-
-  throw lastError ?? new Error("Could not allocate a unique invoice number");
 }
 
 /**
@@ -238,36 +190,7 @@ export async function generateProviderInvoice(
   }
 
   if (invoiceType === "subscription") {
-    const { data: subscriptionRows, error: subError } = await supabase
-      .from("finance_transactions")
-      .select("id, amount, net, created_at, description")
-      .eq("provider_id", providerId)
-      .eq("transaction_type", "provider_subscription_payment")
-      .gte("created_at", periodStart)
-      .lte("created_at", periodEnd)
-      .order("created_at", { ascending: true });
-
-    if (!subError && subscriptionRows?.length) {
-      const totalSub = subscriptionRows.reduce(
-        (sum, r) => sum + Number((r as any).net ?? (r as any).amount ?? 0),
-        0,
-      );
-      subtotal += totalSub;
-      lineItems.push({
-        line_item_type: "subscription",
-        description: `Provider subscription (${subscriptionRows.length} payment(s) in period)`,
-        quantity: 1,
-        unit_price: totalSub,
-        total_price: totalSub,
-        reference_type: "subscription",
-        reference_id: null,
-        metadata: {
-          payment_count: subscriptionRows.length,
-          period_start: periodStart,
-          period_end: periodEnd,
-        },
-      });
-    }
+    return { invoice: null, skipped: "already_collected" };
   }
 
   if (skipIfEmpty && subtotal <= 0) {
@@ -323,10 +246,8 @@ export async function generateProviderInvoice(
     // The invoice itself carries `line_items` as JSONB, so the breakdown is not
     // lost — only the normalised reporting rows are.
     if (lineItemsError) {
-      console.error("[generate-provider-invoice] line items failed", {
-        invoiceId: invoice.id,
-        error: lineItemsError.message,
-      });
+      await supabase.from("provider_invoices").delete().eq("id", invoice.id as string);
+      throw lineItemsError;
     }
   }
 

@@ -9,12 +9,14 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { isProviderOwner, hasPermission, normalizeStaffPermissions } from "@/lib/auth/permissions";
+import { staffPermissionsToStoredJson } from "@/lib/auth/staff-permissions-payload";
 import { z } from "zod";
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
   permissions: z.record(z.string(), z.boolean()).optional(),
+  calendar_scope: z.enum(["own", "all"]).optional(),
   is_active: z.boolean().optional(),
 });
 
@@ -24,7 +26,7 @@ const updateSchema = z.object({
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
@@ -36,7 +38,7 @@ export async function PATCH(
         return errorResponse(
           "Only owners or users with Manage team can update roles.",
           "FORBIDDEN",
-          403
+          403,
         );
       }
     }
@@ -56,11 +58,10 @@ export async function PATCH(
         "Validation failed",
         "VALIDATION_ERROR",
         400,
-        validationResult.error.issues
+        validationResult.error.issues,
       );
     }
 
-    // Verify role belongs to provider
     const { data: existing } = await supabase
       .from("provider_roles")
       .select("id")
@@ -72,15 +73,21 @@ export async function PATCH(
       return notFoundResponse("Role not found");
     }
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (validationResult.data.name !== undefined) {
       updateData.name = validationResult.data.name;
     }
     if (validationResult.data.description !== undefined) {
       updateData.description = validationResult.data.description || null;
     }
-    if (validationResult.data.permissions !== undefined) {
-      updateData.permissions = normalizeStaffPermissions(validationResult.data.permissions);
+    if (
+      validationResult.data.permissions !== undefined ||
+      validationResult.data.calendar_scope !== undefined
+    ) {
+      updateData.permissions = staffPermissionsToStoredJson(
+        validationResult.data.permissions ?? {},
+        validationResult.data.calendar_scope,
+      );
     }
     if (validationResult.data.is_active !== undefined) {
       updateData.is_active = validationResult.data.is_active;
@@ -115,7 +122,7 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
@@ -127,7 +134,7 @@ export async function DELETE(
         return errorResponse(
           "Only owners or users with Manage team can delete roles.",
           "FORBIDDEN",
-          403
+          403,
         );
       }
     }
@@ -139,7 +146,6 @@ export async function DELETE(
       return notFoundResponse("Provider not found");
     }
 
-    // Verify role belongs to provider
     const { data: existing } = await supabase
       .from("provider_roles")
       .select("id")

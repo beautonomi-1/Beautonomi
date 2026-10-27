@@ -28,6 +28,13 @@ import { FetchError } from "@/lib/http/fetcher";
 import { useReferenceData } from "@/hooks/useReferenceData";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 import { toastPlanGateError } from "@/lib/subscriptions/plan-gate-toast";
+import { usePermissions } from "@/hooks/usePermissions";
+import { StaffPayPlanFields } from "@/components/provider/team/StaffPayPlanFields";
+import {
+  defaultPayPlanFormState,
+  payPlanFromApiRow,
+  payPlanToPostBody,
+} from "@/lib/payroll/pay-plan-form-state";
 
 interface TeamMemberCreateEditDialogProps {
   open: boolean;
@@ -45,11 +52,14 @@ export function TeamMemberCreateEditDialog({
   const { getOptions } = useReferenceData(["team_role", "commission_type", "working_day"]);
   const { t } = useTranslation();
   const { salons, selectedLocationId } = useProviderPortal();
+  const { hasPermission, isOwner } = usePermissions();
+  const canManagePayroll = isOwner || hasPermission("manage_payroll");
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("basic");
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [locationIds, setLocationIds] = useState<string[]>([]);
   const [serviceIds, setServiceIds] = useState<string[]>([]);
+  const [payPlan, setPayPlan] = useState(defaultPayPlanFormState);
   const [offerings, setOfferings] = useState<Array<{ id: string; title: string }>>([]);
 
   const [formData, setFormData] = useState({
@@ -103,12 +113,37 @@ export function TeamMemberCreateEditDialog({
         const loadSettings = async () => {
           try {
             const { fetcher } = await import("@/lib/http/fetcher");
-            const [settingsResponse, notifResponse] = await Promise.all([
+            const [settingsResponse, notifResponse, commissionResponse, payPlansResponse] =
+              await Promise.all([
               fetcher.get<{ data: any }>(`/api/provider/staff/${member.id}/settings`),
               fetcher.get<{ data: any }>(`/api/provider/staff/${member.id}/notifications`).catch(() => null),
+              fetcher
+                .get<{
+                  data: {
+                    serviceCommissionRate?: number;
+                    productCommissionRate?: number;
+                    hourlyRate?: number;
+                    salary?: number;
+                  };
+                }>(`/api/provider/staff/${member.id}/commission`)
+                .catch(() => null),
+              fetcher
+                .get<{ data: Record<string, unknown>[] }>(
+                  `/api/provider/staff/${member.id}/pay-plans`,
+                )
+                .catch(() => null),
             ]);
             const settings = settingsResponse.data;
             const notif = notifResponse?.data;
+            const commission = commissionResponse?.data;
+            setPayPlan(
+              payPlanFromApiRow(payPlansResponse?.data?.[0], {
+                service_rate: commission?.serviceCommissionRate ?? settings?.commission_rate ?? 0,
+                product_rate: commission?.productCommissionRate ?? 0,
+                hourly_rate: commission?.hourlyRate ?? settings?.hourly_rate ?? 0,
+                base_amount: commission?.salary ?? settings?.salary ?? 0,
+              }),
+            );
 
             setFormData({
               name: member.name || "",
@@ -287,6 +322,24 @@ export function TeamMemberCreateEditDialog({
     }
   };
 
+  const savePayPlanForStaffId = async (staffId: string) => {
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const commissionRes = await fetcher
+      .get<{
+        data: { tiers?: { minRevenue: number; commissionRate: number; tierOrder?: number }[] };
+      }>(`/api/provider/staff/${staffId}/commission`)
+      .catch(() => null);
+    const tiers = (commissionRes?.data?.tiers ?? []).map((tier, i) => ({
+      min_revenue: tier.minRevenue,
+      commission_rate: tier.commissionRate,
+      tier_order: tier.tierOrder ?? i,
+    }));
+    await fetcher.post(
+      `/api/provider/staff/${staffId}/pay-plans`,
+      payPlanToPostBody(payPlan, tiers),
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -363,6 +416,15 @@ export function TeamMemberCreateEditDialog({
           toast.warning(t("web.provider.teamMemberDialog.settingsNotSavedUpdate"));
         }
         
+        if (canManagePayroll) {
+          try {
+            await savePayPlanForStaffId(member.id);
+          } catch (payPlanErr) {
+            console.error("Failed to save pay plan:", payPlanErr);
+            toast.warning(t("web.provider.settings.pages.team/commissions.failedToSave"));
+          }
+        }
+
         toast.success(t("web.provider.teamMemberDialog.updated"));
       } else {
         // Create staff member first
@@ -422,6 +484,15 @@ export function TeamMemberCreateEditDialog({
             console.error("Failed to save settings:", error);
             // Don't fail the whole operation if settings save fails
             toast.warning(t("web.provider.teamMemberDialog.settingsNotSavedCreate"));
+          }
+
+          if (canManagePayroll) {
+            try {
+              await savePayPlanForStaffId(createdMember.id);
+            } catch (payPlanErr) {
+              console.error("Failed to save pay plan:", payPlanErr);
+              toast.warning(t("web.provider.settings.pages.team/commissions.failedToSave"));
+            }
           }
         }
         
@@ -1064,6 +1135,21 @@ export function TeamMemberCreateEditDialog({
 
                 <TabsContent value="compensation" className="mt-0 space-y-6">
               <div>
+                <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-2">{t("web.provider.settings.pages.team/commissions.payPlanSection")}</h3>
+                {!canManagePayroll && (
+                  <p className="text-xs text-gray-500 mb-3">
+                    {t("web.provider.settings.pages.team/commissions.payPlanReadOnly")}
+                  </p>
+                )}
+                <StaffPayPlanFields
+                  value={payPlan}
+                  onChange={setPayPlan}
+                  disabled={!canManagePayroll}
+                />
+              </div>
+              <Separator />
+              <fieldset disabled={!canManagePayroll} className="min-w-0 border-0 p-0 m-0">
+              <div>
                 <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-2">{t("web.provider.teamMemberDialog.compensationSettings")}</h3>
                 <p className="text-sm sm:text-base text-gray-600 mb-5 sm:mb-6 leading-relaxed">
                   {t("web.provider.teamMemberDialog.compensationHint")}
@@ -1170,6 +1256,7 @@ export function TeamMemberCreateEditDialog({
                   </div>
                 </div>
               </div>
+              </fieldset>
             </TabsContent>
 
                 <TabsContent value="settings" className="mt-0 space-y-6">

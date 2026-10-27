@@ -30,6 +30,8 @@ export type StatutoryContext = {
   employmentType: "employee" | "contractor" | "apprentice";
   statutoryMode: "auto" | "manual" | "none";
   ageYears?: number;
+  /** When set, overrides income_tax.payPeriodsPerYear from seeded rules. */
+  periodsPerYearOverride?: number;
 };
 
 export type StatutoryResult = {

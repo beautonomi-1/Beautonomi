@@ -842,6 +842,7 @@ export interface GroupBookingParticipant {
   checked_in_time?: string;
   checked_out: boolean;
   checked_out_time?: string;
+  booking_status?: string | null;
 }
 
 /**

@@ -92,6 +92,7 @@ export const adminQueryKeys = {
   walletBankRefunds: (filters: { page: number; status: string }) =>
     [...adminQueryKeys.root, "wallet-bank-refunds", "list", filters] as const,
   walletBankRefundSettings: () => [...adminQueryKeys.root, "wallet-bank-refunds", "settings"] as const,
+  autoWalletCreditSettings: () => [...adminQueryKeys.root, "auto-wallet-credit", "settings"] as const,
 
   supportTicketDetail: (id: string) => [...adminQueryKeys.root, "support-tickets", "detail", id] as const,
   agentActionsForTarget: (targetType: string, targetId: string) =>

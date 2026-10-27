@@ -8,7 +8,8 @@ import {
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getStaffPermissions, isProviderOwner } from "@/lib/auth/permissions";
+import { getStaffPermissions, hasPermission, isProviderOwner } from "@/lib/auth/permissions";
+import { providerStaffPatchFromPayPlan } from "@/lib/payroll/apply-pay-plan-to-staff";
 
 const payModelSchema = z.enum([
   "commission_only",
@@ -32,6 +33,15 @@ async function assertManagePayroll(
   }
 }
 
+async function assertViewPayPlan(
+  userId: string,
+  request: NextRequest,
+): Promise<void> {
+  if (await isProviderOwner(userId, request)) return;
+  if (await hasPermission(userId, "manage_team", undefined, request)) return;
+  await assertManagePayroll(userId, request);
+}
+
 const upsertSchema = z.object({
   effective_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   pay_model: payModelSchema,
@@ -43,6 +53,7 @@ const upsertSchema = z.object({
   tier_mode: z.enum(["retroactive", "marginal"]).optional(),
   threshold_amount: z.number().min(0).nullable().optional(),
   tiers: z.array(z.record(z.string(), z.unknown())).optional(),
+  statutory_mode: z.enum(["auto", "manual", "none"]).optional(),
 });
 
 /**
@@ -59,7 +70,7 @@ export async function GET(
     const providerId = await getProviderIdForUser(user.id, admin, { request });
     if (!providerId) return notFoundResponse("Provider not found");
 
-    await assertManagePayroll(user.id, request);
+    await assertViewPayPlan(user.id, request);
 
     const { data, error } = await admin
       .from("staff_pay_plans")
@@ -70,7 +81,24 @@ export async function GET(
       .limit(24);
 
     if (error) throw error;
-    return successResponse(data ?? []);
+
+    const { data: staffRow } = await admin
+      .from("provider_staff")
+      .select("statutory_mode")
+      .eq("id", staffId)
+      .eq("provider_id", providerId)
+      .maybeSingle();
+    const staffStatutory = staffRow?.statutory_mode ?? "auto";
+    const rows = (data ?? []).map((row, idx) =>
+      idx === 0
+        ? {
+            ...row,
+            statutory_mode: (row as { statutory_mode?: string }).statutory_mode ?? staffStatutory,
+          }
+        : row,
+    );
+
+    return successResponse(rows);
   } catch (error) {
     return handleApiError(error, "Failed to load pay plans");
   }
@@ -84,7 +112,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner"], request);
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const { id: staffId } = await params;
     const body = upsertSchema.parse(await request.json());
     const admin = getSupabaseAdmin();
@@ -139,6 +167,33 @@ export async function POST(
       .single();
 
     if (error) throw error;
+
+    const staffPatch = providerStaffPatchFromPayPlan(body);
+    if (body.statutory_mode) {
+      staffPatch.statutory_mode = body.statutory_mode;
+    }
+    await admin.from("provider_staff").update(staffPatch).eq("id", staffId);
+
+    if (body.tiers !== undefined) {
+      await admin.from("provider_staff_commission_tiers").delete().eq("staff_id", staffId);
+      if (body.tiers.length > 0) {
+        const tierRows = body.tiers.map((t, i) => {
+          const row = t as {
+            min_revenue?: number;
+            commission_rate?: number;
+            tier_order?: number;
+          };
+          return {
+            staff_id: staffId,
+            min_revenue: Number(row.min_revenue ?? 0),
+            commission_rate: Number(row.commission_rate ?? 0),
+            tier_order: row.tier_order ?? i,
+          };
+        });
+        await admin.from("provider_staff_commission_tiers").insert(tierRows);
+      }
+    }
+
     return successResponse(inserted);
   } catch (error) {
     return handleApiError(error, "Failed to save pay plan");

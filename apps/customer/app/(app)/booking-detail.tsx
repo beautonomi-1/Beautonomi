@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { View, Text, TextInput, Linking, TouchableOpacity, ScrollView, ActivityIndicator, Pressable, Alert, Share, Platform, Modal, type ViewStyle } from "react-native";
-import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, Stack, router, useFocusEffect } from "expo-router";
@@ -57,6 +57,13 @@ import {
   type CustomerTrackingStepKey,
 } from "@beautonomi/utils";
 import { pendingConfirmationSlaDisplay } from "@/lib/pending-confirmation-sla-copy";
+import {
+  bookingPaymentStatusLabel,
+  customerLifecycleDescription,
+  customerLifecycleTitle,
+  customerPaymentDisplayLabel,
+  customerStatusPillLabel,
+} from "@/lib/customer-booking-display-labels";
 import QRCode from "react-native-qrcode-svg";
 import { useTranslation } from "@beautonomi/i18n";
 import { BottomSheet } from "@/components/ui/BottomSheet";
@@ -1650,6 +1657,22 @@ export default function BookingDetailScreen() {
   const isAtHome = booking.location_type === "at_home";
   const lifecycleHint = ((booking as { lifecycle_hint?: CustomerLifecycleHint }).lifecycle_hint ??
     null) as CustomerLifecycleHint;
+  const providerDisplayName = provider?.business_name || bd("providerFallback");
+  const paymentDisplayInput = {
+    paymentStatus: booking.payment_status,
+    paymentProvider: (booking as any).payment_provider,
+    outstandingBalance: _bookingOutstanding,
+    paymentOption: (booking as any).payment_option,
+    depositRequired: (booking as any).deposit_required,
+  };
+  const localizedLifecycleTitle = customerLifecycleTitle(_effectiveStatus, lifecycleHint, bd);
+  const localizedLifecycleDescription = customerLifecycleDescription(
+    _effectiveStatus,
+    lifecycleHint,
+    providerDisplayName,
+    bd,
+  );
+  const localizedPaymentChipLabel = customerPaymentDisplayLabel(paymentDisplayInput, bd);
   const pendingSlaCopy = lifecycleDisplay.isAwaitingProviderConfirmation &&
     !(booking as { recurring_series_id?: string | null }).recurring_series_id
     ? ((booking as { pending_confirmation_sla?: { body?: string } }).pending_confirmation_sla ??
@@ -1753,7 +1776,7 @@ export default function BookingDetailScreen() {
     if (isProviderArrived) return bd("statusProviderArrived");
     if (isProviderEnRoute) return bd("statusProviderEnRoute");
     if (_effectiveStatus === "confirmed") return bd("statusVisitConfirmed");
-    return lifecycleDisplay.title;
+    return localizedLifecycleTitle;
   })();
 
   const detailAddonRows = Array.isArray((booking as any).addons)
@@ -1811,7 +1834,9 @@ export default function BookingDetailScreen() {
       {booking.tax_amount > 0 && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
           <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
-            Tax{Number((booking as any).tax_rate || 0) > 0 ? ` (${Number((booking as any).tax_rate)}%)` : ""}
+            {Number((booking as any).tax_rate || 0) > 0
+              ? bd("paymentTaxWithRate", { rate: Number((booking as any).tax_rate) })
+              : bd("paymentTax")}
           </Text>
           <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number(booking.tax_amount).toFixed(2)}</Text>
         </View>
@@ -1825,10 +1850,11 @@ export default function BookingDetailScreen() {
       {loyaltyDiscountAmount > 0 && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
           <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
-            {bd("paymentLoyalty")}
             {Number((booking as any).loyalty_points_used || 0) > 0
-              ? ` (${Number((booking as any).loyalty_points_used).toLocaleString()} pts)`
-              : ""}
+              ? bd("paymentLoyaltyPts", {
+                  points: Number((booking as any).loyalty_points_used).toLocaleString(),
+                })
+              : bd("paymentLoyalty")}
           </Text>
           <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {loyaltyDiscountAmount.toFixed(2)}</Text>
         </View>
@@ -1958,12 +1984,8 @@ export default function BookingDetailScreen() {
                 booking.payment_status === "paid" ? "#22C55E" : booking.payment_status === "partially_paid" ? "#F59E0B" : "#9CA3AF",
             }}
           />
-          <Text style={{ fontSize: 12, color: Colors.gray[500], textTransform: "capitalize" }}>
-            {booking.payment_status === "paid"
-              ? bd("paymentPaidInFull")
-              : booking.payment_status === "partially_paid"
-                ? bd("paymentPartiallyPaid")
-                : booking.payment_status}
+          <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
+            {bookingPaymentStatusLabel(String(booking.payment_status), bd)}
           </Text>
         </View>
       )}
@@ -2554,11 +2576,15 @@ export default function BookingDetailScreen() {
                 <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 4 }}>{runningLateBanner.body}</Text>
                 {customerRunningLateAt ? (
                   <Text style={{ fontSize: 13, color: Colors.gray[700], marginTop: 8 }}>
-                    You reported{" "}
-                    {typeof customerRunningLateMinutes === "number" && customerRunningLateMinutes > 0
-                      ? `about ${customerRunningLateMinutes} min late`
-                      : "running late"}{" "}
-                    {providerLateAckAt ? "· Provider acknowledged" : "· Waiting for provider reply"}
+                    {bd("reportedLateSummary", {
+                      latePart:
+                        typeof customerRunningLateMinutes === "number" && customerRunningLateMinutes > 0
+                          ? bd("reportedAboutMinLate", { minutes: customerRunningLateMinutes })
+                          : bd("reportedRunningLate"),
+                      ackPart: providerLateAckAt
+                        ? bd("providerAcknowledged")
+                        : bd("waitingForProviderReply"),
+                    })}
                   </Text>
                 ) : null}
               </View>
@@ -2620,14 +2646,14 @@ export default function BookingDetailScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>
-                  {lifecycleDisplay.title} {formatTime(booking.selected_datetime, booking.display_time_zone)}
+                  {localizedLifecycleTitle} {formatTime(booking.selected_datetime, booking.display_time_zone)}
                 </Text>
                 <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 2 }}>
                   {booking.status === "waiting"
                     ? bd("providerWillBeWithYouShortly")
                     : booking.status === "checked_in"
                       ? bd("checkedInArrived")
-                      : `${lifecycleDisplay.description}${paymentDisplay.isPaymentSettled || paymentDisplay.isDepositPaid ? ` ${paymentDisplay.label}.` : ""}`}
+                      : `${localizedLifecycleDescription}${paymentDisplay.isPaymentSettled || paymentDisplay.isDepositPaid ? ` ${localizedPaymentChipLabel}.` : ""}`}
                 </Text>
                 {pendingSlaCopy ? (
                   <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 6 }}>
@@ -3515,11 +3541,10 @@ export default function BookingDetailScreen() {
                 style={{
                   fontSize: 12,
                   fontWeight: "600",
-                  textTransform: "capitalize",
                   color: booking.status === "confirmed" ? "#15803d" : booking.status === "cancelled" || booking.status === "no_show" ? "#B91C1C" : booking.status === "completed" ? "#1D4ED8" : booking.status === "in_progress" || booking.status === "started" ? "#7C3AED" : booking.status === "waiting" || booking.status === "checked_in" ? "#0369A1" : "#B45309",
                 }}
               >
-                {booking.status === "no_show" ? bd("statusNoShow") : booking.status === "in_progress" || booking.status === "started" ? bd("statusServiceInProgress") : booking.status === "checked_in" ? bd("statusCheckedIn") : booking.status === "pending_payment" ? bd("statusPaymentPending") : booking.status === "pending" ? bd("statusAwaitingConfirmation") : lifecycleDisplay.label}
+                {customerStatusPillLabel(String(booking.status), _effectiveStatus, bd)}
               </Text>
             </View>
           </View>
@@ -3821,7 +3846,16 @@ export default function BookingDetailScreen() {
                 : bd("addressTbd");
           const calTitle = bd("calTitle", { name: provider?.business_name ?? bd("brandFallback") });
           const visitLine = isAtHome ? bd("calHouseCall") : bd("calInSalon");
-          const calDesc = `Booking #${booking.booking_number ?? ""}\n${visitLine}\n${(services || []).map((s: any) => `${s.offering_name ?? s.service_name ?? bd("serviceFallback")} (${s.duration_minutes ?? 0} min)`).join("\n")}`;
+          const calDesc = [
+            bd("calBookingLine", { number: booking.booking_number ?? "" }),
+            visitLine,
+            ...(services || []).map((s: any) =>
+              bd("calServiceLine", {
+                name: s.offering_name ?? s.service_name ?? bd("serviceFallback"),
+                minutes: s.duration_minutes ?? 0,
+              }),
+            ),
+          ].join("\n");
           if (!calStart || !calEnd) return null;
           const calPayload = { title: calTitle, description: calDesc, location: calLocation, start: calStart, end: calEnd };
           const chipRow: ViewStyle = {
@@ -4305,18 +4339,19 @@ export default function BookingDetailScreen() {
         ) : null}
       </BottomSheet>
 
-      {/* Cancel reason modal */}
-      {/* §UI-audit 2026-04: wrapped in KeyboardAvoidingView so the
-          multiline "Tell us why" textarea (and the destructive CTA
-          below it) stay above the keyboard on iOS. Previously on
-          smaller phones the keyboard covered the Cancel button. */}
+      {/* Cancel reason modal — KeyboardAwareScrollView keeps reason field + CTAs above keyboard (iOS/Android). */}
       <Modal visible={cancelReasonModalOpen} transparent animationType="fade" onRequestClose={() => setCancelReasonModalOpen(false)}>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior="padding"
+        <KeyboardAwareScrollView
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)" }}
+          contentContainerStyle={{ flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
+          bottomOffset={24}
         >
-        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", alignItems: "center" }} onPress={() => setCancelReasonModalOpen(false)}>
-          <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: "#fff", borderRadius: 16, padding: 20, marginHorizontal: 24, width: 320 }}>
+          <Pressable
+            onPress={() => setCancelReasonModalOpen(false)}
+            style={{ flexGrow: 1, justifyContent: "center", padding: 24 }}
+          >
+          <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: "#fff", borderRadius: 16, padding: 20, width: 320, alignSelf: "center" }}>
             <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 12 }}>
               {t("customer.mobile.screens.bookingDetail.cancelReasonTitle")}
             </Text>
@@ -4353,6 +4388,7 @@ export default function BookingDetailScreen() {
                 onChangeText={setCancelReasonText}
                 placeholder={t("customer.mobile.screens.bookingDetail.cancelReasonOtherPlaceholder")}
                 multiline
+                scrollEnabled={false}
                 style={{ borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 10, padding: 12, fontSize: 14, minHeight: 64, textAlignVertical: "top", marginTop: 6, marginBottom: 16 }}
               />
             )}
@@ -4375,8 +4411,8 @@ export default function BookingDetailScreen() {
               </TouchableOpacity>
             </View>
           </Pressable>
-        </Pressable>
-        </KeyboardAvoidingView>
+          </Pressable>
+        </KeyboardAwareScrollView>
       </Modal>
       {paystackModal}
       {payRemainingCheckout.modal}

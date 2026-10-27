@@ -126,6 +126,7 @@ interface TeamAccessPayload {
   staff_id: string | null;
   is_business_owner?: boolean;
   can_manage_team: boolean;
+  can_manage_payroll?: boolean;
 }
 
 const LINK_ITEMS: {
@@ -169,6 +170,7 @@ const LINK_ITEMS: {
     labelKey: "linkCommission",
     icon: "cash-outline",
     route: "/(app)/(tabs)/more/settings/team-commissions",
+    passStaffId: "staffId",
   },
   {
     id: "locations",
@@ -197,6 +199,8 @@ export default function TeamMemberDetailScreen() {
   const { data: access } = useApi<TeamAccessPayload>("/api/provider/team-access");
   const canManageTeam =
     access?.is_business_owner === true || access?.can_manage_team === true;
+  const canManagePayroll =
+    access?.is_business_owner === true || access?.can_manage_payroll === true;
   const isSelf = Boolean(id && access?.staff_id === id);
 
   const { data: member, loading, error, refresh } = useApi<StaffMember>(
@@ -225,6 +229,11 @@ export default function TeamMemberDetailScreen() {
     id ? `/api/provider/staff/${id}/stats/weekly` : "",
     { enabled: !!id }
   );
+  const { data: payPlanRows } = useApi<{ data?: { pay_model?: string; statutory_mode?: string }[] }>(
+    id && canManageTeam ? `/api/provider/staff/${id}/pay-plans` : "",
+    { enabled: Boolean(id && canManageTeam) },
+  );
+  const latestPayPlan = payPlanRows?.data?.[0];
   const { execute: updateStaff, loading: saving } = useApiMutation("patch");
   const { execute: deleteStaff, loading: deleting } = useApiMutation("delete");
   const { execute: postAction, loading: actionBusy } = useApiMutation("post");
@@ -648,6 +657,17 @@ export default function TeamMemberDetailScreen() {
             <Text style={twStyle("mt-1 text-sm text-gray-500")}>{tm("noSpecificServices")}</Text>
           )}
         </View>
+
+        {canManageTeam && latestPayPlan ? (
+          <View style={twStyle("mx-4 mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+            <Text style={twStyle("text-sm font-semibold text-gray-900")}>{tm("payPlanSummary")}</Text>
+            <Text style={twStyle("mt-1 text-sm text-gray-600 capitalize")}>
+              {(latestPayPlan.pay_model ?? "commission_only").replace(/_/g, " ")}
+              {latestPayPlan.statutory_mode ? ` · ${latestPayPlan.statutory_mode} statutory` : ""}
+            </Text>
+            <Text style={twStyle("mt-2 text-xs text-gray-500")}>{tm("payPlanEditHint")}</Text>
+          </View>
+        ) : null}
 
         {canManageTeam ? (
           <View style={twStyle("mx-4 mb-4 rounded-2xl border border-gray-100 bg-white p-2")}>

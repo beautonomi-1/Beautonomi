@@ -34,6 +34,9 @@ interface PayStub {
   uif_contribution: number;
   net_pay: number;
   notes?: string;
+  commission_clawback?: number;
+  carry_forward_in?: number;
+  carry_forward_out?: number;
 }
 
 export function MyEarningsContent({ embedded = false }: { embedded?: boolean } = {}) {
@@ -176,6 +179,24 @@ export function MyEarningsContent({ embedded = false }: { embedded?: boolean } =
                       <Row label={me("hourly")} value={formatCurrency(Number(stub.hourly_amount), currency)} />
                       <Row label={me("salary")} value={formatCurrency(Number(stub.salary_amount), currency)} />
                       <Row label={me("tips")} value={formatCurrency(Number(stub.tips_amount), currency)} />
+                      {Number(stub.commission_clawback) !== 0 ? (
+                        <Row
+                          label={me("clawback")}
+                          value={formatCurrency(Number(stub.commission_clawback), currency)}
+                        />
+                      ) : null}
+                      {Number(stub.carry_forward_in) !== 0 ? (
+                        <Row
+                          label={me("carryForwardIn")}
+                          value={formatCurrency(Number(stub.carry_forward_in), currency)}
+                        />
+                      ) : null}
+                      {Number(stub.carry_forward_out) !== 0 ? (
+                        <Row
+                          label={me("carryForwardOut")}
+                          value={formatCurrency(Number(stub.carry_forward_out), currency)}
+                        />
+                      ) : null}
                       <View style={twStyle("flex-row justify-between py-1")}>
                         <Text style={twStyle("text-sm text-red-600")}>
                           {me("deductions")}

@@ -23,6 +23,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { resolveEffectiveBookingLifecycleStatus } from "@beautonomi/utils";
+import { customerStatusPillLabel } from "@/lib/customer-booking-display-labels";
 
 type GroupParticipant = {
   id: string;
@@ -34,7 +36,36 @@ type GroupParticipant = {
   is_current_user: boolean;
   payment_status: string | null;
   booking_number: string | null;
+  booking_status: string | null;
 };
+
+function humanGroupSessionStatus(status: string, gbd: (key: string) => string): string {
+  switch (status) {
+    case "pending":
+      return gbd("statusPending");
+    case "confirmed":
+      return gbd("statusConfirmed");
+    case "booked":
+      return gbd("statusBooked");
+    case "started":
+    case "in_progress":
+      return gbd("statusInProgress");
+    case "completed":
+      return gbd("statusCompleted");
+    case "cancelled":
+      return gbd("statusCancelled");
+    default:
+      return status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, " ");
+  }
+}
+
+function participantStatusChipClass(status: string): string {
+  if (status === "completed") return "bg-blue-100 text-blue-800";
+  if (status === "cancelled" || status === "no_show") return "bg-red-100 text-red-800";
+  if (status === "started" || status === "in_progress") return "bg-violet-100 text-violet-800";
+  if (status === "pending" || status === "pending_payment") return "bg-amber-100 text-amber-900";
+  return "bg-green-100 text-green-800";
+}
 
 type GroupBookingDetail = {
   id: string;
@@ -136,6 +167,15 @@ export default function GroupBookingDetailPageClient() {
 
   const currency = detail.currency || "ZAR";
   const fmt = (n: number) => formatCurrency(n, currency);
+  const bd = (key: string, opts?: Record<string, string | number>) =>
+    t(`customer.mobile.screens.bookingDetail.${key}`, opts) as string;
+  const currentUserParticipant = detail.participants.find((p) => p.is_current_user);
+  const currentUserBookingStatus = String(currentUserParticipant?.booking_status ?? "").toLowerCase();
+  const sessionStatusLabel = humanGroupSessionStatus(detail.status, (k) => gbd(k));
+  const canRescheduleGroup =
+    Boolean(detail.is_primary_payer) &&
+    !["completed", "cancelled", "started"].includes(detail.status) &&
+    !["cancelled", "no_show"].includes(currentUserBookingStatus);
 
   return (
     <div className="w-full max-w-4xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-8">
@@ -163,9 +203,23 @@ export default function GroupBookingDetailPageClient() {
           {detail.provider?.business_name ? (
             <p className="text-gray-800 font-medium mt-1">{detail.provider.business_name}</p>
           ) : null}
+          {currentUserBookingStatus === "cancelled" ? (
+            <p className="text-red-700 font-semibold text-sm mt-3">{gbd("yourBookingCancelled")}</p>
+          ) : null}
+          {currentUserBookingStatus === "no_show" ? (
+            <p className="text-gray-700 font-semibold text-sm mt-3">{gbd("yourBookingNoShow")}</p>
+          ) : null}
+          <div className="mt-4 flex flex-col items-start gap-1">
+            <span className="text-xs font-semibold text-gray-500">
+              {gbd("sessionStatus", { status: sessionStatusLabel })}
+            </span>
+            <span className="inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-800">
+              {sessionStatusLabel}
+            </span>
+          </div>
         </div>
 
-        {detail.is_primary_payer ? (
+        {canRescheduleGroup ? (
           <Button type="button" variant="outline" onClick={() => setRescheduleOpen(true)}>
             {gbd("rescheduleSession")}
           </Button>
@@ -193,9 +247,24 @@ export default function GroupBookingDetailPageClient() {
                     </Link>
                   ) : null}
                 </div>
-                <div className="text-right text-sm">
+                <div className="text-right text-sm space-y-1">
                   <p className="font-medium">{fmt(p.price)}</p>
                   {p.payment_status ? <p className="text-gray-500 capitalize">{p.payment_status.replace(/_/g, " ")}</p> : null}
+                  {p.booking_status ? (() => {
+                    const raw = String(p.booking_status).toLowerCase();
+                    const effective = resolveEffectiveBookingLifecycleStatus({
+                      status: raw,
+                      paymentStatus: p.payment_status,
+                    });
+                    const label = customerStatusPillLabel(raw, effective, bd);
+                    return (
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${participantStatusChipClass(effective || raw)}`}
+                      >
+                        {label}
+                      </span>
+                    );
+                  })() : null}
                 </div>
               </li>
             ))}

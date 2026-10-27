@@ -56,7 +56,6 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { computeAtHomeLinePrice } from "@beautonomi/utils";
 import { repriceLegacySelectedServices } from "../lib/legacy-at-home-pricing";
 import {
-  deepLinkSkipsToCalendar,
   parseBookingDeepLink,
 } from "@/lib/booking/parse-booking-deep-link";
 import {
@@ -1382,15 +1381,8 @@ export default function BookingFlow() {
     } else if (link.step === "services") {
       const idx = activeStepOrder.indexOf("services");
       if (idx >= 0) setCurrentStepIndex(idx);
-    } else if (
-      link.serviceIds.length > 0 &&
-      !link.step &&
-      !deepLinkSkipsToCalendar(link)
-    ) {
+    } else if (link.serviceIds.length > 0 && !link.step) {
       const idx = activeStepOrder.indexOf("services");
-      if (idx >= 0) setCurrentStepIndex(idx);
-    } else if (deepLinkSkipsToCalendar(link)) {
-      const idx = activeStepOrder.indexOf("calendar");
       if (idx >= 0) setCurrentStepIndex(idx);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

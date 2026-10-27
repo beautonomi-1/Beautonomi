@@ -2,15 +2,23 @@ import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { calculatePayRun } from "@/lib/payroll/pay-run-engine";
-import { assertPayrollEnabledForProvider } from "@/lib/payroll/payroll-access";
+import { calculatePayRun, type PayPeriodType } from "@/lib/payroll/pay-run-engine";
+import {
+  assertPayrollEnabledForProvider,
+  userCanManagePayroll,
+} from "@/lib/payroll/payroll-access";
+import { requireManagePayroll } from "@/lib/payroll/require-manage-payroll";
+import { payRunItemToInsertRow } from "@/lib/payroll/pay-run-item-rows";
 import { z } from "zod";
 
 const createSchema = z
   .object({
     pay_period_start: z.string(),
     pay_period_end: z.string(),
-    period_type: z.enum(["weekly", "monthly"]).optional().default("weekly"),
+    period_type: z
+      .enum(["weekly", "biweekly", "semi_monthly", "monthly", "custom"])
+      .optional()
+      .default("weekly"),
   })
   .refine(
     (b) => {
@@ -18,16 +26,24 @@ const createSchema = z
       const e = new Date(b.pay_period_end).getTime();
       return Number.isFinite(a) && Number.isFinite(e) && e >= a;
     },
-    { message: "pay_period_end must be on or after pay_period_start" }
+    { message: "pay_period_end must be on or after pay_period_start" },
   );
 
 /**
  * GET /api/provider/pay-runs
- * List pay runs for the provider
+ * List pay runs for the provider (manage payroll only).
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const { user } = await requireRoleInApi(
+      ["provider_owner", "provider_staff", "superadmin"],
+      request,
+    );
+
+    const canManage = await userCanManagePayroll(user.id, request);
+    if (!canManage) {
+      return successResponse([]);
+    }
 
     const supabaseAdmin = getSupabaseAdmin();
 
@@ -69,7 +85,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner"], request);
+    const payrollCheck = await requireManagePayroll(request);
+    if (!payrollCheck.authorized) {
+      return payrollCheck.response!;
+    }
+    const { user } = payrollCheck;
 
     const supabaseAdmin = getSupabaseAdmin();
 
@@ -86,7 +106,7 @@ export async function POST(request: NextRequest) {
     const body = createSchema.parse(await request.json());
     const periodStart = body.pay_period_start;
     const periodEnd = body.pay_period_end;
-    const periodType = body.period_type || "weekly";
+    const periodType = (body.period_type || "weekly") as PayPeriodType;
 
     const { data: overlapping } = await supabaseAdmin
       .from("provider_pay_runs")
@@ -99,11 +119,11 @@ export async function POST(request: NextRequest) {
     if (overlapping?.length) {
       return handleApiError(
         new Error(
-          "A pay run already exists for an overlapping period. Adjust dates or use the existing run."
+          "A pay run already exists for an overlapping period. Adjust dates or use the existing run.",
         ),
         "Failed to create pay run",
         "OVERLAPPING_PAY_RUN",
-        409
+        409,
       );
     }
 
@@ -112,7 +132,7 @@ export async function POST(request: NextRequest) {
       providerId,
       periodStart,
       periodEnd,
-      periodType
+      periodType,
     );
 
     const { data: payRun, error: prError } = await supabaseAdmin
@@ -130,19 +150,7 @@ export async function POST(request: NextRequest) {
     if (prError) throw prError;
     if (!payRun?.id) throw new Error("Failed to create pay run");
 
-    const itemsToInsert = items.map((item) => ({
-      pay_run_id: payRun.id,
-      staff_id: item.staffId,
-      gross_pay: item.grossPay,
-      commission_amount: item.commissionAmount,
-      hourly_amount: item.hourlyAmount,
-      salary_amount: item.salaryAmount,
-      tips_amount: item.tipsAmount,
-      manual_deductions: item.manualDeductions,
-      tax_deduction: item.taxDeduction,
-      uif_contribution: item.uifContribution,
-      net_pay: item.netPay,
-    }));
+    const itemsToInsert = items.map((item) => payRunItemToInsertRow(payRun.id, item));
 
     if (itemsToInsert.length > 0) {
       const { error: itemsError } = await supabaseAdmin

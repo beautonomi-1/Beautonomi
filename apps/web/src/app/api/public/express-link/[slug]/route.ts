@@ -41,15 +41,8 @@ async function incrementExpressLinkUseCount(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   link: ExpressBookingLinkRow,
 ): Promise<boolean> {
-  const rpc = (supabase as unknown as {
-    rpc?: (name: string, args: Record<string, unknown>) => Promise<{
-      data: unknown;
-      error: { message?: string; code?: string } | null;
-    }>;
-  }).rpc;
-
-  if (typeof rpc === "function") {
-    const { data, error } = await rpc("increment_express_booking_link_use", {
+  if (typeof supabase.rpc === "function") {
+    const { data, error } = await supabase.rpc("increment_express_booking_link_use", {
       p_link_id: link.id,
     });
     if (!error) return data === true;

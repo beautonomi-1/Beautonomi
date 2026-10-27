@@ -38,7 +38,7 @@ export function AdminNotificationBell() {
           total_unread?: number;
         }>("/api/admin/notifications?limit=10");
       } catch (e) {
-        if (e instanceof AdminApiError && (e.status === 401 || e.status === 403 || e.status >= 500)) {
+        if (e instanceof AdminApiError && (e.status === 401 || e.status === 403)) {
           return { notifications: [], total_unread: 0 };
         }
         throw e;
@@ -54,7 +54,7 @@ export function AdminNotificationBell() {
       try {
         return await adminApi.getJson<{ activities?: ActivityItem[] }>("/api/admin/activity");
       } catch (e) {
-        if (e instanceof AdminApiError && (e.status === 401 || e.status === 403 || e.status >= 500)) {
+        if (e instanceof AdminApiError && (e.status === 401 || e.status === 403)) {
           return { activities: [] };
         }
         throw e;

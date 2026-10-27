@@ -37,6 +37,7 @@ import { participantRowCountsTowardGroupTotal } from "@/lib/bookings/recalculate
 import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
 import { evaluateGroupCapacity, normalizeGroupCapacity } from "@/lib/bookings/group-capacity";
 import { cancelGroupBooking } from "@/lib/bookings/group-booking-cancellation";
+import { syncGroupBookingStatusFromChildren } from "@/lib/bookings/group-booking";
 
 function normalizeGroupBookingId(rawId: string): string {
   return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
@@ -170,6 +171,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             total_refunded: Number(booking.total_refunded ?? 0),
             wallet_gift_coverage: walletGiftCoverage,
             tip_amount: Number(booking.tip_amount ?? 0),
+            booking_status: String(booking.status ?? "").toLowerCase() || null,
           },
         ];
       })
@@ -204,6 +206,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           total_refunded: payment?.total_refunded ?? 0,
           wallet_gift_coverage: payment?.wallet_gift_coverage ?? 0,
           tip_amount: payment?.tip_amount ?? 0,
+          booking_status: payment?.booking_status ?? null,
         };
       }
     );
@@ -619,13 +622,48 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       const newStatus = String(sanitized.status ?? "").toLowerCase();
       if (newStatus === "confirmed" || newStatus === "booked") {
         const nowIso = new Date().toISOString();
-        const { error: confirmChildrenError } = await admin
+        const { data: confirmCandidates, error: fetchConfirmCandidatesError } = await admin
           .from("bookings")
-          .update({ status: "confirmed", updated_at: nowIso })
+          .select("id, status, payment_status")
           .eq("group_booking_id", id)
           .eq("provider_id", providerId)
           .in("status", ["pending", "pending_payment"]);
-        if (confirmChildrenError) throw confirmChildrenError;
+        if (fetchConfirmCandidatesError) throw fetchConfirmCandidatesError;
+
+        const toConfirm: string[] = [];
+        const skippedUnpaidBookingIds: string[] = [];
+        for (const child of confirmCandidates ?? []) {
+          const childStatus = String(child.status ?? "").toLowerCase();
+          if (childStatus === "pending") {
+            toConfirm.push(child.id);
+            continue;
+          }
+          if (childStatus === "pending_payment") {
+            const ps = String(child.payment_status ?? "").toLowerCase();
+            if (ps === "paid" || ps === "partially_paid") {
+              toConfirm.push(child.id);
+            } else {
+              skippedUnpaidBookingIds.push(child.id);
+            }
+          }
+        }
+
+        if (toConfirm.length > 0) {
+          const { error: confirmChildrenError } = await admin
+            .from("bookings")
+            .update({ status: "confirmed", updated_at: nowIso })
+            .in("id", toConfirm)
+            .eq("group_booking_id", id)
+            .eq("provider_id", providerId);
+          if (confirmChildrenError) throw confirmChildrenError;
+        }
+
+        const syncedStatus = await syncGroupBookingStatusFromChildren(admin, id);
+        if (syncedStatus) {
+          (data as { status?: string }).status = syncedStatus;
+        }
+        (data as { skipped_unpaid_booking_ids?: string[] }).skipped_unpaid_booking_ids =
+          skippedUnpaidBookingIds;
       }
     }
 

@@ -47,6 +47,12 @@ export default function EngagementHubScreen() {
   // and the business-wide rating aggregate shown across the app.
   const reviewsUrl = "/api/provider/reviews?limit=50";
   const { data, loading, error, refresh } = useApi<ReviewsResponse>(reviewsUrl, { staleTimeMs: 0 });
+  const { data: teamAccess } = useApi<{ can_manage_marketing?: boolean; is_business_owner?: boolean }>(
+    "/api/provider/team-access",
+    { staleTimeMs: 60_000 },
+  );
+  const canManageMarketing =
+    teamAccess?.is_business_owner === true || teamAccess?.can_manage_marketing === true;
   const engagementHubInitialFocusRef = useRef(true);
 
   const reviews: Review[] = (data as ReviewsResponse)?.reviews ?? [];
@@ -96,7 +102,7 @@ export default function EngagementHubScreen() {
     <ScreenContainer>
       <ScreenHeader
         title={eh("title")}
-        subtitle={eh("subtitle")}
+        subtitle={canManageMarketing ? eh("subtitle") : eh("subtitleNoMarketing")}
         onBack={() => router.back()}
       />
       <ScrollView
@@ -120,19 +126,21 @@ export default function EngagementHubScreen() {
             </View>
             <DirectionalIcon name="chevron-forward" size={16} color={Colors.gray[400]} />
           </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => router.push("/(app)/(tabs)/more/marketing-hub" as never)}
-            style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 14 }}
-            accessibilityLabel={eh("marketingA11y")}
-            accessibilityRole="button"
-          >
-            <Ionicons name="megaphone-outline" size={20} color={Colors.primary} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{eh("marketing")}</Text>
-              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{eh("marketingHint")}</Text>
-            </View>
-            <DirectionalIcon name="chevron-forward" size={16} color={Colors.gray[400]} />
-          </TouchableOpacity>
+          {canManageMarketing ? (
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/(tabs)/more/marketing-hub" as never)}
+              style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 14 }}
+              accessibilityLabel={eh("marketingA11y")}
+              accessibilityRole="button"
+            >
+              <Ionicons name="megaphone-outline" size={20} color={Colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{eh("marketing")}</Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{eh("marketingHint")}</Text>
+              </View>
+              <DirectionalIcon name="chevron-forward" size={16} color={Colors.gray[400]} />
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
