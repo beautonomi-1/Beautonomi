@@ -126,7 +126,7 @@ export default function TeamCommissionsScreen() {
     setTiers(member.tiers.length > 0 ? [...member.tiers] : []);
     try {
       const { api } = await import("@/lib/api-client");
-      const plansRes = await api.get<{ data?: Record<string, unknown>[] }>(
+      const plansRes = await api.get<Record<string, unknown>[]>(
         `/api/provider/staff/${member.staffId}/pay-plans`,
       );
       const latest = plansRes.data?.[0];

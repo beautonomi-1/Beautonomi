@@ -432,7 +432,7 @@ export default function TeamRolesScreen() {
           contentContainerStyle={{ paddingBottom: 120 }}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           renderItem={({ item: role }: { item: Role }) => {
-            const permCount = enabledCount(role.permissions);
+            const permCount = enabledCount(normalizeRolePermissions(role.permissions));
             return (
               <TouchableOpacity
                 style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}

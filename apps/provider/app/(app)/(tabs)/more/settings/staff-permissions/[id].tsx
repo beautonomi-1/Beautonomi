@@ -119,7 +119,8 @@ const ALL_PERMISSION_IDS = PERMISSION_CATEGORIES.flatMap((c) =>
 
 export default function StaffPermissionEditScreen() {
   const { t } = useTranslation();
-  const pe = (key: string) => t(`provider.mobile.screens.staffPermissionsEdit.${key}`) as string;
+  const pe = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.staffPermissionsEdit.${key}`, opts) as string;
   const { id } = useLocalSearchParams<{ id: string }>();
   const [local, setLocal] = useState<Record<string, boolean>>({});
   const [calendarScope, setCalendarScope] = useState<"own" | "all">("own");

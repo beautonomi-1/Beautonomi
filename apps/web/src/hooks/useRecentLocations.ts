@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { readAllowsFunctionalFromStorage } from "@/lib/cookie-consent/guards";
+import { CONSENT_CHANGED_EVENT } from "@/lib/cookie-consent/storage";
 
 export interface RecentLocation {
   id: string;
@@ -56,8 +57,8 @@ export function useRecentLocations() {
     };
 
     sync();
-    window.addEventListener("beautonomi:cookie-consent-changed", sync);
-    return () => window.removeEventListener("beautonomi:cookie-consent-changed", sync);
+    window.addEventListener(CONSENT_CHANGED_EVENT, sync);
+    return () => window.removeEventListener(CONSENT_CHANGED_EVENT, sync);
   }, []);
 
   useEffect(() => {

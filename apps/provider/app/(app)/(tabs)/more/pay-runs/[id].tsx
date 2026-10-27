@@ -162,7 +162,7 @@ export default function PayRunDetailScreen() {
     void (async () => {
       try {
         const { api } = await import("@/lib/api-client");
-        const res = await api.get<{ data?: { warnings?: typeof complianceWarnings } }>(
+        const res = await api.get<{ warnings?: typeof complianceWarnings }>(
           `/api/provider/pay-runs/${id}/compliance-warnings`,
         );
         if (!cancelled) setComplianceWarnings(res.data?.warnings ?? []);
