@@ -28354,7 +28354,8 @@
             "createExplorePosts": "Create Explore Posts",
             "createExplorePostsDesc": "Create and manage provider Explore posts",
             "permissionCount": "Permission Count",
-            "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here."
+            "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
+            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them."
           },
           "team/roles": {
             "roles": "Roles",
@@ -28419,8 +28420,7 @@
               "view_own_earnings": "View own earnings"
             },
             "catEngagement": "Engagement",
-            "permissionCount": "Permission Count",
-            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them."
+            "permissionCount": "Permission Count"
           },
           "team/time-off-types": {
             "timeOffTypes": "Time Off Types",

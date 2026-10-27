@@ -28332,7 +28332,8 @@
             "detachRoleConfirm": "This person is on the shared role \"{{role}}\". Saving applies permissions only to them and removes them from that role. Continue?",
             "viewOwnEarnings": "View own earnings",
             "viewOwnEarningsDesc": "See tips, commission, and personal earnings",
-            "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here."
+            "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
+            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them."
           },
           "team/roles": {
             "roles": "Majukumu",
@@ -28397,8 +28398,7 @@
               "view_own_earnings": "View own earnings"
             },
             "catEngagement": "Ushiriki",
-            "permissionCount": "Permission Count",
-            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them."
+            "permissionCount": "Permission Count"
           },
           "team/time-off-types": {
             "timeOffTypes": "Muda Off Types",
