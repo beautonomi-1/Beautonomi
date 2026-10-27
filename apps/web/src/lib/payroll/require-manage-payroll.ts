@@ -5,7 +5,7 @@ import { userCanManagePayroll } from "@/lib/payroll/payroll-access";
 type PayrollRouteUser = { id: string; role?: string };
 
 export type ManagePayrollCheckResult =
-  | { authorized: true; user: PayrollRouteUser }
+  | { authorized: true; user: PayrollRouteUser; response?: never }
   | { authorized: false; response: NextResponse; user?: PayrollRouteUser };
 
 /** Provider staff or owner with payroll access (not freelancer — check separately). */

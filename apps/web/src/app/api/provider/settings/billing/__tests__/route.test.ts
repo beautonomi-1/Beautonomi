@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockRequireRoleInApi = vi.fn();
+const mockRequirePermission = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 
@@ -19,7 +20,7 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 vi.mock("@/lib/auth/requirePermission", () => ({
-  requirePermission: vi.fn(),
+  requirePermission: (...args: unknown[]) => mockRequirePermission(...args),
 }));
 
 function thenable<T>(value: T) {
@@ -70,6 +71,7 @@ describe("GET /api/provider/settings/billing", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-19T09:00:00.000Z"));
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "user-1" } });
+    mockRequirePermission.mockResolvedValue({ authorized: true, user: { id: "user-1" } });
     mockGetProviderIdForUser.mockResolvedValue("provider-1");
   });
 

@@ -6,6 +6,7 @@ import { notifyProviderInvoiceOverdue } from "@/lib/notifications/notification-s
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 const JOB_NAME = "mark-provider-invoices-overdue";
 

@@ -9,7 +9,7 @@ import { join } from "node:path";
 const PROVIDER_API = join(__dirname, "../../../app/api/provider");
 
 const PERMISSION_HELPER =
-  /requirePermission|requireAnyPermission|requireRoleInApi|requireRole\b|requireOwner/;
+  /requirePermission|requireAnyPermission|requireRoleInApi|requireRole\b|requireOwner|requireManagePayroll/;
 
 /**
  * External callbacks, invite/onboarding, cron-invoked executors, and signed-URL
