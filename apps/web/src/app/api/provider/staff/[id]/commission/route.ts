@@ -8,6 +8,7 @@ import {
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
+import { getStaffPermissions, isProviderOwner } from "@/lib/auth/permissions";
 
 const tierSchema = z.object({
   id: z.string().uuid().optional(),
@@ -93,7 +94,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner"], request);
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -103,6 +104,27 @@ export async function PATCH(
     }
 
     const body = patchSchema.parse(await request.json());
+
+    const payFieldTouched =
+      body.commission_enabled !== undefined ||
+      body.service_commission_rate !== undefined ||
+      body.product_commission_rate !== undefined ||
+      body.hourly_rate !== undefined ||
+      body.salary !== undefined ||
+      body.tiers !== undefined;
+    if (payFieldTouched) {
+      const owner = await isProviderOwner(user.id, request);
+      if (!owner) {
+        const perms = await getStaffPermissions(user.id, undefined, request);
+        if (!perms.manage_payroll) {
+          return handleApiError(
+            new Error("You do not have permission to manage payroll"),
+            "FORBIDDEN",
+            403,
+          );
+        }
+      }
+    }
 
     // Verify staff member belongs to provider
     const { data: existing } = await supabase

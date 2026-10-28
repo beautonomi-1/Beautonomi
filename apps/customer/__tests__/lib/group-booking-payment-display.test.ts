@@ -11,6 +11,12 @@ describe("groupPaymentBadge", () => {
     expect(groupPaymentBadge("not_invoiced")?.label).toBe("Not invoiced");
     expect(groupPaymentBadge("partially_refunded")?.label).toBe("Partially refunded");
   });
+
+  it("uses translator when provided", () => {
+    const t = (key: string) => `T:${key}`;
+    expect(groupPaymentBadge("paid", t)?.label).toBe("T:paid");
+    expect(groupPaymentBadge("partially_paid", t)?.label).toBe("T:partiallyPaid");
+  });
 });
 
 describe("participantPaymentBadge", () => {

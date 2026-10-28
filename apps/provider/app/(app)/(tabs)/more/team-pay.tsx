@@ -9,11 +9,8 @@ import { useTranslation } from "@beautonomi/i18n";
 
 type TeamAccessPayload = {
   is_business_owner?: boolean;
+  can_manage_payroll?: boolean;
 };
-
-function isOwnerRole(role: string | null, teamAccess?: TeamAccessPayload | null): boolean {
-  return role === "provider_owner" || role === "superadmin" || teamAccess?.is_business_owner === true;
-}
 
 export default function TeamPayHubScreen() {
   const { t } = useTranslation();
@@ -23,20 +20,25 @@ export default function TeamPayHubScreen() {
   const { data: teamAccess } = useApi<TeamAccessPayload>("/api/provider/team-access", {
     staleTimeMs: 60_000,
   });
-  const isOwner = isOwnerRole(role, teamAccess);
+  const canManagePayroll = teamAccess?.can_manage_payroll === true;
 
   const tabs = useMemo(() => {
     if (isFreelancer) {
       return [];
     }
-    if (isOwner) {
+    if (canManagePayroll) {
       return [
         { id: "payroll", label: tp("payroll"), render: () => <PayrollContent embedded /> },
         { id: "team", label: tp("teamTotals"), render: () => <TeamTotalsContent embedded /> },
+        {
+          id: "my-earnings",
+          label: tp("myEarnings"),
+          render: () => <MyEarningsContent embedded />,
+        },
       ];
     }
     return [{ id: "my-earnings", label: tp("myEarnings"), render: () => <MyEarningsContent embedded /> }];
-  }, [isOwner, isFreelancer, t]);
+  }, [canManagePayroll, isFreelancer]);
 
   if (isFreelancer) {
     return (
@@ -52,9 +54,9 @@ export default function TeamPayHubScreen() {
   return (
     <FinanceHubShell
       title={tp("title")}
-      subtitle={isOwner ? tp("subtitleOwner") : tp("subtitleStaff")}
+      subtitle={canManagePayroll ? tp("subtitleOwner") : tp("subtitleStaff")}
       tabs={tabs}
-      defaultTab={isOwner ? "payroll" : "my-earnings"}
+      defaultTab={canManagePayroll ? "payroll" : "my-earnings"}
     />
   );
 }

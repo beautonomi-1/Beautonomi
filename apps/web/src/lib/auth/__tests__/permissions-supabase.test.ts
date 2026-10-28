@@ -26,6 +26,12 @@ describe("permissions + Supabase request context", () => {
     expect(all.view_client_ratings).toBe(true);
   });
 
+  it("edit_settings implies manage_finance for billing hub access", () => {
+    const normalized = normalizeStaffPermissions({ edit_settings: true });
+    expect(normalized.edit_settings).toBe(true);
+    expect(normalized.manage_finance).toBe(true);
+  });
+
   it("normalizes legacy provider role permission keys to enforced permissions", () => {
     const normalized = normalizeStaffPermissions({
       view_bookings: true,

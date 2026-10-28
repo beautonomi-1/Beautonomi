@@ -24,12 +24,19 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface Role {
   id: string;
   name: string;
   description?: string | null;
-  permissions: Record<string, boolean>;
+  permissions: Record<string, boolean | string>;
   is_active: boolean;
 }
 
@@ -43,6 +50,9 @@ const permissionCategories = [
   { id: "create_sales", category: "sales" },
   { id: "process_payments", category: "sales" },
   { id: "view_reports", category: "sales" },
+  { id: "manage_finance", category: "sales" },
+  { id: "manage_payroll", category: "sales" },
+  { id: "view_own_earnings", category: "sales" },
   { id: "view_services", category: "catalogue" },
   { id: "edit_services", category: "catalogue" },
   { id: "view_products", category: "catalogue" },
@@ -60,7 +70,24 @@ const permissionCategories = [
   { id: "view_messages", category: "engagement" },
   { id: "send_messages", category: "engagement" },
   { id: "create_explore_posts", category: "engagement" },
+  { id: "manage_marketing", category: "engagement" },
 ] as const;
+
+function booleansFromRolePermissions(
+  raw: Record<string, boolean | string> | undefined,
+): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  permissionCategories.forEach((perm) => {
+    out[perm.id] = raw?.[perm.id] === true;
+  });
+  return out;
+}
+
+function calendarScopeFromRolePermissions(
+  raw: Record<string, boolean | string> | undefined,
+): "own" | "all" {
+  return raw?.calendar_scope === "all" ? "all" : "own";
+}
 
 export default function RolesSettings() {
   const { t } = useTranslation();
@@ -72,6 +99,7 @@ export default function RolesSettings() {
     name: "",
     description: "",
     permissions: {} as Record<string, boolean>,
+    calendar_scope: "own" as "own" | "all",
     is_active: true,
   });
 
@@ -102,6 +130,7 @@ export default function RolesSettings() {
       name: "",
       description: "",
       permissions: initialPermissions,
+      calendar_scope: "own",
       is_active: true,
     });
     setIsDialogOpen(true);
@@ -112,7 +141,8 @@ export default function RolesSettings() {
     setFormData({
       name: role.name,
       description: role.description || "",
-      permissions: role.permissions || {},
+      permissions: booleansFromRolePermissions(role.permissions),
+      calendar_scope: calendarScopeFromRolePermissions(role.permissions),
       is_active: role.is_active,
     });
     setIsDialogOpen(true);
@@ -142,6 +172,7 @@ export default function RolesSettings() {
           name: formData.name.trim(),
           description: formData.description.trim() || null,
           permissions: formData.permissions,
+          calendar_scope: formData.calendar_scope,
           is_active: formData.is_active,
         });
         toast.success(t("web.provider.settings.pages.team/roles.roleUpdated"));
@@ -150,6 +181,7 @@ export default function RolesSettings() {
           name: formData.name.trim(),
           description: formData.description.trim() || null,
           permissions: formData.permissions,
+          calendar_scope: formData.calendar_scope,
           is_active: formData.is_active,
         });
         toast.success(t("web.provider.settings.pages.team/roles.roleCreated"));
@@ -350,6 +382,30 @@ export default function RolesSettings() {
                 rows={3}
                 className="mt-1.5"
               />
+            </div>
+
+            <div>
+              <Label className="mb-2 block">
+                {t("web.provider.settings.pages.team/permissions.calendarScope")}
+              </Label>
+              <Select
+                value={formData.calendar_scope}
+                onValueChange={(v) =>
+                  setFormData({ ...formData, calendar_scope: v as "own" | "all" })
+                }
+              >
+                <SelectTrigger className="min-h-[44px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="own">
+                    {t("web.provider.settings.pages.team/permissions.calendarScopeOwn")}
+                  </SelectItem>
+                  <SelectItem value="all">
+                    {t("web.provider.settings.pages.team/permissions.calendarScopeAll")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <Separator />

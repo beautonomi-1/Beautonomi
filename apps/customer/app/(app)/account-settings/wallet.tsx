@@ -24,6 +24,15 @@ import { ScreenFrame } from "@/components/ScreenFrame";
 import { Skeleton } from "@/components/Skeleton";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { getTenantLocaleTag } from "@/lib/locale";
+import { BottomSheet } from "@/components/ui/BottomSheet";
+import {
+  type WalletTxRow,
+  walletReferenceTypeLabel,
+  walletRowPrimaryLabel,
+  walletTransactionNavigation,
+  walletTransactionTypeLabel,
+} from "@/lib/wallet-transaction-display";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSavedCards } from "@/hooks/useSavedCards";
 import { usePaystackPayment } from "@/hooks/usePaystackPayment";
@@ -96,6 +105,13 @@ export default function WalletScreen() {
   >([]);
   const [claimingCode, setClaimingCode] = useState<string | null>(null);
   const [bankRefundHelp, setBankRefundHelp] = useState<string | null>(null);
+  const [selectedTx, setSelectedTx] = useState<WalletTxRow | null>(null);
+
+  const tw = useCallback(
+    (key: string, opts?: Record<string, string | number>) =>
+      String(t(`customer.walletScreen.${key}`, opts as never)),
+    [t],
+  );
 
   const params = useLocalSearchParams<{ giftCode?: string }>();
 
@@ -122,10 +138,7 @@ export default function WalletScreen() {
       const settings = bankRefunds.data?.settings;
       const hasEligible = Number(bankRefunds.data?.eligible_amount ?? 0) > 0;
       if (settings?.enabled && (hasEligible || bankRefunds.data?.open_request)) {
-        setBankRefundHelp(
-          settings.help_text?.trim() ||
-            "Bank refund of an eligible card payment is available on request.",
-        );
+        setBankRefundHelp(settings.help_text?.trim() || tw("bankRefundHelpFallback"));
       } else {
         setBankRefundHelp(null);
       }
@@ -134,7 +147,7 @@ export default function WalletScreen() {
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [t, tw]);
 
   const loadGiftCards = useCallback(async () => {
     const res = await api
@@ -551,10 +564,15 @@ export default function WalletScreen() {
             }}
           >
             <Text style={{ fontSize: 15, fontWeight: "700", color: Colors.gray[900] }}>
-              🎁 {pendingGiftCards.length === 1 ? "A gift card is" : `${pendingGiftCards.length} gift cards are`} waiting
+              🎁{" "}
+              {pendingGiftCards.length === 1
+                ? tw("pendingGiftCardsWaiting_one")
+                : tw("pendingGiftCardsWaiting_other", { count: pendingGiftCards.length })}
             </Text>
             <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 4, marginBottom: 12 }}>
-              Sent to your email. Add {pendingGiftCards.length === 1 ? "it" : "them"} to your wallet to spend.
+              {pendingGiftCards.length === 1
+                ? tw("pendingGiftCardsEmailBody_one")
+                : tw("pendingGiftCardsEmailBody_other")}
             </Text>
             {pendingGiftCards.map((gc) => (
               <View
@@ -706,7 +724,7 @@ export default function WalletScreen() {
                           <Text style={{ fontSize: 15, color: Colors.gray[900] }}>•••• {c.last4} ({c.brand})</Text>
                           {expiry ? (
                             <Text style={{ fontSize: 11, color: Colors.gray[500], marginTop: 2 }}>
-                              Expires {expiry}
+                              {tw("cardExpires", { date: expiry })}
                             </Text>
                           ) : null}
                         </View>
@@ -778,13 +796,21 @@ export default function WalletScreen() {
               // lives in `type` ('credit' | 'debit'). Sign/color off `type` so a
               // wallet spend shows as a red minus, not a green plus like a top-up.
               const isCredit = row.type === "credit";
+              const primary = walletRowPrimaryLabel(row as WalletTxRow, tw);
+              const amountStr = `${isCredit ? "+" : "-"}${formatMoney(Math.abs(Number(row.amount)), currency)}`;
               return (
-              <View key={row.id} style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, marginBottom: 8, flexDirection: "row", justifyContent: "space-between" }}>
-                <Text style={{ color: Colors.gray[900] }}>{row.description || row.type || t("customer.walletScreen.transactionFallback")}</Text>
-                <Text style={{ color: isCredit ? "#16a34a" : "#B91C1C" }}>
-                  {isCredit ? "+" : "-"}{formatMoney(Math.abs(Number(row.amount)), currency)}
+              <TouchableOpacity
+                key={row.id}
+                onPress={() => setSelectedTx(row as WalletTxRow)}
+                style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, marginBottom: 8, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}
+                accessibilityRole="button"
+                accessibilityLabel={tw("transactionRowA11y", { description: primary, amount: amountStr })}
+              >
+                <Text style={{ color: Colors.gray[900], flex: 1, marginEnd: 12 }} numberOfLines={2}>{primary}</Text>
+                <Text style={{ color: isCredit ? "#16a34a" : "#B91C1C", flexShrink: 0 }}>
+                  {amountStr}
                 </Text>
-              </View>
+              </TouchableOpacity>
               );
             })
           )}
@@ -792,6 +818,67 @@ export default function WalletScreen() {
       </ScrollView>
     </ScreenFrame>
     {paystackHostedCheckout.modal}
+    <BottomSheet
+      visible={selectedTx != null}
+      onClose={() => setSelectedTx(null)}
+      title={tw("transactionDetailTitle")}
+    >
+      {selectedTx ? (() => {
+        const isCredit = selectedTx.type === "credit";
+        const amountStr = `${isCredit ? "+" : "-"}${formatMoney(Math.abs(Number(selectedTx.amount)), currency)}`;
+        const nav = walletTransactionNavigation(selectedTx);
+        const refLabel = walletReferenceTypeLabel(selectedTx.reference_type, tw);
+        const created = selectedTx.created_at ? new Date(selectedTx.created_at) : null;
+        const dateLabel =
+          created && Number.isFinite(created.getTime())
+            ? created.toLocaleString(getTenantLocaleTag(), { dateStyle: "medium", timeStyle: "short" })
+            : "—";
+        return (
+          <View style={{ paddingBottom: 24 }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900], marginBottom: 16 }}>
+              {walletRowPrimaryLabel(selectedTx, tw)}
+            </Text>
+            <Text style={{ fontSize: 22, fontWeight: "800", color: isCredit ? "#16a34a" : "#B91C1C", marginBottom: 16 }}>
+              {amountStr}
+            </Text>
+            <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 4 }}>{tw("transactionDateLabel")}</Text>
+            <Text style={{ fontSize: 15, color: Colors.gray[800], marginBottom: 12 }}>{dateLabel}</Text>
+            <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 4 }}>{tw("transactionTypeLabel")}</Text>
+            <Text style={{ fontSize: 15, color: Colors.gray[800], marginBottom: 12 }}>
+              {walletTransactionTypeLabel(selectedTx.type, tw)}
+            </Text>
+            {refLabel ? (
+              <>
+                <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 4 }}>{tw("transactionReferenceLabel")}</Text>
+                <Text style={{ fontSize: 15, color: Colors.gray[800], marginBottom: 16 }}>{refLabel}</Text>
+              </>
+            ) : null}
+            {nav?.kind === "booking" ? (
+              <TouchableOpacity
+                onPress={() => {
+                  setSelectedTx(null);
+                  router.push({ pathname: "/(app)/booking-detail", params: { id: nav.id } });
+                }}
+                style={{ backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 14, alignItems: "center" }}
+              >
+                <Text style={{ color: Colors.white, fontWeight: "600" }}>{tw("viewBooking")}</Text>
+              </TouchableOpacity>
+            ) : null}
+            {nav?.kind === "product_order" ? (
+              <TouchableOpacity
+                onPress={() => {
+                  setSelectedTx(null);
+                  router.push({ pathname: "/(app)/product-order-detail", params: { id: nav.id } });
+                }}
+                style={{ backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 14, alignItems: "center" }}
+              >
+                <Text style={{ color: Colors.white, fontWeight: "600" }}>{tw("viewOrder")}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        );
+      })() : null}
+    </BottomSheet>
     </>
   );
 }

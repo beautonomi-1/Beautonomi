@@ -24,6 +24,7 @@ export interface ProviderBookingActionInput {
   status?: string | null;
   db_status?: string | null;
   payment_status?: string | null;
+  outstanding_balance?: number | null;
   scheduled_at?: string | null;
   location_type?: string | null;
   location_id?: string | null;
@@ -230,12 +231,15 @@ export function buildProviderBookingActionModel(
   const arrivalOtpPending = booking.arrival_otp_pending === true;
   const qrArrivalPending = booking.qr_arrival_pending === true;
 
-  // When a booking is stuck in pending_payment but payment has already been confirmed
-  // by the gateway (payment_status = "paid" or "partially_paid"), treat it as "pending"
-  // for all action decisions. The DB repair runs asynchronously via the API normalisation,
-  // but the action model must be correct immediately so the provider can act without delay.
+  // Match BookingScheduleCard: pending_payment displays as Pending when payment is settled.
+  const outstanding =
+    booking.outstanding_balance == null
+      ? null
+      : Math.max(0, Number(booking.outstanding_balance));
   const isPaymentConfirmed =
-    paymentStatus === "paid" || paymentStatus === "partially_paid";
+    paymentStatus === "paid" ||
+    paymentStatus === "partially_paid" ||
+    (typeof outstanding === "number" && outstanding <= 0.005);
   const effectiveDbStatus =
     currentDbStatus === "pending_payment" && isPaymentConfirmed
       ? "pending"

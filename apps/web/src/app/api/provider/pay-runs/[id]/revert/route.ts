@@ -8,6 +8,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { payrollDisabledMessage } from "@/lib/payroll/payroll-access";
+import { requireManagePayroll } from "@/lib/payroll/require-manage-payroll";
 
 /**
  * POST /api/provider/pay-runs/[id]/revert
@@ -18,7 +19,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner"], request);
+    const payrollCheck = await requireManagePayroll(request);
+    if (!payrollCheck.authorized) {
+      return payrollCheck.response!;
+    }
+    const { user } = payrollCheck;
     const { id } = await params;
     const supabaseAdmin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin, { request });

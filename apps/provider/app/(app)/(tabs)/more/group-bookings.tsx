@@ -149,6 +149,7 @@ interface Participant {
   wallet_gift_coverage?: number | null;
   tip_amount?: number | null;
   is_primary_contact?: boolean;
+  booking_status?: string | null;
   addons?:
     | {
         id?: string;
@@ -348,9 +349,18 @@ function groupStatusLabel(status: string, gb: (key: string) => string): string {
       return gb("statusCancelled");
     case "waiting":
       return gb("statusWaiting");
+    case "pending_payment":
+      return gb("statusPendingPayment");
+    case "no_show":
+      return gb("statusNoShow");
     default:
       return status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, " ");
   }
+}
+
+function isInactiveParticipantBooking(status?: string | null): boolean {
+  const s = String(status ?? "").toLowerCase();
+  return s === "cancelled" || s === "no_show";
 }
 
 const GROUP_PAGE_LIMIT = 50;
@@ -4073,6 +4083,8 @@ export default function GroupBookingsScreen() {
                   const isCheckedOut = checkedOut;
                   const canCheckInOut =
                     selectedGroup.status !== "completed" && selectedGroup.status !== "cancelled";
+                  const inactiveChild = isInactiveParticipantBooking(p.booking_status ?? p.status);
+                  const canCheckInOutParticipant = canCheckInOut && !inactiveChild;
                   return (
                     <View key={p.id} style={twStyle("mb-1.5 rounded-lg bg-gray-50 p-3")}>
                       <View style={twStyle("flex-row items-center")}>
@@ -4157,6 +4169,18 @@ export default function GroupBookingsScreen() {
                                   : gb("unpaid")}
                             </Text>
                           </View>
+                          {(p.booking_status ?? p.status) ? (
+                            <View
+                              style={[
+                                twStyle("rounded-full bg-slate-100 px-2 py-0.5"),
+                                { marginEnd: 8 },
+                              ]}
+                            >
+                              <Text style={twStyle("text-[10px] font-semibold text-slate-800")}>
+                                {groupStatusLabel(String(p.booking_status ?? p.status), gb)}
+                              </Text>
+                            </View>
+                          ) : null}
                           {canCheckInOut && (
                             <TouchableOpacity
                               onPress={() => handleRemoveParticipant(p)}
@@ -4167,7 +4191,7 @@ export default function GroupBookingsScreen() {
                           )}
                         </View>
                       </View>
-                      {canCheckInOut && (
+                      {canCheckInOutParticipant && (
                         <View style={twStyle("mt-2 flex-row")}>
                           {!isCheckedIn && !isCheckedOut ? (
                             <TouchableOpacity
@@ -4261,6 +4285,7 @@ export default function GroupBookingsScreen() {
                         </TouchableOpacity>
                       ) : null}
                       {canProcessPayments &&
+                      !inactiveChild &&
                       paycloudEnabled &&
                       paycloudCollectEnabled &&
                       p.booking_id &&
@@ -4308,6 +4333,7 @@ export default function GroupBookingsScreen() {
                         </TouchableOpacity>
                       ) : null}
                       {canProcessPayments &&
+                      !inactiveChild &&
                       paycloudEnabled &&
                       !paycloudCollectEnabled &&
                       p.booking_id &&

@@ -4,7 +4,7 @@ import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useAuth } from "@/providers/AuthProvider";
+import { usePermissions } from "@/hooks/usePermissions";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,15 @@ interface PayRunItem {
   uif_contribution: number;
   net_pay: number;
   notes?: string;
+  commission_clawback?: number;
+  carry_forward_in?: number;
+  carry_forward_out?: number;
 }
+
+type ComplianceWarningRow = {
+  staffId: string;
+  warnings: { code: string; message: string; suggestedTopUp?: number }[];
+};
 
 interface PayRunDetail {
   id: string;
@@ -43,10 +51,6 @@ interface PayRunDetail {
   created_at: string;
   approved_at?: string;
   items: PayRunItem[];
-}
-
-function isPayrollOwnerRole(role: string | null | undefined): boolean {
-  return role === "provider_owner" || role === "superadmin";
 }
 
 /** Tax/UIF auto-calculation may be added later; owners enter values manually today. */
@@ -75,10 +79,10 @@ function computeNetPreview(item: PayRunItem, manualInput: string | undefined): n
 export default function PayrollDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { role } = useAuth();
   const { format: fmt } = useProviderMoneyFormat();
   const { t } = useTranslation();
-  const isOwner = isPayrollOwnerRole(role);
+  const { hasPermission, isOwner } = usePermissions();
+  const canManagePayroll = isOwner || hasPermission("manage_payroll");
   const id = params?.id as string;
   const [payRun, setPayRun] = useState<PayRunDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -86,6 +90,7 @@ export default function PayrollDetailPage() {
   const [isMarkingPaid, setIsMarkingPaid] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [lineEdits, setLineEdits] = useState<Record<string, { manual_deductions: string; notes: string }>>({});
+  const [complianceWarnings, setComplianceWarnings] = useState<ComplianceWarningRow[]>([]);
 
   const loadPayRun = useCallback(async () => {
     if (!id) return;
@@ -109,6 +114,27 @@ export default function PayrollDetailPage() {
   }, [id, loadPayRun]);
 
   useEffect(() => {
+    if (!id || !canManagePayroll || payRun?.status !== "draft") {
+      setComplianceWarnings([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetcher.get<{ data?: { warnings?: ComplianceWarningRow[] } }>(
+          `/api/provider/pay-runs/${id}/compliance-warnings`,
+        );
+        if (!cancelled) setComplianceWarnings(res.data?.warnings ?? []);
+      } catch {
+        if (!cancelled) setComplianceWarnings([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, canManagePayroll, payRun?.status]);
+
+  useEffect(() => {
     if (!payRun?.items?.length) {
       setLineEdits({});
       return;
@@ -123,7 +149,7 @@ export default function PayrollDetailPage() {
     setLineEdits(next);
   }, [payRun]);
 
-  const canEditDraft = payRun?.status === "draft" && isOwner;
+  const canEditDraft = payRun?.status === "draft" && canManagePayroll;
 
   const handleApprove = async () => {
     try {
@@ -152,7 +178,7 @@ export default function PayrollDetailPage() {
   };
 
   const handleSaveDraftLines = async () => {
-    if (!payRun || payRun.status !== "draft" || !isOwner) return;
+    if (!payRun || payRun.status !== "draft" || !canManagePayroll) return;
     try {
       setIsSavingDraft(true);
       const items = payRun.items.map((i) => ({
@@ -196,6 +222,9 @@ export default function PayrollDetailPage() {
       t("web.provider.pages.team/payroll/[id].csvHourly"),
       t("web.provider.pages.team/payroll/[id].csvSalary"),
       t("web.provider.pages.team/payroll/[id].csvTips"),
+      t("web.provider.pages.team/payroll/[id].csvClawback"),
+      t("web.provider.pages.team/payroll/[id].csvCarryForwardIn"),
+      t("web.provider.pages.team/payroll/[id].csvCarryForwardOut"),
       t("web.provider.pages.team/payroll/[id].csvManualDeductions"),
       t("web.provider.pages.team/payroll/[id].csvTax"),
       t("web.provider.pages.team/payroll/[id].csvUif"),
@@ -209,6 +238,9 @@ export default function PayrollDetailPage() {
       Number(i.hourly_amount || 0).toFixed(2),
       Number(i.salary_amount || 0).toFixed(2),
       Number(i.tips_amount || 0).toFixed(2),
+      Number(i.commission_clawback || 0).toFixed(2),
+      Number(i.carry_forward_in || 0).toFixed(2),
+      Number(i.carry_forward_out || 0).toFixed(2),
       Number(i.manual_deductions || 0).toFixed(2),
       Number(i.tax_deduction || 0).toFixed(2),
       Number(i.uif_contribution || 0).toFixed(2),
@@ -241,7 +273,7 @@ export default function PayrollDetailPage() {
       <PageHeader
         title={t("web.provider.pages.team/payroll/[id].payRunTitle", { range: `${format(new Date(payRun.pay_period_start), "MMM d")} – ${format(new Date(payRun.pay_period_end), "MMM d, yyyy")}` })}
         subtitle={
-          isOwner
+          canManagePayroll
             ? t("web.provider.pages.team/payroll/[id].statusLabel", { status: payRun.status })
             : t("web.provider.pages.team/payroll/[id].statusViewOnly", { status: payRun.status })
         }
@@ -258,13 +290,13 @@ export default function PayrollDetailPage() {
           {t("common.back")}
         </Button>
         <Badge className={statusColor(payRun.status)}>{payRun.status}</Badge>
-        {payRun.status === "draft" && isOwner && (
+        {payRun.status === "draft" && canManagePayroll && (
           <Button onClick={handleApprove} disabled={isApproving} className="bg-blue-600 hover:bg-blue-700">
             {isApproving ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <Check className="w-4 h-4 me-2" />}
             {t("web.provider.pages.team/payroll/[id].approve")}
           </Button>
         )}
-        {payRun.status === "approved" && isOwner && (
+        {payRun.status === "approved" && canManagePayroll && (
           <Button onClick={handleMarkPaid} disabled={isMarkingPaid} className="bg-green-600 hover:bg-green-700">
             {isMarkingPaid ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <DollarSign className="w-4 h-4 me-2" />}
             {t("web.provider.pages.team/payroll/[id].markAsPaid")}
@@ -281,6 +313,28 @@ export default function PayrollDetailPage() {
           {t("web.provider.common.exportCsv")}
         </Button>
       </div>
+
+      {payRun.status === "draft" && canManagePayroll && complianceWarnings.length > 0 ? (
+        <SectionCard className="border-amber-200 bg-amber-50/60">
+          <h3 className="text-sm font-semibold text-amber-900 mb-2">
+            {t("web.provider.pages.team/payroll/[id].complianceWarningsTitle")}
+          </h3>
+          <ul className="space-y-2 text-sm text-amber-950">
+            {complianceWarnings.map((row) => {
+              const name =
+                payRun.items.find((i) => i.staff_id === row.staffId)?.staff_name ?? row.staffId;
+              return row.warnings.map((w, idx) => (
+                <li key={`${row.staffId}-${w.code}-${idx}`}>
+                  <span className="font-medium">{name}:</span> {w.message}
+                  {w.suggestedTopUp != null && w.suggestedTopUp > 0
+                    ? ` (${t("web.provider.pages.team/payroll/[id].suggestedTopUp", { amount: fmt(w.suggestedTopUp) })})`
+                    : null}
+                </li>
+              ));
+            })}
+          </ul>
+        </SectionCard>
+      ) : null}
 
       <SectionCard>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-4">
@@ -321,6 +375,21 @@ export default function PayrollDetailPage() {
                     <p className="text-gray-900">{fmt(Number(item.tips_amount || 0))}</p>
                   </div>
                 </div>
+                {Number(item.commission_clawback) !== 0 ? (
+                  <p className="text-sm text-red-600">
+                    {t("web.provider.pages.team/payroll/[id].clawback")}: {fmt(Number(item.commission_clawback))}
+                  </p>
+                ) : null}
+                {Number(item.carry_forward_in) !== 0 ? (
+                  <p className="text-sm text-gray-700">
+                    {t("web.provider.pages.team/payroll/[id].carryForwardIn")}: {fmt(Number(item.carry_forward_in))}
+                  </p>
+                ) : null}
+                {Number(item.carry_forward_out) !== 0 ? (
+                  <p className="text-sm text-gray-700">
+                    {t("web.provider.pages.team/payroll/[id].carryForwardOut")}: {fmt(Number(item.carry_forward_out))}
+                  </p>
+                ) : null}
 
                 <div className="space-y-2 pt-2 border-t text-sm">
                   <div className="flex flex-wrap items-center gap-2">
@@ -431,7 +500,24 @@ export default function PayrollDetailPage() {
                 const previewNet = computeNetPreview(item, manualStr);
                 return (
                   <TableRow key={item.id}>
-                    <TableCell className="font-medium">{item.staff_name}</TableCell>
+                    <TableCell className="font-medium">
+                      <div>{item.staff_name}</div>
+                      {Number(item.commission_clawback) !== 0 ? (
+                        <p className="text-xs text-red-600 font-normal">
+                          {t("web.provider.pages.team/payroll/[id].clawback")}: {fmt(Number(item.commission_clawback))}
+                        </p>
+                      ) : null}
+                      {Number(item.carry_forward_in) !== 0 ? (
+                        <p className="text-xs text-gray-600 font-normal">
+                          {t("web.provider.pages.team/payroll/[id].carryForwardIn")}: {fmt(Number(item.carry_forward_in))}
+                        </p>
+                      ) : null}
+                      {Number(item.carry_forward_out) !== 0 ? (
+                        <p className="text-xs text-gray-600 font-normal">
+                          {t("web.provider.pages.team/payroll/[id].carryForwardOut")}: {fmt(Number(item.carry_forward_out))}
+                        </p>
+                      ) : null}
+                    </TableCell>
                     <TableCell className="text-end">{fmt(Number(item.commission_amount || 0))}</TableCell>
                     <TableCell className="text-end">{fmt(Number(item.hourly_amount || 0))}</TableCell>
                     <TableCell className="text-end">{fmt(Number(item.salary_amount || 0))}</TableCell>

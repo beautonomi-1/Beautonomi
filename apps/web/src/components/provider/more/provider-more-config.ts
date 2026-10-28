@@ -37,6 +37,7 @@ import type { StaffPermissions } from "@/lib/auth/permissions";
 
 export type MorePermissionGate =
   | "edit_settings"
+  | "manage_finance"
   | "payouts"
   | "reports"
   | "sales";
@@ -194,7 +195,7 @@ export const MORE_MENU_SECTIONS: MoreMenuSection[] = [
         href: "/provider/settings/billing",
         color: "#8b5cf6",
         bg: "#ede9fe",
-        permission: "edit_settings",
+        permission: "manage_finance",
       },
       {
         icon: Users,
@@ -464,6 +465,10 @@ export function passesMorePermissionGate(
   switch (permission) {
     case "edit_settings":
       return permissions?.edit_settings === true;
+    case "manage_finance":
+      return (
+        permissions?.manage_finance === true || permissions?.edit_settings === true
+      );
     case "payouts":
       return canRequestPayouts || permissions?.edit_settings === true;
     case "reports":

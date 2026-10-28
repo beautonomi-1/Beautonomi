@@ -28,7 +28,7 @@ interface Role {
   id: string;
   name: string;
   description: string | null;
-  permissions: Record<string, boolean>;
+  permissions: Record<string, boolean | string>;
   is_active: boolean;
   member_count?: number;
 }
@@ -71,6 +71,10 @@ const PERMISSION_GROUPS = [
       { key: "view_sales", labelKey: "permViewSales", icon: "receipt-outline" },
       { key: "create_sales", labelKey: "permCreateSales", icon: "add-circle-outline" },
       { key: "process_payments", labelKey: "permProcessPayments", icon: "card-outline" },
+      { key: "manage_finance", labelKey: "permManageFinance", icon: "wallet-outline" },
+      { key: "manage_payroll", labelKey: "permManagePayroll", icon: "cash-outline" },
+      { key: "view_own_earnings", labelKey: "permViewOwnEarnings", icon: "trending-up-outline" },
+      { key: "manage_marketing", labelKey: "permManageMarketing", icon: "megaphone-outline" },
       { key: "view_services", labelKey: "permViewServices", icon: "list-outline" },
       { key: "edit_services", labelKey: "permEditServices", icon: "construct-outline" },
       { key: "view_products", labelKey: "permViewProducts", icon: "cube-outline" },
@@ -112,7 +116,7 @@ const LEGACY_PERMISSION_ALIASES: Record<string, string[]> = {
 };
 
 function normalizeRolePermissions(
-  permissions: Record<string, boolean> | null | undefined,
+  permissions: Record<string, boolean | string> | null | undefined,
 ): Record<string, boolean> {
   const source = permissions ?? {};
   const normalized: Record<string, boolean> = {};
@@ -143,6 +147,7 @@ export default function TeamRolesScreen() {
     name: "",
     description: "",
     permissions: {} as Record<string, boolean>,
+    calendar_scope: "own" as "own" | "all",
   });
   const { data: teamAccess } = useApi<TeamAccessPayload>("/api/provider/team-access");
   const canManageTeam =
@@ -194,7 +199,7 @@ export default function TeamRolesScreen() {
   function openCreate() {
     if (!canManageTeam) return;
     setEditing(null);
-    setForm({ name: "", description: "", permissions: {} });
+    setForm({ name: "", description: "", permissions: {}, calendar_scope: "own" });
     setShowForm(true);
   }
 
@@ -205,6 +210,7 @@ export default function TeamRolesScreen() {
       name: role.name,
       description: role.description ?? "",
       permissions: normalizeRolePermissions(role.permissions),
+      calendar_scope: role.permissions?.calendar_scope === "all" ? "all" : "own",
     });
     setShowForm(true);
   }
@@ -216,6 +222,7 @@ export default function TeamRolesScreen() {
       name: tr("copyName", { name: role.name }),
       description: role.description ?? "",
       permissions: normalizeRolePermissions(role.permissions),
+      calendar_scope: role.permissions?.calendar_scope === "all" ? "all" : "own",
     });
     setShowForm(true);
   }
@@ -269,6 +276,7 @@ export default function TeamRolesScreen() {
       name: form.name.trim(),
       description: form.description.trim() || null,
       permissions: normalizeRolePermissions(form.permissions),
+      calendar_scope: form.calendar_scope,
     };
     const wasEditing = Boolean(editing);
     if (editing) {
@@ -424,7 +432,7 @@ export default function TeamRolesScreen() {
           contentContainerStyle={{ paddingBottom: 120 }}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           renderItem={({ item: role }: { item: Role }) => {
-            const permCount = enabledCount(role.permissions);
+            const permCount = enabledCount(normalizeRolePermissions(role.permissions));
             return (
               <TouchableOpacity
                 style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}
@@ -541,6 +549,30 @@ export default function TeamRolesScreen() {
             placeholder={tr("descriptionPlaceholder")}
             placeholderTextColor="#9ca3af"
           />
+
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
+            {tr("calendarScopeLabel")}
+          </Text>
+          <View style={twStyle("mb-4 flex-row rounded-xl border border-gray-200 bg-gray-50 p-1")}>
+            {(["own", "all"] as const).map((scope) => (
+              <TouchableOpacity
+                key={scope}
+                style={twStyle(
+                  `flex-1 rounded-lg py-2.5 ${form.calendar_scope === scope ? "bg-white shadow-sm" : ""}`,
+                )}
+                onPress={() => canManageTeam && setForm((p) => ({ ...p, calendar_scope: scope }))}
+                disabled={!canManageTeam}
+              >
+                <Text
+                  style={twStyle(
+                    `text-center text-xs font-medium ${form.calendar_scope === scope ? "text-indigo-600" : "text-gray-500"}`,
+                  )}
+                >
+                  {tr(scope === "own" ? "calendarScopeOwn" : "calendarScopeAll")}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
           <View style={twStyle("mb-2 flex-row items-center justify-between")}>
             <Text style={twStyle("text-xs font-semibold uppercase text-gray-400")}>

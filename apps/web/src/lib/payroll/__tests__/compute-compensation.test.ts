@@ -29,4 +29,37 @@ describe("computeCompensation", () => {
       ),
     ).toEqual([]);
   });
+
+  it("marginal tier mode applies commission per band (not retroactive whole-period rate)", () => {
+    const tiers = [
+      { minRevenue: 0, commissionRate: 10 },
+      { minRevenue: 1000, commissionRate: 20 },
+    ];
+    const marginal = sumCompensationLines(
+      computeCompensation(
+        {
+          payModel: "commission_only",
+          serviceRate: 10,
+          serviceTiers: tiers,
+          tierMode: "marginal",
+        },
+        { serviceRevenue: 1500, productRevenue: 0 },
+        0,
+      ),
+    );
+    const retroactive = sumCompensationLines(
+      computeCompensation(
+        {
+          payModel: "commission_only",
+          serviceRate: 10,
+          serviceTiers: tiers,
+          tierMode: "retroactive",
+        },
+        { serviceRevenue: 1500, productRevenue: 0 },
+        0,
+      ),
+    );
+    expect(marginal).toBe(200);
+    expect(retroactive).toBe(300);
+  });
 });

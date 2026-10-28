@@ -16,7 +16,7 @@ import {
 } from "@/lib/admin/admin-activity-feed";
 import {
   countRefundsNeedingReview,
-  fetchRefundableActivitySample,
+  fetchNeedsActionRefundQueueSample,
 } from "@/lib/admin/count-refunds-needing-review";
 import { countSupportTicketsForNav } from "@/lib/support/support-ticket-nav-count";
 import { SUPPORT_TICKET_STAFF_ROLES } from "@/lib/support/support-ticket-staff";
@@ -149,9 +149,7 @@ export async function GET(request: NextRequest) {
         try {
           const count = await countRefundsNeedingReview(supabase, tenantId);
           const rows =
-            count > 0
-              ? await fetchRefundableActivitySample(supabase, tenantId, 10)
-              : [];
+            count > 0 ? await fetchNeedsActionRefundQueueSample(supabase, tenantId, 10) : [];
           return { data: rows, count, error: null };
         } catch (e) {
           console.error('activity refundable payments:', e);
@@ -498,22 +496,61 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Process refundable success payments (actionable refund queue)
-    if (refundablePayments.status === 'fulfilled' && refundablePayments.value.data) {
-      const { data: refunds } = refundablePayments.value;
-      if (refunds && refunds.length > 0) {
-        (refunds as RefundRow[]).forEach((refund) => {
+    // Process refund queue exceptions (Needs action)
+    if (refundablePayments.status === "fulfilled" && refundablePayments.value.data) {
+      const queueRows = refundablePayments.value.data as Array<{
+        key: string;
+        queue_reason_label?: string;
+        queue_reason?: string;
+        remaining_refundable?: number;
+        booking_id?: string | null;
+        enriched?: { created_at?: string | null; booking?: { booking_number?: string } };
+      }>;
+      if (queueRows.length > 0) {
+        for (const row of queueRows) {
+          const booking = row.enriched?.booking as { booking_number?: string } | undefined;
+          const label = row.queue_reason_label ?? row.queue_reason ?? "Refund needs action";
           activities.push({
-            id: `refundable-${refund.id}`,
-            type: 'refundable_payment',
-            title: 'Refundable payment',
-            message: `Successful payment of ${refund.currency ?? ""} ${Number(refund.amount ?? 0).toFixed(2)} can be refunded`,
-            timestamp: refund.created_at ?? "",
+            id: `refund-queue-${row.key}`,
+            type: "refundable_payment",
+            title: "Refund needs action",
+            message: `${booking?.booking_number ? `Booking ${booking.booking_number}: ` : ""}${label}`,
+            timestamp: row.enriched?.created_at ?? new Date().toISOString(),
             link: ADMIN_ACTIVITY_LINKS.refundsSuccess,
-            priority: 'high',
+            priority: "high",
           });
+        }
+      }
+    }
+
+    try {
+      const { data: bankRows } = await supabase
+        .from("wallet_bank_refund_requests")
+        .select("id, request_number, amount, currency, status, created_at")
+        .eq("tenant_id", tenantId)
+        .in("status", ["pending", "approved"])
+        .order("created_at", { ascending: false })
+        .limit(10);
+      for (const req of bankRows ?? []) {
+        const r = req as {
+          id: string;
+          request_number?: string;
+          amount?: number;
+          currency?: string;
+          created_at?: string;
+        };
+        activities.push({
+          id: `wallet-bank-${r.id}`,
+          type: "wallet_bank_refund",
+          title: "Wallet → bank refund",
+          message: `${r.request_number ?? r.id}: ${r.currency ?? "ZAR"} ${Number(r.amount ?? 0).toFixed(2)} awaiting finance`,
+          timestamp: r.created_at ?? "",
+          link: "/admin/refunds?view=wallet_bank",
+          priority: "high",
         });
       }
+    } catch {
+      /* ignore */
     }
 
     // Process high-value transactions

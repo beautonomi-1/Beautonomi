@@ -272,10 +272,55 @@ async function processBookingRefundInner(
           refundAmount,
         },
       );
+      const failedRefundId = (refundRecord as { id: string }).id;
       await supabaseAdmin
         .from("booking_refunds")
         .update({ status: "failed", notes: `Wallet credit failed: ${walletError.message}` })
-        .eq("id", (refundRecord as { id: string }).id);
+        .eq("id", failedRefundId);
+
+      const bookingTenantId = String((booking as { tenant_id?: string | null }).tenant_id ?? "");
+      if (bookingTenantId) {
+        void (async () => {
+          try {
+            const { getEffectiveAutoWalletCreditSettings } = await import(
+              "@/lib/finance/auto-wallet-credit-settings"
+            );
+            const autoSettings = await getEffectiveAutoWalletCreditSettings(
+              supabaseAdmin,
+              bookingTenantId,
+            );
+            if (autoSettings.enabled) return;
+
+            const { notifyFinanceStaff } = await import("@/lib/notifications/notify-finance-staff");
+            await notifyFinanceStaff({
+              tenantId: bookingTenantId,
+              title: "Wallet credit failed",
+              message: `Booking ${bookingRef}: automatic wallet credit failed (${currency} ${refundAmount.toFixed(2)}). Review in Refunds.`,
+              link: "/admin/refunds?status=needs_action",
+              dedupeKey: `booking_refund:${failedRefundId}:wallet_credit_failed`,
+              data: { booking_id: bookingId, refund_id: failedRefundId },
+            });
+
+            const { slackNotifyWalletCreditFailed } = await import(
+              "@/lib/integrations/slack/ops-triggers"
+            );
+            slackNotifyWalletCreditFailed({
+              tenantId: bookingTenantId,
+              refundId: failedRefundId,
+              bookingId,
+              bookingNumber: (booking as { booking_number?: string }).booking_number,
+              amount: refundAmount,
+              currency: currency || lastResortCurrency,
+            });
+          } catch (alertErr) {
+            logger.warn("processBookingRefund.finance_alert_failed", {
+              bookingId,
+              error: alertErr instanceof Error ? alertErr.message : String(alertErr),
+            });
+          }
+        })();
+      }
+
       return { success: false, error: "Failed to credit customer wallet. Refund recorded for retry." };
     }
 

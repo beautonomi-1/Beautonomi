@@ -3,6 +3,9 @@ import { SLACK_EVENT_KEYS, type SlackEventKey } from "@/lib/integrations/slack/e
 import { tryNotifySlackEvent } from "@/lib/integrations/slack/dispatch";
 import { slackNotifyTerminalMerchantStalledForTenant } from "@/lib/integrations/slack/terminal-merchant-triggers";
 import { getNegativeBalanceProvidersForTenant } from "@/lib/admin/negative-provider-payout-balances";
+import { buildNeedsActionRefundQueueRows } from "@/lib/admin/refund-needs-action-pipeline";
+import { getEffectiveAutoWalletCreditSettings } from "@/lib/finance/auto-wallet-credit-settings";
+import { normalizeSlackTenantId } from "@/lib/integrations/slack/normalize-tenant-id";
 
 export type SlackOperationalAlertSummary = {
   tenants_processed: number;
@@ -48,6 +51,32 @@ async function emit(
   summary.attempted += 1;
   summary.by_event[params.eventKey] = (summary.by_event[params.eventKey] ?? 0) + 1;
   await tryNotifySlackEvent(params);
+}
+
+/** @internal Tests only */
+export async function __slackEntityAlreadySentForTests(
+  supabase: SupabaseAdmin,
+  tenantId: string,
+  entityId: string,
+): Promise<boolean> {
+  return slackEntityAlreadySent(supabase, tenantId, entityId);
+}
+
+async function slackEntityAlreadySent(
+  supabase: SupabaseAdmin,
+  tenantId: string,
+  entityId: string,
+): Promise<boolean> {
+  const normalized = normalizeSlackTenantId(tenantId);
+  let q = supabase
+    .from("slack_delivery_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("entity_id", entityId)
+    .eq("status", "sent");
+  q = normalized === null ? q.is("tenant_id", null) : q.eq("tenant_id", normalized);
+  const { count, error } = await q;
+  if (error) return false;
+  return (count ?? 0) > 0;
 }
 
 async function fetchActiveTenantIds(supabase: SupabaseAdmin): Promise<string[]> {
@@ -436,6 +465,7 @@ async function runFinanceAlerts(
     .limit(10);
 
   for (const refund of (refundExceptions ?? []) as Array<{ id: string; status?: string | null; amount?: number | null; refund_amount?: number | string | null; created_at?: string | null }>) {
+    if (await slackEntityAlreadySent(supabase, tenantId, refund.id)) continue;
     await emit(summary, {
       tenantId,
       environment: eventEnv(),
@@ -445,8 +475,104 @@ async function runFinanceAlerts(
       entityId: refund.id,
       title: "Refund/manual review exception",
       detailLines: [`Status: ${refund.status}`, `Amount: ${refund.refund_amount ?? refund.amount ?? "unknown"}`, `Age: ${ageLabel(refund.created_at, now)}`],
-      actionUrl: "/refunds",
+      actionUrl: "/refunds?status=needs_action",
     });
+  }
+
+  const { data: walletBankOpen } = await supabase
+    .from("wallet_bank_refund_requests")
+    .select("id, request_number, amount, currency, status, created_at")
+    .eq("tenant_id", tenantId)
+    .in("status", ["pending", "approved"])
+    .order("created_at", { ascending: true })
+    .limit(10);
+
+  for (const req of (walletBankOpen ?? []) as Array<{
+    id: string;
+    request_number?: string;
+    amount?: number;
+    currency?: string | null;
+    created_at?: string | null;
+  }>) {
+    if (await slackEntityAlreadySent(supabase, tenantId, req.id)) continue;
+    await emit(summary, {
+      tenantId,
+      environment: eventEnv(),
+      eventKey: SLACK_EVENT_KEYS.FINANCE_WALLET_BANK_REFUND_REQUESTED,
+      dedupeKey: `wallet_bank_refund:${req.id}:cron:${dayKey(now)}`,
+      entityType: "wallet_bank_refund_request",
+      entityId: req.id,
+      title: `Wallet bank refund open — ${req.request_number ?? req.id}`,
+      detailLines: [
+        `Amount: ${req.currency || "ZAR"} ${req.amount ?? "unknown"}`,
+        `Age: ${ageLabel(req.created_at, now)}`,
+        "Action: Admin → Refunds → Wallet → bank",
+      ],
+      actionUrl: "/refunds?view=wallet_bank",
+    });
+  }
+
+  const autoWalletCreditSettings = await getEffectiveAutoWalletCreditSettings(supabase, tenantId);
+
+  const { data: failedWalletCredits } = await supabase
+    .from("booking_refunds")
+    .select("id, booking_id, amount, created_at, bookings!inner(tenant_id, booking_number)")
+    .eq("bookings.tenant_id", tenantId)
+    .eq("refund_method", "store_credit")
+    .eq("status", "failed")
+    .order("created_at", { ascending: true })
+    .limit(10);
+
+  for (const row of (failedWalletCredits ?? []) as Array<{
+    id: string;
+    booking_id?: string;
+    amount?: number;
+    created_at?: string | null;
+    bookings?: { booking_number?: string | null };
+  }>) {
+    if (autoWalletCreditSettings.enabled) continue;
+    if (await slackEntityAlreadySent(supabase, tenantId, row.id)) continue;
+    await emit(summary, {
+      tenantId,
+      environment: eventEnv(),
+      eventKey: SLACK_EVENT_KEYS.FINANCE_REFUND_REVIEW,
+      dedupeKey: `booking_refund:${row.id}:wallet_credit_failed:cron:${dayKey(now)}`,
+      entityType: "booking_refund",
+      entityId: row.id,
+      title: "Wallet credit failed",
+      detailLines: [
+        `Booking: ${row.bookings?.booking_number ?? row.booking_id ?? "unknown"}`,
+        `Amount: ${row.amount ?? "unknown"}`,
+        `Age: ${ageLabel(row.created_at, now)}`,
+      ],
+      actionUrl: "/refunds?status=needs_action",
+    });
+  }
+
+  try {
+    const { queueRows } = await buildNeedsActionRefundQueueRows(supabase, tenantId);
+    for (const qRow of queueRows.filter((r) => r.needs_action && r.queue_reason === "cancelled_unrefunded").slice(0, 10)) {
+      const bookingId = qRow.booking_id;
+      if (!bookingId) continue;
+      if (await slackEntityAlreadySent(supabase, tenantId, bookingId)) continue;
+      const booking = qRow.booking as { booking_number?: string } | null;
+      await emit(summary, {
+        tenantId,
+        environment: eventEnv(),
+        eventKey: SLACK_EVENT_KEYS.FINANCE_REFUND_REVIEW,
+        dedupeKey: `cancelled_unrefunded:${bookingId}:cron:${dayKey(now)}`,
+        entityType: "booking",
+        entityId: bookingId,
+        title: "Cancelled booking not refunded to wallet",
+        detailLines: [
+          booking?.booking_number ? `Booking ${booking.booking_number}` : `Booking ${bookingId.slice(0, 8)}…`,
+          qRow.queue_reason_detail ?? "Amount not yet credited",
+        ],
+        actionUrl: "/refunds?status=needs_action",
+      });
+    }
+  } catch {
+    /* ignore queue build errors */
   }
 
   const negativeBalances = await getNegativeBalanceProvidersForTenant(supabase, tenantId).catch(() => ({ count: 0, providers: [] }));

@@ -49,7 +49,8 @@
  *   requireProviderOpsSales, requireProviderOpsOnboarding, requireProviderOpsRetention,
  *   requireProviderOpsAnyDesk, requireProviderOpsManagersOnly,
  *   requireProviderOpsSalesOrOnboarding,
- *   requireGrcPermission, requireBrandDeskAccess, grcGetHandler.
+ *   requireGrcPermission, requireBrandDeskAccess, grcGetHandler,
+ *   requireManagePayroll.
  *
  * Additional inline patterns (text match): `auth.getUser`, `auth.getSession`,
  * `Bearer ${cronSecret}`, and explicit HMAC signature verification via the
@@ -98,6 +99,7 @@ const GUARD_IDENTIFIERS = new Set([
   "requireGrcPermission",
   "requireBrandDeskAccess",
   "grcGetHandler",
+  "requireManagePayroll",
 ]);
 
 /**

@@ -31,9 +31,9 @@ interface Permission {
 interface Role {
   id: string;
   name: string;
-  description: string;
-  permissions: string[];
-  permissions_count: number;
+  description: string | null;
+  permissions: Record<string, boolean | string>;
+  permissions_count?: number;
 }
 
 interface StaffCommission {
@@ -48,7 +48,8 @@ interface StaffCommission {
 interface RoleForm {
   name: string;
   description: string;
-  permissions: string[];
+  permissions: Record<string, boolean>;
+  calendar_scope: "own" | "all";
 }
 
 function useAvailablePermissions(ts: (key: string) => string): Permission[] {
@@ -71,7 +72,8 @@ function useAvailablePermissions(ts: (key: string) => string): Permission[] {
 const EMPTY_ROLE_FORM: RoleForm = {
   name: "",
   description: "",
-  permissions: [],
+  permissions: {},
+  calendar_scope: "own",
 };
 
 /* ─── screen ─── */
@@ -85,14 +87,14 @@ export default function TeamSettingsScreen() {
   const AVAILABLE_PERMISSIONS = useAvailablePermissions(ts);
   useResponsive();
   const { data: roles, loading: rolesLoading, refresh: refreshRoles } =
-    useApi<Role[]>("/api/provider/settings/team/roles");
+    useApi<Role[]>("/api/provider/roles");
   const { data: staffCommissions, loading: commLoading, refresh: refreshComm } =
     useApi<StaffCommission[]>("/api/provider/settings/team/commissions");
 
   const { execute: createRole, loading: creatingRole } = useApiPost<
     Record<string, unknown>,
     Role
-  >("/api/provider/settings/team/roles");
+  >("/api/provider/roles");
   const { execute: updateRole, loading: updatingRole } =
     useApiMutation("patch");
   const { execute: deleteRole } = useApiMutation("delete");
@@ -131,10 +133,16 @@ export default function TeamSettingsScreen() {
 
   function openEditRoleSheet(role: Role) {
     setEditingRoleId(role.id);
+    const perms = role.permissions ?? {};
+    const booleans: Record<string, boolean> = {};
+    AVAILABLE_PERMISSIONS.forEach((p) => {
+      booleans[p.key] = perms[p.key] === true;
+    });
     setRoleForm({
       name: role.name,
       description: role.description ?? "",
-      permissions: role.permissions ?? [],
+      permissions: booleans,
+      calendar_scope: perms.calendar_scope === "all" ? "all" : "own",
     });
     setRoleSheetVisible(true);
   }
@@ -142,9 +150,7 @@ export default function TeamSettingsScreen() {
   function togglePermission(key: string) {
     setRoleForm((prev) => ({
       ...prev,
-      permissions: prev.permissions.includes(key)
-        ? prev.permissions.filter((p) => p !== key)
-        : [...prev.permissions, key],
+      permissions: { ...prev.permissions, [key]: !prev.permissions[key] },
     }));
   }
 
@@ -157,13 +163,14 @@ export default function TeamSettingsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const payload = {
       name: roleForm.name.trim(),
-      description: roleForm.description.trim(),
+      description: roleForm.description.trim() || null,
       permissions: roleForm.permissions,
+      calendar_scope: roleForm.calendar_scope,
     };
 
     if (editingRoleId) {
       const { error } = await updateRole(
-        `/api/provider/settings/team/roles/${editingRoleId}`,
+        `/api/provider/roles/${editingRoleId}`,
         payload,
       );
       if (error) {
@@ -197,7 +204,7 @@ export default function TeamSettingsScreen() {
           onPress: async () => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             const { error } = await deleteRole(
-              `/api/provider/settings/team/roles/${role.id}`,
+              `/api/provider/roles/${role.id}`,
             );
             if (error) Alert.alert(ts("errorTitle"), error);
             else {
@@ -466,7 +473,7 @@ export default function TeamSettingsScreen() {
           {ts("permissionsSection")}
         </Text>
         {AVAILABLE_PERMISSIONS.map((perm) => {
-          const checked = roleForm.permissions.includes(perm.key);
+          const checked = Boolean(roleForm.permissions[perm.key]);
           return (
             <TouchableOpacity
               key={perm.key}

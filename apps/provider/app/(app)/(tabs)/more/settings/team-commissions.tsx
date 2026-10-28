@@ -1,4 +1,5 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
+import { useLocalSearchParams } from "expo-router";
 import {
   View,
   Text,
@@ -23,6 +24,13 @@ import { SearchBar } from "@/components/ui/SearchBar";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { StaffPayPlanForm } from "@/components/payroll/StaffPayPlanForm";
+import {
+  defaultPayPlanFormState,
+  payPlanFromApiRow,
+  payPlanToPostBody,
+  type PayPlanFormState,
+} from "@/lib/pay-plan-form-state";
 
 interface CommissionTier {
   id?: string;
@@ -45,6 +53,7 @@ interface StaffCommission {
 }
 
 export default function TeamCommissionsScreen() {
+  const { staffId: staffIdParam } = useLocalSearchParams<{ staffId?: string }>();
   const { t } = useTranslation();
   const tc = useCallback(
     (key: string, opts?: Record<string, unknown>) =>
@@ -57,11 +66,19 @@ export default function TeamCommissionsScreen() {
   const [productRate, setProductRate] = useState("");
   const [tiers, setTiers] = useState<CommissionTier[]>([]);
   const [search, setSearch] = useState("");
+  const [payPlan, setPayPlan] = useState<PayPlanFormState>(defaultPayPlanFormState);
 
   const { data: staff, loading, refresh } = useApi<StaffCommission[]>(
     "/api/provider/settings/team/commissions"
   );
+  const { data: teamAccess } = useApi<{ can_manage_payroll?: boolean; is_business_owner?: boolean }>(
+    "/api/provider/team-access",
+    { staleTimeMs: 60_000 },
+  );
+  const canManagePayroll =
+    teamAccess?.is_business_owner === true || teamAccess?.can_manage_payroll === true;
   const { execute: saveCommission, loading: saving } = useApiMutation("patch");
+  const { execute: savePayPlan, loading: savingPlan } = useApiMutation("post");
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -100,14 +117,40 @@ export default function TeamCommissionsScreen() {
     [staff]
   );
 
-  function openEdit(member: StaffCommission) {
+  async function openEdit(member: StaffCommission) {
     setSelected(member);
     const svc = member.serviceCommissionRate ?? member.commissionPercentage;
     const prod = member.productCommissionRate ?? member.commissionPercentage;
     setServiceRate(String(svc));
     setProductRate(String(prod));
     setTiers(member.tiers.length > 0 ? [...member.tiers] : []);
+    try {
+      const { api } = await import("@/lib/api-client");
+      const plansRes = await api.get<Record<string, unknown>[]>(
+        `/api/provider/staff/${member.staffId}/pay-plans`,
+      );
+      const latest = plansRes.data?.[0];
+      setPayPlan(
+        payPlanFromApiRow(latest, {
+          service_rate: svc,
+          product_rate: prod,
+        }),
+      );
+    } catch {
+      setPayPlan(
+        payPlanFromApiRow(undefined, {
+          service_rate: svc,
+          product_rate: prod,
+        }),
+      );
+    }
   }
+
+  useEffect(() => {
+    if (!staffIdParam || !staff?.length) return;
+    const match = staff.find((s) => s.staffId === staffIdParam);
+    if (match) void openEdit(match);
+  }, [staffIdParam, staff]);
 
   function addTier() {
     setTiers((prev) => [
@@ -138,6 +181,10 @@ export default function TeamCommissionsScreen() {
 
   async function handleSave() {
     if (!selected) return;
+    if (!canManagePayroll) {
+      Alert.alert(tc("errorTitle"), tc("payPlanReadOnly"));
+      return;
+    }
     const svc = Number(serviceRate);
     const prod = Number(productRate);
     if (
@@ -147,18 +194,27 @@ export default function TeamCommissionsScreen() {
       Alert.alert(tc("invalidTitle"), tc("invalidRates"));
       return;
     }
+    const tierPayload = tiers.map((tier, i) => ({
+      min_revenue: tier.minRevenue,
+      commission_rate: tier.commissionRate,
+      tier_order: i,
+    }));
+    const { error: planErr } = await savePayPlan(
+      `/api/provider/staff/${selected.staffId}/pay-plans`,
+      payPlanToPostBody(payPlan, tierPayload),
+    );
+    if (planErr) {
+      Alert.alert(tc("errorTitle"), planErr);
+      return;
+    }
     const { error } = await saveCommission(
-      "/api/provider/settings/team/commissions",
+      `/api/provider/staff/${selected.staffId}/commission`,
       {
-        staffId: selected.staffId,
-        serviceCommissionRate: svc,
-        productCommissionRate: prod,
-        tiers: tiers.map((tier, i) => ({
-          minRevenue: tier.minRevenue,
-          commissionRate: tier.commissionRate,
-          tierOrder: i,
-        })),
-      }
+        commission_enabled: svc > 0 || prod > 0 || tiers.length > 0,
+        service_commission_rate: svc,
+        product_commission_rate: prod,
+        tiers: tierPayload,
+      },
     );
     if (error) {
       Alert.alert(tc("errorTitle"), error);
@@ -337,7 +393,20 @@ export default function TeamCommissionsScreen() {
               </View>
             </View>
 
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
+            <Text style={twStyle("mb-2 text-xs font-semibold uppercase text-gray-400")}>
+              {tc("payPlanSection")}
+            </Text>
+            {!canManagePayroll ? (
+              <Text style={twStyle("mb-3 text-xs text-gray-500")}>{tc("payPlanReadOnly")}</Text>
+            ) : null}
+            <StaffPayPlanForm
+              value={payPlan}
+              onChange={setPayPlan}
+              disabled={!canManagePayroll}
+              label={(key) => tc(key)}
+            />
+
+            <Text style={twStyle("mb-1 mt-4 text-sm font-medium text-gray-700")}>
               {tc("serviceCommission")}
             </Text>
             <TextInput
@@ -347,6 +416,7 @@ export default function TeamCommissionsScreen() {
               keyboardType="decimal-pad"
               placeholder={tc("ratePlaceholder")}
               placeholderTextColor="#9ca3af"
+              editable={canManagePayroll}
             />
             <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
               {tc("productCommission")}
@@ -358,13 +428,14 @@ export default function TeamCommissionsScreen() {
               keyboardType="decimal-pad"
               placeholder={tc("ratePlaceholder")}
               placeholderTextColor="#9ca3af"
+              editable={canManagePayroll}
             />
 
             <View style={twStyle("mb-2 flex-row items-center justify-between")}>
               <Text style={twStyle("text-xs font-semibold uppercase text-gray-400")}>
                 {tc("tieredCommissions")}
               </Text>
-              <TouchableOpacity onPress={addTier}>
+              <TouchableOpacity onPress={addTier} disabled={!canManagePayroll}>
                 <Text style={twStyle("text-xs font-medium text-indigo-600")}>
                   {tc("addTier")}
                 </Text>
@@ -393,6 +464,7 @@ export default function TeamCommissionsScreen() {
                     value={String(tier.minRevenue)}
                     onChangeText={(v) => updateTier(idx, "minRevenue", v)}
                     keyboardType="decimal-pad"
+                    editable={canManagePayroll}
                   />
                 </View>
                 <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
@@ -404,11 +476,13 @@ export default function TeamCommissionsScreen() {
                       updateTier(idx, "commissionRate", v)
                     }
                     keyboardType="decimal-pad"
+                    editable={canManagePayroll}
                   />
                 </View>
                 <TouchableOpacity
                   style={twStyle("mt-3")}
                   onPress={() => removeTier(idx)}
+                  disabled={!canManagePayroll}
                 >
                   <Ionicons name="close-circle" size={20} color="#ef4444" />
                 </TouchableOpacity>
@@ -417,10 +491,11 @@ export default function TeamCommissionsScreen() {
 
             <View style={twStyle("mt-4")}>
               <ActionButton
-                label={tc("saveCommission")}
+                label={canManagePayroll ? tc("savePaySettings") : tc("payPlanReadOnly")}
                 onPress={handleSave}
-                loading={saving}
+                loading={saving || savingPlan}
                 fullWidth
+                disabled={!canManagePayroll}
               />
             </View>
           </View>

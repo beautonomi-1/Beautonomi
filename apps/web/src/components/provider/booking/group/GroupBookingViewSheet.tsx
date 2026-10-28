@@ -359,24 +359,33 @@ export function GroupBookingViewSheet({
                 <p className="text-sm text-gray-500">{t(`${gv}.noParticipants`)}</p>
               ) : (
                 <ul className="space-y-3">
-                  {participants.map((p) => (
+                  {participants.map((p) => {
+                    const inactiveChild =
+                      String(p.booking_status ?? "").toLowerCase() === "cancelled" ||
+                      String(p.booking_status ?? "").toLowerCase() === "no_show";
+                    return (
                     <li key={p.id} className="rounded-xl border border-gray-100 p-3 text-sm">
                       <div className="flex justify-between gap-2">
                         <div>
                           <p className="font-medium">{p.client_name ?? t(`${gv}.guest`)}</p>
                           <p className="text-xs text-gray-500">{p.service_name ?? "—"}</p>
+                          {p.booking_status ? (
+                            <div className="mt-1">
+                              <BookingStatusChip status={p.booking_status} />
+                            </div>
+                          ) : null}
                         </div>
                         {p.price != null ? (
                           <span className="font-semibold">{formatMoney(Number(p.price))}</span>
                         ) : null}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2">
-                        {canEdit && !isFinal && !p.checked_in ? (
+                        {canEdit && !isFinal && !inactiveChild && !p.checked_in ? (
                           <button type="button" className="text-xs font-semibold underline" onClick={() => void handleCheckIn(p.id)}>
                             {t(`${gv}.checkIn`)}
                           </button>
                         ) : null}
-                        {canEdit && !isFinal && p.checked_in && !p.checked_out ? (
+                        {canEdit && !isFinal && !inactiveChild && p.checked_in && !p.checked_out ? (
                           <button type="button" className="text-xs font-semibold underline" onClick={() => void handleCheckOut(p.id)}>
                             {t(`${gv}.checkOut`)}
                           </button>
@@ -392,7 +401,7 @@ export function GroupBookingViewSheet({
                                   booking_id: p.booking_id!,
                                   client_name: p.client_name ?? t(`${gv}.participant`),
                                   service_name: p.service_name ?? t(`${gv}.serviceFallback`),
-                                  status: "booked",
+                                  status: (p.booking_status ?? "booked") as "booked",
                                   scheduled_date: "",
                                   scheduled_time: "",
                                   price: Number(p.price ?? 0),
@@ -423,7 +432,8 @@ export function GroupBookingViewSheet({
                         ) : null}
                       </div>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               )}
             </BookingSectionCard>

@@ -6,6 +6,7 @@ import {
   notFoundResponse,
   handleApiError,
   forbiddenResponse,
+  errorResponse,
   userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
@@ -64,6 +65,23 @@ export async function POST(
 
     if (fetchError) throw fetchError;
     if (!existing) return notFoundResponse("Participant not found");
+
+    if (existing.booking_id) {
+      const { data: linkedBooking, error: linkedBookingError } = await admin
+        .from("bookings")
+        .select("status")
+        .eq("id", existing.booking_id)
+        .maybeSingle();
+      if (linkedBookingError) throw linkedBookingError;
+      const linkedStatus = String(linkedBooking?.status ?? "").toLowerCase();
+      if (linkedStatus === "cancelled" || linkedStatus === "no_show") {
+        return errorResponse(
+          "This participant's booking is cancelled or marked as a no-show.",
+          "BOOKING_NOT_ACTIVE",
+          409,
+        );
+      }
+    }
 
     if (existing.checked_in_at) {
       return successResponse({

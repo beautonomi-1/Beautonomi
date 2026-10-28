@@ -11,7 +11,9 @@ import {
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { fetcher } from "@/lib/http/fetcher";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { fetcher, providerPortalFetch } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -35,6 +37,7 @@ interface Invoice {
   period_end: string;
   issue_date: string;
   due_date: string;
+  currency?: string | null;
   subtotal: number;
   tax_rate: number;
   tax_amount: number;
@@ -42,6 +45,7 @@ interface Invoice {
   amount_paid: number;
   amount_due: number;
   status: string;
+  effective_status?: string;
   notes: string | null;
   line_items: any[];
   payments: any[];
@@ -54,15 +58,32 @@ export default function InvoiceDetailPage() {
   const searchParams = useSearchParams();
   const locale = useTenantLocaleTag();
   const { bundle } = useConfigBundle();
-  const invoiceCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const invoiceId = params.id as string;
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [paying, setPaying] = useState(false);
   const [verifyingReturn, setVerifyingReturn] = useState(false);
+  const [canPay, setCanPay] = useState(false);
+  const [showEft, setShowEft] = useState(false);
+  const [eftAmount, setEftAmount] = useState("");
+  const [eftReference, setEftReference] = useState("");
+  const [submittingEft, setSubmittingEft] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     loadInvoice();
+    void (async () => {
+      try {
+        const perms = await fetcher.get<{
+          data: { isOwner?: boolean; permissions?: Record<string, boolean> };
+        }>("/api/provider/permissions");
+        setCanPay(
+          perms.data?.isOwner === true || perms.data?.permissions?.edit_settings === true,
+        );
+      } catch {
+        setCanPay(false);
+      }
+    })();
   }, [invoiceId]);
 
   useEffect(() => {
@@ -120,17 +141,58 @@ export default function InvoiceDetailPage() {
   const loadInvoice = async () => {
     try {
       setIsLoading(true);
+      setLoadError(null);
       const response = await fetcher.get<{ data: Invoice }>(
         `/api/provider/invoices/${invoiceId}`
       );
       setInvoice(response.data);
+      const due =
+        Number(response.data.amount_due ?? NaN) ||
+        Math.max(0, Number(response.data.total_amount) - Number(response.data.amount_paid ?? 0));
+      setEftAmount(String(due));
     } catch (error) {
       console.error("Error loading invoice:", error);
-      toast.error(t("web.provider.settings.pages.billing/invoices/[id].failedToLoadInvoice"));
+      const msg =
+        error instanceof Error
+          ? error.message
+          : t("web.provider.settings.pages.billing/invoices/[id].failedToLoadInvoice");
+      setLoadError(msg);
+      setInvoice(null);
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleDownloadPdf = async () => {
+    try {
+      const response = await providerPortalFetch(`/api/provider/invoices/${invoiceId}/download`, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error(t("web.provider.settings.pages.billing/invoices/[id].failedToLoadInvoice"));
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const pdfWindow = window.open(url, "_blank");
+      if (!pdfWindow) {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${invoice?.invoice_number ?? invoiceId}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      console.error("Error downloading invoice:", error);
+      toast.error(t("web.provider.settings.pages.billing/invoices/[id].failedToLoadInvoice"));
+    }
+  };
+
+  const invoiceCurrency =
+    invoice?.currency?.trim() ||
+    bundle?.meta?.tenant_region?.default_currency ||
+    LAST_RESORT_CURRENCY;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat(locale, {
@@ -148,8 +210,18 @@ export default function InvoiceDetailPage() {
   };
 
   const amountDue = invoice
-    ? Math.max(0, Number(invoice.total_amount ?? 0) - Number(invoice.amount_paid ?? 0))
+    ? Math.max(
+        0,
+        Number(invoice.amount_due ?? NaN) ||
+          Number(invoice.total_amount ?? 0) - Number(invoice.amount_paid ?? 0),
+      )
     : 0;
+  const displayStatus = invoice?.effective_status ?? invoice?.status ?? "";
+  const hasPendingEft = Boolean(invoice?.payments?.some((p) => p.status === "pending"));
+  const isOpen =
+    displayStatus === "sent" ||
+    displayStatus === "partially_paid" ||
+    displayStatus === "overdue";
 
   const handlePayInvoice = async () => {
     if (!invoice || amountDue <= 0) return;
@@ -175,6 +247,33 @@ export default function InvoiceDetailPage() {
       );
     } finally {
       setPaying(false);
+    }
+  };
+
+  const handleSubmitEft = async () => {
+    if (!invoice) return;
+    const amount = parseFloat(eftAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error(t("web.provider.settings.pages.billing/invoices/[id].invalidEftAmount"));
+      return;
+    }
+    setSubmittingEft(true);
+    try {
+      await fetcher.post(`/api/provider/invoices/${invoiceId}/pay`, {
+        amount,
+        paymentReference: eftReference.trim() || undefined,
+      });
+      toast.success(t("web.provider.settings.pages.billing/invoices/[id].eftSubmitted"));
+      setShowEft(false);
+      await loadInvoice();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t("web.provider.settings.pages.billing/invoices/[id].eftFailed"),
+      );
+    } finally {
+      setSubmittingEft(false);
     }
   };
 
@@ -232,7 +331,14 @@ export default function InvoiceDetailPage() {
         breadcrumbs={breadcrumbs}
       >
         <div className="text-center py-12">
-          <p className="text-gray-600">{t("web.provider.settings.pages.billing/invoices/[id].notFound")}</p>
+          <p className="text-gray-600">
+            {loadError ?? t("web.provider.settings.pages.billing/invoices/[id].notFound")}
+          </p>
+          {loadError ? (
+            <Button variant="outline" onClick={() => void loadInvoice()} className="mt-4">
+              {t("web.provider.common.retry")}
+            </Button>
+          ) : null}
           <Button
             variant="outline"
             onClick={() => router.back()}
@@ -262,26 +368,62 @@ export default function InvoiceDetailPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-4">
-            {getStatusBadge(invoice.status)}
-            {amountDue > 0 &&
-              invoice.status !== "cancelled" &&
-              invoice.status !== "refunded" &&
-              invoice.status !== "paid" && (
-                <Button onClick={() => void handlePayInvoice()} disabled={paying}>
-                  {paying
-                    ? t("web.provider.settings.pages.billing/invoices/[id].paying")
-                    : t("web.provider.settings.pages.billing/invoices/[id].payOnline")}
-                </Button>
-              )}
+            {getStatusBadge(displayStatus)}
+            {isOpen && amountDue > 0 && canPay && (
+              <Button onClick={() => void handlePayInvoice()} disabled={paying}>
+                {paying
+                  ? t("web.provider.settings.pages.billing/invoices/[id].paying")
+                  : t("web.provider.settings.pages.billing/invoices/[id].payOnline")}
+              </Button>
+            )}
+            {isOpen && amountDue > 0 && canPay && !hasPendingEft && (
+              <Button variant="secondary" onClick={() => setShowEft((v) => !v)}>
+                {t("web.provider.settings.pages.billing/invoices/[id].submitEft")}
+              </Button>
+            )}
+            {isOpen && amountDue > 0 && !canPay && (
+              <p className="text-xs text-gray-500">
+                {t("web.provider.settings.pages.billing/invoices/[id].ownerPaysOnly")}
+              </p>
+            )}
+            {hasPendingEft && (
+              <p className="text-xs text-amber-700">
+                {t("web.provider.settings.pages.billing/invoices/[id].eftPending")}
+              </p>
+            )}
             <Button
               variant="outline"
-              onClick={() => window.open(`/api/provider/invoices/${invoiceId}/download`, "_blank")}
+              onClick={() => void handleDownloadPdf()}
             >
               <Download className="w-4 h-4 me-2" />
               {t("web.provider.settings.pages.billing/invoices/[id].download")}
             </Button>
           </div>
         </div>
+
+        {showEft && canPay && (
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+            <div>
+              <Label>{t("web.provider.settings.pages.billing/invoices/[id].eftAmount")}</Label>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={eftAmount}
+                onChange={(e) => setEftAmount(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>{t("web.provider.settings.pages.billing/invoices/[id].eftReference")}</Label>
+              <Input value={eftReference} onChange={(e) => setEftReference(e.target.value)} />
+            </div>
+            <Button onClick={() => void handleSubmitEft()} disabled={submittingEft}>
+              {submittingEft
+                ? t("web.provider.settings.pages.billing/invoices/[id].submittingEft")
+                : t("web.provider.settings.pages.billing/invoices/[id].confirmEft")}
+            </Button>
+          </div>
+        )}
 
         {/* Invoice Details */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -338,17 +480,17 @@ export default function InvoiceDetailPage() {
               <span>{t("web.provider.settings.pages.billing/invoices/[id].total")}</span>
               <span>{formatCurrency(invoice.total_amount)}</span>
             </div>
-            {invoice.amount_paid > 0 && (
-              <>
-                <div className="flex justify-between text-sm pt-2 border-t">
-                  <span className="text-gray-600">{t("web.provider.settings.pages.billing/invoices/[id].amountPaid")}</span>
-                  <span className="text-green-600">{formatCurrency(invoice.amount_paid)}</span>
-                </div>
-                <div className="flex justify-between text-lg font-bold pt-2 border-t">
-                  <span>{t("web.provider.settings.pages.billing/invoices/[id].amountDue")}</span>
-                  <span>{formatCurrency(invoice.amount_due)}</span>
-                </div>
-              </>
+            {Number(invoice.amount_paid) > 0 && (
+              <div className="flex justify-between text-sm pt-2 border-t">
+                <span className="text-gray-600">{t("web.provider.settings.pages.billing/invoices/[id].amountPaid")}</span>
+                <span className="text-green-600">{formatCurrency(invoice.amount_paid)}</span>
+              </div>
+            )}
+            {amountDue > 0 && (
+              <div className="flex justify-between text-lg font-bold pt-2 border-t">
+                <span>{t("web.provider.settings.pages.billing/invoices/[id].amountDue")}</span>
+                <span>{formatCurrency(amountDue)}</span>
+              </div>
             )}
           </div>
         </div>

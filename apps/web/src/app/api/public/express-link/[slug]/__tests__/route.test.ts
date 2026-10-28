@@ -52,6 +52,36 @@ type Fixture = {
   provider: { id: string; status: string; slug: string | null; business_name: string | null } | null;
 };
 
+type RpcOutcome = {
+  data: unknown;
+  error: { message?: string; code?: string } | null;
+};
+
+function makeAdminWithRpc(
+  fixture: Fixture,
+  captured: { useCountUpdates: number[]; rpcCalls?: { name: string; args: Record<string, unknown> }[] },
+  rpcOutcome: RpcOutcome,
+) {
+  const inner = makeAdmin(fixture, captured);
+  const admin: {
+    rest: Record<string, never>;
+    from: (table: string) => unknown;
+    rpc: (name: string, args: Record<string, unknown>) => Promise<RpcOutcome>;
+  } = {
+    rest: {},
+    from: inner.from.bind(inner) as (table: string) => unknown,
+    rpc(name: string, args: Record<string, unknown>) {
+      if (this.rest === undefined) {
+        throw new TypeError("Cannot read properties of undefined (reading 'rest')");
+      }
+      captured.rpcCalls ??= [];
+      captured.rpcCalls.push({ name, args });
+      return Promise.resolve(rpcOutcome);
+    },
+  };
+  return admin;
+}
+
 function makeAdmin(fixture: Fixture, captured: { useCountUpdates: number[] }) {
   let linkQueryCall = 0;
   return {
@@ -269,6 +299,74 @@ describe("GET /api/public/express-link/[slug]", () => {
     const res = await callRoute("abc");
     expect(res.status).toBe(404);
     expect(captured.useCountUpdates).toEqual([]);
+  });
+
+  it("uses atomic rpc when bound on the client and does not fall back to update", async () => {
+    const captured = { useCountUpdates: [] as number[], rpcCalls: [] as { name: string; args: Record<string, unknown> }[] };
+    mockGetSupabaseAdmin.mockReturnValue(
+      makeAdminWithRpc(
+        {
+          tenantProviders: ["provider-1"],
+          tenantScopedLinks: [VALID_LINK],
+          globalFallbackLinks: [],
+          provider: ACTIVE_PROVIDER,
+        },
+        captured,
+        { data: true, error: null },
+      ),
+    );
+
+    const res = await callRoute("abc");
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.provider_slug).toBe("salon-co");
+    expect(captured.rpcCalls).toEqual([
+      { name: "increment_express_booking_link_use", args: { p_link_id: "link-1" } },
+    ]);
+    expect(captured.useCountUpdates).toEqual([]);
+  });
+
+  it("returns 404 when atomic rpc reports the link is no longer usable", async () => {
+    const captured = { useCountUpdates: [] as number[], rpcCalls: [] as { name: string; args: Record<string, unknown> }[] };
+    mockGetSupabaseAdmin.mockReturnValue(
+      makeAdminWithRpc(
+        {
+          tenantProviders: ["provider-1"],
+          tenantScopedLinks: [VALID_LINK],
+          globalFallbackLinks: [],
+          provider: ACTIVE_PROVIDER,
+        },
+        captured,
+        { data: false, error: null },
+      ),
+    );
+
+    const res = await callRoute("abc");
+    expect(res.status).toBe(404);
+    expect(captured.useCountUpdates).toEqual([]);
+  });
+
+  it("falls back to update when rpc function is missing (PGRST202)", async () => {
+    const captured = { useCountUpdates: [] as number[], rpcCalls: [] as { name: string; args: Record<string, unknown> }[] };
+    mockGetSupabaseAdmin.mockReturnValue(
+      makeAdminWithRpc(
+        {
+          tenantProviders: ["provider-1"],
+          tenantScopedLinks: [VALID_LINK],
+          globalFallbackLinks: [],
+          provider: ACTIVE_PROVIDER,
+        },
+        captured,
+        { data: null, error: { code: "PGRST202", message: "function not found" } },
+      ),
+    );
+
+    const res = await callRoute("abc");
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.data.provider_id).toBe("provider-1");
+    expect(captured.useCountUpdates).toEqual([4]);
   });
 
   it("drops unknown prefill keys", async () => {

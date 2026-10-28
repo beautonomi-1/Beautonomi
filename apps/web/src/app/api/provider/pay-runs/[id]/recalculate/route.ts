@@ -1,14 +1,16 @@
 import { NextRequest } from "next/server";
 import {
-  requireRoleInApi,
   successResponse,
   notFoundResponse,
   handleApiError,
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { calculatePayRun } from "@/lib/payroll/pay-run-engine";
+import { calculatePayRun, type PayPeriodType } from "@/lib/payroll/pay-run-engine";
 import { payrollDisabledMessage } from "@/lib/payroll/payroll-access";
+import { requireManagePayroll } from "@/lib/payroll/require-manage-payroll";
+import { payRunItemToInsertRow } from "@/lib/payroll/pay-run-item-rows";
+import { computeNetPay } from "@/lib/payroll/net-pay";
 
 /**
  * POST /api/provider/pay-runs/[id]/recalculate
@@ -19,7 +21,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner"], request);
+    const payrollCheck = await requireManagePayroll(request);
+    if (!payrollCheck.authorized) {
+      return payrollCheck.response!;
+    }
+    const { user } = payrollCheck;
     const { id } = await params;
     const supabaseAdmin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
@@ -40,6 +46,14 @@ export async function POST(
       return handleApiError(new Error("Only draft pay runs can be recalculated"), "INVALID_STATE", 400);
     }
 
+    const { data: payrollSettings } = await supabaseAdmin
+      .from("provider_settings")
+      .select("payroll_v2_enabled")
+      .eq("provider_id", providerId)
+      .maybeSingle();
+    const payrollV2 =
+      (payrollSettings as { payroll_v2_enabled?: boolean } | null)?.payroll_v2_enabled === true;
+
     const { data: existingItems } = await supabaseAdmin
       .from("provider_pay_run_items")
       .select("staff_id, manual_deductions, tax_deduction, uif_contribution, notes")
@@ -52,13 +66,14 @@ export async function POST(
       ]),
     );
 
-    const periodType = (payRun as { period_type?: string }).period_type ?? "weekly";
+    const periodType = ((payRun as { period_type?: string }).period_type ??
+      "weekly") as PayPeriodType;
     const items = await calculatePayRun(
       supabaseAdmin,
       providerId,
       payRun.pay_period_start as string,
       payRun.pay_period_end as string,
-      periodType as "weekly" | "monthly",
+      periodType,
     );
 
     await supabaseAdmin.from("provider_pay_run_items").delete().eq("pay_run_id", id);
@@ -66,21 +81,36 @@ export async function POST(
     const rows = items.map((item) => {
       const manual = manualByStaff.get(item.staffId) as Record<string, unknown> | undefined;
       const m = Number(manual?.manual_deductions ?? 0);
-      const t = Number(manual?.tax_deduction ?? item.taxDeduction ?? 0);
-      const u = Number(manual?.uif_contribution ?? item.uifContribution ?? 0);
-      const net = Math.max(0, item.grossPay - m - t - u);
+      let t = item.taxDeduction ?? 0;
+      if (!payrollV2 && manual?.tax_deduction !== undefined) {
+        t = Number(manual.tax_deduction);
+      }
+      let u = item.uifContribution ?? 0;
+      if (manual?.uif_contribution !== undefined) {
+        u = Number(manual.uif_contribution);
+      }
+      const net = computeNetPay({
+        grossPay: item.grossPay,
+        manualDeductions: m,
+        taxDeduction: t,
+        uifContribution: u,
+        carryForwardBalance:
+          item.carryForwardIn != null && item.carryForwardIn > 0
+            ? -item.carryForwardIn
+            : undefined,
+      });
       return {
-        pay_run_id: id,
-        staff_id: item.staffId,
-        gross_pay: item.grossPay,
-        commission_amount: item.commissionAmount,
-        hourly_amount: item.hourlyAmount,
-        salary_amount: item.salaryAmount,
-        tips_amount: item.tipsAmount,
-        manual_deductions: m,
-        tax_deduction: t,
-        uif_contribution: u,
-        net_pay: net,
+        ...payRunItemToInsertRow(id, {
+          ...item,
+          manualDeductions: m,
+          taxDeduction: t,
+          uifContribution: u,
+          netPay: net.netPay,
+          carryForwardOut:
+            net.nextCarryForward !== 0
+              ? Math.abs(net.nextCarryForward)
+              : item.carryForwardOut,
+        }),
         notes: (manual?.notes as string | null) ?? null,
       };
     });

@@ -5,9 +5,11 @@ const mockRequireRoleInApi = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 const mockGetSupabaseAdmin = vi.fn();
 const mockRequireAnyPermission = vi.fn();
+const mockRequirePermission = vi.fn();
 
 vi.mock("@/lib/auth/requirePermission", () => ({
   requireAnyPermission: (...args: unknown[]) => mockRequireAnyPermission(...args),
+  requirePermission: (...args: unknown[]) => mockRequirePermission(...args),
 }));
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
@@ -35,6 +37,7 @@ describe("GET /api/provider/billing-history", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "user-1" } });
+    mockRequirePermission.mockResolvedValue({ authorized: true, user: { id: "user-1" } });
     mockGetProviderIdForUser.mockResolvedValue("provider-1");
   });
 
@@ -42,21 +45,15 @@ describe("GET /api/provider/billing-history", () => {
     const chain: Record<string, unknown> = {};
     chain.select = vi.fn(() => chain);
     chain.eq = vi.fn(() => chain);
-    chain.in = vi.fn(() => chain);
+    chain.gte = vi.fn(() => chain);
+    chain.lte = vi.fn(() => chain);
     chain.order = vi.fn(() => chain);
-    chain.limit = vi.fn(() =>
+    chain.range = vi.fn(() =>
       Promise.resolve({ data: null, error: { message: "db down" }, count: null }),
     );
     mockGetSupabaseAdmin.mockReturnValue({
       from: vi.fn((table: string) => {
-        if (table === "providers") {
-          const p: Record<string, unknown> = {};
-          p.select = vi.fn(() => p);
-          p.eq = vi.fn(() => p);
-          p.maybeSingle = vi.fn(() => Promise.resolve({ data: { tenant_id: "tenant-1" }, error: null }));
-          return p;
-        }
-        if (table === "finance_transactions") return chain;
+        if (table === "provider_billing_activity") return chain;
         throw new Error(`Unexpected table ${table}`);
       }),
     });
@@ -70,19 +67,22 @@ describe("GET /api/provider/billing-history", () => {
     const chain: Record<string, unknown> = {};
     chain.select = vi.fn(() => chain);
     chain.eq = vi.fn(() => chain);
-    chain.in = vi.fn(() => chain);
+    chain.gte = vi.fn(() => chain);
+    chain.lte = vi.fn(() => chain);
     chain.order = vi.fn(() => chain);
-    chain.limit = vi.fn(() =>
+    chain.range = vi.fn(() =>
       Promise.resolve({
         data: [
           {
             id: "tx-1",
             amount: 99,
             currency: "ZAR",
-            created_at: "2026-01-01T00:00:00Z",
+            occurred_at: "2026-01-01T00:00:00Z",
             description: "Subscription",
-            transaction_type: "provider_subscription_payment",
-            metadata: null,
+            type: "provider_subscription_payment",
+            status: "paid",
+            direction: "debit",
+            receipt_path: null,
           },
         ],
         error: null,
@@ -91,14 +91,7 @@ describe("GET /api/provider/billing-history", () => {
     );
     mockGetSupabaseAdmin.mockReturnValue({
       from: vi.fn((table: string) => {
-        if (table === "providers") {
-          const p: Record<string, unknown> = {};
-          p.select = vi.fn(() => p);
-          p.eq = vi.fn(() => p);
-          p.maybeSingle = vi.fn(() => Promise.resolve({ data: { tenant_id: "tenant-1" }, error: null }));
-          return p;
-        }
-        if (table === "finance_transactions") return chain;
+        if (table === "provider_billing_activity") return chain;
         throw new Error(`Unexpected table ${table}`);
       }),
     });

@@ -8,7 +8,7 @@
  * can inspect items and adjust manual deductions natively, bringing
  * parity with the web pay-run detail page before launch.
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -48,6 +48,9 @@ interface PayRunItem {
   taxable_income: number | null;
   net_pay: number;
   notes: string | null;
+  commission_clawback?: number | null;
+  carry_forward_in?: number | null;
+  carry_forward_out?: number | null;
 }
 
 interface PayRunDetail {
@@ -77,10 +80,6 @@ function formatMoneySafe(value: number | null | undefined): string {
   return n.toFixed(2);
 }
 
-function isPayrollOwnerRole(role: string | null): boolean {
-  return role === "provider_owner" || role === "superadmin";
-}
-
 function unwrap<T>(raw: unknown): T | null {
   if (!raw) return null;
   if (typeof raw === "object" && raw !== null && "data" in (raw as Record<string, unknown>)) {
@@ -101,7 +100,12 @@ export default function PayRunDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { role } = useProvider();
   const { screenPadding } = useResponsive();
-  const isOwner = isPayrollOwnerRole(role);
+  const { data: teamAccess } = useApi<{ can_manage_payroll?: boolean }>(
+    "/api/provider/team-access",
+    { staleTimeMs: 60_000 },
+  );
+  const canManagePayroll =
+    teamAccess?.can_manage_payroll === true;
 
   const statusLabel = useCallback(
     (status: string) => {
@@ -133,6 +137,9 @@ export default function PayRunDetailScreen() {
   const { execute: approveRun } = useApiMutation("post");
   const { execute: markPaidRun } = useApiMutation("post");
   const { execute: patchItem, loading: saving } = useApiMutation("patch");
+  const [complianceWarnings, setComplianceWarnings] = useState<
+    { staffId: string; warnings: { code: string; message: string; suggestedTopUp?: number }[] }[]
+  >([]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -144,7 +151,29 @@ export default function PayRunDetailScreen() {
   }, [refresh]);
 
   const isDraft = data?.status === "draft";
-  const canEdit = isOwner && isDraft;
+  const canEdit = canManagePayroll && isDraft;
+
+  useEffect(() => {
+    if (!id || !canManagePayroll || !isDraft) {
+      setComplianceWarnings([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { api } = await import("@/lib/api-client");
+        const res = await api.get<{ warnings?: typeof complianceWarnings }>(
+          `/api/provider/pay-runs/${id}/compliance-warnings`,
+        );
+        if (!cancelled) setComplianceWarnings(res.data?.warnings ?? []);
+      } catch {
+        if (!cancelled) setComplianceWarnings([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, canManagePayroll, isDraft]);
 
   const openEdit = useCallback((item: PayRunItem) => {
     if (!canEdit) return;
@@ -192,7 +221,7 @@ export default function PayRunDetailScreen() {
   }, [editItem, id, manualInput, taxInput, uifInput, notesInput, patchItem, refresh, pr]);
 
   const handleApprove = useCallback(() => {
-    if (!data || data.status !== "draft" || !isOwner) return;
+    if (!data || data.status !== "draft" || !canManagePayroll) return;
     Alert.alert(
       pr("approveTitle"),
       pr("approveBody"),
@@ -213,10 +242,10 @@ export default function PayRunDetailScreen() {
         },
       ]
     );
-  }, [data, isOwner, approveRun, refresh, pr]);
+  }, [data, canManagePayroll, approveRun, refresh, pr]);
 
   const handleMarkPaid = useCallback(() => {
-    if (!data || data.status !== "approved" || !isOwner) return;
+    if (!data || data.status !== "approved" || !canManagePayroll) return;
     Alert.alert(
       pr("markPaidTitle"),
       pr("markPaidBody"),
@@ -237,7 +266,7 @@ export default function PayRunDetailScreen() {
         },
       ]
     );
-  }, [data, isOwner, markPaidRun, refresh, pr]);
+  }, [data, canManagePayroll, markPaidRun, refresh, pr]);
 
   if (loading && !data && !loadError) {
     return (
@@ -350,6 +379,24 @@ export default function PayRunDetailScreen() {
           )}
         </View>
 
+        {canManagePayroll && isDraft && complianceWarnings.length > 0 ? (
+          <View style={twStyle("mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4")}>
+            <Text style={twStyle("text-sm font-semibold text-amber-900 mb-2")}>
+              {pr("complianceWarningsTitle")}
+            </Text>
+            {complianceWarnings.map((row) =>
+              row.warnings.map((w, idx) => {
+                const name = items.find((i) => i.staff_id === row.staffId)?.staff_name ?? row.staffId;
+                return (
+                  <Text key={`${row.staffId}-${w.code}-${idx}`} style={twStyle("text-xs text-amber-950 mb-1")}>
+                    {name}: {w.message}
+                  </Text>
+                );
+              }),
+            )}
+          </View>
+        ) : null}
+
         {items.length === 0 ? (
           <View style={twStyle("rounded-2xl border border-gray-200 bg-white p-6 items-center")}>
             <Ionicons name="people-outline" size={32} color="#9ca3af" />
@@ -391,6 +438,21 @@ export default function PayRunDetailScreen() {
                   {Number(item.tips_amount ?? 0) > 0 && (
                     <Text style={twStyle("text-xs text-gray-500")}>
                       {pr("tips", { amount: formatMoneySafe(item.tips_amount) })}
+                    </Text>
+                  )}
+                  {Number(item.commission_clawback ?? 0) !== 0 && (
+                    <Text style={twStyle("text-xs text-red-600")}>
+                      {pr("clawback", { amount: formatMoneySafe(item.commission_clawback) })}
+                    </Text>
+                  )}
+                  {Number(item.carry_forward_in ?? 0) !== 0 && (
+                    <Text style={twStyle("text-xs text-gray-600")}>
+                      {pr("carryForwardIn", { amount: formatMoneySafe(item.carry_forward_in) })}
+                    </Text>
+                  )}
+                  {Number(item.carry_forward_out ?? 0) !== 0 && (
+                    <Text style={twStyle("text-xs text-gray-600")}>
+                      {pr("carryForwardOut", { amount: formatMoneySafe(item.carry_forward_out) })}
                     </Text>
                   )}
                 </View>
@@ -438,7 +500,7 @@ export default function PayRunDetailScreen() {
           ))
         )}
 
-        {data.status === "draft" && isOwner && (
+        {data.status === "draft" && canManagePayroll && (
           <TouchableOpacity
             onPress={handleApprove}
             style={twStyle("mt-2 flex-row items-center justify-center rounded-xl bg-emerald-600 py-3.5")}
@@ -449,7 +511,7 @@ export default function PayRunDetailScreen() {
             <Text style={twStyle("ms-2 text-sm font-semibold text-white")}>{pr("approveCta")}</Text>
           </TouchableOpacity>
         )}
-        {data.status === "approved" && isOwner && (
+        {data.status === "approved" && canManagePayroll && (
           <TouchableOpacity
             onPress={handleMarkPaid}
             style={twStyle("mt-2 flex-row items-center justify-center rounded-xl bg-gray-800 py-3.5")}

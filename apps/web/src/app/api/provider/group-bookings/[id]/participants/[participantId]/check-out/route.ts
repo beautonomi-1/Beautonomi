@@ -65,6 +65,23 @@ export async function POST(
     if (fetchError) throw fetchError;
     if (!existing) return notFoundResponse("Participant not found");
 
+    if (existing.booking_id) {
+      const { data: linkedBooking, error: linkedBookingError } = await admin
+        .from("bookings")
+        .select("status")
+        .eq("id", existing.booking_id)
+        .maybeSingle();
+      if (linkedBookingError) throw linkedBookingError;
+      const linkedStatus = String(linkedBooking?.status ?? "").toLowerCase();
+      if (linkedStatus === "cancelled" || linkedStatus === "no_show") {
+        return errorResponse(
+          "This participant's booking is cancelled or marked as a no-show.",
+          "BOOKING_NOT_ACTIVE",
+          409,
+        );
+      }
+    }
+
     if (!existing.checked_in_at) {
       return errorResponse(
         "Participant has not been checked in yet. Check in before checking out.",
@@ -129,17 +146,53 @@ export async function POST(
       .eq("id", id)
       .eq("provider_id", group.provider_id);
 
-    const { count, error: remainingError } = await admin
+    const { data: roster, error: remainingError } = await admin
       .from("booking_participants")
-      .select("id", { count: "exact", head: true })
-      .eq("group_booking_id", id)
-      .is("checked_out_at", null);
+      .select("id, booking_id, checked_out_at")
+      .eq("group_booking_id", id);
     if (remainingError) {
       console.warn(
         "[provider group check-out] remaining participant count failed (continuing):",
         remainingError
       );
-    } else if (count === 0) {
+    } else {
+      const bookingIds = [
+        ...new Set(
+          (roster ?? [])
+            .map((row: { booking_id?: string | null }) => row.booking_id)
+            .filter((bid): bid is string => Boolean(bid)),
+        ),
+      ];
+      const inactiveBookingIds = new Set<string>();
+      if (bookingIds.length > 0) {
+        const { data: bookingRows, error: bookingStatusError } = await admin
+          .from("bookings")
+          .select("id, status")
+          .in("id", bookingIds);
+        if (bookingStatusError) {
+          console.warn(
+            "[provider group check-out] booking status lookup failed (continuing):",
+            bookingStatusError
+          );
+        } else {
+          for (const row of bookingRows ?? []) {
+            const st = String(row.status ?? "").toLowerCase();
+            if (st === "cancelled" || st === "no_show") {
+              inactiveBookingIds.add(row.id);
+            }
+          }
+        }
+      }
+
+      const remainingActive = (roster ?? []).filter(
+        (row: { booking_id?: string | null; checked_out_at?: string | null }) => {
+          if (row.checked_out_at) return false;
+          if (!row.booking_id) return true;
+          return !inactiveBookingIds.has(row.booking_id);
+        },
+      ).length;
+
+      if (remainingActive === 0) {
       const { error: statusError } = await admin
         .from("group_bookings")
         .update({ status: "completed", updated_at: now })
@@ -151,6 +204,7 @@ export async function POST(
           "[provider group check-out] group status update failed (continuing):",
           statusError
         );
+      }
       }
     }
 

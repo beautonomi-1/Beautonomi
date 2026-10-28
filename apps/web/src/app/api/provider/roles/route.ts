@@ -10,19 +10,14 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { isProviderOwner, hasPermission, normalizeStaffPermissions } from "@/lib/auth/permissions";
 import { requireAnyPermission } from "@/lib/auth/requirePermission";
+import { staffPermissionsToStoredJson } from "@/lib/auth/staff-permissions-payload";
 import { z } from "zod";
 
 const createSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   permissions: z.record(z.string(), z.boolean()).optional(),
-  is_active: z.boolean().optional(),
-});
-
-const _updateSchema = z.object({
-  name: z.string().min(1).optional(),
-  description: z.string().optional(),
-  permissions: z.record(z.string(), z.boolean()).optional(),
+  calendar_scope: z.enum(["own", "all"]).optional(),
   is_active: z.boolean().optional(),
 });
 
@@ -54,12 +49,11 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    // Parse permissions JSON if it's a string
-    const roles = (data || []).map((role: any) => ({
+    const roles = (data || []).map((role: { permissions?: unknown }) => ({
       ...role,
       permissions:
         role.permissions && typeof role.permissions === "string"
-          ? normalizeStaffPermissions(JSON.parse(role.permissions))
+          ? normalizeStaffPermissions(JSON.parse(role.permissions as string))
           : normalizeStaffPermissions(role.permissions),
     }));
 
@@ -84,7 +78,7 @@ export async function POST(request: NextRequest) {
         return errorResponse(
           "Only owners or users with Manage team can create roles.",
           "FORBIDDEN",
-          403
+          403,
         );
       }
     }
@@ -103,9 +97,14 @@ export async function POST(request: NextRequest) {
         "Validation failed",
         "VALIDATION_ERROR",
         400,
-        validationResult.error.issues
+        validationResult.error.issues,
       );
     }
+
+    const storedPermissions = staffPermissionsToStoredJson(
+      validationResult.data.permissions ?? {},
+      validationResult.data.calendar_scope,
+    );
 
     const { data, error } = await supabase
       .from("provider_roles")
@@ -113,7 +112,7 @@ export async function POST(request: NextRequest) {
         provider_id: providerId,
         name: validationResult.data.name,
         description: validationResult.data.description || null,
-        permissions: normalizeStaffPermissions(validationResult.data.permissions),
+        permissions: storedPermissions,
         is_active: validationResult.data.is_active ?? true,
       })
       .select()

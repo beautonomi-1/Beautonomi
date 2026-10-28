@@ -1,6 +1,6 @@
 {
   "name": "customer",
-  "version": "1.0.105",
+  "version": "1.0.106",
   "main": "index.ts",
   "scripts": {
     "dev": "node ../../tooling/expo-dev/port-safe-expo-dev.js 8081 8083",
@@ -105,7 +105,7 @@
     "react-native-webview": "13.16.1",
     "react-native-worklets": "0.10.1",
     "singular-react-native": "^4.2.0",
-    "zod": "^4.3.6"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@babel/core": "^7.29.0",

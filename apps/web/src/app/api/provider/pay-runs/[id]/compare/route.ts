@@ -9,6 +9,8 @@ import {
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { calculatePayRun } from "@/lib/payroll/pay-run-engine";
 import { payrollDisabledMessage } from "@/lib/payroll/payroll-access";
+import { requireManagePayroll } from "@/lib/payroll/require-manage-payroll";
+import type { PayPeriodType } from "@/lib/payroll/pay-run-engine";
 
 /**
  * GET /api/provider/pay-runs/[id]/compare
@@ -19,7 +21,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner"], request);
+    const payrollCheck = await requireManagePayroll(request);
+    if (!payrollCheck.authorized) {
+      return payrollCheck.response!;
+    }
+    const { user } = payrollCheck;
     const { id } = await params;
     const admin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, admin, { request });
@@ -39,7 +45,8 @@ export async function GET(
       return handleApiError(new Error("Comparison is only available for draft pay runs"), "INVALID_STATE", 400);
     }
 
-    const periodType = (payRun as { period_type?: string }).period_type ?? "weekly";
+    const periodType = ((payRun as { period_type?: string }).period_type ??
+      "weekly") as PayPeriodType;
     const start = payRun.pay_period_start as string;
     const end = payRun.pay_period_end as string;
 
@@ -50,10 +57,10 @@ export async function GET(
       .maybeSingle();
     const v2On = (settings as { payroll_v2_enabled?: boolean } | null)?.payroll_v2_enabled === true;
 
-    const withV2 = await calculatePayRun(admin, providerId, start, end, periodType as "weekly" | "monthly", {
+    const withV2 = await calculatePayRun(admin, providerId, start, end, periodType, {
       forcePayrollV2: true,
     });
-    const legacy = await calculatePayRun(admin, providerId, start, end, periodType as "weekly" | "monthly", {
+    const legacy = await calculatePayRun(admin, providerId, start, end, periodType, {
       forcePayrollV2: false,
     });
 

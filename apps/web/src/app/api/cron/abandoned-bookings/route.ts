@@ -23,6 +23,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
+import { firstHoldSnapshotOfferingId } from "@/lib/bookings/first-hold-snapshot-offering-id";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,7 +53,9 @@ async function runJob(_request: NextRequest) {
 
   const { data: holds, error: holdErr } = await supabase
     .from("booking_holds")
-    .select("id, provider_id, created_by_user_id, offering_id, expires_at, hold_status")
+    .select(
+      "id, provider_id, created_by_user_id, booking_services_snapshot, expires_at, hold_status",
+    )
     .eq("hold_status", "expired")
     .not("created_by_user_id", "is", null)
     .gte("expires_at", lookbackFrom.toISOString())
@@ -125,7 +128,7 @@ async function runJob(_request: NextRequest) {
         [userId],
         {
           provider_id: hold.provider_id,
-          offering_id: hold.offering_id,
+          offering_id: firstHoldSnapshotOfferingId(hold.booking_services_snapshot),
           hold_id: hold.id,
         },
         ["email", "push"],

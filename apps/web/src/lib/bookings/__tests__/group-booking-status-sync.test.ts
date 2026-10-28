@@ -62,4 +62,11 @@ describe("syncGroupBookingStatusFromChildren", () => {
     expect(next).toBe("cancelled");
     expect(admin.updates[0]?.status).toBe("cancelled");
   });
+
+  it("keeps group pending when one child is cancelled and another is still pending", async () => {
+    const admin = makeAdmin([{ status: "cancelled" }, { status: "pending" }]);
+    const next = await syncGroupBookingStatusFromChildren(admin.client, "group-1");
+    expect(next).toBe("pending");
+    expect(admin.updates[0]?.status).toBe("pending");
+  });
 });

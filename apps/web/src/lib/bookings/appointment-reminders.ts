@@ -6,6 +6,7 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { sendTemplateNotification } from "@/lib/notifications/onesignal";
 import type { TemplateDispatchChannel } from "@/lib/notifications/channel-types";
+import { STAFF_REMINDER_BOOKING_SELECT } from "@/lib/bookings/staff-reminder-booking-select";
 
 export interface ReminderConfig {
   hoursBefore: number[]; // e.g., [24, 2] for 24 hours and 2 hours before
@@ -586,19 +587,7 @@ export async function sendStaffAppointmentReminders() {
     const windowEnd = new Date(reminderAt.getTime() + 30 * 60 * 1000);
     const { data: bookings, error: bookingErr } = await supabaseAdmin
       .from("bookings")
-      .select(
-        `
-        id,
-        booking_number,
-        scheduled_at,
-        customer_id,
-        provider_id,
-        tenant_id,
-        staff_id,
-        customers:users!bookings_customer_id_fkey ( id, full_name ),
-        booking_services ( staff_id, offering:offerings!inner ( title ) )
-      `,
-      )
+      .select(STAFF_REMINDER_BOOKING_SELECT)
       .eq("provider_id", providerId)
       .eq("status", "confirmed")
       .gte("scheduled_at", windowStart.toISOString())

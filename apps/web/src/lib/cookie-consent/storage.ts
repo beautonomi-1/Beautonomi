@@ -9,6 +9,13 @@ import type { CookieCategorySelection, StoredCookieConsent } from "./types";
 
 const MAX_STORED_BYTES = 4096;
 
+/** Dispatched after `persistConsent` writes localStorage. */
+export const CONSENT_CHANGED_EVENT = "beautonomi:cookie-consent-changed";
+
+let cachedRaw: string | null = null;
+let cachedConsent: StoredCookieConsent | null = null;
+let hasConsentCache = false;
+
 function isValidIso8601(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}T/.test(value)) return false;
   const t = Date.parse(value);
@@ -127,7 +134,7 @@ export function persistConsent(categories: CookieCategorySelection): StoredCooki
     }
     writeConsentCookie(record);
     try {
-      window.dispatchEvent(new CustomEvent<StoredCookieConsent>("beautonomi:cookie-consent-changed", { detail: record }));
+      window.dispatchEvent(new CustomEvent<StoredCookieConsent>(CONSENT_CHANGED_EVENT, { detail: record }));
     } catch {
       /* ignore */
     }
@@ -156,4 +163,49 @@ export function needsReprompt(stored: StoredCookieConsent | null): boolean {
   if (!stored) return true;
   if (stored.policyVersion !== POLICY_VERSION) return true;
   return false;
+}
+
+function readConsentRaw(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Cached localStorage snapshot for `useSyncExternalStore`.
+ * Returns the same object until the stored string changes, so React does not loop.
+ */
+export function getConsentSnapshot(): StoredCookieConsent | null {
+  const raw = readConsentRaw();
+  if (hasConsentCache && raw === cachedRaw) return cachedConsent;
+  // Parse only. Clearing invalid payloads is a write, and this snapshot runs during render.
+  cachedConsent = parseStored(raw);
+  cachedRaw = raw;
+  hasConsentCache = true;
+  return cachedConsent;
+}
+
+export function getConsentServerSnapshot(): StoredCookieConsent | null {
+  return null;
+}
+
+export function subscribeStoredConsent(onStoreChange: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const notify = () => {
+    hasConsentCache = false;
+    onStoreChange();
+  };
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== null && event.key !== STORAGE_KEY) return;
+    notify();
+  };
+  window.addEventListener(CONSENT_CHANGED_EVENT, notify);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    window.removeEventListener(CONSENT_CHANGED_EVENT, notify);
+    window.removeEventListener("storage", onStorage);
+  };
 }

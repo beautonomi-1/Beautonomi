@@ -31,6 +31,7 @@ export type ReceiptTokenKind =
   | "provider_order_receipt"
   | "provider_ads_receipt"
   | "provider_subscription_receipt"
+  | "provider_marketing_credit_receipt"
   | "provider_terminal_order_receipt"
   | "provider_sale_receipt";
 

@@ -19,6 +19,8 @@ import {
   groupPayerSummaryLine,
   participantPaymentBadge,
 } from "@/lib/group-booking-payment-display";
+import { customerStatusPillLabel } from "@/lib/customer-booking-display-labels";
+import { resolveEffectiveBookingLifecycleStatus } from "@beautonomi/utils";
 
 type ParticipantAddon = {
   id: string | null;
@@ -103,9 +105,9 @@ function formatGroupMoney(value: number, currency?: string | null) {
 
 function statusColor(status: string) {
   if (status === "completed") return { bg: "#DBEAFE", fg: "#1D4ED8" };
-  if (status === "cancelled") return { bg: "#FEE2E2", fg: "#B91C1C" };
+  if (status === "cancelled" || status === "no_show") return { bg: "#FEE2E2", fg: "#B91C1C" };
   if (status === "started" || status === "in_progress") return { bg: "#EDE9FE", fg: "#7C3AED" };
-  if (status === "pending") return { bg: "#FEF3C7", fg: "#92400E" };
+  if (status === "pending" || status === "pending_payment") return { bg: "#FEF3C7", fg: "#92400E" };
   return { bg: "#DCFCE7", fg: "#15803D" };
 }
 
@@ -177,12 +179,12 @@ export default function GroupBookingDetailScreen() {
 
   const constrained = isTablet ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
   const colors = statusColor(data?.status ?? "confirmed");
-  const groupPayment = groupPaymentBadge(data?.payment_status);
   const gbp = useCallback(
     (key: string, opts?: Record<string, string | number>) =>
       t(`customer.mobile.components.groupBookingPayment.${key}`, opts) as string,
     [t],
   );
+  const groupPayment = groupPaymentBadge(data?.payment_status, gbp);
   const payerLine = data
     ? groupPayerSummaryLine(
         {
@@ -193,9 +195,19 @@ export default function GroupBookingDetailScreen() {
       )
     : null;
   const groupBalanceDue = Number(data?.balance_due ?? 0);
+  const currentUserParticipant = data?.participants.find((p) => p.is_current_user) ?? null;
+  const currentUserBookingStatus = (currentUserParticipant?.booking_status ?? "").toLowerCase();
   const isPrimaryContact = Boolean(data?.participants.some((p) => p.is_current_user && p.is_primary_contact));
   const canRescheduleGroup =
-    isPrimaryContact && data != null && !["completed", "cancelled", "started"].includes(data.status);
+    isPrimaryContact &&
+    data != null &&
+    !["completed", "cancelled", "started"].includes(data.status) &&
+    !["cancelled", "no_show"].includes(currentUserBookingStatus);
+  const bd = useCallback(
+    (key: string, opts?: Record<string, string | number>) =>
+      String(t(`customer.mobile.screens.bookingDetail.${key}`, opts as never)),
+    [t],
+  );
 
   const submitReschedule = useCallback(async () => {
     if (!id) return;
@@ -272,6 +284,15 @@ export default function GroupBookingDetailScreen() {
                 <Text style={{ color: Colors.gray[500], fontSize: 12, fontWeight: "700", textTransform: "uppercase" }}>{data.ref_number}</Text>
                 <Text style={{ color: Colors.gray[900], fontSize: 24, fontWeight: "800", marginTop: 4 }}>{data.title}</Text>
                 <Text style={{ color: Colors.gray[700], marginTop: 8 }}>{formatDate(data.scheduled_at, gbd)} · {formatTime(data.scheduled_at)}</Text>
+                {currentUserBookingStatus === "cancelled" ? (
+                  <Text style={{ color: "#B91C1C", fontWeight: "600", fontSize: 13, marginTop: 10 }}>
+                    {gbd("yourBookingCancelled")}
+                  </Text>
+                ) : currentUserBookingStatus === "no_show" ? (
+                  <Text style={{ color: Colors.gray[700], fontWeight: "600", fontSize: 13, marginTop: 10 }}>
+                    {gbd("yourBookingNoShow")}
+                  </Text>
+                ) : null}
                 {canRescheduleGroup ? (
                   <TouchableOpacity
                     onPress={() => {
@@ -288,8 +309,13 @@ export default function GroupBookingDetailScreen() {
                   </TouchableOpacity>
                 ) : null}
               </View>
-              <View style={{ backgroundColor: colors.bg, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
-                <Text style={{ color: colors.fg, fontWeight: "700", fontSize: 12 }}>{humanStatus(data.status, gbd)}</Text>
+              <View style={{ alignItems: "flex-end", gap: 4 }}>
+                <Text style={{ color: Colors.gray[500], fontSize: 10, fontWeight: "600" }}>
+                  {gbd("sessionStatus", { status: humanStatus(data.status, gbd) })}
+                </Text>
+                <View style={{ backgroundColor: colors.bg, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
+                  <Text style={{ color: colors.fg, fontWeight: "700", fontSize: 12 }}>{humanStatus(data.status, gbd)}</Text>
+                </View>
               </View>
             </View>
             <View style={{ marginTop: 16, flexDirection: "row", gap: 10 }}>
@@ -381,6 +407,18 @@ export default function GroupBookingDetailScreen() {
             )}
             {data.participants.map((p) => {
               const badge = participantPaymentBadge(p.payment_status, groupBalanceDue, gbp);
+              const rawBookingStatus = String(p.booking_status ?? "").toLowerCase();
+              const effectiveBookingStatus = rawBookingStatus
+                ? resolveEffectiveBookingLifecycleStatus({
+                    status: rawBookingStatus,
+                    paymentStatus: p.payment_status,
+                  })
+                : "";
+              const bookingStatusLabel =
+                rawBookingStatus && effectiveBookingStatus
+                  ? customerStatusPillLabel(rawBookingStatus, effectiveBookingStatus, bd)
+                  : null;
+              const bookingStatusColors = rawBookingStatus ? statusColor(effectiveBookingStatus || rawBookingStatus) : null;
               return (
                 <TouchableOpacity
                   key={p.id}
@@ -412,6 +450,20 @@ export default function GroupBookingDetailScreen() {
                         {badge ? (
                           <View style={{ backgroundColor: badge.bg, borderRadius: 99, paddingHorizontal: 6, paddingVertical: 2 }}>
                             <Text style={{ color: badge.fg, fontSize: 10, fontWeight: "700" }}>{badge.label}</Text>
+                          </View>
+                        ) : null}
+                        {bookingStatusLabel && bookingStatusColors ? (
+                          <View
+                            style={{
+                              backgroundColor: bookingStatusColors.bg,
+                              borderRadius: 99,
+                              paddingHorizontal: 6,
+                              paddingVertical: 2,
+                            }}
+                          >
+                            <Text style={{ color: bookingStatusColors.fg, fontSize: 10, fontWeight: "700" }}>
+                              {bookingStatusLabel}
+                            </Text>
                           </View>
                         ) : null}
                       </View>

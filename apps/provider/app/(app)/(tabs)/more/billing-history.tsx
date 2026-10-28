@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Redirect, useRouter } from "expo-router";
 import { useTranslation } from "@beautonomi/i18n";
 import { Ionicons } from "@expo/vector-icons";
@@ -48,25 +48,49 @@ export function BillingHistoryContent() {
   const router = useRouter();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
-  const [limit, setLimit] = useState(50);
+  const [offset, setOffset] = useState(0);
+  const limit = 50;
   const { data, loading, error, refresh } = useApi<BillingItem[] | BillingHistoryResponse>(
-    `/api/provider/billing-history?limit=${limit}`,
+    `/api/provider/billing-history?limit=${limit}&offset=${offset}`,
   );
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    try {
-      await refresh();
-    } finally {
+    if (offset === 0) {
+      try {
+        await refresh();
+      } finally {
+        setRefreshing(false);
+      }
+      return;
+    }
+    setOffset(0);
+  }, [offset, refresh]);
+
+  useEffect(() => {
+    if (refreshing && offset === 0 && !loading) {
       setRefreshing(false);
     }
-  }, [refresh]);
+  }, [refreshing, offset, loading]);
 
-  const items: BillingItem[] = Array.isArray(data)
+  const pageItems: BillingItem[] = Array.isArray(data)
     ? data
     : (data?.items ?? []);
+  const [items, setItems] = useState<BillingItem[]>([]);
+  useEffect(() => {
+    if (offset === 0) {
+      setItems(pageItems);
+      return;
+    }
+    if (!pageItems.length) return;
+    setItems((prev) => {
+      const ids = new Set(prev.map((p) => p.id));
+      const next = pageItems.filter((p) => !ids.has(p.id));
+      return next.length ? [...prev, ...next] : prev;
+    });
+  }, [data, offset, pageItems]);
   const canLoadMore = Array.isArray(data)
-    ? items.length >= limit && limit < 200
-    : Boolean(data?.has_more) && limit < 200;
+    ? pageItems.length >= limit
+    : Boolean(data?.has_more);
   const openInvoice = async (item: BillingItem) => {
     const url = item.invoice_url?.trim();
     if (!url) return;
@@ -81,6 +105,18 @@ export function BillingHistoryContent() {
         signedUrlPath: url.replace(/\/pdf$/, "/signed-url"),
         filename: `receipt-${item.id}.pdf`,
         title: bh("receiptTitle"),
+      });
+      return;
+    }
+    const platformInvoice = url.match(/^\/api\/provider\/invoices\/([^/]+)\/download$/);
+    if (platformInvoice) {
+      const invoiceId = platformInvoice[1];
+      await downloadPdf({
+        router,
+        pdfPath: url,
+        signedUrlPath: `/api/provider/invoices/${invoiceId}/signed-url`,
+        filename: `invoice-${invoiceId}.pdf`,
+        title: bh("invoiceTitle"),
       });
       return;
     }
@@ -183,7 +219,12 @@ export function BillingHistoryContent() {
                 borderRadius: 9999,
                 paddingHorizontal: 10,
                 paddingVertical: 4,
-                backgroundColor: item.status === "paid" ? "#dcfce7" : Colors.gray[100],
+                backgroundColor:
+                  item.status === "paid"
+                    ? "#dcfce7"
+                    : item.status === "refunded"
+                      ? "#fee2e2"
+                      : Colors.gray[100],
               }}
             >
               <Text
@@ -216,7 +257,7 @@ export function BillingHistoryContent() {
       )}
       {canLoadMore ? (
         <TouchableOpacity
-          onPress={() => setLimit((n) => Math.min(n + 50, 200))}
+          onPress={() => setOffset((o) => o + limit)}
           disabled={loading}
           activeOpacity={0.75}
           style={{

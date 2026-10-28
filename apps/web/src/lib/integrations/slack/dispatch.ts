@@ -165,6 +165,14 @@ function escapeHtml(s: string): string {
  * If an event has no Slack routing rule, try alternate keys so ops can map one channel
  * (e.g. `dispute.new`) for multiple trust/safety queues without duplicating config rows.
  */
+/** @internal Tests only — Slack routing fallback chain. */
+export function __resolveSlackRouteRuleForTests(
+  routing: Record<string, RouteRule>,
+  eventKey: SlackEventKey,
+): RouteRule | null {
+  return resolveSlackRouteRule(routing, eventKey);
+}
+
 function resolveSlackRouteRule(
   routing: Record<string, RouteRule>,
   eventKey: SlackEventKey,
@@ -191,6 +199,7 @@ function resolveSlackRouteRule(
     [SLACK_EVENT_KEYS.VERIFICATION_PENDING]: [SLACK_EVENT_KEYS.DISPUTE_NEW],
     [SLACK_EVENT_KEYS.VERIFICATION_STUCK]: [SLACK_EVENT_KEYS.DISPUTE_NEW],
     [SLACK_EVENT_KEYS.FINANCE_PAYOUT_REQUESTED]: [SLACK_EVENT_KEYS.FINANCE_PAYOUT_EXCEPTION],
+    [SLACK_EVENT_KEYS.FINANCE_WALLET_BANK_REFUND_REQUESTED]: [SLACK_EVENT_KEYS.FINANCE_REFUND_REVIEW],
     [SLACK_EVENT_KEYS.PRODUCT_ORDER_PAYMENT_NOT_RECORDED]: [
       SLACK_EVENT_KEYS.FINANCE_RECONCILIATION_WARNING,
       SLACK_EVENT_KEYS.CUSTOM_OFFER_FINALIZE_FAILED,

@@ -43,6 +43,7 @@ const DEFAULT_PREFIXES = [
   "time",
   "bookingLifecycle",
   "customer.mobile",
+  "customer.walletScreen",
   "provider.mobile",
   "web.global.cityWaitlist",
   "web.global.marketAvailability",

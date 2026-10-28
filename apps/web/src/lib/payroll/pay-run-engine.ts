@@ -4,11 +4,9 @@ import { getTipsByStaff } from "./tips-helper";
 import { sumStaffEarningsLines } from "./staff-earnings-from-lines";
 import { resolvePayPeriodBounds, toPayPeriodDateString } from "./period-bounds";
 import { getProviderPayrollTimezone } from "./provider-payroll-context";
-import { prorateMonthlySalary } from "./salary-proration";
-import { buildPayRunItem } from "./gross-pay-assembler";
+import { assembleStaffPayRunGross } from "./assemble-staff-pay-run-gross";
 import { applyStatutoryToPayRunItems } from "./apply-statutory";
 import { loadStaffPayrollMetaBatch } from "./resolve-staff-payroll-meta";
-import { computeCompensation } from "./compute-compensation";
 
 export interface PayRunItem {
   staffId: string;
@@ -21,19 +19,64 @@ export interface PayRunItem {
   manualDeductions: number;
   taxDeduction: number;
   uifContribution: number;
+  taxableIncome?: number;
   netPay: number;
+  commissionClawback?: number;
+  carryForwardIn?: number;
   carryForwardOut?: number;
 }
 
 export type PayPeriodType = "weekly" | "biweekly" | "semi_monthly" | "monthly" | "custom";
 
-/**
- * Calculate pay run for staff of a provider (active + anyone with earnings/hours in period).
- */
 export type CalculatePayRunOptions = {
-  /** Override provider_settings.payroll_v2_enabled for parallel comparison. */
   forcePayrollV2?: boolean;
 };
+
+async function loadStaffCarryForwardBalances(
+  admin: SupabaseClient,
+  providerId: string,
+  staffIds: string[],
+  periodStart: string,
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (!staffIds.length) return out;
+
+  const { data: priorRuns } = await admin
+    .from("provider_pay_runs")
+    .select("id, pay_period_end")
+    .eq("provider_id", providerId)
+    .in("status", ["approved", "paid"])
+    .lt("pay_period_end", periodStart)
+    .order("pay_period_end", { ascending: false })
+    .limit(20);
+
+  const runIds = (priorRuns ?? []).map((r: { id: string }) => r.id);
+  if (!runIds.length) return out;
+
+  const { data: items } = await admin
+    .from("provider_pay_run_items")
+    .select("staff_id, carry_forward_out, pay_run_id")
+    .in("staff_id", staffIds)
+    .in("pay_run_id", runIds)
+    .gt("carry_forward_out", 0);
+
+  const runOrder = new Map(runIds.map((id, i) => [id, i]));
+  const best = new Map<string, { order: number; out: number }>();
+  for (const row of items ?? []) {
+    const sid = (row as { staff_id: string }).staff_id;
+    const rid = (row as { pay_run_id: string }).pay_run_id;
+    const order = runOrder.get(rid) ?? 999;
+    const cfOut = Number((row as { carry_forward_out?: number }).carry_forward_out ?? 0);
+    const prev = best.get(sid);
+    if (!prev || order < prev.order) {
+      best.set(sid, { order, out: cfOut });
+    }
+  }
+  for (const [sid, v] of best) {
+    out.set(sid, -v.out);
+  }
+  return out;
+}
 
 export async function calculatePayRun(
   supabaseAdmin: SupabaseClient,
@@ -121,13 +164,16 @@ export async function calculatePayRun(
     null;
 
   const eligibleIds = eligibleStaff.map((s: { id: string }) => s.id);
-  const payrollMetaByStaff = await loadStaffPayrollMetaBatch(
-    supabaseAdmin,
-    providerId,
-    eligibleIds,
-    periodEnd,
-    providerCountry,
-  );
+  const [payrollMetaByStaff, carryForwardByStaff] = await Promise.all([
+    loadStaffPayrollMetaBatch(
+      supabaseAdmin,
+      providerId,
+      eligibleIds,
+      periodEnd,
+      providerCountry,
+    ),
+    loadStaffCarryForwardBalances(supabaseAdmin, providerId, eligibleIds, periodStart),
+  ]);
 
   const results: PayRunItem[] = [];
   const staffMeta = new Map<
@@ -136,6 +182,7 @@ export async function calculatePayRun(
       jurisdictionCode: string;
       employmentType: "employee" | "contractor" | "apprentice";
       statutoryMode: "auto" | "manual" | "none";
+      userId?: string | null;
     }
   >();
 
@@ -144,6 +191,7 @@ export async function calculatePayRun(
     if (meta?.payPlan?.payModel === "booth_renter") {
       continue;
     }
+
     const linesSummary = await sumStaffEarningsLines(
       supabaseAdmin,
       staff.id,
@@ -151,112 +199,38 @@ export async function calculatePayRun(
       periodTo,
     ).catch(() => null);
 
-    const commissionAdjustments =
-      linesSummary?.adjustment_breakdown?.commission ?? linesSummary?.adjustments ?? 0;
-    const tipAdjustments = linesSummary?.adjustment_breakdown?.tips ?? 0;
-    const useLinesPath =
-      linesSummary &&
-      (linesSummary.commission !== 0 ||
-        linesSummary.tips !== 0 ||
-        linesSummary.adjustments !== 0);
-
-    let commission;
-    if (useLinesPath) {
-      const productCalc = await calculateStaffCommission(
-        supabaseAdmin,
-        providerId,
-        staff.id,
-        periodFrom,
-        periodTo,
-      );
-      const rawCommission =
-        linesSummary.commission + commissionAdjustments + productCalc.productCommission;
-      commission = {
-        totalCommission: rawCommission,
-        totalBookings: 0,
-        serviceCommission: linesSummary.commission,
-        productCommission: productCalc.productCommission,
-        serviceRevenue: 0,
-        productRevenue: productCalc.productRevenue,
-        totalRevenue: 0,
-      };
-    } else {
-      commission = await calculateStaffCommission(
-        supabaseAdmin,
-        providerId,
-        staff.id,
-        periodFrom,
-        periodTo,
-      );
-    }
-
-    const hours = hoursByStaff.get(staff.id) || 0;
-    const plan = meta?.payPlan;
-    const hourlyRate = Number(plan?.hourlyRate ?? staff.hourly_rate ?? 0);
-    const salary = Number(
-      plan?.payModel === "salary" && plan.baseMonthly != null
-        ? plan.baseMonthly
-        : staff.salary ?? 0,
-    );
-    let commissionAmount =
-      (staff as { commission_enabled?: boolean | null }).commission_enabled !== false
-        ? commission.totalCommission
-        : 0;
-    if (commissionAmount < 0) commissionAmount = 0;
-
-    const hourlyAmount = hours * hourlyRate;
-    const salaryAmount =
-      salary > 0
-        ? prorateMonthlySalary(salary, periodStart, periodEnd, {
-            employmentStart: (staff as { employment_start_date?: string | null }).employment_start_date,
-            employmentEnd: (staff as { employment_end_date?: string | null }).employment_end_date,
-          })
-        : 0;
-
-    if (plan && !useLinesPath && plan.payModel !== "hourly" && plan.payModel !== "salary") {
-      const compLines = computeCompensation(
-        plan,
-        {
-          serviceRevenue: commission.serviceRevenue,
-          productRevenue: commission.productRevenue,
-          serviceCommissionFromLedger: linesSummary?.commission,
-          productCommissionFromLedger: commission.productCommission,
-          hoursWorked: hours,
-        },
-        salaryAmount,
-      );
-      const fromPlan = compLines
-        .filter(
-          (l) =>
-            l.code === "commission" ||
-            l.code.startsWith("commission") ||
-            l.code === "salary_guarantee",
-        )
-        .reduce((s, l) => s + l.amount, 0);
-      if (fromPlan > 0) {
-        commissionAmount = Math.max(0, fromPlan);
-      }
-    }
-
-    const staffTipsEnabled = (staff as { tips_enabled?: boolean | null }).tips_enabled !== false;
-    const tipsFromLines = Math.max(0, (linesSummary?.tips ?? 0) + tipAdjustments);
-    const tipsAmount = staffTipsEnabled
-      ? (linesSummary?.tips ?? 0) > 0
-        ? tipsFromLines
-        : tipsByStaff.get(staff.id) || 0
-      : 0;
-
-    const draft = buildPayRunItem(
+    const productCalc = await calculateStaffCommission(
+      supabaseAdmin,
+      providerId,
       staff.id,
-      (staff.users as { full_name?: string } | null)?.full_name || "Unknown",
-      {
-        commissionAmount,
-        hourlyAmount,
-        salaryAmount,
-        tipsAmount,
-      },
-      {},
+      periodFrom,
+      periodTo,
     );
+
+    const assembled = assembleStaffPayRunGross({
+      staffId: staff.id,
+      staffName: (staff.users as { full_name?: string } | null)?.full_name || "Unknown",
+      commissionEnabled: (staff as { commission_enabled?: boolean | null }).commission_enabled !== false,
+      tipsEnabled: (staff as { tips_enabled?: boolean | null }).tips_enabled !== false,
+      hoursWorked: hoursByStaff.get(staff.id) || 0,
+      hourlyRateFallback: Number(staff.hourly_rate ?? 0),
+      salaryFallback: Number(staff.salary ?? 0),
+      employmentStart: (staff as { employment_start_date?: string | null }).employment_start_date,
+      employmentEnd: (staff as { employment_end_date?: string | null }).employment_end_date,
+      periodStart,
+      periodEnd,
+      payPlan: meta?.payPlan ?? null,
+      productCalc: {
+        totalCommission: productCalc.totalCommission,
+        serviceCommission: productCalc.serviceCommission,
+        productCommission: productCalc.productCommission,
+        serviceRevenue: productCalc.serviceRevenue,
+        productRevenue: productCalc.productRevenue,
+      },
+      linesSummary,
+      tipsFromPeriod: tipsByStaff.get(staff.id) || 0,
+      carryForwardBalance: carryForwardByStaff.get(staff.id),
+    });
 
     const jurisdictionCode = (meta?.jurisdictionCode ?? providerCountry ?? "").trim();
     staffMeta.set(staff.id, {
@@ -265,21 +239,24 @@ export async function calculatePayRun(
       statutoryMode:
         meta?.statutoryMode ??
         (jurisdictionCode ? "auto" : "manual"),
+      userId: (staff as { user_id?: string | null }).user_id,
     });
 
     results.push({
-      staffId: draft.staffId,
-      staffName: draft.staffName,
-      grossPay: draft.grossPay,
-      commissionAmount: draft.commissionAmount,
-      hourlyAmount: draft.hourlyAmount,
-      salaryAmount: draft.salaryAmount,
-      tipsAmount: draft.tipsAmount,
-      manualDeductions: draft.manualDeductions,
-      taxDeduction: draft.taxDeduction,
-      uifContribution: draft.uifContribution,
-      netPay: draft.netPay,
-      ...(draft.carryForwardOut != null ? { carryForwardOut: draft.carryForwardOut } : {}),
+      staffId: assembled.staffId,
+      staffName: assembled.staffName,
+      grossPay: assembled.grossPay,
+      commissionAmount: assembled.commissionAmount,
+      hourlyAmount: assembled.hourlyAmount,
+      salaryAmount: assembled.salaryAmount,
+      tipsAmount: assembled.tipsAmount,
+      manualDeductions: assembled.manualDeductions,
+      taxDeduction: assembled.taxDeduction,
+      uifContribution: assembled.uifContribution,
+      netPay: assembled.netPay,
+      commissionClawback: assembled.commissionClawback,
+      carryForwardIn: assembled.carryForwardIn,
+      ...(assembled.carryForwardOut != null ? { carryForwardOut: assembled.carryForwardOut } : {}),
     });
   }
 
@@ -288,6 +265,7 @@ export async function calculatePayRun(
       supabaseAdmin,
       providerId,
       periodEnd,
+      periodType,
       results,
       staffMeta,
     );

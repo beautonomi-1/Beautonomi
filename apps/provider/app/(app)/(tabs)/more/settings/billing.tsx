@@ -582,84 +582,11 @@ export default function BillingScreen() {
                 <Text style={twStyle("ms-2 text-sm font-medium text-gray-700")}>{bs("download")}</Text>
               </TouchableOpacity>
 
-              {selectedInvoice.status !== "paid" && selectedInvoice.status !== "cancelled" && (
-                <>
-                  {!showPayment ? (
-                    <ActionButton
-                      label={bs("recordPayment")}
-                      onPress={() => {
-                        setPaymentAmount(String(selectedInvoice.total_amount));
-                        setShowPayment(true);
-                      }}
-                      fullWidth
-                    />
-                  ) : (
-                    <View style={twStyle("rounded-xl border border-gray-200 bg-gray-50 p-4")}>
-                      <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                        {bs("paymentAmount")}
-                      </Text>
-                      <TextInput
-                        style={twStyle(
-                          "mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
-                        )}
-                        value={paymentAmount}
-                        onChangeText={setPaymentAmount}
-                        keyboardType="decimal-pad"
-                        placeholder={bs("paymentAmountPlaceholder")}
-                        placeholderTextColor="#9ca3af"
-                      />
-                      <ActionButton
-                        label={bs("confirmPayment")}
-                        onPress={async () => {
-                          const amount = parseFloat(paymentAmount);
-                          if (isNaN(amount) || amount <= 0) {
-                            Alert.alert(bs("invalidTitle"), bs("invalidAmount"));
-                            return;
-                          }
-                          const { error: err } = await postAction(
-                            `/api/provider/invoices/${selectedInvoice.id}/pay`,
-                            { amount }
-                          );
-                          if (err) Alert.alert(bs("errorTitle"), err);
-                          else {
-                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                            setSelectedInvoice(null);
-                            setShowPayment(false);
-                            refresh();
-                          }
-                        }}
-                        loading={paying}
-                        fullWidth
-                      />
-                    </View>
-                  )}
-
-                  {selectedInvoice.status === "draft" && (
-                    <TouchableOpacity
-                      style={twStyle(
-                        "flex-row items-center justify-center rounded-xl border border-blue-200 bg-blue-50 py-3"
-                      )}
-                      onPress={async () => {
-                        const { error: err } = await patchInvoice(
-                          `/api/provider/invoices/${selectedInvoice.id}`,
-                          { status: "sent" }
-                        );
-                        if (err) Alert.alert(bs("errorTitle"), err);
-                        else {
-                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                          setSelectedInvoice(null);
-                          refresh();
-                        }
-                      }}
-                    >
-                      <Ionicons name="send-outline" size={18} color="#2563eb" />
-                      <Text style={twStyle("ms-2 text-sm font-medium text-blue-700")}>
-                        {bs("markAsSent")}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </>
-              )}
+              {selectedInvoice.status !== "paid" && selectedInvoice.status !== "cancelled" ? (
+                <Text style={twStyle("mt-2 text-xs text-gray-500")}>
+                  {bs("payInBillingHub")}
+                </Text>
+              ) : null}
             </View>
           </View>
         )}

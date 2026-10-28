@@ -16,7 +16,8 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import type { TeamMember } from "@/lib/provider-portal/types";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
-import { MessageSquare, Star, User, Settings, Calendar, DollarSign, Package, Users, FileText, Sparkles } from "lucide-react";
+import { usePermissions } from "@/hooks/usePermissions";
+import { MessageSquare, Star, User, Settings, Calendar, DollarSign, Package, Users, FileText, Sparkles, Megaphone } from "lucide-react";
 
 interface Permission {
   id: string;
@@ -36,6 +37,9 @@ const permissionMeta = [
   { id: "create_sales", nameKey: "createSales", descKey: "createSalesDesc", category: "sales", icon: <DollarSign className="w-4 h-4" /> },
   { id: "process_payments", nameKey: "processPayments", descKey: "processPaymentsDesc", category: "sales", icon: <DollarSign className="w-4 h-4" /> },
   { id: "view_reports", nameKey: "viewReports", descKey: "viewReportsDesc", category: "sales", icon: <FileText className="w-4 h-4" /> },
+  { id: "manage_finance", nameKey: "manageFinance", descKey: "manageFinanceDesc", category: "sales", icon: <DollarSign className="w-4 h-4" /> },
+  { id: "manage_payroll", nameKey: "managePayroll", descKey: "managePayrollDesc", category: "sales", icon: <DollarSign className="w-4 h-4" /> },
+  { id: "view_own_earnings", nameKey: "viewOwnEarnings", descKey: "viewOwnEarningsDesc", category: "sales", icon: <DollarSign className="w-4 h-4" /> },
   { id: "view_services", nameKey: "viewServices", descKey: "viewServicesDesc", category: "catalogue", icon: <Package className="w-4 h-4" /> },
   { id: "edit_services", nameKey: "editServices", descKey: "editServicesDesc", category: "catalogue", icon: <Package className="w-4 h-4" /> },
   { id: "view_products", nameKey: "viewProducts", descKey: "viewProductsDesc", category: "catalogue", icon: <Package className="w-4 h-4" /> },
@@ -53,15 +57,22 @@ const permissionMeta = [
   { id: "view_messages", nameKey: "viewMessages", descKey: "viewMessagesDesc", category: "engagement", icon: <MessageSquare className="w-4 h-4" /> },
   { id: "send_messages", nameKey: "sendMessages", descKey: "sendMessagesDesc", category: "engagement", icon: <MessageSquare className="w-4 h-4" /> },
   { id: "create_explore_posts", nameKey: "createExplorePosts", descKey: "createExplorePostsDesc", category: "engagement", icon: <Sparkles className="w-4 h-4" /> },
+  { id: "manage_marketing", nameKey: "manageMarketing", descKey: "manageMarketingDesc", category: "engagement", icon: <Megaphone className="w-4 h-4" /> },
 ] as const;
 
 export default function PermissionsSettings() {
   const { t } = useTranslation();
+  const { hasPermission, isOwner } = usePermissions();
+  const canManageTeam = isOwner || hasPermission("manage_team");
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [attachedRoleId, setAttachedRoleId] = useState<string | null>(null);
+  const [attachedRoleName, setAttachedRoleName] = useState<string | null>(null);
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<Record<string, boolean>>({});
+  const [calendarScope, setCalendarScope] = useState<"own" | "all">("own");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [memberIsAdmin, setMemberIsAdmin] = useState(false);
 
   useEffect(() => {
     loadTeamMembers();
@@ -96,9 +107,31 @@ export default function PermissionsSettings() {
   const loadPermissions = async (memberId: string) => {
     try {
       const response = await fetcher.get<{
-        data: { permissions: Record<string, boolean> };
+        data: {
+          permissions: Record<string, boolean | string>;
+          role_id?: string | null;
+          role_name?: string | null;
+        };
       }>(`/api/provider/staff/${memberId}/permissions`);
-      setPermissions(response.data.permissions || {});
+      setAttachedRoleId(response.data.role_id ?? null);
+      setAttachedRoleName(response.data.role_name ?? null);
+      try {
+        const settingsRes = await fetcher.get<{ data?: { is_admin?: boolean } }>(
+          `/api/provider/staff/${memberId}/settings`,
+        );
+        setMemberIsAdmin(settingsRes.data?.is_admin === true);
+      } catch {
+        setMemberIsAdmin(false);
+      }
+      const raw = response.data.permissions || {};
+      const scope = raw.calendar_scope === "all" ? "all" : "own";
+      setCalendarScope(scope);
+      const booleans: Record<string, boolean> = {};
+      for (const [k, v] of Object.entries(raw)) {
+        if (k === "calendar_scope") continue;
+        if (typeof v === "boolean") booleans[k] = v;
+      }
+      setPermissions(booleans);
     } catch (error: any) {
       console.error("Failed to load permissions:", error);
       const errorMessage = error instanceof FetchError
@@ -115,6 +148,7 @@ permissionMeta.forEach((perm) => {
   };
 
   const handlePermissionToggle = (permissionId: string) => {
+    if (!permissionsEditable) return;
     setPermissions((prev) => ({
       ...prev,
       [permissionId]: !prev[permissionId],
@@ -126,28 +160,44 @@ permissionMeta.forEach((perm) => {
       toast.error(t("web.provider.settings.pages.team/permissions.pleaseSelectATeamMember"));
       return;
     }
+    if (!permissionsEditable) return;
 
-    setIsSaving(true);
-    try {
-      await fetcher.patch(`/api/provider/staff/${selectedMember}/permissions`, {
-        permissions,
-      });
-      toast.success(t("web.provider.settings.pages.team/permissions.permissionsSavedSuccessfully"));
-      // Reload permissions to ensure UI is in sync
-      await loadPermissions(selectedMember);
-    } catch (error: any) {
-      console.error("Failed to save permissions:", error);
-      const errorMessage = error instanceof FetchError
-        ? error.message
-: error?.error?.message || t("web.provider.settings.pages.team/permissions.failedToSavePermissions");
-      toast.error(errorMessage);
-    } finally {
-      setIsSaving(false);
+    const doSave = async () => {
+      setIsSaving(true);
+      try {
+        await fetcher.patch(`/api/provider/staff/${selectedMember}/permissions`, {
+          permissions,
+          calendar_scope: calendarScope,
+        });
+        toast.success(t("web.provider.settings.pages.team/permissions.permissionsSavedSuccessfully"));
+        await loadPermissions(selectedMember);
+      } catch (error: unknown) {
+        console.error("Failed to save permissions:", error);
+        const errorMessage =
+          error instanceof FetchError
+            ? error.message
+            : (error as { error?: { message?: string } })?.error?.message ||
+              t("web.provider.settings.pages.team/permissions.failedToSavePermissions");
+        toast.error(errorMessage);
+      } finally {
+        setIsSaving(false);
+      }
+    };
+
+    if (attachedRoleId && attachedRoleName) {
+      const confirmed = window.confirm(
+        t("web.provider.settings.pages.team/permissions.detachRoleConfirm", {
+          role: attachedRoleName,
+        }),
+      );
+      if (!confirmed) return;
     }
+    await doSave();
   };
 
   const handleSelectAll = (category: string) => {
-const categoryPermissions = permissionMeta.filter((p) => p.category === category);
+    if (!permissionsEditable) return;
+    const categoryPermissions = permissionMeta.filter((p) => p.category === category);
     const allEnabled = categoryPermissions.every((p) => permissions[p.id]);
     
     setPermissions((prev) => {
@@ -160,6 +210,9 @@ const categoryPermissions = permissionMeta.filter((p) => p.category === category
   };
 
   const selectedMemberData = teamMembers.find((m) => m.id === selectedMember);
+  const memberFullAccess =
+    selectedMemberData?.role === "owner" || memberIsAdmin === true;
+  const permissionsEditable = canManageTeam && !memberFullAccess;
   const permissionCategories: Permission[] = permissionMeta.map((perm) => ({
     id: perm.id,
     name: t(`web.provider.settings.pages.team/permissions.${perm.nameKey}`),
@@ -188,8 +241,8 @@ const categoryPermissions = permissionMeta.filter((p) => p.category === category
   return (
     <SettingsDetailLayout
       title={t("web.provider.settings.categories.team.items.permissions.title")}
-      subtitle={t("web.provider.settings.categories.team.items.permissions.description")}
-      onSave={handleSave}
+      subtitle={canManageTeam ? t("web.provider.settings.categories.team.items.permissions.description") : t("web.provider.settings.pages.team/permissions.readOnlySubtitle")}
+      onSave={permissionsEditable ? handleSave : undefined}
 saveLabel={isSaving ? t("web.provider.settings.common.saving") : t("web.provider.settings.pages.team/permissions.savePermissions")}
       breadcrumbs={[
         { label: t("web.provider.common.breadcrumbHome"), href: "/" },
@@ -243,6 +296,29 @@ saveLabel={isSaving ? t("web.provider.settings.common.saving") : t("web.provider
                 </Select>
               </div>
 
+              <div>
+                <Label className="text-sm font-semibold mb-2 block">
+                  {t("web.provider.settings.pages.team/permissions.calendarScope")}
+                </Label>
+                <Select
+                  value={calendarScope}
+                  onValueChange={(v) => setCalendarScope(v as "own" | "all")}
+                  disabled={!selectedMember || !permissionsEditable}
+                >
+                  <SelectTrigger className="min-h-[44px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="own">
+                      {t("web.provider.settings.pages.team/permissions.calendarScopeOwn")}
+                    </SelectItem>
+                    <SelectItem value="all">
+                      {t("web.provider.settings.pages.team/permissions.calendarScopeAll")}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               {selectedMemberData && (
                 <div className="p-3 sm:p-4 bg-gray-50 rounded-lg">
                   <div className="flex items-center gap-3">
@@ -265,6 +341,13 @@ saveLabel={isSaving ? t("web.provider.settings.common.saving") : t("web.provider
           </SectionCard>
 
           {/* Permissions by Category */}
+          {selectedMember && memberFullAccess && (
+            <SectionCard className="p-4 bg-gray-50">
+              <p className="text-sm text-gray-700">
+                {t("web.provider.settings.pages.team/permissions.fullAccessMemberHint")}
+              </p>
+            </SectionCard>
+          )}
           {selectedMember && (
             <div className="space-y-4 sm:space-y-6">
               {Object.entries(groupedPermissions).map(([category, perms]) => (
@@ -283,6 +366,7 @@ saveLabel={isSaving ? t("web.provider.settings.common.saving") : t("web.provider
                         variant="outline"
                         size="sm"
                         onClick={() => handleSelectAll(category)}
+                        disabled={!permissionsEditable}
                         className="min-h-[36px] touch-manipulation"
                       >
 {perms.every((p) => permissions[p.id]) ? t("web.provider.bookings.bulkActions.deselectAll") : t("web.provider.bookings.bulkActions.selectAll")}
@@ -298,6 +382,7 @@ saveLabel={isSaving ? t("web.provider.settings.common.saving") : t("web.provider
                           className="flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                         >
                           <Switch
+                            disabled={!permissionsEditable}
                             checked={permissions[perm.id] || false}
                             onCheckedChange={() => handlePermissionToggle(perm.id)}
                             className="mt-1"

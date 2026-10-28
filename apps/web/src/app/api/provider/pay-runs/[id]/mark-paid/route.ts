@@ -11,6 +11,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { notifyPayRunStaff } from "@/lib/notifications/notify-staff-event";
 import { z } from "zod";
 import { payrollDisabledMessage } from "@/lib/payroll/payroll-access";
+import { requireManagePayroll } from "@/lib/payroll/require-manage-payroll";
 
 const bodySchema = z.object({
   /** Bank / EFT / cash reference recorded on the pay run (payroll stays out of the GL). */
@@ -28,7 +29,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner"], request);
+    const payrollCheck = await requireManagePayroll(request);
+    if (!payrollCheck.authorized) {
+      return payrollCheck.response!;
+    }
+    const { user } = payrollCheck;
     const { id } = await params;
 
     const raw = await request.text().catch(() => "");

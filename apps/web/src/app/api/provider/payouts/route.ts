@@ -397,6 +397,17 @@ export async function POST(request: NextRequest) {
       providerName: (prow as { business_name?: string | null } | null)?.business_name ?? null,
     });
 
+    void import("@/lib/notifications/notify-finance-staff").then(({ notifyFinanceStaff }) =>
+      notifyFinanceStaff({
+        tenantId: effectiveTenantId,
+        title: "Provider payout requested",
+        message: `${(prow as { business_name?: string | null } | null)?.business_name ?? "Provider"} requested ${payoutCurrency} ${numAmount}.`,
+        link: "/admin/payouts?status=pending",
+        dedupeKey: `payout:${(payout as { id: string }).id}:staff_requested`,
+        data: { payout_id: (payout as { id: string }).id },
+      }),
+    );
+
     return successResponse({
       ...payout,
       requested_at: payout.created_at,

@@ -27,11 +27,23 @@ import {
   type AdminSubscriptionActionPayload,
 } from "@/components/admin/AdminSubscriptionActionModal";
 
+type InvoicePaymentRow = {
+  id: string;
+  amount?: number;
+  status?: string;
+  payment_reference?: string | null;
+};
+
 type InvoiceRow = Record<string, unknown> & {
   id?: string;
   invoice_number?: string;
   status?: string;
+  due_date?: string;
   total_amount?: number;
+  amount_due?: number;
+  currency?: string;
+  effective_status?: string;
+  payments?: InvoicePaymentRow[];
   provider?: { name?: string; business_name?: string } | null;
 };
 
@@ -103,6 +115,19 @@ export function BillingPage() {
   });
 
   const [pendingAction, setPendingAction] = useState<AdminSubscriptionActionPayload | null>(null);
+
+  const patchInvoicePayment = useMutation({
+    mutationFn: (body: { invoiceId: string; paymentId: string; action: "confirm" | "refund" }) =>
+      adminApi.patchJson<unknown>(
+        `/api/admin/invoices/${body.invoiceId}/payments/${body.paymentId}`,
+        { action: body.action },
+      ),
+    onSuccess: async () => {
+      adminToast.success("Payment updated");
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.billing.invoices(qKey) });
+    },
+    onError: (err: Error) => adminToast.error(err.message || "Failed to update payment"),
+  });
 
   const patchSubscription = useMutation({
     mutationFn: (body: { subId: string; patch: Record<string, unknown> }) =>
@@ -184,6 +209,7 @@ export function BillingPage() {
             >
               <option value="">All</option>
               <option value="draft">draft</option>
+              <option value="open">open</option>
               <option value="sent">sent</option>
               <option value="paid">paid</option>
               <option value="overdue">overdue</option>
@@ -207,19 +233,81 @@ export function BillingPage() {
             <tr>
               <AdminTh>Invoice</AdminTh>
               <AdminTh>Provider</AdminTh>
+              <AdminTh>Due</AdminTh>
               <AdminTh>Status</AdminTh>
+              <AdminTh>Due amount</AdminTh>
               <AdminTh>Total</AdminTh>
+              <AdminTh>Payments</AdminTh>
             </tr>
           </AdminTableHead>
           <AdminTableBody>
-            {rows.map((inv) => (
-              <tr key={String(inv.id)}>
+            {rows.map((inv) => {
+              const invoiceId = String(inv.id ?? "");
+              const payments = (inv.payments ?? []) as InvoicePaymentRow[];
+              const pending = payments.find((p) => p.status === "pending");
+              const completed = payments.filter((p) => p.status === "completed");
+              return (
+              <tr key={invoiceId}>
                 <AdminTd className="font-medium">{String(inv.invoice_number ?? inv.id)}</AdminTd>
                 <AdminTd>{String(inv.provider?.name ?? inv.provider?.business_name ?? "—")}</AdminTd>
-                <AdminTd>{String(inv.status ?? "")}</AdminTd>
+                <AdminTd className="text-xs text-gray-500">
+                  {inv.due_date ? String(inv.due_date) : "—"}
+                </AdminTd>
+                <AdminTd>
+                  {String(
+                    (inv as Record<string, unknown>).effective_status ?? inv.status ?? "",
+                  )}
+                </AdminTd>
+                <AdminTd className="tabular-nums">
+                  {formatAdminCurrency(
+                    Number((inv as Record<string, unknown>).amount_due ?? 0),
+                    String((inv as Record<string, unknown>).currency ?? "") || undefined,
+                  )}
+                </AdminTd>
                 <AdminTd className="tabular-nums">{formatAdminCurrency(Number(inv.total_amount ?? 0), String((inv as Record<string, unknown>).currency ?? "") || undefined)}</AdminTd>
+                <AdminTd>
+                  <div className="flex flex-col gap-1">
+                    {pending ? (
+                      <button
+                        type="button"
+                        className="text-left text-xs font-medium text-indigo-700 hover:underline disabled:opacity-50"
+                        disabled={patchInvoicePayment.isPending}
+                        onClick={() =>
+                          patchInvoicePayment.mutate({
+                            invoiceId,
+                            paymentId: pending.id,
+                            action: "confirm",
+                          })
+                        }
+                      >
+                        Confirm EFT ({formatAdminCurrency(Number(pending.amount ?? 0), inv.currency)})
+                      </button>
+                    ) : null}
+                    {completed.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className="text-left text-xs text-red-700 hover:underline disabled:opacity-50"
+                        disabled={patchInvoicePayment.isPending}
+                        onClick={() =>
+                          patchInvoicePayment.mutate({
+                            invoiceId,
+                            paymentId: p.id,
+                            action: "refund",
+                          })
+                        }
+                      >
+                        Refund {formatAdminCurrency(Number(p.amount ?? 0), inv.currency)}
+                      </button>
+                    ))}
+                    {!pending && completed.length === 0 ? (
+                      <span className="text-xs text-gray-400">—</span>
+                    ) : null}
+                  </div>
+                </AdminTd>
               </tr>
-            ))}
+              );
+            })}
           </AdminTableBody>
         </AdminDataTable>
       )}

@@ -8,6 +8,8 @@ import {
   userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
+import { requirePermission } from "@/lib/auth/requirePermission";
+import { withEffectiveStatus } from "@/lib/invoices/provider-invoices-query";
 
 
 const invoiceLineItemSchema = z.object({
@@ -59,7 +61,9 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("manage_finance", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const admin = getSupabaseAdmin();
 
     const { data: invoice, error } = await admin
@@ -96,7 +100,15 @@ export async function GET(
       return forbiddenResponse("You do not have access to this invoice");
     }
 
-    return successResponse(invoice);
+    const viewedAt = (invoice as { viewed_at?: string | null }).viewed_at;
+    if (!viewedAt) {
+      await admin
+        .from("provider_invoices")
+        .update({ viewed_at: new Date().toISOString() })
+        .eq("id", id);
+    }
+
+    return successResponse(withEffectiveStatus(invoice as Record<string, unknown>));
   } catch (error) {
     return handleApiError(error, "Failed to fetch invoice");
   }

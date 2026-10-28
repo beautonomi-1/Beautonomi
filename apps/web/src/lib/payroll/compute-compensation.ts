@@ -53,9 +53,32 @@ function pickTierRate(
     const t = sorted.find((x) => revenue >= x.minRevenue);
     return t?.commissionRate ?? baseRate;
   }
-  // marginal: simplified — apply highest tier rate to revenue above each threshold only in future iteration
   const t = sorted.find((x) => revenue >= x.minRevenue);
   return t?.commissionRate ?? baseRate;
+}
+
+function marginalTierCommission(
+  revenue: number,
+  baseRate: number,
+  tiers: CommissionTier[] | undefined,
+): number {
+  if (revenue <= 0) return 0;
+  if (!tiers?.length) return percentOf(revenue, baseRate);
+  const sorted = [...tiers].sort((a, b) => a.minRevenue - b.minRevenue);
+  if (revenue < sorted[0].minRevenue) {
+    return percentOf(revenue, baseRate);
+  }
+  let total = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    const tier = sorted[i];
+    const bandStart = tier.minRevenue;
+    const bandEnd = sorted[i + 1]?.minRevenue ?? Number.POSITIVE_INFINITY;
+    const inBand = Math.max(0, Math.min(revenue, bandEnd) - bandStart);
+    if (inBand > 0) {
+      total += percentOf(inBand, tier.commissionRate);
+    }
+  }
+  return total;
 }
 
 /**
@@ -88,9 +111,20 @@ export function computeCompensation(
     tierMode,
   );
 
-  let commission =
-    (totals.serviceCommissionFromLedger ?? percentOf(serviceRev, svcRate)) +
-    (totals.productCommissionFromLedger ?? percentOf(productRev, prodRate));
+  let commission: number;
+  if (tierMode === "marginal" && (plan.serviceTiers?.length || plan.productTiers?.length)) {
+    const svcPart =
+      totals.serviceCommissionFromLedger ??
+      marginalTierCommission(serviceRev, plan.serviceRate ?? 0, plan.serviceTiers);
+    const prodPart =
+      totals.productCommissionFromLedger ??
+      marginalTierCommission(productRev, plan.productRate ?? plan.serviceRate ?? 0, plan.productTiers);
+    commission = svcPart + prodPart;
+  } else {
+    commission =
+      (totals.serviceCommissionFromLedger ?? percentOf(serviceRev, svcRate)) +
+      (totals.productCommissionFromLedger ?? percentOf(productRev, prodRate));
+  }
 
   if (plan.payModel === "commission_above_threshold" && plan.thresholdAmount != null) {
     const excess = Math.max(0, serviceRev + productRev - plan.thresholdAmount);

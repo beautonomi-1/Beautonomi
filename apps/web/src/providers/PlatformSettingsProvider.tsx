@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import React, { createContext, useContext, useEffect, useSyncExternalStore } from "react";
 import { fetcher, FetchError, FetchTimeoutError, DEFAULT_FETCH_TIMEOUT_MS } from "@/lib/http/fetcher";
 
 export interface PlatformBranding {
@@ -29,71 +29,118 @@ const defaultBranding: PlatformBranding = {
   secondary_color: "#D60565",
 };
 
-export function PlatformSettingsProvider({ children }: { children: React.ReactNode }) {
-  const [branding, setBranding] = useState<PlatformBranding | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+type SettingsSnapshot = {
+  branding: PlatformBranding;
+  isLoading: boolean;
+  error: string | null;
+};
 
-  const loadSettings = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      // Set default branding immediately so page can render
-      setBranding(defaultBranding);
+const INITIAL_SETTINGS: SettingsSnapshot = {
+  branding: defaultBranding,
+  isLoading: true,
+  error: null,
+};
 
-      const response = await fetcher.get<{ data: PlatformBranding }>(
-        "/api/public/settings/branding",
-        { timeoutMs: DEFAULT_FETCH_TIMEOUT_MS }
-      );
+let settingsSnapshot: SettingsSnapshot = INITIAL_SETTINGS;
+const settingsListeners = new Set<() => void>();
+let settingsRequestId = 0;
 
-      if (response.data) {
-        setBranding({
-          site_name: response.data.site_name || defaultBranding.site_name,
-          logo_url: response.data.logo_url || defaultBranding.logo_url,
-          favicon_url: response.data.favicon_url || defaultBranding.favicon_url,
-          primary_color: response.data.primary_color || defaultBranding.primary_color,
-          secondary_color: response.data.secondary_color || defaultBranding.secondary_color,
-        });
-      } else {
-        setBranding(defaultBranding);
-      }
-    } catch (err) {
-      console.error("Error loading platform settings:", err);
-      // Use defaults on error
-      setBranding(defaultBranding);
-      setError(
+function subscribeSettings(listener: () => void): () => void {
+  settingsListeners.add(listener);
+  return () => {
+    settingsListeners.delete(listener);
+  };
+}
+
+function emitSettings(): void {
+  for (const listener of settingsListeners) listener();
+}
+
+function getSettingsSnapshot(): SettingsSnapshot {
+  return settingsSnapshot;
+}
+
+function getSettingsServerSnapshot(): SettingsSnapshot {
+  return INITIAL_SETTINGS;
+}
+
+function normalizeBranding(data: Partial<PlatformBranding> | null | undefined): PlatformBranding {
+  return {
+    site_name: data?.site_name || defaultBranding.site_name,
+    logo_url: data?.logo_url || defaultBranding.logo_url,
+    favicon_url: data?.favicon_url || defaultBranding.favicon_url,
+    primary_color: data?.primary_color || defaultBranding.primary_color,
+    secondary_color: data?.secondary_color || defaultBranding.secondary_color,
+  };
+}
+
+async function loadPlatformSettings(): Promise<void> {
+  const requestId = ++settingsRequestId;
+  try {
+    const response = await fetcher.get<{ data: PlatformBranding }>(
+      "/api/public/settings/branding",
+      { timeoutMs: DEFAULT_FETCH_TIMEOUT_MS }
+    );
+    if (requestId !== settingsRequestId) return;
+    settingsSnapshot = {
+      branding: normalizeBranding(response.data),
+      isLoading: false,
+      error: null,
+    };
+  } catch (err) {
+    if (requestId !== settingsRequestId) return;
+    console.error("Error loading platform settings:", err);
+    settingsSnapshot = {
+      branding: defaultBranding,
+      isLoading: false,
+      error:
         err instanceof FetchTimeoutError
           ? "Request timed out"
           : err instanceof FetchError
-          ? err.message
-          : "Failed to load settings"
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+            ? err.message
+            : "Failed to load settings",
+    };
+  }
+  emitSettings();
+}
+
+async function refreshPlatformSettings(): Promise<void> {
+  settingsSnapshot = {
+    branding: settingsSnapshot.branding,
+    isLoading: true,
+    error: null,
+  };
+  emitSettings();
+  await loadPlatformSettings();
+}
+
+export function PlatformSettingsProvider({ children }: { children: React.ReactNode }) {
+  const settings = useSyncExternalStore(
+    subscribeSettings,
+    getSettingsSnapshot,
+    getSettingsServerSnapshot,
+  );
 
   useEffect(() => {
-    loadSettings();
+    void loadPlatformSettings();
 
-    // Listen for settings updates
     const handleSettingsUpdate = () => {
-      loadSettings();
+      void refreshPlatformSettings();
     };
 
     window.addEventListener("platform-settings-updated", handleSettingsUpdate);
     return () => {
       window.removeEventListener("platform-settings-updated", handleSettingsUpdate);
     };
-  }, [loadSettings]);
+  }, []);
 
   return (
     <PlatformSettingsContext.Provider
       value={{
-        branding: branding || defaultBranding,
-        isLoading,
-        error,
-        refreshSettings: loadSettings,
+        branding: settings.branding,
+        isLoading: settings.isLoading,
+        error: settings.error,
+        refreshSettings: refreshPlatformSettings,
       }}
     >
       {children}

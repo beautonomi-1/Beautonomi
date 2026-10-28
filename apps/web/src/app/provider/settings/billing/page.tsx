@@ -1,9 +1,6 @@
 "use client";
 
 import { useTranslation } from "@beautonomi/i18n";
-import { formatMoney } from "@beautonomi/utils";
-import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-
 import React, { Suspense, useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -13,15 +10,10 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Plus,
-  FileText,
   Loader2,
   CreditCard,
   Trash2,
   Download,
-  Eye,
-  CheckCircle2,
-  Clock,
-  AlertCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -54,9 +46,9 @@ import {
 import AddressForm from "@/components/mapbox/AddressForm";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isCompleteE164 } from "@/lib/phone";
-import { useConfigBundle } from "@/providers/ConfigBundleProvider";
-import { formatStatusLabel } from "@/lib/locale/status-label";
 import { NativeAppCheckoutBounce } from "@/components/payments/NativeAppCheckoutBounce";
+import { ProviderInvoicesPanel } from "@/components/provider/billing/ProviderInvoicesPanel";
+import { ProviderBillingHistoryPanel } from "@/components/provider/billing/ProviderBillingHistoryPanel";
 
 interface BillingData {
   billingAddress: any;
@@ -64,18 +56,6 @@ interface BillingData {
   billingPhone: string | null;
   paymentMethods: any[];
   invoices: any[];
-  billingHistory: BillingHistoryItem[];
-}
-
-interface BillingHistoryItem {
-  id: string;
-  amount: number;
-  currency?: string | null;
-  status: string;
-  type?: "subscription" | "ads" | "marketing_credit" | string;
-  description?: string | null;
-  created_at: string;
-  invoice_url?: string | null;
 }
 
 export default function BillingSettings() {
@@ -100,36 +80,18 @@ export default function BillingSettings() {
       setIsLoading(true);
       setError(null);
 
-      // Load billing settings, payment methods, invoices, and subscription/ads payments in parallel.
-      const [billingResponse, paymentMethodsResponse, invoicesResponse, billingHistoryResponse] =
-        await Promise.all([
-          fetcher.get<{ data: BillingData }>("/api/provider/settings/billing"),
-          fetcher.get<{ data: any[] }>("/api/provider/payment-methods").catch(() => ({ data: [] })),
-          fetcher
-            .get<{ data: { invoices: any[] } }>("/api/provider/invoices?limit=100")
-            .catch(() => ({ data: { invoices: [] } })),
-          fetcher
-            .get<{ data: { items?: BillingHistoryItem[] } | BillingHistoryItem[] }>(
-              "/api/provider/billing-history",
-            )
-            .catch(() => ({ data: { items: [] } })),
-        ]);
+      const [billingResponse, paymentMethodsResponse] = await Promise.all([
+        fetcher.get<{ data: BillingData }>("/api/provider/settings/billing"),
+        fetcher.get<{ data: any[] }>("/api/provider/payment-methods").catch(() => ({ data: [] })),
+      ]);
 
       const billingInfo = billingResponse.data;
       const paymentMethods = paymentMethodsResponse.data || [];
-      const invoices = invoicesResponse.data?.invoices || [];
-      // The API returns `{ items, total, limit, has_more }`; tolerate a bare
-      // array too so the list never silently renders empty on shape drift.
-      const rawBillingHistory = billingHistoryResponse.data;
-      const billingHistory = Array.isArray(rawBillingHistory)
-        ? rawBillingHistory
-        : (rawBillingHistory?.items ?? []);
 
       setBillingData({
         ...billingInfo,
         paymentMethods,
-        invoices,
-        billingHistory,
+        invoices: [],
       });
       setBillingForm({
         email: billingInfo.billingEmail || "",
@@ -294,12 +256,12 @@ t("web.provider.settings.pages.billing.completeAddressRequired")
       </SectionCard>
 
       <SectionCard title={t("web.provider.settings.pages.billing.subscriptionAdsMarketingBillingHistory")} className="w-full">
-        <BillingHistorySection items={billingData?.billingHistory || []} />
+        <ProviderBillingHistoryPanel />
       </SectionCard>
 
       {/* Sales & Fees */}
       <SectionCard title={t("web.provider.settings.pages.billing.salesFees")} className="w-full">
-        <InvoicesSection invoices={billingData?.invoices || []} onRefresh={loadBillingData} />
+        <ProviderInvoicesPanel />
       </SectionCard>
 
       {/* Billing Details Dialog */}
@@ -634,273 +596,6 @@ if (!confirm(t("web.provider.settings.pages.billing.removePaymentMethodConfirm")
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function BillingHistorySection({ items }: { items: BillingHistoryItem[] }) {
-  const { t } = useTranslation();
-  const { bundle } = useConfigBundle();
-  const fallbackCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
-
-  const formatCurrency = (amount: number, currency?: string | null) => {
-    return formatMoney(Number(amount || 0), currency || fallbackCurrency);
-  };
-
-  if (items.length === 0) {
-    return (
-      <div className="py-8 sm:py-12 text-center">
-        <EmptyState
-          title={t("web.provider.settings.pages.billing.noSubscriptionAdsOrMarketingPayments")}
-description={t("web.provider.settings.pages.billing.noHistoryDescription")}
-          icon={CreditCard}
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      {items.map((item) => {
-        const isAds = item.type === "ads";
-        const isMarketing = item.type === "marketing_credit";
-const typeLabel = isMarketing ? t("web.provider.settings.pages.billing.marketingCredits") : isAds ? t("web.provider.settings.pages.billing.ads") : t("web.provider.settings.pages.billing.subscription");
-        const fallbackLabel = isMarketing
-          ? t("web.provider.settings.pages.billing.marketingCreditTopUp")
-          : isAds
-            ? t("web.provider.settings.pages.billing.adsCampaignPayment")
-            : t("web.provider.settings.pages.billing.subscriptionPayment");
-        const iconClasses = isMarketing
-          ? "bg-emerald-50 text-emerald-700"
-          : isAds
-            ? "bg-amber-50 text-amber-700"
-            : "bg-indigo-50 text-indigo-700";
-        return (
-          <div
-            key={item.id}
-            className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
-          >
-            <div className="flex min-w-0 items-start gap-3">
-              <div
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${iconClasses}`}
-              >
-                {isAds ? <CreditCard className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
-              </div>
-              <div className="min-w-0">
-                <p className="font-medium text-slate-900">{item.description || fallbackLabel}</p>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  {new Date(item.created_at).toLocaleDateString()} · {typeLabel}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center justify-between gap-3 sm:justify-end">
-              <span className="font-semibold text-slate-900">
-                {formatCurrency(item.amount, item.currency)}
-              </span>
-              <Badge variant="secondary">
-                {formatStatusLabel(item.status)}
-              </Badge>
-              {item.invoice_url ? (
-                <a
-                  href={item.invoice_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                >
-<FileText className="h-3.5 w-3.5" /> {t("web.provider.settings.pages.billing.receipt")}
-                </a>
-              ) : null}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// Invoices Section Component
-function InvoicesSection({
-  invoices,
-  onRefresh: _onRefresh,
-}: {
-  invoices: any[];
-  onRefresh: () => void;
-}) {
-  const { t } = useTranslation();
-  const { bundle } = useConfigBundle();
-  const invoiceCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
-  const [selectedStatus, setSelectedStatus] = useState<string>("all");
-
-  const filteredInvoices =
-    selectedStatus === "all" ? invoices : invoices.filter((inv) => inv.status === selectedStatus);
-
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, { variant: "default" | "secondary" | "outline"; icon: any }> = {
-      paid: { variant: "default", icon: CheckCircle2 },
-      sent: { variant: "secondary", icon: Clock },
-      overdue: { variant: "outline", icon: AlertCircle },
-      draft: { variant: "outline", icon: FileText },
-      partially_paid: { variant: "secondary", icon: Clock },
-    };
-
-    const config = variants[status] || { variant: "outline" as const, icon: FileText };
-    const Icon = config.icon;
-
-    return (
-      <Badge variant={config.variant} className="flex items-center gap-1">
-        <Icon className="w-3 h-3" />
-        {formatStatusLabel(status)}
-      </Badge>
-    );
-  };
-
-  const formatCurrency = (amount: number) => {
-    return formatMoney(amount, invoiceCurrency);
-  };
-
-  if (invoices.length === 0) {
-    return (
-      <div className="py-8 sm:py-12 text-center">
-        <EmptyState
-          title={t("web.provider.settings.pages.billing.noInvoicesYet")}
-description={t("web.provider.settings.pages.billing.noInvoicesDescription")}
-          icon={FileText}
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <p className="text-sm text-gray-600">
-{t("web.provider.settings.pages.billing.invoiceCount", { count: invoices.length })}
-        </p>
-        <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-          <SelectTrigger className="w-full sm:w-48">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-<SelectItem value="all">{t("web.provider.common.allStatuses")}</SelectItem>
-<SelectItem value="draft">{t("web.provider.settings.pages.billing.draft")}</SelectItem>
-<SelectItem value="sent">{t("web.provider.settings.pages.billing.sent")}</SelectItem>
-<SelectItem value="paid">{t("web.provider.settings.pages.billing.paid")}</SelectItem>
-<SelectItem value="partially_paid">{t("web.provider.settings.pages.billing.partiallyPaid")}</SelectItem>
-<SelectItem value="overdue">{t("web.provider.settings.pages.billing.overdue")}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Mobile card layout */}
-      <div className="md:hidden space-y-3">
-        {filteredInvoices.map((invoice) => (
-          <div key={invoice.id} className="rounded-lg border bg-white p-4 space-y-3">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="font-medium text-sm">{invoice.invoice_number}</p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {new Date(invoice.period_start).toLocaleDateString()} –{" "}
-                  {new Date(invoice.period_end).toLocaleDateString()}
-                </p>
-              </div>
-              {getStatusBadge(invoice.status)}
-            </div>
-
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-              <div>
-<span className="text-xs text-gray-500">{t("web.provider.settings.pages.billing.issueDate")}</span>
-                <p className="text-gray-900">{new Date(invoice.issue_date).toLocaleDateString()}</p>
-              </div>
-              <div>
-<span className="text-xs text-gray-500">{t("web.provider.settings.pages.billing.dueDate")}</span>
-                <p className="text-gray-900">{new Date(invoice.due_date).toLocaleDateString()}</p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between pt-1 border-t">
-              <p className="font-semibold">{formatCurrency(invoice.total_amount)}</p>
-              <div className="flex items-center gap-1">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="min-h-[44px] min-w-[44px]"
-                  onClick={() =>
-                    window.open(`/api/provider/invoices/${invoice.id}/download`, "_blank")
-                  }
-                >
-                  <Download className="w-4 h-4" />
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="min-h-[44px] min-w-[44px]"
-                  onClick={() =>
-                    (window.location.href = `/provider/settings/billing/invoices/${invoice.id}`)
-                  }
-                >
-                  <Eye className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Desktop table layout */}
-      <div className="hidden md:block border border-gray-200 rounded-lg overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-<TableHead>{t("web.provider.settings.pages.billing.invoiceNumber")}</TableHead>
-<TableHead>{t("web.provider.settings.pages.billing.period")}</TableHead>
-<TableHead>{t("web.provider.settings.pages.billing.issueDate")}</TableHead>
-<TableHead>{t("web.provider.settings.pages.billing.dueDate")}</TableHead>
-<TableHead>{t("web.provider.common.amount")}</TableHead>
-<TableHead>{t("web.provider.common.statusLabel")}</TableHead>
-<TableHead className="text-end">{t("web.provider.common.actions")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredInvoices.map((invoice) => (
-              <TableRow key={invoice.id}>
-                <TableCell className="font-medium">{invoice.invoice_number}</TableCell>
-                <TableCell className="text-sm text-gray-600">
-                  {new Date(invoice.period_start).toLocaleDateString()} -{" "}
-                  {new Date(invoice.period_end).toLocaleDateString()}
-                </TableCell>
-                <TableCell>{new Date(invoice.issue_date).toLocaleDateString()}</TableCell>
-                <TableCell>{new Date(invoice.due_date).toLocaleDateString()}</TableCell>
-                <TableCell className="font-medium">
-                  {formatCurrency(invoice.total_amount)}
-                </TableCell>
-                <TableCell>{getStatusBadge(invoice.status)}</TableCell>
-                <TableCell className="text-end">
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        window.open(`/api/provider/invoices/${invoice.id}/download`, "_blank")
-                      }
-                    >
-                      <Download className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        (window.location.href = `/provider/settings/billing/invoices/${invoice.id}`)
-                      }
-                    >
-                      <Eye className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
     </div>
   );
 }

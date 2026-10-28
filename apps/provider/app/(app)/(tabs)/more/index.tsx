@@ -83,6 +83,7 @@ type TeamAccessData = {
   can_process_payments?: boolean;
   can_request_payouts?: boolean;
   is_business_owner?: boolean;
+  can_manage_marketing?: boolean;
 };
 
 type ProviderNavCounts = {
@@ -279,6 +280,10 @@ export default function MoreScreen() {
   const isBusinessOwner = permissionData?.isOwner === true;
   const canEditSettings =
     isBusinessOwner || permissionData?.permissions?.edit_settings === true;
+  const canViewBilling =
+    isBusinessOwner ||
+    permissionData?.permissions?.manage_finance === true ||
+    permissionData?.permissions?.edit_settings === true;
   const canProcessPayments =
     teamAccess?.can_process_payments === true ||
     permissionData?.permissions?.process_payments === true;
@@ -292,13 +297,19 @@ export default function MoreScreen() {
     permissionData?.permissions?.create_sales === true;
   const canViewReports =
     isBusinessOwner || permissionData?.permissions?.view_reports === true;
+  const canManageMarketing =
+    isBusinessOwner || teamAccess?.can_manage_marketing === true;
 
   const filteredQuickActions = QUICK_ACTIONS.filter((action) => {
     const route = action.route;
+    if (route.includes("billing")) {
+      return canViewBilling;
+    }
+    if (route.includes("settings/ads")) {
+      return canManageMarketing;
+    }
     if (
       route.includes("payment-setup") ||
-      route.includes("billing") ||
-      route.includes("settings/ads") ||
       route.includes("yoco-devices") ||
       route.includes("card-machines") ||
       route.includes("paystack-terminal")
@@ -1116,9 +1127,11 @@ export default function MoreScreen() {
                         return false;
                       }
                       const route = item.route;
+                      if (route.includes("billing")) {
+                        return canViewBilling;
+                      }
                       if (
                         route.includes("payment-setup") ||
-                        route.includes("billing") ||
                         route.includes("settings/ads") ||
                         route.includes("payout-accounts") ||
                         route.includes("yoco-devices") ||
@@ -1149,7 +1162,12 @@ export default function MoreScreen() {
                     },
                   ).map((item, idx) => {
                     const badge = formatBadgeCount(getRouteBadgeCount(item.route));
-                    const itemSubtitle = item.subtitleKey ? t(item.subtitleKey) : (item.subtitle ?? "");
+                    const itemSubtitle =
+                      item.route.includes("engagement-hub") && !canManageMarketing
+                        ? t("provider.mobile.screens.moreTab.engagementSubtitleNoMarketing")
+                        : item.subtitleKey
+                          ? t(item.subtitleKey)
+                          : (item.subtitle ?? "");
                     const itemLabel = item.labelKey ? t(item.labelKey) : item.label;
                     return (
                       <TouchableOpacity

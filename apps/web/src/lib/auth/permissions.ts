@@ -77,7 +77,7 @@ export async function getStaffPermissions(
     // Check if user is staff member
     let staffQuery = supabase
       .from("provider_staff")
-      .select("provider_id, role, permissions, role_id, is_admin")
+      .select("provider_id, role, permissions, role_id, is_admin, user_id")
       .eq("user_id", userId);
 
     if (staffId) {
@@ -90,14 +90,14 @@ export async function getStaffPermissions(
       return {};
     }
 
-    return resolvePermissions(supabase, staff);
+    return resolveStaffPermissionRow(supabase, staff, staff.provider_id);
   }
 
   // User is provider owner - get staff member if staffId provided
   if (staffId) {
     const { data: staff } = await supabase
       .from("provider_staff")
-      .select("role, permissions, role_id, is_admin")
+      .select("role, permissions, role_id, is_admin, user_id, provider_id")
       .eq("id", staffId)
       .eq("provider_id", provider.id)
       .maybeSingle();
@@ -106,26 +106,46 @@ export async function getStaffPermissions(
       return {};
     }
 
-    return resolvePermissions(supabase, staff);
+    return resolveStaffPermissionRow(supabase, staff, provider.id);
   }
 
   // Provider owner has all permissions
   return getAllPermissions();
 }
 
+export type StaffPermissionRowInput = {
+  role: string;
+  permissions?: unknown;
+  role_id?: string | null;
+  is_admin?: boolean;
+  user_id?: string | null;
+  provider_id?: string;
+};
+
 /**
- * Resolve permissions for a staff member
+ * Resolve permissions from a `provider_staff` row (editor GET and runtime checks).
  */
-async function resolvePermissions(
-  supabase: any,
-  staff: { role: string; permissions?: any; role_id?: string | null; is_admin?: boolean },
+export async function resolveStaffPermissionRow(
+  supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
+  staff: StaffPermissionRowInput,
+  providerId?: string,
 ): Promise<StaffPermissions> {
-  // Owner or admin has all permissions
   if (staff.role === "owner" || staff.is_admin) {
     return getAllPermissions();
   }
 
-  // Check custom role first
+  const pid = providerId ?? staff.provider_id;
+  if (pid && staff.user_id) {
+    const { data: provRow } = await supabase
+      .from("providers")
+      .select("user_id")
+      .eq("id", pid)
+      .maybeSingle();
+    if (provRow?.user_id === staff.user_id) {
+      return getAllPermissions();
+    }
+  }
+
   if (staff.role_id) {
     const { data: customRole } = await supabase
       .from("provider_roles")
@@ -256,7 +276,7 @@ const LEGACY_PERMISSION_ALIASES: Record<keyof StaffPermissions, string[]> = {
   rate_clients: [],
   view_client_ratings: [],
   view_own_earnings: [],
-  manage_payroll: ["manage_finance", "manage_team"],
+  manage_payroll: [],
 };
 
 function parseStoredPermissions(permissions: unknown): {
@@ -308,6 +328,9 @@ export function normalizeStaffPermissions(
   }
   if (!normalized.calendar_scope && normalized.view_calendar) {
     normalized.calendar_scope = normalized.manage_team || normalized.edit_settings ? "all" : "own";
+  }
+  if (normalized.edit_settings) {
+    normalized.manage_finance = true;
   }
   return normalized;
 }

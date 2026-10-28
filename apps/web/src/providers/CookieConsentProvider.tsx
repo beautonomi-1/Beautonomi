@@ -8,6 +8,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { useAuth } from "@/providers/AuthProvider";
@@ -15,8 +16,10 @@ import {
   buildAcceptAll,
   buildCustom,
   buildRejectNonEssential,
-  readStoredConsent,
+  getConsentServerSnapshot,
+  getConsentSnapshot,
   needsReprompt,
+  subscribeStoredConsent,
 } from "@/lib/cookie-consent/storage";
 import type { StoredCookieConsent } from "@/lib/cookie-consent/types";
 import {
@@ -47,44 +50,74 @@ interface CookieConsentContextValue {
 
 const CookieConsentContext = createContext<CookieConsentContextValue | null>(null);
 
+function subscribeClientReady(): () => void {
+  return () => {};
+}
+
+function getClientReadySnapshot(): boolean {
+  return true;
+}
+
+function getServerReadySnapshot(): boolean {
+  return false;
+}
+
 export function CookieConsentProvider({ children }: { children: ReactNode }) {
   const { user, session, isLoading: authLoading } = useAuth();
-  const [isReady, setIsReady] = useState(false);
-  const [consent, setConsent] = useState<StoredCookieConsent | null>(null);
+  const userId = user?.id ?? null;
+  const isReady = useSyncExternalStore(
+    subscribeClientReady,
+    getClientReadySnapshot,
+    getServerReadySnapshot,
+  );
+  const consent = useSyncExternalStore(
+    subscribeStoredConsent,
+    getConsentSnapshot,
+    getConsentServerSnapshot,
+  );
   const [preferencesOpen, setPreferencesOpen] = useState(false);
-  const [serverAnalyticsAllowed, setServerAnalyticsAllowed] = useState<boolean | null>(null);
+  const [accountAnalytics, setAccountAnalytics] = useState<{
+    userId: string;
+    allowed: boolean;
+  } | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    setConsent(readStoredConsent());
-    setIsReady(true);
-  }, []);
-
-  useEffect(() => {
+    if (authLoading || !userId || !session) return;
     let cancelled = false;
-    if (authLoading) return;
-    if (!user || !session) {
-      setServerAnalyticsAllowed(null);
-      return;
-    }
-    (async () => {
-      try {
-        const res = await fetch("/api/me/analytics/consent", { credentials: "same-origin" });
+    const requestedUserId = userId;
+
+    void fetch("/api/me/analytics/consent", { credentials: "same-origin" })
+      .then(async (res) => {
+        if (cancelled) return;
         if (!res.ok) {
-          if (!cancelled) setServerAnalyticsAllowed(false);
+          setAccountAnalytics({ userId: requestedUserId, allowed: false });
           return;
         }
         const json = (await res.json()) as { data?: { analytics_consent?: boolean } };
-        const allowed = json.data?.analytics_consent !== false;
-        if (!cancelled) setServerAnalyticsAllowed(allowed);
-      } catch {
-        if (!cancelled) setServerAnalyticsAllowed(false);
-      }
-    })();
+        if (cancelled) return;
+        setAccountAnalytics({
+          userId: requestedUserId,
+          allowed: json.data?.analytics_consent !== false,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAccountAnalytics({ userId: requestedUserId, allowed: false });
+        }
+      });
+
     return () => {
       cancelled = true;
     };
-  }, [authLoading, session, user?.id]);
+  }, [authLoading, session, userId]);
+
+  const serverAnalyticsAllowed =
+    !authLoading && (!userId || !session)
+      ? null
+      : accountAnalytics?.userId === userId
+        ? accountAnalytics.allowed
+        : null;
 
   const showBanner = useMemo(() => {
     if (!isReady) return false;
@@ -127,23 +160,20 @@ export function CookieConsentProvider({ children }: { children: ReactNode }) {
   }, [session, user]);
 
   const acceptAll = useCallback(() => {
-    const next = buildAcceptAll();
-    setConsent(next);
+    buildAcceptAll();
     setPreferencesOpen(false);
     void syncAccountAnalyticsIfPossible(true);
   }, [syncAccountAnalyticsIfPossible]);
 
   const rejectNonEssential = useCallback(() => {
-    const next = buildRejectNonEssential();
-    setConsent(next);
+    buildRejectNonEssential();
     setPreferencesOpen(false);
     void syncAccountAnalyticsIfPossible(false);
   }, [syncAccountAnalyticsIfPossible]);
 
   const saveCustom = useCallback(
     (categories: { analytics: boolean; functional: boolean; marketing: boolean }) => {
-      const next = buildCustom(categories);
-      setConsent(next);
+      buildCustom(categories);
       setPreferencesOpen(false);
       void syncAccountAnalyticsIfPossible(categories.analytics);
     },

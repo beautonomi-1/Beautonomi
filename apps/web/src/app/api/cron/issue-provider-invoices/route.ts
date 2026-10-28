@@ -62,22 +62,28 @@ async function runJob(request: NextRequest) {
   const periodEnd = url.searchParams.get("period_end") || period.end;
   const dryRun = url.searchParams.get("dry_run") === "true";
 
-  const { data: providers, error } = await supabase
-    .from("providers")
-    .select("id")
-    .eq("status", "active")
-    .limit(2000);
-
-  if (error) {
-    console.error(`[${JOB_NAME}] failed to load providers`, error.message);
-    return NextResponse.json({ error: "Failed to load providers" }, { status: 500 });
-  }
-
   let issued = 0;
   let skipped = 0;
   let failed = 0;
+  let providersProcessed = 0;
+  const batchSize = 500;
+  let offset = 0;
 
-  for (const row of providers ?? []) {
+  for (;;) {
+    const { data: providers, error } = await supabase
+      .from("providers")
+      .select("id")
+      .eq("status", "active")
+      .order("id", { ascending: true })
+      .range(offset, offset + batchSize - 1);
+
+    if (error) {
+      console.error(`[${JOB_NAME}] failed to load providers`, error.message);
+      return NextResponse.json({ error: "Failed to load providers" }, { status: 500 });
+    }
+    if (!providers?.length) break;
+
+    for (const row of providers) {
     const providerId = (row as { id: string }).id;
     try {
       if (dryRun) {
@@ -123,13 +129,18 @@ async function runJob(request: NextRequest) {
       failed++;
       console.error(`[${JOB_NAME}] provider ${providerId}`, e instanceof Error ? e.message : e);
     }
+    providersProcessed += 1;
+    }
+
+    offset += batchSize;
+    if (providers.length < batchSize) break;
   }
 
   return NextResponse.json({
     ok: true,
     period: { start: periodStart, end: periodEnd },
     dry_run: dryRun,
-    providers: providers?.length ?? 0,
+    providers: providersProcessed,
     issued,
     skipped,
     failed,

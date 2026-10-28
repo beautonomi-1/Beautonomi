@@ -176,6 +176,19 @@ function GroupBookingsPageInner() {
   }, [hasMounted, searchParams]);
 
   type GroupBookingStatus = GroupBooking["status"] | "confirmed" | "pending";
+  const groupStatusLabelKey = (status: string) => {
+    if (
+      status === "pending" ||
+      status === "confirmed" ||
+      status === "booked" ||
+      status === "started" ||
+      status === "completed" ||
+      status === "cancelled"
+    ) {
+      return status;
+    }
+    return "pending";
+  };
   const getStatusColor = (status: GroupBookingStatus) => {
     switch (status) {
       case "booked":
@@ -359,7 +372,7 @@ placeholder={t("web.provider.groupBookingsPage.searchPlaceholder")}
                           {booking.total_price != null ? <Money amount={booking.total_price} /> : t("web.provider.common.emDash")}
                         </TableCell>
                         <TableCell>
-                          <Badge className={getStatusColor(booking.status)}>{t(`web.provider.common.status.${booking.status === "completed" ? "completed" : booking.status === "cancelled" ? "cancelled" : booking.status === "started" ? "started" : booking.status === "booked" ? "booked" : "pending"}`)}</Badge>
+                          <Badge className={getStatusColor(booking.status)}>{t(`web.provider.common.status.${groupStatusLabelKey(booking.status)}`)}</Badge>
                         </TableCell>
                         <TableCell className="text-end">
                           <div className="flex items-center justify-end gap-2">
@@ -415,7 +428,7 @@ title={completed ? t("web.provider.groupBookingsPage.completedCannotCancel") : u
                           <span>{dateStr} {timeStr}</span>
                         </div>
                       </div>
-                      <Badge className={getStatusColor(booking.status)}>{t(`web.provider.common.status.${booking.status === "completed" ? "completed" : booking.status === "cancelled" ? "cancelled" : booking.status === "started" ? "started" : booking.status === "booked" ? "booked" : "pending"}`)}</Badge>
+                      <Badge className={getStatusColor(booking.status)}>{t(`web.provider.common.status.${groupStatusLabelKey(booking.status)}`)}</Badge>
                     </div>
 
                     {/* Details */}

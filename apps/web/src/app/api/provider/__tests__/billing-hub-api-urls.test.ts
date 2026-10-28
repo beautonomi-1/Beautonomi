@@ -9,12 +9,14 @@ const BILLING_YEAR = 2026;
 
 const mockRequireRoleInApi = vi.fn();
 const mockRequireAnyPermission = vi.fn();
+const mockRequirePermission = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 const mockGetSupabaseAdmin = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 
 vi.mock("@/lib/auth/requirePermission", () => ({
   requireAnyPermission: (...args: unknown[]) => mockRequireAnyPermission(...args),
+  requirePermission: (...args: unknown[]) => mockRequirePermission(...args),
 }));
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
@@ -92,6 +94,16 @@ function makeBillingHistoryAdminClient(rows: unknown[] = BANTU_BILLING_TXNS) {
           Promise.resolve({ data: { tenant_id: "tenant-1" }, error: null }),
         );
         return p;
+      }
+      if (table === "provider_billing_activity") {
+        const actChain: Record<string, unknown> = {};
+        actChain.select = vi.fn(() => actChain);
+        actChain.eq = vi.fn(() => actChain);
+        actChain.order = vi.fn(() => actChain);
+        actChain.range = vi.fn(() =>
+          Promise.resolve({ data: rows, error: null, count: rows.length }),
+        );
+        return actChain;
       }
       if (table === "finance_transactions") return chain;
       throw new Error(`Unexpected admin table ${table}`);
@@ -220,6 +232,10 @@ function setupAuthMocks() {
     authorized: true,
     user: { id: BANTU_USER_ID, role: "provider_owner" },
   });
+  mockRequirePermission.mockResolvedValue({
+    authorized: true,
+    user: { id: BANTU_USER_ID, role: "provider_owner" },
+  });
   mockGetProviderIdForUser.mockResolvedValue(BANTU_PROVIDER_ID);
 }
 
@@ -324,7 +340,10 @@ describe("Billing hub API URLs — bantu provider fixture", () => {
   });
 
   it("GET /api/provider/billing-history rejects unauthenticated callers", async () => {
-    mockRequireRoleInApi.mockRejectedValueOnce(new Error("Authentication required"));
+    mockRequirePermission.mockResolvedValueOnce({
+      authorized: false,
+      response: new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 }),
+    });
     const { GET } = await import("../billing-history/route");
     const res = await GET(
       new NextRequest("http://localhost/api/provider/billing-history?limit=50"),

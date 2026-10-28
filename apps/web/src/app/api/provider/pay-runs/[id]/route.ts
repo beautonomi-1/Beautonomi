@@ -7,9 +7,10 @@ import {
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { isProviderOwner } from "@/lib/auth/permissions";
 import { z } from "zod";
-import { payrollDisabledMessage } from "@/lib/payroll/payroll-access";
+import { payrollDisabledMessage, userCanManagePayroll } from "@/lib/payroll/payroll-access";
+import { requireManagePayroll } from "@/lib/payroll/require-manage-payroll";
+import { computeNetPay } from "@/lib/payroll/net-pay";
 
 const updateItemSchema = z.object({
   manual_deductions: z.number().min(0).optional(),
@@ -48,9 +49,9 @@ export async function GET(
 
     if (prError || !payRun) return notFoundResponse("Pay run not found");
 
-    const owner = await isProviderOwner(user.id, request);
+    const canManagePayroll = await userCanManagePayroll(user.id, request);
     let callerStaffId: string | null = null;
-    if (!owner) {
+    if (!canManagePayroll) {
       const { data: callerStaff } = await supabaseAdmin
         .from("provider_staff")
         .select("id")
@@ -78,6 +79,9 @@ export async function GET(
         uif_contribution,
         taxable_income,
         net_pay,
+        commission_clawback,
+        carry_forward_in,
+        carry_forward_out,
         notes
       `)
       .eq("pay_run_id", id)
@@ -124,7 +128,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner"], request);
+    const payrollCheck = await requireManagePayroll(request);
+    if (!payrollCheck.authorized) {
+      return payrollCheck.response!;
+    }
+    const { user } = payrollCheck;
     const { id } = await params;
     const supabaseAdmin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
@@ -161,7 +169,11 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner"], request);
+    const payrollCheck = await requireManagePayroll(request);
+    if (!payrollCheck.authorized) {
+      return payrollCheck.response!;
+    }
+    const { user } = payrollCheck;
     const { id } = await params;
 
     const supabaseAdmin = getSupabaseAdmin();
@@ -207,17 +219,36 @@ export async function PATCH(
         if (Object.keys(updateData).length > 0) {
           const { data: existing } = await supabaseAdmin
             .from("provider_pay_run_items")
-            .select("gross_pay, manual_deductions, tax_deduction, uif_contribution")
+            .select(
+              "gross_pay, manual_deductions, tax_deduction, uif_contribution, carry_forward_in",
+            )
             .eq("id", item_id)
             .eq("pay_run_id", id)
             .single();
 
           if (existing) {
-            const m = manual_deductions ?? (existing as any).manual_deductions ?? 0;
-            const t = tax_deduction ?? (existing as any).tax_deduction ?? 0;
-            const u = uif_contribution ?? (existing as any).uif_contribution ?? 0;
-            const gross = Number((existing as any).gross_pay || 0);
-            updateData.net_pay = Math.max(0, gross - m - t - u);
+            const ex = existing as {
+              gross_pay?: number;
+              manual_deductions?: number;
+              tax_deduction?: number;
+              uif_contribution?: number;
+              carry_forward_in?: number;
+            };
+            const m = manual_deductions ?? ex.manual_deductions ?? 0;
+            const t = tax_deduction ?? ex.tax_deduction ?? 0;
+            const u = uif_contribution ?? ex.uif_contribution ?? 0;
+            const gross = Number(ex.gross_pay || 0);
+            const carryIn = Number(ex.carry_forward_in ?? 0);
+            const net = computeNetPay({
+              grossPay: gross,
+              manualDeductions: m,
+              taxDeduction: t,
+              uifContribution: u,
+              carryForwardBalance: carryIn > 0 ? -carryIn : undefined,
+            });
+            updateData.net_pay = net.netPay;
+            updateData.carry_forward_out =
+              net.nextCarryForward !== 0 ? Math.abs(net.nextCarryForward) : 0;
           }
 
           await supabaseAdmin

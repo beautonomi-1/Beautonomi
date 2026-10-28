@@ -7,6 +7,7 @@ import {
   forbiddenResponse,
   userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -67,11 +68,17 @@ export async function GET(
         role: (userRow.role as string) || "provider_owner",
       };
     } else {
-      const authed = await requireRoleInApi(
-        ["provider_owner", "provider_staff", "superadmin"],
-        request,
-      );
-      user = { id: authed.user.id, role: authed.user.role as string };
+      const permissionCheck = await requirePermission("manage_finance", request);
+      if (!permissionCheck.authorized) {
+        return (
+          permissionCheck.response ??
+          NextResponse.json({ error: "Permission denied" }, { status: 403 })
+        );
+      }
+      user = {
+        id: permissionCheck.user!.id,
+        role: permissionCheck.user!.role ?? "provider_owner",
+      };
     }
 
     const { data: invoice, error } = await admin

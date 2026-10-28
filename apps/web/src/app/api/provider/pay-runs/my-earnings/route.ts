@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
 
     const { data: items } = await supabaseAdmin
       .from("provider_pay_run_items")
-      .select("id, pay_run_id, gross_pay, commission_amount, hourly_amount, salary_amount, tips_amount, manual_deductions, tax_deduction, uif_contribution, net_pay, notes")
+      .select("id, pay_run_id, gross_pay, commission_amount, hourly_amount, salary_amount, tips_amount, manual_deductions, tax_deduction, uif_contribution, taxable_income, commission_clawback, carry_forward_in, carry_forward_out, net_pay, notes")
       .eq("staff_id", staff.id)
       .limit(50);
 
@@ -161,6 +161,9 @@ export async function GET(request: NextRequest) {
           uif_contribution: i.uif_contribution,
           net_pay: i.net_pay,
           notes: i.notes,
+          commission_clawback: i.commission_clawback,
+          carry_forward_in: i.carry_forward_in,
+          carry_forward_out: i.carry_forward_out,
         };
       })
       .filter(Boolean)

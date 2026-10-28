@@ -161,6 +161,26 @@ export function RefundsListPage() {
   const sortDir = (sp.get("dir") === "asc" ? "asc" : "desc") as "asc" | "desc";
   const filters = useMemo(() => ({ page, status, sortBy, sortDir }), [page, status, sortBy, sortDir]);
 
+  const autoCreditSettingsQ = useQuery({
+    queryKey: adminQueryKeys.autoWalletCreditSettings(),
+    queryFn: () =>
+      adminApi.getJson<{ settings: { enabled: boolean } }>(
+        "/api/admin/finance/auto-wallet-credit/settings",
+        { timeoutMs: 30_000 },
+      ),
+    enabled: allowed,
+  });
+
+  const autoCreditPatchM = useMutation({
+    mutationFn: (enabled: boolean) =>
+      adminApi.patchJson("/api/admin/finance/auto-wallet-credit/settings", { enabled }),
+    onSuccess: () => {
+      adminToast.success("Auto wallet credit setting saved");
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.autoWalletCreditSettings() });
+    },
+    onError: (e: Error) => adminToast.error(e.message || "Could not save setting"),
+  });
+
   const [processId, setProcessId] = useState<string | null>(null);
   const [processRow, setProcessRow] = useState<Record<string, unknown> | null>(null);
   const [refundAmount, setRefundAmount] = useState("");
@@ -645,6 +665,31 @@ export function RefundsListPage() {
         </ul>
       </AdminPanel>
 
+      {autoCreditSettingsQ.data?.settings ? (
+        <AdminPanel className="!p-4">
+          <label className="flex cursor-pointer items-start gap-3 text-sm text-gray-800">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={autoCreditSettingsQ.data.settings.enabled}
+              disabled={autoCreditPatchM.isPending}
+              onChange={(e) => autoCreditPatchM.mutate(e.target.checked)}
+            />
+            <span>
+              <span className="font-medium text-gray-900">
+                Automatically credit the customer wallet for eligible exceptions
+              </span>
+              <span className="mt-1 block text-xs text-gray-600">
+                Hourly retry for failed cancellation wallet credits and safe uncredited cancellations.
+                Does not reverse Paystack or other card payments, PayCloud or Yoco terminal refunds,
+                cash confirmations, gift-card restores, or wallet→bank EFT payouts. Manual{" "}
+                <strong>Credit wallet</strong> stays available.
+              </span>
+            </span>
+          </label>
+        </AdminPanel>
+      ) : null}
+
       {stats && typeof stats === "object" && Object.keys(stats).length > 0 && (
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
@@ -656,7 +701,7 @@ export function RefundsListPage() {
                 {actionableRefundable}
               </p>
               <p className="mt-1 text-[11px] text-gray-500">
-                Bookings with a refund exception (matches sidebar badge)
+                Bookings with a refund exception (sidebar badge also includes open wallet→bank requests)
               </p>
             </AdminPanel>
             <AdminPanel className="!p-4">

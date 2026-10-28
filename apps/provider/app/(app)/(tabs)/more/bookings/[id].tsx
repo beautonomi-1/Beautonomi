@@ -17,6 +17,7 @@ import {
   Share,
   Switch,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { format, parseISO } from "date-fns";
 import * as Location from "expo-location";
@@ -5930,12 +5931,18 @@ export default function BookingDetailScreen() {
         transparent
         onRequestClose={() => setShowCancelModal(false)}
       >
-        <Pressable
-          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 24 }}
-          onPress={() => setShowCancelModal(false)}
+        <KeyboardAwareScrollView
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)" }}
+          contentContainerStyle={{ flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
+          bottomOffset={24}
         >
           <Pressable
-            style={{ backgroundColor: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 360 }}
+            onPress={() => setShowCancelModal(false)}
+            style={{ flexGrow: 1, justifyContent: "center", padding: 24 }}
+          >
+          <Pressable
+            style={{ backgroundColor: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 360, alignSelf: "center" }}
             onPress={(e) => e.stopPropagation()}
           >
             <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>{bk("cancelBookingCta")}</Text>
@@ -6019,6 +6026,7 @@ export default function BookingDetailScreen() {
               placeholderTextColor={Colors.gray[400]}
               multiline
               numberOfLines={3}
+              scrollEnabled={false}
               style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, padding: 12, fontSize: 15, color: Colors.gray[900], backgroundColor: Colors.gray[50], textAlignVertical: "top", minHeight: 80 }}
             />
             <View style={{ flexDirection: "row", gap: 12, marginTop: 20 }}>
@@ -6086,7 +6094,8 @@ export default function BookingDetailScreen() {
               </TouchableOpacity>
             </View>
           </Pressable>
-        </Pressable>
+          </Pressable>
+        </KeyboardAwareScrollView>
       </Modal>
 
       <Modal
