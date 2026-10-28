@@ -138,6 +138,27 @@ export const getEffectiveServiceFeeConfig = getEffectivePlatformFeeConfig;
  * @param subtotal - Booking subtotal (after discounts)
  * @returns Platform fee amount
  */
+/**
+ * When fee amount does not match percentage × any accepted base (cap, min order, etc.),
+ * persist percentage 0 so DB validate_service_fee_calculation skips while amount stays unchanged.
+ */
+export function normalizePersistedServiceFeePercentage(
+  amount: number,
+  percentage: number,
+  bases: number[],
+): number {
+  if (percentage <= 0) return 0;
+  if (amount <= 0) return 0;
+  for (const base of bases) {
+    if (base <= 0) continue;
+    const expected = roundCurrency(percentOf(base, percentage));
+    if (Math.abs(amount - expected) <= 0.01) {
+      return percentage;
+    }
+  }
+  return 0;
+}
+
 export function calculatePlatformFeeAmount(
   config: PlatformFeeConfig,
   subtotal: number

@@ -13,6 +13,14 @@ import {
 import { z } from "zod";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import {
+  buildOfferingInsertFromAddonBody,
+  filterAddonsByLocation,
+  mapOfferingRowToAddonApi,
+  OFFERING_ADDON_SELECT,
+  shouldReturnEmptyForAddonTypeFilter,
+  type OfferingAddonRow,
+} from "@/lib/offerings/addon-offering-api";
 
 const addonSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -48,18 +56,22 @@ export async function GET(request: NextRequest) {
     const isActive = searchParams.get("is_active");
     const locationId = searchParams.get("location_id");
 
-    let query = supabase
-      .from("service_addons")
-      .select("*")
-      .eq("provider_id", providerId)
-      .order("sort_order", { ascending: true })
-      .order("name", { ascending: true });
-
-    if (type) {
-      query = query.eq("type", type);
+    if (shouldReturnEmptyForAddonTypeFilter(type)) {
+      return successResponse([]);
     }
+
+    let query = supabase
+      .from("offerings")
+      .select(OFFERING_ADDON_SELECT)
+      .eq("provider_id", providerId)
+      .eq("service_type", "addon")
+      .order("display_order", { ascending: true })
+      .order("title", { ascending: true });
+
     if (isActive !== null && isActive !== undefined && isActive !== "") {
       query = query.eq("is_active", isActive === "true");
+    } else {
+      query = query.eq("is_active", true);
     }
 
     const { data: addons, error } = await query;
@@ -68,43 +80,28 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    let filteredAddons = addons ?? [];
+    let filteredAddons = (addons ?? []) as OfferingAddonRow[];
 
-    // Branch filter: when location_id provided, only addons available at that location
     if (locationId && filteredAddons.length > 0) {
-      const addonIds = filteredAddons.map((a: any) => a.id);
+      const addonIds = filteredAddons.map((a) => a.id);
       const { data: addonLocs } = await supabase
         .from("addon_locations")
         .select("addon_id")
         .in("addon_id", addonIds)
         .eq("location_id", locationId);
-      const addonIdsAtLocation = new Set((addonLocs ?? []).map((r: any) => r.addon_id));
       const { data: allAddonLocs } = await supabase
         .from("addon_locations")
         .select("addon_id")
         .in("addon_id", addonIds);
-      const addonIdsWithAnyRestriction = new Set((allAddonLocs ?? []).map((r: any) => r.addon_id));
-      filteredAddons = filteredAddons.filter((a: any) =>
-        !addonIdsWithAnyRestriction.has(a.id) || addonIdsAtLocation.has(a.id)
+      filteredAddons = filterAddonsByLocation(
+        filteredAddons,
+        locationId,
+        addonLocs,
+        allAddonLocs,
       );
     }
 
-    if (filteredAddons.length > 0) {
-      const addonIds = filteredAddons.map((a: any) => a.id);
-      const { data: associations } = await (supabase as any)
-        .from("service_addon_associations")
-        .select("addon_id, service_id")
-        .in("addon_id", addonIds);
-
-      const addonsWithServices = filteredAddons.map((addon: any) => ({
-        ...addon,
-        service_ids: associations?.filter((a: any) => a.addon_id === addon.id).map((a: any) => a.service_id) || [],
-      }));
-
-      return successResponse(addonsWithServices);
-    }
-
-    return successResponse(filteredAddons);
+    return successResponse(filteredAddons.map(mapOfferingRowToAddonApi));
   } catch (error) {
     return handleApiError(error, "Failed to fetch addons");
   }
@@ -130,11 +127,12 @@ export async function POST(request: NextRequest) {
         validationResult.error.issues.map((i) => i.message).join(", "),
         "VALIDATION_ERROR",
         400,
-        validationResult.error.issues
+        validationResult.error.issues,
       );
     }
 
-    const { service_ids, ...addonData } = validationResult.data;
+    const { service_ids, type: _type, max_quantity: _mq, requires_service: _rs, ...rest } =
+      validationResult.data;
     const { data: prow } = await supabase
       .from("providers")
       .select("tenant_id")
@@ -146,31 +144,23 @@ export async function POST(request: NextRequest) {
     const lastResortCurrency =
       (await getTenantRegionConfig(effectiveTenantId))?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
-    const { data: addon, error } = await (supabase.from("service_addons") as any)
-      .insert({
-        ...addonData,
-        currency: addonData.currency ?? lastResortCurrency,
-        provider_id: providerId,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .select()
+    const insertRow = buildOfferingInsertFromAddonBody(
+      providerId,
+      { ...rest, service_ids },
+      lastResortCurrency,
+    );
+
+    const { data: addon, error } = await supabase
+      .from("offerings")
+      .insert(insertRow)
+      .select(OFFERING_ADDON_SELECT)
       .single();
 
     if (error || !addon) {
       throw error || new Error("Failed to create addon");
     }
 
-    if (service_ids && service_ids.length > 0) {
-      const associations = service_ids.map((serviceId: string) => ({
-        addon_id: (addon as any).id,
-        service_id: serviceId,
-        created_at: new Date().toISOString(),
-      }));
-      await (supabase as any).from("service_addon_associations").insert(associations);
-    }
-
-    return successResponse({ ...(addon as Record<string, any>), service_ids: service_ids || [] });
+    return successResponse(mapOfferingRowToAddonApi(addon as OfferingAddonRow));
   } catch (error) {
     return handleApiError(error, "Failed to create addon");
   }

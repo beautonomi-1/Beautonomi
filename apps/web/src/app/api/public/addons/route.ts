@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import type { AddonTargetIds } from "@/lib/offerings/addon-applicability";
+import {
+  filterAddonsByLocation,
+  filterAddonsByService,
+  mapOfferingRowToAddonApi,
+  OFFERING_ADDON_SELECT,
+  shouldReturnEmptyForAddonTypeFilter,
+  type OfferingAddonRow,
+} from "@/lib/offerings/addon-offering-api";
 
 /**
  * GET /api/public/addons
- * 
+ *
  * Get available addons for a service or provider (public endpoint)
  */
 export async function GET(request: Request) {
@@ -15,27 +24,24 @@ export async function GET(request: Request) {
     const locationId = searchParams.get("location_id");
     const type = searchParams.get("type");
 
-    let query = supabase
-      .from("service_addons")
-      .select("*")
+    if (!providerId) {
+      return NextResponse.json({ data: [], error: null });
+    }
+
+    if (shouldReturnEmptyForAddonTypeFilter(type)) {
+      return NextResponse.json({ data: [], error: null });
+    }
+
+    const { data: addons, error } = await supabase
+      .from("offerings")
+      .select(OFFERING_ADDON_SELECT)
+      .eq("provider_id", providerId)
+      .eq("service_type", "addon")
       .eq("is_active", true)
+      .eq("online_booking_enabled", true)
       .order("is_recommended", { ascending: false })
-      .order("sort_order", { ascending: true })
-      .order("name", { ascending: true });
-
-    if (providerId) {
-      // Get provider-specific addons and global addons
-      query = query.or(`provider_id.eq.${providerId},provider_id.is.null`);
-    } else {
-      // Only global addons
-      query = query.is("provider_id", null);
-    }
-
-    if (type) {
-      query = query.eq("type", type);
-    }
-
-    const { data: addons, error } = await query;
+      .order("display_order", { ascending: true })
+      .order("title", { ascending: true });
 
     if (error) {
       console.error("Error fetching addons:", error);
@@ -47,63 +53,55 @@ export async function GET(request: Request) {
             code: "FETCH_ERROR",
           },
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
-    // Filter by location (branch): when location_id provided, only addons available at that location
-    let filteredAddons = addons ?? [];
+    let filteredAddons = (addons ?? []) as OfferingAddonRow[];
+
     if (locationId && filteredAddons.length > 0) {
-      const addonIds = filteredAddons.map((a: any) => a.id);
-      const { data: addonLocs } = await supabase
+      const addonIds = filteredAddons.map((a) => a.id);
+      const { data: addonLocs, error: locErr } = await supabase
         .from("addon_locations")
         .select("addon_id")
         .in("addon_id", addonIds)
         .eq("location_id", locationId);
-      const addonIdsAtLocation = new Set((addonLocs ?? []).map((r: any) => r.addon_id));
-      const { data: allAddonLocs } = await supabase
-        .from("addon_locations")
-        .select("addon_id")
-        .in("addon_id", addonIds);
-      const addonIdsWithRestriction = new Set((allAddonLocs ?? []).map((r: any) => r.addon_id));
-      filteredAddons = filteredAddons.filter(
-        (a: any) => !addonIdsWithRestriction.has(a.id) || addonIdsAtLocation.has(a.id)
-      );
+      const { data: allAddonLocs } = locErr
+        ? { data: null as { addon_id: string }[] | null }
+        : await supabase.from("addon_locations").select("addon_id").in("addon_id", addonIds);
+      if (!locErr) {
+        filteredAddons = filterAddonsByLocation(
+          filteredAddons,
+          locationId,
+          addonLocs,
+          allAddonLocs,
+        );
+      }
     }
 
-    // Filter by service if specified
     if (serviceId && filteredAddons.length > 0) {
-      const { data: associations } = await supabase
-        .from("service_addon_associations")
-        .select("addon_id")
-        .eq("service_id", serviceId);
+      const { data: serviceRow } = await supabase
+        .from("offerings")
+        .select("id, parent_service_id, master_service_id")
+        .eq("id", serviceId)
+        .eq("provider_id", providerId)
+        .maybeSingle();
 
-      const associatedAddonIds = new Set(associations?.map((a: any) => a.addon_id) || []);
+      const target: AddonTargetIds | null = serviceRow
+        ? {
+            id: serviceRow.id,
+            parent_service_id: (serviceRow as { parent_service_id?: string | null })
+              .parent_service_id,
+            master_service_id: (serviceRow as { master_service_id?: string | null })
+              .master_service_id,
+          }
+        : { id: serviceId };
 
-      // Include addons that are either:
-      // 1. Associated with this service
-      // 2. Not restricted to specific services (no associations)
-      const { data: allAssociations } = await supabase
-        .from("service_addon_associations")
-        .select("addon_id");
-
-      const addonsWithRestrictions = new Set(
-        allAssociations?.map((a: any) => a.addon_id) || []
-      );
-
-      const byService = filteredAddons.filter((addon: any) => {
-        if (!addonsWithRestrictions.has(addon.id)) return true;
-        return associatedAddonIds.has(addon.id);
-      });
-
-      return NextResponse.json({
-        data: byService,
-        error: null,
-      });
+      filteredAddons = filterAddonsByService(filteredAddons, target);
     }
 
     return NextResponse.json({
-      data: filteredAddons,
+      data: filteredAddons.map(mapOfferingRowToAddonApi),
       error: null,
     });
   } catch (error) {
@@ -116,7 +114,7 @@ export async function GET(request: Request) {
           code: "INTERNAL_ERROR",
         },
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

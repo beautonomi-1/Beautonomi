@@ -56,4 +56,15 @@ describe("finance audit migrations (static contract)", () => {
     expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.create_booking_payment/i);
     expect(sql).toMatch(/FROM authenticated/i);
   });
+
+  it("1017 widens service fee validation and no-ops cancellation snapshot when policy missing", () => {
+    const sql = readMigration("1017_booking_fee_validation_and_policy_snapshot.sql");
+    expect(sql).toMatch(/CREATE OR REPLACE FUNCTION validate_service_fee_calculation/i);
+    expect(sql).toMatch(/loyalty_discount_amount/);
+    expect(sql).toMatch(/travel_fee/);
+    expect(sql).toMatch(/base_after_discounts/);
+    expect(sql).toMatch(/CREATE OR REPLACE FUNCTION public\.set_booking_cancellation_policy_snapshot/i);
+    expect(sql).toMatch(/IF NOT FOUND THEN\s*\n\s*RETURN NEW;/);
+    expect(sql).not.toMatch(/COALESCE\(v_policy\.id/);
+  });
 });

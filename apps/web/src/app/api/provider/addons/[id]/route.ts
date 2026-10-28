@@ -9,6 +9,12 @@ import {
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
+import {
+  buildOfferingUpdateFromAddonBody,
+  mapOfferingRowToAddonApi,
+  OFFERING_ADDON_SELECT,
+  type OfferingAddonRow,
+} from "@/lib/offerings/addon-offering-api";
 
 const updateAddonSchema = z.object({
   name: z.string().min(1).optional(),
@@ -27,12 +33,28 @@ const updateAddonSchema = z.object({
   service_ids: z.array(z.string().uuid()).optional(),
 });
 
+async function getProviderAddon(
+  supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
+  providerId: string,
+  id: string,
+) {
+  const { data, error } = await supabase
+    .from("offerings")
+    .select(OFFERING_ADDON_SELECT)
+    .eq("id", id)
+    .eq("provider_id", providerId)
+    .eq("service_type", "addon")
+    .maybeSingle();
+  if (error) throw error;
+  return data as OfferingAddonRow | null;
+}
+
 /**
  * GET /api/provider/addons/[id]
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const supabase = await getSupabaseServer(request);
@@ -43,27 +65,12 @@ export async function GET(
     }
 
     const { id } = await params;
-
-    const { data: addon, error } = await supabase
-      .from("service_addons")
-      .select("*")
-      .eq("id", id)
-      .eq("provider_id", providerId)
-      .single();
-
-    if (error || !addon) {
+    const addon = await getProviderAddon(supabase, providerId, id);
+    if (!addon) {
       return notFoundResponse("Addon not found");
     }
 
-    const { data: associations } = await (supabase as any)
-      .from("service_addon_associations")
-      .select("service_id")
-      .eq("addon_id", id);
-
-    return successResponse({
-      ...(addon as Record<string, any>),
-      service_ids: associations?.map((a: any) => a.service_id) || [],
-    });
+    return successResponse(mapOfferingRowToAddonApi(addon));
   } catch (error) {
     return handleApiError(error, "Failed to fetch addon");
   }
@@ -74,7 +81,7 @@ export async function GET(
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const supabase = await getSupabaseServer(request);
@@ -92,58 +99,39 @@ export async function PUT(
       return errorResponse(
         validationResult.error.issues.map((i) => i.message).join(", "),
         "VALIDATION_ERROR",
-        400
+        400,
       );
     }
 
-    const { data: existing } = await supabase
-      .from("service_addons")
-      .select("*")
-      .eq("id", id)
-      .eq("provider_id", providerId)
-      .single();
-
+    const existing = await getProviderAddon(supabase, providerId, id);
     if (!existing) {
       return notFoundResponse("Addon not found");
     }
 
-    const { service_ids, ...updateData } = validationResult.data;
+    const {
+      service_ids,
+      type: _type,
+      max_quantity: _mq,
+      requires_service: _rs,
+      ...rest
+    } = validationResult.data;
 
-    const { data: addon, error } = await (supabase.from("service_addons") as any)
-      .update({
-        ...updateData,
-        updated_at: new Date().toISOString(),
-      })
+    const patch = buildOfferingUpdateFromAddonBody({ ...rest, service_ids });
+
+    const { data: addon, error } = await supabase
+      .from("offerings")
+      .update(patch)
       .eq("id", id)
       .eq("provider_id", providerId)
-      .select()
+      .eq("service_type", "addon")
+      .select(OFFERING_ADDON_SELECT)
       .single();
 
     if (error || !addon) {
       throw error || new Error("Failed to update addon");
     }
 
-    if (service_ids !== undefined) {
-      await (supabase as any).from("service_addon_associations").delete().eq("addon_id", id);
-      if (service_ids.length > 0) {
-        const associations = service_ids.map((serviceId: string) => ({
-          addon_id: id,
-          service_id: serviceId,
-          created_at: new Date().toISOString(),
-        }));
-        await (supabase as any).from("service_addon_associations").insert(associations);
-      }
-    }
-
-    const { data: associations } = await (supabase as any)
-      .from("service_addon_associations")
-      .select("service_id")
-      .eq("addon_id", id);
-
-    return successResponse({
-      ...(addon as Record<string, any>),
-      service_ids: associations?.map((a: any) => a.service_id) || [],
-    });
+    return successResponse(mapOfferingRowToAddonApi(addon as OfferingAddonRow));
   } catch (error) {
     return handleApiError(error, "Failed to update addon");
   }
@@ -154,7 +142,7 @@ export async function PUT(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const supabase = await getSupabaseServer(request);
@@ -166,21 +154,17 @@ export async function DELETE(
 
     const { id } = await params;
 
-    const { data: existing } = await supabase
-      .from("service_addons")
-      .select("*")
-      .eq("id", id)
-      .eq("provider_id", providerId)
-      .single();
-
+    const existing = await getProviderAddon(supabase, providerId, id);
     if (!existing) {
       return notFoundResponse("Addon not found");
     }
 
-    const { error } = await (supabase.from("service_addons") as any)
+    const { error } = await supabase
+      .from("offerings")
       .update({ is_active: false, updated_at: new Date().toISOString() })
       .eq("id", id)
-      .eq("provider_id", providerId);
+      .eq("provider_id", providerId)
+      .eq("service_type", "addon");
 
     if (error) {
       throw error;
