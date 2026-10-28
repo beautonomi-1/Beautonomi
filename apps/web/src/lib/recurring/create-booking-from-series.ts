@@ -4,6 +4,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { checkBookingConflict, canOverrideDoubleBooking } from "@/lib/bookings/conflict-check";
 import { resolveTz, fromBusinessTime } from "@/lib/dates/provider-tz";
 import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
+import { normalizePersistedServiceFeePercentage } from "@/lib/platform-service-fee-settings";
 
 type SeriesRow = {
   id: string;
@@ -355,13 +356,29 @@ export async function createBookingFromRecurringSeries(
     0,
     Number(pricingSource.service_fee_amount ?? serviceFeeAmount) || 0
   );
-  const recurringServiceFeePercentage = Math.max(
+  let recurringServiceFeePercentage = Math.max(
     0,
     Number(pricingSource.service_fee_percentage ?? serviceFeePercentage) || 0
   );
   const recurringTaxAmount = Math.max(0, Number(pricingSource.tax_amount ?? taxAmount) || 0);
   const recurringTaxRate = Math.max(0, Number(pricingSource.tax_rate ?? taxRate) || 0);
   const effectiveRecurringTravelFee = locationType === "at_home" ? recurringTravelFee : 0;
+  const netAfterRecurringDiscounts = Math.max(
+    0,
+    recurringSubtotal -
+      recurringDiscountAmount -
+      recurringPromotionDiscount -
+      recurringMembershipDiscount,
+  );
+  recurringServiceFeePercentage = normalizePersistedServiceFeePercentage(
+    recurringServiceFeeAmount,
+    recurringServiceFeePercentage,
+    [
+      recurringSubtotal,
+      netAfterRecurringDiscounts,
+      netAfterRecurringDiscounts + effectiveRecurringTravelFee,
+    ],
+  );
   const recurringTotalAmount = Math.max(
     0,
     Number(pricingSource.total_amount ?? 0) ||

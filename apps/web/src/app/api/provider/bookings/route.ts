@@ -59,6 +59,7 @@ import { resolveCheckoutPromotionDiscount } from "@/lib/pricing/checkout-promoti
 import {
   calculatePlatformFeeAmount,
   getEffectivePlatformFeeConfig,
+  normalizePersistedServiceFeePercentage,
 } from "@/lib/platform-service-fee-settings";
 import { shouldRejectProductOnlyProviderBooking } from "@/lib/provider-booking/booking-request-policy";
 import {
@@ -1481,6 +1482,20 @@ async function handleCreateProviderBooking(request: NextRequest) {
       platformFeePercentage =
         feeConfig.feeType === "percentage" ? Number(feeConfig.percentage || 0) : 0;
     }
+    platformFeePercentage = normalizePersistedServiceFeePercentage(
+      platformFeeAmount,
+      platformFeePercentage,
+      [
+        serverSubtotal,
+        Math.max(
+          0,
+          serverSubtotal -
+            serverDiscountAmount -
+            serverPromotionDiscountAmount -
+            membershipDiscountAmount,
+        ),
+      ],
+    );
     const serverPlatformFeeAmount = platformFeeAmount;
     const taxableAmount = computeProviderCreateTaxableAmount({
       subtotal: serverSubtotal,

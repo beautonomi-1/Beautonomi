@@ -12,6 +12,18 @@ export interface CreatedBookingResult {
   createdBookingServices: any[];
 }
 
+/** discount_amount sent to create_booking_with_locking (loyalty folded in for total trigger). */
+export function discountAmountForBookingRpcInsert(v: {
+  packageDiscountAmount: number;
+  loyaltyDiscountAmount: number;
+  loyaltyPointsRedeemed: number;
+}): number {
+  return (
+    v.packageDiscountAmount +
+    (v.loyaltyPointsRedeemed > 0 ? v.loyaltyDiscountAmount : 0)
+  );
+}
+
 // ─── Main function ────────────────────────────────────────────────────────────
 
 /**
@@ -64,7 +76,12 @@ export async function createBookingRecord(
     tax_amount: v.taxAmount,
     tax_rate: v.taxRate ?? null,
     // Package/manual catalog discount only; promo is promotion_discount_amount.
-    discount_amount: v.packageDiscountAmount,
+    // Loyalty is folded in for RPC insert so validate_booking_total balances; split after redeem.
+    discount_amount: discountAmountForBookingRpcInsert({
+      packageDiscountAmount: v.packageDiscountAmount,
+      loyaltyDiscountAmount: v.loyaltyDiscountAmount,
+      loyaltyPointsRedeemed: v.loyaltyPointsRedeemed,
+    }),
     discount_code: v.promoCode || null,
     promotion_discount_amount: v.promoDiscountAmount,
     membership_discount_amount: v.membershipDiscountAmount,
@@ -229,6 +246,7 @@ export async function createBookingRecord(
         .update({
           status: "cancelled",
           cancellation_reason: "Loyalty points could not be redeemed",
+          discount_amount: v.packageDiscountAmount,
           updated_at: new Date().toISOString(),
         })
         .eq("id", bookingId);
@@ -241,13 +259,23 @@ export async function createBookingRecord(
         400,
       );
     }
-    await adminSupabase
+    const { error: loyaltyPatchError } = await adminSupabase
       .from("bookings")
       .update({
         loyalty_points_used: v.loyaltyPointsRedeemed,
         loyalty_discount_amount: v.loyaltyDiscountAmount,
+        discount_amount: v.packageDiscountAmount,
       })
       .eq("id", bookingId);
+    if (loyaltyPatchError) {
+      console.error("[create-booking-record] loyalty discount patch failed:", loyaltyPatchError);
+      return handleApiError(
+        new Error(loyaltyPatchError.message || "Failed to record loyalty redemption on booking"),
+        "Booking was created but loyalty could not be applied. Please contact support.",
+        "LOYALTY_PATCH_FAILED",
+        500,
+      );
+    }
   }
 
   if (v.membershipId) {

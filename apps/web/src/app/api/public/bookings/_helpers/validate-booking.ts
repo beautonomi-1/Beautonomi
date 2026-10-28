@@ -27,6 +27,7 @@ import { loadEffectiveStaffShifts } from "@/lib/availability/load-constraints";
 import { segmentFitsAnyShift } from "@/lib/availability/shift-fit";
 import { fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 import { calculateTravelFeeForHold } from "@/lib/travel/calculateTravelFeeForHold";
+import { normalizePersistedServiceFeePercentage } from "@/lib/platform-service-fee-settings";
 
 function atHomeAdjustmentForOffering(
   offeringsList: Array<{
@@ -1559,6 +1560,20 @@ export async function validateBooking(
     serviceFeeAmount = 0;
     serviceFeePercentage = 0;
   }
+
+  const persistedSubtotalForFee = subtotal + packageDiscountAmount;
+  const netAfterLineDiscounts = Math.max(
+    0,
+    persistedSubtotalForFee -
+      packageDiscountAmount -
+      promoDiscountAmount -
+      membershipDiscountAmount,
+  );
+  serviceFeePercentage = normalizePersistedServiceFeePercentage(
+    serviceFeeAmount,
+    serviceFeePercentage,
+    [persistedSubtotalForFee, netAfterLineDiscounts, baseAfterLoyalty],
+  );
 
   const totalAmount = taxIncluded
     ? sumMoney(baseAfterLoyalty, tipAmount, serviceFeeAmount)
