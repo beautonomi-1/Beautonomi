@@ -5,7 +5,7 @@ import { Bell, ChevronDown, Trash2 } from "lucide-react";
 import { AdminApiError } from "@beautonomi/admin-api-client";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
-import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminSpaNotificationLink, adminSpaTo } from "@/lib/adminSpaPath";
 import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 
 type AdminNotificationRow = {
@@ -86,7 +86,7 @@ export function AdminNotificationBell() {
   const notifications = notificationsQuery.data?.notifications ?? [];
   const queueItems = activityQuery.data?.activities ?? [];
 
-  const activityLinkTo = useCallback((href: string) => adminSpaTo(href), []);
+  const activityLinkTo = useCallback((href: string) => adminSpaNotificationLink(href), []);
 
   const closeDetails = (e: ReactMouseEvent<HTMLElement>) => {
     const details = (e.currentTarget.closest("details") as HTMLDetailsElement | null);

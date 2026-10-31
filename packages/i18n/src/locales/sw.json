@@ -72,7 +72,10 @@
       "gotIt": "Compris",
       "dismissA11y": "Ignorer l’astuce"
     },
-    "change": "Badilisha"
+    "change": "Badilisha",
+    "useDifferentAccount": "Tumia akaunti nyingine",
+    "useDifferentAccountConfirmTitle": "Badilisha akaunti?",
+    "useDifferentAccountConfirmBody": "Utatoka kwenye kifaa hiki. Akaunti yako ya Google au Apple itabaki kuhusishwa, na maendeleo yoyote yaliyohifadhiwa ya usanidi yatabaki kwenye akaunti hiyo. Unaweza kuingia tena wakati wowote."
   },
   "authGate": {
     "checkingAccess": "Inathibitisha akaunti yako…",
@@ -13337,14 +13340,14 @@
     },
     "contentReport": {
       "modalTitle": "Ripoti maudhui",
-      "modalLead": "Chagua a reason and add optional details so our team can review.",
+      "modalLead": "Chagua sababu na ongeza maelezo ya hiari ili timu yetu iweze kukagua.",
       "submitCta": "Wasilisha report",
       "detailsPlaceholder": "Additional details (si lazima)",
       "selectReasonTitle": "Chagua sababu",
       "selectReasonBody": "Tafadhali chagua kwa nini unaripoti maudhui haya.",
       "submitError": "Imeshindwa wasilisha report.",
       "submittedTitle": "Report wasilishated",
-      "submittedBody": "Thank you. Our team will review your report within 24-48 hours.",
+      "submittedBody": "Asante. Timu yetu itakagua ripoti yako ndani ya saa 24.",
       "reportPost": "Ripoti chapisho",
       "reportComment": "Ripoti maoni",
       "reportMessage": "Ripoti ujumbe",
@@ -13358,7 +13361,8 @@
         "harassment": "Unyanyasaji au unyanyasaji",
         "spam": "Barua taka au udanganyifu",
         "safety": "Wasiwasi wa usalama",
-        "other": "Nyingine"
+        "other": "Nyingine",
+        "illegal_exploitative": "Maudhui haramu au yanayotumia vibaya"
       }
     },
     "blockUser": {
@@ -15164,6 +15168,7 @@
           "paymentCancelledBody": "You cancelled the payment. No charge was made. You can jaribu tena from this order.",
           "cancelOrderTitle": "Ghairi agizo",
           "cancelOrderBody": "Ghairi agizo hili? Bidhaa zilizo stokini zitarejeshwa na malipo yaliyolipwa kurejeshwa.",
+          "cancelledInPerson": "Agizo limeghairiwa. {{amount}} ilikusanywa ana kwa ana na bado inahitaji kurejeshwa na saluni.",
           "keepOrderCta": "Keep agizo",
           "cancelOrderCta": "Ghairi agizo",
           "cancelOrderFailed": "Imeshindwa ghairi this agizo.",
@@ -21212,6 +21217,7 @@
         "goBack": "Rudi nyuma",
         "cancelConfirm": "Ghairi agizo hili? Bidhaa zilizo stokini zitarejeshwa na malipo yaliyolipwa kurejeshwa.",
         "cancelledToast": "Agizo imeghairiwa",
+        "cancelledInPerson": "Agizo limeghairiwa. {{amount}} ilikusanywa ana kwa ana na bado inahitaji kurejeshwa na saluni.",
         "cancelFailed": "Imeshindwa ghairi this agizo.",
         "addEmailBeforePay": "Voeg 'n e-posadres by jou rekening voordat jy hierdie bestelling aanlyn betaal.",
         "paymentStartFailed": "We impossible de démarrer paiement for this commande. Veuillez réessayer.",

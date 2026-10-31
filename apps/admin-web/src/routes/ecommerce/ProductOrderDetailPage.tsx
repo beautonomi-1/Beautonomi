@@ -405,17 +405,31 @@ export function ProductOrderDetailPage() {
                 <dd className="text-xs text-gray-700 break-words">{str(order.shipping_booking_detail)}</dd>
               </div>
             ) : null}
-            {order.courier_label_url ? (
+            {order.courier_charged_amount != null ? (
+              <div>
+                <dt className="text-gray-500">Courier charged (salon)</dt>
+                <dd className="font-medium">{str(order.courier_charged_amount)}</dd>
+              </div>
+            ) : null}
+            {order.courier_charged_weight_kg != null ? (
+              <div>
+                <dt className="text-gray-500">Charged weight (kg)</dt>
+                <dd className="font-medium">{str(order.courier_charged_weight_kg)}</dd>
+              </div>
+            ) : null}
+            {order.tracking_number && order.carrier ? (
               <div className="sm:col-span-2">
                 <dt className="text-gray-500">Label</dt>
                 <dd>
                   <a
-                    href={str(order.courier_label_url)}
+                    href={`/api/admin/product-orders/${encodeURIComponent(String(order.id))}/shipping-label`}
                     target="_blank"
                     rel="noreferrer"
                     className="text-primary underline text-sm"
                   >
-                    Open waybill label
+                    {order.shipping_booking_status === "submitting"
+                      ? "Waybill not ready yet"
+                      : "Open waybill (fresh download)"}
                   </a>
                 </dd>
               </div>

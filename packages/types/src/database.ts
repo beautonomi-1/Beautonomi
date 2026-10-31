@@ -211,6 +211,8 @@ interface ProviderStaffRow {
   invite_token_expires_at: Timestamp | null;
   invite_sent_at: Timestamp | null;
   invite_accepted_at: Timestamp | null;
+  /** First date the member may appear in public online booking (provider TZ). */
+  bookable_from: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;
 }

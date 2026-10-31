@@ -42,6 +42,7 @@ export async function GET(
         email,
         phone,
         role,
+        public_title,
         is_active,
         is_service_provider,
         enable_in_online_booking,
@@ -83,6 +84,7 @@ export async function GET(
       email: staff.email,
       phone: staff.phone,
       role: apiRole,
+      public_title: staff.public_title ?? null,
       is_active: staff.is_active ?? true,
       is_service_provider: staff.is_service_provider ?? true,
       enable_in_online_booking: staff.enable_in_online_booking ?? true,
@@ -110,6 +112,7 @@ export async function GET(
 }
 
 const updateSettingsSchema = z.object({
+  public_title: z.string().max(120).optional().nullable(),
   is_service_provider: z.boolean().optional(),
   enable_in_online_booking: z.boolean().optional(),
   can_be_assigned_to_product_sales: z.boolean().optional(),

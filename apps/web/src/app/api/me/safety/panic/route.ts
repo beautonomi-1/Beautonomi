@@ -83,11 +83,8 @@ export async function POST(request: NextRequest) {
 
     let auraDispatched = false;
     if (safetyConfig.escalation_enabled) {
-      const { data: auraConfig } = await supabase
-        .from("aura_integration_config")
-        .select("enabled, api_key_secret, org_id")
-        .eq("environment", env)
-        .maybeSingle();
+      const { loadAuraIntegrationConfig } = await import("@/lib/config/load-aura-integration-config");
+      const auraConfig = await loadAuraIntegrationConfig(env, tenantId);
 
       if (auraConfig?.enabled && auraConfig.api_key_secret) {
         try {

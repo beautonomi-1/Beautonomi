@@ -9,7 +9,7 @@ export const CLOSE_OUT_BOOKING_SELECT = `
         customer_id,
         customer_running_late_at,
         customer_running_late_minutes,
-        customer:users!bookings_customer_id_fkey(id, full_name),
+        customer:users!bookings_customer_id_fkey(id, full_name, phone),
         booking_services(
           scheduled_end_at,
           duration_minutes,

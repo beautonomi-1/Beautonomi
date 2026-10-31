@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { BarChart3 } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_OVERVIEW } from "@beautonomi/admin-access";
@@ -21,6 +22,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { downloadAdminBlob } from "@/lib/adminCsvDownload";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { useAdminSession } from "@/providers/AdminSessionProvider";
 import { labelForSupportTicketCategory } from "@/lib/supportTicketCategories";
 import { AdminTrendChart } from "@/components/admin/charts/AdminTrendChart";
 import { AdminHorizontalBars } from "@/components/admin/charts/AdminHorizontalBars";
@@ -78,17 +80,9 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="text-sm font-semibold text-gray-700">{children}</h2>;
 }
 
-function periodToDateParams(period: string): URLSearchParams {
-  const params = new URLSearchParams();
-  const now = new Date();
-  const days = period === "7d" ? 7 : period === "90d" ? 90 : period === "1y" ? 365 : 30;
-  const start = new Date(now);
-  start.setUTCDate(start.getUTCDate() - days + 1);
-  start.setUTCHours(0, 0, 0, 0);
-  params.set("start_date", start.toISOString());
-  params.set("end_date", now.toISOString());
-  return params;
-}
+const REPORTS_WITHOUT_CSV = new Set(["memberships", "support-performance", "support-workload"]);
+
+const ANALYTICS_DRILLUP_KEYS = new Set(["revenue", "bookings", "customers", "providers"]);
 
 // ── Revenue ───────────────────────────────────────────────────────────────────
 function RevenueReport({ data }: { data: Record<string, unknown> }) {
@@ -1552,7 +1546,10 @@ export function ReportDetailPage() {
   const [sp, setSp] = useSearchParams();
   const period = sp.get("period") || "30d";
   const [exportBusy, setExportBusy] = useState(false);
+  const { bootstrap } = useAdminSession();
   const apiPath = API_PATHS[reportKey];
+  const csvDisabled = REPORTS_WITHOUT_CSV.has(reportKey);
+  const revenueSummaryExport = reportKey === "revenue";
 
   const q = useQuery({
     queryKey: adminQueryKeys.reports.detail(reportKey, period),
@@ -1628,41 +1625,62 @@ export function ReportDetailPage() {
             <option value="1y">1 year</option>
           </select>
         </label>
-        <button
-          type="button"
-          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
-          disabled={exportBusy}
-          onClick={() => {
-            if (exportBusy) return;
-            setExportBusy(true);
-            const EXPORT_ENDPOINTS: Record<string, string> = {
-              revenue: "/api/admin/export/analytics",
-              providers: "/api/admin/export/providers",
-              customers: "/api/admin/export/users",
-              bookings: "/api/admin/export/bookings",
-              "gift-cards": "/api/admin/export/gift-cards",
-              "yoco-reconciliation": "/api/admin/export/transactions",
-            };
-            const endpoint = EXPORT_ENDPOINTS[reportKey] ?? "/api/admin/export/analytics";
-            const params =
-              reportKey === "revenue"
-                ? (() => {
-                    const p = periodToDateParams(period);
-                    p.set("report_type", "revenue");
-                    return p;
-                  })()
+        {!csvDisabled ? (
+          <button
+            type="button"
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+            disabled={exportBusy}
+            title={
+              revenueSummaryExport
+                ? "Four-row summary: customers created, providers created, bookings by created_at, settled GMV — not the full revenue report."
+                : undefined
+            }
+            onClick={() => {
+              if (exportBusy) return;
+              setExportBusy(true);
+              const EXPORT_ENDPOINTS: Record<string, string> = {
+                revenue: "/api/admin/export/analytics",
+                providers: "/api/admin/export/providers",
+                customers: "/api/admin/export/users",
+                bookings: "/api/admin/export/bookings",
+                "gift-cards": "/api/admin/export/gift-cards",
+                "yoco-reconciliation": "/api/admin/export/transactions",
+              };
+              const endpoint = EXPORT_ENDPOINTS[reportKey];
+              if (!endpoint) {
+                setExportBusy(false);
+                return;
+              }
+              const params = revenueSummaryExport
+                ? new URLSearchParams({ period, report_type: "revenue" })
                 : new URLSearchParams({ period });
-            void downloadAdminBlob(
-              `${endpoint}?${params}`,
-              `${reportKey}-${period}.csv`
-            )
-              .catch(() => alert("Export failed"))
-              .finally(() => setExportBusy(false));
-          }}
-        >
-          {exportBusy ? "Preparing CSV…" : "Download CSV"}
-        </button>
+              void downloadAdminBlob(`${endpoint}?${params}`, `${reportKey}-${period}.csv`)
+                .catch(() => alert("Export failed"))
+                .finally(() => setExportBusy(false));
+            }}
+          >
+            {exportBusy ? "Preparing CSV…" : revenueSummaryExport ? "Download summary CSV" : "Download CSV"}
+          </button>
+        ) : (
+          <span className="text-xs text-gray-500" title="CSV export is not available for this report yet.">
+            CSV export unavailable
+          </span>
+        )}
       </div>
+
+      {bootstrap?.isSuperadmin && ANALYTICS_DRILLUP_KEYS.has(reportKey) ? (
+        <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 text-sm text-gray-900">
+          <p className="font-medium text-primary">Interactive trends</p>
+          <p className="mt-1 text-gray-700">Charts, snapshot health, and cohort retention for the same period.</p>
+          <Link
+            to={`${adminSpaTo("/admin/analytics")}?period=${encodeURIComponent(period)}`}
+            className="mt-3 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary/90"
+          >
+            <BarChart3 className="h-4 w-4" aria-hidden />
+            Open Analytics
+          </Link>
+        </div>
+      ) : null}
 
       {/* Per-report rendering */}
       {reportKey === "revenue" && <RevenueReport data={data} />}

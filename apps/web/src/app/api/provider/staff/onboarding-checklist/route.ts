@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     const { data: staff } = await supabaseAdmin
       .from("provider_staff")
       .select(
-        "id, invite_accepted_at, commission_enabled, service_commission_rate, time_clock_enabled, time_clock_pin",
+        "id, invite_accepted_at, is_service_provider, commission_enabled, service_commission_rate, time_clock_enabled, time_clock_pin",
       )
       .eq("id", staffId)
       .eq("provider_id", providerId)
@@ -51,10 +51,16 @@ export async function GET(request: NextRequest) {
         .limit(1),
     ]);
 
+    const isServiceProvider = (staff as { is_service_provider?: boolean | null }).is_service_provider !== false;
+
     const items = [
       { key: "invite_accepted", done: Boolean(staff.invite_accepted_at) },
       { key: "locations_assigned", done: (locCount ?? 0) > 0 },
-      { key: "services_assigned", done: (svcCount ?? 0) > 0 },
+      ...(isServiceProvider
+        ? [
+            { key: "services_assigned", done: (svcCount ?? 0) > 0 },
+          ]
+        : []),
       { key: "schedule_set", done: (schedule?.length ?? 0) > 0 },
       {
         key: "commission_configured",

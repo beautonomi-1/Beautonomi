@@ -38,6 +38,7 @@ import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { Colors } from "@/constants/colors";
 import { useTranslation } from "@beautonomi/i18n";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+import { StaffAddWizardSheet } from "@/components/team/StaffAddWizardSheet";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -79,6 +80,9 @@ interface TeamAccessPayload {
   can_manage_team: boolean;
   roster_detail_level?: "full" | "redacted";
   can_view_team_roster_pii?: boolean;
+  staff_add_can_proceed?: boolean;
+  staff_add_current_count?: number;
+  staff_add_limit_value?: number | null;
 }
 
 const ROLE_OPTIONS = [
@@ -142,7 +146,7 @@ export default function TeamListScreen() {
   const { data: staff, loading, error: staffError, refresh } = useApi<StaffMember[]>(staffUrl);
   const { data: services } = useApi<ServiceItem[]>("/api/provider/services");
   const { data: locations } = useApi<LocationItem[]>("/api/provider/locations");
-  const { execute: createMember, loading: creating } = useApiPost<
+  const { execute: createMember } = useApiPost<
     Record<string, unknown>,
     StaffMember
   >("/api/provider/staff");
@@ -157,7 +161,6 @@ export default function TeamListScreen() {
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [editSheetOpen, setEditSheetOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<StaffMember | null>(null);
-  const [form, setForm] = useState({ ...EMPTY_FORM });
   const [editForm, setEditForm] = useState({ ...EMPTY_FORM });
 
   const handleRefresh = useCallback(async () => {
@@ -180,12 +183,6 @@ export default function TeamListScreen() {
     if (teamAccessLoading) return;
     addIntentDone.current = true;
     if (isFreelancer || !canManageTeam) return;
-    setForm({
-      ...EMPTY_FORM,
-      location_ids: selectedLocationId
-        ? [selectedLocationId]
-        : (locations ?? []).map((l) => l.id),
-    });
     setAddSheetOpen(true);
   }, [params.add, teamAccessLoading, isFreelancer, canManageTeam, selectedLocationId, locations]);
 
@@ -242,31 +239,7 @@ export default function TeamListScreen() {
       Alert.alert(tl("permissionTitle"), tl("permissionAdd"));
       return;
     }
-    setForm({
-      ...EMPTY_FORM,
-      location_ids: selectedLocationId
-        ? [selectedLocationId]
-        : (locations ?? []).map((l) => l.id),
-    });
     setAddSheetOpen(true);
-  }
-
-  function toggleFormLocation(locId: string) {
-    setForm((prev) => ({
-      ...prev,
-      location_ids: prev.location_ids.includes(locId)
-        ? prev.location_ids.filter((x) => x !== locId)
-        : [...prev.location_ids, locId],
-    }));
-  }
-
-  function toggleFormService(svcId: string) {
-    setForm((prev) => ({
-      ...prev,
-      service_ids: prev.service_ids.includes(svcId)
-        ? prev.service_ids.filter((x) => x !== svcId)
-        : [...prev.service_ids, svcId],
-    }));
   }
 
   function toggleEditFormService(svcId: string) {
@@ -428,65 +401,31 @@ export default function TeamListScreen() {
     ]);
   }
 
-  async function handleSubmit() {
-    if (isFreelancer) {
-      Alert.alert(tl("salonRequiredTitle"), tl("salonRequiredShort"));
-      return;
+  const addWizardLocationIds = useMemo(
+    () =>
+      selectedLocationId
+        ? [selectedLocationId]
+        : (locations ?? []).map((l) => l.id),
+    [selectedLocationId, locations],
+  );
+
+  const addWizardOfferingIds = useMemo(() => (services ?? []).map((s) => s.id), [services]);
+
+  const addWizardStaffOptions = useMemo(
+    () => (staff ?? []).filter((s) => s.is_active).map((s) => ({ id: s.id, name: s.name })),
+    [staff],
+  );
+
+  const addWizardStaffLimit = useMemo(() => {
+    if (teamAccess?.staff_add_limit_value == null && teamAccess?.staff_add_current_count == null) {
+      return undefined;
     }
-    if (!canManageTeam) {
-      Alert.alert(tl("permissionTitle"), tl("permissionNoAdd"));
-      return;
-    }
-    if (!form.name.trim() || !form.email.trim()) {
-      Alert.alert(tl("validationTitle"), tl("nameEmailRequired"));
-      return;
-    }
-    const phoneErr = form.phone.trim() ? validateE164Phone(form.phone) : null;
-    if (phoneErr) {
-      Alert.alert(tl("invalidPhoneTitle"), phoneErr);
-      return;
-    }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const payload = {
-      name: form.name.trim(),
-      email: form.email.trim(),
-      phone: form.phone.trim() || undefined,
-      role: form.role,
-      commission_rate: form.commission_rate
-        ? parseFloat(form.commission_rate)
-        : null,
-      invite_email: form.invite_email,
-      location_ids: form.location_ids,
-      service_ids: form.service_ids,
+    return {
+      canProceed: teamAccess?.staff_add_can_proceed !== false,
+      currentCount: teamAccess?.staff_add_current_count ?? 0,
+      limitValue: teamAccess?.staff_add_limit_value ?? null,
     };
-    const { data: createdMember, error, errorCode } = await createMember(payload);
-    if (error) {
-      if (isPlanGateErrorCode(errorCode)) {
-        showPlanGateAlert({ message: error, errorCode, router });
-      } else {
-        Alert.alert(tl("errorTitle"), error);
-      }
-    } else {
-      setAddSheetOpen(false);
-      refresh();
-      Alert.alert(
-        tl("addedTitle"),
-        form.invite_email
-          ? tl("addedWithInvite")
-          : tl("addedWithoutInvite"),
-        [
-          { text: tl("later"), style: "cancel" },
-          createdMember?.id
-            ? {
-                text: tl("openProfile"),
-                onPress: () =>
-                  router.push(`/(app)/(tabs)/more/team-member/${createdMember.id}` as never),
-              }
-            : { text: tl("ok") },
-        ],
-      );
-    }
-  }
+  }, [teamAccess]);
 
   // --- Render ---
   return (
@@ -757,157 +696,19 @@ export default function TeamListScreen() {
 
       </View>
 
-      {/* ════════════════════════════════════════════════════════════ */}
-      {/*  Add Team Member Bottom Sheet                               */}
-      {/* ════════════════════════════════════════════════════════════ */}
-      <BottomSheet
+      <StaffAddWizardSheet
         visible={addSheetOpen}
         onClose={() => setAddSheetOpen(false)}
-        title={tl("addSheetTitle")}
-        subtitle={tl("addSheetSubtitle")}
-        snapHeight="full"
-      >
-        {/* Name */}
-        <FormField
-          label={tl("fullNameRequired")}
-          value={form.name}
-          onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
-          placeholder={tl("fullNamePlaceholder")}
-        />
-
-        {/* Contact */}
-        <FormField
-          label={tl("emailRequired")}
-          value={form.email}
-          onChangeText={(t) => setForm((p) => ({ ...p, email: t }))}
-          placeholder={tl("emailPlaceholder")}
-          keyboardType="email-address"
-        />
-        <E164PhoneField
-          label={tl("phone")}
-          valueE164={form.phone}
-          onChangeE164={(e164) => setForm((p) => ({ ...p, phone: e164 }))}
-          compact
-          muted
-          accessibilityLabel={tl("phoneA11y")}
-        />
-
-        {/* Role Selector */}
-        <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>{tl("role")}</Text>
-        <View style={twStyle("mb-3 flex-row flex-wrap")}>
-          {roles.map((r) => (
-            <TouchableOpacity
-              key={r.value}
-              style={[twStyle(`rounded-full px-4 py-2 ${form.role === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginEnd: 8, marginBottom: 8 }]}
-              onPress={() => setForm((p) => ({ ...p, role: r.value }))}
-              accessibilityLabel={tl("selectRoleA11y", { role: r.label })}
-            >
-              <Text
-                style={twStyle(`text-sm font-medium ${form.role === r.value ? "text-white" : "text-gray-600"}`)}
-              >
-                {r.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        <Text style={twStyle("mb-3 text-xs leading-5 text-gray-500")}>
-          {tl("roleHint")}
-        </Text>
-
-        {/* Commission Rate */}
-        <FormField
-          label={tl("commissionRate")}
-          value={form.commission_rate}
-          onChangeText={(t) => setForm((p) => ({ ...p, commission_rate: t }))}
-          placeholder={tl("commissionPlaceholder")}
-          keyboardType="numeric"
-        />
-
-        {/* Location Assignment */}
-        {locations && locations.length > 0 && (
-          <>
-            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>
-              {tl("assignLocations")}
-            </Text>
-            <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50")}>
-              {locations.map((loc, i) => {
-                const isSelected = form.location_ids.includes(loc.id);
-                return (
-                  <TouchableOpacity
-                    key={loc.id}
-                    style={twStyle(`flex-row items-center px-4 py-3 ${i < locations.length - 1 ? "border-b border-gray-100" : ""}`)}
-                    onPress={() => toggleFormLocation(loc.id)}
-                    accessibilityLabel={isSelected ? tl("deselectA11y", { name: loc.name }) : tl("selectA11y", { name: loc.name })}
-                  >
-                    <Ionicons
-                      name={isSelected ? "checkbox" : "square-outline"}
-                      size={20}
-                      color={isSelected ? "#6366f1" : "#9ca3af"}
-                    />
-                    <Text style={twStyle("ms-3 text-sm text-gray-900")}>{loc.name}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </>
-        )}
-
-        {/* Service Assignment */}
-        {services && services.length > 0 && (
-          <>
-            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>
-              {tl("assignServices")}
-            </Text>
-            <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50")}>
-              {services.map((svc, i) => {
-                const isSelected = form.service_ids.includes(svc.id);
-                return (
-                  <TouchableOpacity
-                    key={svc.id}
-                    style={twStyle(`flex-row items-center px-4 py-3 ${i < services.length - 1 ? "border-b border-gray-100" : ""}`)}
-                    onPress={() => toggleFormService(svc.id)}
-                    accessibilityLabel={isSelected ? tl("deselectA11y", { name: svc.title }) : tl("selectA11y", { name: svc.title })}
-                  >
-                    <Ionicons
-                      name={isSelected ? "checkbox" : "square-outline"}
-                      size={20}
-                      color={isSelected ? "#6366f1" : "#9ca3af"}
-                    />
-                    <Text style={twStyle("ms-3 text-sm text-gray-900")}>{svc.title}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </>
-        )}
-
-        {/* Invite via email toggle */}
-        <View style={twStyle("mb-4 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
-          <View>
-            <Text style={twStyle("text-sm font-medium text-gray-900")}>
-              {tl("sendInvite")}
-            </Text>
-            <Text style={twStyle("text-xs text-gray-500")}>
-              {tl("sendInviteHint")}
-            </Text>
-          </View>
-          <Switch
-            value={form.invite_email}
-            onValueChange={(v) => setForm((p) => ({ ...p, invite_email: v }))}
-            trackColor={{ false: "#d1d5db", true: "#6366f1" }}
-            thumbColor="#fff"
-            accessibilityLabel={tl("toggleInviteA11y")}
-          />
-        </View>
-
-        {/* Submit */}
-        <ActionButton
-          label={tl("addMemberCta")}
-          onPress={handleSubmit}
-          loading={creating}
-          fullWidth
-        />
-      </BottomSheet>
+        locationIds={addWizardLocationIds}
+        offeringIds={addWizardOfferingIds}
+        locations={(locations ?? []).map((l) => ({ id: l.id, name: l.name }))}
+        offerings={(services ?? []).map((s) => ({ id: s.id, title: s.title }))}
+        staffOptions={addWizardStaffOptions}
+        staffLimit={addWizardStaffLimit}
+        onCreated={() => refresh()}
+        createMember={createMember}
+        router={router}
+      />
 
       {/* ════════════════════════════════════════════════════════════ */}
       {/*  Edit Team Member Bottom Sheet                              */}

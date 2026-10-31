@@ -238,4 +238,37 @@ describe("processProductReturnRefund", () => {
       }),
     ).rejects.toBeInstanceOf(ProductReturnRefundError);
   });
+
+  it("refuses an in-person cash refund of a Paystack order", async () => {
+    const { supabase, admin, rpcCalls } = makeSupabasePair({
+      order: {
+        id: ORDER_ID,
+        provider_id: "prov-1",
+        payment_status: "paid",
+        payment_method: "paystack",
+        total_amount: 200,
+        customer_id: "cust-1",
+        currency: "ZAR",
+        tenant_id: "tenant-1",
+        order_number: "ORD-1",
+        refunded_amount: 0,
+        status: "delivered",
+      },
+    });
+
+    await expect(
+      processProductReturnRefund({
+        supabase,
+        admin,
+        returnId: RETURN_ID,
+        orderId: ORDER_ID,
+        orderItemId: ITEM_ID,
+        returnQuantity: 1,
+        refundAmount: 50,
+        refundMethod: "cash",
+        actorUserId: "user-1",
+      }),
+    ).rejects.toMatchObject({ code: "REFUND_ORIGINAL_TENDER" });
+    expect(rpcCalls.find((c) => c.fn === "wallet_credit_admin")).toBeUndefined();
+  });
 });

@@ -72,7 +72,10 @@
       "gotIt": "Compris",
       "dismissA11y": "Ignorar gorjeta"
     },
-    "change": "alterar"
+    "change": "alterar",
+    "useDifferentAccount": "Use a different conta",
+    "useDifferentAccountConfirmTitle": "Switch conta?",
+    "useDifferentAccountConfirmBody": "Você sairá neste dispositivo. Sua conta Google ou Apple permanece vinculada, e qualquer progresso de configuração salvo permanece nessa conta. Você pode entrar novamente a qualquer momento."
   },
   "authGate": {
     "checkingAccess": "Checking your conta…",
@@ -13344,7 +13347,7 @@
       "selectReasonBody": "Por favor, escolher why you are relatórioing this content.",
       "submitError": "Não foi possível enviar relatório.",
       "submittedTitle": "relatório enviarted",
-      "submittedBody": "Thank you. Our team will review your report within 24-48 hours.",
+      "submittedBody": "Obrigado. A nossa equipa analisará a sua denúncia em 24 horas.",
       "reportPost": "relatório Publicação",
       "reportComment": "relatório comentário",
       "reportMessage": "relatório mensagem",
@@ -13353,12 +13356,13 @@
       "signInTitle": "iniciar sessão to relatório",
       "signInBody": "Criar an conta or iniciar sessão to relatório content to our segurança equipa.",
       "reason": {
-        "inappropriate": "Inappropriate content",
+        "inappropriate": "Conteúdo inadequado",
         "misleading": "Misleading informação",
-        "harassment": "Harassment or abuse",
-        "spam": "Spam or scam",
+        "harassment": "Assédio ou abuso",
+        "spam": "Spam ou fraude",
         "safety": "segurança concern",
-        "other": "Outro"
+        "other": "Outro",
+        "illegal_exploitative": "Conteúdo ilegal ou exploratório"
       }
     },
     "blockUser": {
@@ -15164,6 +15168,7 @@
           "paymentCancelledBody": "You cancelled the payment. No charge was made. You can try again from this order.",
           "cancelOrderTitle": "Cancelar encomenda",
           "cancelOrderBody": "Cancel this order? In-stock items will be restocked and paid tenders refunded.",
+          "cancelledInPerson": "Encomenda cancelada. {{amount}} foi cobrado presencialmente e ainda precisa ser devolvido pelo salão.",
           "keepOrderCta": "Manter encomenda",
           "cancelOrderCta": "Cancelar encomenda",
           "cancelOrderFailed": "Não foi possível cancelar this encomenda.",
@@ -21212,6 +21217,7 @@
         "goBack": "Voltar",
         "cancelConfirm": "Annuler cette commande ? Les articles en stock seront réintégrés et les paiements remboursés.",
         "cancelledToast": "encomenda cancelado",
+        "cancelledInPerson": "Encomenda cancelada. {{amount}} foi cobrado presencialmente e ainda precisa ser devolvido pelo salão.",
         "cancelFailed": "Não foi possível cancelar this encomenda.",
         "addEmailBeforePay": "Voeg 'n e-posadres by jou rekening voordat jy hierdie bestelling aanlyn betaal.",
         "paymentStartFailed": "We impossible de démarrer paiement for this commande. Veuillez réessayer.",

@@ -61,6 +61,7 @@ export function deriveRefundRowState(row: {
   status?: string;
   booking?: unknown;
   is_processable?: boolean;
+  is_wallet_substitute_allowed?: boolean;
   refund_state?: RefundState;
   effective_reason?: string | null;
   refund_reason?: string | null;
@@ -91,10 +92,15 @@ export function deriveRefundRowState(row: {
         : "Wallet credited"
       : null;
 
+  const substituteOnly = row.is_wallet_substitute_allowed === true;
   return {
     label: REFUND_STATE_LABEL[refundState] ?? refundState,
     badgeClass: REFUND_STATE_BADGE[refundState] ?? "bg-gray-100 text-gray-600",
-    actionLabel: canProcess ? "Credit wallet" : null,
+    actionLabel: canProcess
+      ? substituteOnly
+        ? "Issue store credit instead"
+        : "Credit wallet"
+      : null,
     canProcess,
     reason,
     creditedVia,
@@ -111,6 +117,23 @@ export function creditedViaLabel(via: CreditedVia): string | null {
 export function parseRefundAmount(val: unknown): number {
   const n = parseFloat(String(val ?? "0"));
   return Number.isFinite(n) ? n : 0;
+}
+
+/** Platform wallet credit cap from admin refunds API row (not in-person substitute leg). */
+export function walletCreditMaxForRow(row: {
+  remaining_refundable?: unknown;
+  wallet_remaining_refundable?: unknown;
+  is_wallet_substitute_allowed?: boolean;
+}): number {
+  const remaining = parseRefundAmount(row.remaining_refundable);
+  const walletLeg = parseRefundAmount(row.wallet_remaining_refundable);
+  if (row.is_wallet_substitute_allowed === true) {
+    return remaining;
+  }
+  if (walletLeg > 0.01) {
+    return walletLeg;
+  }
+  return remaining;
 }
 
 export function remainingRefundable(amount: unknown, refundAmount: unknown): number {

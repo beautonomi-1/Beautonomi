@@ -128,11 +128,12 @@ export async function POST(request: NextRequest) {
     if (existing) {
       // User exists — update their role to the admin role
       if (ADMIN_ROLES.includes(existing.role as UserRole) && existing.role === role) {
-        return errorResponse(
-          `User ${email} already has role "${role}". No change made.`,
-          "ALREADY_EXISTS",
-          409
-        );
+        await syncAdminUserTenantRole(supabase, existing.id, role, undefined, request);
+        return successResponse({
+          message: `Tenant assignment refreshed for ${email} (${role}).`,
+          user_id: existing.id,
+          action: "tenant_sync",
+        });
       }
 
       const { error: updateErr } = await supabase
@@ -185,6 +186,12 @@ export async function POST(request: NextRequest) {
 
     if (upsertErr) {
       console.error("admin-team invite upsert error:", upsertErr);
+      return errorResponse(
+        "Failed to save admin role for invited user",
+        "DATABASE_ERROR",
+        500,
+        upsertErr.message,
+      );
     }
 
     await syncAdminUserTenantRole(supabase, authData.user.id, role, undefined, request);

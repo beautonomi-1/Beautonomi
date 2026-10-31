@@ -2,7 +2,7 @@
 
 import { useTranslation } from "@beautonomi/i18n";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -35,12 +35,14 @@ import {
   payPlanFromApiRow,
   payPlanToPostBody,
 } from "@/lib/payroll/pay-plan-form-state";
+import { ReassignBookingsDialog } from "./ReassignBookingsDialog";
 
 interface TeamMemberCreateEditDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   member?: TeamMember | null;
   onSave?: (wasUpdate?: boolean) => void;
+  reassignCandidates?: Array<{ id: string; name: string }>;
 }
 
 export function TeamMemberCreateEditDialog({
@@ -48,6 +50,7 @@ export function TeamMemberCreateEditDialog({
   onOpenChange,
   member,
   onSave,
+  reassignCandidates = [],
 }: TeamMemberCreateEditDialogProps) {
   const { getOptions } = useReferenceData(["team_role", "commission_type", "working_day"]);
   const { t } = useTranslation();
@@ -61,6 +64,10 @@ export function TeamMemberCreateEditDialog({
   const [serviceIds, setServiceIds] = useState<string[]>([]);
   const [payPlan, setPayPlan] = useState(defaultPayPlanFormState);
   const [offerings, setOfferings] = useState<Array<{ id: string; title: string }>>([]);
+  const initialRoleRef = useRef<string | null>(null);
+  const [deactivateReassignOpen, setDeactivateReassignOpen] = useState(false);
+  const pendingJobPatchRef = useRef<Record<string, unknown>>({});
+  const finishSaveAfterReassignRef = useRef<((reassignTo: string) => Promise<void>) | null>(null);
 
   const [formData, setFormData] = useState({
     // Basic Information
@@ -145,12 +152,14 @@ export function TeamMemberCreateEditDialog({
               }),
             );
 
+            const loadedRole = member.role || "employee";
+            initialRoleRef.current = loadedRole;
             setFormData({
               name: member.name || "",
               email: member.email || "",
               mobile: member.mobile || "",
               avatar_url: member.avatar_url || "",
-              role: member.role || "employee",
+              role: loadedRole,
               is_service_provider: settings?.is_service_provider ?? true,
               enable_in_online_booking: settings?.enable_in_online_booking ?? true,
               can_be_assigned_to_product_sales: settings?.can_be_assigned_to_product_sales ?? false,
@@ -357,29 +366,17 @@ export function TeamMemberCreateEditDialog({
         await providerApi.updateTeamMember(member.id, updateData);
 
         const { fetcher } = await import("@/lib/http/fetcher");
-        try {
-          await fetcher.patch(`/api/provider/staff/${member.id}`, {
-            is_active: formData.is_active,
-          });
-        } catch (activeErr) {
-          const fetchErr = activeErr as FetchError;
-          if (
-            formData.is_active === false &&
-            (fetchErr?.status === 409 || fetchErr?.code === "FUTURE_BOOKINGS_CONFLICT")
-          ) {
-            const proceed = window.confirm(
-              t("web.provider.teamMemberDialog.deactivateConfirm", { name: formData.name }),
-            );
-            if (!proceed) throw activeErr;
-            await fetcher.patch(`/api/provider/staff/${member.id}`, {
-              is_active: false,
-              reassign_to: "any",
-            });
-          } else {
-            throw activeErr;
-          }
-        }
-        
+        const roleChanged =
+          initialRoleRef.current != null && formData.role !== initialRoleRef.current;
+        const jobPatch =
+          roleChanged && formData.role === "manager"
+            ? { job: "manager" as const }
+            : roleChanged && formData.role === "employee"
+              ? { job: "stylist" as const }
+              : {};
+        pendingJobPatchRef.current = jobPatch;
+
+        const continueAfterActivePatch = async () => {
         // Update basic info and settings separately
         try {
           // Update all other settings
@@ -425,169 +422,99 @@ export function TeamMemberCreateEditDialog({
           }
         }
 
+        const staffId = member.id;
+        if (staffId && locationIds.length > 0) {
+          try {
+            await fetcher.put(`/api/provider/staff/${staffId}/locations`, {
+              location_ids: locationIds,
+              primary_location_id: locationIds[0],
+            });
+          } catch (locErr) {
+            const fetchErr = locErr as FetchError;
+            if (fetchErr?.status === 409 || fetchErr?.code === "FUTURE_BOOKINGS_CONFLICT") {
+              const proceed = window.confirm(
+                t("web.provider.teamMemberDialog.locationsConflictConfirm"),
+              );
+              if (proceed) {
+                await fetcher.put(`/api/provider/staff/${staffId}/locations`, {
+                  location_ids: locationIds,
+                  primary_location_id: locationIds[0],
+                  force: true,
+                });
+              } else {
+                toast.warning(t("web.provider.teamMemberDialog.locationsNotUpdated"));
+              }
+            } else {
+              console.error("Failed to save staff locations:", locErr);
+              toast.warning(t("web.provider.teamMemberDialog.locationsMayNotUpdate"));
+            }
+          }
+        }
+        if (staffId) {
+          try {
+            await fetcher.put(`/api/provider/staff/${staffId}/services`, {
+              service_ids: serviceIds,
+            });
+          } catch (svcErr) {
+            const fetchErr = svcErr as FetchError;
+            if (fetchErr?.status === 409 || fetchErr?.code === "FUTURE_BOOKINGS_CONFLICT") {
+              const proceed = window.confirm(
+                t("web.provider.teamMemberDialog.servicesConflictConfirm"),
+              );
+              if (proceed) {
+                await fetcher.put(`/api/provider/staff/${staffId}/services`, {
+                  service_ids: serviceIds,
+                  force: true,
+                });
+              } else {
+                toast.warning(t("web.provider.teamMemberDialog.servicesNotUpdated"));
+              }
+            } else {
+              console.error("Failed to save staff services:", svcErr);
+              toast.warning(t("web.provider.teamMemberDialog.servicesMayNotUpdate"));
+            }
+          }
+        }
+
         toast.success(t("web.provider.teamMemberDialog.updated"));
+        onSave?.(true);
+        onOpenChange(false);
+        };
+
+        try {
+          await fetcher.patch(`/api/provider/staff/${member.id}`, {
+            is_active: formData.is_active,
+            ...jobPatch,
+          });
+        } catch (activeErr) {
+          const fetchErr = activeErr as FetchError;
+          if (
+            formData.is_active === false &&
+            (fetchErr?.status === 409 || fetchErr?.code === "FUTURE_BOOKINGS_CONFLICT")
+          ) {
+            finishSaveAfterReassignRef.current = async (reassignTo: string) => {
+              await fetcher.patch(`/api/provider/staff/${member.id}`, {
+                is_active: false,
+                reassign_to: reassignTo,
+                ...pendingJobPatchRef.current,
+              });
+              await continueAfterActivePatch();
+            };
+            setDeactivateReassignOpen(true);
+            setIsLoading(false);
+            return;
+          }
+          throw activeErr;
+        }
+
+        await continueAfterActivePatch();
+        return;
       } else {
-        // Create staff member first
-        const createdMember = await providerApi.createTeamMember({
-          ...formData,
-          location_ids: locationIds,
-        });
-        createdStaffId = createdMember.id;
-        toast.success(t("web.provider.teamMemberDialog.created"));
-        
-        // Save settings after creation
-        if (createdMember.id) {
-          try {
-            const { fetcher } = await import("@/lib/http/fetcher");
-            // Update avatar_url if provided
-            if (formData.avatar_url) {
-              await fetcher.patch(`/api/provider/staff/${createdMember.id}`, {
-                avatar_url: formData.avatar_url,
-              });
-            }
-            
-            // Save all settings including is_active
-            await fetcher.patch(`/api/provider/staff/${createdMember.id}`, {
-              is_active: formData.is_active,
-            });
-            
-            const smsEnabledCreate = formData.sms_plan_allowed
-              ? formData.sms_notifications_enabled
-              : false;
-            await Promise.all([
-              fetcher.patch(`/api/provider/staff/${createdMember.id}/settings`, {
-                is_service_provider: formData.is_service_provider,
-                enable_in_online_booking: formData.enable_in_online_booking,
-                can_be_assigned_to_product_sales: formData.can_be_assigned_to_product_sales,
-                mobileReady: formData.mobileReady,
-                is_admin: formData.is_admin,
-                email_notifications_enabled: formData.email_notifications_enabled,
-                sms_notifications_enabled: smsEnabledCreate,
-                desktop_notifications_enabled: formData.desktop_notifications_enabled,
-                work_hours_enabled: formData.work_hours_enabled,
-                commission_enabled: formData.commission_enabled,
-                commission_rate: formData.commission_rate,
-                hourly_rate: formData.hourly_rate,
-                salary: formData.salary,
-                tips_enabled: formData.tips_enabled,
-                time_clock_enabled: formData.time_clock_enabled,
-                time_clock_pin: formData.time_clock_pin,
-                phone_call_availability_enabled: formData.phone_call_availability_enabled,
-              }),
-              fetcher.patch(`/api/provider/staff/${createdMember.id}/notifications`, {
-                email_enabled: formData.email_notifications_enabled,
-                sms_enabled: smsEnabledCreate,
-                desktop_enabled: formData.desktop_notifications_enabled,
-              }),
-            ]);
-          } catch (error) {
-            console.error("Failed to save settings:", error);
-            // Don't fail the whole operation if settings save fails
-            toast.warning(t("web.provider.teamMemberDialog.settingsNotSavedCreate"));
-          }
-
-          if (canManagePayroll) {
-            try {
-              await savePayPlanForStaffId(createdMember.id);
-            } catch (payPlanErr) {
-              console.error("Failed to save pay plan:", payPlanErr);
-              toast.warning(t("web.provider.settings.pages.team/commissions.failedToSave"));
-            }
-          }
-        }
-        
-        // Optionally send invitation (email via Resend + push when registered)
-        if (formData.email && createdMember.id) {
-          try {
-            const { fetcher } = await import("@/lib/http/fetcher");
-            const res = await fetcher.post<{
-              data?: { join_url?: string; channels?: { email?: boolean; push?: boolean } };
-            }>(`/api/provider/staff/${createdMember.id}/invite`, {
-              email: formData.email,
-            });
-            const joinUrl = res.data?.join_url;
-            if (joinUrl && !res.data?.channels?.email) {
-              toast.success(t("web.provider.teamMemberDialog.createdShareInvite"), {
-                description: joinUrl,
-                duration: 8000,
-              });
-            } else {
-              toast.success(t("web.provider.teamMemberDialog.createdInviteSent", { email: formData.email }));
-            }
-          } catch (error: any) {
-            console.error("Failed to send invitation:", error);
-            const joinUrl = error?.details?.join_url;
-            if (joinUrl) {
-              toast.warning(t("web.provider.teamMemberDialog.createdEmailFailed"), {
-                description: t("web.provider.teamMemberDialog.shareThisLink", { url: joinUrl }),
-                duration: 10000,
-              });
-            } else {
-              toast.warning(t("web.provider.teamMemberDialog.createdInviteFailed"));
-            }
-          }
-        }
+        toast.error(t("web.provider.teamAddWizard.title"));
+        setIsLoading(false);
+        onOpenChange(false);
+        return;
       }
-      const staffId = member?.id ?? createdStaffId;
-      if (staffId && locationIds.length > 0) {
-        try {
-          const { fetcher } = await import("@/lib/http/fetcher");
-          await fetcher.put(`/api/provider/staff/${staffId}/locations`, {
-            location_ids: locationIds,
-            primary_location_id: locationIds[0],
-          });
-        } catch (locErr) {
-          const fetchErr = locErr as FetchError;
-          if (fetchErr?.status === 409 || fetchErr?.code === "FUTURE_BOOKINGS_CONFLICT") {
-            const proceed = window.confirm(
-              t("web.provider.teamMemberDialog.locationsConflictConfirm"),
-            );
-            if (proceed) {
-              const { fetcher } = await import("@/lib/http/fetcher");
-              await fetcher.put(`/api/provider/staff/${staffId}/locations`, {
-                location_ids: locationIds,
-                primary_location_id: locationIds[0],
-                force: true,
-              });
-            } else {
-              toast.warning(t("web.provider.teamMemberDialog.locationsNotUpdated"));
-            }
-          } else {
-            console.error("Failed to save staff locations:", locErr);
-            toast.warning(t("web.provider.teamMemberDialog.locationsMayNotUpdate"));
-          }
-        }
-      }
-      if (staffId) {
-        try {
-          const { fetcher } = await import("@/lib/http/fetcher");
-          await fetcher.put(`/api/provider/staff/${staffId}/services`, {
-            service_ids: serviceIds,
-          });
-        } catch (svcErr) {
-          const fetchErr = svcErr as FetchError;
-          if (fetchErr?.status === 409 || fetchErr?.code === "FUTURE_BOOKINGS_CONFLICT") {
-            const proceed = window.confirm(
-              t("web.provider.teamMemberDialog.servicesConflictConfirm"),
-            );
-            if (proceed) {
-              const { fetcher } = await import("@/lib/http/fetcher");
-              await fetcher.put(`/api/provider/staff/${staffId}/services`, {
-                service_ids: serviceIds,
-                force: true,
-              });
-            } else {
-              toast.warning(t("web.provider.teamMemberDialog.servicesNotUpdated"));
-            }
-          } else {
-            console.error("Failed to save staff services:", svcErr);
-            toast.warning(t("web.provider.teamMemberDialog.servicesMayNotUpdate"));
-          }
-        }
-      }
-
-      onSave?.(!!member);
-      onOpenChange(false);
     } catch (error: unknown) {
       console.error("Failed to save team member:", error);
       toastPlanGateError(error, t("web.provider.teamMemberDialog.saveFailed"));
@@ -633,6 +560,27 @@ export function TeamMemberCreateEditDialog({
   };
 
   return (
+    <>
+    <ReassignBookingsDialog
+      open={deactivateReassignOpen}
+      onOpenChange={setDeactivateReassignOpen}
+      memberName={member?.name ?? formData.name}
+      candidates={reassignCandidates.filter((c) => c.id !== member?.id)}
+      onConfirm={(reassignTo) => {
+        setDeactivateReassignOpen(false);
+        void (async () => {
+          setIsLoading(true);
+          try {
+            await finishSaveAfterReassignRef.current?.(reassignTo);
+          } catch (error: unknown) {
+            console.error("Failed to deactivate with reassign:", error);
+            toastPlanGateError(error, t("web.provider.teamMemberDialog.saveFailed"));
+          } finally {
+            setIsLoading(false);
+          }
+        })();
+      }}
+    />
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-4xl max-h-[calc(100vh-4rem)] sm:max-h-[90vh] overflow-hidden p-0 bg-white rounded-lg sm:rounded-xl w-full m-4 sm:m-0 flex flex-col gap-0">
         <DialogHeader className="px-4 sm:px-6 py-4 border-b border-gray-100 flex-shrink-0">
@@ -1386,5 +1334,6 @@ export function TeamMemberCreateEditDialog({
         </form>
       </DialogContent>
     </Dialog>
+    </>
   );
 }

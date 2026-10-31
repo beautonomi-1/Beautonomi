@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ExploreMediaSlideMeta } from "@/lib/explore/media-types";
+import { removeExplorePostUrlsFromProviderGallery } from "@/lib/safety/explore-post-gallery";
 
 export type ContentReportTargetType =
   | "explore_post"
@@ -160,7 +162,7 @@ export async function applyContentModerationTakedown(
   options: {
     targetType: ContentReportTargetType;
     targetId: string;
-    adminUserId: string;
+    adminUserId: string | null;
     action?: ModerationTakedownAction;
     notes?: string | null;
   },
@@ -171,16 +173,31 @@ export async function applyContentModerationTakedown(
 
   switch (targetType) {
     case "explore_post": {
-      const { error } = await supabase
-        .from("explore_posts")
-        .update({
-          is_hidden: true,
-          moderated_at: now,
-          moderated_by: adminUserId,
-          moderation_notes: notes ?? "Hidden via content report resolution",
-        })
-        .eq("id", targetId);
+      const update: Record<string, unknown> = {
+        is_hidden: true,
+        moderated_at: now,
+        moderation_notes: notes ?? "Hidden via content report resolution",
+      };
+      if (adminUserId) update.moderated_by = adminUserId;
+      const { error } = await supabase.from("explore_posts").update(update).eq("id", targetId);
       if (error) throw error;
+      if (!adminUserId) {
+        const { data: postRow } = await supabase
+          .from("explore_posts")
+          .select("provider_id, display_path, media_urls, media_meta")
+          .eq("id", targetId)
+          .maybeSingle();
+        if (postRow?.provider_id) {
+          await removeExplorePostUrlsFromProviderGallery(
+            supabase,
+            String(postRow.provider_id),
+            (postRow as { display_path?: string | null }).display_path ?? null,
+            ((postRow as { media_urls?: string[] }).media_urls ?? []) as string[],
+            ((postRow as { media_meta?: ExploreMediaSlideMeta[] }).media_meta ??
+              []) as ExploreMediaSlideMeta[],
+          );
+        }
+      }
       return { applied: true, action: "hide" };
     }
     case "explore_comment": {
@@ -189,27 +206,29 @@ export async function applyContentModerationTakedown(
         if (error) throw error;
         return { applied: true, action: "delete" };
       }
+      const commentUpdate: Record<string, unknown> = {
+        is_hidden: true,
+        hidden_at: now,
+        moderation_notes: notes ?? "Hidden via content report resolution",
+      };
+      if (adminUserId) commentUpdate.hidden_by = adminUserId;
       const { error } = await supabase
         .from("explore_comments")
-        .update({
-          is_hidden: true,
-          hidden_at: now,
-          hidden_by: adminUserId,
-          moderation_notes: notes ?? "Hidden via content report resolution",
-        })
+        .update(commentUpdate)
         .eq("id", targetId);
       if (error) throw error;
       return { applied: true, action: "hide" };
     }
     case "message": {
+      const messageUpdate: Record<string, unknown> = {
+        is_hidden: true,
+        hidden_at: now,
+        moderation_notes: notes ?? "Hidden via content report resolution",
+      };
+      if (adminUserId) messageUpdate.hidden_by = adminUserId;
       const { error } = await supabase
         .from("messages")
-        .update({
-          is_hidden: true,
-          hidden_at: now,
-          hidden_by: adminUserId,
-          moderation_notes: notes ?? "Hidden via content report resolution",
-        })
+        .update(messageUpdate)
         .eq("id", targetId);
       if (error) throw error;
       return { applied: true, action: "hide" };
@@ -267,8 +286,7 @@ export async function maybeAutoHideReportedContent(
   if ((count ?? 0) < options.threshold) return null;
 
   const autoHideActorId =
-    options.systemUserId ??
-    "00000000-0000-0000-0000-000000000001";
+    options.systemUserId !== undefined ? options.systemUserId : null;
   return applyContentModerationTakedown(supabase, {
     targetType: options.targetType,
     targetId: options.targetId,

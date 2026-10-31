@@ -5,7 +5,7 @@ import { Trash2 } from "lucide-react";
 import { ADMIN_SECTION_OVERVIEW } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
-import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminSpaNotificationLink } from "@/lib/adminSpaPath";
 import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
@@ -242,7 +242,7 @@ export function NotificationsInboxPage() {
         <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white">
           {rows.map((n) => {
             const unread = !(n.read ?? n.is_read);
-            const href = n.link ? adminSpaTo(n.link) : undefined;
+            const href = n.link ? adminSpaNotificationLink(n.link) : undefined;
             const checked = selectedIds.has(n.id);
             return (
               <li key={n.id} className={`flex gap-2 p-4 ${unread ? "bg-primary/5" : ""}`}>

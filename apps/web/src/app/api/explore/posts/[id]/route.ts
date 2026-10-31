@@ -31,6 +31,7 @@ import {
   isExploreSoundCatalogEnabled,
 } from "@/lib/explore/explore-feature-gates";
 import { runExplorePublishSideEffects } from "@/lib/explore/publish-side-effects";
+import { enqueueExplorePostSafetyScan } from "@/lib/safety/explore-post-safety-scan";
 import { enqueueExploreVideoProcessing } from "@/lib/explore/enqueue-video-processing";
 import { enrichExplorePostWithSoundUrl } from "@/lib/explore/sound-enrich";
 import { burnExplorePhotoOverlaysForPublish } from "@/lib/explore/explore-photo-burn";
@@ -391,6 +392,9 @@ export async function PATCH(
       });
     } else if ((updates.media_urls || updates.media_meta) && nowPublished) {
       await enqueueExploreVideoProcessing(post.id);
+      enqueueExplorePostSafetyScan(post.id);
+    } else if (nowPublished && updates.caption !== undefined) {
+      enqueueExplorePostSafetyScan(post.id);
     }
 
     let offering: { id: string; name: string; price?: number; duration_minutes?: number } | null = null;

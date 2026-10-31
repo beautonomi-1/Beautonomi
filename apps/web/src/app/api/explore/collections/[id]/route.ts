@@ -12,6 +12,8 @@ import { EXPLORE_POST_SELECT_WITH_PROVIDER } from "@/lib/explore/post-select";
 import { mapExplorePostRow } from "@/lib/explore/post-mapper";
 import { enrichExplorePostsWithSoundUrls } from "@/lib/explore/sound-enrich";
 import { isExploreEnabled } from "@/lib/explore/explore-feature-gates";
+import { getViewerSafetyContext } from "@/lib/safety/viewer-safety-context";
+import { filterBlockedExploreAuthors } from "@/lib/safety/filter-explore-posts";
 
 /**
  * GET /api/explore/collections/[id]
@@ -28,6 +30,23 @@ export async function GET(
     const { id } = await params;
     const { user } = await requireAuthInApi(request);
     const supabaseAdmin = await getSupabaseAdmin();
+    const viewerSafety = await getViewerSafetyContext(user.id, request);
+    if (viewerSafety.hideSocialFeed) {
+      const { data: collection, error: collError } = await supabaseAdmin
+        .from("explore_collections")
+        .select("id, user_id, name, slug, created_at, updated_at")
+        .eq("id", id)
+        .eq("user_id", user.id)
+        .single();
+      if (collError || !collection) {
+        return errorResponse("Collection not found", "NOT_FOUND", 404);
+      }
+      return successResponse({
+        ...collection,
+        post_count: 0,
+        posts: [],
+      });
+    }
 
     const { data: collection, error: collError } = await supabaseAdmin
       .from("explore_collections")
@@ -101,7 +120,12 @@ export async function GET(
         };
       })
       .filter(Boolean) as ExplorePost[];
-    const posts = await enrichExplorePostsWithSoundUrls(supabaseAdmin, mapped, supabaseUrl);
+    const hiddenAuthorIds = new Set([
+      ...viewerSafety.blockedUserIds,
+      ...viewerSafety.mutedUserIds,
+    ]);
+    const filtered = filterBlockedExploreAuthors(mapped, hiddenAuthorIds);
+    const posts = await enrichExplorePostsWithSoundUrls(supabaseAdmin, filtered, supabaseUrl);
 
     return successResponse({
       ...collection,

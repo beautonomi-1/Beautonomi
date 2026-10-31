@@ -23,6 +23,7 @@ vi.mock("@/lib/audit/audit", () => ({
 
 vi.mock("@/lib/orders/product-order-lifecycle", () => ({
   applyProductOrderCancelRefundSideEffects: vi.fn(async () => ({ walletCreditFailed: false })),
+  releaseUnpaidProductOrderHolds: vi.fn(async () => ({ credited: false, failed: false, amount: 0 })),
   restockProductOrderLineItems: vi.fn(async () => undefined),
   voidProductOrderGiftCardIfNeeded: vi.fn(async () => undefined),
 }));

@@ -17,6 +17,7 @@ const processRefundSchema = z.object({
   refund_amount: z.number().positive(),
   refund_reason: z.string().min(1),
   notes: z.string().optional().nullable(),
+  substitute_reason: z.string().optional().nullable(),
 });
 
 /**
@@ -44,7 +45,7 @@ export async function POST(
       return errorResponse("Validation failed", "VALIDATION_ERROR", 400);
     }
 
-    const { refund_amount, refund_reason, notes } = validationResult.data;
+    const { refund_amount, refund_reason, notes, substitute_reason } = validationResult.data;
 
     const loaded = await fetchBookingInAdminTenant(
       supabase,
@@ -97,6 +98,7 @@ export async function POST(
       actorRole: user.role ?? "superadmin",
       notes: notes ?? null,
       bookingTenderMode: true,
+      substituteReason: substitute_reason ?? null,
     });
 
     if (outcome.success === false) {

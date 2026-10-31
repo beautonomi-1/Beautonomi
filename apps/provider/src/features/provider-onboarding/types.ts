@@ -221,6 +221,9 @@ export interface OnboardingFormData {
   booking_policy?: {
     preset: Exclude<BookingPolicyPresetId, "custom">;
   };
+  owner_takes_appointments?: boolean;
+  owner_public_title?: string | null;
+  owner_service_indexes?: number[];
 }
 
 export type ZoneSuggestStatus = "matched" | "none" | "error" | "no_coords";

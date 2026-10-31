@@ -50,14 +50,12 @@ export async function ensureUserProfileForAuthUser(
     user.user_metadata?.name ??
     ([user.user_metadata?.given_name, user.user_metadata?.family_name].filter(Boolean).join(" ") || null);
   const phone = user.user_metadata?.phone ?? user.phone ?? null;
-  const role = (user.user_metadata?.role as string) || "customer";
-
   const { error: insertUserError } = await adminSupabase.from("users").insert({
     id: user.id,
     email,
     full_name: fullName,
     phone,
-    role: role === "customer" || role === "provider" || role === "superadmin" ? role : "customer",
+    role: "customer",
   });
 
   if (insertUserError) {

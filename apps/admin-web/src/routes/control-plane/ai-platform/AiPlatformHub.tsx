@@ -50,7 +50,7 @@ export function AiPlatformHub() {
 
   return (
     <div className="space-y-6 pb-16">
-      <CpBack to=".." label="Integrations" />
+      <CpBack to={adminSpaTo("/admin/control-plane/integrations")} label="Platform integrations" />
       <AdminPageHeader
         title="AI Platform"
         description="Vercel AI Gateway, agent workforce, budgets, and emergency controls — one hub."

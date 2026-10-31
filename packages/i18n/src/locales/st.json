@@ -72,7 +72,10 @@
       "gotIt": "Ke utloile",
       "dismissA11y": "Koala keletso"
     },
-    "change": "Fetola"
+    "change": "Fetola",
+    "useDifferentAccount": "Use a different akhaonto",
+    "useDifferentAccountConfirmTitle": "Switch akhaonto?",
+    "useDifferentAccountConfirmBody": "U tla tsoa sesebedisweng sena. Akhaonto ea hau ea Google kapa ea Apple e lula e hokahane, 'me tsoelo-pele efe kapa efe e bolokiloeng ea ho hlophisa e lula e le akhaontong eo. O ka kena hape nako efe kapa efe."
   },
   "authGate": {
     "checkingAccess": "Checking your akhaonto…",
@@ -13344,7 +13347,7 @@
       "selectReasonBody": "Ka kopo khetha why you are tlalehoing this content.",
       "submitError": "E hlolehile ho romela tlaleho.",
       "submittedTitle": "tlaleho romelated",
-      "submittedBody": "Kea leboha. Sehlopha sa rona se tla hlahloba tlaleho ea hau nakong ea lihora tse 24-48.",
+      "submittedBody": "Kea leboha. Sehlopha sa rona se tla hlahloba tlaleho ea hau nakong ea lihora tse 24.",
       "reportPost": "tlaleho Poso",
       "reportComment": "tlaleho maikutlo",
       "reportMessage": "tlaleho molaetsa",
@@ -13355,10 +13358,11 @@
       "reason": {
         "inappropriate": "Dikahare tse sa lokelang",
         "misleading": "Misleading tsebo",
-        "harassment": "Harassment or abuse",
-        "spam": "Spam or scam",
+        "harassment": "Ho hlekefetsa kapa ho sebelisa ka mpe",
+        "spam": "Spam kapa bomenemene",
         "safety": "tšireletso concern",
-        "other": "Tse ding"
+        "other": "Tse ding",
+        "illegal_exploitative": "Litaba tse sa lokelang molao kapa tse sebelisang batho ka mpe"
       }
     },
     "blockUser": {
@@ -15164,6 +15168,7 @@
           "paymentCancelledBody": "U hlakotse tefo. Ha ho tefiso e entsoeng. U ka leka hape ho tsoa ho odara ena.",
           "cancelOrderTitle": "Hlakola odara",
           "cancelOrderBody": "Hlakola odara ena? Lintho tse li polokong li tla tlatswa hape mme litefiso tse lefiloeng li tla khutlisoa.",
+          "cancelledInPerson": "Odara e hlakotsoe. {{amount}} e bokelleditsoe ka seqo mme e sa hloka ho khutlisetsoa ke salon.",
           "keepOrderCta": "Boloka odara",
           "cancelOrderCta": "Hlakola odara",
           "cancelOrderFailed": "Ha e a khona ho hlakola this odara.",
@@ -21212,6 +21217,7 @@
         "goBack": "Kgutlela morao",
         "cancelConfirm": "Hlakola odara ena? Lintho tse li polokong li tla tlatswa hape mme litefiso tse lefiloeng li tla khutlisoa.",
         "cancelledToast": "odara e hlakotsoe",
+        "cancelledInPerson": "Odara e hlakotsoe. {{amount}} e bokelleditsoe ka seqo mme e sa hloka ho khutlisetsoa ke salon.",
         "cancelFailed": "Ha e a khona ho hlakola this odara.",
         "addEmailBeforePay": "Kenya aterese ea imeile akhaonteng ea hau pele u lefa odara ena inthaneteng.",
         "paymentStartFailed": "Ons kon nie met die betaling begin nie. Probeer asseblief weer.",

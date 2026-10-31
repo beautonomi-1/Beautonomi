@@ -53,6 +53,9 @@ type StaffMember = {
   bio: string | null;
   is_active: boolean;
   commission_percentage: number;
+  public_title?: string | null;
+  is_service_provider?: boolean | null;
+  enable_in_online_booking?: boolean | null;
   created_at: string;
   provider?: { id: string; business_name: string; slug: string };
 };
@@ -132,6 +135,9 @@ export function StaffListPage() {
     role: "employee",
     commission_percentage: 0,
     bio: "",
+    public_title: "",
+    is_service_provider: true,
+    enable_in_online_booking: true,
   });
 
   const patchStaff = useMutation({
@@ -168,6 +174,9 @@ export function StaffListPage() {
       role: m.role ?? "employee",
       commission_percentage: m.commission_percentage ?? 0,
       bio: m.bio ?? "",
+      public_title: m.public_title ?? "",
+      is_service_provider: m.is_service_provider !== false,
+      enable_in_online_booking: m.enable_in_online_booking !== false,
     });
   };
 
@@ -405,6 +414,9 @@ export function StaffListPage() {
                       role: editForm.role,
                       commission_percentage: editForm.commission_percentage,
                       bio: editForm.bio.trim() || null,
+                      public_title: editForm.public_title.trim() || null,
+                      is_service_provider: editForm.is_service_provider,
+                      enable_in_online_booking: editForm.enable_in_online_booking,
                     },
                   })
                 }
@@ -461,6 +473,33 @@ export function StaffListPage() {
                   setEditForm((f) => ({ ...f, commission_percentage: Number(e.target.value) || 0 }))
                 }
               />
+            </label>
+            <label className="block">
+              <span className="text-gray-600">Public title</span>
+              <input
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                value={editForm.public_title}
+                onChange={(e) => setEditForm((f) => ({ ...f, public_title: e.target.value }))}
+                placeholder="e.g. Senior stylist"
+              />
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={editForm.is_service_provider}
+                onChange={(e) => setEditForm((f) => ({ ...f, is_service_provider: e.target.checked }))}
+              />
+              <span className="text-gray-600">Takes appointments (service provider)</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={editForm.enable_in_online_booking}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, enable_in_online_booking: e.target.checked }))
+                }
+              />
+              <span className="text-gray-600">Visible in online booking</span>
             </label>
             <label className="block">
               <span className="text-gray-600">Bio</span>

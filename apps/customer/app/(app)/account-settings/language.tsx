@@ -10,7 +10,8 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import {
   useTranslation,
-  supportedLanguages as i18nSupportedLanguages,
+  reviewedUiLanguageOptions,
+  coerceMobileUiLanguage,
   i18n,
   type SupportedLanguage,
 } from "@beautonomi/i18n";
@@ -22,7 +23,7 @@ import { normalizeLanguageCode } from "@beautonomi/i18n";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 
 /** Sync to account when the code is a bundled @beautonomi/i18n locale (matches /api/me/preferences). */
-const API_LANGUAGE_CODES = new Set<string>(i18nSupportedLanguages.map((l) => l.code));
+const API_LANGUAGE_CODES = new Set<string>(reviewedUiLanguageOptions().map((l) => l.code));
 
 interface PreferencesResponse {
   preferences: { language: string; currency?: string; timezone?: string };
@@ -36,20 +37,18 @@ export default function LanguageSettings() {
       t(`customer.mobile.screens.languageScreen.${key}`, opts) as string,
     [t],
   );
-  const visibleLanguages = i18nSupportedLanguages;
+  const visibleLanguages = reviewedUiLanguageOptions();
   const router = useRouter();
   const [currentCode, setCurrentCode] = useState(() => normalizeLanguageCode(i18n.language || "en"));
   const { data: preferences, refresh } = useApi<PreferencesResponse>("/api/me/preferences");
 
   const serverLang = preferences?.preferences?.language ?? null;
   useEffect(() => {
-    if (
-      serverLang &&
-      API_LANGUAGE_CODES.has(serverLang) &&
-      normalizeLanguageCode(serverLang) !== normalizeLanguageCode(i18n.language || "en")
-    ) {
-      void changeLanguage(serverLang as SupportedLanguage);
-      setCurrentCode(serverLang);
+    if (!serverLang) return;
+    const coerced = coerceMobileUiLanguage(serverLang);
+    if (normalizeLanguageCode(coerced) !== normalizeLanguageCode(i18n.language || "en")) {
+      void changeLanguage(coerced as SupportedLanguage);
+      setCurrentCode(coerced);
     }
   }, [serverLang]);
 

@@ -58,6 +58,7 @@ vi.mock("@/lib/account/compliance-purge-audit", () => ({
 
 vi.mock("@/lib/audit/audit", () => ({
   writeAuditLog: (...args: unknown[]) => mockWriteAuditLog(...args),
+  extractRequestMeta: () => ({ ip_address: "127.0.0.1", user_agent: "vitest" }),
 }));
 
 vi.mock("@/lib/account/purge-platform-user", () => ({
@@ -165,5 +166,70 @@ describe("POST /api/admin/compliance/purge-user — tenant scope", () => {
     expect(res.status).toBe(200);
     expect(mockPurgePlatformUserAccountFully).toHaveBeenCalledWith(admin, TARGET_USER_ID);
     expect(mockInsertCompliancePurgeAuditLog).toHaveBeenCalledTimes(1);
+  });
+
+  it("dry_run returns preview without purge or compliance audit insert", async () => {
+    const admin = buildAdminClient({
+      id: TARGET_USER_ID,
+      email: "victim@example.com",
+      role: "customer",
+    });
+    mockGetSupabaseAdmin.mockReturnValue(admin);
+    mockGetUserRowIfAccessibleToAdminTenant.mockResolvedValue({ id: TARGET_USER_ID });
+    mockCollectUserPurgeSnapshot.mockResolvedValue({
+      user_id: TARGET_USER_ID,
+      email: "victim@example.com",
+      counts: {},
+    });
+
+    const { POST } = await import("@/app/api/admin/compliance/purge-user/route");
+    const res = await POST(
+      createMockNextRequest({
+        method: "POST",
+        url: ROUTE_URL,
+        body: validBody({ dry_run: true }),
+      }) as NextRequest,
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data?.dry_run).toBe(true);
+    expect(body.data?.preview).toBeTruthy();
+    expect(mockPurgePlatformUserAccountFully).not.toHaveBeenCalled();
+    expect(mockInsertCompliancePurgeAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("writes failed audit log when purge RPC fails after validations", async () => {
+    const admin = buildAdminClient({
+      id: TARGET_USER_ID,
+      email: "victim@example.com",
+      role: "customer",
+    });
+    mockGetSupabaseAdmin.mockReturnValue(admin);
+    mockGetUserRowIfAccessibleToAdminTenant.mockResolvedValue({ id: TARGET_USER_ID });
+    mockCollectUserPurgeSnapshot.mockResolvedValue({
+      user_id: TARGET_USER_ID,
+      email: "victim@example.com",
+    });
+    mockPurgePlatformUserAccountFully.mockResolvedValue({
+      ok: false,
+      message: "FK blockers remain",
+      code: "DELETE_ERROR",
+    });
+
+    const { POST } = await import("@/app/api/admin/compliance/purge-user/route");
+    const res = await POST(
+      createMockNextRequest({
+        method: "POST",
+        url: ROUTE_URL,
+        body: validBody(),
+      }) as NextRequest,
+    );
+
+    expect(res.status).toBe(500);
+    expect(mockWriteAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "failed", action: "admin.user.compliance_purge" }),
+    );
+    expect(mockInsertCompliancePurgeAuditLog).not.toHaveBeenCalled();
   });
 });

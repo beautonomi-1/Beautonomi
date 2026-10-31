@@ -12,7 +12,10 @@ import {
   type CompliancePurgeReportV2,
 } from "@/lib/account/compliance-purge-audit";
 import { writeAuditLog } from "@/lib/audit/audit";
-import { purgeExploreStorageForTenant } from "@/lib/explore/tenant-reset-storage";
+import {
+  collectTenantResetStoragePaths,
+  purgeCollectedTenantResetStorage,
+} from "@/lib/explore/tenant-reset-storage";
 
 /**
  * POST /api/admin/compliance/reset-tenant
@@ -35,20 +38,11 @@ import { purgeExploreStorageForTenant } from "@/lib/explore/tenant-reset-storage
  * attributed to a single tenant (referrals, user_coupons, loyalty milestone awards, non-booking
  * loyalty, global webhooks). For full user erasure use `/api/admin/compliance/purge-user` instead.
  *
- * Reliability: the DB function isolates each table/recompute (a missing table/column or RESTRICT FK
- * is reported in `counts` as `{skipped:"error", error:…}` and skipped, never aborting the whole
- * reset). It is idempotent, so a partial run can be re-executed. Dry-run mutates nothing.
+ * Reliability: the DB reset RPC is atomic (real errors roll back). Storage is purged only after a
+ * successful live RPC. Dry-run mutates nothing.
  *
- * Flow:
- *   1) Superadmin gate (role check).
- *   2) Multi-field confirmation: reason ≥ 20 chars, phrase `RESET TENANT TRANSACTIONS`,
- *      tenant slug typed back, `acknowledge_irreversible: true`.
- *   3) Default ZA tenant is refused unless `allow_default_tenant: true` is also passed — prevents
- *      the whole production tenant from being wiped by a fat-finger tenant_id.
- *   4) DB function `compliance_reset_tenant_transactions` runs in dry-run or live mode. Dry-run
- *      returns counts only; live mode deletes and returns post-delete counts.
- *   5) On live runs, we insert an immutable `compliance_purge_audit_log` row with the per-table
- *      report so the action is auditable.
+ * Flow: superadmin gate → confirmations → ZA slug guard → collect storage paths → RPC → (live)
+ * storage purge + reporting view refresh + compliance audit.
  */
 const bodySchema = z.object({
   tenant_id: z.string().uuid(),
@@ -134,16 +128,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const startedAt = new Date().toISOString();
-    const exploreStorage = await purgeExploreStorageForTenant(admin, tenant_id, dry_run);
-    if (!dry_run) {
-      const { error: brandResetErr } = await admin.rpc("brand_reset_tenant_data", {
-        p_tenant_id: tenant_id,
-      });
-      if (brandResetErr) {
-        console.warn("[reset-tenant] brand_reset_tenant_data:", brandResetErr.message);
-      }
+    if ((tenant.slug ?? "").trim() === "za" && !allow_default_tenant) {
+      return Response.json(
+        {
+          data: null,
+          error: {
+            message: "Refusing to reset the default ZA tenant without allow_default_tenant",
+            code: "DEFAULT_TENANT_BLOCKED",
+          },
+        },
+        { status: 409 },
+      );
     }
+
+    const startedAt = new Date().toISOString();
+    const storageCollected = await collectTenantResetStoragePaths(admin, tenant_id);
     const { data: rpcData, error: rpcError } = await admin.rpc(
       "compliance_reset_tenant_transactions",
       {
@@ -184,6 +183,24 @@ export async function POST(request: NextRequest) {
 
     const completedAt = new Date().toISOString();
 
+    let storagePurgeError: string | null = null;
+    let messageAttachmentStorageRemoved = 0;
+    let reportingViewsRefreshError: string | null = null;
+
+    if (!dry_run) {
+      const storageResult = await purgeCollectedTenantResetStorage(
+        admin,
+        storageCollected.buckets,
+      );
+      messageAttachmentStorageRemoved = storageResult.messageAttachmentRemoved;
+      storagePurgeError = storageResult.error;
+
+      const { error: refreshErr } = await admin.rpc("refresh_reporting_views");
+      if (refreshErr) {
+        reportingViewsRefreshError = refreshErr.message ?? String(refreshErr);
+      }
+    }
+
     const report: CompliancePurgeReportV2 = {
       schema_version: 2,
       purge_type: "tenant_reset",
@@ -200,13 +217,15 @@ export async function POST(request: NextRequest) {
       reason_redacted_length: reason.trim().length,
       operations: {
         compliance_clear_user_references_rpc: false,
-        message_attachment_storage_objects_removed: 0,
+        message_attachment_storage_objects_removed: messageAttachmentStorageRemoved,
         auth_users_deleted: [],
         tenant_reset_counts: result.counts,
         tenant_reset_dry_run: dry_run,
         tenant_reset_allowed_default_tenant: allow_default_tenant,
-        explore_post_storage_objects_removed: exploreStorage.postPaths,
-        explore_sound_storage_objects_removed: exploreStorage.soundPaths,
+        explore_post_storage_objects_removed: storageCollected.counts.postPaths,
+        explore_sound_storage_objects_removed: storageCollected.counts.soundPaths,
+        tenant_reset_storage_purge_error: storagePurgeError,
+        tenant_reset_reporting_views_refresh_error: reportingViewsRefreshError,
       } as CompliancePurgeReportV2["operations"],
       snapshot: {
         tenant_id: result.tenant_id,
@@ -265,6 +284,9 @@ export async function POST(request: NextRequest) {
       compliance_audit_id: complianceAuditId,
       compliance_audit_write_error: complianceAuditError,
       compliance_audit_degraded: complianceAuditDegraded || null,
+      storage_purge_error: storagePurgeError,
+      reporting_views_refresh_error: reportingViewsRefreshError,
+      storage_path_counts: storageCollected.counts,
       report,
       counts: result.counts,
       totals: {

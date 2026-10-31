@@ -68,6 +68,8 @@ vi.mock("@/lib/admin/refund-queue-rows", () => ({
       queue_reason_label: "Cancelled — refund owed",
       needs_action: true,
       is_processable: true,
+      is_wallet_substitute_allowed: false,
+      wallet_remaining_refundable: 200,
       captures: [{ id: "tx-1", status: "success", remaining_refundable: 200, charge_label: "Booking payment" }],
       primary_transaction_id: "tx-1",
       enriched: { id: "tx-1", status: "success", created_at: "2026-01-01", booking_refunds: [] },
@@ -110,6 +112,8 @@ describe("GET /api/admin/refunds", () => {
       source: "gateway_capture",
       needs_action: true,
       primary_transaction_id: "tx-1",
+      is_wallet_substitute_allowed: false,
+      wallet_remaining_refundable: 200,
     });
     expect(body.data.statistics.actionable_refundable).toBe(1);
   });

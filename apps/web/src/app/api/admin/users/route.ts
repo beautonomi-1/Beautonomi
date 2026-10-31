@@ -9,6 +9,7 @@ import { z } from "zod";
 import type { UserRole } from "@/types/beautonomi";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { enrichAdminUserListRows } from "@/lib/admin/enrich-admin-user-list";
+import { syncAdminUserTenantRole } from "@/lib/tenant/sync-admin-user-tenant-role";
 
 /**
  * GET /api/admin/users
@@ -161,6 +162,7 @@ export async function POST(request: NextRequest) {
         full_name,
         phone,
         role,
+        currency: preferred_currency,
       },
     });
 
@@ -197,20 +199,92 @@ export async function POST(request: NextRequest) {
       .select()
       .single();
 
+    let finalUserRecord = userRecord;
+
     if (userError) {
-      // If user record creation fails, try to clean up auth user
-      await supabaseAdmin.auth.admin.deleteUser(authUser.user.id);
-      console.error("Error creating user record:", userError);
+      const isUniqueViolation = userError.code === "23505";
+      const { data: rowForAuthId } = isUniqueViolation
+        ? await supabaseAdmin
+            .from("users")
+            .select("id")
+            .eq("id", authUser.user.id)
+            .maybeSingle()
+        : { data: null };
+
+      if (isUniqueViolation && rowForAuthId) {
+        const profilePatch = {
+          role,
+          full_name,
+          phone: phone || null,
+          date_of_birth: date_of_birth || null,
+          preferred_language,
+          preferred_currency,
+          timezone,
+        };
+        const { data: updatedRow, error: updateError } = await supabaseAdmin
+          .from("users")
+          .update(profilePatch)
+          .eq("id", authUser.user.id)
+          .select()
+          .single();
+
+        if (updateError || !updatedRow) {
+          console.error("Error updating user after signup trigger insert:", updateError);
+          return NextResponse.json(
+            {
+              data: null,
+              error: {
+                message: "Failed to update user record",
+                code: "DATABASE_ERROR",
+                details: updateError?.message ?? userError.message,
+              },
+            },
+            { status: 500 },
+          );
+        }
+        finalUserRecord = updatedRow;
+      } else {
+        await supabaseAdmin.auth.admin.deleteUser(authUser.user.id);
+        console.error("Error creating user record:", userError);
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: "Failed to create user record",
+              code: "DATABASE_ERROR",
+              details: userError.message,
+            },
+          },
+          { status: 500 },
+        );
+      }
+    }
+
+    try {
+      await syncAdminUserTenantRole(
+        supabaseAdmin,
+        authUser.user.id,
+        role,
+        undefined,
+        request,
+        { throwOnError: true },
+      );
+    } catch (tenantSyncError) {
+      console.error("Error assigning admin tenant role:", tenantSyncError);
       return NextResponse.json(
         {
           data: null,
           error: {
-            message: "Failed to create user record",
-            code: "DATABASE_ERROR",
-            details: userError.message,
+            message:
+              "User was created but tenant assignment failed. Retry via Admin team invite for this email.",
+            code: "TENANT_ROLE_SYNC_FAILED",
+            details:
+              tenantSyncError instanceof Error
+                ? tenantSyncError.message
+                : String(tenantSyncError),
           },
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -229,7 +303,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
-      data: userRecord,
+      data: finalUserRecord,
       error: null,
     }, { status: 201 });
   } catch (error) {

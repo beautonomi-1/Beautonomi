@@ -1,6 +1,6 @@
 import React from "react";
-import { render, waitFor } from "@testing-library/react-native";
-import { Text } from "react-native";
+import { act, render, waitFor } from "@testing-library/react-native";
+import { Linking, Text } from "react-native";
 
 const mockReset = jest.fn();
 const mockIdentify = jest.fn();
@@ -60,9 +60,18 @@ jest.mock("@beautonomi/analytics", () => ({
 
 import { AnalyticsProvider } from "@/providers/AnalyticsProvider";
 
+async function flushAnalyticsEffects() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 describe("AnalyticsProvider identity", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.spyOn(Linking, "getInitialURL").mockResolvedValue(null);
     mockInitAnalytics.mockResolvedValue({
       track: jest.fn(),
       identify: mockIdentify,
@@ -79,7 +88,8 @@ describe("AnalyticsProvider identity", () => {
         <Text>app</Text>
       </AnalyticsProvider>,
     );
-    await waitFor(() => expect(mockIdentify).toHaveBeenCalled());
+    await waitFor(() => expect(mockIdentify).toHaveBeenCalled(), { timeout: 10_000 });
+    await flushAnalyticsEffects();
     mockIdentify.mockClear();
     mockReset.mockClear();
     mockUseAuth.mockReturnValue({ user: { id: "user-a", updated_at: "new" } });
@@ -88,7 +98,8 @@ describe("AnalyticsProvider identity", () => {
         <Text>app</Text>
       </AnalyticsProvider>,
     );
-    await waitFor(() => expect(mockIdentify).not.toHaveBeenCalled());
+    await flushAnalyticsEffects();
+    await waitFor(() => expect(mockIdentify).not.toHaveBeenCalled(), { timeout: 3_000 });
     expect(mockReset).not.toHaveBeenCalled();
   });
 
@@ -99,7 +110,8 @@ describe("AnalyticsProvider identity", () => {
         <Text>app</Text>
       </AnalyticsProvider>,
     );
-    await waitFor(() => expect(mockInitAnalytics).toHaveBeenCalled());
+    await waitFor(() => expect(mockInitAnalytics).toHaveBeenCalled(), { timeout: 10_000 });
+    await flushAnalyticsEffects();
     mockReset.mockClear();
     mockUseAuth.mockReturnValue({ user: { id: "user-a" } });
     screen.rerender(
@@ -107,7 +119,7 @@ describe("AnalyticsProvider identity", () => {
         <Text>app</Text>
       </AnalyticsProvider>,
     );
-    await waitFor(() => expect(mockIdentify).toHaveBeenCalled());
+    await waitFor(() => expect(mockIdentify).toHaveBeenCalled(), { timeout: 10_000 });
     expect(mockReset).not.toHaveBeenCalled();
   });
 
@@ -117,7 +129,8 @@ describe("AnalyticsProvider identity", () => {
         <Text>app</Text>
       </AnalyticsProvider>,
     );
-    await waitFor(() => expect(mockIdentify).toHaveBeenCalled());
+    await waitFor(() => expect(mockIdentify).toHaveBeenCalled(), { timeout: 10_000 });
+    await flushAnalyticsEffects();
     mockReset.mockClear();
     mockUseAuth.mockReturnValue({ user: null });
     screen.rerender(

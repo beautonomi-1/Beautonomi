@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveQueueReason } from "../refund-queue-reason";
+import { computeDisplayRemaining, deriveQueueReason } from "../refund-queue-reason";
 
 describe("deriveQueueReason", () => {
   it("prioritises failed wallet credit over open dispute", () => {
@@ -49,6 +49,65 @@ describe("deriveQueueReason", () => {
     });
     expect(result.queue_reason).toBe("cancelled_unrefunded");
     expect(result.needs_action).toBe(true);
+  });
+
+  it("labels disputed cash refunds separately from wallet failures", () => {
+    const result = deriveQueueReason({
+      bookingStatus: "cancelled",
+      paymentStatus: "paid",
+      remainingRefundable: 60,
+      bookingRefunds: [
+        {
+          id: "1",
+          status: "failed",
+          refund_method: "cash",
+          amount: 60,
+          reason: "x",
+          customer_disputed_at: "2026-01-01T00:00:00Z",
+        },
+      ],
+    });
+    expect(result.queue_reason).toBe("cash_refund_disputed");
+  });
+
+  it("does not label failed cash closed by store credit as wallet_credit_failed", () => {
+    const result = deriveQueueReason({
+      bookingStatus: "cancelled",
+      paymentStatus: "paid",
+      remainingRefundable: 0,
+      walletRemainingRefundable: 0,
+      bookingRefunds: [
+        {
+          id: "1",
+          status: "failed",
+          refund_method: "cash",
+          amount: 60,
+          notes: "Closed — store credit issued by admin instead of in-person cash",
+        },
+        {
+          id: "2",
+          status: "completed",
+          refund_method: "store_credit",
+          amount: 60,
+        },
+      ],
+    });
+    expect(result.queue_reason).not.toBe("wallet_credit_failed");
+    expect(result.queue_reason).not.toBe("cash_refund_disputed");
+    expect(result.needs_action).toBe(false);
+  });
+
+  it("does not use cancelled_unrefunded when only in-person cash is owed", () => {
+    const result = deriveQueueReason({
+      bookingStatus: "cancelled",
+      paymentStatus: "paid",
+      remainingRefundable: 60,
+      walletRemainingRefundable: 0,
+      pendingCashTotal: 60,
+      hasGatewayCapture: false,
+    });
+    expect(result.queue_reason).toBe("awaiting_cash_confirmation");
+    expect(result.needs_action).toBe(false);
   });
 
   it("does not action completed paid bookings", () => {

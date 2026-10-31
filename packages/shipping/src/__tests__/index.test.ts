@@ -178,8 +178,10 @@ describe("live courier HTTP", () => {
   it("Bob Go books using provider_slug from nested rates and tracks by reference", async () => {
     process.env.BOB_GO_API_KEY = "bob-test";
     fetchMock
+      .mockResolvedValueOnce(jsonResponse({ shipments: [], count: 0 }))
       .mockResolvedValueOnce(
         jsonResponse({
+          id: 90881234,
           provider_rate_requests: [
             {
               status: "success",
@@ -190,7 +192,7 @@ describe("live courier HTTP", () => {
                   status: "success",
                   service_level_code: "ECO",
                   service_name: "Economy",
-                  total_price: 75,
+                  rate_amount: 75,
                   currency: "ZAR",
                 },
               ],
@@ -200,19 +202,29 @@ describe("live courier HTTP", () => {
       )
       .mockResolvedValueOnce(
         jsonResponse({
+          id: 4455123,
           tracking_reference: "BG123",
           tracking_url: "https://bobgo.co.za/track/BG123",
           service_level_code: "ECO",
           provider_slug: "the-courier-guy",
+          submission_status: "pending-submission",
         }),
       )
       .mockResolvedValueOnce(
-        jsonResponse({
-          status: "in_transit",
-          checkpoints: [
-            { status_friendly: "In transit", message: "Collected", date: "2026-08-15T10:00:00Z" },
-          ],
-        }),
+        jsonResponse([
+          {
+            status: "in-transit",
+            status_friendly: "In transit",
+            checkpoints: [
+              {
+                status: "collected",
+                status_friendly: "Collected",
+                message: "Collected",
+                time: "2026-08-15T10:00:00+02:00",
+              },
+            ],
+          },
+        ]),
       );
 
     const shipment = await getShippingProvider("bob-go").createShipment({
@@ -221,13 +233,17 @@ describe("live courier HTTP", () => {
     });
     expect(shipment.trackingNumber).toBe("BG123");
     expect(shipment.waybillUrl).toBe("https://bobgo.co.za/track/BG123");
-    const bookBody = JSON.parse(String((fetchMock.mock.calls[1]?.[1] as { body?: string }).body));
+    expect(shipment.metadata?.submission_status).toBe("pending-submission");
+    const ratesBody = JSON.parse(String((fetchMock.mock.calls[1]?.[1] as { body?: string }).body));
+    expect(ratesBody.timeout).toBe(25000);
+    const bookBody = JSON.parse(String((fetchMock.mock.calls[2]?.[1] as { body?: string }).body));
     expect(bookBody.service_level_code).toBe("ECO");
     expect(bookBody.provider_slug).toBe("the-courier-guy");
+    expect(bookBody.selected_rate_request_id).toBe(90881234);
 
     const events = await getShippingProvider("bob-go").track("BG123");
     expect(events[0]?.status).toBe("in_transit");
-    expect(String(fetchMock.mock.calls[2]?.[0])).toContain(
+    expect(String(fetchMock.mock.calls[3]?.[0])).toContain(
       "https://api.bobgo.co.za/v2/tracking?tracking_reference=BG123",
     );
   });

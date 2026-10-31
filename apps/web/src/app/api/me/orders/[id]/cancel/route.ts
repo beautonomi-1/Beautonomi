@@ -10,10 +10,16 @@ import {
 } from "@/lib/supabase/api-helpers";
 import {
   applyProductOrderCancelRefundSideEffects,
+  releaseUnpaidProductOrderHolds,
   restockProductOrderLineItems,
 } from "@/lib/orders/product-order-lifecycle";
 import { refundProductOrderOnlineTender } from "@/lib/ecommerce/refund-product-order-online-tender";
+import {
+  computeInPersonProductOrderRefundDue,
+  computeProductOrderCancelWalletCredit,
+} from "@/lib/orders/product-order-tender";
 import { notifyProviderTeamUsers } from "@/lib/notifications/notify-provider-team";
+import { cancelCourierShipmentForOrder } from "@/lib/orders/shipping";
 
 const bodySchema = z
   .object({
@@ -130,7 +136,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     });
 
     // 2/3. Refund original tender + ledger reversal (paid orders only).
-    let refund: { online_refunded: number; wallet_credited: number; gift_card_restored: number } | null = null;
+    // Unpaid orders already debited wallet / reserved a gift card at checkout.
+    let refund: {
+      online_refunded: number;
+      wallet_credited: number;
+      gift_card_restored: number;
+      in_person_refund_due: number;
+    } | null = null;
     let walletCreditFailed = false;
     if (order.payment_status === "paid") {
       const online = await refundProductOrderOnlineTender(admin, order, {
@@ -156,9 +168,33 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         online_refunded: online.refundedAmount,
         wallet_credited: walletCreditFailed
           ? 0
-          : Math.max(0, Math.round((total - gift - online.refundedAmount) * 100) / 100),
+          : computeProductOrderCancelWalletCredit(order, online.refundedAmount),
         gift_card_restored: gift,
+        in_person_refund_due: computeInPersonProductOrderRefundDue(order),
       };
+    } else {
+      const released = await releaseUnpaidProductOrderHolds(
+        admin,
+        order,
+        `Wallet refund (order cancelled before payment) ${order.order_number || id.slice(0, 8)}`,
+      );
+      walletCreditFailed = released.failed;
+      const gift = Math.max(0, Number(order.gift_card_amount ?? 0));
+      refund = {
+        online_refunded: 0,
+        wallet_credited: released.amount,
+        gift_card_restored: gift,
+        in_person_refund_due: 0,
+      };
+    }
+
+    try {
+      const courierCancel = await cancelCourierShipmentForOrder(admin, id);
+      if (!courierCancel.ok && !courierCancel.skipped) {
+        console.warn("[me/orders/cancel] courier cancel refused:", courierCancel.error);
+      }
+    } catch (e) {
+      console.warn("[me/orders/cancel] courier cancel failed:", e);
     }
 
     // 4. Provider team notification.

@@ -1,6 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import {
+  computeProductOrderCancelWalletCredit,
+  computeProviderCollectedStoreCreditClawback,
+  isProviderCollectedProductMethod,
+  roundProductOrderMoney,
+} from "./product-order-tender";
 import { bookShippingForOrder } from "./shipping";
 
 // F28: re-export so callers can `import { bookShippingForOrder } from "@/lib/orders/product-order-lifecycle"`.
@@ -16,6 +22,8 @@ export type ProductOrderSideEffectRow = {
   tenant_id?: string | null;
   order_number?: string | null;
   gift_card_amount?: number | string | null;
+  wallet_amount?: number | string | null;
+  payment_method?: string | null;
 };
 
 export type ApplyProductOrderCancelRefundOptions = {
@@ -28,6 +36,13 @@ export type ApplyProductOrderCancelRefundOptions = {
    * caller — excluded from the wallet credit so the customer is not refunded twice.
    */
   onlineRefundedAmount?: number;
+  /**
+   * Wallet credit already issued by the caller for a `refunded` status
+   * (store credit). Used to claw a provider-collected till for that liability.
+   */
+  walletCreditIssued?: number;
+  /** Stable key so a retried store-credit refund does not claw the provider twice. */
+  storeCreditClawbackKey?: string;
 };
 
 /**
@@ -51,13 +66,63 @@ export async function applyProductOrderCancelRefundSideEffects(
 
   if (!shouldReversePlatformLedger) return { walletCreditFailed: false };
 
+  const providerCollected = isProviderCollectedProductMethod(order.payment_method);
+  const storeCreditClawback = computeProviderCollectedStoreCreditClawback(
+    order,
+    Number(options.walletCreditIssued ?? 0),
+  );
+  // Cash/terminal store credit is a new platform liability. Claw that exact
+  // amount once. Do not also run the capture-row ratio, which would claw twice.
+  const clawStoreCreditInsteadOfRatio =
+    newStatus === "refunded" && providerCollected && storeCreditClawback > 0;
+  // Handing cash back does not create a new platform liability. The earnings
+  // row for the wallet/gift slice is what reimburses the provider for money
+  // the platform already took, so a cash refund must not claw it.
+  const cashRefundSkipsPlatformRatio =
+    newStatus === "refunded" && providerCollected && !clawStoreCreditInsteadOfRatio;
+
   const { data: ledgerRows } = await (admin.from("finance_transactions") as any)
     .select("id, tenant_id")
     .eq("product_order_id", order.id)
     .in("transaction_type", ["payment", "provider_earnings", "platform_fee"])
     .limit(1);
   const isPlatformHeld = Array.isArray(ledgerRows) && ledgerRows.length > 0;
-  if (isPlatformHeld) {
+  if (clawStoreCreditInsteadOfRatio) {
+    const clawKey =
+      options.storeCreditClawbackKey ??
+      `product_order_store_credit:${order.id}:${storeCreditClawback.toFixed(2)}`;
+    const description = `Store credit for provider-collected order ${order.order_number || order.id.slice(0, 8)} (${clawKey})`;
+    const { data: existingClaws } = await (admin.from("finance_transactions") as any)
+      .select("id, description")
+      .eq("product_order_id", order.id)
+      .eq("transaction_type", "refund")
+      .eq("refund_component", "provider_earnings")
+      .limit(20);
+    const alreadyClawed = (existingClaws ?? []).some(
+      (row: { description?: string | null }) => String(row.description ?? "") === description,
+    );
+    if (!alreadyClawed) {
+      const ledgerTenantId =
+        (ledgerRows?.[0] as { tenant_id?: string | null } | undefined)?.tenant_id ??
+        order.tenant_id ??
+        null;
+      await (admin.from("finance_transactions") as any).insert({
+        booking_id: null,
+        product_order_id: order.id,
+        provider_id: order.provider_id,
+        tenant_id: ledgerTenantId,
+        transaction_type: "refund",
+        refund_component: "provider_earnings",
+        amount: storeCreditClawback,
+        fees: 0,
+        commission: 0,
+        net: -storeCreditClawback,
+        currency: order.currency || LAST_RESORT_CURRENCY,
+        description,
+        created_at: new Date().toISOString(),
+      });
+    }
+  } else if (isPlatformHeld && !cashRefundSkipsPlatformRatio) {
     const ledgerTenantId =
       (ledgerRows[0] as { tenant_id?: string | null })?.tenant_id ?? order.tenant_id ?? null;
     const { data: captureRows } = await (admin.from("finance_transactions") as any)
@@ -148,20 +213,22 @@ export async function applyProductOrderCancelRefundSideEffects(
     order.customer_id &&
     ledgerRefundAmount > 0
   ) {
-    // Gift-card portion goes back onto the card (original tender); the rest to wallet.
-    let walletCreditAmount = ledgerRefundAmount;
-    const giftPortion = Math.min(ledgerRefundAmount, Math.max(0, Number(order.gift_card_amount ?? 0)));
+    // Gift card goes back onto the card. Provider-collected cash stays in the
+    // till (in-person refund). Gateway failures fall back onto the wallet.
+    let walletCreditAmount = computeProductOrderCancelWalletCredit(
+      order,
+      Number(onlineRefundedAmount ?? 0),
+    );
+    const giftPortion = Math.min(
+      ledgerRefundAmount,
+      Math.max(0, Number(order.gift_card_amount ?? 0)),
+    );
     if (giftPortion > 0) {
       const { voidProductOrderGiftCard } = await import("@/lib/ecommerce/product-order-gift-card");
       const voided = await voidProductOrderGiftCard(admin, order.id);
-      if (voided) walletCreditAmount = Math.round((ledgerRefundAmount - giftPortion) * 100) / 100;
-    }
-    const alreadyRefundedOnline = Math.max(0, Number(onlineRefundedAmount ?? 0));
-    if (alreadyRefundedOnline > 0) {
-      walletCreditAmount = Math.max(
-        0,
-        Math.round((walletCreditAmount - alreadyRefundedOnline) * 100) / 100,
-      );
+      if (!voided) {
+        walletCreditAmount = roundProductOrderMoney(walletCreditAmount + giftPortion);
+      }
     }
     if (walletCreditAmount > 0) {
       const { error: walletError } = await (admin.rpc as any)("wallet_credit_admin", {
@@ -434,9 +501,9 @@ export async function creditWalletForProductOrderIfNeeded(
   order: OrderRow,
   description: string,
   referenceType: string,
-): Promise<void> {
+): Promise<{ credited: boolean; failed: boolean }> {
   const w = Number(order.wallet_amount ?? 0);
-  if (w <= 0) return;
+  if (!(w > 0)) return { credited: false, failed: false };
 
   const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
     tenant_id: order.tenant_id ?? null,
@@ -457,9 +524,9 @@ export async function creditWalletForProductOrderIfNeeded(
 
   if (claimError) {
     console.error("[product-order] Failed to claim wallet reversal:", claimError);
-    return;
+    return { credited: false, failed: true };
   }
-  if (!claimed) return; // Already reversed by another path.
+  if (!claimed) return { credited: false, failed: false }; // Already reversed by another path.
 
   const { error: creditError } = await (supabase.rpc as any)("wallet_credit_admin", {
     p_user_id: order.customer_id,
@@ -480,7 +547,29 @@ export async function creditWalletForProductOrderIfNeeded(
     await (supabase.from("product_orders") as any)
       .update({ wallet_amount: w.toFixed(2) })
       .eq("id", order.id);
+    return { credited: false, failed: true };
   }
+  return { credited: true, failed: false };
+}
+
+/**
+ * Return a wallet debit and release a reserved gift card when an order is
+ * cancelled before it was paid. Paid orders use the refund side effects instead.
+ */
+export async function releaseUnpaidProductOrderHolds(
+  supabase: SupabaseClient,
+  order: OrderRow,
+  description: string,
+): Promise<{ credited: boolean; failed: boolean; amount: number }> {
+  const amount = Math.max(0, Number(order.wallet_amount ?? 0));
+  const wallet = await creditWalletForProductOrderIfNeeded(
+    supabase,
+    order,
+    description,
+    "product_order_unpaid_cancel",
+  );
+  await voidProductOrderGiftCardIfNeeded(supabase, order);
+  return { ...wallet, amount: wallet.credited ? amount : 0 };
 }
 
 /**

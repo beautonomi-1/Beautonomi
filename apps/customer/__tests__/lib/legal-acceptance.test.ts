@@ -14,12 +14,12 @@ describe("legal-acceptance (customer)", () => {
   });
 
   it("exports current customer EULA version", () => {
-    expect(CUSTOMER_EULA_VERSION).toBe("2026-08-26");
+    expect(CUSTOMER_EULA_VERSION).toBe("2026-10-31");
   });
 
   it("hasAcceptedCurrentCustomerEula is true when stored version matches", async () => {
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
-      JSON.stringify({ version: CUSTOMER_EULA_VERSION, acceptedAt: "2026-08-26T00:00:00.000Z" }),
+      JSON.stringify({ version: CUSTOMER_EULA_VERSION, acceptedAt: "2026-10-31T00:00:00.000Z" }),
     );
     await expect(hasAcceptedCurrentCustomerEula()).resolves.toBe(true);
   });

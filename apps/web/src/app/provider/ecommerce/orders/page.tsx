@@ -38,6 +38,10 @@ import {
   normalizeLineStatus,
 } from "@/lib/ecommerce/product-order-line-fulfilment";
 import {
+  allowsInPersonProductOrderRefund,
+  computeInPersonCollectibleAmount,
+} from "@/lib/orders/product-order-tender";
+import {
   ShoppingBag,
   ChevronLeft,
   ChevronRight,
@@ -53,6 +57,8 @@ interface ProductOrder {
   delivery_fee?: number;
   discount_amount?: number;
   gift_card_amount?: number | null;
+  wallet_amount?: number | null;
+  payment_method?: string | null;
   promotion_code?: string | null;
   platform_fee?: number;
   total_amount: number;
@@ -335,8 +341,9 @@ export default function ProviderProductOrdersPage() {
       setRefundReasonInput("");
       // Online orders with a platform customer default to wallet credit;
       // walk-in / unlinked sales default to in-person cash.
-      const isOnline = order.order_source === "online";
-      setRefundMethodInput(isOnline && order.customer?.id ? "store_credit" : "cash");
+      const inPerson = allowsInPersonProductOrderRefund(order);
+      const canWallet = Boolean(order.customer?.id);
+      setRefundMethodInput(!inPerson && canWallet ? "store_credit" : "cash");
       return;
     }
     if (newStatus === "cancelled") {
@@ -513,9 +520,10 @@ export default function ProviderProductOrdersPage() {
                 o.payment_status !== "paid" &&
                 o.status !== "cancelled" &&
                 o.status !== "refunded";
-              const canCollectWithYoco = yocoEnabled && canCollectPayment;
+              const inPersonDue = computeInPersonCollectibleAmount(o);
+              const canCollectWithYoco = yocoEnabled && canCollectPayment && inPersonDue > 0;
               const canCollectWithPaycloud =
-                paycloudEnabled && canCollectPayment && !isAppointmentOrder;
+                paycloudEnabled && canCollectPayment && !isAppointmentOrder && inPersonDue > 0;
               const canRefundOrder =
                 canProcessPayments &&
                 o.payment_status === "paid" &&
@@ -678,7 +686,7 @@ export default function ProviderProductOrdersPage() {
                             >
                               {formatPaycloudCollectLabel({
                                 context: "product_order",
-                                amount: totalAmount,
+                                amount: inPersonDue,
                                 inFlight: paycloudInFlight,
                               })}
                             </button>
@@ -716,7 +724,7 @@ export default function ProviderProductOrdersPage() {
             setCardMachineOpen(open);
             if (!open) setCardMachineOrder(null);
           }}
-          amount={Number(cardMachineOrder.total_amount || 0)}
+          amount={computeInPersonCollectibleAmount(cardMachineOrder)}
           autoStart
           entity={{
             entityType: "product_order",
@@ -847,7 +855,17 @@ export default function ProviderProductOrdersPage() {
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">{t("web.provider.pages.ecommerce/orders.refundMethod")}</label>
+              {(() => {
+                const inPerson = allowsInPersonProductOrderRefund(refundDialog);
+                const canWallet = Boolean(refundDialog.customer?.id);
+                if (!inPerson && !canWallet) {
+                  return (
+                    <p className="text-sm text-gray-600">{t("web.provider.pages.ecommerce/orders.refundNoWallet")}</p>
+                  );
+                }
+                return (
               <div className="grid grid-cols-2 gap-2">
+                {inPerson ? (
                 <button
                   type="button"
                   onClick={() => setRefundMethodInput("cash")}
@@ -859,17 +877,12 @@ export default function ProviderProductOrdersPage() {
                 >
                   {t("web.provider.pages.ecommerce/orders.inPersonCash")}
                 </button>
+                ) : null}
+                {canWallet ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    if (!refundDialog.customer?.id) {
-                      setError(t("web.provider.pages.ecommerce/orders.noCustomerCredit"));
-                      return;
-                    }
-                    setRefundMethodInput("store_credit");
-                  }}
-                  disabled={!refundDialog.customer?.id}
-                  className={`min-h-[44px] rounded-lg border px-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  onClick={() => setRefundMethodInput("store_credit")}
+                  className={`min-h-[44px] rounded-lg border px-3 text-sm font-medium transition ${
                     refundMethodInput === "store_credit"
                       ? "border-pink-600 bg-pink-50 text-pink-700"
                       : "border-gray-200 text-gray-600 hover:bg-gray-50"
@@ -877,11 +890,18 @@ export default function ProviderProductOrdersPage() {
                 >
                   {t("web.provider.pages.ecommerce/orders.walletCredit")}
                 </button>
+                ) : null}
               </div>
+                );
+              })()}
               <p className="mt-1.5 text-xs text-gray-500">
-                {refundMethodInput === "cash"
-                  ? t("web.provider.pages.ecommerce/orders.cashHint")
-                  : t("web.provider.pages.ecommerce/orders.walletHint")}
+                {allowsInPersonProductOrderRefund(refundDialog)
+                  ? refundMethodInput === "cash"
+                    ? t("web.provider.pages.ecommerce/orders.cashHint")
+                    : t("web.provider.pages.ecommerce/orders.walletHint")
+                  : refundDialog.customer?.id
+                    ? t("web.provider.pages.ecommerce/orders.refundOnlineOnly")
+                    : null}
               </p>
               {refundMethodInput === "store_credit" && refundDialog ? (() => {
                 const amount = parseFloat(refundAmountInput);
@@ -919,8 +939,12 @@ export default function ProviderProductOrdersPage() {
                     setError(t("web.provider.pages.ecommerce/orders.refundAmountRange", { amount: formatMoney(total) }));
                     return;
                   }
+                  const inPerson = allowsInPersonProductOrderRefund(refundDialog);
+                  const canWallet = Boolean(refundDialog.customer?.id);
+                  if (!inPerson && !canWallet) return;
+                  const method = !inPerson ? "store_credit" : !canWallet ? "cash" : refundMethodInput;
                   submitStatusUpdate(refundDialog.id, "refunded", undefined, {
-                    refund_method: refundMethodInput,
+                    refund_method: method,
                     refund_amount: amount,
                     refund_reason: refundReasonInput.trim() || undefined,
                   });

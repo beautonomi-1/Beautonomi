@@ -1,5 +1,7 @@
-import { useLayoutEffect, useRef } from "react";
+import { useCallback, useLayoutEffect, useRef } from "react";
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Platform } from "react-native";
+import { useFocusEffect } from "expo-router";
+import { BackHandler } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,6 +22,7 @@ import { isAppReviewDemoUserId } from "@/lib/auth/app-review-demo";
 import { useTranslation } from "@beautonomi/i18n";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import { useRouter } from "expo-router";
+import { confirmUseDifferentAccount } from "@/lib/confirm-use-different-account";
 
 /**
  * Named milestone ranges that appear as a segmented progress strip.
@@ -76,7 +79,7 @@ export function WizardChrome() {
     submitBusyLabel,
     providerProfileExists,
   } = useOnboardingWizard();
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const validateOptions = {
     appleIdentity: isApplePrimaryIdentity(user),
     demoIdentity: isAppReviewDemoUserId(user?.id),
@@ -85,6 +88,21 @@ export function WizardChrome() {
   useLayoutEffect(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [currentStep]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (loadingDraft || Platform.OS !== "android" || currentStep !== 1) return;
+      const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+        goBack();
+        return true;
+      });
+      return () => sub.remove();
+    }, [loadingDraft, currentStep, goBack]),
+  );
+
+  const onUseDifferentAccount = useCallback(() => {
+    confirmUseDifferentAccount(t, signOut);
+  }, [t, signOut]);
 
   if (loadingDraft) {
     return (
@@ -98,10 +116,14 @@ export function WizardChrome() {
   const isLast = currentStep === STEPS.length;
   const stepKey = wizardStepKeyForId(currentStep);
   const headerTitle = stepKey
-    ? (t(`provider.mobile.screens.onboardingWizard.steps.${stepKey}.title`) as string)
+    ? (t(`provider.mobile.screens.onboardingWizard.steps.${stepKey}.title`, {
+        defaultValue: stepMeta?.title ?? wc("setupFallback"),
+      }) as string)
     : (stepMeta?.title ?? wc("setupFallback"));
   const headerSubtitle = stepKey
-    ? (t(`provider.mobile.screens.onboardingWizard.steps.${stepKey}.description`) as string)
+    ? (t(`provider.mobile.screens.onboardingWizard.steps.${stepKey}.description`, {
+        defaultValue: stepMeta?.description ?? "",
+      }) as string)
     : stepMeta?.description;
   const milestoneLabel = getMilestoneLabel(currentStep);
   const milestoneProgress = getMilestoneProgress(currentStep);
@@ -163,6 +185,16 @@ export function WizardChrome() {
           </TouchableOpacity>
         </View>
       ) : null}
+      <TouchableOpacity
+        onPress={onUseDifferentAccount}
+        style={twStyle("mx-5 mb-2 self-start")}
+        accessibilityRole="button"
+        accessibilityLabel={wc("useDifferentAccount")}
+      >
+        <Text style={twStyle("text-[13px] font-semibold text-slate-500 underline")}>
+          {wc("useDifferentAccount")}
+        </Text>
+      </TouchableOpacity>
       <KeyboardAvoidingView
         behavior="padding"
         style={twStyle("flex-1")}

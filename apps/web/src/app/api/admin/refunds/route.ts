@@ -313,6 +313,8 @@ function serializeQueueRow(row: RefundQueueRow) {
     booking_status: booking?.status ?? null,
     payment_status: booking?.payment_status ?? null,
     is_processable: row.is_processable,
+    is_wallet_substitute_allowed: row.is_wallet_substitute_allowed,
+    wallet_remaining_refundable: row.wallet_remaining_refundable,
     needs_action: row.needs_action,
     captures: row.captures,
     primary_transaction_id: row.primary_transaction_id,

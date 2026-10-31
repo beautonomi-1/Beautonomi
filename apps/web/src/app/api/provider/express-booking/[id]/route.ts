@@ -5,6 +5,7 @@ import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundRespon
 import { checkExpressBookingFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { sanitizeExpressPrefill } from "@/lib/express-booking/prefill";
+import { validateExpressLinkStaffIds } from "@/lib/express-booking/validate-link-staff-ids";
 import { z } from "zod";
 
 const updateExpressLinkSchema = z.object({
@@ -82,6 +83,24 @@ export async function PATCH(
         .maybeSingle();
       if (!loc) {
         return errorResponse("Selected location not found or does not belong to your business.", "INVALID_LOCATION", 400);
+      }
+    }
+
+
+    if (validated.staff_ids?.length) {
+      const { data: providerRow } = await supabase
+        .from("providers")
+        .select("timezone")
+        .eq("id", providerId)
+        .maybeSingle();
+      const staffErr = await validateExpressLinkStaffIds(
+        supabase,
+        providerId,
+        validated.staff_ids,
+        (providerRow as { timezone?: string | null } | null)?.timezone,
+      );
+      if (staffErr) {
+        return errorResponse(staffErr, "INVALID_STAFF", 400);
       }
     }
 

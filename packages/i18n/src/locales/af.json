@@ -72,7 +72,10 @@
       "gotIt": "Reg so",
       "dismissA11y": "Maak wenk toe"
     },
-    "change": "Verander"
+    "change": "Verander",
+    "useDifferentAccount": "Use a different rekening",
+    "useDifferentAccountConfirmTitle": "Switch rekening?",
+    "useDifferentAccountConfirmBody": "Jy sal op hierdie toestel afmeld. Jou Google- of Apple-rekening bly gekoppel, en enige gestoorde opstelvordering bly op daardie rekening. Jy kan enige tyd weer aanmeld."
   },
   "authGate": {
     "checkingAccess": "Checking your rekening…",
@@ -13344,7 +13347,7 @@
       "selectReasonBody": "Kies why you are verslaging this content asseblief.",
       "submitError": "Kon nie dien in verslag nie.",
       "submittedTitle": "verslag dien inted",
-      "submittedBody": "Dankie. Ons span sal jou verslag binne 24-48 uur hersien.",
+      "submittedBody": "Dankie. Ons span sal jou verslag binne 24 uur hersien.",
       "reportPost": "verslag Plasing",
       "reportComment": "verslag opmerking",
       "reportMessage": "verslag boodskap",
@@ -13356,9 +13359,10 @@
         "inappropriate": "Onvanpaste inhoud",
         "misleading": "Misleading inligting",
         "harassment": "Teistering of misbruik",
-        "spam": "Spam or scam",
+        "spam": "Strooipos of bedrog",
         "safety": "veiligheid concern",
-        "other": "Ander"
+        "other": "Ander",
+        "illegal_exploitative": "Onwettige of uitbuitende inhoud"
       }
     },
     "blockUser": {
@@ -15168,6 +15172,7 @@
           "paymentCancelledBody": "Jy het die betaling gekanselleer. Geen klag is gemaak nie. Jy kan weer probeer vanaf hierdie bestelling.",
           "cancelOrderTitle": "Kanselleer bestelling",
           "cancelOrderBody": "Kanselleer hierdie bestelling? Items op voorraad word heraangevul en betaalde tenders terugbetaal.",
+          "cancelledInPerson": "Bestelling gekanselleer. {{amount}} is persoonlik ingevorder en moet nog deur die salon teruggegee word.",
           "keepOrderCta": "Hou bestelling",
           "cancelOrderCta": "Kanselleer bestelling",
           "cancelOrderFailed": "Kon nie kanselleer this bestelling nie.",
@@ -21212,6 +21217,7 @@
         "goBack": "Gaan terug",
         "cancelConfirm": "Kanselleer hierdie bestelling? Items op voorraad word heraangevul en betaalde tenders terugbetaal.",
         "cancelledToast": "bestelling gekanselleer",
+        "cancelledInPerson": "Bestelling gekanselleer. {{amount}} is persoonlik ingevorder en moet nog deur die salon teruggegee word.",
         "cancelFailed": "Kon nie kanselleer this bestelling nie.",
         "addEmailBeforePay": "Voeg 'n e-posadres by jou rekening voordat jy hierdie bestelling aanlyn betaal.",
         "paymentStartFailed": "Ons kon nie met die betaling begin nie. Probeer asseblief weer.",

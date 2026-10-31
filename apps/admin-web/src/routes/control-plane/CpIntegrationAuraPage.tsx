@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { adminApi } from "@/lib/adminClient";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -66,7 +67,7 @@ export function CpIntegrationAuraPage() {
 
   return (
     <div className="space-y-6">
-      <CpBack to=".." label="Integrations" />
+      <CpBack to={adminSpaTo("/admin/control-plane/integrations")} label="Platform integrations" />
       <AdminPageHeader title="Aura" description="Trust and safety integration." />
       <EnvSelect value={env} onChange={setEnv} />
       {msg ? (

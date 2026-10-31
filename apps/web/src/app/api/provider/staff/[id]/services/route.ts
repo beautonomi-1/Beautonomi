@@ -67,18 +67,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    await supabase.from("staff_services").delete().eq("staff_id", id);
-
-    if (service_ids.length > 0) {
-      const inserts = service_ids.map((sid: string) => ({
-        staff_id: id,
-        offering_id: sid,
-        provider_id: providerId,
-      }));
-
-      const { error } = await supabase.from("staff_services").insert(inserts);
-      if (error) throw error;
-    }
+    const { replaceStaffServicesForStaff } = await import("@/lib/provider/sync-staff-services");
+    await replaceStaffServicesForStaff(
+      supabase,
+      providerId,
+      id,
+      service_ids as string[],
+    );
 
     // staff_services is the single source of eligibility; the legacy
     // provider_staff.assigned_service_ids array is no longer written (872 backfill).

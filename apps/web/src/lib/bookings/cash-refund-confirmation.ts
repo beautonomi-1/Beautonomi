@@ -31,15 +31,30 @@ export async function finalizeCashRefund(
   }
 
   try {
-    const { syncBookingRefundTransactions } = await import(
-      "@/lib/finance/sync-booking-refund-transactions"
+    const { syncPaymentTransactionRefundState } = await import(
+      "@/lib/finance/sync-payment-transaction-refund"
     );
-    await syncBookingRefundTransactions(
-      supabaseAdmin,
+    const { sumCompletedStoreCreditRefunds } = await import(
+      "@/lib/admin/booking-refund-context"
+    );
+    const { data: allRefunds } = await supabaseAdmin
+      .from("booking_refunds")
+      .select("amount, refund_method, status")
+      .eq("booking_id", bookingId);
+    const storeCreditTotal = sumCompletedStoreCreditRefunds(
+      (allRefunds ?? []) as Array<{
+        amount?: number | string | null;
+        refund_method?: string | null;
+        status?: string | null;
+      }>,
+    );
+    await syncPaymentTransactionRefundState({
+      supabase: supabaseAdmin,
       bookingId,
-      "Cash refund confirmed",
-      userId ?? null,
-    );
+      cumulativeRefundAmount: storeCreditTotal,
+      reason: "Cash refund confirmed",
+      actorUserId: userId ?? null,
+    });
   } catch {
     /* non-blocking */
   }
@@ -77,27 +92,74 @@ export async function notifyCustomerCashRefundConfirmation(params: {
   );
 }
 
+export type PendingCashRefundSummary = {
+  id: string;
+  amount: number;
+  reason: string | null;
+  confirmation_deadline_at: string | null;
+};
+
+export async function fetchPendingCashRefundsForBooking(
+  supabase: SupabaseClient,
+  bookingId: string,
+): Promise<PendingCashRefundSummary[]> {
+  const { data: pendingRefundRows } = await supabase
+    .from("booking_refunds")
+    .select("id, amount, reason, confirmation_deadline_at")
+    .eq("booking_id", bookingId)
+    .eq("status", "pending")
+    .eq("refund_method", "cash")
+    .eq("customer_confirmation_required", true);
+  return (pendingRefundRows ?? []).map((row) => ({
+    id: String((row as { id: string }).id),
+    amount: Number((row as { amount?: number }).amount ?? 0),
+    reason: ((row as { reason?: string | null }).reason ?? null) as string | null,
+    confirmation_deadline_at:
+      ((row as { confirmation_deadline_at?: string | null }).confirmation_deadline_at ??
+        null) as string | null,
+  }));
+}
+
 export function cashRefundConfirmationDeadline(): string {
   return new Date(Date.now() + CONFIRMATION_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
 }
 
-export async function autoFinalizeExpiredCashRefunds(supabaseAdmin: SupabaseClient): Promise<number> {
+export type AutoFinalizeCashRefundRow = {
+  id: string;
+  booking_id: string;
+  notes?: string | null;
+};
+
+export async function autoFinalizeExpiredCashRefunds(
+  supabaseAdmin: SupabaseClient,
+): Promise<{ finalized: number; cancellationObligationBookingIds: string[] }> {
   const now = new Date().toISOString();
   const { data: pending } = await supabaseAdmin
     .from("booking_refunds")
-    .select("id, booking_id")
+    .select("id, booking_id, notes")
     .eq("status", "pending")
     .eq("customer_confirmation_required", true)
     .lte("confirmation_deadline_at", now);
 
-  let count = 0;
+  let finalized = 0;
+  const cancellationObligationBookingIds: string[] = [];
+  const { CANCELLATION_CASH_OBLIGATION_NOTE } = await import(
+    "@/lib/bookings/cancellation-cash-refund-obligation"
+  );
+
   for (const row of pending ?? []) {
+    const typed = row as AutoFinalizeCashRefundRow;
     const result = await finalizeCashRefund(
       supabaseAdmin,
-      (row as { id: string }).id,
-      (row as { booking_id: string }).booking_id,
+      typed.id,
+      typed.booking_id,
     );
-    if (!result.error) count += 1;
+    if (!result.error) {
+      finalized += 1;
+      if (String(typed.notes ?? "").includes(CANCELLATION_CASH_OBLIGATION_NOTE)) {
+        cancellationObligationBookingIds.push(typed.booking_id);
+      }
+    }
   }
-  return count;
+  return { finalized, cancellationObligationBookingIds };
 }

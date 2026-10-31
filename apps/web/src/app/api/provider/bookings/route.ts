@@ -74,6 +74,7 @@ import { validateProviderBookingProducts } from "@/lib/bookings/validate-provide
 import { resolveCustomServicesInBookingBody } from "@/lib/bookings/resolve-custom-services-in-booking-body";
 import { mapProviderBookingServiceLineForApi } from "@/lib/bookings/walk-in-custom-service";
 import { createOrResolveShadowCustomer } from "@/lib/users/create-shadow-customer";
+import { resolveUserIdByPhoneCandidates } from "@/lib/users/resolve-user-id-by-phone";
 
 function sumUnpaidAdditionalCharges(charges: unknown): number {
   if (!Array.isArray(charges)) return 0;
@@ -940,6 +941,15 @@ async function handleGetProviderBookings(request: NextRequest) {
         is_group_booking: true,
         group_booking_ref: group.ref_number || null,
         provider_form_responses: null,
+        participant_phones: [
+          ...new Set(
+            participants
+              .map((p: { participant_phone?: string | null }) =>
+                typeof p.participant_phone === "string" ? p.participant_phone.trim() : "",
+              )
+              .filter(Boolean),
+          ),
+        ],
         // Channel tag so UI can render a "Group" chip without guessing
         booking_source: "group_booking",
       };
@@ -1115,17 +1125,13 @@ async function handleCreateProviderBooking(request: NextRequest) {
         }
       }
 
-      // Also check by phone if email didn't work
       if (!customerId && body.customer_phone) {
-        const { data: existingCustomer } = await supabaseAdmin
-          .from("users")
-          .select("id")
-          .eq("phone", body.customer_phone)
-          .maybeSingle();
-
-        if (existingCustomer) {
-          customerId = existingCustomer.id;
-        }
+        const byPhone = await resolveUserIdByPhoneCandidates(
+          supabaseAdmin,
+          body.customer_phone,
+          tenantRegion?.phoneCountryCode ?? "+27",
+        );
+        if (byPhone) customerId = byPhone;
       }
 
       if (!customerId) {
@@ -1142,6 +1148,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
           fullName: body.customer_name,
           email: body.customer_email,
           phone: body.customer_phone,
+          phoneCountryCode: (tenantRegion?.phoneCountryCode ?? "+27").replace(/^\+/, ""),
           providerId,
           shadowSource: "provider_booking",
           createdByUserId: user.id,

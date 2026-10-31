@@ -44,6 +44,7 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
+import { phoneMatchesQuery } from "@/lib/phone";
 import {
   buildGroupBookingCreateReadiness,
   validateGroupBookingCreateStepDetailed,
@@ -1835,14 +1836,21 @@ export default function GroupBookingsScreen() {
 
   const filtered = useMemo(() => {
     if (!search.trim()) return groups;
-    const q = search.toLowerCase();
-    return groups.filter(
-      (g) =>
-        g.ref_number?.toLowerCase().includes(q) ||
-        g.service_name?.toLowerCase().includes(q) ||
-        g.team_member_name?.toLowerCase().includes(q) ||
-        g.scheduled_date?.includes(q)
-    );
+    const q = search.trim();
+    const qLower = q.toLowerCase();
+    return groups.filter((g) => {
+      if (g.ref_number?.toLowerCase().includes(qLower)) return true;
+      if (g.service_name?.toLowerCase().includes(qLower)) return true;
+      if (g.team_member_name?.toLowerCase().includes(qLower)) return true;
+      if (g.scheduled_date?.includes(q)) return true;
+      for (const p of g.participants ?? []) {
+        const phones = [p.client_phone, p.customer_phone, p.participant_phone];
+        for (const ph of phones) {
+          if (phoneMatchesQuery(ph, q)) return true;
+        }
+      }
+      return false;
+    });
   }, [groups, search]);
 
   const stats = useMemo(() => {

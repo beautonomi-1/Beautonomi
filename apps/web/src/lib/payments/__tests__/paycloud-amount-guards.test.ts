@@ -64,6 +64,21 @@ describe("computeExpectedAmountForEntity", () => {
     productOrders.maybeSingle.mockResolvedValueOnce({
       data: {
         total_amount: 120,
+        wallet_amount: 20,
+        gift_card_amount: 10,
+        currency: "ZAR",
+        payment_status: "unpaid",
+        status: "pending",
+        order_source: "online",
+      },
+    });
+    await expect(
+      computeExpectedAmountForEntity(supabase, "provider-1", "product_order", "order-gift"),
+    ).resolves.toEqual({ amount: 90, currency: "ZAR" });
+
+    productOrders.maybeSingle.mockResolvedValueOnce({
+      data: {
+        total_amount: 120,
         wallet_amount: 0,
         currency: "ZAR",
         payment_status: "unpaid",

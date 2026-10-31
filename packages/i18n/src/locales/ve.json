@@ -72,7 +72,10 @@
       "gotIt": "Ndo pfa",
       "dismissA11y": "Vala ngeletshedzo"
     },
-    "change": "Shandukisa"
+    "change": "Shandukisa",
+    "useDifferentAccount": "Use a different akhaunte",
+    "useDifferentAccountConfirmTitle": "Switch akhaunte?",
+    "useDifferentAccountConfirmBody": "U do u bva kha tshishumiswa itshi. Akhaunte yavho ya Google kana ya Apple i ya sala i tanganywaho, nahone mvelaphanda iṅwe na iṅwe yo fhadzwa ya u lugisa i ya sala kha akhaunte iyo. Ni nga dzhena hafhu tshifhinga tshine na tshine."
   },
   "authGate": {
     "checkingAccess": "Checking your akhaunte…",
@@ -13344,7 +13347,7 @@
       "selectReasonBody": "Nanga why you are mubikoing this content.",
       "submitError": "Zwo kundelwa u ruma mubiko.",
       "submittedTitle": "mubiko rumated",
-      "submittedBody": "Ndo livhuwa. Tshigwada tshashu tshi ḓo sedzulusa muvhigo wavho hu sa athu fhela awara dza 24-48.",
+      "submittedBody": "Ndo livhuwa. Tshigwada tshashu tshi ḓo sedzulusa muvhigo wavho hu sa athu fhela awara dza 24.",
       "reportPost": "mubiko Poso",
       "reportComment": "mubiko mbono",
       "reportMessage": "mubiko mulaedza",
@@ -13355,10 +13358,11 @@
       "reason": {
         "inappropriate": "Zwithu zwi sa elaho",
         "misleading": "Misleading vhuḓivhi",
-        "harassment": "Harassment or abuse",
-        "spam": "Spam or scam",
+        "harassment": "U katela kana u shandiswa zwi sa re",
+        "spam": "Spam kana buhumbi",
         "safety": "vhupfele concern",
-        "other": "Zwiṅwe"
+        "other": "Zwiṅwe",
+        "illegal_exploitative": "Zwithu zwi re hone zwi songo re na nawu kana zwi shandiswaho zwi sa re"
       }
     },
     "blockUser": {
@@ -15164,6 +15168,7 @@
           "paymentCancelledBody": "Vho khansela mbadelo. A hu na mulandu we wa itwa. Ni nga lingedza hafhu u bva kha oda iyi.",
           "cancelOrderTitle": "Khansela odara",
           "cancelOrderBody": "Khanselani odara iyi? Zwithu zwi khou vha kha stock zwi do vhulungwa hafhu na mali yo badelwaho yo vhuyiswa.",
+          "cancelledInPerson": "Odara yo khansewa. {{amount}} yo kuvhanganywa nga muthu nahone i kha di toda u vhuyisedzwa nga salon.",
           "keepOrderCta": "Vhulunga odara",
           "cancelOrderCta": "Khansela odara",
           "cancelOrderFailed": "A zwo koni u khansela this odara.",
@@ -21212,6 +21217,7 @@
         "goBack": "Humela murahu",
         "cancelConfirm": "Khanselani odara iyi? Zwithu zwi khou vha kha stock zwi do vhulungwa hafhu na mali yo badelwaho yo vhuyiswa.",
         "cancelledToast": "odara yo khanselwa",
+        "cancelledInPerson": "Odara yo khansewa. {{amount}} yo kuvhanganywa nga muthu nahone i kha di toda u vhuyisedzwa nga salon.",
         "cancelFailed": "A zwo koni u khansela this odara.",
         "addEmailBeforePay": "Engetela adirese ya imeyili eka akhawunti ya wena u nga ha hakeli oda leyi inthaneteni.",
         "paymentStartFailed": "Ons kon nie met die betaling begin nie. Probeer asseblief weer.",

@@ -35,5 +35,7 @@ describe("auto wallet credit skip rules", () => {
     expect(queueRowSkipsAutoCredit(baseRow({ tender_label: "Mixed" }))).toBe(true);
     expect(queueRowSkipsAutoCredit(baseRow({ booking: { gift_card_amount: 20 } }))).toBe(true);
     expect(queueRowSkipsAutoCredit(baseRow({ queue_reason: "kept_per_policy" }))).toBe(true);
+    expect(queueRowSkipsAutoCredit(baseRow({ queue_reason: "cash_confirm_overdue" }))).toBe(true);
+    expect(queueRowSkipsAutoCredit(baseRow({ queue_reason: "cash_refund_disputed" }))).toBe(true);
   });
 });

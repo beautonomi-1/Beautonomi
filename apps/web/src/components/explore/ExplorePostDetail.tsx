@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Heart, Bookmark, Share2, MoreHorizontal, ZoomIn, MessageCircle, ImageIcon, Link2, Mail, Loader2, X, Trash2 } from "lucide-react";
+import { Heart, Bookmark, Share2, MoreHorizontal, ZoomIn, MessageCircle, ImageIcon, Link2, Mail, Loader2, X, Trash2, Flag, Ban } from "lucide-react";
+import { ContentReportDialog, type WebContentReportTargetType } from "@/components/safety/ContentReportDialog";
 import { useAuth } from "@/providers/AuthProvider";
 import LoginModal from "@/components/global/login-modal";
 import { fetcher } from "@/lib/http/fetcher";
@@ -92,6 +93,11 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [reportDialog, setReportDialog] = useState<{
+    targetType: WebContentReportTargetType;
+    targetId: string;
+    title?: string;
+  } | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showZoomModal, setShowZoomModal] = useState(false);
   const [lightboxZoom, setLightboxZoom] = useState(1);
@@ -157,6 +163,37 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
       toast.error(t(`${pd}.commentFailed`));
     } finally {
       setCommentSubmitting(false);
+    }
+  };
+
+  const openContentReport = (
+    targetType: WebContentReportTargetType,
+    targetId: string,
+    title?: string,
+  ) => {
+    if (!user) {
+      setIsLoginModalOpen(true);
+      return;
+    }
+    setShowMoreMenu(false);
+    setReportDialog({ targetType, targetId, title });
+  };
+
+  const blockAuthor = async () => {
+    if (!user) {
+      setIsLoginModalOpen(true);
+      return;
+    }
+    setShowMoreMenu(false);
+    try {
+      await fetcher.post("/api/me/blocks", { provider_id: post.provider_id });
+      toast.success(t("customer.blockUser.confirmAction"), {
+        description: t("customer.blockUser.confirmBody", {
+          name: post.provider.business_name || t("customer.blockUser.defaultName"),
+        }),
+      });
+    } catch {
+      toast.error(t("customer.blockUser.errorBody"));
     }
   };
 
@@ -452,6 +489,30 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                         >
                           <span className="text-sm">{t(`${pd}.findOutMore`)}</span>
                         </Link>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openContentReport(
+                              "explore_post",
+                              post.id,
+                              t("customer.contentReport.reportPost"),
+                            )
+                          }
+                          className="w-full px-4 py-2.5 text-start text-red-600 hover:bg-red-50 flex items-center gap-3"
+                        >
+                          <Flag className="w-5 h-5" />
+                          <span className="text-sm">{t("customer.contentReport.reportPost")}</span>
+                        </button>
+                        {user ? (
+                          <button
+                            type="button"
+                            onClick={() => void blockAuthor()}
+                            className="w-full px-4 py-2.5 text-start text-red-600 hover:bg-red-50 flex items-center gap-3"
+                          >
+                            <Ban className="w-5 h-5" />
+                            <span className="text-sm">{t("customer.blockUser.confirmAction")}</span>
+                          </button>
+                        ) : null}
                       </div>
                     </>
                   )}
@@ -553,16 +614,34 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                             </button>
                           ) : null}
                         </div>
-                        {user?.id === c.user_id && (
-                          <button
-                            type="button"
-                            onClick={() => deleteComment(c.id)}
-                            className="shrink-0 p-1.5 rounded-full text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover/comment:opacity-100 transition-opacity"
-                            aria-label={t(`${pd}.deleteComment`)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
+                        <div className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover/comment:opacity-100 transition-opacity">
+                          {user && user.id !== c.user_id ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openContentReport(
+                                  "explore_comment",
+                                  c.id,
+                                  t("customer.contentReport.reportComment"),
+                                )
+                              }
+                              className="p-1.5 rounded-full text-gray-400 hover:text-[#FF0077] hover:bg-pink-50"
+                              aria-label={t("customer.contentReport.reportComment")}
+                            >
+                              <Flag className="w-4 h-4" />
+                            </button>
+                          ) : null}
+                          {user?.id === c.user_id ? (
+                            <button
+                              type="button"
+                              onClick={() => deleteComment(c.id)}
+                              className="p-1.5 rounded-full text-gray-400 hover:text-red-600 hover:bg-red-50"
+                              aria-label={t(`${pd}.deleteComment`)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
                       {(c.replies ?? []).length > 0 ? (
                         <ul className="mt-2 ms-11 space-y-2 border-s border-gray-100 ps-3">
@@ -582,16 +661,34 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                                 </p>
                                 <CommentBody body={r.body} />
                               </div>
-                              {user?.id === r.user_id && (
-                                <button
-                                  type="button"
-                                  onClick={() => deleteComment(r.id)}
-                                  className="shrink-0 p-1 rounded-full text-gray-400 hover:text-red-600 opacity-0 group-hover/reply:opacity-100"
-                                  aria-label={t(`${pd}.deleteComment`)}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
+                              <div className="shrink-0 flex opacity-0 group-hover/reply:opacity-100">
+                                {user && user.id !== r.user_id ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      openContentReport(
+                                        "explore_comment",
+                                        r.id,
+                                        t("customer.contentReport.reportComment"),
+                                      )
+                                    }
+                                    className="p-1 rounded-full text-gray-400 hover:text-[#FF0077]"
+                                    aria-label={t("customer.contentReport.reportComment")}
+                                  >
+                                    <Flag className="w-3.5 h-3.5" />
+                                  </button>
+                                ) : null}
+                                {user?.id === r.user_id ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteComment(r.id)}
+                                    className="p-1 rounded-full text-gray-400 hover:text-red-600"
+                                    aria-label={t(`${pd}.deleteComment`)}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                ) : null}
+                              </div>
                             </li>
                           ))}
                         </ul>
@@ -776,6 +873,30 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                               <Link href={`/partner-profile?slug=${encodeURIComponent(post.provider.slug)}`} onClick={() => setShowMoreMenu(false)} className="w-full px-4 py-2.5 text-start text-gray-800 hover:bg-gray-50 flex items-center gap-3 block">
                                 <span className="text-sm">{t(`${pd}.findOutMore`)}</span>
                               </Link>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openContentReport(
+                                    "explore_post",
+                                    post.id,
+                                    t("customer.contentReport.reportPost"),
+                                  )
+                                }
+                                className="w-full px-4 py-2.5 text-start text-red-600 hover:bg-red-50 flex items-center gap-3"
+                              >
+                                <Flag className="w-5 h-5" />
+                                <span className="text-sm">{t("customer.contentReport.reportPost")}</span>
+                              </button>
+                              {user ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void blockAuthor()}
+                                  className="w-full px-4 py-2.5 text-start text-red-600 hover:bg-red-50 flex items-center gap-3"
+                                >
+                                  <Ban className="w-5 h-5" />
+                                  <span className="text-sm">{t("customer.blockUser.confirmAction")}</span>
+                                </button>
+                              ) : null}
                             </div>
                           </>
                         )}
@@ -843,16 +964,34 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                             </p>
                             <CommentBody body={c.body} />
                           </div>
-                          {user?.id === c.user_id && (
-                            <button
-                              type="button"
-                              onClick={() => deleteComment(c.id)}
-                              className="shrink-0 p-1.5 rounded-full text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover/comment:opacity-100 transition-opacity"
-                              aria-label={t(`${pd}.deleteComment`)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
+                          <div className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover/comment:opacity-100 transition-opacity">
+                            {user && user.id !== c.user_id ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openContentReport(
+                                    "explore_comment",
+                                    c.id,
+                                    t("customer.contentReport.reportComment"),
+                                  )
+                                }
+                                className="p-1.5 rounded-full text-gray-400 hover:text-[#FF0077] hover:bg-pink-50"
+                                aria-label={t("customer.contentReport.reportComment")}
+                              >
+                                <Flag className="w-4 h-4" />
+                              </button>
+                            ) : null}
+                            {user?.id === c.user_id ? (
+                              <button
+                                type="button"
+                                onClick={() => deleteComment(c.id)}
+                                className="p-1.5 rounded-full text-gray-400 hover:text-red-600 hover:bg-red-50"
+                                aria-label={t(`${pd}.deleteComment`)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            ) : null}
+                          </div>
                         </li>
                       ))}
                     </ul>
@@ -1066,6 +1205,16 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
           </div>
         </>
       )}
+
+      {reportDialog ? (
+        <ContentReportDialog
+          open
+          onClose={() => setReportDialog(null)}
+          targetType={reportDialog.targetType}
+          targetId={reportDialog.targetId}
+          title={reportDialog.title}
+        />
+      ) : null}
 
       <LoginModal
         open={isLoginModalOpen}

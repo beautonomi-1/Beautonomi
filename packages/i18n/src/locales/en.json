@@ -15,6 +15,9 @@
     "error": "Something went wrong",
     "retry": "Try again",
     "signOut": "Sign out",
+    "useDifferentAccount": "Use a different account",
+    "useDifferentAccountConfirmTitle": "Switch account?",
+    "useDifferentAccountConfirmBody": "You'll sign out on this device. Your Google or Apple account stays linked, and any saved setup progress stays on that account. You can sign in again anytime.",
     "dismiss": "Dismiss",
     "save": "Save",
     "cancel": "Cancel",
@@ -964,7 +967,8 @@
           "nextA11y": "Next step",
           "existingProfileTitle": "Profile already created",
           "existingProfileBody": "Your business profile is set up. Use the setup checklist to change details — edits here are not saved.",
-          "openChecklist": "Open setup checklist"
+          "openChecklist": "Open setup checklist",
+          "useDifferentAccount": "Use a different account"
         },
         "accountStatusGuard": {
           "title": "Account check needed",
@@ -1483,6 +1487,7 @@
           "processRefundA11y": "Process refund for this sale",
           "refundTitle": "Process refund",
           "refundBody": "Refund order {{orderNumber}} ({{amount}})? Stock will be returned automatically.",
+          "refundOnlineNoCustomer": "This sale was paid online and has no customer wallet, so it cannot be refunded in person.",
           "refundAction": "Refund",
           "refundFailed": "Refund failed",
           "refundedTitle": "Refunded",
@@ -2816,6 +2821,8 @@
           "awaitingYocoRefundTitle": "{{amount}} still to refund on the Yoco machine",
           "awaitingYocoRefundBody": "This booking was cancelled with a refund back to card. Refund it in the Yoco app or on the machine, then record it here. Until then it stays outstanding in the card machine reconciliation report.",
           "awaitingYocoRefundReason": "Booking cancelled — refund back to card",
+          "pendingCashRefundTitle": "{{amount}} to return in person",
+          "pendingCashRefundBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending — hand back the amount shown and wait for confirmation (or the 48-hour window to close).",
           "refundOriginalHint": "The money returns to the customer's card through the card machine or bank. Nothing is taken from your cash drawer.",
           "refundCashHint": "Hand the money back to the customer in person. Recorded for your books; no wallet credit is issued. The booking balance updates after this succeeds.",
           "refundWalletHint": "Use when the customer is not present or the payment was made online. The refund is credited to their wallet.",
@@ -3861,6 +3868,8 @@
           "refundOrderTitle": "Refund order",
           "refundOrderBodyWallet": "How was this refund returned to the customer?",
           "refundOrderBodyCash": "Confirm this order was refunded to the customer in person. No platform wallet is linked to this sale.",
+          "refundOnlineOnly": "This order was paid online. Store credit returns the card charge and any wallet or gift-card portion to the customer.",
+          "refundOnlineNoCustomer": "This order was paid online and has no customer wallet, so it cannot be refunded in person.",
           "cancel": "Cancel",
           "refundInPerson": "In person (cash)",
           "refundWallet": "Wallet credit",
@@ -4469,6 +4478,90 @@
           "shareSmsMessage": "Book an appointment with us: {{url}}"
         },
         "onboardingWizard": {
+          "steps": {
+            "team_size": {
+              "title": "Team size",
+              "description": "Tell us about your team"
+            },
+            "identity": {
+              "title": "Your identity",
+              "description": "Name, verified email, and verified phone"
+            },
+            "business": {
+              "title": "Business details",
+              "description": "How customers see your business"
+            },
+            "payment": {
+              "title": "Payments & policies",
+              "description": "Terminals, VAT & booking protection"
+            },
+            "software": {
+              "title": "Current software",
+              "description": "Optional — previous booking system"
+            },
+            "payroll": {
+              "title": "Payroll",
+              "description": "How you pay staff"
+            },
+            "location": {
+              "title": "Location",
+              "description": "Primary address"
+            },
+            "photos": {
+              "title": "Photos",
+              "description": "Required thumbnail & profile images"
+            },
+            "zones": {
+              "title": "Service zones",
+              "description": "Where you offer mobile visits"
+            },
+            "travel_fees": {
+              "title": "Travel fees",
+              "description": "Charge for at-home travel"
+            },
+            "categories": {
+              "title": "Categories",
+              "description": "What you offer"
+            },
+            "catalog": {
+              "title": "Services",
+              "description": "Optional — add services now or later"
+            },
+            "hours": {
+              "title": "Hours",
+              "description": "When you're available"
+            },
+            "review": {
+              "title": "Review",
+              "description": "Check your details"
+            },
+            "plan": {
+              "title": "Plan",
+              "description": "Choose a subscription"
+            }
+          },
+          "alerts": {
+            "errorTitle": "Error",
+            "loadFailed": "Could not load onboarding.",
+            "checkStepTitle": "Check this step",
+            "completeRequiredFields": "Please complete required fields.",
+            "couldNotContinue": "Could not continue.",
+            "almostThereTitle": "Almost there",
+            "completeStepFirst": "Complete this step first.",
+            "missingInfoTitle": "Missing info",
+            "selectTeamSize": "Please select your team size.",
+            "verifyPhoneTitle": "Verify phone",
+            "verifyPhoneBody": "Please verify your phone number.",
+            "categoriesTitle": "Categories",
+            "selectCategory": "Select at least one category.",
+            "addressTitle": "Address",
+            "completeAddress": "Please complete address (line 1, city, country).",
+            "stillSettingUpTitle": "Still setting up",
+            "stillSettingUpBody": "Your business profile may still be saving. Wait a moment, then tap Submit again.",
+            "couldNotFinishTitle": "Could not finish setup",
+            "tryAgain": "Please try again.",
+            "submitFailed": "Submit failed."
+          },
           "teamSize": {
             "intro": "We use this to tailor payroll questions and booking defaults. You can still run salon, mobile, or both services later.",
             "freelancerTitle": "Solo / freelancer",
@@ -4844,6 +4937,11 @@
             "photos": "Photos",
             "photosOk": "Thumbnail + profile image uploaded",
             "photosRequired": "Thumbnail and profile image required",
+            "ownerGoLiveTitle": "Your profile on the booking page",
+            "ownerTakesAppointments": "I take appointments myself",
+            "ownerPublicTitle": "Title customers see (optional)",
+            "ownerServicesLabel": "Services you perform",
+            "ownerServicesAll": "Leave all checked to offer every service in your catalog.",
             "plan": "Plan",
             "selectedPlan": "Selected plan",
             "planFreeSuffix": "{{name}} — activates instantly, no card required",
@@ -13344,7 +13442,7 @@
       "selectReasonBody": "Please choose why you are reporting this content.",
       "submitError": "Failed to submit report.",
       "submittedTitle": "Report submitted",
-      "submittedBody": "Thank you. Our team will review your report within 24-48 hours.",
+      "submittedBody": "Thank you. Our team will review your report within 24 hours.",
       "reportPost": "Report post",
       "reportComment": "Report comment",
       "reportMessage": "Report message",
@@ -13358,6 +13456,7 @@
         "harassment": "Harassment or abuse",
         "spam": "Spam or scam",
         "safety": "Safety concern",
+        "illegal_exploitative": "Illegal or exploitative content",
         "other": "Other"
       }
     },
@@ -15212,6 +15311,7 @@
           "paymentCancelledBody": "You cancelled the payment. No charge was made. You can try again from this order.",
           "cancelOrderTitle": "Cancel order",
           "cancelOrderBody": "Cancel this order? In-stock items will be restocked and paid tenders refunded.",
+          "cancelledInPerson": "Order cancelled. {{amount}} was collected in person and still needs to be returned by the salon.",
           "keepOrderCta": "Keep order",
           "cancelOrderCta": "Cancel order",
           "cancelOrderFailed": "Could not cancel this order.",
@@ -21234,6 +21334,7 @@
         "goBack": "Go back",
         "cancelConfirm": "Cancel this order? In-stock items will be restocked and paid tenders refunded.",
         "cancelledToast": "Order cancelled",
+        "cancelledInPerson": "Order cancelled. {{amount}} was collected in person and still needs to be returned by the salon.",
         "cancelFailed": "Could not cancel this order.",
         "addEmailBeforePay": "Add an email address to your account before paying this order online.",
         "paymentStartFailed": "We could not start payment for this order. Please try again.",
@@ -24141,6 +24242,8 @@
             "yocoRecorded": "Yoco refund recorded",
             "awaitingYocoTitle": "{{amount}} still to refund on the Yoco machine",
             "awaitingYocoBody": "This booking was cancelled with a refund back to card. Refund it in the Yoco app or on the machine, then record it here. Until then it stays outstanding in the card machine reconciliation report.",
+            "pendingCashTitle": "{{amount}} to return in person",
+            "pendingCashBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending.",
             "additionalChargePaymentRecorded": "Additional charge payment recorded",
             "reasonRequired": "Reason (required)",
             "reasonPlaceholder": "e.g. Service issue, customer request",
@@ -25006,7 +25109,13 @@
           "draftServicesLabel": "Draft services:",
           "attachZones": "Attach Zones",
           "categorySelected": "Category Selected",
-          "zonesSelected": "Selected all {{count}} zones"
+          "zonesSelected": "Selected all {{count}} zones",
+          "ownerGoLiveTitle": "Your profile on the booking page",
+          "ownerTakesAppointments": "I take appointments myself",
+          "ownerTakesAppointmentsHint": "Turn off if you only manage the team and won't appear for customers to book.",
+          "ownerPublicTitle": "Title customers see (optional)",
+          "ownerServicesLabel": "Services you perform",
+          "ownerServicesAll": "Leave all checked to offer every service in your catalog."
         },
         "plan": {
           "activatesInstantly": "Activates instantly",
@@ -29049,6 +29158,12 @@
           "courierSaveFailed": "Could not save courier credentials.",
           "courierTestOk": "Connection successful.",
           "courierTestFailed": "Connection test failed.",
+          "bobGoWebhookSecret": "Bob Go webhook secret (optional)",
+          "bobGoWebhookSecretOptional": "Optional — from Bob Go → Settings → Webhook subscriptions",
+          "bobGoWebhookSecretConfigured": "Secret saved — paste only to replace",
+          "bobGoWebhookSecretHint": "Live shipment updates use webhooks when this is set. Without it, orders catch up within about 10 minutes.",
+          "bobGoWebhookSubscribeFailed": "Could not register Bob Go webhooks",
+          "bobGoWebhookCatchUpHint": "Your API key is saved. Shipment status will still catch up within about 10 minutes.",
           "courierNoChanges": "Enter new credential fields to save.",
           "aramexAccount": "Account number",
           "aramexPin": "Account PIN",
@@ -29340,6 +29455,8 @@
           "noCustomerCredit": "This order has no customer account to credit. Refund in person instead.",
           "cashHint": "Records the refund as returned to the customer in person. No wallet credit is issued.",
           "walletHint": "Adds store credit to the customer's wallet for a future purchase.",
+          "refundOnlineOnly": "This order was paid online. Store credit returns the card charge and any wallet or gift-card portion to the customer.",
+          "refundNoWallet": "This order was paid online and has no customer wallet, so it cannot be refunded in person.",
           "partialWalletRefundHint": "Partial wallet refunds credit the customer's store balance only. Card and gift-card payments are not returned unless you refund the full order total.",
           "reasonOptional": "Reason (optional)",
           "reasonPlaceholder": "e.g. Damaged item, customer request",
@@ -31727,6 +31844,64 @@
         "manage": "Manage",
         "ratingLabel": "Rating:"
       },
+      "teamAddWizard": {
+        "title": "Add team member",
+        "readyTitle": "Ready to go",
+        "seatLine": "{{current}} of {{max}} seats used on your plan",
+        "limitBlocked": "Your plan does not have room for another team member. Upgrade or remove someone first.",
+        "nameEmailRequired": "Name and email are required.",
+        "invalidPhone": "Enter a valid phone number or leave the field blank.",
+        "createFailed": "Could not add team member.",
+        "linkCopied": "Invite link copied",
+        "inviteEmailed": "We emailed {{name}} an invite to join.",
+        "inviteLinkReady": "Copy the invite link and share it (WhatsApp, SMS, or in person).",
+        "copyLink": "Copy link",
+        "shareLink": "Share link",
+        "publicTitle": "Title customers see (optional)",
+        "publicTitleHint": "Shown on your booking page instead of their role, e.g. Senior stylist.",
+        "takesAppointments": "Takes appointments",
+        "takesAppointmentsHint": "Turn off for managers who only run the calendar, not the chair.",
+        "branches": "Branches",
+        "servicesOffered": "Services they perform",
+        "selectAllServices": "All services",
+        "selectBranch": "Select at least one branch",
+        "bookableSummary": "Customers can book them for {{count}} service(s), starting {{from}}.",
+        "bookableNow": "immediately",
+        "notOnPublicBooking": "They will not appear for online booking (front desk role).",
+        "hintNoCommission": "Commission was left off — you can turn it on in their profile.",
+        "hintNoTimeClock": "Time clock is off — enable it in their profile if they should clock in.",
+        "hintNoServices": "No services were linked — assign services before customers can book them online.",
+        "hintNoHoursCopied": "Working hours were not copied — set their weekly schedule in the team profile (salon hours still apply until then).",
+        "name": "Full name",
+        "email": "Email",
+        "mobile": "Mobile",
+        "job": "Job",
+        "job_stylist": "Stylist",
+        "job_senior": "Senior stylist",
+        "job_front_desk": "Front desk",
+        "job_manager": "Manager",
+        "frontDeskHint": "Front desk can manage the calendar but will not show up for customers to book.",
+        "commissionOptional": "Commission % (optional)",
+        "servicesDefaultAll": "All bookable services are selected by default.",
+        "hoursSource": "Working hours",
+        "hoursSalon": "Same as the salon",
+        "hoursCopyFrom": "Copy {{name}}",
+        "startDateOptional": "First day customers can book online (optional)",
+        "timeClock": "Use time clock",
+        "back": "Back",
+        "next": "Next",
+        "cancel": "Cancel",
+        "done": "Done",
+        "saving": "Adding…",
+        "addAndInvite": "Add and send invite"
+      },
+      "teamReassign": {
+        "title": "Upcoming bookings",
+        "body": "{{name}} has upcoming bookings. Who should take them?",
+        "firstAvailable": "First available stylist",
+        "confirm": "Reassign and continue",
+        "cancel": "Cancel"
+      },
       "sidebar": {
         "sections": {
           "main": "Main",
@@ -32439,7 +32614,9 @@
         "storeCredit": "Store credit",
         "cash": "Cash / in person",
         "reason": "Reason",
-        "reasonPlaceholder": "Optional reason for audit trail"
+        "reasonPlaceholder": "Optional reason for audit trail",
+        "pendingCashBlockTitle": "Cash refund already pending",
+        "pendingCashBlockBody": "This booking already has {{amount}} awaiting customer confirmation. Hand that amount back in person — do not issue another cash refund until it is confirmed or closed."
       },
       "appointmentViewSheet": {
         "bookingFallback": "Booking",
@@ -32520,6 +32697,9 @@
         "method": "Method",
         "cash": "Cash",
         "storeCredit": "Store credit",
+        "refundOnlineOnly": "This order was paid online. Store credit returns the card charge and any wallet or gift-card portion to the customer.",
+        "refundNoWallet": "This order was paid online and has no customer wallet, so it cannot be refunded in person.",
+        "nothingLeftToCollect": "Wallet or a gift card already covers this order. Nothing is left to collect in person.",
         "reason": "Reason",
         "processRefund": "Process refund",
         "shippingDetails": "Shipping details",
@@ -32531,6 +32711,8 @@
         "bookingInProgress": "Booking…",
         "bookingSuccess": "Courier booked",
         "bookingFailed": "Could not book courier",
+        "courierChargedAmount": "Bob Go charged (salon)",
+        "courierChargedWeight": "Charged weight (kg)",
         "printLabel": "Print label",
         "trackingNumber": "Tracking number",
         "carrier": "Carrier",

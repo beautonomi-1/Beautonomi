@@ -470,18 +470,70 @@ async function handlePost(request: NextRequest) {
         const { dbStaffId: holdStaffIdForDb, syntheticToken: syntheticStaffPublicId } =
           normalizePublicStaffIdForDatabase(rawStaffKey ?? undefined);
 
-        if (location_type === "at_salon" && location_id && holdStaffIdForDb) {
-          const { isStaffInLocationScope, resolveStaffLocationScope } = await import(
-            "@/lib/provider/staff-location-scope"
+        if (holdStaffIdForDb) {
+          const {
+            isStaffInLocationScope,
+            resolveStaffLocationScope,
+            isStaffPubliclyBookableForProvider,
+          } = await import("@/lib/provider/staff-location-scope");
+          const { normalizeProviderTimezone } = await import("@/lib/availability/time-utils");
+          const { DEFAULT_BOOKING_DISPLAY_TIMEZONE } = await import(
+            "@/lib/bookings/display-invariants"
           );
-          const scope = await resolveStaffLocationScope(supabase, provider_id, location_id);
-          if (!isStaffInLocationScope(holdStaffIdForDb, scope)) {
+          const { data: providerTzRow } = await supabase
+            .from("providers")
+            .select("timezone")
+            .eq("id", provider_id)
+            .maybeSingle();
+          const providerTz =
+            normalizeProviderTimezone(
+              (providerTzRow as { timezone?: string | null } | null)?.timezone ?? null,
+            ) ?? DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+          const bookable = await isStaffPubliclyBookableForProvider(
+            supabase,
+            holdStaffIdForDb,
+            provider_id,
+            providerTz,
+          );
+          if (!bookable) {
             return handleApiError(
-              new Error("Staff not available at location"),
-              "Selected staff is not available at this location.",
-              "STAFF_LOCATION_MISMATCH",
-              400
+              new Error("Staff not available for provider"),
+              "Selected staff is not available for this provider.",
+              "STAFF_INVALID",
+              400,
             );
+          }
+          if (location_type === "at_salon" && location_id) {
+            const scope = await resolveStaffLocationScope(supabase, provider_id, location_id);
+            if (!isStaffInLocationScope(holdStaffIdForDb, scope)) {
+              return handleApiError(
+                new Error("Staff not available at location"),
+                "Selected staff is not available at this location.",
+                "STAFF_LOCATION_MISMATCH",
+                400
+              );
+            }
+          }
+          const offeringIdsForStaff = services
+            .map((s) => s.offering_id)
+            .filter((oid): oid is string => Boolean(oid));
+          if (offeringIdsForStaff.length > 0) {
+            const { staffIdsEligibleForOfferings } = await import(
+              "@/lib/provider/staff-ids-eligible-for-offerings"
+            );
+            const eligible = await staffIdsEligibleForOfferings(
+              supabase,
+              [holdStaffIdForDb],
+              offeringIdsForStaff,
+            );
+            if (!eligible.includes(holdStaffIdForDb)) {
+              return handleApiError(
+                new Error("Staff cannot perform selected services"),
+                "Selected staff is not available for one or more services in this booking.",
+                "STAFF_OFFERING_MISMATCH",
+                400,
+              );
+            }
           }
         }
 

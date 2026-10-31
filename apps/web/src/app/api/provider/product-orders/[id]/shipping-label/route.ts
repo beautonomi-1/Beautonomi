@@ -8,7 +8,11 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
-import { getShippingProvider, type ShippingProviderId } from "@beautonomi/shipping";
+import {
+  BobGoLabelNotReadyError,
+  getShippingProvider,
+  type ShippingProviderId,
+} from "@beautonomi/shipping";
 import { isKnownShippingProviderId } from "@/lib/orders/shipping";
 import { resolveProviderOwnedCredentials } from "@/lib/orders/shipping-runtime";
 
@@ -28,20 +32,30 @@ export async function GET(
     if (!providerId) return notFoundResponse("Provider not found");
 
     const { data: order } = await (supabase.from("product_orders") as any)
-      .select("id, provider_id, carrier, courier_shipment_id, tracking_number, courier_label_url, tracking_url")
+      .select(
+        "id, provider_id, carrier, courier_shipment_id, tracking_number, courier_label_url, tracking_url, shipping_booking_status",
+      )
       .eq("id", id)
       .eq("provider_id", providerId)
       .maybeSingle();
     if (!order) return notFoundResponse("Order not found");
 
-    const storedUrl =
-      (order as { courier_label_url?: string | null }).courier_label_url ??
-      (order as { tracking_url?: string | null }).tracking_url;
-    if (storedUrl) {
-      return Response.redirect(storedUrl, 302);
+    const carrier = (order as { carrier?: string | null }).carrier;
+    const isBobGo = carrier === "bob-go";
+    const bookingStatus = (order as { shipping_booking_status?: string | null }).shipping_booking_status;
+
+    if (isBobGo && bookingStatus === "submitting") {
+      return errorResponse("Waybill is not ready yet. Bob Go is still confirming the shipment.", "LABEL_NOT_READY", 409);
     }
 
-    const carrier = (order as { carrier?: string | null }).carrier;
+    if (!isBobGo) {
+      const storedUrl =
+        (order as { courier_label_url?: string | null }).courier_label_url ??
+        (order as { tracking_url?: string | null }).tracking_url;
+      if (storedUrl) {
+        return Response.redirect(storedUrl, 302);
+      }
+    }
     if (!isKnownShippingProviderId(carrier)) {
       return errorResponse("No label available for manual shipments", "NO_LABEL", 404);
     }
@@ -68,6 +82,9 @@ export async function GET(
         });
       }
     } catch (err) {
+      if (err instanceof BobGoLabelNotReadyError) {
+        return errorResponse(err.message, "LABEL_NOT_READY", 409);
+      }
       return errorResponse(
         err instanceof Error ? err.message : "Failed to fetch label",
         "LABEL_ERROR",

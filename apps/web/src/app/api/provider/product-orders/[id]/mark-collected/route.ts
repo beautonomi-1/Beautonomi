@@ -11,6 +11,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
+import { computeInPersonCollectibleAmount } from "@/lib/orders/product-order-tender";
 
 const markCollectedSchema = z.object({
   payment_method: z.enum(["cash", "card_on_delivery", "yoco", "paycloud", "paystack_terminal"]),
@@ -36,7 +37,7 @@ export async function POST(
 
     const { data: order, error: orderError } = await (supabase.from("product_orders") as any)
       .select(
-        "id, provider_id, order_number, total_amount, payment_status, payment_method, status, order_source",
+        "id, provider_id, order_number, total_amount, wallet_amount, gift_card_amount, payment_status, payment_method, status, order_source",
       )
       .eq("id", id)
       .eq("provider_id", providerId)
@@ -85,11 +86,20 @@ export async function POST(
       idempotencyKey ||
       `product_collect_${id}_${body.payment_method}`;
 
+    const amountMajor = computeInPersonCollectibleAmount(order);
+    if (!(amountMajor > 0)) {
+      return errorResponse(
+        "Nothing is left to collect in person. Wallet or a gift card already covers this order.",
+        "NOTHING_TO_COLLECT",
+        400,
+      );
+    }
+
     const result = await recordProductOrderPayment({
       supabase: getSupabaseAdmin() as never,
       productOrderId: id,
       reference,
-      amountMajor: Number(order.total_amount || 0),
+      amountMajor,
       feesMajor: 0,
       source: "provider_mark_collected",
       provider: body.payment_method,

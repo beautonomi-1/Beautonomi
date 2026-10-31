@@ -1511,7 +1511,13 @@ export default function BookScreen() {
   useEffect(() => {
     if (!slug) return;
     const locId = locationType === "at_salon" ? selectedLocation?.id : undefined;
-    const qs = locId ? `?location_id=${encodeURIComponent(locId)}` : "";
+    const offeringIds = [
+      ...new Set(selectedServices.map((s) => s.offeringId).filter(Boolean)),
+    ];
+    const params = new URLSearchParams();
+    if (locId) params.set("location_id", locId);
+    if (offeringIds.length > 0) params.set("offering_ids", offeringIds.join(","));
+    const qs = params.toString() ? `?${params.toString()}` : "";
     let cancelled = false;
     api
       .get<StaffMember[] | { data: StaffMember[] }>(
@@ -1538,7 +1544,7 @@ export default function BookScreen() {
     return () => {
       cancelled = true;
     };
-  }, [slug, locationType, selectedLocation?.id, anyStaffMember]);
+  }, [slug, locationType, selectedLocation?.id, anyStaffMember, selectedServices]);
 
   const bookingStartedProviderId = provider?.id;
   const bookingStartedBusinessName = provider?.business_name ?? "";

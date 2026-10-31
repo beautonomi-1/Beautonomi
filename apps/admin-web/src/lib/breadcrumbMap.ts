@@ -153,7 +153,7 @@ export const BREADCRUMB_MAP: Record<string, BreadcrumbRoute> = {
   "email-templates": { label: "Email Templates", parentHref: null },
   "whatsapp-content-templates": { label: "WhatsApp Content Templates", parentHref: null },
   "whatsapp/templates": { label: "WhatsApp Session Templates", parentHref: null },
-  "whatsapp/sessions": { label: "WhatsApp Sessions", parentHref: null },
+  "whatsapp/sessions": { label: "WhatsApp Sessions", parentHref: "/admin/integrations-hub" },
   "whatsapp/batches/[id]": { label: "Batch", parentHref: "/admin/whatsapp/sessions" },
 
   // Content
@@ -171,30 +171,36 @@ export const BREADCRUMB_MAP: Record<string, BreadcrumbRoute> = {
   "explore/[id]": { label: "Post", parentHref: "/admin/explore" },
 
   // Integrations
-  webhooks: { label: "Webhooks", parentHref: null },
+  "integrations-hub": { label: "Integrations", parentHref: null },
+  webhooks: { label: "Webhooks", parentHref: "/admin/integrations-hub" },
   "webhooks/inbound": { label: "Inbound webhooks", parentHref: "/admin/webhooks" },
-  "api-keys": { label: "API Keys", parentHref: null },
-  "integrations/paystack": { label: "Paystack", parentHref: null },
-  "integrations/resend": { label: "Resend", parentHref: null },
-  "integrations/slack": { label: "Slack", parentHref: null },
-  "integrations/calls": { label: "Calls", parentHref: null },
-  "integrations/amplitude": { label: "Amplitude", parentHref: null },
-  "integrations/flutterwave": { label: "Flutterwave", parentHref: null },
-  "integrations/singular": { label: "Singular", parentHref: null },
-  "integrations/onesignal": { label: "OneSignal", parentHref: null },
-  mapbox: { label: "Mapbox", parentHref: null },
-  "iso-codes": { label: "ISO Codes", parentHref: null },
-  "integrations/yoco": { label: "Yoco Web POS", parentHref: null },
-  "integrations/paycloud": { label: "PayCloud Card Machines", parentHref: null },
+  "api-keys": { label: "API Keys", parentHref: "/admin/integrations-hub" },
+  "integrations/paystack": { label: "Paystack", parentHref: "/admin/integrations-hub" },
+  "integrations/resend": { label: "Resend", parentHref: "/admin/integrations-hub" },
+  "integrations/zoho-mail": { label: "Zoho Mail", parentHref: "/admin/integrations-hub" },
+  "integrations/rendobar": { label: "Rendobar", parentHref: "/admin/integrations-hub" },
+  "integrations/slack": { label: "Slack", parentHref: "/admin/integrations-hub" },
+  "integrations/calls": { label: "Calls", parentHref: "/admin/integrations-hub" },
+  "integrations/amplitude": { label: "Amplitude", parentHref: "/admin/integrations-hub" },
+  "integrations/flutterwave": { label: "Flutterwave", parentHref: "/admin/integrations-hub" },
+  "integrations/singular": { label: "Singular", parentHref: "/admin/integrations-hub" },
+  "integrations/onesignal": { label: "OneSignal", parentHref: "/admin/integrations-hub" },
+  mapbox: { label: "Mapbox", parentHref: "/admin/integrations-hub" },
+  "iso-codes": { label: "ISO Codes", parentHref: "/admin/integrations-hub" },
+  "integrations/yoco": { label: "Yoco Web POS", parentHref: "/admin/integrations-hub" },
+  "integrations/paycloud": { label: "PayCloud Card Machines", parentHref: "/admin/integrations-hub" },
   "integrations/paycloud-operations": { label: "PayCloud Operations", parentHref: "/admin/integrations/paycloud" },
-  "integrations/apple": { label: "Apple App Store Connect", parentHref: null },
-  "integrations/shipping": { label: "Courier shipping", parentHref: null },
-  "control-plane/integrations": { label: "Integrations Hub", parentHref: "/admin/control-plane/overview" },
+  "integrations/apple": { label: "Apple App Store Connect", parentHref: "/admin/integrations-hub" },
+  "integrations/shipping": { label: "Courier shipping", parentHref: "/admin/integrations-hub" },
+  "control-plane/integrations": { label: "Platform integrations", parentHref: "/admin/control-plane/overview" },
   "control-plane/integrations/didit": { label: "Didit (KYC)", parentHref: "/admin/control-plane/integrations" },
   "control-plane/integrations/gemini": { label: "AI Platform", parentHref: "/admin/control-plane/integrations" },
   "control-plane/integrations/ai": { label: "AI Platform", parentHref: "/admin/control-plane/integrations" },
   "control-plane/integrations/aura": { label: "Aura (Trust & Safety)", parentHref: "/admin/control-plane/integrations" },
   "control-plane/integrations/wasender": { label: "Wasender", parentHref: "/admin/control-plane/integrations" },
+  "control-plane/integrations/stripe": { label: "Stripe", parentHref: "/admin/control-plane/integrations" },
+  "control-plane/region-online-gateway": { label: "Region online gateway", parentHref: "/admin/control-plane/overview" },
+  "control-plane/country-launch-checklist": { label: "Country launch checklist", parentHref: "/admin/control-plane/overview" },
 
   // Platform & Access
   settings: { label: "Settings", parentHref: null },
@@ -238,6 +244,9 @@ export const BREADCRUMB_MAP: Record<string, BreadcrumbRoute> = {
 const DYNAMIC_SEGMENT_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|^[a-zA-Z0-9_-]{20,}$/i;
 
+/** Long static route segments that must not be treated as opaque entity ids. */
+const STATIC_BREADCRUMB_SEGMENTS = new Set(["region-online-gateway", "country-launch-checklist"]);
+
 export function normalisePath(path: string): string {
   return (
     path
@@ -250,7 +259,9 @@ export function normalisePath(path: string): string {
       .replace(/\/$/, "")
       .split("/")
       .filter(Boolean)
-      .map((seg) => (DYNAMIC_SEGMENT_RE.test(seg) ? "[id]" : seg))
+      .map((seg) =>
+        STATIC_BREADCRUMB_SEGMENTS.has(seg) ? seg : DYNAMIC_SEGMENT_RE.test(seg) ? "[id]" : seg,
+      )
       .join("/")
   );
 }

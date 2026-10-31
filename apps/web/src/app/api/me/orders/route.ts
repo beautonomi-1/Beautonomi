@@ -33,6 +33,7 @@ import {
   computeProductOrderDeliveryQuote,
   validateCollectionLocationForProvider,
 } from "@/lib/orders/product-order-delivery-quote";
+import { stripCustomerProductOrderList } from "@/lib/orders/customer-order-response";
 import { percentOf, sumMoney } from "@beautonomi/utils";
 import { applyProductOrderPromotion } from "@/lib/ecommerce/product-order-promotion";
 import {
@@ -135,7 +136,7 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     return successResponse({
-      orders: orders ?? [],
+      orders: stripCustomerProductOrderList((orders ?? []) as Record<string, unknown>[]),
       pagination: {
         page,
         limit,

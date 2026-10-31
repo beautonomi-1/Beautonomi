@@ -8,6 +8,7 @@ import {
   phoneSearchNeedlesUnscoped,
   phoneMatchesQuery,
   clientContactMatches,
+  bookingListMatchesQuery,
 } from "../index";
 
 describe("normalizePhoneToE164", () => {
@@ -138,6 +139,57 @@ describe("phoneMatchesQuery", () => {
 
   it("matches spaced stored value", () => {
     expect(phoneMatchesQuery("+27 82 123 4567", "0821234567")).toBe(true);
+  });
+});
+
+describe("bookingListMatchesQuery", () => {
+  it("matches empty query to everything", () => {
+    expect(
+      bookingListMatchesQuery("", {
+        customerName: "Jane",
+        bookingNumber: "BTN-1",
+        serviceText: "Cut",
+        email: "j@x.co",
+        phones: ["+27821234567"],
+      }),
+    ).toBe(true);
+  });
+
+  it("matches name, booking number, service, and email", () => {
+    const base = {
+      customerName: "Thandi M",
+      bookingNumber: "BTN-99",
+      serviceText: "braids trim",
+      email: "thandi@example.com",
+      phones: [] as string[],
+    };
+    expect(bookingListMatchesQuery("thandi", base)).toBe(true);
+    expect(bookingListMatchesQuery("btn-99", base)).toBe(true);
+    expect(bookingListMatchesQuery("braids", base)).toBe(true);
+    expect(bookingListMatchesQuery("thandi@", base)).toBe(true);
+  });
+
+  it("matches national 0 query against E.164 on list row", () => {
+    expect(
+      bookingListMatchesQuery("0821234567", {
+        customerName: "Guest",
+        bookingNumber: "BTN-1",
+        serviceText: "Cut",
+        email: null,
+        phones: ["+27821234567"],
+      }),
+    ).toBe(true);
+  });
+
+  it("matches any phone in the phones array", () => {
+    expect(
+      bookingListMatchesQuery("0831112222", {
+        customerName: "Group",
+        bookingNumber: "GB-1",
+        serviceText: "",
+        phones: [null, "+27831112222"],
+      }),
+    ).toBe(true);
   });
 });
 

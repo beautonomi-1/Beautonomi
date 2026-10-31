@@ -103,6 +103,9 @@ export function buildRefundBriefing(input: {
   if (method === "cash" && input.requestedAmount > input.inPersonCap) {
     flags.push(`cash_refund_exceeds_in_person_cap (${input.inPersonCap.toFixed(2)})`);
   }
+  if (method === "cash") {
+    flags.push("wallet_credit_is_substitute_not_default_for_cash");
+  }
   if (input.alreadyRefunded > 0) {
     flags.push(`booking_already_partially_refunded (${input.alreadyRefunded.toFixed(2)})`);
   }

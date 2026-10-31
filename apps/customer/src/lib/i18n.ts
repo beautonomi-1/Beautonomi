@@ -1,9 +1,11 @@
 import {
   buildFormatLocale,
+  coerceMobileUiLanguage,
   ensureLocaleResources,
   getLanguageDirection,
   i18n,
   initI18n,
+  isReviewedUiLanguage,
   LANGUAGE_STORAGE_KEY,
   normalizeLanguageCode,
   setExtraLocaleLoader,
@@ -15,6 +17,8 @@ import * as Updates from "expo-updates";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { DevSettings, I18nManager } from "react-native";
 import { getTenantRegionCode } from "@/lib/config-bundle";
+
+const BOOT_LOCALE = "en";
 
 function syncMoneyLocale(code: string) {
   setDefaultMoneyLocale(buildFormatLocale(code, getTenantRegionCode()));
@@ -36,40 +40,55 @@ function syncRtl(code: string): boolean {
   return changed;
 }
 
-// Device locale bootstraps i18next synchronously so `t()` works immediately.
-// RTL is deliberately NOT synced here: the persisted preference wins, and
-// syncing twice (device → saved) would toggle native RTL on and then off.
+function applyMobileLanguage(code: string): void {
+  const effective = coerceMobileUiLanguage(code);
+  if (effective === BOOT_LOCALE) {
+    syncMoneyLocale(effective);
+    syncRtl(effective);
+    return;
+  }
+  void ensureLocaleResources(i18n, effective).then(() => {
+    void i18n.changeLanguage(effective);
+    syncMoneyLocale(effective);
+    syncRtl(effective);
+  });
+}
+
 setExtraLocaleLoader(loadNativeLocaleMessages);
 
-const deviceLocale = normalizeLanguageCode(Localization.getLocales()[0]?.languageCode || "en");
-initI18n(deviceLocale);
-void ensureLocaleResources(i18n, deviceLocale).then(() => {
-  if (normalizeLanguageCode(i18n.language) !== deviceLocale) {
-    void i18n.changeLanguage(deviceLocale);
-  }
-});
-syncMoneyLocale(deviceLocale);
+initI18n(BOOT_LOCALE);
+syncMoneyLocale(BOOT_LOCALE);
 
 AsyncStorage.getItem(LANGUAGE_STORAGE_KEY)
-  .then((saved) => {
-    const effective = saved ? normalizeLanguageCode(saved) : deviceLocale;
-    if (effective !== deviceLocale) {
-      return import("@beautonomi/i18n").then(({ i18n }) => {
-        void ensureLocaleResources(i18n, effective).then(() => i18n.changeLanguage(effective));
-        syncMoneyLocale(effective);
-        syncRtl(effective);
-      });
+  .then(async (saved) => {
+    const deviceRaw = Localization.getLocales()[0]?.languageCode || "en";
+    const deviceLocale = normalizeLanguageCode(deviceRaw);
+
+    if (saved?.trim()) {
+      const savedNorm = normalizeLanguageCode(saved);
+      const effective = coerceMobileUiLanguage(savedNorm);
+      if (!isReviewedUiLanguage(savedNorm)) {
+        await AsyncStorage.setItem(LANGUAGE_STORAGE_KEY, effective);
+      }
+      applyMobileLanguage(effective);
+      return;
     }
-    syncRtl(effective);
+
+    if (isReviewedUiLanguage(deviceLocale) && deviceLocale !== BOOT_LOCALE) {
+      applyMobileLanguage(deviceLocale);
+      return;
+    }
+
+    syncRtl(BOOT_LOCALE);
   })
   .catch(() => {
-    syncRtl(deviceLocale);
+    syncRtl(BOOT_LOCALE);
   });
 
 /** Re-derive the money locale once the tenant config bundle (region) is available. */
 export async function resyncLocaleFromBundle() {
   const { i18n } = await import("@beautonomi/i18n");
-  syncMoneyLocale(i18n.language || deviceLocale);
+  syncMoneyLocale(i18n.language || BOOT_LOCALE);
 }
 
 export interface ChangeLanguageResult {
@@ -80,7 +99,7 @@ export interface ChangeLanguageResult {
 
 export async function changeLanguage(code: string): Promise<ChangeLanguageResult> {
   const { i18n } = await import("@beautonomi/i18n");
-  const normalized = normalizeLanguageCode(code);
+  const normalized = coerceMobileUiLanguage(normalizeLanguageCode(code));
   await ensureLocaleResources(i18n, normalized);
   await i18n.changeLanguage(normalized);
   await AsyncStorage.setItem(LANGUAGE_STORAGE_KEY, normalized);
@@ -123,3 +142,5 @@ export async function reloadForDirectionChange(): Promise<void> {
     }
   }
 }
+
+export { isReviewedUiLanguage, coerceMobileUiLanguage, REVIEWED_UI_LANGUAGE_CODES } from "@beautonomi/i18n";

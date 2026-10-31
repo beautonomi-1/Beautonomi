@@ -13,6 +13,9 @@ const ALLOWED_UPDATE_FIELDS = [
   "is_active",
   "commission_percentage",
   "bio",
+  "public_title",
+  "is_service_provider",
+  "enable_in_online_booking",
 ] as const;
 
 /**
@@ -32,7 +35,7 @@ export async function GET(
 
     const { data: staff, error } = await supabase
       .from("provider_staff")
-      .select("id, provider_id, user_id, name, email, phone, role, avatar_url, bio, is_active, commission_percentage, created_at, updated_at, provider:providers(id, business_name, slug)")
+      .select("id, provider_id, user_id, name, email, phone, role, avatar_url, bio, is_active, commission_percentage, public_title, is_service_provider, enable_in_online_booking, created_at, updated_at, provider:providers(id, business_name, slug)")
       .eq("id", id)
       .single();
 

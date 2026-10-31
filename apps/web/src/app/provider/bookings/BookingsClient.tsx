@@ -86,6 +86,7 @@ import {
 import { usePermissions } from "@/hooks/usePermissions";
 import { useTranslation } from "@beautonomi/i18n";
 import { getDefaultMoneyLocale } from "@beautonomi/utils";
+import { bookingListMatchesQuery } from "@/lib/phone";
 
 type BookingStatus = "all" | "pending" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
 type DateRange = "today" | "week" | "month" | "all_time";
@@ -516,13 +517,22 @@ export function BookingsClient({
 
   // ─── Search & filter ───────────────────────────────────────────────────────
   const filteredBookings = useMemo(() => {
-    if (!deferredSearch) return bookings;
-    const q = deferredSearch.toLowerCase();
+    const q = deferredSearch.trim();
+    if (!q) return bookings;
     return bookings.filter((b) => {
-      const name = b.customer_name?.toLowerCase() || "";
-      const num = b.booking_number?.toLowerCase() || "";
-      const svcNames = (b.services || []).map((s: any) => (s.offering_name || "").toLowerCase()).join(" ");
-      return name.includes(q) || num.includes(q) || svcNames.includes(q);
+      const svcNames = (b.services || [])
+        .map((s: { offering_name?: string; service_name?: string; name?: string }) =>
+          (s.offering_name || s.service_name || s.name || "").trim(),
+        )
+        .filter(Boolean)
+        .join(" ");
+      return bookingListMatchesQuery(q, {
+        customerName: b.customer_name ?? b.customers?.full_name,
+        bookingNumber: b.booking_number,
+        serviceText: svcNames,
+        email: b.customers?.email,
+        phones: [b.customers?.phone, ...(b.participant_phones ?? [])],
+      });
     });
   }, [bookings, deferredSearch]);
 
@@ -553,6 +563,9 @@ export function BookingsClient({
       scheduled_at: b.scheduled_at,
       created_at: b.created_at,
       customer_name: b.customer_name,
+      customer_email: b.customers?.email ?? null,
+      customer_phone: b.customers?.phone ?? null,
+      participant_phones: b.participant_phones,
       total_amount: b.total_amount,
       payment_status: b.payment_status,
       customer_running_late_at: (b as { customer_running_late_at?: string | null })

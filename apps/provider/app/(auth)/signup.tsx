@@ -33,9 +33,13 @@ import { supabase } from "@/lib/supabase/client";
 import { logLoginSuccessBreadcrumb } from "@/lib/sentry";
 import { webPartnerEulaUrl, webPrivacyPolicyUrl } from "@/lib/legal-web";
 import { getSocialAuthConfig } from "@/lib/third-party-config";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { coerceMobileUiLanguage, normalizeLanguageCode } from "@beautonomi/i18n";
+import { ReviewedLanguageField } from "@/components/auth/ReviewedLanguageField";
 import {
   applyPendingSignupPreferences,
   persistProviderSignupSource,
+  PENDING_PREFERRED_LANGUAGE_KEY,
 } from "@/features/auth/pending-signup-preferences";
 import { writeSignupPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
 import { useTranslation } from "@beautonomi/i18n";
@@ -146,6 +150,7 @@ export default function SignupScreen() {
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [preferredLanguage, setPreferredLanguage] = useState("en");
   const [marketingConsent, setMarketingConsent] = useState(false);
   const { t } = useTranslation();
   const su = useCallback(
@@ -427,6 +432,8 @@ export default function SignupScreen() {
     setFormError(null);
     setLoading(true);
     try {
+      const lang = coerceMobileUiLanguage(normalizeLanguageCode(preferredLanguage));
+      await AsyncStorage.setItem(PENDING_PREFERRED_LANGUAGE_KEY, lang).catch(() => {});
       await persistProviderSignupSource();
       const { error } = await signInWithOAuth(provider);
       if (error) {
@@ -770,6 +777,7 @@ export default function SignupScreen() {
 
             {hasSocialAuth && (mode === "phone" ? !otpSent : true) ? (
               <>
+                <ReviewedLanguageField value={preferredLanguage} onChange={setPreferredLanguage} />
                 <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 20 }}>
                   <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
                   <Text style={{ marginHorizontal: 16, fontSize: 13, color: "#9CA3AF" }}>{su("orDivider")}</Text>

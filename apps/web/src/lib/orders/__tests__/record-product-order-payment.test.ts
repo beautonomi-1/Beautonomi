@@ -403,4 +403,51 @@ describe("recordProductOrderPayment", () => {
     expect(result).toEqual({ ok: false, duplicate: false, transitionedToPaid: false });
     expect(state.inserts.payment_transactions).toBeUndefined();
   });
+
+  it("ledgers Flutterwave product orders as platform-held payoutable earnings", async () => {
+    const { supabase, state } = mockSupabase({
+      product_orders: [orderRow],
+      payment_transactions: [],
+      finance_transactions: [],
+    });
+
+    const result = await recordProductOrderPayment({
+      supabase,
+      productOrderId: "order-1",
+      reference: "flw-ref",
+      amountMajor: 100,
+      feesMajor: 2,
+      source: "flutterwave_webhook",
+      provider: "flutterwave",
+    });
+
+    expect(result.ok).toBe(true);
+    const earnings = (state.inserts.finance_transactions?.[0] ?? []).find(
+      (row) => row.transaction_type === "provider_earnings",
+    );
+    expect(earnings?.net).toBe(90);
+  });
+
+  it("ledgers only the wallet slice when the rest was collected in cash", async () => {
+    const { supabase, state } = mockSupabase({
+      product_orders: [{ ...orderRow, platform_fee: 0, wallet_amount: 40, total_amount: 100 }],
+      payment_transactions: [],
+      finance_transactions: [],
+    });
+
+    const result = await recordProductOrderPayment({
+      supabase,
+      productOrderId: "order-1",
+      reference: "cash-split",
+      amountMajor: 60,
+      source: "provider_mark_collected",
+      provider: "cash",
+      platformHeld: false,
+    });
+
+    expect(result.ok).toBe(true);
+    const rows = state.inserts.finance_transactions?.[0] ?? [];
+    expect(rows.find((row) => row.transaction_type === "provider_earnings")?.net).toBe(40);
+    expect(rows.some((row) => row.transaction_type === "platform_fee")).toBe(false);
+  });
 });

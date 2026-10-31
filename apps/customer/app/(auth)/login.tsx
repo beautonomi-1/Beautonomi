@@ -8,7 +8,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@/providers/AuthProvider";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
-import { useTranslation } from "@beautonomi/i18n";
+import { coerceMobileUiLanguage, normalizeLanguageCode, useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { RADIUS_INPUT, RADIUS_BUTTON } from "@/constants/layout";
 import { BeautonomiWordmark } from "@/components/BeautonomiWordmark";
@@ -55,10 +55,13 @@ async function applyPendingSignupPreferences() {
   if (!pendingSource && !pendingLang) return;
   const payload: { signup_source?: string; preferred_language?: string } = {};
   if (pendingSource) payload.signup_source = pendingSource;
-  if (pendingLang) payload.preferred_language = pendingLang;
+  const coercedLang = pendingLang
+    ? coerceMobileUiLanguage(normalizeLanguageCode(pendingLang))
+    : null;
+  if (coercedLang) payload.preferred_language = coercedLang;
   try {
     await api.patch("/api/me/profile", payload);
-    if (pendingLang) await changeLanguage(pendingLang);
+    if (coercedLang) await changeLanguage(coercedLang);
     await Promise.all([
       pendingSource ? AsyncStorage.removeItem(PENDING_SIGNUP_SOURCE_KEY) : Promise.resolve(),
       pendingLang ? AsyncStorage.removeItem(PENDING_PREFERRED_LANGUAGE_KEY) : Promise.resolve(),

@@ -14,6 +14,7 @@ import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { resolveTeamSizeFromOnboardingDraft } from "@/lib/provider-ops/resolve-team-size-from-draft";
 import { consolidateLeadsOnSignup } from "@/lib/provider-ops/match-leads-on-signup";
 import { applyProviderSignupCaseHooks } from "@/lib/provider-ops/ops-case";
+import { applyOwnerBookableSetupIfUnset } from "@/lib/provider/apply-owner-bookable-setup";
 
 export async function POST(
   request: NextRequest,
@@ -223,6 +224,29 @@ export async function POST(
     } catch (staffErr) {
       console.error("Error creating owner staff (admin submit):", staffErr);
       // Non-fatal — staff can be created through team management UI
+    }
+
+    try {
+      const { data: primaryLoc } = await supabase
+        .from("provider_locations")
+        .select("id")
+        .eq("provider_id", provider.id)
+        .eq("is_primary", true)
+        .maybeSingle();
+      let primaryLocationId = (primaryLoc as { id?: string } | null)?.id ?? null;
+      if (!primaryLocationId) {
+        const { data: anyLoc } = await supabase
+          .from("provider_locations")
+          .select("id")
+          .eq("provider_id", provider.id)
+          .eq("is_active", true)
+          .limit(1)
+          .maybeSingle();
+        primaryLocationId = (anyLoc as { id?: string } | null)?.id ?? null;
+      }
+      await applyOwnerBookableSetupIfUnset(supabase, provider.id, userId, primaryLocationId);
+    } catch (bookableErr) {
+      console.error("applyOwnerBookableSetupIfUnset (admin submit):", bookableErr);
     }
 
     const { error: trackErr } = await supabase

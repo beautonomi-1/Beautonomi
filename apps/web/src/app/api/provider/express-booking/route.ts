@@ -7,6 +7,7 @@ import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy
 import { buildExpressBookingEmbedUrl, buildExpressBookingIframeSnippet } from "@beautonomi/utils";
 import { resolvePublicBookingOrigin } from "@/lib/booking/resolve-public-booking-origin";
 import { sanitizeExpressPrefill } from "@/lib/express-booking/prefill";
+import { validateExpressLinkStaffIds } from "@/lib/express-booking/validate-link-staff-ids";
 import { z } from "zod";
 
 const createExpressLinkSchema = z.object({
@@ -153,6 +154,24 @@ export async function POST(request: NextRequest) {
             .eq("slug", validatedRow.slug)
             .eq("is_active", true)
             .limit(1);
+
+
+    if (validatedRow.staff_ids?.length) {
+      const { data: providerRow } = await supabase
+        .from("providers")
+        .select("timezone")
+        .eq("id", providerId)
+        .maybeSingle();
+      const staffErr = await validateExpressLinkStaffIds(
+        supabase,
+        providerId,
+        validatedRow.staff_ids,
+        (providerRow as { timezone?: string | null } | null)?.timezone,
+      );
+      if (staffErr) {
+        return errorResponse(staffErr, "INVALID_STAFF", 400);
+      }
+    }
 
     if (existingLinks?.length) {
       return errorResponse(

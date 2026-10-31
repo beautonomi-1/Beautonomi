@@ -54,7 +54,7 @@ export async function GET(
     const { data, error } = await supabase.from("product_return_requests")
       .select(
         `*,
-        order:product_orders(order_number, total_amount, fulfillment_type, items:product_order_items(*)),
+        order:product_orders(order_number, total_amount, payment_method, fulfillment_type, items:product_order_items(*)),
         customer:users!product_return_requests_customer_id_fkey(id, full_name, email, phone, avatar_url)`,
       )
       .eq("id", id)

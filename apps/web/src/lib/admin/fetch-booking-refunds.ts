@@ -16,7 +16,7 @@ export async function fetchBookingRefundsForBookingIds(
     const { data, error } = await supabase
       .from("booking_refunds")
       .select(
-        "id, booking_id, amount, reason, refund_method, status, notes, created_at, created_by",
+        "id, booking_id, amount, reason, refund_method, status, notes, created_at, created_by, customer_disputed_at, confirmation_deadline_at, customer_confirmation_required",
       )
       .in("booking_id", chunk)
       .order("created_at", { ascending: false });

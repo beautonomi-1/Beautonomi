@@ -66,6 +66,7 @@ import { useBusinessToday } from "@/hooks/useBusinessToday";
 import { anyEligibleForRunningBehindNotify } from "@beautonomi/provider-booking";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { useTranslation } from "@beautonomi/i18n";
+import { bookingListMatchesQuery } from "@/lib/phone";
 import {
   appendBookingsQueryParts,
   BOOKINGS_TO_REVIEW_STATUS,
@@ -127,6 +128,19 @@ interface Booking {
   custom_offer?: any;
   customers?: BookingCustomer | null;
   services?: BookingService[];
+  /** Non-primary participant phones on merged group rows (list API). */
+  participant_phones?: (string | null)[];
+}
+
+function providerBookingMatchesSearch(b: Booking, query: string): boolean {
+  const service = b.services?.[0]?.name ?? b.services?.[0]?.offering_name ?? "";
+  return bookingListMatchesQuery(query, {
+    customerName: b.customers?.full_name,
+    bookingNumber: b.booking_number,
+    serviceText: service,
+    email: b.customers?.email,
+    phones: [b.customers?.phone, ...(b.participant_phones ?? [])],
+  });
 }
 
 interface TimeBlockRow {
@@ -184,7 +198,7 @@ interface CloseOutBookingApiRow {
   status: string;
   location_type?: string | null;
   suggested_close_out_action?: string | null;
-  customer?: { full_name?: string | null } | null;
+  customer?: { full_name?: string | null; phone?: string | null } | null;
   booking_services?: Array<{ offerings?: { title?: string } | null }> | null;
 }
 
@@ -704,7 +718,7 @@ export default function BookingsListScreen() {
             id: "",
             full_name: row.customer.full_name ?? null,
             email: null,
-            phone: null,
+            phone: row.customer.phone ?? null,
           }
         : null,
       services: (row.booking_services ?? []).map((service, index) => ({
@@ -962,39 +976,24 @@ export default function BookingsListScreen() {
 
   const overviewFiltered = useMemo(() => {
     const allBookings: Booking[] = overviewBookingsMerged;
-    const q = search.trim().toLowerCase();
+    const q = search.trim();
     if (!q) return allBookings;
-    return allBookings.filter((b) => {
-      const name = (b.customers?.full_name ?? "").toLowerCase();
-      const num = (b.booking_number ?? "").toLowerCase();
-      const service = (b.services?.[0]?.name ?? b.services?.[0]?.offering_name ?? "").toLowerCase();
-      return name.includes(q) || num.includes(q) || service.includes(q);
-    });
+    return allBookings.filter((b) => providerBookingMatchesSearch(b, q));
   }, [overviewBookingsMerged, search]);
 
   const daySearchFiltered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = search.trim();
     if (!q) return stripBookingsMerged;
-    return stripBookingsMerged.filter((b) => {
-      const name = (b.customers?.full_name ?? "").toLowerCase();
-      const num = (b.booking_number ?? "").toLowerCase();
-      const service = (b.services?.[0]?.name ?? b.services?.[0]?.offering_name ?? "").toLowerCase();
-      return name.includes(q) || num.includes(q) || service.includes(q);
-    });
+    return stripBookingsMerged.filter((b) => providerBookingMatchesSearch(b, q));
   }, [stripBookingsMerged, search]);
 
   const isCloseOutFilter = statusFilter === BOOKINGS_CLOSE_OUT_STATUS;
 
   const filtered = useMemo(() => {
     if (isCloseOutFilter) {
-      const q = search.trim().toLowerCase();
+      const q = search.trim();
       if (!q) return closeOutBookingsAsList;
-      return closeOutBookingsAsList.filter((b) => {
-        const name = (b.customers?.full_name ?? "").toLowerCase();
-        const num = (b.booking_number ?? "").toLowerCase();
-        const service = (b.services?.[0]?.name ?? b.services?.[0]?.offering_name ?? "").toLowerCase();
-        return name.includes(q) || num.includes(q) || service.includes(q);
-      });
+      return closeOutBookingsAsList.filter((b) => providerBookingMatchesSearch(b, q));
     }
     return viewMode === "overview" ? overviewFiltered : daySearchFiltered;
   }, [

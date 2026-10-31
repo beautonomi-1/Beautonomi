@@ -16,6 +16,7 @@ import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import {
   applyProductOrderCancelRefundSideEffects,
+  releaseUnpaidProductOrderHolds,
   restockProductOrderLineItems,
 } from "@/lib/orders/product-order-lifecycle";
 import { splitProductOrderRefundTender } from "@/lib/ecommerce/product-order-refund-tender";
@@ -248,6 +249,7 @@ export async function PATCH(
     const statusChanged = parsed.status != null && parsed.status !== orderRow.status;
 
     let onlineRefundedAmount = 0;
+    let walletCreditIssued = 0;
     let walletFailedAfterTender = false;
     const refundAmount = Number(orderRow.total_amount ?? 0);
     if (
@@ -279,6 +281,9 @@ export async function PATCH(
           p_tenant_id: orderRow.tenant_id ?? null,
           p_idempotency_key: `product_order_refund:${id}`,
         });
+        if (!walletError) {
+          walletCreditIssued = tender.walletCreditAmount;
+        }
         if (walletError) {
           console.error(`[admin product-order refund] wallet credit failed for ${id}:`, walletError);
           if (tender.tenderMoved) {
@@ -324,9 +329,21 @@ export async function PATCH(
             parsed.admin_notes?.trim() ||
             "Cancelled by admin",
           onlineRefundedAmount,
+          walletCreditIssued,
         },
       );
       cancelRefundWalletFailed = sideEffects.walletCreditFailed;
+    } else if (
+      enteringTerminal &&
+      parsed.status === "cancelled" &&
+      orderRow.payment_status !== "paid"
+    ) {
+      const released = await releaseUnpaidProductOrderHolds(
+        getSupabaseAdmin(),
+        order,
+        `Wallet refund (order cancelled before payment) ${orderRow.order_number || id.slice(0, 8)}`,
+      );
+      cancelRefundWalletFailed = released.failed;
     }
 
     if (cancelRefundWalletFailed) {

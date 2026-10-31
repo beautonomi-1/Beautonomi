@@ -3749,7 +3749,7 @@ function ReviewRow({ icon, iconBg, iconColor, label, value, ok, onPress }: Revie
 
 function Step13Review() {
   const ow = useOw();
-  const { formData, editFromReview } = useOnboardingWizard();
+  const { formData, editFromReview, updateFormData } = useOnboardingWizard();
   const a = formData.address;
   const hasRequiredPhotos = !!(formData.thumbnail_url && formData.avatar_url);
   const catCount = (formData.global_category_ids || []).length;
@@ -3943,6 +3943,77 @@ function Step13Review() {
           onPress={() => editFromReview(8)}
         />
       </View>
+
+      {formData.team_size !== "freelancer" ? (
+        <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4 gap-3")}>
+          <Text style={twStyle("text-xs font-bold uppercase tracking-wide text-gray-400")}>
+            {ow("review.ownerGoLiveTitle")}
+          </Text>
+          <View style={twStyle("flex-row items-center justify-between gap-3")}>
+            <Text style={twStyle("flex-1 text-sm text-gray-800")}>{ow("review.ownerTakesAppointments")}</Text>
+            <Switch
+              value={formData.owner_takes_appointments !== false}
+              onValueChange={(v) => updateFormData({ owner_takes_appointments: v })}
+            />
+          </View>
+          <TextInput
+            value={formData.owner_public_title ?? ""}
+            onChangeText={(t) => updateFormData({ owner_public_title: t })}
+            placeholder={ow("review.ownerPublicTitle")}
+            style={twStyle("rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900")}
+          />
+          {(formData.services || []).length > 0 ? (
+            <View style={twStyle("gap-2")}>
+              <Text style={twStyle("text-sm font-medium text-gray-800")}>
+                {ow("review.ownerServicesLabel")}
+              </Text>
+              {(formData.services || []).map((svc, idx) => {
+                const all = (formData.services || []).map((_, i) => i);
+                const selected =
+                  !formData.owner_service_indexes?.length ||
+                  formData.owner_service_indexes.includes(idx);
+                return (
+                  <TouchableOpacity
+                    key={`${idx}-${svc.title ?? "svc"}`}
+                    style={twStyle("flex-row items-center gap-2")}
+                    onPress={() => {
+                      const current = formData.owner_service_indexes?.length
+                        ? [...formData.owner_service_indexes]
+                        : all;
+                      let next =
+                        selected && formData.owner_service_indexes?.length
+                          ? current.filter((i) => i !== idx)
+                          : [...new Set([...current, idx])];
+                      if (next.length === all.length) next = [];
+                      updateFormData({ owner_service_indexes: next });
+                    }}
+                  >
+                    <Ionicons
+                      name={selected ? "checkbox" : "square-outline"}
+                      size={20}
+                      color={selected ? "#6366f1" : "#9ca3af"}
+                    />
+                    <Text style={twStyle("flex-1 text-sm text-gray-800")}>{svc.title}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+              <Text style={twStyle("text-xs text-gray-500")}>{ow("review.ownerServicesAll")}</Text>
+            </View>
+          ) : null}
+        </View>
+      ) : (
+        <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4 gap-2")}>
+          <Text style={twStyle("text-xs font-bold uppercase tracking-wide text-gray-400")}>
+            {ow("review.ownerPublicTitle")}
+          </Text>
+          <TextInput
+            value={formData.owner_public_title ?? ""}
+            onChangeText={(t) => updateFormData({ owner_public_title: t })}
+            placeholder={ow("review.ownerPublicTitle")}
+            style={twStyle("rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900")}
+          />
+        </View>
+      )}
 
       {/* Plan */}
       {formData.selected_plan_name ? (

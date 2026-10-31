@@ -72,7 +72,10 @@
       "gotIt": "Compris",
       "dismissA11y": "Ignorer l’astuce"
     },
-    "change": "Modifier"
+    "change": "Modifier",
+    "useDifferentAccount": "कोई अन्य खाता उपयोग करें",
+    "useDifferentAccountConfirmTitle": "खाता बदलें?",
+    "useDifferentAccountConfirmBody": "आप इस डिवाइस पर साइन आउट हो जाएंगे। आपका Google या Apple खाता लिंक रहेगा, और कोई भी सहेजी गई सेटअप प्रगति उसी खाते पर रहेगी। आप कभी भी दोबारा साइन इन कर सकते हैं।"
   },
   "authGate": {
     "checkingAccess": "आपका खाता जाँचा जा रहा है…",
@@ -13337,14 +13340,14 @@
     },
     "contentReport": {
       "modalTitle": "Signaler le contenu",
-      "modalLead": "Sélectionner a reason and add optional details so our team can review.",
+      "modalLead": "कोई कारण चुनें और वैकल्पिक विवरण जोड़ें ताकि हमारी टीम समीक्षा कर सके।",
       "submitCta": "Envoyer report",
       "detailsPlaceholder": "Additional details (facultatif)",
       "selectReasonTitle": "Choisir un motif",
       "selectReasonBody": "Indiquez pourquoi vous signalez ce contenu.",
       "submitError": "Impossible de envoyer report.",
-      "submittedTitle": "Report submitted",
-      "submittedBody": "Thank you. Our team will review your report within 24-48 hours.",
+      "submittedTitle": "रिपोर्ट भेजी गई",
+      "submittedBody": "धन्यवाद। हमारी टीम 24 घंटे के भीतर आपकी रिपोर्ट की समीक्षा करेगी।",
       "reportPost": "Signaler la publication",
       "reportComment": "Signaler le commentaire",
       "reportMessage": "Signaler le message",
@@ -13358,7 +13361,8 @@
         "harassment": "Harcèlement ou abus",
         "spam": "Spam ou arnaque",
         "safety": "Problème de sécurité",
-        "other": "Autre"
+        "other": "Autre",
+        "illegal_exploitative": "अवैध या शोषणकारी सामग्री"
       }
     },
     "blockUser": {
@@ -15164,6 +15168,7 @@
           "paymentCancelledBody": "You cancelled the payment. No charge was made. You can réessayer from this order.",
           "cancelOrderTitle": "Annuler la commande",
           "cancelOrderBody": "Annuler cette commande ? Les articles en stock seront réintégrés et les paiements remboursés.",
+          "cancelledInPerson": "ऑर्डर रद्द हो गया। {{amount}} व्यक्तिगत रूप से लिया गया था और सैलून को अभी इसे लौटाना है।",
           "keepOrderCta": "Keep commande",
           "cancelOrderCta": "Annuler la commande",
           "cancelOrderFailed": "Impossible de annuler this commande.",
@@ -21212,6 +21217,7 @@
         "goBack": "Retour",
         "cancelConfirm": "Annuler cette commande ? Les articles en stock seront réintégrés et les paiements remboursés.",
         "cancelledToast": "Commande annulé",
+        "cancelledInPerson": "ऑर्डर रद्द हो गया। {{amount}} व्यक्तिगत रूप से लिया गया था और सैलून को अभी इसे लौटाना है।",
         "cancelFailed": "Impossible de annuler this commande.",
         "addEmailBeforePay": "Voeg 'n e-posadres by jou rekening voordat jy hierdie bestelling aanlyn betaal.",
         "paymentStartFailed": "We impossible de démarrer paiement for this commande. Veuillez réessayer.",

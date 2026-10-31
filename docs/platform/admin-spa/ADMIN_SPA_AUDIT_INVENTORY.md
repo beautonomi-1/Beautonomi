@@ -67,7 +67,7 @@ AdminChrome resolves these relative to `/admin`. **Staging check:** run a search
 | Tenant domains | `settings/tenant-domains` | `useSuperadminPage` | `GET/POST/PATCH/DELETE /api/admin/tenant-domains` |
 | Control Plane | `control-plane/overview` | `useSuperadminPage` on overview; child pages inherit superadmin nav | Mix: see §5 control-plane |
 | Team permissions | `settings/team-permissions` | `useSuperadminPage` | `GET/PUT /api/admin/settings/section-permissions` |
-| Compliance purge | `control-plane/compliance` | `useSuperadminPage` | `GET /api/admin/compliance/purge-audit`, `GET .../lookup-user/:id`, `POST .../purge-user`, `POST .../purge-provider` |
+| Compliance purge | `control-plane/compliance` | `useSuperadminPage` | `GET /api/admin/compliance/purge-audit` (paginated; `?id=` detail), `GET .../lookup-user/:id`, `GET .../lookup-provider/:id`, `GET /api/admin/export/compliance-purge-audit`, `POST .../purge-user` (`dry_run`), `POST .../purge-provider` (`dry_run`) |
 
 **Shell:** [AdminChrome](../../../apps/admin-web/src/components/layout/AdminChrome.tsx) loads `GET /api/admin/tenants` only when `bootstrap?.isSuperadmin === true`.
 
@@ -213,7 +213,7 @@ Integration pages: Sumsub, Gemini, Aura — `GET/PUT /api/admin/control-plane/in
 
 ## 6. Taxonomy vs SPA (residual notes)
 
-- **Compliance purge:** Consumed in SPA ([CompliancePurgePage.tsx](../../../apps/admin-web/src/routes/control-plane/CompliancePurgePage.tsx)) and legacy Next ([compliance/page.tsx](../../../apps/web/src/app/admin/control-plane/compliance/page.tsx)).
+- **Compliance purge:** Consumed in SPA ([CompliancePurgePage.tsx](../../../apps/admin-web/src/routes/control-plane/CompliancePurgePage.tsx)) — paginated audit log, CSV export, lookup-provider hints, dry-run preview.
 - **Ads campaigns:** `GET` list + `PATCH .../ads/campaigns/:id` are used from [CpModuleAdsPage](../../../apps/admin-web/src/routes/control-plane/CpControlPlaneModules.tsx). There is **no** `POST /api/admin/ads/campaigns` handler in the taxonomy-backed route file (campaign creation may be provider-facing or deferred).
 
 ---

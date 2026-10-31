@@ -181,6 +181,12 @@ type BookingResponse = Booking & {
     provider: "yoco";
     since: string | null;
   }>;
+  pending_cash_refunds?: Array<{
+    id: string;
+    amount: number;
+    reason: string | null;
+    confirmation_deadline_at: string | null;
+  }>;
 };
 
 /** Minimal booking row fields read in PATCH (from .select("*")) */
@@ -752,6 +758,11 @@ export async function GET(
         provider: r.machine_refund_provider,
         since: r.awaiting_machine_since ?? r.created_at,
       }));
+      const { fetchPendingCashRefundsForBooking } = await import(
+        "@/lib/bookings/cash-refund-confirmation"
+      );
+      transformedBooking.pending_cash_refunds =
+        await fetchPendingCashRefundsForBooking(supabaseAdmin, id);
     }
 
     return successResponse(transformedBooking);

@@ -62,6 +62,8 @@ export interface IssueAdminWalletRefundOptions {
    * claim but keeps idempotency, gift-card handling, and provider warning.
    */
   bookingTenderMode?: boolean;
+  /** Required when crediting wallet instead of an in-person cash refund. */
+  substituteReason?: string | null;
 }
 
 export type IssueAdminWalletRefundSuccess = {
@@ -115,6 +117,7 @@ export async function issueAdminWalletRefund(
     notes,
     transactionId,
     bookingTenderMode = false,
+    substituteReason = null,
   } = opts;
 
   // 1. Validate amount
@@ -196,6 +199,22 @@ export async function issueAdminWalletRefund(
     tenant_id: booking.tenant_id ?? tenantId,
     provider_id: providerId,
   });
+
+  let pendingCashToClose: string[] = [];
+  if (bookingTenderMode || !resolvedTransactionId) {
+    const { assertAdminWalletInPersonSubstituteAllowed, closePendingCashReplacedByStoreCredit } =
+      await import("@/lib/finance/admin-wallet-in-person-guard");
+    const guard = await assertAdminWalletInPersonSubstituteAllowed(supabase, {
+      bookingId,
+      tenantId: booking.tenant_id ?? tenantId,
+      amount,
+      substituteReason,
+    });
+    if (guard.ok === false) {
+      return err(guard.error, guard.code, 400);
+    }
+    pendingCashToClose = guard.pendingCashRefundIds;
+  }
 
   // 3. Period lock guard
   const lockResult = await checkPeriodLock(
@@ -348,6 +367,17 @@ export async function issueAdminWalletRefund(
     );
   }
 
+  if (pendingCashToClose.length > 0) {
+    try {
+      const { closePendingCashReplacedByStoreCredit } = await import(
+        "@/lib/finance/admin-wallet-in-person-guard"
+      );
+      await closePendingCashReplacedByStoreCredit(supabase, pendingCashToClose);
+    } catch (closeErr) {
+      console.warn("[issueAdminWalletRefund] failed to close pending cash rows:", closeErr);
+    }
+  }
+
   try {
     const { syncBookingRefundTransactions } = await import(
       "@/lib/finance/sync-booking-refund-transactions"
@@ -438,6 +468,7 @@ export async function issueAdminWalletRefund(
         refund_id: refundId,
         transaction_id: resolvedTransactionId ?? null,
         provider_balance_warning: providerBalanceWarning,
+        substitute_reason: substituteReason?.trim() ? substituteReason.trim() : null,
       },
     });
   } catch (auditErr) {

@@ -298,6 +298,7 @@ export async function GET(
         .select("id, amount, reason, confirmation_deadline_at")
         .eq("booking_id", id)
         .eq("status", "pending")
+        .eq("refund_method", "cash")
         .eq("customer_confirmation_required", true);
       const refundRows = Array.isArray(pendingRefundRows) ? pendingRefundRows : [];
       pendingCashRefunds = refundRows.map((row) => ({

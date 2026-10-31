@@ -137,6 +137,7 @@ describe("refund briefing", () => {
     expect(b.flags.join(" ")).toContain("requested_exceeds_refundable_balance");
     expect(b.flags.join(" ")).toContain("cash_refund_exceeds_in_person_cap");
     expect(b.flags.join(" ")).toContain("repeat_refunder");
+    expect(b.flags.join(" ")).toContain("wallet_credit_is_substitute_not_default_for_cash");
     expect(b.summary).toContain("Review required");
   });
 });

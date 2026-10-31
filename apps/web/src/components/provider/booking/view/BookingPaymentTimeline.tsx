@@ -100,22 +100,46 @@ export function BookingPaymentTimeline({ bookingId }: BookingPaymentTimelineProp
           </div>
         );
       })}
-      {refunds.map((refund, index) => (
-        <div key={`ref-${index}`} className="rounded-lg bg-orange-50 px-3 py-2">
-          <p className="text-sm font-semibold text-orange-900 tabular-nums">
-            Refund −{formatMoney(Number(refund.amount ?? 0))}
-            {(refund.refund_method ?? "").toLowerCase() === "original"
-              ? " (original method)"
-              : (refund.refund_method ?? "").toLowerCase() === "cash"
-                ? " (in person)"
-                : " (store credit)"}
-          </p>
-          <p className="mt-0.5 text-xs text-orange-800">
-            {formatWhen(refund.created_at)}
-            {refund.reason ? ` · ${refund.reason}` : ""}
-          </p>
-        </div>
-      ))}
+      {refunds.map((refund, index) => {
+        const method = (refund.refund_method ?? "").toLowerCase();
+        const status = (refund.status ?? "").toLowerCase();
+        const pendingCashConfirm = method === "cash" && status === "pending";
+        return (
+          <div
+            key={`ref-${index}`}
+            className={cn(
+              "rounded-lg px-3 py-2",
+              pendingCashConfirm ? "bg-amber-50" : "bg-orange-50",
+            )}
+          >
+            <p
+              className={cn(
+                "text-sm font-semibold tabular-nums",
+                pendingCashConfirm ? "text-amber-900" : "text-orange-900",
+              )}
+            >
+              Refund −{formatMoney(Number(refund.amount ?? 0))}
+              {method === "original"
+                ? " (original method)"
+                : method === "cash"
+                  ? " (in person)"
+                  : " (store credit)"}
+            </p>
+            <p
+              className={cn(
+                "mt-0.5 text-xs",
+                pendingCashConfirm ? "text-amber-800" : "text-orange-800",
+              )}
+            >
+              {pendingCashConfirm
+                ? "Awaiting customer confirmation"
+                : formatWhen(refund.created_at)}
+              {!pendingCashConfirm && refund.reason ? ` · ${refund.reason}` : ""}
+              {pendingCashConfirm && refund.reason ? ` · ${refund.reason}` : ""}
+            </p>
+          </div>
+        );
+      })}
     </div>
   );
 }

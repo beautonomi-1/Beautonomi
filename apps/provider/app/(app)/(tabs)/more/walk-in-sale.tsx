@@ -54,6 +54,7 @@ import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catal
 import { PROVIDER_DASHBOARD_REFRESH_EVENT } from "@/lib/provider-dashboard-events";
 import { useProvider } from "@/providers/ProviderContext";
 import { useTranslation } from "@beautonomi/i18n";
+import { allowsInPersonProductRefund } from "@/lib/product-order-in-person";
 import { pt } from "@/lib/provider-translate";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
@@ -452,11 +453,16 @@ export default function WalkInSaleScreen() {
             text: wis("refundAction"),
             style: "destructive",
             onPress: async () => {
+              const inPerson = allowsInPersonProductRefund(sale.payment_method);
+              if (!inPerson && !sale.customer_id) {
+                Alert.alert(wis("refundFailed"), wis("refundOnlineNoCustomer"));
+                return;
+              }
               setRefunding(true);
               try {
                 const { error: err } = await patchOrder(
                   `/api/provider/product-orders/${sale.id}`,
-                  { status: "refunded", refund_method: "cash" },
+                  { status: "refunded", refund_method: inPerson ? "cash" : "store_credit" },
                 );
                 if (err) {
                   Alert.alert(wis("refundFailed"), err);

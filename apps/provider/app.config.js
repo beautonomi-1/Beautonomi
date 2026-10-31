@@ -65,7 +65,7 @@ if (process.env.EAS_BUILD === "true" || easBuildProfile) {
   });
 }
 
-const APP_MARKETING_VERSION = "1.0.106";
+const APP_MARKETING_VERSION = "1.0.107";
 
 /** Base Expo config. Single source of truth (previously duplicated in app.json). */
 const BASE_EXPO_CONFIG = {
@@ -210,7 +210,7 @@ const BASE_EXPO_CONFIG = {
     bundleIdentifier: "com.beautonomi.partner",
     appleTeamId: "QW33CYPQX5",
     usesAppleSignIn: true,
-    buildNumber: "300",
+    buildNumber: "301",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       ITSAppUsesNonExemptEncryption: false,
@@ -285,7 +285,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.RECORD_AUDIO",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 300,
+    versionCode: 301,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",
     intentFilters: [

@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-export const PARTNER_EULA_VERSION = "2026-08-26";
+export const PARTNER_EULA_VERSION = "2026-10-31";
 const STORAGE_KEY = "@beautonomi/partner_eula_acceptance";
 
 export type StoredLegalAcceptance = {

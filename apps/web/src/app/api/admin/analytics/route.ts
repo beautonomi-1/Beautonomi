@@ -9,9 +9,16 @@ import {
   fetchFinanceLedgerRowsForTenant,
   resolveFinanceLedgerRowProviderId,
 } from "@/lib/admin/finance-ledger-tenant";
-import { aggregateFinanceLedgerRows, platformRevenueNetFromAggregate, gatewayFeesTotalFromAggregate } from "@/lib/admin/aggregate-finance-ledger-rows";
+import {
+  aggregateFinanceLedgerRows,
+  platformRevenueNetFromAggregate,
+  gatewayFeesTotalFromAggregate,
+} from "@/lib/admin/aggregate-finance-ledger-rows";
+import { buildBookingStatusBreakdown } from "@/lib/admin/analytics-booking-status-breakdown";
+import { computeContributionMargin, computeTakeRate } from "@/lib/admin/marketplace-health";
 import { normalizeBookingChannel } from "@/lib/reports/booking-channel-breakdown";
-import { eachUtcDay } from "@/lib/reports/constants";
+import { eachUtcDay, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
+import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 import { fetchMarketplaceHealthSeries } from "@/lib/admin/marketplace-health-api";
 
 export async function GET(request: NextRequest) {
@@ -114,7 +121,7 @@ export async function GET(request: NextRequest) {
     const getRevenueTimeSeries = async () => {
       let data: Awaited<ReturnType<typeof fetchFinanceLedgerRowsForTenant>> = [];
       try {
-        data = await fetchFinanceLedgerRowsForTenant(supabase, tenantId, {
+        data = await fetchFinanceLedgerRowsForTenant(admin, tenantId, {
           start: startDate.toISOString(),
           end: now.toISOString(),
         });
@@ -171,45 +178,73 @@ export async function GET(request: NextRequest) {
       return breakdown;
     };
 
-    // Get booking status breakdown
-    const getBookingStatusBreakdown = async () => {
-      const { data, error } = await supabase
-        .from('bookings')
-        .select('status')
-        .eq('tenant_id', tenantId)
-        .gte('scheduled_at', startDate.toISOString());
+    type ScheduledBookingRow = {
+      scheduled_at: string;
+      status?: string | null;
+      booking_source?: string | null;
+    };
 
-      if (error) {
-        console.error('Error fetching booking status:', error);
-        return { confirmed: 0, completed: 0, cancelled: 0, no_show: 0 };
+    const fetchScheduledBookingsInPeriod = async (): Promise<ScheduledBookingRow[]> => {
+      try {
+        return await fetchAllLedgerPages<ScheduledBookingRow>(
+          admin
+            .from("bookings")
+            .select("scheduled_at, status, booking_source")
+            .eq("tenant_id", tenantId)
+            .gte("scheduled_at", startDate.toISOString())
+            .lte("scheduled_at", now.toISOString())
+            .order("scheduled_at", { ascending: true }),
+          MAX_BOOKINGS_FOR_REPORT,
+        );
+      } catch (e) {
+        console.error("Error fetching scheduled bookings for analytics:", e);
+        return [];
       }
+    };
 
-      const breakdown = {
-        confirmed: 0,
-        completed: 0,
-        cancelled: 0,
-        no_show: 0,
-      };
+    const buildBookingsTimeSeriesFromRows = (rows: ScheduledBookingRow[]) => {
+      const grouped: Record<string, number> = {};
+      for (const b of rows) {
+        const date = new Date(String(b.scheduled_at ?? "")).toISOString().split("T")[0];
+        grouped[date] = (grouped[date] || 0) + 1;
+      }
+      const result: Array<{ date: string; count: number }> = [];
+      for (const dateStr of eachUtcDay(startDate, now)) {
+        result.push({ date: dateStr, count: grouped[dateStr] || 0 });
+      }
+      return result;
+    };
 
-      type BookingStatusRow = { status?: string };
-      (data || []).forEach((b: BookingStatusRow) => {
-        if (b.status === 'confirmed') breakdown.confirmed++;
-        else if (b.status === 'completed') breakdown.completed++;
-        else if (b.status === 'cancelled') breakdown.cancelled++;
-        else if (b.status === 'no_show') breakdown.no_show++;
-      });
+    const getBookingStatusBreakdownFromRows = (rows: ScheduledBookingRow[]) =>
+      buildBookingStatusBreakdown(rows);
 
-      return breakdown;
+    const getBookingsByChannelFromRows = (rows: ScheduledBookingRow[]) => {
+      const counts = new Map<string, number>();
+      for (const b of rows) {
+        const channel = normalizeBookingChannel(b.booking_source);
+        counts.set(channel, (counts.get(channel) ?? 0) + 1);
+      }
+      const total = [...counts.values()].reduce((s, c) => s + c, 0);
+      return [...counts.entries()]
+        .map(([channel, count]) => ({
+          channel,
+          count,
+          percentage: total > 0 ? (count / total) * 100 : 0,
+        }))
+        .sort((a, b) => b.count - a.count);
     };
 
     // Get top providers by revenue (merged ledger: provider in tenant OR booking in tenant)
-    const getTopProviders = async () => {
+    const getTopProviders = async (): Promise<{
+      topProviders: Array<{ provider_id: string; business_name: string; revenue: number }>;
+      provider_net_earnings_total: number;
+    }> => {
       let merged: Awaited<ReturnType<typeof fetchFinanceLedgerExportRowsForTenant>>;
       try {
         merged = await fetchFinanceLedgerExportRowsForTenant(
-          supabase,
+          admin,
           tenantId,
-          { start: startDate.toISOString() },
+          { start: startDate.toISOString(), end: now.toISOString() },
           {
             transactionTypes: [
               "provider_earnings",
@@ -222,7 +257,7 @@ export async function GET(request: NextRequest) {
         );
       } catch (err) {
         console.error("Error fetching top providers ledger:", err);
-        return [];
+        return { topProviders: [], provider_net_earnings_total: 0 };
       }
 
       const providerRevenue: Record<string, number> = {};
@@ -233,66 +268,49 @@ export async function GET(request: NextRequest) {
         providerRevenue[pid] = (providerRevenue[pid] || 0) + amt;
       }
 
+      const provider_net_earnings_total = Object.values(providerRevenue).reduce((s, v) => s + v, 0);
+
       const topProviders = Object.entries(providerRevenue)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 10)
         .map(([providerId, revenue]) => ({ provider_id: providerId, revenue }));
 
-      // Fetch provider names
       if (topProviders.length > 0) {
-        const providerIds = topProviders.map(p => p.provider_id);
+        const providerIds = topProviders.map((p) => p.provider_id);
         const { data: providers } = await supabase
-          .from('providers')
-          .select('id, business_name')
-          .eq('tenant_id', tenantId)
-          .in('id', providerIds);
+          .from("providers")
+          .select("id, business_name")
+          .eq("tenant_id", tenantId)
+          .in("id", providerIds);
 
-        const providerMap = new Map((providers || []).map((p: { id: string; business_name?: string }) => [p.id, p.business_name]));
+        const providerMap = new Map(
+          (providers || []).map((p: { id: string; business_name?: string }) => [p.id, p.business_name]),
+        );
 
-        return topProviders.map(p => ({
-          provider_id: p.provider_id,
-          business_name: providerMap.get(p.provider_id) || 'Unknown',
-          revenue: p.revenue,
-        }));
+        return {
+          provider_net_earnings_total,
+          topProviders: topProviders.map((p) => ({
+            provider_id: p.provider_id,
+            business_name: providerMap.get(p.provider_id) || "Unknown",
+            revenue: p.revenue,
+          })),
+        };
       }
 
-      return [];
-    };
-
-    const getBookingsByChannel = async () => {
-      const { data, error } = await supabase
-        .from("bookings")
-        .select("booking_source")
-        .eq("tenant_id", tenantId)
-        .gte("scheduled_at", startDate.toISOString());
-
-      if (error) {
-        console.error("Error fetching bookings by channel:", error);
-        return [];
-      }
-
-      const counts = new Map<string, number>();
-      (data || []).forEach((b: { booking_source?: string | null }) => {
-        const channel = normalizeBookingChannel(b.booking_source);
-        counts.set(channel, (counts.get(channel) ?? 0) + 1);
-      });
-
-      const total = [...counts.values()].reduce((s, c) => s + c, 0);
-      return [...counts.entries()].map(([channel, count]) => ({
-        channel,
-        count,
-        percentage: total > 0 ? (count / total) * 100 : 0,
-      }));
+      return { topProviders: [], provider_net_earnings_total };
     };
 
     const getLedgerTotals = async () => {
       try {
-        const rows = await fetchFinanceLedgerRowsForTenant(supabase, tenantId, {
+        const rows = await fetchFinanceLedgerRowsForTenant(admin, tenantId, {
           start: startDate.toISOString(),
           end: now.toISOString(),
         });
         const agg = aggregateFinanceLedgerRows(rows);
         return {
+          platform_net_total: platformRevenueNetFromAggregate(agg),
+          take_rate: computeTakeRate(agg),
+          contribution_margin: computeContributionMargin(agg),
           gateway_fees_total: gatewayFeesTotalFromAggregate(agg),
           terminal_revenue: agg.terminal_revenue_gross,
           terminal_gateway_fees: agg.terminal_gateway_fees,
@@ -301,11 +319,16 @@ export async function GET(request: NextRequest) {
             subscriptions: agg.subscription_net,
             ads: agg.ads_net,
             service_fees: agg.service_fee_revenue,
+            marketing_credits: agg.marketing_credit_net,
+            gift_card_breakage: agg.gift_card_breakage_revenue,
           },
         };
       } catch (e) {
         console.error("Error fetching ledger totals for analytics:", e);
         return {
+          platform_net_total: 0,
+          take_rate: 0,
+          contribution_margin: 0,
           gateway_fees_total: 0,
           terminal_revenue: 0,
           terminal_gateway_fees: 0,
@@ -314,35 +337,41 @@ export async function GET(request: NextRequest) {
             subscriptions: 0,
             ads: 0,
             service_fees: 0,
+            marketing_credits: 0,
+            gift_card_breakage: 0,
           },
         };
       }
     };
 
+    const scheduledBookingsPromise = fetchScheduledBookingsInPeriod();
+
     // Run all queries in parallel (users = customers only for growth chart)
     const [
       usersTimeSeries,
       providersTimeSeries,
-      bookingsTimeSeries,
+      scheduledBookings,
       revenueTimeSeries,
       providerStatusBreakdown,
-      bookingStatusBreakdown,
-      topProviders,
-      bookingsByChannel,
+      topProvidersResult,
       ledgerTotals,
       healthSeries,
     ] = await Promise.all([
       getDailyTimeSeries("users", "created_at"),
       getDailyTimeSeries("providers", "created_at"),
-      getDailyTimeSeries("bookings", "scheduled_at"),
+      scheduledBookingsPromise,
       getRevenueTimeSeries(),
       getProviderStatusBreakdown(),
-      getBookingStatusBreakdown(),
       getTopProviders(),
-      getBookingsByChannel(),
       getLedgerTotals(),
       fetchMarketplaceHealthSeries(supabase, tenantId, startDate.toISOString(), now.toISOString()),
     ]);
+
+    const bookingsTimeSeries = buildBookingsTimeSeriesFromRows(scheduledBookings);
+    const bookingStatusBreakdown = getBookingStatusBreakdownFromRows(scheduledBookings);
+    const bookingsByChannel = getBookingsByChannelFromRows(scheduledBookings);
+    const topProviders = topProvidersResult.topProviders;
+    const provider_net_earnings_total = topProvidersResult.provider_net_earnings_total;
 
     return successResponse({
       period,
@@ -359,13 +388,17 @@ export async function GET(request: NextRequest) {
       },
       bookingsByChannel,
       topProviders,
+      provider_net_earnings_total,
+      platform_net_total: ledgerTotals.platform_net_total,
+      take_rate: ledgerTotals.take_rate,
+      contribution_margin: ledgerTotals.contribution_margin,
       gateway_fees_total: ledgerTotals.gateway_fees_total,
       terminal_revenue: ledgerTotals.terminal_revenue,
       terminal_gateway_fees: ledgerTotals.terminal_gateway_fees,
       financeNote:
         "Gateway and terminal totals use the same ledger aggregate as Finance overview. Fee reconciliations auto-generate daily.",
       channelBasisNote:
-        "Bookings use scheduled_at in the selected period (matches the bookings report). Channel labels from booking_source (null treated as online). Counts only — not revenue.",
+        "Bookings use scheduled_at in the selected period through now (matches the bookings report). Channel labels from booking_source (null treated as online). Counts only — not completion rate.",
       revenue_streams: ledgerTotals.revenue_streams,
       marketplace_health_series: healthSeries,
     });

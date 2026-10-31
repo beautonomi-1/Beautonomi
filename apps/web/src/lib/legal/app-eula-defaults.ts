@@ -1,10 +1,13 @@
 /** Default EULA body when CMS slug has no sections (App Store review-stable fallback). */
 
-export const PARTNER_EULA_LAST_UPDATED = "26 August 2026";
-export const CUSTOMER_EULA_LAST_UPDATED = "26 August 2026";
+export const PARTNER_EULA_LAST_UPDATED = "31 October 2026";
+export const CUSTOMER_EULA_LAST_UPDATED = "31 October 2026";
 
-export const PARTNER_EULA_VERSION = "2026-08-26";
-export const CUSTOMER_EULA_VERSION = "2026-08-26";
+export const PARTNER_EULA_VERSION = "2026-10-31";
+export const CUSTOMER_EULA_VERSION = "2026-10-31";
+
+export const EULA_UNDER18_SEXUAL_CONTENT_SENTENCE =
+  "Sexual content involving anyone under 18 is prohibited and will be removed and reported to authorities as required by law.";
 
 export type EulaSection = { title: string; content: string };
 
@@ -37,7 +40,7 @@ export const PARTNER_EULA_DEFAULT_SECTIONS: EulaSection[] = [
   {
     title: "User-generated content and community standards",
     content:
-      "<p>The app includes features that allow you and your clients to create or share content, including messages, reviews, profile/catalogue media, and social/explore posts.</p><p><strong>Zero tolerance:</strong> There is no tolerance for objectionable content or abusive users. You must not upload, send, or share content that is illegal, harassing, hateful, threatening, sexually explicit, exploitative, fraudulent, spam, or otherwise harmful.</p><p>We may remove or hide objectionable content and suspend or permanently terminate accounts that violate these standards.</p>",
+      "<p>The app includes features that allow you and your clients to create or share content, including messages, reviews, profile/catalogue media, and social/explore posts.</p><p><strong>Zero tolerance:</strong> There is no tolerance for objectionable content or abusive users. You must not upload, send, or share content that is illegal, harassing, hateful, threatening, sexually explicit, exploitative, fraudulent, spam, or otherwise harmful.</p><p>Sexual content involving anyone under 18 is prohibited and will be removed and reported to authorities as required by law.</p><p>We may remove or hide objectionable content and suspend or permanently terminate accounts that violate these standards.</p>",
   },
   {
     title: "Content moderation, reporting, and response time",
@@ -85,7 +88,7 @@ export const CUSTOMER_EULA_DEFAULT_SECTIONS: EulaSection[] = [
   {
     title: "User-generated content and community standards",
     content:
-      "<p>The app includes reviews, Explore posts, comments, profile content, and messaging.</p><p><strong>Zero tolerance:</strong> There is no tolerance for objectionable content or abusive users. You must not post or send illegal, harassing, hateful, threatening, sexually explicit, exploitative, fraudulent, spam, or otherwise harmful content.</p>",
+      "<p>The app includes reviews, Explore posts, comments, profile content, and messaging.</p><p><strong>Zero tolerance:</strong> There is no tolerance for objectionable content or abusive users. You must not post or send illegal, harassing, hateful, threatening, sexually explicit, exploitative, fraudulent, spam, or otherwise harmful content.</p><p>Sexual content involving anyone under 18 is prohibited and will be removed and reported to authorities as required by law.</p>",
   },
   {
     title: "Content moderation, reporting, and response time",

@@ -27,6 +27,14 @@ import {
   type ProductOrderSheetOrder,
 } from "@/lib/provider-booking/product-order-sheet-utils";
 import {
+  interpretBookShipmentResponse,
+  providerShippingBookingDisplay,
+} from "@/lib/orders/provider-shipping-ui";
+import {
+  allowsInPersonProductOrderRefund,
+  computeInPersonCollectibleAmount,
+} from "@/lib/orders/product-order-tender";
+import {
   isValidLineTransition,
   LINE_FULFILMENT_STATUSES,
   normalizeLineStatus,
@@ -165,8 +173,9 @@ export function ProductOrderViewSheet({
     if (newStatus === "refunded") {
       setRefundAmount(Number(order.total_amount ?? 0).toFixed(2));
       setRefundReason("");
-      const isOnline = order.order_source === "online";
-      setRefundMethod(isOnline && order.customer?.id ? "store_credit" : "cash");
+      const inPerson = allowsInPersonProductOrderRefund(order);
+      const canWallet = Boolean(order.customer?.id);
+      setRefundMethod(!inPerson && canWallet ? "store_credit" : "cash");
       setRefundOpen(true);
       return;
     }
@@ -241,9 +250,15 @@ export function ProductOrderViewSheet({
       toast.error(t("web.provider.productOrderViewSheet.invalidRefundAmount"));
       return;
     }
+    const method =
+      !refundInPerson && refundCanWallet
+        ? "store_credit"
+        : refundInPerson && !refundCanWallet
+          ? "cash"
+          : refundMethod;
     const ok = await patchOrder({
       status: "refunded",
-      refund_method: refundMethod,
+      refund_method: method,
       refund_amount: amount,
       refund_reason: refundReason.trim() || undefined,
     });
@@ -263,6 +278,9 @@ export function ProductOrderViewSheet({
   };
 
   const isAppointmentOrder = order?.order_source === "appointment";
+  const inPersonDue = order ? computeInPersonCollectibleAmount(order) : 0;
+  const refundInPerson = order ? allowsInPersonProductOrderRefund(order) : false;
+  const refundCanWallet = Boolean(order?.customer?.id);
   const canCollect =
     canProcessPayments &&
     order &&
@@ -270,7 +288,7 @@ export function ProductOrderViewSheet({
     order.status !== "cancelled" &&
     order.status !== "refunded";
   const canCollectCardMachine =
-    (yocoEnabled || paycloudEnabled) && canCollect && !isAppointmentOrder;
+    (yocoEnabled || paycloudEnabled) && canCollect && !isAppointmentOrder && inPersonDue > 0;
   const canRefund =
     canProcessPayments &&
     order?.payment_status === "paid" &&
@@ -395,40 +413,46 @@ export function ProductOrderViewSheet({
               <BookingSectionCard>
                 <BookingSectionLabel className="mb-2">{t("web.provider.productOrderViewSheet.collectPayment")}</BookingSectionLabel>
                 <div className="flex flex-col gap-2">
-                  {canCollectCardMachine ? (
-                    <BookingActionButton
-                      variant="outline"
-                      className="w-full justify-center min-h-[44px]"
-                      onClick={() => setCardMachineOpen(true)}
-                    >
-                      {t("web.provider.bookings.detail.paymentCollect.cardMachine", {
-                        amount: totalAmount.toFixed(2),
-                      })}
-                    </BookingActionButton>
-                  ) : null}
-                  <BookingActionButton
-                    variant="outline"
-                    disabled={busy}
-                    onClick={async () => {
-                      if (!order) return;
-                      setBusy(true);
-                      try {
-                        await fetcher.post(`/api/provider/product-orders/${order.id}/mark-collected`, {
-                          payment_method: "cash",
-                        });
-                        clearFetcherCache();
-                        await load();
-                        onUpdated?.();
-                        toast.success(t("web.provider.productOrderViewSheet.paymentRecorded"));
-                      } catch (err) {
-                        toast.error(err instanceof Error ? err.message : t("web.provider.productOrderViewSheet.paymentFailed"));
-                      } finally {
-                        setBusy(false);
-                      }
-                    }}
-                  >
-                    {t("web.provider.productOrderViewSheet.markPaidCash")}
-                  </BookingActionButton>
+                  {inPersonDue > 0 ? (
+                    <>
+                      {canCollectCardMachine ? (
+                        <BookingActionButton
+                          variant="outline"
+                          className="w-full justify-center min-h-[44px]"
+                          onClick={() => setCardMachineOpen(true)}
+                        >
+                          {t("web.provider.bookings.detail.paymentCollect.cardMachine", {
+                            amount: inPersonDue.toFixed(2),
+                          })}
+                        </BookingActionButton>
+                      ) : null}
+                      <BookingActionButton
+                        variant="outline"
+                        disabled={busy}
+                        onClick={async () => {
+                          if (!order) return;
+                          setBusy(true);
+                          try {
+                            await fetcher.post(`/api/provider/product-orders/${order.id}/mark-collected`, {
+                              payment_method: "cash",
+                            });
+                            clearFetcherCache();
+                            await load();
+                            onUpdated?.();
+                            toast.success(t("web.provider.productOrderViewSheet.paymentRecorded"));
+                          } catch (err) {
+                            toast.error(err instanceof Error ? err.message : t("web.provider.productOrderViewSheet.paymentFailed"));
+                          } finally {
+                            setBusy(false);
+                          }
+                        }}
+                      >
+                        {t("web.provider.productOrderViewSheet.markPaidCash")}
+                      </BookingActionButton>
+                    </>
+                  ) : (
+                    <p className="text-xs text-gray-500">{t("web.provider.productOrderViewSheet.nothingLeftToCollect")}</p>
+                  )}
                 </div>
               </BookingSectionCard>
             ) : null}
@@ -438,16 +462,35 @@ export function ProductOrderViewSheet({
                 <BookingSectionLabel className="mb-2">
                   {t("web.provider.productOrderViewSheet.courierBooking")}
                 </BookingSectionLabel>
-                {order.shipping_booking_status ? (
+                {(() => {
+                  const shipUi = providerShippingBookingDisplay(order);
+                  return shipUi ? (
+                    <>
+                      {order.shipping_booking_status ? (
+                        <BookingSummaryRow
+                          label={t("web.provider.productOrderViewSheet.bookingStatus")}
+                          value={shipUi.statusLabel}
+                        />
+                      ) : null}
+                      {shipUi.detailLabel ? (
+                        <BookingSummaryRow
+                          label={t("web.provider.productOrderViewSheet.bookingDetail")}
+                          value={shipUi.detailLabel}
+                        />
+                      ) : null}
+                    </>
+                  ) : null;
+                })()}
+                {order.courier_charged_amount != null ? (
                   <BookingSummaryRow
-                    label={t("web.provider.productOrderViewSheet.bookingStatus")}
-                    value={order.shipping_booking_status}
+                    label={t("web.provider.productOrderViewSheet.courierChargedAmount")}
+                    value={formatMoney(Number(order.courier_charged_amount))}
                   />
                 ) : null}
-                {order.shipping_booking_detail ? (
+                {order.courier_charged_weight_kg != null ? (
                   <BookingSummaryRow
-                    label={t("web.provider.productOrderViewSheet.bookingDetail")}
-                    value={order.shipping_booking_detail}
+                    label={t("web.provider.productOrderViewSheet.courierChargedWeight")}
+                    value={String(order.courier_charged_weight_kg)}
                   />
                 ) : null}
                 {order.tracking_number ? (
@@ -457,12 +500,7 @@ export function ProductOrderViewSheet({
                   />
                 ) : null}
                 <div className="flex flex-wrap gap-2 mt-2">
-                  {order.payment_status === "paid" &&
-                  order.status !== "cancelled" &&
-                  order.status !== "refunded" &&
-                  (!order.tracking_number ||
-                    order.shipping_booking_status === "failed" ||
-                    order.shipping_booking_status === "skipped") ? (
+                  {providerShippingBookingDisplay(order)?.showBookCourier ? (
                     <BookingActionButton
                       size="sm"
                       fullWidth={false}
@@ -471,11 +509,16 @@ export function ProductOrderViewSheet({
                         if (!orderId) return;
                         setBusy(true);
                         try {
-                          await fetcher.post(`/api/provider/product-orders/${orderId}/book-shipment`);
+                          const res = await fetcher.post<{ data?: { result?: unknown } }>(
+                            `/api/provider/product-orders/${orderId}/book-shipment`,
+                          );
+                          const interpreted = interpretBookShipmentResponse(res?.data ?? res);
                           clearFetcherCache();
                           await load();
                           onUpdated?.();
-                          toast.success(t("web.provider.productOrderViewSheet.bookingSuccess"));
+                          if (interpreted.variant === "success") toast.success(interpreted.message);
+                          else if (interpreted.variant === "info") toast.message(interpreted.message);
+                          else toast.error(interpreted.message);
                         } catch (err) {
                           toast.error(
                             err instanceof Error
@@ -492,7 +535,7 @@ export function ProductOrderViewSheet({
                         : t("web.provider.productOrderViewSheet.bookCourier")}
                     </BookingActionButton>
                   ) : null}
-                  {order.tracking_number || order.courier_label_url ? (
+                  {providerShippingBookingDisplay(order)?.showPrintWaybill ? (
                     <a
                       href={`/api/provider/product-orders/${order.id}/shipping-label`}
                       target="_blank"
@@ -574,19 +617,32 @@ export function ProductOrderViewSheet({
           <div className="space-y-3 pb-4">
             <label className="text-sm font-medium">{t("web.provider.productOrderViewSheet.amount")}</label>
             <Input value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} />
+            {!refundInPerson && refundCanWallet ? (
+              <p className="text-xs text-gray-500">{t("web.provider.productOrderViewSheet.refundOnlineOnly")}</p>
+            ) : null}
+            {!refundInPerson && !refundCanWallet ? (
+              <p className="text-sm text-gray-600">{t("web.provider.productOrderViewSheet.refundNoWallet")}</p>
+            ) : null}
             <label className="text-sm font-medium">{t("web.provider.productOrderViewSheet.method")}</label>
             <Select value={refundMethod} onValueChange={(v) => setRefundMethod(v as typeof refundMethod)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="cash">{t("web.provider.productOrderViewSheet.cash")}</SelectItem>
-                <SelectItem value="store_credit">{t("web.provider.productOrderViewSheet.storeCredit")}</SelectItem>
+                {refundInPerson ? (
+                  <SelectItem value="cash">{t("web.provider.productOrderViewSheet.cash")}</SelectItem>
+                ) : null}
+                {refundCanWallet ? (
+                  <SelectItem value="store_credit">{t("web.provider.productOrderViewSheet.storeCredit")}</SelectItem>
+                ) : null}
               </SelectContent>
             </Select>
             <label className="text-sm font-medium">{t("web.provider.productOrderViewSheet.reason")}</label>
             <Textarea value={refundReason} onChange={(e) => setRefundReason(e.target.value)} />
-            <BookingActionButton disabled={busy} onClick={() => void handleRefund()}>
+            <BookingActionButton
+              disabled={busy || (!refundInPerson && !refundCanWallet)}
+              onClick={() => void handleRefund()}
+            >
               {t("web.provider.productOrderViewSheet.processRefund")}
             </BookingActionButton>
           </div>
@@ -597,7 +653,7 @@ export function ProductOrderViewSheet({
         <CardMachineCollectDialog
           open={cardMachineOpen}
           onOpenChange={setCardMachineOpen}
-          amount={totalAmount}
+          amount={inPersonDue}
           autoStart
           entity={{
             entityType: "product_order",

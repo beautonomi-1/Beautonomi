@@ -2067,6 +2067,11 @@ export default function BookingDetailScreen() {
   const awaitingMachineRefunds =
     (b as { awaiting_machine_refunds?: Array<{ id: string; amount: number }> }).awaiting_machine_refunds ?? [];
   const awaitingMachineTotal = awaitingMachineRefunds.reduce((s, r) => s + Number(r.amount ?? 0), 0);
+  const pendingCashRefunds =
+    (b as {
+      pending_cash_refunds?: Array<{ id: string; amount: number; reason?: string | null }>;
+    }).pending_cash_refunds ?? [];
+  const pendingCashTotal = pendingCashRefunds.reduce((s, r) => s + Number(r.amount ?? 0), 0);
 
   /** Show payment lines + receipt actions for paid bookings and for closed bookings that may be $0 (complimentary / settled). */
   const showPaymentAndReceiptCard =
@@ -4651,6 +4656,16 @@ export default function BookingDetailScreen() {
             {id ? (
               <BookingPaymentTimeline bookingId={String(id)} currency={b.currency ?? getTenantDefaultCurrency()} />
             ) : null}
+            {pendingCashRefunds.length > 0 && (
+              <View style={twStyle("mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3")}>
+                <Text style={twStyle("text-sm font-semibold text-amber-900")}>
+                  {bk("pendingCashRefundTitle", {
+                    amount: formatCurrency(pendingCashTotal, b.currency ?? getTenantDefaultCurrency()),
+                  })}
+                </Text>
+                <Text style={twStyle("text-xs text-amber-900 mt-1 leading-5")}>{bk("pendingCashRefundBody")}</Text>
+              </View>
+            )}
             {awaitingMachineRefunds.length > 0 && (
               <View style={twStyle("mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3")}>
                 <Text style={twStyle("text-sm font-semibold text-amber-900")}>
@@ -5421,6 +5436,16 @@ export default function BookingDetailScreen() {
       {/* Refund modal */}
       <BottomSheet visible={showRefund} onClose={() => { setShowRefund(false); setRefundReason(""); }} title={bk("issueRefundTitle")}>
         <View>
+          {pendingCashRefunds.length > 0 ? (
+            <View style={twStyle("mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3")}>
+              <Text style={twStyle("text-sm font-semibold text-amber-900")}>
+                {bk("pendingCashRefundTitle", {
+                  amount: formatCurrency(pendingCashTotal, b.currency ?? getTenantDefaultCurrency()),
+                })}
+              </Text>
+              <Text style={twStyle("text-xs text-amber-900 mt-1 leading-5")}>{bk("pendingCashRefundBody")}</Text>
+            </View>
+          ) : null}
           <Text style={twStyle("text-sm text-gray-600 mb-1")}>
             Net collected: {b.currency ?? getTenantDefaultCurrency()} {netPaidAfterRefunds.toFixed(2)}
             {totalRefunded > 0 ? ` (paid ${totalPaid.toFixed(2)}, refunded ${totalRefunded.toFixed(2)})` : ""}

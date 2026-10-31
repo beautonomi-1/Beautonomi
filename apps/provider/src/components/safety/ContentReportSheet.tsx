@@ -28,6 +28,7 @@ export type ContentReportReason =
   | "harassment"
   | "spam"
   | "safety"
+  | "illegal_exploitative"
   | "other";
 
 const REASONS: ContentReportReason[] = [
@@ -36,6 +37,7 @@ const REASONS: ContentReportReason[] = [
   "harassment",
   "spam",
   "safety",
+  "illegal_exploitative",
   "other",
 ];
 

@@ -55,6 +55,11 @@ interface ServiceItem {
   title: string;
 }
 
+interface LocationItem {
+  id: string;
+  name: string;
+}
+
 interface Shift {
   id: string | null;
   day_of_week: string;
@@ -133,9 +138,10 @@ const LINK_ITEMS: {
   id: "permissions" | "notifications" | "schedule" | "daysOff" | "commission" | "locations";
   labelKey: string;
   icon: keyof typeof Ionicons.glyphMap;
-  route: string;
+  route?: string;
   useId?: boolean;
   passStaffId?: string;
+  openScope?: boolean;
 }[] = [
   {
     id: "permissions",
@@ -176,7 +182,7 @@ const LINK_ITEMS: {
     id: "locations",
     labelKey: "linkLocations",
     icon: "location-outline",
-    route: "/(app)/(tabs)/more/locations",
+    openScope: true,
   },
 ];
 
@@ -184,10 +190,14 @@ export default function TeamMemberDetailScreen() {
   const { t } = useTranslation();
   const tm = (key: string, opts?: Record<string, unknown>) =>
     t(`provider.mobile.screens.teamMember.${key}`, opts) as string;
+  const tl = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.teamList.${key}`, opts) as string;
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [scopeEditOpen, setScopeEditOpen] = useState(false);
+  const [scopeForm, setScopeForm] = useState({ location_ids: [] as string[], service_ids: [] as string[] });
   const [editForm, setEditForm] = useState({
     name: "",
     phone: "",
@@ -203,11 +213,18 @@ export default function TeamMemberDetailScreen() {
     access?.is_business_owner === true || access?.can_manage_payroll === true;
   const isSelf = Boolean(id && access?.staff_id === id);
 
+  const { data: roster } = useApi<StaffMember[]>("/api/provider/staff");
+  const reassignCandidates = useMemo(
+    () => (roster ?? []).filter((s) => s.is_active && s.id !== id),
+    [roster, id],
+  );
+
   const { data: member, loading, error, refresh } = useApi<StaffMember>(
     id ? `/api/provider/staff/${id}` : "",
     { enabled: !!id }
   );
   const { data: services } = useApi<ServiceItem[]>("/api/provider/services");
+  const { data: locations } = useApi<LocationItem[]>("/api/provider/locations");
   const { data: shifts, refresh: refreshShifts } = useApi<Shift[]>(
     id ? `/api/provider/staff/${id}/shifts` : "",
     { enabled: !!id }
@@ -325,6 +342,55 @@ export default function TeamMemberDetailScreen() {
   });
   const weeklyBookings = (weeklyStats ?? []).reduce((sum, row) => sum + Number(row.count || 0), 0);
 
+
+  const openScopeEdit = useCallback(() => {
+    if (!member || !canManageTeam) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setScopeForm({
+      location_ids: member.locations?.map((l) => l.location_id) ?? [],
+      service_ids: member.service_ids?.length ? [...member.service_ids] : [],
+    });
+    setScopeEditOpen(true);
+  }, [member, canManageTeam]);
+
+  const toggleScopeService = useCallback((svcId: string) => {
+    setScopeForm((prev) => ({
+      ...prev,
+      service_ids: prev.service_ids.includes(svcId)
+        ? prev.service_ids.filter((x) => x !== svcId)
+        : [...prev.service_ids, svcId],
+    }));
+  }, []);
+
+  const handleSaveScope = useCallback(async () => {
+    if (!id || !canManageTeam) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const apply = async (force?: boolean) => {
+      const { error: err, errorCode } = await updateStaff(`/api/provider/staff/${id}`, {
+        location_ids: scopeForm.location_ids,
+        service_ids: scopeForm.service_ids,
+        ...(force ? { force: true } : {}),
+      });
+      if (errorCode === "FUTURE_BOOKINGS_CONFLICT" && !force) {
+        Alert.alert(tl("upcomingBookingsTitle"), tl("upcomingBookingsBody"), [
+          { text: tl("cancel"), style: "cancel" },
+          { text: tl("saveAnyway"), style: "destructive", onPress: () => void apply(true) },
+        ]);
+        return;
+      }
+      if (err) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert(tm("errorTitle"), err);
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setScopeEditOpen(false);
+        refresh();
+        Alert.alert(tm("updatedTitle"), tm("updatedBody"));
+      }
+    };
+    await apply();
+  }, [id, canManageTeam, scopeForm, updateStaff, refresh, tm, tl]);
+
   const openEdit = useCallback(() => {
     if (!member) return;
     setEditForm({
@@ -396,11 +462,19 @@ export default function TeamMemberDetailScreen() {
       });
       if (errorCode === "FUTURE_BOOKINGS_CONFLICT" && newActive === false && !reassignTo) {
         Alert.alert(
-          tm("upcomingBookingsTitle"),
-          tm("reassignDeactivateBody", { name: member.name }),
+          t("web.provider.teamReassign.title"),
+          t("web.provider.teamReassign.body", { name: member.name }),
           [
-            { text: tm("cancel"), style: "cancel" },
-            { text: tm("reassignAndDeactivate"), style: "destructive", onPress: () => void apply("any") },
+            { text: t("web.provider.teamReassign.cancel"), style: "cancel" },
+            ...reassignCandidates.map((s) => ({
+              text: s.name,
+              onPress: () => void apply(s.id),
+            })),
+            {
+              text: t("web.provider.teamReassign.firstAvailable"),
+              style: "destructive",
+              onPress: () => void apply("any"),
+            },
           ],
         );
         return;
@@ -433,11 +507,19 @@ export default function TeamMemberDetailScreen() {
       const { error: err, errorCode } = await deleteStaff(path, {});
       if (errorCode === "FUTURE_BOOKINGS_CONFLICT" && !reassignTo) {
         Alert.alert(
-          tm("upcomingBookingsTitle"),
-          tm("reassignRemoveBody", { name: member.name }),
+          t("web.provider.teamReassign.title"),
+          t("web.provider.teamReassign.body", { name: member.name }),
           [
-            { text: tm("cancel"), style: "cancel" },
-            { text: tm("reassignAndRemove"), style: "destructive", onPress: () => void apply("any") },
+            { text: t("web.provider.teamReassign.cancel"), style: "cancel" },
+            ...reassignCandidates.map((s) => ({
+              text: s.name,
+              onPress: () => void apply(s.id),
+            })),
+            {
+              text: t("web.provider.teamReassign.firstAvailable"),
+              style: "destructive",
+              onPress: () => void apply("any"),
+            },
           ],
         );
         return;
@@ -617,14 +699,25 @@ export default function TeamMemberDetailScreen() {
           <ChecklistRow
             complete={(member.locations ?? []).length > 0}
             label={(member.locations ?? []).length > 0 ? tm("locationsAssigned") : tm("locationsMissing")}
+            onPress={canManageTeam ? openScopeEdit : undefined}
           />
           <ChecklistRow
             complete={(member.service_ids ?? []).length > 0}
             label={(member.service_ids ?? []).length > 0 ? tm("servicesAssigned") : tm("servicesMissing")}
+            onPress={canManageTeam ? openScopeEdit : undefined}
           />
         </View>
 
-        <View style={twStyle("mx-4 mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+        <TouchableOpacity
+          style={twStyle("mx-4 mb-4 rounded-2xl border border-gray-100 bg-white p-4")}
+          onPress={canManageTeam ? openScopeEdit : undefined}
+          disabled={!canManageTeam}
+          activeOpacity={canManageTeam ? 0.85 : 1}
+          accessibilityRole={canManageTeam ? "button" : "text"}
+          accessibilityLabel={
+            canManageTeam ? `${tm("workSetup")}, ${tm("editA11y")}` : tm("workSetup")
+          }
+        >
           <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>{tm("workSetup")}</Text>
           <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400")}>{tm("locations")}</Text>
           {(member.locations ?? []).length > 0 ? (
@@ -656,7 +749,7 @@ export default function TeamMemberDetailScreen() {
           ) : (
             <Text style={twStyle("mt-1 text-sm text-gray-500")}>{tm("noSpecificServices")}</Text>
           )}
-        </View>
+        </TouchableOpacity>
 
         {canManageTeam && latestPayPlan ? (
           <View style={twStyle("mx-4 mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
@@ -725,11 +818,15 @@ export default function TeamMemberDetailScreen() {
                   `flex-row items-center px-4 py-3.5 ${i < visibleLinks.length - 1 ? "border-b border-gray-50" : ""}`
                 )}
                 onPress={() => {
-                  if (item.useId && id) {
+                  if (item.openScope) {
+                    openScopeEdit();
+                    return;
+                  }
+                  if (item.useId && id && item.route) {
                     router.push(`${item.route}/${id}` as never);
-                  } else if (item.passStaffId && id) {
+                  } else if (item.passStaffId && id && item.route) {
                     router.push(`${item.route}?${item.passStaffId}=${id}` as never);
-                  } else {
+                  } else if (item.route) {
                     router.push(item.route as never);
                   }
                 }}
@@ -894,6 +991,75 @@ export default function TeamMemberDetailScreen() {
         ) : null}
       </ScrollView>
 
+
+      <BottomSheet
+        visible={scopeEditOpen}
+        onClose={() => setScopeEditOpen(false)}
+        title={tl("editTitle", { name: member?.name ?? tl("teamMemberFallback") })}
+        snapHeight="auto"
+      >
+        {locations && locations.length > 0 ? (
+          <>
+            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>{tl("locations")}</Text>
+            <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50")}>
+              {locations.map((loc, i) => {
+                const isSelected = scopeForm.location_ids.includes(loc.id);
+                return (
+                  <TouchableOpacity
+                    key={loc.id}
+                    style={twStyle(
+                      `flex-row items-center px-4 py-3 ${i < locations.length - 1 ? "border-b border-gray-100" : ""}`,
+                    )}
+                    onPress={() =>
+                      setScopeForm((p) => ({
+                        ...p,
+                        location_ids: isSelected
+                          ? p.location_ids.filter((x) => x !== loc.id)
+                          : [...p.location_ids, loc.id],
+                      }))
+                    }
+                  >
+                    <Ionicons
+                      name={isSelected ? "checkbox" : "square-outline"}
+                      size={20}
+                      color={isSelected ? "#6366f1" : "#9ca3af"}
+                    />
+                    <Text style={twStyle("ms-3 text-sm text-gray-900")}>{loc.name}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
+        ) : null}
+        {services && services.length > 0 ? (
+          <>
+            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>{tl("assignServicesShort")}</Text>
+            <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50")}>
+              {services.map((svc, i) => {
+                const isSelected = scopeForm.service_ids.includes(svc.id);
+                return (
+                  <TouchableOpacity
+                    key={svc.id}
+                    style={twStyle(
+                      `flex-row items-center px-4 py-3 ${i < services.length - 1 ? "border-b border-gray-100" : ""}`,
+                    )}
+                    onPress={() => toggleScopeService(svc.id)}
+                  >
+                    <Ionicons
+                      name={isSelected ? "checkbox" : "square-outline"}
+                      size={20}
+                      color={isSelected ? "#6366f1" : "#9ca3af"}
+                    />
+                    <Text style={twStyle("ms-3 text-sm text-gray-900")}>{svc.title}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
+        ) : null}
+        <ActionButton label={tl("saveChanges")} onPress={() => void handleSaveScope()} loading={saving} />
+      </BottomSheet>
+
       {/* ─── Edit Bottom Sheet ──────────────────────────────────── */}
       <BottomSheet
         visible={editOpen}
@@ -994,9 +1160,17 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ChecklistRow({ complete, label }: { complete: boolean; label: string }) {
-  return (
-    <View style={twStyle("mb-2 flex-row items-start")}>
+function ChecklistRow({
+  complete,
+  label,
+  onPress,
+}: {
+  complete: boolean;
+  label: string;
+  onPress?: () => void;
+}) {
+  const row = (
+    <>
       <View
         style={twStyle(
           `mt-0.5 h-5 w-5 items-center justify-center rounded-full ${
@@ -1013,8 +1187,17 @@ function ChecklistRow({ complete, label }: { complete: boolean; label: string })
       <Text style={twStyle(`ms-2 flex-1 text-sm ${complete ? "text-gray-700" : "text-amber-700"}`)}>
         {label}
       </Text>
-    </View>
+      {onPress ? <DirectionalIcon name="chevron-forward" size={16} color="#d1d5db" /> : null}
+    </>
   );
+  if (onPress) {
+    return (
+      <TouchableOpacity style={twStyle("mb-2 flex-row items-start")} onPress={onPress}>
+        {row}
+      </TouchableOpacity>
+    );
+  }
+  return <View style={twStyle("mb-2 flex-row items-start")}>{row}</View>;
 }
 
 function FormField({

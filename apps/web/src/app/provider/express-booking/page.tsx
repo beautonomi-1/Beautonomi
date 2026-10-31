@@ -41,6 +41,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { copyTextToClipboard } from "@/lib/browser/clipboard";
+import { isPubliclyBookableStaff } from "@/lib/provider/staff-public-bookable";
 
 export default function ExpressBookingLinksPage() {
   const { t } = useTranslation();
@@ -546,7 +547,16 @@ function ExpressBookingLinkDialog({
           })
         )
       );
-      setTeamMembers(members);
+      setTeamMembers(
+        members.filter((m) =>
+          isPubliclyBookableStaff({
+            is_active: m.is_active,
+            is_service_provider: m.is_service_provider,
+            enable_in_online_booking: m.enable_in_online_booking,
+            bookable_from: m.bookable_from,
+          }),
+        ),
+      );
       const salonLocs = Array.isArray(locs) ? locs.filter((l: { location_type?: string }) => (l.location_type || "salon") === "salon") : [];
       setLocations(salonLocs.map((l: { id: string; name: string }) => ({ id: l.id, name: l.name })));
     } catch (error) {

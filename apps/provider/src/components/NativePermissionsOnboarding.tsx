@@ -6,10 +6,12 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
+  BackHandler,
   Modal,
   Platform,
   Pressable,
   Text,
+  TouchableOpacity,
   View,
   type StyleProp,
   type ViewStyle,
@@ -25,6 +27,7 @@ import Animated, {
 } from "react-native-reanimated";
 import Svg, { Circle, Path } from "react-native-svg";
 import { useAuth } from "@/providers/AuthProvider";
+import { confirmUseDifferentAccount } from "@/lib/confirm-use-different-account";
 import { useNativePermissionsOnboardingGate } from "@/providers/NativePermissionsOnboardingProvider";
 import { Colors } from "@/constants/colors";
 import {
@@ -358,7 +361,7 @@ export function NativePermissionsOnboarding() {
   const { t } = useTranslation();
   const np = (key: string, opts?: Record<string, unknown>) => t(`provider.mobile.components.nativePermissions.${key}`, opts) as string;
   const insets = useSafeAreaInsets();
-  const { session, user } = useAuth();
+  const { session, user, signOut } = useAuth();
   const { gate, markOnboardingFinished } = useNativePermissionsOnboardingGate();
   const [stepIndex, setStepIndex] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -366,6 +369,23 @@ export function NativePermissionsOnboarding() {
 
   const visible =
     Platform.OS !== "web" && gate.phase === "needs_onboarding" && !!session?.access_token;
+
+  const handleModalBack = useCallback(() => {
+    if (stepIndex === 0) {
+      confirmUseDifferentAccount(t, signOut);
+      return;
+    }
+    setStepIndex(0);
+  }, [stepIndex, t, signOut]);
+
+  useEffect(() => {
+    if (!visible || Platform.OS !== "android") return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      handleModalBack();
+      return true;
+    });
+    return () => sub.remove();
+  }, [visible, handleModalBack]);
 
   useEffect(() => {
     if (visible) setStepIndex(0);
@@ -409,7 +429,7 @@ export function NativePermissionsOnboarding() {
   };
 
   return (
-    <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={() => {}}>
+    <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={handleModalBack}>
       <View
         style={{
           flex: 1,
@@ -485,6 +505,18 @@ export function NativePermissionsOnboarding() {
               )}
             </ScalePressable>
           )}
+
+          <TouchableOpacity
+            onPress={() => confirmUseDifferentAccount(t, signOut)}
+            disabled={busy}
+            style={{ alignItems: "center", paddingVertical: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel={t("common.useDifferentAccount") as string}
+          >
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[500], textDecorationLine: "underline" }}>
+              {t("common.useDifferentAccount")}
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>

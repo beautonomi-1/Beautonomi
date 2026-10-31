@@ -72,7 +72,10 @@
       "gotIt": "حسنًا",
       "dismissA11y": "إخفاء التلميحة"
     },
-    "change": "تغيير"
+    "change": "تغيير",
+    "useDifferentAccount": "استخدام حساب آخر",
+    "useDifferentAccountConfirmTitle": "تبديل الحساب؟",
+    "useDifferentAccountConfirmBody": "سيتم تسجيل خروجك على هذا الجهاز. يظل حساب Google أو Apple مرتبطًا، وأي تقدم محفوظ في الإعداد يبقى على ذلك الحساب. يمكنك تسجيل الدخول مرة أخرى في أي وقت."
   },
   "authGate": {
     "checkingAccess": "جاري التحقق من حسابك…",
@@ -13337,14 +13340,14 @@
     },
     "contentReport": {
       "modalTitle": "الإبلاغ عن المحتوى",
-      "modalLead": "Select a reason and add optional details so our team can review.",
+      "modalLead": "اختر سببًا وأضف تفاصيل اختيارية لمراجعتها من قِبل فريقنا.",
       "submitCta": "إرسال report",
       "detailsPlaceholder": "Additional details (اختياري)",
       "selectReasonTitle": "اختر سببًا",
       "selectReasonBody": "يرجى اختيار سبب الإبلاغ عن هذا المحتوى.",
       "submitError": "تعذر إرسال report.",
       "submittedTitle": "Report إرسالted",
-      "submittedBody": "Thank you. Our team will review your report within 24-48 hours.",
+      "submittedBody": "شكرًا لك. سيراجع فريقنا بلاغك خلال 24 ساعة.",
       "reportPost": "الإبلاغ عن المنشور",
       "reportComment": "الإبلاغ عن التعليق",
       "reportMessage": "الإبلاغ عن الرسالة",
@@ -13358,7 +13361,8 @@
         "harassment": "تحرش أو إساءة",
         "spam": "رسائل مزعجة أو احتيال",
         "safety": "مخاوف تتعلق بالسلامة",
-        "other": "أخرى"
+        "other": "أخرى",
+        "illegal_exploitative": "محتوى غير قانوني أو استغلالي"
       }
     },
     "blockUser": {
@@ -15164,6 +15168,7 @@
           "paymentCancelledBody": "You cancelled the payment. No charge was made. You can حاول مرة أخرى from this order.",
           "cancelOrderTitle": "إلغاء الطلب",
           "cancelOrderBody": "إلغاء هذا الطلب؟ ستُعاد العناصر المتوفرة للمخزون وتُسترد المدفوعات.",
+          "cancelledInPerson": "تم إلغاء الطلب. تم تحصيل {{amount}} شخصيًا ولا يزال الصالون بحاجة إلى إعادته.",
           "keepOrderCta": "Keep طلب",
           "cancelOrderCta": "إلغاء الطلب",
           "cancelOrderFailed": "تعذر إلغاء this طلب.",
@@ -21212,6 +21217,7 @@
         "goBack": "رجوع",
         "cancelConfirm": "إلغاء هذا الطلب؟ ستُعاد العناصر المتوفرة للمخزون وتُسترد المدفوعات.",
         "cancelledToast": "طلب ملغى",
+        "cancelledInPerson": "تم إلغاء الطلب. تم تحصيل {{amount}} شخصيًا ولا يزال الصالون بحاجة إلى إعادته.",
         "cancelFailed": "تعذر إلغاء this طلب.",
         "addEmailBeforePay": "Voeg 'n e-posadres by jou rekening voordat jy hierdie bestelling aanlyn betaal.",
         "paymentStartFailed": "We تعذر بدء دفع for this طلب. يرجى المحاولة مرة أخرى.",

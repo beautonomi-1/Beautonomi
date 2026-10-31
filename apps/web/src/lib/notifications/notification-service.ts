@@ -3304,6 +3304,7 @@ export async function notifySupportStaffInboxActivity(
 ) {
   const unique = [...new Set(recipientUserIds)].filter(Boolean);
   if (unique.length === 0) return { success: true as const, skipped: true as const };
+  const adminTicketPath = `/admin/support-tickets/${ticketId}`;
   return dispatchTemplateNotification(
     "support_ticket_updated",
     unique,
@@ -3313,7 +3314,11 @@ export async function notifySupportStaffInboxActivity(
       ticket_id: ticketId,
     },
     channels,
-    { appType: "customer" }
+    {
+      appType: "customer",
+      inAppActionUrl: adminTicketPath,
+      emailCtaPath: adminTicketPath,
+    },
   );
 }
 

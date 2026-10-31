@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router";
 import { adminApi } from "@/lib/adminClient";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -121,12 +123,19 @@ export function CpIntegrationWasenderPage() {
 
   return (
     <div className="space-y-6">
-      <CpBack to=".." label="Integrations" />
+      <CpBack to={adminSpaTo("/admin/control-plane/integrations")} label="Platform integrations" />
       <AdminPageHeader
         title="WhatsApp (Wasender)"
         description="WhatsApp messaging via WasenderAPI. Use your Personal Access Token from wasenderapi.com/settings/tokens. API base URL should match the docs (default https://www.wasenderapi.com). Secrets are not shown after save."
       />
       <EnvSelect value={env} onChange={setEnv} />
+
+      <AdminPanel className="text-sm text-gray-700">
+        <Link to={adminSpaTo("/admin/whatsapp/sessions")} className="font-medium text-primary hover:underline">
+          WhatsApp sessions
+        </Link>
+        <span className="text-gray-600"> — connect numbers and scan QR after credentials are saved.</span>
+      </AdminPanel>
 
       {msg && (
         <AdminPanel className={msg.type === "error" ? "!border-red-200 !bg-red-50" : "!border-green-200 !bg-green-50"}>

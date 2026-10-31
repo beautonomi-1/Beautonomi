@@ -23,12 +23,14 @@ import {
 import { z } from "zod";
 import { syncPortalRoleAfterWorkplaceChange } from "@/lib/auth/effective-provider-role";
 import { reassignStaffWorkload } from "@/lib/provider/reassign-staff-workload";
+import { replaceStaffServicesForStaff } from "@/lib/provider/sync-staff-services";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import {
   revokeStaffInvitesForMember,
   revokeStaffUserSessionsIfOrphaned,
 } from "@/lib/provider/staff-offboarding";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { parseStaffJobPreset, resolveStaffJobPreset } from "@/lib/provider/staff-job-presets";
 
 const updateStaffSchema = z.object({
   name: z.string().optional(),
@@ -36,6 +38,7 @@ const updateStaffSchema = z.object({
   phone: z.string().optional().nullable(),
   avatar_url: z.string().url().optional().nullable(),
   role: z.string().optional(),
+  job: z.enum(["stylist", "senior", "front_desk", "manager"]).optional(),
   is_active: z.boolean().optional(),
   mobileReady: z.boolean().optional(),
   commission_rate: z.number().min(0).max(100).optional().nullable(),
@@ -381,11 +384,19 @@ export async function PATCH(
 
     const updateData: Record<string, unknown> = {};
     const d = validationResult.data;
+    const jobPreset = parseStaffJobPreset(d.job);
+    if (jobPreset) {
+      const preset = resolveStaffJobPreset(jobPreset);
+      updateData.role = preset.dbRole;
+      updateData.permissions = preset.permissions;
+      updateData.role_id = null;
+      updateData.work_hours_enabled = preset.work_hours_enabled;
+}
     if (d.name !== undefined) updateData.name = d.name;
     if (d.email !== undefined) updateData.email = d.email;
     if (d.phone !== undefined) updateData.phone = d.phone;
     if (d.avatar_url !== undefined) updateData.avatar_url = d.avatar_url;
-    if (d.role !== undefined) {
+    if (d.role !== undefined && !jobPreset) {
       const dbRole =
         d.role === "provider_owner" ? "owner" : d.role === "provider_manager" ? "manager" : "employee";
       updateData.role = dbRole;
@@ -535,18 +546,7 @@ export async function PATCH(
           }
         }
       }
-      // staff_services is the only eligibility source; the legacy
-      // provider_staff.assigned_service_ids array is no longer written (872).
-      await supabase.from("staff_services").delete().eq("staff_id", id);
-      if (sids.length > 0) {
-        await supabase.from("staff_services").insert(
-          sids.map((sid: string) => ({
-            staff_id: id,
-            offering_id: sid,
-            provider_id: providerId,
-          })),
-        );
-      }
+      await replaceStaffServicesForStaff(supabase, providerId, id, sids);
     }
 
     return respondWithStaffDetail(supabase, user.id, id, providerId, request);

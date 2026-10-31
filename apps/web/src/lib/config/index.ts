@@ -229,7 +229,10 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
     // the bundle still emits a deprecated `sumsub: { enabled: false }` for
     // backward compatibility with published mobile clients.
     Promise.resolve({ data: null, error: null }),
-    supabase.from("aura_integration_config").select("enabled").eq("environment", environment).maybeSingle(),
+    import("@/lib/config/load-aura-integration-config")
+      .then(({ loadAuraIntegrationConfig }) => loadAuraIntegrationConfig(environment, tenantId ?? null))
+      .then((row) => ({ data: row ? { enabled: row.enabled } : null, error: null }))
+      .catch(() => ({ data: null, error: new Error("aura_failed") })),
     supabase.from("safety_module_config").select("*").eq("environment", environment).maybeSingle(),
   ]);
 

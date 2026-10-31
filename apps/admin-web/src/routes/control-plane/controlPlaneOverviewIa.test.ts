@@ -39,6 +39,12 @@ describe("control plane overview IA", () => {
     expect(allTos).toContain("/admin/control-plane/modules/ranking");
   });
 
+  it("labels control-plane integrations as Platform integrations under Identity & trust", () => {
+    const identity = CONTROL_PLANE_OVERVIEW_GROUPS.find((g) => g.label === "Identity & trust")!;
+    const platform = identity.items.find((i) => i.to === "/admin/control-plane/integrations");
+    expect(platform?.title).toBe("Platform integrations");
+  });
+
   it("keeps AI Platform under AI & agents, not Identity & trust", () => {
     const identity = CONTROL_PLANE_OVERVIEW_GROUPS.find((g) => g.label === "Identity & trust")!;
     const ai = CONTROL_PLANE_OVERVIEW_GROUPS.find((g) => g.label === "AI & agents")!;

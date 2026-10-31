@@ -137,14 +137,6 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
     return [];
   }, [servicesData]);
 
-  const staffList = useMemo(() => {
-    if (Array.isArray(staffData)) return staffData;
-    if (staffData && typeof staffData === "object" && Array.isArray((staffData as { data?: unknown }).data)) {
-      return (staffData as { data: StaffMember[] }).data;
-    }
-    return [];
-  }, [staffData]);
-
   const productsList = useMemo(() => normalizeProductsList(productsData) as CatalogProduct[], [productsData]);
 
   const parentCatalogServices = useMemo(
@@ -164,6 +156,30 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
   );
 
   const [selectedServices, setSelectedServices] = useState<BookingEditServiceLine[]>([]);
+  const staffList = useMemo(() => {
+    let list: StaffMember[] = [];
+    if (Array.isArray(staffData)) list = staffData;
+    else if (staffData && typeof staffData === "object" && Array.isArray((staffData as { data?: unknown }).data)) {
+      list = (staffData as { data: StaffMember[] }).data;
+    }
+    let filtered = list.filter(
+      (m) => (m as { is_service_provider?: boolean | null }).is_service_provider !== false,
+    );
+    const selectedIds = selectedServices.map((s) => s.serviceId).filter(Boolean);
+    if (selectedIds.length > 0 && catalogServices.length > 0) {
+      for (const sid of selectedIds) {
+        const svc = catalogServices.find((s) => s.id === sid) as
+          | { team_member_ids?: string[] | null }
+          | undefined;
+        const ids = svc?.team_member_ids?.filter(Boolean);
+        if (ids && ids.length > 0) {
+          const allowed = new Set(ids);
+          filtered = filtered.filter((m) => allowed.has(m.id));
+        }
+      }
+    }
+    return filtered;
+  }, [staffData, selectedServices, catalogServices]);
   const [selectedProducts, setSelectedProducts] = useState<BookingEditProductLine[]>([]);
   const [notes, setNotes] = useState("");
   const [manualDiscount, setManualDiscount] = useState("");

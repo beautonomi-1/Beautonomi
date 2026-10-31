@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/lib/safety/explore-post-gallery", () => ({
+  removeExplorePostUrlsFromProviderGallery: vi.fn(async () => undefined),
+}));
+
 const mockUpdate = vi.fn();
 const mockDelete = vi.fn();
 
@@ -22,7 +26,15 @@ describe("moderation-actions", () => {
   });
 
   it("applyContentModerationTakedown hides explore posts", async () => {
-    const supabase = makeSupabase();
+    const captured: Record<string, unknown>[] = [];
+    const supabase = {
+      from: vi.fn(() => ({
+        update: vi.fn((payload: Record<string, unknown>) => {
+          captured.push(payload);
+          return { eq: vi.fn(async () => ({ error: null })) };
+        }),
+      })),
+    } as never;
     const { applyContentModerationTakedown } = await import("../moderation-actions");
     const result = await applyContentModerationTakedown(supabase, {
       targetType: "explore_post",
@@ -32,7 +44,44 @@ describe("moderation-actions", () => {
     });
     expect(result.applied).toBe(true);
     expect(result.action).toBe("hide");
-    expect(supabase.from).toHaveBeenCalledWith("explore_posts");
+    expect(captured[0]?.moderated_by).toBe("admin-1");
+  });
+
+  it("system auto-hide omits moderated_by when adminUserId is null", async () => {
+    const captured: Record<string, unknown>[] = [];
+    const supabase = {
+      from: vi.fn((table: string) => ({
+        update: vi.fn((payload: Record<string, unknown>) => {
+          captured.push(payload);
+          return { eq: vi.fn(async () => ({ error: null })) };
+        }),
+        select:
+          table === "explore_posts"
+            ? vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({
+                    data: {
+                      provider_id: "prov-1",
+                      display_path: null,
+                      media_urls: [],
+                      media_meta: [],
+                    },
+                  })),
+                })),
+              }))
+            : undefined,
+      })),
+    } as never;
+    const { applyContentModerationTakedown } = await import("../moderation-actions");
+    await applyContentModerationTakedown(supabase, {
+      targetType: "explore_post",
+      targetId: "post-1",
+      adminUserId: null,
+      action: "hide",
+      notes: "Auto-hidden after 3 reports in 24h (system)",
+    });
+    expect(captured[0]?.is_hidden).toBe(true);
+    expect(captured[0]).not.toHaveProperty("moderated_by");
   });
 
   it("maybeAutoHideReportedContent returns null below threshold", async () => {

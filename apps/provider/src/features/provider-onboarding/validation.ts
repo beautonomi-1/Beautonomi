@@ -275,6 +275,9 @@ export function buildSubmitPayload(formData: Partial<OnboardingFormData>): Recor
     },
     include_in_search_engines: true,
     selected_plan_id: formData.selected_plan_id ?? null,
+    owner_takes_appointments: formData.owner_takes_appointments,
+    owner_public_title: optionalText(formData.owner_public_title) ?? null,
+    owner_service_indexes: formData.owner_service_indexes,
   };
 }
 

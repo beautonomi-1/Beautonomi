@@ -43,6 +43,7 @@ import {
   isRefundReasonValid,
   deriveRefundRowState,
   creditedViaLabel,
+  walletCreditMaxForRow,
   type RefundReasonPreset,
 } from "@/lib/refunds/refundUiHelpers";
 
@@ -237,10 +238,14 @@ export function RefundsListPage() {
       const bookingId = String(
         row.booking_id ?? (row.booking as { id?: string } | null)?.id ?? "",
       );
+      const substitute =
+        row.is_wallet_substitute_allowed === true ||
+        (source === "booking_tender" && !row.primary_transaction_id);
       const payload = {
         refund_amount: amount,
         refund_reason: reason,
         notes: notes.trim() || undefined,
+        ...(substitute ? { substitute_reason: "goodwill" as const } : {}),
       };
       if (source === "booking_tender" && bookingId) {
         return adminApi.postJson<{ provider_balance_warning?: string | null }>(
@@ -365,12 +370,8 @@ export function RefundsListPage() {
     [sp, setSp, sortBy, sortDir],
   );
 
-  const processRemaining = processRow
-    ? parseRefundAmount(
-        processRow.remaining_refundable ??
-          remainingRefundable(processRow.amount, processRow.refund_amount),
-      )
-    : 0;
+  const processRemaining = processRow ? walletCreditMaxForRow(processRow) : 0;
+  const processSubstitute = processRow?.is_wallet_substitute_allowed === true;
 
   const resolvedReason = normalizeRefundReason(reasonPreset, reasonOther);
   const reasonValid = isRefundReasonValid(reasonPreset, reasonOther);
@@ -408,9 +409,7 @@ export function RefundsListPage() {
 
   function openProcessRefund(row: Record<string, unknown>) {
     const id = String(row.id ?? row.key ?? "");
-    const remaining = parseRefundAmount(
-      row.remaining_refundable ?? remainingRefundable(row.amount, row.refund_amount),
-    );
+    const remaining = walletCreditMaxForRow(row);
     const queueReason = String(row.queue_reason ?? "");
     setProcessId(id);
     setProcessRow(row);
@@ -462,6 +461,7 @@ export function RefundsListPage() {
           status: String(row.status ?? "pending"),
           booking: row.booking,
           is_processable: row.is_processable as boolean | undefined,
+          is_wallet_substitute_allowed: row.is_wallet_substitute_allowed as boolean | undefined,
           refund_state: row.refund_state as
             | "not_refunded"
             | "partially_refunded"
@@ -558,6 +558,7 @@ export function RefundsListPage() {
           effective_refunded_total: row.effective_refunded_total as number | undefined,
           refunded_at: row.refunded_at as string | null | undefined,
           wallet_credited_at: row.wallet_credited_at as string | null | undefined,
+          is_wallet_substitute_allowed: row.is_wallet_substitute_allowed as boolean | undefined,
         });
         return derived.canProcess ? (
           <button
@@ -643,8 +644,10 @@ export function RefundsListPage() {
             on customer confirmation. No wallet credit needed.
           </li>
           <li>
-            <strong>Credit wallet</strong> — manual support credit only. This never reverses a card
-            or bank payment; the customer can spend the balance on their next booking.
+            <strong>Credit wallet</strong> — manual support credit for platform-collected money only.
+            For till cash, EFT, or other in-person payments, use{" "}
+            <strong>Issue store credit instead</strong> only when finance explicitly substitutes wallet
+            credit for an in-person return (overdue or disputed cash confirmation).
           </li>
           <li>
             <strong>Non-booking payments</strong> (gift cards, memberships, subscriptions, ads) must
@@ -680,10 +683,11 @@ export function RefundsListPage() {
                 Automatically credit the customer wallet for eligible exceptions
               </span>
               <span className="mt-1 block text-xs text-gray-600">
-                Hourly retry for failed cancellation wallet credits and safe uncredited cancellations.
-                Does not reverse Paystack or other card payments, PayCloud or Yoco terminal refunds,
-                cash confirmations, gift-card restores, or wallet→bank EFT payouts. Manual{" "}
-                <strong>Credit wallet</strong> stays available.
+                Hourly retry for failed cancellation wallet credits and safe uncredited Paystack-only
+                cancellations. Skips cash, mixed, PayCloud, Yoco, gift-card, and in-person tender rows.
+                Does not complete pending cash confirmations (the separate hourly job auto-closes those
+                after 48 hours). Manual <strong>Credit wallet</strong> and store-credit substitute stay
+                available where the row allows it.
               </span>
             </span>
           </label>
@@ -853,6 +857,7 @@ export function RefundsListPage() {
                 status: statusStr,
                 booking: row.booking,
                 is_processable: row.is_processable as boolean | undefined,
+                is_wallet_substitute_allowed: row.is_wallet_substitute_allowed as boolean | undefined,
                 refund_state: row.refund_state as
                   | "not_refunded"
                   | "partially_refunded"
@@ -1119,7 +1124,13 @@ export function RefundsListPage() {
         onClose={() => {
           if (!processRefund.isPending) closeProcessModal(modalSetters);
         }}
-        title={providerWarning ? "Refund processed" : "Credit customer wallet"}
+        title={
+          providerWarning
+            ? "Refund processed"
+            : processSubstitute
+              ? "Issue store credit instead"
+              : "Credit customer wallet"
+        }
         description={
           providerWarning
             ? "The customer wallet was credited. Review the provider balance warning below."
@@ -1164,7 +1175,11 @@ export function RefundsListPage() {
                   });
                 }}
               >
-                {processRefund.isPending ? "Crediting…" : "Credit wallet"}
+                {processRefund.isPending
+                  ? "Crediting…"
+                  : processSubstitute
+                    ? "Issue store credit"
+                    : "Credit wallet"}
               </button>
             </>
           )
@@ -1240,9 +1255,9 @@ export function RefundsListPage() {
             ) : null}
 
             <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-800">
-              The customer&apos;s wallet will be credited immediately. This does not refund their
-              card or bank. They can use the balance on their next booking from
-              their wallet.
+              {processSubstitute
+                ? "This issues store credit instead of the in-person cash return. The pending cash confirmation row will be closed. This does not refund a card or bank payment."
+                : "The customer\u2019s wallet will be credited immediately. This does not refund their card or bank. They can use the balance on their next booking from their wallet."}
             </p>
 
             <label className="block text-sm font-medium text-gray-700">

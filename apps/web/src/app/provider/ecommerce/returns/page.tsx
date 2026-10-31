@@ -7,6 +7,7 @@ import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { fetcher } from "@/lib/http/fetcher";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Undo2, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { allowsInPersonProductOrderRefund } from "@/lib/orders/product-order-tender";
 
 interface ReturnRequest {
   id: string;
@@ -19,7 +20,7 @@ interface ReturnRequest {
   status: string;
   provider_notes: string | null;
   created_at: string;
-  order: { order_number: string };
+  order: { order_number: string; payment_method?: string | null };
   customer: { full_name: string; email: string };
 }
 
@@ -123,7 +124,11 @@ export default function ProviderReturnsPage() {
         payload.resolution = "full_refund";
       }
       if (dialog.action === "process_refund") {
-        payload.refund_method = dialogRefundMethod;
+        const row = returns.find((r) => r.id === dialog.returnId);
+        const inPerson = allowsInPersonProductOrderRefund({
+          payment_method: row?.order?.payment_method,
+        });
+        payload.refund_method = inPerson ? dialogRefundMethod : "store_credit";
       }
 
       await fetcher.patch(`/api/provider/returns/${dialog.returnId}`, payload);
@@ -290,7 +295,15 @@ export default function ProviderReturnsPage() {
                   {[
                     { value: "store_credit", label: t("web.provider.pages.ecommerce/returns.walletCredit") },
                     { value: "cash", label: t("web.provider.pages.ecommerce/returns.cashInPerson") },
-                  ].map((m) => (
+                  ]
+                    .filter((m) => {
+                      if (m.value !== "cash") return true;
+                      const row = returns.find((r) => r.id === dialog.returnId);
+                      return allowsInPersonProductOrderRefund({
+                        payment_method: row?.order?.payment_method,
+                      });
+                    })
+                    .map((m) => (
                     <button
                       key={m.value}
                       type="button"

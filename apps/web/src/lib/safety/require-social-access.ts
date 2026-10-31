@@ -63,6 +63,21 @@ export async function requireSocialAccess(
     });
   }
 
+  if (band === "unknown" && (capability === "comment" || capability === "like_or_save")) {
+    const msg =
+      "Add your date of birth in Safety & parental controls to use comments and saves.";
+    if (policy.socialAgeGateMode === "log") {
+      logWouldBlock(userId, capability, "unknown_age_band", band);
+      return;
+    }
+    if (policy.socialAgeGateMode === "enforce") {
+      throw Object.assign(new SocialAccessDeniedError(msg), {
+        status: 403,
+        code: "SOCIAL_RESTRICTED",
+      });
+    }
+  }
+
   const stored = await readSafetySettingsStored(userId, supabase);
   const effective = await effectiveSafetySettings(band, stored, tenantId);
 

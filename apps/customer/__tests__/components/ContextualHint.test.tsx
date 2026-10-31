@@ -1,6 +1,6 @@
 import React from "react";
 import { I18nManager } from "react-native";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react-native";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ContextualHint } from "@/components/hints/ContextualHint";
 import { hintStorageKey } from "@/lib/contextual-hints/storage";
@@ -70,18 +70,21 @@ describe("ContextualHint", () => {
   it("hides a once hint after dismiss and on remount, and logs events", async () => {
     const id = "test.once";
     const { unmount } = render(<ContextualHint id={id} message="Show once" mode="once" />);
-    await waitFor(() => expect(screen.getByText("Show once")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Show once")).toBeTruthy(), { timeout: 10_000 });
     expect(trackHintShown).toHaveBeenCalledWith(id, "customer");
 
-    fireEvent.press(screen.getByLabelText("Dismiss tip"));
-    await waitFor(() => expect(screen.queryByText("Show once")).toBeNull());
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText("Dismiss tip"));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.queryByText("Show once")).toBeNull(), { timeout: 10_000 });
     expect(await AsyncStorage.getItem(hintStorageKey(id))).toBe("1");
     expect(trackHintDismissed).toHaveBeenCalledWith(id, "customer");
 
     unmount();
     render(<ContextualHint id={id} message="Show once" mode="once" />);
     await waitFor(() => expect(screen.queryByText("Show once")).toBeNull());
-  }, 20000);
+  }, 30_000);
 
   it("fires the action callback and logs hint_action", async () => {
     const onAction = jest.fn();

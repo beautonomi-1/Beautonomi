@@ -1,7 +1,7 @@
 "use client";
 import { useTranslation } from "@beautonomi/i18n";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { TeamMember } from "@/lib/provider-portal/types";
 import { PageHeader } from "@/components/provider/PageHeader";
@@ -22,6 +22,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { TeamMemberCreateEditDialog } from "./components/TeamMemberCreateEditDialog";
+import { TeamMemberAddWizard } from "./components/TeamMemberAddWizard";
+import { ReassignBookingsDialog } from "./components/ReassignBookingsDialog";
 import { toast } from "sonner";
 import { FetchError } from "@/lib/http/fetcher";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
@@ -34,19 +36,30 @@ const teamMembersCacheKey = (locationId?: string | null) =>
 const TEAM_MEMBERS_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 type TeamAccessPayload = {
   can_manage_team: boolean;
+  staff_add_can_proceed?: boolean;
+  staff_add_current_count?: number;
+  staff_add_limit_value?: number | null;
 };
 
 export default function ProviderTeamMembers() {
   const { t } = useTranslation();
-  const { provider, isLoading: isLoadingProvider, selectedLocationId } = useProviderPortal();
+  const { provider, isLoading: isLoadingProvider, selectedLocationId, salons } = useProviderPortal();
+  const [offeringIds, setOfferingIds] = useState<string[]>([]);
+  const [wizardOfferings, setWizardOfferings] = useState<Array<{ id: string; title: string }>>([]);
   const isFreelancer = provider?.business_type === "freelancer";
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isAddWizardOpen, setIsAddWizardOpen] = useState(false);
   const [canManageTeam, setCanManageTeam] = useState(false);
+  const [staffLimit, setStaffLimit] = useState<TeamAccessPayload | null>(null);
   const [teamAccessLoaded, setTeamAccessLoaded] = useState(false);
+  const [reassignDialog, setReassignDialog] = useState<{
+    member: TeamMember;
+    action: "delete";
+  } | null>(null);
 
   // Restore from location-scoped cache on mount / when location changes
   useEffect(() => {
@@ -82,6 +95,7 @@ export default function ProviderTeamMembers() {
         if (!mounted) return;
         const payload = (res as any)?.data ?? res;
         setCanManageTeam(payload?.can_manage_team === true);
+        setStaffLimit(payload ?? null);
       } catch {
         if (!mounted) return;
         setCanManageTeam(false);
@@ -125,6 +139,47 @@ export default function ProviderTeamMembers() {
     }
   };
 
+  const wizardLocationIds = useMemo(() => {
+    if (selectedLocationId) return [selectedLocationId];
+    return salons?.map((s) => s.id) ?? [];
+  }, [selectedLocationId, salons]);
+
+  const wizardStaffOptions = useMemo(
+    () => members.filter((m) => m.is_active).map((m) => ({ id: m.id, name: m.name })),
+    [members],
+  );
+
+  const wizardStaffLimit = useMemo(() => {
+    if (!staffLimit) return undefined;
+    return {
+      canProceed: staffLimit.staff_add_can_proceed !== false,
+      currentCount: staffLimit.staff_add_current_count ?? 0,
+      limitValue: staffLimit.staff_add_limit_value ?? null,
+    };
+  }, [staffLimit]);
+
+  useEffect(() => {
+    if (!isAddWizardOpen) return;
+    void (async () => {
+      try {
+        const { fetcher } = await import("@/lib/http/fetcher");
+        const svcRes = await fetcher.get<{ data: Array<{ id: string; title?: string; name?: string }> }>(
+          "/api/provider/services",
+        );
+        const rows = Array.isArray(svcRes.data) ? svcRes.data : [];
+        setOfferingIds(rows.map((r) => r.id));
+        setWizardOfferings(
+          rows.map((r) => ({
+            id: r.id,
+            title: r.title ?? r.name ?? r.id,
+          })),
+        );
+      } catch {
+        setOfferingIds([]);
+      }
+    })();
+  }, [isAddWizardOpen]);
+
   const filteredMembers = members.filter((member) =>
     (member?.name ?? "").toLowerCase().includes((searchQuery ?? "").toLowerCase()) ||
     (member?.email ?? "").toLowerCase().includes((searchQuery ?? "").toLowerCase())
@@ -133,7 +188,7 @@ export default function ProviderTeamMembers() {
   const handleCreate = () => {
     if (!canManageTeam) return;
     setSelectedMember(null);
-    setIsCreateDialogOpen(true);
+    setIsAddWizardOpen(true);
   };
 
   const handleEdit = (member: TeamMember) => {
@@ -170,13 +225,8 @@ export default function ProviderTeamMembers() {
     } catch (error) {
       const fetchErr = error as FetchError;
       if (fetchErr?.status === 409 || fetchErr?.code === "FUTURE_BOOKINGS_CONFLICT") {
-        const proceed = confirm(
-          t("web.provider.teamMembers.reassignConfirm", { name: member.name }),
-        );
-        if (proceed) {
-          await handleDelete(member, "any");
-          return;
-        }
+        setReassignDialog({ member, action: "delete" });
+        return;
       }
       console.error("Failed to delete member:", error);
       toast.error(fetchErr?.message || t("web.provider.teamMembers.failedToDelete"));
@@ -665,11 +715,42 @@ export default function ProviderTeamMembers() {
         </>
       )}
 
+      <ReassignBookingsDialog
+        open={reassignDialog !== null}
+        onOpenChange={(open) => {
+          if (!open) setReassignDialog(null);
+        }}
+        memberName={reassignDialog?.member.name ?? ""}
+        candidates={members.filter(
+          (m) => m.is_active && m.id !== reassignDialog?.member.id,
+        )}
+        onConfirm={(reassignTo) => {
+          if (reassignDialog) void handleDelete(reassignDialog.member, reassignTo);
+        }}
+      />
+
+      <TeamMemberAddWizard
+        open={isAddWizardOpen}
+        onOpenChange={setIsAddWizardOpen}
+        onCreated={() => {
+          void loadMembers();
+        }}
+        locationIds={wizardLocationIds}
+        locations={(salons ?? []).map((s) => ({ id: s.id, name: s.name ?? s.id }))}
+        offeringIds={offeringIds}
+        offerings={wizardOfferings}
+        staffOptions={wizardStaffOptions}
+        staffLimit={wizardStaffLimit}
+      />
+
       <TeamMemberCreateEditDialog
         open={isCreateDialogOpen}
         onOpenChange={setIsCreateDialogOpen}
         member={selectedMember}
         onSave={handleSave}
+        reassignCandidates={members
+          .filter((m) => m.is_active)
+          .map((m) => ({ id: m.id, name: m.name }))}
       />
     </div>
   );

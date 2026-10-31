@@ -50,6 +50,30 @@ export function phoneMatchesQuery(
   return false;
 }
 
+/** Provider booking list filter: name, ref, services, email, and phone (national 0 vs E.164). */
+export function bookingListMatchesQuery(
+  query: string,
+  fields: {
+    customerName?: string | null;
+    bookingNumber?: string | null;
+    serviceText?: string | null;
+    email?: string | null;
+    phones?: (string | null | undefined)[];
+  },
+): boolean {
+  const q = query.trim();
+  if (!q) return true;
+  const lower = q.toLowerCase();
+  if (fields.customerName?.toLowerCase().includes(lower)) return true;
+  if (fields.bookingNumber?.toLowerCase().includes(lower)) return true;
+  if (fields.serviceText?.toLowerCase().includes(lower)) return true;
+  if (fields.email?.toLowerCase().includes(lower)) return true;
+  for (const phone of fields.phones ?? []) {
+    if (phoneMatchesQuery(phone, q)) return true;
+  }
+  return false;
+}
+
 /** Client list filter: name/email substring + phone needle match. */
 export function clientContactMatches(
   query: string,

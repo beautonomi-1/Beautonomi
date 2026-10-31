@@ -298,7 +298,10 @@ export default function App() {
             <Route path="country-launch-checklist" element={<P.CpCountryLaunchChecklistPage />} />
             <Route path="region-online-gateway" element={<P.CpRegionOnlineGatewayPage />} />
             <Route path="integrations/ai" element={<P.CpIntegrationAiPage />} />
-            <Route path="integrations/gemini" element={<Navigate to="../ai" replace />} />
+            <Route
+              path="integrations/gemini"
+              element={<Navigate to={adminSpaTo("/admin/control-plane/integrations/ai")} replace />}
+            />
             <Route path="integrations/aura" element={<P.CpIntegrationAuraPage />} />
             <Route path="integrations/wasender" element={<P.CpIntegrationWasenderPage />} />
             <Route path="modules/distance" element={<P.CpModuleDistancePage />} />

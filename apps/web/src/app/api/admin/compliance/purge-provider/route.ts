@@ -9,6 +9,7 @@ import {
   collectUserPurgeSnapshot,
 } from "@/lib/account/compliance-purge-snapshot";
 import {
+  hashEmailForComplianceSnapshot,
   redactProviderOrgPurgeSnapshot,
   redactUserPurgeSnapshot,
 } from "@/lib/account/compliance-snapshot-redaction";
@@ -16,7 +17,7 @@ import {
   insertCompliancePurgeAuditLog,
   type CompliancePurgeReportV2,
 } from "@/lib/account/compliance-purge-audit";
-import { writeAuditLog } from "@/lib/audit/audit";
+import { extractRequestMeta, writeAuditLog } from "@/lib/audit/audit";
 import { invalidatePublicProviderCache } from "@/lib/providers/invalidate-public-provider-cache";
 
 const bodySchema = z.object({
@@ -29,6 +30,7 @@ const bodySchema = z.object({
   /** Must match the provider business email or the owner account email (case-insensitive). */
   typed_email_confirmation: z.string().min(3).max(320),
   acknowledge_irreversible: z.literal(true),
+  dry_run: z.boolean().optional(),
 });
 
 function normalizeEmail(e: string): string {
@@ -77,8 +79,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { provider_id, reason, typed_email_confirmation } = parsed.data;
+    const { provider_id, reason, typed_email_confirmation, dry_run } = parsed.data;
     const admin = getSupabaseAdmin();
+    const reqMeta = extractRequestMeta(request);
 
     const orgSnap = await collectProviderOrgPurgeSnapshot(admin, {
       providerId: provider_id,
@@ -148,6 +151,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (dry_run === true) {
+      return successResponse({
+        dry_run: true,
+        preview: redactProviderOrgPurgeSnapshot(orgSnap),
+        staff_login_user_ids: orgSnap.staff_login_user_ids,
+      });
+    }
+
+    const { data: actorRow } = await admin.from("users").select("email").eq("id", actor.id).maybeSingle();
+    const actorEmailHash = hashEmailForComplianceSnapshot(
+      (actorRow as { email?: string | null } | null)?.email ?? null,
+    );
+
     const staffIds = [...new Set(orgSnap.staff_login_user_ids)].filter((id) => id !== ownerId);
 
     const perUserSnapshots: NonNullable<CompliancePurgeReportV2["per_user_snapshots"]> = [];
@@ -165,6 +181,24 @@ export async function POST(request: NextRequest) {
     });
 
     if (result.ok === false) {
+      await writeAuditLog({
+        actor_user_id: actor.id,
+        actor_role: actor.role ?? "superadmin",
+        action: "admin.provider.compliance_purge",
+        entity_type: "provider",
+        entity_id: provider_id,
+        module: "users_trust",
+        risk_level: "critical",
+        status: "failed",
+        reason: result.message,
+        metadata: {
+          failure_code: result.code ?? "PURGE_FAILED",
+          owner_user_id: ownerId,
+        },
+        ip_address: reqMeta.ip_address,
+        user_agent: reqMeta.user_agent,
+        retention_tier: "access",
+      });
       return Response.json(
         {
           data: null,
@@ -187,8 +221,9 @@ export async function POST(request: NextRequest) {
         regulatory_acknowledgement: true,
         reason_min_length_met: reason.trim().length >= 20,
       },
-      actor: { user_id: actor.id, role: actor.role },
+      actor: { user_id: actor.id, role: actor.role, email_hash: actorEmailHash },
       tenant_id: tenantId,
+      request: { ip_address: reqMeta.ip_address, user_agent: reqMeta.user_agent },
       reason_redacted_length: reason.trim().length,
       operations: {
         compliance_clear_user_references_rpc: true,
@@ -216,6 +251,9 @@ export async function POST(request: NextRequest) {
       action: "admin.provider.compliance_purge",
       entity_type: "provider",
       entity_id: provider_id,
+      module: "users_trust",
+      risk_level: "critical",
+      status: "succeeded",
       metadata: {
         purged_user_ids: result.purged_user_ids,
         compliance_audit_row:
@@ -223,6 +261,9 @@ export async function POST(request: NextRequest) {
             ? { id: auditInsert.id, degraded: auditInsert.degraded || undefined }
             : { error: auditInsert.error },
       },
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+      retention_tier: "access",
     });
 
     invalidatePublicProviderCache(tenantId);

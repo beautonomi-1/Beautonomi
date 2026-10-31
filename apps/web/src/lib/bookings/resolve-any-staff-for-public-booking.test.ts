@@ -5,11 +5,13 @@ const {
   isProviderCalendarWindowBlockedMock,
   checkBookingSnapshotSegmentConflictsMock,
   resolveStaffLocationScopeMock,
+  listPubliclyBookableStaffIdsForLocationMock,
 } = vi.hoisted(() => ({
   loadEffectiveStaffShiftsMock: vi.fn(),
   isProviderCalendarWindowBlockedMock: vi.fn(),
   checkBookingSnapshotSegmentConflictsMock: vi.fn(),
   resolveStaffLocationScopeMock: vi.fn(),
+  listPubliclyBookableStaffIdsForLocationMock: vi.fn(),
 }));
 
 vi.mock("@/lib/availability/load-constraints", () => ({
@@ -29,6 +31,7 @@ vi.mock("@/lib/provider/staff-location-scope", async (importOriginal) => {
   return {
     ...actual,
     resolveStaffLocationScope: resolveStaffLocationScopeMock,
+    listPubliclyBookableStaffIdsForLocation: listPubliclyBookableStaffIdsForLocationMock,
   };
 });
 
@@ -36,13 +39,22 @@ import { pickFirstStaffForNullStaffLines } from "./resolve-any-staff-for-public-
 
 function makeSupabaseStaffList(ids: string[]) {
   return {
-    from: vi.fn(() => ({
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      order: vi.fn().mockResolvedValue({
-        data: ids.map((id) => ({ id })),
-      }),
-    })),
+    from: vi.fn((table: string) => {
+      if (table === "staff_services") {
+        return {
+          select: vi.fn().mockReturnValue({
+            in: vi.fn().mockResolvedValue({ data: [] }),
+          }),
+        };
+      }
+      return {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockResolvedValue({
+          data: ids.map((id) => ({ id })),
+        }),
+      };
+    }),
   };
 }
 
@@ -52,6 +64,7 @@ describe("pickFirstStaffForNullStaffLines", () => {
     isProviderCalendarWindowBlockedMock.mockResolvedValue({ blocked: false });
     checkBookingSnapshotSegmentConflictsMock.mockResolvedValue({ hasConflict: false });
     resolveStaffLocationScopeMock.mockResolvedValue({ staffIds: null, mode: "all" });
+    listPubliclyBookableStaffIdsForLocationMock.mockResolvedValue(["staff-a", "staff-b"]);
   });
 
   it("does not assign an any-staff candidate whose working hours do not cover the green slot", async () => {
@@ -106,6 +119,7 @@ describe("pickFirstStaffForNullStaffLines", () => {
   });
 
   it("does not assign staff who are outside the selected branch", async () => {
+    listPubliclyBookableStaffIdsForLocationMock.mockResolvedValue(["staff-b"]);
     resolveStaffLocationScopeMock.mockResolvedValue({ staffIds: ["staff-b"], mode: "strict" });
 
     loadEffectiveStaffShiftsMock.mockResolvedValue({
@@ -139,6 +153,42 @@ describe("pickFirstStaffForNullStaffLines", () => {
     });
 
     expect(result).toEqual({ ok: true, staffId: "staff-b" });
-    expect(resolveStaffLocationScopeMock).toHaveBeenCalled();
+    expect(listPubliclyBookableStaffIdsForLocationMock).toHaveBeenCalled();
+  });
+
+  it("omits staff who fail public bookability from any-staff assignment", async () => {
+    listPubliclyBookableStaffIdsForLocationMock.mockResolvedValue(["staff-a"]);
+
+    loadEffectiveStaffShiftsMock.mockResolvedValue({
+      workHoursEnabledEffective: true,
+      staffShifts: [
+        {
+          id: "shift-a",
+          staff_id: "staff-a",
+          date: "2026-06-15",
+          start_time: "09:00:00",
+          end_time: "17:00:00",
+          is_recurring: false,
+        },
+      ],
+    });
+
+    const result = await pickFirstStaffForNullStaffLines({
+      supabaseAdmin: makeSupabaseStaffList(["staff-a", "staff-b"]) as never,
+      providerId: "provider-1",
+      locationId: "loc-1",
+      providerTimeZone: "UTC",
+      bookingServicesData: [
+        {
+          offering_id: "offering-1",
+          staff_id: null,
+          scheduled_start_at: "2026-06-15T09:00:00.000Z",
+          scheduled_end_at: "2026-06-15T10:00:00.000Z",
+        },
+      ],
+      offeringBufferMinutesById: new Map([["offering-1", 0]]),
+    });
+
+    expect(result).toEqual({ ok: true, staffId: "staff-a" });
   });
 });
