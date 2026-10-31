@@ -17,6 +17,8 @@ export interface ProductOrderSheetOrder {
   delivery_fee?: number;
   discount_amount?: number;
   gift_card_amount?: number | null;
+  wallet_amount?: number | null;
+  payment_method?: string | null;
   promotion_code?: string | null;
   platform_fee?: number;
   total_amount: number;
@@ -30,6 +32,8 @@ export interface ProductOrderSheetOrder {
   tracking_url?: string | null;
   shipping_booking_status?: string | null;
   shipping_booking_detail?: string | null;
+  courier_charged_amount?: number | null;
+  courier_charged_weight_kg?: number | null;
   courier_label_url?: string | null;
   created_at: string;
   customer?: {

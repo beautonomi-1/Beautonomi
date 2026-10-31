@@ -58,6 +58,37 @@ describe("breadcrumbsForPath", () => {
   it("returns an empty trail for unknown paths", () => {
     expect(breadcrumbsForPath("/this/route/does/not/exist")).toEqual([]);
   });
+
+  it("integrations hub is a single crumb (bar hidden in UI)", () => {
+    expect(breadcrumbsForPath("/integrations-hub")).toHaveLength(1);
+  });
+
+  it("connector pages trail through Integrations hub", () => {
+    expect(breadcrumbsForPath("/integrations/resend").map((c) => c.label)).toEqual([
+      "Integrations",
+      "Resend",
+    ]);
+    expect(breadcrumbsForPath("/integrations/paycloud-operations").map((c) => c.label)).toEqual([
+      "Integrations",
+      "PayCloud Card Machines",
+      "PayCloud Operations",
+    ]);
+  });
+
+  it("control-plane integration pages trail through Platform integrations", () => {
+    expect(breadcrumbsForPath("/control-plane/integrations/stripe").map((c) => c.label)).toEqual([
+      "Platform Advanced",
+      "Platform integrations",
+      "Stripe",
+    ]);
+  });
+
+  it("region gateway trails from Platform Advanced", () => {
+    expect(breadcrumbsForPath("/control-plane/region-online-gateway").map((c) => c.label)).toEqual([
+      "Platform Advanced",
+      "Region online gateway",
+    ]);
+  });
 });
 
 describe("BREADCRUMB_MAP integrity", () => {

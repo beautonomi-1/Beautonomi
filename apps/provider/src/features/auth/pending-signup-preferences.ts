@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { coerceMobileUiLanguage, normalizeLanguageCode } from "@beautonomi/i18n";
 import { api } from "@/lib/api-client";
 import { changeLanguage } from "@/lib/i18n";
 
@@ -20,10 +21,13 @@ export async function applyPendingSignupPreferences(): Promise<void> {
   if (!pendingSource && !pendingLang) return;
   const payload: { signup_source?: string; preferred_language?: string } = {};
   if (pendingSource) payload.signup_source = pendingSource;
-  if (pendingLang) payload.preferred_language = pendingLang;
+  const coercedLang = pendingLang
+    ? coerceMobileUiLanguage(normalizeLanguageCode(pendingLang))
+    : null;
+  if (coercedLang) payload.preferred_language = coercedLang;
   try {
     await api.patch("/api/me/profile", payload);
-    if (pendingLang) await changeLanguage(pendingLang);
+    if (coercedLang) await changeLanguage(coercedLang);
   } catch {
     // Non-blocking — login/signup still succeeds; ops can reconcile later.
   }

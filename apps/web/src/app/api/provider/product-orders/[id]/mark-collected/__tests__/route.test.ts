@@ -114,4 +114,67 @@ describe("POST /api/provider/product-orders/[id]/mark-collected", () => {
     expect(res.status).toBe(200);
     expect(mockRecordProductOrderPayment).toHaveBeenCalled();
   });
+
+  it("records only the in-person remainder when wallet and gift card already paid", async () => {
+    mockGetSupabaseServer.mockResolvedValue(
+      makeSupabase({
+        id: ORDER_ID,
+        provider_id: PROVIDER_ID,
+        order_number: "PO-3",
+        total_amount: 150,
+        wallet_amount: 40,
+        gift_card_amount: 10,
+        payment_status: "pending",
+        payment_method: "cash",
+        status: "confirmed",
+        order_source: "online",
+      }),
+    );
+    mockRecordProductOrderPayment.mockResolvedValue({
+      ok: true,
+      duplicate: false,
+      transitionedToPaid: true,
+    });
+
+    const { POST } = await import("../route");
+    const req = new NextRequest(`http://localhost/api/provider/product-orders/${ORDER_ID}/mark-collected`, {
+      method: "POST",
+      body: JSON.stringify({ payment_method: "cash" }),
+    });
+    const res = await POST(req, { params: Promise.resolve({ id: ORDER_ID }) });
+
+    expect(res.status).toBe(200);
+    expect(mockRecordProductOrderPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ amountMajor: 100, platformHeld: false, provider: "cash" }),
+    );
+  });
+
+  it("rejects collection when wallet and gift card already cover the order", async () => {
+    mockGetSupabaseServer.mockResolvedValue(
+      makeSupabase({
+        id: ORDER_ID,
+        provider_id: PROVIDER_ID,
+        order_number: "PO-4",
+        total_amount: 80,
+        wallet_amount: 80,
+        gift_card_amount: 0,
+        payment_status: "pending",
+        payment_method: "cash",
+        status: "confirmed",
+        order_source: "online",
+      }),
+    );
+
+    const { POST } = await import("../route");
+    const req = new NextRequest(`http://localhost/api/provider/product-orders/${ORDER_ID}/mark-collected`, {
+      method: "POST",
+      body: JSON.stringify({ payment_method: "cash" }),
+    });
+    const res = await POST(req, { params: Promise.resolve({ id: ORDER_ID }) });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error?.code ?? body.code).toBe("NOTHING_TO_COLLECT");
+    expect(mockRecordProductOrderPayment).not.toHaveBeenCalled();
+  });
 });

@@ -10,7 +10,10 @@ import {
 } from "react";
 import { Alert, Keyboard } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
+import { useRouter, useRootNavigationState } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
+import { confirmUseDifferentAccount } from "@/lib/confirm-use-different-account";
+import { performProviderWizardStep1Back } from "@/lib/provider-wizard-exit-back";
 import { api } from "@/lib/api-client";
 import { useAuth } from "@/providers/AuthProvider";
 import { useProvider } from "@/providers/ProviderContext";
@@ -208,7 +211,13 @@ export function OnboardingWizardProvider({
   focusUnmapped = false,
 }: OnboardingWizardProviderProps) {
   const router = useRouter();
-  const { user } = useAuth();
+  const { t } = useTranslation();
+  const owa = useCallback(
+    (key: string) => t(`provider.mobile.screens.onboardingWizard.alerts.${key}`) as string,
+    [t],
+  );
+  const { user, signOut } = useAuth();
+  const navigationState = useRootNavigationState();
   const { refresh: refreshProvider } = useProvider();
   const [formData, setFormData] = useState<Partial<OnboardingFormData>>(() => ({
     ...INITIAL_FORM,
@@ -378,7 +387,10 @@ export function OnboardingWizardProvider({
         }
       } catch (e) {
         if (!cancelled) {
-          Alert.alert("Error", e instanceof Error ? e.message : "Could not load onboarding.");
+          Alert.alert(
+            owa("errorTitle"),
+            e instanceof Error ? e.message : owa("loadFailed"),
+          );
         }
       } finally {
         if (!cancelled) setLoadingDraft(false);
@@ -474,7 +486,7 @@ export function OnboardingWizardProvider({
   const goNext = useCallback(async () => {
     const v = validateStep(currentStep, formData, validateOptions);
     if (!v.valid) {
-      Alert.alert("Check this step", v.errors[0] ?? "Please complete required fields.");
+      Alert.alert(owa("checkStepTitle"), v.errors[0] ?? owa("completeRequiredFields"));
       return;
     }
     Keyboard.dismiss();
@@ -517,8 +529,12 @@ export function OnboardingWizardProvider({
     }
     const prev = getPreviousStep(currentStep, formData);
     if (prev !== null) setCurrentStepState(prev);
-    else router.back();
-  }, [currentStep, formData, router, editingFromReview]);
+    else if (currentStep === 1) {
+      performProviderWizardStep1Back(router, navigationState, () => {
+        confirmUseDifferentAccount(t, signOut);
+      });
+    } else router.back();
+  }, [currentStep, formData, router, editingFromReview, navigationState, t, signOut]);
 
   const skipForward = useCallback(() => {
     const meta = STEPS[currentStep - 1];
@@ -565,7 +581,7 @@ export function OnboardingWizardProvider({
           waitForCheckout: paystackCheckout.waitForCheckout,
         });
       } catch (e) {
-        Alert.alert("Error", e instanceof Error ? e.message : "Could not continue.");
+        Alert.alert(owa("errorTitle"), e instanceof Error ? e.message : owa("couldNotContinue"));
       } finally {
         isSubmittingRef.current = false;
         setIsSubmitting(false);
@@ -579,25 +595,25 @@ export function OnboardingWizardProvider({
       if (!v.valid) {
         Keyboard.dismiss();
         setCurrentStepState(s);
-        Alert.alert("Almost there", v.errors[0] ?? "Complete this step first.");
+        Alert.alert(owa("almostThereTitle"), v.errors[0] ?? owa("completeStepFirst"));
         return;
       }
     }
 
     if (!formData.team_size) {
-      Alert.alert("Missing info", "Please select your team size.");
+      Alert.alert(owa("missingInfoTitle"), owa("selectTeamSize"));
       Keyboard.dismiss();
       setCurrentStepState(1);
       return;
     }
     if (!formData.phone_verified) {
-      Alert.alert("Verify phone", "Please verify your phone number.");
+      Alert.alert(owa("verifyPhoneTitle"), owa("verifyPhoneBody"));
       Keyboard.dismiss();
       setCurrentStepState(2);
       return;
     }
     if (!formData.global_category_ids?.length) {
-      Alert.alert("Categories", "Select at least one category.");
+      Alert.alert(owa("categoriesTitle"), owa("selectCategory"));
       Keyboard.dismiss();
       setCurrentStepState(CATEGORIES_STEP_ID);
       return;
@@ -607,7 +623,7 @@ export function OnboardingWizardProvider({
     const payload = buildSubmitPayloadWithInvite(formData, inviteToken);
     const addr = payload.address as { line1?: string; city?: string; country?: string };
     if (!addr.line1 || !addr.city || !addr.country) {
-      Alert.alert("Address", "Please complete address (line 1, city, country).");
+      Alert.alert(owa("addressTitle"), owa("completeAddress"));
       Keyboard.dismiss();
       setCurrentStepState(7);
       return;
@@ -641,10 +657,7 @@ export function OnboardingWizardProvider({
             });
             return;
           }
-          Alert.alert(
-            "Still setting up",
-            "Your business profile may still be saving. Wait a moment, then tap Submit again.",
-          );
+          Alert.alert(owa("stillSettingUpTitle"), owa("stillSettingUpBody"));
           return;
         }
 
@@ -658,7 +671,7 @@ export function OnboardingWizardProvider({
                   .filter(Boolean)
                   .join("\n")
               : res.error.message;
-        Alert.alert("Could not finish setup", msg || "Please try again.");
+        Alert.alert(owa("couldNotFinishTitle"), msg || owa("tryAgain"));
         return;
       }
 
@@ -673,7 +686,7 @@ export function OnboardingWizardProvider({
         waitForCheckout: paystackCheckout.waitForCheckout,
       });
     } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Submit failed.");
+      Alert.alert(owa("errorTitle"), e instanceof Error ? e.message : owa("submitFailed"));
     } finally {
       isSubmittingRef.current = false;
       setIsSubmitting(false);

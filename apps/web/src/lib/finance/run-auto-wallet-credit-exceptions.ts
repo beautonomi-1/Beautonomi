@@ -12,6 +12,8 @@ import { syncPaymentTransactionRefundState } from "@/lib/finance/sync-payment-tr
 import { processBookingRefund } from "@/lib/bookings/refund-processing";
 import { notifyFinanceStaff } from "@/lib/notifications/notify-finance-staff";
 import { slackNotifyWalletCreditFailed } from "@/lib/integrations/slack/ops-triggers";
+import { backfillCancelledCashRefundObligations } from "@/lib/finance/backfill-cancelled-cash-refund-obligations";
+import { resolveWalletCreditMaxAmount } from "@/lib/admin/refund-queue-rails";
 
 const STUCK_PENDING_MS = 15 * 60 * 1000;
 
@@ -37,6 +39,8 @@ function tenderBlocksAutoCredit(tenderLabel: string): boolean {
 export function queueRowSkipsAutoCredit(row: RefundQueueRow): boolean {
   const skipReasons = new Set([
     "awaiting_cash_confirmation",
+    "cash_confirm_overdue",
+    "cash_refund_disputed",
     "kept_per_policy",
     "gift_card_voided",
     "no_refund_due",
@@ -154,12 +158,16 @@ async function autoCreditCancelledUnrefunded(
   const bookingId = row.booking_id;
   if (!bookingId) return false;
 
-  const displayRemaining = row.remaining_refundable;
-  if (displayRemaining <= 0) return false;
+  const walletCreditMax = resolveWalletCreditMaxAmount({
+    remainingRefundable: row.remaining_refundable,
+    walletRemainingRefundable: row.wallet_remaining_refundable,
+    isWalletSubstituteAllowed: row.is_wallet_substitute_allowed,
+  });
+  if (walletCreditMax <= 0) return false;
 
   const refunds = row.enriched?.booking_refunds ?? [];
   const completed = sumCompletedStoreCreditRefunds(refunds);
-  if (completed + 0.01 >= displayRemaining) return false;
+  if (completed + 0.01 >= walletCreditMax) return false;
   if (completed > 0.01) return false;
 
   const hasFailedOrPending = (refunds as Array<{ status?: string; refund_method?: string }>).some(
@@ -186,10 +194,10 @@ async function autoCreditCancelledUnrefunded(
   const booking = row.booking as { currency?: string | null } | null;
   const result = await processBookingRefund(
     bookingId,
-    displayRemaining,
+    walletCreditMax,
     booking?.currency || "ZAR",
     policy as never,
-    { isLateCancellation: false, maxWalletCredit: displayRemaining },
+    { isLateCancellation: false, maxWalletCredit: walletCreditMax },
   );
   return result.success === true && (result.amount ?? 0) > 0;
 }
@@ -257,8 +265,12 @@ export async function runAutoWalletCreditExceptions(
     summary.tenants_processed += 1;
 
     const settings = await getEffectiveAutoWalletCreditSettings(supabase, tenantId);
-    const { queueRows } = await buildNeedsActionRefundQueueRows(supabase, tenantId);
-    const actionable = queueRows.filter((r) => r.needs_action);
+    let { queueRows } = await buildNeedsActionRefundQueueRows(supabase, tenantId);
+    let actionable = queueRows.filter((r) => r.needs_action);
+
+    await backfillCancelledCashRefundObligations(supabase, tenantId, actionable);
+    ({ queueRows } = await buildNeedsActionRefundQueueRows(supabase, tenantId));
+    actionable = queueRows.filter((r) => r.needs_action);
 
     let periodLocked = false;
     if (settings.enabled) {
@@ -317,7 +329,7 @@ export async function runAutoWalletCreditExceptions(
         const still = refreshed.find(
           (r) => r.booking_id === row.booking_id && r.needs_action && r.queue_reason === "cancelled_unrefunded",
         );
-        if (still) {
+        if (still && !queueRowSkipsAutoCredit(still)) {
           summary.notifications_sent += 1;
           await alertStillUncredited(supabase, tenantId, still);
         }

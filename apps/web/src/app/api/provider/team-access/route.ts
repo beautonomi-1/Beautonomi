@@ -14,6 +14,7 @@ import {
   getProviderStaffIdForUser,
   getTeamRosterDetailLevel,
 } from "@/lib/auth/provider-team-roster-access";
+import { checkStaffLimit } from "@/lib/subscriptions/limit-checker";
 
 /**
  * GET /api/provider/team-access
@@ -63,9 +64,15 @@ export async function GET(request: NextRequest) {
       isOwner ||
       (await hasPermission(user.id, "manage_marketing", undefined, request));
 
+    const staffLimit = await checkStaffLimit(providerId, supabase);
+
     return successResponse({
       staff_id: staffId,
       is_business_owner: isOwner,
+      staff_add_can_proceed: staffLimit.canProceed,
+      staff_add_reason: staffLimit.reason,
+      staff_add_current_count: staffLimit.currentCount,
+      staff_add_limit_value: staffLimit.limitValue,
       roster_detail_level: rosterDetailLevel,
       can_manage_team: canManageTeam,
       can_view_team_roster_pii: canViewTeamFullRoster,

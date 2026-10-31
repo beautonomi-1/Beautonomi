@@ -3,6 +3,7 @@
 import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { TeamMember } from "@/lib/provider-portal/types";
 import { PageHeader } from "@/components/provider/PageHeader";
@@ -40,6 +41,8 @@ interface DayOff {
 }
 
 export default function DaysOffPage() {
+  const searchParams = useSearchParams();
+  const preselectStaffId = searchParams.get("staffId");
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [daysOff, setDaysOff] = useState<DayOff[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -57,14 +60,18 @@ export default function DaysOffPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [preselectStaffId]);
 
   const loadData = async () => {
     try {
       setIsLoading(true);
       const members = await providerApi.listTeamMembers();
-      setTeamMembers(members.filter((m) => m.is_active));
-      
+      const active = members.filter((m) => m.is_active);
+      setTeamMembers(active);
+      if (preselectStaffId && active.some((m) => m.id === preselectStaffId)) {
+        setSelectedMembers([preselectStaffId]);
+      }
+
       // Load days off from API for all members
       const { fetcher } = await import("@/lib/http/fetcher");
       const allDaysOff: any[] = [];

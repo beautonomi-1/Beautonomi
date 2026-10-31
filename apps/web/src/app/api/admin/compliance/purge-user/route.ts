@@ -6,12 +6,15 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 import { purgePlatformUserAccountFully } from "@/lib/account/purge-platform-user";
 import { collectUserPurgeSnapshot } from "@/lib/account/compliance-purge-snapshot";
-import { redactUserPurgeSnapshot } from "@/lib/account/compliance-snapshot-redaction";
+import {
+  hashEmailForComplianceSnapshot,
+  redactUserPurgeSnapshot,
+} from "@/lib/account/compliance-snapshot-redaction";
 import {
   insertCompliancePurgeAuditLog,
   type CompliancePurgeReportV2,
 } from "@/lib/account/compliance-purge-audit";
-import { writeAuditLog } from "@/lib/audit/audit";
+import { extractRequestMeta, writeAuditLog } from "@/lib/audit/audit";
 
 const bodySchema = z.object({
   user_id: z.string().uuid(),
@@ -23,6 +26,7 @@ const bodySchema = z.object({
   /** Must match the account email exactly (case-insensitive). */
   target_email_confirmation: z.string().min(3).max(320),
   acknowledge_irreversible: z.literal(true),
+  dry_run: z.boolean().optional(),
 });
 
 function normalizeEmail(e: string): string {
@@ -57,8 +61,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { user_id, reason, target_email_confirmation } = parsed.data;
+    const { user_id, reason, target_email_confirmation, dry_run } = parsed.data;
     const admin = getSupabaseAdmin();
+    const reqMeta = extractRequestMeta(request);
 
     const { data: userRow, error: fetchError } = await admin
       .from("users")
@@ -155,11 +160,42 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (dry_run === true) {
+      return successResponse({
+        dry_run: true,
+        preview: redactUserPurgeSnapshot(snapshot),
+      });
+    }
+
+    const { data: actorRow } = await admin.from("users").select("email").eq("id", actor.id).maybeSingle();
+    const actorEmailHash = hashEmailForComplianceSnapshot(
+      (actorRow as { email?: string | null } | null)?.email ?? null,
+    );
+
     const startedAt = new Date().toISOString();
     const purgeResult = await purgePlatformUserAccountFully(admin, user_id);
 
     if (purgeResult.ok === false) {
       console.error("Compliance purge failed:", purgeResult.message);
+      await writeAuditLog({
+        actor_user_id: actor.id,
+        actor_role: actor.role ?? "superadmin",
+        action: "admin.user.compliance_purge",
+        entity_type: "user",
+        entity_id: user_id,
+        module: "users_trust",
+        risk_level: "critical",
+        status: "failed",
+        reason: purgeResult.message,
+        metadata: {
+          email: snapshot.email,
+          failure_code: purgeResult.code ?? "DELETE_ERROR",
+          blockers: purgeResult.blockers,
+        },
+        ip_address: reqMeta.ip_address,
+        user_agent: reqMeta.user_agent,
+        retention_tier: "access",
+      });
       return Response.json(
         {
           data: null,
@@ -189,8 +225,9 @@ export async function POST(request: NextRequest) {
         regulatory_acknowledgement: true,
         reason_min_length_met: reason.trim().length >= 20,
       },
-      actor: { user_id: actor.id, role: actor.role },
+      actor: { user_id: actor.id, role: actor.role, email_hash: actorEmailHash },
       tenant_id: tenantId,
+      request: { ip_address: reqMeta.ip_address, user_agent: reqMeta.user_agent },
       reason_redacted_length: reason.trim().length,
       operations: {
         compliance_clear_user_references_rpc: true,
@@ -217,6 +254,9 @@ export async function POST(request: NextRequest) {
       action: "admin.user.compliance_purge",
       entity_type: "user",
       entity_id: user_id,
+      module: "users_trust",
+      risk_level: "critical",
+      status: "succeeded",
       metadata: {
         email: snapshot.email,
         compliance_audit_row:
@@ -224,6 +264,9 @@ export async function POST(request: NextRequest) {
             ? { id: auditInsert.id, degraded: auditInsert.degraded || undefined }
             : { error: auditInsert.error },
       },
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+      retention_tier: "access",
     });
 
     return successResponse({

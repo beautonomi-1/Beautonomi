@@ -51,19 +51,19 @@ describe("POST /api/me/legal-acceptance", () => {
     const { POST } = await import("../route");
     const request = new NextRequest("http://localhost/api/me/legal-acceptance", {
       method: "POST",
-      body: JSON.stringify({ app: "partner", version: "2026-08-26" }),
+      body: JSON.stringify({ app: "partner", version: "2026-10-31" }),
     });
 
     const response = await POST(request);
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.data.version).toBe("2026-08-26");
+    expect(body.data.version).toBe("2026-10-31");
     expect(body.data.app).toBe("partner");
     expect(updateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         privacy_settings: expect.objectContaining({
-          partner_eula_version: "2026-08-26",
+          partner_eula_version: "2026-10-31",
           partner_eula_accepted_at: expect.any(String),
         }),
       }),
@@ -74,7 +74,7 @@ describe("POST /api/me/legal-acceptance", () => {
     const { POST } = await import("../route");
     const request = new NextRequest("http://localhost/api/me/legal-acceptance", {
       method: "POST",
-      body: JSON.stringify({ app: "customer", version: "2026-08-26" }),
+      body: JSON.stringify({ app: "customer", version: "2026-10-31" }),
     });
 
     const response = await POST(request);
@@ -85,7 +85,7 @@ describe("POST /api/me/legal-acceptance", () => {
     expect(updateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         privacy_settings: expect.objectContaining({
-          customer_eula_version: "2026-08-26",
+          customer_eula_version: "2026-10-31",
           customer_eula_accepted_at: expect.any(String),
         }),
       }),

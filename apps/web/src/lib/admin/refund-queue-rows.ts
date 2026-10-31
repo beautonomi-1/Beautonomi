@@ -2,11 +2,16 @@ import { parseRefundAmount, type BookingRefundSummary } from "@/lib/admin/bookin
 import type { BookingRefundCoverage } from "@/lib/admin/booking-refund-coverage";
 import {
   computeDisplayRemaining,
+  computeWalletActionRemaining,
   deriveQueueReason,
   NEEDS_ACTION_REASONS,
   queueReasonLabel,
   type QueueReason,
 } from "@/lib/admin/refund-queue-reason";
+import {
+  computeWalletRefundableRemaining,
+  sumPendingCashRefundAmount,
+} from "@/lib/admin/refund-queue-rails";
 import {
   aggregateTenderLabel,
   chargeTypeLabel,
@@ -42,6 +47,9 @@ export type RefundQueueRow = {
   queue_reason_label: string;
   needs_action: boolean;
   is_processable: boolean;
+  /** When true, show “Issue store credit instead” (in-person substitute). */
+  is_wallet_substitute_allowed: boolean;
+  wallet_remaining_refundable: number;
   captures: RefundQueueCapture[];
   /** Primary row for gateway POST /api/admin/refunds/[id] */
   primary_transaction_id: string | null;
@@ -170,6 +178,14 @@ export function buildRefundQueueRows(
     const retainedFee = coverage?.retainedFeeTotal ?? 0;
     const giftVoid = coverage?.giftCardVoidedTotal ?? 0;
     const reserved = coverage?.reservedPendingTotal ?? 0;
+    const captureRemainingTotal = captures.reduce((sum, c) => sum + c.remaining_refundable, 0);
+    const pendingCashTotal = sumPendingCashRefundAmount(sample.booking_refunds);
+    const walletRemainingRefundable = computeWalletRefundableRemaining({
+      hasGatewayCapture: hasGatewayCapture && captureRemainingTotal > 0,
+      captureRemainingTotal,
+      payments,
+      bookingRefunds: sample.booking_refunds,
+    });
 
     const derived = deriveQueueReason({
       bookingStatus: (sample.booking as { status?: string })?.status,
@@ -182,6 +198,8 @@ export function buildRefundQueueRows(
       hasOpenDispute: ctx.disputesByBookingId.has(bookingId),
       hasRefundSupportTicket: ctx.ticketsByBookingId.has(bookingId),
       hasGatewayCapture,
+      walletRemainingRefundable,
+      pendingCashTotal,
     });
 
     const displayRemaining = computeDisplayRemaining({
@@ -189,18 +207,29 @@ export function buildRefundQueueRows(
       retainedFeeTotal: retainedFee,
       giftCardVoidedTotal: giftVoid,
       reservedPendingTotal: reserved,
+      pendingCashTotal,
       queueReason: derived.queue_reason,
     });
 
+    const walletActionRemaining = computeWalletActionRemaining({
+      walletRemainingRefundable,
+      pendingCashTotal,
+      queueReason: derived.queue_reason,
+    });
+    const isWalletSubstituteAllowed =
+      derived.queue_reason === "cash_confirm_overdue" ||
+      derived.queue_reason === "cash_refund_disputed";
+
     const isProcessable =
-      displayRemaining > 0 &&
-      (source === "booking_tender"
-        ? !hasGatewayCapture || enrichedRows.every((r) => r.remaining_refundable <= 0)
-        : enrichedRows.some((r) => r.remaining_refundable > 0)) &&
+      walletActionRemaining > 0 &&
+      (isWalletSubstituteAllowed ||
+        (source === "booking_tender"
+          ? !hasGatewayCapture || enrichedRows.every((r) => r.remaining_refundable <= 0)
+          : enrichedRows.some((r) => r.remaining_refundable > 0))) &&
       derived.queue_reason !== "kept_per_policy" &&
       derived.queue_reason !== "gift_card_voided" &&
-      derived.queue_reason !== "awaiting_cash_confirmation" &&
-      derived.queue_reason !== "no_refund_due";
+      derived.queue_reason !== "no_refund_due" &&
+      derived.queue_reason !== "cash_confirm_overdue";
 
     const addlDesc = captures.find((c) => c.additional_charge_description)?.additional_charge_description;
 
@@ -223,7 +252,11 @@ export function buildRefundQueueRows(
       queue_reason_detail: derived.queue_reason_detail,
       queue_reason_label: queueReasonLabel(derived.queue_reason),
       needs_action: NEEDS_ACTION_REASONS.has(derived.queue_reason),
-      is_processable: isProcessable,
+      is_processable:
+        (isProcessable && walletActionRemaining > 0) ||
+        (isWalletSubstituteAllowed && displayRemaining > 0),
+      is_wallet_substitute_allowed: isWalletSubstituteAllowed,
+      wallet_remaining_refundable: walletRemainingRefundable,
       captures,
       primary_transaction_id: primaryTxnId,
       additional_charge_description: addlDesc ?? null,

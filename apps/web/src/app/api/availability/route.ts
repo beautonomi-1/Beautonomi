@@ -22,7 +22,9 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   isStaffInLocationScope,
-  listActiveStaffIdsForLocation,
+  listActiveServiceProviderStaffIdsForLocation,
+  listPubliclyBookableStaffIdsForLocation,
+  isStaffPubliclyBookableForProvider,
   resolveStaffLocationScope,
 } from "@/lib/provider/staff-location-scope";
 
@@ -63,6 +65,7 @@ export async function GET(request: NextRequest) {
     const excludeBookingId =
       searchParams.get("exclude_booking_id")?.trim() || undefined;
     const locationId = searchParams.get("locationId")?.trim() || undefined;
+    const audiencePublic = searchParams.get("audience")?.trim() === "public";
 
     if (!date) {
       return successResponse({ date, slots: [] });
@@ -116,18 +119,9 @@ export async function GET(request: NextRequest) {
       return successResponse({ date, slots: [] });
     }
 
-    // Load active staff rows when doing an any-staff union. Mirrors the same
-    // query as the public slug endpoint so both routes converge.
     let activeStaffRows: Array<{ id: string }> = [];
     const adminForScope = getSupabaseAdmin();
-    if (wantsAnyStaff && providerIdForEngine) {
-      const scopedIds = await listActiveStaffIdsForLocation(
-        adminForScope,
-        providerIdForEngine,
-        locationId,
-      );
-      activeStaffRows = scopedIds.map((id) => ({ id }));
-    } else if (!wantsAnyStaff && providerIdForEngine && locationId && staffIdTrim) {
+    if (!wantsAnyStaff && providerIdForEngine && locationId && staffIdTrim) {
       const scope = await resolveStaffLocationScope(
         adminForScope,
         providerIdForEngine,
@@ -177,6 +171,38 @@ export async function GET(request: NextRequest) {
       providerTimeZone = DEFAULT_BOOKING_DISPLAY_TIMEZONE;
     }
 
+    if (wantsAnyStaff && providerIdForEngine) {
+      const scopedIds = audiencePublic
+        ? await listPubliclyBookableStaffIdsForLocation(
+            adminForScope,
+            providerIdForEngine,
+            locationId,
+            providerTimeZone,
+          )
+        : await listActiveServiceProviderStaffIdsForLocation(
+            adminForScope,
+            providerIdForEngine,
+            locationId,
+          );
+      activeStaffRows = scopedIds.map((id) => ({ id }));
+    } else if (
+      audiencePublic &&
+      !wantsAnyStaff &&
+      providerIdForEngine &&
+      staffIdTrim &&
+      !staffIdTrim.startsWith(SYNTHETIC_PROVIDER_STAFF_PREFIX)
+    ) {
+      const bookable = await isStaffPubliclyBookableForProvider(
+        adminForScope,
+        staffIdTrim,
+        providerIdForEngine,
+        providerTimeZone,
+      );
+      if (!bookable) {
+        return successResponse({ date, slots: [] });
+      }
+    }
+
     const adminForWindows = getSupabaseAdmin();
     const onlineWindows = await loadEffectiveOnlineBookingWindows(
       adminForWindows,
@@ -187,6 +213,36 @@ export async function GET(request: NextRequest) {
     // Max-advance guard (provider business-day math).
     if (isDateBeyondMaxAdvance(date, effectiveMaxAdvance, providerTimeZone)) {
       return successResponse({ date, slots: [] });
+    }
+
+    const serviceIdParamEarly = searchParams.get("service_id")?.trim() || null;
+    const serviceIdsParamEarly = searchParams.get("service_ids");
+    const orderedOfferingIdsEarly =
+      serviceIdsParamEarly
+        ?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean) ?? [];
+    const offeringFilterIdsEarly =
+      orderedOfferingIdsEarly.length > 0
+        ? orderedOfferingIdsEarly
+        : serviceIdParamEarly
+          ? [serviceIdParamEarly]
+          : [];
+    if (
+      offeringFilterIdsEarly.length > 0 &&
+      wantsAnyStaff &&
+      activeStaffRows.length > 0
+    ) {
+      const { staffIdsEligibleForOfferings } = await import(
+        "@/lib/provider/staff-ids-eligible-for-offerings"
+      );
+      const eligible = await staffIdsEligibleForOfferings(
+        adminForScope,
+        activeStaffRows.map((s) => s.id),
+        offeringFilterIdsEarly,
+      );
+      const allowed = new Set(eligible);
+      activeStaffRows = activeStaffRows.filter((s) => allowed.has(s.id));
     }
 
     let publicSlots = await computePublicSlugAvailabilitySlots({

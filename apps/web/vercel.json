@@ -61,6 +61,7 @@
     { "path": "/api/cron/mark-provider-invoices-overdue", "schedule": "30 6 * * *" },
     { "path": "/api/cron/dispatch-scheduled-campaigns", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/reconcile-push-delivery", "schedule": "*/10 * * * *" },
+    { "path": "/api/cron/reconcile-bob-go-shipments", "schedule": "*/10 * * * *" },
     { "path": "/api/cron/prune-idempotency-keys", "schedule": "0 3 * * *" },
     { "path": "/api/cron/auto-fee-reconciliation", "schedule": "20 2 * * *" },
     { "path": "/api/cron/recognize-period-revenue", "schedule": "0 3 * * *" },

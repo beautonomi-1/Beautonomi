@@ -16,9 +16,14 @@ import { api } from "@/lib/api-client";
 import { shouldClearStoredReferralAfterAttach } from "@/lib/referral-attach-storage";
 import { navigateAfterNewCustomerSignup } from "@/lib/customer-auth-routing";
 import { trackSignUp, trackSignUpStart } from "@/lib/analytics";
-import { useTranslation, supportedLanguages, preferredLanguageFromDevice, SIGNUP_SOURCE_OPTIONS } from "@beautonomi/i18n";
+import {
+  coerceMobileUiLanguage,
+  normalizeLanguageCode,
+  reviewedUiLanguageOptions,
+  SIGNUP_SOURCE_OPTIONS,
+  useTranslation,
+} from "@beautonomi/i18n";
 import { changeLanguage } from "@/lib/i18n";
-import * as Localization from "expo-localization";
 import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { getSocialAuthConfig } from "@/lib/third-party-config";
@@ -44,7 +49,7 @@ const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
 const PENDING_PREFERRED_LANGUAGE_KEY = "beautonomi_pending_preferred_language";
 
 function getDefaultLanguage(): string {
-  return preferredLanguageFromDevice(Localization.getLocales()[0]?.languageCode);
+  return "en";
 }
 
 const PRIMARY = Colors.primary;
@@ -126,7 +131,7 @@ export default function SignupScreen() {
     trackSignUpStart("email");
   }, []);
   const { t } = useTranslation();
-  const visibleLanguages = useMemo(() => supportedLanguages, []);
+  const visibleLanguages = useMemo(() => reviewedUiLanguageOptions(), []);
   const as = useCallback((key: string) => t(`customer.mobile.screens.authSignup.${key}`), [t]);
   const al = useCallback((key: string) => t(`customer.mobile.screens.authLogin.${key}`), [t]);
   const phoneLengthError = useCallback(
@@ -310,7 +315,9 @@ export default function SignupScreen() {
     const profilePayload: { phone?: string; signup_source?: string; preferred_language?: string } = {};
     if (pending.fullPhone) profilePayload.phone = pending.fullPhone;
     if (pending.signupSource) profilePayload.signup_source = pending.signupSource;
-    profilePayload.preferred_language = pending.preferredLanguage;
+    profilePayload.preferred_language = coerceMobileUiLanguage(
+      normalizeLanguageCode(pending.preferredLanguage),
+    );
     try {
       await api.patch("/api/me/profile", profilePayload);
     } catch {
@@ -320,7 +327,7 @@ export default function SignupScreen() {
       await AsyncStorage.setItem(PENDING_PREFERRED_LANGUAGE_KEY, pending.preferredLanguage).catch(() => {});
     }
     try {
-      await changeLanguage(pending.preferredLanguage);
+      await changeLanguage(profilePayload.preferred_language!);
     } catch {
       // Non-blocking
     }
@@ -461,7 +468,12 @@ export default function SignupScreen() {
     }
     haptic.light();
     setLoading(true);
+    const lang = coerceMobileUiLanguage(normalizeLanguageCode(preferredLanguage));
     try {
+      await AsyncStorage.setItem(PENDING_PREFERRED_LANGUAGE_KEY, lang).catch(() => {});
+      if (signupSource) {
+        await AsyncStorage.setItem(PENDING_SIGNUP_SOURCE_KEY, signupSource).catch(() => {});
+      }
       const { error } = await signInWithOAuth(provider);
       if (error) {
         if (!error.message.toLowerCase().includes("cancel")) {
@@ -472,7 +484,7 @@ export default function SignupScreen() {
         const fullPhone =
           phone.trim() ? `${countryCode}${stripLeadingZero(phone.replace(/\D/g, ""))}`.trim() : "";
         const profilePayload: { phone?: string; signup_source?: string; preferred_language: string } = {
-          preferred_language: preferredLanguage,
+          preferred_language: lang,
         };
         if (fullPhone) profilePayload.phone = fullPhone;
         if (signupSource) profilePayload.signup_source = signupSource;
@@ -482,9 +494,9 @@ export default function SignupScreen() {
           if (signupSource) {
             await AsyncStorage.setItem(PENDING_SIGNUP_SOURCE_KEY, signupSource).catch(() => {});
           }
-          await AsyncStorage.setItem(PENDING_PREFERRED_LANGUAGE_KEY, preferredLanguage).catch(() => {});
+          await AsyncStorage.setItem(PENDING_PREFERRED_LANGUAGE_KEY, lang).catch(() => {});
         }
-        await changeLanguage(preferredLanguage);
+        await changeLanguage(lang);
         const refToAttach =
           resolveSignupReferralCode(referralCode, manualReferralCode) ??
           (await AsyncStorage.getItem(REFERRAL_REF_KEY));

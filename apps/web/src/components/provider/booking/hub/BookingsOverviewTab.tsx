@@ -30,6 +30,7 @@ import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { BookingSectionCard, BookingSectionLabel } from "../ui";
 
 import { BookingScheduleCard, type HubScheduleBooking } from "./BookingScheduleCard";
+import { bookingListMatchesQuery } from "@/lib/phone";
 
 import { useBookingsHubStats } from "./useBookingsHubStats";
 
@@ -73,7 +74,7 @@ type CloseOutApiBooking = {
 
   status: string;
 
-  customer?: { full_name?: string | null } | null;
+  customer?: { full_name?: string | null; phone?: string | null } | null;
 
   booking_services?: Array<{ offering?: { title?: string | null } | null }> | null;
 
@@ -104,6 +105,8 @@ function mapCloseOutBooking(row: CloseOutApiBooking): HubScheduleBooking {
     scheduled_at: row.scheduled_at,
 
     customer_name: row.customer?.full_name ?? null,
+
+    customer_phone: row.customer?.phone ?? null,
 
     services: (row.booking_services ?? []).map((bs) => ({
 
@@ -313,23 +316,20 @@ export function BookingsOverviewTab({
     }
 
     if (search.trim()) {
-
-      const q = search.toLowerCase();
-
+      const q = search.trim();
       list = list.filter((b) => {
-
-        const client = (b.customer_name || "").toLowerCase();
-
         const services = (b.services ?? [])
-
-          .map((s) => (s.offering_name ?? s.service_name ?? s.name ?? "").toLowerCase())
-
+          .map((s) => (s.offering_name ?? s.service_name ?? s.name ?? "").trim())
+          .filter(Boolean)
           .join(" ");
-
-        return client.includes(q) || services.includes(q);
-
+        return bookingListMatchesQuery(q, {
+          customerName: b.customer_name,
+          bookingNumber: b.booking_number,
+          serviceText: services,
+          email: b.customer_email,
+          phones: [b.customer_phone, ...(b.participant_phones ?? [])],
+        });
       });
-
     }
 
     return list.sort((a, b) => {

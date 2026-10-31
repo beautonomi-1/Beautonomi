@@ -675,15 +675,38 @@ export async function validateBooking(
     });
     const uniqueStaff = [...new Set(dbStaffByLine.values())];
     if (uniqueStaff.length > 0) {
-      const psRows = await fetchInIdChunks<{ id: string }>(uniqueStaff, (slice) =>
+      const { isPubliclyBookableStaff } = await import("@/lib/provider/staff-public-bookable");
+      const { normalizeProviderTimezone } = await import("@/lib/availability/time-utils");
+      const { DEFAULT_BOOKING_DISPLAY_TIMEZONE } = await import(
+        "@/lib/bookings/display-invariants"
+      );
+      const { data: providerTzRow } = await supabaseAdmin
+        .from("providers")
+        .select("timezone")
+        .eq("id", draft.provider_id)
+        .maybeSingle();
+      const providerTz =
+        normalizeProviderTimezone(
+          (providerTzRow as { timezone?: string | null } | null)?.timezone ?? null,
+        ) ?? DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+
+      const psRows = await fetchInIdChunks<{
+        id: string;
+        is_active?: boolean | null;
+        is_service_provider?: boolean | null;
+        enable_in_online_booking?: boolean | null;
+        bookable_from?: string | null;
+      }>(uniqueStaff, (slice) =>
         supabaseAdmin
           .from("provider_staff")
-          .select("id")
+          .select("id, is_active, is_service_provider, enable_in_online_booking, bookable_from")
           .eq("provider_id", draft.provider_id)
           .eq("is_active", true)
           .in("id", slice),
       );
-      const activeStaff = new Set(psRows.map((r) => r.id));
+      const activeStaff = new Set(
+        psRows.filter((r) => isPubliclyBookableStaff(r, providerTz)).map((r) => r.id),
+      );
       for (const id of uniqueStaff) {
         if (!activeStaff.has(id)) {
           return handleApiError(

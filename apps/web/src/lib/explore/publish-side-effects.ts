@@ -5,6 +5,7 @@ import { isExploreVideoTranscodeEnabled } from "@/lib/explore/explore-feature-ga
 import { rendobarIntegrationReady, loadRendobarSecrets } from "@/lib/explore/rendobar-config";
 import { toPublicMediaUrl } from "@/lib/explore/media-urls";
 import { enqueueExploreVideoProcessing } from "@/lib/explore/enqueue-video-processing";
+import { enqueueExplorePostSafetyScan } from "@/lib/safety/explore-post-safety-scan";
 
 export async function runExplorePublishSideEffects(params: {
   postId: string;
@@ -46,6 +47,7 @@ export async function runExplorePublishSideEffects(params: {
       await supabase.from("explore_posts").update({ media_meta: meta }).eq("id", params.postId);
     }
     await enqueueExploreVideoProcessing(params.postId);
+    enqueueExplorePostSafetyScan(params.postId);
     return;
   }
 
@@ -56,6 +58,8 @@ export async function runExplorePublishSideEffects(params: {
   if (params.alsoAddToGallery) {
     await appendGalleryDisplayImage(params.providerId, post.display_path, post.media_urls as string[], mediaMeta);
   }
+
+  enqueueExplorePostSafetyScan(params.postId);
 }
 
 export async function awardExplorePublishPoints(providerId: string, postId: string) {

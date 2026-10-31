@@ -26,6 +26,7 @@ const REASONS = [
   "harassment",
   "spam",
   "safety",
+  "illegal_exploitative",
   "other",
 ] as const;
 

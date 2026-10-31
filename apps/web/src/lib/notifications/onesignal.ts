@@ -27,6 +27,7 @@ import {
   applyPushUrlToPayload,
   resolvePushUrlFields,
   substituteTemplatePath,
+  toWebPortalUrl,
   webUrlToRelativePath,
 } from "@/lib/notifications/push-url";
 import { recordSyncedBadgeCount } from "@/lib/notifications/badge-sync-state";
@@ -1490,6 +1491,10 @@ export type SendTemplateOptions = OneSignalSendOptions & {
    * key) so the same event does not create two bell entries.
    */
   skipInApp?: boolean;
+  /** Relative in-app bell URL (overrides template `url` for `action_url` only). */
+  inAppActionUrl?: string;
+  /** Relative web path for transactional email CTA (overrides template-derived web URL). */
+  emailCtaPath?: string;
   /** Delay durable queue delivery (e.g. retention quiet hours). */
   scheduleAt?: Date | null;
   /** Fallback copy when the DB template row is missing but push is must-deliver. */
@@ -1672,6 +1677,14 @@ export async function sendTemplateNotification(
   const pushUrlFields = resolvePushUrlFields(templateUrlRelative, variables, {
     appType: options?.appType,
   });
+
+  const emailCtaWebUrl = options?.emailCtaPath?.trim()
+    ? toWebPortalUrl(
+        options.emailCtaPath.trim().startsWith("/")
+          ? options.emailCtaPath.trim()
+          : `/${options.emailCtaPath.trim()}`,
+      )
+    : pushUrlFields.webUrl;
 
   let templateImage = resolved.image;
   Object.entries(variables).forEach(([key, value]) => {
@@ -1971,7 +1984,7 @@ export async function sendTemplateNotification(
           smsBody,
           data: { template_key: templateKey, ...variables },
           url: pushUrlFields.actionPath || undefined,
-          emailCtaWebUrl: pushUrlFields.webUrl || undefined,
+          emailCtaWebUrl: emailCtaWebUrl || undefined,
         },
         options?.supabaseClient,
       );
@@ -2073,7 +2086,7 @@ export async function sendTemplateNotification(
               whatsappTemplateStatus: waStatus,
               data: { template_key: templateKey, ...variables },
               url: pushUrlFields.actionPath || undefined,
-              emailCtaWebUrl: pushUrlFields.webUrl || undefined,
+              emailCtaWebUrl: emailCtaWebUrl || undefined,
               scheduleAt: options?.scheduleAt ?? null,
             },
             options?.supabaseClient,
@@ -2157,7 +2170,9 @@ export async function sendTemplateNotification(
     });
 
     let actionUrl: string | undefined;
-    if (templateUrlRelative) {
+    if (options?.inAppActionUrl?.trim()) {
+      actionUrl = options.inAppActionUrl.trim();
+    } else if (templateUrlRelative) {
       actionUrl = templateUrlRelative;
     }
 
@@ -2268,7 +2283,7 @@ export async function sendTemplateNotification(
       smsBody,
       data: { template_key: templateKey, ...variables },
       url: pushUrlFields.actionPath || undefined,
-      emailCtaWebUrl: pushUrlFields.webUrl || undefined,
+      emailCtaWebUrl: emailCtaWebUrl || undefined,
       dedupePrefix: "fallback",
     });
   }

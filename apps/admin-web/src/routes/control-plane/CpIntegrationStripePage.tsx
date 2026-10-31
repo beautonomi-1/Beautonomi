@@ -101,7 +101,7 @@ export function CpIntegrationStripePage() {
 
   return (
     <div className="space-y-6">
-      <CpBack />
+      <CpBack to={adminSpaTo("/admin/control-plane/integrations")} label="Platform integrations" />
       <AdminPageHeader
         title="Stripe Payments"
         description="Platform merchant-of-record card checkout (hosted Stripe Checkout) and Connect for provider payouts only."

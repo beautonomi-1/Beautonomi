@@ -14,8 +14,9 @@ export type CompliancePurgeReportV2 = {
     regulatory_acknowledgement: boolean;
     reason_min_length_met: boolean;
   };
-  actor: { user_id: string; role?: string | null };
+  actor: { user_id: string; role?: string | null; email_hash?: string | null };
   tenant_id: string | null;
+  request?: { ip_address: string | null; user_agent: string | null };
   reason_redacted_length: number;
   operations: {
     compliance_clear_user_references_rpc: boolean;

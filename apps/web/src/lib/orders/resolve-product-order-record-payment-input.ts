@@ -67,14 +67,14 @@ export function resolveProductOrderRecordPaymentInput(
     };
   }
 
-  if (method === "stripe") {
+  if (method === "stripe" || method === "flutterwave") {
     const ref =
       order.payment_reference?.trim() ||
       paymentTx?.reference?.trim() ||
-      `stripe_product_order_${id}`;
+      `${method}_product_order_${id}`;
     return {
-      provider: "stripe",
-      source: "stripe_webhook",
+      provider: method,
+      source: method === "flutterwave" ? "flutterwave_webhook" : "stripe_webhook",
       reference: ref,
       amountMajor: paymentTx != null ? num(paymentTx.amount) : Math.max(0, total - wallet),
       feesMajor: paymentTx != null ? num(paymentTx.fees) : 0,

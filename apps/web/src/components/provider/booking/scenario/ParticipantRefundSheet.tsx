@@ -54,6 +54,7 @@ export function ParticipantRefundSheet({
   const [refundMethod, setRefundMethod] = useState<"store_credit" | "cash" | "original">("cash");
   const [saving, setSaving] = useState(false);
   const [yocoPendingRecord, setYocoPendingRecord] = useState(false);
+  const [pendingCashTotal, setPendingCashTotal] = useState(0);
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const { ready: paycloudReady } = usePaycloudCollectReady();
@@ -64,9 +65,31 @@ export function ParticipantRefundSheet({
       setAmount(maxAmount != null ? String(maxAmount) : "");
       setReason("");
       setYocoPendingRecord(false);
+      setPendingCashTotal(0);
       setRefundMethod(paycloudEnabled && paycloudReady ? "original" : "cash");
     }
   }, [open, maxAmount, paycloudEnabled, paycloudReady]);
+
+  useEffect(() => {
+    if (!open || !bookingId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetcher.get<{
+          data?: { pending_cash_refunds?: Array<{ amount?: number }> };
+        }>(`/api/provider/bookings/${bookingId}`);
+        if (cancelled) return;
+        const rows = res?.data?.pending_cash_refunds ?? [];
+        const total = rows.reduce((s, r) => s + Number(r.amount ?? 0), 0);
+        setPendingCashTotal(total);
+      } catch {
+        if (!cancelled) setPendingCashTotal(0);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, bookingId]);
 
   const handleSubmit = async (options?: { recordOnly?: boolean }) => {
     if (!canProcessPayments) {
@@ -143,6 +166,14 @@ export function ParticipantRefundSheet({
           />
         ) : (
         <>
+        {pendingCashTotal > 0 ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <p className="font-medium">{t(`${prefix}.pendingCashBlockTitle`)}</p>
+            <p className="mt-1">
+              {t(`${prefix}.pendingCashBlockBody`, { amount: pendingCashTotal.toFixed(2) })}
+            </p>
+          </div>
+        ) : null}
         <BookingSectionCard>
           <BookingSectionLabel htmlFor="refund-amount" className="mb-2">
             {t(`${prefix}.amount`)}

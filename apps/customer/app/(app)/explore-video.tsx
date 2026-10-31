@@ -41,6 +41,11 @@ import {
 import { trackExploreView, trackExploreWatchProgress } from "@/lib/explore-analytics";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
+import { useUserBlocks } from "@/hooks/useUserBlocks";
+import {
+  ContentReportSheet,
+  type ContentReportTargetType,
+} from "@/components/safety/ContentReportSheet";
 
 function ExploreSoundBed({
   soundUrl,
@@ -172,6 +177,7 @@ function VideoFeedItem({
   onSave,
   onOpenComments,
   onShare,
+  onMorePress,
 }: {
   post: ExplorePost;
   active: boolean;
@@ -182,6 +188,7 @@ function VideoFeedItem({
   onSave: () => void;
   onOpenComments: () => void;
   onShare: () => void;
+  onMorePress: () => void;
 }) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -220,24 +227,46 @@ function VideoFeedItem({
         <Ionicons name="heart" size={72} color="#fff" />
       </Animated.View>
 
-      <TouchableOpacity
-        onPress={onToggleMute}
+      <View
         style={{
           position: "absolute",
           top: insets.top + 12,
           right: 16,
-          width: 40,
-          height: 40,
-          borderRadius: 20,
-          backgroundColor: "rgba(0,0,0,0.45)",
-          alignItems: "center",
-          justifyContent: "center",
+          flexDirection: "row",
+          gap: 8,
         }}
-        accessibilityRole="button"
-        accessibilityLabel={muted ? t("customer.exploreVideo.unmute") : t("customer.exploreVideo.mute")}
       >
-        <Ionicons name={muted ? "volume-mute" : "volume-high"} size={20} color="#fff" />
-      </TouchableOpacity>
+        <TouchableOpacity
+          onPress={onMorePress}
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 20,
+            backgroundColor: "rgba(0,0,0,0.45)",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={t("customer.explorePost.moreOptions")}
+        >
+          <Ionicons name="ellipsis-horizontal" size={20} color="#fff" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={onToggleMute}
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 20,
+            backgroundColor: "rgba(0,0,0,0.45)",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={muted ? t("customer.exploreVideo.unmute") : t("customer.exploreVideo.mute")}
+        >
+          <Ionicons name={muted ? "volume-mute" : "volume-high"} size={20} color="#fff" />
+        </TouchableOpacity>
+      </View>
 
       <View
         style={{
@@ -290,8 +319,14 @@ export default function ExploreVideoScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { t } = useTranslation();
+  const { confirmBlockUser } = useUserBlocks();
 
   const [posts, setPosts] = useState<ExplorePost[]>([]);
+  const [reportTarget, setReportTarget] = useState<{
+    type: ContentReportTargetType;
+    id: string;
+    title?: string;
+  } | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [muted, setMuted] = useState(true);
@@ -303,6 +338,66 @@ export default function ExploreVideoScreen() {
   const [replyToCommentId, setReplyToCommentId] = useState<string | null>(null);
 
   const activePost = posts[activeIndex];
+
+  const videoReturnTo = id
+    ? `/(app)/explore-video?id=${encodeURIComponent(id)}`
+    : "/(app)/(tabs)/explore";
+
+  const openContentReport = useCallback(
+    (type: ContentReportTargetType, targetId: string, title?: string) => {
+      if (!user) {
+        Alert.alert(
+          t("customer.contentReport.signInTitle"),
+          t("customer.contentReport.signInBody"),
+          [
+            { text: t("common.cancel"), style: "cancel" },
+            { text: t("auth.login"), onPress: () => pushCustomerLogin(videoReturnTo) },
+          ],
+        );
+        return;
+      }
+      haptic.light();
+      setReportTarget({ type, id: targetId, title });
+    },
+    [t, user, videoReturnTo],
+  );
+
+  const dropPostsByProvider = useCallback((providerId: string) => {
+    setPosts((prev) => {
+      const next = prev.filter((p) => p.provider_id !== providerId);
+      setActiveIndex((idx) => Math.min(idx, Math.max(0, next.length - 1)));
+      return next;
+    });
+  }, []);
+
+  const showMoreOptions = useCallback(() => {
+    const post = posts[activeIndex];
+    if (!post) return;
+    haptic.light();
+    const actions: Array<{ text: string; onPress?: () => void; style?: "cancel" | "destructive" }> = [];
+    if (user && post.id) {
+      actions.push({
+        text: t("customer.contentReport.reportPost"),
+        style: "destructive",
+        onPress: () =>
+          openContentReport("explore_post", post.id, t("customer.contentReport.reportPost")),
+      });
+    }
+    if (user && post.provider_id) {
+      actions.push({
+        text: t("customer.blockUser.confirmAction"),
+        style: "destructive",
+        onPress: () =>
+          confirmBlockUser({
+            providerId: post.provider_id,
+            displayName: post.provider?.business_name,
+            onBlocked: () => dropPostsByProvider(post.provider_id!),
+          }),
+      });
+    }
+    actions.push({ text: t("common.cancel"), style: "cancel" });
+    Alert.alert(t("customer.explorePost.moreOptions"), undefined, actions);
+  }, [activeIndex, confirmBlockUser, dropPostsByProvider, openContentReport, posts, t, user]);
 
   const loadFeed = useCallback(async () => {
     if (!id) return;
@@ -474,9 +569,10 @@ export default function ExploreVideoScreen() {
         onSave={toggleSave}
         onOpenComments={openComments}
         onShare={() => Alert.alert(t("customer.explorePost.share"))}
+        onMorePress={showMoreOptions}
       />
     ),
-    [activeIndex, muted, openComments, screenHeight, t, toggleLike, toggleSave],
+    [activeIndex, muted, openComments, screenHeight, showMoreOptions, t, toggleLike, toggleSave],
   );
 
   if (loading && !posts.length) {
@@ -528,19 +624,59 @@ export default function ExploreVideoScreen() {
         ) : (
           comments.map((c) => (
             <View key={c.id} style={{ paddingVertical: 8, borderBottomWidth: 1, borderColor: "#f3f4f6" }}>
-              <Text style={{ fontWeight: "600", fontSize: 13 }}>{c.author?.full_name || t("customer.explorePost.userFallback")}</Text>
-              <Text style={{ fontSize: 14, color: "#374151", marginTop: 2 }}>{c.body}</Text>
-              {user ? (
-                <TouchableOpacity onPress={() => setReplyToCommentId(c.id)} style={{ marginTop: 4 }}>
-                  <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500] }}>
-                    {t("customer.explorePost.reply")}
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
+              <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: "600", fontSize: 13 }}>{c.author?.full_name || t("customer.explorePost.userFallback")}</Text>
+                  <Text style={{ fontSize: 14, color: "#374151", marginTop: 2 }}>{c.body}</Text>
+                  {user ? (
+                    <TouchableOpacity onPress={() => setReplyToCommentId(c.id)} style={{ marginTop: 4 }}>
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500] }}>
+                        {t("customer.explorePost.reply")}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+                {user ? (
+                  <TouchableOpacity
+                    onPress={() =>
+                      openContentReport("explore_comment", c.id, t("customer.contentReport.reportComment"))
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel={t("customer.contentReport.reportComment")}
+                    style={{ paddingStart: 8 }}
+                  >
+                    <Ionicons name="flag-outline" size={16} color="#9CA3AF" />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
               {(c.replies ?? []).map((r) => (
-                <View key={r.id} style={{ marginTop: 8, marginStart: 16, paddingStart: 8, borderStartWidth: 2, borderColor: "#e5e7eb" }}>
-                  <Text style={{ fontWeight: "600", fontSize: 12 }}>{r.author?.full_name || t("customer.explorePost.userFallback")}</Text>
-                  <Text style={{ fontSize: 13, color: "#374151", marginTop: 2 }}>{r.body}</Text>
+                <View
+                  key={r.id}
+                  style={{
+                    marginTop: 8,
+                    marginStart: 16,
+                    paddingStart: 8,
+                    borderStartWidth: 2,
+                    borderColor: "#e5e7eb",
+                    flexDirection: "row",
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: "600", fontSize: 12 }}>{r.author?.full_name || t("customer.explorePost.userFallback")}</Text>
+                    <Text style={{ fontSize: 13, color: "#374151", marginTop: 2 }}>{r.body}</Text>
+                  </View>
+                  {user ? (
+                    <TouchableOpacity
+                      onPress={() =>
+                        openContentReport("explore_comment", r.id, t("customer.contentReport.reportComment"))
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel={t("customer.contentReport.reportComment")}
+                      style={{ paddingStart: 8 }}
+                    >
+                      <Ionicons name="flag-outline" size={14} color="#9CA3AF" />
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               ))}
             </View>
@@ -584,6 +720,16 @@ export default function ExploreVideoScreen() {
           </View>
         ) : null}
       </BottomSheet>
+
+      {reportTarget ? (
+        <ContentReportSheet
+          visible
+          onClose={() => setReportTarget(null)}
+          targetType={reportTarget.type}
+          targetId={reportTarget.id}
+          title={reportTarget.title}
+        />
+      ) : null}
     </>
   );
 }

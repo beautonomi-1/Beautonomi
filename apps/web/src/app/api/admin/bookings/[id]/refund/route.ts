@@ -28,7 +28,11 @@ export async function POST(
     if (!supabase) throw new Error("Admin client unavailable");
     const body = await request.json();
 
-    const { amount, reason } = body;
+    const { amount, reason, substitute_reason: substituteReason } = body as {
+      amount?: number;
+      reason?: string;
+      substitute_reason?: string | null;
+    };
 
     if (!amount || amount <= 0) {
       return errorResponse("Invalid refund amount", "VALIDATION_ERROR", 400);
@@ -109,6 +113,7 @@ export async function POST(
       reason: reason || "Admin refund",
       actorUserId: user.id,
       actorRole: (user as { role?: string }).role || "superadmin",
+      substituteReason: charge ? null : (substituteReason ?? null),
       ...(charge
         ? {
             transactionId: charge.id,

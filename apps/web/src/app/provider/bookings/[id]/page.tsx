@@ -1626,6 +1626,10 @@ export default function ProviderBookingDetail() {
     (b as unknown as { awaiting_machine_refunds?: Array<{ id: string; amount: number }> })
       .awaiting_machine_refunds ?? [];
   const awaitingMachineTotal = awaitingMachineRefunds.reduce((s, r) => s + Number(r.amount ?? 0), 0);
+  const pendingCashRefunds =
+    (b as unknown as { pending_cash_refunds?: Array<{ id: string; amount: number }> })
+      .pending_cash_refunds ?? [];
+  const pendingCashTotal = pendingCashRefunds.reduce((s, r) => s + Number(r.amount ?? 0), 0);
   /** Matches provider app + POST /send-payment-link (API rejects if already paid; needs email/SMS contact) */
   const canSendPaymentLink =
     canProcessPayments &&
@@ -2900,6 +2904,19 @@ export default function ProviderBookingDetail() {
               ))}
           </div>
         </div>
+
+        {pendingCashRefunds.length > 0 && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-2">
+            <p className="text-sm font-semibold text-amber-900">
+              {t("web.provider.bookings.detail.refund.pendingCashTitle", {
+                amount: formatMoney(pendingCashTotal),
+              })}
+            </p>
+            <p className="text-sm text-amber-900">
+              {t("web.provider.bookings.detail.refund.pendingCashBody")}
+            </p>
+          </div>
+        )}
 
         {awaitingMachineRefunds.length > 0 && (
           <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-2">

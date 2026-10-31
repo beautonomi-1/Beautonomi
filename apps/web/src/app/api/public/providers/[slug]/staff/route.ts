@@ -4,6 +4,9 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { freelancerPublicStaffName } from "@/lib/public-booking/freelancer-staff-name";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 import { resolveStaffLocationScope } from "@/lib/provider/staff-location-scope";
+import { isPubliclyBookableStaff } from "@/lib/provider/staff-public-bookable";
+import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
+import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
 
 /**
  * GET /api/public/providers/[slug]/staff
@@ -29,7 +32,7 @@ export async function GET(
     // Use admin client to bypass RLS — consistent with the SSR profile loader
     const { data: provider, error: providerError } = await supabase
       .from("providers")
-      .select("id, business_name, business_type, user_id")
+      .select("id, business_name, business_type, user_id, timezone")
       .eq("tenant_id", tenantId)
       .eq(isUuid ? "id" : "slug", slug)
       .maybeSingle();
@@ -41,7 +44,19 @@ export async function GET(
       );
     }
 
-    const locationId = new URL(request.url).searchParams.get("location_id")?.trim() || null;
+    const url = new URL(request.url);
+    const locationId = url.searchParams.get("location_id")?.trim() || null;
+    const offeringParam =
+      url.searchParams.get("offering_id") ??
+      url.searchParams.get("offering_ids") ??
+      url.searchParams.get("service_ids");
+    const offeringIds = offeringParam
+      ? offeringParam.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
+
+    const rawTz = (provider as { timezone?: string | null }).timezone ?? null;
+    const providerTimeZone =
+      normalizeProviderTimezone(rawTz) ?? DEFAULT_BOOKING_DISPLAY_TIMEZONE;
 
     // Fetch active staff members (provider_staff has no specialties column; use [] in response)
     const { data: staff, error: staffError } = await supabase
@@ -50,10 +65,14 @@ export async function GET(
         id,
         name,
         role,
+        public_title,
         avatar_url,
         bio,
         is_active,
-        user_id
+        user_id,
+        is_service_provider,
+        enable_in_online_booking,
+        bookable_from
       `)
       .eq("provider_id", provider.id)
       .eq("is_active", true)
@@ -81,7 +100,14 @@ export async function GET(
       personName = typeof ownerUser?.full_name === "string" ? ownerUser.full_name : null;
     }
 
-    let staffMembers = (staff || []).map((member: any) => ({
+    const bookableStaff = (staff || []).filter((member: {
+      is_service_provider?: boolean | null;
+      enable_in_online_booking?: boolean | null;
+      bookable_from?: string | null;
+      is_active?: boolean | null;
+    }) => isPubliclyBookableStaff(member, providerTimeZone));
+
+    let staffMembers = bookableStaff.map((member: any) => ({
       id: member.id,
       name:
         isFreelancer && member.user_id && member.user_id === provider.user_id
@@ -91,7 +117,7 @@ export async function GET(
               businessName: provider.business_name,
             })
           : member.name || "Staff Member",
-      role: publicStaffSubtitle(member.role),
+      role: publicStaffSubtitle(member.public_title || member.role),
       avatar_url: member.avatar_url,
       bio: member.bio,
       specialties: member.specialties || [],
@@ -104,6 +130,16 @@ export async function GET(
         const allowed = new Set(scope.staffIds);
         staffMembers = staffMembers.filter((m) => allowed.has(m.id));
       }
+    }
+
+    if (offeringIds.length > 0 && staffMembers.length > 0) {
+      const { staffIdsEligibleForOfferings } = await import(
+        "@/lib/provider/staff-ids-eligible-for-offerings"
+      );
+      const candidateIds = staffMembers.map((m) => m.id);
+      const eligible = await staffIdsEligibleForOfferings(supabase, candidateIds, offeringIds);
+      const allowed = new Set(eligible);
+      staffMembers = staffMembers.filter((m) => allowed.has(m.id));
     }
 
     // When provider has no staff rows (e.g. solo/freelancer), return one synthetic option

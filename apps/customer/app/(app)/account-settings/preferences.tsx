@@ -43,11 +43,13 @@ import { changeLanguage } from "@/lib/i18n";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { currencySelectLabel, LAST_RESORT_CURRENCY } from "@beautonomi/utils";
 import {
+  coerceMobileUiLanguage,
   getLanguageMeta,
+  isReviewedUiLanguage,
   mergeLanguagePickerOptions,
   normalizeLanguageCode,
   resolveLanguage,
-  supportedLanguages,
+  reviewedUiLanguageOptions,
   useTranslation,
 } from "@beautonomi/i18n";
 
@@ -88,12 +90,19 @@ interface PreferenceOptionRow {
 
 function buildI18nAlignedLanguageOptions(apiRows: PickerOption[]): PickerOption[] {
   const merged = mergeLanguagePickerOptions(
-    apiRows.map((o) => ({
-      code: normalizeLanguageCode(o.value),
-      name: o.label,
-    })),
+    apiRows
+      .map((o) => ({
+        code: normalizeLanguageCode(o.value),
+        name: o.label,
+      }))
+      .filter((o) => isReviewedUiLanguage(o.code)),
   );
-  return merged.map((m) => ({ value: m.code, label: m.name }));
+  const fallback = reviewedUiLanguageOptions().map((l) => ({
+    value: l.code,
+    label: l.nativeName,
+  }));
+  const mapped = merged.map((m) => ({ value: m.code, label: m.name }));
+  return mapped.length > 0 ? mapped : fallback;
 }
 
 /** Only when the API is unreachable — single tenant default code (no invented ISO list). */
@@ -141,7 +150,7 @@ function preferApiOrFallback(api: PickerOption[], fallback: PickerOption[]): Pic
 
 /** Keep every bundled locale (Wave A + international Wave B) for tourists. */
 function allLanguagePickerOptions(): PickerOption[] {
-  return supportedLanguages.map(({ code, nativeName, name }) => ({
+  return reviewedUiLanguageOptions().map(({ code, nativeName, name }) => ({
     value: code,
     label: `${nativeName} (${name})`,
   }));
@@ -392,7 +401,7 @@ export default function PreferencesScreen() {
   useEffect(() => {
     const raw = profile.preferred_language?.trim();
     if (!raw) return;
-    const code = normalizeLanguageCode(raw);
+    const code = coerceMobileUiLanguage(raw);
     void import("@beautonomi/i18n").then(({ i18n }) => {
       const cur = normalizeLanguageCode(i18n.language || "en");
       if (cur !== code) void changeLanguage(code);
@@ -408,8 +417,10 @@ export default function PreferencesScreen() {
       setSaving(true);
 
       try {
+        const storedValue =
+          field === "preferred_language" ? coerceMobileUiLanguage(value) : value;
         const res = await api.patch<UserProfile>("/api/me/profile", {
-          [field]: value,
+          [field]: storedValue,
         });
         if (res.error) {
           setProfile(previous);
@@ -418,7 +429,7 @@ export default function PreferencesScreen() {
             getApiErrorMessage(res.error, t("customer.preferencesScreen.savePrefError")),
           );
         } else if (field === "preferred_language") {
-          const { directionChanged } = await changeLanguage(normalizeLanguageCode(value));
+          const { directionChanged } = await changeLanguage(coerceMobileUiLanguage(storedValue));
           if (directionChanged) {
             const { promptReloadIfDirectionChanged } = await import("@/lib/i18n");
             promptReloadIfDirectionChanged(directionChanged, Alert.alert, {

@@ -334,7 +334,7 @@ export default function StepCalendar({
       ];
 
       const buildUrl = (sid: string | null) =>
-        `/api/availability?staffId=${sid || "any"}&date=${dateStr}&mode=${mode}&duration=${totalDuration}&travelBuffer=${travelBuffer}${holdParam}${providerParam}${locationParam}${serviceParam}`;
+        `/api/availability?staffId=${sid || "any"}&date=${dateStr}&mode=${mode}&duration=${totalDuration}&travelBuffer=${travelBuffer}&audience=public${holdParam}${providerParam}${locationParam}${serviceParam}`;
 
       if (uniqueStaffIds.length <= 1) {
         const response = await fetcher.get<{ data: AvailabilityData }>(

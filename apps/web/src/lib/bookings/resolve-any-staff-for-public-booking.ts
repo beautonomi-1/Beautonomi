@@ -88,18 +88,25 @@ export async function pickFirstStaffForNullStaffLines(args: {
   };
   const OVERNIGHT_CUTOFF_MIN = 8 * 60;
 
-  const { data: staffRows } = await supabaseAdmin
-    .from("provider_staff")
-    .select("id")
-    .eq("provider_id", providerId)
-    .eq("is_active", true)
-    .order("id", { ascending: true });
-
-  let activeIds = (staffRows ?? []).map((r: { id: string }) => r.id);
-  if (locationId) {
-    const scope = await resolveStaffLocationScope(supabaseAdmin, providerId, locationId);
-    activeIds = applyLocationScopeToStaffIds(activeIds, scope);
+  const { listPubliclyBookableStaffIdsForLocation } = await import(
+    "@/lib/provider/staff-location-scope"
+  );
+  let activeIds = await listPubliclyBookableStaffIdsForLocation(
+    supabaseAdmin,
+    providerId,
+    locationId,
+    providerTz,
+  );
+  const offeringIds = [
+    ...new Set(bookingServicesData.map((line) => line.offering_id).filter(Boolean)),
+  ];
+  if (offeringIds.length > 0) {
+    const { staffIdsEligibleForOfferings } = await import(
+      "@/lib/provider/staff-ids-eligible-for-offerings"
+    );
+    activeIds = await staffIdsEligibleForOfferings(supabaseAdmin, activeIds, offeringIds);
   }
+  activeIds.sort((a, b) => a.localeCompare(b));
   if (activeIds.length === 0) {
     return { ok: false, reason: "no_team_members" };
   }

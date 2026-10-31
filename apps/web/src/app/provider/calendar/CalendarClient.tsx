@@ -43,6 +43,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { PreferencesPanel, MangomintStatusLegend } from "@/components/calendar";
 import { openViewMode, openCreateMode, openGroupSheet, openGroupViewMode } from "@/stores/appointment-sidebar-store";
+import { filterStaffForServiceColumns } from "@/lib/provider/staff-public-bookable";
 import { BookingSheetHost } from "@/components/provider/booking";
 import { WaitingRoomButton, WaitingRoomPanel } from "@/components/waitingRoom";
 import { useSupabaseRealtime } from "@/hooks/useSupabaseRealtime";
@@ -526,6 +527,10 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   const [hasMounted, setHasMounted] = useState(false);
   const [appointments, setAppointments] = useState<Appointment[]>(() => initialCalendar?.appointments ?? []);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(() => initialCalendar?.teamMembers ?? []);
+  const serviceColumnStaff = React.useMemo(
+    () => filterStaffForServiceColumns(teamMembers),
+    [teamMembers],
+  );
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [timeBlocks, setTimeBlocks] = useState<TimeBlock[]>(() => initialCalendar?.timeBlocks ?? []);
   const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlockDisplay[]>(
@@ -1715,9 +1720,9 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
       ? teamMembers.filter((m) => m.id === selfStaffId)
       : selectedTeamMember === "all"
         ? (selectedTeamMemberIds.length > 0
-            ? teamMembers.filter((m) => selectedTeamMemberIds.includes(m.id))
-            : teamMembers)
-        : teamMembers.filter((m) => m.id === selectedTeamMember);
+            ? serviceColumnStaff.filter((m) => selectedTeamMemberIds.includes(m.id))
+            : serviceColumnStaff)
+        : serviceColumnStaff.filter((m) => m.id === selectedTeamMember);
 
   // Toggle team member in filter (always resets to "all" API mode so
   // checkbox filtering stays client-side and doesn't conflict with
@@ -1736,7 +1741,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   // Select all team members
   const selectAllTeamMembers = () => {
     setSelectedTeamMember("all");
-    setSelectedTeamMemberIds(teamMembers.map(m => m.id));
+    setSelectedTeamMemberIds(serviceColumnStaff.map(m => m.id));
   };
 
   // Deselect all team members (clear the filter)
@@ -1748,15 +1753,15 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   // Clear single staff filter (when viewing one staff member's schedule)
   const clearStaffFilter = () => {
     setSelectedTeamMember("all");
-    setSelectedTeamMemberIds(teamMembers.map(m => m.id));
+    setSelectedTeamMemberIds(serviceColumnStaff.map(m => m.id));
   };
 
   // Ensure selectedTeamMemberIds is initialized when team members are loaded
   useEffect(() => {
-    if (teamMembers.length > 0 && selectedTeamMemberIds.length === 0) {
-      setSelectedTeamMemberIds(teamMembers.map(m => m.id));
+    if (serviceColumnStaff.length > 0 && selectedTeamMemberIds.length === 0) {
+      setSelectedTeamMemberIds(serviceColumnStaff.map(m => m.id));
     }
-  }, [teamMembers, selectedTeamMemberIds.length]);
+  }, [serviceColumnStaff, selectedTeamMemberIds.length]);
 
   // Team member checkbox filtering is client-side only; do not refetch calendar data here.
 
@@ -1952,7 +1957,7 @@ aria-label={t("web.provider.calendarPage.loadingLayout")}
                   </Button>
                 </div>
                 <Separator />
-                {teamMembers.map((member) => (
+                {serviceColumnStaff.map((member) => (
                   <DropdownMenuCheckboxItem
                     key={member.id}
                     checked={selectedTeamMemberIds.includes(member.id)}
@@ -2459,7 +2464,7 @@ aria-label={t("web.provider.calendarPage.scrollToNow")}
                 </div>
               </div>
               <div className="space-y-2">
-                {teamMembers.map((member) => (
+                {serviceColumnStaff.map((member) => (
                   <label
                     key={member.id}
                     className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer"

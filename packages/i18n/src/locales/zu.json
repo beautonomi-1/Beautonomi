@@ -72,7 +72,10 @@
       "gotIt": "Ngiyezwa",
       "dismissA11y": "Cisha ithiphu"
     },
-    "change": "Shintsha"
+    "change": "Shintsha",
+    "useDifferentAccount": "Use a different i-akhawunti",
+    "useDifferentAccountConfirmTitle": "Switch i-akhawunti?",
+    "useDifferentAccountConfirmBody": "Uzophuma kule divayisi. I-akhawunti yakho ye-Google noma ye-Apple ihlala ixhunyiwe, futhi noma yikuphi ukuqhubeka kokusetha okulondoloziwe kuhlala kuleyo akhawunti. Ungangena futhi noma nini."
   },
   "authGate": {
     "checkingAccess": "Checking your i-akhawunti…",
@@ -13336,15 +13339,15 @@
       "emptyBoard": "Awekho amaphosti kuleli bhodi okwamanje. Londoloza amaphosti kokuthi Hlola bese uwafaka kuthebhu yakho egciniwe."
     },
     "contentReport": {
-      "modalTitle": "Report content",
-      "modalLead": "Select a reason and add optional details so our team can review.",
-      "submitCta": "Submit report",
-      "detailsPlaceholder": "Additional details (optional)",
-      "selectReasonTitle": "Select a reason",
-      "selectReasonBody": "Please choose why you are reporting this content.",
-      "submitError": "Failed to submit report.",
-      "submittedTitle": "Report submitted",
-      "submittedBody": "Thank you. Our team will review your report within 24-48 hours.",
+      "modalTitle": "Bika okuqukethwe",
+      "modalLead": "Khetha isizathu bese ungeza imininingwane eyingozi ukuze ithimba lethu lihlaziye.",
+      "submitCta": "Thumela umbiko",
+      "detailsPlaceholder": "Imininingwane eyengeziwe (okungakhethwa)",
+      "selectReasonTitle": "Khetha isizathu",
+      "selectReasonBody": "Sicela ukhethe ukuthi kungani ubika lokhu okuqukethwe.",
+      "submitError": "Ayikwazanga ukuthumela umbiko.",
+      "submittedTitle": "Umbiko uthunyelwe",
+      "submittedBody": "Siyabonga. Ithimba lethu lizohlaziya umbiko wakho phakathi namahora angu-24.",
       "reportPost": "verslag Plasing",
       "reportComment": "verslag opmerking",
       "reportMessage": "verslag boodskap",
@@ -13353,12 +13356,13 @@
       "signInTitle": "ngena to umbiko",
       "signInBody": "Dala an i-akhawunti or ngena to umbiko content to our ukuphepha ithimba.",
       "reason": {
-        "inappropriate": "Inappropriate content",
-        "misleading": "Misleading information",
-        "harassment": "Harassment or abuse",
-        "spam": "Spam or scam",
-        "safety": "Safety concern",
-        "other": "Other"
+        "inappropriate": "Okuqukethwe okungafanele",
+        "misleading": "Ulwazi oludangisa",
+        "harassment": "Ukuhlukumeza noma ukuhlukunyezwa",
+        "spam": "I-spam noma ukukhwabanisa",
+        "safety": "Ukukhathazeka ngokuphepha",
+        "other": "Other",
+        "illegal_exploitative": "Okuqukethwe okungekho emthethweni noma okuxhaphaza"
       }
     },
     "blockUser": {
@@ -15168,6 +15172,7 @@
           "paymentCancelledBody": "Ukhansele inkokhelo. Akukho zindleko ezenziwe. Ungazama futhi kuleli oda.",
           "cancelOrderTitle": "Khansela i-oda",
           "cancelOrderBody": "Khansela le odara? Izinto ezisesitokweni zizobuyiselwa futhi izinkokhelo ezikhokhiwe zizobuyiselwa.",
+          "cancelledInPerson": "I-oda ikhanseliwe. {{amount}} yaqoqwa mathupha futhi kusamele ibuyiswe yisalon.",
           "keepOrderCta": "Gcina i-oda",
           "cancelOrderCta": "Khansela i-oda",
           "cancelOrderFailed": "Ayikwazanga uku-khansela this i-oda.",
@@ -21212,6 +21217,7 @@
         "goBack": "Buyela emuva",
         "cancelConfirm": "Khansela le odara? Izinto ezisesitokweni zizobuyiselwa futhi izinkokhelo ezikhokhiwe zizobuyiselwa.",
         "cancelledToast": "i-oda kukhanseliwe",
+        "cancelledInPerson": "I-oda ikhanseliwe. {{amount}} yaqoqwa mathupha futhi kusamele ibuyiswe yisalon.",
         "cancelFailed": "Ayikwazanga uku-khansela this i-oda.",
         "addEmailBeforePay": "Engeza ikheli le-imeyili ku-akhawunti yakho ngaphambi kokukhokha leli oda ku-inthanethi.",
         "paymentStartFailed": "Ons kon nie met die betaling begin nie. Probeer asseblief weer.",

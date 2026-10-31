@@ -13,6 +13,7 @@ vi.mock("@/lib/supabase/api-helpers", async () => {
 vi.mock("@/lib/supabase/admin", () => ({ getSupabaseAdmin: vi.fn() }));
 vi.mock("@/lib/orders/product-order-lifecycle", () => ({
   applyProductOrderCancelRefundSideEffects: vi.fn(async () => ({ walletCreditFailed: false })),
+  releaseUnpaidProductOrderHolds: vi.fn(async () => ({ credited: true, failed: false, amount: 40 })),
   restockProductOrderLineItems: vi.fn(async () => undefined),
 }));
 vi.mock("@/lib/ecommerce/refund-product-order-online-tender", () => ({
@@ -25,6 +26,9 @@ vi.mock("@/lib/ecommerce/refund-product-order-online-tender", () => ({
 vi.mock("@/lib/notifications/notify-provider-team", () => ({
   notifyProviderTeamUsers: vi.fn(async () => undefined),
 }));
+vi.mock("@/lib/orders/shipping", () => ({
+  cancelCourierShipmentForOrder: vi.fn(async () => ({ ok: true, skipped: "manual_tracking" })),
+}));
 
 const ORDER_ID = "oooooooo-oooo-oooo-oooo-oooooooooooo";
 
@@ -32,7 +36,10 @@ const ORDER_ID = "oooooooo-oooo-oooo-oooo-oooooooooooo";
  * Stateful product_orders double: the optimistic `update ... eq(status, old)` only
  * succeeds while the stored status still matches, like the real compare-and-swap.
  */
-function makeDb(initialStatus = "confirmed") {
+function makeDb(
+  initialStatus = "confirmed",
+  overrides: Record<string, unknown> = {},
+) {
   const row = {
     id: ORDER_ID,
     customer_id: "cust-1",
@@ -49,7 +56,9 @@ function makeDb(initialStatus = "confirmed") {
     currency: "ZAR",
     shipped_at: null,
     delivered_at: null,
+    ...overrides,
   };
+  row.status = initialStatus;
   const from = vi.fn(() => {
     let pendingUpdate: Record<string, unknown> | null = null;
     const filters: Record<string, unknown> = {};
@@ -89,8 +98,8 @@ async function cancel() {
 }
 
 describe("PATCH /api/me/orders/[id]/cancel restocks at most once", () => {
-  async function setup(initialStatus?: string) {
-    const db = makeDb(initialStatus);
+  async function setup(initialStatus?: string, overrides?: Record<string, unknown>) {
+    const db = makeDb(initialStatus, overrides);
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     vi.mocked(getSupabaseAdmin).mockReturnValue(db.client as never);
     const lifecycle = await import("@/lib/orders/product-order-lifecycle");
@@ -117,6 +126,7 @@ describe("PATCH /api/me/orders/[id]/cancel restocks at most once", () => {
       online_refunded: 100,
       wallet_credited: 50,
       gift_card_restored: 0,
+      in_person_refund_due: 0,
     });
     expect(restock).toHaveBeenCalledOnce();
     expect(sideEffects.mock.calls[0][3]).toMatchObject({ onlineRefundedAmount: 100 });
@@ -198,6 +208,45 @@ describe("PATCH /api/me/orders/[id]/cancel restocks at most once", () => {
     expect(second.status).toBe(409);
     expect((await second.json()).error?.code).toBe("STALE_ORDER");
     expect(restock).toHaveBeenCalledOnce();
+  });
+
+  it("returns a checkout wallet debit when the card was never paid", async () => {
+    const { sideEffects, onlineRefund } = await setup("pending", {
+      payment_status: "pending",
+      wallet_amount: 40,
+      total_amount: 100,
+    });
+    const lifecycle = await import("@/lib/orders/product-order-lifecycle");
+
+    const res = await cancel();
+
+    expect(res.status).toBe(200);
+    expect(onlineRefund).not.toHaveBeenCalled();
+    expect(sideEffects).not.toHaveBeenCalled();
+    expect(lifecycle.releaseUnpaidProductOrderHolds).toHaveBeenCalledOnce();
+    expect((await res.json()).data.refund.wallet_credited).toBe(40);
+  });
+
+  it("leaves provider-collected cash for an in-person refund", async () => {
+    const { onlineRefund } = await setup("confirmed", {
+      payment_method: "cash",
+      wallet_amount: 0,
+      total_amount: 90,
+    });
+    onlineRefund.mockResolvedValueOnce({
+      attempted: false,
+      refundedAmount: 0,
+      refundId: null,
+    });
+
+    const res = await cancel();
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.refund).toMatchObject({
+      online_refunded: 0,
+      wallet_credited: 0,
+      in_person_refund_due: 90,
+    });
   });
 
   it("already-shipped orders are rejected before any restock", async () => {

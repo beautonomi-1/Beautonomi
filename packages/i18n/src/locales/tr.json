@@ -72,7 +72,10 @@
       "gotIt": "Compris",
       "dismissA11y": "Ignorer l’astuce"
     },
-    "change": "Modifier"
+    "change": "Modifier",
+    "useDifferentAccount": "Use a different cuenta",
+    "useDifferentAccountConfirmTitle": "Switch cuenta?",
+    "useDifferentAccountConfirmBody": "Bu cihazda oturumun kapanır. Google veya Apple hesabın bağlı kalır; kaydedilen kurulum ilerlemesi o hesapta durur. İstediğin zaman tekrar giriş yapabilirsin."
   },
   "authGate": {
     "checkingAccess": "Hesabınız kontrol ediliyor…",
@@ -13337,14 +13340,14 @@
     },
     "contentReport": {
       "modalTitle": "Signaler le contenu",
-      "modalLead": "Sélectionner a reason and add optional details so our team can review.",
+      "modalLead": "Ekibimizin inceleyebilmesi için bir neden seçin ve isteğe bağlı ayrıntılar ekleyin.",
       "submitCta": "Envoyer report",
       "detailsPlaceholder": "Additional details (facultatif)",
       "selectReasonTitle": "Choisir un motif",
       "selectReasonBody": "Indiquez pourquoi vous signalez ce contenu.",
       "submitError": "Impossible de envoyer report.",
-      "submittedTitle": "Report submitted",
-      "submittedBody": "Thank you. Our team will review your report within 24-48 hours.",
+      "submittedTitle": "Rapor gönderildi",
+      "submittedBody": "Teşekkürler. Ekibimiz raporunuzu 24 saat içinde inceleyecek.",
       "reportPost": "Signaler la publication",
       "reportComment": "Signaler le commentaire",
       "reportMessage": "Signaler le message",
@@ -13358,7 +13361,8 @@
         "harassment": "Harcèlement ou abus",
         "spam": "Spam ou arnaque",
         "safety": "Problème de sécurité",
-        "other": "Autre"
+        "other": "Autre",
+        "illegal_exploitative": "Yasa dışı veya sömürücü içerik"
       }
     },
     "blockUser": {
@@ -15164,6 +15168,7 @@
           "paymentCancelledBody": "You cancelled the payment. No charge was made. You can réessayer from this order.",
           "cancelOrderTitle": "Annuler la commande",
           "cancelOrderBody": "Annuler cette commande ? Les articles en stock seront réintégrés et les paiements remboursés.",
+          "cancelledInPerson": "Sipariş iptal edildi. {{amount}} yüz yüze tahsil edildi ve salonun hâlâ iade etmesi gerekiyor.",
           "keepOrderCta": "Keep commande",
           "cancelOrderCta": "Annuler la commande",
           "cancelOrderFailed": "Impossible de annuler this commande.",
@@ -21212,6 +21217,7 @@
         "goBack": "Retour",
         "cancelConfirm": "Annuler cette commande ? Les articles en stock seront réintégrés et les paiements remboursés.",
         "cancelledToast": "Commande annulé",
+        "cancelledInPerson": "Sipariş iptal edildi. {{amount}} yüz yüze tahsil edildi ve salonun hâlâ iade etmesi gerekiyor.",
         "cancelFailed": "Impossible de annuler this commande.",
         "addEmailBeforePay": "Voeg 'n e-posadres by jou rekening voordat jy hierdie bestelling aanlyn betaal.",
         "paymentStartFailed": "We impossible de démarrer paiement for this commande. Veuillez réessayer.",

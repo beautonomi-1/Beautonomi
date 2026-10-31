@@ -16,6 +16,10 @@ import {
   mergeLanguagePickerOptions,
   isRegistryLanguage,
   preferredLanguageFromDevice,
+  REVIEWED_UI_LANGUAGE_CODES,
+  isReviewedUiLanguage,
+  coerceMobileUiLanguage,
+  reviewedUiLanguageOptions,
 } from "./language-registry";
 
 export { defaultNS };
@@ -37,8 +41,18 @@ export {
   mergeLanguagePickerOptions,
   isRegistryLanguage,
   preferredLanguageFromDevice,
+  REVIEWED_UI_LANGUAGE_CODES,
+  isReviewedUiLanguage,
+  coerceMobileUiLanguage,
+  reviewedUiLanguageOptions,
 };
-export type { SupportedLanguage, LanguageMeta, TextDirection, LanguageWave } from "./language-registry";
+export type {
+  SupportedLanguage,
+  LanguageMeta,
+  TextDirection,
+  LanguageWave,
+  ReviewedUiLanguage,
+} from "./language-registry";
 export {
   PUBLIC_CATEGORY_SLUGS,
   normalizeCategoryKey,

@@ -12,9 +12,11 @@ import { requirePermission } from "@/lib/auth/requirePermission";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import {
   applyProductOrderCancelRefundSideEffects,
+  releaseUnpaidProductOrderHolds,
   restockProductOrderLineItems,
 } from "@/lib/orders/product-order-lifecycle";
 import { splitProductOrderRefundTender } from "@/lib/ecommerce/product-order-refund-tender";
+import { allowsInPersonProductOrderRefund } from "@/lib/orders/product-order-tender";
 import {
   dispatchProductOrderStatusNotification,
   type ProductOrderNotifyStatus,
@@ -211,6 +213,13 @@ export async function PATCH(
             400,
           );
         }
+        if (refundMethod === "cash" && !allowsInPersonProductOrderRefund(order)) {
+          return errorResponse(
+            "This order was paid online. Refund it to the original payment method so the card and wallet portions go back to the customer.",
+            "REFUND_ORIGINAL_TENDER",
+            400,
+          );
+        }
       }
     }
 
@@ -286,6 +295,7 @@ export async function PATCH(
     };
 
     let onlineRefundedAmount = 0;
+    let walletCreditIssued = 0;
     let walletFailedAfterTender = false;
     // Store-credit refunds return the card portion to the gateway when possible,
     // then credit wallet for the remainder (gift card → card; wallet + fallback → wallet).
@@ -322,6 +332,9 @@ export async function PATCH(
               p_idempotency_key: `product_order_refund:${id}`,
             })
           : { error: null };
+      if (!walletError) {
+        walletCreditIssued = walletToCredit;
+      }
       if (walletError && tenderMoved) {
         // Card / gift money already went back — keep the order refunded (restock and
         // ledger reversal still apply) so it is not refunded twice on retry; the wallet
@@ -373,9 +386,17 @@ export async function PATCH(
           cancellationReason: parsed.cancellation_reason,
           refundReason: parsed.refund_reason,
           onlineRefundedAmount,
+          walletCreditIssued,
         },
       );
       cancelRefundWalletFailed = sideEffects.walletCreditFailed;
+    } else if (enteringTerminal && parsed.status === "cancelled" && order.payment_status !== "paid") {
+      const released = await releaseUnpaidProductOrderHolds(
+        getSupabaseAdmin(),
+        order,
+        `Wallet refund (order cancelled before payment) ${order.order_number || id.slice(0, 8)}`,
+      );
+      cancelRefundWalletFailed = released.failed;
     }
 
     if (cancelRefundWalletFailed) {

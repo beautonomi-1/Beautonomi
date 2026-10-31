@@ -31,6 +31,15 @@ const mockGetSupabaseAdmin = vi.fn();
 const mockResolveAdminApiTenantId = vi.fn();
 const mockInsertCompliancePurgeAuditLog = vi.fn();
 const mockWriteAuditLog = vi.fn();
+const mockCollectTenantResetStoragePaths = vi.fn();
+const mockPurgeCollectedTenantResetStorage = vi.fn();
+
+vi.mock("@/lib/explore/tenant-reset-storage", () => ({
+  collectTenantResetStoragePaths: (...args: unknown[]) =>
+    mockCollectTenantResetStoragePaths(...args),
+  purgeCollectedTenantResetStorage: (...args: unknown[]) =>
+    mockPurgeCollectedTenantResetStorage(...args),
+}));
 
 vi.mock("@/lib/supabase/api-helpers", () => ({
   requireRoleInApi: (...args: unknown[]) => mockRequireRoleInApi(...args),
@@ -117,9 +126,14 @@ function buildAdminClient(opts: {
   const select = vi.fn().mockReturnValue({ eq });
   const from = vi.fn().mockReturnValue({ select });
 
-  const rpc = vi.fn().mockResolvedValue({
-    data: opts.rpcResult ?? null,
-    error: opts.rpcError ?? null,
+  const rpc = vi.fn().mockImplementation(async (fnName: string) => {
+    if (fnName === "refresh_reporting_views") {
+      return { data: null, error: null };
+    }
+    return {
+      data: opts.rpcResult ?? null,
+      error: opts.rpcError ?? null,
+    };
   });
 
   return { from, rpc, select, eq, maybeSingle };
@@ -139,6 +153,23 @@ describe("POST /api/admin/compliance/reset-tenant", () => {
       id: "audit-log-id",
     });
     mockWriteAuditLog.mockResolvedValue(undefined);
+    mockCollectTenantResetStoragePaths.mockResolvedValue({
+      buckets: {},
+      counts: {
+        postPaths: 0,
+        soundPaths: 0,
+        messageAttachmentPaths: 0,
+        brandAssetPaths: 0,
+        merchantDocPaths: 0,
+        bookingDocPaths: 0,
+        customRequestPaths: 0,
+        reviewImagePaths: 0,
+      },
+    });
+    mockPurgeCollectedTenantResetStorage.mockResolvedValue({
+      messageAttachmentRemoved: 0,
+      error: null,
+    });
   });
 
   it("rejects when the caller is not a superadmin", async () => {
@@ -277,6 +308,32 @@ describe("POST /api/admin/compliance/reset-tenant", () => {
     expect(mockInsertCompliancePurgeAuditLog).not.toHaveBeenCalled();
   });
 
+  it("returns 409 DEFAULT_TENANT_BLOCKED for slug za before RPC or storage purge", async () => {
+    const admin = buildAdminClient({
+      tenantRow: { id: VALID_TENANT_ID, slug: "za", name: "ZA Default" },
+    });
+    mockGetSupabaseAdmin.mockReturnValue(admin);
+
+    const { POST } = await import(
+      "@/app/api/admin/compliance/reset-tenant/route"
+    );
+    const res = await POST(
+      createMockNextRequest({
+        method: "POST",
+        url: ROUTE_URL,
+        body: validBody({ tenant_slug_confirmation: "za" }),
+      }) as NextRequest,
+    );
+
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error?.code).toBe("DEFAULT_TENANT_BLOCKED");
+    expect(mockCollectTenantResetStoragePaths).not.toHaveBeenCalled();
+    expect(admin.rpc).not.toHaveBeenCalled();
+    expect(mockPurgeCollectedTenantResetStorage).not.toHaveBeenCalled();
+    expect(mockInsertCompliancePurgeAuditLog).not.toHaveBeenCalled();
+  });
+
   it("maps the default-tenant guard error to 409 DEFAULT_TENANT_BLOCKED and writes no audit row", async () => {
     const admin = buildAdminClient({
       tenantRow: { id: VALID_TENANT_ID, slug: VALID_SLUG, name: "Acme" },
@@ -303,6 +360,7 @@ describe("POST /api/admin/compliance/reset-tenant", () => {
     expect(body.error?.code).toBe("DEFAULT_TENANT_BLOCKED");
     expect(mockInsertCompliancePurgeAuditLog).not.toHaveBeenCalled();
     expect(mockWriteAuditLog).not.toHaveBeenCalled();
+    expect(mockPurgeCollectedTenantResetStorage).not.toHaveBeenCalled();
   });
 
   it("maps other rpc errors to 500 RPC_ERROR", async () => {
@@ -328,6 +386,7 @@ describe("POST /api/admin/compliance/reset-tenant", () => {
     expect(body.error?.code).toBe("RPC_ERROR");
     expect(mockInsertCompliancePurgeAuditLog).not.toHaveBeenCalled();
     expect(mockWriteAuditLog).not.toHaveBeenCalled();
+    expect(mockPurgeCollectedTenantResetStorage).not.toHaveBeenCalled();
   });
 
   it("dry-run: returns counts but does NOT write a compliance_purge_audit_log row", async () => {
@@ -367,6 +426,7 @@ describe("POST /api/admin/compliance/reset-tenant", () => {
     expect(body.data?.totals?.tables).toBe(3);
     expect(body.data?.totals?.rows).toBe(16);
     expect(body.data?.compliance_audit_id).toBeNull();
+    expect(body.data?.storage_path_counts).toBeDefined();
 
     expect(admin.rpc).toHaveBeenCalledWith(
       "compliance_reset_tenant_transactions",
@@ -378,6 +438,8 @@ describe("POST /api/admin/compliance/reset-tenant", () => {
     );
     expect(mockInsertCompliancePurgeAuditLog).not.toHaveBeenCalled();
     expect(mockWriteAuditLog).not.toHaveBeenCalled();
+    expect(mockPurgeCollectedTenantResetStorage).not.toHaveBeenCalled();
+    expect(mockCollectTenantResetStoragePaths).toHaveBeenCalled();
   });
 
   it("dry-run: surfaces terminal commerce + PayCloud/Yoco/membership keys from migration 764/765/815", async () => {
@@ -507,6 +569,16 @@ describe("POST /api/admin/compliance/reset-tenant", () => {
     expect(auditLogCall?.metadata?.compliance_audit_row).toEqual({
       id: "audit-log-id",
     });
+
+    expect(mockPurgeCollectedTenantResetStorage).toHaveBeenCalledTimes(1);
+    const rpcMock = admin.rpc as ReturnType<typeof vi.fn>;
+    const resetIdx = rpcMock.mock.calls.findIndex(
+      (c) => c[0] === "compliance_reset_tenant_transactions",
+    );
+    expect(resetIdx).toBeGreaterThanOrEqual(0);
+    expect(mockPurgeCollectedTenantResetStorage.mock.invocationCallOrder[0]).toBeGreaterThan(
+      rpcMock.mock.invocationCallOrder[resetIdx]!,
+    );
   });
 
   it("live run: surfaces audit-insert errors without failing the overall response", async () => {

@@ -20,6 +20,7 @@ export type RecordProductOrderPaymentInput = {
     | "paystack_verify"
     | "paystack_webhook"
     | "stripe_webhook"
+    | "flutterwave_webhook"
     | "paystack_virtual_terminal_allocation"
     | "wallet_checkout"
     | "provider_mark_collected"
@@ -210,15 +211,23 @@ async function recordProductOrderPaymentInner(
     input.platformHeld ??
     (provider === "paystack" ||
       provider === "stripe" ||
+      provider === "flutterwave" ||
       provider === "wallet" ||
       provider === "gift_card");
   const giftCardAmount = Math.max(0, Number((order as any).gift_card_amount ?? 0));
+  const walletHeld = Math.max(0, Number((order as any).wallet_amount ?? 0));
+  // In-person collection still leaves wallet/gift money with the platform.
+  // Those legs are payoutable; the cash/terminal remainder is not.
+  const supplementalHeld = !isPlatformHeld
+    ? Math.round(Math.min(orderTotal, walletHeld + giftCardAmount) * 100) / 100
+    : 0;
+  const postsHeldLedger = isPlatformHeld || supplementalHeld > 0.009;
   const promotionDiscount = Math.max(0, Number((order as any).promotion_discount_amount ?? 0));
   const orderReferenceForLedger = orderNumber;
 
   const hasLedger = await hasProviderEarningsLedger(supabase, productOrderId, providerId, orderNumber);
 
-  if ((order as any).payment_status === "paid" && alreadyRecorded && (!isPlatformHeld || hasLedger)) {
+  if ((order as any).payment_status === "paid" && alreadyRecorded && (!postsHeldLedger || hasLedger)) {
     return { ok: true, duplicate: true, transitionedToPaid: false };
   }
 
@@ -255,10 +264,10 @@ async function recordProductOrderPaymentInner(
       );
       if (currentStatus === "paid") {
         wasAlreadyPaid = true;
-        if (alreadyRecorded && (!isPlatformHeld || ledgerAfterRace)) {
+        if (alreadyRecorded && (!postsHeldLedger || ledgerAfterRace)) {
           return { ok: true, duplicate: true, transitionedToPaid: false };
         }
-      } else if (alreadyRecorded && (!isPlatformHeld || ledgerAfterRace)) {
+      } else if (alreadyRecorded && (!postsHeldLedger || ledgerAfterRace)) {
         return { ok: true, duplicate: true, transitionedToPaid: false };
       } else if (currentStatus !== "paid" && !alreadyRecorded) {
         return { ok: false, duplicate: false, transitionedToPaid: false };
@@ -373,9 +382,15 @@ async function recordProductOrderPaymentInner(
     }
   }
 
-  if (!isPlatformHeld) {
+  if (!postsHeldLedger) {
     return { ok: true, duplicate: alreadyRecorded, transitionedToPaid };
   }
+
+  const feeForLedger = isPlatformHeld ? platformFee : Math.min(platformFee, supplementalHeld);
+  const earningsForLedger = isPlatformHeld
+    ? providerEarnings
+    : Math.max(0, Math.round((supplementalHeld - feeForLedger) * 100) / 100);
+  const paymentGrossForLedger = isPlatformHeld ? grossForProvider : earningsForLedger;
 
   const ledgerCreatedAt = resolveLedgerCreatedAt(input, order as any, transitionedToPaid);
   const existingLegTypes = await loadExistingPlatformLegTypes(
@@ -394,10 +409,10 @@ async function recordProductOrderPaymentInner(
       provider_id: providerId,
       tenant_id: financeTenantId,
       transaction_type: "payment",
-      amount: grossForProvider,
+      amount: paymentGrossForLedger,
       fees: feesMajor,
-      commission: platformFee,
-      net: platformFee,
+      commission: feeForLedger,
+      net: feeForLedger,
       description: `Product order payment ${orderNumber}`,
       created_at: ledgerCreatedAt,
     });
@@ -410,26 +425,26 @@ async function recordProductOrderPaymentInner(
       provider_id: providerId,
       tenant_id: financeTenantId,
       transaction_type: "provider_earnings",
-      amount: providerEarnings,
+      amount: earningsForLedger,
       fees: 0,
       commission: 0,
-      net: providerEarnings,
+      net: earningsForLedger,
       description: `Provider earnings from product order ${orderNumber}`,
       created_at: ledgerCreatedAt,
     });
   }
 
-  if (!existingLegTypes.has("platform_fee")) {
+  if (!existingLegTypes.has("platform_fee") && (isPlatformHeld || feeForLedger > 0)) {
     financeRows.push({
       booking_id: null,
       product_order_id: productOrderId,
       provider_id: providerId,
       tenant_id: financeTenantId,
       transaction_type: "platform_fee",
-      amount: platformFee,
+      amount: feeForLedger,
       fees: 0,
       commission: 0,
-      net: platformFee,
+      net: feeForLedger,
       description: `Platform fee from product order ${orderNumber}`,
       created_at: ledgerCreatedAt,
     });

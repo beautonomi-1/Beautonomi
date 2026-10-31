@@ -12,8 +12,8 @@ function cellPct(v: number | null): string {
 }
 
 function cellBg(v: number | null): string {
-  if (v == null) return "bg-gray-50";
-  const opacity = Math.min(1, Math.max(0.08, v));
+  if (v == null) return "transparent";
+  const opacity = Math.min(0.35, Math.max(0.06, v * 0.35));
   return `rgba(17, 24, 39, ${opacity})`;
 }
 

@@ -12,6 +12,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { isProviderOwner } from "@/lib/auth/permissions";
 import {
+  buildShippingRuntimeFromProviderRow,
   loadProviderCourierCredentialsRow,
   mergeEncryptedAramex,
   mergeEncryptedBobGo,
@@ -19,6 +20,8 @@ import {
   publicCourierCredentialsStatus,
   upsertProviderCourierCredentials,
 } from "@/lib/orders/provider-shipping-credentials";
+import { mergeBobGoWebhookSecretCiphertext } from "@/lib/orders/bob-go-webhook-auth";
+import { ensureBobGoWebhookSubscriptions } from "@/lib/orders/bob-go-webhook-subscribe";
 
 const putSchema = z.object({
   courier_guy: z
@@ -32,6 +35,8 @@ const putSchema = z.object({
     .object({
       apiKey: z.string().optional(),
       baseUrl: z.string().max(500).nullable().optional(),
+      webhookSecret: z.string().max(500).optional(),
+      clearWebhookSecret: z.boolean().optional(),
       clear: z.boolean().optional(),
     })
     .optional(),
@@ -100,6 +105,10 @@ export async function PUT(request: NextRequest) {
         patch.bob_go_base_url = parsed.bob_go.baseUrl;
       }
       if (parsed.bob_go.clear) patch.bob_go_verified_at = null;
+      patch.bob_go_webhook_secret_ciphertext = mergeBobGoWebhookSecretCiphertext(existing, {
+        webhookSecret: parsed.bob_go.webhookSecret,
+        clear: parsed.bob_go.clearWebhookSecret,
+      });
     }
     if (parsed.aramex) {
       patch.aramex_ciphertext = mergeEncryptedAramex(existing, parsed.aramex);
@@ -121,7 +130,18 @@ export async function PUT(request: NextRequest) {
     const row = await upsertProviderCourierCredentials(admin, providerId, patch as any);
     const status = publicCourierCredentialsStatus(row, { includeHints: true });
 
-    return successResponse({ status });
+    let bobGoWebhookSubscribe: { ok: boolean; error?: string } | null = null;
+    if (parsed.bob_go && row.bob_go_ciphertext) {
+      const runtime = buildShippingRuntimeFromProviderRow(row, "bob-go");
+      if (runtime?.["bob-go"]) {
+        bobGoWebhookSubscribe = await ensureBobGoWebhookSubscriptions(runtime["bob-go"]);
+      }
+    }
+
+    return successResponse({
+      status,
+      bob_go_webhook_subscribe: bobGoWebhookSubscribe,
+    });
   } catch (err) {
     if (err instanceof Error && err.message.includes("SHIPPING_CREDENTIALS_ENCRYPTION_KEY")) {
       return errorResponse(err.message, "CONFIG_ERROR", 503);

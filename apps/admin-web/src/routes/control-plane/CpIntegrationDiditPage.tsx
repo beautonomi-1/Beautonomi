@@ -9,6 +9,7 @@
  */
 import { useEffect, useState } from "react";
 import { adminApi } from "@/lib/adminClient";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -249,7 +250,7 @@ export function CpIntegrationDiditPage() {
 
   return (
     <div className="space-y-6">
-      <CpBack />
+      <CpBack to={adminSpaTo("/admin/control-plane/integrations")} label="Platform integrations" />
       <AdminPageHeader
         title="Didit Identity Verification"
         description="Configure Didit KYC, manage verification flags, and monitor webhook health."

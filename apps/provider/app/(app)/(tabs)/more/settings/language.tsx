@@ -6,10 +6,15 @@ import { View, Text, TouchableOpacity, ScrollView, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useTranslation , i18n, supportedLanguages } from "@beautonomi/i18n";
+import {
+  useTranslation,
+  i18n,
+  reviewedUiLanguageOptions,
+  coerceMobileUiLanguage,
+  normalizeLanguageCode,
+} from "@beautonomi/i18n";
 
 import { changeLanguage, promptReloadIfDirectionChanged } from "@/lib/i18n";
-import { normalizeLanguageCode } from "@beautonomi/i18n";
 import { api } from "@/lib/api-client";
 import { useApi } from "@/hooks/useApi";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
@@ -34,7 +39,7 @@ interface PreferencesResponse {
   preferences: { language: string; currency?: string; timezone?: string };
 }
 
-const API_LANGUAGE_CODES = new Set(supportedLanguages.map((l) => l.code));
+const API_LANGUAGE_CODES = new Set(reviewedUiLanguageOptions().map((l) => l.code));
 
 function normalizeHost(value: string | null | undefined): string {
   if (!value) return "";
@@ -81,7 +86,7 @@ export default function LanguageSettingsScreen() {
       t(`provider.mobile.screens.languageSettings.${key}`, opts) as string,
     [t],
   );
-  const visibleLanguages = useMemo(() => supportedLanguages, []);
+  const visibleLanguages = useMemo(() => reviewedUiLanguageOptions(), []);
   const [currentCode, setCurrentCode] = useState(i18n.language || "en");
   const [currentMarketHost, setCurrentMarketHost] = useState<string>(normalizeHost(getRuntimeMarketHost()));
   const marketOptions = buildMarketOptions();
@@ -90,13 +95,11 @@ export default function LanguageSettingsScreen() {
 
   const serverLang = preferences?.preferences?.language ?? null;
   useEffect(() => {
-    if (
-      serverLang &&
-      API_LANGUAGE_CODES.has(serverLang) &&
-      normalizeLanguageCode(serverLang) !== normalizeLanguageCode(i18n.language || "en")
-    ) {
-      void changeLanguage(serverLang);
-      setCurrentCode(serverLang);
+    if (!serverLang) return;
+    const coerced = coerceMobileUiLanguage(serverLang);
+    if (normalizeLanguageCode(coerced) !== normalizeLanguageCode(i18n.language || "en")) {
+      void changeLanguage(coerced);
+      setCurrentCode(coerced);
     }
   }, [serverLang]);
 

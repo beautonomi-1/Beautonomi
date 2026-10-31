@@ -72,7 +72,10 @@
       "gotIt": "Ndzi twile",
       "dismissA11y": "Pfala nkongomelo"
     },
-    "change": "Cinca"
+    "change": "Cinca",
+    "useDifferentAccount": "Use a different akhawunti",
+    "useDifferentAccountConfirmTitle": "Switch akhawunti?",
+    "useDifferentAccountConfirmBody": "U ta huma eka xitirhisiwa lexi. Akhawunti ya wena ya Google kumbe ya Apple yi tshama yi hlangene, naswona nhluvuko wun'wana na wun'wana lowu hlayisiweke wa ku endla swi tshama eka akhawunti leyo. U nga nghena nakambe nkarhi wun'wana na wun'wana."
   },
   "authGate": {
     "checkingAccess": "Checking your akhawunti…",
@@ -13344,7 +13347,7 @@
       "selectReasonBody": "Hlawula why you are xivikoing this content.",
       "submitError": "Swi tsandzile ku rhumela xiviko.",
       "submittedTitle": "xiviko rhumelated",
-      "submittedBody": "Inkomu. Xipano xa hina xi ta kambisisa xiviko xa wena ku nga si hela tiawara ta 24-48.",
+      "submittedBody": "Inkomu. Xipano xa hina xi ta kambisisa xiviko xa wena ku nga si hela tiawara ta 24.",
       "reportPost": "xiviko Poso",
       "reportComment": "xiviko nhlamuselo",
       "reportMessage": "xiviko rungula",
@@ -13355,10 +13358,11 @@
       "reason": {
         "inappropriate": "Leswi nga faneleki",
         "misleading": "Misleading rungula",
-        "harassment": "Harassment or abuse",
-        "spam": "Spam or scam",
+        "harassment": "Ku xanisiwa kumbe ku tirhisiwa hi ndlela yo biha",
+        "spam": "Spam kumbe vuhandzi",
         "safety": "vuhlayiseki concern",
-        "other": "Swin'wana"
+        "other": "Swin'wana",
+        "illegal_exploitative": "Swilo leswi nga riki na nawu kumbe leswi tirhisiwaka hi ndlela yo biha"
       }
     },
     "blockUser": {
@@ -15164,6 +15168,7 @@
           "paymentCancelledBody": "U khansele ku hakela. Ku hava nandzu lowu endliweke. U nga ringeta nakambe ku suka eka oda leyi.",
           "cancelOrderTitle": "Khansela odara",
           "cancelOrderBody": "Khansela odara leyi? Swilo leswi nga eka stock swi ta tlatswa nakambe naswona mali leyi hakeriwaka yi ta vuyisiwa.",
+          "cancelledInPerson": "Odara yi khanseriwile. {{amount}} yi hlengeletiwe hi munhu naswona yi ha lava ku vuyiseriwa hi salon.",
           "keepOrderCta": "Hlayisa odara",
           "cancelOrderCta": "Khansela odara",
           "cancelOrderFailed": "A swi koteki ku khansela this odara.",
@@ -21212,6 +21217,7 @@
         "goBack": "Tlhelela endzhaku",
         "cancelConfirm": "Khansela odara leyi? Swilo leswi nga eka stock swi ta tlatswa nakambe naswona mali leyi hakeriwaka yi ta vuyisiwa.",
         "cancelledToast": "odara yi khanseriwile",
+        "cancelledInPerson": "Odara yi khanseriwile. {{amount}} yi hlengeletiwe hi munhu naswona yi ha lava ku vuyiseriwa hi salon.",
         "cancelFailed": "A swi koteki ku khansela this odara.",
         "addEmailBeforePay": "Engetela adirese ya imeyili eka akhawunti ya wena u nga ha hakeli oda leyi inthaneteni.",
         "paymentStartFailed": "Ons kon nie met die betaling begin nie. Probeer asseblief weer.",

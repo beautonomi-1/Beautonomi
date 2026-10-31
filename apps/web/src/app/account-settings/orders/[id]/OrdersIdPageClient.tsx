@@ -17,6 +17,7 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { ShareReceiptButton } from "@/components/receipts/ShareReceiptButton";
 import { copyTextToClipboard } from "@/lib/browser/clipboard";
 import { getProductOrderSupportPrompt, supportTicketQuery } from "@beautonomi/utils";
+import { productOrderTenderSplit } from "@/lib/orders/product-order-tender";
 import { useTranslation, type TFunction } from "@beautonomi/i18n";
 import { PickupStoreCard } from "@/components/shop/PickupStoreCard";
 
@@ -337,7 +338,7 @@ export default function OrderDetailPage() {
   const sym = (order.currency && String(order.currency).trim()) || tenantCurrency;
   const walletAmount = Number(order.wallet_amount ?? 0);
   const platformFee = Number(order.platform_fee ?? 0);
-  const onlineAmountDue = Math.max(0, Number(order.total_amount ?? 0) - walletAmount);
+  const onlineAmountDue = productOrderTenderSplit(order).remainder;
   const canPayOnline =
     order.payment_status === "pending" &&
     (order.payment_method === "paystack" || order.payment_method == null) &&
@@ -354,8 +355,17 @@ export default function OrderDetailPage() {
     setCancelling(true);
     setErrorMsg(null);
     try {
-      await fetcher.patch(`/api/me/orders/${order.id}/cancel`, {});
-      toast.success(t("web.accountSettings.orderDetail.cancelledToast"));
+      const cancelled = await fetcher.patch<{
+        data?: { refund?: { in_person_refund_due?: number } };
+      }>(`/api/me/orders/${order.id}/cancel`, {});
+      const inPersonDue = Number(cancelled?.data?.refund?.in_person_refund_due ?? 0);
+      toast.success(
+        inPersonDue > 0
+          ? t("web.accountSettings.orderDetail.cancelledInPerson", {
+              amount: `${sym} ${inPersonDue.toFixed(2)}`,
+            })
+          : t("web.accountSettings.orderDetail.cancelledToast"),
+      );
       const json = await fetcher.get<{ data: { order: ProductOrder } | null }>(
         `/api/me/orders/${order.id}`,
         { staleTimeMs: 0 },

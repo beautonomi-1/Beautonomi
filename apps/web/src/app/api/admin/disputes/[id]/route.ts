@@ -21,6 +21,7 @@ const updateDisputeSchema = z.object({
   resolution: z.enum(["refund_full", "refund_partial", "deny"]).optional().nullable(),
   refund_amount: z.number().positive().optional().nullable(),
   notes: z.string().optional().nullable(),
+  substitute_reason: z.string().optional().nullable(),
 });
 
 /**
@@ -142,7 +143,7 @@ export async function PATCH(
       return notFoundResponse("Dispute not found");
     }
 
-    const { status: newStatus, resolution, refund_amount, notes } =
+    const { status: newStatus, resolution, refund_amount, notes, substitute_reason } =
       validationResult.data;
 
     const disputeCurrentStatus = (existingDispute as DisputeRef).status;
@@ -208,6 +209,7 @@ export async function PATCH(
         actorUserId: user.id,
         actorRole: user.role ?? "superadmin",
         notes: notes ?? null,
+        substituteReason: substitute_reason ?? null,
       });
 
       if (outcome.success === false) {

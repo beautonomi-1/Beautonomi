@@ -72,7 +72,10 @@
       "gotIt": "Ndiyeva",
       "dismissA11y": "Vala icebiso"
     },
-    "change": "Tshintsha"
+    "change": "Tshintsha",
+    "useDifferentAccount": "Use a different iakhawunti",
+    "useDifferentAccountConfirmTitle": "Switch iakhawunti?",
+    "useDifferentAccountConfirmBody": "Uza kuphuma kwesi sixhobo. Iakhawunti yakho yeGoogle okanye yeApple ihlala idityaniswe, kwaye naziphi na iinkqubela zokusetalwa ezilondoloziweyo zihlala kule akhawunti. Ungangena kwakhona nangaliphi na ixesha."
   },
   "authGate": {
     "checkingAccess": "Checking your iakhawunti…",
@@ -13344,7 +13347,7 @@
       "selectReasonBody": "Nceda khetha why you are ingxeloing this content.",
       "submitError": "Kusilele uku-ngenisa ingxelo.",
       "submittedTitle": "ingxelo ngenisated",
-      "submittedBody": "Enkosi. Iqela lethu liza kuphonononga ingxelo yakho kwiiyure ezingama-24-48.",
+      "submittedBody": "Enkosi. Iqela lethu liza kuphonononga ingxelo yakho kwiiyure ezingama-24.",
       "reportPost": "ingxelo Isihloko",
       "reportComment": "ingxelo izimvo",
       "reportMessage": "ingxelo umyalezo",
@@ -13356,9 +13359,10 @@
         "inappropriate": "Umxholo ongafanelekanga",
         "misleading": "Misleading ulwazi",
         "harassment": "Ukuhlukumeza okanye ukuhlukunyezwa",
-        "spam": "Spam or scam",
+        "spam": "I-spam okanye ubuqhophololo",
         "safety": "ukhuseleko concern",
-        "other": "Okunye"
+        "other": "Okunye",
+        "illegal_exploitative": "Umxholo ongekho mthethweni okanye oqhelekayo"
       }
     },
     "blockUser": {
@@ -15164,6 +15168,7 @@
           "paymentCancelledBody": "Urhoxise intlawulo. Akukho ntlawulo yenziwayo. Ungazama kwakhona kule oda.",
           "cancelOrderTitle": "Rhoxisa iodolo",
           "cancelOrderBody": "Rhoxisa le odara? Izinto ezisesitokisheni ziya kubuyiselwa kwakhona kwaye iintlawulo ezihlawuliweyo ziya kubuyiselwa.",
+          "cancelledInPerson": "Iodolo irhoxisiwe. {{amount}} yaqokelelwa ngokobuqu kwaye kusafuneka ibuyiswe yisalon.",
           "keepOrderCta": "Gcina iodolo",
           "cancelOrderCta": "Rhoxisa iodolo",
           "cancelOrderFailed": "Ayikwazanga uku-rhoxisa this iodolo.",
@@ -21212,6 +21217,7 @@
         "goBack": "Buyela umva",
         "cancelConfirm": "Rhoxisa le odara? Izinto ezisesitokisheni ziya kubuyiselwa kwakhona kwaye iintlawulo ezihlawuliweyo ziya kubuyiselwa.",
         "cancelledToast": "iodolo kurhoxisiwe",
+        "cancelledInPerson": "Iodolo irhoxisiwe. {{amount}} yaqokelelwa ngokobuqu kwaye kusafuneka ibuyiswe yisalon.",
         "cancelFailed": "Ayikwazanga uku-rhoxisa this iodolo.",
         "addEmailBeforePay": "Engeza ikheli le-imeyili ku-akhawunti yakho ngaphambi kokukhokha leli oda ku-inthanethi.",
         "paymentStartFailed": "Ons kon nie met die betaling begin nie. Probeer asseblief weer.",

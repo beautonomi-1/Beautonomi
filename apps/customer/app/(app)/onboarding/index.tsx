@@ -13,7 +13,9 @@ import { ActivityIndicator, Alert, Keyboard, Platform, Pressable, ScrollView, Te
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
+import { BackHandler } from "react-native";
+import { confirmUseDifferentAccount } from "@/lib/confirm-use-different-account";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -231,7 +233,7 @@ function SectionLabel({ children, required }: { children: ReactNode; required?: 
 export default function CustomerOnboarding() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
-  const { refreshSession, user } = useAuth();
+  const { refreshSession, user, signOut } = useAuth();
   const userId = user?.id ?? null;
   const appleIdentity = isApplePrimaryIdentity(user);
   const { bundle: configBundle } = useConfigBundle();
@@ -941,10 +943,26 @@ export default function CustomerOnboarding() {
 
   // §UX-audit 2026-05: back navigation so users can correct earlier steps
   // without having to skip all the way through and re-enter.
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     Keyboard.dismiss();
-    if (step > 1) setStep((s) => s - 1);
-  };
+    if (step > 1) {
+      setStep((s) => s - 1);
+      return;
+    }
+    if (router.canGoBack()) router.back();
+    else router.replace("/(app)/(tabs)/home");
+  }, [step]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== "android" || step !== 1) return;
+      const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+        handleBack();
+        return true;
+      });
+      return () => sub.remove();
+    }, [step, handleBack]),
+  );
 
   const completeOnboarding = async () => {
     setSaving(true);
@@ -991,7 +1009,7 @@ export default function CustomerOnboarding() {
 
   const canSkip = step === 2 || step === 5;
   const isLastStep = step === TOTAL_STEPS;
-  const canGoBack = step > 1;
+  const showHeaderBack = step > 1;
 
   return (
     <LinearGradient
@@ -1009,7 +1027,18 @@ export default function CustomerOnboarding() {
           paddingVertical: 12,
         }}
       >
-        {canGoBack ? (
+        {showHeaderBack ? (
+          <TouchableOpacity
+            onPress={handleBack}
+            disabled={saving}
+            hitSlop={8}
+            style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
+            accessibilityRole="button"
+            accessibilityLabel={ob("goBackA11y")}
+          >
+            <DirectionalIcon name="arrow-back" size={22} color="#64748B" />
+          </TouchableOpacity>
+        ) : step === 1 ? (
           <TouchableOpacity
             onPress={handleBack}
             disabled={saving}
@@ -2057,6 +2086,18 @@ export default function CustomerOnboarding() {
 
           {/* ── Actions ── */}
           <View style={{ marginTop: 32, gap: 12 }}>
+            <TouchableOpacity
+              onPress={() => confirmUseDifferentAccount(t, signOut)}
+              disabled={saving}
+              style={{ alignSelf: "flex-start" }}
+              accessibilityRole="button"
+              accessibilityLabel={t("common.useDifferentAccount") as string}
+            >
+              <Text style={{ fontSize: 13, fontWeight: "600", color: "#64748B", textDecorationLine: "underline" }}>
+                {t("common.useDifferentAccount")}
+              </Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               onPress={handleContinue}
               disabled={saving}

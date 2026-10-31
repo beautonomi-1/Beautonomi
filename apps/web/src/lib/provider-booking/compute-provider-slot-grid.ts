@@ -168,12 +168,15 @@ export async function computeProviderBookingSlotGrid(
 
   let activeStaffRows: Array<{ id: string }> = [];
   if (uniqueStaffIds.length === 0) {
-    const { data: staffRows } = await supabase
-      .from("provider_staff")
-      .select("id")
-      .eq("provider_id", providerId)
-      .eq("is_active", true);
-    activeStaffRows = (staffRows || []).map((r: { id: string }) => ({ id: r.id }));
+    const { listActiveServiceProviderStaffIdsForLocation } = await import(
+      "@/lib/provider/staff-location-scope"
+    );
+    const ids = await listActiveServiceProviderStaffIdsForLocation(
+      supabase,
+      providerId,
+      locationId,
+    );
+    activeStaffRows = ids.map((id) => ({ id }));
   }
 
   const totalBlockedMinutes = Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : 60;

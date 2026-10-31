@@ -16,6 +16,10 @@ import {
   fetchCompletedInPersonRefundsTotal,
 } from "@/lib/bookings/booking-refund-limits";
 import {
+  ensureCancellationCashRefundObligation,
+  sumNonTerminalInPersonCollected,
+} from "@/lib/bookings/cancellation-cash-refund-obligation";
+import {
   computeCancellationRefundAmount,
   processBookingRefund,
   roundCurrency2,
@@ -82,6 +86,8 @@ export interface SettleBookingCancellationResult {
   loyaltyEarnClawedBack: boolean;
   giftCardVoidAttempted: boolean;
   refundRail?: "terminal" | "wallet";
+  /** Non-terminal in-person amount recorded (pending or completed cash refund row). */
+  inPersonCashRefundDue: number;
 }
 
 /**
@@ -396,12 +402,17 @@ export async function settleBookingCancellation(
     params.refundRail === "terminal" &&
     (params.cancelledBy === "provider" || params.cancelledBy === "no_show");
 
+  let bookingPaymentsForCap:
+    | Awaited<ReturnType<typeof fetchBookingPaymentsForRefundCap>>
+    | null = null;
+
   if (wantsTerminalRail && walletRefundTarget > 0) {
-    const bookingPayments = await fetchBookingPaymentsForRefundCap(
+    bookingPaymentsForCap = await fetchBookingPaymentsForRefundCap(
       admin,
       bookingId,
       booking.tenant_id,
     );
+    const bookingPayments = bookingPaymentsForCap;
     const completedInPersonRefunds = await fetchCompletedInPersonRefundsTotal(admin, bookingId);
     const inPersonCap = computeInPersonRefundableCap(bookingPayments, completedInPersonRefunds);
     const candidateTerminal = roundCurrency2(Math.min(walletRefundTarget, inPersonCap));
@@ -430,6 +441,22 @@ export async function settleBookingCancellation(
           walletCreditTarget = roundCurrency2(Math.max(0, walletRefundTarget - terminalRefundDue));
         }
       }
+    }
+  }
+
+  if (params.maxWalletCredit === undefined) {
+    if (!bookingPaymentsForCap) {
+      bookingPaymentsForCap = await fetchBookingPaymentsForRefundCap(
+        admin,
+        bookingId,
+        booking.tenant_id,
+      );
+    }
+    const nonTerminalInPerson = sumNonTerminalInPersonCollected(bookingPaymentsForCap);
+    if (nonTerminalInPerson > 0.01) {
+      walletCreditTarget = roundCurrency2(
+        Math.max(0, walletCreditTarget - nonTerminalInPerson),
+      );
     }
   }
 
@@ -547,6 +574,24 @@ export async function settleBookingCancellation(
       ? await maybeVoidGiftCardRedemption(admin, bookingId, policyRefundAmount, bookingTotal)
       : false;
 
+  let inPersonCashRefundDue = 0;
+  try {
+    const cashObligation = await ensureCancellationCashRefundObligation(admin, {
+      bookingId,
+      tenantId: booking.tenant_id,
+      providerId: booking.provider_id,
+      customerId: booking.customer_id,
+      bookingNumber: booking.booking_number,
+      currency: params.currency,
+      cancelledBy: params.cancelledBy,
+      insert: true,
+      createdBy: null,
+    });
+    inPersonCashRefundDue = cashObligation.inPersonCashRefundDue;
+  } catch (cashErr) {
+    console.error("[settleBookingCancellation] cash obligation failed:", cashErr);
+  }
+
   return {
     cancellationFeeApplied,
     policyRefundAmount,
@@ -559,6 +604,7 @@ export async function settleBookingCancellation(
     loyaltyEarnClawedBack,
     giftCardVoidAttempted,
     refundRail: params.refundRail,
+    inPersonCashRefundDue,
   };
 }
 

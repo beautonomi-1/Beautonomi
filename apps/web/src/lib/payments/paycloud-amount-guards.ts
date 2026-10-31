@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeWalletGiftCoverageOutstanding } from "@/lib/bookings/provider-booking-finance";
+import { computeInPersonCollectibleAmount } from "@/lib/orders/product-order-tender";
 
 export async function computeExpectedAmountForEntity(
   supabase: SupabaseClient,
@@ -99,7 +100,7 @@ export async function computeExpectedAmountForEntity(
     case "product_order": {
       const { data: order } = await supabase
         .from("product_orders")
-        .select("total_amount, wallet_amount, currency, payment_status, status, order_source")
+        .select("total_amount, wallet_amount, gift_card_amount, currency, payment_status, status, order_source")
         .eq("id", entityId)
         .eq("provider_id", providerId)
         .maybeSingle();
@@ -107,7 +108,7 @@ export async function computeExpectedAmountForEntity(
       if (order.order_source === "appointment") return null;
       if (order.payment_status === "paid") return null;
       if (order.status === "cancelled" || order.status === "refunded") return null;
-      const amount = Math.max(0, Number(order.total_amount ?? 0) - Number(order.wallet_amount ?? 0));
+      const amount = computeInPersonCollectibleAmount(order);
       return { amount, currency: order.currency ?? "ZAR" };
     }
     case "additional_charge": {

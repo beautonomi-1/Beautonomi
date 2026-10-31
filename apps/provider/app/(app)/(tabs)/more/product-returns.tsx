@@ -25,6 +25,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+import { allowsInPersonProductRefund } from "@/lib/product-order-in-person";
 
 interface ReturnRequest {
   id: string;
@@ -35,7 +36,7 @@ interface ReturnRequest {
   refund_amount?: number | string | null;
   quantity?: number;
   created_at: string;
-  order?: { order_number?: string; total_amount?: number };
+  order?: { order_number?: string; total_amount?: number; payment_method?: string | null };
   customer?: { full_name?: string | null; email?: string | null };
 }
 
@@ -115,10 +116,16 @@ export function ProductReturnsContent() {
     setLoadingDetail(true);
     try {
       const res = await api.get<{ return_request: ReturnRequest }>(`/api/provider/returns/${r.id}`);
-      if (res.data?.return_request) setDetail(res.data.return_request);
-      else setDetail(r);
+      const loaded = res.data?.return_request ?? r;
+      setDetail(loaded);
+      if (!allowsInPersonProductRefund(loaded.order?.payment_method)) {
+        setRefundPayoutMethod("store_credit");
+      }
     } catch {
       setDetail(r);
+      if (!allowsInPersonProductRefund(r.order?.payment_method)) {
+        setRefundPayoutMethod("store_credit");
+      }
     } finally {
       setLoadingDetail(false);
     }
@@ -303,7 +310,13 @@ export function ProductReturnsContent() {
                     {([
                       { value: "store_credit", labelKey: "payoutWallet" },
                       { value: "cash", labelKey: "payoutCash" },
-                    ] as const).map((opt) => {
+                    ] as const)
+                      .filter(
+                        (opt) =>
+                          opt.value === "store_credit" ||
+                          allowsInPersonProductRefund(detail.order?.payment_method),
+                      )
+                      .map((opt) => {
                       const selected = refundPayoutMethod === opt.value;
                       return (
                         <TouchableOpacity
@@ -336,7 +349,10 @@ export function ProductReturnsContent() {
                     } else if (action === "approve") {
                       performAction("approve", { return_method: returnMethod, resolution: "full_refund" });
                     } else if (action === "process_refund") {
-                      performAction(action, { refund_method: refundPayoutMethod });
+                      const method = allowsInPersonProductRefund(detail.order?.payment_method)
+                        ? refundPayoutMethod
+                        : "store_credit";
+                      performAction(action, { refund_method: method });
                     } else {
                       performAction(action);
                     }

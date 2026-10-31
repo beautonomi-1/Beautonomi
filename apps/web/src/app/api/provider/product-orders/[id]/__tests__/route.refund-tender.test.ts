@@ -17,6 +17,7 @@ vi.mock("@/lib/supabase/admin", () => ({ getSupabaseAdmin: vi.fn() }));
 
 vi.mock("@/lib/orders/product-order-lifecycle", () => ({
   applyProductOrderCancelRefundSideEffects: vi.fn(async () => ({ walletCreditFailed: false })),
+  releaseUnpaidProductOrderHolds: vi.fn(async () => ({ credited: false, failed: false, amount: 0 })),
   restockProductOrderLineItems: vi.fn(async () => undefined),
   voidProductOrderGiftCardIfNeeded: vi.fn(async () => undefined),
 }));
@@ -126,6 +127,15 @@ describe("PATCH /api/provider/product-orders/[id] refund tender split", () => {
     vi.clearAllMocks();
   });
 
+  it("refuses an in-person cash refund of an online payment", async () => {
+    await setup(makeOrder());
+
+    const res = await patch({ status: "refunded", refund_method: "cash" });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error?.code).toBe("REFUND_ORIGINAL_TENDER");
+  });
+
   it("full refund: card portion goes back to the gateway, only the wallet leg is credited", async () => {
     const { refundProductOrderOnlineTender } = await import(
       "@/lib/ecommerce/refund-product-order-online-tender"
@@ -152,6 +162,7 @@ describe("PATCH /api/provider/product-orders/[id] refund tender split", () => {
       newStatus: "refunded",
       refundAmount: 150,
       onlineRefundedAmount: 100,
+      walletCreditIssued: 50,
     });
   });
 

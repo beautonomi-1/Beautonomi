@@ -24,6 +24,7 @@ const CRITICAL_ROUTE_PATHS = [
   "/admin/period-locks",
   "/admin/marketing",
   "/admin/integrations-hub",
+  "/admin/control-plane/integrations",
   "/admin/operations",
   "/admin/platform-config",
   "/admin/support-tickets/00000000-0000-4000-8000-000000000001",

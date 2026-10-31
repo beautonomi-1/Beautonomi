@@ -17,6 +17,7 @@ const createSchema = z.object({
   title: z.string().min(1).max(120),
   storage_path: z.string().min(1),
   duration_ms: z.number().int().positive().optional(),
+  rights_confirmed: z.literal(true),
 });
 
 export async function GET(request: NextRequest) {

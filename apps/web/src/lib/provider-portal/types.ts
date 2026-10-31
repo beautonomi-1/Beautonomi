@@ -64,6 +64,9 @@ export interface TeamMember {
   working_hours?: Record<string, WorkingHoursDay> | null;
   /** Set when this staff row was auto-deactivated after a plan downgrade over the staff cap. */
   over_cap_grace_until?: string | null;
+  is_service_provider?: boolean | null;
+  enable_in_online_booking?: boolean | null;
+  bookable_from?: string | null;
 }
 
 export interface ServiceCategory {

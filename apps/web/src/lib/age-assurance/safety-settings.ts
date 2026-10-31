@@ -91,7 +91,9 @@ export async function effectiveSafetySettings(
   const forcedDefaults =
     policy.socialAgeGateMode === "enforce" && band === "13_17"
       ? policy.restrictedModeDefaults
-      : {};
+      : policy.socialAgeGateMode === "enforce" && band === "unknown"
+        ? { hide_social_feed: true }
+        : {};
 
   const result = {} as EffectiveSafetySettings;
   for (const key of SETTING_KEYS) {

@@ -49,6 +49,10 @@ import type { AppointmentService, AppointmentProduct } from "@/components/appoin
 import { calculateBookingPricing } from "@/components/appointments/pricing";
 import { effectiveTravelFee, manualCardCollectOptionLabel } from "@beautonomi/utils";
 import { providerApi } from "@/lib/provider-portal/api";
+import {
+  filterStaffForServiceColumns,
+  filterStaffRowsForTeamMemberIds,
+} from "@/lib/provider/staff-public-bookable";
 import { FetchError, fetcher, providerPortalFetch } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { Separator } from "@/components/ui/separator";
@@ -403,7 +407,7 @@ export function GroupBookingDialog({
           team_member_ids: svc.team_member_ids ?? [],
         })),
       );
-      setTeamMembers(members);
+      setTeamMembers(filterStaffForServiceColumns(members));
 
       try {
         const locRes = await providerPortalFetch("/api/provider/locations");
@@ -1157,7 +1161,13 @@ export function GroupBookingDialog({
   };
 
   // ─── Derived ──────────────────────────────────────────────────────────
-  const selectedTeamMember = teamMembers.find(m => m.id === formData.team_member_id);
+  const teamMembersForService = useMemo(() => {
+    if (!formData.service_id) return teamMembers;
+    const svc = services.find((s) => s.id === formData.service_id);
+    return filterStaffRowsForTeamMemberIds(teamMembers, svc?.team_member_ids);
+  }, [teamMembers, services, formData.service_id]);
+
+  const selectedTeamMember = teamMembersForService.find(m => m.id === formData.team_member_id);
   const selectedService = services.find(s => s.id === formData.service_id);
   const isEditing = !!booking;
   const title = isEditing
@@ -1386,7 +1396,7 @@ export function GroupBookingDialog({
                   <Select value={formData.team_member_id} onValueChange={v => setFormData({ ...formData, team_member_id: v })} required>
                     <SelectTrigger className="mt-1 h-10"><SelectValue placeholder={t("web.provider.portal.groupBookingDialog.selectTeamMember")} /></SelectTrigger>
                     <SelectContent>
-                      {teamMembers.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                      {teamMembersForService.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>

@@ -13,6 +13,15 @@ describe("resolveActiveNavHref", () => {
     expect(resolveActiveNavHref("/control-plane/integrations/didit", NAV_GROUPS)).toBe(
       "/admin/control-plane/integrations/didit",
     );
+    expect(resolveActiveNavHref("/control-plane/integrations/stripe", NAV_GROUPS)).toBe(
+      "/admin/control-plane/integrations/stripe",
+    );
+    expect(resolveActiveNavHref("/control-plane/integrations/wasender", NAV_GROUPS)).toBe(
+      "/admin/control-plane/integrations/wasender",
+    );
+    expect(resolveActiveNavHref("/control-plane/integrations", NAV_GROUPS)).toBe(
+      "/admin/control-plane/integrations",
+    );
   });
 
   it("maps search / Copilot entity deep links to their list page", () => {

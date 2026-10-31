@@ -20,6 +20,7 @@ import { webCustomerEulaUrl, webPrivacyPolicyUrl } from "@/lib/legal-web";
 import { api } from "@/lib/api-client";
 import { useTranslation } from "@beautonomi/i18n";
 import { useAuth } from "@/providers/AuthProvider";
+import { confirmUseDifferentAccount } from "@/lib/confirm-use-different-account";
 
 type Props = {
   children: React.ReactNode;
@@ -42,7 +43,7 @@ function LegalAcceptanceGateActive({
 }) {
   const { t } = useTranslation();
   const lg = (key: string) => t(`customer.mobile.components.legalAcceptanceGate.${key}`) as string;
-  const { session } = useAuth();
+  const { session, signOut } = useAuth();
   const userId = session?.user?.id ?? null;
   const [loading, setLoading] = useState(true);
   const [accepted, setAccepted] = useState(false);
@@ -206,6 +207,19 @@ function LegalAcceptanceGateActive({
             <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>{t("common.continue")}</Text>
           )}
         </TouchableOpacity>
+
+        {session ? (
+          <TouchableOpacity
+            onPress={() => confirmUseDifferentAccount(t, signOut)}
+            style={{ marginTop: 16, alignItems: "center", paddingVertical: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel={t("common.useDifferentAccount") as string}
+          >
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[500], textDecorationLine: "underline" }}>
+              {t("common.useDifferentAccount")}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </ScrollView>
     </View>
   );

@@ -72,7 +72,10 @@
       "gotIt": "Ke kwele",
       "dismissA11y": "Tswalela keletšo"
     },
-    "change": "Fetola"
+    "change": "Fetola",
+    "useDifferentAccount": "Use a different akhauute",
+    "useDifferentAccountConfirmTitle": "Switch akhauute?",
+    "useDifferentAccountConfirmBody": "O tla tšwa sedirišweng se. Akhaonte ya gago ya Google goba ya Apple e dula e kgokagantswe, gomme kgokagano efe goba efe ya peakanyo ye e bolokilwego e dula mo akhaonteng yeo. O ka tsena gape nako efe goba efe."
   },
   "authGate": {
     "checkingAccess": "Checking your akhauute…",
@@ -13344,7 +13347,7 @@
       "selectReasonBody": "Hle kgetha why you are pegoing this content.",
       "submitError": "E paletšwe go romela pego.",
       "submittedTitle": "pego romelated",
-      "submittedBody": "Ke a leboga. Sehlopha sa rena se tla sekaseka pego ya gago mo diiri tše 24-48.",
+      "submittedBody": "Ke a leboga. Sehlopha sa rena se tla sekaseka pego ya gago mo diiri tše 24.",
       "reportPost": "pego Poso",
       "reportComment": "pego tlhagišo",
       "reportMessage": "pego molaetsa",
@@ -13355,10 +13358,11 @@
       "reason": {
         "inappropriate": "Dikagare tše di sa swanelago",
         "misleading": "Misleading tshedimošo",
-        "harassment": "Harassment or abuse",
-        "spam": "Spam or scam",
+        "harassment": "Go hlokofadisa goba go sebedisa ka mpe",
+        "spam": "Spam goba bomenemene",
         "safety": "tšhireletšo concern",
-        "other": "Tše dingwe"
+        "other": "Tše dingwe",
+        "illegal_exploitative": "Diteng tše di sa swanelago molao goba tše di sebedisago batho ka mpe"
       }
     },
     "blockUser": {
@@ -15164,6 +15168,7 @@
           "paymentCancelledBody": "O hlakola tefo. Ga go na tefo yeo e ilego ya dirwa. O ka leka gape go tšwa taelong ye.",
           "cancelOrderTitle": "Khansela odara",
           "cancelOrderBody": "Khansela odara ye? Dintho tše di polokong di tla tlatswa gape mme ditefiso tše di lefilwego di tla bušetšwa.",
+          "cancelledInPerson": "Odara e khansetswe. {{amount}} e kgobokeditšwe ka namana gomme e sa hloka go bušetšwa ke salon.",
           "keepOrderCta": "Boloka odara",
           "cancelOrderCta": "Khansela odara",
           "cancelOrderFailed": "Ga e kgona go khansela this odara.",
@@ -21212,6 +21217,7 @@
         "goBack": "Boela morago",
         "cancelConfirm": "Khansela odara ye? Dintho tše di polokong di tla tlatswa gape mme ditefiso tše di lefilwego di tla bušetšwa.",
         "cancelledToast": "odara e khansetšwe",
+        "cancelledInPerson": "Odara e khansetswe. {{amount}} e kgobokeditšwe ka namana gomme e sa hloka go bušetšwa ke salon.",
         "cancelFailed": "Ga e kgona go khansela this odara.",
         "addEmailBeforePay": "Kenya aterese ea imeile akhaonteng ea hau pele u lefa odara ena inthaneteng.",
         "paymentStartFailed": "Ons kon nie met die betaling begin nie. Probeer asseblief weer.",

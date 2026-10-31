@@ -8,16 +8,19 @@ export function AdminTrendChart({
   valueFormat = "number",
   emptyMessage = "Not enough data in this range.",
   height = 120,
+  label,
 }: {
   series: TrendPoint[];
   valueFormat?: "number" | "currency" | "percent";
   emptyMessage?: string;
   height?: number;
+  /** Accessible name for the sparkline. */
+  label?: string;
 }) {
-  const { path, minLabel, maxLabel, latest, prior } = useMemo(() => {
+  const { path, minLabel, maxLabel, latest, prior, yMin, yMax } = useMemo(() => {
     const pts = series.filter((p) => Number.isFinite(p.value));
     if (pts.length === 0) {
-      return { path: "", minLabel: "", maxLabel: "", latest: 0, prior: 0 };
+      return { path: "", minLabel: "", maxLabel: "", latest: 0, prior: 0, yMin: 0, yMax: 0 };
     }
     const vals = pts.map((p) => p.value);
     const min = Math.min(...vals);
@@ -41,6 +44,8 @@ export function AdminTrendChart({
       maxLabel: pts[pts.length - 1]?.date.slice(0, 10) ?? "",
       latest: vals[vals.length - 1] ?? 0,
       prior: vals.length > 1 ? vals[vals.length - 2] ?? 0 : vals[0] ?? 0,
+      yMin: min,
+      yMax: max,
     };
   }, [series, height]);
 
@@ -54,11 +59,20 @@ export function AdminTrendChart({
     return <p className="text-sm text-gray-500">{emptyMessage}</p>;
   }
 
-  const direction = latest >= prior ? "up" : "down";
-
   return (
     <div>
-      <svg viewBox={`0 0 400 ${height}`} className="h-auto w-full max-w-xl text-gray-900" role="img">
+      <svg
+        viewBox={`0 0 400 ${height}`}
+        className="h-auto w-full max-w-xl text-gray-900"
+        role="img"
+        aria-label={label}
+      >
+        <text x="4" y="14" className="fill-gray-400 text-[9px]">
+          {fmt(yMax)}
+        </text>
+        <text x="4" y={height - 18} className="fill-gray-400 text-[9px]">
+          {fmt(yMin)}
+        </text>
         <path d={path} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         <text x="28" y={height - 4} className="fill-gray-400 text-[10px]">
           {minLabel}
@@ -70,10 +84,7 @@ export function AdminTrendChart({
       <p className="mt-2 text-xs text-gray-600">
         Latest {fmt(latest)}
         {series.length > 1 ? (
-          <span className={direction === "up" ? " text-emerald-700" : " text-rose-700"}>
-            {" "}
-            ({direction === "up" ? "up" : "down"} from {fmt(prior)})
-          </span>
+          <span className="text-gray-500"> · vs previous point {fmt(prior)}</span>
         ) : null}
       </p>
     </div>

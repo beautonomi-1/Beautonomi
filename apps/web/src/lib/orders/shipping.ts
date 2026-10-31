@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  BobGoRatesPendingError,
   getShippingProvider,
+  isBobGoDomesticCountry,
   ShippingProviderNotConfiguredError,
   type ShippingProvider,
   type ShippingProviderId,
@@ -88,9 +90,12 @@ async function persistBookingSkip(
   return { ok: true, skipped };
 }
 
+export type BookShippingForOrderOptions = { bobGoRatesTimeoutMs?: number };
+
 export async function bookShippingForOrder(
   supabase: SupabaseClient,
   orderId: string,
+  options?: BookShippingForOrderOptions,
 ): Promise<BookShippingResult> {
   const admin = getSupabaseAdmin();
 
@@ -104,6 +109,7 @@ export async function bookShippingForOrder(
       status,
       tracking_number,
       shipping_booking_status,
+      delivery_instructions,
       customer:users!product_orders_customer_id_fkey (
         full_name,
         email,
@@ -116,7 +122,9 @@ export async function bookShippingForOrder(
         city,
         state,
         postal_code,
-        country
+        country,
+        latitude,
+        longitude
       )
     `)
     .eq("id", orderId)
@@ -125,8 +133,18 @@ export async function bookShippingForOrder(
   if (error || !order) {
     return { ok: false, error: error?.message ?? "order_not_found" };
   }
+  const existingBookingStatus = (order as { shipping_booking_status?: string | null }).shipping_booking_status;
+  if (existingBookingStatus === "submitting" || existingBookingStatus === "booked") {
+    return {
+      ok: true,
+      skipped: "already_booked",
+      trackingNumber: (order as { tracking_number?: string | null }).tracking_number ?? undefined,
+    };
+  }
   if (order.tracking_number) {
-    return { ok: true, skipped: "already_booked", trackingNumber: order.tracking_number };
+    if (existingBookingStatus !== "failed" && existingBookingStatus !== "skipped") {
+      return { ok: true, skipped: "already_booked", trackingNumber: order.tracking_number };
+    }
   }
 
   if ((order as { fulfillment_type?: string | null }).fulfillment_type !== "delivery") {
@@ -187,7 +205,7 @@ export async function bookShippingForOrder(
       .single(),
     supabase
       .from("provider_locations")
-      .select("name, address_line1, address_line2, city, state, postal_code, country, phone")
+      .select("name, address_line1, address_line2, city, state, postal_code, country, phone, latitude, longitude")
       .eq("provider_id", order.provider_id)
       .eq("is_active", true)
       .order("is_primary", { ascending: false })
@@ -217,6 +235,19 @@ export async function bookShippingForOrder(
     return { ok: false, error: "missing_address" };
   }
 
+  if (
+    providerPreference === "bob-go" &&
+    (!isBobGoDomesticCountry(origin.country) || !isBobGoDomesticCountry(destination.country))
+  ) {
+    await (admin.from("product_orders") as any)
+      .update({
+        shipping_booking_status: "failed",
+        shipping_booking_detail: "bob_go_domestic_only",
+      })
+      .eq("id", orderId);
+    return { ok: false, error: "bob_go_domestic_only" };
+  }
+
   const { data: items } = await supabase
     .from("product_order_items")
     .select("quantity, total_price, product_name, products(weight_grams, name)")
@@ -229,27 +260,94 @@ export async function bookShippingForOrder(
     destination,
     parcels,
     orderRef: order.id,
+    instructionsDelivery: str((order as { delivery_instructions?: unknown }).delivery_instructions) ?? undefined,
+    ...(providerPreference === "bob-go"
+      ? { ratesTimeoutMs: options?.bobGoRatesTimeoutMs ?? 15_000 }
+      : {}),
   };
 
   try {
     const shipment = await courier.createShipment(req);
+    const shipmentIdRaw = shipment.metadata?.shipment_id;
     const shipmentId =
-      typeof shipment.metadata?.shipment_id === "string" ? shipment.metadata.shipment_id : null;
+      shipmentIdRaw == null
+        ? null
+        : typeof shipmentIdRaw === "string"
+          ? shipmentIdRaw
+          : String(shipmentIdRaw);
+    const submissionStatus = String(shipment.metadata?.submission_status ?? "").toLowerCase();
+    const trackingUrl =
+      typeof shipment.metadata?.tracking_url === "string"
+        ? shipment.metadata.tracking_url
+        : shipment.waybillUrl ?? null;
+
+    const isBobGoSubmissionFailed =
+      providerPreference === "bob-go" &&
+      (submissionStatus === "no-rates" ||
+        submissionStatus === "failed-indefinitely" ||
+        shipment.metadata?.failed === true);
+
+    const isBobGoInFlight =
+      providerPreference === "bob-go" &&
+      !isBobGoSubmissionFailed &&
+      (submissionStatus === "pending-rates" ||
+        submissionStatus === "pending-submission" ||
+        submissionStatus === "failed-will-retry" ||
+        shipment.metadata?.inFlight === true);
+
+    const failedDetail =
+      isBobGoSubmissionFailed
+        ? String(
+            shipment.metadata?.failed_reason ??
+              submissionStatus ??
+              "bob_go_submission_failed",
+          ).slice(0, 500)
+        : null;
+
+    const bookingStatus = isBobGoSubmissionFailed
+      ? "failed"
+      : providerPreference === "bob-go" && isBobGoInFlight
+        ? "submitting"
+        : submissionStatus === "success" || providerPreference !== "bob-go"
+          ? "booked"
+          : "submitting";
+
     const labelUrl =
-      shipment.waybillUrl ??
-      (typeof shipment.metadata?.label_url === "string" ? shipment.metadata.label_url : null);
+      providerPreference === "bob-go"
+        ? null
+        : (typeof shipment.metadata?.label_url === "string" ? shipment.metadata.label_url : null) ??
+          shipment.waybillUrl ??
+          null;
 
     await (admin.from("product_orders") as any)
       .update({
-        tracking_number: shipment.trackingNumber,
+        tracking_number: shipment.trackingNumber || null,
         carrier: shipment.providerId,
-        tracking_url: shipment.waybillUrl ?? null,
+        tracking_url: trackingUrl,
         courier_shipment_id: shipmentId,
         courier_label_url: labelUrl,
-        shipping_booking_status: "booked",
-        shipping_booking_detail: null,
+        shipping_booking_status: bookingStatus,
+        shipping_booking_detail: failedDetail,
       })
       .eq("id", order.id);
+
+    if (isBobGoSubmissionFailed) {
+      const cancelResult = await cancelCourierShipmentForOrder(admin, order.id, {
+        markBookingCancelled: false,
+      });
+      if (cancelResult.ok) {
+        await (admin.from("product_orders") as any)
+          .update({
+            tracking_number: null,
+            courier_shipment_id: null,
+            tracking_url: null,
+            shipping_booking_status: "failed",
+            shipping_booking_detail: failedDetail,
+          })
+          .eq("id", order.id);
+      }
+      return { ok: false, error: failedDetail ?? "bob_go_submission_failed" };
+    }
 
     return {
       ok: true,
@@ -260,6 +358,21 @@ export async function bookShippingForOrder(
     const msg = err instanceof Error ? err.message : String(err);
     if (err instanceof ShippingProviderNotConfiguredError) {
       return persistBookingSkip(admin, orderId, `provider_not_configured:${err.providerId}`);
+    }
+    if (err instanceof BobGoRatesPendingError) {
+      await (admin.from("product_orders") as any)
+        .update({
+          shipping_booking_status: "skipped",
+          shipping_booking_detail: "rates_pending",
+        })
+        .eq("id", orderId);
+      return { ok: true, skipped: "rates_pending" };
+    }
+    if (providerPreference === "bob-go") {
+      await (admin.from("product_orders") as any)
+        .update({ shipping_booking_status: "failed", shipping_booking_detail: msg.slice(0, 500) })
+        .eq("id", orderId);
+      return { ok: false, error: msg };
     }
     await (admin.from("product_orders") as any)
       .update({ shipping_booking_status: "failed", shipping_booking_detail: msg.slice(0, 500) })
@@ -275,7 +388,7 @@ export async function refreshTrackingForOrder(
 ): Promise<RefreshTrackingResult> {
   let query = supabase
     .from("product_orders")
-    .select("id, provider_id, customer_id, tracking_number, carrier, tracking_url")
+    .select("id, provider_id, customer_id, tracking_number, carrier, tracking_url, shipping_booking_status")
     .eq("id", orderId);
   if (opts?.providerId) query = query.eq("provider_id", opts.providerId);
   if (opts?.customerId) query = query.eq("customer_id", opts.customerId);
@@ -290,6 +403,19 @@ export async function refreshTrackingForOrder(
   const trackingUrl = (order as { tracking_url?: string | null }).tracking_url ?? null;
   if (!trackingNumber) {
     return { ok: true, live: false, events: [], skipped: "no_tracking_number", trackingNumber, carrier, trackingUrl };
+  }
+
+  const bookingStatus = (order as { shipping_booking_status?: string | null }).shipping_booking_status;
+  if (carrier === "bob-go" && bookingStatus === "submitting") {
+    return {
+      ok: true,
+      live: false,
+      events: [],
+      skipped: "bob_go_submitting",
+      trackingNumber,
+      carrier,
+      trackingUrl,
+    };
   }
 
   if (!isKnownShippingProviderId(carrier)) {
@@ -416,6 +542,7 @@ export async function quoteRatesForProvider(
       origin,
       destination,
       parcels: [defaultParcel()],
+      ...(preference === "bob-go" ? { ratesTimeoutMs: BOB_GO_PROBE_RATES_TIMEOUT_MS } : {}),
     });
     return { ok: true, quotes, providerId: preference };
   } catch (err) {
@@ -429,6 +556,7 @@ export async function quoteRatesForProvider(
 export async function cancelCourierShipmentForOrder(
   supabase: SupabaseClient,
   orderId: string,
+  opts?: { markBookingCancelled?: boolean },
 ): Promise<{ ok: boolean; skipped?: string; error?: string }> {
   const { data: order } = await supabase
     .from("product_orders")
@@ -454,11 +582,16 @@ export async function cancelCourierShipmentForOrder(
   if (result.ok === false) {
     return { ok: false, error: result.message ?? result.reason };
   }
-  await (admin.from("product_orders") as any)
-    .update({ shipping_booking_status: "cancelled" })
-    .eq("id", orderId);
+  if (opts?.markBookingCancelled !== false) {
+    await (admin.from("product_orders") as any)
+      .update({ shipping_booking_status: "cancelled" })
+      .eq("id", orderId);
+  }
   return { ok: true };
 }
+
+/** Bob Go quote probe / credential test — full rates wait. */
+export const BOB_GO_PROBE_RATES_TIMEOUT_MS = 25_000;
 
 export function toShippingAddress(
   raw: unknown,
@@ -477,6 +610,10 @@ export function toShippingAddress(
   const line2 =
     line2FromRow ??
     (suburbHint && suburbHint.toLowerCase() !== city.toLowerCase() ? suburbHint : undefined);
+  const latRaw = row.latitude ?? row.lat;
+  const lngRaw = row.longitude ?? row.lng;
+  const latitude = latRaw != null && Number.isFinite(Number(latRaw)) ? Number(latRaw) : undefined;
+  const longitude = lngRaw != null && Number.isFinite(Number(lngRaw)) ? Number(lngRaw) : undefined;
   return {
     name: str(row.name ?? row.label ?? row.company) ?? fallbackName,
     line1,
@@ -487,6 +624,8 @@ export function toShippingAddress(
     country,
     phone: contact?.phone ?? str(row.phone) ?? undefined,
     email: contact?.email ?? str(row.email) ?? undefined,
+    latitude,
+    longitude,
   };
 }
 

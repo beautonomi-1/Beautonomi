@@ -37,7 +37,13 @@ export async function GET(
       .single();
 
     if (error || !service) return notFoundResponse("Service not found");
-    return successResponse(service as OfferingCard);
+    const { overlayTeamMemberIdsFromStaffServices } = await import(
+      "@/lib/provider/sync-staff-services"
+    );
+    const [withTeam] = await overlayTeamMemberIdsFromStaffServices(supabase, providerId, [
+      service as OfferingCard & { id: string },
+    ]);
+    return successResponse(withTeam as OfferingCard);
   } catch (error) {
     return handleApiError(error, "Failed to fetch service");
   }
@@ -129,7 +135,11 @@ export async function PATCH(
     if (body.service_cost_percentage !== undefined) updateData.service_cost_percentage = parseFiniteNumber(body.service_cost_percentage, "service_cost_percentage");
     if (body.tax_rate !== undefined) updateData.tax_rate = parseFiniteNumber(body.tax_rate, "tax_rate");
     if (body.included_services !== undefined) updateData.included_services = body.included_services;
-    if (body.team_member_ids !== undefined) updateData.team_member_ids = body.team_member_ids;
+    const teamMemberIdsPatch =
+      body.team_member_ids !== undefined && Array.isArray(body.team_member_ids)
+        ? (body.team_member_ids as string[])
+        : undefined;
+    if (teamMemberIdsPatch !== undefined) updateData.team_member_ids = teamMemberIdsPatch;
     if (body.pricing_options !== undefined) updateData.pricing_options = Array.isArray(body.pricing_options) ? body.pricing_options : [];
     if (body.display_order !== undefined) updateData.display_order = parseFiniteInt(body.display_order, "display_order");
     // Location support fields
@@ -177,6 +187,16 @@ export async function PATCH(
 
     if (updateError || !updatedService) throw updateError ?? new Error("Failed to update service");
 
+    if (teamMemberIdsPatch !== undefined) {
+      const { replaceStaffForOffering } = await import("@/lib/provider/sync-staff-services");
+      await replaceStaffForOffering(
+        supabase,
+        providerId,
+        id,
+        teamMemberIdsPatch.filter(Boolean),
+      );
+    }
+
     // Sync child variant offerings when pricing_options are explicitly updated,
     // or when primary price/duration changed on a multi-tier service (quick-edit safety net).
     let variant_sync = null;
@@ -188,6 +208,10 @@ export async function PATCH(
           updatedService as Record<string, unknown>,
           opts,
         );
+        const { syncVariantStaffServicesFromParent } = await import(
+          "@/lib/provider/sync-staff-services"
+        );
+        await syncVariantStaffServicesFromParent(supabase, providerId, id);
       } else if (body.price !== undefined || body.duration_minutes !== undefined) {
         const merged = mergePrimaryTierIntoStoredPricingOptions(
           updatedService.pricing_options as RawPricingOption[],
@@ -209,9 +233,20 @@ export async function PATCH(
             resynced as Record<string, unknown>,
             merged,
           );
+          const { syncVariantStaffServicesFromParent: syncVarStaff } = await import(
+            "@/lib/provider/sync-staff-services"
+          );
+          await syncVarStaff(supabase, providerId, id);
           return successResponse({ ...(resynced as OfferingCard), variant_sync });
         }
       }
+    }
+
+    if (variant_sync) {
+      const { syncVariantStaffServicesFromParent } = await import(
+        "@/lib/provider/sync-staff-services"
+      );
+      await syncVariantStaffServicesFromParent(supabase, providerId, id);
     }
 
     return successResponse({ ...(updatedService as OfferingCard), variant_sync });

@@ -37,6 +37,7 @@ import { getSocialAuthConfig } from "@/lib/third-party-config";
 import {
   applyPendingSignupPreferences,
   persistProviderSignupSource,
+  PENDING_PREFERRED_LANGUAGE_KEY,
 } from "@/features/auth/pending-signup-preferences";
 import { writeSignupPhoneHandoff } from "@/lib/auth/signup-phone-handoff";
 import {
@@ -44,7 +45,9 @@ import {
   isAppReviewDemoEmail,
   isAppReviewDemoPhone,
 } from "@/lib/auth/app-review-demo";
-import { useTranslation } from "@beautonomi/i18n";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { coerceMobileUiLanguage, normalizeLanguageCode, useTranslation } from "@beautonomi/i18n";
+import { ReviewedLanguageField } from "@/components/auth/ReviewedLanguageField";
 
 const PRIMARY = Colors.primary;
 
@@ -159,6 +162,7 @@ export default function LoginScreen() {
     google: true,
     apple: true,
   });
+  const [preferredLanguage, setPreferredLanguage] = useState("en");
 
   useEffect(() => {
     if (smsResendCooldown <= 0) return;
@@ -397,6 +401,8 @@ export default function LoginScreen() {
     setFormError(null);
     setLoading(true);
     try {
+      const lang = coerceMobileUiLanguage(normalizeLanguageCode(preferredLanguage));
+      await AsyncStorage.setItem(PENDING_PREFERRED_LANGUAGE_KEY, lang).catch(() => {});
       const { error } = await signInWithOAuth(provider);
       if (error) {
         setFormError(
@@ -1448,6 +1454,7 @@ export default function LoginScreen() {
 
         {hasSocialAuth && (
           <>
+            <ReviewedLanguageField value={preferredLanguage} onChange={setPreferredLanguage} />
             {/* OAuth separator */}
             <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 24 }}>
               <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />

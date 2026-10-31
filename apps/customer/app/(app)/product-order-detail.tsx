@@ -302,7 +302,11 @@ export default function ProductOrderDetailScreen() {
     user?.phone?.trim() ||
     null;
   const paymentMethodLabel = formatPaymentMethod(order.payment_method ?? undefined, pod);
-  const onlineAmountDue = Math.max(0, Number(order.total_amount ?? 0) - walletAmt);
+  const giftAmt = Number(order.gift_card_amount ?? 0);
+  const dueTotal = Math.max(0, Number(order.total_amount ?? 0));
+  const dueGift = Math.min(dueTotal, Math.max(0, giftAmt));
+  const dueWallet = Math.min(Math.max(0, walletAmt), Math.max(0, dueTotal - dueGift));
+  const onlineAmountDue = Math.round(Math.max(0, dueTotal - dueGift - dueWallet) * 100) / 100;
   const canPayOnline =
     order.payment_status === "pending" &&
     (order.payment_method === "paystack" || order.payment_method == null) &&
@@ -465,6 +469,13 @@ export default function ProductOrderDetailScreen() {
                         if (res.error) {
                           Alert.alert(pod("cancelOrderTitle"), res.error.message || pod("cancelOrderFailed"));
                           return;
+                        }
+                        const due = Number(
+                          (res.data as { refund?: { in_person_refund_due?: number } } | null)?.refund
+                            ?.in_person_refund_due ?? 0,
+                        );
+                        if (due > 0) {
+                          Alert.alert(pod("cancelOrderTitle"), pod("cancelledInPerson", { amount: fmt(due) }));
                         }
                         const next = await fetchOrderDetail(order.id);
                         if (next.data) setOrder(next.data);

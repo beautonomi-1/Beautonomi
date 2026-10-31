@@ -183,14 +183,14 @@ export async function GET(
         .eq("is_active", true)
         .limit(100), // Limit to prevent huge queries
       
-      // Fetch staff count (for salons)
+      // Fetch staff rows for public bookable count (salons)
       providerData.business_type === "salon"
         ? supabase
             .from("provider_staff")
-            .select("*", { count: "exact", head: true })
+            .select("id, is_active, is_service_provider, enable_in_online_booking, bookable_from")
             .eq("provider_id", providerData.id)
             .eq("is_active", true)
-        : Promise.resolve({ count: 0 }),
+        : Promise.resolve({ data: [] as { id: string }[] }),
       
       // Fetch points and badge
       supabase
@@ -226,7 +226,15 @@ export async function GET(
 
     const locations = locationsResult.data || [];
     const offerings = offeringsResult.data || [];
-    const staffCount = staffCountResult.count || undefined;
+    let staffCount: number | undefined;
+    if (providerData.business_type === "salon") {
+      const { isPubliclyBookableStaff } = await import("@/lib/provider/staff-public-bookable");
+      const staffRows = (staffCountResult as { data?: unknown[] }).data ?? [];
+      staffCount = staffRows.filter((row) =>
+        isPubliclyBookableStaff(row as Parameters<typeof isPubliclyBookableStaff>[0], providerData.timezone),
+      ).length;
+      if (staffCount === 0) staffCount = undefined;
+    }
     const { getCancellationPolicy } = await import("@/lib/bookings/cancellation-policy");
     const { buildPublicPolicyView } = await import("@/lib/bookings/public-policy-view");
     const cancellationPolicy = await getCancellationPolicy(supabase, providerData.id, "at_salon");

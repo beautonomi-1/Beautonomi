@@ -19,6 +19,8 @@ export interface Address {
   country: string;
   phone?: string;
   email?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface Parcel {
@@ -38,6 +40,8 @@ export interface RateQuoteRequest {
   origin: Address;
   destination: Address;
   parcels: Parcel[];
+  /** Bob Go POST /rates timeout ms (default 25000). Payment book paths use ~15000. */
+  ratesTimeoutMs?: number;
 }
 
 export interface RateQuote {
@@ -52,6 +56,8 @@ export interface RateQuote {
 export interface CreateShipmentRequest extends RateQuoteRequest {
   orderRef: string;
   service?: string;
+  instructionsDelivery?: string;
+  instructionsCollection?: string;
 }
 
 export interface Shipment {
@@ -95,10 +101,32 @@ export class ShippingProviderNotConfiguredError extends Error {
   }
 }
 
+/** Bob Go returned no bookable rates yet (couriers still pending). Retry later. */
+export class BobGoRatesPendingError extends Error {
+  constructor() {
+    super("bob_go_rates_pending");
+    this.name = "BobGoRatesPendingError";
+  }
+}
+
+export class BobGoLabelNotReadyError extends Error {
+  constructor(message = "Bob Go waybill is not ready yet") {
+    super(message);
+    this.name = "BobGoLabelNotReadyError";
+  }
+}
+
 import { createAramexProvider, type AramexCredentials } from "./providers/aramex";
 export type { AramexCredentials } from "./providers/aramex";
 import { createCourierGuyProvider } from "./providers/courier-guy";
 import { createBobGoProvider } from "./providers/bob-go";
+export type { BobGoCredentials, BobGoShipmentSnapshot } from "./providers/bob-go";
+export {
+  assertBobGoDomesticRoute,
+  fetchBobGoShipment,
+  isBobGoDomesticCountry,
+  parseBobGoShipmentSnapshot,
+} from "./providers/bob-go";
 
 export type BearerCourierCredentials = {
   apiKey: string;

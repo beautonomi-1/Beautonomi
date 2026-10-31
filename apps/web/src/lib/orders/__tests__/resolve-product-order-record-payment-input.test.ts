@@ -40,6 +40,24 @@ describe("resolveProductOrderRecordPaymentInput", () => {
     });
   });
 
+  it("resolves flutterwave orders as a platform gateway, not a wallet checkout", () => {
+    expect(
+      resolveProductOrderRecordPaymentInput({
+        id: "o4",
+        payment_method: "flutterwave",
+        payment_reference: "flw-ref",
+        total_amount: 200,
+        wallet_amount: 50,
+      }),
+    ).toEqual({
+      provider: "flutterwave",
+      source: "flutterwave_webhook",
+      reference: "flw-ref",
+      amountMajor: 150,
+      feesMajor: 0,
+    });
+  });
+
   it("derives paystack amount from total minus wallet when tx missing", () => {
     expect(
       resolveProductOrderRecordPaymentInput({

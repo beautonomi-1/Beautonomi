@@ -4,6 +4,9 @@ import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundRespon
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getDefaultStaffPermissionsForDbRole } from "@/lib/provider/staff-invite-default-permissions";
+import { parseStaffJobPreset, resolveStaffJobPreset } from "@/lib/provider/staff-job-presets";
+import { seedStaffSchedulesOnCreate, type HoursSourceInput } from "@/lib/provider/seed-staff-schedules";
+import { replaceStaffServicesForStaff } from "@/lib/provider/sync-staff-services";
 import { sendStaffInvite, STAFF_INVITE_EXPIRY_DAYS } from "@/lib/provider/staff-invite";
 import { recordStaffInvitationSent } from "@/lib/provider/staff-invitations";
 import { trackServer } from "@/lib/analytics/amplitude/server";
@@ -164,7 +167,10 @@ export async function GET(request: NextRequest) {
         mobile_ready,
         commission_rate,
         working_hours,
-        over_cap_grace_until
+        over_cap_grace_until,
+        is_service_provider,
+        enable_in_online_booking,
+        bookable_from
       `
       )
       .eq("provider_id", providerId)
@@ -281,6 +287,10 @@ export async function GET(request: NextRequest) {
         service_ids: member.service_ids ?? [],
         working_hours: member.working_hours ?? null,
         over_cap_grace_until: member.over_cap_grace_until ?? null,
+        is_service_provider: (member as { is_service_provider?: boolean | null }).is_service_provider ?? true,
+        enable_in_online_booking:
+          (member as { enable_in_online_booking?: boolean | null }).enable_in_online_booking ?? true,
+        bookable_from: (member as { bookable_from?: string | null }).bookable_from ?? null,
       };
       const redacted = redactStaffRowForViewer(
         { ...row, user_id: member.user_id ?? null },
@@ -308,9 +318,17 @@ export async function GET(request: NextRequest) {
   }
 }
 
-const addStaffSchema = z.object({
+const staffJobSchema = z.enum(["stylist", "senior", "front_desk", "manager"]);
+
+const hoursSourceSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("location"), location_id: z.string().uuid().optional() }),
+  z.object({ type: z.literal("staff"), staff_id: z.string().uuid() }),
+]);
+
+export const addStaffSchema = z.object({
   email: z.string().email("Invalid email address"),
   role: z.string().optional().default("provider_staff"),
+  job: staffJobSchema.optional(),
   name: z.string().optional(),
   phone: z.string().optional().nullable(),
   mobileReady: z.boolean().optional().default(false),
@@ -322,6 +340,15 @@ const addStaffSchema = z.object({
   commission_rate: z.number().min(0).max(100).optional().nullable(),
   /** Send invite (push/email) after create. Client may also call POST /api/provider/staff/[id]/invite. */
   invite_email: z.boolean().optional().default(false),
+  time_clock_enabled: z.boolean().optional(),
+  bookable_from: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional()
+    .nullable(),
+  hours_source: hoursSourceSchema.optional(),
+  takes_appointments: z.boolean().optional(),
+  public_title: z.string().max(120).optional().nullable(),
 });
 
 /**
@@ -386,15 +413,46 @@ export async function POST(request: Request) {
       service_ids,
       commission_rate,
       invite_email,
+      time_clock_enabled,
+      bookable_from,
+      hours_source,
+      takes_appointments,
+      public_title,
     } = validationResult.data;
     const email = validationResult.data.email.trim().toLowerCase();
+    const jobPreset = parseStaffJobPreset(validationResult.data.job);
 
-    // Map API role format to database role format
-    // API uses: provider_staff, provider_manager, provider_owner
-    // Database expects: employee, manager, owner
-    const dbRole = role === "provider_owner" ? "owner" 
-                 : role === "provider_manager" ? "manager" 
-                 : "employee";
+    let dbRole: "owner" | "manager" | "employee";
+    let permissions = getDefaultStaffPermissionsForDbRole("employee");
+    let isServiceProvider = true;
+    let enableInOnlineBooking = true;
+    let workHoursEnabled = true;
+    let skipServiceAssignment = false;
+
+    if (jobPreset) {
+      const preset = resolveStaffJobPreset(jobPreset);
+      dbRole = preset.dbRole;
+      permissions = preset.permissions;
+      isServiceProvider = preset.is_service_provider;
+      enableInOnlineBooking = preset.enable_in_online_booking;
+      workHoursEnabled = preset.work_hours_enabled;
+      skipServiceAssignment = preset.skipServiceAssignment;
+    } else {
+      dbRole =
+        role === "provider_owner" ? "owner" : role === "provider_manager" ? "manager" : "employee";
+      permissions = getDefaultStaffPermissionsForDbRole(dbRole);
+    }
+
+    if (takes_appointments !== undefined) {
+      isServiceProvider = takes_appointments;
+      enableInOnlineBooking = takes_appointments;
+      if (!takes_appointments) {
+        skipServiceAssignment = true;
+      }
+    }
+
+    const normalizedPublicTitle =
+      typeof public_title === "string" && public_title.trim() ? public_title.trim() : null;
 
     // Find user by email (case-insensitive, admin bypasses RLS) or create if doesn't exist
     const supabaseAdmin = getSupabaseAdmin();
@@ -560,7 +618,6 @@ export async function POST(request: Request) {
     // Add staff member
     const staffPhone = phone || foundUser.phone || null;
     const staffName = name || foundUser.full_name || foundUser.email?.split("@")[0] || "Staff Member";
-    const defaultPermissions = getDefaultStaffPermissionsForDbRole(dbRole);
     const { getStaffNotificationSettingsDefaults } = await import(
       "@/lib/notifications/notification-preferences-defaults"
     );
@@ -573,16 +630,22 @@ export async function POST(request: Request) {
         email: email,
         phone: staffPhone,
         role: dbRole,
-        permissions: defaultPermissions,
+        permissions,
         notification_settings: getStaffNotificationSettingsDefaults(),
         is_active: true,
         mobile_ready: mobileReady || false,
+        is_service_provider: isServiceProvider,
+        enable_in_online_booking: enableInOnlineBooking,
+        work_hours_enabled: workHoursEnabled,
+        time_clock_enabled: time_clock_enabled === true,
+        bookable_from: bookable_from ?? null,
         commission_rate: commission_rate != null ? Number(commission_rate) : null,
         service_commission_rate:
           commission_rate != null ? Number(commission_rate) : null,
         product_commission_rate:
           commission_rate != null ? Number(commission_rate) : null,
         commission_enabled: commission_rate != null && Number(commission_rate) >= 0,
+        ...(normalizedPublicTitle ? { public_title: normalizedPublicTitle } : {}),
       })
       .select(
         `
@@ -634,20 +697,42 @@ export async function POST(request: Request) {
       }
     }
 
-    // Assign services if provided
-    if (service_ids && service_ids.length > 0) {
-      await supabase.from("staff_services").delete().eq("staff_id", staffId);
-      await supabase.from("staff_services").insert(
-        service_ids.map((sid: string) => ({
-          staff_id: staffId,
-          offering_id: sid,
-          provider_id: providerId,
-        }))
-      );
+    const primaryLocationId = effectiveLocationIds[0] ?? null;
+    let hoursCopied: boolean | undefined;
+
+    if (hours_source) {
+      let seedSource: HoursSourceInput | null = null;
+      if (hours_source.type === "location") {
+        seedSource = {
+          type: "location",
+          locationId: hours_source.location_id ?? primaryLocationId ?? "",
+        };
+      } else {
+        seedSource = { type: "staff", staffId: hours_source.staff_id };
+      }
+      if (seedSource.type === "location" && !seedSource.locationId) {
+        hoursCopied = false;
+      } else {
+        const seedResult = await seedStaffSchedulesOnCreate(
+          supabase,
+          providerId,
+          staffId,
+          primaryLocationId,
+          seedSource,
+        );
+        hoursCopied = seedResult.seeded;
+      }
+    }
+
+    if (!skipServiceAssignment && service_ids && service_ids.length > 0) {
+      await replaceStaffServicesForStaff(supabase, providerId, staffId, service_ids);
     }
 
     // Optionally send invite (email via Resend + push when registered)
     const inviteRecipientEmail = (foundUser.email || email || "").trim().toLowerCase();
+    let inviteJoinUrl: string | null = null;
+    let emailDelivered = false;
+    let pushDelivered = false;
     if (invite_email && inviteRecipientEmail) {
       try {
         const { data: providerRow } = await supabase
@@ -689,6 +774,9 @@ export async function POST(request: Request) {
           expiresAt: inviteExpiresAt,
           channels: inviteChannels,
         });
+        inviteJoinUrl = delivery.join_url;
+        emailDelivered = delivery.email.delivered;
+        pushDelivered = delivery.push.delivered;
         void trackServer(EVENT_STAFF_INVITED, {
           user_id: user.id,
           staff_id: staffId,
@@ -698,6 +786,25 @@ export async function POST(request: Request) {
         }).catch((err) => console.warn("[staff-invite] analytics failed:", err));
       } catch (inviteErr) {
         console.warn("Staff invite notification failed:", inviteErr);
+        try {
+          const { rotateStaffInviteToken, buildStaffJoinUrlForTenant } = await import(
+            "@/lib/provider/staff-invite"
+          );
+          const admin = getSupabaseAdmin();
+          const { data: providerRow } = await supabase
+            .from("providers")
+            .select("tenant_id")
+            .eq("id", providerId)
+            .maybeSingle();
+          const token = await rotateStaffInviteToken(admin, staffId);
+          inviteJoinUrl = await buildStaffJoinUrlForTenant(
+            admin,
+            token,
+            (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+          );
+        } catch (linkErr) {
+          console.warn("Failed to build join link after invite error:", linkErr);
+        }
       }
     }
 
@@ -725,7 +832,12 @@ export async function POST(request: Request) {
         location_city: null,
         is_primary: i === 0,
       })),
-      service_ids,
+      service_ids: skipServiceAssignment ? [] : service_ids,
+      join_url: inviteJoinUrl,
+      email_delivered: emailDelivered,
+      push_delivered: pushDelivered,
+      job: jobPreset ?? null,
+      ...(hours_source !== undefined ? { hours_copied: hoursCopied === true } : {}),
     };
 
     void import("@/lib/subscriptions/subscription-limit-notifications")

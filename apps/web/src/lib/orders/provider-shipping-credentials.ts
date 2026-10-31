@@ -8,7 +8,13 @@ import {
 
 export type CourierCredentialsPublicStatus = {
   "courier-guy": { connected: boolean; verifiedAt: string | null; apiKeyHint: string | null; baseUrl: string | null };
-  "bob-go": { connected: boolean; verifiedAt: string | null; apiKeyHint: string | null; baseUrl: string | null };
+  "bob-go": {
+    connected: boolean;
+    verifiedAt: string | null;
+    apiKeyHint: string | null;
+    baseUrl: string | null;
+    webhookSecretConfigured: boolean;
+  };
   aramex: {
     connected: boolean;
     verifiedAt: string | null;
@@ -34,6 +40,7 @@ type CredentialsRow = {
   aramex_domestic_product_type: string | null;
   courier_guy_verified_at: string | null;
   bob_go_verified_at: string | null;
+  bob_go_webhook_secret_ciphertext: string | null;
   aramex_verified_at: string | null;
 };
 
@@ -121,6 +128,7 @@ export function publicCourierCredentialsStatus(
       verifiedAt: null,
       apiKeyHint: null,
       baseUrl: null,
+      webhookSecretConfigured: false,
     },
     aramex: {
       connected: false,
@@ -178,6 +186,7 @@ export function publicCourierCredentialsStatus(
       verifiedAt: row.bob_go_verified_at,
       apiKeyHint: bgHint,
       baseUrl: row.bob_go_base_url,
+      webhookSecretConfigured: Boolean(row.bob_go_webhook_secret_ciphertext),
     },
     aramex: {
       connected: Boolean(row.aramex_ciphertext),

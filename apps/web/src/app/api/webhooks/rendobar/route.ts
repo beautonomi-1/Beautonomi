@@ -12,6 +12,7 @@ import { resolveVideoEncodeTrim } from "@/lib/explore/resolve-video-encode-trim"
 import { processExploreDisplayJpeg } from "@/lib/explore/brand-display-image";
 import { denormalizeFirstSlideFromMeta } from "@/lib/explore/media-meta";
 import { deferredVideoPublishRewards } from "@/lib/explore/publish-side-effects";
+import { enqueueExplorePostSafetyScan } from "@/lib/safety/explore-post-safety-scan";
 import {
   parseRendobarCallbackBody,
   playbackPathFromRendobarDeliveries,
@@ -304,6 +305,7 @@ export async function POST(request: NextRequest) {
               newDisplayPath: displayPath,
               alsoAddToGallery: pendingGallery,
             });
+            enqueueExplorePostSafetyScan(postId);
           } catch (err) {
             console.warn("[rendobar webhook] poster after():", err);
           }

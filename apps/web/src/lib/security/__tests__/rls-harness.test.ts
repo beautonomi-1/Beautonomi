@@ -153,6 +153,22 @@ describe("RLS harness (static policy verification)", () => {
     expect(sql).toContain("grc_evidence_bucket_select");
     expect(sql).not.toContain("grc_evidence_bucket_delete");
   });
+
+  it("1023 locks self-service users.role changes and signup metadata allowlist", () => {
+    const sql = readMigration("1023_users_role_self_update_guard.sql");
+    expect(sql).toContain("guard_users_role_update");
+    expect(sql).toContain("BEFORE UPDATE OF role");
+    expect(sql).toContain("signup_metadata_role");
+    expect(sql).toContain("'customer'");
+    expect(sql).toContain("'provider_owner'");
+    expect(sql).toContain("'provider_staff'");
+    expect(sql).toContain("'provider_onboarding'");
+    expect(sql).toMatch(/superadmin stored as customer|ELSE 'customer'/);
+    expect(sql).toContain("REVOKE ALL ON FUNCTION create_user_bypass_trigger");
+    expect(sql).toMatch(/FROM authenticated[\s\S]*create_user_bypass_trigger/);
+    expect(sql).toContain("GRANT EXECUTE ON FUNCTION create_user_bypass_trigger");
+    expect(sql).toContain("TO service_role");
+  });
 });
 
 describe("RLS harness (live — optional)", () => {

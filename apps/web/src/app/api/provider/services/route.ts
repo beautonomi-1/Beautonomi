@@ -153,6 +153,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    if (payload.length > 0) {
+      const { overlayTeamMemberIdsFromStaffServices } = await import(
+        "@/lib/provider/sync-staff-services"
+      );
+      payload = await overlayTeamMemberIdsFromStaffServices(supabase, providerId, payload);
+    }
+
     if (includeAddons && payload.length > 0) {
       const { data: addonRows, error: addonErr } = await supabase
         .from("offerings")
@@ -366,6 +373,15 @@ export async function POST(request: Request) {
         service as Record<string, unknown>,
         opts,
       );
+      const { syncVariantStaffServicesFromParent } = await import(
+        "@/lib/provider/sync-staff-services"
+      );
+      await syncVariantStaffServicesFromParent(supabase, providerId, service.id);
+    }
+
+    if (Array.isArray(team_member_ids)) {
+      const { replaceStaffForOffering } = await import("@/lib/provider/sync-staff-services");
+      await replaceStaffForOffering(supabase, providerId, service.id, team_member_ids);
     }
 
     return successResponse({ ...(service as OfferingCard), variant_sync });

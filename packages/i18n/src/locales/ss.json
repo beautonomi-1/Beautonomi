@@ -72,7 +72,10 @@
       "gotIt": "Ngiyevile",
       "dismissA11y": "Vala seluleko"
     },
-    "change": "Shintja"
+    "change": "Shintja",
+    "useDifferentAccount": "Use a different li-akhawunti",
+    "useDifferentAccountConfirmTitle": "Switch li-akhawunti?",
+    "useDifferentAccountConfirmBody": "Utawuphuma kule divayisi. I-akhawunti yakho ye-Google nobe ye-Apple yahlala ixhunyiwe, futsi nobe ngutiphi inchubekela yokuhlela leyigciniwe yahlala kuleyo akhawunti. Ungangena futsi noma nini."
   },
   "authGate": {
     "checkingAccess": "Checking your li-akhawunti…",
@@ -13344,7 +13347,7 @@
       "selectReasonBody": "Sicela khetsa why you are umbikoing this content.",
       "submitError": "Kwehlulekile ku-tfumela umbiko.",
       "submittedTitle": "umbiko tfumelated",
-      "submittedBody": "Ngiyabonga. Licembu letfu litawubuyeketa umbiko wakho kungakapheli emahora langu-24-48.",
+      "submittedBody": "Ngiyabonga. Licembu letfu litawubuyeketa umbiko wakho kungakapheli emahora langu-24.",
       "reportPost": "umbiko Siposo",
       "reportComment": "umbiko imibono",
       "reportMessage": "umbiko umlayeto",
@@ -13356,9 +13359,10 @@
         "inappropriate": "Lokuphatselwe lokungafanele",
         "misleading": "Misleading lwati",
         "harassment": "Kuhlukumeza noma kuhlukunyezwa",
-        "spam": "Spam or scam",
+        "spam": "I-spam noma kubanjwa",
         "safety": "kuphepha concern",
-        "other": "Lokunye"
+        "other": "Lokunye",
+        "illegal_exploitative": "Lokucuketfwe lelingekho emtsetfweni noma lokusebentiswa kabi"
       }
     },
     "blockUser": {
@@ -15164,6 +15168,7 @@
           "paymentCancelledBody": "Uyikhansele inkhokhelo. Kute licala lelabekwa. Ungaphindze uzame kusuka kule-oda.",
           "cancelOrderTitle": "Khansela i-oda",
           "cancelOrderBody": "Khansela le odara? Tintfo letisesitokweni titawubuyiselwa futsi letinkokhelo letikhokhiwe titawubuyiselwa.",
+          "cancelledInPerson": "I-oda ikhanseliwe. {{amount}} yabutseka ngalokwentfo futsi isadzinga kubuyiselwa sisalon.",
           "keepOrderCta": "Gcina i-oda",
           "cancelOrderCta": "Khansela i-oda",
           "cancelOrderFailed": "Ayikhonanga ku-khansela this i-oda.",
@@ -21212,6 +21217,7 @@
         "goBack": "Buyela emuva",
         "cancelConfirm": "Khansela le odara? Tintfo letisesitokweni titawubuyiselwa futsi letinkokhelo letikhokhiwe titawubuyiselwa.",
         "cancelledToast": "i-oda kukhanselwe",
+        "cancelledInPerson": "I-oda ikhanseliwe. {{amount}} yabutseka ngalokwentfo futsi isadzinga kubuyiselwa sisalon.",
         "cancelFailed": "Ayikhonanga ku-khansela this i-oda.",
         "addEmailBeforePay": "Engeza ikheli le-imeyili ku-akhawunti yakho ngaphambi kokukhokha leli oda ku-inthanethi.",
         "paymentStartFailed": "Ons kon nie met die betaling begin nie. Probeer asseblief weer.",

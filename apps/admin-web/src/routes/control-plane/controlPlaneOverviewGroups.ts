@@ -46,7 +46,12 @@ export const CONTROL_PLANE_OVERVIEW_GROUPS: {
     label: "Identity & trust",
     description: "Third-party credentials for verification and safety",
     items: [
-      { title: "Integrations hub", to: "/admin/control-plane/integrations", icon: Puzzle },
+      {
+        title: "Platform integrations",
+        to: "/admin/control-plane/integrations",
+        description: "AI, Didit, Aura, region checkout — not the connector catalog",
+        icon: Puzzle,
+      },
       {
         title: "Didit",
         to: "/admin/control-plane/integrations/didit",

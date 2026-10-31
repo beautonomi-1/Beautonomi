@@ -72,7 +72,10 @@
       "gotIt": "Compris",
       "dismissA11y": "Ignorer l’astuce"
     },
-    "change": "Modifier"
+    "change": "Modifier",
+    "useDifferentAccount": "Use a different cuenta",
+    "useDifferentAccountConfirmTitle": "Switch cuenta?",
+    "useDifferentAccountConfirmBody": "Du wirst auf diesem Gerät abgemeldet. Dein Google- oder Apple-Konto bleibt verknüpft, und gespeicherter Setup-Fortschritt bleibt auf diesem Konto. Du kannst dich jederzeit wieder anmelden."
   },
   "authGate": {
     "checkingAccess": "Konto wird überprüft…",
@@ -13337,14 +13340,14 @@
     },
     "contentReport": {
       "modalTitle": "Signaler le contenu",
-      "modalLead": "Sélectionner a reason and add optional details so our team can review.",
+      "modalLead": "Wählen Sie einen Grund und fügen Sie optionale Details hinzu, damit unser Team prüfen kann.",
       "submitCta": "Envoyer report",
       "detailsPlaceholder": "Additional details (facultatif)",
       "selectReasonTitle": "Choisir un motif",
       "selectReasonBody": "Indiquez pourquoi vous signalez ce contenu.",
       "submitError": "Impossible de envoyer report.",
-      "submittedTitle": "Report submitted",
-      "submittedBody": "Thank you. Our team will review your report within 24-48 hours.",
+      "submittedTitle": "Meldung gesendet",
+      "submittedBody": "Danke. Unser Team prüft Ihre Meldung innerhalb von 24 Stunden.",
       "reportPost": "Signaler la publication",
       "reportComment": "Signaler le commentaire",
       "reportMessage": "Signaler le message",
@@ -13358,7 +13361,8 @@
         "harassment": "Harcèlement ou abus",
         "spam": "Spam ou arnaque",
         "safety": "Problème de sécurité",
-        "other": "Autre"
+        "other": "Autre",
+        "illegal_exploitative": "Illegale oder ausbeuterische Inhalte"
       }
     },
     "blockUser": {
@@ -15164,6 +15168,7 @@
           "paymentCancelledBody": "You cancelled the payment. No charge was made. You can réessayer from this order.",
           "cancelOrderTitle": "Annuler la commande",
           "cancelOrderBody": "Annuler cette commande ? Les articles en stock seront réintégrés et les paiements remboursés.",
+          "cancelledInPerson": "Bestellung storniert. {{amount}} wurde vor Ort eingezogen und muss vom Salon noch zurückgegeben werden.",
           "keepOrderCta": "Keep commande",
           "cancelOrderCta": "Annuler la commande",
           "cancelOrderFailed": "Impossible de annuler this commande.",
@@ -21212,6 +21217,7 @@
         "goBack": "Retour",
         "cancelConfirm": "Annuler cette commande ? Les articles en stock seront réintégrés et les paiements remboursés.",
         "cancelledToast": "Commande annulé",
+        "cancelledInPerson": "Bestellung storniert. {{amount}} wurde vor Ort eingezogen und muss vom Salon noch zurückgegeben werden.",
         "cancelFailed": "Impossible de annuler this commande.",
         "addEmailBeforePay": "Voeg 'n e-posadres by jou rekening voordat jy hierdie bestelling aanlyn betaal.",
         "paymentStartFailed": "We impossible de démarrer paiement for this commande. Veuillez réessayer.",

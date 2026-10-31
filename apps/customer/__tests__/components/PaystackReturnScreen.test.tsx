@@ -194,6 +194,13 @@ describe("PaystackReturnScreen", () => {
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
+      await Promise.resolve();
+    });
+  }
+
+  async function advanceTimers(ms: number) {
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(ms);
     });
   }
 
@@ -209,10 +216,7 @@ describe("PaystackReturnScreen", () => {
 
       renderScreen({ reference: "ref-success" });
       await settleVerify();
-
-      act(() => {
-        jest.advanceTimersByTime(1_500);
-      });
+      await advanceTimers(1_500);
 
       expect(mockReplace).toHaveBeenCalledWith(BOOKING_TARGET);
     } finally {
@@ -257,10 +261,7 @@ describe("PaystackReturnScreen", () => {
 
       renderScreen({ reference: "ref-fail" });
       await settleVerify();
-
-      act(() => {
-        jest.advanceTimersByTime(2_000);
-      });
+      await advanceTimers(2_000);
 
       expect(mockReplace).toHaveBeenCalledWith(FALLBACK);
     } finally {
@@ -293,9 +294,7 @@ describe("PaystackReturnScreen", () => {
       await settleVerify();
       expect(onSuccess).toHaveBeenCalledTimes(1);
 
-      act(() => {
-        jest.advanceTimersByTime(1_500);
-      });
+      await advanceTimers(1_500);
       expect(mockReplace).toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
@@ -311,9 +310,7 @@ describe("PaystackReturnScreen", () => {
 
       renderScreen({ reference: "ref-cooperative" });
 
-      act(() => {
-        jest.advanceTimersByTime(500);
-      });
+      await advanceTimers(500);
 
       expect(mockBack).toHaveBeenCalledTimes(1);
       expect(mockReplace).not.toHaveBeenCalled();
@@ -330,15 +327,11 @@ describe("PaystackReturnScreen", () => {
     try {
       const { getByText } = renderScreen({ reference: "ref-hang" });
 
-      act(() => {
-        jest.advanceTimersByTime(30_000);
-      });
+      await advanceTimers(30_000);
 
       expect(getByText(/your payment is being confirmed/i)).toBeTruthy();
 
-      act(() => {
-        jest.advanceTimersByTime(1_600);
-      });
+      await advanceTimers(1_600);
 
       expect(mockReplace).toHaveBeenCalledWith(FALLBACK);
     } finally {

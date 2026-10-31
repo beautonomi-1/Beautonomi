@@ -22,5 +22,7 @@ describe("OnboardingWizardContext mount guard", () => {
     expect(src).toContain("resolved = STEPS.length");
     expect(src).toContain("if (loadingDraft || providerProfileExists) return");
     expect(src).toContain("if (isSubmittingRef.current) return");
+    expect(src).toContain("performProviderWizardStep1Back");
+    expect(src).toContain("confirmUseDifferentAccount");
   });
 });

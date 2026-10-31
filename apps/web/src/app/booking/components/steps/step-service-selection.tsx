@@ -208,6 +208,13 @@ export default function StepServiceSelection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookingState.selectedLocationId]);
 
+  const selectedOfferingKey = bookingState.selectedServices.map((s) => s.id).join(",");
+  useEffect(() => {
+    if (!providerSlug || !hasLoadedRef.current) return;
+    void loadStaff();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedOfferingKey]);
+
   // Ensure all selected services have staff assigned (auto-assign if missing)
   // Also re-assign staff when mode changes (e.g., mobile requires mobile-ready staff)
   useEffect(() => {
@@ -494,11 +501,35 @@ export default function StepServiceSelection({
     try {
       const locId =
         bookingState.mode !== "mobile" ? bookingState.selectedLocationId : undefined;
-      const qs = locId ? `?location_id=${encodeURIComponent(locId)}` : "";
+      const offeringIds = [
+        ...new Set(
+          bookingState.selectedServices
+            .map((s) => s.id)
+            .filter(Boolean),
+        ),
+      ];
+      const params = new URLSearchParams();
+      if (locId) params.set("location_id", locId);
+      if (offeringIds.length > 0) params.set("offering_ids", offeringIds.join(","));
+      const qs = params.toString() ? `?${params.toString()}` : "";
       const response = await fetcher.get<{ data: Staff[] }>(
         `/api/public/providers/${providerSlug}/staff${qs}`
       );
-      setStaff(response.data || []);
+      const nextStaff = response.data || [];
+      setStaff(nextStaff);
+      const allowed = new Set(nextStaff.map((s) => s.id));
+      updateBookingState((prev) => {
+        let changed = false;
+        const selectedServices = prev.selectedServices.map((svc) => {
+          if (!svc.staffId || svc.staffId === "any" || svc.staffId.startsWith("provider-")) {
+            return svc;
+          }
+          if (allowed.has(svc.staffId)) return svc;
+          changed = true;
+          return { ...svc, staffId: undefined, staffName: undefined };
+        });
+        return changed ? { ...prev, selectedServices } : prev;
+      });
     } catch (error) {
       console.warn("Error loading staff:", error instanceof Error ? error.message : error);
     }

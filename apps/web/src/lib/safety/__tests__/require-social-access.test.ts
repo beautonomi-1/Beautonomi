@@ -114,7 +114,7 @@ describe("requireSocialAccess", () => {
     );
   });
 
-  it("allows unknown band with unrestricted settings in enforce mode", async () => {
+  it("allows unknown band ugc_create in enforce mode", async () => {
     mockResolveAgeBand.mockResolvedValue({ band: "unknown", source: "none" });
     mockCapabilityBlocked.mockReturnValue(false);
 
@@ -122,6 +122,21 @@ describe("requireSocialAccess", () => {
     await expect(
       requireSocialAccess("user-1", "ugc_create", makeRequest()),
     ).resolves.toBeUndefined();
+  });
+
+  it("blocks unknown band comment and like_or_save in enforce mode", async () => {
+    mockResolveAgeBand.mockResolvedValue({ band: "unknown", source: "none" });
+    mockCapabilityBlocked.mockReturnValue(false);
+
+    const { requireSocialAccess } = await import("../require-social-access");
+    await expect(requireSocialAccess("user-1", "comment", makeRequest())).rejects.toMatchObject({
+      status: 403,
+      code: "SOCIAL_RESTRICTED",
+    });
+    await expect(requireSocialAccess("user-1", "like_or_save", makeRequest())).rejects.toMatchObject({
+      status: 403,
+      code: "SOCIAL_RESTRICTED",
+    });
   });
 
   it("logs unknown band access in log mode", async () => {

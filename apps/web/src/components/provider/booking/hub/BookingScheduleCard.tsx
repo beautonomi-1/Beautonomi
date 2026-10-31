@@ -17,6 +17,9 @@ export interface HubScheduleBooking {
   scheduled_at: string | null;
   created_at?: string | null;
   customer_name?: string | null;
+  customer_email?: string | null;
+  customer_phone?: string | null;
+  participant_phones?: (string | null)[];
   total_amount?: number | null;
   payment_status?: string | null;
   customer_running_late_minutes?: number | null;

@@ -29,6 +29,7 @@ export const ProviderCourierCredentialsCard = forwardRef<CourierCredentialsSaveH
 
   const [cgKey, setCgKey] = useState("");
   const [bgKey, setBgKey] = useState("");
+  const [bgWebhookSecret, setBgWebhookSecret] = useState("");
   const [aramex, setAramex] = useState({
     accountNumber: "",
     accountPin: "",
@@ -58,7 +59,7 @@ export const ProviderCourierCredentialsCard = forwardRef<CourierCredentialsSaveH
   const hasPendingCredentialInput = Boolean(
     preference &&
       ((preference === "courier-guy" && cgKey.trim()) ||
-        (preference === "bob-go" && bgKey.trim()) ||
+        (preference === "bob-go" && (bgKey.trim() || bgWebhookSecret.trim())) ||
         (preference === "aramex" &&
           (aramex.accountNumber.trim() ||
             aramex.accountPin.trim() ||
@@ -74,8 +75,11 @@ export const ProviderCourierCredentialsCard = forwardRef<CourierCredentialsSaveH
       if (preference === "courier-guy" && cgKey.trim()) {
         body.courier_guy = { apiKey: cgKey.trim() };
       }
-      if (preference === "bob-go" && bgKey.trim()) {
-        body.bob_go = { apiKey: bgKey.trim() };
+      if (preference === "bob-go" && (bgKey.trim() || bgWebhookSecret.trim())) {
+        body.bob_go = {
+          ...(bgKey.trim() ? { apiKey: bgKey.trim() } : {}),
+          ...(bgWebhookSecret.trim() ? { webhookSecret: bgWebhookSecret.trim() } : {}),
+        };
       }
       if (preference === "aramex") {
         const patch: Record<string, string> = {};
@@ -91,13 +95,24 @@ export const ProviderCourierCredentialsCard = forwardRef<CourierCredentialsSaveH
       if (Object.keys(body).length === 0) {
         return false;
       }
-      await fetcher.put("/api/provider/courier-credentials", body);
+      const res = await fetcher.put<{
+        data?: { bob_go_webhook_subscribe?: { ok?: boolean; error?: string } | null };
+      }>("/api/provider/courier-credentials", body);
       setCgKey("");
       setBgKey("");
+      setBgWebhookSecret("");
       setAramex((a) => ({ ...a, accountPin: "", password: "" }));
       await load();
       onSaved?.();
       toast.success(t("web.provider.pages.ecommerce/shipping.courierSaved"));
+      const sub = res?.data?.bob_go_webhook_subscribe;
+      if (sub && sub.ok === false) {
+        toast.message(t("web.provider.pages.ecommerce/shipping.bobGoWebhookSubscribeFailed"), {
+          description:
+            sub.error ??
+            t("web.provider.pages.ecommerce/shipping.bobGoWebhookCatchUpHint"),
+        });
+      }
       return true;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("web.provider.pages.ecommerce/shipping.courierSaveFailed"));
@@ -178,16 +193,36 @@ export const ProviderCourierCredentialsCard = forwardRef<CourierCredentialsSaveH
             </div>
           )}
           {preference === "bob-go" && (
-            <div>
-              <Label className="text-xs">{t("web.provider.pages.ecommerce/shipping.apiKey")}</Label>
-              <Input
-                type="password"
-                autoComplete="off"
-                placeholder={status?.["bob-go"]?.apiKeyHint ?? t("web.provider.pages.ecommerce/shipping.pasteApiKey")}
-                value={bgKey}
-                onChange={(e) => setBgKey(e.target.value)}
-                className="mt-1"
-              />
+            <div className="space-y-2">
+              <div>
+                <Label className="text-xs">{t("web.provider.pages.ecommerce/shipping.apiKey")}</Label>
+                <Input
+                  type="password"
+                  autoComplete="off"
+                  placeholder={status?.["bob-go"]?.apiKeyHint ?? t("web.provider.pages.ecommerce/shipping.pasteApiKey")}
+                  value={bgKey}
+                  onChange={(e) => setBgKey(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">{t("web.provider.pages.ecommerce/shipping.bobGoWebhookSecret")}</Label>
+                <Input
+                  type="password"
+                  autoComplete="off"
+                  placeholder={
+                    status?.["bob-go"]?.webhookSecretConfigured
+                      ? t("web.provider.pages.ecommerce/shipping.bobGoWebhookSecretConfigured")
+                      : t("web.provider.pages.ecommerce/shipping.bobGoWebhookSecretOptional")
+                  }
+                  value={bgWebhookSecret}
+                  onChange={(e) => setBgWebhookSecret(e.target.value)}
+                  className="mt-1"
+                />
+                <p className="mt-1 text-[11px] text-gray-500">
+                  {t("web.provider.pages.ecommerce/shipping.bobGoWebhookSecretHint")}
+                </p>
+              </div>
             </div>
           )}
           {preference === "aramex" && (

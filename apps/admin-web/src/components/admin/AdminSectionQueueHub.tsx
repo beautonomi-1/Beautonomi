@@ -36,6 +36,31 @@ const QUICK_VARIANT_CLASS: Record<NonNullable<QueueHubQuickLink["variant"]>, str
   default: "border-gray-200 bg-white hover:bg-gray-50",
 };
 
+function ToolCardGrid({ cards }: { cards: QueueHubToolCard[] }) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {cards.map((c) => (
+        <Link
+          key={c.to}
+          to={c.to}
+          className="group flex flex-col overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-sm ring-1 ring-gray-950/[0.04] transition hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md"
+        >
+          <div className={cn("bg-gradient-to-br px-5 py-4 text-white", c.accent)}>
+            <c.icon className="h-8 w-8 opacity-90" aria-hidden />
+          </div>
+          <div className="flex flex-1 flex-col p-5">
+            <h3 className="text-lg font-semibold text-gray-900">{c.label}</h3>
+            <p className="mt-2 flex-1 text-sm leading-relaxed text-gray-600">{c.description}</p>
+            <span className="mt-4 inline-flex min-h-11 items-center text-sm font-semibold text-gray-900 group-hover:underline">
+              Open →
+            </span>
+          </div>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 export function AdminSectionQueueHub({
   title,
   description,
@@ -43,6 +68,7 @@ export function AdminSectionQueueHub({
   quickLinks = [],
   queueLinks = [],
   toolCards = [],
+  cardGroups = [],
 }: {
   title: string;
   description: string;
@@ -56,6 +82,8 @@ export function AdminSectionQueueHub({
     urgent?: boolean;
   }>;
   toolCards?: QueueHubToolCard[];
+  /** When set, renders grouped card sections instead of a single “Tools” block. */
+  cardGroups?: { heading: string; cards: QueueHubToolCard[] }[];
 }) {
   return (
     <div className="space-y-8">
@@ -173,29 +201,19 @@ export function AdminSectionQueueHub({
         </AdminPanel>
       ) : null}
 
+      {cardGroups.length > 0
+        ? cardGroups.map((group) => (
+            <div key={group.heading}>
+              <h2 className="mb-4 text-lg font-semibold text-gray-900">{group.heading}</h2>
+              <ToolCardGrid cards={group.cards} />
+            </div>
+          ))
+        : null}
+
       {toolCards.length > 0 ? (
         <div>
           <h2 className="mb-4 text-lg font-semibold text-gray-900">Tools</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {toolCards.map((c) => (
-              <Link
-                key={c.to}
-                to={c.to}
-                className="group flex flex-col overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-sm ring-1 ring-gray-950/[0.04] transition hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md"
-              >
-                <div className={cn("bg-gradient-to-br px-5 py-4 text-white", c.accent)}>
-                  <c.icon className="h-8 w-8 opacity-90" aria-hidden />
-                </div>
-                <div className="flex flex-1 flex-col p-5">
-                  <h3 className="text-lg font-semibold text-gray-900">{c.label}</h3>
-                  <p className="mt-2 flex-1 text-sm leading-relaxed text-gray-600">{c.description}</p>
-                  <span className="mt-4 inline-flex min-h-11 items-center text-sm font-semibold text-gray-900 group-hover:underline">
-                    Open →
-                  </span>
-                </div>
-              </Link>
-            ))}
-          </div>
+          <ToolCardGrid cards={toolCards} />
         </div>
       ) : null}
     </div>

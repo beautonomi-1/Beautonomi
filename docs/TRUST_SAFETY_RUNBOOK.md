@@ -13,9 +13,9 @@ Operational guide for Beautonomi Trust & Safety (UGC, blocks, moderation, age-ga
 
 ## Content reports workflow
 
-1. User submits via `POST /api/reports/content` (mobile `ContentReportSheet`).
+1. User submits via `POST /api/reports/content` (mobile `ContentReportSheet`, web `ContentReportDialog`). Reasons include **`illegal_exploitative`**; use **Resolve + hide** (and suspend author when needed) — no extra escalation status is exposed in Admin PATCH.
 2. Slack alert: `safety.content_report.created` (best effort).
-3. Auto-hide (optional): when `safety.auto_hide_report_threshold` is **enabled**; threshold/window read from flag metadata (`threshold`, `window_hours`, defaults 3 / 24h).
+3. Auto-hide (optional): when `safety.auto_hide_report_threshold` is **enabled** (global row enabled in migration 983; tenant overrides are not modified). At default **3 pending reports in 24h**, the target is hidden with **null system actor ids** (`moderated_by` / `hidden_by` unset). The report **stays pending** until an admin resolves, resolves + hides, or dismisses.
 4. Admin reviews at **Admin → Content Reports** (`/admin/content-reports`).
 5. Resolve actions:
    - **Resolve** — close report only
@@ -53,7 +53,9 @@ Mobile apps block on a **versioned EULA gate** before sign-in and again after si
 
 ## Age-gate rollout (enforce flip)
 
-**Current default:** `safety.social_age_gate_mode` metadata `{ "mode": "log" }` (see migration 828).
+**Code default when flag read fails:** `enforce` (`resolveAgeAssurancePolicy` fallback). **Production** should set `safety.social_age_gate_mode` metadata `{ "mode": "enforce" }` when ready. Stored `off` or `log` still wins when the flag loads.
+
+**Signed-in unknown age band (enforce):** Explore feed and related reads respect forced `hide_social_feed`; **comments and likes/saves are blocked**; **provider publish (`ugc_create`) is not blocked** so staff without DOB can still post. Comment list returns **404** for restricted viewers but **200 for the post’s provider** (partner comment review). Collection GET returns **`posts: []`** when the feed is hidden and drops blocked/muted authors.
 
 ### Pre-enforce checklist
 

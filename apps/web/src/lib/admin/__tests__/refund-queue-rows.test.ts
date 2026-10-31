@@ -79,4 +79,49 @@ describe("buildRefundQueueRows", () => {
     expect(rows[0]?.collected).toBe(150);
     expect(rows[0]?.primary_transaction_id).toBeNull();
   });
+
+  it("keeps Paystack remainder processable while pending cash confirmation exists", () => {
+    const row = baseRow({
+      amount: 50,
+      refund_amount: 0,
+      booking: {
+        id: "booking-1",
+        booking_number: "BK-MIX",
+        status: "cancelled",
+        payment_status: "paid",
+        total_paid: 110,
+        total_refunded: 0,
+      },
+      booking_refunds: [
+        {
+          id: "cr1",
+          status: "pending",
+          refund_method: "cash",
+          amount: 60,
+          reason: "cancel",
+        },
+      ],
+    });
+
+    const rows = buildRefundQueueRows([row], {
+      disputesByBookingId: new Set(),
+      ticketsByBookingId: new Set(),
+      coverageByBookingId: new Map(),
+      additionalChargesById: new Map(),
+      bookingPaymentsByBookingId: new Map([
+        [
+          "booking-1",
+          [
+            { payment_provider: "paystack", payment_method: "card", amount: 50, status: "completed" },
+            { payment_provider: "cash", payment_method: "cash", amount: 60, status: "completed" },
+          ],
+        ],
+      ]),
+    });
+
+    expect(rows[0]?.queue_reason).toBe("awaiting_cash_confirmation");
+    expect(rows[0]?.wallet_remaining_refundable).toBeGreaterThan(45);
+    expect(rows[0]?.is_processable).toBe(true);
+    expect(rows[0]?.is_wallet_substitute_allowed).toBe(false);
+  });
 });

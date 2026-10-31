@@ -53,7 +53,7 @@ describe("effectiveSafetySettings", () => {
     expect(teen.hide_social_feed.locked).toBe(true);
 
     const unknown = await effectiveSafetySettings("unknown", { hide_social_feed: false });
-    expect(unknown.hide_social_feed.value).toBe(false);
-    expect(unknown.hide_social_feed.locked).toBe(false);
+    expect(unknown.hide_social_feed.value).toBe(true);
+    expect(unknown.hide_social_feed.locked).toBe(true);
   });
 });

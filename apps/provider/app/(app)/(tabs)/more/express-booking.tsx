@@ -187,7 +187,13 @@ export default function ExpressBookingScreen() {
   const [subscriptionRequired, setSubscriptionRequired] = useState(false);
 
   const bookableItems = normalizeArray<BookableItem>(servicesRaw).filter((item) => item.id);
-  const activeStaff = normalizeArray<StaffMember>(staffRaw).filter((member) => member.id && member.is_active !== false);
+  const activeStaff = normalizeArray<StaffMember>(staffRaw).filter(
+    (member) =>
+      member.id &&
+      member.is_active !== false &&
+      (member as { is_service_provider?: boolean | null }).is_service_provider !== false &&
+      (member as { enable_in_online_booking?: boolean | null }).enable_in_online_booking !== false,
+  );
   const salonLocations = normalizeArray<ProviderLocation>(locationsRaw).filter(
     (loc) => loc.id && loc.is_active !== false && (loc.location_type == null || loc.location_type === "salon"),
   );

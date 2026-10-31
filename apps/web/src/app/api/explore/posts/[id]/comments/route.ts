@@ -13,6 +13,7 @@ import { requireSocialAccess } from "@/lib/safety/require-social-access";
 import { getBlockedUserIds, getMutedUserIds, assertNotBlocked, UserBlockedError } from "@/lib/safety/user-blocks";
 import { filterBlockedCommentAuthors } from "@/lib/safety/filter-explore-posts";
 import { isExploreEnabled } from "@/lib/explore/explore-feature-gates";
+import { getViewerSafetyContext } from "@/lib/safety/viewer-safety-context";
 
 /** Returns true if the post is publicly visible (published + not hidden). */
 function isPostPublic(post: { status: string; is_hidden: boolean }) {
@@ -63,6 +64,16 @@ export async function GET(
     }
     if (!canAccess) {
       return errorResponse("Post not found", "NOT_FOUND", 404);
+    }
+
+    if (viewer) {
+      const providerAccess = await userCanAccessPostAsProvider(viewer.id, post.provider_id);
+      if (!providerAccess) {
+        const viewerSafety = await getViewerSafetyContext(viewer.id, request);
+        if (viewerSafety.hideSocialFeed) {
+          return errorResponse("Post not found", "NOT_FOUND", 404);
+        }
+      }
     }
 
     if (viewer) {

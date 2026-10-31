@@ -157,6 +157,77 @@ export async function listActiveStaffIdsForLocation(
   return applyLocationScopeToStaffIds(ids, scope);
 }
 
+async function loadStaffBookableRowsForIds(
+  supabase: QueryClient,
+  ids: string[],
+): Promise<
+  Array<{
+    id: string;
+    is_active?: boolean | null;
+    is_service_provider?: boolean | null;
+    enable_in_online_booking?: boolean | null;
+    bookable_from?: string | null;
+  }>
+> {
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase
+    .from("provider_staff")
+    .select("id, is_active, is_service_provider, enable_in_online_booking, bookable_from")
+    .in("id", ids);
+  if (error) throw error;
+  return (data ?? []) as Array<{
+    id: string;
+    is_active?: boolean | null;
+    is_service_provider?: boolean | null;
+    enable_in_online_booking?: boolean | null;
+    bookable_from?: string | null;
+  }>;
+}
+
+/** Customer-facing any-staff union: honors online bookable flags. */
+export async function listPubliclyBookableStaffIdsForLocation(
+  supabase: QueryClient,
+  providerId: string,
+  locationId: string | null | undefined,
+  providerTimeZone?: string | null,
+): Promise<string[]> {
+  const { filterStaffIdsByPublicBookability } = await import("@/lib/provider/staff-public-bookable");
+  const scoped = await listActiveStaffIdsForLocation(supabase, providerId, locationId);
+  if (scoped.length === 0) return [];
+  const rows = await loadStaffBookableRowsForIds(supabase, scoped);
+  return filterStaffIdsByPublicBookability(rows, providerTimeZone);
+}
+
+/** In-house any-staff union: excludes explicit non-service-provider rows only. */
+export async function listActiveServiceProviderStaffIdsForLocation(
+  supabase: QueryClient,
+  providerId: string,
+  locationId: string | null | undefined,
+): Promise<string[]> {
+  const { isExplicitServiceProvider } = await import("@/lib/provider/staff-public-bookable");
+  const scoped = await listActiveStaffIdsForLocation(supabase, providerId, locationId);
+  if (scoped.length === 0) return [];
+  const rows = await loadStaffBookableRowsForIds(supabase, scoped);
+  return rows.filter((r) => isExplicitServiceProvider(r)).map((r) => r.id);
+}
+
+export async function isStaffPubliclyBookableForProvider(
+  supabase: QueryClient,
+  staffId: string,
+  providerId: string,
+  providerTimeZone?: string | null,
+): Promise<boolean> {
+  const { isPubliclyBookableStaff } = await import("@/lib/provider/staff-public-bookable");
+  const { data } = await supabase
+    .from("provider_staff")
+    .select("id, is_active, is_service_provider, enable_in_online_booking, bookable_from")
+    .eq("id", staffId)
+    .eq("provider_id", providerId)
+    .maybeSingle();
+  if (!data) return false;
+  return isPubliclyBookableStaff(data, providerTimeZone);
+}
+
 export function decideUnassignedStaffBranchAccess(input: {
   assignedLocationIds: string[];
   bookingLocationId: string | null | undefined;

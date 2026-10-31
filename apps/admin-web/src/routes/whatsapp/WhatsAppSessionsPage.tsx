@@ -9,6 +9,9 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminToast } from "@/lib/adminToast";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminSession } from "@/providers/AdminSessionProvider";
+import { Link } from "react-router";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 import { Loader2, Plus, Wifi, WifiOff, QrCode, Trash2, RotateCcw, Pause, Play, MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/cn";
 
@@ -64,6 +67,8 @@ function StatusBadge({ status, isPaused }: { status: string; isPaused: boolean }
 }
 
 export function WhatsAppSessionsPage() {
+  const { bootstrap } = useAdminSession();
+  const isSuperadmin = bootstrap?.isSuperadmin === true;
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_INTEGRATIONS_DEV,
     "Integrations & dev access is required for WhatsApp sessions."
@@ -192,6 +197,22 @@ export function WhatsAppSessionsPage() {
           </button>
         }
       />
+
+      {isSuperadmin ? (
+        <AdminPanel className="text-sm text-gray-700">
+          <Link
+            to={adminSpaTo("/admin/control-plane/integrations/wasender")}
+            className="font-medium text-primary hover:underline"
+          >
+            Wasender credentials
+          </Link>
+          <span className="text-gray-600"> — save the API token before connecting a session.</span>
+        </AdminPanel>
+      ) : (
+        <AdminPanel className="text-sm text-gray-600">
+          A superadmin must save Wasender credentials before sessions can connect to the API.
+        </AdminPanel>
+      )}
 
       {sessionsQuery.isLoading ? (
         <div className="flex items-center justify-center py-12">

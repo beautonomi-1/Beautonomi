@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
+import { computeInPersonCollectibleAmount } from "@/lib/orders/product-order-tender";
 import { normalizePaycloudMajorAmount } from "@/lib/payments/paycloud-cloud-amount";
 import { resolveSaleEntityTarget } from "@/lib/provider-sales/resolve-sale-entity-target";
 
@@ -878,7 +879,7 @@ async function reverseProductOrderCardMachinePayment(
   const admin = getSupabaseAdmin();
   const { data: order } = await admin
     .from("product_orders")
-    .select("id, payment_status, payment_reference, provider_id, total_amount, wallet_amount, status")
+    .select("id, payment_status, payment_reference, provider_id, total_amount, wallet_amount, gift_card_amount, status")
     .eq("id", input.entityId)
     .eq("provider_id", input.providerId)
     .maybeSingle();
@@ -902,10 +903,7 @@ async function reverseProductOrderCardMachinePayment(
     .eq("reference", input.origProviderPaymentId)
     .maybeSingle();
 
-  const collectibleTotal = Math.max(
-    0,
-    Number(order.total_amount ?? 0) - Number(order.wallet_amount ?? 0),
-  );
+  const collectibleTotal = computeInPersonCollectibleAmount(order);
   const paidAmount = Math.max(0, Number(paymentTx?.amount ?? collectibleTotal));
   const refundAmount =
     input.refundAmount != null && input.refundAmount > 0 ? Number(input.refundAmount) : paidAmount;

@@ -7,6 +7,15 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
 import { checkAdminExportRateLimit } from "@/lib/rate-limit/admin-export";
 
+function parseExportDateParam(value: string, endOfDay: boolean): Date {
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return endOfDay ? new Date(`${trimmed}T23:59:59.999Z`) : new Date(`${trimmed}T00:00:00.000Z`);
+  }
+  const parsed = new Date(trimmed);
+  return parsed;
+}
+
 /**
  * GET /api/admin/export/analytics
  * 
@@ -38,8 +47,11 @@ export async function GET(request: NextRequest) {
     let endDate = now;
 
     if (startDateParam && endDateParam) {
-      startDate = new Date(`${startDateParam}T00:00:00.000Z`);
-      endDate = new Date(`${endDateParam}T23:59:59.999Z`);
+      startDate = parseExportDateParam(startDateParam, false);
+      endDate = parseExportDateParam(endDateParam, true);
+      if (!Number.isFinite(startDate.getTime()) || !Number.isFinite(endDate.getTime())) {
+        return errorResponse("Invalid start_date or end_date", "VALIDATION_ERROR", 400);
+      }
     } else {
       switch (period) {
         case "7d":

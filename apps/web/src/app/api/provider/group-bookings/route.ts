@@ -741,11 +741,13 @@ export async function POST(request: NextRequest) {
             (p.email || p.participant_email || p.client_email || "").toString().trim();
           if (participantName) {
             try {
+              const tenantPhoneDial = (tenantRegion?.phoneCountryCode ?? "+27").replace(/^\+/, "");
               const shadow = await createOrResolveShadowCustomer({
                 supabaseAdmin: admin,
                 fullName: participantName,
                 email: participantEmail || null,
                 phone: participantPhone || null,
+                phoneCountryCode: tenantPhoneDial,
                 providerId,
                 shadowSource: "group_booking",
                 createdByUserId: user.id,

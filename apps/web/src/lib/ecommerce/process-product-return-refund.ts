@@ -5,6 +5,7 @@ import {
   restockProductOrderLineItems,
   type ProductOrderSideEffectRow,
 } from "@/lib/orders/product-order-lifecycle";
+import { allowsInPersonProductOrderRefund } from "@/lib/orders/product-order-tender";
 
 export type ProductReturnRefundMethod = "store_credit" | "cash";
 
@@ -61,7 +62,7 @@ export async function processProductReturnRefund(
   const { data: order, error: orderError } = await supabase
     .from("product_orders")
     .select(
-      "id, provider_id, payment_status, total_amount, customer_id, currency, tenant_id, order_number, refunded_amount, status, gift_card_amount",
+      "id, provider_id, payment_status, payment_method, total_amount, wallet_amount, customer_id, currency, tenant_id, order_number, refunded_amount, status, gift_card_amount",
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -90,6 +91,13 @@ export async function processProductReturnRefund(
     throw new ProductReturnRefundError(
       `Refund amount cannot exceed ${Math.max(0, remainingRefundable).toFixed(2)}.`,
       "INVALID_REFUND_AMOUNT",
+    );
+  }
+
+  if (refundMethod === "cash" && !allowsInPersonProductOrderRefund(orderRow)) {
+    throw new ProductReturnRefundError(
+      "This order was paid online. Refund it as store credit so the card charge goes back to the customer.",
+      "REFUND_ORIGINAL_TENDER",
     );
   }
 
@@ -136,6 +144,8 @@ export async function processProductReturnRefund(
     newStatus: "refunded",
     refundAmount,
     refundReason: refundReason ?? undefined,
+    walletCreditIssued: refundMethod === "store_credit" ? refundAmount : 0,
+    storeCreditClawbackKey: `product_return_refund:${returnId}`,
   });
 
   const newRefundedTotal = priorRefunded + refundAmount;

@@ -155,7 +155,27 @@ export interface ProviderApi {
 
   // Team
   listTeamMembers(locationId?: string): Promise<TeamMember[]>;
-  createTeamMember(data: Partial<TeamMember> & { location_ids?: string[] }): Promise<TeamMember>;
+  createTeamMember(
+    data: Partial<TeamMember> & {
+      location_ids?: string[];
+      job?: string;
+      service_ids?: string[];
+      commission_rate?: number | null;
+      invite_email?: boolean;
+      hours_source?: { type: "location"; location_id?: string } | { type: "staff"; staff_id: string };
+      bookable_from?: string | null;
+      time_clock_enabled?: boolean;
+      public_title?: string | null;
+      takes_appointments?: boolean;
+    },
+  ): Promise<
+    TeamMember & {
+      join_url?: string | null;
+      email_delivered?: boolean;
+      push_delivered?: boolean;
+      hours_copied?: boolean;
+    }
+  >;
   updateTeamMember(id: string, data: Partial<TeamMember>): Promise<TeamMember>;
   deleteTeamMember(id: string): Promise<void>;
 
@@ -2444,6 +2464,9 @@ export class ProviderApiClient implements ProviderApi {
         is_active: member.is_active ?? true,
         working_hours: member.working_hours ?? null,
         over_cap_grace_until: member.over_cap_grace_until ?? null,
+        is_service_provider: member.is_service_provider ?? true,
+        enable_in_online_booking: member.enable_in_online_booking ?? true,
+        bookable_from: member.bookable_from ?? null,
       }));
 
       return teamMembers;
@@ -2456,15 +2479,49 @@ export class ProviderApiClient implements ProviderApi {
     }
   }
 
-  async createTeamMember(data: Partial<TeamMember> & { location_ids?: string[] }): Promise<TeamMember> {
+  async createTeamMember(
+    data: Partial<TeamMember> & {
+      location_ids?: string[];
+      job?: string;
+      service_ids?: string[];
+      commission_rate?: number | null;
+      invite_email?: boolean;
+      hours_source?: { type: "location"; location_id?: string } | { type: "staff"; staff_id: string };
+      bookable_from?: string | null;
+      time_clock_enabled?: boolean;
+      public_title?: string | null;
+      takes_appointments?: boolean;
+    },
+  ): Promise<
+    TeamMember & {
+      join_url?: string | null;
+      email_delivered?: boolean;
+      push_delivered?: boolean;
+      hours_copied?: boolean;
+    }
+  > {
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
       const response = await fetcher.post<{ data: any }>("/api/provider/staff", {
         email: data.email,
-        role: data.role === "owner" ? "provider_owner" : data.role === "manager" ? "provider_manager" : "provider_staff",
+        role:
+          data.role === "owner"
+            ? "provider_owner"
+            : data.role === "manager"
+              ? "provider_manager"
+              : "provider_staff",
         name: data.name,
         phone: data.mobile,
+        ...(data.job ? { job: data.job } : {}),
         ...(data.location_ids?.length ? { location_ids: data.location_ids } : {}),
+        ...(data.service_ids?.length ? { service_ids: data.service_ids } : {}),
+        ...(data.commission_rate !== undefined ? { commission_rate: data.commission_rate } : {}),
+        ...(data.invite_email !== undefined ? { invite_email: data.invite_email } : {}),
+        ...(data.hours_source ? { hours_source: data.hours_source } : {}),
+        ...(data.bookable_from !== undefined ? { bookable_from: data.bookable_from } : {}),
+        ...(data.time_clock_enabled !== undefined ? { time_clock_enabled: data.time_clock_enabled } : {}),
+        ...(data.public_title !== undefined ? { public_title: data.public_title } : {}),
+        ...(data.takes_appointments !== undefined ? { takes_appointments: data.takes_appointments } : {}),
       });
       
       const member = response.data;
@@ -2482,6 +2539,10 @@ export class ProviderApiClient implements ProviderApi {
         mobile: member.phone || data.mobile || "",
         role: frontendRole,
         is_active: member.is_active ?? true,
+        join_url: member.join_url ?? null,
+        email_delivered: member.email_delivered ?? false,
+        push_delivered: member.push_delivered ?? false,
+        hours_copied: member.hours_copied === true,
       };
     } catch (error: any) {
       await this.handleApiError(

@@ -33,6 +33,8 @@ type ResetResponse = {
   compliance_audit_write_error: string | null;
   /** True when the audit row was written but without purge_after_at (schema drift). Apply migration 723 to resolve. */
   compliance_audit_degraded: boolean | null;
+  storage_purge_error?: string | null;
+  reporting_views_refresh_error?: string | null;
   counts: Record<string, CountEntry>;
   totals: { tables: number; rows: number };
   report?: unknown;
@@ -170,18 +172,15 @@ export function TenantResetPage() {
         title="Tenant transactional reset"
         description={
           <>
-            <strong>Clean slate for a tenant.</strong> Wipes bookings, payments, orders, ledger/journal entries,
-            reviews, conversations, notifications, support tickets, provider gamification, group bookings, explore
-            posts, waitlist, ad campaigns, payouts, provider invoices, recurring appointments, VAT reminders,
-            payment webhook events, promotion usage, gift-card/loyalty redemptions, salon memberships
-            (<code>user_memberships</code>), provider-linked <code>customer_memberships</code>, terminal
-            orders/assets/campaigns, Paystack/PayCloud/Yoco terminal payment history, merchant onboarding
-            applications, and fee reconciliations scoped to that tenant — then recomputes cached aggregates from
-            surviving data (provider rating, reviews, bookings, payouts, badge, wallet balances, and PayCloud
-            terminal counters). Preserves users, providers, services, products, badge/coupon/loyalty config,
-            platform settings, tenant config, and cross-tenant user-global data (referrals, coupons, milestone
-            awards, non-booking loyalty, platform memberships with null provider_id). Terminal catalog and
-            vendor/credential config are preserved; only transactional terminal history is cleared.
+            <strong>Clean slate for a tenant.</strong> Atomically wipes bookings and children, checkout payments,
+            payment transactions, disputes, wallet bank-refund requests, payroll, ad budget/events, product reviews,
+            carts, travel routes, location events, content reports, WhatsApp booking messages, delivery-queue rows,
+            transactional stock movements (with quantity reversal), brand desk transactional rows, and the existing
+            terminal/PayCloud/Yoco/membership/explore/support/ledger scope — then recomputes provider, client,
+            ops-case, wallet, and PayCloud counters. Files are purged only after the database commit. Preserves
+            mailboxes, bank accounts, brand settings/strategy/plans, manual stock, platform Explore sounds, user
+            blocks, Apple settlements, retention ops cases, referral rows, catalog/spine, and platform memberships
+            with null <code>provider_id</code>.
           </>
         }
       />
@@ -209,7 +208,11 @@ export function TenantResetPage() {
             <code className="rounded bg-amber-100/80 px-1 text-xs">user_memberships</code>,{" "}
             provider-linked <code className="rounded bg-amber-100/80 px-1 text-xs">customer_memberships</code>.
             Catalog/config preserved: <code className="rounded bg-amber-100/80 px-1 text-xs">terminal_products</code>, PayCloud merchants/terminals/settings, Yoco devices/integrations/webhook config, membership plans.
-            Platform memberships (<code className="rounded bg-amber-100/80 px-1 text-xs">customer_memberships.provider_id IS NULL</code>) and merchant-onboarding storage objects are not purged.
+            Platform memberships (<code className="rounded bg-amber-100/80 px-1 text-xs">customer_memberships.provider_id IS NULL</code>) stay. Live runs purge transactional storage (explore media, message attachments, brand assets, merchant onboarding docs, consent PDFs, custom-request files, review images) after the database commit.
+          </li>
+          <li>
+            Also clears scoped notifications (payload keys only), unlinks <code>user_referrals.booking_id</code>{" "}
+            (row kept), and zeros support mailbox import counters without deleting mailboxes.
           </li>
           <li>Use the <em>Preview (dry run)</em> button first — it returns per-table counts without deleting anything.</li>
           <li>The default ZA tenant is blocked unless you explicitly tick <em>Allow default tenant</em>. Do not tick it unless you are truly wiping production.</li>
@@ -404,6 +407,16 @@ export function TenantResetPage() {
           {liveReport?.compliance_audit_degraded ? (
             <p className="text-xs text-amber-700">
               Audit row written without retention date (schema drift — apply migration 723 to resolve).
+            </p>
+          ) : null}
+          {liveReport?.storage_purge_error ? (
+            <p className="text-xs text-amber-800">
+              Storage purge reported an error (database reset already committed): {liveReport.storage_purge_error}
+            </p>
+          ) : null}
+          {liveReport?.reporting_views_refresh_error ? (
+            <p className="text-xs text-amber-800">
+              Reporting materialized views could not be refreshed: {liveReport.reporting_views_refresh_error}
             </p>
           ) : null}
         </AdminPanel>

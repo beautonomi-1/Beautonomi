@@ -12,6 +12,7 @@ export type QueueReason =
   | "gift_card_voided"
   | "awaiting_cash_confirmation"
   | "awaiting_terminal_reversal"
+  | "cash_refund_disputed"
   | "no_refund_due"
   | "not_applicable";
 
@@ -22,6 +23,7 @@ export const NEEDS_ACTION_REASONS = new Set<QueueReason>([
   "open_dispute",
   "refund_support_ticket",
   "cancelled_unrefunded",
+  "cash_refund_disputed",
 ]);
 
 export type RefundQueueSignals = {
@@ -35,6 +37,9 @@ export type RefundQueueSignals = {
   hasOpenDispute?: boolean;
   hasRefundSupportTicket?: boolean;
   hasGatewayCapture?: boolean;
+  /** Platform / gateway portion still owed as wallet credit. */
+  walletRemainingRefundable?: number;
+  pendingCashTotal?: number;
 };
 
 export type DerivedQueueReason = {
@@ -87,11 +92,30 @@ export function deriveQueueReason(signals: RefundQueueSignals): DerivedQueueReas
     };
   }
 
-  const failed = refunds.find((r) => String(r.status ?? "") === "failed");
-  if (failed) {
+  const failedDisputedCash = refunds.find(
+    (r) =>
+      String(r.status ?? "") === "failed" &&
+      String(r.refund_method ?? "").toLowerCase() === "cash" &&
+      Boolean((r as { customer_disputed_at?: string | null }).customer_disputed_at),
+  );
+  if (failedDisputedCash) {
+    return {
+      queue_reason: "cash_refund_disputed",
+      queue_reason_detail:
+        failedDisputedCash.notes ?? "Customer disputed the in-person refund",
+      needs_action: true,
+    };
+  }
+
+  const failedStoreCredit = refunds.find(
+    (r) =>
+      String(r.status ?? "") === "failed" &&
+      String(r.refund_method ?? "store_credit").toLowerCase() === "store_credit",
+  );
+  if (failedStoreCredit) {
     return {
       queue_reason: "wallet_credit_failed",
-      queue_reason_detail: failed.notes ?? failed.reason ?? null,
+      queue_reason_detail: failedStoreCredit.notes ?? failedStoreCredit.reason ?? null,
       needs_action: true,
     };
   }
@@ -186,9 +210,25 @@ export function deriveQueueReason(signals: RefundQueueSignals): DerivedQueueReas
   }
 
   if (isCancelledStatus(bookingStatus)) {
+    const walletRemaining = Math.max(0, signals.walletRemainingRefundable ?? remaining);
+    if (walletRemaining <= 0.01) {
+      const pendingCash = signals.pendingCashTotal ?? 0;
+      if (pendingCash > 0.01) {
+        return {
+          queue_reason: "awaiting_cash_confirmation",
+          queue_reason_detail: "In-person refund waiting for customer confirmation",
+          needs_action: false,
+        };
+      }
+      return {
+        queue_reason: "not_applicable",
+        queue_reason_detail: null,
+        needs_action: false,
+      };
+    }
     return {
       queue_reason: "cancelled_unrefunded",
-      queue_reason_detail: `${remaining.toFixed(2)} not yet credited to customer wallet`,
+      queue_reason_detail: `${walletRemaining.toFixed(2)} not yet credited to customer wallet`,
       needs_action: true,
     };
   }
@@ -220,6 +260,8 @@ export function queueReasonLabel(reason: QueueReason): string {
       return "Gift card was restored instead of wallet credit";
     case "awaiting_cash_confirmation":
       return "Cash refund waiting for customer confirmation";
+    case "cash_refund_disputed":
+      return "Customer disputed in-person refund — review or issue store credit substitute";
     case "awaiting_terminal_reversal":
       return "Terminal reversal in progress";
     case "no_refund_due":
@@ -234,15 +276,35 @@ export function computeDisplayRemaining(args: {
   retainedFeeTotal?: number;
   giftCardVoidedTotal?: number;
   reservedPendingTotal?: number;
+  /** Pending in-person cash only (not stuck store_credit rows). */
+  pendingCashTotal?: number;
   queueReason: QueueReason;
 }): number {
   let remaining = Math.max(0, args.remainingRefundable);
   if (args.queueReason === "kept_per_policy") return 0;
   if (args.queueReason === "gift_card_voided") return 0;
-  if (args.queueReason === "awaiting_cash_confirmation") {
-    remaining = Math.max(0, remaining - (args.reservedPendingTotal ?? 0));
+  if (
+    args.queueReason === "awaiting_cash_confirmation" ||
+    args.queueReason === "cash_confirm_overdue"
+  ) {
+    remaining = Math.max(0, remaining - (args.pendingCashTotal ?? 0));
   }
   return remaining;
+}
+
+/** Wallet credit modal amount (excludes pending in-person cash leg). */
+export function computeWalletActionRemaining(args: {
+  walletRemainingRefundable: number;
+  pendingCashTotal: number;
+  queueReason: QueueReason;
+}): number {
+  if (args.queueReason === "cash_confirm_overdue" || args.queueReason === "cash_refund_disputed") {
+    return Math.max(0, args.walletRemainingRefundable);
+  }
+  if (args.queueReason === "awaiting_cash_confirmation") {
+    return Math.max(0, args.walletRemainingRefundable);
+  }
+  return Math.max(0, args.walletRemainingRefundable);
 }
 
 export function sumPendingRefundAmount(refunds: BookingRefundSummary[] | undefined): number {

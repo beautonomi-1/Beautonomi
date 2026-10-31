@@ -107,8 +107,24 @@ function buildMock(opts: MockOpts = {}): SupabaseClient {
         };
       }
 
+      if (table === "booking_payments") {
+        const emptyPayments = Promise.resolve({ data: [] as unknown[], error: null });
+        const afterBookingEq = Object.assign(
+          Promise.resolve({ data: [] as unknown[], error: null }),
+          { eq: () => emptyPayments },
+        );
+        return {
+          select: () => ({
+            eq: () => afterBookingEq,
+          }),
+        };
+      }
+
       if (table === "booking_refunds") {
         return {
+          select: () => ({
+            eq: () => Promise.resolve({ data: [], error: null }),
+          }),
           insert: () => ({
             select: () => ({
               single: () =>

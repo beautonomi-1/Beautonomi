@@ -102,6 +102,7 @@ function mapStaffJsonToTeamMembers(staff: any[]): TeamMember[] {
           : "employee",
     is_active: member.is_active ?? true,
     working_hours: member.working_hours ?? null,
+    is_service_provider: member.is_service_provider ?? true,
   }));
 }
 

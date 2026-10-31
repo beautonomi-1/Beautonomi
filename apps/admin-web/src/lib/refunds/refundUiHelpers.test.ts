@@ -152,6 +152,17 @@ describe("deriveRefundRowState", () => {
     expect(state.payoutLabel).toBeNull();
   });
 
+  it("shows store credit substitute label for overdue in-person cash", () => {
+    const state = deriveRefundRowState({
+      status: "success",
+      booking: { id: "b-1" },
+      is_processable: true,
+      is_wallet_substitute_allowed: true,
+      refund_state: "not_refunded",
+    });
+    expect(state.actionLabel).toBe("Issue store credit instead");
+  });
+
   it("shows credited elsewhere without action", () => {
     const state = deriveRefundRowState({
       status: "success",

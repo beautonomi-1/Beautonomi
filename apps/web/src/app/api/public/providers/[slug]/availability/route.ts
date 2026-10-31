@@ -16,7 +16,8 @@ import {
 } from "@/lib/provider-booking/public-online-booking-windows";
 import {
   isStaffInLocationScope,
-  listActiveStaffIdsForLocation,
+  listPubliclyBookableStaffIdsForLocation,
+  isStaffPubliclyBookableForProvider,
   resolveStaffLocationScope,
 } from "@/lib/provider/staff-location-scope";
 
@@ -173,21 +174,6 @@ export async function GET(
       staffId === "" ||
       (typeof staffId === "string" && staffId.startsWith("provider-"));
 
-    let staffList: Array<{ id: string }> = [];
-    if (anyoneMode) {
-      const scopedIds = await listActiveStaffIdsForLocation(
-        supabase,
-        provider.id,
-        locationId,
-      );
-      staffList = scopedIds.map((id) => ({ id })).sort((a, b) => a.id.localeCompare(b.id));
-    } else if (staffId && locationId) {
-      const scope = await resolveStaffLocationScope(supabase, provider.id, locationId);
-      if (!isStaffInLocationScope(staffId, scope)) {
-        return NextResponse.json({ data: { slots: [] }, error: null });
-      }
-    }
-
     const rawProviderTimeZone =
       typeof (provider as { timezone?: string | null }).timezone === "string"
         ? (provider as { timezone?: string | null }).timezone
@@ -201,6 +187,33 @@ export async function GET(
       );
     }
 
+    let staffList: Array<{ id: string }> = [] as Array<{ id: string }>;
+    if (anyoneMode) {
+      const scopedIds = await listPubliclyBookableStaffIdsForLocation(
+        supabase,
+        provider.id,
+        locationId,
+        providerTimeZone,
+      );
+      staffList = scopedIds.map((id) => ({ id })).sort((a, b) => a.id.localeCompare(b.id));
+    } else if (staffId && !staffId.startsWith("provider-")) {
+      if (locationId) {
+        const scope = await resolveStaffLocationScope(supabase, provider.id, locationId);
+        if (!isStaffInLocationScope(staffId, scope)) {
+          return NextResponse.json({ data: { slots: [] }, error: null });
+        }
+      }
+      const bookable = await isStaffPubliclyBookableForProvider(
+        supabase,
+        staffId,
+        provider.id,
+        providerTimeZone,
+      );
+      if (!bookable) {
+        return NextResponse.json({ data: { slots: [] }, error: null });
+      }
+    }
+
     if (isDateBeyondMaxAdvance(date, effectiveMaxAdvance, providerTimeZone)) {
       return NextResponse.json({ data: { slots: [] }, error: null });
     }
@@ -209,6 +222,25 @@ export async function GET(
     const travelBufferParam = parseInt(searchParams.get("travel_buffer_minutes") || "0", 10);
     const travelBufferMinutes =
       Number.isFinite(travelBufferParam) && travelBufferParam >= 0 ? Math.min(360, travelBufferParam) : 0;
+
+    const offeringFilterIds =
+      orderedOfferingIds.length > 0
+        ? orderedOfferingIds
+        : serviceId
+          ? [serviceId]
+          : [];
+    if (offeringFilterIds.length > 0 && staffList.length > 0) {
+      const { staffIdsEligibleForOfferings } = await import(
+        "@/lib/provider/staff-ids-eligible-for-offerings"
+      );
+      const eligible = await staffIdsEligibleForOfferings(
+        supabase,
+        staffList.map((s) => s.id),
+        offeringFilterIds,
+      );
+      const allowed = new Set(eligible);
+      staffList = staffList.filter((s) => allowed.has(s.id));
+    }
 
     let slots = await computePublicSlugAvailabilitySlots({
       supabase,

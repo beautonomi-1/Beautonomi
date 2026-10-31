@@ -13,6 +13,7 @@ export {
   phoneSearchNeedlesUnscoped,
   phoneMatchesQuery,
   clientContactMatches,
+  bookingListMatchesQuery,
   digitsOnlyPhone,
 } from "@beautonomi/phone";
 

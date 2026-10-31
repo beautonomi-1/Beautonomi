@@ -108,10 +108,6 @@ export async function resolveAgeAssurancePolicy(
     };
   } catch (err) {
     console.warn("[age-assurance] resolveAgeAssurancePolicy fallback:", err);
-    return {
-      ...DEFAULT_POLICY,
-      socialAgeGateMode: "off",
-      restrictedModeDefaults: {},
-    };
+    return DEFAULT_POLICY;
   }
 }

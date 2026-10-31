@@ -31,6 +31,10 @@ import { twStyle } from "@/lib/twStyle";
 import { phoneMatchesQuery } from "@/lib/phone";
 import { useTranslation } from "@beautonomi/i18n";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+import {
+  allowsInPersonProductRefund,
+  productOrderInPersonDue,
+} from "@/lib/product-order-in-person";
 
 type TranslateFn = (key: string, opts?: Record<string, unknown>) => string;
 
@@ -46,6 +50,38 @@ const LINE_FULFILMENT_RANK: Record<string, number> = {
   delivered: 3,
   cancelled: -1,
 };
+
+function providerBookingStatusLabel(status: string | null | undefined, detail: string | null | undefined): string {
+  const s = String(status ?? "").toLowerCase();
+  if (s === "submitting") return "Waiting for Bob Go";
+  if (s === "booked") return "Booked with courier";
+  if (s === "failed") return "Courier booking failed";
+  if (s === "skipped" && detail === "rates_pending") return "Couriers still quoting";
+  if (s === "skipped") return "Courier booking skipped";
+  return status ? status.replace(/_/g, " ") : "";
+}
+
+function interpretProviderBookShipment(data: unknown): { ok: boolean; message: string } {
+  const root = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  const nested = root.data && typeof root.data === "object" ? (root.data as Record<string, unknown>) : root;
+  const result = nested.result as { ok?: boolean; error?: string; skipped?: string } | undefined;
+  if (!result) return { ok: false, message: "Unexpected booking response" };
+  if (result.ok === false) return { ok: false, message: result.error ?? "Courier booking failed" };
+  if (result.skipped === "already_booked" || result.skipped === "booking_in_progress") {
+    return {
+      ok: true,
+      message:
+        result.skipped === "booking_in_progress"
+          ? "Booking already in progress."
+          : "Shipment already booked.",
+    };
+  }
+  if (result.skipped === "rates_pending") {
+    return { ok: true, message: "Couriers still quoting. Try again shortly." };
+  }
+  if (result.skipped) return { ok: true, message: String(result.skipped) };
+  return { ok: true, message: "Courier shipment booked." };
+}
 
 function canAdvanceLineFulfilment(from: string, to: string): boolean {
   if (from === to) return true;
@@ -116,6 +152,7 @@ interface Order {
   currency?: string | null;
   status: string;
   payment_status?: string;
+  payment_method?: string | null;
   fulfillment_type?: string;
   order_source?: string | null;
   booking_id?: string | null;
@@ -124,6 +161,8 @@ interface Order {
   tracking_url?: string | null;
   shipping_booking_status?: string | null;
   shipping_booking_detail?: string | null;
+  courier_charged_amount?: number | null;
+  courier_charged_weight_kg?: number | null;
   courier_label_url?: string | null;
   delivery_instructions?: string | null;
   estimated_delivery_date?: string | null;
@@ -151,9 +190,10 @@ interface OrdersListResponse {
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
 
-/** Net amount still due after wallet credit — matches PayCloud amount guards on the server. */
-function orderCollectibleAmount(order: Pick<Order, "total_amount" | "wallet_amount">): number {
-  return Math.max(0, Number(order.total_amount ?? 0) - Number(order.wallet_amount ?? 0));
+function orderCollectibleAmount(
+  order: Pick<Order, "total_amount" | "wallet_amount" | "gift_card_amount">,
+): number {
+  return productOrderInPersonDue(order);
 }
 
 const STATUS_OPTION_DEFS = [
@@ -575,27 +615,33 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         const order = (orderDetail?.id === orderId ? orderDetail : viewOrder?.id === orderId ? viewOrder : allOrders.find((o) => o.id === orderId)) ?? null;
         // Wallet credit needs a platform customer; walk-in sales have none, so
         // those (and any order without a linked customer) are refunded in person.
-        const canWallet = order?.order_source !== "walk_in" && !!order?.customer?.id;
+        const inPerson = allowsInPersonProductRefund(order?.payment_method);
+        const canWallet = !!order?.customer?.id;
+        if (!inPerson && !canWallet) {
+          Alert.alert(po("refundOrderTitle"), po("refundOnlineNoCustomer"));
+          return;
+        }
         const buttons: Parameters<typeof Alert.alert>[2] = [
           { text: po("cancel"), style: "cancel" },
-          {
+        ];
+        if (inPerson) {
+          buttons.push({
             text: po("refundInPerson"),
             onPress: () => doUpdateStatus(orderId, status, { refund_method: "cash" }),
-          },
-        ];
+          });
+        }
         if (canWallet) {
           buttons.push({
             text: po("refundWallet"),
             onPress: () => doUpdateStatus(orderId, status, { refund_method: "store_credit" }),
           });
         }
-        Alert.alert(
-          po("refundOrderTitle"),
-          canWallet
+        const body = !inPerson
+          ? po("refundOnlineOnly")
+          : canWallet
             ? po("refundOrderBodyWallet")
-            : po("refundOrderBodyCash"),
-          buttons,
-        );
+            : po("refundOrderBodyCash");
+        Alert.alert(po("refundOrderTitle"), body, buttons);
       } else {
         doUpdateStatus(orderId, status);
       }
@@ -1064,11 +1110,15 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                     {po("courierBooking")}
                   </Text>
                   {activeOrder.shipping_booking_status ? (
-                    <Text style={twStyle("text-sm text-violet-900 capitalize")}>
-                      {activeOrder.shipping_booking_status.replace(/_/g, " ")}
+                    <Text style={twStyle("text-sm text-violet-900")}>
+                      {providerBookingStatusLabel(
+                        activeOrder.shipping_booking_status,
+                        activeOrder.shipping_booking_detail,
+                      )}
                     </Text>
                   ) : null}
-                  {activeOrder.shipping_booking_detail ? (
+                  {activeOrder.shipping_booking_detail &&
+                  activeOrder.shipping_booking_detail !== "rates_pending" ? (
                     <Text style={twStyle("mt-1 text-xs text-violet-800")}>{activeOrder.shipping_booking_detail}</Text>
                   ) : null}
                   {(!activeOrder.tracking_number ||
@@ -1080,13 +1130,17 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                         if (!activeOrder.id) return;
                         setLoadingDetail(true);
                         try {
-                          const res = await api.post<{ data?: unknown }>(
+                          const res = await api.post<{ data?: { result?: unknown } }>(
                             `/api/provider/product-orders/${activeOrder.id}/book-shipment`,
                             {},
                           );
                           if (res.error) Alert.alert(po("errorTitle"), res.error.message);
                           else {
-                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                            const interpreted = interpretProviderBookShipment(res.data ?? res);
+                            if (interpreted.ok) {
+                              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                            }
+                            Alert.alert(po("courierBooking"), interpreted.message);
                             const detail = await api.get<{ order: Order }>(
                               `/api/provider/product-orders/${activeOrder.id}`,
                             );
@@ -1103,7 +1157,9 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                       </Text>
                     </TouchableOpacity>
                   )}
-                  {(activeOrder.tracking_number || activeOrder.courier_label_url) && (
+                  {activeOrder.tracking_number &&
+                    (activeOrder.carrier !== "bob-go" ||
+                      activeOrder.shipping_booking_status === "booked") && (
                     <TouchableOpacity
                       style={twStyle("mt-2 self-start rounded-lg border border-violet-300 px-3 py-2")}
                       onPress={() =>
@@ -1314,7 +1370,8 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
               ) : (activeOrder.payment_status ?? "").toLowerCase() === "pending" &&
                 activeOrder.status !== "cancelled" &&
                 activeOrder.status !== "refunded" &&
-                canProcessPayments ? (
+                canProcessPayments &&
+                orderCollectibleAmount(activeOrder) > 0 ? (
                 <TouchableOpacity
                   onPress={() => {
                     setRecordPaymentMethod("cash");

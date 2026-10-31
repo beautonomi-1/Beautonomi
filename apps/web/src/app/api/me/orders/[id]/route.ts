@@ -6,6 +6,7 @@ import {
   handleApiError,
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
+import { stripCustomerProductOrderFields } from "@/lib/orders/customer-order-response";
 
 /**
  * GET /api/me/orders/[id]
@@ -95,7 +96,7 @@ export async function GET(
 
     // DB column is `thumbnail_url`; web clients historically expect `logo_url` on provider.
     const rawProvider = (order as { provider?: { thumbnail_url?: string | null } | null }).provider;
-    const orderOut = {
+    const orderOut = stripCustomerProductOrderFields({
       ...order,
       provider: rawProvider
         ? {
@@ -103,7 +104,7 @@ export async function GET(
             logo_url: rawProvider.thumbnail_url ?? null,
           }
         : null,
-    };
+    });
 
     return successResponse({ order: orderOut });
   } catch (err) {

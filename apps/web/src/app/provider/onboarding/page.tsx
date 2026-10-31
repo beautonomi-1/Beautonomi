@@ -261,6 +261,12 @@ interface OnboardingData {
   selected_plan_id?: string;
   selected_plan_name?: string;
   no_plans_available?: boolean;
+
+  /** Salon owner go-live: bookable on public profile (mobile owners always bookable server-side). */
+  owner_takes_appointments?: boolean;
+  owner_public_title?: string | null;
+  /** Indexes into `services` the owner performs; empty = all parent services. */
+  owner_service_indexes?: number[];
 }
 
 function digitsOnlyPhone(s: string | null | undefined): string {
@@ -430,6 +436,9 @@ const INITIAL_ONBOARDING_DATA: Partial<OnboardingData> = {
   },
   selected_zone_ids: [],
   booking_policy: { preset: DEFAULT_BOOKING_POLICY_PRESET },
+  owner_takes_appointments: true,
+  owner_public_title: "",
+  owner_service_indexes: [],
 };
 
 const ONBOARDING_DRAFT_STORAGE_KEY = "beautonomi_provider_onboarding_draft";
@@ -1090,6 +1099,9 @@ export default function ProviderOnboarding() {
         },
         include_in_search_engines: formData.include_in_search_engines !== false, // Default to true
         selected_plan_id: formData.selected_plan_id || null,
+        owner_takes_appointments: formData.owner_takes_appointments,
+        owner_public_title: formData.owner_public_title?.trim() || null,
+        owner_service_indexes: formData.owner_service_indexes,
         // Provider Ops: deterministic lead matching for admin-sent invites.
         invite_token: getStoredInviteToken(),
       };
@@ -1361,7 +1373,7 @@ export default function ProviderOnboarding() {
               <Step11ServiceCatalog data={formData} updateData={updateFormData} />
             )}
             {currentStep === 13 && <Step12Hours data={formData} updateData={updateFormData} />}
-            {currentStep === 14 && <Step13Review data={formData} />}
+            {currentStep === 14 && <Step13Review data={formData} updateData={updateFormData} />}
             {currentStep === 15 && (
               <Step14PlanSelection data={formData} updateData={updateFormData} />
             )}
@@ -5227,8 +5239,18 @@ function Step12Hours({
   );
 }
 
-function Step13Review({ data }: { data: Partial<OnboardingData> }) {
+function Step13Review({
+  data,
+  updateData,
+}: {
+  data: Partial<OnboardingData>;
+  updateData: (updates: Partial<OnboardingData>) => void;
+}) {
   const { t } = useTranslation();
+  const showOwnerGoLive =
+    data.team_size !== "freelancer" &&
+    data.business_type !== "mobile" &&
+    data.business_type !== "both";
   const businessTypeLabel =
     data.business_type === "salon"
       ? t("provider.mobile.screens.onboardingWizard.business.salonLabel")
@@ -5395,6 +5417,67 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
           </div>
         </div>
       )}
+      {showOwnerGoLive ? (
+        <div>
+          <h3 className={ONBOARDING_REVIEW_HEADING}>{t("web.provider.onboarding.review.ownerGoLiveTitle")}</h3>
+          <div className={`${ONBOARDING_REVIEW_CARD} space-y-3`}>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={data.owner_takes_appointments !== false}
+                onChange={(e) => updateData({ owner_takes_appointments: e.target.checked })}
+              />
+              <span>{t("web.provider.onboarding.review.ownerTakesAppointments")}</span>
+            </label>
+            <p className="text-xs text-slate-600">{t("web.provider.onboarding.review.ownerTakesAppointmentsHint")}</p>
+            {data.owner_takes_appointments !== false ? (
+              <>
+                <div>
+                  <label className="text-sm font-medium text-slate-900">{t("web.provider.onboarding.review.ownerPublicTitle")}</label>
+                  <Input
+                    value={data.owner_public_title ?? ""}
+                    onChange={(e) => updateData({ owner_public_title: e.target.value })}
+                    className="mt-1"
+                  />
+                </div>
+                {data.services && data.services.length > 0 ? (
+                  <div>
+                    <p className="text-sm font-medium text-slate-900 mb-2">{t("web.provider.onboarding.review.ownerServicesLabel")}</p>
+                    <div className="space-y-1">
+                      {data.services.map((svc, idx) => {
+                        const selected =
+                          !data.owner_service_indexes?.length ||
+                          data.owner_service_indexes.includes(idx);
+                        return (
+                          <label key={idx} className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={(e) => {
+                                const all = data.services!.map((_, i) => i);
+                                const current = data.owner_service_indexes?.length
+                                  ? [...data.owner_service_indexes]
+                                  : all;
+                                let next = e.target.checked
+                                  ? [...new Set([...current, idx])]
+                                  : current.filter((i) => i !== idx);
+                                if (next.length === all.length) next = [];
+                                updateData({ owner_service_indexes: next });
+                              }}
+                            />
+                            <span>{svc.title}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-slate-600 mt-1">{t("web.provider.onboarding.review.ownerServicesAll")}</p>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       <div>
         <h3 className={ONBOARDING_REVIEW_HEADING}>{t("web.provider.onboarding.review.operatingHours")}</h3>
         <div className={ONBOARDING_REVIEW_CARD}>

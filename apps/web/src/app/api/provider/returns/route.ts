@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     let query = (supabase.from("product_return_requests") as any)
       .select(
         `*,
-        order:product_orders(order_number, total_amount),
+        order:product_orders(order_number, total_amount, payment_method),
         customer:users!product_return_requests_customer_id_fkey(id, full_name, email, avatar_url)`,
         { count: "exact" },
       )

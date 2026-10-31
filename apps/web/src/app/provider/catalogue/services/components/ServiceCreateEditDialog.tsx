@@ -35,6 +35,8 @@ import { previewBookingTierName } from "@/app/api/provider/services/_helpers/syn
 import { BookingTierCustomerPreview } from "./BookingTierCustomerPreview";
 import { formatCurrency } from "@/lib/utils";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
+import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
+import { TeamMemberAddWizard } from "@/app/provider/team/members/components/TeamMemberAddWizard";
 
 interface ServiceCreateEditDialogProps {
   open: boolean;
@@ -64,6 +66,7 @@ export function ServiceCreateEditDialog({
   onCategoriesChange,
 }: ServiceCreateEditDialogProps) {
   const { t } = useTranslation();
+  const { selectedLocationId, salons } = useProviderPortal();
   const { currencyCode, format: fmt } = useReportCurrency();
   // Fetch reference data for all dropdowns
   const { 
@@ -90,6 +93,7 @@ export function ServiceCreateEditDialog({
   const [showIncludedServicesDialog, setShowIncludedServicesDialog] = useState(false);
   const [showCategoryDialog, setShowCategoryDialog] = useState(false);
   const [showTeamMemberDialog, setShowTeamMemberDialog] = useState(false);
+  const [teamAddWizardOpen, setTeamAddWizardOpen] = useState(false);
   const [showAdvancedPricingModal, setShowAdvancedPricingModal] = useState(false);
   const [advancedPricingRules, setAdvancedPricingRules] = useState<any[]>([]);
   const [pricingOptions, setPricingOptions] = useState<PricingOption[]>([
@@ -253,11 +257,17 @@ export function ServiceCreateEditDialog({
     }
 
     try {
+      const primaryLocationId = selectedLocationId ?? salons?.[0]?.id;
       const newMember = await providerApi.createTeamMember({
         name: teamMemberFormData.name,
         email: teamMemberFormData.email,
         mobile: teamMemberFormData.mobile.trim(),
-        role: teamMemberFormData.role === "staff" ? "employee" : teamMemberFormData.role,
+        invite_email: true,
+        location_ids: primaryLocationId ? [primaryLocationId] : undefined,
+        hours_source: primaryLocationId
+          ? { type: "location", location_id: primaryLocationId }
+          : { type: "location" },
+        service_ids: service?.id ? [service.id] : undefined,
       });
       toast.success(t("web.provider.catalogue.serviceDialog.teamMemberCreated"));
       setShowTeamMemberDialog(false);
@@ -1158,7 +1168,7 @@ export function ServiceCreateEditDialog({
                   type="button"
                   variant="link"
                   className="text-primary p-0 h-auto text-xs sm:text-sm whitespace-nowrap flex-shrink-0 mt-1"
-                  onClick={() => setShowTeamMemberDialog(true)}
+                  onClick={() => setTeamAddWizardOpen(true)}
                 >
                   <Plus className="w-3 h-3 me-1" />
                   {t("web.provider.catalogue.serviceDialog.addMember")}
@@ -1208,7 +1218,7 @@ export function ServiceCreateEditDialog({
                         variant="outline"
                         size="sm"
                         className="w-full sm:w-auto"
-                        onClick={() => setShowTeamMemberDialog(true)}
+                        onClick={() => setTeamAddWizardOpen(true)}
                       >
                         <Plus className="w-4 h-4 me-2" />
                         {t("web.provider.catalogue.serviceDialog.addFirstMember")}
@@ -1846,6 +1856,22 @@ placeholder={t("web.provider.portal.newSaleDialog.pricePlaceholder")}
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TeamMemberAddWizard
+        open={teamAddWizardOpen}
+        onOpenChange={setTeamAddWizardOpen}
+        onCreated={() => {
+          void loadTeamMembers();
+        }}
+        locationIds={(salons ?? []).map((s) => s.id)}
+        locations={(salons ?? []).map((s) => ({ id: s.id, name: s.name ?? s.id }))}
+        offeringIds={allServices.map((s) => s.id)}
+        offerings={allServices.map((s) => ({
+          id: s.id,
+          title: (s as { name?: string; title?: string }).name ?? (s as { title?: string }).title ?? s.id,
+        }))}
+        staffOptions={teamMembers.map((m) => ({ id: m.id, name: m.name }))}
+      />
 
       {/* Advanced Pricing Modal */}
       <AdvancedPricingModal

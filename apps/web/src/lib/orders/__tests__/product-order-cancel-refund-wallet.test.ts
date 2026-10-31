@@ -76,4 +76,34 @@ describe("applyProductOrderCancelRefundSideEffects wallet credit on cancel", () 
     expect(out).toEqual({ walletCreditFailed: true });
     expect(orderUpdates).toEqual([]);
   });
+
+  it("credits only the wallet leg when the rest was collected in cash", async () => {
+    const { supabase, admin } = makeClients(null);
+
+    await applyProductOrderCancelRefundSideEffects(
+      supabase as never,
+      admin as never,
+      { ...order, payment_method: "cash", wallet_amount: 40 },
+      { newStatus: "cancelled", onlineRefundedAmount: 0 },
+    );
+
+    expect(admin.rpc).toHaveBeenCalledWith(
+      "wallet_credit_admin",
+      expect.objectContaining({ p_amount: 40 }),
+    );
+  });
+
+  it("does not create a platform wallet credit for a cash-only order", async () => {
+    const { supabase, admin } = makeClients(null);
+
+    const out = await applyProductOrderCancelRefundSideEffects(
+      supabase as never,
+      admin as never,
+      { ...order, payment_method: "cash", wallet_amount: 0, total_amount: 90 },
+      { newStatus: "cancelled", onlineRefundedAmount: 0 },
+    );
+
+    expect(out).toEqual({ walletCreditFailed: false });
+    expect(admin.rpc).not.toHaveBeenCalled();
+  });
 });
