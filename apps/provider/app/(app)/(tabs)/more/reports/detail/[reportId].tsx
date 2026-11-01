@@ -36,6 +36,9 @@ import { RefundsReportView } from "@/features/reports/RefundsReportView";
 import { PaymentMethodsReportView } from "@/features/reports/PaymentMethodsReportView";
 import { PayoutsReportView } from "@/features/reports/PayoutsReportView";
 import { YocoReconciliationReportView } from "@/features/reports/YocoReconciliationReportView";
+import { CardMachineReconciliationReportView } from "@/features/reports/CardMachineReconciliationReportView";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { usePaycloudFeatureEnabled } from "@/hooks/usePaycloudFeatureEnabled";
 import { PaystackReconciliationReportView } from "@/features/reports/PaystackReconciliationReportView";
 import { InventoryReportView } from "@/features/reports/InventoryReportView";
 import { ProductSalesReportView } from "@/features/reports/ProductSalesReportView";
@@ -62,6 +65,9 @@ import {
   getReportDateRange,
   formatReportRangeCaption,
   resolveReportTimezone,
+  addReportDateDays,
+  formatReportSingleDateCaption,
+  todayReportYmd,
   type ReportDateRangeKey,
 } from "@/lib/reportDateRanges";
 import { shareReportAsCsv } from "@/lib/reportExportCsv";
@@ -139,6 +145,10 @@ export default function ReportDetailScreen() {
   const { reportId: rawId } = useLocalSearchParams<{ reportId: string | string[] }>();
   const reportId = Array.isArray(rawId) ? rawId[0] : rawId;
   const def = reportId ? REPORT_DETAIL_REGISTRY[reportId] : undefined;
+  const yocoEnabled = useFeatureFlag("payment_yoco");
+  const paycloudEnabled = usePaycloudFeatureEnabled();
+  const cardMachineReportDisabled =
+    reportId === "card-machine-reconciliation" && !yocoEnabled && !paycloudEnabled;
 
   const { selectedLocationId, provider } = useProvider();
   const [dateRange, setDateRange] = useState<ReportDateRangeKey>("month");
@@ -168,7 +178,7 @@ export default function ReportDetailScreen() {
   }, [def, from, to, periodMQY, periodDMWY, eodDate, selectedLocationId]);
 
   const { data, loading, error, errorCode, refresh } = useApi<unknown>(path, {
-    enabled: !!def && !!path,
+    enabled: !!def && !!path && !cardMachineReportDisabled,
     timeoutMs: MONEY_SURFACE_TIMEOUT_MS,
   });
   const [refreshing, setRefreshing] = useState(false);
@@ -254,27 +264,69 @@ export default function ReportDetailScreen() {
       )}
 
       {def.query === "singleDate" && (
-        <View style={twStyle("mb-4 flex-row flex-wrap items-center gap-2")}>
-          <Text style={twStyle("text-sm text-gray-600")}>{rd("dateLabel")}</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {DATE_RANGE_KEYS.map((r) => (
-              <TouchableOpacity
-                key={r.value}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  const d = getReportDateRange(r.value, { timezone: provider?.timezone });
-                  setEodDate(d.to);
-                }}
-                style={[twStyle("me-2 rounded-full border border-gray-200 bg-white px-3 py-1.5")]}
-              >
-                <Text style={twStyle("text-xs text-gray-700")}>{rd(r.labelKey)}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+        <View style={twStyle("mb-4 gap-3")}>
+          <Text style={twStyle("text-base font-semibold text-gray-900")}>
+            {formatReportSingleDateCaption(eodDate, provider?.timezone)}
+          </Text>
+          <View style={twStyle("flex-row flex-wrap items-center gap-2")}>
+            <TouchableOpacity
+              accessibilityLabel={rd("eodTodayA11y")}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setEodDate(todayReportYmd(provider?.timezone));
+              }}
+              style={twStyle("rounded-full border border-gray-200 bg-white px-4 py-2 min-h-[44px] justify-center")}
+            >
+              <Text style={twStyle("text-sm font-medium text-gray-800")}>{rd("eodToday")}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              accessibilityLabel={rd("eodYesterdayA11y")}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setEodDate(addReportDateDays(todayReportYmd(provider?.timezone), -1, provider?.timezone));
+              }}
+              style={twStyle("rounded-full border border-gray-200 bg-white px-4 py-2 min-h-[44px] justify-center")}
+            >
+              <Text style={twStyle("text-sm font-medium text-gray-800")}>{rd("eodYesterday")}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              accessibilityLabel={rd("eodPrevDayA11y")}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setEodDate(addReportDateDays(eodDate, -1, provider?.timezone));
+              }}
+              style={twStyle("rounded-full border border-gray-200 bg-white px-4 py-2 min-h-[44px] justify-center")}
+            >
+              <Text style={twStyle("text-sm font-medium text-gray-800")}>{rd("eodPrevDay")}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              accessibilityLabel={rd("eodNextDayA11y")}
+              disabled={eodDate >= todayReportYmd(provider?.timezone)}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setEodDate(addReportDateDays(eodDate, 1, provider?.timezone));
+              }}
+              style={twStyle(
+                `rounded-full border border-gray-200 bg-white px-4 py-2 min-h-[44px] justify-center ${
+                  eodDate >= todayReportYmd(provider?.timezone) ? "opacity-40" : ""
+                }`,
+              )}
+            >
+              <Text style={twStyle("text-sm font-medium text-gray-800")}>{rd("eodNextDay")}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
 
-      {loading && !data && <ActivityIndicator style={twStyle("my-8")} color={Colors.primary} />}
+      {cardMachineReportDisabled ? (
+        <Text style={twStyle("text-sm text-gray-600 px-1 py-4")}>
+          {t("provider.mobile.screens.cardMachineReconciliationReport.unavailable")}
+        </Text>
+      ) : null}
+
+      {loading && !data && !cardMachineReportDisabled && (
+        <ActivityIndicator style={twStyle("my-8")} color={Colors.primary} />
+      )}
       {error && !data ? (
         <FinanceReportError
           error={error}
@@ -311,6 +363,8 @@ export default function ReportDetailScreen() {
           <PayoutsReportView data={data} />
         ) : reportId === "yoco-reconciliation" ? (
           <YocoReconciliationReportView data={data} />
+        ) : reportId === "card-machine-reconciliation" ? (
+          <CardMachineReconciliationReportView data={data} />
         ) : reportId === "paystack-terminal-reconciliation" ? (
           <PaystackReconciliationReportView data={data} />
         ) : reportId === "inventory" ? (

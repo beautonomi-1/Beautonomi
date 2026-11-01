@@ -77,7 +77,7 @@ export async function applyOwnerBookableSetup(
 ): Promise<{ ownerStaffId: string | null }> {
   const { data: ownerStaff } = await supabase
     .from("provider_staff")
-    .select("id, is_service_provider")
+    .select("id, is_service_provider, avatar_url")
     .eq("provider_id", providerId)
     .eq("user_id", ownerUserId)
     .maybeSingle();
@@ -92,6 +92,20 @@ export async function applyOwnerBookableSetup(
       ? input.publicTitle.trim()
       : null;
 
+  let providerAvatarUrl: string | null = null;
+  const staffAvatar = (ownerStaff as { avatar_url?: string | null }).avatar_url;
+  if (!staffAvatar) {
+    const { data: providerRow } = await supabase
+      .from("providers")
+      .select("avatar_url")
+      .eq("id", providerId)
+      .maybeSingle();
+    providerAvatarUrl = (providerRow as { avatar_url?: string | null } | null)?.avatar_url ?? null;
+  }
+
+  const avatarPatch =
+    !staffAvatar && providerAvatarUrl ? { avatar_url: providerAvatarUrl } : {};
+
   if (!input.takesAppointments) {
     await supabase
       .from("provider_staff")
@@ -99,6 +113,7 @@ export async function applyOwnerBookableSetup(
         is_service_provider: false,
         enable_in_online_booking: false,
         ...(publicTitle !== null ? { public_title: publicTitle } : {}),
+        ...avatarPatch,
         updated_at: new Date().toISOString(),
       })
       .eq("id", staffId);
@@ -111,6 +126,7 @@ export async function applyOwnerBookableSetup(
       is_service_provider: true,
       enable_in_online_booking: true,
       ...(publicTitle !== null ? { public_title: publicTitle } : {}),
+      ...avatarPatch,
       updated_at: new Date().toISOString(),
     })
     .eq("id", staffId);

@@ -5,6 +5,10 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { percentOf } from "@beautonomi/utils";
+import {
+  customerHasPromotionUsage,
+  ONCE_PER_CUSTOMER_MESSAGE,
+} from "@/lib/promotions/once-per-customer";
 
 export type CheckoutPromotionLocation = "at_salon" | "at_home";
 
@@ -20,15 +24,18 @@ export interface ResolveCheckoutPromotionDiscountInput {
   prePromoSubtotal: number;
   locationType: CheckoutPromotionLocation;
   locationId: string | null;
+  /** When set, enforces promotions.once_per_customer at commit time */
+  customerId?: string;
 }
 
 export interface ResolveCheckoutPromotionDiscountResult {
   promotionId: string | null;
   promotionDiscountAmount: number;
+  blockedReason?: string | null;
 }
 
 const PROMO_SELECT_COLS =
-  "id, code, type, value, min_purchase_amount, max_discount_amount, valid_from, valid_until, usage_limit, usage_count, is_active, location_id, provider_id, applicable_providers";
+  "id, code, type, value, min_purchase_amount, max_discount_amount, valid_from, valid_until, usage_limit, usage_count, is_active, location_id, provider_id, applicable_providers, once_per_customer";
 
 /**
  * Resolve active promotion or legacy coupon discount for checkout.
@@ -39,13 +46,22 @@ export async function resolveCheckoutPromotionDiscount(
   supabase: SupabaseClient,
   input: ResolveCheckoutPromotionDiscountInput,
 ): Promise<ResolveCheckoutPromotionDiscountResult> {
-  const { promoCode, providerId, promoTenantId, prePromoSubtotal, locationType, locationId } = input;
+  const {
+    promoCode,
+    providerId,
+    promoTenantId,
+    prePromoSubtotal,
+    locationType,
+    locationId,
+    customerId,
+  } = input;
 
   let promotionId: string | null = null;
   let promotionDiscountAmount = 0;
+  let blockedReason: string | null = null;
 
   if (!promoCode || prePromoSubtotal < 0) {
-    return { promotionId, promotionDiscountAmount };
+    return { promotionId, promotionDiscountAmount, blockedReason };
   }
 
   const tenantFilter = promoTenantId.trim().length > 0;
@@ -89,16 +105,28 @@ export async function resolveCheckoutPromotionDiscount(
       promo.location_id == null || (locationType === "at_salon" && locationId === promo.location_id);
 
     if (promo.is_active && providerOk && withinWindow && underLimit && meetsMin && locationOk) {
-      if (promo.type === "percentage") {
-        promotionDiscountAmount = percentOf(prePromoSubtotal, Number(promo.value || 0));
+      const promoIdStr = String(promo.id);
+      if (
+        promo.once_per_customer &&
+        customerId &&
+        (await customerHasPromotionUsage(supabase, promoIdStr, customerId))
+      ) {
+        blockedReason = ONCE_PER_CUSTOMER_MESSAGE;
       } else {
-        promotionDiscountAmount = Number(promo.value || 0);
+        if (promo.type === "percentage") {
+          promotionDiscountAmount = percentOf(prePromoSubtotal, Number(promo.value || 0));
+        } else {
+          promotionDiscountAmount = Number(promo.value || 0);
+        }
+        if (promo.max_discount_amount) {
+          promotionDiscountAmount = Math.min(
+            promotionDiscountAmount,
+            Number(promo.max_discount_amount),
+          );
+        }
+        promotionDiscountAmount = Math.max(0, Math.min(promotionDiscountAmount, prePromoSubtotal));
+        promotionId = promoIdStr;
       }
-      if (promo.max_discount_amount) {
-        promotionDiscountAmount = Math.min(promotionDiscountAmount, Number(promo.max_discount_amount));
-      }
-      promotionDiscountAmount = Math.max(0, Math.min(promotionDiscountAmount, prePromoSubtotal));
-      promotionId = String(promo.id);
     }
   }
 
@@ -153,5 +181,5 @@ export async function resolveCheckoutPromotionDiscount(
     }
   }
 
-  return { promotionId, promotionDiscountAmount };
+  return { promotionId, promotionDiscountAmount, blockedReason };
 }

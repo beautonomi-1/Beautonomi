@@ -45,18 +45,23 @@ import { TicketSidebar } from "@/routes/support/ticket-detail/TicketSidebar";
 import { TicketThread } from "@/routes/support/ticket-detail/TicketThread";
 import {
   buildThreadItems,
-  computeAttentionBanner,
   datetimeLocalToIso,
+  detailsTabNeedsAttention,
+  hasFailedPublicEmailSend,
   isWideTicketLayout,
+  listAttentionBanners,
+  resolveQueueNav,
   shouldAutoScrollThread,
   shouldShowOriginalRequest,
   str,
   toDatetimeLocalValue,
+  unwrapAdminBookingPayload,
   type AttachmentItem,
   type MessageRow,
   type NoteRow,
   type TicketRow,
 } from "@/routes/support/ticket-detail/ticketDetailHelpers";
+import { useAdminWorkspaceHeight } from "@/hooks/useAdminWorkspaceHeight";
 
 type Assignee = { id: string; email: string | null; full_name: string | null; role: string };
 
@@ -70,6 +75,7 @@ type BookingContextRow = {
   id: string;
   status: string;
   currency: string;
+  payment_status?: string | null;
   total_amount?: number | null;
   total_paid?: number | null;
   total_refunded?: number | null;
@@ -84,6 +90,8 @@ export type SupportTicketDetailVariant = "page" | "panel";
 type SupportTicketDetailViewProps = {
   id: string;
   variant?: SupportTicketDetailVariant;
+  queueTicketIds?: string[] | null;
+  selectedOffPage?: boolean;
   onNavigateNext?: (nextId: string | null) => void;
 };
 
@@ -114,9 +122,12 @@ function resetComposerState(setters: {
 export function SupportTicketDetailView({
   id,
   variant = "page",
+  queueTicketIds = null,
+  selectedOffPage = false,
   onNavigateNext,
 }: SupportTicketDetailViewProps) {
   const isPanel = variant === "panel";
+  const { shellRef, heightPx } = useAdminWorkspaceHeight(!isPanel);
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_SUPPORT, "Support access is required.");
@@ -124,6 +135,7 @@ export function SupportTicketDetailView({
   const { bootstrap } = useAdminSession();
   const myStaffUserId = bootstrap?.userId ?? "";
   const viewerRole = (bootstrap?.role as UserRole) ?? "support_agent";
+  const canProviderOpsEarly = canAccessSection(viewerRole, ADMIN_SECTION_PROVIDERS_OPERATIONS);
 
   const [reply, setReply] = useState("");
   const [replyInternal, setReplyInternal] = useState(false);
@@ -275,6 +287,7 @@ export function SupportTicketDetailView({
       .catch(() => {});
   }, [allowed, id, qc]);
 
+  const usePageQueue = Boolean(queueTicketIds && queueTicketIds.length > 0);
   const nextQueueQ = useQuery({
     queryKey: ["support-tickets-next-queue", id],
     queryFn: () =>
@@ -282,28 +295,40 @@ export function SupportTicketDetailView({
         "/api/admin/support-tickets?sort=smart&needs_response=1&limit=25",
         { timeoutMs: 15_000 },
       ),
-    enabled: allowed && !!id,
+    enabled: allowed && !!id && !usePageQueue,
     staleTime: 30_000,
   });
-  const nextTicketId = (() => {
-    const list = nextQueueQ.data?.tickets ?? [];
-    if (list.length === 0) return null;
-    const idx = list.findIndex((t) => t.id === id);
-    if (idx === -1) return list[0]?.id ?? null;
-    return list[idx + 1]?.id ?? null;
-  })();
+  const remoteNextId = usePageQueue
+    ? null
+    : (() => {
+        const list = nextQueueQ.data?.tickets ?? [];
+        if (list.length === 0) return null;
+        const idx = list.findIndex((t) => t.id === id);
+        if (idx === -1) return list[0]?.id ?? null;
+        return list[idx + 1]?.id ?? null;
+      })();
+
+  const queueNav = resolveQueueNav({
+    currentId: id,
+    queueTicketIds: usePageQueue ? queueTicketIds : null,
+    remoteNextId,
+  });
 
   const handleNextInQueue = useCallback(() => {
+    if (queueNav.endOfPage) return;
+    const targetId = queueNav.nextId;
     if (isPanel && onNavigateNext) {
-      onNavigateNext(nextTicketId);
+      onNavigateNext(targetId);
       return;
     }
-    if (nextTicketId) {
-      navigate(adminSpaTo(`/admin/support-tickets/${encodeURIComponent(nextTicketId)}`));
+    if (targetId) {
+      navigate(adminSpaTo(`/admin/support-tickets/${encodeURIComponent(targetId)}`), {
+        state: queueTicketIds?.length ? { queueTicketIds } : undefined,
+      });
     } else {
-      navigate(adminSpaTo("/admin/support-tickets?saved_view=needs_response"));
+      navigate(adminSpaTo("/admin/support-tickets"));
     }
-  }, [isPanel, onNavigateNext, nextTicketId, navigate]);
+  }, [isPanel, onNavigateNext, queueNav.endOfPage, queueNav.nextId, queueTicketIds, navigate]);
 
   const rtDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -471,7 +496,7 @@ export function SupportTicketDetailView({
       adminApi.getJson<BookingContextRow>(`/api/admin/bookings/${encodeURIComponent(bookingContextId!)}`, {
         timeoutMs: 45_000,
       }),
-    enabled: allowed && !!bookingContextId,
+    enabled: allowed && !!bookingContextId && canProviderOpsEarly,
   });
 
   const cancelBookingMut = useMutation({
@@ -542,31 +567,46 @@ export function SupportTicketDetailView({
   const scrolledForRef = useRef<{ id: string | null; count: number }>({ id: null, count: 0 });
   const threadItemCount = threadItems.length;
   const hasTicket = Boolean(detailQ.data?.ticket);
+  const scrollThreadToEnd = useCallback(
+    (forceTicketChanged: boolean) => {
+      const el = threadRef.current;
+      if (!el || el.clientHeight === 0) return false;
+      const prev = scrolledForRef.current;
+      const ticketChanged = forceTicketChanged || prev.id !== id;
+      const auto = shouldAutoScrollThread({
+        ticketChanged,
+        prevItemCount: prev.count,
+        nextItemCount: threadItemCount,
+        distanceFromBottom: el.scrollHeight - el.scrollTop - el.clientHeight,
+      });
+      scrolledForRef.current = { id, count: threadItemCount };
+      if (!auto) return true;
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight;
+      });
+      return true;
+    },
+    [id, threadItemCount],
+  );
+
   useEffect(() => {
     if (!hasTicket || !showConversation) return;
+    if (scrollThreadToEnd(false)) return;
     const el = threadRef.current;
-    if (!el || el.clientHeight === 0) return;
-    const prev = scrolledForRef.current;
-    const ticketChanged = prev.id !== id;
-    const auto = shouldAutoScrollThread({
-      ticketChanged,
-      prevItemCount: prev.count,
-      nextItemCount: threadItemCount,
-      distanceFromBottom: el.scrollHeight - el.scrollTop - el.clientHeight,
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      scrollThreadToEnd(false);
     });
-    scrolledForRef.current = { id, count: threadItemCount };
-    if (!auto) return;
-    requestAnimationFrame(() => {
-      el.scrollTop = el.scrollHeight;
-    });
-  }, [id, threadItemCount, hasTicket, showConversation]);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [hasTicket, showConversation, scrollThreadToEnd]);
 
   if (denied) return denied;
   if (!id) return <AdminRetryBlock message="Missing ticket id" onRetry={() => {}} />;
 
   if (detailQ.isLoading) {
     return (
-      <div className={isPanel ? "flex h-full flex-col p-4" : "flex flex-col"}>
+      <div className={isPanel ? "flex h-full min-h-0 flex-col overflow-hidden p-4" : "flex min-h-0 flex-col"}>
         <AdminPageSkeleton rows={4} />
       </div>
     );
@@ -589,9 +629,9 @@ export function SupportTicketDetailView({
   }
 
   const assignees = assigneesQ.data?.assignees ?? [];
-  const contextBooking = bookingQ.data;
+  const contextBooking = unwrapAdminBookingPayload(bookingQ.data) as BookingContextRow | null;
   const availableRefund = contextBooking ? computeBookingAvailableRefund(contextBooking) : 0;
-  const canProviderOps = canAccessSection(viewerRole, ADMIN_SECTION_PROVIDERS_OPERATIONS);
+  const canProviderOps = canProviderOpsEarly;
   const canUsersTrust = canAccessSection(viewerRole, ADMIN_SECTION_USERS_TRUST);
   const showRefundAction =
     contextBooking && canProviderOps ? canShowBookingRefund(contextBooking) : false;
@@ -617,7 +657,17 @@ export function SupportTicketDetailView({
     adminToast.success("Article link added to reply");
   };
 
-  const banner = computeAttentionBanner(ticket);
+  const attentionBanners = listAttentionBanners(ticket);
+  const showCancelAction =
+    Boolean(bookingContextId && contextBooking && canProviderOps) &&
+    str(contextBooking?.status) !== "cancelled" &&
+    str(contextBooking?.status) !== "completed";
+  const detailsAlert = detailsTabNeedsAttention({
+    showCancel: showCancelAction,
+    showRefund: Boolean(showRefundAction),
+    unlinkedContext: Boolean(ticket.support_context_type && !ticket.support_context_id),
+    failedPublicSend: hasFailedPublicEmailSend(threadMessages),
+  });
   const showOriginal = shouldShowOriginalRequest(str(ticket.description), threadMessages, customerUserId);
   const originalRequestText = showOriginal ? str(ticket.description).trim() : null;
 
@@ -627,16 +677,27 @@ export function SupportTicketDetailView({
 
   const claimStartDisabled = assignedId === myStaffUserId && str(ticket.status) === "in_progress";
 
+  const rootStyle =
+    !isPanel && heightPx != null ? ({ height: `${heightPx}px` } as const) : undefined;
+
   return (
     <div
-      ref={rootRef}
+      ref={(el) => {
+        rootRef(el);
+        if (!isPanel) shellRef(el);
+      }}
+      style={rootStyle}
       className={
         isPanel
           ? "flex h-full min-h-0 flex-col gap-3 overflow-hidden p-4"
-          : "flex flex-col gap-3 lg:h-[calc(100dvh-9rem)] lg:min-h-[32rem] lg:overflow-hidden"
+          : "flex min-h-0 flex-col gap-3 overflow-hidden"
       }
     >
-      <TicketAttentionBanner banner={banner} />
+      {selectedOffPage ? (
+        <p className="shrink-0 text-xs text-amber-800">Not on this page.</p>
+      ) : null}
+
+      <TicketAttentionBanner banners={attentionBanners} />
 
       <TicketDetailHeader
         ticket={ticket}
@@ -648,7 +709,9 @@ export function SupportTicketDetailView({
         assignedId={assignedId}
         patchPending={patchTicket.isPending}
         isFetching={detailQ.isFetching}
-        nextTicketId={nextTicketId}
+        queueNavLabel={queueNav.label}
+        queueNavDisabled={queueNav.endOfPage}
+        queueTicketIds={queueTicketIds}
         onNextInQueue={handleNextInQueue}
         onRefresh={() => void detailQ.refetch()}
         onAssignToMe={() => void patchTicket.mutateAsync({ assigned_to: myStaffUserId })}
@@ -676,7 +739,7 @@ export function SupportTicketDetailView({
         </div>
       ) : null}
 
-      <div id="agent-assist-panel" className="max-h-[40%] shrink-0 overflow-y-auto">
+      <div id="agent-assist-panel" className="max-h-32 shrink-0 overflow-y-auto">
         <AgentAssistPanel
           targetType="support_ticket"
           targetId={id}
@@ -722,29 +785,33 @@ export function SupportTicketDetailView({
               aria-controls={key === "conversation" ? "ticket-conversation" : "ticket-details"}
               aria-selected={activeTab === key}
               onClick={() => setActiveTab(key)}
-              className={`min-h-10 flex-1 rounded-lg px-3 ${
+              className={`relative min-h-10 flex-1 rounded-lg px-3 ${
                 activeTab === key ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"
               }`}
             >
               {label}
+              {key === "details" && detailsAlert ? (
+                <span
+                  className="absolute end-2 top-2 h-2 w-2 rounded-full bg-amber-500"
+                  aria-hidden
+                />
+              ) : null}
             </button>
           ))}
         </div>
       ) : null}
 
       <div
-        className={`grid gap-4 ${
-          isPanel
-            ? "min-h-0 flex-1 grid-rows-[minmax(0,1fr)]"
-            : "lg:min-h-0 lg:flex-1 lg:grid-rows-[minmax(0,1fr)]"
-        } ${isWide ? "grid-cols-[minmax(0,1fr)_20rem] overflow-hidden" : ""}`}
+        className={`grid min-h-0 flex-1 gap-4 overflow-hidden grid-rows-[minmax(0,1fr)] ${
+          isWide ? "grid-cols-[minmax(0,1fr)_20rem]" : ""
+        }`}
       >
         <section
           id="ticket-conversation"
           role="tabpanel"
           aria-labelledby="ticket-tab-conversation"
           hidden={!showConversation}
-          className={`${showConversation ? "flex" : "hidden"} min-h-0 min-w-0 flex-col rounded-2xl border border-gray-200 bg-white p-3 shadow-sm ring-1 ring-gray-950/[0.03]`}
+          className={`${showConversation ? "flex" : "hidden"} min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white p-3 shadow-sm ring-1 ring-gray-950/[0.03]`}
         >
           <TicketThread
             threadRef={threadRef}
@@ -779,7 +846,7 @@ export function SupportTicketDetailView({
           role="tabpanel"
           aria-labelledby="ticket-tab-details"
           hidden={!showDetails}
-          className={showDetails ? "h-full min-h-0" : "hidden"}
+          className={showDetails ? "h-full min-h-0 overflow-hidden" : "hidden"}
         >
         <TicketSidebar
           ticket={ticket}

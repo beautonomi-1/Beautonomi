@@ -19,7 +19,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FinanceReportError } from "@/components/finance/FinanceReportError";
 import { SkeletonList } from "@/components/ui/Skeleton";
-import { formatCurrency, formatDate, formatStatusLabel } from "@/lib/format";
+import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
@@ -27,24 +27,15 @@ import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveSt
 interface GiftCardReport {
   id: string;
   code: string;
-  initial_value: number;
-  remaining_value: number;
-  status: string;
-  purchaser_name: string | null;
-  recipient_name: string | null;
-  purchased_at: string;
-  redeemed_at: string | null;
-  captured_at?: string | null;
-  expires_at: string | null;
+  amount: number;
+  captured_at: string;
+  booking_number?: string | null;
 }
 
 interface GiftCardStats {
   total_sold: number;
   total_revenue: number;
   total_redeemed: number;
-  total_outstanding: number;
-  active_count: number;
-  expired_count: number;
   avg_value: number;
 }
 
@@ -91,7 +82,7 @@ export default function GiftCardReportScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const rows = cards.map(
       (c) =>
-        `${c.code},${c.purchaser_name ?? ""},${c.recipient_name ?? ""},${formatCurrency(c.initial_value)},${c.status},${formatDate(c.purchased_at)},${c.redeemed_at ?? c.captured_at ?? ""}`
+        `${c.code},${c.amount},${formatDate(c.captured_at)},${c.booking_number ?? ""}`,
     );
     const csv = `${gc("csvHeader")}\n${rows.join("\n")}`;
     try {
@@ -185,29 +176,15 @@ export default function GiftCardReportScreen() {
                 <View style={twStyle("flex-1")}>
                   <Text style={twStyle("text-sm font-mono font-semibold text-gray-900")}>{card.code}</Text>
                   <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                    {card.purchaser_name ? gc("byPurchaser", { name: card.purchaser_name }) : ""}
-                    {card.recipient_name ? gc("toRecipient", { name: card.recipient_name }) : ""}
+                    {gc("captureDate", { date: formatDate(card.captured_at) })}
                   </Text>
-                  <Text style={twStyle("mt-0.5 text-xs text-gray-400")}>
-                    {gc("captureDate", { date: formatDate(card.redeemed_at ?? card.captured_at ?? card.purchased_at) })}
-                  </Text>
-                </View>
-                <View style={twStyle("items-end")}>
-                  <Text style={twStyle("text-sm font-bold text-gray-900")}>{formatCurrency(card.initial_value)}</Text>
-                  <View
-                    style={twStyle(`mt-1 rounded-full px-2 py-0.5 ${
-                      card.status === "active" ? "bg-green-50" : card.status === "redeemed" ? "bg-blue-50" : "bg-gray-100"
-                    }`)}
-                  >
-                    <Text
-                      style={twStyle(`text-[10px] font-medium ${
-                        card.status === "active" ? "text-green-700" : card.status === "redeemed" ? "text-blue-700" : "text-gray-500"
-                      }`)}
-                    >
-                      {formatStatusLabel(card.status)}
+                  {card.booking_number ? (
+                    <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
+                      {gc("bookingNumber", { number: card.booking_number })}
                     </Text>
-                  </View>
+                  ) : null}
                 </View>
+                <Text style={twStyle("text-sm font-bold text-gray-900")}>{formatCurrency(card.amount)}</Text>
               </View>
             </View>
           )}

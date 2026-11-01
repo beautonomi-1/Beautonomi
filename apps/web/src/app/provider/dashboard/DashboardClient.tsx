@@ -695,12 +695,12 @@ export function DashboardClient({
               <span className="text-sm text-gray-600">{t("web.provider.dashboard.travelFees")}</span>
               <span className="text-lg font-semibold text-purple-600">{formatCurrency(stats.travel_fees_total || 0, tenantCurrency)}</span>
             </div>
-            <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/reports/gift-cards/sales")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/reports/gift-cards/sales"); }}>
-              <span className="text-sm text-gray-600">{t("web.provider.dashboard.giftCardSales")}</span>
+            <div className="flex items-center justify-between rounded p-2">
+              <span className="text-sm text-gray-600">{t("web.provider.dashboard.giftCardLedgerIssuance")}</span>
               <span className="text-lg font-semibold text-blue-600">{formatCurrency(stats.gift_card_sales_total || 0, tenantCurrency)}</span>
             </div>
-            <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/reports/packages/sales")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/reports/packages/sales"); }}>
-              <span className="text-sm text-gray-600">{t("web.provider.dashboard.membershipSales")}</span>
+            <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/reports/memberships")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/reports/memberships"); }}>
+              <span className="text-sm text-gray-600">{t("web.provider.dashboard.membershipSalesAllTime")}</span>
               <span className="text-lg font-semibold text-indigo-600">{formatCurrency(stats.membership_sales_total || 0, tenantCurrency)}</span>
             </div>
             {(stats.other_earnings_total ?? 0) > 0 ? (

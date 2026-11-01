@@ -11,8 +11,7 @@ import {
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { isProviderInvoicePayable } from "@/lib/invoices/provider-invoice-status";
 import { fetcher, providerPortalFetch } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -49,6 +48,7 @@ interface Invoice {
   notes: string | null;
   line_items: any[];
   payments: any[];
+  metadata?: { refund_review_required?: boolean; void_reason?: string } | null;
 }
 
 export default function InvoiceDetailPage() {
@@ -64,10 +64,6 @@ export default function InvoiceDetailPage() {
   const [paying, setPaying] = useState(false);
   const [verifyingReturn, setVerifyingReturn] = useState(false);
   const [canPay, setCanPay] = useState(false);
-  const [showEft, setShowEft] = useState(false);
-  const [eftAmount, setEftAmount] = useState("");
-  const [eftReference, setEftReference] = useState("");
-  const [submittingEft, setSubmittingEft] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -146,10 +142,6 @@ export default function InvoiceDetailPage() {
         `/api/provider/invoices/${invoiceId}`
       );
       setInvoice(response.data);
-      const due =
-        Number(response.data.amount_due ?? NaN) ||
-        Math.max(0, Number(response.data.total_amount) - Number(response.data.amount_paid ?? 0));
-      setEftAmount(String(due));
     } catch (error) {
       console.error("Error loading invoice:", error);
       const msg =
@@ -217,11 +209,12 @@ export default function InvoiceDetailPage() {
       )
     : 0;
   const displayStatus = invoice?.effective_status ?? invoice?.status ?? "";
-  const hasPendingEft = Boolean(invoice?.payments?.some((p) => p.status === "pending"));
+  const invoicePayable = invoice ? isProviderInvoicePayable(invoice) : false;
   const isOpen =
-    displayStatus === "sent" ||
-    displayStatus === "partially_paid" ||
-    displayStatus === "overdue";
+    invoicePayable &&
+    (displayStatus === "sent" ||
+      displayStatus === "partially_paid" ||
+      displayStatus === "overdue");
 
   const handlePayInvoice = async () => {
     if (!invoice || amountDue <= 0) return;
@@ -247,33 +240,6 @@ export default function InvoiceDetailPage() {
       );
     } finally {
       setPaying(false);
-    }
-  };
-
-  const handleSubmitEft = async () => {
-    if (!invoice) return;
-    const amount = parseFloat(eftAmount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      toast.error(t("web.provider.settings.pages.billing/invoices/[id].invalidEftAmount"));
-      return;
-    }
-    setSubmittingEft(true);
-    try {
-      await fetcher.post(`/api/provider/invoices/${invoiceId}/pay`, {
-        amount,
-        paymentReference: eftReference.trim() || undefined,
-      });
-      toast.success(t("web.provider.settings.pages.billing/invoices/[id].eftSubmitted"));
-      setShowEft(false);
-      await loadInvoice();
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : t("web.provider.settings.pages.billing/invoices/[id].eftFailed"),
-      );
-    } finally {
-      setSubmittingEft(false);
     }
   };
 
@@ -376,19 +342,20 @@ export default function InvoiceDetailPage() {
                   : t("web.provider.settings.pages.billing/invoices/[id].payOnline")}
               </Button>
             )}
-            {isOpen && amountDue > 0 && canPay && !hasPendingEft && (
-              <Button variant="secondary" onClick={() => setShowEft((v) => !v)}>
-                {t("web.provider.settings.pages.billing/invoices/[id].submitEft")}
-              </Button>
-            )}
             {isOpen && amountDue > 0 && !canPay && (
               <p className="text-xs text-gray-500">
                 {t("web.provider.settings.pages.billing/invoices/[id].ownerPaysOnly")}
               </p>
             )}
-            {hasPendingEft && (
-              <p className="text-xs text-amber-700">
-                {t("web.provider.settings.pages.billing/invoices/[id].eftPending")}
+            {!invoicePayable &&
+              (invoice.invoice_type === "platform_fee" || invoice.invoice_type === "commission") && (
+                <p className="text-xs text-gray-600">
+                  {t("web.provider.settings.pages.billing.nonPayableFeeNote")}
+                </p>
+              )}
+            {invoice.metadata?.refund_review_required === true && (
+              <p className="text-xs text-amber-800">
+                {t("web.provider.settings.pages.billing.refundReviewRequired")}
               </p>
             )}
             <Button
@@ -400,30 +367,6 @@ export default function InvoiceDetailPage() {
             </Button>
           </div>
         </div>
-
-        {showEft && canPay && (
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
-            <div>
-              <Label>{t("web.provider.settings.pages.billing/invoices/[id].eftAmount")}</Label>
-              <Input
-                type="number"
-                min={0}
-                step="0.01"
-                value={eftAmount}
-                onChange={(e) => setEftAmount(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label>{t("web.provider.settings.pages.billing/invoices/[id].eftReference")}</Label>
-              <Input value={eftReference} onChange={(e) => setEftReference(e.target.value)} />
-            </div>
-            <Button onClick={() => void handleSubmitEft()} disabled={submittingEft}>
-              {submittingEft
-                ? t("web.provider.settings.pages.billing/invoices/[id].submittingEft")
-                : t("web.provider.settings.pages.billing/invoices/[id].confirmEft")}
-            </Button>
-          </div>
-        )}
 
         {/* Invoice Details */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

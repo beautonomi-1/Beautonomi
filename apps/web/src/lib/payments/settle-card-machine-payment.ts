@@ -4,6 +4,10 @@ import { recordProductOrderPayment } from "@/lib/orders/record-product-order-pay
 import { computeInPersonCollectibleAmount } from "@/lib/orders/product-order-tender";
 import { normalizePaycloudMajorAmount } from "@/lib/payments/paycloud-cloud-amount";
 import { resolveSaleEntityTarget } from "@/lib/provider-sales/resolve-sale-entity-target";
+import {
+  clearUncollectedProviderPortalPlatformFeeIfNeeded,
+  type BookingFeeClearRow,
+} from "@/lib/bookings/provider-booking-platform-fee";
 
 /** Provider-collected card-machine rails that share settle/reverse semantics. */
 export type CardMachinePaymentProvider = "paycloud" | "yoco";
@@ -373,16 +377,25 @@ async function settleBookingPayment(
     return { settled: true, reason: "already_settled", bookingId };
   }
 
-  const { data: booking } = await supabase
+  const { data: bookingLoaded } = await supabase
     .from("bookings")
     .select(
-      "id, booking_number, payment_status, tenant_id, status, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, additional_charges(id, amount, status, description, currency)",
+      "id, booking_number, booking_source, payment_status, payment_reference, tenant_id, status, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, platform_fee_amount, service_fee_amount, platform_fee_percentage, service_fee_percentage, platform_fee_paid_by, service_fee_paid_by, deposit_amount, additional_charges(id, amount, status, description, currency)",
     )
     .eq("id", bookingId)
     .eq("provider_id", input.providerId)
     .maybeSingle();
 
-  if (!booking) return { settled: false, reason: "booking_not_found" };
+  if (!bookingLoaded) return { settled: false, reason: "booking_not_found" };
+
+  const feeClear = await clearUncollectedProviderPortalPlatformFeeIfNeeded(
+    supabase,
+    bookingLoaded as BookingFeeClearRow,
+  );
+  const booking = feeClear.cleared
+    ? (feeClear.booking as typeof bookingLoaded)
+    : bookingLoaded;
+
   if (booking.status === "cancelled" || booking.status === "no_show") {
     return { settled: false, reason: "booking_not_collectible" };
   }

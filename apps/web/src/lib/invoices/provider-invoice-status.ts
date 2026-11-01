@@ -61,3 +61,28 @@ export function isOpenInvoiceStatus(effective: string): boolean {
 }
 
 export const SETTLEMENT_STATUSES = new Set(["paid", "partially_paid", "refunded"]);
+
+/** Customer-paid platform fees and commission are retained at checkout — never provider-payable invoices. */
+export const NON_PAYABLE_INVOICE_TYPES = new Set(["platform_fee", "commission"]);
+
+export type PayableInvoiceType = "subscription" | "transaction_fee" | "other";
+
+export function isNonPayableInvoiceType(invoiceType: string | null | undefined): boolean {
+  return NON_PAYABLE_INVOICE_TYPES.has(String(invoiceType ?? ""));
+}
+
+export function isPayableInvoiceType(invoiceType: string | null | undefined): boolean {
+  const t = String(invoiceType ?? "");
+  return t === "subscription" || t === "transaction_fee" || t === "other";
+}
+
+/** Whether this invoice row can be paid online (Paystack) or was ever meant to be collected from the provider. */
+export function isProviderInvoicePayable(row: {
+  invoice_type?: string | null;
+  status?: string | null;
+}): boolean {
+  if (isNonPayableInvoiceType(row.invoice_type)) return false;
+  const status = String(row.status ?? "");
+  if (status === "cancelled" || status === "refunded" || status === "draft") return false;
+  return isPayableInvoiceType(row.invoice_type);
+}

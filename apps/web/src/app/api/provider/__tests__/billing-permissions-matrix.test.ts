@@ -42,28 +42,48 @@ function makeBillingHistoryAdminClient() {
   return { from: vi.fn(() => chain) };
 }
 
+function makeSupabaseChain(result: { data?: unknown; error?: null; count?: number } = {}) {
+  const chain: Record<string, unknown> = {};
+  const self = () => chain;
+  for (const m of [
+    "select",
+    "eq",
+    "in",
+    "gt",
+    "or",
+    "order",
+    "range",
+    "lte",
+    "gte",
+    "neq",
+    "limit",
+  ]) {
+    chain[m] = vi.fn(self);
+  }
+  chain.range = vi.fn(() =>
+    Promise.resolve({ data: result.data ?? [], error: null, count: result.count ?? 0 }),
+  );
+  chain.maybeSingle = vi.fn(() => Promise.resolve({ data: null, error: null }));
+  chain.single = vi.fn(() => Promise.resolve({ data: null, error: null }));
+  Object.assign(chain, {
+    then: (resolve: (v: unknown) => void) =>
+      resolve({ data: result.data ?? [], error: null }),
+  });
+  return chain;
+}
+
 function makeInvoicesServerClient() {
   let invoicesFromCall = 0;
   return {
     from: vi.fn((table: string) => {
-      if (table !== "provider_invoices") throw new Error(`Unexpected server table ${table}`);
-      invoicesFromCall += 1;
-      if (invoicesFromCall === 1) {
-        const chain: Record<string, unknown> = {};
-        chain.select = vi.fn(() => chain);
-        chain.eq = vi.fn(() => chain);
-        chain.or = vi.fn(() => chain);
-        chain.order = vi.fn(() => chain);
-        chain.range = vi.fn(() => Promise.resolve({ data: [], error: null, count: 0 }));
-        return chain;
+      if (table === "provider_invoices") {
+        invoicesFromCall += 1;
+        if (invoicesFromCall === 1) {
+          return makeSupabaseChain({ count: 0 });
+        }
+        return makeSupabaseChain();
       }
-      const summaryChain: Record<string, unknown> = {};
-      summaryChain.select = vi.fn(() => summaryChain);
-      summaryChain.eq = vi.fn(() => summaryChain);
-      Object.assign(summaryChain, {
-        then: (resolve: (v: unknown) => void) => resolve({ data: [], error: null }),
-      });
-      return summaryChain;
+      return makeSupabaseChain();
     }),
   };
 }

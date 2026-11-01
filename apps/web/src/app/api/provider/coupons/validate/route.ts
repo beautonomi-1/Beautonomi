@@ -47,6 +47,9 @@ export async function GET(request: NextRequest) {
 
     const code = searchParams.get('code');
     const subtotalParam = searchParams.get('subtotal');
+    const customerIdParam = searchParams.get('customer_id');
+    const customerId =
+      customerIdParam && customerIdParam.trim().length > 0 ? customerIdParam.trim() : undefined;
 
     if (!code || !code.trim()) {
       return errorResponse("Coupon code is required", "VALIDATION_ERROR", 400);
@@ -64,6 +67,7 @@ export async function GET(request: NextRequest) {
       code: couponCode,
       amount: amountForPromo,
       providerId,
+      customerId,
     });
 
     if (promoResult.valid && promoResult.promotion) {

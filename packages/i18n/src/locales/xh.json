@@ -5840,7 +5840,6 @@
           "fullNameRequired": "igama elipheleleyo *",
           "fullNamePlaceholder": "igama elipheleleyo",
           "phoneA11y": "ilungu leqela ifowuni",
-          "avatarUrlLabel": "Avatar umfanekiso URL",
           "role": "Indima",
           "selectRoleA11y": "Khetha Indima {{label}}",
           "roleStaff": "Abasebenzi",
@@ -10237,13 +10236,8 @@
           "bookingsRate": "{{count}} ubhukisho · {{rate}} izinga",
           "revAmount": "Irev {{amount}}",
           "hoursValue": "{{hours}}h",
-          "workedHours": "Worked iiyure",
-          "scheduledHours": "kucwangcisiwe iiyure",
-          "avgPerStaff": "Avg / abasebenzi",
           "hoursByStaff": "iiyure & attendance by abasebenzi",
           "emptyHours": "Akukho awa asebenziweyo kolu khefu.",
-          "completedAttendance": "{{count}} kugqityiwe · {{rate}} attphelisaance",
-          "onTime": "{{rate}} on ixesha",
           "noShows": "No-bonisas",
           "noShowRate": "No-bonisa rate",
           "ledgerNetRecognised": "Incwadi yokubala inethi yamkelwe",
@@ -29930,11 +29924,9 @@
             "unableToLoad": "Unable to ulayisha hayi-bonisas Idatha",
             "totalNoShows": "iyonke No-Shows",
             "noShowRate": "No-bonisa Rate",
-            "lostRevenue": "Lost Reindawo",
             "totalBookings": "iyonke iibhukisho",
             "repeatOffenders": "Repeat Offenders",
             "noShowsCount": "{{count}} hayi-bonisas",
-            "lostAmount": "{{amount}} lost",
             "byStaff": "No-Shows by abasebenzi",
             "recent": "Recent No-Shows",
             "emptyTitle": "No hayi-bonisas",
@@ -30073,15 +30065,10 @@
             "title": "iiyure & Attendance",
             "subtitle": "Track staff working hours and attendance",
             "unableToLoad": "Unable to ulayisha abasebenzi iiyure Idatha",
-            "totalHours": "iyonke iiyure",
             "hoursValue": "{{hours}}h",
-            "scheduledHours": "kucwangcisiwe iiyure",
-            "avgHours": "Avg iiyure/abasebenzi",
             "breakdown": "abasebenzi iiyure Breakdown",
             "emptyTitle": "No iiyure Idatha",
-            "emptyDesc": "No iiyure Idatha iyafumaneka for the Kukhethiwe period.",
-            "completedOnTime": "{{completed}} kugqityiwe • {{onTime}} on-ixesha",
-            "attendance": "{{pct}}% attendance"
+            "emptyDesc": "No iiyure Idatha iyafumaneka for the Kukhethiwe period."
           },
           "sales/summary": {
             "title": "Intengisos Isishwankathelo",
@@ -30931,7 +30918,6 @@
             "subtitle": "Isalindwe Yoco iintlawulo zesiphelo kunye PayCloud imali engahambelaniyo kuluhlu",
             "unableToLoad": "Ayikwazanga ukulayisha idatha yolungelelwaniso lomatshini wekhadi",
             "unavailableDesc": "Yenza Yoco okanye Beautonomi oomatshini bekhadi basebenzise le ngxelo.",
-            "totalRows": "Imiqolo kuluhlu",
             "yocoPending": "Yoco isalindile",
             "emptyTitle": "Akukho ngaphandle",
             "emptyDesc": "Akukho ntlawulo ilindileyo Yoco okanye PayCloud imali engahambelaniyo kweli xesha.",
@@ -35716,6 +35702,9 @@
       "legalAfter": "."
     },
     "giftCard": {
+      "breadcrumb": {
+        "navLabel": "Indlela yokukhangela"
+      },
       "purchaseSuccess": {
         "noRefTitle": "ikhadi lesipho purchase",
         "noRefBody": "As jy 'n betaling voltooi het, gebruik die terugstuurskakel vanaf veilige betaalpunt of maak Betalings en geskenkbewyse oop om jou kodes te sien.",

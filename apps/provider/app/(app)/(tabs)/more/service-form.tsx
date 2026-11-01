@@ -25,7 +25,13 @@ import type {
   RefDataOption,
 } from "@/features/catalogue/types";
 import { pricingOptionsFromService } from "@/features/catalogue/types";
+import { listChildVariantsToTurnOff } from "@/features/catalogue/bookingTierSyncPreview";
 import { useTranslation } from "@beautonomi/i18n";
+
+function formatTurnOffNames(names: string[], andMoreLabel: string): string {
+  if (names.length <= 5) return names.join(", ");
+  return `${names.slice(0, 5).join(", ")} ${andMoreLabel}`;
+}
 
 interface ServiceCategory {
   id: string;
@@ -115,7 +121,11 @@ export default function ServiceFormScreen() {
     { enabled: !!serviceId },
   );
 
-  const { data: allServicesRaw } = useApi<CatalogueServiceItem[]>(
+  const {
+    data: allServicesRaw,
+    loading: allServicesLoading,
+    error: allServicesError,
+  } = useApi<CatalogueServiceItem[]>(
     "/api/provider/services?include_inactive=true&include_variants=true",
   );
 
@@ -296,28 +306,7 @@ export default function ServiceFormScreen() {
     );
   }, [serviceId, form.name, deleteService, router, handleDeactivate, t]);
 
-  const handleSave = useCallback(async () => {
-    setFormValidationError(null);
-    const validationError = validateServiceForm({
-      name: form.name,
-      categoryId: form.categoryId,
-      serviceType: form.serviceType,
-      parentServiceId: form.parentServiceId,
-      pricingOptions: form.pricingOptions,
-      includedServices: form.includedServices,
-      parentPricingName: form.pricingOptions[0]?.pricingName ?? null,
-    });
-    if (validationError) {
-      setFormValidationError(validationError);
-      return;
-    }
-
-    const advError = validateAdvancedPricingRules(form.advancedPricingRules);
-    if (advError) {
-      setFormValidationError(advError);
-      return;
-    }
-
+  const performServiceSave = useCallback(async () => {
     const payload = buildServicePayload({
       name: form.name,
       categoryId: form.categoryId,
@@ -412,7 +401,89 @@ export default function ServiceFormScreen() {
     updateService,
     putResources,
     router,
+    sf,
     t,
+  ]);
+
+  const handleSave = useCallback(() => {
+    setFormValidationError(null);
+    const validationError = validateServiceForm({
+      name: form.name,
+      categoryId: form.categoryId,
+      serviceType: form.serviceType,
+      parentServiceId: form.parentServiceId,
+      pricingOptions: form.pricingOptions,
+      includedServices: form.includedServices,
+      parentPricingName: form.pricingOptions[0]?.pricingName ?? null,
+    });
+    if (validationError) {
+      setFormValidationError(validationError);
+      return;
+    }
+
+    const advError = validateAdvancedPricingRules(form.advancedPricingRules);
+    if (advError) {
+      setFormValidationError(advError);
+      return;
+    }
+
+    const parentPricingName = form.pricingOptions[0]?.pricingName ?? null;
+    const allServices = Array.isArray(allServicesRaw) ? allServicesRaw : [];
+
+    if (isEdit && serviceId && form.serviceType !== "variant") {
+      if (allServicesLoading && allServices.length === 0) {
+        Alert.alert(sf("stillLoadingTitle"), sf("stillLoadingBody"));
+        return;
+      }
+
+      if (allServicesError && allServices.length === 0) {
+        Alert.alert(sf("couldNotCheckOptionsTitle"), sf("couldNotCheckOptionsBody"), [
+          { text: sf("goBackFromSave"), style: "cancel" },
+          {
+            text: sf("saveAnyway"),
+            onPress: () => void performServiceSave(),
+          },
+        ]);
+        return;
+      }
+
+      const toTurnOff = listChildVariantsToTurnOff(
+        serviceId,
+        form.pricingOptions,
+        parentPricingName,
+        allServices,
+      );
+      if (toTurnOff.length > 0) {
+        const namesText = formatTurnOffNames(
+          toTurnOff,
+          sf("andMoreNames", { count: Math.max(0, toTurnOff.length - 5) }),
+        );
+        const body =
+          form.pricingOptions.length <= 1
+            ? sf("turnOffOptionsBodyMainOnly", { names: namesText })
+            : sf("turnOffOptionsBodyOthersStay", { names: namesText });
+        Alert.alert(sf("turnOffOptionsTitle"), body, [
+          { text: sf("keepThem"), style: "cancel" },
+          {
+            text: sf("turnOffAndSave"),
+            style: "destructive",
+            onPress: () => void performServiceSave(),
+          },
+        ]);
+        return;
+      }
+    }
+
+    void performServiceSave();
+  }, [
+    form,
+    isEdit,
+    serviceId,
+    allServicesRaw,
+    allServicesLoading,
+    allServicesError,
+    performServiceSave,
+    sf,
   ]);
 
   const isSaving = creating || updating;

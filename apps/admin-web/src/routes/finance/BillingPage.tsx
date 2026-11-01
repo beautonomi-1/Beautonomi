@@ -268,20 +268,9 @@ export function BillingPage() {
                 <AdminTd>
                   <div className="flex flex-col gap-1">
                     {pending ? (
-                      <button
-                        type="button"
-                        className="text-left text-xs font-medium text-indigo-700 hover:underline disabled:opacity-50"
-                        disabled={patchInvoicePayment.isPending}
-                        onClick={() =>
-                          patchInvoicePayment.mutate({
-                            invoiceId,
-                            paymentId: pending.id,
-                            action: "confirm",
-                          })
-                        }
-                      >
-                        Confirm EFT ({formatAdminCurrency(Number(pending.amount ?? 0), inv.currency)})
-                      </button>
+                      <span className="text-xs text-amber-800" title="Bank transfer claims are no longer accepted">
+                        Legacy pending claim {formatAdminCurrency(Number(pending.amount ?? 0), inv.currency)} — provider pays online
+                      </span>
                     ) : null}
                     {completed.map((p) => (
                       <button

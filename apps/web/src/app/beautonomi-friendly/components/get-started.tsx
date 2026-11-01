@@ -1,20 +1,22 @@
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
+import Link from "next/link";
 import Building from "./../../../../public/images/building-icon.svg";
 import Money from "./../../../../public/images/money-icon.svg";
 import Message from "./../../../../public/images/message-icon.svg";
+
 const steps = [
   {
     src: Building,
-    description: "First, browse Beautonomi-friendly apartments in your area.",
+    description: "Search for beauty and wellness services in your area.",
   },
   {
     src: Money,
-    description: "Next, find out how much you can earn on Beautonomi.",
+    description: "Open a provider profile to compare services, prices, and reviews.",
   },
   {
     src: Message,
-    description: "Then, we’ll help you contact the places you like.",
+    description: "Book an appointment online when you are ready.",
   },
 ];
 
@@ -36,8 +38,8 @@ export default function GetStarted() {
           ))}
         </div>
         <div className="text-start md:text-center">
-          <Button size="default" variant="default">
-            Explore near you
+          <Button size="default" variant="default" asChild>
+            <Link href="/search">Find a provider</Link>
           </Button>
         </div>
       </div>

@@ -14,7 +14,6 @@ import {
   FlatList,
   Alert,
   ActivityIndicator,
-  TextInput,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -85,6 +84,18 @@ interface Invoice {
   created_at: string;
 }
 
+type BillingObligation = {
+  id: string;
+  kind: string;
+  status: "due" | "paid" | "refunded";
+  title: string;
+  description?: string | null;
+  amount: number;
+  currency: string;
+  pay_action: string;
+  entity_id?: string | null;
+};
+
 interface InvoicesResponse {
   invoices: Invoice[];
   total: number;
@@ -95,6 +106,8 @@ interface InvoicesResponse {
     outstanding_amount: number;
     overdue_count: number;
   };
+  obligations?: BillingObligation[];
+  obligations_summary?: { outstanding_total: number; due_count: number };
 }
 
 const STATUS_FILTER_DEFS = [
@@ -129,7 +142,10 @@ function effectiveStatus(inv: Invoice): string {
   return inv.effective_status ?? inv.status;
 }
 
+const NON_PAYABLE_INVOICE_TYPES = new Set(["platform_fee", "commission"]);
+
 function isPayableInvoice(inv: Invoice): boolean {
+  if (NON_PAYABLE_INVOICE_TYPES.has(inv.invoice_type)) return false;
   const st = effectiveStatus(inv);
   return (st === "sent" || st === "partially_paid" || st === "overdue") && amountDue(inv) > 0;
 }
@@ -201,9 +217,6 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
   const [selected, setSelected] = useState<Invoice | null>(null);
   const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
   const [exportingCsv, setExportingCsv] = useState(false);
-  const [showEft, setShowEft] = useState(false);
-  const [eftAmount, setEftAmount] = useState("");
-  const [eftReference, setEftReference] = useState("");
   const debouncedSearch = useDebouncedValue(search.trim(), 300);
 
   const { data: permissionData } = useApi<{ isOwner?: boolean; permissions?: Record<string, boolean> }>(
@@ -230,19 +243,8 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
     authorization_url?: string;
     amount?: number;
   }>("post");
-  const { execute: submitEftClaim, loading: submittingEft } = useApiMutation<{ payment?: unknown }>("post");
   const { waitForCheckout } = useInAppPaystackCheckout();
   const [downloadingInvoice, setDownloadingInvoice] = useState(false);
-
-  useEffect(() => {
-    if (!selected) {
-      setShowEft(false);
-      setEftAmount("");
-      setEftReference("");
-      return;
-    }
-    setEftAmount(String(amountDue(selected)));
-  }, [selected?.id]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -371,33 +373,38 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
     }
   }
 
-  async function handleSubmitEft(inv: Invoice) {
-    const amount = parseFloat(eftAmount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      Alert.alert(iv("invalidAmountTitle"), iv("invalidAmountBody"));
-      return;
-    }
-    const { error } = await submitEftClaim(`/api/provider/invoices/${inv.id}/pay`, {
-      amount,
-      paymentReference: eftReference.trim() || undefined,
-    });
-    if (error) {
-      Alert.alert(iv("eftFailedTitle"), error);
-      return;
-    }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert(iv("eftSubmittedTitle"), iv("eftSubmittedBody"));
-    setShowEft(false);
-    setSelected(null);
-    await refresh();
-  }
-
   const selectedDue = selected ? amountDue(selected) : 0;
   const selectedIsPayable = Boolean(selected && isPayableInvoice(selected));
-  const selectedHasPendingEft = Boolean(
-    selected?.payments?.some((p) => p.status === "pending"),
-  );
   const isPayingSelected = Boolean(selected && payingInvoiceId === selected.id);
+
+  const dueObligations = useMemo(
+    () => (invData?.obligations ?? []).filter((o) => o.status === "due"),
+    [invData?.obligations],
+  );
+
+  function openObligation(o: BillingObligation) {
+    switch (o.pay_action) {
+      case "invoice_pay":
+        if (o.entity_id) {
+          const inv = invoices.find((i) => i.id === o.entity_id);
+          if (inv) setSelected(inv);
+        }
+        break;
+      case "subscription_pay":
+      case "stripe_manage":
+      case "apple_manage":
+        router.push("/(app)/(tabs)/more/billing?tab=subscription");
+        break;
+      case "terminal_pay":
+        router.push("/(app)/(tabs)/more/terminal-shop");
+        break;
+      case "payout_offset":
+        router.push("/(app)/(tabs)/more/finance");
+        break;
+      default:
+        break;
+    }
+  }
 
   return (
     <InvoicesShell embedded={embedded} screenPadding={screenPadding}>
@@ -431,6 +438,32 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
           </TouchableOpacity>
         </View>
       )}
+
+      {dueObligations.length > 0 ? (
+        <View style={twStyle("mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3")}>
+          <Text style={twStyle("text-sm font-semibold text-gray-900")}>{iv("obligationsDueHeading")}</Text>
+          <Text style={twStyle("mt-1 text-xs text-gray-600")}>{iv("obligationsDueHint")}</Text>
+          {dueObligations.map((o) => (
+            <TouchableOpacity
+              key={o.id}
+              style={twStyle("mt-2 flex-row items-center justify-between rounded-lg bg-white px-3 py-2")}
+              onPress={() => openObligation(o)}
+            >
+              <View style={twStyle("flex-1 pe-2")}>
+                <Text style={twStyle("text-sm font-medium text-gray-900")}>{o.title}</Text>
+                {o.description ? (
+                  <Text style={twStyle("text-xs text-gray-500")} numberOfLines={2}>
+                    {o.description}
+                  </Text>
+                ) : null}
+              </View>
+              <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                {formatCurrency(o.amount, o.currency)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
 
       <View style={twStyle("mb-3 flex-row")}>
         <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
@@ -668,49 +701,8 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
                   )}
                 </TouchableOpacity>
               )}
-              {selectedIsPayable && canPay && !selectedHasPendingEft && (
-                <TouchableOpacity
-                  style={[twStyle("items-center rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2.5"), { marginEnd: 8, marginBottom: 8 }]}
-                  onPress={() => setShowEft((v) => !v)}
-                >
-                  <Text style={twStyle("text-sm font-medium text-indigo-800")}>{iv("submitEft")}</Text>
-                </TouchableOpacity>
-              )}
               {selectedIsPayable && !canPay && (
                 <Text style={twStyle("mb-2 text-xs text-gray-500")}>{iv("ownerPaysOnly")}</Text>
-              )}
-              {selectedHasPendingEft && (
-                <Text style={twStyle("mb-2 text-xs text-amber-700")}>{iv("eftPendingNote")}</Text>
-              )}
-              {showEft && canPay && selected && (
-                <View style={twStyle("mb-3 w-full rounded-xl border border-gray-200 bg-gray-50 p-3")}>
-                  <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>{iv("eftAmountLabel")}</Text>
-                  <TextInput
-                    style={twStyle("mb-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900")}
-                    value={eftAmount}
-                    onChangeText={setEftAmount}
-                    keyboardType="decimal-pad"
-                    placeholder={iv("eftAmountPlaceholder")}
-                  />
-                  <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>{iv("eftReferenceLabel")}</Text>
-                  <TextInput
-                    style={twStyle("mb-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900")}
-                    value={eftReference}
-                    onChangeText={setEftReference}
-                    placeholder={iv("eftReferencePlaceholder")}
-                  />
-                  <TouchableOpacity
-                    style={twStyle("items-center rounded-lg bg-indigo-600 py-2.5")}
-                    onPress={() => void handleSubmitEft(selected)}
-                    disabled={submittingEft}
-                  >
-                    {submittingEft ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <Text style={twStyle("text-sm font-semibold text-white")}>{iv("confirmEft")}</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
               )}
               <TouchableOpacity
                 style={[twStyle("items-center rounded-lg bg-gray-100 px-3 py-2.5"), { marginEnd: 8, marginBottom: 8 }]}

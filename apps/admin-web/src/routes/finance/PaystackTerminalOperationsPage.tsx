@@ -937,12 +937,14 @@ export function PaystackTerminalOperationsPage() {
                             Reject…
                           </button>
                           {request.support_ticket_id ? (
-                            <a
-                              href={`/admin/support-tickets/${request.support_ticket_id}`}
+                            <Link
+                              to={adminSpaTo(
+                                `/admin/support-tickets/${encodeURIComponent(request.support_ticket_id)}`,
+                              )}
                               className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-center text-xs font-semibold text-gray-700 hover:bg-gray-50"
                             >
                               Open ticket
-                            </a>
+                            </Link>
                           ) : (
                             <button
                               type="button"
@@ -985,12 +987,14 @@ export function PaystackTerminalOperationsPage() {
                         </div>
                         <div className="flex flex-col gap-2">
                           {request.support_ticket_id ? (
-                            <a
-                              href={`/admin/support-tickets/${request.support_ticket_id}`}
+                            <Link
+                              to={adminSpaTo(
+                                `/admin/support-tickets/${encodeURIComponent(request.support_ticket_id)}`,
+                              )}
                               className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-center text-xs font-semibold text-gray-700 hover:bg-gray-50"
                             >
                               Open ticket
-                            </a>
+                            </Link>
                           ) : (
                             <button
                               type="button"

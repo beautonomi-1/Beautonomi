@@ -5,6 +5,7 @@ import { checkBookingConflict, canOverrideDoubleBooking } from "@/lib/bookings/c
 import { resolveTz, fromBusinessTime } from "@/lib/dates/provider-tz";
 import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
 import { normalizePersistedServiceFeePercentage } from "@/lib/platform-service-fee-settings";
+import { isProviderPortalBookingSource } from "@/lib/bookings/provider-booking-platform-fee";
 
 type SeriesRow = {
   id: string;
@@ -318,6 +319,7 @@ export async function createBookingFromRecurringSeries(
   const pricingMeta = metaAddr?.pricing ?? {};
   const bookingSource =
     typeof metaAddr?.booking_source === "string" ? metaAddr.booking_source : "online";
+  const zeroPortalPlatformFee = isProviderPortalBookingSource(bookingSource);
   // Attribution is captured once on the series and inherited by every
   // occurrence, so repeat visits stay credited to the source that won the client.
   const referralSourceId =
@@ -352,7 +354,7 @@ export async function createBookingFromRecurringSeries(
     0,
     Number(pricingSource.membership_discount_amount ?? 0) || 0
   );
-  const recurringServiceFeeAmount = Math.max(
+  let recurringServiceFeeAmount = Math.max(
     0,
     Number(pricingSource.service_fee_amount ?? serviceFeeAmount) || 0
   );
@@ -360,6 +362,10 @@ export async function createBookingFromRecurringSeries(
     0,
     Number(pricingSource.service_fee_percentage ?? serviceFeePercentage) || 0
   );
+  if (zeroPortalPlatformFee) {
+    recurringServiceFeeAmount = 0;
+    recurringServiceFeePercentage = 0;
+  }
   const recurringTaxAmount = Math.max(0, Number(pricingSource.tax_amount ?? taxAmount) || 0);
   const recurringTaxRate = Math.max(0, Number(pricingSource.tax_rate ?? taxRate) || 0);
   const effectiveRecurringTravelFee = locationType === "at_home" ? recurringTravelFee : 0;
@@ -379,18 +385,26 @@ export async function createBookingFromRecurringSeries(
       netAfterRecurringDiscounts + effectiveRecurringTravelFee,
     ],
   );
-  const recurringTotalAmount = Math.max(
-    0,
-    Number(pricingSource.total_amount ?? 0) ||
-      recurringSubtotal -
-        recurringDiscountAmount -
-        recurringPromotionDiscount -
-        recurringMembershipDiscount +
-        effectiveRecurringTravelFee +
-        recurringTaxAmount +
-        recurringServiceFeeAmount +
-        recurringTipAmount
-  );
+  const recurringTotalAmount = zeroPortalPlatformFee
+    ? Math.max(
+        0,
+        netAfterRecurringDiscounts +
+          effectiveRecurringTravelFee +
+          recurringTaxAmount +
+          recurringTipAmount,
+      )
+    : Math.max(
+        0,
+        Number(pricingSource.total_amount ?? 0) ||
+          recurringSubtotal -
+            recurringDiscountAmount -
+            recurringPromotionDiscount -
+            recurringMembershipDiscount +
+            effectiveRecurringTravelFee +
+            recurringTaxAmount +
+            recurringServiceFeeAmount +
+            recurringTipAmount,
+      );
   const bookingData: Record<string, unknown> = {
     customer_id: row.customer_id,
     provider_id: row.provider_id,
@@ -441,9 +455,12 @@ export async function createBookingFromRecurringSeries(
     special_requests: row.notes || null,
     loyalty_points_earned: 0,
     travel_fee: effectiveRecurringTravelFee,
+    platform_fee_percentage: recurringServiceFeePercentage,
+    platform_fee_amount: recurringServiceFeeAmount,
+    platform_fee_paid_by: zeroPortalPlatformFee ? null : "customer",
     service_fee_percentage: recurringServiceFeePercentage,
     service_fee_amount: recurringServiceFeeAmount,
-    service_fee_paid_by: "customer",
+    service_fee_paid_by: zeroPortalPlatformFee ? null : "customer",
   };
   const seriesPaymentMethod = (row as { payment_method?: string | null }).payment_method;
   if (seriesPaymentMethod === "cash") {

@@ -116,7 +116,16 @@ export async function PATCH(request: NextRequest) {
     const updates: any = {};
 
     if (body.businessName !== undefined) {
-      updates.business_name = body.businessName;
+      const trimmed = String(body.businessName).trim();
+      if (trimmed.length <= 1) {
+        return handleApiError(
+          new Error("Business name must be longer than one character"),
+          "Validation failed",
+          "VALIDATION_ERROR",
+          400,
+        );
+      }
+      updates.business_name = trimmed;
     }
     if (body.timezone !== undefined) {
       // §Launch-audit 2026-04-18: see business/route.ts — validate IANA

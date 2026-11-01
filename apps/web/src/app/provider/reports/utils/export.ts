@@ -491,7 +491,7 @@ export function formatReportDataForExport(
           "Staff Name": staff.staffName,
           "Appointments (staff)": staff.totalBookings,
           "Ledger net": fm((staff.totalRevenue || 0), currencyCode),
-          "Hours worked": `${Number(staff.totalHours ?? 0).toFixed(1)}h`,
+          "Delivered catalogue hours": `${Number(staff.deliveredHours ?? 0).toFixed(1)}h`,
           "Average rating": staff.averageRating != null ? Number(staff.averageRating).toFixed(1) : "N/A",
           Commission: fm((staff.commissionEarned || 0), currencyCode),
         })),
@@ -751,8 +751,10 @@ export function formatReportDataForExport(
         { Metric: exportMetric("Avg per row"), Value: fm(Number(data.averageRedemptionValue ?? 0), currencyCode) },
         ...((data.redemptions as ReportRow[]) || []).map((r) => ({
           Section: "Capture",
+          Code: r.gift_card_code ?? "",
           Amount: fm(Number(r.amount || 0), currencyCode),
           "Captured at": (r.redeemed_at as string) ?? (r.captured_at as string) ?? "",
+          "Booking number": r.booking_number ?? "",
         })),
       ];
 
@@ -786,11 +788,11 @@ export function formatReportDataForExport(
     case "no-shows":
       return [
         { Metric: exportMetric("Total No-Shows"), Value: data.totalNoShows || 0 },
-        { Metric: exportMetric("Lost Revenue"), Value: fm(data.lostRevenue, currencyCode) },
+        { Metric: exportMetric("Ledger already recognised"), Value: fm(data.lostRevenue, currencyCode) },
         ...((data.repeatOffenders as ReportRow[]) || []).map((r) => ({
           Name: r.name,
           Count: r.count,
-          Revenue: fm(Number(r.revenue || 0), currencyCode),
+          "Booked value": fm(Number(r.revenue || 0), currencyCode),
         })),
       ];
 
@@ -931,13 +933,34 @@ export function formatReportDataForExport(
     case "lifetime-value":
       return [
         { Metric: exportMetric("Total Clients"), Value: data.totalClients || 0 },
-        { Metric: exportMetric("Average LTV"), Value: fm(data.averageLTV, currencyCode) },
+        { Metric: exportMetric("Average booked value"), Value: fm(data.averageLTV, currencyCode) },
+        { Metric: exportMetric("Average earned"), Value: fm(Number(data.averageEarned ?? data.averageLedgerEarnings ?? 0), currencyCode) },
+        ...(typeof data.reportBasis === "string" && data.reportBasis.trim()
+          ? [{ Metric: exportMetric("Basis"), Value: data.reportBasis }]
+          : []),
         ...((data.topClients as ReportRow[]) || (data.clientLTV as ReportRow[]) || []).slice(0, 50).map((c) => ({
           Client: c.clientName ?? c.customerId,
-          "Total Spent": fm(((c.totalSpent as number) || 0), currencyCode),
+          "Booked value": fm(((c.totalSpent as number) || 0), currencyCode),
+          Earned: fm(Number(c.totalEarned ?? 0), currencyCode),
           Bookings: c.totalBookings || 0,
         })),
       ];
+
+    case "membership-sales": {
+      const d = data as ReportRow;
+      return [
+        ...(typeof d.reportBasis === "string" ? [{ Metric: exportMetric("Basis"), Value: d.reportBasis }] : []),
+        { Metric: exportMetric("Gross sales"), Value: fm(Number(d.gross_sales ?? 0), currencyCode) },
+        { Metric: exportMetric("Recognised earnings"), Value: fm(Number(d.recognized_earnings ?? 0), currencyCode) },
+        { Metric: exportMetric("Member discounts"), Value: fm(Number(d.member_discounts_applied ?? 0), currencyCode) },
+        { Metric: exportMetric("Active subscribers"), Value: Number(d.active_subscribers ?? 0) },
+        ...((d.sales_by_day as ReportRow[]) || []).map((row) => ({
+          Date: row.date,
+          Gross: fm(Number(row.gross ?? 0), currencyCode),
+          Sales: row.count ?? 0,
+        })),
+      ];
+    }
 
     case "package-usage":
       return [
@@ -1230,12 +1253,33 @@ export function formatReportDataForExport(
         "Commission": fm(((s.totalCommission as number) ?? (s.commissionEarned as number) ?? 0), currencyCode),
       }));
 
-    case "staff-hours":
-      return ((data.staffHours as ReportRow[]) || (data.hoursData as ReportRow[]) || []).map((s) => ({
-        "Staff Name": s.staffName ?? s.name,
-        "Total Hours": ((s.totalHours as number) || 0).toFixed(1),
-        Bookings: (s.completedBookings as number) ?? (s.totalBookings as number) ?? 0,
-      }));
+    case "staff-hours": {
+      const rows = (data.staffHours as ReportRow[]) || (data.hoursData as ReportRow[]) || [];
+      const summary = [
+        { Metric: exportMetric("Delivered hours (total)"), Value: `${Number(data.totalDeliveredHours ?? 0).toFixed(1)}h` },
+        { Metric: exportMetric("Missed hours (total)"), Value: `${Number(data.totalMissedHours ?? 0).toFixed(1)}h` },
+        { Metric: exportMetric("Still on the book (total)"), Value: `${Number(data.totalNotYetCompletedHours ?? 0).toFixed(1)}h` },
+        { Metric: exportMetric("Cancelled hours (total)"), Value: `${Number(data.totalCancelledHours ?? 0).toFixed(1)}h` },
+        {
+          Metric: exportMetric("Completion rate (completed vs no-show visits)"),
+          Value: `${Number(data.completionRate ?? 0).toFixed(0)}%`,
+        },
+        ...(typeof data.reportBasis === "string" && data.reportBasis.trim()
+          ? [{ Metric: exportMetric("Basis"), Value: data.reportBasis }]
+          : []),
+      ];
+      return [
+        ...summary,
+        ...rows.map((s) => ({
+          "Staff Name": s.staffName ?? s.name,
+          "Delivered hours": Number(s.deliveredHours ?? 0).toFixed(1),
+          "Missed hours": Number(s.missedHours ?? 0).toFixed(1),
+          "Still on the book": Number(s.notYetCompletedHours ?? 0).toFixed(1),
+          Cancelled: Number(s.cancelledHours ?? 0).toFixed(1),
+          "Completion rate %": Number(s.completionRate ?? 0).toFixed(0),
+        })),
+      ];
+    }
 
     case "occupancy": {
       const d = data as ReportRow;

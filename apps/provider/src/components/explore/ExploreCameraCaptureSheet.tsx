@@ -7,6 +7,7 @@ import {
   Pressable,
   StyleSheet,
   ActivityIndicator,
+  AppState,
 } from "react-native";
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from "expo-camera";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,9 +16,11 @@ import Svg, { Circle } from "react-native-svg";
 import * as Haptics from "expo-haptics";
 import { twStyle } from "@/lib/twStyle";
 import { useTranslation } from "@beautonomi/i18n";
-import { PERMISSION_COPY } from "@/lib/native-permissions";
+import { openAppSettings, PERMISSION_COPY } from "@/lib/native-permissions";
 
 const MIN_RECORD_MS = 450;
+const REBIND_GRACE_MS = 500;
+const MODAL_HIDE_MS = 280;
 
 export type ExploreCameraCaptureResult = {
   uri: string;
@@ -31,6 +34,8 @@ type Props = {
   visible: boolean;
   maxVideoDurationMs: number;
   onClose: () => void;
+  /** Fires after the modal dismiss animation (best-effort). */
+  onAfterHide?: () => void;
   onCapture: (result: ExploreCameraCaptureResult) => void;
 };
 
@@ -75,7 +80,13 @@ function RecordProgressRing({
   );
 }
 
-export function ExploreCameraCaptureSheet({ visible, maxVideoDurationMs, onClose, onCapture }: Props) {
+export function ExploreCameraCaptureSheet({
+  visible,
+  maxVideoDurationMs,
+  onClose,
+  onAfterHide,
+  onCapture,
+}: Props) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const ep = (key: string, opts?: Record<string, unknown>) =>
@@ -85,17 +96,38 @@ export function ExploreCameraCaptureSheet({ visible, maxVideoDurationMs, onClose
   const recordPromiseRef = useRef<Promise<{ uri: string } | undefined> | null>(null);
   const recordStartedAtRef = useRef(0);
   const finishingRef = useRef(false);
+  const rebindGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wasVisibleRef = useRef(false);
 
-  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [cameraPermission, requestCameraPermission, getCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
 
   const [facing, setFacing] = useState<"front" | "back">("front");
   const [mode, setMode] = useState<"photo" | "video">("photo");
   const [cameraReady, setCameraReady] = useState(false);
+  const [hasEverBeenReady, setHasEverBeenReady] = useState(false);
+  const [rebindGrace, setRebindGrace] = useState(false);
+  const [modalPresented, setModalPresented] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordMs, setRecordMs] = useState(0);
   const [busy, setBusy] = useState(false);
   const [mountError, setMountError] = useState<string | null>(null);
+
+  const clearRebindGraceTimer = useCallback(() => {
+    if (rebindGraceTimerRef.current) {
+      clearTimeout(rebindGraceTimerRef.current);
+      rebindGraceTimerRef.current = null;
+    }
+  }, []);
+
+  const startRebindGrace = useCallback(() => {
+    clearRebindGraceTimer();
+    setRebindGrace(true);
+    rebindGraceTimerRef.current = setTimeout(() => {
+      setRebindGrace(false);
+      rebindGraceTimerRef.current = null;
+    }, REBIND_GRACE_MS);
+  }, [clearRebindGraceTimer]);
 
   useEffect(() => {
     if (!visible) return;
@@ -104,18 +136,47 @@ export function ExploreCameraCaptureSheet({ visible, maxVideoDurationMs, onClose
     setRecording(false);
     setRecordMs(0);
     setCameraReady(false);
+    setHasEverBeenReady(false);
+    setRebindGrace(false);
     setMountError(null);
+    setModalPresented(false);
     finishingRef.current = false;
     recordPromiseRef.current = null;
-    void requestCameraPermission();
-    // Request once when the sheet opens; the permission hook identity must not reset the session.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
+    clearRebindGraceTimer();
+  }, [visible, clearRebindGraceTimer]);
 
   useEffect(() => {
-    if (!visible || mode !== "video") return;
-    void requestMicPermission();
-  }, [visible, mode, requestMicPermission]);
+    if (visible && !wasVisibleRef.current) {
+      void getCameraPermission();
+    }
+    wasVisibleRef.current = visible;
+  }, [visible, getCameraPermission]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        void getCameraPermission();
+      }
+    });
+    return () => sub.remove();
+  }, [visible, getCameraPermission]);
+
+  useEffect(() => {
+    if (visible || !onAfterHide) return;
+    const timer = setTimeout(() => onAfterHide(), MODAL_HIDE_MS);
+    return () => clearTimeout(timer);
+  }, [visible, onAfterHide]);
+
+  const handleModalShow = useCallback(() => {
+    setModalPresented(true);
+    void getCameraPermission().then((perm) => {
+      if (perm?.granted) return;
+      if (perm?.canAskAgain !== false) {
+        void requestCameraPermission();
+      }
+    });
+  }, [getCameraPermission, requestCameraPermission]);
 
   const finishRecording = useCallback(async () => {
     if (finishingRef.current || !recordPromiseRef.current) return;
@@ -166,8 +227,11 @@ export function ExploreCameraCaptureSheet({ visible, maxVideoDurationMs, onClose
     return () => clearInterval(timer);
   }, [recording, maxVideoDurationMs]);
 
+  const controlsLocked = recording || rebindGrace || busy || (!cameraReady && !hasEverBeenReady);
+  const sessionInteractive = !controlsLocked && (cameraReady || hasEverBeenReady);
+
   const startRecording = useCallback(() => {
-    if (mode !== "video" || !cameraReady || recording || busy) return;
+    if (mode !== "video" || !sessionInteractive || recording || busy) return;
     if (!cameraPermission?.granted) return;
     if (!micPermission?.granted) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -186,7 +250,7 @@ export function ExploreCameraCaptureSheet({ visible, maxVideoDurationMs, onClose
     setRecording(true);
   }, [
     mode,
-    cameraReady,
+    sessionInteractive,
     recording,
     busy,
     cameraPermission?.granted,
@@ -198,7 +262,7 @@ export function ExploreCameraCaptureSheet({ visible, maxVideoDurationMs, onClose
   const canTakePhoto = cameraPermission?.granted === true;
 
   const takePhoto = useCallback(async () => {
-    if (mode !== "photo" || !cameraReady || busy || !canTakePhoto) return;
+    if (mode !== "photo" || !sessionInteractive || busy || !canTakePhoto) return;
     setBusy(true);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -211,59 +275,106 @@ export function ExploreCameraCaptureSheet({ visible, maxVideoDurationMs, onClose
         fileName: `explore-photo-${Date.now()}.jpg`,
         isVideo: false,
       });
+    } catch {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setBusy(false);
     }
-  }, [mode, cameraReady, busy, canTakePhoto, onCapture]);
+  }, [mode, sessionInteractive, busy, canTakePhoto, onCapture]);
+
+  const switchToPhoto = useCallback(() => {
+    if (recording || controlsLocked) return;
+    if (mode === "photo") return;
+    startRebindGrace();
+    setMode("photo");
+  }, [recording, controlsLocked, mode, startRebindGrace]);
+
+  const switchToVideo = useCallback(() => {
+    if (recording || controlsLocked) return;
+    if (mode === "video") return;
+    void requestMicPermission();
+    startRebindGrace();
+    setMode("video");
+  }, [recording, controlsLocked, mode, requestMicPermission, startRebindGrace]);
+
+  const flipFacing = useCallback(() => {
+    if (recording || controlsLocked || !sessionInteractive) return;
+    setMountError(null);
+    startRebindGrace();
+    setFacing((f) => (f === "back" ? "front" : "back"));
+  }, [recording, controlsLocked, sessionInteractive, startRebindGrace]);
+
+  const onCameraReady = useCallback(() => {
+    clearRebindGraceTimer();
+    setRebindGrace(false);
+    setMountError(null);
+    setCameraReady(true);
+    setHasEverBeenReady(true);
+  }, [clearRebindGraceTimer]);
 
   const shutterSize = 84;
   const progress = recordMs / maxVideoDurationMs;
 
-  if (!visible) return null;
+  const showCameraView =
+    modalPresented && cameraPermission != null && cameraPermission.granted === true;
+
+  const handlePermissionContinue = useCallback(() => {
+    if (cameraPermission?.canAskAgain === false) {
+      void openAppSettings();
+      return;
+    }
+    void requestCameraPermission();
+  }, [cameraPermission?.canAskAgain, requestCameraPermission]);
 
   return (
     <Modal
       visible={visible}
       animationType="slide"
       presentationStyle="fullScreen"
+      onShow={handleModalShow}
       onRequestClose={() => {
         if (recording) return;
         onClose();
       }}
     >
       <View style={[StyleSheet.absoluteFill, { backgroundColor: "#000" }]}>
-        {cameraPermission == null ? (
+        {cameraPermission == null || !modalPresented ? (
           <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]}>
             <ActivityIndicator size="large" color="#fff" />
             <Text style={twStyle("text-white mt-3")}>{ep("openingCamera")}</Text>
           </View>
-        ) : cameraPermission.granted ? (
+        ) : cameraPermission.granted && showCameraView ? (
           <CameraView
-            key={`${facing}-${mode}`}
             ref={cameraRef}
             style={StyleSheet.absoluteFill}
             facing={facing}
             mirror={facing === "front"}
             mode={mode === "video" ? "video" : "picture"}
             mute={false}
-            onCameraReady={() => {
-              setMountError(null);
-              setCameraReady(true);
-            }}
+            onCameraReady={onCameraReady}
             onMountError={(event) => {
               const raw = event as { message?: string; nativeEvent?: { message?: string } };
               setCameraReady(false);
               setMountError(raw.message || raw.nativeEvent?.message || ep("cameraOpenFailed"));
             }}
           />
+        ) : cameraPermission.granted ? (
+          <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]}>
+            <ActivityIndicator size="large" color="#fff" />
+            <Text style={twStyle("text-white mt-3")}>{ep("openingCamera")}</Text>
+          </View>
         ) : (
           <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center", padding: 24 }]}>
             <Text style={twStyle("text-center text-white mb-4")}>{PERMISSION_COPY.cameraPost.message}</Text>
             <TouchableOpacity
-              onPress={() => void requestCameraPermission()}
+              onPress={handlePermissionContinue}
               style={twStyle("rounded-full bg-white px-6 py-3")}
             >
-              <Text style={twStyle("font-semibold text-gray-900")}>{ep("cameraPermissionContinue")}</Text>
+              <Text style={twStyle("font-semibold text-gray-900")}>
+                {cameraPermission.canAskAgain === false
+                  ? ep("cameraPermissionOpenSettings")
+                  : ep("cameraPermissionContinue")}
+              </Text>
             </TouchableOpacity>
           </View>
         )}
@@ -292,34 +403,23 @@ export function ExploreCameraCaptureSheet({ visible, maxVideoDurationMs, onClose
           </TouchableOpacity>
           <View style={styles.modePill}>
             <TouchableOpacity
-              disabled={recording}
-              onPress={() => {
-                setCameraReady(false);
-                setMode("photo");
-              }}
+              disabled={controlsLocked}
+              onPress={switchToPhoto}
               style={[styles.modeBtn, mode === "photo" && styles.modeBtnActive]}
             >
               <Text style={[styles.modeText, mode === "photo" && styles.modeTextActive]}>{ep("capturePhoto")}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              disabled={recording}
-              onPress={() => {
-                setCameraReady(false);
-                setMode("video");
-              }}
+              disabled={controlsLocked}
+              onPress={switchToVideo}
               style={[styles.modeBtn, mode === "video" && styles.modeBtnActive]}
             >
               <Text style={[styles.modeText, mode === "video" && styles.modeTextActive]}>{ep("captureVideo")}</Text>
             </TouchableOpacity>
           </View>
           <TouchableOpacity
-            disabled={recording || !cameraReady || !cameraPermission?.granted}
-            onPress={() => {
-              if (!cameraReady || recording) return;
-              setMountError(null);
-              setCameraReady(false);
-              setFacing((f) => (f === "back" ? "front" : "back"));
-            }}
+            disabled={controlsLocked || !canTakePhoto}
+            onPress={flipFacing}
             style={styles.iconBtn}
             accessibilityLabel={facing === "front" ? ep("switchToBack") : ep("switchToFront")}
           >
@@ -361,7 +461,7 @@ export function ExploreCameraCaptureSheet({ visible, maxVideoDurationMs, onClose
           <Text style={styles.hintText}>
             {mountError
               ? mountError
-              : !cameraReady
+              : !sessionInteractive
                 ? ep("openingCamera")
                 : mode === "video"
                   ? ep("holdToRecord")
@@ -370,9 +470,9 @@ export function ExploreCameraCaptureSheet({ visible, maxVideoDurationMs, onClose
 
           {mode === "photo" ? (
             <TouchableOpacity
-              disabled={busy || !canTakePhoto || !cameraReady}
+              disabled={busy || !canTakePhoto || !sessionInteractive}
               onPress={() => void takePhoto()}
-              style={[styles.shutterHit, (!cameraReady || busy) && styles.shutterDisabled]}
+              style={[styles.shutterHit, (!sessionInteractive || busy) && styles.shutterDisabled]}
               activeOpacity={0.85}
               accessibilityLabel={ep("tapForPhoto")}
             >
@@ -381,13 +481,13 @@ export function ExploreCameraCaptureSheet({ visible, maxVideoDurationMs, onClose
             </TouchableOpacity>
           ) : (
             <Pressable
-              disabled={busy || !canTakePhoto || !cameraReady}
+              disabled={busy || !canTakePhoto || !sessionInteractive}
               onPressIn={startRecording}
               onPressOut={() => void finishRecording()}
               accessibilityLabel={ep("holdToRecord")}
               style={({ pressed }) => [
                 styles.shutterHit,
-                (!cameraReady || busy) && styles.shutterDisabled,
+                (!sessionInteractive || busy) && styles.shutterDisabled,
                 pressed && { transform: [{ scale: 0.96 }] },
               ]}
             >
@@ -495,13 +595,6 @@ const styles = StyleSheet.create({
     borderRadius: 42,
     borderWidth: 4,
     borderColor: "#fff",
-  },
-  shutterOuter: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    alignItems: "center",
-    justifyContent: "center",
   },
   shutterInnerPhoto: {
     width: 58,

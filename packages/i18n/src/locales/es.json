@@ -5840,7 +5840,6 @@
           "fullNameRequired": "nombre completo *",
           "fullNamePlaceholder": "nombre completo",
           "phoneA11y": "miembro del equipo teléfono",
-          "avatarUrlLabel": "Avatar imagen URL",
           "role": "Rol",
           "selectRoleA11y": "Seleccionar Rol {{label}}",
           "roleStaff": "Personal",
@@ -10237,13 +10236,8 @@
           "bookingsRate": "{{count}} bookings · {{rate}} rate",
           "revAmount": "Rev {{amount}}",
           "hoursValue": "{{hours}}h",
-          "workedHours": "Worked horas",
-          "scheduledHours": "programado horas",
-          "avgPerStaff": "Avg / personal",
           "hoursByStaff": "horas & attendance by personal",
           "emptyHours": "No worked hours in this range.",
-          "completedAttendance": "{{count}} completed · {{rate}} attendance",
-          "onTime": "{{rate}} on hora",
           "noShows": "No-mostrars",
           "noShowRate": "No-mostrar rate",
           "ledgerNetRecognised": "Ledger net recognised",
@@ -29930,11 +29924,9 @@
             "unableToLoad": "Unable to cargar no-mostrars Datos",
             "totalNoShows": "total No-Shows",
             "noShowRate": "No-mostrar Rate",
-            "lostRevenue": "Lost Relocal",
             "totalBookings": "total reservas",
             "repeatOffenders": "Repeat Offenders",
             "noShowsCount": "{{count}} no-mostrars",
-            "lostAmount": "{{amount}} lost",
             "byStaff": "No-Shows by personal",
             "recent": "Recent No-Shows",
             "emptyTitle": "No no-mostrars",
@@ -30073,15 +30065,10 @@
             "title": "horas & Attendance",
             "subtitle": "Track staff working hours and attendance",
             "unableToLoad": "Unable to cargar personal horas Datos",
-            "totalHours": "total horas",
             "hoursValue": "{{hours}}h",
-            "scheduledHours": "programado horas",
-            "avgHours": "Avg horas/personal",
             "breakdown": "personal horas Breakdown",
             "emptyTitle": "No horas Datos",
-            "emptyDesc": "No horas Datos disponible for the Seleccionado period.",
-            "completedOnTime": "{{completed}} completado • {{onTime}} on-hora",
-            "attendance": "{{pct}}% attendance"
+            "emptyDesc": "No horas Datos disponible for the Seleccionado period."
           },
           "sales/summary": {
             "title": "Ventas Resumen",
@@ -30931,7 +30918,6 @@
             "subtitle": "Pagos de Yoco pendientes en terminal y discrepancias de importe de PayCloud en el periodo",
             "unableToLoad": "No se pueden cargar los datos de conciliación de la máquina de tarjetas",
             "unavailableDesc": "Habilite Yoco o Beautonomi máquinas de tarjetas para usar este informe.",
-            "totalRows": "Filas en el periodo",
             "yocoPending": "Yoco pendiente",
             "paycloudMismatch": "Discrepancia de importe de PayCloud",
             "emptyTitle": "Sin excepciones",
@@ -35716,6 +35702,9 @@
       "legalAfter": "."
     },
     "giftCard": {
+      "breadcrumb": {
+        "navLabel": "Ruta de navegación"
+      },
       "purchaseSuccess": {
         "noRefTitle": "tarjeta de regalo purchase",
         "noRefBody": "Uma uqedele ukukhokha, sebenzisa isixhumanisi sokubuyisela ekuphumeni okuphephile noma vula Izinkokhelo namakhadi esipho ukuze ubone amakhodi akho.",

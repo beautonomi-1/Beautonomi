@@ -5840,7 +5840,6 @@
           "fullNameRequired": "leina le le feletseng *",
           "fullNamePlaceholder": "leina le le feletseng",
           "phoneA11y": "leloko la setlhopha mogala",
-          "avatarUrlLabel": "Avatar setshwantsho URL",
           "role": "Karolo",
           "selectRoleA11y": "Tlhopha Karolo {{label}}",
           "roleStaff": "Badiri",
@@ -10237,13 +10236,8 @@
           "bookingsRate": "{{count}} di-odara · {{rate}} sekhahla",
           "revAmount": "Rev {{amount}}",
           "hoursValue": "{{hours}}h",
-          "workedHours": "Worked diiri",
-          "scheduledHours": "e rulagantswe diiri",
-          "avgPerStaff": "Avg / badiri",
           "hoursByStaff": "diiri & attendance by badiri",
           "emptyHours": "Ga go na dihora tse di šomilweng mo sebakeng se.",
-          "completedAttendance": "{{count}} e fedile · {{rate}} attkhutlisaance",
-          "onTime": "{{rate}} on nako",
           "noShows": "No-bontshas",
           "noShowRate": "No-bontsha rate",
           "ledgerNetRecognised": "Bukana net e amogelweng",
@@ -29930,11 +29924,9 @@
             "unableToLoad": "Unable to laiša nnyaa-bontshas Datha",
             "totalNoShows": "palogotlhe No-Shows",
             "noShowRate": "No-bontsha Rate",
-            "lostRevenue": "Lost Relefelo",
             "totalBookings": "palogotlhe dibukingo",
             "repeatOffenders": "Repeat Offenders",
             "noShowsCount": "{{count}} nnyaa-bontshas",
-            "lostAmount": "{{amount}} lost",
             "byStaff": "No-Shows by badiri",
             "recent": "Recent No-Shows",
             "emptyTitle": "No nnyaa-bontshas",
@@ -30073,15 +30065,10 @@
             "title": "diiri & Attendance",
             "subtitle": "Track staff working hours and attendance",
             "unableToLoad": "Unable to laiša badiri diiri Datha",
-            "totalHours": "palogotlhe diiri",
             "hoursValue": "{{hours}}h",
-            "scheduledHours": "e rulagantswe diiri",
-            "avgHours": "Avg diiri/badiri",
             "breakdown": "badiri diiri Breakdown",
             "emptyTitle": "No diiri Datha",
-            "emptyDesc": "No diiri Datha e teng for the E tlhophilwe period.",
-            "completedOnTime": "{{completed}} e fedile • {{onTime}} on-nako",
-            "attendance": "{{pct}}% attendance"
+            "emptyDesc": "No diiri Datha e teng for the E tlhophilwe period."
           },
           "sales/summary": {
             "title": "Thekisos Tshobokanyo",
@@ -30931,7 +30918,6 @@
             "subtitle": "Go letilwe Yoco dituelo tsa theminale le PayCloud selekanyo se se sa tshwaneng mo setlhopheng",
             "unableToLoad": "Ga e kgone go laisa tshedimosetso ya go nyalanya motšhini wa karata",
             "unavailableDesc": "Kgontsha metšhini ya dikarata tsa Yoco kgotsa Beautonomi go dirisa pegelo eno.",
-            "totalRows": "Mela mo setlhopheng",
             "yocoPending": "Yoco e letisitswe",
             "paycloudMismatch": "PayCloud selekanyo se se sa tshwaneng",
             "emptyTitle": "Ga go na diphapogo",
@@ -35716,6 +35702,9 @@
       "legalAfter": "."
     },
     "giftCard": {
+      "breadcrumb": {
+        "navLabel": "Tsela ya go tsamaya"
+      },
       "purchaseSuccess": {
         "noRefTitle": "karata ya mpho purchase",
         "noRefBody": "As jy 'n betaling voltooi het, gebruik die terugstuurskakel vanaf veilige betaalpunt of maak Betalings en geskenkbewyse oop om jou kodes te sien.",

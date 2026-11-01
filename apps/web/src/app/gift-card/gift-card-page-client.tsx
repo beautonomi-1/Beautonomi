@@ -15,17 +15,18 @@ interface GiftCardPageClientProps {
 }
 
 export default function GiftCardPageClient({ content }: GiftCardPageClientProps) {
-  const { enabled: giftCardsEnabled } = useFeatureFlag("gift_cards");
+  const { enabled: giftCardsEnabled, loading: giftCardsFlagLoading } = useFeatureFlag("gift_cards");
+  const showGiftCardPurchase = giftCardsFlagLoading || giftCardsEnabled;
 
   return (
     <div className="bg-white">
       <Navbar4 />
-      <GiftsHero content={content} giftCardsEnabled={giftCardsEnabled} />
+      <GiftsHero content={content} giftCardsEnabled={showGiftCardPurchase} />
       <PickingDesigns content={content} />
       <HowItWorks content={content} />
       <FeatureCards content={content} />
       <Banner content={content} />
-      <div className="pb-16 md:pb-24">
+      <div className="pb-28 md:pb-24">
         <FAQ applyBgPrimary={false} category="gift-card" />
       </div>
     </div>

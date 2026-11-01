@@ -140,13 +140,37 @@ export function StaffHoursReportView({ data }: { data: unknown }) {
   const gf = useGf();
   if (!isObj(data, "staffHours")) return <ReportPayloadView data={data} />;
   const rows = (data.staffHours as Array<Record<string, unknown>>) ?? [];
+  const basis = typeof data.reportBasis === "string" ? data.reportBasis : null;
   return (
     <View style={twStyle("gap-5 pb-8")}>
+      {basis ? (
+        <Text style={twStyle("text-sm text-gray-600 px-1")}>{basis}</Text>
+      ) : null}
       <View style={twStyle("flex-row flex-wrap gap-3")}>
-        <Metric label={gf("workedHours")} value={gf("hoursValue", { hours: num(data.totalHours).toFixed(1) })} tone="emerald" />
-        <Metric label={gf("scheduledHours")} value={gf("hoursValue", { hours: num(data.totalScheduledHours).toFixed(1) })} tone="blue" />
-        <Metric label={gf("avgPerStaff")} value={gf("hoursValue", { hours: num(data.averageHoursPerStaff).toFixed(1) })} tone="violet" />
+        <Metric
+          label={gf("deliveredHoursTotal")}
+          value={gf("hoursValue", { hours: num(data.totalDeliveredHours).toFixed(1) })}
+          tone="emerald"
+        />
+        <Metric
+          label={gf("missedHoursTotal")}
+          value={gf("hoursValue", { hours: num(data.totalMissedHours).toFixed(1) })}
+          tone="amber"
+        />
+        <Metric
+          label={gf("stillOnBookHoursTotal")}
+          value={gf("hoursValue", { hours: num(data.totalNotYetCompletedHours).toFixed(1) })}
+          tone="blue"
+        />
+        <Metric
+          label={gf("cancelledHoursTotal")}
+          value={gf("hoursValue", { hours: num(data.totalCancelledHours).toFixed(1) })}
+          tone="violet"
+        />
       </View>
+      <Text style={twStyle("text-sm text-gray-700 px-1")}>
+        {gf("staffCompletionRate", { pct: num(data.completionRate).toFixed(0) })}
+      </Text>
       <SectionLabel>{gf("hoursByStaff")}</SectionLabel>
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
         {rows.length === 0 ? (
@@ -156,12 +180,14 @@ export function StaffHoursReportView({ data }: { data: unknown }) {
             <Row
               key={String(r.staffId ?? i)}
               title={String(r.staffName ?? gf("unknown"))}
-              subtitle={gf("completedAttendance", {
-                count: num(r.completedBookings),
-                rate: formatPercentage(num(r.attendanceRate)),
+              subtitle={gf("staffHourBuckets", {
+                delivered: num(r.deliveredHours).toFixed(1),
+                missed: num(r.missedHours).toFixed(1),
+                still: num(r.notYetCompletedHours).toFixed(1),
+                cancelled: num(r.cancelledHours).toFixed(1),
               })}
-              primary={gf("hoursValue", { hours: num(r.totalHours).toFixed(1) })}
-              secondary={gf("onTime", { rate: formatPercentage(num(r.onTimeRate)) })}
+              primary={gf("hoursValue", { hours: num(r.deliveredHours).toFixed(1) })}
+              secondary={gf("staffCompletionRate", { pct: num(r.completionRate).toFixed(0) })}
             />
           ))
         )}
@@ -256,11 +282,11 @@ export function ClientLifetimeValueReportView({ data }: { data: unknown }) {
   const segments = (data.ltvSegments as Array<Record<string, unknown>>) ?? [];
   return (
     <View style={twStyle("gap-5 pb-8")}>
-      <BasisBanner note={typeof data.basisNote === "string" ? data.basisNote : undefined} />
+      <BasisBanner note={typeof data.reportBasis === "string" ? data.reportBasis : undefined} />
       <View style={twStyle("flex-row flex-wrap gap-3")}>
         <Metric label={gf("clients")} value={String(num(data.totalClients))} tone="blue" />
-        <Metric label={gf("avgLtv")} value={formatCurrency(num(data.averageLTV))} tone="emerald" />
-        <Metric label={gf("medianLtv")} value={formatCurrency(num(data.medianLTV))} tone="violet" />
+        <Metric label={gf("avgBookedValue")} value={formatCurrency(num(data.averageLTV))} tone="emerald" />
+        <Metric label={gf("avgEarned")} value={formatCurrency(num(data.averageEarned ?? data.averageLedgerEarnings))} tone="violet" />
         <Metric label={gf("avgVisits")} value={num(data.averageVisits).toFixed(1)} />
       </View>
       {segments.length > 0 ? (
@@ -290,7 +316,7 @@ export function ClientLifetimeValueReportView({ data }: { data: unknown }) {
               title={String(r.clientName ?? gf("unknown"))}
               subtitle={gf("bookingsPerMonth", { count: num(r.totalBookings), visits: num(r.visitsPerMonth).toFixed(1) })}
               primary={formatCurrency(num(r.totalSpent))}
-              secondary={gf("avgAmount", { amount: formatCurrency(num(r.averageBookingValue)) })}
+              secondary={gf("earnedAmount", { amount: formatCurrency(num(r.totalEarned)) })}
             />
           ))
         )}

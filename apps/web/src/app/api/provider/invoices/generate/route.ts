@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { providerId, periodStart, periodEnd, invoiceType = "platform_fee" } = body;
 
-    const { invoice } = await generateProviderInvoice(supabase, {
+    const result = await generateProviderInvoice(supabase, {
       providerId,
       periodStart,
       periodEnd,
@@ -36,7 +36,19 @@ export async function POST(request: NextRequest) {
       generatedBy: "admin",
     });
 
-    return successResponse(invoice);
+    if (result.skipped === "already_collected") {
+      return handleApiError(
+        new Error("Platform fee and commission are retained at checkout and are not invoiced to providers"),
+        "Platform fee and commission are retained at checkout and are not invoiced to providers",
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+    if (result.skipped) {
+      return successResponse({ invoice: null, skipped: result.skipped });
+    }
+
+    return successResponse(result.invoice);
   } catch (error) {
     if (error instanceof ProviderInvoiceGenerationError) {
       return handleApiError(

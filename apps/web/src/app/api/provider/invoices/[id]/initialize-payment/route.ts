@@ -17,6 +17,7 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { appendInAppQuery } from "@/lib/payments/append-in-app-query";
+import { isProviderInvoicePayable } from "@/lib/invoices/provider-invoice-status";
 
 const bodySchema = z.object({
   in_app: z.boolean().optional(),
@@ -56,7 +57,7 @@ export async function POST(
 
     const { data: invoice, error: invoiceError } = await admin
       .from("provider_invoices")
-      .select("id, provider_id, invoice_number, total_amount, amount_paid, currency, status")
+      .select("id, provider_id, invoice_number, invoice_type, total_amount, amount_paid, currency, status")
       .eq("id", id)
       .maybeSingle();
 
@@ -75,6 +76,19 @@ export async function POST(
 
     if (!inv.provider_id || !(await userHasProviderAccessAdmin(admin, user.id, inv.provider_id))) {
       return forbiddenResponse("You do not have access to this invoice");
+    }
+
+    if (
+      !isProviderInvoicePayable({
+        invoice_type: (invoice as { invoice_type?: string }).invoice_type,
+        status: inv.status,
+      })
+    ) {
+      return errorResponse(
+        "This invoice cannot be paid online.",
+        "INVOICE_NOT_PAYABLE",
+        409,
+      );
     }
 
     if (inv.status === "cancelled" || inv.status === "refunded") {

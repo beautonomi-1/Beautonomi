@@ -10,7 +10,10 @@ import { requireProviderReportsAccess } from "@/lib/reports/require-provider-rep
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
-import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
+import {
+  fetchProviderGiftCardRedemptions,
+  giftCardRedemptionReportBasis,
+} from "@/lib/reports/gift-card-provider-redemptions";
 
 /**
  * GET /api/provider/reports/gift-cards/sales
@@ -39,68 +42,14 @@ export async function GET(request: NextRequest) {
     });
     const locationId = searchParams.get("location_id") || undefined;
 
-    let bookingsWithGiftCards: Array<{ id: string }> = [];
-    try {
-      bookingsWithGiftCards = await fetchAllPaged<{ id: string }>(async (from, to) => {
-        let bookingsQuery = supabaseAdmin
-          .from("bookings")
-          .select("id, gift_card_id, gift_card_amount, scheduled_at")
-          .eq("provider_id", providerId)
-          .not("gift_card_id", "is", null)
-          .gte("scheduled_at", fromDate.toISOString())
-          .lte("scheduled_at", toDate.toISOString());
-        if (locationId) {
-          bookingsQuery = bookingsQuery.eq("location_id", locationId);
-        }
-        const { data, error } = await bookingsQuery
-          .order("scheduled_at", { ascending: true })
-          .range(from, to);
-        return { data, error };
-      }, 20_000);
-    } catch (bookingsError) {
-      const msg =
-        bookingsError && typeof bookingsError === "object" && "message" in bookingsError
-          ? String((bookingsError as { message?: unknown }).message ?? "")
-          : "";
-      if (msg.includes("bookings") || msg.includes("relation") || msg.includes("does not exist")) {
-        return successResponse(emptyPayload(reportContext.timezone, fromYmd, toYmd));
-      }
-      throw bookingsError;
-    }
-
-    const bookingIds = bookingsWithGiftCards.map((b) => b.id);
-    if (bookingIds.length === 0) {
+    const { rows: redeemRows, truncated } = await fetchProviderGiftCardRedemptions(supabaseAdmin, {
+      providerId,
+      fromDate,
+      toDate,
+      locationId,
+    });
+    if (redeemRows.length === 0) {
       return successResponse(emptyPayload(reportContext.timezone, fromYmd, toYmd));
-    }
-
-    let redeemRows: Array<{ amount?: number | null }> = [];
-    try {
-      redeemRows = await fetchInIdChunks<{ amount?: number | null }>(
-        bookingIds,
-        (slice) =>
-          supabaseAdmin
-            .from("gift_card_redemptions")
-            .select("id, gift_card_id, booking_id, amount, currency, status, captured_at")
-            .eq("status", "captured")
-            .not("captured_at", "is", null)
-            .gte("captured_at", fromDate.toISOString())
-            .lte("captured_at", toDate.toISOString())
-            .in("booking_id", slice),
-        { throwOnError: true },
-      );
-    } catch (redemptionsError) {
-      const msg =
-        redemptionsError && typeof redemptionsError === "object" && "message" in redemptionsError
-          ? String((redemptionsError as { message?: unknown }).message ?? "")
-          : "";
-      if (
-        msg.includes("gift_card_redemptions") ||
-        msg.includes("relation") ||
-        msg.includes("does not exist")
-      ) {
-        return successResponse(emptyPayload(reportContext.timezone, fromYmd, toYmd));
-      }
-      throw redemptionsError;
     }
     const totalGiftCardsSold = redeemRows.length;
     const totalRevenue = redeemRows.reduce((sum, r) => sum + Number(r.amount || 0), 0);
@@ -121,12 +70,12 @@ export async function GET(request: NextRequest) {
       }))
       .sort((a, b) => b.revenue - a.revenue);
 
-    const reportBasis =
-      `Period ${fromYmd}–${toYmd} (${reportContext.timezone}). ` +
-      `Counts captured rows in gift_card_redemptions (status=captured, captured_at set) ` +
-      `whose booking_id is a booking for this provider with gift_card_id set, ` +
-      `with bookings.scheduled_at and captured_at both inside the window. ` +
-      `Gift cards are sold by the platform; this is redemption value at your business, not card purchase revenue to you as retailer.`;
+    const reportBasis = giftCardRedemptionReportBasis(
+      fromYmd,
+      toYmd,
+      reportContext.timezone,
+      truncated,
+    );
 
     return successResponse({
       timezone: reportContext.timezone,
@@ -135,9 +84,8 @@ export async function GET(request: NextRequest) {
       reportBasis,
       basis: {
         bookingFilter:
-          "Bookings for this provider with gift_card_id not null and scheduled_at in range (location_id when filtered).",
-        redemptionFilter:
-          "gift_card_redemptions status captured; captured_at in range; booking_id in that booking set.",
+          "Booking must belong to this provider, use a gift card, and match location when filtered.",
+        redemptionFilter: "gift_card_redemptions status captured; captured_at in range.",
         headlineCount: "Number of redemption rows (each row is one capture event).",
         headlineValue: "Sum of redemption.amount for those rows.",
         breakdown: "Rows grouped by redemption amount; percentage is share of redemption rows in this window.",
@@ -165,10 +113,8 @@ function emptyPayload(timezone: string, fromYmd: string, toYmd: string) {
     toYmd,
     reportBasis,
     basis: {
-      bookingFilter:
-        "Bookings for this provider with gift_card_id not null and scheduled_at in range (location_id when filtered).",
-      redemptionFilter:
-        "gift_card_redemptions status captured; captured_at in range; booking_id in that booking set.",
+      bookingFilter: "Provider booking with gift_card_id; location when filtered.",
+      redemptionFilter: "Captured_at in range.",
       headlineCount: "Number of redemption rows.",
       headlineValue: "Sum of redemption.amount.",
       breakdown: "Grouped by redemption amount.",

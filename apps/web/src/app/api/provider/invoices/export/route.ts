@@ -7,10 +7,10 @@ import {
 import { requirePermission } from "@/lib/auth/requirePermission";
 import {
   applyInvoiceStatusFilter,
+  exportableInvoiceAmountDue,
   todayUtcYmd,
   withEffectiveStatus,
 } from "@/lib/invoices/provider-invoices-query";
-import { invoiceAmountDue } from "@/lib/invoices/provider-invoice-status";
 
 function csvEscape(value: unknown): string {
   const s = String(value ?? "");
@@ -79,13 +79,19 @@ export async function GET(request: NextRequest) {
     const lines = [header.map(csvEscape).join(",")];
     for (const raw of rows ?? []) {
       const inv = withEffectiveStatus(raw as Record<string, unknown>, today);
-      const due = invoiceAmountDue({
-        status: typeof inv.status === "string" ? inv.status : null,
-        due_date: typeof inv.due_date === "string" ? inv.due_date : null,
-        total_amount: Number(inv.total_amount ?? 0),
-        amount_paid: Number(inv.amount_paid ?? 0),
-        amount_due: Number(inv.amount_due ?? NaN),
-      });
+      const due = exportableInvoiceAmountDue(
+        {
+          invoice_type: typeof inv.invoice_type === "string" ? inv.invoice_type : null,
+          status: typeof inv.status === "string" ? inv.status : null,
+          due_date: typeof inv.due_date === "string" ? inv.due_date : null,
+          total_amount: Number(inv.total_amount ?? 0),
+          amount_paid: Number(inv.amount_paid ?? 0),
+          amount_due: Number(inv.amount_due ?? NaN),
+          effective_status:
+            typeof inv.effective_status === "string" ? inv.effective_status : null,
+        },
+        today,
+      );
       lines.push(
         [
           inv.invoice_number,

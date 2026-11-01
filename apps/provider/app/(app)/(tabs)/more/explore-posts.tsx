@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -618,6 +618,16 @@ export default function ExplorePostsScreen() {
   const [trimTarget, setTrimTarget] = useState<"create" | "edit">("create");
   const [cameraCaptureOpen, setCameraCaptureOpen] = useState(false);
   const [cameraCaptureTarget, setCameraCaptureTarget] = useState<"create" | "edit">("create");
+  /** Hide create/edit draft sheet while camera, library, or trim is presented (one at a time). */
+  const [postSheetHostHidden, setPostSheetHostHidden] = useState<"create" | "edit" | null>(null);
+  const postSheetPendingRef = useRef<
+    { kind: "camera" | "library"; target: "create" | "edit" } | null
+  >(null);
+  const pendingCameraCaptureRef = useRef<ExploreCameraCaptureResult | null>(null);
+  const trimSheetAssetRef = useRef<PickedAsset | null>(null);
+  const trimRemainderRef = useRef<PickedAsset[]>([]);
+  const cameraCaptureOpenRef = useRef(false);
+  const screenMountedRef = useRef(true);
   const [extraPosts, setExtraPosts] = useState<ExplorePost[]>([]);
   const [loadingMorePosts, setLoadingMorePosts] = useState(false);
   const [reportTarget, setReportTarget] = useState<{
@@ -931,6 +941,26 @@ export default function ExplorePostsScreen() {
   );
 
   const editMediaSlotsLeft = 5 - editRemoteUrls.length - editLocalAssets.length;
+  const createMediaSlotsLeft = 5 - selectedAssets.length;
+
+  useEffect(() => {
+    screenMountedRef.current = true;
+    return () => {
+      screenMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    trimSheetAssetRef.current = trimSheetAsset;
+  }, [trimSheetAsset]);
+
+  useEffect(() => {
+    trimRemainderRef.current = trimRemainder;
+  }, [trimRemainder]);
+
+  useEffect(() => {
+    cameraCaptureOpenRef.current = cameraCaptureOpen;
+  }, [cameraCaptureOpen]);
   const hasVideoInEdit = useMemo(
     () => editRemoteUrls.some((url) => isVideoUrl(url)) || editLocalAssets.some((a) => isVideoAsset(a)),
     [editRemoteUrls, editLocalAssets],
@@ -1062,15 +1092,18 @@ export default function ExplorePostsScreen() {
       });
   }, [createOpen, editMode, trimSheetAsset]);
 
+  /** @returns true when a video trim sheet was opened (draft sheet stays hidden). */
   const ingestNewAssets = useCallback(
-    (target: "create" | "edit", incoming: PickedAsset[]) => {
+    (target: "create" | "edit", incoming: PickedAsset[], options?: { silentLimit?: boolean }) => {
       const room =
         target === "create"
           ? 5 - selectedAssets.length
           : 5 - editRemoteUrls.length - editLocalAssets.length;
       if (room <= 0) {
-        Alert.alert(ep("limitReachedTitle"), ep("limitReachedBody"));
-        return;
+        if (!options?.silentLimit) {
+          Alert.alert(ep("limitReachedTitle"), ep("limitReachedBody"));
+        }
+        return false;
       }
       const batch = incoming.slice(0, room);
       const { images, videos } = splitPickedImageVideo(batch);
@@ -1087,10 +1120,92 @@ export default function ExplorePostsScreen() {
           setTrimRemainder(videos.slice(1));
           setTrimSheetAsset(videos[0]!);
         }
+        return true;
       }
+      return false;
     },
     [selectedAssets.length, editRemoteUrls.length, editLocalAssets.length, trimSheetAsset, ep],
   );
+
+  const mapCameraCaptureToAsset = useCallback((result: ExploreCameraCaptureResult): PickedAsset => {
+    return {
+      uri: result.uri,
+      mimeType: result.mimeType,
+      fileName: result.fileName,
+      isVideo: result.isVideo,
+      ...(result.source_duration_ms ? { source_duration_ms: result.source_duration_ms } : {}),
+    };
+  }, []);
+
+  const beginPostMediaPick = useCallback(
+    (target: "create" | "edit", kind: "camera" | "library") => {
+      if (trimSheetAsset) {
+        Alert.alert(ep("trimVideoTitle"), ep("trimVideoFinishFirst"));
+        return;
+      }
+      const slotsLeft = target === "create" ? createMediaSlotsLeft : editMediaSlotsLeft;
+      if (slotsLeft <= 0) return;
+      postSheetPendingRef.current = { kind, target };
+      setPostSheetHostHidden(target);
+    },
+    [trimSheetAsset, createMediaSlotsLeft, editMediaSlotsLeft, ep],
+  );
+
+  const onPostDraftSheetHidden = useCallback(() => {
+    if (!screenMountedRef.current) return;
+    const pending = postSheetPendingRef.current;
+    if (!pending) return;
+    postSheetPendingRef.current = null;
+    setCameraCaptureTarget(pending.target);
+    if (pending.kind === "camera") {
+      setCameraCaptureOpen(true);
+      return;
+    }
+    void (async () => {
+      const target = pending.target;
+      const result = await launchImageLibraryWithPermission(
+        {
+          mediaTypes: ["images", "videos"],
+          allowsMultipleSelection: true,
+          quality: 0.9,
+        },
+        PERMISSION_COPY.photosPost,
+      );
+      if (!screenMountedRef.current) return;
+      if (!result || result.canceled) {
+        setPostSheetHostHidden(null);
+        return;
+      }
+      const newAssets: PickedAsset[] = result.assets.map((a) => mapPickerAsset(a));
+      const openedTrim = ingestNewAssets(target, newAssets, { silentLimit: true });
+      if (!openedTrim) {
+        setPostSheetHostHidden(null);
+      }
+    })();
+  }, [ingestNewAssets]);
+
+  const onCameraCaptureSheetHidden = useCallback(() => {
+    if (!screenMountedRef.current) return;
+    const cap = pendingCameraCaptureRef.current;
+    if (cap) {
+      pendingCameraCaptureRef.current = null;
+      const openedTrim = ingestNewAssets(cameraCaptureTarget, [mapCameraCaptureToAsset(cap)], {
+        silentLimit: true,
+      });
+      if (!openedTrim) {
+        setPostSheetHostHidden(null);
+      }
+      return;
+    }
+    setPostSheetHostHidden(null);
+  }, [cameraCaptureTarget, ingestNewAssets, mapCameraCaptureToAsset]);
+
+  const onTrimSheetModalHide = useCallback(() => {
+    if (trimSheetAssetRef.current) return;
+    if (trimRemainderRef.current.length > 0) return;
+    if (cameraCaptureOpenRef.current) return;
+    setPostSheetHostHidden(null);
+  }, []);
 
   const confirmTrimSheet = useCallback(
     (result: ExploreVideoTrimResult) => {
@@ -1128,58 +1243,18 @@ export default function ExplorePostsScreen() {
     }
   }, [trimRemainder]);
 
-  const mapCameraCaptureToAsset = useCallback((result: ExploreCameraCaptureResult): PickedAsset => {
-    return {
-      uri: result.uri,
-      mimeType: result.mimeType,
-      fileName: result.fileName,
-      isVideo: result.isVideo,
-      ...(result.source_duration_ms ? { source_duration_ms: result.source_duration_ms } : {}),
-    };
+  const onCameraCapture = useCallback((result: ExploreCameraCaptureResult) => {
+    pendingCameraCaptureRef.current = result;
+    setCameraCaptureOpen(false);
   }, []);
 
-  const onCameraCapture = useCallback(
-    (result: ExploreCameraCaptureResult) => {
-      setCameraCaptureOpen(false);
-      ingestNewAssets(cameraCaptureTarget, [mapCameraCaptureToAsset(result)]);
-    },
-    [cameraCaptureTarget, ingestNewAssets, mapCameraCaptureToAsset],
-  );
-
-  const openCameraCapture = useCallback(
-    (target: "create" | "edit") => {
-      if (trimSheetAsset) {
-        Alert.alert(ep("trimVideoTitle"), ep("trimVideoFinishFirst"));
-        return;
-      }
-      setCameraCaptureTarget(target);
-      setCameraCaptureOpen(true);
-    },
-    [trimSheetAsset, ep],
-  );
-
-  const pickMediaForEdit = useCallback(async () => {
-    if (trimSheetAsset) {
-      Alert.alert(ep("trimVideoTitle"), ep("trimVideoFinishFirst"));
-      return;
-    }
-    const result = await launchImageLibraryWithPermission(
-      {
-        mediaTypes: ["images", "videos"],
-        allowsMultipleSelection: true,
-        quality: 0.9,
-      },
-      PERMISSION_COPY.photosPost,
-    );
-    if (!result) return;
-    if (result.canceled) return;
-    const newAssets: PickedAsset[] = result.assets.map((a) => mapPickerAsset(a));
-    ingestNewAssets("edit", newAssets);
-  }, [ingestNewAssets, trimSheetAsset, ep]);
+  const pickMediaForEdit = useCallback(() => {
+    beginPostMediaPick("edit", "library");
+  }, [beginPostMediaPick]);
 
   const pickFromCameraForEdit = useCallback(() => {
-    openCameraCapture("edit");
-  }, [openCameraCapture]);
+    beginPostMediaPick("edit", "camera");
+  }, [beginPostMediaPick]);
 
   const removeEditRemote = useCallback((index: number) => {
     setEditRemoteUrls((prev) => prev.filter((_, i) => i !== index));
@@ -1216,6 +1291,9 @@ export default function ExplorePostsScreen() {
     setTrimSheetAsset(null);
     setTrimRemainder([]);
     setCameraCaptureOpen(false);
+    setPostSheetHostHidden(null);
+    postSheetPendingRef.current = null;
+    pendingCameraCaptureRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -1245,28 +1323,13 @@ export default function ExplorePostsScreen() {
     setCreateOpen(false);
   }, [uploading, creating, resetCreateForm, trimSheetAsset]);
 
-  const pickMedia = useCallback(async () => {
-    if (trimSheetAsset) {
-      Alert.alert(ep("trimVideoTitle"), ep("trimVideoFinishFirst"));
-      return;
-    }
-    const result = await launchImageLibraryWithPermission(
-      {
-        mediaTypes: ["images", "videos"],
-        allowsMultipleSelection: true,
-        quality: 0.9,
-      },
-      PERMISSION_COPY.photosPost,
-    );
-    if (!result) return;
-    if (result.canceled) return;
-    const newAssets: PickedAsset[] = result.assets.map((a) => mapPickerAsset(a));
-    ingestNewAssets("create", newAssets);
-  }, [ingestNewAssets, trimSheetAsset, ep]);
+  const pickMedia = useCallback(() => {
+    beginPostMediaPick("create", "library");
+  }, [beginPostMediaPick]);
 
   const pickFromCamera = useCallback(() => {
-    openCameraCapture("create");
-  }, [openCameraCapture]);
+    beginPostMediaPick("create", "camera");
+  }, [beginPostMediaPick]);
 
   const removeAsset = useCallback((index: number) => {
     setSelectedAssets((prev) => prev.filter((_, i) => i !== index));
@@ -1647,17 +1710,18 @@ export default function ExplorePostsScreen() {
       </View>
 
       <BottomSheet
-        visible={createOpen}
+        visible={createOpen && postSheetHostHidden !== "create"}
         onClose={closeCreate}
+        onModalHide={onPostDraftSheetHidden}
         title={ep("newPostTitle")}
         subtitle={ep("newPostSubtitle")}
       >
         <View style={twStyle("mb-4 flex-row gap-2")}>
           <TouchableOpacity
             onPress={pickMedia}
-            disabled={!!trimSheetAsset}
+            disabled={!!trimSheetAsset || createMediaSlotsLeft <= 0}
             style={twStyle(
-              `flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-5 px-2 ${trimSheetAsset ? "opacity-50" : ""}`,
+              `flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-5 px-2 ${trimSheetAsset || createMediaSlotsLeft <= 0 ? "opacity-50" : ""}`,
             )}
           >
             <Ionicons name="images-outline" size={24} color="#9ca3af" />
@@ -1667,9 +1731,9 @@ export default function ExplorePostsScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             onPress={pickFromCamera}
-            disabled={!!trimSheetAsset}
+            disabled={!!trimSheetAsset || createMediaSlotsLeft <= 0}
             style={twStyle(
-              `flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-5 px-2 ${trimSheetAsset ? "opacity-50" : ""}`,
+              `flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-5 px-2 ${trimSheetAsset || createMediaSlotsLeft <= 0 ? "opacity-50" : ""}`,
             )}
           >
             <Ionicons name="camera-outline" size={24} color="#9ca3af" />
@@ -1896,8 +1960,9 @@ export default function ExplorePostsScreen() {
 
       {viewPost && (
         <BottomSheet
-          visible={!!viewPost}
+          visible={!!viewPost && postSheetHostHidden !== "edit"}
           onClose={() => !updating && !editUploading && setViewPost(null)}
+          onModalHide={onPostDraftSheetHidden}
           title={editMode ? ep("editPostTitle") : ep("postTitle")}
           snapHeight="full"
           subtitle={
@@ -2574,20 +2639,20 @@ export default function ExplorePostsScreen() {
           title={reportTarget.title}
         />
       ) : null}
-      {trimSheetAsset ? (
-        <ExploreVideoTrimSheet
-          visible
-          videoUri={trimSheetAsset.uri}
-          fullDurationMs={trimSheetAsset.source_duration_ms ?? 0}
-          maxClipMs={maxVideoClipMs}
-          onConfirm={confirmTrimSheet}
-          onCancel={cancelTrimSheet}
-        />
-      ) : null}
+      <ExploreVideoTrimSheet
+        visible={!!trimSheetAsset}
+        videoUri={trimSheetAsset?.uri ?? ""}
+        fullDurationMs={trimSheetAsset?.source_duration_ms ?? 0}
+        maxClipMs={maxVideoClipMs}
+        onConfirm={confirmTrimSheet}
+        onCancel={cancelTrimSheet}
+        onModalHide={onTrimSheetModalHide}
+      />
       <ExploreCameraCaptureSheet
         visible={cameraCaptureOpen}
         maxVideoDurationMs={maxVideoClipMs}
         onClose={() => setCameraCaptureOpen(false)}
+        onAfterHide={onCameraCaptureSheetHidden}
         onCapture={onCameraCapture}
       />
     </ScreenContainer>

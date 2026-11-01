@@ -789,8 +789,19 @@ export function NewSaleDialog({
 
     setIsValidatingCoupon(true);
     try {
+      const promoCustomerId =
+        selectedClient &&
+        !selectedClient.id.startsWith("walk-in") &&
+        isLikelyUuid(selectedClient.id)
+          ? selectedClient.id
+          : undefined;
+      const customerQs = promoCustomerId
+        ? `&customer_id=${encodeURIComponent(promoCustomerId)}`
+        : "";
       // Include subtotal in validation request for accurate discount calculation
-      const response = await providerPortalFetch(`/api/provider/coupons/validate?code=${encodeURIComponent(couponCode)}&subtotal=${subtotal}`);
+      const response = await providerPortalFetch(
+        `/api/provider/coupons/validate?code=${encodeURIComponent(couponCode)}&subtotal=${subtotal}${customerQs}`,
+      );
       if (response.ok) {
         const result = await response.json();
         const data = result.data || result; // Handle both wrapped and unwrapped responses

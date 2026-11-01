@@ -5840,7 +5840,6 @@
           "fullNameRequired": "volle naam *",
           "fullNamePlaceholder": "volle naam",
           "phoneA11y": "spanlid foon",
-          "avatarUrlLabel": "Avatar beeld URL",
           "role": "Rol",
           "selectRoleA11y": "Kies Rol {{label}}",
           "roleStaff": "Personeel",
@@ -10237,13 +10236,8 @@
           "bookingsRate": "{{count}} besprekings · {{rate}} koers",
           "revAmount": "Inkomste {{amount}}",
           "hoursValue": "{{hours}} u",
-          "workedHours": "Worked ure",
-          "scheduledHours": "geskeduleer ure",
-          "avgPerStaff": "Avg / personeel",
           "hoursByStaff": "ure & attendance by personeel",
           "emptyHours": "Geen gewerkte ure in hierdie reeks nie.",
-          "completedAttendance": "{{count}} voltooi · {{rate}} attbeëindigance",
-          "onTime": "{{rate}} on tyd",
           "noShows": "No-wyss",
           "noShowRate": "No-wys rate",
           "ledgerNetRecognised": "Grootboeknetto erken",
@@ -29930,11 +29924,9 @@
             "unableToLoad": "Unable to laai nee-wyss Data",
             "totalNoShows": "totaal No-Shows",
             "noShowRate": "No-wys Rate",
-            "lostRevenue": "Lost Relokaal",
             "totalBookings": "totaal besprekings",
             "repeatOffenders": "Repeat Offenders",
             "noShowsCount": "{{count}} nee-wyss",
-            "lostAmount": "{{amount}} lost",
             "byStaff": "No-Shows by personeel",
             "recent": "Recent No-Shows",
             "emptyTitle": "No nee-wyss",
@@ -30073,15 +30065,10 @@
             "title": "ure & Attendance",
             "subtitle": "Track staff working hours and attendance",
             "unableToLoad": "Unable to laai personeel ure Data",
-            "totalHours": "totaal ure",
             "hoursValue": "{{hours}} u",
-            "scheduledHours": "geskeduleer ure",
-            "avgHours": "Avg ure/personeel",
             "breakdown": "personeel ure Breakdown",
             "emptyTitle": "No ure Data",
-            "emptyDesc": "No ure Data beskikbaar for the Gekies period.",
-            "completedOnTime": "{{completed}} voltooi • {{onTime}} on-tyd",
-            "attendance": "{{pct}}% attendance"
+            "emptyDesc": "No ure Data beskikbaar for the Gekies period."
           },
           "sales/summary": {
             "title": "Verkoops Opsomming",
@@ -30931,7 +30918,6 @@
             "subtitle": "Hangende Yoco-terminaalbetalings en PayCloud-bedragverskille in die tydperk",
             "unableToLoad": "Kan nie kaartmasjienrekonsiliasiedata laai nie",
             "unavailableDesc": "Aktiveer Yoco- of Beautonomi-kaartmasjiene om hierdie verslag te gebruik.",
-            "totalRows": "Rye in die tydperk",
             "yocoPending": "Yoco hangende",
             "paycloudMismatch": "PayCloud-bedragverskil",
             "emptyTitle": "Geen uitsonderings nie",
@@ -35716,6 +35702,9 @@
       "legalAfter": "."
     },
     "giftCard": {
+      "breadcrumb": {
+        "navLabel": "Broodkrummel"
+      },
       "purchaseSuccess": {
         "noRefTitle": "geskenkkaart purchase",
         "noRefBody": "As jy 'n betaling voltooi het, gebruik die terugstuurskakel vanaf veilige betaalpunt of maak Betalings en geskenkbewyse oop om jou kodes te sien.",

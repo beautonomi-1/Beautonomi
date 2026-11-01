@@ -21,4 +21,8 @@ describe("ReportDetailPage CSV export", () => {
     expect(pageSource).toContain("ANALYTICS_DRILLUP_KEYS");
     expect(pageSource).toContain("/admin/analytics");
   });
+
+  it("preserves period when returning to reports hub", () => {
+    expect(pageSource).toContain('adminSpaTo("/admin/reports")}?period=');
+  });
 });

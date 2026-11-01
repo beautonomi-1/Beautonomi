@@ -6,6 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Gift, ShieldCheck, Sparkles, Zap } from "lucide-react";
 import { DEFAULT_GIFT_CARD_DESIGNS } from "./default-designs";
+import { GiftCardBreadcrumb } from "./gift-card-breadcrumb";
 
 interface PageContent {
   [sectionKey: string]: {
@@ -54,7 +55,8 @@ const GiftsHero = ({ content, giftCardsEnabled = true }: GiftsHeroProps) => {
         <div className="absolute top-40 left-[-10%] h-[420px] w-[420px] rounded-full bg-[#FFD6E7]/60 blur-[120px]" />
       </div>
 
-      <div className="container pt-10 md:pt-16 lg:pt-20 pb-16 md:pb-20 lg:pb-24">
+      <div className="container pt-6 md:pt-8 pb-16 md:pb-20 lg:pb-24">
+        <GiftCardBreadcrumb current="giftCards" className="mb-8 md:mb-10" />
         <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-10">
           {/* Copy */}
           <div className="gift-rise text-center lg:text-start">
@@ -71,24 +73,22 @@ const GiftsHero = ({ content, giftCardsEnabled = true }: GiftsHeroProps) => {
 
             {giftCardsEnabled ? (
               <div className="mt-9 flex flex-col items-center gap-4 sm:flex-row lg:items-start lg:justify-start justify-center">
-                <Link href={purchaseUrl} className="w-full sm:w-auto">
-                  <Button
-                    variant="secondary"
-                    size="rounded"
-                    className="w-full shadow-lg shadow-primary/20 transition-transform duration-200 hover:-translate-y-0.5 active:scale-[0.98] sm:w-auto"
-                  >
-                    {buyNowButtonText}
-                  </Button>
-                </Link>
-                <Link href={bulkPurchaseUrl} className="w-full sm:w-auto">
-                  <Button
-                    variant="outline"
-                    size="rounded"
-                    className="w-full border-secondary/15 text-secondary transition-transform duration-200 hover:-translate-y-0.5 hover:border-secondary/30 active:scale-[0.98] sm:w-auto"
-                  >
-                    {bulkLinkText}
-                  </Button>
-                </Link>
+                <Button
+                  asChild
+                  variant="secondary"
+                  size="rounded"
+                  className="w-full shadow-lg shadow-primary/20 transition-transform duration-200 hover:-translate-y-0.5 active:scale-[0.98] sm:w-auto"
+                >
+                  <Link href={purchaseUrl}>{buyNowButtonText}</Link>
+                </Button>
+                <Button
+                  asChild
+                  variant="outline"
+                  size="rounded"
+                  className="w-full border-secondary/15 text-secondary transition-transform duration-200 hover:-translate-y-0.5 hover:border-secondary/30 active:scale-[0.98] sm:w-auto"
+                >
+                  <Link href={bulkPurchaseUrl}>{bulkLinkText}</Link>
+                </Button>
               </div>
             ) : (
               <div className="mt-9 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-5 py-2.5 text-sm font-medium text-amber-800">

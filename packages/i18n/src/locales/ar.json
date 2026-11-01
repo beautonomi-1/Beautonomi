@@ -5840,7 +5840,6 @@
           "fullNameRequired": "الاسم الكامل *",
           "fullNamePlaceholder": "الاسم الكامل",
           "phoneA11y": "Team member هاتف",
-          "avatarUrlLabel": "رابط صورة الملف",
           "role": "الدور",
           "selectRoleA11y": "اختيار الدور {{label}}",
           "roleStaff": "الفريق",
@@ -10237,13 +10236,8 @@
           "bookingsRate": "{{count}} حجوزات · {{rate}} rate",
           "revAmount": "Rev {{amount}}",
           "hoursValue": "{{hours}} س",
-          "workedHours": "Worked ساعات",
-          "scheduledHours": "Scheduled ساعات",
-          "avgPerStaff": "Avg / فريق",
           "hoursByStaff": "ساعات & attendance by staff",
           "emptyHours": "لا ساعات عمل في هذا النطاق.",
-          "completedAttendance": "{{count}} مكتمل · {{rate}} attendance",
-          "onTime": "{{rate}} on وقت",
           "noShows": "لا-shows",
           "noShowRate": "لا-show rate",
           "ledgerNetRecognised": "دفتر net recognised",
@@ -29930,11 +29924,9 @@
             "unableToLoad": "Unable to load لا-shows data",
             "totalNoShows": "الإجمالي لا-Shows",
             "noShowRate": "لا-Show Rate",
-            "lostRevenue": "Lost Revenue",
             "totalBookings": "الإجمالي حجوزات",
             "repeatOffenders": "Repeat Offenders",
             "noShowsCount": "{{count}} لا-shows",
-            "lostAmount": "{{amount}} lost",
             "byStaff": "لا-Shows by Staff",
             "recent": "Recent لا-Shows",
             "emptyTitle": "لا لا-shows",
@@ -30073,15 +30065,10 @@
             "title": "ساعات & Attendance",
             "subtitle": "Track staff working ساعات and attendance",
             "unableToLoad": "Unable to load staff ساعات data",
-            "totalHours": "الإجمالي ساعات",
             "hoursValue": "{{hours}} س",
-            "scheduledHours": "Scheduled ساعات",
-            "avgHours": "Avg ساعات/Staff",
             "breakdown": "Staff ساعات Breakdown",
             "emptyTitle": "لا ساعات data",
-            "emptyDesc": "No hours data available for the selected period.",
-            "completedOnTime": "{{completed}} مكتمل • {{onTime}} on-وقت",
-            "attendance": "{{pct}}% attendance"
+            "emptyDesc": "No hours data available for the selected period."
           },
           "sales/summary": {
             "title": "Sales Summary",
@@ -30929,7 +30916,6 @@
           "payments/card-machine-reconciliation": {
             "title": "تسوية آلة البطاقة",
             "unableToLoad": "غير قادر على تحميل بيانات تسوية جهاز البطاقة",
-            "totalRows": "صفوف في النطاق",
             "emptyTitle": "لا استثناءات",
             "created": "تم إنشاؤها",
             "amount": "المبلغ",
@@ -35716,6 +35702,9 @@
       "legalAfter": "."
     },
     "giftCard": {
+      "breadcrumb": {
+        "navLabel": "مسار التنقل"
+      },
       "purchaseSuccess": {
         "noRefTitle": "بطاقة هدايا purchase",
         "noRefBody": "Uma uqedele ukukhokha, sebenzisa isixhumanisi sokubuyisela ekuphumeni okuphephile noma vula Izinkokhelo namakhadi esipho ukuze ubone amakhodi akho.",

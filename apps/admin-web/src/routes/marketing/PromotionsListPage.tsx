@@ -29,7 +29,7 @@ type Promo = {
   type: "percentage" | "fixed_amount";
   value: number;
   start_date: string;
-  end_date: string;
+  end_date: string | null;
   usage_limit?: number | null;
   used_count?: number;
   is_active: boolean;
@@ -78,7 +78,12 @@ function PromoForm({
   const [maxDiscount, setMaxDiscount] = useState(def.max_discount);
   const [isActive, setIsActive] = useState(def.is_active);
 
-  const isValid = name.trim() && code.trim() && value && startDate && endDate;
+  const isValid =
+    name.trim() &&
+    code.trim() &&
+    value &&
+    startDate &&
+    (initial.id ? true : Boolean(endDate));
 
   return (
     <div className="space-y-3 rounded-lg border border-indigo-200 bg-indigo-50 p-4">
@@ -109,8 +114,13 @@ function PromoForm({
           <input type="date" className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">End Date *</label>
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            End Date {initial.id ? "" : "*"}
+          </label>
           <input type="date" className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          {initial.id ? (
+            <p className="mt-1 text-xs text-gray-500">Leave empty for no end date</p>
+          ) : null}
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Usage limit</label>
@@ -141,7 +151,7 @@ function PromoForm({
             type,
             value: parseFloat(value) || 0,
             start_date: startDate,
-            end_date: endDate,
+            end_date: endDate.trim() ? endDate : initial.id ? null : endDate,
             usage_limit: usageLimit ? parseInt(usageLimit) : null,
             min_purchase: minPurchase ? parseFloat(minPurchase) : null,
             max_discount: maxDiscount ? parseFloat(maxDiscount) : null,
@@ -293,7 +303,8 @@ export function PromotionsListPage() {
                 <AdminTd>{r.type === "percentage" ? "%" : "Fixed"}</AdminTd>
                 <AdminTd>{r.type === "percentage" ? `${r.value}%` : `${r.value}`}</AdminTd>
                 <AdminTd className="text-xs">
-                  {r.start_date?.slice(0, 10)} → {r.end_date?.slice(0, 10)}
+                  {r.start_date?.slice(0, 10)} →{" "}
+                  {r.end_date?.slice(0, 10) ?? "No end date"}
                 </AdminTd>
                 <AdminTd>{r.used_count ?? 0} / {r.usage_limit ?? "∞"}</AdminTd>
                 <AdminTd>

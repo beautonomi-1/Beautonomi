@@ -8,7 +8,7 @@ function sectionText(content: FriendlyPageContent | null | undefined, key: strin
   return content?.[key]?.content?.trim() ?? "";
 }
 
-const DEFAULT_LINES = ["Introducing", "Beautonomi-friendly", "apartments"];
+const DEFAULT_LINES = ["Find beauty services", "on Beautonomi"];
 
 interface AirFriendlyHeroProps {
   content?: FriendlyPageContent | null;
@@ -21,9 +21,9 @@ export default function AirFriendlyHero({ content = null }: AirFriendlyHeroProps
     : DEFAULT_LINES;
   const subtitle =
     sectionText(content, "hero_subtitle") ||
-    "Rent a place to live. Beautonomi it part-time.";
-  const ctaLabel = sectionText(content, "cta_label") || "Explore near you";
-  const ctaHref = sectionText(content, "cta_href") || "/explore";
+    "Discover salons and freelancers near you. Search, view a profile, and book online.";
+  const ctaLabel = sectionText(content, "cta_label") || "Find a provider";
+  const ctaHref = sectionText(content, "cta_href") || "/search";
 
   return (
     <div className=" mb-24">

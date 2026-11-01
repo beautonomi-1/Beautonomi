@@ -213,7 +213,7 @@ export default function NoShowsReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.bookings/no-shows.lostRevenue")}</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.bookings/no-shows.ledgerRecognised")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -222,6 +222,7 @@ export default function NoShowsReport() {
                 </p>
                 <DollarSign className="w-5 h-5 text-red-600" />
               </div>
+              <p className="text-xs text-gray-600 mt-2">{t("web.provider.reports.pages.bookings/no-shows.ledgerRecognisedHint")}</p>
             </CardContent>
           </Card>
 
@@ -237,6 +238,10 @@ export default function NoShowsReport() {
             </CardContent>
           </Card>
         </div>
+
+        <p className="text-sm text-gray-700">
+          {t("web.provider.reports.pages.bookings/no-shows.repeatOffendersHint")}
+        </p>
 
         {/* Repeat Offenders */}
         {data.repeatOffenders.length > 0 && (
@@ -258,7 +263,9 @@ export default function NoShowsReport() {
                     <div className="text-end">
                       <p className="font-semibold text-red-600">{t("web.provider.reports.pages.bookings/no-shows.noShowsCount", { count: client.count })}</p>
                       <p className="text-sm text-gray-600">
-                        {t("web.provider.reports.pages.bookings/no-shows.lostAmount", { amount: fmt(client.revenue) })}
+                        {t("web.provider.reports.pages.bookings/no-shows.bookedValueAmount", {
+                          amount: fmt(client.revenue),
+                        })}
                       </p>
                     </div>
                   </div>

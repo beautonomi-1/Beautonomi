@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildSupportTicketsSearchParams,
+  matchSupportTicketSavedView,
+  mergeSupportTicketSavedViewIntoSearchParams,
   SUPPORT_TICKET_SAVED_VIEWS,
+  SUPPORT_TICKET_STATUS_GROUP_ACTIVE,
 } from "./buildSupportTicketsSearchParams";
 
 const defaults = {
@@ -17,6 +20,9 @@ const defaults = {
   needsResponse: false,
   slaState: "",
   firstResponseOverdue: false,
+  statusGroup: "",
+  channel: "all",
+  categoryGroup: "",
 } as const;
 
 describe("buildSupportTicketsSearchParams", () => {
@@ -114,16 +120,115 @@ describe("SUPPORT_TICKET_SAVED_VIEWS", () => {
     expect(v?.params.aiHandling).toBe(true);
   });
 
-  it("has an unassigned view", () => {
+  it("has an unassigned view aligned with active count segment", () => {
     const v = SUPPORT_TICKET_SAVED_VIEWS.find((x) => x.id === "unassigned");
     expect(v).toBeDefined();
     expect(v?.params.assign).toBe("unassigned");
+    expect(v?.params.statusGroup).toBe(SUPPORT_TICKET_STATUS_GROUP_ACTIVE);
   });
 
-  it("has a breaching_sla view using sla_overdue filter", () => {
+  it("has a breaching_sla view aligned with breaching count segment", () => {
     const v = SUPPORT_TICKET_SAVED_VIEWS.find((x) => x.id === "breaching_sla");
     expect(v).toBeDefined();
-    expect(v?.params.slaOverdue).toBe(true);
-    expect(v?.params.slaState).toBe("");
+    expect(v?.params.slaOverdue).toBe(false);
+    expect(v?.params.slaState).toBe("breached");
+    expect(v?.params.statusGroup).toBe(SUPPORT_TICKET_STATUS_GROUP_ACTIVE);
+  });
+
+  it("has first reply overdue and email channel views", () => {
+    expect(
+      SUPPORT_TICKET_SAVED_VIEWS.find((x) => x.id === "first_response_overdue")?.params.firstResponseOverdue,
+    ).toBe(true);
+    expect(SUPPORT_TICKET_SAVED_VIEWS.find((x) => x.id === "channel_email")?.params.channel).toBe("email");
+  });
+});
+
+describe("mergeSupportTicketSavedViewIntoSearchParams", () => {
+  it("hydrates email channel from channel_email preset", () => {
+    const n = mergeSupportTicketSavedViewIntoSearchParams(new URLSearchParams("saved_view=channel_email"), "channel_email");
+    expect(n.get("channel")).toBe("email");
+    expect(n.get("saved_view")).toBe("channel_email");
+    expect(n.get("sort")).toBe("updated_desc");
+  });
+
+  it("hydrates breaching preset to match count card query", () => {
+    const n = mergeSupportTicketSavedViewIntoSearchParams(new URLSearchParams(), "breaching_sla");
+    expect(n.get("sla_state")).toBe("breached");
+    expect(n.get("status_group")).toBe("active");
+    expect(n.get("sla_overdue")).toBeNull();
+  });
+
+  it("preserves selected preview and search q when applying a view", () => {
+    const n = mergeSupportTicketSavedViewIntoSearchParams(
+      new URLSearchParams("selected=abc&q=refund"),
+      "needs_response",
+    );
+    expect(n.get("selected")).toBe("abc");
+    expect(n.get("q")).toBe("refund");
+    expect(n.get("needs_response")).toBe("1");
+  });
+});
+
+describe("status_group active", () => {
+  it("emits status_group without status", () => {
+    const qs = buildSupportTicketsSearchParams({
+      ...defaults,
+      statusGroup: SUPPORT_TICKET_STATUS_GROUP_ACTIVE,
+      status: "open",
+    });
+    const p = new URLSearchParams(qs);
+    expect(p.get("status_group")).toBe("active");
+    expect(p.get("status")).toBeNull();
+  });
+});
+
+describe("matchSupportTicketSavedView", () => {
+  it("matches needs_response when channel is all", () => {
+    expect(
+      matchSupportTicketSavedView({
+        ...defaults,
+        needsResponse: true,
+        channel: "all",
+        categoryGroup: "",
+      }),
+    ).toBe("needs_response");
+  });
+
+  it("does not match needs_response when category group is set", () => {
+    expect(
+      matchSupportTicketSavedView({
+        ...defaults,
+        needsResponse: true,
+        channel: "all",
+        categoryGroup: "bookings",
+      }),
+    ).toBeNull();
+  });
+
+  it("matches active queue preset with open count segment", () => {
+    expect(
+      matchSupportTicketSavedView({
+        ...defaults,
+        statusGroup: SUPPORT_TICKET_STATUS_GROUP_ACTIVE,
+      }),
+    ).toBe("all_open");
+  });
+
+  it("matches breaching_sla and channel_email presets", () => {
+    expect(
+      matchSupportTicketSavedView({
+        ...defaults,
+        slaState: "breached",
+        statusGroup: SUPPORT_TICKET_STATUS_GROUP_ACTIVE,
+        sort: "sla_asc",
+      }),
+    ).toBe("breaching_sla");
+    expect(
+      matchSupportTicketSavedView({
+        ...defaults,
+        channel: "email",
+        sort: "updated_desc",
+      }),
+    ).toBe("channel_email");
   });
 });

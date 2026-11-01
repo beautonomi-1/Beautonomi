@@ -100,7 +100,11 @@ export async function computeCustomOfferPricing(
       prePromoSubtotal: subtotalBeforeDiscount,
       locationType,
       locationId: locationId ?? null,
+      customerId,
     });
+    if (promoResolved.blockedReason) {
+      return { ok: false, error: promoResolved.blockedReason };
+    }
     promotionId = promoResolved.promotionId;
     promotionDiscountAmount = promoResolved.promotionDiscountAmount;
   }

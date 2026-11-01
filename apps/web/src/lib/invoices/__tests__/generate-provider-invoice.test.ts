@@ -114,7 +114,7 @@ function makeSupabase(options: {
 const PERIOD = { periodStart: "2026-08-01", periodEnd: "2026-08-31" };
 
 describe("generateProviderInvoice", () => {
-  it("bills the platform fee stamped on each completed booking", async () => {
+  it("does not issue platform_fee invoices (fees retained at checkout)", async () => {
     const { supabase, inserted } = makeSupabase({
       bookings: [
         { id: "b1", ref_number: "BK-1", total_amount: 1000, platform_fee_amount: 150 },
@@ -122,15 +122,15 @@ describe("generateProviderInvoice", () => {
       ],
     });
 
-    const { invoice } = await generateProviderInvoice(supabase, {
+    const result = await generateProviderInvoice(supabase, {
       providerId: "p1",
       ...PERIOD,
       invoiceType: "platform_fee",
     });
 
-    expect(invoice).toBeTruthy();
-    expect(inserted[0].subtotal).toBe(225);
-    expect(inserted[0].currency).toBe("ZAR");
+    expect(result.skipped).toBe("already_collected");
+    expect(result.invoice).toBeNull();
+    expect(inserted).toHaveLength(0);
   });
 
   it("skips unstamped bookings for scheduled platform-fee invoices", async () => {
@@ -146,7 +146,7 @@ describe("generateProviderInvoice", () => {
       skipIfEmpty: true,
     });
 
-    expect(result.skipped).toBe("no_billable_activity");
+    expect(result.skipped).toBe("already_collected");
     expect(inserted).toHaveLength(0);
   });
 
@@ -156,6 +156,7 @@ describe("generateProviderInvoice", () => {
     const result = await generateProviderInvoice(supabase, {
       providerId: "p1",
       ...PERIOD,
+      invoiceType: "other",
       generatedBy: "scheduled",
       skipIfEmpty: true,
     });
@@ -174,8 +175,9 @@ describe("generateProviderInvoice", () => {
     const result = await generateProviderInvoice(supabase, {
       providerId: "p1",
       ...PERIOD,
+      invoiceType: "other",
       generatedBy: "scheduled",
-      skipIfEmpty: true,
+      skipIfEmpty: false,
     });
 
     expect(result.skipped).toBe("already_exists");
@@ -184,12 +186,16 @@ describe("generateProviderInvoice", () => {
 
   it("retries past a colliding invoice number rather than failing the run", async () => {
     const { supabase, inserted } = makeSupabase({
-      bookings: [{ id: "b1", total_amount: 1000, platform_fee_amount: 150 }],
       lastInvoiceNumber: "INV-2026-000004",
       invoiceNumberCollisions: 2,
     });
 
-    await generateProviderInvoice(supabase, { providerId: "p1", ...PERIOD });
+    await generateProviderInvoice(supabase, {
+      providerId: "p1",
+      ...PERIOD,
+      invoiceType: "other",
+      skipIfEmpty: false,
+    });
 
     // Sequence 5 and 6 collided; 7 is the first free slot.
     expect(inserted[0].invoice_number).toBe("INV-2026-000007");

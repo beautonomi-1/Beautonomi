@@ -40,7 +40,12 @@ export const REPORT_DETAIL_REGISTRY: Record<string, ReportDetailDefinition> = {
     query: "periodDMWY",
   },
   "staff-commission": { title: "Commission Reports", subtitle: "Commission breakdown by staff", apiPath: "staff/commission", query: "fromTo" },
-  "staff-hours": { title: "Hours & Attendance", subtitle: "Worked hours and attendance", apiPath: "staff/hours", query: "fromTo" },
+  "staff-hours": {
+    title: "Scheduled vs delivered hours",
+    subtitle: "Catalogue service time by visit outcome",
+    apiPath: "staff/hours",
+    query: "fromTo",
+  },
   "booking-status": {
     title: "Booking Status",
     subtitle: "Scheduled mix vs ledger net by current status",

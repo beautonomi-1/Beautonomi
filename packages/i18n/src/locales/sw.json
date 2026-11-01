@@ -5840,7 +5840,6 @@
           "fullNameRequired": "Jina kamili *",
           "fullNamePlaceholder": "Jina kamili",
           "phoneA11y": "Team member simu",
-          "avatarUrlLabel": "URL ya picha ya wasifu",
           "role": "Jukumu",
           "selectRoleA11y": "Chagua jukumu {{label}}",
           "roleStaff": "Wafanyakazi",
@@ -10237,13 +10236,8 @@
           "bookingsRate": "{{count}} uhifadhi · {{rate}} rate",
           "revAmount": "Rev {{amount}}",
           "hoursValue": "saa {{hours}}",
-          "workedHours": "Worked saa",
-          "scheduledHours": "Scheduled saa",
-          "avgPerStaff": "Avg / staff",
           "hoursByStaff": "Saa & attendance by staff",
           "emptyHours": "Hapana worked saa in this range.",
-          "completedAttendance": "{{count}} imekamilika · {{rate}} attendance",
-          "onTime": "{{rate}} on muda",
           "noShows": "Hapana-shows",
           "noShowRate": "Hapana-show rate",
           "ledgerNetRecognised": "Ledger net recognised",
@@ -29930,11 +29924,9 @@
             "unableToLoad": "Unable to load hapana-shows data",
             "totalNoShows": "Jumla Hapana-Shows",
             "noShowRate": "Hapana-Show Rate",
-            "lostRevenue": "Lost Revenue",
             "totalBookings": "Jumla Uhifadhi",
             "repeatOffenders": "Repeat Offenders",
             "noShowsCount": "{{count}} hapana-shows",
-            "lostAmount": "{{amount}} lost",
             "byStaff": "Hapana-Shows by Staff",
             "recent": "Recent Hapana-Shows",
             "emptyTitle": "Hapana hapana-shows",
@@ -30073,15 +30065,10 @@
             "title": "Saa & Attendance",
             "subtitle": "Track staff working saa and attendance",
             "unableToLoad": "Unable to load staff saa data",
-            "totalHours": "Jumla Saa",
             "hoursValue": "saa {{hours}}",
-            "scheduledHours": "Scheduled Saa",
-            "avgHours": "Avg Saa/Staff",
             "breakdown": "Staff Saa Breakdown",
             "emptyTitle": "Hapana saa data",
-            "emptyDesc": "No hours data available for the selected period.",
-            "completedOnTime": "{{completed}} imekamilika • {{onTime}} on-muda",
-            "attendance": "{{pct}}% attendance"
+            "emptyDesc": "No hours data available for the selected period."
           },
           "sales/summary": {
             "title": "Sales Summary",
@@ -30931,7 +30918,6 @@
             "subtitle": "Malipo yanayosubiri Yoco na PayCloud kiasi kisicholingana katika masafa",
             "unableToLoad": "Haiwezi kupakia data ya upatanisho wa mashine ya kadi",
             "unavailableDesc": "Washa mashine za kadi Yoco au Beautonomi kutumia ripoti hii.",
-            "totalRows": "Safu katika safu",
             "yocoPending": "Yoco inasubiri",
             "paycloudMismatch": "PayCloud kiasi kutolingana",
             "emptyTitle": "Hakuna ubaguzi",
@@ -35716,6 +35702,9 @@
       "legalAfter": "."
     },
     "giftCard": {
+      "breadcrumb": {
+        "navLabel": "Njia"
+      },
       "purchaseSuccess": {
         "noRefTitle": "Kadi ya zawadi purchase",
         "noRefBody": "Uma uqedele ukukhokha, sebenzisa isixhumanisi sokubuyisela ekuphumeni okuphephile noma vula Izinkokhelo namakhadi esipho ukuze ubone amakhodi akho.",

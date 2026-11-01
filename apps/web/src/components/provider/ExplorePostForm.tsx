@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
@@ -261,6 +261,7 @@ export function ExplorePostForm({
   const frontDeviceIdRef = useRef<string | null>(null);
   const backDeviceIdRef = useRef<string | null>(null);
   const lensRequestRef = useRef(0);
+  const [attachedStreamEpoch, setAttachedStreamEpoch] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const carouselRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -355,84 +356,123 @@ export function ExplorePostForm({
     }
   }, []);
 
-  const openLens = useCallback(
+  const attachStreamToPreview = useCallback(async (stream: MediaStream) => {
+    const video = videoRef.current;
+    if (!video) {
+      setAttachedStreamEpoch((e) => e + 1);
+      return;
+    }
+    video.srcObject = stream;
+    await video.play().catch(() => undefined);
+    setLensReady(true);
+  }, []);
+
+  const swapLens = useCallback(
     async (mode: "user" | "environment") => {
+      if (isRecording) return;
       const requestId = ++lensRequestRef.current;
       const stillCurrent = () => requestId === lensRequestRef.current;
-      const dropStream = (stream: MediaStream) => {
-        stream.getTracks().forEach((track) => track.stop());
-      };
-      setCameraError(null);
-      setLensReady(false);
-      stopCamera();
       facingModeRef.current = mode;
       setFacingMode(mode);
       const knownId = mode === "user" ? frontDeviceIdRef.current : backDeviceIdRef.current;
       const videoConstraints: MediaTrackConstraints = knownId
         ? { deviceId: { exact: knownId }, width: { ideal: 1280 }, height: { ideal: 720 } }
         : { facingMode: { ideal: mode }, width: { ideal: 1280 }, height: { ideal: 720 } };
-      const attach = async (stream: MediaStream) => {
+      const tryOpen = async (constraints: MediaTrackConstraints) =>
+        navigator.mediaDevices.getUserMedia({ video: constraints });
+      try {
+        let stream: MediaStream;
+        try {
+          stream = await tryOpen(videoConstraints);
+        } catch {
+          if (knownId) {
+            if (mode === "user") frontDeviceIdRef.current = null;
+            else backDeviceIdRef.current = null;
+          }
+          stream = await tryOpen({
+            facingMode: { ideal: mode },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          });
+        }
         if (!stillCurrent()) {
-          dropStream(stream);
+          stream.getTracks().forEach((track) => track.stop());
           return;
         }
         const openedId = stream.getVideoTracks()[0]?.getSettings().deviceId;
         await rememberVideoInputs(openedId, mode);
         if (!stillCurrent()) {
-          dropStream(stream);
+          stream.getTracks().forEach((track) => track.stop());
           return;
         }
+        const previous = streamRef.current;
         streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => undefined);
-        }
-        setLensReady(true);
-      };
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: videoConstraints,
-          audio: captureType === "video",
-        });
-        await attach(stream);
+        await attachStreamToPreview(stream);
+        previous?.getTracks().forEach((track) => track.stop());
       } catch (err: unknown) {
-        if (!stillCurrent()) return;
-        if (knownId) {
-          if (mode === "user") frontDeviceIdRef.current = null;
-          else backDeviceIdRef.current = null;
-          try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-              video: { facingMode: { ideal: mode }, width: { ideal: 1280 }, height: { ideal: 720 } },
-              audio: captureType === "video",
-            });
-            await attach(stream);
-            return;
-          } catch {
-            /* fall through */
-          }
-        }
         if (!stillCurrent()) return;
         const message = err instanceof Error ? err.message : t("web.provider.explorePostForm.cameraAccessDenied");
         setCameraError(message);
         toast.error(t("web.provider.explorePostForm.cameraAccessFailed"));
       }
     },
-    [captureType, rememberVideoInputs, stopCamera, t],
+    [attachStreamToPreview, isRecording, rememberVideoInputs, t],
   );
+
+  const ensureAudioTrack = useCallback(async (): Promise<boolean> => {
+    const stream = streamRef.current;
+    if (!stream) return false;
+    if (stream.getAudioTracks().length > 0) return true;
+    const videoTrack = stream.getVideoTracks()[0];
+    const deviceId = videoTrack?.getSettings().deviceId;
+    try {
+      const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audioTrack = audioOnly.getAudioTracks()[0];
+      if (!audioTrack) return false;
+      stream.addTrack(audioTrack);
+      audioOnly.getVideoTracks().forEach((track) => track.stop());
+      return true;
+    } catch {
+      try {
+        const combo = await navigator.mediaDevices.getUserMedia({
+          video: deviceId
+            ? { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+            : {
+                facingMode: { ideal: facingModeRef.current },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+              },
+          audio: true,
+        });
+        const previous = streamRef.current;
+        streamRef.current = combo;
+        await attachStreamToPreview(combo);
+        previous?.getTracks().forEach((track) => track.stop());
+        return combo.getAudioTracks().length > 0;
+      } catch {
+        return false;
+      }
+    }
+  }, [attachStreamToPreview]);
 
   useEffect(() => {
     if (captureMode !== "camera") {
       lensRequestRef.current += 1;
       setLensReady(false);
       stopCamera();
-      return;
     }
-    void openLens(facingModeRef.current);
-    return () => {
-      lensRequestRef.current += 1;
-      stopCamera();
-    };
-  }, [captureMode, captureType, openLens, stopCamera]);
+  }, [captureMode, stopCamera]);
+
+  useLayoutEffect(() => {
+    if (captureMode !== "camera") return;
+    const stream = streamRef.current;
+    const video = videoRef.current;
+    if (!stream || !video) return;
+    if (video.srcObject !== stream) {
+      video.srcObject = stream;
+    }
+    void video.play().catch(() => undefined).then(() => setLensReady(true));
+  }, [captureMode, attachedStreamEpoch]);
 
   useEffect(() => {
     if (!videoTrimPending || captureMode !== "camera") return;
@@ -453,10 +493,49 @@ export function ExplorePostForm({
       toast.error(t("web.provider.explorePostForm.maxMedia", { count: MAX_MEDIA_ITEMS }));
       return;
     }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error(t("web.provider.explorePostForm.cameraAccessFailed"));
+      return;
+    }
+    setCameraError(null);
+    setLensReady(false);
+    setCaptureType("photo");
     facingModeRef.current = "user";
     setFacingMode("user");
+    const requestId = ++lensRequestRef.current;
+    const stillCurrent = () => requestId === lensRequestRef.current;
+    const attachOpened = (stream: MediaStream) => {
+      if (!stillCurrent()) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      stopCamera();
+      streamRef.current = stream;
+      setAttachedStreamEpoch((e) => e + 1);
+      const openedId = stream.getVideoTracks()[0]?.getSettings().deviceId;
+      void rememberVideoInputs(openedId, "user");
+    };
     setCaptureMode("camera");
-  }, [videoTrimPending, mediaPaths.length, t, warnTrimInProgress]);
+    navigator.mediaDevices
+      .getUserMedia({
+        video: { facingMode: { ideal: "user" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      })
+      .then((stream) => attachOpened(stream))
+      .catch(() => {
+        navigator.mediaDevices
+          .getUserMedia({
+            video: { facingMode: { ideal: "user" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          })
+          .then((stream) => attachOpened(stream))
+          .catch((err: unknown) => {
+            if (!stillCurrent()) return;
+            const message =
+              err instanceof Error ? err.message : t("web.provider.explorePostForm.cameraAccessDenied");
+            setCameraError(message);
+            toast.error(t("web.provider.explorePostForm.cameraAccessFailed"));
+          });
+      });
+  }, [mediaPaths.length, rememberVideoInputs, stopCamera, t, videoTrimPending, warnTrimInProgress]);
 
   const openGalleryPicker = useCallback(() => {
     if (videoTrimPending) {
@@ -471,14 +550,24 @@ export function ExplorePostForm({
   }, [videoTrimPending, mediaPaths.length, t, warnTrimInProgress]);
 
   const flipLens = useCallback(() => {
-    if (isRecording) return;
+    if (isRecording || !streamRef.current) return;
     if (videoInputCount > 0 && videoInputCount < 2) {
       toast.info(t("web.provider.explorePostForm.onlyOneCamera"));
       return;
     }
     const next = facingModeRef.current === "user" ? "environment" : "user";
-    void openLens(next);
-  }, [isRecording, openLens, t, videoInputCount]);
+    void swapLens(next);
+  }, [isRecording, swapLens, t, videoInputCount]);
+
+  const selectCapturePhoto = useCallback(() => {
+    if (!isRecording) setCaptureType("photo");
+  }, [isRecording]);
+
+  const selectCaptureVideo = useCallback(() => {
+    if (isRecording) return;
+    setCaptureType("video");
+    void ensureAudioTrack();
+  }, [ensureAudioTrack, isRecording]);
 
   const readVideoDurationMs = (file: File) =>
     new Promise<number>((resolve) => {
@@ -673,6 +762,7 @@ export function ExplorePostForm({
 
   const startRecording = useCallback(() => {
     if (!streamRef.current || !videoRef.current || mediaRecorderRef.current) return;
+    if (streamRef.current.getAudioTracks().length === 0) return;
     chunksRef.current = [];
     const mimeType =
       MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
@@ -980,9 +1070,7 @@ export function ExplorePostForm({
             <div className="flex gap-1 rounded-full bg-black/40 p-1">
               <button
                 type="button"
-                onClick={() => {
-                  if (!isRecording) setCaptureType("photo");
-                }}
+                onClick={selectCapturePhoto}
                 className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                   captureType === "photo" ? "bg-white text-black" : "text-white"
                 }`}
@@ -991,7 +1079,7 @@ export function ExplorePostForm({
               </button>
               <button
                 type="button"
-                onClick={() => !isRecording && setCaptureType("video")}
+                onClick={selectCaptureVideo}
                 className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                   captureType === "video" ? "bg-white text-black" : "text-white"
                 }`}
@@ -1058,7 +1146,9 @@ export function ExplorePostForm({
                 onPointerDown={(e) => {
                   if (captureType !== "video" || isUploading || cameraError || !lensReady) return;
                   e.currentTarget.setPointerCapture(e.pointerId);
-                  startRecording();
+                  void ensureAudioTrack().then((ok) => {
+                    if (ok) startRecording();
+                  });
                 }}
                 onPointerUp={() => {
                   if (captureType === "video") stopRecording();

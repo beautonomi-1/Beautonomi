@@ -63,7 +63,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "staff-performance",
         name: "Staff Performance",
-        description: "Bookings, ledger revenue, and ratings by staff member",
+        description: "Visits, what you earned, rating, and completions — excludes cancelled and no-show (web also shows those plus commission)",
         icon: "person-outline",
         color: "#4f46e5",
         bg: "#eef2ff",
@@ -82,8 +82,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       },
       {
         id: "staff-hours",
-        name: "Hours & Attendance",
-        description: "Worked hours and attendance",
+        name: "Scheduled vs delivered hours",
+        description: "Catalogue time by delivered, missed, still booked, and cancelled",
         icon: "time-outline",
         color: "#0369a1",
         bg: "#e0f2fe",
@@ -98,7 +98,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "booking-summary",
         name: "Booking Summary",
-        description: "Volume, status mix, trends",
+        description: "How many appointments, which days, and which channel — use Booking Status for money by status",
         icon: "calendar-outline",
         color: "#2563eb",
         bg: "#dbeafe",

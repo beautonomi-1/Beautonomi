@@ -12,6 +12,7 @@ import { Copy, CheckCircle2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@beautonomi/i18n";
 import { NativeAppCheckoutBounce } from "@/components/payments/NativeAppCheckoutBounce";
+import { GiftCardBreadcrumb } from "../../components/gift-card-breadcrumb";
 
 type GiftCardRow = {
   id: string;
@@ -217,7 +218,8 @@ function GiftCardPurchaseSuccessInner() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar4 />
-      <div className="mx-auto max-w-lg px-4 py-12">
+      <div className="mx-auto max-w-lg px-4 pb-28 pt-6 md:pb-12 md:pt-8">
+        <GiftCardBreadcrumb current="confirmation" />
         {!reference ? (
           <>
             <h1 className="mb-2 text-2xl font-semibold text-gray-900">{tx("noRefTitle")}</h1>

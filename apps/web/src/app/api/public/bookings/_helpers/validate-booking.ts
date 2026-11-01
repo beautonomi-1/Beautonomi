@@ -1360,7 +1360,16 @@ export async function validateBooking(
       prePromoSubtotal,
       locationType: draft.location_type === "at_home" ? "at_home" : "at_salon",
       locationId: draft.location_id ?? null,
+      customerId,
     });
+    if (promoResolved.blockedReason) {
+      return handleApiError(
+        new Error(promoResolved.blockedReason),
+        promoResolved.blockedReason,
+        "PROMO_NOT_ALLOWED",
+        400,
+      );
+    }
     promotionId = promoResolved.promotionId;
     promoDiscountAmount = promoResolved.promotionDiscountAmount;
   }

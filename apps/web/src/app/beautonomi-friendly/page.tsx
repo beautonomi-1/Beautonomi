@@ -4,7 +4,6 @@ import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
 import AirFriendlyHero from "./components/hero";
-import TheCarousel from "./components/carousel";
 import GetStarted from "./components/get-started";
 import OtherCities from "./components/other-cities";
 import FAQ from "@/components/global/faq";
@@ -28,7 +27,6 @@ const Page = async () => {
       <BeautonomiHeader />
       <div className="w-full max-w-full overflow-x-hidden">
       <AirFriendlyHero content={content} />
-      <TheCarousel />
       <GetStarted />
       <div className="mb-40">
         <FAQ applyBgPrimary={false} />

@@ -215,6 +215,21 @@ describe("GET /api/provider/setup-status", () => {
     });
   });
 
+  it("routes profile-details to the consolidated business settings page", async () => {
+    const res = await callRoute(emptyFixture());
+    const step = res.data.steps.find((s: any) => s.id === "profile-details");
+    expect(step?.link).toBe("/provider/settings/business");
+    expect(step?.native_route).toBe("/(app)/(tabs)/more/settings/business");
+  });
+
+  it("keeps profile-details incomplete when description is under 10 characters", async () => {
+    const fixture = emptyFixture();
+    (fixture.provider as any).description = "short";
+    const res = await callRoute(fixture);
+    const step = res.data.steps.find((s: any) => s.id === "profile-details");
+    expect(step?.completed).toBe(false);
+  });
+
   it("does not auto-complete payment-methods when no accept_* flag is true", async () => {
     const res = await callRoute(emptyFixture());
     const paymentMethods = res.data.steps.find((s: any) => s.id === "payment-methods");

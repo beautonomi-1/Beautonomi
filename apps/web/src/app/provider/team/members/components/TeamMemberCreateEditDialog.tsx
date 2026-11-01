@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -63,6 +64,9 @@ export function TeamMemberCreateEditDialog({
   const [locationIds, setLocationIds] = useState<string[]>([]);
   const [serviceIds, setServiceIds] = useState<string[]>([]);
   const [payPlan, setPayPlan] = useState(defaultPayPlanFormState);
+  const [splitCommissionRatesEqual, setSplitCommissionRatesEqual] = useState(true);
+  const [serviceCommissionRate, setServiceCommissionRate] = useState<number | null>(null);
+  const [productCommissionRate, setProductCommissionRate] = useState<number | null>(null);
   const [offerings, setOfferings] = useState<Array<{ id: string; title: string }>>([]);
   const initialRoleRef = useRef<string | null>(null);
   const [deactivateReassignOpen, setDeactivateReassignOpen] = useState(false);
@@ -111,6 +115,9 @@ export function TeamMemberCreateEditDialog({
     
     // Status
     is_active: true,
+
+    public_title: "",
+    bookable_from: "" as string,
   });
 
   useEffect(() => {
@@ -154,6 +161,17 @@ export function TeamMemberCreateEditDialog({
 
             const loadedRole = member.role || "employee";
             initialRoleRef.current = loadedRole;
+            const svcRate = settings?.service_commission_rate ?? null;
+            const prodRate = settings?.product_commission_rate ?? null;
+            setSplitCommissionRatesEqual(svcRate === prodRate);
+            setServiceCommissionRate(svcRate);
+            setProductCommissionRate(prodRate);
+            const commissionThumb =
+              svcRate != null
+                ? svcRate
+                : settings?.commission_rate != null
+                  ? settings.commission_rate
+                  : 0;
             setFormData({
               name: member.name || "",
               email: member.email || "",
@@ -175,7 +193,7 @@ export function TeamMemberCreateEditDialog({
                 notif?.desktopEnabled ?? settings?.desktop_notifications_enabled ?? false,
               work_hours_enabled: settings?.work_hours_enabled ?? true,
               commission_enabled: settings?.commission_enabled ?? false,
-              commission_rate: settings?.commission_rate ?? 0,
+              commission_rate: Math.round(Number(commissionThumb) || 0),
               hourly_rate: settings?.hourly_rate ?? 0,
               salary: settings?.salary ?? 0,
               tips_enabled: settings?.tips_enabled ?? true,
@@ -183,6 +201,8 @@ export function TeamMemberCreateEditDialog({
               time_clock_pin: settings?.time_clock_pin ?? "",
               phone_call_availability_enabled: settings?.phone_call_availability_enabled ?? false,
               is_active: member.is_active ?? true,
+              public_title: settings?.public_title ?? "",
+              bookable_from: settings?.bookable_from ?? "",
             });
           } catch (error) {
             // Fallback to defaults if API fails
@@ -212,6 +232,8 @@ export function TeamMemberCreateEditDialog({
               time_clock_pin: "",
               phone_call_availability_enabled: false,
               is_active: member.is_active ?? true,
+              public_title: "",
+              bookable_from: "",
             });
           }
         };
@@ -272,6 +294,8 @@ export function TeamMemberCreateEditDialog({
           time_clock_pin: "",
           phone_call_availability_enabled: false,
           is_active: true,
+          public_title: "",
+          bookable_from: "",
         });
         setAvatarPreview(null);
         setLocationIds(selectedLocationId ? [selectedLocationId] : salons.map((s) => s.id));
@@ -310,23 +334,11 @@ export function TeamMemberCreateEditDialog({
           setAvatarPreview(avatarUrl);
           setFormData((prev) => ({ ...prev, avatar_url: avatarUrl }));
         } else {
-          // Fallback to data URL if upload fails
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            setAvatarPreview(reader.result as string);
-            setFormData((prev) => ({ ...prev, avatar_url: reader.result as string }));
-          };
-          reader.readAsDataURL(file);
+          toast.error(t("web.provider.teamMemberDialog.avatarUploadFailed"));
         }
       } catch (error) {
         console.error("Failed to upload avatar:", error);
-        // Fallback to data URL
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setAvatarPreview(reader.result as string);
-          setFormData((prev) => ({ ...prev, avatar_url: reader.result as string }));
-        };
-        reader.readAsDataURL(file);
+        toast.error(t("web.provider.teamMemberDialog.avatarUploadFailed"));
       }
     }
   };
@@ -356,25 +368,52 @@ export function TeamMemberCreateEditDialog({
     try {
       let createdStaffId: string | undefined;
       if (member) {
-        const updateData = {
-          name: formData.name,
-          email: formData.email,
-          mobile: formData.mobile,
-          avatar_url: formData.avatar_url,
-          role: (formData.role as string) === "staff" ? "employee" : formData.role,
-        };
-        await providerApi.updateTeamMember(member.id, updateData);
-
         const { fetcher } = await import("@/lib/http/fetcher");
         const roleChanged =
           initialRoleRef.current != null && formData.role !== initialRoleRef.current;
-        const jobPatch =
-          roleChanged && formData.role === "manager"
-            ? { job: "manager" as const }
-            : roleChanged && formData.role === "employee"
-              ? { job: "stylist" as const }
-              : {};
+        let jobPatch: Record<string, unknown> = {};
+        if (
+          member.role !== "owner" &&
+          formData.role !== "owner" &&
+          roleChanged &&
+          formData.role === "manager"
+        ) {
+          jobPatch = { job: "manager" as const };
+        } else if (
+          member.role !== "owner" &&
+          formData.role !== "owner" &&
+          roleChanged &&
+          formData.role === "employee"
+        ) {
+          jobPatch = { job: "stylist" as const };
+        }
+        if (Object.keys(jobPatch).length > 0) {
+          const jobLabel =
+            jobPatch.job === "manager"
+              ? t("web.provider.teamAddWizard.job_manager")
+              : t("web.provider.teamAddWizard.job_stylist");
+          const ok = window.confirm(
+            t("provider.mobile.screens.teamMember.applyJobBody", { job: jobLabel }),
+          );
+          if (!ok) {
+            setIsLoading(false);
+            return;
+          }
+        }
         pendingJobPatchRef.current = jobPatch;
+
+        const updateData: Partial<TeamMember> = {
+          name: formData.name,
+          mobile: formData.mobile,
+          avatar_url: formData.avatar_url || null,
+          role: (formData.role as string) === "staff" ? "employee" : formData.role,
+        };
+        if (canManagePayroll && splitCommissionRatesEqual) {
+          updateData.commission_rate = formData.commission_enabled
+            ? Math.round(formData.commission_rate)
+            : null;
+        }
+        await providerApi.updateTeamMember(member.id, updateData);
 
         const continueAfterActivePatch = async () => {
         // Update basic info and settings separately
@@ -383,6 +422,8 @@ export function TeamMemberCreateEditDialog({
           const smsEnabled = formData.sms_plan_allowed ? formData.sms_notifications_enabled : false;
           await Promise.all([
             fetcher.patch(`/api/provider/staff/${member.id}/settings`, {
+              public_title: formData.public_title.trim() || null,
+              bookable_from: formData.bookable_from.trim() || null,
               is_service_provider: formData.is_service_provider,
               enable_in_online_booking: formData.enable_in_online_booking,
               can_be_assigned_to_product_sales: formData.can_be_assigned_to_product_sales,
@@ -392,8 +433,12 @@ export function TeamMemberCreateEditDialog({
               sms_notifications_enabled: smsEnabled,
               desktop_notifications_enabled: formData.desktop_notifications_enabled,
               work_hours_enabled: formData.work_hours_enabled,
-              commission_enabled: formData.commission_enabled,
-              commission_rate: formData.commission_rate,
+              ...(canManagePayroll
+                ? {}
+                : {
+                    commission_enabled: formData.commission_enabled,
+                    commission_rate: formData.commission_rate,
+                  }),
               hourly_rate: formData.hourly_rate,
               salary: formData.salary,
               tips_enabled: formData.tips_enabled,
@@ -682,6 +727,20 @@ export function TeamMemberCreateEditDialog({
                     <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
                       {t("web.provider.teamMemberDialog.profilePhotoHint")}
                     </p>
+                    {avatarPreview ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="mt-2 text-red-600"
+                        onClick={() => {
+                          setAvatarPreview(null);
+                          setFormData((prev) => ({ ...prev, avatar_url: "" }));
+                        }}
+                      >
+                        {t("web.provider.teamMemberDialog.removePhoto")}
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
 
@@ -707,9 +766,8 @@ export function TeamMemberCreateEditDialog({
                       id="email"
                       type="email"
                       value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      required
-                      className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
+                      readOnly
+                      className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 bg-gray-50 rounded-lg"
                       placeholder={t("web.provider.teamMemberDialog.emailPlaceholder")}
                     />
                     <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1.5">
@@ -755,6 +813,24 @@ export function TeamMemberCreateEditDialog({
                         ? t("web.provider.teamMemberDialog.adminRoleHint")
                         : t("web.provider.teamMemberDialog.normalRoleHint")}
                     </p>
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="public_title">{t("web.provider.teamAddWizard.publicTitle")}</Label>
+                    <Input
+                      id="public_title"
+                      maxLength={120}
+                      value={formData.public_title}
+                      onChange={(e) => setFormData({ ...formData, public_title: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="bookable_from">{t("web.provider.teamAddWizard.startDateOptional")}</Label>
+                    <Input
+                      id="bookable_from"
+                      type="date"
+                      value={formData.bookable_from}
+                      onChange={(e) => setFormData({ ...formData, bookable_from: e.target.value })}
+                    />
                   </div>
                 </div>
 
@@ -1104,45 +1180,51 @@ export function TeamMemberCreateEditDialog({
                 </p>
                 
                 <div className="space-y-5 sm:space-y-6">
-                  <div className="flex items-start gap-4 p-4 sm:p-5 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200 shadow-sm">
-                    <Switch
-                      checked={formData.commission_enabled}
-                      onCheckedChange={(checked) => setFormData({ ...formData, commission_enabled: checked })}
-                      className="mt-1 flex-shrink-0"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer flex items-center gap-2">
-                        <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-                        {t("web.provider.teamMemberDialog.serviceProductCommission")}
-                      </Label>
-                      <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
-                        {t("web.provider.teamMemberDialog.commissionHint")}
-                      </p>
-                    </div>
-                  </div>
-
-                  {formData.commission_enabled && (
-                    <div className="ms-0 sm:ms-4 space-y-3 p-4 sm:p-5 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200 shadow-sm">
-                      <div className="space-y-2">
-                        <Label htmlFor="commission_rate" className="text-sm sm:text-base font-semibold text-gray-900">
-                          {t("web.provider.teamMemberDialog.commissionRate")}
-                        </Label>
-                        <Input
-                          id="commission_rate"
-                          type="number"
-                          min={0}
-                          max={100}
-                          step={0.1}
-                          value={formData.commission_rate}
-                          onChange={(e) => setFormData({ ...formData, commission_rate: parseFloat(e.target.value) || 0 })}
-                          className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
-                          placeholder={t("web.provider.teamMemberDialog.commissionRatePlaceholder")}
+                  {!splitCommissionRatesEqual ? (
+                    <p className="text-sm text-muted-foreground">
+                      {t("provider.mobile.components.staffCommissionEditor.splitRates", {
+                        service: serviceCommissionRate ?? "—",
+                        product: productCommissionRate ?? "—",
+                      })}
+                    </p>
+                  ) : (
+                    <>
+                      <div className="flex items-start gap-4 p-4 sm:p-5 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200 shadow-sm">
+                        <Switch
+                          checked={formData.commission_enabled}
+                          onCheckedChange={(checked) =>
+                            setFormData({ ...formData, commission_enabled: checked })
+                          }
+                          className="mt-1 flex-shrink-0"
                         />
-                        <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
-                          {t("web.provider.teamMemberDialog.commissionRateHint")}
-                        </p>
+                        <div className="flex-1 min-w-0">
+                          <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer flex items-center gap-2">
+                            <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                            {t("web.provider.teamMemberDialog.serviceProductCommission")}
+                          </Label>
+                          <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
+                            {t("web.provider.teamMemberDialog.commissionHint")}
+                          </p>
+                        </div>
                       </div>
-                    </div>
+
+                      {formData.commission_enabled ? (
+                        <div className="ms-0 sm:ms-4 space-y-3 p-4 sm:p-5 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200 shadow-sm">
+                          <p className="text-sm font-medium text-gray-900">
+                            {Math.round(formData.commission_rate)}%
+                          </p>
+                          <Slider
+                            value={[formData.commission_rate]}
+                            onValueChange={([v]) =>
+                              setFormData({ ...formData, commission_rate: Math.round(v) })
+                            }
+                            min={0}
+                            max={100}
+                            step={1}
+                          />
+                        </div>
+                      ) : null}
+                    </>
                   )}
 
                   <Separator className="my-6" />

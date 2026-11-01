@@ -55,7 +55,9 @@ export async function GET(request: NextRequest) {
     if (locationId) {
       bookingsQuery = bookingsQuery.eq("location_id", locationId);
     }
-    const { data: bookings, error: bookingsError } = await bookingsQuery.limit(MAX_BOOKINGS_FOR_REPORT);
+    const { data: bookings, error: bookingsError } = await bookingsQuery
+      .order("scheduled_at", { ascending: false })
+      .limit(MAX_BOOKINGS_FOR_REPORT);
 
     if (bookingsError) {
       return handleApiError(
@@ -173,9 +175,18 @@ export async function GET(request: NextRequest) {
     const mediumValue = enrichedLTV.filter((c) => c.totalSpent >= averageLTV * 0.5 && c.totalSpent < averageLTV * 1.5);
     const lowValue = enrichedLTV.filter((c) => c.totalSpent < averageLTV * 0.5);
 
+    const bookingsTruncated = (bookings?.length ?? 0) >= MAX_BOOKINGS_FOR_REPORT;
+    let reportBasis =
+      "All-time completed visits: booked value is what clients were charged; earned is what you kept after ledger rules. Cancellations and no-shows are excluded.";
+    if (bookingsTruncated) {
+      reportBasis += " Older visits are not in this list.";
+    }
+
     return successResponse({
       totalClients,
       averageLTV,
+      averageBookedValue: averageLTV,
+      averageEarned: averageLedgerEarnings,
       medianLTV,
       totalLTV,
       totalLedgerEarnings,
@@ -191,8 +202,7 @@ export async function GET(request: NextRequest) {
         { segment: "Low Value", count: lowValue.length, avgLTV: lowValue.length > 0 ? lowValue.reduce((sum, c) => sum + c.totalSpent, 0) / lowValue.length : 0 },
       ],
       basisNote: `${CLIENT_METRICS_BASIS_NOTE} LTV segments use completed appointment booked gross; totalEarned is ledger recognized per client.`,
-      reportBasis:
-        "All-time completed bookings: totalSpent = sum of booking.total_amount (booked gross). totalEarned = sum of ledger recognized revenue per booking (provider take-home components). Cancellations and no-shows excluded.",
+      reportBasis,
     });
   } catch (error) {
     return handleApiError(error, "LIFETIME_VALUE_ERROR", 500);

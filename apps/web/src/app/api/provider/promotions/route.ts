@@ -1,11 +1,25 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse, badRequestResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import {
+  getProviderIdForUser,
+  successResponse,
+  badRequestResponse,
+  handleApiError,
+} from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import {
+  assertProviderOwnsLocation,
+  getProviderTimezoneAndTenant,
+  mapRowsToProviderDtos,
+  parseOptionalAmount,
+  parseOptionalLimit,
+  resolveValidWindowFromBody,
+} from "@/lib/promotions/provider-promotion-api";
+import { mapPromotionRowToProviderDto } from "@/lib/promotions/provider-promotion";
 
 /**
  * GET /api/provider/promotions
- * 
+ *
  * List all promotions for the provider
  */
 export async function GET(request: NextRequest) {
@@ -15,13 +29,16 @@ export async function GET(request: NextRequest) {
     const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
 
-    // Get provider ID
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return badRequestResponse("Provider not found");
     }
 
-    // Fetch promotions
+    const meta = await getProviderTimezoneAndTenant(supabase, providerId);
+    if (!meta) {
+      return badRequestResponse("Provider tenant not found");
+    }
+
     const { data: promotions, error } = await supabase
       .from("promotions")
       .select("*")
@@ -32,7 +49,7 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    return successResponse(promotions || []);
+    return successResponse(mapRowsToProviderDtos(promotions as Record<string, unknown>[], meta.timezone));
   } catch (error) {
     return handleApiError(error, "Failed to fetch promotions");
   }
@@ -40,7 +57,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/provider/promotions
- * 
+ *
  * Create a new promotion/promo code
  */
 export async function POST(request: NextRequest) {
@@ -51,23 +68,17 @@ export async function POST(request: NextRequest) {
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
-    // Get provider ID
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return badRequestResponse("Provider not found");
     }
 
-    const { data: provRow, error: provRowErr } = await supabase
-      .from("providers")
-      .select("tenant_id")
-      .eq("id", providerId)
-      .single();
-    if (provRowErr || !provRow?.tenant_id) {
+    const meta = await getProviderTimezoneAndTenant(supabase, providerId);
+    if (!meta) {
       return badRequestResponse("Provider tenant not found");
     }
-    const tenantId = provRow.tenant_id as string;
+    const { tenantId, timezone } = meta;
 
-    // Validate required fields
     const { code, type, value: rawValue, description } = body;
     if (!code || !type || rawValue === undefined || rawValue === null) {
       return badRequestResponse("Missing required fields: code, type, value");
@@ -78,14 +89,12 @@ export async function POST(request: NextRequest) {
       return badRequestResponse("Invalid numeric value for promotion");
     }
 
-    // Validate type (DB enum is 'percentage' | 'fixed')
-    if (!['percentage', 'fixed', 'fixed_amount'].includes(type)) {
+    if (!["percentage", "fixed", "fixed_amount"].includes(type)) {
       return badRequestResponse("Type must be 'percentage' or 'fixed' (or 'fixed_amount')");
     }
-    const dbType = type === 'fixed_amount' ? 'fixed' : type;
+    const dbType = type === "fixed_amount" ? "fixed" : type;
 
-    // Validate value
-    if (type === 'percentage' && (value < 0 || value > 100)) {
+    if (type === "percentage" && (value < 0 || value > 100)) {
       return badRequestResponse("Percentage value must be between 0 and 100");
     }
 
@@ -93,44 +102,74 @@ export async function POST(request: NextRequest) {
       return badRequestResponse("Fixed amount value must be greater than 0");
     }
 
-    // Check if code already exists for this provider
+    const usageLimit = parseOptionalLimit(body.usage_limit ?? body.max_uses);
+    if (
+      (body.usage_limit != null && body.usage_limit !== "") ||
+      (body.max_uses != null && body.max_uses !== "")
+    ) {
+      if (usageLimit == null) {
+        return badRequestResponse("Usage limit must be at least 1 when set");
+      }
+    }
+
+    const maxDiscount = parseOptionalAmount(body.max_discount_amount);
+    if (dbType === "fixed" && maxDiscount != null) {
+      return badRequestResponse("Max discount applies to percentage promotions only");
+    }
+
+    const locationId =
+      typeof body.location_id === "string" && body.location_id.trim()
+        ? body.location_id.trim()
+        : null;
+    if (locationId) {
+      const ok = await assertProviderOwnsLocation(supabase, providerId, locationId);
+      if (!ok) return badRequestResponse("Invalid location for this provider");
+    }
+
+    const window = resolveValidWindowFromBody(body, timezone);
+    if ("error" in window) {
+      return badRequestResponse(window.error);
+    }
+
     const { data: existing } = await supabase
       .from("promotions")
       .select("id")
       .eq("tenant_id", tenantId)
       .eq("provider_id", providerId)
-      .eq("code", code.toUpperCase())
+      .eq("code", String(code).toUpperCase())
       .maybeSingle();
 
     if (existing) {
       return badRequestResponse("A promotion with this code already exists");
     }
 
-    // Map API fields to table columns (promotions table: name, valid_from, valid_until, usage_limit, usage_count, min_purchase_amount, max_discount_amount)
-    const upperCode = code.toUpperCase();
-    const now = new Date();
-    const validFrom = body.start_date ? new Date(body.start_date) : now;
-    const validUntil = body.end_date ? new Date(body.end_date) : new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
+    const upperCode = String(code).toUpperCase();
+    const minPurchase = parseOptionalAmount(body.min_purchase_amount ?? body.min_booking_amount);
+
+    const insertRow: Record<string, unknown> = {
+      tenant_id: tenantId,
+      provider_id: providerId,
+      code: upperCode,
+      name: body.name || upperCode,
+      description: description || null,
+      type: dbType,
+      value,
+      min_purchase_amount: minPurchase,
+      max_discount_amount: maxDiscount,
+      valid_from: window.validFrom.toISOString(),
+      valid_until: window.validUntil ? window.validUntil.toISOString() : null,
+      usage_limit: usageLimit,
+      usage_count: 0,
+      is_active: body.is_active !== undefined ? body.is_active : true,
+      public_on_profile:
+        body.public_on_profile !== undefined ? Boolean(body.public_on_profile) : true,
+      once_per_customer: Boolean(body.once_per_customer),
+      location_id: locationId,
+    };
 
     const { data: promotion, error } = await supabase
       .from("promotions")
-      .insert({
-        tenant_id: tenantId,
-        provider_id: providerId,
-        code: upperCode,
-        name: body.name || upperCode,
-        description: description || null,
-        type: dbType,
-        value,
-        min_purchase_amount: body.min_booking_amount ?? body.min_purchase_amount ?? null,
-        max_discount_amount: body.max_discount_amount ?? null,
-        valid_from: validFrom.toISOString(),
-        valid_until: validUntil.toISOString(),
-        usage_limit: body.max_uses ?? null,
-        usage_count: 0,
-        is_active: body.is_active !== undefined ? body.is_active : true,
-        public_on_profile: body.public_on_profile !== undefined ? Boolean(body.public_on_profile) : true,
-      })
+      .insert(insertRow)
       .select()
       .single();
 
@@ -138,7 +177,7 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
-    return successResponse(promotion);
+    return successResponse(mapPromotionRowToProviderDto(promotion as Record<string, unknown>, timezone));
   } catch (error) {
     return handleApiError(error, "Failed to create promotion");
   }

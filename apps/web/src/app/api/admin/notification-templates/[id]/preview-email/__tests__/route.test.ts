@@ -54,7 +54,7 @@ describe("POST preview-email", () => {
       body: JSON.stringify({}),
     });
 
-    const res = await POST(req as never, { params: Promise.resolve({ key: "booking_confirmed" }) });
+    const res = await POST(req as never, { params: Promise.resolve({ id: "booking_confirmed" }) });
     const json = await res.json();
     expect(json.data.html).toContain("max-width:640px");
     expect(json.data.text).not.toMatch(/<p>/);

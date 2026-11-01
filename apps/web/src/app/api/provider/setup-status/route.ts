@@ -383,11 +383,11 @@ export async function GET(request: NextRequest) {
         id: "profile-details",
         title: isFreelancer ? "Business Profile" : "Business Details",
         description: isFreelancer
-          ? "Business name (Business details), description (Business Description), and phone or email on your business or account profile"
-          : "Business name (Business details), description (Business Description), and phone or email on your business or account profile",
+          ? "Add your business name, a description of at least 10 characters, and a phone or email (business or account contact counts)"
+          : "Add your business name, a description of at least 10 characters, and a phone or email (business or account contact counts)",
         completed: hasProfileDetails,
         required: true,
-        link: "/provider/settings",
+        link: "/provider/settings/business",
       },
       ...(isFreelancer
         ? [

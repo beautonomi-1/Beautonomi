@@ -25,6 +25,8 @@ type Props = {
   maxClipMs: number;
   onConfirm: (result: ExploreVideoTrimResult) => void;
   onCancel: () => void;
+  /** Fires after the modal finishes its dismiss animation (best-effort). */
+  onModalHide?: () => void;
 };
 
 function formatSec(ms: number) {
@@ -41,6 +43,7 @@ export function ExploreVideoTrimSheet({
   maxClipMs,
   onConfirm,
   onCancel,
+  onModalHide,
 }: Props) {
   const { t } = useTranslation();
   const ep = (key: string, opts?: Record<string, unknown>) =>
@@ -115,12 +118,18 @@ export function ExploreVideoTrimSheet({
     return () => clearInterval(timer);
   }, [visible, resolvedFullMs, player, trim.trim_start_ms, trim.trim_end_ms]);
 
-  if (!visible) return null;
-
-  const ready = resolvedFullMs > 0;
+  const ready = visible && resolvedFullMs > 0;
 
   return (
-    <BottomSheet visible={visible} onClose={onCancel} title={ep("trimVideoTitle")} snapHeight="full">
+    <BottomSheet
+      visible={visible}
+      onClose={onCancel}
+      onModalHide={onModalHide}
+      title={ep("trimVideoTitle")}
+      snapHeight="full"
+    >
+      {visible ? (
+        <>
       <Text style={twStyle("text-sm text-gray-600 mb-3")}>{ep("trimVideoHint")}</Text>
       <View
         style={{
@@ -178,6 +187,8 @@ export function ExploreVideoTrimSheet({
           style={twStyle("flex-1")}
         />
       </View>
+        </>
+      ) : null}
     </BottomSheet>
   );
 }

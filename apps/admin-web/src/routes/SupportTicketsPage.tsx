@@ -37,9 +37,12 @@ import {
 import {
   buildSupportTicketsSearchParams,
   matchSupportTicketSavedView,
+  mergeSupportTicketSavedViewIntoSearchParams,
   supportTicketsPageSize,
   SUPPORT_TICKET_SAVED_VIEWS,
+  SUPPORT_TICKET_STATUS_GROUP_ACTIVE,
 } from "@/lib/buildSupportTicketsSearchParams";
+import { useAdminWorkspaceHeight } from "@/hooks/useAdminWorkspaceHeight";
 import { AdminSavedViewChips } from "@/components/admin/AdminSavedViewChips";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { adminSpaTo } from "@/lib/adminSpaPath";
@@ -166,7 +169,7 @@ function AttentionBadge({ ticket }: { ticket: SupportTicket }) {
   if (state === "sla_at_risk") {
     return (
       <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
-        Due soon
+        Due within 6h
       </span>
     );
   }
@@ -269,6 +272,12 @@ function SupportTicketsBulkBar({
   );
 }
 
+function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+  if (!target || !(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
+}
+
 function SupportTicketCard({
   ticket,
   isSelected,
@@ -288,6 +297,7 @@ function SupportTicketCard({
 }) {
   return (
     <div
+      data-ticket-id={ticket.id}
       className={cn(
         "relative rounded-2xl border bg-white shadow-sm transition-all",
         isSelected
@@ -407,6 +417,7 @@ export function SupportTicketsPage() {
   const navigate = useNavigate();
   const isDesktop = useIsDesktop();
   const inboxRef = useRef<HTMLDivElement>(null);
+  const listScrollRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
 
   const [showCreate, setShowCreate] = useState(false);
@@ -519,6 +530,9 @@ export function SupportTicketsPage() {
   const channelFilter = searchParams.get("channel") ?? "all";
   const isTableView = viewFilter === "table";
   const isCardsView = !isTableView;
+  const { shellRef: queueShellRef, heightPx: queueShellHeightPx } = useAdminWorkspaceHeight(
+    isDesktop && isCardsView,
+  );
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
   const pageIndex = page - 1;
   const qFromUrl = searchParams.get("q") ?? "";
@@ -549,7 +563,11 @@ export function SupportTicketsPage() {
           if (value === "needs_response") n.set("needs_response", "1");
           else if (value === "first_response_overdue") n.set("first_response_overdue", "1");
           else if (value === "sla_at_risk") n.set("sla_state", "at_risk");
-          else if (value === "sla_breached") n.set("sla_state", "breached");
+          else if (value === "sla_breached") {
+            n.set("sla_state", "breached");
+            n.set("status_group", SUPPORT_TICKET_STATUS_GROUP_ACTIVE);
+            n.delete("sla_overdue");
+          }
           n.set("page", "1");
           return n;
         },
@@ -582,6 +600,11 @@ export function SupportTicketsPage() {
           if (value === defaults[key]) n.delete(key);
           else n.set(key, value);
           if (key === "status" && value !== "all") n.delete("status_group");
+          if (key === "category_group" && value !== "") n.delete("category");
+          if (key === "category" && value !== "all") n.delete("category_group");
+          if (["status", "priority", "assign", "sort", "category", "category_group"].includes(key)) {
+            n.delete("handling_mode");
+          }
           n.set("page", "1");
           return n;
         },
@@ -591,24 +614,63 @@ export function SupportTicketsPage() {
     [setSearchParams]
   );
 
-  const activeSavedViewId = useMemo(
-    () =>
-      matchSupportTicketSavedView({
-        pageIndex,
-        status: statusFilter,
-        priority: priorityFilter,
-        category: categoryFilter,
-        assign: assignFilter,
-        q: qFromUrl,
-        staffUserId: bootstrap?.userId,
-        sort: sortFilter,
-        slaOverdue: slaOverdueFilter,
-        needsResponse: needsResponseFilter,
-        slaState: slaStateFilter,
-        firstResponseOverdue: firstResponseOverdueFilter,
-        statusGroup: statusGroupFilter,
-        aiHandling: aiHandlingFilter,
-      }),
+  const applyCountSegment = useCallback(
+    (segment: "open" | "unassigned" | "breaching" | "awaiting") => {
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          n.delete("saved_view");
+          n.delete("q");
+          n.delete("category");
+          n.delete("category_group");
+          n.delete("channel");
+          n.delete("handling_mode");
+          n.delete("status");
+          n.delete("status_group");
+          n.delete("assign");
+          n.delete("needs_response");
+          n.delete("sla_state");
+          n.delete("sla_overdue");
+          n.delete("first_response_overdue");
+          n.set("page", "1");
+          if (segment === "open") {
+            n.set("status_group", SUPPORT_TICKET_STATUS_GROUP_ACTIVE);
+          } else if (segment === "unassigned") {
+            n.set("status_group", SUPPORT_TICKET_STATUS_GROUP_ACTIVE);
+            n.set("assign", "unassigned");
+          } else if (segment === "breaching") {
+            n.set("status_group", SUPPORT_TICKET_STATUS_GROUP_ACTIVE);
+            n.set("sla_state", "breached");
+          } else if (segment === "awaiting") {
+            n.set("needs_response", "1");
+          }
+          return n;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  const supportTicketFilterState = useMemo(
+    () => ({
+      pageIndex,
+      status: statusFilter,
+      priority: priorityFilter,
+      category: categoryFilter,
+      assign: assignFilter,
+      q: qFromUrl,
+      staffUserId: bootstrap?.userId,
+      sort: sortFilter,
+      slaOverdue: slaOverdueFilter,
+      needsResponse: needsResponseFilter,
+      slaState: slaStateFilter,
+      firstResponseOverdue: firstResponseOverdueFilter,
+      statusGroup: statusGroupFilter,
+      categoryGroup: categoryGroupFilter,
+      channel: channelFilter,
+      aiHandling: aiHandlingFilter,
+    }),
     [
       pageIndex,
       statusFilter,
@@ -623,9 +685,18 @@ export function SupportTicketsPage() {
       slaStateFilter,
       firstResponseOverdueFilter,
       statusGroupFilter,
+      categoryGroupFilter,
+      channelFilter,
       aiHandlingFilter,
     ],
   );
+
+  const activeSavedViewId = useMemo(
+    () => matchSupportTicketSavedView(supportTicketFilterState),
+    [supportTicketFilterState],
+  );
+
+  const savedViewParam = searchParams.get("saved_view");
 
   const queryString = useMemo(
     () =>
@@ -733,6 +804,13 @@ export function SupportTicketsPage() {
   );
 
   useEffect(() => {
+    if (!selectedId) return;
+    if (!isDesktop || isTableView) {
+      navigate(adminSpaTo(`/admin/support-tickets/${encodeURIComponent(selectedId)}`), { replace: true });
+    }
+  }, [selectedId, isDesktop, isTableView, navigate]);
+
+  useEffect(() => {
     if (!isDesktop || isTableView || tickets.length === 0) return;
     // Only auto-select when nothing is selected — do not override after filter changes.
     if (!selectedId) {
@@ -740,9 +818,19 @@ export function SupportTicketsPage() {
     }
   }, [isDesktop, isTableView, tickets, selectedId, setSelectedTicket]);
 
+  const queueTicketIds = useMemo(() => tickets.map((t) => t.id), [tickets]);
+
+  useEffect(() => {
+    if (!isDesktop || isTableView || !selectedId) return;
+    const root = listScrollRef.current ?? inboxRef.current;
+    const card = root?.querySelector<HTMLElement>(`[data-ticket-id="${CSS.escape(selectedId)}"]`);
+    card?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [selectedId, isDesktop, isTableView, tickets]);
+
   const handleInboxKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (!isDesktop || isTableView || tickets.length === 0) return;
+      if (isEditableKeyboardTarget(e.target)) return;
       const currentId = selectedId ?? tickets[0]?.id;
       const idx = tickets.findIndex((t) => t.id === currentId);
       if (idx < 0) return;
@@ -757,7 +845,9 @@ export function SupportTicketsPage() {
         if (prev) setSelectedTicket(prev.id);
       } else if (e.key === "Enter" && currentId) {
         e.preventDefault();
-        navigate(adminSpaTo(`/admin/support-tickets/${encodeURIComponent(currentId)}`));
+        navigate(adminSpaTo(`/admin/support-tickets/${encodeURIComponent(currentId)}`), {
+          state: { queueTicketIds: tickets.map((t) => t.id) },
+        });
       }
     },
     [isDesktop, isTableView, tickets, selectedId, setSelectedTicket, navigate],
@@ -776,50 +866,24 @@ export function SupportTicketsPage() {
 
   const applySavedView = useCallback(
     (viewId: string) => {
-      const view = SUPPORT_TICKET_SAVED_VIEWS.find((v) => v.id === viewId);
-      setSearchParams(
-        (prev) => {
-          const n = new URLSearchParams(prev);
-          n.set("saved_view", viewId);
-          n.set("page", "1");
-          // Reset all filter-relevant params first
-          n.delete("status");
-          n.delete("priority");
-          n.delete("category");
-          n.delete("assign");
-          n.delete("sort");
-          n.delete("sla_overdue");
-          n.delete("needs_response");
-          n.delete("sla_state");
-          n.delete("first_response_overdue");
-          n.delete("handling_mode");
-          n.delete("status_group");
-          if (view) {
-            const p = view.params;
-            if (p.statusGroup) n.set("status_group", p.statusGroup);
-            else if (p.status && p.status !== "all") n.set("status", p.status);
-            if (p.priority && p.priority !== "all") n.set("priority", p.priority);
-            if (p.assign && p.assign !== "all") n.set("assign", p.assign);
-            if (p.sort && p.sort !== "smart") n.set("sort", p.sort);
-            if (p.slaOverdue) n.set("sla_overdue", "1");
-            if (p.needsResponse) n.set("needs_response", "1");
-            if (p.slaState) n.set("sla_state", p.slaState);
-            if (p.firstResponseOverdue) n.set("first_response_overdue", "1");
-            if (p.aiHandling) n.set("handling_mode", "assistant");
-          }
-          return n;
-        },
-        { replace: true },
-      );
+      setSearchParams((prev) => mergeSupportTicketSavedViewIntoSearchParams(prev, viewId), { replace: true });
     },
     [setSearchParams],
   );
+
+  useEffect(() => {
+    if (!allowed || !savedViewParam) return;
+    if (!SUPPORT_TICKET_SAVED_VIEWS.some((v) => v.id === savedViewParam)) return;
+    if (matchSupportTicketSavedView(supportTicketFilterState) === savedViewParam) return;
+    applySavedView(savedViewParam);
+  }, [allowed, savedViewParam, supportTicketFilterState, applySavedView]);
 
   const setView = (next: "cards" | "table") => {
     setSearchParams(
       (prev) => {
         const n = new URLSearchParams(prev);
         n.set("view", next);
+        if (next === "table") n.delete("selected");
         return n;
       },
       { replace: true }
@@ -828,9 +892,34 @@ export function SupportTicketsPage() {
 
   if (denied) return denied;
 
+  const useQueueWorkspace = isDesktop && isCardsView;
+  const queueShellStyleLoading =
+    useQueueWorkspace && queueShellHeightPx != null
+      ? ({ height: `${queueShellHeightPx}px` } as const)
+      : undefined;
+
   if (q.isLoading) {
+    if (useQueueWorkspace) {
+      return (
+        <div
+          ref={queueShellRef}
+          style={queueShellStyleLoading}
+          className="flex min-h-0 flex-col gap-3 overflow-hidden px-2 sm:px-0"
+        >
+          <div className="shrink-0">
+            <AdminPageHeader
+              title="Support tickets"
+              description="Select a ticket to read and reply in the panel."
+            />
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white p-4">
+            <AdminPageSkeleton rows={8} />
+          </div>
+        </div>
+      );
+    }
     return (
-      <div className="space-y-6">
+      <div className="space-y-6 px-2 sm:px-0">
         <AdminPageHeader title="Support tickets" description="Search, filter, and paginate tickets" />
         <AdminPanel>
           <AdminPageSkeleton rows={8} />
@@ -861,10 +950,45 @@ export function SupportTicketsPage() {
     slaOverdueFilter ||
     needsResponseFilter ||
     !!slaStateFilter ||
-    firstResponseOverdueFilter;
+    firstResponseOverdueFilter ||
+    !!categoryGroupFilter ||
+    channelFilter !== "all" ||
+    !!statusGroupFilter ||
+    aiHandlingFilter;
+
+  const activeFilterCount = [
+    qFromUrl,
+    statusFilter !== "all",
+    priorityFilter !== "all",
+    categoryFilter !== "all",
+    assignFilter !== "all",
+    sortFilter !== "smart",
+    slaOverdueFilter,
+    needsResponseFilter,
+    !!slaStateFilter,
+    firstResponseOverdueFilter,
+    !!categoryGroupFilter,
+    channelFilter !== "all",
+    !!statusGroupFilter,
+    aiHandlingFilter,
+  ].filter(Boolean).length;
+
+  const queueShellStyle =
+    useQueueWorkspace && queueShellHeightPx != null
+      ? ({ height: `${queueShellHeightPx}px` } as const)
+      : undefined;
 
   return (
-    <div className="space-y-6 px-2 sm:px-0">
+    <div
+      ref={useQueueWorkspace ? queueShellRef : undefined}
+      style={queueShellStyle}
+      className={
+        useQueueWorkspace
+          ? "flex min-h-0 flex-col gap-3 overflow-hidden px-2 sm:px-0"
+          : "space-y-6 px-2 sm:px-0"
+      }
+    >
+      <div className={useQueueWorkspace ? "shrink-0 space-y-3" : "contents"}>
       <AdminPageHeader
         title="Support tickets"
         description={
@@ -915,25 +1039,25 @@ export function SupportTicketsPage() {
             label="Open tickets"
             value={counts.open.toLocaleString()}
             variant="slate"
-            onClick={() => setFilter("status", "open")}
+            onClick={() => applyCountSegment("open")}
           />
           <AdminMetricCard
             label="Unassigned"
             value={counts.unassigned.toLocaleString()}
             variant="amber"
-            onClick={() => setFilter("assign", "unassigned")}
+            onClick={() => applyCountSegment("unassigned")}
           />
           <AdminMetricCard
             label="Breaching SLA"
             value={counts.breaching_sla.toLocaleString()}
             variant="rose"
-            onClick={() => setAttentionFilter("sla_breached")}
+            onClick={() => applyCountSegment("breaching")}
           />
           <AdminMetricCard
             label="Awaiting reply"
             value={counts.awaiting_reply.toLocaleString()}
             variant="violet"
-            onClick={() => setAttentionFilter("needs_response")}
+            onClick={() => applyCountSegment("awaiting")}
           />
         </div>
       ) : null}
@@ -1016,13 +1140,13 @@ export function SupportTicketsPage() {
         </div>
       </AdminModal>
 
-      <AdminSavedViewChips
-        views={SUPPORT_TICKET_SAVED_VIEWS}
-        activeViewId={activeSavedViewId}
-        onSelect={applySavedView}
-      />
-
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1">
+        <AdminSavedViewChips
+          views={SUPPORT_TICKET_SAVED_VIEWS}
+          activeViewId={activeSavedViewId}
+          onSelect={applySavedView}
+          className="shrink-0 pb-0"
+        />
         {SUPPORT_TICKET_CATEGORY_GROUPS_RICH.map((group) => {
           const active =
             categoryGroupFilter === group.id ||
@@ -1031,9 +1155,10 @@ export function SupportTicketsPage() {
             <button
               key={group.id}
               type="button"
+              title={group.description}
               onClick={() => setFilter("category_group", active ? "" : group.id)}
               className={cn(
-                "rounded-full border px-3 py-1 text-xs font-medium",
+                "shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium",
                 active
                   ? "border-primary bg-primary/5 text-primary"
                   : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50",
@@ -1049,10 +1174,15 @@ export function SupportTicketsPage() {
         <button
           type="button"
           onClick={() => setFiltersOpen((v) => !v)}
-          className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-800 shadow-sm md:hidden"
+          className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-800 shadow-sm"
         >
           <Filter className="h-4 w-4" />
           {filtersOpen ? "Hide filters" : "Filter and sort"}
+          {activeFilterCount > 0 ? (
+            <span className="rounded-full bg-gray-900 px-2 py-0.5 text-xs font-semibold text-white">
+              {activeFilterCount}
+            </span>
+          ) : null}
         </button>
         <div className="ml-auto inline-flex rounded-xl border border-gray-300 bg-white">
           <button
@@ -1078,7 +1208,7 @@ export function SupportTicketsPage() {
         </div>
       </div>
 
-      <AdminPanel className={`${filtersOpen ? "block" : "hidden"} md:block`}>
+      <AdminPanel className={filtersOpen ? "block" : "hidden"}>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-3 lg:flex-row">
             <input
@@ -1159,20 +1289,30 @@ export function SupportTicketsPage() {
               <option value="">All attention states</option>
               <option value="needs_response">Needs response</option>
               <option value="first_response_overdue">First reply overdue</option>
-              <option value="sla_at_risk">SLA at risk</option>
+              <option value="sla_at_risk">Due within 6h</option>
               <option value="sla_breached">SLA breached</option>
             </select>
           </div>
         </div>
       </AdminPanel>
+      </div>
 
       {tickets.length === 0 ? (
-        <EmptyState
-          title="No support tickets"
-          description={hasFilters ? "No tickets match your filters." : "No support tickets yet."}
-        />
+        useQueueWorkspace ? (
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <EmptyState
+              title="No support tickets"
+              description={hasFilters ? "No tickets match your filters." : "No support tickets yet."}
+            />
+          </div>
+        ) : (
+          <EmptyState
+            title="No support tickets"
+            description={hasFilters ? "No tickets match your filters." : "No support tickets yet."}
+          />
+        )
       ) : (
-        <>
+        <div className={useQueueWorkspace ? "flex min-h-0 flex-1 flex-col gap-3 overflow-hidden" : undefined}>
           {isCardsView ? (
             <SupportTicketsBulkBar
               selectedCount={selectedIds.length}
@@ -1208,14 +1348,15 @@ export function SupportTicketsPage() {
               ref={inboxRef}
               tabIndex={0}
               onKeyDown={handleInboxKeyDown}
-              className="grid grid-cols-1 gap-4 outline-none lg:grid-cols-[minmax(280px,360px)_1fr] lg:items-start"
+              className="grid min-h-0 flex-1 grid-cols-[minmax(280px,360px)_minmax(0,1fr)] gap-4 overflow-hidden outline-none"
               aria-label="Support ticket inbox"
             >
+              <div ref={listScrollRef} className="h-full min-h-0 overflow-hidden">
               <AdminVirtualList
                 items={tickets}
                 estimateSize={168}
                 threshold={12}
-                maxHeight="calc(100dvh - 14rem)"
+                fill
                 ariaLabel="Support ticket list"
                 renderItem={(ticket) => (
                   <SupportTicketCard
@@ -1236,11 +1377,14 @@ export function SupportTicketsPage() {
                   />
                 )}
               />
-              <div className="sticky top-4 flex h-[calc(100dvh-14rem)] min-h-[24rem] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm ring-1 ring-gray-950/[0.03]">
-                {selectedId && tickets.some((t) => t.id === selectedId) ? (
+              </div>
+              <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm ring-1 ring-gray-950/[0.03]">
+                {selectedId ? (
                   <SupportTicketDetailView
                     id={selectedId}
                     variant="panel"
+                    queueTicketIds={queueTicketIds}
+                    selectedOffPage={!tickets.some((t) => t.id === selectedId)}
                     onNavigateNext={(nextId) => {
                       if (nextId) setSelectedTicket(nextId);
                       else setSearchParams((prev) => {
@@ -1463,7 +1607,12 @@ export function SupportTicketsPage() {
             </AdminTableBody>
           </AdminDataTable>
 
-          <div className="flex flex-col items-center justify-between gap-3 text-sm text-gray-600 sm:flex-row">
+          <div
+            className={cn(
+              "flex flex-col items-center justify-between gap-3 text-sm text-gray-600 sm:flex-row",
+              useQueueWorkspace && "shrink-0",
+            )}
+          >
             <p>
               Showing {rangeStart}–{rangeEnd} of {total}
             </p>
@@ -1488,7 +1637,7 @@ export function SupportTicketsPage() {
               </button>
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

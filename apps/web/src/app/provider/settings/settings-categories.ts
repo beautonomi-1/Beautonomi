@@ -19,6 +19,7 @@ export const settingsCategories: SettingsCategoryConfig[] = [
     items: [
       { itemKey: "upgradeToSalon", href: "/provider/settings/upgrade-to-salon", isUpgrade: true },
       { itemKey: "appointmentSettings", href: "/provider/settings/appointments" },
+      { itemKey: "businessSetup", href: "/provider/settings/business" },
       { itemKey: "businessDetails", href: "/provider/settings/appointment-activity/business-details" },
       { itemKey: "businessDescription", href: "/provider/settings/business-description" },
       { itemKey: "gallery", href: "/provider/settings/gallery" },

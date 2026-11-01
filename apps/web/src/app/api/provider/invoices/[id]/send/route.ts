@@ -8,6 +8,7 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { notifyProviderInvoiceIssued } from "@/lib/notifications/notification-service";
+import { isNonPayableInvoiceType } from "@/lib/invoices/provider-invoice-status";
 
 /**
  * POST /api/provider/invoices/[id]/send
@@ -27,7 +28,9 @@ export async function POST(
 
     const { data: existing, error: loadErr } = await admin
       .from("provider_invoices")
-      .select("id, provider_id, status, invoice_number, total_amount, due_date, period_start, period_end")
+      .select(
+        "id, provider_id, status, invoice_type, invoice_number, total_amount, due_date, period_start, period_end",
+      )
       .eq("id", id)
       .maybeSingle();
 
@@ -64,6 +67,15 @@ export async function POST(
         "Only draft invoices can be marked as sent",
         "INVALID_STATUS",
         409
+      );
+    }
+
+    const invoiceType = (existing as { invoice_type?: string | null }).invoice_type;
+    if (isNonPayableInvoiceType(invoiceType)) {
+      return errorResponse(
+        "Platform fee and commission invoices are not issued to providers",
+        "VALIDATION_ERROR",
+        400,
       );
     }
 

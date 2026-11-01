@@ -10,6 +10,7 @@ export const PROVIDER_ONBOARDING_ROUTE_PREFIXES = [
   "/provider/subscription-checkout",
   "/provider/subscription",
   "/provider/settings/appointment-activity/business-details",
+  "/provider/settings/business",
   "/provider/settings/business-description",
   "/provider/settings/locations",
   "/provider/settings/gallery",

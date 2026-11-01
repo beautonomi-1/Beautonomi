@@ -78,4 +78,47 @@ describe("recordProviderInvoicePayment", () => {
     const payments = supabase.from("provider_invoice_payments") as { insert: ReturnType<typeof vi.fn> };
     expect(payments.insert).toHaveBeenCalled();
   });
+
+  it("rejects payment on open platform_fee invoice", async () => {
+    const supabase = makeSupabase({
+      invoice: {
+        id: "inv-fee",
+        provider_id: "prov-1",
+        invoice_type: "platform_fee",
+        total_amount: 100,
+        amount_paid: 0,
+        status: "sent",
+      },
+    });
+
+    await expect(
+      recordProviderInvoicePayment({
+        supabase: supabase as never,
+        invoiceId: "inv-fee",
+        amount: 40,
+        paymentReference: "PSK-1",
+      }),
+    ).rejects.toThrow(/cannot accept payment/i);
+  });
+
+  it("allows payment on cancelled platform_fee invoice (post-cutoff charge / refund review)", async () => {
+    const supabase = makeSupabase({
+      invoice: {
+        id: "inv-fee",
+        provider_id: "prov-1",
+        invoice_type: "platform_fee",
+        total_amount: 100,
+        amount_paid: 0,
+        status: "cancelled",
+      },
+    });
+
+    const result = await recordProviderInvoicePayment({
+      supabase: supabase as never,
+      invoiceId: "inv-fee",
+      amount: 100,
+      paymentReference: "PSK-LATE",
+    });
+    expect(result.applied).toBe(true);
+  });
 });

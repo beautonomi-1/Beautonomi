@@ -10,6 +10,7 @@ import {
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { withEffectiveStatus } from "@/lib/invoices/provider-invoices-query";
+import { isNonPayableInvoiceType } from "@/lib/invoices/provider-invoice-status";
 
 
 const invoiceLineItemSchema = z.object({
@@ -134,7 +135,7 @@ export async function PATCH(
 
     const { data: existing, error: loadErr } = await admin
       .from("provider_invoices")
-      .select("id, provider_id, tax_rate, status")
+      .select("id, provider_id, tax_rate, status, invoice_type")
       .eq("id", id)
       .maybeSingle();
 
@@ -155,6 +156,25 @@ export async function PATCH(
     const body = await request.json();
     const validated = updateInvoiceSchema.parse(body);
 
+    const existingType = (existing as { invoice_type?: string | null }).invoice_type;
+    if (isNonPayableInvoiceType(existingType)) {
+      const patchKeys = (Object.keys(validated) as (keyof typeof validated)[]).filter(
+        (k) => validated[k] !== undefined,
+      );
+      const closingOnly =
+        patchKeys.length === 1 &&
+        patchKeys[0] === "status" &&
+        (validated.status === "cancelled" || validated.status === "refunded");
+      if (!closingOnly) {
+        return handleApiError(
+          new Error("Legacy platform fee invoices cannot be edited"),
+          "Legacy platform fee invoices cannot be edited",
+          "VALIDATION_ERROR",
+          400,
+        );
+      }
+    }
+
     const updates: Record<string, unknown> = {};
 
     if (validated.status) {
@@ -170,6 +190,15 @@ export async function PATCH(
       if (validated.status === "sent") {
         updates.sent_at = new Date().toISOString();
       }
+    }
+
+    if (validated.invoice_type !== undefined && isNonPayableInvoiceType(validated.invoice_type)) {
+      return handleApiError(
+        new Error("Platform fee and commission invoices are not issued to providers"),
+        "Platform fee and commission invoices are not issued to providers",
+        "VALIDATION_ERROR",
+        400,
+      );
     }
 
     for (const key of ["invoice_type", "period_start", "period_end", "issue_date", "due_date", "tax_rate", "description", "notes"] as const) {

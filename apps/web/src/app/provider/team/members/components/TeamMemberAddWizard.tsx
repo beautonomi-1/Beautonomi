@@ -13,8 +13,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isCompleteE164 } from "@/lib/phone";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Camera } from "lucide-react";
 import { providerApi } from "@/lib/provider-portal/api";
 import { toast } from "sonner";
 import type { StaffJobPreset } from "@/lib/provider/staff-job-presets";
@@ -78,7 +81,10 @@ export function TeamMemberAddWizard({
   const [publicTitle, setPublicTitle] = useState("");
   const [takesAppointments, setTakesAppointments] = useState(true);
   const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
-  const [commission, setCommission] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [commissionEnabled, setCommissionEnabled] = useState(false);
+  const [commissionPercent, setCommissionPercent] = useState(0);
   const [copyStaffId, setCopyStaffId] = useState<string>("");
   const [bookableFrom, setBookableFrom] = useState("");
   const [timeClock, setTimeClock] = useState(false);
@@ -94,7 +100,10 @@ export function TeamMemberAddWizard({
     setPublicTitle("");
     setTakesAppointments(true);
     setSelectedLocationIds(locationIds);
-    setCommission("");
+    setAvatarUrl(null);
+    setAvatarPreview(null);
+    setCommissionEnabled(false);
+    setCommissionPercent(0);
     setCopyStaffId("");
     setBookableFrom("");
     setTimeClock(false);
@@ -146,10 +155,11 @@ export function TeamMemberAddWizard({
         mobile: phone.trim(),
         job,
         public_title: publicTitle.trim() || null,
-        takes_appointments: takesAppointments,
+        takes_appointments: job === "front_desk" ? false : takesAppointments,
         location_ids: branchIds,
         service_ids: bookableJob ? serviceIds : [],
-        commission_rate: commission.trim() ? parseFloat(commission) : null,
+        commission_rate: commissionEnabled ? Math.round(commissionPercent) : null,
+        avatar_url: avatarUrl ?? undefined,
         invite_email: true,
         hours_source,
         bookable_from: bookableFrom.trim() || null,
@@ -163,7 +173,7 @@ export function TeamMemberAddWizard({
         serviceCount: bookableJob ? serviceIds.length : 0,
         bookableFrom: bookableFrom.trim(),
         timeClock,
-        commissionSet: Boolean(commission.trim()),
+        commissionSet: commissionEnabled,
         hoursCopied: (created as { hours_copied?: boolean }).hours_copied === true,
       });
       setStep(4);
@@ -222,6 +232,44 @@ export function TeamMemberAddWizard({
             {seatLine ? <p className="text-sm text-muted-foreground">{seatLine}</p> : null}
             {step === 0 ? (
               <div className="space-y-3">
+                <div className="flex items-center gap-4">
+                  <Avatar className="h-20 w-20">
+                    {avatarPreview ? (
+                      <AvatarImage src={avatarPreview} alt="" />
+                    ) : (
+                      <AvatarFallback>{name.charAt(0).toUpperCase() || "?"}</AvatarFallback>
+                    )}
+                  </Avatar>
+                  <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium">
+                    <Camera className="h-4 w-4" />
+                    {tl("photoOptional")}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        try {
+                          const { fetcher } = await import("@/lib/http/fetcher");
+                          const fd = new FormData();
+                          fd.append("file", file);
+                          fd.append("folder", "avatars");
+                          const res = await fetcher.post<{ data?: { url?: string } }>("/api/upload", fd);
+                          const url = res.data?.url;
+                          if (!url) {
+                            toast.error(tl("photoUploadFailed"));
+                            return;
+                          }
+                          setAvatarUrl(url);
+                          setAvatarPreview(url);
+                        } catch {
+                          toast.error(tl("photoUploadFailed"));
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
                 <div>
                   <Label>{tl("name")}</Label>
                   <Input value={name} onChange={(e) => setName(e.target.value)} />
@@ -237,11 +285,19 @@ export function TeamMemberAddWizard({
               <div className="space-y-3">
                 <div>
                   <Label>{tl("publicTitle")}</Label>
-                  <Input value={publicTitle} onChange={(e) => setPublicTitle(e.target.value)} />
+                  <Input
+                    value={publicTitle}
+                    onChange={(e) => setPublicTitle(e.target.value)}
+                    maxLength={120}
+                  />
                   <p className="text-xs text-muted-foreground mt-1">{tl("publicTitleHint")}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Switch checked={takesAppointments} onCheckedChange={setTakesAppointments} />
+                  <Switch
+                    checked={job === "front_desk" ? false : takesAppointments}
+                    onCheckedChange={setTakesAppointments}
+                    disabled={job === "front_desk"}
+                  />
                   <Label>{tl("takesAppointments")}</Label>
                 </div>
                 <p className="text-xs text-muted-foreground">{tl("takesAppointmentsHint")}</p>
@@ -253,7 +309,10 @@ export function TeamMemberAddWizard({
                       type="button"
                       size="sm"
                       variant={job === j ? "default" : "outline"}
-                      onClick={() => setJob(j)}
+                      onClick={() => {
+                        setJob(j);
+                        if (j === "front_desk") setTakesAppointments(false);
+                      }}
                     >
                       {tl(`job_${j}`)}
                     </Button>
@@ -262,9 +321,20 @@ export function TeamMemberAddWizard({
                 {job === "front_desk" ? (
                   <p className="text-xs text-muted-foreground">{tl("frontDeskHint")}</p>
                 ) : null}
-                <div>
-                  <Label>{tl("commissionOptional")}</Label>
-                  <Input value={commission} onChange={(e) => setCommission(e.target.value)} inputMode="decimal" />
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Switch checked={commissionEnabled} onCheckedChange={setCommissionEnabled} />
+                    <Label>{tl("paysCommission")}</Label>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{Math.round(commissionPercent)}%</p>
+                  <Slider
+                    value={[commissionPercent]}
+                    onValueChange={([v]) => setCommissionPercent(Math.round(v))}
+                    min={0}
+                    max={100}
+                    step={1}
+                    disabled={!commissionEnabled}
+                  />
                 </div>
               </div>
             ) : null}
@@ -386,6 +456,16 @@ export function TeamMemberAddWizard({
                 <Button
                   type="button"
                   onClick={() => {
+                    if (step === 0) {
+                      if (!name.trim() || !email.trim()) {
+                        toast.error(tl("nameEmailRequired"));
+                        return;
+                      }
+                      if (phone.trim() && !isCompleteE164(phone.trim())) {
+                        toast.error(tl("invalidPhone"));
+                        return;
+                      }
+                    }
                     if (step === 2 && selectedLocationIds.length === 0 && locationIds.length > 0) {
                       toast.error(tl("selectBranch"));
                       return;

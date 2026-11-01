@@ -26,11 +26,13 @@ import EmptyState from "@/components/ui/empty-state";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { fetcher, FetchError, providerPortalFetch } from "@/lib/http/fetcher";
 import { formatStatusLabel } from "@/lib/locale/status-label";
+import { isProviderInvoicePayable } from "@/lib/invoices/provider-invoice-status";
 import { Download, Eye, FileText, Loader2 } from "lucide-react";
 
 type InvoiceRow = {
   id: string;
   invoice_number: string;
+  invoice_type?: string;
   issue_date: string;
   due_date: string;
   period_start?: string;
@@ -43,6 +45,18 @@ type InvoiceRow = {
   effective_status?: string;
 };
 
+type BillingObligation = {
+  id: string;
+  kind: string;
+  status: "due" | "paid" | "refunded";
+  title: string;
+  description?: string | null;
+  amount: number;
+  currency: string;
+  pay_action: string;
+  entity_id?: string | null;
+};
+
 type InvoicesPayload = {
   invoices: InvoiceRow[];
   total: number;
@@ -53,6 +67,11 @@ type InvoicesPayload = {
     paid_amount: number;
     outstanding_amount: number;
     overdue_count: number;
+  };
+  obligations?: BillingObligation[];
+  obligations_summary?: {
+    outstanding_total: number;
+    due_count: number;
   };
 };
 
@@ -121,6 +140,24 @@ export function ProviderInvoicesPanel() {
 
   const invoices = data?.invoices ?? [];
   const summary = data?.summary;
+  const dueObligations = (data?.obligations ?? []).filter((o) => o.status === "due");
+
+  const obligationHref = (o: BillingObligation): string | null => {
+    switch (o.pay_action) {
+      case "invoice_pay":
+        return o.entity_id ? `/provider/settings/billing/invoices/${o.entity_id}` : null;
+      case "subscription_pay":
+      case "stripe_manage":
+      case "apple_manage":
+        return "/provider/subscription";
+      case "terminal_pay":
+        return "/provider/settings/sales/terminal-shop";
+      case "payout_offset":
+        return "/provider/finance";
+      default:
+        return null;
+    }
+  };
 
   const formatCurrency = (amount: number, currency?: string | null) =>
     formatMoney(amount, currency?.trim() || LAST_RESORT_CURRENCY);
@@ -202,6 +239,39 @@ export function ProviderInvoicesPanel() {
 
   return (
     <div className="space-y-4">
+      {dueObligations.length > 0 ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4 space-y-2">
+          <p className="text-sm font-medium text-gray-900">
+            {t("web.provider.settings.pages.billing.obligationsDueHeading")}
+          </p>
+          <p className="text-xs text-gray-600">
+            {t("web.provider.settings.pages.billing.obligationsDueHint")}
+          </p>
+          <ul className="divide-y divide-amber-100/80 rounded-md border border-amber-100 bg-white">
+            {dueObligations.map((o) => {
+              const href = obligationHref(o);
+              return (
+                <li key={o.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
+                  <div>
+                    <p className="font-medium text-gray-900">{o.title}</p>
+                    {o.description ? (
+                      <p className="text-xs text-gray-500">{o.description}</p>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold">{formatCurrency(o.amount, o.currency)}</span>
+                    {href ? (
+                      <Button type="button" size="sm" variant="outline" asChild>
+                        <a href={href}>{t("web.provider.common.view")}</a>
+                      </Button>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
       {summary ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="rounded-lg border bg-white p-3 text-sm">
@@ -281,8 +351,12 @@ export function ProviderInvoicesPanel() {
           <TableBody>
             {invoices.map((invoice) => {
               const st = displayStatus(invoice);
-              const due = rowAmountDue(invoice);
-              const open = st === "sent" || st === "partially_paid" || st === "overdue";
+              const payable = isProviderInvoicePayable(invoice);
+              const due = payable ? rowAmountDue(invoice) : 0;
+              const open =
+                payable &&
+                (st === "sent" || st === "partially_paid" || st === "overdue") &&
+                due > 0;
               return (
                 <TableRow key={invoice.id}>
                   <TableCell className="font-medium">{invoice.invoice_number}</TableCell>

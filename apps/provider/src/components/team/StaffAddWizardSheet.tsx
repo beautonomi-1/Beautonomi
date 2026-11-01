@@ -1,5 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Text, TouchableOpacity, TextInput, Switch, Share, Alert, ScrollView } from "react-native";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  TextInput,
+  Switch,
+  Share,
+  Alert,
+  ScrollView,
+  Platform,
+} from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { useTranslation } from "@beautonomi/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheet } from "@/components/ui/BottomSheet";
@@ -9,6 +20,9 @@ import { validateE164Phone } from "@/lib/phone-country-codes";
 import { twStyle } from "@/lib/twStyle";
 import { isPlanGateErrorCode, showPlanGateAlert } from "@/lib/plan-gate";
 import { useRouter } from "expo-router";
+import { validateEmail } from "@/lib/validation";
+import { StaffPhotoField } from "@/components/team/StaffPhotoField";
+import { StaffCommissionEditor } from "@/components/team/StaffCommissionEditor";
 
 type WizardRouter = ReturnType<typeof useRouter>;
 
@@ -86,7 +100,10 @@ export function StaffAddWizardSheet({
   const [job, setJob] = useState<StaffJob>("stylist");
   const [publicTitle, setPublicTitle] = useState("");
   const [takesAppointments, setTakesAppointments] = useState(true);
-  const [commission, setCommission] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [commissionEnabled, setCommissionEnabled] = useState(false);
+  const [commissionPercent, setCommissionPercent] = useState(0);
+  const [showBookableDatePicker, setShowBookableDatePicker] = useState(false);
   const [copyStaffId, setCopyStaffId] = useState("");
   const [bookableFrom, setBookableFrom] = useState("");
   const [timeClock, setTimeClock] = useState(false);
@@ -118,7 +135,10 @@ export function StaffAddWizardSheet({
       setJob("stylist");
       setPublicTitle("");
       setTakesAppointments(true);
-      setCommission("");
+      setAvatarUrl(null);
+      setCommissionEnabled(false);
+      setCommissionPercent(0);
+      setShowBookableDatePicker(false);
       setCopyStaffId("");
       setBookableFrom("");
       setTimeClock(false);
@@ -154,8 +174,9 @@ export function StaffAddWizardSheet({
       phone: phone.trim() || undefined,
       job,
       public_title: publicTitle.trim() || null,
-      takes_appointments: takesAppointments,
-      commission_rate: commission.trim() ? parseFloat(commission) : null,
+      takes_appointments: job === "front_desk" ? false : takesAppointments,
+      commission_rate: commissionEnabled ? Math.round(commissionPercent) : null,
+      ...(avatarUrl ? { avatar_url: avatarUrl } : {}),
       invite_email: true,
       location_ids: branchIds,
       service_ids: serviceIds,
@@ -185,12 +206,40 @@ export function StaffAddWizardSheet({
     setStep(4);
   }
 
+  function formatLocalYmd(d: Date): string {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
   function goToNextStep() {
+    if (step === 0) {
+      if (!name.trim()) {
+        Alert.alert(wl("nameEmailRequired"));
+        return;
+      }
+      const emailErr = validateEmail(email.trim(), true);
+      if (emailErr) {
+        Alert.alert(wl("nameEmailRequired"));
+        return;
+      }
+      const phoneErr = phone.trim() ? validateE164Phone(phone) : null;
+      if (phoneErr) {
+        Alert.alert(phoneErr);
+        return;
+      }
+    }
     if (step === 2 && selectedLocationIds.length === 0 && locationIds.length > 0) {
       Alert.alert(wl("selectBranch"));
       return;
     }
     setStep((s) => s + 1);
+  }
+
+  function onJobSelect(j: StaffJob) {
+    setJob(j);
+    if (j === "front_desk") setTakesAppointments(false);
   }
 
   async function shareLink() {
@@ -246,6 +295,7 @@ export function StaffAddWizardSheet({
         </View>
       ) : step === 0 ? (
         <View>
+          <StaffPhotoField displayName={name || wl("name")} avatarUrl={avatarUrl} onChange={setAvatarUrl} />
           <Field label={wl("name")} value={name} onChangeText={setName} />
           <Field label={wl("email")} value={email} onChangeText={setEmail} keyboardType="email-address" />
           <E164PhoneField
@@ -262,10 +312,15 @@ export function StaffAddWizardSheet({
             label={wl("publicTitle")}
             value={publicTitle}
             onChangeText={setPublicTitle}
+            maxLength={120}
           />
           <View style={twStyle("mb-3 flex-row items-center justify-between")}>
             <Text style={twStyle("text-sm text-gray-800")}>{wl("takesAppointments")}</Text>
-            <Switch value={takesAppointments} onValueChange={setTakesAppointments} />
+            <Switch
+              value={job === "front_desk" ? false : takesAppointments}
+              onValueChange={setTakesAppointments}
+              disabled={job === "front_desk"}
+            />
           </View>
           <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{wl("job")}</Text>
           <View style={twStyle("mb-3 flex-row flex-wrap")}>
@@ -276,7 +331,7 @@ export function StaffAddWizardSheet({
                   twStyle(`rounded-full px-4 py-2 ${job === j ? "bg-gray-900" : "border border-gray-200 bg-white"}`),
                   { marginEnd: 8, marginBottom: 8 },
                 ]}
-                onPress={() => setJob(j)}
+                onPress={() => onJobSelect(j)}
               >
                 <Text style={twStyle(`text-sm ${job === j ? "text-white" : "text-gray-700"}`)}>
                   {wl(`job_${j}`)}
@@ -287,11 +342,14 @@ export function StaffAddWizardSheet({
           {job === "front_desk" ? (
             <Text style={twStyle("mb-2 text-xs text-gray-500")}>{wl("frontDeskHint")}</Text>
           ) : null}
-          <Field
-            label={wl("commissionOptional")}
-            value={commission}
-            onChangeText={setCommission}
-            keyboardType="numeric"
+          <StaffCommissionEditor
+            enabled={commissionEnabled}
+            onEnabledChange={setCommissionEnabled}
+            percent={commissionPercent}
+            onPercentChange={setCommissionPercent}
+            splitRatesEqual
+            serviceRate={null}
+            productRate={null}
           />
         </View>
       ) : step === 2 ? (
@@ -357,12 +415,35 @@ export function StaffAddWizardSheet({
               />
             ))}
           </View>
-          <Field
-            label={wl("startDateOptional")}
-            value={bookableFrom}
-            onChangeText={setBookableFrom}
-            placeholder="YYYY-MM-DD"
-          />
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{wl("startDateOptional")}</Text>
+          <TouchableOpacity
+            style={twStyle("mb-2 rounded-xl border border-gray-200 bg-white px-4 py-3")}
+            onPress={() => setShowBookableDatePicker(true)}
+          >
+            <Text style={twStyle("text-base text-gray-900")}>
+              {bookableFrom.trim() || wl("bookableNow")}
+            </Text>
+          </TouchableOpacity>
+          {bookableFrom.trim() ? (
+            <TouchableOpacity onPress={() => setBookableFrom("")} style={twStyle("mb-2")}>
+              <Text style={twStyle("mb-3 text-sm text-indigo-600")}>{wl("bookableNow")}</Text>
+            </TouchableOpacity>
+          ) : null}
+          {showBookableDatePicker ? (
+            <DateTimePicker
+              value={
+                bookableFrom.trim()
+                  ? new Date(`${bookableFrom.trim()}T12:00:00`)
+                  : new Date()
+              }
+              mode="date"
+              display={Platform.OS === "ios" ? "spinner" : "default"}
+              onChange={(_, selected) => {
+                setShowBookableDatePicker(Platform.OS === "ios");
+                if (selected) setBookableFrom(formatLocalYmd(selected));
+              }}
+            />
+          ) : null}
           <View style={twStyle("mt-2 flex-row items-center justify-between")}>
             <Text style={twStyle("text-sm text-gray-800")}>{wl("timeClock")}</Text>
             <Switch value={timeClock} onValueChange={setTimeClock} />
@@ -394,12 +475,14 @@ function Field({
   onChangeText,
   keyboardType,
   placeholder,
+  maxLength,
 }: {
   label: string;
   value: string;
   onChangeText: (v: string) => void;
   keyboardType?: "email-address" | "numeric" | "default";
   placeholder?: string;
+  maxLength?: number;
 }) {
   return (
     <View style={twStyle("mb-3")}>
@@ -411,6 +494,7 @@ function Field({
         keyboardType={keyboardType}
         placeholder={placeholder}
         autoCapitalize="none"
+        maxLength={maxLength}
       />
     </View>
   );

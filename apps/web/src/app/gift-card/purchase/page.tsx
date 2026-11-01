@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 import LoginModal from "@/components/global/login-modal";
 import { useAuth } from "@/providers/AuthProvider";
+import { GiftCardBreadcrumb } from "../components/gift-card-breadcrumb";
 
 type GiftCardTemplate = {
   id: string;
@@ -45,7 +46,7 @@ export default function GiftCardPurchasePage() {
   const [recipientName, setRecipientName] = useState("");
   const [giftMessage, setGiftMessage] = useState("");
   const [deliverAt, setDeliverAt] = useState("");
-  const [isBulkMode, setIsBulkMode] = useState(false);
+  const [isBulkMode, setIsBulkMode] = useState(() => searchParams.get("bulk") === "true");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [pendingSubmit, setPendingSubmit] = useState(false);
@@ -60,13 +61,14 @@ export default function GiftCardPurchasePage() {
   ]);
   const { bundle } = useConfigBundle();
   const primaryGateway = bundle?.meta?.tenant_region?.payment_gateway?.toLowerCase();
-  const flagsLoading = giftCardsFlagLoading || paymentFlagsLoading;
-  const onlineCardEnabled = flagsLoading
-    ? true
-    : (paymentFeatures.payment_paystack ?? false) ||
+  const giftCardsKnownOff = !giftCardsFlagLoading && !giftCardsEnabled;
+  const paymentsKnown = !paymentFlagsLoading;
+  const onlineCardEnabled = paymentsKnown
+    ? (paymentFeatures.payment_paystack ?? false) ||
       primaryGateway === "stripe" ||
-      primaryGateway === "flutterwave";
-  const purchaseEnabled = giftCardsEnabled && onlineCardEnabled;
+      primaryGateway === "flutterwave"
+    : true;
+  const paymentsKnownOff = paymentsKnown && !onlineCardEnabled;
 
   // Check if coming from bulk purchase link
   useEffect(() => {
@@ -202,13 +204,14 @@ export default function GiftCardPurchasePage() {
 
   const totalAmount = Number(amount) * Number(quantity) || 0;
 
-  if (!flagsLoading && !purchaseEnabled) {
+  if (giftCardsKnownOff || paymentsKnownOff) {
     return (
       <div className="min-h-screen bg-white">
         <Navbar4 />
-        <div className="max-w-2xl mx-auto px-4 py-10">
+        <div className="mx-auto max-w-2xl px-4 pb-28 pt-6 md:pb-10 md:pt-8">
+          <GiftCardBreadcrumb current={isBulkMode ? "purchaseBulk" : "purchase"} />
           <div className="border border-amber-200 bg-amber-50 rounded-lg p-6 text-center">
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Gift cards are currently unavailable</h2>
+            <h1 className="text-xl font-semibold text-gray-900 mb-2">Gift cards are currently unavailable</h1>
             <p className="text-gray-600 mb-4">
               {!giftCardsEnabled
                 ? "This feature is temporarily disabled. Please check back later."
@@ -226,7 +229,8 @@ export default function GiftCardPurchasePage() {
   return (
     <div className="min-h-screen bg-white">
       <Navbar4 />
-      <div className="max-w-2xl mx-auto px-4 py-10">
+      <div className="mx-auto max-w-2xl px-4 pb-28 pt-6 md:pb-10 md:pt-8">
+        <GiftCardBreadcrumb current={isBulkMode ? "purchaseBulk" : "purchase"} />
         <div className="flex items-center justify-between mb-2">
           <h1 className="text-3xl font-semibold">
             {isBulkMode ? "Buy gift cards in bulk" : "Buy a gift card"}

@@ -13,7 +13,14 @@ export function AdminCompositionBar({
   }
   return (
     <div>
-      <div className="flex h-4 overflow-hidden rounded-full">
+      <div
+        className="flex h-4 overflow-hidden rounded-full"
+        role="img"
+        aria-label={`Revenue mix: ${segments
+          .filter((s) => s.value > 0)
+          .map((s) => `${s.label} ${((s.value / total) * 100).toFixed(1)}%`)
+          .join(", ")}`}
+      >
         {segments.map((s) =>
           s.value > 0 ? (
             <div

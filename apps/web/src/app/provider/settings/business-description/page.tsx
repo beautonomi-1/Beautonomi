@@ -12,6 +12,7 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { useRouter } from "next/navigation";
+import { invalidateSetupStatusCache } from "@/lib/provider-portal/setup-status-utils";
 
 export default function BusinessDescriptionPage() {
   const { t } = useTranslation();
@@ -58,7 +59,12 @@ export default function BusinessDescriptionPage() {
 
       if (response?.data) {
         setOriginalDescription(description);
+        invalidateSetupStatusCache();
         toast.success(t("web.provider.settings.pages.business-description.businessDescriptionUpdatedSuccessfully"));
+        const trimmed = description.trim();
+        if (trimmed.length > 0 && trimmed.length < 10) {
+          toast.info(t("web.provider.settings.pages.business.getStartedIncompleteHint"));
+        }
         router.push("/provider/settings");
       }
     } catch (error) {

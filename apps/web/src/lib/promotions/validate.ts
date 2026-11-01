@@ -10,6 +10,10 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { percentOf } from "@beautonomi/utils";
+import {
+  customerHasPromotionUsage,
+  ONCE_PER_CUSTOMER_MESSAGE,
+} from "@/lib/promotions/once-per-customer";
 
 export interface PromoValidationInput {
   code: string;
@@ -19,6 +23,7 @@ export interface PromoValidationInput {
   /** For location-scoped promos: at_salon + location_id must match */
   locationType?: string;
   locationId?: string | null;
+  customerId?: string;
 }
 
 export interface PromoValidationResult {
@@ -150,6 +155,17 @@ export async function validatePromoCode(
       message: "This promo code has reached its usage limit",
       discount: { amount: 0, original_amount: amount, final_amount: amount, percentage: null },
     };
+  }
+
+  if (promo.once_per_customer && input.customerId) {
+    const already = await customerHasPromotionUsage(supabase, promo.id, input.customerId);
+    if (already) {
+      return {
+        valid: false,
+        message: ONCE_PER_CUSTOMER_MESSAGE,
+        discount: { amount: 0, original_amount: amount, final_amount: amount, percentage: null },
+      };
+    }
   }
 
   // Minimum purchase / booking amount

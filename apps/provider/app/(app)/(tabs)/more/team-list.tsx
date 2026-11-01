@@ -3,10 +3,8 @@ import {
   View,
   Text,
   TouchableOpacity,
-  TextInput,
   FlatList,
   Alert,
-  Switch,
   ScrollView,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -26,14 +24,11 @@ import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
-import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { StatCard } from "@/components/ui/StatCard";
 import { capitalizeFirst } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { isPlanGateErrorCode, showPlanGateAlert } from "@/lib/plan-gate";
-import { E164PhoneField } from "@/components/E164PhoneField";
-import { validateE164Phone } from "@/lib/phone-country-codes";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { Colors } from "@/constants/colors";
 import { useTranslation } from "@beautonomi/i18n";
@@ -85,29 +80,12 @@ interface TeamAccessPayload {
   staff_add_limit_value?: number | null;
 }
 
-const ROLE_OPTIONS = [
-  { labelKey: "roleStaff", value: "provider_staff" },
-  { labelKey: "roleManager", value: "provider_manager" },
-  { labelKey: "roleOwner", value: "provider_owner" },
-] as const;
-
 function staffRoleLabel(role: string, tl: (key: string, opts?: Record<string, unknown>) => string): string {
   if (role === "provider_staff") return tl("roleStaff");
   if (role === "provider_manager") return tl("roleManager");
   if (role === "provider_owner") return tl("roleOwner");
   return capitalizeFirst(role);
 }
-
-const EMPTY_FORM = {
-  name: "",
-  email: "",
-  phone: "",
-  role: "provider_staff",
-  commission_rate: "",
-  invite_email: true,
-  location_ids: [] as string[],
-  service_ids: [] as string[],
-};
 
 /* ------------------------------------------------------------------ */
 /*  Screen                                                             */
@@ -119,10 +97,6 @@ export default function TeamListScreen() {
     (key: string, opts?: Record<string, unknown>) =>
       t(`provider.mobile.screens.teamList.${key}`, opts) as string,
     [t],
-  );
-  const roles = useMemo(
-    () => ROLE_OPTIONS.map((r) => ({ value: r.value, label: tl(r.labelKey) })),
-    [tl],
   );
   const router = useRouter();
   const params = useLocalSearchParams<{ add?: string }>();
@@ -150,7 +124,7 @@ export default function TeamListScreen() {
     Record<string, unknown>,
     StaffMember
   >("/api/provider/staff");
-  const { execute: updateMember, loading: updating } = useApiMutation("patch");
+  const { execute: updateMember } = useApiMutation("patch");
   const { execute: deleteMember } = useApiMutation("delete");
   const { execute: postStaffAction } = useApiMutation("post");
 
@@ -159,9 +133,6 @@ export default function TeamListScreen() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [addSheetOpen, setAddSheetOpen] = useState(false);
-  const [editSheetOpen, setEditSheetOpen] = useState(false);
-  const [editingMember, setEditingMember] = useState<StaffMember | null>(null);
-  const [editForm, setEditForm] = useState({ ...EMPTY_FORM });
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -242,86 +213,9 @@ export default function TeamListScreen() {
     setAddSheetOpen(true);
   }
 
-  function toggleEditFormService(svcId: string) {
-    setEditForm((prev) => ({
-      ...prev,
-      service_ids: prev.service_ids.includes(svcId)
-        ? prev.service_ids.filter((x) => x !== svcId)
-        : [...prev.service_ids, svcId],
-    }));
-  }
-
   function openEditSheet(member: StaffMember) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setEditingMember(member);
-    setEditForm({
-      name: member.name,
-      email: member.email,
-      phone: member.phone ?? "",
-      role: member.role,
-      commission_rate:
-        member.commission_rate != null && !Number.isNaN(Number(member.commission_rate))
-          ? String(member.commission_rate)
-          : "",
-      invite_email: false,
-      location_ids: member.locations?.map((l) => l.location_id) ?? [],
-      service_ids: member.service_ids?.length ? [...member.service_ids] : [],
-    });
-    setEditSheetOpen(true);
-  }
-
-  async function handleEditSubmit() {
-    if (!editingMember) return;
-    if (!editForm.name.trim()) {
-      Alert.alert(tl("validationTitle"), tl("nameRequired"));
-      return;
-    }
-    const phoneErr = editForm.phone ? validateE164Phone(editForm.phone) : null;
-    if (phoneErr) {
-      Alert.alert(tl("invalidPhoneTitle"), phoneErr);
-      return;
-    }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const payload: Record<string, unknown> = {
-      name: editForm.name.trim(),
-      phone: editForm.phone.trim() || null,
-      role: editForm.role,
-      location_ids: editForm.location_ids,
-      service_ids: editForm.service_ids,
-    };
-    if (editForm.commission_rate.trim()) {
-      payload.commission_rate = parseFloat(editForm.commission_rate);
-    } else if (
-      editingMember.commission_rate != null &&
-      editingMember.commission_rate !== undefined
-    ) {
-      payload.commission_rate = null;
-    }
-    const apply = async (force?: boolean) => {
-      const { error, errorCode } = await updateMember(`/api/provider/staff/${editingMember.id}`, {
-        ...payload,
-        ...(force ? { force: true } : {}),
-      });
-      if (errorCode === "FUTURE_BOOKINGS_CONFLICT" && !force) {
-        Alert.alert(
-          tl("upcomingBookingsTitle"),
-          tl("upcomingBookingsBody"),
-          [
-            { text: tl("cancel"), style: "cancel" },
-            { text: tl("saveAnyway"), style: "destructive", onPress: () => void apply(true) },
-          ],
-        );
-        return;
-      }
-      if (error) {
-        Alert.alert(tl("errorTitle"), error);
-      } else {
-        setEditSheetOpen(false);
-        setEditingMember(null);
-        refresh();
-      }
-    };
-    await apply();
+    router.push(`/(app)/(tabs)/more/team-member/${member.id}?edit=1` as never);
   }
 
   function handleLongPress(member: StaffMember) {
@@ -710,163 +604,6 @@ export default function TeamListScreen() {
         router={router}
       />
 
-      {/* ════════════════════════════════════════════════════════════ */}
-      {/*  Edit Team Member Bottom Sheet                              */}
-      {/* ════════════════════════════════════════════════════════════ */}
-      <BottomSheet
-        visible={editSheetOpen}
-        onClose={() => { setEditSheetOpen(false); setEditingMember(null); }}
-        title={tl("editTitle", { name: editingMember?.name ?? tl("teamMemberFallback") })}
-        snapHeight="auto"
-      >
-        <FormField
-          label={tl("fullNameRequired")}
-          value={editForm.name}
-          onChangeText={(t) => setEditForm((p) => ({ ...p, name: t }))}
-          placeholder={tl("fullNamePlaceholder")}
-        />
-
-        <E164PhoneField
-          label={tl("phone")}
-          valueE164={editForm.phone}
-          onChangeE164={(e164) => setEditForm((p) => ({ ...p, phone: e164 }))}
-          compact
-          muted
-          accessibilityLabel={tl("phoneA11y")}
-        />
-
-        {/* Role */}
-        <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>{tl("role")}</Text>
-        <View style={twStyle("mb-3 flex-row flex-wrap")}>
-          {roles.map((r) => (
-            <TouchableOpacity
-              key={r.value}
-              style={[
-                twStyle(`rounded-full px-4 py-2 ${editForm.role === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`),
-                { marginEnd: 8, marginBottom: 8 },
-              ]}
-              onPress={() => setEditForm((p) => ({ ...p, role: r.value }))}
-              accessibilityLabel={tl("selectRoleA11y", { role: r.label })}
-            >
-              <Text style={twStyle(`text-sm font-medium ${editForm.role === r.value ? "text-white" : "text-gray-600"}`)}>
-                {r.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <FormField
-          label={tl("commissionRate")}
-          value={editForm.commission_rate}
-          onChangeText={(t) => setEditForm((p) => ({ ...p, commission_rate: t }))}
-          placeholder={tl("commissionPlaceholder")}
-          keyboardType="numeric"
-        />
-
-        {/* Location Assignment */}
-        {locations && locations.length > 0 && (
-          <>
-            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>{tl("locations")}</Text>
-            <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50")}>
-              {locations.map((loc, i) => {
-                const isSelected = editForm.location_ids.includes(loc.id);
-                return (
-                  <TouchableOpacity
-                    key={loc.id}
-                    style={twStyle(`flex-row items-center px-4 py-3 ${i < locations.length - 1 ? "border-b border-gray-100" : ""}`)}
-                    onPress={() =>
-                      setEditForm((p) => ({
-                        ...p,
-                        location_ids: isSelected
-                          ? p.location_ids.filter((x) => x !== loc.id)
-                          : [...p.location_ids, loc.id],
-                      }))
-                    }
-                    accessibilityLabel={isSelected ? tl("deselectA11y", { name: loc.name }) : tl("selectA11y", { name: loc.name })}
-                  >
-                    <Ionicons
-                      name={isSelected ? "checkbox" : "square-outline"}
-                      size={20}
-                      color={isSelected ? "#6366f1" : "#9ca3af"}
-                    />
-                    <Text style={twStyle("ms-3 text-sm text-gray-900")}>{loc.name}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </>
-        )}
-
-        {services && services.length > 0 && (
-          <>
-            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>
-              {tl("assignServicesShort")}
-            </Text>
-            <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50")}>
-              {services.map((svc, i) => {
-                const isSelected = editForm.service_ids.includes(svc.id);
-                return (
-                  <TouchableOpacity
-                    key={svc.id}
-                    style={twStyle(
-                      `flex-row items-center px-4 py-3 ${i < services.length - 1 ? "border-b border-gray-100" : ""}`,
-                    )}
-                    onPress={() => toggleEditFormService(svc.id)}
-                    accessibilityLabel={isSelected ? tl("deselectA11y", { name: svc.title }) : tl("selectA11y", { name: svc.title })}
-                  >
-                    <Ionicons
-                      name={isSelected ? "checkbox" : "square-outline"}
-                      size={20}
-                      color={isSelected ? "#6366f1" : "#9ca3af"}
-                    />
-                    <Text style={twStyle("ms-3 text-sm text-gray-900")}>{svc.title}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </>
-        )}
-
-        <ActionButton
-          label={tl("saveChanges")}
-          onPress={handleEditSubmit}
-          loading={updating}
-          fullWidth
-        />
-      </BottomSheet>
     </ScreenContainer>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Inline Form Field                                                  */
-/* ------------------------------------------------------------------ */
-
-function FormField({
-  label,
-  value,
-  onChangeText,
-  placeholder,
-  keyboardType,
-}: {
-  label: string;
-  value: string;
-  onChangeText: (text: string) => void;
-  placeholder?: string;
-  keyboardType?: "default" | "email-address" | "phone-pad" | "numeric";
-}) {
-  return (
-    <View style={twStyle("mb-3")}>
-      <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{label}</Text>
-      <TextInput
-        style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-        placeholder={placeholder}
-        placeholderTextColor="#9ca3af"
-        value={value}
-        onChangeText={onChangeText}
-        keyboardType={keyboardType}
-        accessibilityLabel={label}
-      />
-    </View>
   );
 }

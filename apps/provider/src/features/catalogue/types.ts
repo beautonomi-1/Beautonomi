@@ -135,6 +135,19 @@ export function resolveBookingTierName(
   return `Option ${index + 1}`;
 }
 
+/** Price shown in UI; later tiers with price 0 display the first option’s price (matches server sync). */
+export function resolveBookingTierDisplayPrice(
+  options: PricingOption[],
+  index: number,
+  _parentPricingName?: string | null,
+): number {
+  const row = options[index];
+  if (!row) return 0;
+  if (index === 0) return row.price;
+  if (row.price > 0) return row.price;
+  return options[0]?.price ?? 0;
+}
+
 export interface CustomerBookingTierPreview {
   name: string;
   durationMinutes: number;
@@ -151,7 +164,7 @@ export function buildCustomerBookingTierPreview(
   return options.map((opt, index) => ({
     name: resolveBookingTierName(opt, index, parentPricingName),
     durationMinutes: opt.duration,
-    price: opt.price,
+    price: resolveBookingTierDisplayPrice(options, index, parentPricingName),
     priceType: opt.priceType,
   }));
 }

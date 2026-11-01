@@ -96,14 +96,48 @@ export function formatStatusLabel(status: string): string {
 
 export type BookingStatusCounts = Record<string, number> & { scheduled_total?: number; other?: number };
 
+/** Map booking report API rows to the same breakdown shape as analytics. */
+export function bookingStatusBreakdownFromReport(
+  items: { status?: string; count?: number }[],
+  scheduledTotal: number,
+): BookingStatusCounts {
+  const breakdown: BookingStatusCounts = { scheduled_total: scheduledTotal, other: 0 };
+  for (const status of BOOKING_STATUS_ORDER) {
+    breakdown[status] = 0;
+  }
+  for (const item of items) {
+    const raw = String(item.status ?? "unknown");
+    const count = Number(item.count ?? 0);
+    if ((BOOKING_STATUS_ORDER as readonly string[]).includes(raw)) {
+      breakdown[raw as (typeof BOOKING_STATUS_ORDER)[number]] += count;
+    } else {
+      breakdown.other = (breakdown.other ?? 0) + count;
+    }
+  }
+  return breakdown;
+}
+
 export function bookingStatusBarRows(breakdown: BookingStatusCounts) {
-  const rows: { label: string; value: number }[] = [];
+  const total = breakdown.scheduled_total ?? 0;
+  const rows: { label: string; value: number; hint?: string }[] = [];
   for (const status of BOOKING_STATUS_ORDER) {
     const v = breakdown[status] ?? 0;
-    if (v > 0) rows.push({ label: formatStatusLabel(status), value: v });
+    if (v > 0) {
+      rows.push({
+        label: formatStatusLabel(status),
+        value: v,
+        hint: total > 0 ? `(${((v / total) * 100).toFixed(1)}%)` : undefined,
+      });
+    }
   }
   const other = breakdown.other ?? 0;
-  if (other > 0) rows.push({ label: "Other", value: other });
+  if (other > 0) {
+    rows.push({
+      label: "Other",
+      value: other,
+      hint: total > 0 ? `(${((other / total) * 100).toFixed(1)}%)` : undefined,
+    });
+  }
   return rows;
 }
 

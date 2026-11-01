@@ -60,7 +60,10 @@ export async function GET(
         time_clock_enabled,
         time_clock_pin,
         phone_call_availability_enabled,
-        mobile_ready
+        mobile_ready,
+        bookable_from,
+        service_commission_rate,
+        product_commission_rate
       `)
       .eq("id", id)
       .eq("provider_id", providerId)
@@ -105,6 +108,11 @@ export async function GET(
       time_clock_pin: staff.time_clock_pin ?? "",
       phone_call_availability_enabled: staff.phone_call_availability_enabled ?? false,
       mobileReady: staff.mobile_ready ?? false,
+      bookable_from: (staff as { bookable_from?: string | null }).bookable_from ?? null,
+      service_commission_rate:
+        (staff as { service_commission_rate?: number | null }).service_commission_rate ?? null,
+      product_commission_rate:
+        (staff as { product_commission_rate?: number | null }).product_commission_rate ?? null,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch staff settings");
@@ -132,6 +140,11 @@ const updateSettingsSchema = z.object({
   time_clock_pin: z.string().optional(),
   phone_call_availability_enabled: z.boolean().optional(),
   mobileReady: z.boolean().optional(),
+  bookable_from: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional()
+    .nullable(),
 });
 
 /**

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { View, Text, TextInput, ScrollView, TouchableOpacity, Switch, Alert, Platform } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -13,6 +13,7 @@ import { twStyle } from "@/lib/twStyle";
 import { emitProviderProductsCatalogChanged } from "@/lib/provider-products-catalog-events";
 import { buildProductPayload } from "@/features/products/buildProductPayload";
 import { validateProductForm } from "@/features/products/validateProductForm";
+import { countVariantRowsWithZeroRetail } from "@/features/products/productVariantFormHelpers";
 import { computeMarkupFromPrices, computeRetailFromMarkup } from "@/features/products/markupCalc";
 import { ProductGalleryUpload } from "@/features/products/ProductGalleryUpload";
 import { VariantMatrixEditor } from "@/features/products/VariantMatrixEditor";
@@ -204,6 +205,9 @@ export default function ProductFormScreen() {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newSupplierName, setNewSupplierName] = useState("");
   const [barcodeScanOpen, setBarcodeScanOpen] = useState(false);
+  const [loadedWithVariants, setLoadedWithVariants] = useState(false);
+  const formRef = useRef(form);
+  formRef.current = form;
 
   const handleCreateBrand = useCallback(async () => {
     const name = newBrandName.trim();
@@ -269,6 +273,7 @@ export default function ProductFormScreen() {
   useEffect(() => {
     if (product) {
       const hasV = Boolean(product.has_variants && (product.variants?.length ?? 0) > 0);
+      setLoadedWithVariants(hasV);
       const optTypes = product.variant_option_types ?? [];
       const variantOptionTypes: VariantOptionTypeForm[] =
         Array.isArray(optTypes) && optTypes.length > 0
@@ -328,9 +333,10 @@ export default function ProductFormScreen() {
           : [],
       });
     } else if (!productId) {
+      setLoadedWithVariants(false);
       setForm({ ...defaultForm });
     }
-  }, [product, productId]);
+  }, [product, productId, pf]);
 
   const handleDelete = () => {
     if (!productId) return;
@@ -368,43 +374,12 @@ export default function ProductFormScreen() {
   const isSaving = creating || updating;
   const isEdit = !!productId;
 
-  const handleSave = async () => {
-    const validationError = validateProductForm({
-      name: form.name,
-      hasVariants: form.hasVariants,
-      variantRows: form.variantRows,
-      retail_price: form.retail_price,
-    });
-    if (validationError) {
-      Alert.alert(pf("validationTitle"), validationError);
-      return;
-    }
-
-    if (form.hasVariants && form.variantRows.length === 0) {
-      Alert.alert(pf("validationTitle"), pf("needVariantRow"));
-      return;
-    }
-
+  const performProductSave = useCallback(async () => {
+    const current = formRef.current;
     const { payload, withVariants } = buildProductPayload({
-      ...form,
-      image_urls: form.image_urls,
+      ...current,
+      image_urls: current.image_urls,
     });
-
-    if (withVariants) {
-      const validTypes = form.variantOptionTypes
-        .map((t) => ({
-          name: t.name.trim(),
-          values: [...new Set(t.values.map((x) => x.trim()).filter(Boolean))],
-        }))
-        .filter((t) => t.name.length > 0 && t.values.length > 0);
-      if (validTypes.length === 0) {
-        Alert.alert(
-          pf("validationTitle"),
-          pf("needOptionValues"),
-        );
-        return;
-      }
-    }
 
     if (isEdit && productId && !withVariants) {
       payload.variants = [];
@@ -429,7 +404,94 @@ export default function ProductFormScreen() {
       emitProviderProductsCatalogChanged();
       router.back();
     }
+  }, [createProduct, updateProduct, isEdit, productId, pf, router]);
+
+  const handleSave = () => {
+    const current = formRef.current;
+    const validationError = validateProductForm({
+      name: current.name,
+      hasVariants: current.hasVariants,
+      variantRows: current.variantRows,
+      retail_price: current.retail_price,
+    });
+    if (validationError) {
+      Alert.alert(pf("validationTitle"), validationError);
+      return;
+    }
+
+    if (current.hasVariants && current.variantRows.length === 0) {
+      Alert.alert(pf("validationTitle"), pf("needVariantRow"));
+      return;
+    }
+
+    const { withVariants } = buildProductPayload({
+      ...current,
+      image_urls: current.image_urls,
+    });
+
+    if (withVariants) {
+      const validTypes = current.variantOptionTypes
+        .map((t) => ({
+          name: t.name.trim(),
+          values: [...new Set(t.values.map((x) => x.trim()).filter(Boolean))],
+        }))
+        .filter((t) => t.name.length > 0 && t.values.length > 0);
+      if (validTypes.length === 0) {
+        Alert.alert(pf("validationTitle"), pf("needOptionValues"));
+        return;
+      }
+    }
+
+    if (isEdit && loadedWithVariants && !current.hasVariants) {
+      Alert.alert(pf("deleteOptionsTitle"), pf("deleteOptionsBody"), [
+        {
+          text: pf("keepOptions"),
+          style: "cancel",
+          onPress: () => setForm((p) => ({ ...p, hasVariants: true })),
+        },
+        {
+          text: pf("deleteOptionsConfirm"),
+          style: "destructive",
+          onPress: () => void performProductSave(),
+        },
+      ]);
+      return;
+    }
+
+    if (current.hasVariants && current.variantRows.length > 0) {
+      const zeroCount = countVariantRowsWithZeroRetail(current.variantRows);
+      if (zeroCount > 0) {
+        Alert.alert(
+          pf("freeOptionsTitle"),
+          pf(zeroCount === 1 ? "freeOptionsBody_one" : "freeOptionsBody_other", { count: zeroCount }),
+          [
+            { text: pf("reviewPrices"), style: "cancel" },
+            { text: pf("saveAnyway"), onPress: () => void performProductSave() },
+          ],
+        );
+        return;
+      }
+    }
+
+    void performProductSave();
   };
+
+  const renderTaxField = () => (
+    <View style={twStyle("mb-3")}>
+      <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{pf("taxRatePercent")}</Text>
+      <TouchableOpacity
+        style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
+        onPress={() => setTaxSheetOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel={pf("taxRatePercent")}
+      >
+        <Text style={twStyle("text-base text-gray-900")}>
+          {taxOptions.find((o) => o.value === form.tax_rate)?.label ??
+            pf("taxRateValue", { rate: form.tax_rate })}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   if (productId && loadingProduct && !product) {
     return (
@@ -491,59 +553,94 @@ export default function ProductFormScreen() {
               placeholder={pf("productNamePlaceholder")}
             />
             <View style={twStyle("mb-3")}>
-              <View style={twStyle("mb-1 flex-row items-center justify-between")}>
-                <Text style={twStyle("text-sm font-medium text-gray-700")}>{pf("sku")}</Text>
-                <TouchableOpacity
-                  onPress={generateSku}
-                  style={twStyle("py-1")}
-                  accessibilityLabel={pf("generateSkuA11y")}
-                  accessibilityRole="button"
-                >
-                  <Text style={twStyle("text-sm font-medium text-indigo-600")}>{pf("generateSku")}</Text>
-                </TouchableOpacity>
-              </View>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>{pf("weightGrams")}</Text>
               <TextInput
-                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-                placeholder={pf("skuPlaceholder")}
+                style={twStyle("mt-1.5 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                value={form.weight_grams}
+                onChangeText={(t) => setForm((p) => ({ ...p, weight_grams: t.replace(/[^\d]/g, "") }))}
+                keyboardType="number-pad"
+                placeholder={pf("weightGramsPlaceholder")}
                 placeholderTextColor="#9ca3af"
-                value={form.sku}
-                onChangeText={(t) => setForm((p) => ({ ...p, sku: t }))}
-                accessibilityLabel={pf("sku")}
+                accessibilityLabel={pf("weightGrams")}
               />
             </View>
-            <View style={twStyle("mb-3")}>
-              <View style={twStyle("mb-1 flex-row items-center justify-between")}>
-                <Text style={twStyle("text-sm font-medium text-gray-700")}>{pf("barcode")}</Text>
-                <TouchableOpacity
-                  onPress={() => setBarcodeScanOpen(true)}
-                  style={twStyle("flex-row items-center py-1")}
-                  accessibilityLabel={pf("scanBarcodeA11y")}
-                  accessibilityRole="button"
-                >
-                  <Ionicons name="barcode-outline" size={18} color="#4f46e5" />
-                  <Text style={twStyle("ms-1 text-sm font-medium text-indigo-600")}>{pf("scan")}</Text>
-                </TouchableOpacity>
-              </View>
-              <TextInput
-                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-                placeholder={pf("barcodePlaceholder")}
-                placeholderTextColor="#9ca3af"
-                value={form.barcode}
-                onChangeText={(t) => setForm((p) => ({ ...p, barcode: t }))}
-                accessibilityLabel={pf("barcode")}
-              />
-              <View style={{ marginTop: 12 }}>
-                <Text style={twStyle("text-sm font-medium text-gray-700")}>{pf("weightGrams")}</Text>
-                <TextInput
-                  style={twStyle("mt-1.5 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-                  value={form.weight_grams}
-                  onChangeText={(t) => setForm((p) => ({ ...p, weight_grams: t.replace(/[^\d]/g, "") }))}
-                  keyboardType="number-pad"
-                  placeholder={pf("weightGramsPlaceholder")}
-                  placeholderTextColor="#9ca3af"
+
+            {!form.hasVariants ? (
+              <>
+                <View style={twStyle("mb-3")}>
+                  <View style={twStyle("mb-1 flex-row items-center justify-between")}>
+                    <Text style={twStyle("text-sm font-medium text-gray-700")}>{pf("sku")}</Text>
+                    <TouchableOpacity
+                      onPress={generateSku}
+                      style={twStyle("py-1")}
+                      accessibilityLabel={pf("generateSkuA11y")}
+                      accessibilityRole="button"
+                    >
+                      <Text style={twStyle("text-sm font-medium text-indigo-600")}>{pf("generateSku")}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TextInput
+                    style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                    placeholder={pf("skuPlaceholder")}
+                    placeholderTextColor="#9ca3af"
+                    value={form.sku}
+                    onChangeText={(t) => setForm((p) => ({ ...p, sku: t }))}
+                    accessibilityLabel={pf("sku")}
+                  />
+                </View>
+                <View style={twStyle("mb-3")}>
+                  <View style={twStyle("mb-1 flex-row items-center justify-between")}>
+                    <Text style={twStyle("text-sm font-medium text-gray-700")}>{pf("barcode")}</Text>
+                    <TouchableOpacity
+                      onPress={() => setBarcodeScanOpen(true)}
+                      style={twStyle("flex-row items-center py-1")}
+                      accessibilityLabel={pf("scanBarcodeA11y")}
+                      accessibilityRole="button"
+                    >
+                      <Ionicons name="barcode-outline" size={18} color="#4f46e5" />
+                      <Text style={twStyle("ms-1 text-sm font-medium text-indigo-600")}>{pf("scan")}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TextInput
+                    style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                    placeholder={pf("barcodePlaceholder")}
+                    placeholderTextColor="#9ca3af"
+                    value={form.barcode}
+                    onChangeText={(t) => setForm((p) => ({ ...p, barcode: t }))}
+                    accessibilityLabel={pf("barcode")}
+                  />
+                </View>
+                <View style={twStyle("mb-3")}>
+                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{pf("measure")}</Text>
+                  <TouchableOpacity
+                    style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
+                    onPress={() => setMeasureSheetOpen(true)}
+                    accessibilityLabel={pf("measureA11y", {
+                      value:
+                        measureOptions.find((o) => o.value === form.measure)?.label ??
+                        form.measure ??
+                        pf("selectMeasure"),
+                    })}
+                    accessibilityRole="button"
+                  >
+                    <Text style={twStyle("text-base text-gray-900")}>
+                      {measureOptions.find((o) => o.value === form.measure)?.label ??
+                        form.measure ??
+                        pf("selectMeasure")}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <FormField
+                  label={pf("amount")}
+                  value={form.amount}
+                  onChangeText={(t) => setForm((p) => ({ ...p, amount: t }))}
+                  placeholder={pf("amountPlaceholder")}
+                  keyboardType="decimal-pad"
                 />
-              </View>
-            </View>
+              </>
+            ) : (
+              <Text style={twStyle("mb-3 text-sm leading-5 text-gray-600")}>{pf("variantsPerOptionNote")}</Text>
+            )}
 
             <View style={twStyle("mb-3")}>
               <View style={twStyle("mb-1 flex-row items-center justify-between")}>
@@ -615,26 +712,6 @@ export default function ProductFormScreen() {
               </TouchableOpacity>
             </View>
 
-            <View style={twStyle("mb-3")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{pf("measure")}</Text>
-              <TouchableOpacity
-                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
-                onPress={() => setMeasureSheetOpen(true)}
-                accessibilityLabel={pf("measureA11y", { value: measureOptions.find((o) => o.value === form.measure)?.label ?? form.measure ?? pf("selectMeasure") })}
-                accessibilityRole="button"
-              >
-                <Text style={twStyle("text-base text-gray-900")}>
-                  {measureOptions.find((o) => o.value === form.measure)?.label ?? form.measure ?? pf("selectMeasure")}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <FormField
-              label={pf("amount")}
-              value={form.amount}
-              onChangeText={(t) => setForm((p) => ({ ...p, amount: t }))}
-              placeholder={pf("amountPlaceholder")}
-              keyboardType="decimal-pad"
-            />
             <ProductGalleryUpload
               imageUrls={form.image_urls}
               onChange={(urls) => setForm((p) => ({ ...p, image_urls: urls }))}
@@ -644,28 +721,42 @@ export default function ProductFormScreen() {
               <Text style={twStyle("text-sm font-medium text-gray-700")}>{pf("hasVariants")}</Text>
               <Switch
                 value={form.hasVariants}
-                onValueChange={(v) =>
-                  setForm((p) => ({
-                    ...p,
-                    hasVariants: v,
-                    variantRows: v ? p.variantRows : [],
-                    variantOptionTypes: v
-                      ? p.variantOptionTypes.length > 0
-                        ? p.variantOptionTypes
-                        : [{ name: pf("defaultVariantType"), values: [] }]
-                      : [],
-                  }))
-                }
+                onValueChange={(v) => {
+                  if (v) {
+                    setForm((p) => ({
+                      ...p,
+                      hasVariants: true,
+                      variantOptionTypes:
+                        p.variantOptionTypes.length > 0
+                          ? p.variantOptionTypes
+                          : [{ name: pf("defaultVariantType"), values: [] }],
+                    }));
+                  } else {
+                    setForm((p) => ({ ...p, hasVariants: false }));
+                  }
+                }}
                 trackColor={{ false: "#d1d5db", true: "#6366f1" }}
                 thumbColor="#fff"
               />
             </View>
+
+            {!form.hasVariants && form.variantRows.length > 0 ? (
+              <Text style={twStyle("mb-3 text-sm leading-5 text-amber-800")}>
+                {loadedWithVariants ? pf("variantsHiddenDelete") : pf("variantsHiddenUntilOn")}
+              </Text>
+            ) : null}
 
             {form.hasVariants && (
               <VariantMatrixEditor
                 variantOptionTypes={form.variantOptionTypes}
                 variantRows={form.variantRows}
                 defaultMeasure={form.measure || "ml"}
+                defaultMeasureLabel={
+                  measureOptions.find((o) => o.value === form.measure)?.label ??
+                  form.measure ??
+                  pf("selectMeasure")
+                }
+                onOpenDefaultMeasure={() => setMeasureSheetOpen(true)}
                 onChangeOptionTypes={(types) => setForm((p) => ({ ...p, variantOptionTypes: types }))}
                 onChangeRows={(rows) => setForm((p) => ({ ...p, variantRows: rows }))}
               />
@@ -725,17 +816,7 @@ export default function ProductFormScreen() {
               placeholder={t("common.optional")}
               keyboardType="decimal-pad"
             />
-            <View style={twStyle("mb-3")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{pf("taxRatePercent")}</Text>
-              <TouchableOpacity
-                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
-                onPress={() => setTaxSheetOpen(true)}
-              >
-                <Text style={twStyle("text-base text-gray-900")}>
-                  {taxOptions.find((o) => o.value === form.tax_rate)?.label ?? pf("taxRateValue", { rate: form.tax_rate })}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            {renderTaxField()}
 
             <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>{pf("stock")}</Text>
             <View style={twStyle("mb-2 flex-row")}>
@@ -769,6 +850,8 @@ export default function ProductFormScreen() {
             </View>
               </>
             )}
+
+            {form.hasVariants ? renderTaxField() : null}
 
             <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
               <Text style={twStyle("text-sm font-medium text-gray-700")}>{pf("trackStock")}</Text>
