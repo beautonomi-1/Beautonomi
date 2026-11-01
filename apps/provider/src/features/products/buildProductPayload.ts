@@ -7,7 +7,7 @@ export function buildProductPayload(form: ProductFormState) {
 
   const payload: Record<string, unknown> = {
     name,
-    barcode: form.barcode || undefined,
+    barcode: withVariants ? undefined : form.barcode || undefined,
     brand: form.brand || undefined,
     measure: withVariants ? undefined : form.measure || undefined,
     amount: withVariants ? undefined : form.amount ? parseFloat(form.amount) : undefined,

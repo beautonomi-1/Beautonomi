@@ -142,4 +142,20 @@ describe("bookingFinancialsFromDb", () => {
     expect(fin.giftCardAmountFromMeta).toBe(15);
     expect(fin.tipAmount).toBe(5);
   });
+
+  it("reads platform fee from service_fee when platform column is zero", () => {
+    const fin = bookingFinancialsFromDb({
+      platform_fee_amount: 0,
+      service_fee_amount: 12.5,
+    });
+    expect(fin.serviceFeeAmount).toBe(12.5);
+  });
+
+  it("reads zero when both fee columns are zero (provider-portal booking)", () => {
+    const fin = bookingFinancialsFromDb({
+      platform_fee_amount: 0,
+      service_fee_amount: 0,
+    });
+    expect(fin.serviceFeeAmount).toBe(0);
+  });
 });

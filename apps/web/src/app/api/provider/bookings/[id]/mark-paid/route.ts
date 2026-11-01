@@ -9,6 +9,10 @@ import { bookingTenantMismatchResponse } from "@/lib/tenant/provider-matches-hos
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
 import { requireManualCardEnabledForProvider } from "@/lib/payments/require-manual-card-enabled";
+import {
+  clearUncollectedProviderPortalPlatformFeeIfNeeded,
+  type BookingFeeClearRow,
+} from "@/lib/bookings/provider-booking-platform-fee";
 
 type AdditionalChargeRow = {
   id?: string;
@@ -213,13 +217,21 @@ export async function POST(
     // Verify booking exists and belongs to provider
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, status, tenant_id, total_amount, total_refunded, payment_status, provider_id, customer_id, booking_number, ref_number, total_paid, wallet_amount, gift_card_amount, tip_amount, travel_fee, tax_amount, service_fee_amount, booking_source, location_id, location_type, currency, additional_charges(id, amount, status, description, currency)")
+      .select("id, status, tenant_id, total_amount, total_refunded, payment_status, payment_reference, provider_id, customer_id, booking_number, ref_number, total_paid, wallet_amount, gift_card_amount, tip_amount, travel_fee, tax_amount, service_fee_amount, platform_fee_amount, platform_fee_percentage, service_fee_percentage, platform_fee_paid_by, service_fee_paid_by, deposit_amount, booking_source, location_id, location_type, currency, additional_charges(id, amount, status, description, currency)")
       .eq("id", bookingId)
       .eq("provider_id", providerId)
       .single();
 
     if (bookingError || !booking) {
       return notFoundResponse("Booking not found");
+    }
+
+    const feeClear = await clearUncollectedProviderPortalPlatformFeeIfNeeded(
+      supabaseAdmin,
+      booking as BookingFeeClearRow,
+    );
+    if (feeClear.cleared) {
+      Object.assign(booking, feeClear.booking);
     }
 
     const bookingMarketMismatch = bookingTenantMismatchResponse(

@@ -14,7 +14,8 @@ const bodySchema = z.object({
 
 /**
  * PATCH /api/admin/invoices/[id]/payments/[paymentId]
- * Superadmin confirms a pending EFT claim or refunds a completed payment.
+ * Superadmin refunds a completed payment. Bank-transfer confirm is disabled —
+ * providers pay via card checkout only (migration 1025 fails pending claims).
  */
 export async function PATCH(
   request: NextRequest,
@@ -40,52 +41,14 @@ export async function PATCH(
     const row = payment as { status?: string; amount?: number };
 
     if (action === "confirm") {
-      if (row.status === "completed") {
-        return successResponse({ payment, already_confirmed: true });
-      }
-      if (row.status !== "pending") {
-        return handleApiError(
-          new Error("Only pending payments can be confirmed"),
-          "Only pending payments can be confirmed",
-          "VALIDATION_ERROR",
-          400,
-        );
-      }
-
-      const { data: updated, error: updateErr } = await admin
-        .from("provider_invoice_payments")
-        .update({ status: "completed", updated_at: new Date().toISOString() })
-        .eq("id", paymentId)
-        .eq("status", "pending")
-        .select()
-        .maybeSingle();
-
-      if (updateErr) throw updateErr;
-      if (!updated) {
-        return successResponse({ payment, already_confirmed: true });
-      }
-
-      const { data: invoice } = await admin
-        .from("provider_invoices")
-        .select("id, provider_id, status, invoice_number, total_amount")
-        .eq("id", invoiceId)
-        .maybeSingle();
-
-      if ((invoice as { status?: string } | null)?.status === "paid") {
-        const providerId = (invoice as { provider_id?: string }).provider_id;
-        if (providerId) {
-          const { notifyProviderInvoicePaid } = await import(
-            "@/lib/notifications/notification-service"
-          );
-          await notifyProviderInvoicePaid(providerId, {
-            invoice_number: String((invoice as { invoice_number?: string }).invoice_number ?? ""),
-            total_amount: Number((invoice as { total_amount?: number }).total_amount ?? 0),
-            payment_date: new Date().toISOString().split("T")[0],
-          });
-        }
-      }
-
-      return successResponse({ payment: updated });
+      return handleApiError(
+        new Error(
+          "Bank transfer confirmation is no longer supported. Providers pay invoices online via card checkout.",
+        ),
+        "Bank transfer confirmation is no longer supported. Providers pay invoices online via card checkout.",
+        "VALIDATION_ERROR",
+        400,
+      );
     }
 
     if (row.status !== "completed") {

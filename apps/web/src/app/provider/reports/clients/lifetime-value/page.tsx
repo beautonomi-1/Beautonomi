@@ -23,6 +23,9 @@ interface LifetimeValueData {
   medianLTV: number;
   totalLTV: number;
   averageVisits: number;
+  averageLedgerEarnings?: number;
+  averageEarned?: number;
+  reportBasis?: string;
   highValueClients: number;
   mediumValueClients: number;
   lowValueClients: number;
@@ -31,6 +34,7 @@ interface LifetimeValueData {
     clientName: string;
     email: string;
     totalSpent: number;
+    totalEarned?: number;
     totalBookings: number;
     averageBookingValue: number;
     daysSinceFirstVisit: number;
@@ -160,11 +164,13 @@ export default function LifetimeValueReport() {
           }
         />
 
+        {data.reportBasis ? <p className="text-sm text-gray-600">{data.reportBasis}</p> : null}
+
         {/* Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.clients/lifetime-value.averageLtv")}</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.clients/lifetime-value.averageBookedValue")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -178,12 +184,12 @@ export default function LifetimeValueReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.clients/lifetime-value.medianLtv")}</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.clients/lifetime-value.averageEarned")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  {fmt(data.medianLTV)}
+                  {fmt(data.averageEarned ?? data.averageLedgerEarnings ?? 0)}
                 </p>
                 <TrendingUp className="w-5 h-5 text-blue-600" />
               </div>
@@ -275,7 +281,9 @@ export default function LifetimeValueReport() {
                         {fmt(client.totalSpent)}
                       </p>
                       <p className="text-sm text-gray-600">
-                        {t("web.provider.reports.pages.clients/lifetime-value.avg", { amount: fmt(client.averageBookingValue) })}
+                        {t("web.provider.reports.pages.clients/lifetime-value.clientEarned", {
+                          amount: fmt(client.totalEarned ?? 0),
+                        })}
                       </p>
                     </div>
                   </div>

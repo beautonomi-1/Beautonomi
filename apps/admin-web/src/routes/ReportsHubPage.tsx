@@ -1,4 +1,5 @@
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
+import type { AnalyticsPeriod } from "@/routes/analytics/analyticsPageMetrics";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
@@ -73,26 +74,56 @@ const REPORTS: { title: string; description: string; spaTo: string; icon: Lucide
   },
 ];
 
+const DEFAULT_REPORT_PERIOD: AnalyticsPeriod = "30d";
+const PERIODS: AnalyticsPeriod[] = ["7d", "30d", "90d", "1y"];
+
+function parseHubPeriod(raw: string | null): AnalyticsPeriod {
+  if (raw && PERIODS.includes(raw as AnalyticsPeriod)) return raw as AnalyticsPeriod;
+  return DEFAULT_REPORT_PERIOD;
+}
+
 export function ReportsHubPage() {
   const { denied } = useAdminSectionPage(
     ADMIN_SECTION_OVERVIEW,
     "Overview access is required to open finance reports in the SPA (matches report API AuthZ)."
   );
   const { bootstrap } = useAdminSession();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const period = parseHubPeriod(searchParams.get("period"));
+  const periodQuery = `?period=${encodeURIComponent(period)}`;
   if (denied) return denied;
 
   return (
     <div className="space-y-8">
       <AdminPageHeader
         title="Reports"
-        description="Finance and operations reports for your tenant scope. Each opens the SPA report viewer with export where the API supports it."
+        description="Finance and operations reports for your tenant scope. Period matches Analytics and report APIs (rolling window through now)."
+        actions={
+          <select
+            className="min-h-11 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium shadow-sm ring-1 ring-gray-950/[0.04]"
+            value={period}
+            onChange={(e) => {
+              const n = new URLSearchParams(searchParams);
+              n.set("period", parseHubPeriod(e.target.value));
+              setSearchParams(n, { replace: true });
+            }}
+          >
+            <option value="7d">Last 7 days</option>
+            <option value="30d">Last 30 days</option>
+            <option value="90d">Last 90 days</option>
+            <option value="1y">Last year</option>
+          </select>
+        }
       />
       {bootstrap?.isSuperadmin ? (
         <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 text-sm text-gray-900">
           <p className="font-medium text-primary">Superadmin reporting</p>
           <p className="mt-1 text-gray-700">
             For interactive trends and breakdowns, use{" "}
-            <Link to={adminSpaTo("/admin/analytics")} className="font-semibold text-primary underline">
+            <Link
+              to={`${adminSpaTo("/admin/analytics")}${periodQuery}`}
+              className="font-semibold text-primary underline"
+            >
               Analytics
             </Link>{" "}
             and{" "}
@@ -102,7 +133,7 @@ export function ReportsHubPage() {
             (tenant scope follows your admin scope selector).
           </p>
           <Link
-            to={adminSpaTo("/admin/analytics")}
+            to={`${adminSpaTo("/admin/analytics")}${periodQuery}`}
             className="mt-3 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary/90"
           >
             <BarChart3 className="h-4 w-4" aria-hidden />
@@ -114,7 +145,7 @@ export function ReportsHubPage() {
         {REPORTS.map((r) => (
           <Link
             key={r.spaTo}
-            to={r.spaTo}
+            to={`${r.spaTo}${periodQuery}`}
             className="group flex gap-4 rounded-2xl border border-gray-200/90 bg-white p-5 shadow-sm ring-1 ring-gray-950/[0.04] transition hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md"
           >
             <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-gray-900 text-white ring-1 ring-white/10">

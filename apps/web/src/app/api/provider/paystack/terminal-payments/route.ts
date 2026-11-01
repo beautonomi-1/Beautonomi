@@ -14,6 +14,10 @@ import { requirePaystackVirtualTerminalEnabledForProvider } from "@/lib/payments
 import { getPaystackTerminalAvailability } from "@/lib/payments/paystack-terminal-availability";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveSaleEntityTarget } from "@/lib/provider-sales/resolve-sale-entity-target";
+import {
+  clearUncollectedProviderPortalPlatformFeeIfNeeded,
+  type BookingFeeClearRow,
+} from "@/lib/bookings/provider-booking-platform-fee";
 
 const collectionIntentSchema = z.object({
   terminal_id: z.string().uuid().optional(),
@@ -138,6 +142,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const admin = getSupabaseAdmin();
+    let bookingTotalAfterFeeClear: number | null = null;
+    if (body.entity_type === "booking" && body.entity_id) {
+      const { data: bookingForClear } = await admin
+        .from("bookings")
+        .select(
+          "id, booking_number, booking_source, total_amount, total_paid, payment_status, payment_reference, platform_fee_amount, service_fee_amount, platform_fee_percentage, service_fee_percentage, platform_fee_paid_by, service_fee_paid_by, deposit_amount",
+        )
+        .eq("id", body.entity_id)
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      if (bookingForClear) {
+        const feeClear = await clearUncollectedProviderPortalPlatformFeeIfNeeded(
+          admin,
+          bookingForClear as BookingFeeClearRow,
+        );
+        const row = feeClear.cleared
+          ? (feeClear.booking as typeof bookingForClear)
+          : bookingForClear;
+        bookingTotalAfterFeeClear = Number(row.total_amount ?? 0);
+      }
+    }
+
     // Auto-fill the customer reference with the booking/order number so it is embedded in
     // metadata AND can be shared with the customer to type on the hosted Paystack page.
     let customerReference = body.customer_reference ?? null;
@@ -176,6 +203,9 @@ export async function POST(request: NextRequest) {
       terminals: selectableTerminals,
       metadata,
       expectedAmount: body.expected_amount ?? null,
+      ...(bookingTotalAfterFeeClear != null
+        ? { bookingTotalAmount: bookingTotalAfterFeeClear }
+        : {}),
       entityType: body.entity_type ?? null,
       entityId: body.entity_id ?? null,
       customerReference,

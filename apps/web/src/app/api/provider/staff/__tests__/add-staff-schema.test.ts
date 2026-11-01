@@ -27,4 +27,20 @@ describe("addStaffSchema", () => {
     });
     expect(parsed.hours_source).toBeUndefined();
   });
+
+  it("accepts avatar_url when a valid https URL", () => {
+    const parsed = addStaffSchema.parse({
+      email: "a@example.com",
+      avatar_url: "https://cdn.example.com/avatars/staff.jpg",
+    });
+    expect(parsed.avatar_url).toBe("https://cdn.example.com/avatars/staff.jpg");
+  });
+
+  it("rejects avatar_url when not a URL", () => {
+    const result = addStaffSchema.safeParse({
+      email: "a@example.com",
+      avatar_url: "not-a-url",
+    });
+    expect(result.success).toBe(false);
+  });
 });

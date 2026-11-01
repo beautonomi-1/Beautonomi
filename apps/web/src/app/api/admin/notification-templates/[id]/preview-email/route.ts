@@ -53,12 +53,13 @@ function sampleVariables(keys: string[] | null | undefined): Record<string, stri
 }
 
 /**
- * POST /api/admin/notification-templates/[key]/preview-email
- * Returns finalized { html, text } without sending mail.
+ * POST /api/admin/notification-templates/[id]/preview-email
+ * The path segment is the template key (for example booking_confirmed), the same
+ * dynamic folder as the uuid routes. Returns finalized { html, text } without sending mail.
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ key: string }> },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
@@ -66,7 +67,7 @@ export async function POST(
       return unauthorizedResponse("Authentication required");
     }
 
-    const { key } = await params;
+    const { id: templateKey } = await params;
     const body = (await request.json().catch(() => ({}))) as {
       variables?: Record<string, string>;
       emailSubject?: string;
@@ -90,7 +91,7 @@ export async function POST(
       const tenantRow = await supabase
         .from("notification_templates")
         .select("key, email_subject, email_body, body, url, variables")
-        .eq("key", key)
+        .eq("key", templateKey)
         .eq("tenant_id", tenantId)
         .maybeSingle();
       if (tenantRow.error) throw tenantRow.error;
@@ -101,7 +102,7 @@ export async function POST(
       const globalRow = await supabase
         .from("notification_templates")
         .select("key, email_subject, email_body, body, url, variables")
-        .eq("key", key)
+        .eq("key", templateKey)
         .is("tenant_id", null)
         .maybeSingle();
       if (globalRow.error) throw globalRow.error;

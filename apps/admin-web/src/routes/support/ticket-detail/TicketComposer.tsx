@@ -50,7 +50,18 @@ export function TicketComposer({
 }: TicketComposerProps) {
   const [dragActive, setDragActive] = useState(false);
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
+  const [articlesOpen, setArticlesOpen] = useState(false);
   const sendMenuRef = useRef<HTMLDivElement>(null);
+  const articlesRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!articlesOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!articlesRef.current?.contains(e.target as Node)) setArticlesOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [articlesOpen]);
 
   useEffect(() => {
     if (!sendMenuOpen) return;
@@ -73,7 +84,7 @@ export function TicketComposer({
 
   return (
     <div
-      className="sticky bottom-0 z-10 shrink-0 border-t border-gray-200 bg-white pb-1 pt-3"
+      className="z-10 shrink-0 border-t border-gray-200 bg-white pb-1 pe-16 pt-3 sm:pe-20"
       onDragOver={(e) => {
         e.preventDefault();
         setDragActive(true);
@@ -159,7 +170,7 @@ export function TicketComposer({
           <Paperclip className="h-4 w-4" />
         </button>
         <select
-          className="min-h-10 max-w-[11rem] rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-800"
+          className="min-h-10 min-w-[10rem] max-w-[min(100%,18rem)] flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-800 sm:flex-none"
           defaultValue=""
           aria-label="Insert canned reply"
           onChange={(e) => {
@@ -178,21 +189,31 @@ export function TicketComposer({
             </option>
           ))}
         </select>
-        <details className="rounded-lg border border-gray-200 bg-gray-50/70 px-2 py-1">
-          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-gray-800">
+        <div className="relative" ref={articlesRef}>
+          <button
+            type="button"
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50/70 px-2 py-1 text-xs font-medium text-gray-800 hover:bg-gray-100"
+            aria-expanded={articlesOpen}
+            onClick={() => setArticlesOpen((o) => !o)}
+          >
             <BookOpen className="h-3.5 w-3.5 text-purple-600" aria-hidden />
             Help articles
-          </summary>
-          <div className="mt-2 min-w-[16rem] pb-2">
-            <LearningArticlePicker
-              audience={replyAudience}
-              includeInternal={replyInternal}
-              onInsert={onInsertArticle}
-              initialQuery={str(ticket.subject)}
-              placeholder="Search guides…"
-            />
-          </div>
-        </details>
+          </button>
+          {articlesOpen ? (
+            <div className="absolute bottom-full left-0 z-20 mb-1 max-h-64 w-[min(100vw-2rem,20rem)] overflow-y-auto rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
+              <LearningArticlePicker
+                audience={replyAudience}
+                includeInternal={replyInternal}
+                onInsert={(article) => {
+                  onInsertArticle(article);
+                  setArticlesOpen(false);
+                }}
+                initialQuery={str(ticket.subject)}
+                placeholder="Search guides…"
+              />
+            </div>
+          ) : null}
+        </div>
         <DomainCopilotDock
           section={ADMIN_SECTION_SUPPORT}
           compact

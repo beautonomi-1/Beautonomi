@@ -61,6 +61,14 @@ test.describe("operator overhaul critical routes (static shell)", () => {
     await expectAdminSessionGate(page);
   });
 
+  test("support tickets selected preview param does not crash shell", async ({ page }) => {
+    await page.goto(
+      "/admin/support-tickets?selected=00000000-0000-4000-8000-000000000001",
+      { waitUntil: "domcontentloaded" },
+    );
+    await expectAdminSessionGate(page);
+  });
+
   test("refunds saved-view query params do not crash shell", async ({ page }) => {
     await page.goto("/admin/refunds?saved_view=actionable", { waitUntil: "domcontentloaded" });
     await expectAdminSessionGate(page);

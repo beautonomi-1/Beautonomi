@@ -3,14 +3,16 @@ import { formatAdminNumber } from "@/lib/adminFormatCurrency";
 export function AdminHorizontalBars({
   rows,
   emptyMessage = "No data.",
+  label = "Horizontal bar comparison",
 }: {
   rows: { label: string; value: number; hint?: string }[];
   emptyMessage?: string;
+  label?: string;
 }) {
   const max = Math.max(1, ...rows.map((r) => r.value));
   if (rows.length === 0) return <p className="text-sm text-gray-500">{emptyMessage}</p>;
   return (
-    <ul className="space-y-3">
+    <ul className="space-y-3" role="list" aria-label={label}>
       {rows.map((r) => (
         <li key={r.label}>
           <div className="flex justify-between gap-2 text-xs text-gray-600">
@@ -20,7 +22,14 @@ export function AdminHorizontalBars({
               {r.hint ? ` ${r.hint}` : ""}
             </span>
           </div>
-          <div className="mt-1 h-2 overflow-hidden rounded-full bg-gray-100">
+          <div
+            className="mt-1 h-2 overflow-hidden rounded-full bg-gray-100"
+            role="meter"
+            aria-valuemin={0}
+            aria-valuemax={max}
+            aria-valuenow={r.value}
+            aria-label={`${r.label.replace(/_/g, " ")} ${r.value}${r.hint ? ` ${r.hint}` : ""}`}
+          >
             <div
               className="h-2 rounded-full bg-gray-900 transition-[width]"
               style={{ width: `${(r.value / max) * 100}%` }}

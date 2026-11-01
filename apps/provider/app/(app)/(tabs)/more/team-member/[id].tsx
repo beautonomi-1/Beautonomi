@@ -2,13 +2,12 @@
  * Staff member detail – profile, quick actions (permissions, locations, schedule, etc.).
  * GET /api/provider/staff/[id], PATCH for inline edit, DELETE for removal.
  */
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   ScrollView,
-  TextInput,
   Alert,
   RefreshControl,
 } from "react-native";
@@ -24,12 +23,12 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { E164PhoneField } from "@/components/E164PhoneField";
-import { validateE164Phone } from "@/lib/phone-country-codes";
 import { capitalizeFirst } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { useTranslation } from "@beautonomi/i18n";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+import { StaffProfileEditSheet } from "@/components/team/StaffProfileEditSheet";
+import { useStaffAvatarUpload } from "@/components/team/StaffPhotoField";
 
 interface StaffMember {
   id: string;
@@ -39,6 +38,11 @@ interface StaffMember {
   avatar_url?: string | null;
   role: string;
   commission_rate?: number | null;
+  public_title?: string | null;
+  bookable_from?: string | null;
+  is_service_provider?: boolean;
+  enable_in_online_booking?: boolean;
+  time_clock_enabled?: boolean;
   is_active: boolean;
   mobileReady?: boolean;
   locations?: {
@@ -121,12 +125,6 @@ interface WeeklyStat {
   count: number;
 }
 
-const ROLES = [
-  { labelKey: "roleStaff", value: "provider_staff" },
-  { labelKey: "roleManager", value: "provider_manager" },
-  { labelKey: "roleOwner", value: "provider_owner" },
-];
-
 interface TeamAccessPayload {
   staff_id: string | null;
   is_business_owner?: boolean;
@@ -192,19 +190,15 @@ export default function TeamMemberDetailScreen() {
     t(`provider.mobile.screens.teamMember.${key}`, opts) as string;
   const tl = (key: string, opts?: Record<string, unknown>) =>
     t(`provider.mobile.screens.teamList.${key}`, opts) as string;
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, edit: editParam } = useLocalSearchParams<{ id: string; edit?: string }>();
   const router = useRouter();
+  const editIntentDone = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const uploadStaffAvatar = useStaffAvatarUpload();
   const [scopeEditOpen, setScopeEditOpen] = useState(false);
   const [scopeForm, setScopeForm] = useState({ location_ids: [] as string[], service_ids: [] as string[] });
-  const [editForm, setEditForm] = useState({
-    name: "",
-    phone: "",
-    avatar_url: "",
-    role: "provider_staff",
-    commission_rate: "",
-  });
 
   const { data: access } = useApi<TeamAccessPayload>("/api/provider/team-access");
   const canManageTeam =
@@ -212,6 +206,7 @@ export default function TeamMemberDetailScreen() {
   const canManagePayroll =
     access?.is_business_owner === true || access?.can_manage_payroll === true;
   const isSelf = Boolean(id && access?.staff_id === id);
+  const isOwnerViewer = access?.is_business_owner === true;
 
   const { data: roster } = useApi<StaffMember[]>("/api/provider/staff");
   const reassignCandidates = useMemo(
@@ -393,64 +388,40 @@ export default function TeamMemberDetailScreen() {
 
   const openEdit = useCallback(() => {
     if (!member) return;
-    setEditForm({
-      name: member.name,
-      phone: member.phone ?? "",
-      avatar_url: member.avatar_url ?? "",
-      role: member.role,
-      commission_rate: member.commission_rate != null ? String(member.commission_rate) : "",
-    });
     setEditOpen(true);
   }, [member]);
 
-  const handleSaveEdit = useCallback(async () => {
-    if (!editForm.name.trim()) {
-      Alert.alert(tm("validationTitle"), tm("nameRequired"));
-      return;
-    }
-    const phoneErr = editForm.phone ? validateE164Phone(editForm.phone) : null;
-    if (phoneErr) {
-      Alert.alert(tm("invalidPhoneTitle"), phoneErr);
-      return;
-    }
-    const avatarUrl = editForm.avatar_url.trim();
-    if (avatarUrl && !/^https?:\/\/.+/i.test(avatarUrl)) {
-      Alert.alert(tm("invalidAvatarTitle"), tm("invalidAvatarBody"));
-      return;
-    }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const payload: Record<string, unknown> = {
-      name: editForm.name.trim(),
-      phone: editForm.phone.trim() || null,
-      avatar_url: avatarUrl || null,
-    };
-    if (canManageTeam) {
-      payload.role = editForm.role;
-      if (editForm.commission_rate.trim()) {
-        const rate = parseFloat(editForm.commission_rate);
-        if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
-          Alert.alert(tm("validationTitle"), tm("commissionRange"));
-          return;
-        }
-        payload.commission_rate = rate;
-      } else {
-        payload.commission_rate = null;
+  useEffect(() => {
+    if (editParam !== "1") editIntentDone.current = false;
+  }, [editParam]);
+
+  useEffect(() => {
+    if (editParam !== "1" || editIntentDone.current || !member) return;
+    editIntentDone.current = true;
+    if (!canManageTeam && !isSelf) return;
+    if (member.role === "provider_owner" && !isOwnerViewer && !isSelf) return;
+    setEditOpen(true);
+  }, [editParam, member, canManageTeam, isSelf, isOwnerViewer]);
+
+  const handleQuickAvatarUpload = useCallback(async () => {
+    if (!id || avatarUploading) return;
+    if (!canManageTeam && !isSelf) return;
+    setAvatarUploading(true);
+    try {
+      const url = await uploadStaffAvatar();
+      if (!url) return;
+      const { error: err } = await updateStaff(`/api/provider/staff/${id}`, { avatar_url: url });
+      if (err) {
+        Alert.alert(tm("errorTitle"), err);
+        await refresh();
+        return;
       }
-    }
-    const { error: err } = await updateStaff(`/api/provider/staff/${id}`, payload);
-    if (err) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert(tm("errorTitle"), err);
-    } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setEditOpen(false);
-      refresh();
-      // §Provider-audit 2026-04: surface an explicit confirmation after a
-      // team-member save so the user sees Save landed (haptic alone wasn't
-      // enough for owners managing multiple members).
-      Alert.alert(tm("updatedTitle"), tm("updatedBody"));
+      await refresh();
+    } finally {
+      setAvatarUploading(false);
     }
-  }, [editForm, id, updateStaff, refresh, canManageTeam]);
+  }, [id, avatarUploading, canManageTeam, isSelf, uploadStaffAvatar, updateStaff, refresh, tm]);
 
   const handleToggleActive = useCallback(() => {
     if (!member || !canManageTeam) return;
@@ -636,14 +607,21 @@ export default function TeamMemberDetailScreen() {
     );
   }
 
+  const canOpenEditor =
+    (canManageTeam || isSelf) &&
+    !(member.role === "provider_owner" && !isOwnerViewer && !isSelf);
+  const takesAppointments =
+    member.is_service_provider !== false && member.enable_in_online_booking !== false;
+  const editMode = isSelf ? "self" : "manager";
+
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
         title={member.name}
         showBack
-        subtitle={capitalizeFirst(member.role)}
+        subtitle={member.public_title?.trim() || capitalizeFirst(member.role)}
         rightAction={
-          canManageTeam || isSelf ? (
+          canOpenEditor ? (
             <TouchableOpacity
               onPress={openEdit}
               style={twStyle("rounded-xl bg-gray-100 px-3 py-1.5")}
@@ -663,8 +641,18 @@ export default function TeamMemberDetailScreen() {
       >
         {/* Avatar & status */}
         <View style={twStyle("items-center px-4 pt-4 pb-6")}>
-          <Avatar name={member.name} imageUrl={member.avatar_url ?? undefined} size="xl" />
+          <TouchableOpacity
+            onPress={() => void handleQuickAvatarUpload()}
+            disabled={!canOpenEditor || avatarUploading}
+            activeOpacity={0.85}
+            accessibilityLabel={tm("changePhotoA11y")}
+          >
+            <Avatar name={member.name} imageUrl={member.avatar_url ?? undefined} size="xl" />
+          </TouchableOpacity>
           <Text style={twStyle("mt-2 text-xl font-bold text-gray-900")}>{member.name}</Text>
+          {member.public_title?.trim() ? (
+            <Text style={twStyle("mt-0.5 text-sm text-gray-600")}>{member.public_title.trim()}</Text>
+          ) : null}
           <Text style={twStyle("mt-0.5 text-sm text-gray-500")}>{capitalizeFirst(member.role)}</Text>
           <View style={twStyle("mt-2 flex-row items-center")}>
             <View
@@ -683,6 +671,18 @@ export default function TeamMemberDetailScreen() {
           {member.commission_rate != null ? (
             <Row label={tm("commission")} value={tm("commissionValue", { rate: member.commission_rate })} />
           ) : null}
+          <Row
+            label={tm("takesAppointmentsLabel")}
+            value={takesAppointments ? tm("yes") : tm("no")}
+          />
+          <Row
+            label={tm("bookableFromLabel")}
+            value={member.bookable_from ?? tm("bookableImmediately")}
+          />
+          <Row
+            label={tm("timeClockLabel")}
+            value={member.time_clock_enabled ? tm("enabled") : tm("disabled")}
+          />
           <Row label={tm("mobile")} value={member.mobileReady ? tm("mobileReady") : tm("mobileNotReady")} />
         </View>
 
@@ -691,6 +691,7 @@ export default function TeamMemberDetailScreen() {
           <ChecklistRow
             complete={Boolean(member.avatar_url)}
             label={member.avatar_url ? tm("avatarAdded") : tm("avatarMissing")}
+            onPress={canOpenEditor ? () => void handleQuickAvatarUpload() : undefined}
           />
           <ChecklistRow
             complete={Boolean(member.phone)}
@@ -1060,91 +1061,24 @@ export default function TeamMemberDetailScreen() {
         <ActionButton label={tl("saveChanges")} onPress={() => void handleSaveScope()} loading={saving} />
       </BottomSheet>
 
-      {/* ─── Edit Bottom Sheet ──────────────────────────────────── */}
-      <BottomSheet
+      <StaffProfileEditSheet
         visible={editOpen}
         onClose={() => setEditOpen(false)}
-        title={tm("editSheetTitle")}
-        snapHeight="auto"
-      >
-        <FormField
-          label={tm("fullNameRequired")}
-          value={editForm.name}
-          onChangeText={(text) => setEditForm((p) => ({ ...p, name: text }))}
-          placeholder={tm("fullNamePlaceholder")}
-        />
-
-        <E164PhoneField
-          label={tm("phone")}
-          valueE164={editForm.phone}
-          onChangeE164={(e164) => setEditForm((p) => ({ ...p, phone: e164 }))}
-          compact
-          muted
-          accessibilityLabel={tm("phoneA11y")}
-        />
-
-        <FormField
-          label={tm("avatarUrlLabel")}
-          value={editForm.avatar_url}
-          onChangeText={(t) => setEditForm((p) => ({ ...p, avatar_url: t }))}
-          placeholder="https://..."
-          keyboardType="url"
-        />
-
-        {canManageTeam ? (
-          <>
-            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>{tm("role")}</Text>
-            <View style={twStyle("mb-3 flex-row flex-wrap")}>
-              {ROLES.map((r) => (
-                <TouchableOpacity
-                  key={r.value}
-                  style={[
-                    twStyle(
-                      `rounded-full px-4 py-2 ${
-                        editForm.role === r.value
-                          ? "bg-gray-900"
-                          : "border border-gray-200 bg-white"
-                      }`
-                    ),
-                    { marginEnd: 8, marginBottom: 8 },
-                  ]}
-                  onPress={() => setEditForm((p) => ({ ...p, role: r.value }))}
-                  accessibilityLabel={tm("selectRoleA11y", { label: tm(r.labelKey) })}
-                >
-                  <Text
-                    style={twStyle(
-                      `text-sm font-medium ${
-                        editForm.role === r.value ? "text-white" : "text-gray-600"
-                      }`
-                    )}
-                  >
-{tm(r.labelKey)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <FormField
-              label={tm("commissionRate")}
-              value={editForm.commission_rate}
-              onChangeText={(t) => setEditForm((p) => ({ ...p, commission_rate: t }))}
-              placeholder={tm("commissionPlaceholder")}
-              keyboardType="numeric"
-            />
-          </>
-        ) : (
-          <Text style={twStyle("mt-3 text-xs text-gray-500")}>
-            {tm("roleCommissionLocked")}
-          </Text>
-        )}
-
-        <ActionButton
-          label={tm("saveChanges")}
-          onPress={handleSaveEdit}
-          loading={saving}
-          fullWidth
-        />
-      </BottomSheet>
+        member={{
+          id: member.id,
+          name: member.name,
+          email: member.email,
+          phone: member.phone,
+          avatar_url: member.avatar_url,
+          role: member.role,
+          commission_rate: member.commission_rate,
+        }}
+        mode={editMode}
+        isBusinessOwnerRow={member.role === "provider_owner"}
+        isOwnerViewer={isOwnerViewer}
+        canManagePayroll={canManagePayroll}
+        onSaved={() => void refresh()}
+      />
     </ScreenContainer>
   );
 }
@@ -1200,33 +1134,3 @@ function ChecklistRow({
   return <View style={twStyle("mb-2 flex-row items-start")}>{row}</View>;
 }
 
-function FormField({
-  label,
-  value,
-  onChangeText,
-  placeholder,
-  keyboardType,
-}: {
-  label: string;
-  value: string;
-  onChangeText: (text: string) => void;
-  placeholder?: string;
-  keyboardType?: "default" | "email-address" | "phone-pad" | "numeric" | "url";
-}) {
-  return (
-    <View style={twStyle("mb-3")}>
-      <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{label}</Text>
-      <TextInput
-        style={twStyle(
-          "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
-        )}
-        placeholder={placeholder}
-        placeholderTextColor="#9ca3af"
-        value={value}
-        onChangeText={onChangeText}
-        keyboardType={keyboardType}
-        accessibilityLabel={label}
-      />
-    </View>
-  );
-}

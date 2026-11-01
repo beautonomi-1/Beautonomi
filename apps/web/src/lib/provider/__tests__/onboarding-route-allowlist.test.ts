@@ -26,6 +26,7 @@ describe("isProviderOnboardingRouteAllowed", () => {
   it("allows travel fees and cancellation policy setup routes", () => {
     expect(isProviderOnboardingRouteAllowed("/provider/settings/sales/travel-fees")).toBe(true);
     expect(isProviderOnboardingRouteAllowed("/provider/settings/cancellation-policies")).toBe(true);
+    expect(isProviderOnboardingRouteAllowed("/provider/settings/business")).toBe(true);
     expect(isProviderOnboardingRouteAllowed("/provider/settings/business-description")).toBe(true);
   });
 });

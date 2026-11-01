@@ -31,7 +31,7 @@ interface StaffPerformanceData {
     noShows: number;
     totalRevenue: number;
     averageBookingValue: number;
-    totalHours: number;
+    deliveredHours: number;
     averageRating: number;
     totalReviews: number;
     commissionEarned: number;
@@ -379,7 +379,7 @@ export default function StaffPerformanceReport() {
                             {staff.staffName}
                           </p>
                           <p className="text-xs text-gray-500">
-                            {t("web.provider.reports.pages.staff/performance.hours", { hours: staff.totalHours.toFixed(1) })}
+                            {t("web.provider.reports.pages.staff/performance.deliveredHours", { hours: staff.deliveredHours.toFixed(1) })}
                           </p>
                           <div className="flex flex-wrap gap-1 mt-1">
                             {staff.commissionEnabled ? (

@@ -1865,8 +1865,11 @@ export default function NewBookingScreen() {
     setPromoError("");
     try {
       const subtotal = summary.subtotal;
+      const customerQs = selectedClient?.customer_id
+        ? `&customer_id=${encodeURIComponent(selectedClient.customer_id)}`
+        : "";
       const res = await api.get<{ valid?: boolean; discount?: number; coupon?: { code?: string; discount_type?: string; discount_value?: number }; message?: string }>(
-        `/api/provider/coupons/validate?code=${encodeURIComponent(code)}&subtotal=${subtotal}`,
+        `/api/provider/coupons/validate?code=${encodeURIComponent(code)}&subtotal=${subtotal}${customerQs}`,
       );
       if (res.error || !res.data?.valid) {
         setPromoError((res.error as { message?: string })?.message || nb("invalidCode"));

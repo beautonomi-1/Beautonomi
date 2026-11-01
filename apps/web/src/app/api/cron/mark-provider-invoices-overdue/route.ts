@@ -3,6 +3,7 @@ import { verifyCronRequest } from "@/lib/cron-auth";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 import { notifyProviderInvoiceOverdue } from "@/lib/notifications/notification-service";
+import { isProviderInvoicePayable } from "@/lib/invoices/provider-invoice-status";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,7 +26,7 @@ async function runJob() {
   const { data: rows, error } = await supabase
     .from("provider_invoices")
     .select(
-      "id, provider_id, invoice_number, total_amount, amount_due, due_date, status, overdue_notified_at",
+      "id, provider_id, invoice_number, invoice_type, total_amount, amount_due, due_date, status, overdue_notified_at",
     )
     .in("status", ["sent", "partially_paid"])
     .lt("due_date", today)
@@ -45,10 +46,21 @@ async function runJob() {
       id: string;
       provider_id: string;
       invoice_number?: string;
+      invoice_type?: string;
       total_amount?: number;
       amount_due?: number;
       due_date?: string;
+      status?: string;
     };
+
+    if (
+      !isProviderInvoicePayable({
+        invoice_type: row.invoice_type,
+        status: row.status,
+      })
+    ) {
+      continue;
+    }
 
     const { error: updErr } = await supabase
       .from("provider_invoices")

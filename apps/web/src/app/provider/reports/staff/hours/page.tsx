@@ -10,8 +10,8 @@ import { PageHeader } from "@/components/provider/PageHeader";
 import { ReportFilters, DateRange } from "../../components/ReportFilters";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, Clock, TrendingUp, CheckCircle } from "lucide-react";
-import { fetcher , FetchError } from "@/lib/http/fetcher";
+import { Download, Clock } from "lucide-react";
+import { fetcher } from "@/lib/http/fetcher";
 import { subDays } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
@@ -20,19 +20,22 @@ import { appendReportDateParams } from "@/app/provider/reports/utils/report-api-
 import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface StaffHoursData {
-  totalHours: number;
-  totalScheduledHours: number;
-  averageHoursPerStaff: number;
+  reportBasis?: string;
+  totalDeliveredHours: number;
+  totalMissedHours: number;
+  totalNotYetCompletedHours: number;
+  totalCancelledHours: number;
+  completionRate: number;
   staffHours: Array<{
     staffId: string;
     staffName: string;
-    totalHours: number;
-    scheduledHours: number;
-    completedBookings: number;
-    onTimeBookings: number;
-    averageHoursPerDay: number;
-    attendanceRate: number;
-    onTimeRate: number;
+    deliveredHours: number;
+    missedHours: number;
+    notYetCompletedHours: number;
+    cancelledHours: number;
+    deliveredBookings: number;
+    missedBookings: number;
+    completionRate: number;
   }>;
 }
 
@@ -95,16 +98,16 @@ export default function StaffHoursReport() {
     exportToCSV(exportData, "staff-hours-report");
   };
 
+  const breadcrumbs = [
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+    { label: t("web.provider.reports.pages.staff/hours.title") },
+  ];
+
   if (isLoading) {
     return (
-      <SettingsDetailLayout
-        breadcrumbs={[
-          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
-          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
-          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
-          { label: t("web.provider.reports.pages.staff/hours.title") },
-        ]}
-      >
+      <SettingsDetailLayout breadcrumbs={breadcrumbs}>
         <ReportSkeleton />
       </SettingsDetailLayout>
     );
@@ -112,14 +115,7 @@ export default function StaffHoursReport() {
 
   if (isSubscriptionRequired) {
     return (
-      <SettingsDetailLayout
-        breadcrumbs={[
-          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
-          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
-          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
-          { label: t("web.provider.reports.pages.staff/hours.title") },
-        ]}
-      >
+      <SettingsDetailLayout breadcrumbs={breadcrumbs}>
         <div className="space-y-6">
           <PageHeader title={t("web.provider.reports.pages.staff/hours.title")} />
           <ReportSubscriptionRequired feature={t("web.provider.reports.pages.staff/hours.title")} />
@@ -130,14 +126,7 @@ export default function StaffHoursReport() {
 
   if (error || !data) {
     return (
-      <SettingsDetailLayout
-        breadcrumbs={[
-          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
-          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
-          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
-          { label: t("web.provider.reports.pages.staff/hours.title") },
-        ]}
-      >
+      <SettingsDetailLayout breadcrumbs={breadcrumbs}>
         <EmptyReportState
           title={t("web.provider.common.failedToLoadReport")}
           description={error || t("web.provider.reports.pages.staff/hours.unableToLoad")}
@@ -147,15 +136,7 @@ export default function StaffHoursReport() {
   }
 
   return (
-    <SettingsDetailLayout
-      breadcrumbs={[
-        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
-        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
-        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
-        { label: t("web.provider.reports.pages.staff/hours.title") },
-      ]}
-      showCloseButton={false}
-    >
+    <SettingsDetailLayout breadcrumbs={breadcrumbs} showCloseButton={false}>
       <div className="space-y-6">
         <PageHeader
           title={t("web.provider.reports.pages.staff/hours.title")}
@@ -174,59 +155,88 @@ export default function StaffHoursReport() {
           onReset={handleReset}
         />
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {data.reportBasis ? (
+          <p className="text-sm text-gray-600">{data.reportBasis}</p>
+        ) : null}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.staff/hours.totalHours")}</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">
+                {t("web.provider.reports.pages.staff/hours.deliveredHours")}
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-between">
-                <p className="text-2xl font-semibold text-gray-900">
-                  {data.totalHours.toFixed(1)}h
-                </p>
-                <Clock className="w-5 h-5 text-blue-600" />
-              </div>
+              <p className="text-2xl font-semibold text-gray-900">
+                {t("web.provider.reports.pages.staff/hours.hoursValue", {
+                  hours: data.totalDeliveredHours.toFixed(1),
+                })}
+              </p>
             </CardContent>
           </Card>
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.staff/hours.scheduledHours")}</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">
+                {t("web.provider.reports.pages.staff/hours.missedHours")}
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-between">
-                <p className="text-2xl font-semibold text-gray-900">
-                  {data.totalScheduledHours.toFixed(1)}h
-                </p>
-                <Clock className="w-5 h-5 text-purple-600" />
-              </div>
+              <p className="text-2xl font-semibold text-gray-900">
+                {t("web.provider.reports.pages.staff/hours.hoursValue", {
+                  hours: data.totalMissedHours.toFixed(1),
+                })}
+              </p>
             </CardContent>
           </Card>
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.staff/hours.avgHours")}</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">
+                {t("web.provider.reports.pages.staff/hours.stillOnBookHours")}
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-between">
-                <p className="text-2xl font-semibold text-gray-900">
-                  {data.averageHoursPerStaff.toFixed(1)}h
-                </p>
-                <TrendingUp className="w-5 h-5 text-green-600" />
-              </div>
+              <p className="text-2xl font-semibold text-gray-900">
+                {t("web.provider.reports.pages.staff/hours.hoursValue", {
+                  hours: data.totalNotYetCompletedHours.toFixed(1),
+                })}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-gray-200">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-gray-600">
+                {t("web.provider.reports.pages.staff/hours.cancelledHours")}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-semibold text-gray-900">
+                {t("web.provider.reports.pages.staff/hours.hoursValue", {
+                  hours: data.totalCancelledHours.toFixed(1),
+                })}
+              </p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Staff Hours Table */}
+        <p className="text-sm text-gray-700">
+          {t("web.provider.reports.pages.staff/hours.completionRateLine", {
+            pct: data.completionRate.toFixed(0),
+          })}
+        </p>
+
         <Card className="border-gray-200">
           <CardHeader>
             <CardTitle>{t("web.provider.reports.pages.staff/hours.breakdown")}</CardTitle>
           </CardHeader>
           <CardContent>
             {data.staffHours.length === 0 ? (
-              <EmptyReportState title={t("web.provider.reports.pages.staff/hours.emptyTitle")} description={t("web.provider.reports.pages.staff/hours.emptyDesc")} />
+              <EmptyReportState
+                title={t("web.provider.reports.pages.staff/hours.emptyTitle")}
+                description={t("web.provider.reports.pages.staff/hours.emptyDesc")}
+              />
             ) : (
               <div className="space-y-3">
                 {data.staffHours.map((staff) => (
@@ -241,22 +251,19 @@ export default function StaffHoursReport() {
                       <div>
                         <p className="font-medium text-gray-900">{staff.staffName}</p>
                         <p className="text-sm text-gray-600">
-                          {t("web.provider.reports.pages.staff/hours.completedOnTime", { completed: staff.completedBookings, onTime: staff.onTimeBookings })}
+                          {t("web.provider.reports.pages.staff/hours.staffBuckets", {
+                            delivered: staff.deliveredHours.toFixed(1),
+                            missed: staff.missedHours.toFixed(1),
+                            still: staff.notYetCompletedHours.toFixed(1),
+                            cancelled: staff.cancelledHours.toFixed(1),
+                          })}
                         </p>
                       </div>
                     </div>
-                    <div className="text-end">
-                      <p className="font-semibold text-gray-900">
-                        {staff.totalHours.toFixed(1)}h
-                      </p>
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="text-gray-600">
-                          {t("web.provider.reports.pages.staff/hours.attendance", { pct: staff.attendanceRate.toFixed(0) })}
-                        </span>
-                        {staff.attendanceRate >= 90 && (
-                          <CheckCircle className="w-4 h-4 text-green-600" />
-                        )}
-                      </div>
+                    <div className="text-end text-sm text-gray-700">
+                      {t("web.provider.reports.pages.staff/hours.staffCompletionRate", {
+                        pct: staff.completionRate.toFixed(0),
+                      })}
                     </div>
                   </div>
                 ))}

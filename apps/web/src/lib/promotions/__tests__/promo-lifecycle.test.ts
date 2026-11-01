@@ -7,7 +7,10 @@ import { validatePromoCode } from "../validate";
  * `provider` chains: from(promotions).select().eq(code).eq(is_active).eq(provider_id).maybeSingle()
  *                     from(promotions).select().eq(code).eq(is_active).is(provider_id, null).maybeSingle()
  */
-function makeSupabaseMock(promo: Record<string, unknown> | null) {
+function makeSupabaseMock(
+  promo: Record<string, unknown> | null,
+  opts?: { priorUsageForCustomer?: boolean },
+) {
   const builder = () => {
     const state: { code?: string; provider_id?: string; matchPlatform?: boolean } = {};
     const chain: Record<string, (...args: unknown[]) => unknown> = {};
@@ -38,7 +41,24 @@ function makeSupabaseMock(promo: Record<string, unknown> | null) {
     };
     return chain;
   };
-  return { from: () => builder() } as unknown as SupabaseClient;
+  const usageChain = () => {
+    const result = { count: opts?.priorUsageForCustomer ? 1 : 0, error: null };
+    const chain: Record<string, unknown> = {
+      select: () => chain,
+      eq: () => chain,
+      then: (onFulfilled: (v: typeof result) => unknown) =>
+        Promise.resolve(result).then(onFulfilled),
+    };
+    return chain;
+  };
+  return {
+    from: (table: string) => {
+      if (table === "promotion_usage") {
+        return usageChain();
+      }
+      return builder();
+    },
+  } as unknown as SupabaseClient;
 }
 
 const PROVIDER_ID = "00000000-0000-4000-8000-000000000001";
@@ -195,6 +215,72 @@ describe("promo lifecycle — canonical reasons + no stale state", () => {
       providerId: PROVIDER_ID,
     });
     expect(r.valid).toBe(false);
+    expect(r.discount.amount).toBe(0);
+  });
+
+  it("open-ended promo (no end date) stays valid", async () => {
+    const supabase = makeSupabaseMock({
+      id: "p-open",
+      code: "OPEN",
+      type: "percentage",
+      value: 10,
+      is_active: true,
+      provider_id: PROVIDER_ID,
+      valid_until: null,
+    });
+    const r = await validatePromoCode(supabase, {
+      code: "OPEN",
+      amount: 100,
+      providerId: PROVIDER_ID,
+    });
+    expect(r.valid).toBe(true);
+    expect(r.discount.amount).toBe(10);
+  });
+
+  it("once_per_customer without customerId still validates (no client on preview)", async () => {
+    const supabase = makeSupabaseMock(
+      {
+        id: "p-once-open",
+        code: "ONCEOPEN",
+        type: "percentage",
+        value: 10,
+        is_active: true,
+        provider_id: PROVIDER_ID,
+        once_per_customer: true,
+      },
+      { priorUsageForCustomer: true },
+    );
+    const r = await validatePromoCode(supabase, {
+      code: "ONCEOPEN",
+      amount: 100,
+      providerId: PROVIDER_ID,
+    });
+    expect(r.valid).toBe(true);
+    expect(r.discount.amount).toBe(10);
+  });
+
+  it("once_per_customer blocks repeat use for same customer", async () => {
+    const supabase = makeSupabaseMock(
+      {
+        id: "p-once",
+        code: "ONCE",
+        type: "percentage",
+        value: 10,
+        is_active: true,
+        provider_id: PROVIDER_ID,
+        once_per_customer: true,
+      },
+      { priorUsageForCustomer: true },
+    );
+    const customerId = "00000000-0000-4000-8000-000000000099";
+    const r = await validatePromoCode(supabase, {
+      code: "ONCE",
+      amount: 100,
+      providerId: PROVIDER_ID,
+      customerId,
+    });
+    expect(r.valid).toBe(false);
+    expect(r.message).toContain("already used");
     expect(r.discount.amount).toBe(0);
   });
 

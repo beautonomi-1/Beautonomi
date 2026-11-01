@@ -172,7 +172,10 @@ export function AnalyticsPage() {
       <Link to={adminSpaTo("/admin/finance")} className="text-sm font-medium text-primary underline">
         Finance
       </Link>
-      <Link to={adminSpaTo("/admin/reports")} className="text-sm font-medium text-primary underline">
+      <Link
+        to={`${adminSpaTo("/admin/reports")}?period=${encodeURIComponent(period)}`}
+        className="text-sm font-medium text-primary underline"
+      >
         Reports
       </Link>
       <button
@@ -212,7 +215,8 @@ export function AnalyticsPage() {
           const supplyDelta = deltaPct(latest?.supply_liquidity ?? null, healthQ.data?.prior?.supply_liquidity ?? null);
 
           const newCustomers = sumTimeSeriesCount(ts.users ?? []);
-          const bookingsScheduled = sumTimeSeriesCount(ts.bookings ?? []);
+          const bookingsScheduled =
+            book.scheduled_total ?? sumTimeSeriesCount(ts.bookings ?? []);
           const newProviders = sumTimeSeriesCount(ts.providers ?? []);
           const completedVisits = book.completed ?? 0;
 
@@ -227,10 +231,12 @@ export function AnalyticsPage() {
           const repeatTrend = healthSeries
             .filter((r) => r.repeat_rate_90d != null)
             .map((r) => ({ date: r.as_of, value: r.repeat_rate_90d ?? 0 }));
-          const transactingTrend = healthSeries.map((r) => ({
-            date: r.as_of,
-            value: r.transacting_providers_30d ?? 0,
-          }));
+          const transactingTrend = healthSeries
+            .filter((r) => r.transacting_providers_30d != null)
+            .map((r) => ({
+              date: r.as_of,
+              value: r.transacting_providers_30d ?? 0,
+            }));
           const liquidityTrend = healthSeries
             .filter((r) => r.supply_liquidity != null)
             .map((r) => ({ date: r.as_of, value: r.supply_liquidity ?? 0 }));
@@ -253,11 +259,17 @@ export function AnalyticsPage() {
                 </h2>
                 <p className="mb-4 text-xs text-gray-500">Totals for last {periodDaysLabel(period)} · tenant scope</p>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-                  <AdminMetricCard variant="violet" label="New customers" value={formatAdminNumber(newCustomers)} />
+                  <AdminMetricCard
+                    variant="violet"
+                    label="New customers"
+                    value={formatAdminNumber(newCustomers)}
+                    footer={metricFooter("/reports/customers", "Customer report", period)}
+                  />
                   <AdminMetricCard
                     variant="emerald"
                     label="Bookings scheduled"
                     value={formatAdminNumber(bookingsScheduled)}
+                    footer={metricFooter("/reports/bookings", "Booking report", period)}
                   />
                   <AdminMetricCard variant="slate" label="Completed visits" value={formatAdminNumber(completedVisits)} />
                   <AdminMetricCard variant="amber" label="New providers" value={formatAdminNumber(newProviders)} />
@@ -399,11 +411,12 @@ export function AnalyticsPage() {
                   <p className="mt-1 text-xs text-gray-500">{data?.channelBasisNote ?? "Counts only — not revenue."}</p>
                   <div className="mt-4">
                     <AdminHorizontalBars
+                      label="Bookings by channel"
                       rows={byChannel.map((row) => ({
                         label: row.channel,
                         value: row.count,
                         hint:
-                          typeof row.percentage === "number" ? `(${row.percentage.toFixed(0)}%)` : undefined,
+                          typeof row.percentage === "number" ? `(${row.percentage.toFixed(1)}%)` : undefined,
                       }))}
                       emptyMessage="No channel data for this period."
                     />
@@ -451,7 +464,10 @@ export function AnalyticsPage() {
                   <p className="mt-1 text-xs text-gray-500">Not filtered by selected period</p>
                   <div className="mt-4">
                     <AdminHorizontalBars
-                      rows={Object.entries(prov).map(([label, value]) => ({ label, value: value as number }))}
+                      rows={Object.entries(prov)
+                        .filter(([, value]) => (value as number) > 0)
+                        .map(([label, value]) => ({ label, value: value as number }))}
+                      emptyMessage="No providers on roster."
                     />
                   </div>
                   <p className="mt-4">{sectionLink("/reports/providers", "Provider report", period)}</p>
@@ -575,7 +591,11 @@ export function AnalyticsPage() {
                   <h3 className="text-lg font-semibold text-gray-900">Booking outcomes</h3>
                   <p className="mt-1 text-xs text-gray-500">scheduled_at in period through now</p>
                   <div className="mt-4">
-                    <AdminHorizontalBars rows={bookingStatusBarRows(book)} emptyMessage="No bookings in period." />
+                    <AdminHorizontalBars
+                      label="Booking outcomes by status"
+                      rows={bookingStatusBarRows(book)}
+                      emptyMessage="No bookings in period."
+                    />
                   </div>
                   {quality ? (
                     <p className="mt-3 text-sm text-gray-600">

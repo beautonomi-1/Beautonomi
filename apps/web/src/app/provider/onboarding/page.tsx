@@ -5437,6 +5437,7 @@ function Step13Review({
                   <Input
                     value={data.owner_public_title ?? ""}
                     onChange={(e) => updateData({ owner_public_title: e.target.value })}
+                    maxLength={120}
                     className="mt-1"
                   />
                 </div>

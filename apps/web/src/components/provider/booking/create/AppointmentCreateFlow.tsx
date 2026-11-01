@@ -1004,6 +1004,7 @@ export function AppointmentCreateFlow({
               subtotal={totals.subtotal}
               discountCode={discountCode}
               discountAmount={discountAmount}
+              customerId={clientId || undefined}
               onApplied={(code, amount) => {
                 setDiscountCode(code);
                 setDiscountAmount(amount);

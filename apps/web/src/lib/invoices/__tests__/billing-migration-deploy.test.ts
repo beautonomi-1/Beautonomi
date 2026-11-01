@@ -14,6 +14,18 @@ describe("provider invoice billing migration + cron wiring", () => {
     expect(sql).toContain("overdue_notified_at");
   });
 
+  it("includes migration 1025 voiding legacy platform fee invoices", () => {
+    const root = join(process.cwd(), "..", "..");
+    const sql = readFileSync(
+      join(root, "supabase", "migrations", "1025_void_platform_fee_provider_invoices.sql"),
+      "utf8",
+    );
+    expect(sql).toContain("void_reason");
+    expect(sql).toContain("already_retained_at_checkout");
+    expect(sql).toContain("refund_review_required");
+    expect(sql).toContain("provider_invoice_payments");
+  });
+
   it("registers invoice issue and overdue crons in vercel.json", () => {
     const vercel = readFileSync(join(process.cwd(), "vercel.json"), "utf8");
     const config = JSON.parse(vercel) as { crons?: { path: string }[] };

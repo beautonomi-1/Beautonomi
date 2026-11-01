@@ -29,7 +29,7 @@ export function TicketThread({
   ticketCreatedAt,
 }: TicketThreadProps) {
   return (
-    <div ref={threadRef} className="min-h-[12rem] flex-1 overflow-y-auto px-1 py-3 lg:min-h-0">
+    <div ref={threadRef} className="min-h-0 flex-1 overflow-y-auto px-1 py-3">
       {originalRequestText ? (
         <div className="mb-3 flex w-full justify-start">
           <div className="max-w-[min(100%,42rem)] rounded-xl border border-gray-200 bg-gray-50/90 p-3 shadow-sm">

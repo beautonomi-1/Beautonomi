@@ -406,6 +406,7 @@ export async function POST(request: NextRequest) {
         subtotal,
         providerId: parsed.provider_id,
         locationId: parsed.collection_location_id ?? null,
+        customerId: user.id,
       });
       if (promo.ok === false) {
         return errorResponse(promo.message, "PROMO_INVALID", 400);

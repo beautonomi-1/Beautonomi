@@ -4,6 +4,10 @@ import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import { getAppBaseUrl } from "@/lib/env/app-url";
 import { getPaymentProviderForTenant } from "@/lib/payments/provider/registry";
 import { getEffectiveCheckoutMethods } from "@/lib/payments/provider-checkout-methods";
+import {
+  clearUncollectedProviderPortalPlatformFeeIfNeeded,
+  type BookingFeeClearRow,
+} from "@/lib/bookings/provider-booking-platform-fee";
 
 export interface SendBookingPaymentLinkInput {
   bookingId: string;
@@ -46,8 +50,27 @@ export async function sendBookingPaymentLink(
 ): Promise<SendBookingPaymentLinkResult> {
   const warnings: string[] = [];
 
+  const { data: bookingForClear } = await supabaseAdmin
+    .from("bookings")
+    .select(
+      "id, booking_source, total_amount, total_paid, payment_status, payment_reference, platform_fee_amount, service_fee_amount, platform_fee_percentage, service_fee_percentage, platform_fee_paid_by, service_fee_paid_by, deposit_amount",
+    )
+    .eq("id", input.bookingId)
+    .maybeSingle();
+
+  let totalAmountForLink = Number(input.amounts.totalAmount ?? 0);
+  if (bookingForClear) {
+    const cleared = await clearUncollectedProviderPortalPlatformFeeIfNeeded(
+      supabaseAdmin,
+      bookingForClear as BookingFeeClearRow,
+    );
+    if (cleared.cleared) {
+      totalAmountForLink = Number(cleared.booking.total_amount ?? totalAmountForLink);
+    }
+  }
+
   const amountDue = computeBookingOutstandingDisplay({
-    totalAmount: Number(input.amounts.totalAmount ?? 0),
+    totalAmount: totalAmountForLink,
     totalPaid: Number(input.amounts.totalPaid ?? 0),
     totalRefunded: Number(input.amounts.totalRefunded ?? 0),
     walletAmount: Number(input.amounts.walletAmount ?? 0),

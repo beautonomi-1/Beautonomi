@@ -56,19 +56,11 @@ describe("POST /api/provider/invoices/[id]/pay", () => {
     mockUserHasProviderAccessAdmin.mockResolvedValue(true);
   });
 
-  it("inserts pending EFT and does not call settlement recorder", async () => {
-    const admin = makeAdmin(
-      {
-        id: "inv-1",
-        provider_id: "prov-1",
-        total_amount: 100,
-        amount_paid: 0,
-        amount_due: 100,
-        status: "sent",
-      },
-      false,
-    );
-    mockGetSupabaseAdmin.mockReturnValue(admin);
+  it("rejects new bank transfer claims with 400", async () => {
+    mockRequirePermission.mockResolvedValue({
+      authorized: true,
+      user: { id: "user-1" },
+    });
 
     const { POST } = await import("../[id]/pay/route");
     const res = await POST(
@@ -78,34 +70,7 @@ describe("POST /api/provider/invoices/[id]/pay", () => {
       }),
       { params: Promise.resolve({ id: "inv-1" }) },
     );
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.error).toBeNull();
-    expect(admin.from).toHaveBeenCalledWith("provider_invoice_payments");
-  });
-
-  it("rejects a second pending claim", async () => {
-    const admin = makeAdmin(
-      {
-        id: "inv-1",
-        provider_id: "prov-1",
-        total_amount: 100,
-        amount_paid: 0,
-        amount_due: 100,
-        status: "sent",
-      },
-      true,
-    );
-    mockGetSupabaseAdmin.mockReturnValue(admin);
-
-    const { POST } = await import("../[id]/pay/route");
-    const res = await POST(
-      new NextRequest("http://localhost/api/provider/invoices/inv-1/pay", {
-        method: "POST",
-        body: JSON.stringify({ amount: 40 }),
-      }),
-      { params: Promise.resolve({ id: "inv-1" }) },
-    );
-    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBe(400);
+    expect(mockGetSupabaseAdmin).not.toHaveBeenCalled();
   });
 });

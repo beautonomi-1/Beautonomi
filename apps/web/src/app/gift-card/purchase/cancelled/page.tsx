@@ -8,6 +8,7 @@ import Navbar4 from "@/components/global/Navbar4";
 import { Button } from "@/components/ui/button";
 import { supportTicketQuery } from "@beautonomi/utils";
 import { NativeAppCheckoutBounce } from "@/components/payments/NativeAppCheckoutBounce";
+import { GiftCardBreadcrumb } from "../../components/gift-card-breadcrumb";
 
 /**
  * Cancelled checkout landing page for gift card purchases.
@@ -45,7 +46,8 @@ function GiftCardPurchaseCancelledInner() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar4 />
-      <div className="mx-auto max-w-lg px-4 py-12">
+      <div className="mx-auto max-w-lg px-4 pb-28 pt-6 md:pb-12 md:pt-8">
+        <GiftCardBreadcrumb current="cancelled" />
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center">
           <XCircle className="mx-auto mb-3 h-12 w-12 text-amber-600" aria-hidden="true" />
           <h1 className="text-2xl font-semibold text-gray-900">Purchase cancelled</h1>

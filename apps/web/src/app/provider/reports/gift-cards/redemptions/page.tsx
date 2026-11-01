@@ -34,6 +34,8 @@ interface GiftCardRedemptionsData {
     amount: number;
     captured_at?: string;
     redeemed_at?: string;
+    gift_card_code?: string | null;
+    booking_number?: string | null;
   }>;
 }
 
@@ -274,10 +276,22 @@ export default function GiftCardRedemptionsReport() {
                   return (
                     <div
                       key={redemption.id}
-                      className="flex items-center justify-between rounded-xl border border-gray-100 bg-white p-4 shadow-sm ring-1 ring-gray-100/80"
+                      className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm ring-1 ring-gray-100/80"
                     >
-                      <p className="text-sm text-gray-900">{safe}</p>
-                      <p className="font-semibold tabular-nums text-gray-900">{fmt(Number(redemption.amount || 0))}</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-mono font-medium text-gray-900">
+                          {redemption.gift_card_code ?? t("web.provider.common.emDash")}
+                        </p>
+                        <p className="text-sm text-gray-600 mt-0.5">{safe}</p>
+                        {redemption.booking_number ? (
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Booking {redemption.booking_number}
+                          </p>
+                        ) : null}
+                      </div>
+                      <p className="font-semibold tabular-nums text-gray-900 shrink-0">
+                        {fmt(Number(redemption.amount || 0))}
+                      </p>
                     </div>
                   );
                 })}

@@ -26,6 +26,10 @@ import { useAdminSession } from "@/providers/AdminSessionProvider";
 import { labelForSupportTicketCategory } from "@/lib/supportTicketCategories";
 import { AdminTrendChart } from "@/components/admin/charts/AdminTrendChart";
 import { AdminHorizontalBars } from "@/components/admin/charts/AdminHorizontalBars";
+import {
+  bookingStatusBarRows,
+  bookingStatusBreakdownFromReport,
+} from "@/routes/analytics/analyticsPageMetrics";
 
 const API_PATHS: Record<string, string> = {
   revenue: "/api/admin/reports/revenue",
@@ -201,6 +205,7 @@ function RevenueReport({ data }: { data: Record<string, unknown> }) {
                 value: typeof r.revenue === "number" ? r.revenue : Number(r.revenue ?? 0),
               }))}
               valueFormat="currency"
+              label="Revenue by day"
             />
           </div>
           <AdminDataTable className="mt-3">
@@ -357,10 +362,16 @@ function CustomersReport({ data }: { data: Record<string, unknown> }) {
   const hiddenInactive = customersAll.length - customers.length;
 
   const kpis = [
+    { label: "Total customers", value: fmt(data.totalCustomers), sub: "Tenant-scoped roster" },
+    {
+      label: "New customers",
+      value: fmt(data.newCustomers),
+      sub: "created_at in selected period (matches Analytics headline)",
+    },
+    { label: "Active customers", value: fmt(data.activeCustomers ?? data.active), sub: "Any booking in period" },
     { label: "Booking frequency", value: fmt(data.bookingFrequency), sub: "Completed / active customer (period)" },
-    { label: "Repeat rate", value: typeof data.repeatRate === "number" ? `${(Number(data.repeatRate) * 100).toFixed(1)}%` : "—" },
+    { label: "Repeat rate", value: typeof data.repeatRate === "number" ? `${(Number(data.repeatRate) * 100).toFixed(1)}%` : "—", sub: "Period completed visits — not Analytics snapshot" },
     { label: "Median days between visits", value: fmt(data.medianDaysBetweenVisits) },
-    { label: "Active customers", value: fmt(data.activeCustomers ?? data.active) },
   ].filter((k) => k.value !== "—");
 
   const buckets = data.visitBuckets as { one?: number; twoThree?: number; fourPlus?: number } | undefined;
@@ -386,7 +397,7 @@ function CustomersReport({ data }: { data: Record<string, unknown> }) {
         <AdminPanel>
           <SectionHeading>Visits in period</SectionHeading>
           <div className="mt-3">
-            <AdminHorizontalBars rows={bucketRows} />
+            <AdminHorizontalBars rows={bucketRows} label="Completed visit buckets in period" />
           </div>
         </AdminPanel>
       )}
@@ -491,45 +502,58 @@ function BookingsReport({ data }: { data: Record<string, unknown> }) {
   }, [byDayAll, showEmptyDays]);
   const hiddenEmptyDays = byDayAll.length - byDay.length;
 
+  const totalBookings = Number(data.totalBookings ?? data.total ?? 0);
+  const statusBreakdown = bookingStatusBreakdownFromReport(byStatus, totalBookings);
+
   const kpis = [
-    { label: "Total bookings", value: fmt(data.totalBookings ?? data.total) },
+    {
+      label: "Total bookings",
+      value: fmt(data.totalBookings ?? data.total),
+      sub: "scheduled_at in period (matches Analytics)",
+    },
     { label: "Completed", value: fmt(data.completedBookings ?? data.completed) },
     { label: "Cancelled", value: fmt(data.cancelledBookings ?? data.cancelled) },
-    { label: "Avg. value", value: fmtMoney(data.avgBookingValue ?? data.average_value) },
+    { label: "No-show", value: fmt(data.noShowBookings ?? data.no_show) },
+    {
+      label: "Completion rate",
+      value: typeof data.completionRate === "number" ? `${Number(data.completionRate).toFixed(1)}%` : "—",
+    },
+    { label: "Avg. completed value", value: fmtMoney(data.avgBookingValue ?? data.average_value) },
   ].filter((k) => k.value !== "—");
+
+  const channelRows = channelBreakdown.map((row) => ({
+    label: String(row.channel ?? ""),
+    value: Number(row.count ?? 0),
+    hint:
+      typeof row.percentage === "number"
+        ? `(${Number(row.percentage).toFixed(1)}%)`
+        : undefined,
+  }));
 
   return (
     <div className="space-y-6">
+      {typeof data.channelBasisNote === "string" && data.channelBasisNote ? (
+        <AdminPanel>
+          <p className="text-xs leading-5 text-gray-600">{data.channelBasisNote}</p>
+        </AdminPanel>
+      ) : null}
       {kpis.length > 0 && <KpiGrid items={kpis} />}
-      {channelBreakdown.length > 0 && (
+      {channelRows.length > 0 && (
         <AdminPanel>
           <SectionHeading>Bookings by channel</SectionHeading>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            {channelBreakdown.map((row, i) => (
-              <div key={i} className="rounded-lg bg-gray-50 px-4 py-3">
-                <p className="text-xs capitalize text-gray-500">{String(row.channel ?? "").replace(/_/g, " ")}</p>
-                <p className="mt-0.5 text-xl font-bold tabular-nums">{fmt(row.count)}</p>
-                <p className="text-xs text-gray-400">
-                  {fmt(row.completed)} completed ({typeof row.completion_rate === "number" ? row.completion_rate.toFixed(0) : "—"}%)
-                </p>
-              </div>
-            ))}
+          <div className="mt-3">
+            <AdminHorizontalBars rows={channelRows} label="Bookings by channel" />
           </div>
         </AdminPanel>
       )}
       {byStatus.length > 0 && (
         <AdminPanel>
           <SectionHeading>Bookings by status</SectionHeading>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            {byStatus.map((r, i) => (
-              <div key={i} className="rounded-lg bg-gray-50 px-4 py-3">
-                <p className="text-xs capitalize text-gray-500">{String(r.status ?? "").replace(/_/g, " ")}</p>
-                <p className="mt-0.5 text-xl font-bold tabular-nums">{fmt(r.count)}</p>
-                {r.revenue !== undefined && (
-                  <p className="text-xs text-gray-400">{fmtMoney(r.revenue)}</p>
-                )}
-              </div>
-            ))}
+          <div className="mt-3">
+            <AdminHorizontalBars
+              label="Bookings by status"
+              rows={bookingStatusBarRows(statusBreakdown)}
+            />
           </div>
         </AdminPanel>
       )}
@@ -557,6 +581,7 @@ function BookingsReport({ data }: { data: Record<string, unknown> }) {
                     date: String(r.date ?? ""),
                     value: Number(r.bookings ?? r.count ?? 0),
                   }))}
+                  label="Daily scheduled bookings"
                 />
               </div>
             <AdminDataTable className="mt-3">
@@ -564,7 +589,7 @@ function BookingsReport({ data }: { data: Record<string, unknown> }) {
                 <tr>
                   <AdminTh>Date</AdminTh>
                   <AdminTh>Bookings</AdminTh>
-                  <AdminTh>Revenue</AdminTh>
+                  <AdminTh>Completed GMV</AdminTh>
                 </tr>
               </AdminTableHead>
               <AdminTableBody>
@@ -572,7 +597,9 @@ function BookingsReport({ data }: { data: Record<string, unknown> }) {
                   <tr key={i}>
                     <AdminTd className="text-xs">{String(r.date ?? "")}</AdminTd>
                     <AdminTd className="tabular-nums text-xs">{fmt(r.bookings ?? r.count)}</AdminTd>
-                    <AdminTd className="tabular-nums text-xs">{fmtMoney(r.revenue)}</AdminTd>
+                    <AdminTd className="tabular-nums text-xs">
+                      {fmtMoney(r.completed_gmv ?? r.revenue)}
+                    </AdminTd>
                   </tr>
                 ))}
               </AdminTableBody>
@@ -1566,7 +1593,10 @@ export function ReportDetailPage() {
       <div className="space-y-6">
         <AdminPageHeader title="Report" />
         <EmptyState title="Unknown report" description={reportKey} />
-        <Link to={adminSpaTo("/admin/reports")} className="text-sm font-medium text-gray-900 underline">
+        <Link
+          to={`${adminSpaTo("/admin/reports")}?period=${encodeURIComponent(period)}`}
+          className="text-sm font-medium text-gray-900 underline"
+        >
           ← Reports hub
         </Link>
       </div>
@@ -1605,7 +1635,10 @@ export function ReportDetailPage() {
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3">
-        <Link to={adminSpaTo("/admin/reports")} className="text-sm text-gray-600 hover:text-gray-900">
+        <Link
+          to={`${adminSpaTo("/admin/reports")}?period=${encodeURIComponent(period)}`}
+          className="text-sm text-gray-600 hover:text-gray-900"
+        >
           ← Reports hub
         </Link>
         <label className="text-sm text-gray-600">

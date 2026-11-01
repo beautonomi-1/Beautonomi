@@ -12,6 +12,7 @@ interface PromoCodeSectionProps {
   subtotal: number;
   discountCode: string;
   discountAmount: number;
+  customerId?: string;
   onApplied: (code: string, amount: number) => void;
   onClear: () => void;
 }
@@ -20,6 +21,7 @@ export function PromoCodeSection({
   subtotal,
   discountCode,
   discountAmount,
+  customerId,
   onApplied,
   onClear,
 }: PromoCodeSectionProps) {
@@ -35,8 +37,12 @@ export function PromoCodeSection({
     }
     setValidating(true);
     try {
+      const customerQs =
+        customerId && customerId.trim()
+          ? `&customer_id=${encodeURIComponent(customerId.trim())}`
+          : "";
       const res = await providerPortalFetch(
-        `/api/provider/coupons/validate?code=${encodeURIComponent(code)}&subtotal=${subtotal}`,
+        `/api/provider/coupons/validate?code=${encodeURIComponent(code)}&subtotal=${subtotal}${customerQs}`,
       );
       const body = (await res.json().catch(() => null)) as {
         data?: { discount?: number; valid?: boolean };

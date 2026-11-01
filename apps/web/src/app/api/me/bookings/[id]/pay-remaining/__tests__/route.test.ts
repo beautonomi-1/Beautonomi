@@ -148,25 +148,82 @@ const DEFAULT_PROVIDER_ROW = {
   tip_presets: [10, 15, 20, 25],
 };
 
-function makeAdminMock(providerRow: Record<string, unknown> | null = DEFAULT_PROVIDER_ROW) {
+function makeAdminMock(
+  providerRow: Record<string, unknown> | null = DEFAULT_PROVIDER_ROW,
+  bookingForFeeClear: Record<string, unknown> | null = null,
+) {
+  const clearRow =
+    bookingForFeeClear ??
+    ({
+      id: BOOKING_ID,
+      booking_source: "online",
+      total_amount: 1000,
+      total_paid: 300,
+      payment_status: "partially_paid",
+      platform_fee_amount: 0,
+      service_fee_amount: 0,
+    } as Record<string, unknown>);
+
   return {
-    from: vi.fn((table: string) => ({
-      insert: vi.fn(async (row: Record<string, unknown>) => {
-        adminInserts.push({ table, row });
-        return { error: null };
-      }),
-      select: vi.fn(() => ({
-        eq: vi.fn(() => ({
-          maybeSingle: vi.fn(async () => ({
-            data: table === "providers" ? providerRow : null,
-            error: null,
+    from: vi.fn((table: string) => {
+      if (table === "booking_payments") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(async () => ({ data: [], error: null })),
+          })),
+        };
+      }
+      if (table === "bookings") {
+        return {
+          insert: vi.fn(async (row: Record<string, unknown>) => {
+            adminInserts.push({ table, row });
+            return { error: null };
+          }),
+          select: vi.fn(() => ({
+            eq: vi.fn((col: string) => {
+              if (col === "id") {
+                return {
+                  eq: vi.fn(() => ({
+                    maybeSingle: vi.fn(async () => ({ data: clearRow, error: null })),
+                  })),
+                  maybeSingle: vi.fn(async () => ({
+                    data: { payment_reference: null },
+                    error: null,
+                  })),
+                };
+              }
+              return {
+                maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+              };
+            }),
+          })),
+          update: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              select: vi.fn(() => ({
+                maybeSingle: vi.fn(async () => ({ data: clearRow, error: null })),
+              })),
+            })),
+          })),
+        };
+      }
+      return {
+        insert: vi.fn(async (row: Record<string, unknown>) => {
+          adminInserts.push({ table, row });
+          return { error: null };
+        }),
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            maybeSingle: vi.fn(async () => ({
+              data: table === "providers" ? providerRow : null,
+              error: null,
+            })),
           })),
         })),
-      })),
-      update: vi.fn(() => ({
-        eq: vi.fn(async () => ({ error: null })),
-      })),
-    })),
+        update: vi.fn(() => ({
+          eq: vi.fn(async () => ({ error: null })),
+        })),
+      };
+    }),
     rpc: vi.fn(async () => ({ data: true, error: null })),
   };
 }

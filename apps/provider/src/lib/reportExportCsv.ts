@@ -51,6 +51,42 @@ function rowsFromFirstObjectArray(
   return null;
 }
 
+function cardMachineReconciliationPayloadToCsv(p: Record<string, unknown>): string {
+  const rows: string[] = [];
+  const kv = (k: string, v: unknown) => rows.push(toCsvRow([k, escapeCell(v)]));
+  const summary = (p.summary as Record<string, unknown>) ?? {};
+
+  kv("report_basis", p.reportBasis);
+  kv("yoco_payments_in_window", summary.yoco_payments_in_window);
+  kv("paycloud_payments_in_window", summary.paycloud_payments_in_window);
+  kv("yoco_pending", summary.yoco_pending);
+  kv("paycloud_amount_mismatch", summary.paycloud_amount_mismatch);
+  kv("payment_exceptions", summary.payment_exceptions);
+  kv("awaiting_refunds_count", summary.awaiting_refunds);
+  kv("awaiting_refund_total", summary.awaiting_refund_total);
+
+  const appendSection = (section: string, arr: Record<string, unknown>[]) => {
+    rows.push("");
+    rows.push(toCsvRow(["section", ...Object.keys(arr[0] ?? { id: "" })]));
+    for (const row of arr) {
+      const keys = Object.keys(arr[0] ?? row);
+      rows.push(toCsvRow([section, ...keys.map((k) => escapeCell(row[k]))]));
+    }
+  };
+
+  const yoco = Array.isArray(p.yoco) ? (p.yoco as Record<string, unknown>[]) : [];
+  const paycloud = Array.isArray(p.paycloud) ? (p.paycloud as Record<string, unknown>[]) : [];
+  const awaiting = Array.isArray(p.awaiting_refunds)
+    ? (p.awaiting_refunds as Record<string, unknown>[])
+    : [];
+
+  if (yoco.length > 0) appendSection("yoco", yoco);
+  if (paycloud.length > 0) appendSection("paycloud", paycloud);
+  if (awaiting.length > 0) appendSection("awaiting_refunds", awaiting);
+
+  return rows.join("\n");
+}
+
 function productSalesPayloadToCsv(p: Record<string, unknown>): string {
   const rows: string[] = [];
   const kv = (k: string, v: unknown) => rows.push(toCsvRow([k, escapeCell(v)]));
@@ -398,6 +434,9 @@ function topProductsPayloadToCsv(p: Record<string, unknown>): string {
  */
 export function reportPayloadToCsvString(payload: unknown, reportId: string): string {
   const p = unwrapReportPayload(payload);
+  if (reportId === "card-machine-reconciliation" && p != null && typeof p === "object" && !Array.isArray(p)) {
+    return cardMachineReconciliationPayloadToCsv(p as Record<string, unknown>);
+  }
   if (reportId === "product-sales" && p != null && typeof p === "object" && !Array.isArray(p)) {
     return productSalesPayloadToCsv(p as Record<string, unknown>);
   }

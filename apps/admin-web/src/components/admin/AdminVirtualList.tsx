@@ -14,6 +14,8 @@ export type AdminVirtualListProps<T> = {
   className?: string;
   /** Scrollport max height, e.g. `calc(100dvh - 14rem)` */
   maxHeight?: string;
+  /** When true, short lists use h-full overflow-y-auto instead of unbounded space-y-3 */
+  fill?: boolean;
   overscan?: number;
   ariaLabel?: string;
 };
@@ -30,6 +32,7 @@ export function AdminVirtualList<T>({
   gap = 12,
   className,
   maxHeight = "min(70vh, 640px)",
+  fill = false,
   overscan = 6,
   ariaLabel,
 }: AdminVirtualListProps<T>) {
@@ -50,9 +53,14 @@ export function AdminVirtualList<T>({
 
   if (!shouldVirtualize) {
     return (
-      <div className={cn("space-y-3", className)} aria-label={ariaLabel}>
+      <div
+        className={cn(fill ? "h-full min-h-0 overflow-y-auto pr-1" : "space-y-3", className)}
+        aria-label={ariaLabel}
+      >
         {items.map((item, index) => (
-          <div key={index}>{renderItem(item, index)}</div>
+          <div key={index} className={fill && index < items.length - 1 ? "mb-3" : undefined}>
+            {renderItem(item, index)}
+          </div>
         ))}
       </div>
     );
@@ -63,8 +71,8 @@ export function AdminVirtualList<T>({
   return (
     <div
       ref={parentRef}
-      className={cn("overflow-y-auto pr-1", className)}
-      style={{ maxHeight }}
+      className={cn("overflow-y-auto pr-1", fill && "h-full min-h-0", className)}
+      style={fill ? undefined : { maxHeight }}
       aria-label={ariaLabel}
     >
       <div

@@ -170,7 +170,8 @@ export async function GET(request: NextRequest) {
         over_cap_grace_until,
         is_service_provider,
         enable_in_online_booking,
-        bookable_from
+        bookable_from,
+        public_title
       `
       )
       .eq("provider_id", providerId)
@@ -291,6 +292,7 @@ export async function GET(request: NextRequest) {
         enable_in_online_booking:
           (member as { enable_in_online_booking?: boolean | null }).enable_in_online_booking ?? true,
         bookable_from: (member as { bookable_from?: string | null }).bookable_from ?? null,
+        public_title: (member as { public_title?: string | null }).public_title ?? null,
       };
       const redacted = redactStaffRowForViewer(
         { ...row, user_id: member.user_id ?? null },
@@ -349,6 +351,7 @@ export const addStaffSchema = z.object({
   hours_source: hoursSourceSchema.optional(),
   takes_appointments: z.boolean().optional(),
   public_title: z.string().max(120).optional().nullable(),
+  avatar_url: z.string().url().optional().nullable(),
 });
 
 /**
@@ -418,6 +421,7 @@ export async function POST(request: Request) {
       hours_source,
       takes_appointments,
       public_title,
+      avatar_url,
     } = validationResult.data;
     const email = validationResult.data.email.trim().toLowerCase();
     const jobPreset = parseStaffJobPreset(validationResult.data.job);
@@ -646,6 +650,7 @@ export async function POST(request: Request) {
           commission_rate != null ? Number(commission_rate) : null,
         commission_enabled: commission_rate != null && Number(commission_rate) >= 0,
         ...(normalizedPublicTitle ? { public_title: normalizedPublicTitle } : {}),
+        ...(avatar_url !== undefined && avatar_url !== null ? { avatar_url } : {}),
       })
       .select(
         `

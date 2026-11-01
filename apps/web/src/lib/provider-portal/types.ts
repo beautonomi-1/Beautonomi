@@ -67,6 +67,8 @@ export interface TeamMember {
   is_service_provider?: boolean | null;
   enable_in_online_booking?: boolean | null;
   bookable_from?: string | null;
+  public_title?: string | null;
+  commission_rate?: number | null;
 }
 
 export interface ServiceCategory {

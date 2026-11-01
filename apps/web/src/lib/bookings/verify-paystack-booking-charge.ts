@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import { recordReconciliationException } from "@/lib/finance/record-reconciliation-exception";
+import { storedPlatformFeeAmount } from "@/lib/bookings/provider-booking-platform-fee";
 
 type PendingPaymentRow = {
   amount: number;
@@ -140,9 +141,12 @@ export function bookingFinancialsFromDb(booking: Record<string, unknown>, pendin
     tipAmount: Number(booking.tip_amount ?? 0),
     taxAmount: Number(booking.tax_amount ?? 0),
     travelFee: Number(booking.travel_fee ?? 0),
-    serviceFeeAmount: Number(
-      booking.platform_fee_amount ?? booking.service_fee_amount ?? booking.platform_service_fee ?? 0,
-    ),
+    serviceFeeAmount: storedPlatformFeeAmount({
+      platform_fee_amount: booking.platform_fee_amount as number | null | undefined,
+      service_fee_amount:
+        (booking.service_fee_amount as number | null | undefined) ??
+        (booking.platform_service_fee as number | null | undefined),
+    }),
     walletAmountFromMeta: Number(meta.wallet_amount_applied ?? booking.wallet_amount ?? 0),
     giftCardAmountFromMeta: Number(meta.gift_card_amount_applied ?? booking.gift_card_amount ?? 0),
   };

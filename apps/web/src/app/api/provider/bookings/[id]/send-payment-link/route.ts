@@ -10,6 +10,10 @@ import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
+import {
+  clearUncollectedProviderPortalPlatformFeeIfNeeded,
+  type BookingFeeClearRow,
+} from "@/lib/bookings/provider-booking-platform-fee";
 
 /**
  * POST /api/provider/bookings/[id]/send-payment-link
@@ -116,6 +120,26 @@ export async function POST(
     );
     if (branchAccess.allowed === false) {
       return errorResponse(branchAccess.message, "FORBIDDEN", 403);
+    }
+
+    const { data: bookingRowForClear } = await supabaseAdmin
+      .from("bookings")
+      .select(
+        "id, booking_source, total_amount, total_paid, payment_status, payment_reference, platform_fee_amount, service_fee_amount, platform_fee_percentage, service_fee_percentage, platform_fee_paid_by, service_fee_paid_by, deposit_amount",
+      )
+      .eq("id", bookingId)
+      .eq("provider_id", providerId)
+      .maybeSingle();
+    if (bookingRowForClear) {
+      const feeClear = await clearUncollectedProviderPortalPlatformFeeIfNeeded(
+        supabaseAdmin,
+        bookingRowForClear as BookingFeeClearRow,
+      );
+      if (feeClear.cleared) {
+        (booking as { total_amount?: number }).total_amount = Number(
+          feeClear.booking.total_amount ?? booking.total_amount,
+        );
+      }
     }
 
     // Determine true outstanding. A booking can be payment_status='paid' on the

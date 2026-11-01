@@ -57,6 +57,11 @@ export async function POST(request: NextRequest) {
 
     const locationTypeNorm = location_type === "at_home" ? "at_home" : "at_salon";
 
+    const {
+      data: { user: sessionUser },
+    } = await supabase.auth.getUser();
+    const customerId = sessionUser?.id;
+
     // Same resolver as `validate-booking.ts` (promotions table + legacy coupons).
     const resolved = await resolveCheckoutPromotionDiscount(supabase, {
       promoCode: code.trim().toUpperCase(),
@@ -65,7 +70,12 @@ export async function POST(request: NextRequest) {
       prePromoSubtotal: booking_amount,
       locationType: locationTypeNorm,
       locationId: location_id ?? null,
+      customerId,
     });
+
+    if (resolved.blockedReason) {
+      return badRequestResponse(resolved.blockedReason);
+    }
 
     if (resolved.promotionDiscountAmount > 0) {
       const amount = resolved.promotionDiscountAmount;
@@ -87,6 +97,7 @@ export async function POST(request: NextRequest) {
       providerId: provider_id,
       locationType: location_type,
       locationId: location_id ?? undefined,
+      customerId,
     });
 
     if (!result.valid) {

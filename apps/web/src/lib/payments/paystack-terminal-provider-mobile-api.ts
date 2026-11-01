@@ -807,12 +807,21 @@ export async function allocatePaystackTerminalPaymentMobile(
 
   if (entityType === "invoice") {
     const { data: invoice } = await (admin.from("provider_invoices") as any)
-      .select("id, provider_id, total_amount, amount_paid")
+      .select("id, provider_id, invoice_type, status, total_amount, amount_paid")
       .eq("id", entityId)
       .eq("provider_id", providerId)
       .maybeSingle();
     if (!invoice) {
       return errorResponse("Invoice target not found for this provider.", "TARGET_NOT_FOUND", 404);
+    }
+    const { isProviderInvoicePayable } = await import("@/lib/invoices/provider-invoice-status");
+    if (
+      !isProviderInvoicePayable({
+        invoice_type: (invoice as { invoice_type?: string }).invoice_type,
+        status: (invoice as { status?: string }).status,
+      })
+    ) {
+      return errorResponse("This invoice cannot be paid.", "INVOICE_NOT_PAYABLE", 409);
     }
     const { recordProviderInvoicePayment } = await import(
       "@/lib/invoices/record-provider-invoice-payment"

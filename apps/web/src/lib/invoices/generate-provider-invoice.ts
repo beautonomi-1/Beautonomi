@@ -3,6 +3,7 @@ import { addDays } from "date-fns";
 import { percentOf, sumMoney } from "@beautonomi/utils";
 import { formatDateYmd, resolveTz } from "@/lib/dates/provider-tz";
 import { insertWithInvoiceNumber } from "@/lib/invoices/insert-with-invoice-number";
+import { isNonPayableInvoiceType } from "@/lib/invoices/provider-invoice-status";
 
 export type ProviderInvoiceType =
   | "platform_fee"
@@ -91,6 +92,10 @@ export async function generateProviderInvoice(
     throw new ProviderInvoiceGenerationError("Provider not found", "NOT_FOUND");
   }
 
+  if (isNonPayableInvoiceType(invoiceType)) {
+    return { invoice: null, skipped: "already_collected" };
+  }
+
   // A scheduled run is retried on failure and re-run on redeploys; the partial
   // unique index rejects the duplicate, but checking first keeps the log clean.
   if (generatedBy === "scheduled") {
@@ -110,84 +115,6 @@ export async function generateProviderInvoice(
 
   const lineItems: LineItem[] = [];
   let subtotal = 0;
-
-  if (invoiceType === "platform_fee" || invoiceType === "commission") {
-    const { data: bookings, error: bookingsError } = await supabase
-      .from("bookings")
-      .select(
-        "id, total_amount, platform_fee_amount, platform_fee_percentage, service_fee_amount, service_fee_percentage, completed_at, ref_number",
-      )
-      .eq("provider_id", providerId)
-      .eq("status", "completed")
-      .gte("completed_at", periodStart)
-      .lte("completed_at", periodEnd)
-      .order("completed_at", { ascending: true });
-
-    if (bookingsError) throw bookingsError;
-
-    const { data: providerFee } = await supabase
-      .from("providers")
-      .select("provider_fee_config_id")
-      .eq("id", providerId)
-      .single();
-
-    let commissionRate = 0;
-    const feeConfigId = (providerFee as { provider_fee_config_id?: string | null } | null)
-      ?.provider_fee_config_id;
-    if (feeConfigId) {
-      const { data: feeConfig } = await supabase
-        .from("platform_fee_config")
-        .select("fee_percentage, fee_type")
-        .eq("id", feeConfigId)
-        .single();
-
-      const cfg = feeConfig as { fee_type?: string; fee_percentage?: number } | null;
-      if (cfg?.fee_type === "percentage" && cfg.fee_percentage) {
-        commissionRate = cfg.fee_percentage / 100;
-      }
-    }
-
-    for (const row of bookings ?? []) {
-      const booking = row as Record<string, any>;
-      const storedPlatformFee = Number(booking.platform_fee_amount ?? booking.service_fee_amount ?? 0);
-      const storedFeePercentage = Number(
-        booking.platform_fee_percentage ?? booking.service_fee_percentage ?? 0,
-      );
-      let invoiceAmount = 0;
-      if (invoiceType === "platform_fee") {
-        if (storedPlatformFee <= 0) {
-          continue;
-        }
-        invoiceAmount = storedPlatformFee;
-      } else {
-        if (commissionRate <= 0) {
-          continue;
-        }
-        invoiceAmount = percentOf(Number(booking.total_amount || 0), commissionRate * 100);
-      }
-      subtotal += invoiceAmount;
-
-      lineItems.push({
-        line_item_type: invoiceType === "commission" ? "commission" : "platform_fee",
-        description: `${invoiceType === "commission" ? "Commission" : "Platform fee"} for booking ${
-          booking.ref_number || String(booking.id).substring(0, 8)
-        }`,
-        quantity: 1,
-        unit_price: invoiceAmount,
-        total_price: invoiceAmount,
-        reference_type: "booking",
-        reference_id: booking.id,
-        metadata: {
-          booking_total: booking.total_amount,
-          commission_rate: commissionRate,
-          stored_platform_fee: storedPlatformFee,
-          stored_platform_fee_percentage: storedFeePercentage,
-          completed_at: booking.completed_at,
-          booking_ref: booking.ref_number,
-        },
-      });
-    }
-  }
 
   if (invoiceType === "subscription") {
     return { invoice: null, skipped: "already_collected" };

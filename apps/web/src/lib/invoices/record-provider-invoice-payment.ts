@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isNonPayableInvoiceType } from "@/lib/invoices/provider-invoice-status";
 
 export type RecordProviderInvoicePaymentResult = {
   /** False when the reference had already been recorded — the caller should treat this as success. */
@@ -68,7 +69,7 @@ export async function recordProviderInvoicePayment(params: {
 
   const { data: invoice, error: invoiceError } = await supabase
     .from("provider_invoices")
-    .select("id, provider_id, total_amount, amount_paid, status")
+    .select("id, provider_id, invoice_type, total_amount, amount_paid, status")
     .eq("id", invoiceId)
     .maybeSingle();
 
@@ -76,7 +77,15 @@ export async function recordProviderInvoicePayment(params: {
     throw new Error("Invoice not found");
   }
 
-  const row = invoice as InvoiceRow;
+  const row = invoice as InvoiceRow & { invoice_type?: string | null };
+  const status = String(row.status ?? "");
+  if (
+    isNonPayableInvoiceType(row.invoice_type) &&
+    status !== "cancelled" &&
+    status !== "refunded"
+  ) {
+    throw new Error("This invoice cannot accept payment");
+  }
   const amountDue = Number(row.total_amount ?? 0) - Number(row.amount_paid ?? 0);
   if (amount > amountDue + 0.005) {
     throw new Error(`Payment amount cannot exceed ${amountDue.toFixed(2)}`);

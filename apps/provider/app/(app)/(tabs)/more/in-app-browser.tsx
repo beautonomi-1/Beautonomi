@@ -455,6 +455,9 @@ export default function InAppBrowserScreen() {
           {...inAppWebViewUserAgentProps()}
           style={styles.webview}
           originWhitelist={getWebViewOriginWhitelist()}
+          mediaCapturePermissionGrantType="prompt"
+          allowsInlineMediaPlayback
+          mediaPlaybackRequiresUserAction={false}
           onShouldStartLoadWithRequest={(request: { url: string }) => {
             const u = request.url;
             if (u.startsWith("provider://")) {

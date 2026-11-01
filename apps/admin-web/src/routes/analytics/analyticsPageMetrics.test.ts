@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BOOKING_STATUS_ORDER,
   bookingStatusBarRows,
+  bookingStatusBreakdownFromReport,
   buildRevenueMixSegments,
   mixTotal,
   qualityShareSentence,
@@ -32,19 +33,33 @@ describe("analyticsPageMetrics", () => {
 
   it("booking status bars follow lifecycle order", () => {
     const rows = bookingStatusBarRows({
-      scheduled_total: 3,
-      completed: 1,
-      pending: 1,
-      confirmed: 1,
+      scheduled_total: 100,
+      completed: 50,
+      pending: 30,
+      confirmed: 20,
     });
     expect(rows.map((r) => r.label)).toEqual([
       "Pending",
       "Confirmed",
       "Completed",
     ]);
+    expect(rows[0]?.hint).toBe("(30.0%)");
     expect(BOOKING_STATUS_ORDER.indexOf("pending")).toBeLessThan(
       BOOKING_STATUS_ORDER.indexOf("confirmed"),
     );
+  });
+
+  it("maps booking report status rows into analytics breakdown", () => {
+    const breakdown = bookingStatusBreakdownFromReport(
+      [
+        { status: "completed", count: 2 },
+        { status: "unknown", count: 1 },
+      ],
+      3,
+    );
+    expect(breakdown.scheduled_total).toBe(3);
+    expect(breakdown.completed).toBe(2);
+    expect(breakdown.other).toBe(1);
   });
 
   it("quality shares use scheduled_total", () => {

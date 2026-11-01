@@ -13,7 +13,13 @@ export type ProductPromotionResult =
 
 export async function applyProductOrderPromotion(
   supabase: SupabaseClient,
-  params: { code: string; subtotal: number; providerId: string; locationId?: string | null },
+  params: {
+    code: string;
+    subtotal: number;
+    providerId: string;
+    locationId?: string | null;
+    customerId?: string;
+  },
 ): Promise<ProductPromotionResult> {
   const code = params.code.trim().toUpperCase();
   if (!code) return { ok: false, message: "Promo code is required" };
@@ -27,6 +33,7 @@ export async function applyProductOrderPromotion(
       // Product checkout is not salon-located; location-scoped promos don't apply.
       locationType: params.locationId ? "at_salon" : undefined,
       locationId: params.locationId ?? null,
+      customerId: params.customerId,
     });
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Promo code could not be validated" };

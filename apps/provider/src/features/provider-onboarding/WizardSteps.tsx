@@ -3144,6 +3144,9 @@ function Step11Services() {
 {ow("services.meta", { minutes: s.duration_minutes, currency: s.currency || tenantCurrency, price: s.price })}
               {s.supports_at_salon ? ow("services.salonSuffix") : ""}
               {s.supports_at_home ? ow("services.homeSuffix") : ""}
+              {(s.pricing_options?.length ?? 0) > 1
+                ? ow("services.bookingOptionCount", { count: s.pricing_options!.length })
+                : ""}
               {(() => {
                 const addonCount = (formData.service_addons || []).filter(
                   (a) => a.parent_service_index === i,
@@ -3960,6 +3963,7 @@ function Step13Review() {
             value={formData.owner_public_title ?? ""}
             onChangeText={(t) => updateFormData({ owner_public_title: t })}
             placeholder={ow("review.ownerPublicTitle")}
+            maxLength={120}
             style={twStyle("rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900")}
           />
           {(formData.services || []).length > 0 ? (
@@ -4010,6 +4014,7 @@ function Step13Review() {
             value={formData.owner_public_title ?? ""}
             onChangeText={(t) => updateFormData({ owner_public_title: t })}
             placeholder={ow("review.ownerPublicTitle")}
+            maxLength={120}
             style={twStyle("rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900")}
           />
         </View>

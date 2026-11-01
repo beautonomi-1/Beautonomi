@@ -17,6 +17,8 @@ import {
   todayUtcYmd,
   withEffectiveStatus,
 } from "@/lib/invoices/provider-invoices-query";
+import { isNonPayableInvoiceType } from "@/lib/invoices/provider-invoice-status";
+import { buildProviderBillingObligations } from "@/lib/invoices/provider-billing-obligations";
 
 const invoiceLineItemSchema = z.object({
   id: z.string().uuid().optional(),
@@ -130,7 +132,7 @@ export async function GET(request: NextRequest) {
 
     let summaryQuery = supabase
       .from("provider_invoices")
-      .select("status, due_date, total_amount, amount_paid, amount_due")
+      .select("invoice_type, status, due_date, total_amount, amount_paid, amount_due")
       .eq("provider_id", providerId);
     if (invoiceType) {
       summaryQuery = summaryQuery.eq("invoice_type", invoiceType);
@@ -145,6 +147,9 @@ export async function GET(request: NextRequest) {
 
     const summary = computeInvoiceSummary(summaryRows ?? [], today);
     const enriched = (invoices ?? []).map((inv) => withEffectiveStatus(inv as Record<string, unknown>, today));
+    const billingObligations = await buildProviderBillingObligations(supabase, providerId, {
+      today,
+    });
 
     return successResponse({
       invoices: enriched,
@@ -153,6 +158,11 @@ export async function GET(request: NextRequest) {
       limit,
       total_pages: Math.ceil((count || 0) / limit),
       summary,
+      obligations: billingObligations.obligations,
+      obligations_summary: {
+        outstanding_total: billingObligations.outstanding_total,
+        due_count: billingObligations.due_count,
+      },
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch invoices");
@@ -171,6 +181,14 @@ export async function POST(request: NextRequest) {
     const { user } = await requireRoleInApi(["superadmin"], request);
 
     const validated = createInvoiceSchema.parse(await request.json());
+    if (isNonPayableInvoiceType(validated.invoice_type)) {
+      return handleApiError(
+        new Error("Platform fee and commission invoices are not issued to providers"),
+        "Platform fee and commission invoices are not issued to providers",
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
     const providerId = validated.provider_id;
     if (!providerId) {
       return handleApiError(

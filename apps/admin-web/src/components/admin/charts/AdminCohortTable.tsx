@@ -24,6 +24,9 @@ export function AdminCohortTable({ rows }: { rows: Row[] }) {
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full text-left text-xs">
+        <caption className="sr-only">
+          Cohort retention: share of customers returning after first completed visit month
+        </caption>
         <thead>
           <tr className="border-b border-gray-200 text-gray-500">
             <th className="py-2 pr-3 font-medium">First visit month</th>

@@ -69,6 +69,12 @@ interface BillingData {
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
+const NON_PAYABLE_INVOICE_TYPES = new Set(["platform_fee", "commission"]);
+
+function isPayableSettingsInvoice(inv: Invoice): boolean {
+  return !NON_PAYABLE_INVOICE_TYPES.has(inv.invoice_type ?? "");
+}
+
 function invoiceStatusStyle(status: string): { bg: string; text: string } {
   switch (status) {
     case "paid":
@@ -439,6 +445,7 @@ export default function BillingScreen() {
         <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
           {invoices
             .filter((inv) => {
+              if (invoiceFilter !== "all" && !isPayableSettingsInvoice(inv)) return false;
               if (invoiceFilter === "all") return true;
               return invoiceFilter.split(",").includes(inv.status);
             })
@@ -582,7 +589,10 @@ export default function BillingScreen() {
                 <Text style={twStyle("ms-2 text-sm font-medium text-gray-700")}>{bs("download")}</Text>
               </TouchableOpacity>
 
-              {selectedInvoice.status !== "paid" && selectedInvoice.status !== "cancelled" ? (
+              {selectedInvoice.status !== "paid" &&
+              selectedInvoice.status !== "cancelled" &&
+              selectedInvoice.invoice_type !== "platform_fee" &&
+              selectedInvoice.invoice_type !== "commission" ? (
                 <Text style={twStyle("mt-2 text-xs text-gray-500")}>
                   {bs("payInBillingHub")}
                 </Text>

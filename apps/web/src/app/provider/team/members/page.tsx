@@ -508,7 +508,12 @@ export default function ProviderTeamMembers() {
                               {member.name.charAt(0).toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
-                          <span className="font-medium text-gray-900">{member.name}</span>
+                          <div>
+                            <span className="font-medium text-gray-900">{member.name}</span>
+                            {member.public_title?.trim() ? (
+                              <p className="text-xs text-gray-500 truncate">{member.public_title.trim()}</p>
+                            ) : null}
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell className="px-6 py-4">
@@ -606,6 +611,9 @@ export default function ProviderTeamMembers() {
                         <div className="font-semibold text-base sm:text-lg truncate">
                           {member.name}
                         </div>
+                        {member.public_title?.trim() ? (
+                          <div className="text-xs text-gray-500 truncate">{member.public_title.trim()}</div>
+                        ) : null}
                         <div className="flex items-center gap-2 mt-1">
                           <Badge variant="outline" className="capitalize text-xs">
                             {member.role}

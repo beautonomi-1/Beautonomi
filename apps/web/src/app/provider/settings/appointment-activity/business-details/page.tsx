@@ -116,9 +116,17 @@ export default function BusinessDetailsSettings() {
   };
 
   const handleSave = async () => {
+    const trimmedName = formData.businessName.trim();
+    if (trimmedName.length <= 1) {
+      toast.error(t("web.provider.settings.pages.business.validationBusinessName"));
+      return;
+    }
     try {
       setIsSaving(true);
-      await fetcher.patch("/api/provider/settings/business-details", formData);
+      await fetcher.patch("/api/provider/settings/business-details", {
+        ...formData,
+        businessName: trimmedName,
+      });
       setOriginalData(formData);
       invalidateSetupStatusCache();
       toast.success(t("web.provider.settings.pages.appointment-activity/business-details.businessDetailsUpdatedSuccessfully"));

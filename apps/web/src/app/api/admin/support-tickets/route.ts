@@ -115,6 +115,8 @@ export async function GET(request: NextRequest) {
 
       if (statusGroup === "resolved_closed") {
         query = query.in("status", ["resolved", "closed"]);
+      } else if (statusGroup === "active") {
+        query = query.in("status", ["open", "in_progress", "waiting_customer"]);
       } else if (status) {
         query = query.eq("status", status);
       }

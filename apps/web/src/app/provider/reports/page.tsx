@@ -110,6 +110,7 @@ const reportCategories = [
     reports: [
       { id: "packages-overview", href: "/provider/reports/packages" },
       { id: "package-sales", href: "/provider/reports/packages/sales" },
+      { id: "membership-sales", href: "/provider/reports/memberships" },
       { id: "package-usage", href: "/provider/reports/packages/usage" },
     ],
   },

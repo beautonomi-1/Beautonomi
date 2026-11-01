@@ -79,24 +79,22 @@ export default function Banner({ content }: BannerProps) {
               </p>
 
               <div className="mt-7 flex flex-col items-center gap-3 sm:flex-row md:items-start md:justify-start justify-center">
-                <Link href={bulkPurchaseUrl} className="w-full sm:w-auto">
-                  <Button
-                    variant="default"
-                    size="rounded"
-                    className="w-full shadow-lg shadow-secondary/15 transition-transform duration-200 hover:-translate-y-0.5 active:scale-[0.98] sm:w-auto"
-                  >
-                    {getStartedButtonText}
-                  </Button>
-                </Link>
-                <a href={`mailto:${salesEmail}`} className="w-full sm:w-auto">
-                  <Button
-                    variant="outline"
-                    size="rounded"
-                    className="w-full border-secondary/15 bg-white/60 text-secondary transition-transform duration-200 hover:-translate-y-0.5 active:scale-[0.98] sm:w-auto"
-                  >
-                    Talk to sales
-                  </Button>
-                </a>
+                <Button
+                  asChild
+                  variant="default"
+                  size="rounded"
+                  className="w-full shadow-lg shadow-secondary/15 transition-transform duration-200 hover:-translate-y-0.5 active:scale-[0.98] sm:w-auto"
+                >
+                  <Link href={bulkPurchaseUrl}>{getStartedButtonText}</Link>
+                </Button>
+                <Button
+                  asChild
+                  variant="outline"
+                  size="rounded"
+                  className="w-full border-secondary/15 bg-white/60 text-secondary transition-transform duration-200 hover:-translate-y-0.5 active:scale-[0.98] sm:w-auto"
+                >
+                  <a href={`mailto:${salesEmail}`}>Talk to sales</a>
+                </Button>
               </div>
             </div>
 

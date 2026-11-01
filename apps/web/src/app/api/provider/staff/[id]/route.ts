@@ -159,6 +159,13 @@ async function fetchStaffDetailForApi(
         mobile_ready,
         commission_rate,
         commission_enabled,
+        service_commission_rate,
+        product_commission_rate,
+        public_title,
+        bookable_from,
+        is_service_provider,
+        enable_in_online_booking,
+        time_clock_enabled,
         users:user_id(id, full_name, email, phone, avatar_url)
       `,
     )
@@ -180,6 +187,13 @@ async function fetchStaffDetailForApi(
     is_active?: boolean | null;
     mobile_ready?: boolean | null;
     commission_rate?: number | null;
+    service_commission_rate?: number | null;
+    product_commission_rate?: number | null;
+    public_title?: string | null;
+    bookable_from?: string | null;
+    is_service_provider?: boolean | null;
+    enable_in_online_booking?: boolean | null;
+    time_clock_enabled?: boolean | null;
     users?: { full_name?: string; email?: string; phone?: string; avatar_url?: string } | null;
   };
 
@@ -236,6 +250,13 @@ async function fetchStaffDetailForApi(
     is_active: r.is_active ?? true,
     mobileReady: r.mobile_ready ?? false,
     commission_rate: r.commission_rate ?? null,
+    service_commission_rate: r.service_commission_rate ?? null,
+    product_commission_rate: r.product_commission_rate ?? null,
+    public_title: r.public_title ?? null,
+    bookable_from: r.bookable_from ?? null,
+    is_service_provider: r.is_service_provider ?? true,
+    enable_in_online_booking: r.enable_in_online_booking ?? true,
+    time_clock_enabled: r.time_clock_enabled ?? false,
     locations,
     primary_location_id: locations.find((l) => l.is_primary)?.location_id ?? null,
     service_ids,
@@ -339,7 +360,9 @@ export async function PATCH(
 
     const { data: existingRow, error: existingErr } = await supabase
       .from("provider_staff")
-      .select("id, role, user_id")
+      .select(
+        "id, role, user_id, commission_rate, service_commission_rate, product_commission_rate",
+      )
       .eq("id", id)
       .eq("provider_id", providerId)
       .is("deleted_at", null)
@@ -349,7 +372,14 @@ export async function PATCH(
       return notFoundResponse("Staff member not found");
     }
 
-    const existing = existingRow as { id: string; role: string; user_id?: string | null };
+    const existing = existingRow as {
+      id: string;
+      role: string;
+      user_id?: string | null;
+      commission_rate?: number | null;
+      service_commission_rate?: number | null;
+      product_commission_rate?: number | null;
+    };
     const ownerOps = await canManageOwnerSensitiveOps(user, request);
 
     if (existing.role === "owner" && !ownerOps) {
@@ -385,13 +415,56 @@ export async function PATCH(
     const updateData: Record<string, unknown> = {};
     const d = validationResult.data;
     const jobPreset = parseStaffJobPreset(d.job);
+    const forceProceed = d.force === true || d.reassign_to != null;
+
+    if (jobPreset) {
+      const preset = resolveStaffJobPreset(jobPreset);
+      if (existing.role === "owner" && preset.dbRole !== "owner") {
+        const n = await countOwners(supabase, providerId);
+        if (n <= 1) {
+          return errorResponse(
+            "Cannot demote the only business owner. Add another owner first.",
+            "VALIDATION_ERROR",
+            400,
+          );
+        }
+      }
+    }
+
+    if (jobPreset && replaceServices && !forceProceed) {
+      const sids = d.service_ids ?? [];
+      const { data: currentServices } = await supabase
+        .from("staff_services")
+        .select("offering_id")
+        .eq("staff_id", id);
+      const nextSet = new Set(sids);
+      const removed = (currentServices ?? [])
+        .map((r: { offering_id: string }) => r.offering_id)
+        .filter((oid) => !nextSet.has(oid));
+      if (removed.length > 0) {
+        const conflicts = await findFutureBookingsForStaff(supabase, providerId, id, {
+          serviceIds: removed,
+        });
+        if (conflicts.length > 0) {
+          return errorResponse(
+            futureBookingsConflictResponse(conflicts).message,
+            "FUTURE_BOOKINGS_CONFLICT",
+            409,
+            futureBookingsConflictResponse(conflicts),
+          );
+        }
+      }
+    }
+
     if (jobPreset) {
       const preset = resolveStaffJobPreset(jobPreset);
       updateData.role = preset.dbRole;
       updateData.permissions = preset.permissions;
       updateData.role_id = null;
       updateData.work_hours_enabled = preset.work_hours_enabled;
-}
+      updateData.is_service_provider = preset.is_service_provider;
+      updateData.enable_in_online_booking = preset.enable_in_online_booking;
+    }
     if (d.name !== undefined) updateData.name = d.name;
     if (d.email !== undefined) updateData.email = d.email;
     if (d.phone !== undefined) updateData.phone = d.phone;
@@ -404,16 +477,25 @@ export async function PATCH(
     if (d.is_active !== undefined) updateData.is_active = d.is_active;
     if (d.mobileReady !== undefined) updateData.mobile_ready = d.mobileReady;
     if (d.commission_rate !== undefined) {
+      const svcRate = existing.service_commission_rate ?? null;
+      const prodRate = existing.product_commission_rate ?? null;
+      const splitRatesEqual = svcRate === prodRate;
       if (d.commission_rate === null) {
         updateData.commission_rate = null;
         updateData.commission_enabled = false;
+        if (splitRatesEqual) {
+          updateData.service_commission_rate = null;
+          updateData.product_commission_rate = null;
+        }
       } else {
         updateData.commission_rate = d.commission_rate;
         updateData.commission_enabled = true;
+        if (splitRatesEqual) {
+          updateData.service_commission_rate = d.commission_rate;
+          updateData.product_commission_rate = d.commission_rate;
+        }
       }
     }
-
-    const forceProceed = d.force === true || d.reassign_to != null;
     if (!forceProceed && d.is_active === false) {
       const conflicts = await findFutureBookingsForStaff(supabase, providerId, id);
       if (conflicts.length > 0) {

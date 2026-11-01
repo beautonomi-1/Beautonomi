@@ -12,6 +12,7 @@ import {
   DEFAULT_PRICING_OPTION,
   buildCustomerBookingTierPreview,
   resolveBookingTierName,
+  resolveBookingTierDisplayPrice,
 } from "./types";
 import { BookingTierCustomerPreview } from "./BookingTierCustomerPreview";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
@@ -183,7 +184,11 @@ export function PricingOptionsEditor({
                     ) : null}
                   </Text>
                   <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                    {durationLabel(row.duration)} · {formatCurrency(row.price, currency)}
+                    {durationLabel(row.duration)} ·{" "}
+                    {formatCurrency(
+                      resolveBookingTierDisplayPrice(options, index, parentPricingName),
+                      currency,
+                    )}
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -238,6 +243,16 @@ export function PricingOptionsEditor({
                     />
                     <KeyboardDoneAccessory nativeID={priceAccessoryId} />
                   </View>
+                  {index > 0 && row.price <= 0 && options.length > 1 ? (
+                    <Text style={twStyle("mt-1.5 text-xs text-gray-500")}>
+                      {po("blankPriceUsesMain", {
+                        amount: formatCurrency(
+                          resolveBookingTierDisplayPrice(options, index, parentPricingName),
+                          currency,
+                        ),
+                      })}
+                    </Text>
+                  ) : null}
                 </View>
               </View>
 

@@ -3082,6 +3082,28 @@ async function handleProviderInvoicePaymentSuccess(
   const { recordProviderInvoicePayment } = await import(
     "@/lib/invoices/record-provider-invoice-payment"
   );
+  const { isNonPayableInvoiceType } = await import("@/lib/invoices/provider-invoice-status");
+
+  const { data: invoiceRow } = await supabase
+    .from("provider_invoices")
+    .select("invoice_type, status")
+    .eq("id", invoiceId)
+    .maybeSingle();
+  const invMeta = invoiceRow as { invoice_type?: string; status?: string } | null;
+  if (
+    invMeta &&
+    isNonPayableInvoiceType(invMeta.invoice_type) &&
+    invMeta.status !== "cancelled" &&
+    invMeta.status !== "refunded"
+  ) {
+    console.error("[provider_invoice] charge succeeded for non-payable fee invoice — not applying", {
+      invoiceId,
+      reference: payload.reference,
+      invoice_type: invMeta.invoice_type,
+      status: invMeta.status,
+    });
+    return;
+  }
 
   try {
     await recordProviderInvoicePayment({

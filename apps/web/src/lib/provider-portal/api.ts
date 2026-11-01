@@ -2467,6 +2467,7 @@ export class ProviderApiClient implements ProviderApi {
         is_service_provider: member.is_service_provider ?? true,
         enable_in_online_booking: member.enable_in_online_booking ?? true,
         bookable_from: member.bookable_from ?? null,
+        public_title: member.public_title ?? null,
       }));
 
       return teamMembers;
@@ -2522,6 +2523,7 @@ export class ProviderApiClient implements ProviderApi {
         ...(data.time_clock_enabled !== undefined ? { time_clock_enabled: data.time_clock_enabled } : {}),
         ...(data.public_title !== undefined ? { public_title: data.public_title } : {}),
         ...(data.takes_appointments !== undefined ? { takes_appointments: data.takes_appointments } : {}),
+        ...(data.avatar_url ? { avatar_url: data.avatar_url } : {}),
       });
       
       const member = response.data;
@@ -2567,13 +2569,20 @@ export class ProviderApiClient implements ProviderApi {
                    : data.role === "manager" ? "provider_manager"
                    : data.role ? "provider_staff" : undefined;
       
+      const avatarPayload =
+        data.avatar_url === null || data.avatar_url === ""
+          ? { avatar_url: null }
+          : typeof data.avatar_url === "string" && data.avatar_url.startsWith("https://")
+            ? { avatar_url: data.avatar_url }
+            : {};
+
       const response = await fetcher.patch<{ data: any }>(`/api/provider/staff/${id}`, {
         name: data.name,
-        email: data.email,
         phone: data.mobile,
-        avatar_url: data.avatar_url,
+        ...avatarPayload,
         role: apiRole,
         is_active: data.is_active,
+        ...(data.commission_rate !== undefined ? { commission_rate: data.commission_rate } : {}),
       });
       
       const member = response.data;

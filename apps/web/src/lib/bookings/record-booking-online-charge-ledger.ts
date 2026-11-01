@@ -4,6 +4,7 @@
  * Paystack webhook, in-process capture (`recordPaystackBookingSettlement`), or the reconcile cron.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { storedPlatformFeeAmount } from "@/lib/bookings/provider-booking-platform-fee";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { resolveCommissionPercentageForBooking } from "@/lib/finance/resolve-commission-percentage-for-booking";
 import { percentOf, subtractMoney } from "@beautonomi/utils";
@@ -104,10 +105,11 @@ function resolveBookingLevelAmounts(
     travel: Number(overrides?.travel ?? bookingData.travel_fee ?? 0),
     platformFee: Number(
       overrides?.platformFee ??
-        (bookingData.platform_fee_amount ||
-          bookingData.service_fee_amount ||
-          bookingData.platform_service_fee ||
-          0),
+        storedPlatformFeeAmount({
+          platform_fee_amount: bookingData.platform_fee_amount,
+          service_fee_amount:
+            bookingData.service_fee_amount ?? bookingData.platform_service_fee,
+        }),
     ),
   };
 }

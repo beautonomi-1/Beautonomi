@@ -230,6 +230,117 @@ export function computeAttentionBanner(ticket: TicketRow, nowMs = Date.now()): A
   return null;
 }
 
+/** Up to two attention lines; assistant mode can show AI plus one SLA/wait banner. */
+export function listAttentionBanners(ticket: TicketRow, nowMs = Date.now()): NonNullable<AttentionBanner>[] {
+  const ticketStatus = str(ticket.status);
+  if (ticketStatus === "resolved" || ticketStatus === "closed") return [];
+
+  const handlingMode = str(ticket.handling_mode ?? "human");
+  const attentionState = str(ticket.attention_state);
+  const slaState = str(ticket.sla_state);
+  const firstRespDue = ticket.first_response_due_at ? new Date(str(ticket.first_response_due_at)) : null;
+  const slaDue = ticket.sla_resolution_due_at ? new Date(str(ticket.sla_resolution_due_at)) : null;
+
+  const candidates: NonNullable<AttentionBanner>[] = [];
+
+  if (attentionState === "first_response_overdue" && firstRespDue) {
+    const overdueMs = nowMs - firstRespDue.getTime();
+    const overdueH = Math.floor(overdueMs / 3600_000);
+    const overdueText = overdueH > 0 ? ` by ${overdueH}h` : "";
+    candidates.push({
+      text: `First response overdue${overdueText} — customer has been waiting for your first reply`,
+      style: "red",
+    });
+  }
+  if (slaState === "breached" && slaDue) {
+    const overdueMs = nowMs - slaDue.getTime();
+    const overdueH = Math.floor(overdueMs / 3600_000);
+    const overdueD = Math.floor(overdueH / 24);
+    const overdueText =
+      overdueD > 0 ? ` (${overdueD}d ${overdueH % 24}h)` : overdueH > 0 ? ` (${overdueH}h)` : "";
+    candidates.push({ text: `Resolution SLA breached${overdueText}`, style: "red" });
+  }
+  if (attentionState === "awaiting_agent") {
+    candidates.push({ text: "Awaiting your reply — customer replied last", style: "blue" });
+  }
+  if (slaState === "at_risk" && slaDue) {
+    const remainMs = slaDue.getTime() - nowMs;
+    const remainH = Math.ceil(remainMs / 3600_000);
+    candidates.push({ text: `SLA due in ${remainH}h — at risk`, style: "amber" });
+  }
+
+  const aiBanner: NonNullable<AttentionBanner> = {
+    text: "AI handling — bot is replying; human queue after handoff",
+    style: "blue",
+  };
+
+  if (handlingMode === "assistant") {
+    return [aiBanner, ...candidates.slice(0, 1)];
+  }
+  return candidates.slice(0, 2);
+}
+
+export function detailsTabNeedsAttention(input: {
+  showCancel: boolean;
+  showRefund: boolean;
+  unlinkedContext: boolean;
+  failedPublicSend: boolean;
+}): boolean {
+  return input.showCancel || input.showRefund || input.unlinkedContext || input.failedPublicSend;
+}
+
+export function hasFailedPublicEmailSend(messages: MessageRow[]): boolean {
+  return messages.some((m) => {
+    if (m.is_internal) return false;
+    return str(m.email_delivery_status).toLowerCase() === "failed";
+  });
+}
+
+export function nextTicketIdInQueue(currentId: string, queueIds: string[]): string | null {
+  const idx = queueIds.indexOf(currentId);
+  if (idx < 0) return null;
+  return queueIds[idx + 1] ?? null;
+}
+
+export type QueueNavButtonLabel =
+  | "Next in queue"
+  | "Next needing response"
+  | "End of page"
+  | "Back to queue";
+
+export function resolveQueueNav(input: {
+  currentId: string;
+  queueTicketIds: string[] | null | undefined;
+  remoteNextId: string | null;
+}): { label: QueueNavButtonLabel; nextId: string | null; endOfPage: boolean } {
+  const queue = input.queueTicketIds ?? [];
+  if (queue.length > 0) {
+    if (!queue.includes(input.currentId)) {
+      return { label: "Back to queue", nextId: null, endOfPage: false };
+    }
+    const next = nextTicketIdInQueue(input.currentId, queue);
+    if (next) return { label: "Next in queue", nextId: next, endOfPage: false };
+    if (queue[queue.length - 1] === input.currentId) {
+      return { label: "End of page", nextId: null, endOfPage: true };
+    }
+    return { label: "Back to queue", nextId: null, endOfPage: false };
+  }
+  if (input.remoteNextId) {
+    return { label: "Next needing response", nextId: input.remoteNextId, endOfPage: false };
+  }
+  return { label: "Back to queue", nextId: null, endOfPage: false };
+}
+
+/** Admin booking GET returns successResponse({ data: row }) and getJson unwraps one level. */
+export function unwrapAdminBookingPayload(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (o.data && typeof o.data === "object" && !Array.isArray(o.data)) {
+    return o.data as Record<string, unknown>;
+  }
+  return o;
+}
+
 /** Below this container width the sidebar cannot sit beside a readable thread (20rem sidebar + ~26rem thread). */
 export const TICKET_DETAIL_WIDE_MIN_PX = 760;
 

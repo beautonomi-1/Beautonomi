@@ -23,7 +23,7 @@ const updatePromotionSchema = z.object({
   min_purchase: z.number().or(z.string()).nullable().optional(),
   max_discount: z.number().or(z.string()).nullable().optional(),
   start_date: z.string().optional(),
-  end_date: z.string().optional(),
+  end_date: z.string().nullable().optional(),
   usage_limit: z.number().or(z.string()).nullable().optional(),
   is_active: z.boolean().optional(),
   applicable_to: z.string().optional(),
@@ -80,7 +80,11 @@ export async function PATCH(
       updateData.valid_from = new Date(body.start_date).toISOString();
     }
     if (body.end_date !== undefined) {
-      updateData.valid_until = new Date(body.end_date).toISOString();
+      if (body.end_date === null || body.end_date === "") {
+        updateData.valid_until = null;
+      } else {
+        updateData.valid_until = new Date(body.end_date).toISOString();
+      }
     }
     if (body.usage_limit !== undefined)
       updateData.usage_limit = body.usage_limit ? parseInt(body.usage_limit) : null;

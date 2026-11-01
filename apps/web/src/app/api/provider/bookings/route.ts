@@ -56,11 +56,6 @@ import { computeCatalogPackageServiceDiscount, getMissingRequiredProviderFormFie
 import { validateProviderCatalogPackageMatch } from "@/lib/bookings/validate-provider-package-booking";
 import { resolveMembershipDiscount } from "@/lib/provider/salon-membership-entitlement";
 import { resolveCheckoutPromotionDiscount } from "@/lib/pricing/checkout-promotion-discount";
-import {
-  calculatePlatformFeeAmount,
-  getEffectivePlatformFeeConfig,
-  normalizePersistedServiceFeePercentage,
-} from "@/lib/platform-service-fee-settings";
 import { shouldRejectProductOnlyProviderBooking } from "@/lib/provider-booking/booking-request-policy";
 import {
   computeProviderCreateTaxableAmount,
@@ -1265,7 +1260,6 @@ async function handleCreateProviderBooking(request: NextRequest) {
       }
     }
 
-    // For walk-in bookings, set Platform Fee to 0 (platform doesn't charge direct customers)
     const isWalkIn = bookingSource === "walk_in";
 
     const numOrNull = (v: unknown): number | null => {
@@ -1367,6 +1361,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
     // provider discount (`discount_amount` + reason) remains a staff-authorized
     // input.
     let serverPromotionDiscountAmount = 0;
+    let serverPromotionId: string | null = null;
     // Catalog package: validate lines against `service_package_items`, then discount SERVICES-only
     // subtotal (matches public `validate-booking.ts`).
     const bookingLocationTypeForPkg = body.location_type || "at_salon";
@@ -1434,8 +1429,13 @@ async function handleCreateProviderBooking(request: NextRequest) {
         prePromoSubtotal: prePromoBase,
         locationType: bookingLocationType === "at_home" ? "at_home" : "at_salon",
         locationId,
+        customerId,
       });
+      if (promoResolved.blockedReason) {
+        return errorResponse(promoResolved.blockedReason, "PROMO_NOT_ALLOWED", 400);
+      }
       serverPromotionDiscountAmount = promoResolved.promotionDiscountAmount;
+      serverPromotionId = promoResolved.promotionId;
     }
 
     const subtotalForMembership = Math.max(
@@ -1474,36 +1474,9 @@ async function handleCreateProviderBooking(request: NextRequest) {
       }
     }
 
-    let platformFeeAmount = 0;
-    let platformFeePercentage = 0;
-    if (!isWalkIn && !normalizedGroupBookingId) {
-      const platformFeeBase = Math.max(
-        0,
-        serverSubtotal -
-          serverDiscountAmount -
-          serverPromotionDiscountAmount -
-          membershipDiscountAmount,
-      );
-      const feeConfig = await getEffectivePlatformFeeConfig(providerId, platformFeeBase);
-      platformFeeAmount = calculatePlatformFeeAmount(feeConfig, platformFeeBase);
-      platformFeePercentage =
-        feeConfig.feeType === "percentage" ? Number(feeConfig.percentage || 0) : 0;
-    }
-    platformFeePercentage = normalizePersistedServiceFeePercentage(
-      platformFeeAmount,
-      platformFeePercentage,
-      [
-        serverSubtotal,
-        Math.max(
-          0,
-          serverSubtotal -
-            serverDiscountAmount -
-            serverPromotionDiscountAmount -
-            membershipDiscountAmount,
-        ),
-      ],
-    );
-    const serverPlatformFeeAmount = platformFeeAmount;
+    const platformFeeAmount = 0;
+    const platformFeePercentage = 0;
+    const serverPlatformFeeAmount = 0;
     const taxableAmount = computeProviderCreateTaxableAmount({
       subtotal: serverSubtotal,
       discountAmount: serverDiscountAmount,
@@ -1587,6 +1560,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
       discount_code: body.discount_code || null,
       discount_reason: body.discount_reason || null,
       promotion_discount_amount: serverPromotionDiscountAmount,
+      ...(serverPromotionId ? { promotion_id: serverPromotionId } : {}),
       // §Provider-audit 2026-05: persist the membership benefit applied so
       // the bookings list, receipts, and reporting reflect the same numbers
       // as the public checkout flow.
@@ -1621,16 +1595,10 @@ async function handleCreateProviderBooking(request: NextRequest) {
       travel_fee: serverTravelFee,
       platform_fee_percentage: platformFeePercentage,
       platform_fee_amount: platformFeeAmount,
-      platform_fee_paid_by:
-        isWalkIn || normalizedGroupBookingId
-          ? null
-          : (body.platform_fee_paid_by ?? body.service_fee_paid_by ?? "customer"),
+      platform_fee_paid_by: null,
       service_fee_percentage: platformFeePercentage,
       service_fee_amount: platformFeeAmount,
-      service_fee_paid_by:
-        isWalkIn || normalizedGroupBookingId
-          ? null
-          : (body.platform_fee_paid_by ?? body.service_fee_paid_by ?? "customer"),
+      service_fee_paid_by: null,
       referral_source_id: referralSourceId,
       ...(normalizedGroupBookingId
         ? { group_booking_id: normalizedGroupBookingId, is_group_booking: true }

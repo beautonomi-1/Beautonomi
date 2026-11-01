@@ -103,6 +103,8 @@ describe("Launch readiness regressions", () => {
       "apps/web/src/app/api/provider/payments/route.ts",
       "apps/web/src/app/api/provider/campaigns/route.ts",
       "apps/web/src/app/api/provider/promotions/route.ts",
+      "apps/web/src/app/api/provider/promotions/[id]/route.ts",
+      "apps/web/src/app/api/provider/promotions/[id]/redemptions/route.ts",
       "apps/web/src/app/api/provider/staff/[id]/services/route.ts",
     ]) {
       const src = readFileSync(join(repoRoot, rel), "utf8");

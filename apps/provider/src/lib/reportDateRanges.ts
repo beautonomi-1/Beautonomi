@@ -80,6 +80,23 @@ export function getReportDateRange(
   }
 }
 
+/** Shift a report `YYYY-MM-DD` by calendar days in the provider timezone. */
+export function addReportDateDays(ymd: string, deltaDays: number, timezone?: string | null): string {
+  const tz = resolveReportTimezone(timezone);
+  const anchor = new Date(`${ymd}T12:00:00.000Z`);
+  const shifted = subDays(anchor, -deltaDays);
+  return formatYmdInTz(shifted, tz);
+}
+
+export function formatReportSingleDateCaption(ymd: string, timezone?: string | null): string {
+  const tz = resolveReportTimezone(timezone);
+  return formatInTimeZone(new Date(`${ymd}T12:00:00.000Z`), tz, "EEEE, MMM d, yyyy");
+}
+
+export function todayReportYmd(timezone?: string | null): string {
+  return formatYmdInTz(new Date(), resolveReportTimezone(timezone));
+}
+
 /** Short caption for filter UI, e.g. "Jan 1 – Jan 18, 2026". */
 export function formatReportRangeCaption(from: string, to: string): string {
   const parse = (s: string) => {

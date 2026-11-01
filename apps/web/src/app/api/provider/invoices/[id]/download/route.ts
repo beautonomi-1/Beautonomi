@@ -23,6 +23,14 @@ import {
   drawPdfTotals,
   moneyPdf,
 } from "@/lib/receipts/pdf-design";
+import {
+  exportableInvoiceAmountDue,
+  withEffectiveStatus,
+} from "@/lib/invoices/provider-invoices-query";
+import {
+  isNonPayableInvoiceType,
+  isProviderInvoicePayable,
+} from "@/lib/invoices/provider-invoice-status";
 
 /**
  * GET /api/provider/invoices/[id]/download
@@ -199,7 +207,16 @@ async function generateInvoicePDF(invoice: any, tenantRegionConfig: import("@/li
     { title: "Invoice details" },
   );
 
-  const amountDue = Number(invoice.amount_due ?? invoice.total_amount ?? 0);
+  const withStatus = withEffectiveStatus(invoice as Record<string, unknown>);
+  const amountDue = exportableInvoiceAmountDue({
+    invoice_type: invoice.invoice_type,
+    status: invoice.status,
+    due_date: invoice.due_date,
+    total_amount: Number(invoice.total_amount ?? 0),
+    amount_paid: Number(invoice.amount_paid ?? 0),
+    amount_due: Number(invoice.amount_due ?? NaN),
+    effective_status: withStatus.effective_status,
+  });
   drawPdfTotals(
     doc,
     [
@@ -212,6 +229,20 @@ async function generateInvoicePDF(invoice: any, tenantRegionConfig: import("@/li
     ],
     { label: "Total", value: money(Number(invoice.total_amount || 0)) },
   );
+
+  if (
+    isNonPayableInvoiceType(invoice.invoice_type) ||
+    !isProviderInvoicePayable({ invoice_type: invoice.invoice_type, status: invoice.status })
+  ) {
+    doc.moveDown(0.5);
+    drawPdfSectionTitle(doc, "Payment status");
+    doc
+      .fontSize(10)
+      .fillColor(RECEIPT_PDF.ink)
+      .text(
+        "Customer-paid platform fees are retained at checkout. This document is not a bill payable to Beautonomi.",
+      );
+  }
 
   // Notes
   if (invoice.notes) {

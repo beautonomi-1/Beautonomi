@@ -5840,7 +5840,6 @@
           "fullNameRequired": "Full Name *",
           "fullNamePlaceholder": "Full name",
           "phoneA11y": "Team member phone",
-          "avatarUrlLabel": "Avatar image URL",
           "role": "Role",
           "selectRoleA11y": "Select role {{label}}",
           "roleStaff": "Staff",
@@ -10237,13 +10236,8 @@
           "bookingsRate": "{{count}} bookings · {{rate}} rate",
           "revAmount": "Rev {{amount}}",
           "hoursValue": "{{hours}}h",
-          "workedHours": "Worked hours",
-          "scheduledHours": "Scheduled hours",
-          "avgPerStaff": "Avg / staff",
           "hoursByStaff": "Hours & attendance by staff",
           "emptyHours": "No worked hours in this range.",
-          "completedAttendance": "{{count}} completed · {{rate}} attendance",
-          "onTime": "{{rate}} on time",
           "noShows": "No-shows",
           "noShowRate": "No-show rate",
           "ledgerNetRecognised": "Ledger net recognised",
@@ -29930,11 +29924,9 @@
             "unableToLoad": "Unable to load no-shows data",
             "totalNoShows": "Total No-Shows",
             "noShowRate": "No-Show Rate",
-            "lostRevenue": "Lost Revenue",
             "totalBookings": "Total Bookings",
             "repeatOffenders": "Repeat Offenders",
             "noShowsCount": "{{count}} no-shows",
-            "lostAmount": "{{amount}} lost",
             "byStaff": "No-Shows by Staff",
             "recent": "Recent No-Shows",
             "emptyTitle": "No no-shows",
@@ -30073,15 +30065,10 @@
             "title": "Hours & Attendance",
             "subtitle": "Track staff working hours and attendance",
             "unableToLoad": "Unable to load staff hours data",
-            "totalHours": "Total Hours",
             "hoursValue": "{{hours}}h",
-            "scheduledHours": "Scheduled Hours",
-            "avgHours": "Avg Hours/Staff",
             "breakdown": "Staff Hours Breakdown",
             "emptyTitle": "No hours data",
-            "emptyDesc": "No hours data available for the selected period.",
-            "completedOnTime": "{{completed}} completed • {{onTime}} on-time",
-            "attendance": "{{pct}}% attendance"
+            "emptyDesc": "No hours data available for the selected period."
           },
           "sales/summary": {
             "title": "Sales Summary",
@@ -30931,7 +30918,6 @@
             "subtitle": "लंबित Yoco टर्मिनल भुगतान और PayCloud राशि सीमा में बेमेल",
             "unableToLoad": "कार्ड मशीन समाधान डेटा लोड करने में असमर्थ",
             "unavailableDesc": "इस रिपोर्ट का उपयोग करने के लिए Yoco या Beautonomi कार्ड मशीनें सक्षम करें।",
-            "totalRows": "सीमा में पंक्तियाँ",
             "yocoPending": "Yoco लंबित",
             "paycloudMismatch": "PayCloud राशि बेमेल",
             "emptyTitle": "कोई अपवाद नहीं",
@@ -35716,6 +35702,9 @@
       "legalAfter": " से सहमत हैं।"
     },
     "giftCard": {
+      "breadcrumb": {
+        "navLabel": "नेविगेशन पथ"
+      },
       "purchaseSuccess": {
         "noRefTitle": "Carte cadeau purchase",
         "noRefBody": "Uma uqedele ukukhokha, sebenzisa isixhumanisi sokubuyisela ekuphumeni okuphephile noma vula Izinkokhelo namakhadi esipho ukuze ubone amakhodi akho.",

@@ -146,6 +146,9 @@ export async function GET(request: NextRequest) {
     return successResponse({
       period,
       totalBookings,
+      completedBookings: completed,
+      cancelledBookings: cancelled,
+      noShowBookings: noShow,
       channelBreakdown,
       channelBasisNote:
         "Counts use bookings.scheduled_at (UTC) in the selected range. Channel labels from booking_source (null treated as online).",

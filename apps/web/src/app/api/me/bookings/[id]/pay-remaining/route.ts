@@ -26,6 +26,11 @@ import {
 } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { getEffectiveCheckoutMethods } from "@/lib/payments/provider-checkout-methods";
+import {
+  clearUncollectedProviderPortalPlatformFeeIfNeeded,
+  storedPlatformFeeAmount,
+  type BookingFeeClearRow,
+} from "@/lib/bookings/provider-booking-platform-fee";
 import { z } from "zod";
 import { normalizeTipPercentPresets } from "@beautonomi/utils";
 import {
@@ -88,7 +93,31 @@ export async function GET(
       return notFoundResponse("Booking not found");
     }
 
-    const totalAmount = Number(booking.total_amount ?? 0);
+    const admin = getSupabaseAdmin();
+    const { data: bookingRowForClear } = await admin
+      .from("bookings")
+      .select(
+        "id, booking_source, total_amount, total_paid, payment_status, payment_reference, platform_fee_amount, service_fee_amount, platform_fee_percentage, service_fee_percentage, platform_fee_paid_by, service_fee_paid_by, deposit_amount",
+      )
+      .eq("id", bookingId)
+      .eq("customer_id", user.id)
+      .maybeSingle();
+
+    let totalAmount = Number(booking.total_amount ?? 0);
+    let fee = storedPlatformFeeAmount(booking as BookingFeeClearRow);
+    if (bookingRowForClear) {
+      const feeClear = await clearUncollectedProviderPortalPlatformFeeIfNeeded(
+        admin,
+        bookingRowForClear as BookingFeeClearRow,
+      );
+      if (feeClear.cleared) {
+        totalAmount = Number(feeClear.booking.total_amount ?? totalAmount);
+        fee = 0;
+      } else {
+        fee = storedPlatformFeeAmount(bookingRowForClear);
+      }
+    }
+
     const remaining = computeBookingOutstandingDisplay({
       totalAmount,
       totalPaid: Number(booking.total_paid ?? 0),
@@ -98,10 +127,6 @@ export async function GET(
       unpaidAdditionalCharges: 0,
       paymentStatus: booking.payment_status,
     });
-
-    const fee =
-      Number((booking as { platform_fee_amount?: number }).platform_fee_amount ?? 0) ||
-      Number((booking as { service_fee_amount?: number }).service_fee_amount ?? 0);
     const serviceTipBase = Math.max(
       0,
       totalAmount - Number((booking as { tip_amount?: number }).tip_amount ?? 0) - fee,
@@ -157,7 +182,7 @@ export async function POST(
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
       .select(
-        "id, customer_id, provider_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, currency, booking_number, ref_number, status, tenant_id, tip_amount, tax_amount, travel_fee, service_fee_amount, platform_fee_amount, additional_charges:additional_charges(id, amount, status)",
+        "id, customer_id, provider_id, booking_source, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, payment_reference, currency, booking_number, ref_number, status, tenant_id, tip_amount, tax_amount, travel_fee, service_fee_amount, platform_fee_amount, platform_fee_percentage, service_fee_percentage, platform_fee_paid_by, service_fee_paid_by, deposit_amount, additional_charges:additional_charges(id, amount, status)",
       )
       .eq("id", bookingId)
       .eq("customer_id", user.id)
@@ -165,6 +190,14 @@ export async function POST(
 
     if (bookingError || !booking) {
       return notFoundResponse("Booking not found");
+    }
+
+    const feeClear = await clearUncollectedProviderPortalPlatformFeeIfNeeded(
+      admin,
+      booking as BookingFeeClearRow,
+    );
+    if (feeClear.cleared) {
+      Object.assign(booking, feeClear.booking);
     }
 
     const tenantResolved = await resolvePaymentTenantForBookingRequest(
@@ -217,9 +250,7 @@ export async function POST(
     });
 
     const requestedTip = roundMoney(Number(body.tip_amount ?? 0));
-    const feeForTip =
-      Number((booking as { platform_fee_amount?: number }).platform_fee_amount ?? 0) ||
-      Number((booking as { service_fee_amount?: number }).service_fee_amount ?? 0);
+    const feeForTip = storedPlatformFeeAmount(booking as BookingFeeClearRow);
     const serviceTipBase = Math.max(
       0,
       totalAmount - Number((booking as { tip_amount?: number }).tip_amount ?? 0) - feeForTip,
@@ -308,12 +339,7 @@ export async function POST(
             tipAmount: Number((booking as { tip_amount?: number }).tip_amount ?? 0),
             taxAmount: Number((booking as { tax_amount?: number }).tax_amount ?? 0),
             travelFee: Number((booking as { travel_fee?: number }).travel_fee ?? 0),
-            serviceFeeAmount: Number(
-              (booking as { service_fee_amount?: number; platform_fee_amount?: number })
-                .service_fee_amount ??
-                (booking as { platform_fee_amount?: number }).platform_fee_amount ??
-                0,
-            ),
+            serviceFeeAmount: storedPlatformFeeAmount(booking as BookingFeeClearRow),
             collectibleAmount: remaining,
             walletAmountApplied,
             giftCardAmountApplied,

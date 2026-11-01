@@ -7,6 +7,7 @@ import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/repor
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { allocateLedgerNetByStaff } from "@/lib/reports/staff-ledger-revenue";
 import { calculateStaffCommission } from "@/lib/payroll/commission-calculator";
+import { deliveredHoursForStaff } from "@/lib/reports/staff-scheduled-hours";
 
 export async function GET(request: NextRequest) {
   try {
@@ -86,8 +87,9 @@ export async function GET(request: NextRequest) {
           id,
           price,
           staff_id,
-          actual_start_at,
-          actual_end_at
+          offerings:offering_id (
+            duration_minutes
+          )
         )
       `)
       .eq('provider_id', providerId)
@@ -144,22 +146,7 @@ export async function GET(request: NextRequest) {
 
       const averageBookingValue = totalBookings > 0 ? totalRevenue / totalBookings : 0;
 
-      // Calculate total hours worked — only count service lines assigned to THIS staff
-      let totalHours = 0;
-      staffBookings.forEach((booking: any) => {
-        if (!booking.booking_services || !Array.isArray(booking.booking_services)) {
-          return;
-        }
-        booking.booking_services.forEach((service: any) => {
-          if (service.staff_id !== staff.id) return;
-          if (service.actual_start_at && service.actual_end_at) {
-            const start = new Date(service.actual_start_at);
-            const end = new Date(service.actual_end_at);
-            const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-            totalHours += hours;
-          }
-        });
-      });
+      const deliveredHours = deliveredHoursForStaff(staff.id, staffBookings);
 
       // Get rating from staff_rating JSONB field or fallback to main rating
       const averageRating =
@@ -195,7 +182,7 @@ export async function GET(request: NextRequest) {
         noShows,
         totalRevenue,
         averageBookingValue,
-        totalHours,
+        deliveredHours,
         averageRating,
         totalReviews: staffReviews.length,
         commissionEarned,
