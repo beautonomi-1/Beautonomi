@@ -112,30 +112,58 @@ function makeBillingHistoryAdminClient(rows: unknown[] = BANTU_BILLING_TXNS) {
 }
 
 function makeInvoicesServerClientFixed(invoices: unknown[] = []) {
-  let invoicesFromCall = 0;
+  const invoiceChain = () => {
+    const chain: Record<string, unknown> = {};
+    const self = () => chain;
+    chain.select = vi.fn(self);
+    chain.eq = vi.fn(self);
+    chain.or = vi.fn(self);
+    chain.gte = vi.fn(self);
+    chain.lte = vi.fn(self);
+    chain.not = vi.fn(self);
+    chain.order = vi.fn(self);
+    chain.range = vi.fn(() =>
+      Promise.resolve({ data: invoices, error: null, count: invoices.length }),
+    );
+    chain.in = vi.fn(() => Promise.resolve({ data: [], error: null }));
+    // Summary query is awaited after filters, with no terminal method.
+    Object.assign(chain, {
+      then: (resolve: (v: unknown) => void) => resolve({ data: [], error: null }),
+    });
+    return chain;
+  };
+
+  const maybeSingleChain = (data: unknown) => {
+    const chain: Record<string, unknown> = {};
+    const self = () => chain;
+    chain.select = vi.fn(self);
+    chain.eq = vi.fn(self);
+    chain.in = vi.fn(self);
+    chain.order = vi.fn(self);
+    chain.limit = vi.fn(self);
+    chain.maybeSingle = vi.fn(() => Promise.resolve({ data, error: null }));
+    return chain;
+  };
+
+  const emptyListChain = () => {
+    const chain: Record<string, unknown> = {};
+    const self = () => chain;
+    chain.select = vi.fn(self);
+    chain.eq = vi.fn(self);
+    chain.order = vi.fn(self);
+    chain.in = vi.fn(() => Promise.resolve({ data: [], error: null }));
+    chain.limit = vi.fn(() => Promise.resolve({ data: [], error: null }));
+    return chain;
+  };
+
   return {
     from: vi.fn((table: string) => {
-      if (table !== "provider_invoices") throw new Error(`Unexpected server table ${table}`);
-      invoicesFromCall += 1;
-      if (invoicesFromCall === 1) {
-        const chain: Record<string, unknown> = {};
-        chain.select = vi.fn(() => chain);
-        chain.eq = vi.fn(() => chain);
-        chain.order = vi.fn(() => chain);
-        chain.range = vi.fn(() =>
-          Promise.resolve({ data: invoices, error: null, count: invoices.length }),
-        );
-        return chain;
-      }
-      const summaryChain: Record<string, unknown> = {};
-      summaryChain.select = vi.fn(() => summaryChain);
-      summaryChain.eq = vi.fn(() => summaryChain);
-      // Route awaits summaryQuery without range — Supabase builder is thenable
-      Object.assign(summaryChain, {
-        then: (resolve: (v: unknown) => void) =>
-          resolve({ data: [], error: null }),
-      });
-      return summaryChain;
+      if (table === "provider_invoices") return invoiceChain();
+      if (table === "providers") return maybeSingleChain({ currency: "ZAR" });
+      if (table === "provider_subscriptions") return maybeSingleChain(null);
+      if (table === "terminal_orders") return emptyListChain();
+      if (table === "provider_billing_activity") return emptyListChain();
+      throw new Error(`Unexpected server table ${table}`);
     }),
   };
 }

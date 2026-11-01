@@ -21,8 +21,11 @@ describe("Provider booking create: group participants carry no platform fee", ()
     expect(src).toContain('"Cannot add bookings to a cancelled group", "INVALID_GROUP_BOOKING"');
   });
 
-  it("only computes the provider fee for non-group, non-walk-in bookings", () => {
-    expect(src).toMatch(/if \(!isWalkIn && !normalizedGroupBookingId\)/);
+  it("records a zero platform fee for every provider-created booking, including group participants", () => {
+    expect(src).toMatch(/const platformFeeAmount = 0;/);
+    expect(src).toContain("platform_fee_amount: platformFeeAmount");
+    expect(src).toContain("platform_fee_paid_by: null");
+    expect(src).not.toContain("calculatePlatformFeeAmount");
   });
 });
 
