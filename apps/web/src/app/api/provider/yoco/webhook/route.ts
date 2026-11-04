@@ -5,6 +5,7 @@ import { YOCO_WEBHOOK_EVENTS } from "@/lib/payments/yoco";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { voidSaleGiftCard } from "@/lib/gift-cards/sale-gift-card";
 import { applyYocoSuccessfulSettlement } from "@/lib/payments/yoco-apply-successful-settlement";
 import {
   resolveYocoSettleEntity,
@@ -420,6 +421,7 @@ async function handlePaymentNotification(
       currency,
     });
   } else if (status === "failed" && saleId) {
+    await voidSaleGiftCard(getSupabaseAdmin(), saleId);
     const { error: saleError } = await supabase
       .from("sales")
       .update({

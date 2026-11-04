@@ -14,7 +14,9 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
-import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { useConfigBundle, useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
+import { useRouter } from "next/navigation";
 import {
   Dialog,
   DialogContent,
@@ -96,6 +98,8 @@ export default function CustomRequestsPageClient({
   const { t } = useTranslation();
   const { role } = useAuth();
   const { bundle } = useConfigBundle();
+  const router = useRouter();
+  const customOfferFullCheckout = useFeatureFlag(FEATURE_FLAG_KEYS.CUSTOM_OFFER_FULL_CHECKOUT);
   const searchParams = useSearchParams();
   const deeplinkHandledRef = useRef(false);
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
@@ -379,6 +383,10 @@ export default function CustomRequestsPageClient({
   };
 
   const acceptAndPay = async (offerId: string, paymentOption: "full" | "deposit" = "full") => {
+    if (customOfferFullCheckout) {
+      router.push(`/checkout/custom-offer/${offerId}`);
+      return;
+    }
     try {
       const res = await fetcher.post<{ data: { paymentUrl?: string; payment_url?: string } }>(`/api/me/custom-offers/${offerId}/accept`, { payment_option: paymentOption });
       const url = res.data?.paymentUrl ?? res.data?.payment_url;
@@ -813,6 +821,8 @@ export default function CustomRequestsPageClient({
                                   <Button variant="secondary" size="sm" disabled className="capitalize">{badgeLabel}</Button>
                                 ) : isPaymentPending ? (
                                   <Button variant="secondary" size="sm" disabled>{t("web.accountSettings.customRequests.badgeProcessing")}</Button>
+                                ) : isChangesRequested ? (
+                                  <Button variant="secondary" size="sm" disabled>{t("web.accountSettings.customRequests.badgeChangesRequested")}</Button>
                                 ) : (
                                   <>
                                     <Button

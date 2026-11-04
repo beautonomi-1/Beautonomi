@@ -8,6 +8,7 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { bookingTenantMismatchResponse } from "@/lib/tenant/provider-matches-host";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { sumPendingWalletGiftBookingPayments } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import {
@@ -151,6 +152,7 @@ export async function POST(
           .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
           .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
       : 0;
+    const pendingWalletGift = await sumPendingWalletGiftBookingPayments(supabaseAdmin, bookingId);
     const baseOutstanding = computeBookingOutstandingDisplay({
       totalAmount: Number(booking.total_amount ?? 0),
       totalPaid: Number(booking.total_paid ?? 0),
@@ -159,6 +161,7 @@ export async function POST(
       giftCardAmount: Number(booking.gift_card_amount ?? 0),
       unpaidAdditionalCharges: 0,
       paymentStatus: booking.payment_status,
+      pendingWalletGiftAmount: pendingWalletGift,
     });
     const amountDue = computeBookingOutstandingDisplay({
       totalAmount: Number(booking.total_amount ?? 0),
@@ -168,6 +171,7 @@ export async function POST(
       giftCardAmount: Number(booking.gift_card_amount ?? 0),
       unpaidAdditionalCharges,
       paymentStatus: booking.payment_status,
+      pendingWalletGiftAmount: pendingWalletGift,
     });
 
     // Nothing owed (base settled and no unpaid add-ons) → nothing to send.

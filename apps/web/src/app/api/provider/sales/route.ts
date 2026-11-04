@@ -4,7 +4,8 @@ import { getProviderIdForUser, notFoundResponse, successResponse, handleApiError
 import { requireAnyPermission, requirePermission } from "@/lib/auth/requirePermission";
 import { createClient } from "@supabase/supabase-js";
 import {
-  applyPosProductStockDecrements,
+  applyPosProductStockDecrementsReversible,
+  restorePosProductStock,
   validatePosProductStock,
 } from "@/lib/provider-sales/pos-product-stock";
 import { dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
@@ -25,13 +26,57 @@ import {
 } from "@/lib/provider-sales/map-walk-in-order-to-sale";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
+import { isBookingCollectionSale } from "@/lib/reports/provider-sales-history";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  captureSaleGiftCard,
+  reserveSaleGiftCard,
+  saleGiftTenderMismatch,
+  saleCardAmountStillDue,
+  sumSaleGiftCardPaidBySaleIds,
+  sumSuccessfulSaleCardTakenBySaleIds,
+  voidSaleGiftCard,
+} from "@/lib/gift-cards/sale-gift-card";
 import {
   findCustomerIdsByContactSearchAmongIds,
   loadDistinctSaleCustomerIdsForProvider,
   MAX_INLINE_MATCH_IDS,
 } from "@/lib/provider/client-contact-search";
+import { computeVat } from "@beautonomi/utils";
+import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const maxDuration = 60;
+
+async function computeProviderSaleTax(
+  supabase: SupabaseClient,
+  providerId: string,
+  taxableSubtotal: number,
+  currency: string,
+): Promise<{ taxAmount: number; taxRatePercent: number; inclusive: boolean }> {
+  const subtotal = Math.max(0, Number(taxableSubtotal) || 0);
+  const { data: providerRow } = await supabase
+    .from("providers")
+    .select(
+      "tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code",
+    )
+    .eq("id", providerId)
+    .maybeSingle();
+  const vat = await resolveProviderVat(supabase, {
+    ...(providerRow ?? {}),
+    tax_rate_override_percent: null,
+  });
+  if (!vat.registered || subtotal <= 0 || vat.ratePercent <= 0) {
+    return { taxAmount: 0, taxRatePercent: 0, inclusive: vat.inclusive };
+  }
+  const split = computeVat({
+    baseAmount: subtotal,
+    ratePercent: vat.ratePercent,
+    inclusive: vat.inclusive,
+    currency,
+  });
+  return { taxAmount: split.taxAmount, taxRatePercent: vat.ratePercent, inclusive: vat.inclusive };
+}
 
 /** Values allowed by `sales.payment_method` CHECK (see migration 129). */
 const DB_SALE_PAYMENT_METHODS = new Set([
@@ -219,10 +264,13 @@ export async function GET(request: NextRequest) {
       walkInOrders = [];
     }
 
-    const salesById = new Map((sales || []).map((sale: any) => [String(sale.id), sale]));
+    const standaloneSales = (sales || []).filter(
+      (sale: { notes?: string | null }) => !isBookingCollectionSale(sale.notes),
+    );
+    const salesById = new Map(standaloneSales.map((sale: any) => [String(sale.id), sale]));
     const walkInsById = new Map((walkInOrders || []).map((order: any) => [String(order.id), order]));
 
-    const transformedSales: SaleHistoryRow[] = (sales || []).map((sale: any) => ({
+    const transformedSales: SaleHistoryRow[] = standaloneSales.map((sale: any) => ({
       id: sale.id,
       ref_number: sale.ref_number || sale.sale_number,
       client_name: null,
@@ -254,6 +302,19 @@ export async function GET(request: NextRequest) {
     );
     const mergedSales = mergeSaleHistoryRows(transformedSales, walkInSales, migratedSaleIds);
     const pagedSales = mergedSales.slice(offset, offset + limit);
+    const pageSaleIds = pagedSales
+      .map((row) => row.id)
+      .filter((id) => salesById.has(String(id)));
+    const giftPaidBySale = await sumSaleGiftCardPaidBySaleIds(supabaseAdmin, pageSaleIds);
+    const cardTakenBySale = await sumSuccessfulSaleCardTakenBySaleIds(supabaseAdmin, pageSaleIds);
+    for (const row of pagedSales) {
+      const sale = salesById.get(String(row.id));
+      if (!sale) continue;
+      const giftPaid = giftPaidBySale.get(String(row.id)) ?? 0;
+      const cardTaken = cardTakenBySale.get(String(row.id)) ?? 0;
+      row.amount_due = saleCardAmountStillDue(Number(sale.total_amount ?? 0), giftPaid, cardTaken);
+      if (giftPaid > 0.009) row.gift_card_amount = giftPaid;
+    }
     const mergedCount = mergedSales.length;
     const periodTotalMerged = mergedSales.reduce((sum, row) => sum + Number(row.total || 0), 0);
     const totalPartial = (sales || []).length >= 5_000 || (walkInOrders || []).length >= 5_000;
@@ -507,7 +568,10 @@ export async function POST(request: NextRequest) {
       if (yocoGate) return yocoGate;
     }
 
-    const stockError = await validatePosProductStock(supabase, providerId, items);
+    const bookingCollection = isBookingCollectionSale(notes);
+    const stockError = bookingCollection
+      ? null
+      : await validatePosProductStock(supabase, providerId, items);
     if (stockError) {
       return handleApiError(
         new Error(stockError),
@@ -526,6 +590,7 @@ export async function POST(request: NextRequest) {
     // Product-only POS sales → walk_in product_orders (Part I migration path).
     if (
       isProductOnlyLegacySale(items) &&
+      !bookingCollection &&
       !hasSplitPayments &&
       !hasGiftCard &&
       !hasTip
@@ -550,12 +615,12 @@ export async function POST(request: NextRequest) {
       const calculatedSubtotal = subtotal || items.reduce((sum: number, item: any) =>
         sum + (item.unit_price || 0) * (item.quantity || 1), 0
       );
-      const calculatedTax = tax_amount || (calculatedSubtotal * (tax_rate || 0));
+      const discountNum = Math.max(0, Number(discount_amount || 0));
+      const taxableSubtotal = Math.max(0, calculatedSubtotal - discountNum);
+      const { taxAmount: calculatedTax, taxRatePercent: serverTaxRate, inclusive } =
+        await computeProviderSaleTax(supabase, providerId, taxableSubtotal, "ZAR");
       const tipNum = Number(tip_amount || 0);
-      const calculatedTotal =
-        total_amount !== undefined && total_amount !== null
-          ? Number(total_amount)
-          : calculatedSubtotal + calculatedTax - Number(discount_amount || 0) + tipNum;
+      const calculatedTotal = taxableSubtotal + (inclusive ? 0 : calculatedTax) + tipNum;
 
       const { orderId, orderNumber } = await createWalkInOrderFromLegacySale({
         supabase,
@@ -567,7 +632,7 @@ export async function POST(request: NextRequest) {
         customerId: customer_id || null,
         items,
         subtotal: calculatedSubtotal,
-        taxRate: tax_rate || 0,
+        taxRate: serverTaxRate,
         taxAmount: calculatedTax,
         discountAmount: discount_amount || 0,
         totalAmount: calculatedTotal,
@@ -618,12 +683,15 @@ export async function POST(request: NextRequest) {
     const calculatedSubtotal = subtotal || items.reduce((sum: number, item: any) => 
       sum + (item.unit_price || 0) * (item.quantity || 1), 0
     );
-    const calculatedTax = tax_amount || (calculatedSubtotal * (tax_rate || 0));
+    const discountNum = Math.max(0, Number(discount_amount || 0));
+    const taxableForVat = Math.max(0, calculatedSubtotal - discountNum);
+    const { taxAmount: calculatedTax, taxRatePercent: serverTaxRate, inclusive } =
+      await computeProviderSaleTax(supabase, providerId, taxableForVat, "ZAR");
     const tipNum = Number(tip_amount || 0);
-    const calculatedTotal =
-      total_amount !== undefined && total_amount !== null
-        ? Number(total_amount)
-        : calculatedSubtotal + calculatedTax - Number(discount_amount || 0) + tipNum;
+    const serverGross = taxableForVat + (inclusive ? 0 : calculatedTax) + tipNum;
+    // Gift-card legs are payments against this gross. A client total that adds
+    // inclusive VAT, or subtracts the gift card, is not the amount owed.
+    const calculatedTotal = serverGross;
 
     // Create sale
     const { data: sale, error: saleError } = await supabase
@@ -635,7 +703,7 @@ export async function POST(request: NextRequest) {
         staff_id: staff_id || null,
         sale_date: sale_date || new Date().toISOString(),
         subtotal: calculatedSubtotal,
-        tax_rate: tax_rate || 0,
+        tax_rate: serverTaxRate,
         tax_amount: calculatedTax,
         discount_amount: discount_amount || 0,
         total_amount: calculatedTotal,
@@ -685,7 +753,7 @@ export async function POST(request: NextRequest) {
 
     const rollbackSaleWithGift = async (giftWasReserved: boolean) => {
       if (giftWasReserved) {
-        await supabase.rpc("void_gift_card_redemption_for_sale", { p_sale_id: sale.id });
+        await voidSaleGiftCard(getSupabaseAdmin(), sale.id);
       }
       await supabase.from("sale_payments").delete().eq("sale_id", sale.id);
       await supabase.from("sale_items").delete().eq("sale_id", sale.id);
@@ -705,22 +773,32 @@ export async function POST(request: NextRequest) {
       typeof giftCardCodeInput === "string" ? giftCardCodeInput.trim().toUpperCase() : "";
     const giftAmount = Number(giftCardAmountInput ?? 0);
     let giftReserved = false;
+    let stockTaken: Awaited<ReturnType<typeof applyPosProductStockDecrementsReversible>> = [];
 
     try {
+      const giftTenderMismatch = saleGiftTenderMismatch({
+        giftCode,
+        giftAmount,
+        saleTotal: calculatedTotal,
+        legs: paymentLegs,
+      });
+      if (giftTenderMismatch) {
+        await rollbackSaleWithGift(false);
+        return handleApiError(new Error(giftTenderMismatch), "GIFT_CARD_ERROR", 400);
+      }
+
       if (giftCode && giftAmount > 0) {
-        const { error: reserveErr } = await supabase.rpc(
-          "reserve_gift_card_redemption_for_sale",
-          {
-            p_code: giftCode,
-            p_amount: giftAmount,
-            p_sale_id: sale.id,
-            p_currency: saleCurrency,
-          },
-        );
-        if (reserveErr) {
+        const reserved = await reserveSaleGiftCard(getSupabaseAdmin(), {
+          code: giftCode,
+          amount: giftAmount,
+          saleId: sale.id,
+          currency: saleCurrency,
+          userId: user.id,
+        });
+        if (reserved.ok === false) {
           await rollbackSaleWithGift(false);
           return handleApiError(
-            new Error(reserveErr.message || "Gift card could not be applied"),
+            new Error(reserved.message),
             "GIFT_CARD_ERROR",
             400,
           );
@@ -769,43 +847,39 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      if (resolvedPaymentStatus === "completed" && !isBookingCollectionSale(notes)) {
+        // Stock before capture. A captured gift card cannot be voided by the
+        // sale void, so a later stock failure would keep the card money after
+        // the sale row is deleted.
+        try {
+          stockTaken = await applyPosProductStockDecrementsReversible(supabase, items);
+        } catch (stockErr) {
+          await rollbackSaleWithGift(giftReserved);
+          return handleApiError(
+            stockErr instanceof Error ? stockErr : new Error(String(stockErr)),
+            "Sale was not saved: inventory could not be updated. Try again or check product stock.",
+            "SALE_STOCK_FAILED",
+            500,
+          );
+        }
+      }
+
       if (giftReserved && resolvedPaymentStatus === "completed") {
-        const { error: captureErr } = await supabase.rpc(
-          "capture_gift_card_redemption_for_sale",
-          { p_sale_id: sale.id },
-        );
-        if (captureErr) {
+        const captured = await captureSaleGiftCard(getSupabaseAdmin(), sale.id);
+        if (captured.ok === false) {
+          await restorePosProductStock(supabase, stockTaken);
           await rollbackSaleWithGift(true);
           return handleApiError(
-            new Error(captureErr.message || "Gift card capture failed"),
+            new Error(captured.message),
             "GIFT_CARD_ERROR",
             500,
           );
         }
       }
     } catch (legBlockErr) {
-      if (giftReserved) {
-        try {
-          await supabase.rpc("void_gift_card_redemption_for_sale", { p_sale_id: sale.id });
-        } catch {
-          /* best-effort rollback */
-        }
-      }
+      await restorePosProductStock(supabase, stockTaken);
+      await rollbackSaleWithGift(giftReserved);
       throw legBlockErr;
-    }
-
-    if (resolvedPaymentStatus === "completed") {
-      try {
-        await applyPosProductStockDecrements(supabase, items);
-      } catch (stockErr) {
-        await supabase.from("sales").delete().eq("id", sale.id);
-        return handleApiError(
-          stockErr instanceof Error ? stockErr : new Error(String(stockErr)),
-          "Sale was not saved: inventory could not be updated. Try again or check product stock.",
-          "SALE_STOCK_FAILED",
-          500,
-        );
-      }
     }
 
     // Fetch complete sale with items (simplified query)

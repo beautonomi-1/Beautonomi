@@ -69,17 +69,118 @@ export async function ensureWalletGiftBookingPayments(
   await insertOne("gift_card", giftCardAmount);
 }
 
-/** Mark synthetic wallet/gift booking_payments `completed` after Paystack / no-gateway ledger exists (F1). */
+/** Wallet and gift already stored for one additional charge. A retry must not take them again. */
+export async function sumAdditionalChargeTenderLegs(
+  supabase: SupabaseClient,
+  bookingId: string,
+  chargeId: string,
+): Promise<{ wallet: number; gift: number }> {
+  const suffix = `:additional:${chargeId}`;
+  const { data, error } = await supabase
+    .from("booking_payments")
+    .select("amount, payment_provider, payment_provider_id")
+    .eq("booking_id", bookingId)
+    .in("payment_provider", ["wallet", "gift_card"])
+    .in("status", ["pending", "completed", "partially_refunded"]);
+  if (error) {
+    throw new Error(
+      `Failed to read additional-charge tender for ${chargeId}: ${error.message}`,
+    );
+  }
+  let wallet = 0;
+  let gift = 0;
+  for (const row of data ?? []) {
+    const providerId = String((row as { payment_provider_id?: string | null }).payment_provider_id ?? "");
+    if (!providerId.endsWith(suffix)) continue;
+    const amount = Math.max(0, Number((row as { amount?: number | null }).amount ?? 0));
+    const provider = String((row as { payment_provider?: string | null }).payment_provider ?? "");
+    if (provider === "gift_card") gift += amount;
+    else wallet += amount;
+  }
+  return {
+    wallet: Math.round(wallet * 100) / 100,
+    gift: Math.round(gift * 100) / 100,
+  };
+}
+
+/** Sum wallet and gift-card booking payments that are reserved but not yet in `total_paid`. */
+export async function sumPendingWalletGiftBookingPayments(
+  supabase: SupabaseClient,
+  bookingId: string,
+): Promise<number> {
+  const { data, error } = await supabase
+    .from("booking_payments")
+    .select("amount")
+    .eq("booking_id", bookingId)
+    .eq("status", "pending")
+    .in("payment_provider", ["wallet", "gift_card"]);
+  if (error) {
+    throw new Error(
+      `Failed to read pending wallet or gift payments for booking ${bookingId}: ${error.message}`,
+    );
+  }
+  const sum = (data ?? []).reduce(
+    (total, row) => total + Number((row as { amount?: number | null }).amount ?? 0),
+    0,
+  );
+  return Math.round(Math.max(0, sum) * 100) / 100;
+}
+
+/** Pending wallet and gift totals for many bookings. A read error throws so a charge is not sent without this hold. */
+export async function sumPendingWalletGiftByBookingIds(
+  supabase: SupabaseClient,
+  bookingIds: string[],
+): Promise<Map<string, number>> {
+  const totals = new Map<string, number>();
+  const ids = [...new Set(bookingIds.filter(Boolean))];
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100);
+    const { data, error } = await supabase
+      .from("booking_payments")
+      .select("booking_id, amount")
+      .in("booking_id", chunk)
+      .eq("status", "pending")
+      .in("payment_provider", ["wallet", "gift_card"]);
+    if (error) {
+      throw new Error(`Failed to read pending wallet or gift payments: ${error.message}`);
+    }
+    for (const row of data ?? []) {
+      const bookingId = String((row as { booking_id?: string }).booking_id ?? "");
+      if (!bookingId) continue;
+      const amount = Math.max(0, Number((row as { amount?: number | null }).amount ?? 0));
+      totals.set(bookingId, (totals.get(bookingId) ?? 0) + amount);
+    }
+  }
+  for (const [bookingId, sum] of totals) {
+    totals.set(bookingId, Math.round(sum * 100) / 100);
+  }
+  return totals;
+}
+
+/**
+ * Mark synthetic wallet/gift booking_payments `completed` after the ledger for that leg exists.
+ * Pass `paymentLegSuffix` so a balance payment does not complete an extra-charge hold, and the reverse.
+ * An empty suffix completes only the original checkout rows (`wallet_booking:{id}`).
+ */
 export async function completeWalletGiftSyntheticPayments(
   admin: SupabaseClient,
   bookingId: string,
+  options?: { paymentLegSuffix?: string },
 ): Promise<void> {
-  const { error } = await admin
+  let query = admin
     .from("booking_payments")
     .update({ status: "completed", notes: "Synthetic wallet/gift leg — completed after gateway ledger" })
     .eq("booking_id", bookingId)
     .in("payment_provider", ["wallet", "gift_card"])
     .eq("status", "pending");
+  if (options && Object.prototype.hasOwnProperty.call(options, "paymentLegSuffix")) {
+    const suffix = options.paymentLegSuffix ?? "";
+    query = query.in("payment_provider_id", [
+      buildSyntheticWalletGiftProviderId("wallet", bookingId, suffix),
+      buildSyntheticWalletGiftProviderId("gift_card", bookingId, suffix),
+    ]);
+  }
+  const { error } = await query;
   if (error) {
     console.error("[completeWalletGiftSyntheticPayments] update failed:", error);
   }

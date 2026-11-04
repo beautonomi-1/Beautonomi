@@ -36,6 +36,7 @@ interface GiftCardRedemptionsData {
     redeemed_at?: string;
     gift_card_code?: string | null;
     booking_number?: string | null;
+    reference_label?: string | null;
   }>;
 }
 
@@ -283,9 +284,9 @@ export default function GiftCardRedemptionsReport() {
                           {redemption.gift_card_code ?? t("web.provider.common.emDash")}
                         </p>
                         <p className="text-sm text-gray-600 mt-0.5">{safe}</p>
-                        {redemption.booking_number ? (
+                        {redemption.reference_label || redemption.booking_number ? (
                           <p className="text-xs text-gray-500 mt-0.5">
-                            Booking {redemption.booking_number}
+                            {redemption.reference_label ?? `Booking ${redemption.booking_number}`}
                           </p>
                         ) : null}
                       </div>

@@ -169,6 +169,8 @@ export interface OnboardingFormData {
   payout_setup_complete?: boolean;
   is_vat_registered?: boolean;
   vat_number?: string;
+  /** When VAT registered: prices include VAT (default true). */
+  tax_inclusive?: boolean;
   previous_software?: string;
   previous_software_other?: string;
   payroll_type?: PayrollType;

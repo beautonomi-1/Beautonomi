@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { recordProductOrderPayment } from "../record-product-order-payment";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 
 vi.mock("@/lib/finance/resolve-tenant-id-for-ledger", () => ({
   resolveTenantIdForFinanceLedger: vi.fn().mockResolvedValue("tenant-1"),
@@ -36,10 +37,14 @@ vi.mock("@sentry/nextjs", () => ({
   captureMessage: vi.fn(),
 }));
 
+vi.mock("@/lib/server/feature-flags", () => ({
+  isFeatureEnabledServer: vi.fn().mockResolvedValue(true),
+}));
+
 type Row = Record<string, unknown>;
 
 function makeQuery(table: string, state: { rows: Record<string, Row[]>; inserts: Record<string, Row[][]>; updates: Record<string, Row[]> }) {
-  const filters: Array<{ key: string; value: unknown; op: "eq" | "ilike" | "is" | "in" }> = [];
+  const filters: Array<{ key: string; value: unknown; op: "eq" | "ilike" | "is" | "in" | "json" }> = [];
   const applyFilters = (rows: Row[]) =>
     rows.filter((row) =>
       filters.every((filter) => {
@@ -52,6 +57,10 @@ function makeQuery(table: string, state: { rows: Record<string, Row[]>; inserts:
         }
         if (filter.op === "in") {
           return (filter.value as unknown[]).includes(row[filter.key]);
+        }
+        if (filter.op === "json" && filter.key === "metadata->>product_order_id") {
+          const metadata = row.metadata as { product_order_id?: string } | undefined;
+          return metadata?.product_order_id === filter.value;
         }
         return row[filter.key] === filter.value;
       }),
@@ -73,6 +82,10 @@ function makeQuery(table: string, state: { rows: Record<string, Row[]>; inserts:
     },
     ilike(key: string, value: unknown) {
       filters.push({ key, value, op: "ilike" });
+      return query;
+    },
+    filter(key: string, _op: string, value: unknown) {
+      filters.push({ key, value, op: "json" });
       return query;
     },
     limit: vi.fn(() => query),
@@ -158,6 +171,62 @@ describe("recordProductOrderPayment", () => {
     expect(result).toEqual({ ok: true, duplicate: false, transitionedToPaid: true });
     expect(state.inserts.payment_transactions).toHaveLength(1);
     expect(state.inserts.finance_transactions).toBeUndefined();
+  });
+
+  it("carves product-order tax into a tax ledger leg when tax_amount is set", async () => {
+    const { supabase, state } = mockSupabase({
+      product_orders: [{ ...orderRow, tax_amount: 13.04, total_amount: 100 }],
+      payment_transactions: [],
+      finance_transactions: [],
+    });
+
+    await recordProductOrderPayment({
+      supabase,
+      productOrderId: "order-1",
+      reference: "paystack-tax",
+      amountMajor: 100,
+      source: "paystack_verify",
+      provider: "paystack",
+    });
+
+    const legs = state.inserts.finance_transactions?.[0] ?? [];
+    const taxLeg = legs.find((row) => row.transaction_type === "tax");
+    const earningsLeg = legs.find((row) => row.transaction_type === "provider_earnings");
+    expect(taxLeg).toMatchObject({
+      amount: 13.04,
+      net: 0,
+      metadata: { vat_source: "product_order", vat_held_for_provider: true },
+    });
+    expect(earningsLeg?.amount).toBe(76.96);
+  });
+
+  it("records a tax ledger leg for VAT reports even when VAT payout feature is disabled (no earnings carve)", async () => {
+    vi.mocked(isFeatureEnabledServer).mockResolvedValueOnce(false);
+    const { supabase, state } = mockSupabase({
+      product_orders: [{ ...orderRow, tax_amount: 13.04, total_amount: 100 }],
+      payment_transactions: [],
+      finance_transactions: [],
+    });
+
+    await recordProductOrderPayment({
+      supabase,
+      productOrderId: "order-1",
+      reference: "paystack-tax-flag-off",
+      amountMajor: 100,
+      source: "paystack_verify",
+      provider: "paystack",
+    });
+
+    const legs = state.inserts.finance_transactions?.[0] ?? [];
+    const taxLeg = legs.find((row) => row.transaction_type === "tax");
+    const earningsLeg = legs.find((row) => row.transaction_type === "provider_earnings");
+    expect(taxLeg).toMatchObject({
+      amount: 13.04,
+      net: 0,
+      metadata: { vat_source: "product_order" },
+    });
+    // No carve when feature flag is off → earnings remain gross-for-provider minus platform fee.
+    expect(earningsLeg?.amount).toBe(90);
   });
 
   it("recovers missing platform-held product ledger rows when payment transaction already exists", async () => {
@@ -258,6 +327,9 @@ describe("recordProductOrderPayment", () => {
           },
           ilike(key: string, value: unknown) {
             filters.push({ key, value, op: "ilike" });
+            return query;
+          },
+          filter() {
             return query;
           },
           limit: vi.fn(() => query),
@@ -449,5 +521,172 @@ describe("recordProductOrderPayment", () => {
     const rows = state.inserts.finance_transactions?.[0] ?? [];
     expect(rows.find((row) => row.transaction_type === "provider_earnings")?.net).toBe(40);
     expect(rows.some((row) => row.transaction_type === "platform_fee")).toBe(false);
+  });
+
+  it("does not mark a wallet and gift order paid when the gift is not captured", async () => {
+    const { supabase, state } = mockSupabase({
+      product_orders: [{ ...orderRow, wallet_amount: 60, gift_card_amount: 40, total_amount: 100 }],
+      payment_transactions: [],
+      finance_transactions: [],
+    });
+    (supabase as { rpc: ReturnType<typeof vi.fn> }).rpc = vi.fn().mockResolvedValue({
+      data: false,
+      error: null,
+    });
+
+    const result = await recordProductOrderPayment({
+      supabase,
+      productOrderId: "order-1",
+      reference: "wallet_product_order_order-1",
+      amountMajor: 100,
+      source: "wallet_checkout",
+      provider: "wallet",
+    });
+
+    expect(result).toEqual({ ok: false, duplicate: false, transitionedToPaid: false });
+    expect(state.inserts.payment_transactions).toBeUndefined();
+    expect(state.inserts.finance_transactions).toBeUndefined();
+    expect(state.updates.product_orders).toEqual(
+      expect.arrayContaining([expect.objectContaining({ gift_card_amount: 0, gift_card_id: null })]),
+    );
+  });
+
+  it("does not pay the provider for a gift that was not captured when the card covers the order", async () => {
+    const { supabase, state } = mockSupabase({
+      product_orders: [
+        {
+          ...orderRow,
+          platform_fee: 10,
+          wallet_amount: 70,
+          gift_card_amount: 40,
+          total_amount: 100,
+        },
+      ],
+      payment_transactions: [],
+      finance_transactions: [],
+    });
+    const rpc = vi.fn().mockResolvedValue({ data: false, error: null });
+    (supabase as { rpc: ReturnType<typeof vi.fn> }).rpc = rpc;
+
+    const result = await recordProductOrderPayment({
+      supabase,
+      productOrderId: "order-1",
+      reference: "yoco-ref",
+      amountMajor: 30,
+      source: "yoco_terminal",
+      provider: "yoco",
+      platformHeld: false,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.transitionedToPaid).toBe(true);
+    const rows = state.inserts.finance_transactions?.[0] ?? [];
+    expect(rows.find((row) => row.transaction_type === "provider_earnings")?.net).toBe(60);
+    expect(rows.find((row) => row.transaction_type === "platform_fee")?.net).toBe(10);
+    expect(rpc.mock.calls.map((call) => call[0])).toEqual([
+      "capture_gift_card_redemption_for_order",
+      "void_gift_card_redemption_for_order",
+    ]);
+  });
+
+  it("leaves the order unpaid when a failed gift capture cannot be released", async () => {
+    const { supabase, state } = mockSupabase({
+      product_orders: [
+        {
+          ...orderRow,
+          platform_fee: 10,
+          wallet_amount: 70,
+          gift_card_amount: 40,
+          total_amount: 100,
+        },
+      ],
+      payment_transactions: [],
+      finance_transactions: [],
+    });
+    const rpc = vi.fn().mockResolvedValue({ data: null, error: { message: "unavailable" } });
+    (supabase as { rpc: ReturnType<typeof vi.fn> }).rpc = rpc;
+
+    const result = await recordProductOrderPayment({
+      supabase,
+      productOrderId: "order-1",
+      reference: "yoco-ref",
+      amountMajor: 30,
+      source: "yoco_terminal",
+      provider: "yoco",
+      platformHeld: false,
+    });
+
+    expect(result).toEqual({ ok: true, duplicate: false, transitionedToPaid: false });
+    expect(state.inserts.finance_transactions).toBeUndefined();
+    expect(state.updates.product_orders?.some((row) => row.payment_status === "paid") ?? false).toBe(false);
+    expect(state.updates.product_orders?.some((row) => row.gift_card_amount === 0) ?? false).toBe(false);
+    expect(state.inserts.payment_transactions?.[0]?.[0]).toMatchObject({ amount: 30, provider: "yoco" });
+    expect(rpc.mock.calls.map((call) => call[0])).toEqual([
+      "capture_gift_card_redemption_for_order",
+      "void_gift_card_redemption_for_order",
+      "void_gift_card_redemption_for_order",
+    ]);
+  });
+
+  it("keeps a card payment and leaves the order unpaid when the gift is not captured", async () => {
+    const { supabase, state } = mockSupabase({
+      product_orders: [{ ...orderRow, gift_card_amount: 40, total_amount: 100 }],
+      payment_transactions: [],
+      finance_transactions: [],
+    });
+    (supabase as { rpc: ReturnType<typeof vi.fn> }).rpc = vi.fn().mockResolvedValue({
+      data: false,
+      error: null,
+    });
+
+    const result = await recordProductOrderPayment({
+      supabase,
+      productOrderId: "order-1",
+      reference: "paystack-ref",
+      amountMajor: 60,
+      source: "paystack_webhook",
+      provider: "paystack",
+    });
+
+    expect(result).toEqual({ ok: true, duplicate: false, transitionedToPaid: false });
+    expect(state.inserts.payment_transactions?.[0]?.[0]).toMatchObject({
+      amount: 60,
+      provider: "paystack",
+      metadata: expect.objectContaining({ gift_card_uncaptured: true, product_order_id: "order-1" }),
+    });
+    expect(state.inserts.finance_transactions).toBeUndefined();
+    expect(state.updates.product_orders?.some((row) => row.payment_status === "paid")).toBe(false);
+  });
+
+  it("does not mark the order paid when the same card payment is recorded again", async () => {
+    const { supabase, state } = mockSupabase({
+      product_orders: [{ ...orderRow, gift_card_amount: 0, total_amount: 100 }],
+      payment_transactions: [
+        {
+          id: "tx-partial",
+          provider: "paystack",
+          reference: "paystack-ref",
+          status: "success",
+          amount: 60,
+          metadata: { product_order_id: "order-1" },
+        },
+      ],
+      finance_transactions: [],
+    });
+
+    const result = await recordProductOrderPayment({
+      supabase,
+      productOrderId: "order-1",
+      reference: "paystack-ref",
+      amountMajor: 60,
+      source: "paystack_webhook",
+      provider: "paystack",
+    });
+
+    expect(result).toEqual({ ok: true, duplicate: false, transitionedToPaid: false });
+    expect(state.inserts.finance_transactions).toBeUndefined();
+    expect(state.updates.product_orders ?? []).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ payment_status: "paid" })]),
+    );
   });
 });

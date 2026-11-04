@@ -18,6 +18,8 @@ export async function recordBookingPaystackPayment(
     saveCard?: boolean | null;
     paymentMethodId?: string | null;
     notes?: string | null;
+    /** Extra keys merged into `payment_provider_data`. */
+    providerData?: Record<string, unknown>;
   },
 ): Promise<RecordBookingPaystackPaymentResult> {
   const paymentProviderId =
@@ -73,6 +75,7 @@ export async function recordBookingPaystackPayment(
       requires_deposit: Boolean(input.requiresDeposit),
       save_card: Boolean(input.saveCard),
       payment_method_id: input.paymentMethodId ?? null,
+      ...(input.providerData ?? {}),
     },
   };
 

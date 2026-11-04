@@ -166,7 +166,8 @@ function canAcceptOffer(offer: CustomRequestOffer): boolean {
     offer.status === "withdrawn" ||
     offer.status === "declined" ||
     offer.status === "finalize_failed" ||
-    offer.status === "payment_pending"
+    offer.status === "payment_pending" ||
+    offer.status === "changes_requested"
   )
     return false;
   const exp = offer.expiration_at ? new Date(offer.expiration_at).getTime() : null;

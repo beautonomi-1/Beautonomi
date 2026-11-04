@@ -226,7 +226,17 @@ export async function GET(
         ...(Number(r.membership_discount_amount || 0) > 0 ? [{ label: "Membership discount", value: `-${money(r.membership_discount_amount)}`, tone: "success" as const }] : []),
         ...(Number(r.loyalty_discount_amount || 0) > 0 ? [{ label: "Loyalty discount", value: `-${money(r.loyalty_discount_amount)}`, tone: "success" as const }] : []),
         ...(r.travel_fee > 0 ? [{ label: "Travel fee", value: money(r.travel_fee) }] : []),
-        ...(r.tax_amount > 0 ? [{ label: r.tax_rate > 0 ? `Tax (${r.tax_rate.toFixed(1)}%)` : "Tax", value: money(r.tax_amount) }] : []),
+        ...(r.tax_amount > 0
+          ? [
+              {
+                label: (() => {
+                  const pct = formatPercent(r.tax_rate);
+                  return pct ? `Tax (${pct}%)` : "Tax";
+                })(),
+                value: money(r.tax_amount),
+              },
+            ]
+          : []),
         ...(r.service_fee_amount > 0 ? [{ label: platformFeeLabel, value: money(r.service_fee_amount) }] : []),
         ...(r.tip_amount > 0 ? [{ label: "Tip", value: money(r.tip_amount) }] : []),
         ...(r.cancellation_fee > 0 ? [{ label: "Cancellation fee", value: money(r.cancellation_fee), tone: "warning" as const }] : []),

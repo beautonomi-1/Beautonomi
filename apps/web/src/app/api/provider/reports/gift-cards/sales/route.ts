@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
       reportBasis,
       basis: {
         bookingFilter:
-          "Booking must belong to this provider, use a gift card, and match location when filtered.",
+          "The booking, product order, or till sale must belong to this provider and match location when filtered.",
         redemptionFilter: "gift_card_redemptions status captured; captured_at in range.",
         headlineCount: "Number of redemption rows (each row is one capture event).",
         headlineValue: "Sum of redemption.amount for those rows.",

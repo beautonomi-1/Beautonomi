@@ -8,6 +8,8 @@
 
 ## 1. Financial Architecture Map
 
+**Status (2026-11-03):** Money-path remediation in progress — migrations `10102`–`10105` (VAT foundation, refund penny-balance, deposit residual tax, integrity RPCs), admin integrity report/repair APIs, product-order tax ledger legs, and provider VAT display/onboarding fixes. Public checkout tax-inclusive totals and wallet/refund atomicity items below remain tracked separately.
+
 ### Applications & Money Modules
 
 | Layer | Component | Money Role |

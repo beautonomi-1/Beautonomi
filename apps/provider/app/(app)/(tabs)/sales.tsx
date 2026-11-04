@@ -272,6 +272,7 @@ export default function SalesScreen() {
   const { data: paymentSettings } = useApi<{
     taxRatePercent?: number;
     taxInclusive?: boolean;
+    isVatRegistered?: boolean;
     acceptCash?: boolean;
     acceptCard?: boolean;
   }>("/api/provider/settings/payments", { enabled: isFocused, staleTimeMs: 60_000 });
@@ -521,7 +522,10 @@ export default function SalesScreen() {
   }, [refreshMetrics, refreshSales]);
 
   // Cart helpers
-  const taxRate = (paymentSettings?.taxRatePercent ?? 0) / 100;
+  const taxRate =
+    paymentSettings?.isVatRegistered === true
+      ? (paymentSettings.taxRatePercent ?? 0) / 100
+      : 0;
   const taxInclusive = paymentSettings?.taxInclusive ?? true;
 
   const cartTotal = useMemo(

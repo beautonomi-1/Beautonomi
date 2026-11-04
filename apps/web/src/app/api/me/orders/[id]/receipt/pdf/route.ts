@@ -191,6 +191,9 @@ export async function GET(
         ...(Number(receipt.tax || 0) > 0 ? [{ label: "Tax", value: moneyPdf(receipt.tax, currency) }] : []),
         ...(Number(receipt.platform_fee || 0) > 0 ? [{ label: "Platform fee", value: moneyPdf(receipt.platform_fee, currency) }] : []),
         ...(Number(receipt.wallet_amount || 0) > 0 ? [{ label: "Paid from wallet", value: moneyPdf(receipt.wallet_amount, currency), tone: "success" as const }] : []),
+        ...(Number((receipt as { gift_card_amount?: number }).gift_card_amount || 0) > 0
+          ? [{ label: "Paid by gift card", value: moneyPdf((receipt as { gift_card_amount?: number }).gift_card_amount, currency), tone: "success" as const }]
+          : []),
       ],
       { label: "Total", value: moneyPdf(receipt.total, currency) },
     );

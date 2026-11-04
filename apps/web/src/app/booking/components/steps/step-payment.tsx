@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { BookingState, type BookingStep } from "../booking-flow";
+import { PRIMARY_GROUP_PARTICIPANT_ID } from "./step-group-participants";
 import { cn, formatCurrency, formatDate, formatTime } from "@/lib/utils";
 import { initializePayment } from "../../actions/payment-actions";
 import { toast } from "sonner";
@@ -865,6 +866,28 @@ export default function StepPayment({
     currency: computedTotals.currency,
   };
 
+  // Split group checkout: guests pay their own service subtotals via invite links
+  // (same rule as computeGroupSplitPaymentAmounts on the server).
+  const groupSplitActive =
+    paymentMethod === "card" &&
+    bookingState.isGroupBooking === true &&
+    bookingState.groupPaymentMode === "split" &&
+    bookingState.groupSplitPaymentEnabled === true;
+  const groupGuestShareTotal = groupSplitActive
+    ? (bookingState.groupParticipants ?? [])
+        .filter((p) => p.id !== PRIMARY_GROUP_PARTICIPANT_ID && p.name.trim())
+        .reduce(
+          (sum, p) =>
+            sum +
+            p.serviceIds.reduce(
+              (s, id) => s + (bookingState.selectedServices.find((svc) => svc.id === id)?.price ?? 0),
+              0
+            ),
+          0
+        )
+    : 0;
+  const checkoutBaseTotal = Math.max(0, totals.total - groupGuestShareTotal);
+
   const createBookingDraft = async () => {
     if (!bookingState.providerId || !bookingState.selectedDate || !bookingState.selectedTimeSlot) {
       throw new Error(t("web.booking.stepPayment.missingBookingInfo"));
@@ -1022,6 +1045,15 @@ export default function StepPayment({
     // Add group booking data if it's a group booking
     if (bookingState.isGroupBooking && bookingState.groupParticipants) {
       bookingData.is_group_booking = true;
+      if (
+        paymentMethod === "card" &&
+        bookingState.groupPaymentMode === "split" &&
+        bookingState.groupSplitPaymentEnabled === true
+      ) {
+        bookingData.group_payment_mode = "split";
+      }
+      bookingData.group_participants_include_primary =
+        bookingState.groupParticipants[0]?.id === PRIMARY_GROUP_PARTICIPANT_ID;
       bookingData.group_participants = bookingState.groupParticipants.map((p) => ({
         name: p.name,
         email: p.email,
@@ -1233,8 +1265,8 @@ export default function StepPayment({
       return;
     }
     if (paymentMethod === "giftcard") {
-      const depositAmount = percentOf(totals.total, depositPercentage);
-      const amountDueNow = paymentOption === "deposit" ? depositAmount : totals.total;
+      const depositAmount = percentOf(checkoutBaseTotal, depositPercentage);
+      const amountDueNow = paymentOption === "deposit" ? depositAmount : checkoutBaseTotal;
       if ((bookingState.promotions.giftCardAmount || 0) + 0.005 < amountDueNow) {
         toast.error(
           t("web.booking.stepPayment.giftCardDoesNotCover")
@@ -1455,8 +1487,8 @@ export default function StepPayment({
       }
 
       // Fallback: initialize payment client-side if API did not return payment_url
-      const depositAmount = percentOf(totals.total, depositPercentage);
-      const amountDueNow = paymentOption === "deposit" ? depositAmount : totals.total;
+      const depositAmount = percentOf(checkoutBaseTotal, depositPercentage);
+      const amountDueNow = paymentOption === "deposit" ? depositAmount : checkoutBaseTotal;
       const giftCardApplied = Math.min(bookingState.promotions.giftCardAmount || 0, amountDueNow);
       const walletApplied =
         paymentMethod === "card" && useWallet
@@ -2001,10 +2033,17 @@ export default function StepPayment({
             <span>{formatCurrency(totals.total, totals.currency)}</span>
           </div>
 
+          {groupGuestShareTotal > 0 && (
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>{t("web.booking.stepPayment.guestSharesPaidByInvite")}</span>
+              <span>−{formatCurrency(groupGuestShareTotal, totals.currency)}</span>
+            </div>
+          )}
+
           {bookingState.promotions.giftCardAmount > 0 &&
             (() => {
-              const depositAmount = percentOf(totals.total, depositPercentage);
-              const amountDueNow = paymentOption === "deposit" ? depositAmount : totals.total;
+              const depositAmount = percentOf(checkoutBaseTotal, depositPercentage);
+              const amountDueNow = paymentOption === "deposit" ? depositAmount : checkoutBaseTotal;
               const giftCardApplied = Math.min(
                 bookingState.promotions.giftCardAmount || 0,
                 amountDueNow
@@ -2022,8 +2061,8 @@ export default function StepPayment({
             useWallet &&
             walletBalance > 0 &&
             (() => {
-              const depositAmount = percentOf(totals.total, depositPercentage);
-              const amountDueNow = paymentOption === "deposit" ? depositAmount : totals.total;
+              const depositAmount = percentOf(checkoutBaseTotal, depositPercentage);
+              const amountDueNow = paymentOption === "deposit" ? depositAmount : checkoutBaseTotal;
               const giftCardApplied = Math.min(
                 bookingState.promotions.giftCardAmount || 0,
                 amountDueNow
@@ -2264,6 +2303,46 @@ export default function StepPayment({
             {useWallet && walletBalance > 0 && <Wallet className="w-4 h-4 text-primary shrink-0" />}
           </div>
         )}
+
+        {paymentMethod === "card" &&
+          bookingState.isGroupBooking &&
+          bookingState.groupSplitPaymentEnabled === true &&
+          bookingState.groupParticipants &&
+          bookingState.groupParticipants.length > 0 && (
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => updateBookingState({ groupPaymentMode: "organizer_pays_all" })}
+                className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                  (bookingState.groupPaymentMode ?? "organizer_pays_all") === "organizer_pays_all"
+                    ? "border-primary bg-pink-50"
+                    : "border-gray-200 hover:border-gray-300 bg-white"
+                }`}
+              >
+                <span className="text-sm font-medium text-gray-700">
+                  {t("web.booking.stepPayment.payInFull")}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => updateBookingState({ groupPaymentMode: "split" })}
+                className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                  bookingState.groupPaymentMode === "split"
+                    ? "border-primary bg-pink-50"
+                    : "border-gray-200 hover:border-gray-300 bg-white"
+                }`}
+              >
+                <span className="text-sm font-medium text-gray-700">
+                  {t("web.booking.stepPayment.splitPayment")}
+                </span>
+              </button>
+              {bookingState.groupPaymentMode === "split" && (
+                <p className="col-span-2 text-xs text-gray-600">
+                  {t("web.booking.stepPayment.splitPaymentHint")}
+                </p>
+              )}
+            </div>
+          )}
 
         {/* Deposit vs Full payment option — only when provider accepts deposits */}
         {paymentMethod === "card" && providerRequiresDeposit && (
@@ -2625,8 +2704,8 @@ export default function StepPayment({
           const selectedCard = usingSavedCard
             ? savedCards.find((c) => c.id === selectedCardId)
             : null;
-          const depositAmount = percentOf(totals.total, depositPercentage);
-          const amountDueNow = paymentOption === "deposit" ? depositAmount : totals.total;
+          const depositAmount = percentOf(checkoutBaseTotal, depositPercentage);
+          const amountDueNow = paymentOption === "deposit" ? depositAmount : checkoutBaseTotal;
           const giftCardApplied = Math.min(
             bookingState.promotions.giftCardAmount || 0,
             amountDueNow

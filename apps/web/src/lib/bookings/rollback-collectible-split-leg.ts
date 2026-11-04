@@ -32,9 +32,37 @@ export async function rollbackCollectibleSplitLeg(
     idempotencyKey,
   } = input;
 
+  let giftRestoredOrCompensated = giftCardAmountToReverse <= 0;
   if (giftCardAmountToReverse > 0) {
     try {
-      await (admin.rpc as any)("void_gift_card_redemption", { p_booking_id: bookingId });
+      const { data: voided, error: voidErr } = await (admin.rpc as any)("void_gift_card_redemption", {
+        p_booking_id: bookingId,
+      });
+      if (voidErr) {
+        console.warn("[rollbackCollectibleSplitLeg] void_gift_card_redemption", bookingId, voidErr);
+      } else if (voided === true) {
+        giftRestoredOrCompensated = true;
+      } else if (voided === false) {
+        const walletTenantId = await resolveTenantIdForFinanceLedger(admin, {
+          tenant_id: tenantId,
+          provider_id: providerId,
+        });
+        const { error: giftCreditErr } = await (admin.rpc as any)("wallet_credit_admin", {
+          p_user_id: customerId,
+          p_amount: giftCardAmountToReverse,
+          p_currency: currency || LAST_RESORT_CURRENCY,
+          p_description: `Reversal: captured gift card could not be restored (${bookingId.slice(0, 8)})`,
+          p_reference_id: bookingId,
+          p_reference_type: "booking",
+          p_tenant_id: walletTenantId,
+          p_idempotency_key: `${idempotencyKey}:gift`,
+        });
+        if (giftCreditErr) {
+          console.error("[rollbackCollectibleSplitLeg] gift wallet credit", bookingId, giftCreditErr);
+        } else {
+          giftRestoredOrCompensated = true;
+        }
+      }
     } catch (e) {
       console.warn("[rollbackCollectibleSplitLeg] void_gift_card_redemption", bookingId, e);
     }
@@ -83,7 +111,9 @@ export async function rollbackCollectibleSplitLeg(
       .from("bookings")
       .update({
         wallet_amount: Math.max(0, Math.round((prevWallet - walletAmountToReverse) * 100) / 100),
-        gift_card_amount: Math.max(0, Math.round((prevGift - giftCardAmountToReverse) * 100) / 100),
+        gift_card_amount: giftRestoredOrCompensated
+          ? Math.max(0, Math.round((prevGift - giftCardAmountToReverse) * 100) / 100)
+          : prevGift,
       })
       .eq("id", bookingId);
   }

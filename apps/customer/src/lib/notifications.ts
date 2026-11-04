@@ -338,6 +338,12 @@ export function navigateFromNotification(n: Notification): void {
     groupBookingIdRaw != null && String(groupBookingIdRaw).trim() !== ""
       ? String(groupBookingIdRaw).trim()
       : "";
+  const groupInviteToken =
+    typeof data.group_invite_token === "string" ? data.group_invite_token.trim() : "";
+  if (groupInviteToken) {
+    router.push({ pathname: "/(app)/group-invite/[token]", params: { token: groupInviteToken } } as never);
+    return;
+  }
   if (nType === "group_booking_confirmation" || data.group_booking === true) {
     if (groupBookingId) {
       router.push({ pathname: "/(app)/group-booking-detail", params: { id: groupBookingId } });

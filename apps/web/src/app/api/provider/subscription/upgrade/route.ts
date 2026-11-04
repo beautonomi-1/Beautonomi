@@ -33,6 +33,7 @@ import {
   resolveSubscriptionOnlineGatewayId,
   subscriptionGatewayUsesPaystackCustomer,
 } from "@/lib/subscriptions/resolve-subscription-online-gateway";
+import { CLEAR_PENDING_UPGRADE_FIELDS } from "@/lib/subscriptions/pending-upgrade-fields";
 
 const upgradeSubscriptionSchema = z.object({
   plan_id: z.string().min(1, 'Plan ID is required'),
@@ -444,6 +445,7 @@ export async function POST(request: NextRequest) {
           scheduled_change_at: null,
           scheduled_billing_period: null,
           ...paystackActivationFields(),
+          ...CLEAR_PENDING_UPGRADE_FIELDS,
         }, { onConflict: "provider_id" })
         .select()
         .single();

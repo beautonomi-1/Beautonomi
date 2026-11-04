@@ -49,6 +49,7 @@ import {
   explorePostGridImageUrl,
   firstSlideIsVideo,
   getExplorePostAspect,
+  shouldOpenExploreVideoFeed,
 } from "@/lib/explore-media";
 
 const GAP = 10;
@@ -897,7 +898,7 @@ export default function ExploreScreen() {
       videoParams.lat = String(f.lat);
       videoParams.lng = String(f.lng);
     }
-    if (firstSlideIsVideo(post.media_urls, post.media_meta)) {
+    if (shouldOpenExploreVideoFeed(post.media_urls, post.media_meta)) {
       router.push({ pathname: "/(app)/explore-video", params: videoParams });
       return;
     }

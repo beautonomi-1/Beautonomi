@@ -1034,6 +1034,10 @@ export default function BookCheckoutScreen() {
   const [isGroupBooking, setIsGroupBooking] = useState(false);
   const [groupBookingEnabled, setGroupBookingEnabled] = useState(false);
   const [maxGroupSize, setMaxGroupSize] = useState(5);
+  const [groupSplitPaymentEnabled, setGroupSplitPaymentEnabled] = useState(false);
+  const [groupPaymentMode, setGroupPaymentMode] = useState<"organizer_pays_all" | "split">(
+    "organizer_pays_all"
+  );
   const [subscribeRecurring, setSubscribeRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<"weekly" | "biweekly" | "monthly">(
     "weekly"
@@ -1324,17 +1328,27 @@ export default function BookCheckoutScreen() {
   useEffect(() => {
     if (!effectiveProviderSlug) return;
     api
-      .get<{ enabled?: boolean; maxGroupSize?: number; data?: { enabled?: boolean; maxGroupSize?: number } }>(
+      .get<{
+        enabled?: boolean;
+        maxGroupSize?: number;
+        splitPaymentEnabled?: boolean;
+        data?: { enabled?: boolean; maxGroupSize?: number; splitPaymentEnabled?: boolean };
+      }>(
         `/api/public/providers/${encodeURIComponent(effectiveProviderSlug)}/group-booking-settings`
       )
       .then((res) => {
         const data = (res as any).data ?? res;
         setGroupBookingEnabled(!!data?.enabled);
         setMaxGroupSize(Math.max(2, Number(data?.maxGroupSize ?? 5) || 5));
+        const splitEnabled = data?.splitPaymentEnabled === true;
+        setGroupSplitPaymentEnabled(splitEnabled);
+        if (!splitEnabled) setGroupPaymentMode("organizer_pays_all");
       })
       .catch(() => {
         setGroupBookingEnabled(false);
         setMaxGroupSize(5);
+        setGroupSplitPaymentEnabled(false);
+        setGroupPaymentMode("organizer_pays_all");
       });
   }, [effectiveProviderSlug]);
 
@@ -2024,8 +2038,27 @@ export default function BookCheckoutScreen() {
       : hold?.deposit_required
         ? 30
         : 0;
-  const depositAmountComputed =
-    hold?.deposit_amount != null && hold.deposit_amount > 0
+  // Split group checkout: guests pay their own service subtotals via invite links
+  // (same rule as computeGroupSplitPaymentAmounts on the server).
+  const groupSplitActive =
+    isGroupBooking &&
+    groupSplitPaymentEnabled &&
+    groupPaymentMode === "split" &&
+    paymentMethod === "card" &&
+    groupParticipants.some((p) => p.name.trim());
+  const groupGuestShareTotal = groupSplitActive
+    ? groupGuestsServiceSubtotal(
+        groupParticipants.filter((p) => p.name.trim()),
+        snapshotOfferingIds,
+        offeringPriceMap
+      )
+    : 0;
+  const checkoutBaseTotal = Math.max(0, total - groupGuestShareTotal);
+  const depositAmountComputed = groupSplitActive
+    ? depositPctEffective > 0
+      ? percentOf(checkoutBaseTotal, depositPctEffective)
+      : 0
+    : hold?.deposit_amount != null && hold.deposit_amount > 0
       ? hold.deposit_amount
       : depositPctEffective > 0
         ? percentOf(total, depositPctEffective)
@@ -2037,7 +2070,7 @@ export default function BookCheckoutScreen() {
   );
   const depositAmount = depositAmountComputed;
   const checkoutAmountDueByPolicy =
-    paymentOption === "deposit" && hasDeposit ? depositAmount : total;
+    paymentOption === "deposit" && hasDeposit ? depositAmount : checkoutBaseTotal;
   const giftCardAppliedToCheckout =
     (paymentMethod === "giftcard" || paymentMethod === "card") && giftCardValid
       ? Math.min(Number(giftCardValid.balance || 0), checkoutAmountDueByPolicy)
@@ -2765,6 +2798,7 @@ export default function BookCheckoutScreen() {
       if (validParticipants.length > 0) {
         payload.is_group_booking = true;
         payload.group_participants = validParticipants;
+        if (groupSplitActive) payload.group_payment_mode = "split";
       }
       if (selectedProducts.length > 0) {
         payload.products = selectedProducts.map((p) => ({
@@ -3206,6 +3240,7 @@ export default function BookCheckoutScreen() {
     selectedAddonIds,
     isGroupBooking,
     groupParticipants,
+    groupSplitActive,
     selectedProducts,
     snapshotOfferingIds,
     selectedPackageId,
@@ -4671,6 +4706,22 @@ export default function BookCheckoutScreen() {
                   {formatCurrency(total, currency)}
                 </Text>
               </View>
+              {groupGuestShareTotal > 0 && (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    marginTop: 6,
+                  }}
+                >
+                  <Text style={{ fontSize: 13, color: "#6B7280", flex: 1 }}>
+                    {t("checkout.guestSharesPaidByInvite")}
+                  </Text>
+                  <Text style={{ fontSize: 13, color: "#6B7280" }}>
+                    −{formatCurrency(groupGuestShareTotal, currency)}
+                  </Text>
+                </View>
+              )}
               {hasDeposit && paymentOption === "deposit" && (
                 <View
                   style={{
@@ -4710,7 +4761,7 @@ export default function BookCheckoutScreen() {
                 (giftCardAppliedToCheckout > 0 || walletAppliedToCheckout > 0) &&
                 (() => {
                   const chargeableAmount =
-                    paymentOption === "deposit" && hasDeposit ? depositAmount : total;
+                    paymentOption === "deposit" && hasDeposit ? depositAmount : checkoutBaseTotal;
                   const paystackRemainder = cardAmountDueNow;
                   return (
                     <>
@@ -5241,6 +5292,60 @@ export default function BookCheckoutScreen() {
               </View>
             )}
 
+            {isGroupBooking &&
+              groupSplitPaymentEnabled &&
+              paymentMethod === "card" &&
+              groupParticipants.some((p) => p.name.trim()) && (
+                <View style={{ marginBottom: 16 }}>
+                  <Text
+                    style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}
+                  >
+                    {t("checkout.groupPaymentMode")}
+                  </Text>
+                  <View style={{ flexDirection: "row" }}>
+                    {(["organizer_pays_all", "split"] as const).map((mode, idx) => {
+                      const selected = groupPaymentMode === mode;
+                      return (
+                        <Pressable
+                          key={mode}
+                          onPress={() => {
+                            haptic.light();
+                            setGroupPaymentMode(mode);
+                          }}
+                          style={{
+                            flex: 1,
+                            borderRadius: 14,
+                            borderWidth: 1.5,
+                            padding: 14,
+                            alignItems: "center",
+                            marginEnd: idx === 0 ? 10 : 0,
+                            borderColor: selected ? Colors.primary : "#E5E7EB",
+                            backgroundColor: selected ? Colors.primaryLight : "#fff",
+                          }}
+                          accessibilityRole="radio"
+                          accessibilityState={{ selected }}
+                        >
+                          <Text
+                            style={{
+                              fontWeight: "600",
+                              color: selected ? Colors.primary : "#374151",
+                              fontSize: 14,
+                            }}
+                          >
+                            {mode === "split" ? t("checkout.splitPayment") : t("checkout.payForEveryone")}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  {groupPaymentMode === "split" && (
+                    <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 8 }}>
+                      {t("checkout.splitPaymentHint")}
+                    </Text>
+                  )}
+                </View>
+              )}
+
             {/* ═══ Payment Option (deposit vs full) ═══ */}
             {hasDeposit && (
               <View style={{ marginBottom: 16 }}>
@@ -5286,7 +5391,7 @@ export default function BookCheckoutScreen() {
                       {t("checkout.payFullAmount")}
                     </Text>
                     <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 4 }}>
-                      {formatCurrency(total, currency)}
+                      {formatCurrency(checkoutBaseTotal, currency)}
                     </Text>
                   </Pressable>
                   <Pressable
@@ -5335,11 +5440,11 @@ export default function BookCheckoutScreen() {
                     hold && cancellationPolicyRequiresCustomerAck(hold.cancellation_policy)
                       ? `${t("checkout.contextualHints.depositPayNow", {
                           deposit: formatCurrency(depositAmount, currency),
-                          balance: formatCurrency(total - depositAmount, currency),
+                          balance: formatCurrency(checkoutBaseTotal - depositAmount, currency),
                         })} ${t("checkout.contextualHints.depositLateCancel")}`
                       : t("checkout.contextualHints.depositPayNow", {
                           deposit: formatCurrency(depositAmount, currency),
-                          balance: formatCurrency(total - depositAmount, currency),
+                          balance: formatCurrency(checkoutBaseTotal - depositAmount, currency),
                         })
                   }
                 />

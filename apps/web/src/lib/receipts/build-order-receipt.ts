@@ -28,6 +28,8 @@ export interface ComputedOrderReceiptFinancials {
   discount: number;
   platformFee: number;
   walletPaid: number;
+  giftPaid: number;
+  cardPaid: number;
   totalFromRow: number;
   amountPaid: number;
   balanceDue: number;
@@ -67,6 +69,8 @@ export function mapOrderReceiptItems(items: OrderItemLike[] | null | undefined):
 export function computeOrderReceiptFinancials(input: {
   order: ProductOrderRowLike;
   items?: OrderItemLike[] | null;
+  /** Successful card charges already stored for this order. Wallet and gift rows are excluded. */
+  cardPaid?: number | null;
 }): ComputedOrderReceiptFinancials {
   const order = input.order;
   const subtotal = num(order.subtotal);
@@ -75,6 +79,8 @@ export function computeOrderReceiptFinancials(input: {
   const discount = num(order.discount_amount);
   const platformFee = num(order.platform_fee);
   const walletPaid = num(order.wallet_amount);
+  const giftPaid = num(order.gift_card_amount);
+  const cardPaid = Math.max(0, num(input.cardPaid));
   const totalFromRow =
     order.total_amount != null && !Number.isNaN(Number(order.total_amount))
       ? num(order.total_amount)
@@ -104,7 +110,7 @@ export function computeOrderReceiptFinancials(input: {
     case "pending":
     case "failed":
     default:
-      amountPaid = Math.min(walletPaid, totalFromRow);
+      amountPaid = Math.min(totalFromRow, walletPaid + giftPaid + cardPaid);
       balanceDue = Math.max(0, totalFromRow - amountPaid);
       break;
   }
@@ -116,6 +122,8 @@ export function computeOrderReceiptFinancials(input: {
     discount,
     platformFee,
     walletPaid,
+    giftPaid,
+    cardPaid,
     totalFromRow,
     amountPaid,
     balanceDue,
@@ -147,10 +155,32 @@ export interface OrderReceiptPayloadExtras {
   refund_reason?: string | null;
 }
 
+const RECEIPT_CARD_EXCLUDED_PROVIDERS = new Set(["wallet", "gift_card"]);
+
+/** Card money already recorded on an unpaid order. Wallet and gift stay on the order columns. */
+export async function loadProductOrderReceiptCardPaid(
+  supabase: { from: (table: string) => any },
+  orderId: string,
+): Promise<number> {
+  const { data, error } = await supabase
+    .from("payment_transactions")
+    .select("amount, provider")
+    .eq("status", "success")
+    .filter("metadata->>product_order_id", "eq", orderId);
+  if (error) return 0;
+  const total = (data ?? []).reduce((sum: number, row: { amount?: number | string | null; provider?: string | null }) => {
+    const provider = String(row.provider ?? "").trim().toLowerCase();
+    if (RECEIPT_CARD_EXCLUDED_PROVIDERS.has(provider)) return sum;
+    return sum + num(row.amount);
+  }, 0);
+  return Math.round(total * 100) / 100;
+}
+
 export function buildOrderReceiptCore(input: {
   order: ProductOrderRowLike;
   items?: OrderItemLike[] | null;
   extras?: OrderReceiptPayloadExtras;
+  cardPaid?: number | null;
 }) {
   const finances = computeOrderReceiptFinancials(input);
   const order = input.order;

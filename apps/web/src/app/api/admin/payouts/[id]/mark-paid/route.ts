@@ -162,10 +162,12 @@ export async function POST(
       );
     }
 
-    if (
-      payoutData.transfer_code &&
-      transferStatus !== "success"
-    ) {
+    const isStripeTransfer =
+      payoutData.payout_provider === "stripe" &&
+      typeof payoutData.transfer_code === "string" &&
+      payoutData.transfer_code.startsWith("tr_");
+
+    if (payoutData.transfer_code && !isStripeTransfer && transferStatus !== "success") {
       return NextResponse.json(
         {
           data: null,

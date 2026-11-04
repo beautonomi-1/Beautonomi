@@ -195,6 +195,7 @@ interface OnboardingData {
   payout_setup_complete?: boolean; // Track if payout account is set up
   is_vat_registered?: boolean; // VAT registration status
   vat_number?: string; // SARS VAT number (if VAT registered)
+  tax_inclusive?: boolean;
 
   // Step 5: Current Software
   previous_software?: string;
@@ -260,6 +261,8 @@ interface OnboardingData {
   // Step 14: Plan Selection (planName from URL for display only)
   selected_plan_id?: string;
   selected_plan_name?: string;
+  selected_billing_period?: "monthly" | "yearly";
+  selected_plan_is_free?: boolean;
   no_plans_available?: boolean;
 
   /** Salon owner go-live: bookable on public profile (mobile owners always bookable server-side). */
@@ -267,6 +270,13 @@ interface OnboardingData {
   owner_public_title?: string | null;
   /** Indexes into `services` the owner performs; empty = all parent services. */
   owner_service_indexes?: number[];
+}
+
+function pricingPlansHintIsFree(form: Partial<OnboardingData>): boolean {
+  if (form.selected_plan_is_free === true) return true;
+  if (form.selected_plan_is_free === false) return false;
+  if (form.selected_plan_name?.toLowerCase().includes("free")) return true;
+  return false;
 }
 
 function digitsOnlyPhone(s: string | null | undefined): string {
@@ -1086,6 +1096,8 @@ export default function ProviderOnboarding() {
         // vat_number, and derive tax_rate_percent (15% when VAT registered).
         is_vat_registered: formData.is_vat_registered ?? null,
         vat_number: formData.is_vat_registered === true ? formData.vat_number || null : null,
+        tax_inclusive:
+          formData.is_vat_registered === true ? (formData.tax_inclusive ?? true) : false,
         accepts_custom_requests: formData.accepts_custom_requests ?? true,
         response_rate: formData.response_rate || 100,
         response_time_hours: formData.response_time_hours || 1,
@@ -1099,6 +1111,7 @@ export default function ProviderOnboarding() {
         },
         include_in_search_engines: formData.include_in_search_engines !== false, // Default to true
         selected_plan_id: formData.selected_plan_id || null,
+        selected_billing_period: formData.selected_billing_period ?? null,
         owner_takes_appointments: formData.owner_takes_appointments,
         owner_public_title: formData.owner_public_title?.trim() || null,
         owner_service_indexes: formData.owner_service_indexes,
@@ -1422,7 +1435,13 @@ export default function ProviderOnboarding() {
                     disabled={isSubmitting}
                     className={`${ONBOARDING_BTN_NEXT} ${ONBOARDING_BTN_PRIMARY}`}
                   >
-                    {isSubmitting ? t("web.provider.onboarding.submitting") : t("web.provider.onboarding.submitLaunch")}
+                    {isSubmitting
+                      ? t("web.provider.onboarding.submitting")
+                      : formData.selected_plan_is_free === false ||
+                          (formData.selected_plan_id &&
+                            !pricingPlansHintIsFree(formData))
+                        ? t("web.provider.onboarding.submitLaunchPaid")
+                        : t("web.provider.onboarding.submitLaunchFree")}
                   </Button>
                 )}
               </div>
@@ -3249,7 +3268,22 @@ function Step4PaymentSetup({
         </div>
 
         {data.is_vat_registered === true && (
-          <div className="mt-4">
+          <div className="mt-4 space-y-4">
+            <div className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-4">
+              <input
+                id="onboarding-tax-inclusive"
+                type="checkbox"
+                checked={data.tax_inclusive !== false}
+                onChange={(e) => updateData({ tax_inclusive: e.target.checked })}
+                className="mt-1 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              />
+              <label htmlFor="onboarding-tax-inclusive" className="text-sm text-gray-700">
+                <span className="font-medium text-gray-900 block">
+                  {t("web.provider.onboarding.payment.pricesIncludeTax")}
+                </span>
+                <span className="text-gray-600">{t("web.provider.onboarding.payment.pricesIncludeTaxDesc")}</span>
+              </label>
+            </div>
             <Label
               htmlFor="vat_number"
               className="text-base font-semibold text-gray-900 mb-2 block"

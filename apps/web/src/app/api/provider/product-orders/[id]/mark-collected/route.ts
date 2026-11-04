@@ -11,7 +11,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
-import { computeInPersonCollectibleAmount } from "@/lib/orders/product-order-tender";
+import { productOrderCardAmountStillDue } from "@/lib/payments/resolve-paystack-initialize-amount";
 
 const markCollectedSchema = z.object({
   payment_method: z.enum(["cash", "card_on_delivery", "yoco", "paycloud", "paystack_terminal"]),
@@ -86,10 +86,18 @@ export async function POST(
       idempotencyKey ||
       `product_collect_${id}_${body.payment_method}`;
 
-    const amountMajor = computeInPersonCollectibleAmount(order);
+    const due = await productOrderCardAmountStillDue(getSupabaseAdmin(), id, "");
+    if (due.ok === false) {
+      return errorResponse(
+        "Could not confirm what has already been paid on this order.",
+        "PAYMENT_LOOKUP_FAILED",
+        500,
+      );
+    }
+    const amountMajor = due.due;
     if (!(amountMajor > 0)) {
       return errorResponse(
-        "Nothing is left to collect in person. Wallet or a gift card already covers this order.",
+        "Nothing is left to collect in person. Wallet, a gift card, or a card payment already covers this order.",
         "NOTHING_TO_COLLECT",
         400,
       );

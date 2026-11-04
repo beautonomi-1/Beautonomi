@@ -35,6 +35,7 @@ vi.mock("@/lib/bookings/sync-booking-after-paystack-success", () => ({
 vi.mock("@/lib/bookings/ensure-wallet-gift-booking-payments", () => ({
   ensureWalletGiftBookingPayments: vi.fn(async () => undefined),
   completeWalletGiftSyntheticPayments: vi.fn(async () => undefined),
+  sumPendingWalletGiftBookingPayments: vi.fn(async () => 0),
 }));
 
 vi.mock("@/lib/finance/resolve-commission-percentage-for-booking", () => ({
@@ -120,6 +121,7 @@ function makeProcessPaymentSupabase(options: {
   existingBookingPayment?: { id: string } | null;
   financeInserts?: Array<Record<string, unknown>>;
   giftCaptureResult?: boolean | null;
+  giftCaptureError?: { message: string } | null;
 }) {
   const financeInserts = options.financeInserts ?? [];
   const bookingUpdates: Array<Record<string, unknown>> = [];
@@ -222,6 +224,14 @@ function makeProcessPaymentSupabase(options: {
               })),
             })),
           })),
+          delete: vi.fn(() => {
+            const chain: { eq: ReturnType<typeof vi.fn>; then: Promise<{ data: null; error: null }>["then"] } = {
+              eq: vi.fn(() => chain),
+              then: (onFulfilled, onRejected) =>
+                Promise.resolve({ data: null, error: null }).then(onFulfilled, onRejected),
+            };
+            return chain;
+          }),
         };
       }
       if (table === "providers") {
@@ -245,7 +255,10 @@ function makeProcessPaymentSupabase(options: {
         })),
       };
     }),
-    rpc: vi.fn(async () => ({ data: options.giftCaptureResult ?? true, error: null })),
+    rpc: vi.fn(async () => ({
+      data: options.giftCaptureError ? null : (options.giftCaptureResult ?? true),
+      error: options.giftCaptureError ?? null,
+    })),
   };
 
   return {
@@ -284,7 +297,7 @@ describe("charge.success booking ledger wiring", () => {
     });
   });
 
-  it("passes ungated gift card amount to the shared writer when capture fails (QA-1)", async () => {
+  it("leaves a failed gift capture out of the booking ledger", async () => {
     const { supabase } = makeProcessPaymentSupabase({
       booking: baseBooking,
       giftCaptureResult: false,
@@ -310,7 +323,7 @@ describe("charge.success booking ledger wiring", () => {
     expect(recordBookingOnlineChargeLedger).toHaveBeenCalledWith(
       supabase,
       expect.objectContaining({
-        giftCardAmountApplied: 50,
+        giftCardAmountApplied: 0,
         auditLegStyle: "paystack_standard",
       }),
     );
@@ -321,6 +334,70 @@ describe("charge.success booking ledger wiring", () => {
       supabase,
       expect.objectContaining({
         giftCardAmount: 0,
+      }),
+    );
+  });
+
+  it("keeps a reserved gift in the ledger when capture fails for a reason other than expiry", async () => {
+    const { supabase } = makeProcessPaymentSupabase({
+      booking: baseBooking,
+      giftCaptureError: { message: "Not authorized" },
+    });
+
+    await processSuccessfulPayment(
+      {
+        reference: "ref-gift-error",
+        amount: 20800,
+        fees: 200,
+        customer: { email: "a@example.com", customer_code: "CUS_1" },
+        metadata: {
+          booking_id: "booking-1",
+          gift_card_amount_applied: 25,
+          wallet_amount_applied: 0,
+          payment_option: "full",
+          requires_deposit: false,
+        },
+      },
+      supabase,
+    );
+
+    expect(recordBookingOnlineChargeLedger).toHaveBeenCalledWith(
+      supabase,
+      expect.objectContaining({
+        giftCardAmountApplied: 50,
+      }),
+    );
+  });
+
+  it("drops an expired gift from the ledger when capture reports the card was restored", async () => {
+    const { supabase } = makeProcessPaymentSupabase({
+      booking: baseBooking,
+      giftCaptureError: new Error(
+        "Gift card has expired. Redemption voided and balance restored.",
+      ),
+    });
+
+    await processSuccessfulPayment(
+      {
+        reference: "ref-gift-expired",
+        amount: 20800,
+        fees: 200,
+        customer: { email: "a@example.com", customer_code: "CUS_1" },
+        metadata: {
+          booking_id: "booking-1",
+          gift_card_amount_applied: 25,
+          wallet_amount_applied: 0,
+          payment_option: "full",
+          requires_deposit: false,
+        },
+      },
+      supabase,
+    );
+
+    expect(recordBookingOnlineChargeLedger).toHaveBeenCalledWith(
+      supabase,
+      expect.objectContaining({
+        giftCardAmountApplied: 0,
       }),
     );
   });

@@ -137,7 +137,7 @@ export function TicketSidebar({
   );
 
   return (
-    <aside className="h-full min-h-0 space-y-3 overflow-y-auto">
+    <aside className="space-y-3 pb-20">
       <AdminPanel className="!p-3 md:!p-4">
         <h2 className="text-sm font-semibold text-gray-900">Routing</h2>
         <div className="mt-3 space-y-3">

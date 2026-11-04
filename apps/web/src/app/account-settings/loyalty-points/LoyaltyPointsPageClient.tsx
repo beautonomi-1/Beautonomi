@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@beautonomi/i18n";
-import { formatCurrency } from "@/lib/pricing/calculate-booking-price-complete";
+import { formatCurrency } from "@/lib/utils";
 import type { LoyaltyPointsPageData, LoyaltyPointsTransaction } from "./loyalty-points-page-types";
 
 type LoyaltyData = LoyaltyPointsPageData;

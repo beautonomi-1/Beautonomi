@@ -20,6 +20,7 @@ export async function recordBookingStripePayment(
     source: string;
     notes?: string | null;
     stripeExchangeRate?: number | null;
+    providerData?: Record<string, unknown>;
   },
 ): Promise<RecordBookingStripePaymentResult> {
   const paymentProviderId =
@@ -72,6 +73,7 @@ export async function recordBookingStripePayment(
       ...(input.stripeExchangeRate != null
         ? { stripe_balance_exchange_rate: input.stripeExchangeRate }
         : {}),
+      ...(input.providerData ?? {}),
     },
   };
 

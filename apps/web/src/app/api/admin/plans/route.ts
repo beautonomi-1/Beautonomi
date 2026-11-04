@@ -155,10 +155,19 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    const { evaluateSubscriptionCatalogReadiness } = await import(
+      "@/lib/subscription/catalog-readiness"
+    );
+    const catalog_readiness = await evaluateSubscriptionCatalogReadiness(
+      supabaseAdmin,
+      currentTenantId,
+    );
+
     return successResponse({
       plans: plansWithPricing,
       pricing_only: pricingOnlyRows,
       meta: diagnostics,
+      catalog_readiness,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch plans");

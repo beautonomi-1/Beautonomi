@@ -30,6 +30,8 @@ import {
   enrichBookingLifecycleFields,
 } from "@/lib/bookings/lifecycle-booking-enrichment";
 import { totalAmountAfterCancellationFeeChange } from "@/lib/bookings/cancellation-total";
+import { recomputeProviderBookingEditTotals } from "@/lib/bookings/recompute-provider-booking-edit-totals";
+import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
 import { providerBookingUpdateErrorResponse } from "@/lib/bookings/provider-booking-update-error";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
@@ -42,6 +44,7 @@ import {
   computeBookingOutstandingDisplay,
   computePackageAppliedForDisplay,
 } from "@/lib/bookings/display-invariants";
+import { sumPendingWalletGiftBookingPayments } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { resolveBookingDisplayTimeZone } from "@/lib/bookings/display-datetime";
 import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
 import { validateProviderBookingProducts } from "@/lib/bookings/validate-provider-booking-products";
@@ -410,6 +413,7 @@ export async function GET(
     }
 
     const bookingData = booking as BookingDbRow;
+    const pendingWalletGift = await sumPendingWalletGiftBookingPayments(supabaseAdmin, id);
     const lifecycle = enrichBookingLifecycleFields({
       status: String(bookingData.status ?? ""),
       scheduled_at: String(bookingData.scheduled_at ?? ""),
@@ -599,8 +603,10 @@ export async function GET(
           giftCardAmount: gift,
           unpaidAdditionalCharges: unpaidCharges,
           paymentStatus: bookingData.payment_status,
+          pendingWalletGiftAmount: pendingWalletGift,
         });
       })(),
+      pending_wallet_gift_amount: pendingWalletGift,
       currency: bookingData.currency || lastResortCurrency,
       payment_status: (bookingData.payment_status ?? "pending") as BookingResponse["payment_status"],
       payment_method: null, // payment_method_id is the actual column
@@ -1269,7 +1275,73 @@ export async function PATCH(
       updateData.tax_amount = tax_amount;
     }
     if (body.tax_rate !== undefined) {
-      updateData.tax_rate = body.tax_rate;
+      let rate = Number(body.tax_rate);
+      if (Number.isFinite(rate) && rate > 0 && rate < 1) {
+        rate = rate * 100;
+      }
+      updateData.tax_rate = rate;
+    }
+
+    const pricingTouched =
+      subtotal !== undefined ||
+      total_amount !== undefined ||
+      tax_amount !== undefined ||
+      body.tax_rate !== undefined ||
+      discount_amount !== undefined ||
+      tip_amount !== undefined ||
+      travel_fee !== undefined ||
+      services !== undefined ||
+      products !== undefined;
+    if (
+      pricingTouched &&
+      requestedDbStatus !== "cancelled" &&
+      requestedDbStatus !== "no_show"
+    ) {
+      const { data: providerTaxRow } = await supabaseAdminPatch
+        .from("providers")
+        .select("tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code")
+        .eq("id", providerId)
+        .maybeSingle();
+      const resolvedVat = await resolveProviderVat(supabaseAdminPatch, {
+        tax_rate_percent: providerTaxRow?.tax_rate_percent ?? null,
+        tax_inclusive: providerTaxRow?.tax_inclusive ?? null,
+        is_vat_registered: providerTaxRow?.is_vat_registered ?? null,
+        vat_number: providerTaxRow?.vat_number ?? null,
+        country_code: providerTaxRow?.country_code ?? null,
+        tax_rate_override_percent: null,
+      });
+      if (resolvedVat.registered && resolvedVat.source === "none") {
+        return errorResponse(
+          "This provider is VAT registered but no country VAT rate is configured.",
+          "VAT_RATE_UNAVAILABLE",
+          503,
+        );
+      }
+      const current = currentBooking as Record<string, unknown>;
+      const num = (value: unknown) => {
+        const n = Number(value ?? 0);
+        return Number.isFinite(n) ? n : 0;
+      };
+      const recomputed = recomputeProviderBookingEditTotals({
+        subtotal: num(updateData.subtotal ?? current.subtotal),
+        discountAmount: num(updateData.discount_amount ?? current.discount_amount),
+        promotionDiscountAmount: num(current.promotion_discount_amount),
+        membershipDiscountAmount: num(current.membership_discount_amount),
+        loyaltyDiscountAmount: num(current.loyalty_discount_amount),
+        travelFee: num(travel_fee !== undefined ? travel_fee : current.travel_fee),
+        tipAmount: num(tip_amount !== undefined ? tip_amount : current.tip_amount),
+        serviceFeeAmount: num(
+          body.service_fee_amount !== undefined
+            ? body.service_fee_amount
+            : current.service_fee_amount,
+        ),
+        registered: resolvedVat.registered,
+        ratePercent: resolvedVat.ratePercent,
+        inclusive: resolvedVat.inclusive,
+      });
+      updateData.tax_amount = recomputed.taxAmount;
+      updateData.tax_rate = recomputed.taxRatePercent;
+      updateData.total_amount = recomputed.totalAmount;
     }
     if (body.service_fee_percentage !== undefined) {
       updateData.service_fee_percentage = body.service_fee_percentage;
@@ -2426,6 +2498,7 @@ export async function PATCH(
 
     // Transform the fetched booking to match Booking type (same as GET endpoint)
     const bookingData = updatedBooking as BookingDbRow;
+    const pendingWalletGift = await sumPendingWalletGiftBookingPayments(supabaseAdminPatch, id);
 
     // Same pending_payment normalization as the GET path above.
     const _patchRawStatus = bookingData.status as string | undefined;
@@ -2534,7 +2607,9 @@ export async function PATCH(
         giftCardAmount: patchGiftCardAmount,
         unpaidAdditionalCharges: patchUnpaidCharges,
         paymentStatus: bookingData.payment_status,
+        pendingWalletGiftAmount: pendingWalletGift,
       }),
+      pending_wallet_gift_amount: pendingWalletGift,
       special_requests: bookingData.special_requests || null,
       loyalty_points_earned: bookingData.loyalty_points_earned || 0,
       created_at: bookingData.created_at,

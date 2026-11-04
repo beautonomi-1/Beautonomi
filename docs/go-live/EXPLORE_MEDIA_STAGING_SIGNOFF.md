@@ -15,6 +15,12 @@ Run on staging after migrations **979**, **980**, and **981** and feature flags 
 10. **Performance:** 5-slide photo publish &lt; 60s; 15 MB signed image finalize succeeds.
 11. **Sound catalog:** Requires `explore.sound_catalog` and `explore.provider_posts`. Superadmin uploads MP3/M4A on **Explore Sounds**; provider web + mobile video post shows **Add music** (platform + own sounds, preview chips); customer **full-screen video** plays bed when `sound_id` is set. Full steps: [EXPLORE_SOUND_CATALOG_QA.md](./EXPLORE_SOUND_CATALOG_QA.md).
 
-**Cron:** `/api/cron/explore-media-backfill` re-watermarks missing posters only; does not reconstruct overlay JSON. Failed encodes re-run with stored `text_overlays` when jobs are re-enqueued.
+**Cron:** `/api/cron/explore-media-backfill` re-watermarks missing photo posters (does not reconstruct overlay JSON) and, when transcode and Rendobar are ready, re-enqueues video slides that are `failed` or stuck in `probing`/`encoding` for more than 30 minutes. Each slide retries at most 3 times (`retry_count`); after that only superadmin **Reprocess video** resets it. Re-runs reuse the stored `text_overlays` and trim window.
 
 **Publish order:** Photo Sharp burn runs before `runExplorePublishSideEffects` so moderation and gallery see final pixels.
+
+12. **Trim before encode:** Publish a long video with a mid-clip trim. Before Rendobar finishes, customer mobile full-screen, photo carousel, and web post detail play only that window (loop). After `playback_path` is delivered, playback uses the encoded file from the start with no double trim offset.
+13. **Share (full-screen video):** Share link and Copy link always work. **Share video** appears only after a delivered `https` playback URL. Message includes caption, `@Provider on Beautonomi`, and `/explore/{id}` (opens app).
+14. **Multi-slide:** A video plus at least one photo opens the carousel; all slides are visible (single-slide video-only posts still open the vertical feed).
+15. **Failed encode + reprocess:** Force or wait for a failed video encode. Provider mobile/web shows **Video failed**. Superadmin filters **Video failed**, opens detail, **Reprocess video**, and post reaches **delivered**; audit log contains `admin.explore.post.reprocess`.
+16. **Moderation visibility:** Superadmin hides a post with a note. Provider sees **Hidden by Beautonomi** and the note; post disappears from the customer feed.

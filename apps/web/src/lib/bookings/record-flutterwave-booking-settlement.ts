@@ -29,6 +29,7 @@ export type RecordFlutterwaveBookingSettlementInput = {
     paymentOption?: string | null;
     requiresDeposit?: boolean | null;
     notes?: string | null;
+    providerData?: Record<string, unknown>;
   };
 };
 
@@ -67,6 +68,7 @@ export async function recordFlutterwaveBookingSettlement(
         paymentOption: input.recordPayment.paymentOption ?? null,
         requiresDeposit: input.recordPayment.requiresDeposit ?? undefined,
         notes: input.recordPayment.notes ?? null,
+        providerData: input.recordPayment.providerData ?? null,
       });
       if (recorded.ok === false) {
         return {

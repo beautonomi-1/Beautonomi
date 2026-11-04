@@ -38,6 +38,8 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   amount: number;
   entity: CardMachineCollectEntity;
+  /** Till tip collected on top of `amount` for PayCloud, and inside `amount` for Yoco. */
+  tipAmount?: number;
   tipIncludedInAmount?: boolean;
   /** Deep-link from ?collectYoco=1 / ?collectPaycloud=1 */
   initialProvider?: "yoco" | "paycloud";
@@ -58,6 +60,7 @@ export function CardMachineCollectDialog({
   onOpenChange,
   amount,
   entity,
+  tipAmount = 0,
   tipIncludedInAmount,
   initialProvider,
   autoStart = false,
@@ -233,6 +236,7 @@ export function CardMachineCollectDialog({
           open={yocoOpen}
           onOpenChange={setYocoOpen}
           amount={amount}
+          tipAmount={tipIncludedInAmount ? 0 : tipAmount}
           bookingId={entity.bookingId ?? (entity.entityType === "booking" ? entity.entityId : undefined)}
           bookingLocationId={entity.bookingLocationId}
           groupBookingId={entity.groupBookingId}
@@ -247,7 +251,13 @@ export function CardMachineCollectDialog({
         <PayCloudPaymentDialog
           open={paycloudOpen}
           onOpenChange={setPaycloudOpen}
-          amount={amount}
+          amount={(() => {
+            if (tipIncludedInAmount) return amount;
+            const tillTip = Math.max(0, tipAmount);
+            const base = Math.max(0, Math.round((amount - tillTip) * 100) / 100);
+            return base <= 0.01 && tillTip > 0.01 ? tillTip : base;
+          })()}
+          fixedTipAmount={tipIncludedInAmount ? 0 : tipAmount}
           entityType={entity.entityType}
           entityId={entity.entityId}
           bookingId={entity.bookingId}

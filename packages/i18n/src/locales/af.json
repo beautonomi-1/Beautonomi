@@ -699,7 +699,26 @@
           "uploadFailedTitle": "oplaai misluk",
           "uploadFailedBody": "Kon nie oplaai beeld nie.",
           "variantsTitle": "Variante",
-          "addOptionRequired": "Voeg ten minste een opsie met 'n naam en een waarde by."
+          "addOptionRequired": "Voeg ten minste een opsie met 'n naam en een waarde by.",
+          "createOptionsA11y": "Skep opsies uit opsie tipes en waardes",
+          "defaultMeasureLabel": "Eenheid for nuwe Opsies",
+          "defaultMeasureHint": "Word slegs gebruik vir opsies wat jy volgende skep. Opsies wat reeds gelys is, behou hul eie eenheid.",
+          "defaultMeasureA11y": "Eenheid for nuwe Opsies, {{value}}",
+          "moreDetails": "meer besonderhede",
+          "hideDetails": "versteek besonderhede",
+          "moreDetailsA11y": "meer besonderhede for {{name}}",
+          "hideDetailsA11y": "versteek besonderhede for {{name}}",
+          "fieldSkuLabel": "SKU",
+          "fieldBarcodeLabel": "Streepkode",
+          "fieldMeasureLabel": "meet",
+          "fieldAmountLabel": "bedrag",
+          "fieldQuantityLabel": "Hoeveelheid",
+          "fieldLowStockLevelLabel": "Lae voorraadvlak",
+          "fieldReorderQuantityLabel": "Rebestelling hoeveelheid",
+          "fieldSupplyPriceLabel": "Cost prys",
+          "fieldRetailPriceLabel": "Selling prys",
+          "fieldMarkupLabel": "Toeslag (%)",
+          "retailPriceA11y": "Selling prys for {{name}}"
         },
         "bookingDateTimePicker": {
           "showingPeriodOnlyA11y": "Wys slegs {{label}}. Tik om alles te wys.",
@@ -949,7 +968,8 @@
           "nextA11y": "volgende step",
           "existingProfileTitle": "Profiel reeds geskep",
           "existingProfileBody": "Jou besigheidsprofiel is gereed. Gebruik die opstelkontrolelys om besonderhede te wysig — veranderings hier word nie gestoor nie.",
-          "openChecklist": "Maak opstelkontrolelys oop"
+          "openChecklist": "Maak opstelkontrolelys oop",
+          "useDifferentAccount": "Use a different rekening"
         },
         "accountStatusGuard": {
           "title": "rekening check needed",
@@ -1139,7 +1159,9 @@
           "pendingRequests": "− hangende / verwerk tans versoeke",
           "alreadyPaidOut": "− Already betaal out",
           "available": "= beskikbaar to withdraw",
-          "footer": "Intekening en advertensies word afsonderlik op jou kaart gefaktureer en verminder nooit hierdie saldo nie."
+          "footer": "Intekening en advertensies word afsonderlik op jou kaart gefaktureer en verminder nooit hierdie saldo nie.",
+          "openDisputeReserve": "− open dispute reserve",
+          "vatHeldForProvider": "− VAT gehou vir uitbetaling"
         },
         "reportRevenueGlossary": {
           "title": "What these nommers mean"
@@ -1213,6 +1235,19 @@
             "booking_intake": "kliënt forms",
             "booking_recurring": "Herhalende reeks"
           }
+        },
+        "staffPhotoField": {
+          "uploadFailedTitle": "oplaai misluk",
+          "uploadFailedBody": "Kon nie oplaai the foto. probeer weer nie.",
+          "changePhotoA11y": "Verander foto",
+          "customerHint": "kliënte see this foto when bespreking.",
+          "removePhoto": "Verwyder foto"
+        },
+        "staffCommissionEditor": {
+          "paysCommission": "Betaal kommissie",
+          "percentValue": "{{rate}}%",
+          "splitRates": "diens {{service}}% · produk {{product}}% (set on Spankommissies)",
+          "openTeamCommissions": "Spankommissies → uurly, salary, fooitjies"
         }
       },
       "screens": {
@@ -1560,7 +1595,8 @@
           "errTenant": "Werkspasie-konfigurasiefout. Gaan verskaffer/huurderinstellings of ondersteuning na.",
           "errValidation": "Kontroleer die verkoopbesonderhede en probeer weer.",
           "errUnauthorized": "Sessie het verval. Meld weer aan en probeer weer.",
-          "errDefault": "Kon nie verkoop voltooi nie. Probeer asseblief weer."
+          "errDefault": "Kon nie verkoop voltooi nie. Probeer asseblief weer.",
+          "refundOnlineNoCustomer": "Hierdie uitverkoping is aanlyn betaal en het geen klantbeursie nie, dus kan dit nie persoonlik terugbetaal word nie."
         },
         "productForm": {
           "editTitle": "Wysig produk",
@@ -1659,7 +1695,19 @@
           "measureUnit": "Eenheid",
           "defaultVariantType": "Grootte",
           "weightGrams": "Versending gewig (g)",
-          "weightGramsPlaceholder": "500"
+          "weightGramsPlaceholder": "500",
+          "variantsPerOptionNote": "Elke opsie hieronder het sy eie strepieskode, SKU en grootte. Naam, foto's, kategorie en belasting bly op hierdie produk.",
+          "variantsHiddenDelete": "Hierdie opsies is versteek. As jy nou spaar, word dit uitgevee, insluitend pryse en strepieskodes.",
+          "variantsHiddenUntilOn": "Hierdie opsies word slegs gestoor terwyl Het variante aan is.",
+          "deleteOptionsTitle": "Skrap these Opsies?",
+          "deleteOptionsBody": "Spaar verwyder elke grootte of opsie, insluitend pryse, voorraad en strepieskodes.",
+          "keepOptions": "Hou Opsies",
+          "deleteOptionsConfirm": "Skrap and stoor",
+          "freeOptionsTitle": "Some Opsies are gratis.",
+          "freeOptionsBody_one": "{{count}} Opsie is still prysd at 0. kliënte can koop it for gratis.",
+          "freeOptionsBody_other": "{{count}} opsies word steeds teen 0 geprys. Kliënte kan dit gratis koop.",
+          "reviewPrices": "resensie pryss",
+          "saveAnyway": "Stoor anyway"
         },
         "ads": {
           "title": "Betaalde advertensies",
@@ -2302,7 +2350,14 @@
           "refundReasonPlaceholder": "Hoekom word hierdie terugbetaling uitgereik?",
           "viewFullBooking": "Sien vol bespreking",
           "statusNoShow": "No wys",
-          "statusPendingPayment": "hangende betaling"
+          "statusPendingPayment": "hangende betaling",
+          "removeParticipantOverpaid": "Gas verwyderd. The bespreking is nou overbetaal by {{amount}}. terugbetaling the difference to the kliënt.",
+          "shareStatusPaid": "deel betaal",
+          "shareStatusPending": "deel onbetaal ({{amount}})",
+          "shareStatusCancelled": "Spot gekanselleer",
+          "resendInvite": "Re-stuur uitnodiging",
+          "inviteResent": "uitnodiging Gestuur",
+          "inviteResendFailed": "Kon nie re-stuur the uitnodiging nie."
         },
         "settingsIndex": {
           "title": "Instellings",
@@ -3132,7 +3187,9 @@
           "refundOriginalMachineHint": "Die geld keer terug na die kliënt se kaart deur die kaartmasjien waarop dit betaal is.",
           "cancelWalletNote": "Die kliënt sal 'n volle terugbetaling aan hul Beautonomi-beursie ontvang vir bedrae wat reeds betaal is. Jou kansellasiebeleid is nie van toepassing op kansellasies wat jy inisieer nie.",
           "cancelRefundTo": "Betaal die betaalde bedrag terug na",
-          "yocoRefundRecordCta": "Op die masjien terugbetaal — teken die terugbetaling aan"
+          "yocoRefundRecordCta": "Op die masjien terugbetaal — teken die terugbetaling aan",
+          "pendingCashRefundTitle": "{{amount}} to return persoonlik",
+          "pendingCashRefundBody": "Die kliënt moet bevestig dat hulle hierdie terugbetaling in die toepassing ontvang het. Moenie nog 'n kontantterugbetaling aanteken terwyl dit hangende is nie - gee die bedrag wat gewys word terug en wag vir bevestiging (of die 48-uur-venster om toe te maak)."
         },
         "operatingHoursSettings": {
           "title": "Opegradering ure",
@@ -3321,7 +3378,8 @@
           "billedThroughStripeBody": "Dateer jou kaart op of sien fakture in die veilige Stripe-faktureringsportaal. Tik Bestuur fakturering hieronder.",
           "stripeManageUnavailable": "Stripe Fakturering is Nie gestel nie up yet. voltooi afhandeling first, then probeer weer.",
           "paystackManageUnavailable": "Hierdie plan is nie op Paystack-herhalende fakturering nie. Voltooi afhandeling of kontak ondersteuning.",
-          "planChangeScheduled": "Planverandering geskeduleer. Wysigings op {{when}}."
+          "planChangeScheduled": "Planverandering geskeduleer. Wysigings op {{when}}.",
+          "finishUpgradeTitle": "voltooi Gradeer op to {{plan}}"
         },
         "moreTab": {
           "sectionGrowBusiness": "Grow your Besigheid",
@@ -4004,7 +4062,14 @@
           "courierBooking": "Courier bespreking",
           "bookCourier": "bespreek courier",
           "retryCourierBooking": "probeer weer bespreking",
-          "printLabel": "Druk label"
+          "printLabel": "Druk label",
+          "refundOnlineOnly": "Hierdie bestelling is aanlyn betaal. Winkelkrediet gee die kaartheffing en enige beursie of geskenkkaartgedeelte aan die kliënt terug.",
+          "refundOnlineNoCustomer": "Hierdie bestelling is aanlyn betaal en het geen klantbeursie nie, dus kan dit nie persoonlik terugbetaal word nie.",
+          "refundAmountLabel": "terugbetaling bedrag (up to {{max}})",
+          "refundAmountA11y": "terugbetaling bedrag",
+          "refundAmountInvalid": "Voer 'n bedrag groter as 0 en nie meer as {{max}} in nie.",
+          "partiallyRefundedRefundRemaining": "Hierdie bestelling is gedeeltelik terugbetaal. Merk dit terugbetaal vir die oorblywende bedrag — kanselleer is nie beskikbaar nie.",
+          "refundRemainingHint": "terugbetaling remaining"
         },
         "yocoDevices": {
           "title": "Yoco toestelle",
@@ -4764,7 +4829,9 @@
             "saveService": "Stoor diens",
             "addService": "Voeg diens by",
             "cancelEditingA11y": "Kanselleer wysiging",
-            "cancelEdit": "Kanselleer wysig"
+            "cancelEdit": "Kanselleer wysig",
+            "bookingOptionCount_one": " · {{count}} bespreking Opsie",
+            "bookingOptionCount_other": " · {{count}} bespreking Opsies"
           },
           "hours": {
             "freelancerHint": "Ons het jou begin op breë weeksdag ure (8am-8pm). Tik 'n dag om oop/geslote te skakel, en stel dan tye in.",
@@ -4844,7 +4911,12 @@
             "bizSalon": "salon / studio",
             "bizMobile": "Selfoon / at-tuis",
             "bizBoth": "salon + Selfoon",
-            "emDash": "—"
+            "emDash": "—",
+            "ownerGoLiveTitle": "Jou profiel on the bespreking page",
+            "ownerTakesAppointments": "I take afsprake myself",
+            "ownerPublicTitle": "Titel kliënte see (opsioneel)",
+            "ownerServicesLabel": "dienste you perform",
+            "ownerServicesAll": "Laat alles gemerk om elke diens in jou katalogus aan te bied."
           },
           "plan": {
             "popular": "Gewild",
@@ -4860,10 +4932,95 @@
             "noneAvailable": "Geen intekeningplanne beskikbaar op die oomblik nie. Klik indien om voort te gaan - ons sal dit daarna sorteer.",
             "intro": "Kies die plan wat vandag pas. Gratis aktiveer onmiddellik — betaalde planne neem jou na 'n veilige kaartbetaling nadat jy indien. Jy kan enige tyd vanaf instellings opgradeer of afgradeer.",
             "yearly": "Jaarliks",
-            "monthly": "Maandeliks"
+            "monthly": "Maandeliks",
+            "periodAvailableOnWeb": "{{period}}-fakturering is slegs op die web vir hierdie plan beskikbaar."
           },
           "travelFees": {
             "skipHint": "U kan hierdie stap oorslaan — ons sal die platformstandaard toepas en u kan dit later aanpas."
+          },
+          "steps": {
+            "team_size": {
+              "title": "span size",
+              "description": "Tell us Meer oor your span"
+            },
+            "identity": {
+              "title": "Jou Identiteit",
+              "description": "naam, geverifieer e-pos, and geverifieer foon"
+            },
+            "business": {
+              "title": "Besigheid besonderhede",
+              "description": "How kliënte see your Besigheid"
+            },
+            "payment": {
+              "title": "betalings & beleide",
+              "description": "Terminals, VAT & bespreking protection"
+            },
+            "software": {
+              "title": "huidig software",
+              "description": "opsioneel — vorige bespreking system"
+            },
+            "payroll": {
+              "title": "Loonstaat",
+              "description": "How you betaal personeel"
+            },
+            "location": {
+              "title": "Ligging",
+              "description": "primêr adres"
+            },
+            "photos": {
+              "title": "foto's",
+              "description": "vereis thumbnail & profiel beelds"
+            },
+            "zones": {
+              "title": "diens Zones",
+              "description": "Whier you offer Selfoon visits"
+            },
+            "travel_fees": {
+              "title": "Reis fooie",
+              "description": "hef for at-tuis Reis"
+            },
+            "categories": {
+              "title": "kategorieë",
+              "description": "wat het jy gedoen"
+            },
+            "catalog": {
+              "title": "Dienste",
+              "description": "opsioneel — voeg by dienste nou or later"
+            },
+            "hours": {
+              "title": "ure",
+              "description": "When you're beskikbaar"
+            },
+            "review": {
+              "title": "resensie",
+              "description": "Check your besonderhede"
+            },
+            "plan": {
+              "title": "Plan",
+              "description": "Kies a intekening"
+            }
+          },
+          "alerts": {
+            "errorTitle": "Fout",
+            "loadFailed": "Kon nie laai onboarding nie.",
+            "checkStepTitle": "Kontroleer hierdie stap",
+            "completeRequiredFields": "Voltooi verpligte velds asseblief.",
+            "couldNotContinue": "Kon nie gaan voort nie.",
+            "almostThereTitle": "Amper daar",
+            "completeStepFirst": "voltooi this step first.",
+            "missingInfoTitle": "Missing info",
+            "selectTeamSize": "Kies your span size asseblief.",
+            "verifyPhoneTitle": "Verifieer foon",
+            "verifyPhoneBody": "Verifieer your telefoonnommer asseblief.",
+            "categoriesTitle": "kategorieë",
+            "selectCategory": "Kies at least one kategorie.",
+            "addressTitle": "Adres",
+            "completeAddress": "Voltooi adres (line 1, stad, land) asseblief.",
+            "stillSettingUpTitle": "Nog besig om op te stel",
+            "stillSettingUpBody": "Jou besigheidsprofiel word dalk steeds gestoor. Wag 'n oomblik en tik dan weer op Stuur.",
+            "couldNotFinishTitle": "Kon nie voltooi setup nie",
+            "tryAgain": "Probeer asseblief weer.",
+            "submitFailed": "dien in misluk."
           }
         },
         "newBooking": {
@@ -5480,7 +5637,27 @@
           "soundsSectionPlatform": "Gewild sounds",
           "soundsSectionYours": "Jou sounds",
           "soundPreviewPlay": "Play presensie",
-          "soundPreviewStop": "Stop presensie"
+          "soundPreviewStop": "Stop presensie",
+          "trimHandleStartA11y": "Clip begin",
+          "trimHandleEndA11y": "Clip beëindig",
+          "trimSelectedLength": "{{seconds}}s · maksimum {{max}}s",
+          "trimQueueCounter": "Video {{index}} van {{total}}",
+          "trimVideoLoadFailed": "Kon nie laai this Video nie.",
+          "retake": "Herhaal",
+          "usePhoto": "Use foto",
+          "discardClip": "Gooi weg clip",
+          "retry": "Probeer weer",
+          "recordTooShort": "Hou die knoppie 'n bietjie langer om op te neem.",
+          "micPermissionOpenSettings": "Open instellings",
+          "flashOn": "Flits aan",
+          "flashOff": "Flits af",
+          "mediaSkippedTooLarge": "{{count}} lêer(s) was te groot en is oorgeslaan.",
+          "cameraPermissionOpenSettings": "Open instellings",
+          "statusVideoProcessing": "verwerk tans",
+          "statusVideoFailed": "Video misluk",
+          "statusHidden": "Versteek by Beautonomi",
+          "statusHiddenNote": "Modereringsnota: {{note}}",
+          "videoFailedDetail": "Video-kodering het misluk. Wysig die plasing en stoor om weer te probeer."
         },
         "dashboard": {
           "title": "Paneelbord",
@@ -5630,7 +5807,9 @@
           "viewAllLower": "Sien alles",
           "activityWindow": "Laaste 14 dae ({{window}}) · nie deur die tydperk hierbo gefiltreer nie.",
           "activityDefaultHint": "Jongste opdaterings oor besprekings, betalings en resensies – nie volgens die tydperk hierbo gefiltreer nie.",
-          "noRecentActivity": "Geen onlangse aktiwiteit nie"
+          "noRecentActivity": "Geen onlangse aktiwiteit nie",
+          "giftCardLedgerIssuance": "geskenkkaart ledger issuance (Van alle tye)",
+          "membershipSalesAllTime": "lidmaatskap sales (Van alle tye)"
         },
         "staffSchedule": {
           "title": "personeel Skedules",
@@ -5887,7 +6066,26 @@
           "resetSentTitle": "Stel terug Gestuur",
           "resetSentBody": "wagwoord Stel terug e-pos has been Gestuur.",
           "payPlanSummary": "Pay Plan",
-          "payPlanEditHint": "Maak spankommissies oop om die betaalmodel en tariewe te wysig."
+          "payPlanEditHint": "Maak spankommissies oop om die betaalmodel en tariewe te wysig.",
+          "changePhotoA11y": "Verander profielfoto",
+          "takesAppointmentsLabel": "Takes afsprake",
+          "bookableFromLabel": "First bespreekable dag",
+          "bookableImmediately": "Onmiddellik",
+          "timeClockLabel": "tyd clock",
+          "enabled": "aangeskakel",
+          "disabled": "afgeskakel",
+          "yes": "Ja",
+          "no": "Nee",
+          "emailReadOnly": "e-pos",
+          "applyJobTitle": "pas toe job versteks?",
+          "applyJobBody": "Dit stel hul toestemmings terug na die {{job}} verstekke.",
+          "apply": "Pas toe",
+          "applyJobDefaults": "pas toe job versteks",
+          "timeClockPin": "tyd clock PIN (4 digits)",
+          "pinInvalid": "PIN moet tot 4 syfers wees.",
+          "partialSaveTitle": "Partially stoord",
+          "partialSaveSettingsFailed": "profiel stoord, but bespreking instellings did not stoor. Pull to verfris and probeer weer.",
+          "clearBookableDate": "vee uit datum (bespreekable immediately)"
         },
         "serviceForm": {
           "serviceName": "diens naam *",
@@ -5966,7 +6164,19 @@
           "deleteA11y": "Skrap diens",
           "saving": "Stoor tans…",
           "saveChanges": "Stoor veranderinge",
-          "createService": "Skep diens"
+          "createService": "Skep diens",
+          "stillLoadingTitle": "Still laai tans.",
+          "stillLoadingBody": "Jou dienste laai nog steeds. Wag 'n oomblik en stoor dan weer.",
+          "couldNotCheckOptionsTitle": "Kon nie check Opsies nie.",
+          "couldNotCheckOptionsBody": "Stoor kan besprekingsopsies wat nie gelaai kon word nie, afskakel.",
+          "goBackFromSave": "Gaan terug",
+          "saveAnyway": "Stoor anyway",
+          "turnOffOptionsTitle": "Turn these Opsies off?",
+          "turnOffOptionsBodyMainOnly": "Kliënte sal nie meer {{names}} sien nie. Hulle sal slegs die hoofdiens bespreek.",
+          "turnOffOptionsBodyOthersStay": "Kliënte sal nie meer {{names}} sien nie. Die ander besprekingsopsies bly.",
+          "andMoreNames": "and {{count}} meer",
+          "keepThem": "Hou them",
+          "turnOffAndSave": "Turn off and stoor"
         },
         "membershipPlans": {
           "title": "lidmaatskap Planne",
@@ -7179,7 +7389,38 @@
           "showOnProfileHint": "Kliënte kan steeds hierdie kode by die betaalpunt gebruik, selfs wanneer dit versteek is.",
           "showOnProfileA11y": "Wys this promosie on public profiel",
           "creating": "Skep tans…",
-          "createCta": "Skep promosiekode"
+          "createCta": "Skep promosiekode",
+          "startsOn": "Begin",
+          "endsOn": "Eindig",
+          "noEndDate": "No beëindig datum",
+          "endsLabel": "Eindig {{date}}",
+          "statusActive": "Aktief",
+          "statusScheduled": "geskeduleer",
+          "statusExpired": "verval",
+          "statusUsedUp": "Opgebruik",
+          "statusOff": "Af",
+          "limitsSection": "Perke",
+          "usageLimit": "totaal uses",
+          "minPurchase": "Minimum bespreking",
+          "maxDiscount": "Max afslag",
+          "oncePerCustomer": "One use per kliënt",
+          "branch": "Tak",
+          "branchAll": "Alle salonne",
+          "detailTitle": "promosie besonderhede",
+          "copyCode": "Kopieer kode",
+          "copied": "Gekopieer",
+          "redemptions": "Verlossings",
+          "totalDiscountGiven": "totaal given: {{amount}}",
+          "noRedemptions": "Nog geen redemptions nie",
+          "deleteBlocked": "Kode is gebruik – skakel dit eerder af.",
+          "saveChanges": "Stoor",
+          "viewDetails": "Sien besonderhede",
+          "summaryLine": "{{discount}} · {{end}}",
+          "endAfterStart": "End datum must be after begin datum",
+          "savedOk": "Changes stoord",
+          "redemptionBooking": "bespreking #{{number}}",
+          "redemptionOrder": "bestelling #{{number}}",
+          "usageLimitPlaceholder": "Onbeperk"
         },
         "signup": {
           "agreeRequired": "Agree to the diensbepalings and privaatheidsbeleid to gaan voort asseblief.",
@@ -7569,7 +7810,10 @@
           "invalidAmountTitle": "Ongeldige bedrag",
           "invalidAmountBody": "Voer ’n bedrag groter as nul in, tot by die uitstaande balans.",
           "exportFailedTitle": "Export misluk",
-          "exportFailedBody": "Kon nie aflaai the faktuur export nie."
+          "exportFailedBody": "Kon nie aflaai the faktuur export nie.",
+          "obligationsDueHeading": "Wat jy skuld",
+          "obligationsDueHint": "Platformfooie word reeds by betaalpunt gehou. Betaal intekeninge, kaartmasjiene en oop fakture op hul gewone skerms.",
+          "obligationsView": "sien"
         },
         "payouts": {
           "dash": "—",
@@ -7863,7 +8107,9 @@
           "enabledLocations": "aangeskakel liggings",
           "excludedServices": "Excluded dienste",
           "excludedHint": "Dienste wat nie as groepafsprake bespreek kan word nie",
-          "saveSettings": "Stoor Instellings"
+          "saveSettings": "Stoor Instellings",
+          "splitPaymentTitle": "Allow split betaling",
+          "splitPaymentHint": "Elke gas betaal hul eie deel aanlyn. Wanneer af, betaal die organiseerder vir die hele groep."
         },
         "noteTemplates": {
           "title": "Nota Templates",
@@ -8075,7 +8321,8 @@
           "offerMultipleTitle": "Offer multiple pryss or duurs?",
           "offerMultipleBody": "e.g. Short vs long Haar, 30 min express vs 60 min vol diens. Each becomes a kliënt-facing Opsie at bespreking.",
           "durationTitle": "Duur",
-          "priceTypeTitle": "prys Tipe"
+          "priceTypeTitle": "prys Tipe",
+          "blankPriceUsesMain": "Laat dit leeg en kliënte betaal {{amount}}, dieselfde as die eerste opsie."
         },
         "endOfDayReport": {
           "factsDefinitions": "Feite & definisies",
@@ -10118,7 +10365,9 @@
           "signOutBody": "Jy kan opstelling later voltooi. Jou vordering word op jou rekening gestoor.",
           "cancel": "Kanselleer",
           "verificationRequiredTitle": "identiteitsverifikasie vereis to go Regstreeks",
-          "verificationRequiredBody": "Voltooi identiteitsverifikasie sodat ons jou lys vir openbare besprekings kan goedkeur."
+          "verificationRequiredBody": "Voltooi identiteitsverifikasie sodat ons jou lys vir openbare besprekings kan goedkeur.",
+          "subscriptionActivatingTitle": "Betaling ontvang, aktiveer tans your Plan",
+          "subscriptionActivatingBody": "Dit neem gewoonlik 'n paar sekondes. Jy kan aanhou om jou besigheid op te stel terwyl ons klaar is."
         },
         "packageSalesReport": {
           "factsDefinitions": "Feite & definisies",
@@ -10267,7 +10516,16 @@
           "topClients": "Top kliënte (voltooi Bespreek gross)",
           "emptyTopClients": "No voltooi besprekings yet.",
           "bookingsPerMonth": "{{count}} besprekings · {{visits}}/mo",
-          "avgAmount": "Gem. {{amount}}"
+          "avgAmount": "Gem. {{amount}}",
+          "deliveredHoursTotal": "Afgelewer",
+          "missedHoursTotal": "Gemis",
+          "stillOnBookHoursTotal": "Still on the bespreek",
+          "cancelledHoursTotal": "Gekanselleer",
+          "staffHourBuckets": "Delivered {{delivered}}h · Missed {{missed}}h · Still {{still}}h · gekanselleer {{cancelled}}h",
+          "staffCompletionRate": "{{pct}}% voltooi of voltooi or missed",
+          "avgBookedValue": "Avg Bespreek value",
+          "avgEarned": "Gem. verdien",
+          "earnedAmount": "Verdien {{amount}}"
         },
         "paymentMethodsReport": {
           "factsDefinitions": "Feite & definisies",
@@ -10373,7 +10631,10 @@
           "activeSubscribers": "Aktief subscribers",
           "activeStatusHint": "huidig status=Aktief",
           "salesByDay": "Verkoops by dag",
-          "dayGross": "{{amount}} ({{count}})"
+          "dayGross": "{{amount}} ({{count}})",
+          "title": "lidmaatskap sales",
+          "subtitle": "Bruto aanspreeklikheid, erkende verdienste en lidafslag vir die geselekteerde tydperk",
+          "separateBases": "Bruto verkope en erkende verdienste is apart – moenie dit bymekaar tel nie."
         },
         "travelFees": {
           "title": "Reis fooie",
@@ -10520,7 +10781,8 @@
           "emptyDesc": "Vasgelê verlossings in hierdie periode sal hier verskyn.",
           "byPurchaser": "By {{name}}",
           "toRecipient": " → {{name}}",
-          "captureDate": "Vang · {{date}}"
+          "captureDate": "Vang · {{date}}",
+          "bookingNumber": "bespreking {{number}}"
         },
         "yocoReconciliationReport": {
           "factsDefinitions": "Feite & definisies",
@@ -11063,7 +11325,15 @@
           "back": "Terug",
           "exportA11y": "Export and deel verslag as CSV",
           "dateLabel": "Datum",
-          "permissionMessage": "Vra jou besigheidseienaar om toestemming vir verkope en ontledingsverslae te gee."
+          "permissionMessage": "Vra jou besigheidseienaar om toestemming vir verkope en ontledingsverslae te gee.",
+          "eodToday": "Vandag",
+          "eodYesterday": "gister",
+          "eodPrevDay": "vorige dag",
+          "eodNextDay": "volgende dag",
+          "eodTodayA11y": "Kies vandag for einde van die dag verslag",
+          "eodYesterdayA11y": "Kies gister for einde van die dag verslag",
+          "eodPrevDayA11y": "Go to vorige trading dag",
+          "eodNextDayA11y": "Go to volgende trading dag"
         },
         "appUpdate": {
           "title": "Dateer vereis op",
@@ -11092,7 +11362,9 @@
           "subtitle": "Besigheid, Plan & Fakturering",
           "tabBusiness": "Besigheid",
           "tabSubscription": "Intekening",
-          "tabBilling": "Fakturering"
+          "tabBilling": "Fakturering",
+          "amountsDueBanner": "Jy het bedrae verskuldig - maak die faktureringsentrum oop om intekeninge, fakture of kaartmasjiene te betaal.",
+          "amountsDueCta": "Sien bedrags verskuldig"
         },
         "adsPaymentSuccess": {
           "defaultTitle": "Jou ad is Regstreeks",
@@ -11951,7 +12223,10 @@
           "sendFailed": "Kon nie stuur Pasgemaak offer nie",
           "unavailableTitle": "Pasgemaak Aanbiedinge onbeskikbaar",
           "errorTitle": "Fout",
-          "disabledBody": "{{message}}\n\nJou administrateur kan die funksie vlag trade.provider_custom_offers vir hierdie mark aktiveer."
+          "disabledBody": "{{message}}\n\nJou administrateur kan die funksie vlag trade.provider_custom_offers vir hierdie mark aktiveer.",
+          "addPhotos": "Voeg inspiration foto's by",
+          "uploadingPhotos": "laai tans op…",
+          "photosAttached": "{{count}} foto(s) attached"
         },
         "salesSettings": {
           "title": "Verkoops instellings",
@@ -12816,6 +13091,18 @@
           "selectMachine": "Kies machine",
           "chargeNamed": "hef · {{name}}",
           "switchMachine": "Wissel kaartmasjien"
+        },
+        "cardMachineReconciliationReport": {
+          "yocoInWindow": "Yoco binne bereik",
+          "paycloudInWindow": "PayCloud binne bereik",
+          "paymentExceptions": "betaling exceptions",
+          "awaitingRefunds": "Verskuldig op masjien",
+          "allMatched": "Geen betaling uitsonderings ({{yoco}} Yoco en {{paycloud}} PayCloud betalings nagegaan).",
+          "awaitingSection": "Terugbetalings steeds op die masjien verskuldig",
+          "awaitingHint": "Hulle bly op die lys ongeag die datums hierbo.",
+          "yocoPendingSection": "Yoco hangende",
+          "paycloudSection": "PayCloud bedrag mismatch",
+          "unavailable": "skakel in Yoco or Beautonomi kaartmasjiene to use this verslag."
         }
       }
     },
@@ -13424,7 +13711,9 @@
       "providerFallback": "Diensverskaffer",
       "openProviderProfile": "Open {{name}} profiel",
       "userFallback": "Gebruiker",
-      "postByProvider": "Plasing by {{name}}"
+      "postByProvider": "Plasing by {{name}}",
+      "shareMediaFailedTitle": "Couldn't deel media",
+      "shareMediaFailedBody": "Ons kon nie hierdie lêer voorberei vir deling nie. Probeer eerder die skakel deel."
     },
     "exploreVideo": {
       "mute": "Stil",
@@ -15263,7 +15552,8 @@
           "buildingLabel": "Gebou",
           "accessLabel": "Toegang",
           "parkingLabel": "Parkering",
-          "landmarksLabel": "Landmerke"
+          "landmarksLabel": "Landmerke",
+          "partiallyRefundedContactProvider": "Hierdie bestelling is gedeeltelik terugbetaal. Kontak die verskaffer om die oorblywende balans terug te betaal."
         },
         "customRequestsList": {
           "startPaymentFailed": "Kon nie begin betaling nie",
@@ -15803,7 +16093,20 @@
           "sessionStatus": "Sessie · {{status}}",
           "yourBookingCancelled": "Jou bespreking is gekanselleer",
           "yourBookingNoShow": "Jou bespreking was marked as a nee-wys",
-          "participantBookingStatus": "bespreking status"
+          "participantBookingStatus": "bespreking status",
+          "shareStatusPaid": "deel betaal",
+          "shareStatusPending": "deel onbetaal ({{amount}})",
+          "shareStatusCancelled": "Spot gekanselleer",
+          "resendInvite": "Re-stuur uitnodiging",
+          "inviteResent": "uitnodiging Gestuur",
+          "inviteResendFailed": "Kon nie re-stuur the uitnodiging nie.",
+          "removeGuest": "Verwyder Gas",
+          "removeGuestConfirm": "Verwyder {{name}} van hierdie bespreking? Hul dienste word verwyder en enige betaling word terugbetaal.",
+          "cancelMySpot": "Kanselleer my spot",
+          "cancelMySpotConfirm": "Kanselleer jou plek in hierdie groepbespreking? Jou dienste word verwyder en enige betaling wat jy gemaak het, word op jou kaart terugbetaal.",
+          "spotCancelled": "Jou spot has been gekanselleer.",
+          "guestRemoved": "Gas verwyderd.",
+          "guestCancelFailed": "Kon nie dateer op the groepbespreking nie."
         },
         "announcements": {
           "retry": "Probeer weer",
@@ -17765,6 +18068,17 @@
           "couldNotLoadPage": "Kon nie laai page nie",
           "httpError": "HTTP {{status}}",
           "appUrlNotConfigured": "App-URL is nie opgestel nie."
+        },
+        "bookingReschedule": {
+          "title": "Reskedule bespreking",
+          "body": "Kies 'n nuwe datum en tyd. Jou verskaffer sal dalk moet bevestig.",
+          "dateLabel": "Datum",
+          "timeLabel": "Tyd",
+          "submit": "dien in versoek",
+          "invalidTitle": "Ongeldige datum or tyd",
+          "invalidBody": "Voer a geldig datum (YYYY-MM-DD) and tyd (HH:MM). in.",
+          "failedTitle": "Kon nie reskedule nie",
+          "noSlots": "No tyds beskikbaar on this dag. Try anander datum."
         }
       }
     },
@@ -18038,7 +18352,12 @@
     "cancelPreviousFullRefundBody": "{{refund}} sal na jou Beautonomi beursie terugkeer. Kanselleer die vorige afspraak?",
     "confirmCancelPrevious": "Kanselleer vorige",
     "refundsStoreCreditNotePayAtVenue": "As jy by die lokaal betaal, word terugbetalings direk met die diensverskaffer hanteer — nie na jou kaart of beursie nie.",
-    "refundsStoreCreditNoteNoPenalty": "Hierdie diensverskaffer hef nie kansellasiestraf nie. Bedrae wat aanlyn betaal is, word na jou Beautonomi-beursie terugbetaal."
+    "refundsStoreCreditNoteNoPenalty": "Hierdie diensverskaffer hef nie kansellasiestraf nie. Bedrae wat aanlyn betaal is, word na jou Beautonomi-beursie terugbetaal.",
+    "groupPaymentMode": "Wie betaal?",
+    "payForEveryone": "I'll betaal for everyone",
+    "splitPayment": "Split betaling",
+    "splitPaymentHint": "Jy betaal nou jou eie dienste en die besprekingsfooie. Elke gas kry 'n skakel om hul deel te betaal.",
+    "guestSharesPaidByInvite": "Gass betaal via uitnodiging skakel"
   },
   "payments": {
     "pay": "Betaal",
@@ -19082,7 +19401,10 @@
         "payAmount": "Betaal {{amount}}",
         "slotConflictTitle": "That tyd is nee longer beskikbaar",
         "slotConflictBody": "Kies 'n ander tyd op die kalender of spring na die volgende oop gleuf.",
-        "pickNextAvailable": "Find volgende beskikbaar tyd"
+        "pickNextAvailable": "Find volgende beskikbaar tyd",
+        "splitPayment": "Split betaling",
+        "guestSharesPaidByInvite": "Gass betaal via uitnodiging skakel",
+        "splitPaymentHint": "Jy betaal nou jou eie dienste en die besprekingsfooie. Elke gas kry 'n skakel om hul deel te betaal."
       },
       "addToWaitlist": {
         "enterName": "Enter your naam asseblief",
@@ -20727,7 +21049,8 @@
           "groupSession": "Groep Sessie · {{ref}}",
           "viewDetails": "Sien besonderhede",
           "reschedule": "Reskedule",
-          "cancel": "Kanselleer"
+          "cancel": "Kanselleer",
+          "customOffer": "Pasgemaak offer"
         },
         "page": {
           "title": "Besprekings",
@@ -21302,7 +21625,9 @@
         "addressUnit": "Eenheid:",
         "addressAccess": "Toegang:",
         "addressParking": "Parkering:",
-        "addressLandmarks": "Landmerk"
+        "addressLandmarks": "Landmerk",
+        "partiallyRefundedContactProvider": "Hierdie bestelling is gedeeltelik terugbetaal. Kontak die verskaffer om die oorblywende balans terug te betaal.",
+        "paymentPartiallyRefunded": "Partially terugbetaal"
       },
       "bookingReceipt": {
         "methodWallet": "Beursie",
@@ -23439,7 +23764,13 @@
           "methodCard": "Kaart",
           "methodYoco": "Yoco",
           "methodBankTransfer": "Bankoordrag",
-          "methodOther": "ander"
+          "methodOther": "ander",
+          "shareStatusPaid": "Share paid",
+          "shareStatusPending": "Share unpaid ({{amount}})",
+          "shareStatusCancelled": "Spot cancelled",
+          "resendInvite": "Re-send invite",
+          "inviteResent": "Invite sent",
+          "inviteResendFailed": "Could not re-send the invite."
         },
         "groupFinancials": {
           "title": "Ezezimali",
@@ -24126,7 +24457,9 @@
             "yocoRecorded": "Yoco terugbetaling aangeteken",
             "awaitingYocoTitle": "{{amount}} nog om terug te betaal op die Yoco masjien",
             "awaitingYocoBody": "Hierdie bespreking is gekanselleer met 'n terugbetaling terug na kaart. Betaal dit terug in die Yoco-toepassing of op die masjien, en teken dit dan hier op. Tot dan bly dit uitstaande in die kaartmasjienrekonsiliasieverslag.",
-            "yocoRecordCta": "Op die masjien terugbetaal — teken die terugbetaling aan"
+            "yocoRecordCta": "Op die masjien terugbetaal — teken die terugbetaling aan",
+            "pendingCashTitle": "{{amount}} to return in person",
+            "pendingCashBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending."
           }
         },
         "createPayment": {
@@ -24460,7 +24793,9 @@
         "additionalCharges": "Bykomende heffings",
         "request": "versoek",
         "stripeConnectPayoutHint": "Uitbetalings are Gestuur via Stripe Koppel. voltooi setup under instellings → Payout rekenings before versoeking a withdrawal.",
-        "completeStripeConnect": "voltooi Stripe Koppel setup"
+        "completeStripeConnect": "voltooi Stripe Koppel setup",
+        "openDisputeReserve": "− Open dispute reserve",
+        "vatHeldForPayout": "− VAT held for payout"
       },
       "onboarding": {
         "steps": {
@@ -24787,7 +25122,9 @@
           "paymentHint": "This helps us understand how you accept in-person card payments and whether we can offer better terminal options in future.",
           "vatSarsHint": "Are you VAT registered with SARS? VAT registration is mandatory if your annual turnover is R1 million or more. If you make less than R1 million per year, you don't need to be VAT registered.",
           "bookingProtectionTitle": "Booking protection",
-          "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings."
+          "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings.",
+          "pricesIncludeTax": "My service prices include VAT",
+          "pricesIncludeTaxDesc": "Most South African salons show VAT-inclusive prices (recommended)."
         },
         "software": {
           "selectPlaceholder": "Kies or Tipe software naam...",
@@ -24961,7 +25298,13 @@
           "draftServicesLabel": "konsep dienste:",
           "attachZones": "Attach Zones",
           "categorySelected": "kategorie Gekies",
-          "zonesSelected": "Gekies all {{count}} zones"
+          "zonesSelected": "Gekies all {{count}} zones",
+          "ownerGoLiveTitle": "Your profile on the booking page",
+          "ownerTakesAppointments": "I take appointments myself",
+          "ownerTakesAppointmentsHint": "Turn off if you only manage the team and won't appear for customers to book.",
+          "ownerPublicTitle": "Title customers see (optional)",
+          "ownerServicesLabel": "Services you perform",
+          "ownerServicesAll": "Leave all checked to offer every service in your catalog."
         },
         "plan": {
           "activatesInstantly": "Aktiveers instantly",
@@ -25035,7 +25378,9 @@
           "tierMaxKm": "Up to km",
           "tierFee": "Fee ({{currency}})",
           "addTier": "Voeg tier by"
-        }
+        },
+        "submitLaunchFree": "Create my business",
+        "submitLaunchPaid": "Create my business and continue to payment"
       },
       "dashboard": {
         "pageTitle": "Paneelbord",
@@ -25201,7 +25546,9 @@
           "truncatedLedger": "Tydperkverdienste kan onvolledig wees vir baie hoëvolume rekeninge.",
           "bookingsCount": "besprekings ({{count}})",
           "saleCount": "Verkoop ({{count}})"
-        }
+        },
+        "giftCardLedgerIssuance": "Gift card ledger issuance (all time)",
+        "membershipSalesAllTime": "Membership sales (all time)"
       },
       "settings": {
         "pageTitle": "Besigheid instellings",
@@ -25314,6 +25661,10 @@
               "waitlist": {
                 "title": "waglys instellings",
                 "description": "Configure waglys behavior"
+              },
+              "businessSetup": {
+                "title": "Business profile for Get Started",
+                "description": "Business name, description (10+ characters), and contact details for your checklist"
               }
             }
           },
@@ -25974,7 +26325,9 @@
             "enableForLocationsHint": "Kies which liggings ondersteuning groepbesprekings in Aanlyn bespreking",
             "excludeServices": "Exclude dienste from Aanlyn groepbespreking",
             "excludeServicesHint": "Select services that should not be available for group booking online. This only excludes them from group appointments, not individual bookings.",
-            "noServicesAvailable": "No dienste beskikbaar"
+            "noServicesAvailable": "No dienste beskikbaar",
+            "allowSplitPayment": "Allow split payment",
+            "allowSplitPaymentHint": "Each guest pays their own share online. When off, the organizer pays for the whole group."
           },
           "appointment-activity/online-booking": {
             "onlineBooking": "Aanlyn bespreking",
@@ -26267,7 +26620,11 @@
             "billsPaidCount_one": "{{count}} payment",
             "billsPaidCount_other": "{{count}} payments",
             "platformInvoices": "Platform invoices",
-            "platformInvoicePayment": "Platform invoice payment"
+            "platformInvoicePayment": "Platform invoice payment",
+            "obligationsDueHeading": "What you owe",
+            "obligationsDueHint": "Subscriptions, card machines, and open invoices — platform fees are already kept at checkout.",
+            "nonPayableFeeNote": "Platform fees are customer-paid and already retained at checkout. This invoice is not payable.",
+            "refundReviewRequired": "A payment was collected on this legacy fee invoice. Finance must review for a possible refund."
           },
           "business-description": {
             "businessDescription": "Besigheid beskrywing",
@@ -28552,6 +28909,24 @@
             "loading": "Laai tans…",
             "nativeCancelled": "You gekanselleer the betaling. No hef was made.",
             "nativeInvalid": "This betaling return skakel is ongeldig or involtooi."
+          },
+          "business": {
+            "failedToLoad": "Failed to load business profile",
+            "failedToUpdate": "Failed to update business profile. Please try again.",
+            "savedSuccess": "Business profile updated successfully",
+            "validationBusinessName": "Enter a business name longer than one character",
+            "validationDescriptionMin": "Description must be at least 10 characters for Get Started",
+            "validationEmail": "Enter a valid email address",
+            "validationPhone": "Enter a complete phone number in international format",
+            "contactHint": "Get Started also counts phone or email on your account. You do not need both business phone and email if your account already has one.",
+            "setupBannerTitle": "Complete this step for Get Started",
+            "setupBannerBody": "Save your business name, a description of at least 10 characters, and optional contact details.",
+            "businessNameLabel": "Business name",
+            "descriptionLabel": "Business description",
+            "descriptionHint": "At least 10 characters required to complete Get Started.",
+            "emailLabel": "Business email",
+            "phoneLabel": "Business phone",
+            "getStartedIncompleteHint": "Get Started stays incomplete until your description is at least 10 characters."
           }
         },
         "serviceZones": {
@@ -28613,7 +28988,47 @@
           "creating": "Skep tans…",
           "percentage": "Percentage",
           "fixedAmount": "Fixed bedrag",
-          "placeholderCode": "SUMMER20"
+          "placeholderCode": "SUMMER20",
+          "newPromo": "New promo code",
+          "percentOff": "{{value}}% off",
+          "amountOff": "{{amount}} off",
+          "usedCount": "{{count}} uses",
+          "hidden": "Hidden",
+          "public": "Public",
+          "viewDetails": "View details",
+          "createCta": "Create promo code",
+          "delete": "Delete",
+          "startsOn": "Starts",
+          "endsOn": "Ends",
+          "noEndDate": "No end date",
+          "endsLabel": "Ends {{date}}",
+          "usedCountMax": "{{count}} of {{max}} used",
+          "statusActive": "Active",
+          "statusScheduled": "Scheduled",
+          "statusExpired": "Expired",
+          "statusUsedUp": "Used up",
+          "statusOff": "Off",
+          "limitsSection": "Limits",
+          "usageLimit": "Total uses",
+          "usageLimitPlaceholder": "Unlimited",
+          "minPurchase": "Minimum booking amount",
+          "maxDiscount": "Max discount (%)",
+          "oncePerCustomer": "One use per client",
+          "branch": "Salon branch",
+          "branchAll": "All salons",
+          "summaryLine": "{{discount}} · {{end}}",
+          "detailTitle": "Promo details",
+          "copyCode": "Copy code",
+          "copied": "Code copied",
+          "redemptions": "Redemptions",
+          "totalDiscountGiven": "Total discount given: {{amount}}",
+          "noRedemptions": "No redemptions yet",
+          "redemptionBooking": "Booking #{{number}}",
+          "redemptionOrder": "Order #{{number}}",
+          "deleteBlocked": "This code has been used. Turn it off instead of deleting.",
+          "saveChanges": "Save changes",
+          "endAfterStart": "End date must be after start date",
+          "savedOk": "Changes saved"
         },
         "catalogue": {
           "title": "katalogus",
@@ -29033,7 +29448,13 @@
           "aramexPin": "rekening PIN",
           "aramexUser": "Gebruikernaam",
           "aramexPassword": "Wagwoord",
-          "aramexProductType": "Domestic produk Tipe (e.g. ONP)"
+          "aramexProductType": "Domestic produk Tipe (e.g. ONP)",
+          "bobGoWebhookSecret": "Bob Go webhook secret (optional)",
+          "bobGoWebhookSecretOptional": "Optional — from Bob Go → Settings → Webhook subscriptions",
+          "bobGoWebhookSecretConfigured": "Secret saved — paste only to replace",
+          "bobGoWebhookSecretHint": "Live shipment updates use webhooks when this is set. Without it, orders catch up within about 10 minutes.",
+          "bobGoWebhookSubscribeFailed": "Could not register Bob Go webhooks",
+          "bobGoWebhookCatchUpHint": "Your API key is saved. Shipment status will still catch up within about 10 minutes."
         },
         "packages/new": {
           "failedToLoadItems": "Kon nie laai Items nie",
@@ -29333,7 +29754,11 @@
           "statusRefunded": "terugbetaal",
           "paid": "betaal",
           "estimatedDeliveryDate": "Estimated Aflewering datum (opsioneel)",
-          "partialWalletRefundHint": "Partial wallet refunds credit the customer's store balance only. Card and gift-card payments are not returned unless you refund the full order total."
+          "partialWalletRefundHint": "Partial wallet refunds credit the customer's store balance only. Card and gift-card payments are not returned unless you refund the full order total.",
+          "refundOnlineOnly": "This order was paid online. Store credit returns the card charge and any wallet or gift-card portion to the customer.",
+          "refundNoWallet": "This order was paid online and has no customer wallet, so it cannot be refunded in person.",
+          "partiallyRefundedRefundRemaining": "This order was partially refunded. Mark it refunded for the remaining amount — cancel is not available.",
+          "refundRemainingHint": "Refund remaining"
         },
         "team/shifts/dialog": {
           "overrideLocation": "Override ligging Opegradering ure",
@@ -29915,7 +30340,8 @@
             "business-overview": "Besigheid Oversien",
             "performance-dashboard": "Performance Dashboard",
             "comparison": "Period Comparison",
-            "card-machine-reconciliation": "Kaartmasjien rekonsiliasie"
+            "card-machine-reconciliation": "Kaartmasjien rekonsiliasie",
+            "membership-sales": "Membership sales"
           }
         },
         "pages": {
@@ -29932,7 +30358,11 @@
             "recent": "Recent No-Shows",
             "emptyTitle": "No nee-wyss",
             "emptyDesc": "No nee-wyss in the Gekies period.",
-            "unknownClient": "onbekend kliënt"
+            "unknownClient": "onbekend kliënt",
+            "ledgerRecognised": "Ledger already recognised",
+            "ledgerRecognisedHint": "Fees already recorded for these missed visits, including any no-show fee — not the appointment price.",
+            "repeatOffendersHint": "The appointment price for each client is listed as booked value below.",
+            "bookedValueAmount": "{{amount}} booked value"
           },
           "clients/new": {
             "title": "Nuwe kliënte",
@@ -30007,7 +30437,10 @@
             "topClients": "Top kliënte by Lifetyd Value",
             "visitsMonths": "{{visits}} visits • {{months}} maande",
             "emptyTitle": "No kliënte found",
-            "emptyDesc": "No kliënt Data beskikbaar."
+            "emptyDesc": "No kliënt Data beskikbaar.",
+            "averageBookedValue": "Average booked value",
+            "averageEarned": "Average earned",
+            "clientEarned": "Earned {{amount}}"
           },
           "payments/methods": {
             "title": "betaalmetodes",
@@ -30069,7 +30502,14 @@
             "hoursValue": "{{hours}} u",
             "breakdown": "personeel ure Breakdown",
             "emptyTitle": "No ure Data",
-            "emptyDesc": "No ure Data beskikbaar for the Gekies period."
+            "emptyDesc": "No ure Data beskikbaar for the Gekies period.",
+            "deliveredHours": "Delivered",
+            "missedHours": "Missed (no-show)",
+            "stillOnBookHours": "Still on the book",
+            "cancelledHours": "Cancelled",
+            "completionRateLine": "Of visits that were completed or missed, {{pct}}% were completed.",
+            "staffBuckets": "Delivered {{delivered}}h · Missed {{missed}}h · Still on book {{still}}h · Cancelled {{cancelled}}h",
+            "staffCompletionRate": "{{pct}}% completed of completed or missed visits"
           },
           "sales/summary": {
             "title": "Verkoops Opsomming",
@@ -30300,7 +30740,8 @@
             "noCommission": "No commission",
             "noTips": "No fooitjies",
             "cancelledCount": "({{count}} gekanselleer)",
-            "noStaffData": "No staff performance data available for the selected period."
+            "noStaffData": "No staff performance data available for the selected period.",
+            "deliveredHours": "{{hours}}h delivered (catalogue)"
           },
           "products/inventory": {
             "title": "voorraadlys",
@@ -30937,7 +31378,10 @@
             "match": "Bedragooreenstemming",
             "order": "Bestelnommer",
             "openBooking": "Maak die bespreking oop om dit op te teken",
-            "awaitingSince": "Wag sedert"
+            "awaitingSince": "Wag sedert",
+            "yocoPaymentsInWindow": "Yoco payments in range",
+            "paycloudPaymentsInWindow": "PayCloud payments in range",
+            "allMatchedLine": "No payment exceptions in this period ({{yoco}} Yoco and {{paycloud}} PayCloud payments checked)."
           }
         },
         "export": {
@@ -32183,7 +32627,8 @@
           "checkoutFailed": "afhandeling misluk. Probeer asseblief weer.",
           "taxes": "Belasting",
           "total": "Totaal",
-          "planNotFound": "Plan nie gevind nie."
+          "planNotFound": "Plan nie gevind nie.",
+          "backToSetup": "Back to setup checklist"
         },
         "stripeBillingTitle": "Gefaktureer deur Stripe",
         "stripeBillingBody": "Dateer your Kaart or sien faktuurs in the secure Stripe Fakturering portal. Use Manage Fakturering below — the same flow as Paystack regions, but hosted by Stripe for your market. op.",
@@ -32264,7 +32709,9 @@
         "soundsSectionPlatform": "Gewild sounds",
         "soundsSectionYours": "Jou sounds",
         "soundPreviewPlay": "Play presensie",
-        "soundPreviewStop": "Stop presensie"
+        "soundPreviewStop": "Stop presensie",
+        "trimHandleStartA11y": "Clip start",
+        "trimHandleEndA11y": "Clip end"
       },
       "calendarMobile": {
         "timeOff": "tyd off",
@@ -32410,7 +32857,9 @@
         "storeCredit": "Store crwysig",
         "cash": "Kontant / persoonlik",
         "reason": "Rede",
-        "reasonPlaceholder": "opsioneel Rede for audit trail"
+        "reasonPlaceholder": "opsioneel Rede for audit trail",
+        "pendingCashBlockTitle": "Cash refund already pending",
+        "pendingCashBlockBody": "This booking already has {{amount}} awaiting customer confirmation. Hand that amount back in person — do not issue another cash refund until it is confirmed or closed."
       },
       "appointmentViewSheet": {
         "bookingFallback": "Bespreking",
@@ -32527,7 +32976,12 @@
         "bookingInProgress": "Bespreking…",
         "bookingSuccess": "Courier Bespreek",
         "bookingFailed": "Kon nie bespreek courier nie",
-        "printLabel": "Druk label"
+        "printLabel": "Druk label",
+        "refundOnlineOnly": "This order was paid online. Store credit returns the card charge and any wallet or gift-card portion to the customer.",
+        "refundNoWallet": "This order was paid online and has no customer wallet, so it cannot be refunded in person.",
+        "nothingLeftToCollect": "Wallet or a gift card already covers this order. Nothing is left to collect in person.",
+        "courierChargedAmount": "Bob Go charged (salon)",
+        "courierChargedWeight": "Charged weight (kg)"
       },
       "appointmentEditSheet": {
         "updated": "bespreking dateer opd",
@@ -33118,7 +33572,9 @@
         "updateStaffMember": "Dateer Personeellid op",
         "createStaffMember": "Skep Personeellid",
         "emailPlaceholder": "e-pos@example.com",
-        "moneyPlaceholder": "0.00"
+        "moneyPlaceholder": "0.00",
+        "removePhoto": "Remove photo",
+        "avatarUploadFailed": "Could not upload the photo. Try again."
       },
       "expressBooking": {
         "loadFailed": "Kon nie laai express bespreking skakels nie",
@@ -33438,7 +33894,12 @@
         "viewComments": "Sien & opmerkings",
         "comments": "{{count}} opmerkings",
         "likes": "{{count}} likes",
-        "views": "{{count}} siens"
+        "views": "{{count}} siens",
+        "statusVideoProcessing": "Processing",
+        "statusVideoFailed": "Video failed",
+        "statusHidden": "Hidden by Beautonomi",
+        "statusHiddenNote": "Moderation note: {{note}}",
+        "videoFailedDetail": "Video encoding failed. Edit the post and save to try again."
       },
       "formsPage": {
         "failedToLoad": "Kon nie laai forms nie",
@@ -34125,6 +34586,67 @@
           "isWalkIn": "Inloop",
           "isAtHome": "At-tuis diens"
         }
+      },
+      "teamAddWizard": {
+        "title": "Add team member",
+        "readyTitle": "Ready to go",
+        "seatLine": "{{current}} of {{max}} seats used on your plan",
+        "limitBlocked": "Your plan does not have room for another team member. Upgrade or remove someone first.",
+        "nameEmailRequired": "Name and email are required.",
+        "invalidPhone": "Enter a valid phone number or leave the field blank.",
+        "createFailed": "Could not add team member.",
+        "linkCopied": "Invite link copied",
+        "inviteEmailed": "We emailed {{name}} an invite to join.",
+        "inviteLinkReady": "Copy the invite link and share it (WhatsApp, SMS, or in person).",
+        "copyLink": "Copy link",
+        "shareLink": "Share link",
+        "publicTitle": "Title customers see (optional)",
+        "publicTitleHint": "Shown on your booking page instead of their role, e.g. Senior stylist.",
+        "takesAppointments": "Takes appointments",
+        "takesAppointmentsHint": "Turn off for managers who only run the calendar, not the chair.",
+        "branches": "Branches",
+        "servicesOffered": "Services they perform",
+        "selectAllServices": "All services",
+        "selectBranch": "Select at least one branch",
+        "bookableSummary": "Customers can book them for {{count}} service(s), starting {{from}}.",
+        "bookableNow": "immediately",
+        "notOnPublicBooking": "They will not appear for online booking (front desk role).",
+        "hintNoCommission": "Commission was left off — you can turn it on in their profile.",
+        "hintNoTimeClock": "Time clock is off — enable it in their profile if they should clock in.",
+        "hintNoServices": "No services were linked — assign services before customers can book them online.",
+        "hintNoHoursCopied": "Working hours were not copied — set their weekly schedule in the team profile (salon hours still apply until then).",
+        "name": "Full name",
+        "email": "Email",
+        "mobile": "Mobile",
+        "photoOptional": "Add photo (optional)",
+        "photoUploadFailed": "Could not upload the photo.",
+        "paysCommission": "Pays commission",
+        "job": "Job",
+        "job_stylist": "Stylist",
+        "job_senior": "Senior stylist",
+        "job_front_desk": "Front desk",
+        "job_manager": "Manager",
+        "frontDeskHint": "Front desk can manage the calendar but will not show up for customers to book.",
+        "commissionOptional": "Commission % (optional)",
+        "servicesDefaultAll": "All bookable services are selected by default.",
+        "hoursSource": "Working hours",
+        "hoursSalon": "Same as the salon",
+        "hoursCopyFrom": "Copy {{name}}",
+        "startDateOptional": "First day customers can book online (optional)",
+        "timeClock": "Use time clock",
+        "back": "Back",
+        "next": "Next",
+        "cancel": "Cancel",
+        "done": "Done",
+        "saving": "Adding…",
+        "addAndInvite": "Add and send invite"
+      },
+      "teamReassign": {
+        "title": "Upcoming bookings",
+        "body": "{{name}} has upcoming bookings. Who should take them?",
+        "firstAvailable": "First available stylist",
+        "confirm": "Reassign and continue",
+        "cancel": "Cancel"
       }
     },
     "global": {
@@ -35704,7 +36226,14 @@
     },
     "giftCard": {
       "breadcrumb": {
-        "navLabel": "Broodkrummel"
+        "navLabel": "Broodkrummel",
+        "home": "Home",
+        "giftCards": "Gift cards",
+        "purchase": "Buy a gift card",
+        "purchaseBulk": "Buy gift cards in bulk",
+        "confirmation": "Confirmation",
+        "cancelled": "Purchase cancelled",
+        "claim": "Claim"
       },
       "purchaseSuccess": {
         "noRefTitle": "geskenkkaart purchase",
@@ -35726,6 +36255,43 @@
         "verifyFailed": "Ons kon nie hierdie geskenkbewysbetaling bevestig nie. As jou bank gedebiteer is, gaan betalings en geskenkbewyse binne 'n minuut na.",
         "wrongReceipt": "Hierdie kwitansie is nie vir 'n geskenkbewysaankoop nie. As jy vir 'n geskenkbewys betaal het, gaan Betalings en geskenkbewyse na – jou kodes is dalk reeds daar."
       }
+    },
+    "checkout": {
+      "customOffer": {
+        "title": "Pay Pasgemaak offer",
+        "subtitle": "resensie totaals and betaal securely.",
+        "subtotal": "Subtotaal",
+        "travel": "Travel",
+        "total": "Total",
+        "payNow": "Betaal nou",
+        "cancel": "Cancel",
+        "loadFailed": "Kon nie laai this offer nie.",
+        "paymentSuccessful": "betaling suksesful.",
+        "paymentStartFailed": "Kon nie begin betaling nie.",
+        "waitingTitle": "betaling verwerk tans",
+        "waitingBody": "Ons bevestig jou betaling. Verfris jou persoonlike versoeke in 'n oomblik.",
+        "backToRequests": "terug to Pasgemaak versoeke",
+        "changesRequestedTitle": "Aanbod word hersien",
+        "changesRequestedBody": "Jou verskaffer is besig om hierdie aanbod op te dateer ná jou veranderingsversoek."
+      }
+    },
+    "groupInvite": {
+      "title": "groepbespreking uitnodiging",
+      "body": "You are uitnodigingd to join a Groep Sessie.",
+      "accept": "Accept uitnodiging",
+      "notFound": "This uitnodiging skakel is ongeldig or verval.",
+      "acceptFailed": "Kon nie accept uitnodiging nie.",
+      "payShare": "Pay my deel",
+      "payFailed": "Kon nie begin betaling nie.",
+      "paymentProcessing": "Dankie! Jou betaling word bevestig. Hierdie bladsy sal binnekort opdateer.",
+      "yourShare": "Jou deel: {{amount}}",
+      "sharePaid": "Jou deel is betaal. See you thier!",
+      "payShareAmount": "Pay my deel ({{amount}})",
+      "cancelSpot": "Kanselleer my spot",
+      "cancelConfirm": "Kanselleer jou plek in hierdie groepbespreking? Jou dienste word verwyder en enige betaling wat jy gemaak het, word op jou kaart terugbetaal.",
+      "cancelled": "Jou spot has been gekanselleer.",
+      "cancelledRefunded": "Jou plek is gekanselleer. {{amount}} word na jou kaart terugbetaal.",
+      "cancelFailed": "Kon nie kanselleer your spot nie."
     }
   },
   "errors": {

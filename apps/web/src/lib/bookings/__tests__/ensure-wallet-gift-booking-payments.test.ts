@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ensureWalletGiftBookingPayments } from "../ensure-wallet-gift-booking-payments";
+import {
+  completeWalletGiftSyntheticPayments,
+  ensureWalletGiftBookingPayments,
+} from "../ensure-wallet-gift-booking-payments";
 
 type Inserted = {
   booking_id: string;
@@ -126,5 +129,39 @@ describe("ensureWalletGiftBookingPayments", () => {
       giftCardAmount: 0,
     });
     expect(inserts[0]?.amount).toBe(12.35);
+  });
+});
+
+describe("completeWalletGiftSyntheticPayments", () => {
+  it("completes only the leg whose suffix is passed", async () => {
+    const filters: Array<[string, unknown]> = [];
+    const chain = {
+      update() {
+        return chain;
+      },
+      eq(col: string, val: unknown) {
+        filters.push([col, val]);
+        return chain;
+      },
+      in(col: string, val: unknown) {
+        filters.push([col, val]);
+        return chain;
+      },
+      then(resolve: (value: { error: null }) => void) {
+        resolve({ error: null });
+      },
+    };
+    const admin = {
+      from: () => chain,
+    } as unknown as SupabaseClient;
+
+    await completeWalletGiftSyntheticPayments(admin, "b-1", {
+      paymentLegSuffix: ":additional:charge-1",
+    });
+
+    expect(filters).toContainEqual([
+      "payment_provider_id",
+      ["wallet_booking:b-1:additional:charge-1", "gift_card_booking:b-1:additional:charge-1"],
+    ]);
   });
 });

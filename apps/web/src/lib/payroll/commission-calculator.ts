@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { STAFF_COMMISSION_REVENUE_TYPES } from "@/lib/reports/constants";
 import { percentOf, sumMoney } from "@beautonomi/utils";
+import { posSaleCountsAsRevenue } from "@/lib/reports/provider-sales-history";
 import { resolveStaffRates } from "./resolve-staff-rates";
 
 export interface CommissionResult {
@@ -264,7 +265,7 @@ export async function calculateStaffCommission(
   // 7. Sales table (standalone product sales with staff_id)
   let salesQuery = supabaseAdmin
     .from("sales")
-    .select("id, staff_id, total_amount, sale_date")
+    .select("id, staff_id, total_amount, sale_date, payment_status, notes")
     .eq("provider_id", providerId)
     .eq("staff_id", staffId)
     .gte("sale_date", fromDate.toISOString())
@@ -275,13 +276,14 @@ export async function calculateStaffCommission(
   }
   const { data: sales } = await salesQuery;
 
-  if (sales) {
+  const commissionSales = (sales ?? []).filter((sale) => posSaleCountsAsRevenue(sale));
+  if (commissionSales.length > 0) {
     const { data: saleItemsData } = await supabaseAdmin
       .from("sale_items")
       .select("id, item_type, total_price, item_id")
       .in(
         "sale_id",
-        sales.map((s: any) => s.id)
+        commissionSales.map((s: { id: string }) => s.id)
       )
       .eq("item_type", "product");
 

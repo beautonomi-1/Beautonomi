@@ -111,6 +111,17 @@ describe("sumPendingBookingLevelCatchUpNet", () => {
     ).toBe(130);
   });
 
+  it("includes pending tax in catch-up net for residual allocation", () => {
+    const catchUp = sumPendingBookingLevelCatchUpNet({
+      tipAmount: 0,
+      travelFee: 0,
+      platformFee: 0,
+      taxAmount: 15,
+      existingTypes: new Set(),
+    });
+    expect(catchUp).toBe(15);
+  });
+
   it("prevents residual double-count when catch-up is included in postedLegsSum", () => {
     const catchUp = sumPendingBookingLevelCatchUpNet({
       tipAmount: 10,

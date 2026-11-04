@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
 import { filterProductOrdersForLocation } from "@/lib/reports/provider-report-utils";
 import { providerCollectedRetailOrdersOrFilter } from "@/lib/reports/provider-retail-order-scope";
+import { productOrderTenderSplit } from "@/lib/orders/product-order-tender";
 
 export type ProviderRetailTakingsPeriod = {
   amount: number;
@@ -18,12 +19,38 @@ export type ProviderRetailTakingsSummary = {
 type RetailOrderRow = {
   id: string;
   total_amount?: number | string | null;
+  wallet_amount?: number | string | null;
+  gift_card_amount?: number | string | null;
   paid_at?: string | null;
   fulfillment_type?: string | null;
   collection_location_id?: string | null;
   order_source?: string | null;
   payment_method?: string | null;
 };
+
+const PLATFORM_HELD_RETAIL_METHODS = new Set([
+  "paystack",
+  "stripe",
+  "flutterwave",
+  "wallet",
+  "gift_card",
+]);
+
+/**
+ * Till money only. Paystack, Stripe, Flutterwave, wallet, and gift card are
+ * already in product-order earnings. A mixed till sale counts the cash/card
+ * remainder, not the wallet or gift card share.
+ */
+export function providerRetailTakingsAmount(row: {
+  total_amount?: number | string | null;
+  wallet_amount?: number | string | null;
+  gift_card_amount?: number | string | null;
+  payment_method?: string | null;
+}): number {
+  const method = String(row.payment_method ?? "").trim().toLowerCase();
+  if (PLATFORM_HELD_RETAIL_METHODS.has(method)) return 0;
+  return productOrderTenderSplit(row).remainder;
+}
 
 async function fetchPaidProviderCollectedRetailOrders(
   supabaseAdmin: SupabaseClient,
@@ -33,7 +60,7 @@ async function fetchPaidProviderCollectedRetailOrders(
   let q = supabaseAdmin
     .from("product_orders")
     .select(
-      "id, total_amount, paid_at, fulfillment_type, collection_location_id, order_source, payment_method",
+      "id, total_amount, wallet_amount, gift_card_amount, paid_at, fulfillment_type, collection_location_id, order_source, payment_method",
     )
     .eq("provider_id", providerId)
     .eq("payment_status", "paid")
@@ -61,7 +88,9 @@ function sumInRange(
   for (const row of orders) {
     const paidAt = row.paid_at ? new Date(row.paid_at).getTime() : NaN;
     if (!Number.isFinite(paidAt) || paidAt < fromMs || paidAt > toMs) continue;
-    amount += Number(row.total_amount ?? 0);
+    const taken = providerRetailTakingsAmount(row);
+    if (taken <= 0) continue;
+    amount += taken;
     count += 1;
   }
   return { amount, count };

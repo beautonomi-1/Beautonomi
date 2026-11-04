@@ -8,8 +8,10 @@ import {
   StyleSheet,
   ActivityIndicator,
   AppState,
+  Platform,
 } from "react-native";
-import { CameraView, useCameraPermissions, useMicrophonePermissions } from "expo-camera";
+import { CameraView, useCameraPermissions, useMicrophonePermissions, type FlashMode } from "expo-camera";
+import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle } from "react-native-svg";
@@ -17,6 +19,7 @@ import * as Haptics from "expo-haptics";
 import { twStyle } from "@/lib/twStyle";
 import { useTranslation } from "@beautonomi/i18n";
 import { openAppSettings, PERMISSION_COPY } from "@/lib/native-permissions";
+import { useAfterHide } from "@/hooks/useAfterHide";
 
 const MIN_RECORD_MS = 450;
 const REBIND_GRACE_MS = 500;
@@ -28,15 +31,21 @@ export type ExploreCameraCaptureResult = {
   fileName: string;
   isVideo: boolean;
   source_duration_ms?: number;
+  facing?: "front" | "back";
 };
 
 type Props = {
   visible: boolean;
   maxVideoDurationMs: number;
+  /** When false, camera is photo-only (Explore video upload disabled). */
+  videoCaptureEnabled?: boolean;
+  initialMode?: "photo" | "video";
+  initialFacing?: "front" | "back";
   onClose: () => void;
   /** Fires after the modal dismiss animation (best-effort). */
   onAfterHide?: () => void;
-  onCapture: (result: ExploreCameraCaptureResult) => void;
+  /** Return false when the capture was rejected (e.g. over size cap) so the sheet stays open. */
+  onCapture: (result: ExploreCameraCaptureResult) => boolean | Promise<boolean>;
 };
 
 function RecordProgressRing({
@@ -83,6 +92,9 @@ function RecordProgressRing({
 export function ExploreCameraCaptureSheet({
   visible,
   maxVideoDurationMs,
+  videoCaptureEnabled = true,
+  initialMode = "photo",
+  initialFacing = "front",
   onClose,
   onAfterHide,
   onCapture,
@@ -112,6 +124,10 @@ export function ExploreCameraCaptureSheet({
   const [recordMs, setRecordMs] = useState(0);
   const [busy, setBusy] = useState(false);
   const [mountError, setMountError] = useState<string | null>(null);
+  const [photoReviewUri, setPhotoReviewUri] = useState<string | null>(null);
+  const [recordTooShortHint, setRecordTooShortHint] = useState(false);
+  const [flash, setFlash] = useState<FlashMode>("off");
+  const [torchOn, setTorchOn] = useState(false);
 
   const clearRebindGraceTimer = useCallback(() => {
     if (rebindGraceTimerRef.current) {
@@ -131,8 +147,8 @@ export function ExploreCameraCaptureSheet({
 
   useEffect(() => {
     if (!visible) return;
-    setMode("photo");
-    setFacing("front");
+    setMode(videoCaptureEnabled ? initialMode : "photo");
+    setFacing(initialFacing);
     setRecording(false);
     setRecordMs(0);
     setCameraReady(false);
@@ -140,10 +156,14 @@ export function ExploreCameraCaptureSheet({
     setRebindGrace(false);
     setMountError(null);
     setModalPresented(false);
+    setPhotoReviewUri(null);
+    setRecordTooShortHint(false);
+    setFlash("off");
+    setTorchOn(false);
     finishingRef.current = false;
     recordPromiseRef.current = null;
     clearRebindGraceTimer();
-  }, [visible, clearRebindGraceTimer]);
+  }, [visible, initialMode, initialFacing, videoCaptureEnabled, clearRebindGraceTimer]);
 
   useEffect(() => {
     if (visible && !wasVisibleRef.current) {
@@ -152,21 +172,7 @@ export function ExploreCameraCaptureSheet({
     wasVisibleRef.current = visible;
   }, [visible, getCameraPermission]);
 
-  useEffect(() => {
-    if (!visible) return;
-    const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") {
-        void getCameraPermission();
-      }
-    });
-    return () => sub.remove();
-  }, [visible, getCameraPermission]);
-
-  useEffect(() => {
-    if (visible || !onAfterHide) return;
-    const timer = setTimeout(() => onAfterHide(), MODAL_HIDE_MS);
-    return () => clearTimeout(timer);
-  }, [visible, onAfterHide]);
+  useAfterHide(visible, onAfterHide, MODAL_HIDE_MS);
 
   const handleModalShow = useCallback(() => {
     setModalPresented(true);
@@ -189,16 +195,20 @@ export function ExploreCameraCaptureSheet({
       const out = await pending;
       if (elapsed < MIN_RECORD_MS || !out?.uri) {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        setRecordTooShortHint(true);
+        setTimeout(() => setRecordTooShortHint(false), 2000);
         return;
       }
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      onCapture({
+      const accepted = await onCapture({
         uri: out.uri,
         mimeType: "video/mp4",
         fileName: `explore-record-${Date.now()}.mp4`,
         isVideo: true,
         source_duration_ms: Math.min(elapsed, maxVideoDurationMs),
+        facing,
       });
+      if (!accepted) return;
     } catch {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
@@ -211,6 +221,18 @@ export function ExploreCameraCaptureSheet({
   useEffect(() => {
     finishRecordingRef.current = finishRecording;
   }, [finishRecording]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        void getCameraPermission();
+      } else if (recording) {
+        void finishRecordingRef.current();
+      }
+    });
+    return () => sub.remove();
+  }, [visible, getCameraPermission, recording]);
 
   useEffect(() => {
     if (!recording) {
@@ -244,6 +266,9 @@ export function ExploreCameraCaptureSheet({
     recordStartedAtRef.current = Date.now();
     const pending = cam.recordAsync({
       maxDuration: maxVideoDurationMs / 1000,
+      ...(Platform.OS === "ios"
+        ? { codec: "avc1" as const, videoBitrate: 8_000_000 }
+        : {}),
     });
     if (!pending) return;
     recordPromiseRef.current = pending;
@@ -269,18 +294,13 @@ export function ExploreCameraCaptureSheet({
       const photo = await cameraRef.current?.takePictureAsync({ quality: 0.9 });
       if (!photo?.uri) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      onCapture({
-        uri: photo.uri,
-        mimeType: "image/jpeg",
-        fileName: `explore-photo-${Date.now()}.jpg`,
-        isVideo: false,
-      });
+      setPhotoReviewUri(photo.uri);
     } catch {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setBusy(false);
     }
-  }, [mode, sessionInteractive, busy, canTakePhoto, onCapture]);
+  }, [mode, sessionInteractive, busy, canTakePhoto]);
 
   const switchToPhoto = useCallback(() => {
     if (recording || controlsLocked) return;
@@ -301,8 +321,24 @@ export function ExploreCameraCaptureSheet({
     if (recording || controlsLocked || !sessionInteractive) return;
     setMountError(null);
     startRebindGrace();
-    setFacing((f) => (f === "back" ? "front" : "back"));
+    setFacing((f) => {
+      const next = f === "back" ? "front" : "back";
+      if (next === "front") {
+        setFlash("off");
+        setTorchOn(false);
+      }
+      return next;
+    });
   }, [recording, controlsLocked, sessionInteractive, startRebindGrace]);
+
+  const toggleFlash = useCallback(() => {
+    if (facing !== "back" || controlsLocked) return;
+    if (mode === "video") {
+      setTorchOn((t) => !t);
+      return;
+    }
+    setFlash((f) => (f === "off" ? "on" : "off"));
+  }, [facing, mode, controlsLocked]);
 
   const onCameraReady = useCallback(() => {
     clearRebindGraceTimer();
@@ -351,6 +387,9 @@ export function ExploreCameraCaptureSheet({
             mirror={facing === "front"}
             mode={mode === "video" ? "video" : "picture"}
             mute={false}
+            flash={mode === "photo" ? flash : "off"}
+            enableTorch={mode === "video" && torchOn && facing === "back"}
+            {...(Platform.OS === "android" ? { videoQuality: "1080p" as const } : {})}
             onCameraReady={onCameraReady}
             onMountError={(event) => {
               const raw = event as { message?: string; nativeEvent?: { message?: string } };
@@ -363,7 +402,60 @@ export function ExploreCameraCaptureSheet({
             <ActivityIndicator size="large" color="#fff" />
             <Text style={twStyle("text-white mt-3")}>{ep("openingCamera")}</Text>
           </View>
-        ) : (
+        ) : null}
+
+        {photoReviewUri ? (
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: "#000" }]}>
+            <Image source={{ uri: photoReviewUri }} style={StyleSheet.absoluteFill} contentFit="cover" />
+            <View
+              pointerEvents="none"
+              style={{
+                position: "absolute",
+                alignSelf: "center",
+                top: "10%",
+                width: "80%",
+                aspectRatio: 4 / 5,
+                borderWidth: 2,
+                borderColor: "rgba(255,255,255,0.65)",
+                borderRadius: 8,
+              }}
+            />
+            <View
+              style={{
+                position: "absolute",
+                bottom: insets.bottom + 24,
+                left: 24,
+                right: 24,
+                flexDirection: "row",
+                gap: 12,
+              }}
+            >
+              <TouchableOpacity
+                onPress={() => setPhotoReviewUri(null)}
+                style={[styles.reviewBtn, { backgroundColor: "rgba(255,255,255,0.2)" }]}
+              >
+                <Text style={styles.reviewBtnText}>{ep("retake")}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={async () => {
+                  const uri = photoReviewUri;
+                  if (!uri) return;
+                  const accepted = await onCapture({
+                    uri,
+                    mimeType: "image/jpeg",
+                    fileName: `explore-photo-${Date.now()}.jpg`,
+                    isVideo: false,
+                    facing,
+                  });
+                  if (accepted) setPhotoReviewUri(null);
+                }}
+                style={[styles.reviewBtn, { backgroundColor: "#fff", flex: 1 }]}
+              >
+                <Text style={[styles.reviewBtnText, { color: "#111" }]}>{ep("usePhoto")}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : cameraPermission == null || !cameraPermission.granted ? (
           <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center", padding: 24 }]}>
             <Text style={twStyle("text-center text-white mb-4")}>{PERMISSION_COPY.cameraPost.message}</Text>
             <TouchableOpacity
@@ -371,14 +463,32 @@ export function ExploreCameraCaptureSheet({
               style={twStyle("rounded-full bg-white px-6 py-3")}
             >
               <Text style={twStyle("font-semibold text-gray-900")}>
-                {cameraPermission.canAskAgain === false
+                {cameraPermission?.canAskAgain === false
                   ? ep("cameraPermissionOpenSettings")
                   : ep("cameraPermissionContinue")}
               </Text>
             </TouchableOpacity>
           </View>
-        )}
+        ) : null}
 
+        {!photoReviewUri && cameraPermission?.granted && showCameraView ? (
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              alignSelf: "center",
+              top: "18%",
+              width: "80%",
+              aspectRatio: 4 / 5,
+              borderWidth: 2,
+              borderColor: "rgba(255,255,255,0.45)",
+              borderRadius: 12,
+            }}
+          />
+        ) : null}
+
+        {!photoReviewUri ? (
+        <>
         <View
           style={{
             position: "absolute",
@@ -409,22 +519,40 @@ export function ExploreCameraCaptureSheet({
             >
               <Text style={[styles.modeText, mode === "photo" && styles.modeTextActive]}>{ep("capturePhoto")}</Text>
             </TouchableOpacity>
+            {videoCaptureEnabled ? (
+              <TouchableOpacity
+                disabled={controlsLocked}
+                onPress={switchToVideo}
+                style={[styles.modeBtn, mode === "video" && styles.modeBtnActive]}
+              >
+                <Text style={[styles.modeText, mode === "video" && styles.modeTextActive]}>{ep("captureVideo")}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            {facing === "back" ? (
+              <TouchableOpacity
+                disabled={controlsLocked}
+                onPress={toggleFlash}
+                style={styles.iconBtn}
+                accessibilityLabel={mode === "video" ? (torchOn ? ep("flashOn") : ep("flashOff")) : flash === "on" ? ep("flashOn") : ep("flashOff")}
+              >
+                <Ionicons
+                  name={mode === "video" ? (torchOn ? "flashlight" : "flashlight-outline") : flash === "on" ? "flash" : "flash-off-outline"}
+                  size={24}
+                  color="#fff"
+                />
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity
-              disabled={controlsLocked}
-              onPress={switchToVideo}
-              style={[styles.modeBtn, mode === "video" && styles.modeBtnActive]}
+              disabled={controlsLocked || !canTakePhoto}
+              onPress={flipFacing}
+              style={styles.iconBtn}
+              accessibilityLabel={facing === "front" ? ep("switchToBack") : ep("switchToFront")}
             >
-              <Text style={[styles.modeText, mode === "video" && styles.modeTextActive]}>{ep("captureVideo")}</Text>
+              <Ionicons name="camera-reverse-outline" size={26} color="#fff" />
             </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            disabled={controlsLocked || !canTakePhoto}
-            onPress={flipFacing}
-            style={styles.iconBtn}
-            accessibilityLabel={facing === "front" ? ep("switchToBack") : ep("switchToFront")}
-          >
-            <Ionicons name="camera-reverse-outline" size={26} color="#fff" />
-          </TouchableOpacity>
         </View>
 
         {mode === "video" && recording ? (
@@ -459,13 +587,15 @@ export function ExploreCameraCaptureSheet({
             <Text style={styles.lensChipText}>{facing === "front" ? ep("lensFront") : ep("lensBack")}</Text>
           </View>
           <Text style={styles.hintText}>
-            {mountError
-              ? mountError
-              : !sessionInteractive
-                ? ep("openingCamera")
-                : mode === "video"
-                  ? ep("holdToRecord")
-                  : ep("tapForPhoto")}
+            {recordTooShortHint
+              ? ep("recordTooShort")
+              : mountError
+                ? mountError
+                : !sessionInteractive
+                  ? ep("openingCamera")
+                  : mode === "video"
+                    ? ep("holdToRecord")
+                    : ep("tapForPhoto")}
           </Text>
 
           {mode === "photo" ? (
@@ -482,6 +612,7 @@ export function ExploreCameraCaptureSheet({
           ) : (
             <Pressable
               disabled={busy || !canTakePhoto || !sessionInteractive}
+              pressRetentionOffset={200}
               onPressIn={startRecording}
               onPressOut={() => void finishRecording()}
               accessibilityLabel={ep("holdToRecord")}
@@ -497,12 +628,19 @@ export function ExploreCameraCaptureSheet({
           )}
 
           {mode === "video" && !micPermission?.granted && cameraPermission?.granted ? (
-            <Text style={twStyle("text-amber-200/90 text-xs mt-4 text-center px-8")}>
-              {ep("micPermissionForVideo")}
-            </Text>
+            <View style={twStyle("mt-4 items-center px-8")}>
+              <Text style={twStyle("text-amber-200/90 text-xs text-center")}>{ep("micPermissionForVideo")}</Text>
+              {micPermission?.canAskAgain === false ? (
+                <TouchableOpacity onPress={() => void openAppSettings()} style={twStyle("mt-2 rounded-full bg-white/20 px-4 py-2")}>
+                  <Text style={twStyle("text-white text-xs font-semibold")}>{ep("micPermissionOpenSettings")}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
           ) : null}
           {busy ? <ActivityIndicator color="#fff" style={{ marginTop: 12 }} /> : null}
         </View>
+        </>
+        ) : null}
       </View>
     </Modal>
   );
@@ -613,5 +751,17 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 6,
     backgroundColor: "#ef4444",
+  },
+  reviewBtn: {
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  reviewBtnText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
   },
 });

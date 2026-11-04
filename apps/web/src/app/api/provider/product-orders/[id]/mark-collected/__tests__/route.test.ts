@@ -22,8 +22,14 @@ vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
 }));
 
+const mockProductOrderCardAmountStillDue = vi.fn();
+
 vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: () => ({ from: vi.fn() }),
+}));
+
+vi.mock("@/lib/payments/resolve-paystack-initialize-amount", () => ({
+  productOrderCardAmountStillDue: (...args: unknown[]) => mockProductOrderCardAmountStillDue(...args),
 }));
 
 vi.mock("@/lib/orders/record-product-order-payment", () => ({
@@ -56,6 +62,7 @@ describe("POST /api/provider/product-orders/[id]/mark-collected", () => {
     vi.clearAllMocks();
     mockRequirePermission.mockResolvedValue({ authorized: true, user: { id: "user-1" } });
     mockGetProviderIdForUser.mockResolvedValue(PROVIDER_ID);
+    mockProductOrderCardAmountStillDue.mockResolvedValue({ ok: true, due: 80 });
   });
 
   it("rejects appointment-linked orders with PAYMENT_ON_BOOKING", async () => {
@@ -130,6 +137,7 @@ describe("POST /api/provider/product-orders/[id]/mark-collected", () => {
         order_source: "online",
       }),
     );
+    mockProductOrderCardAmountStillDue.mockResolvedValue({ ok: true, due: 100 });
     mockRecordProductOrderPayment.mockResolvedValue({
       ok: true,
       duplicate: false,
@@ -149,6 +157,64 @@ describe("POST /api/provider/product-orders/[id]/mark-collected", () => {
     );
   });
 
+  it("refuses collection when prior card payments already cover the order", async () => {
+    mockGetSupabaseServer.mockResolvedValue(
+      makeSupabase({
+        id: ORDER_ID,
+        provider_id: PROVIDER_ID,
+        order_number: "PO-5",
+        total_amount: 100,
+        wallet_amount: 0,
+        gift_card_amount: 0,
+        payment_status: "pending",
+        payment_method: "cash",
+        status: "confirmed",
+        order_source: "online",
+      }),
+    );
+    mockProductOrderCardAmountStillDue.mockResolvedValue({ ok: true, due: 0 });
+
+    const { POST } = await import("../route");
+    const req = new NextRequest(`http://localhost/api/provider/product-orders/${ORDER_ID}/mark-collected`, {
+      method: "POST",
+      body: JSON.stringify({ payment_method: "cash" }),
+    });
+    const res = await POST(req, { params: Promise.resolve({ id: ORDER_ID }) });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error?.code ?? body.code).toBe("NOTHING_TO_COLLECT");
+    expect(mockRecordProductOrderPayment).not.toHaveBeenCalled();
+  });
+
+  it("returns PAYMENT_LOOKUP_FAILED when card due cannot be confirmed", async () => {
+    mockGetSupabaseServer.mockResolvedValue(
+      makeSupabase({
+        id: ORDER_ID,
+        provider_id: PROVIDER_ID,
+        order_number: "PO-6",
+        total_amount: 100,
+        payment_status: "pending",
+        payment_method: "cash",
+        status: "confirmed",
+        order_source: "online",
+      }),
+    );
+    mockProductOrderCardAmountStillDue.mockResolvedValue({ ok: false, message: "lookup failed" });
+
+    const { POST } = await import("../route");
+    const req = new NextRequest(`http://localhost/api/provider/product-orders/${ORDER_ID}/mark-collected`, {
+      method: "POST",
+      body: JSON.stringify({ payment_method: "cash" }),
+    });
+    const res = await POST(req, { params: Promise.resolve({ id: ORDER_ID }) });
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body.error?.code ?? body.code).toBe("PAYMENT_LOOKUP_FAILED");
+    expect(mockRecordProductOrderPayment).not.toHaveBeenCalled();
+  });
+
   it("rejects collection when wallet and gift card already cover the order", async () => {
     mockGetSupabaseServer.mockResolvedValue(
       makeSupabase({
@@ -164,6 +230,7 @@ describe("POST /api/provider/product-orders/[id]/mark-collected", () => {
         order_source: "online",
       }),
     );
+    mockProductOrderCardAmountStillDue.mockResolvedValue({ ok: true, due: 0 });
 
     const { POST } = await import("../route");
     const req = new NextRequest(`http://localhost/api/provider/product-orders/${ORDER_ID}/mark-collected`, {

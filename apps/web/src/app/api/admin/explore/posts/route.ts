@@ -89,6 +89,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search")?.trim();
     const dateFrom = searchParams.get("date_from");
     const dateTo = searchParams.get("date_to");
+    const processing = searchParams.get("processing");
     const sortRaw = searchParams.get("sort") || "published_at_desc";
     const sort = (_SORT_OPTIONS as readonly string[]).includes(sortRaw)
       ? (sortRaw as (typeof _SORT_OPTIONS)[number])
@@ -117,6 +118,13 @@ export async function GET(request: NextRequest) {
       if (hidden === "false") query = query.eq("is_hidden", false);
       if (dateFrom) query = query.gte("published_at", dateFrom);
       if (dateTo) query = query.lte("published_at", dateTo + "T23:59:59.999Z");
+      if (processing === "failed") {
+        query = query.contains("media_meta", [{ kind: "video", status: "failed" }]);
+      } else if (processing === "pending") {
+        query = query.or(
+          'media_meta.cs.[{"kind":"video","status":"probing"}],media_meta.cs.[{"kind":"video","status":"encoding"}]',
+        );
+      }
 
       if (search) {
         const safeSearch = search.replace(/[%*\\(),."]/g, "").trim();
@@ -172,9 +180,11 @@ export async function GET(request: NextRequest) {
       return handleApiError(error, `Failed to fetch posts: ${error.message}`);
     }
 
+    const posts = data || [];
+
     return successResponse({
-      posts: data || [],
-      total: count ?? (data?.length ?? 0),
+      posts,
+      total: count ?? posts.length,
       limit,
       offset,
     });

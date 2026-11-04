@@ -282,7 +282,11 @@ export interface Crumb {
  * @param leafLabelOverride - Optional label override for the last segment
  *   (set by detail pages once they know the entity name).
  */
-export function breadcrumbsForPath(pathname: string, leafLabelOverride?: string): Crumb[] {
+export function breadcrumbsForPath(
+  pathname: string,
+  leafLabelOverride?: string,
+  parentHrefOverride?: string | null,
+): Crumb[] {
   const normalised = normalisePath(pathname);
   const entry = BREADCRUMB_MAP[normalised];
   if (!entry) return [];
@@ -290,7 +294,10 @@ export function breadcrumbsForPath(pathname: string, leafLabelOverride?: string)
   const crumbs: Crumb[] = [];
 
   // Walk parent chain
-  let parentHref = entry.parentHref;
+  let parentHref =
+    parentHrefOverride !== undefined && parentHrefOverride !== null
+      ? parentHrefOverride
+      : entry.parentHref;
   const visited = new Set<string>();
   while (parentHref) {
     if (visited.has(parentHref)) break;

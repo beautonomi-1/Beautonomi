@@ -7,6 +7,12 @@ import { recordPaystackBookingSettlement } from "@/lib/bookings/record-paystack-
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import { applyPosProductStockDecrements, validatePosProductStock } from "@/lib/provider-sales/pos-product-stock";
+import { isBookingCollectionSale } from "@/lib/reports/provider-sales-history";
+import {
+  saleCardAmountStillDueForSale,
+  saleChargeMatchesDue,
+  settleReservedSaleGiftCard,
+} from "@/lib/gift-cards/sale-gift-card";
 import {
   errorResponse,
   getProviderIdForUser,
@@ -198,6 +204,21 @@ export async function POST(
         return errorResponse("Product order target not found for this provider.", "TARGET_NOT_FOUND", 404);
       }
 
+      const { productOrderCardAmountStillDue } = await import(
+        "@/lib/payments/resolve-paystack-initialize-amount"
+      );
+      const due = await productOrderCardAmountStillDue(admin, entityId, String(payment.paystack_reference ?? ""));
+      if (due.ok === false) {
+        return errorResponse(due.message, "PAYMENT_LOOKUP_FAILED", 500);
+      }
+      if (requestedAmount > due.due + 0.02) {
+        return errorResponse(
+          "Allocation amount is more than this order still owes.",
+          "AMOUNT_MISMATCH",
+          400,
+        );
+      }
+
       const payRecord = await recordProductOrderPayment({
         supabase: admin as any,
         productOrderId: entityId,
@@ -208,6 +229,13 @@ export async function POST(
         provider: "paystack",
         platformHeld: true,
       });
+      if (!payRecord.ok) {
+        return errorResponse(
+          "Could not record the Paystack Terminal product order payment.",
+          "LEDGER_RECORDING_FAILED",
+          500,
+        );
+      }
       const { notifyProductOrderPaidIfTransitioned } = await import(
         "@/lib/notifications/notify-product-order-paid"
       );
@@ -282,15 +310,25 @@ export async function POST(
     if (entityType === "sale") {
       const { data: sale } = await admin
         .from("sales")
-        .select("id, provider_id, payment_status")
+        .select("id, provider_id, payment_status, notes")
         .eq("id", entityId)
         .eq("provider_id", providerId)
         .maybeSingle();
       if (!sale) {
         return errorResponse("Sale target not found for this provider.", "TARGET_NOT_FOUND", 404);
       }
+      const saleDue = await saleCardAmountStillDueForSale(admin, providerId, entityId);
+      if (!saleChargeMatchesDue(requestedAmount, saleDue)) {
+        return errorResponse(
+          "Amount does not match what this sale still owes.",
+          "AMOUNT_MISMATCH",
+          400,
+        );
+      }
 
-      const becomingCompleted = String((sale as any).payment_status ?? "") !== "completed";
+      const becomingCompleted =
+        String((sale as any).payment_status ?? "") !== "completed" &&
+        !isBookingCollectionSale((sale as { notes?: string | null }).notes);
       let itemsForStock: Array<{
         type?: string;
         item_id?: string | null;
@@ -311,6 +349,13 @@ export async function POST(
         }));
         const stockError = await validatePosProductStock(admin as any, providerId, itemsForStock);
         if (stockError) return errorResponse(stockError, "STOCK_ERROR", 400);
+      }
+
+      if (String((sale as { payment_status?: string }).payment_status ?? "") !== "completed") {
+        const gift = await settleReservedSaleGiftCard(admin, entityId, {
+          cardAmount: requestedAmount,
+        });
+        if (gift.ok === false) return errorResponse(gift.message, "GIFT_CARD_ERROR", 400);
       }
 
       const { error: saleUpdateError } = await admin

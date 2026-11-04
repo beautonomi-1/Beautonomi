@@ -305,22 +305,21 @@ export async function createBookingRecord(
 
     try {
       const { createGroupBooking } = await import("@/lib/bookings/group-booking");
-      const { createGroupBookingServices } = await import("@/lib/bookings/group-booking-services");
+      const { tryRecalculateGroupBookingTotal } = await import(
+        "@/lib/bookings/recalculate-group-total"
+      );
 
-      // Build servicesMap for all participants (primary + group) so every participant's services get correct timing
       const allOfferingIds = new Set<string>(
         draft.services.map((s: any) => s.offering_id).concat(
-          (v.groupParticipants || []).flatMap((p: any) => p.service_ids ?? p.serviceIds ?? [])
-        )
+          (v.groupParticipants || []).flatMap((p: any) => p.service_ids ?? p.serviceIds ?? []),
+        ),
       );
       const servicesMap = new Map();
       for (const offeringId of allOfferingIds) {
         const off = v.offeringById.get(offeringId);
         if (!off) continue;
-        const primaryService = draft.services.find((s: any) => s.offering_id === offeringId);
         servicesMap.set(offeringId, {
           offering_id: off.id,
-          staff_id: primaryService?.staff_id ?? null,
           duration_minutes: Number(off.duration_minutes),
           buffer_minutes: Number(off.buffer_minutes || 0),
           price: Number(off.price),
@@ -328,49 +327,41 @@ export async function createBookingRecord(
         });
       }
 
-      await createGroupBookingServices(
-        adminSupabase,
-        booking.id,
-        v.selectedDatetime,
-        v.groupParticipants.map((p: any, i: number) => ({
-          id: p.id || `p-${i}-${Date.now()}`,
-          name: p.name,
-          serviceIds: p.service_ids ?? p.serviceIds ?? [],
-        })),
-        servicesMap
-      );
-
       // ── Build full participants list for booking_participants ─────────────
       // Web UI includes the primary booker as group_participants[0]; mobile only
       // sends additional guests. Detect which case applies by checking whether
       // the first participant's service_ids are a subset of draft.services.
-      const primaryOfferingIds = new Set(draft.services.map((s: any) => s.offering_id as string));
-      const firstPaxServiceIds: string[] = (v.groupParticipants[0]?.service_ids ?? v.groupParticipants[0]?.serviceIds ?? []) as string[];
+      const assigned = v.groupAssignedParticipants ?? [];
+      // Same primary detection as assignGroupServiceOwners in validateBooking.
+      const assignedGuestCount = assigned.filter((a) => !a.isPrimary).length;
       const primaryIsInParticipants =
-        firstPaxServiceIds.length > 0 &&
-        firstPaxServiceIds.every((id: string) => primaryOfferingIds.has(id));
+        assigned.length > 0 && assignedGuestCount < v.groupParticipants.length;
 
       // Guests are all group_participants except the primary if they were included.
       const guestParticipants: any[] = primaryIsInParticipants
         ? v.groupParticipants.slice(1)
         : v.groupParticipants;
+      const primaryAssigned = assigned.find((p) => p.isPrimary);
+      const primaryServiceIds =
+        primaryAssigned?.serviceIds ??
+        draft.services.map((s: any) => s.offering_id as string);
 
-      // Compute pricing for primary contact from draft.services.
-      const primaryServiceTotal = draft.services.reduce((sum: number, s: any) => {
-        const svc = servicesMap.get(s.offering_id);
+      const primaryServiceTotal = primaryServiceIds.reduce((sum: number, id: string) => {
+        const svc = servicesMap.get(id);
         return sum + (svc ? Number(svc.price) : 0);
       }, 0);
-      const primaryDurationMinutes = draft.services.reduce((sum: number, s: any) => {
-        const svc = servicesMap.get(s.offering_id);
+      const primaryDurationMinutes = primaryServiceIds.reduce((sum: number, id: string) => {
+        const svc = servicesMap.get(id);
         return sum + (svc ? svc.duration_minutes : 0);
       }, 0);
-      const primaryServiceId: string | null = draft.services.length > 0 ? (draft.services[0].offering_id ?? null) : null;
+      const primaryServiceId: string | null = primaryServiceIds[0] ?? null;
       const primaryServiceOff = primaryServiceId ? v.offeringById.get(primaryServiceId) : null;
       const primaryServiceName: string | null = (primaryServiceOff as any)?.title ?? null;
 
       // Build the full participant list: primary (with booking_id) + guests (booking_id = null).
       const allBookingParticipants = [
         {
+          id: primaryAssigned?.id,
           booking_id: booking.id as string | null,
           participant_name: clientInfo.name || (booking as any).guest_name || "Primary Contact",
           participant_email: clientInfo.email ?? null,
@@ -382,8 +373,14 @@ export async function createBookingRecord(
           duration_minutes: primaryDurationMinutes || null,
           customer_id: v.customerId,
         },
-        ...guestParticipants.map((p: any) => {
+        ...guestParticipants.map((p: any, guestIdx: number) => {
           const guestServiceIds: string[] = (p.service_ids ?? p.serviceIds ?? []) as string[];
+          const guestAssigned = assigned.find(
+            (a) => !a.isPrimary && a.name === (p.name ?? p.participant_name ?? "Guest"),
+          );
+          const guestId =
+            guestAssigned?.id ??
+            assigned.filter((a) => !a.isPrimary)[guestIdx]?.id;
           const guestPrice = guestServiceIds.reduce((sum: number, id: string) => {
             const svc = servicesMap.get(id);
             return sum + (svc ? Number(svc.price) : 0);
@@ -398,6 +395,7 @@ export async function createBookingRecord(
             .filter(Boolean)
             .join(", ") || null;
           return {
+            id: guestId,
             booking_id: null as string | null,
             participant_name: (p.name ?? p.participant_name ?? "Guest") as string,
             participant_email: (p.email ?? p.participant_email ?? null) as string | null,
@@ -407,6 +405,12 @@ export async function createBookingRecord(
             service_id: firstSvcId,
             service_name: guestServiceName,
             duration_minutes: guestDuration || null,
+            ...(v.groupPaymentMode === "split" && v.groupSplit
+              ? {
+                  amount_due: v.groupSplit.guestAmounts[guestIdx] ?? guestPrice,
+                  participant_payment_status: "pending",
+                }
+              : {}),
           };
         }),
       ];
@@ -417,6 +421,7 @@ export async function createBookingRecord(
         booking.id,
         [booking.id],
         allBookingParticipants,
+        { groupPaymentMode: v.groupPaymentMode === "split" ? "split" : "organizer_pays_all" },
       );
 
       (booking as any).group_booking_id = groupBooking.id;
@@ -427,6 +432,44 @@ export async function createBookingRecord(
         .update({ group_booking_id: groupBooking.id })
         .eq("id", booking.id);
 
+      await tryRecalculateGroupBookingTotal(adminSupabase, groupBooking.id);
+
+      // Split payment: each guest gets an invite link to claim and pay their share. Created
+      // before notifications so the link can go into the guest's confirmation.
+      const invitesByParticipantId: Record<
+        string,
+        { token: string; amountDue: number | null; currency: string | null }
+      > = {};
+      if (v.groupPaymentMode === "split" && v.groupSplit) {
+        const { createGroupBookingInvite } = await import("@/lib/bookings/group-invites");
+        const guestRows = allBookingParticipants.slice(1);
+        await Promise.all(
+          guestRows.map(async (row, guestIdx) => {
+            const participantId = row.id;
+            if (!participantId) return;
+            const amountDue = v.groupSplit!.guestAmounts[guestIdx] ?? null;
+            try {
+              const invite = await createGroupBookingInvite(adminSupabase, {
+                groupBookingId: groupBooking.id,
+                participantId,
+                invitedName: row.participant_name,
+                invitedEmail: row.participant_email,
+                invitedPhone: row.participant_phone,
+                amountDue,
+                currency: v.currency,
+              });
+              invitesByParticipantId[participantId] = {
+                token: invite.token,
+                amountDue,
+                currency: v.currency ?? null,
+              };
+            } catch (inviteErr) {
+              console.warn("[create-booking-record] group invite failed:", inviteErr);
+            }
+          }),
+        );
+      }
+
       // Send group notifications (best-effort)
       try {
         const { sendGroupBookingNotifications } = await import(
@@ -434,16 +477,41 @@ export async function createBookingRecord(
         );
         await sendGroupBookingNotifications(adminSupabase, booking.id, groupBooking.id, {
           skipPrimaryContact: true,
+          invitesByParticipantId,
         });
       } catch (notifError) {
         console.error("Failed to send group booking notifications:", notifError);
       }
     } catch (err: any) {
       console.error("Failed to create group booking:", err);
-      // If table doesn't exist, that's okay – feature not fully deployed yet
-      if (!err.message?.includes("does not exist") && !err.code?.includes("42P01")) {
-        // Log only non-missing-table errors
+      const { releaseBookingSlotAfterPaymentFailure } = await import(
+        "./release-booking-slot-after-payment-failure"
+      );
+      await releaseBookingSlotAfterPaymentFailure(
+        adminSupabase,
+        booking.id as string,
+        v.customerId,
+      );
+      const entitlementId = validatedDraft.customer_package_entitlement_id ?? null;
+      if (entitlementId) {
+        try {
+          await adminSupabase.rpc("restore_customer_package_entitlement", {
+            p_entitlement_id: entitlementId,
+            p_customer_id: v.customerId,
+          });
+        } catch (restoreErr) {
+          console.error(
+            "[create-booking-record] restore_customer_package_entitlement after group failure",
+            restoreErr,
+          );
+        }
       }
+      return handleApiError(
+        err instanceof Error ? err : new Error(String(err)),
+        "Could not complete your group booking. Please try again.",
+        "GROUP_BOOKING_CREATE_FAILED",
+        500,
+      );
     }
   }
 

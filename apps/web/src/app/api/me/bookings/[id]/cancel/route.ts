@@ -123,8 +123,10 @@ export async function POST(
       (bFin.currency as string) || tenantRegionForCancel?.defaultCurrency || LAST_RESORT_CURRENCY;
     const bookingTotal = Number(bFin.total_amount ?? 0);
     const isLate = outcome.isLate;
-    const cancellationFeeApplied = outcome.feeRetained;
-    const walletRefundAmount = outcome.walletRefund;
+    const cancellationFeeApplied =
+      (outcome as { leadFeeRetained?: number }).leadFeeRetained ?? outcome.feeRetained;
+    const walletRefundAmount =
+      (outcome as { leadWalletRefund?: number }).leadWalletRefund ?? outcome.walletRefund;
 
     const financialSnapshot: BookingFinancialSnapshot = {
       id: bookingId,
@@ -278,6 +280,27 @@ export async function POST(
         : null;
     if (nonPrimaryGroupId) {
       try {
+        const { data: participantRow } = await adminSupabase
+          .from('booking_participants')
+          .select('id')
+          .eq('group_booking_id', nonPrimaryGroupId)
+          .eq('booking_id', bookingId)
+          .maybeSingle();
+
+        if (participantRow?.id) {
+          const { cancelGroupBookingParticipant } = await import(
+            '@/lib/bookings/group-booking-cancellation'
+          );
+          await cancelGroupBookingParticipant(
+            adminSupabase,
+            bookingId,
+            participantRow.id as string,
+            user.id,
+            body.reason || 'Customer cancellation',
+            { bookingAlreadyCancelled: true },
+          );
+        }
+
         const { tryRecalculateGroupBookingTotal } = await import(
           '@/lib/bookings/recalculate-group-total'
         );
@@ -388,6 +411,12 @@ export async function POST(
             refundBookingTotal: bookingTotal,
           }),
         );
+        if (settlement.cancellationFeeApplied != null) {
+          await adminSupabase
+            .from("bookings")
+            .update({ cancellation_fee: settlement.cancellationFeeApplied })
+            .eq("id", bookingId);
+        }
         if (settlement.refundResult.success && settlement.refundResult.amount) {
           console.log(
             `Refund processed: ${settlement.refundResult.amount} ${bFin.currency}`,

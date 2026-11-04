@@ -157,9 +157,16 @@ function isSubscriptionVatRow(r: Row): boolean {
   return typeof source === "string" && SUBSCRIPTION_VAT_SOURCES.has(source);
 }
 
-/** Booking `tax` rows only (excludes platform subscription VAT legs). */
+function isProductOrderVatRow(r: Row): boolean {
+  if (r.transaction_type !== "tax") return false;
+  if (r.product_order_id) return true;
+  const source = r.metadata?.vat_source;
+  return source === "product_order";
+}
+
+/** Booking `tax` rows only (excludes subscription and product-order VAT legs). */
 function isBookingTaxRow(r: Row): boolean {
-  return r.transaction_type === "tax" && !isSubscriptionVatRow(r);
+  return r.transaction_type === "tax" && !isSubscriptionVatRow(r) && !isProductOrderVatRow(r);
 }
 
 function sum(tx: Row[], types: string[], field: "amount" | "fees" | "net" | "commission"): number {

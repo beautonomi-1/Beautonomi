@@ -13,6 +13,19 @@ import {
   clearUncollectedProviderPortalPlatformFeeIfNeeded,
   type BookingFeeClearRow,
 } from "@/lib/bookings/provider-booking-platform-fee";
+import {
+  allocateCheckoutGift,
+  applyCheckoutBillAdjustment,
+  giftRedemptionCreditDecision,
+} from "@/lib/bookings/checkout-bill-adjustment";
+import {
+  buildSyntheticWalletGiftProviderId,
+  ensureWalletGiftBookingPayments,
+  sumPendingWalletGiftBookingPayments,
+} from "@/lib/bookings/ensure-wallet-gift-booking-payments";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { recordCheckoutTipPayment } from "@/lib/bookings/record-checkout-tip-payment";
+import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 
 type AdditionalChargeRow = {
   id?: string;
@@ -178,6 +191,10 @@ export async function POST(
       payment_provider,
       idempotency_key,
       settle_additional_charges,
+      checkout_tip,
+      checkout_discount,
+      gift_card_code,
+      gift_card_amount,
     } = body;
     const settleAllCharges = settle_additional_charges === true;
 
@@ -204,8 +221,9 @@ export async function POST(
     });
     if (manualCardGate) return manualCardGate;
 
-    const validPaymentMethods = ['cash', 'card', 'bank_transfer', 'other'];
-    const effectivePaymentMethod = payment_method === 'mobile' ? 'other' : payment_method;
+    const validPaymentMethods = ['cash', 'card', 'bank_transfer', 'other', 'gift_card'];
+    const effectivePaymentMethod =
+      payment_method === 'mobile' ? 'other' : payment_method === 'split' ? 'cash' : payment_method;
     if (!payment_method || !validPaymentMethods.includes(effectivePaymentMethod)) {
       return errorResponse(
         "Valid payment_method is required (cash, card, bank_transfer, other)",
@@ -217,7 +235,7 @@ export async function POST(
     // Verify booking exists and belongs to provider
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, status, tenant_id, total_amount, total_refunded, payment_status, payment_reference, provider_id, customer_id, booking_number, ref_number, total_paid, wallet_amount, gift_card_amount, tip_amount, travel_fee, tax_amount, service_fee_amount, platform_fee_amount, platform_fee_percentage, service_fee_percentage, platform_fee_paid_by, service_fee_paid_by, deposit_amount, booking_source, location_id, location_type, currency, additional_charges(id, amount, status, description, currency)")
+      .select("id, status, tenant_id, total_amount, discount_amount, total_refunded, payment_status, payment_reference, provider_id, customer_id, booking_number, ref_number, total_paid, wallet_amount, gift_card_amount, tip_amount, travel_fee, tax_amount, service_fee_amount, platform_fee_amount, platform_fee_percentage, service_fee_percentage, platform_fee_paid_by, service_fee_paid_by, deposit_amount, booking_source, location_id, location_type, currency, additional_charges(id, amount, status, description, currency)")
       .eq("id", bookingId)
       .eq("provider_id", providerId)
       .single();
@@ -317,22 +335,270 @@ export async function POST(
       }
     }
 
+    const bill = applyCheckoutBillAdjustment({
+      totalAmount: Number(booking.total_amount || 0),
+      tipAmount: Number((booking as { tip_amount?: number }).tip_amount || 0),
+      discountAmount: Number((booking as { discount_amount?: number }).discount_amount || 0),
+      checkoutTip: 0,
+      checkoutDiscount: Number(checkout_discount || 0),
+      revert: body.checkout_revert === true,
+    });
+    if (
+      bill.totalAmount !== Number(booking.total_amount || 0) ||
+      bill.tipAmount !== Number((booking as { tip_amount?: number }).tip_amount || 0) ||
+      bill.discountAmount !== Number((booking as { discount_amount?: number }).discount_amount || 0)
+    ) {
+      const { error: billError } = await supabaseAdmin
+        .from("bookings")
+        .update({
+          total_amount: bill.totalAmount,
+          tip_amount: bill.tipAmount,
+          discount_amount: bill.discountAmount,
+        })
+        .eq("id", bookingId);
+      if (billError) throw billError;
+      booking.total_amount = bill.totalAmount;
+      (booking as { tip_amount?: number }).tip_amount = bill.tipAmount;
+      (booking as { discount_amount?: number }).discount_amount = bill.discountAmount;
+    }
+
+    const checkoutTipDue =
+      body.checkout_revert === true ? 0 : Math.max(0, Number(checkout_tip) || 0);
+    let giftTipPaid = 0;
+    const giftCode = typeof gift_card_code === "string" ? gift_card_code.trim().toUpperCase() : "";
+    const giftRequested = Math.max(0, Number(gift_card_amount) || 0);
+    if (giftCode && giftRequested > 0) {
+      const owedBeforeGift = Math.max(
+        0,
+        Number(booking.total_amount || 0) -
+          Math.max(
+            Math.max(0, Number(booking.total_paid || 0) - Number((booking as { total_refunded?: number }).total_refunded || 0)),
+            Number(booking.wallet_amount || 0) + Number(booking.gift_card_amount || 0),
+          ),
+      );
+      const allocatedGift = allocateCheckoutGift({
+        owedBase: owedBeforeGift,
+        checkoutTip: checkoutTipDue,
+        giftRequested,
+      });
+      const giftBase = allocatedGift.giftBase;
+      const giftApply = Math.round((giftBase + allocatedGift.giftTip) * 100) / 100;
+      giftTipPaid = allocatedGift.giftTip;
+      if (
+        effectivePaymentMethod === "gift_card" &&
+        giftRequested + 0.01 < owedBeforeGift + checkoutTipDue
+      ) {
+        return errorResponse(
+          "The gift card does not cover the balance still owed.",
+          "GIFT_CARD_SHORT",
+          400,
+        );
+      }
+      if (giftApply > 0) {
+        const { data: reserved, error: reserveError } = await supabase.rpc("reserve_gift_card_redemption", {
+          p_code: giftCode,
+          p_amount: giftApply,
+          p_booking_id: bookingId,
+          p_currency: (booking as { currency?: string }).currency || "ZAR",
+        });
+        if (reserveError) {
+          return errorResponse(
+            reserveError.message || "Gift card could not be applied",
+            "GIFT_CARD_ERROR",
+            400,
+          );
+        }
+        const reservedRow = (Array.isArray(reserved) ? reserved[0] : reserved) as
+          | { remaining_balance?: number | null }
+          | null
+          | undefined;
+        const { data: redemptionRow } = await supabaseAdmin
+          .from("gift_card_redemptions")
+          .select("amount, status")
+          .eq("booking_id", bookingId)
+          .limit(1)
+          .maybeSingle();
+        const { data: recordedGiftRows } = await supabaseAdmin
+          .from("booking_payments")
+          .select("amount")
+          .eq("booking_id", bookingId)
+          .eq("payment_provider", "gift_card")
+          .in("status", ["pending", "completed", "partially_refunded"]);
+        const recordedGiftPayments = (recordedGiftRows ?? []).reduce(
+          (sum, row) => sum + Number((row as { amount?: number }).amount || 0),
+          0,
+        );
+        const giftLegId = buildSyntheticWalletGiftProviderId(
+          "gift_card",
+          bookingId,
+          `:checkout:${giftCode}`,
+        );
+        const { data: existingGiftPay } = await supabaseAdmin
+          .from("booking_payments")
+          .select("id, amount")
+          .eq("payment_provider_id", giftLegId)
+          .maybeSingle();
+        const giftDecision = giftRedemptionCreditDecision({
+          remainingBalance:
+            reservedRow?.remaining_balance == null ? null : Number(reservedRow.remaining_balance),
+          redemptionAmount:
+            redemptionRow == null ? null : Number((redemptionRow as { amount?: number }).amount),
+          redemptionStatus:
+            redemptionRow == null ? null : String((redemptionRow as { status?: string }).status ?? ""),
+          giftApply,
+          existingCheckoutPayment: Boolean(existingGiftPay),
+          recordedGiftPayments,
+        });
+        if (
+          existingGiftPay &&
+          Math.abs(Number((existingGiftPay as { amount?: number }).amount || 0) - giftBase) > 0.02
+        ) {
+          return errorResponse(
+            "This gift card was already applied for a different amount.",
+            "GIFT_CARD_ALREADY_APPLIED",
+            400,
+          );
+        }
+        if (giftDecision === "reject") {
+          return errorResponse(
+            "This booking already has a gift card redemption. A second gift card cannot be applied to the same booking.",
+            "GIFT_CARD_ALREADY_APPLIED",
+            400,
+          );
+        }
+        const { data: captured, error: captureError } = await supabaseAdmin.rpc(
+          "capture_gift_card_redemption",
+          { p_booking_id: bookingId },
+        );
+        if (captureError || captured === false) {
+          await supabaseAdmin.rpc("void_gift_card_redemption", { p_booking_id: bookingId });
+          return errorResponse(
+            captureError?.message || "Gift card capture failed",
+            "GIFT_CARD_ERROR",
+            500,
+          );
+        }
+        if (!existingGiftPay && giftBase > 0 && giftDecision === "credit") {
+          const previousGift = Number(booking.gift_card_amount || 0);
+          const nextGift = Math.round((previousGift + giftBase) * 100) / 100;
+          const { error: giftUpdateError } = await supabaseAdmin
+            .from("bookings")
+            .update({ gift_card_amount: nextGift })
+            .eq("id", bookingId);
+          if (giftUpdateError) throw giftUpdateError;
+          booking.gift_card_amount = nextGift;
+          booking.total_paid = Number(booking.total_paid || 0) + giftBase;
+          await ensureWalletGiftBookingPayments(supabaseAdmin, {
+            bookingId,
+            tenantId: (booking as { tenant_id?: string | null }).tenant_id,
+            walletAmount: 0,
+            giftCardAmount: giftBase,
+            initialStatus: "completed",
+            paymentLegSuffix: `:checkout:${giftCode}`,
+          });
+          const { data: recordedGiftPay } = await supabaseAdmin
+            .from("booking_payments")
+            .select("id")
+            .eq("payment_provider_id", giftLegId)
+            .maybeSingle();
+          if (!recordedGiftPay) {
+            await supabaseAdmin
+              .from("bookings")
+              .update({ gift_card_amount: previousGift })
+              .eq("id", bookingId);
+            booking.gift_card_amount = previousGift;
+            booking.total_paid = Number(booking.total_paid || 0) - giftBase;
+            throw new Error("Gift card payment was not recorded");
+          }
+        }
+        await syncBookingAfterPaystackSuccess(supabaseAdmin, bookingId, {
+          paymentProvider: "gift_card",
+        });
+        if (giftTipPaid > 0) {
+          await recordCheckoutTipPayment(supabaseAdmin, {
+            bookingId,
+            tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? null,
+            tip: giftTipPaid,
+            paymentMethod: "gift_card",
+            paymentProvider: "gift_card",
+            processedBy: user.id,
+            providerPaymentId: `checkout-tip:${bookingId}:gift`,
+          });
+          const withGiftTip = Math.round((Number(booking.gift_card_amount || 0) + giftTipPaid) * 100) / 100;
+          await supabaseAdmin.from("bookings").update({ gift_card_amount: withGiftTip }).eq("id", bookingId);
+          booking.gift_card_amount = withGiftTip;
+        }
+      }
+    }
+
+    const bookingTenantId = (booking as { tenant_id?: string | null }).tenant_id ?? null;
+    const recordTillTip = async () => {
+      const remainder = Math.round((checkoutTipDue - giftTipPaid) * 100) / 100;
+      if (remainder > 0) {
+        const tipProvider =
+          effectivePaymentMethod === "cash"
+            ? "cash"
+            : effectivePaymentMethod === "gift_card"
+              ? "gift_card"
+              : payment_provider === "yoco"
+                ? "yoco"
+                : "other";
+        await recordCheckoutTipPayment(supabaseAdmin, {
+          bookingId,
+          tenantId: bookingTenantId,
+          tip: remainder,
+          paymentMethod: effectivePaymentMethod,
+          paymentProvider: tipProvider,
+          processedBy: user.id,
+          providerPaymentId: `checkout-tip:${bookingId}`,
+        });
+      }
+    };
+
+    if (body.bill_only === true) {
+      return successResponse({
+        total_amount: Number(booking.total_amount || 0),
+        adjusted: true,
+      });
+    }
+
+    if (body.gift_only === true) {
+      if (!giftCode || giftRequested <= 0) {
+        return errorResponse(
+          "A gift card amount is required before the card machine charge.",
+          "GIFT_CARD_REQUIRED",
+          400,
+        );
+      }
+      return successResponse({
+        total_amount: Number(booking.total_amount || 0),
+        gift_applied: true,
+      });
+    }
+
     const currentTotalPaid = booking.total_paid || 0;
     const totalRefunded = Number((booking as any).total_refunded || 0);
     const walletAlreadyApplied = Number((booking as any).wallet_amount || 0);
     const giftCardAlreadyApplied = Number((booking as any).gift_card_amount || 0);
     const bookingTotal = booking.total_amount || 0;
-    const effectivePaid = Math.max(0, currentTotalPaid - totalRefunded);
-    /**
-     * §Finance-truth 2026-05: post-migration 582 `total_paid` already includes
-     * wallet + gift booking_payments rows, so subtracting wallet/gift again
-     * double-subtracts and lets us under-charge the remaining balance.
-     * Use the LARGER of effective_paid and (wallet+gift) to remain correct
-     * for legacy rows that pre-date 582 yet had no synthetic booking_payments.
-     */
-    const walletGiftCoverage = walletAlreadyApplied + giftCardAlreadyApplied;
-    const coverage = Math.max(effectivePaid, walletGiftCoverage);
-    const remainingBalance = bookingTotal - coverage;
+    const pendingWalletGift = await sumPendingWalletGiftBookingPayments(supabaseAdmin, bookingId);
+    const remainingBalance = computeBookingOutstandingDisplay({
+      totalAmount: bookingTotal,
+      totalPaid: currentTotalPaid,
+      totalRefunded,
+      walletAmount: walletAlreadyApplied,
+      giftCardAmount: giftCardAlreadyApplied,
+      unpaidAdditionalCharges: 0,
+      paymentStatus: (booking as { payment_status?: string | null }).payment_status,
+      pendingWalletGiftAmount: pendingWalletGift,
+    });
+    if (effectivePaymentMethod === "gift_card" && remainingBalance > 0.01) {
+      return errorResponse(
+        "The gift card does not cover the balance still owed.",
+        "GIFT_CARD_SHORT",
+        400,
+      );
+    }
     const unpaidChargeRows: AdditionalChargeRow[] = Array.isArray(
       (booking as { additional_charges?: AdditionalChargeRow[] }).additional_charges,
     )
@@ -355,6 +621,7 @@ export async function POST(
           );
         }
       } else {
+        await recordTillTip();
         return successResponse({
           payment: null,
           base_paid: 0,
@@ -516,6 +783,7 @@ export async function POST(
           paymentAlreadyRecorded = true;
           baseAlreadyFullyPaidRace = true;
           if (!(settleAllCharges && unpaidChargeRows.length > 0)) {
+            await recordTillTip();
             return successResponse({
               message: "Booking is already fully paid (including wallet/gift card credits)",
               already_paid: true,
@@ -726,6 +994,43 @@ export async function POST(
           : paymentAlreadyRecorded
             ? "Payment already recorded"
             : "Booking marked as paid successfully";
+
+    if (baseFullySettledAfterPayment || baseAlreadyFullyPaidRace) {
+      await recordTillTip();
+      if (Number(booking.gift_card_amount || 0) > 0.009) {
+        const { data: captured, error: giftCaptureErr } = await (supabaseAdmin.rpc as any)(
+          "capture_gift_card_redemption",
+          { p_booking_id: bookingId },
+        );
+        if (giftCaptureErr || captured === false || captured === null) {
+          const captureMessage = String(giftCaptureErr?.message || "");
+          const balanceRestored =
+            /expired|no longer active/i.test(captureMessage) ||
+            captured === false ||
+            captured === null;
+          console.error("[mark-paid] gift card capture failed after the booking was paid", {
+            bookingId,
+            giftCaptureErr,
+          });
+          if (balanceRestored) {
+            await supabaseAdmin
+              .from("booking_payments")
+              .delete()
+              .eq("booking_id", bookingId)
+              .eq("payment_provider", "gift_card")
+              .eq("status", "pending");
+            await supabaseAdmin
+              .from("bookings")
+              .update({
+                gift_card_amount: 0,
+                gift_card_id: null,
+                payment_status: "partially_paid",
+              })
+              .eq("id", bookingId);
+          }
+        }
+      }
+    }
 
     return successResponse({
       payment: payment ?? null,

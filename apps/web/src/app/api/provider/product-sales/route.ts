@@ -10,7 +10,8 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
-import { percentOf, sumMoney } from "@beautonomi/utils";
+import { computeVat } from "@beautonomi/utils";
+import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
 import {
   applyPosProductStockDecrements,
   validatePosProductStock,
@@ -299,7 +300,7 @@ export async function POST(request: NextRequest) {
 
     const { data: providerRow, error: provTenantErr } = await supabase
       .from("providers")
-      .select("tenant_id, tax_rate_percent, is_vat_registered")
+      .select("tenant_id, currency, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code")
       .eq("id", providerId)
       .maybeSingle();
     if (provTenantErr) throw provTenantErr;
@@ -380,10 +381,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const providerTaxRate = (providerRow as { is_vat_registered?: boolean | null; tax_rate_percent?: number | string | null } | null)
-      ?.is_vat_registered
-      ? Number((providerRow as { tax_rate_percent?: number | string | null }).tax_rate_percent ?? 0)
-      : 0;
+    const providerVatRow = providerRow as {
+      currency?: string | null;
+      tax_rate_percent?: number | string | null;
+      tax_inclusive?: boolean | null;
+      is_vat_registered?: boolean | null;
+      vat_number?: string | null;
+      country_code?: string | null;
+    } | null;
+    const resolvedVat = await resolveProviderVat(getSupabaseAdmin(), {
+      tax_rate_percent:
+        providerVatRow?.tax_rate_percent != null ? Number(providerVatRow.tax_rate_percent) : null,
+      tax_inclusive: providerVatRow?.tax_inclusive ?? null,
+      is_vat_registered: providerVatRow?.is_vat_registered ?? null,
+      vat_number: providerVatRow?.vat_number ?? null,
+      country_code: providerVatRow?.country_code ?? null,
+      tax_rate_override_percent: null,
+    });
+    if (resolvedVat.registered && resolvedVat.source === "none") {
+      return errorResponse(
+        "This provider is VAT registered but no country VAT rate is configured.",
+        "VAT_RATE_UNAVAILABLE",
+        503,
+      );
+    }
 
     const posItems = mergedItems.map((i) => ({
       type: "product" as const,
@@ -443,7 +464,6 @@ export async function POST(request: NextRequest) {
 
     const stockErrors: string[] = [];
     let subtotal = 0;
-    let taxAmount = 0;
 
     const orderItems: Array<{
       product_id: string;
@@ -485,9 +505,7 @@ export async function POST(request: NextRequest) {
       }
 
       const lineTotal = unitPrice * item.quantity;
-      const lineTax = percentOf(lineTotal, Number.isFinite(providerTaxRate) ? providerTaxRate : 0);
       subtotal += lineTotal;
-      taxAmount += lineTax;
       orderItems.push({
         product_id: prod.id,
         product_variant_id: vid,
@@ -526,7 +544,18 @@ export async function POST(request: NextRequest) {
     const isPendingCardMachine = parsed.payment_method === "card_machine";
     const isPendingTerminal = isPendingPaycloud || isPendingPaystackTerminal || isPendingCardMachine;
 
-    const totalAmount = sumMoney(subtotal, taxAmount);
+    const saleCurrency = providerVatRow?.currency?.trim() || LAST_RESORT_CURRENCY;
+    const vatSplit =
+      resolvedVat.registered && resolvedVat.ratePercent > 0
+        ? computeVat({
+            baseAmount: subtotal,
+            ratePercent: resolvedVat.ratePercent,
+            inclusive: resolvedVat.inclusive,
+            currency: saleCurrency,
+          })
+        : null;
+    const taxAmount = vatSplit?.taxAmount ?? 0;
+    const totalAmount = resolvedVat.inclusive ? subtotal : (vatSplit?.grossAmount ?? subtotal);
 
     const { data: seqData } = await supabase.rpc("nextval", {
       seq_name: "product_order_number_seq",

@@ -13,8 +13,13 @@ export function exploreAdminPreviewPath(row: Record<string, unknown>): {
 } {
   const display = typeof row.display_path === "string" ? row.display_path : undefined;
   const mediaUrls = Array.isArray(row.media_urls) ? (row.media_urls as string[]) : [];
+  const meta0 = Array.isArray(row.media_meta)
+    ? (row.media_meta as Array<{ kind?: string }>)[0]
+    : undefined;
   const first = mediaUrls[0];
-  const isVideo = first ? VIDEO_EXT.test(first.split("?")[0] ?? first) : false;
+  const isVideo =
+    meta0?.kind === "video" ||
+    (meta0?.kind !== "image" && first ? VIDEO_EXT.test(first.split("?")[0] ?? first) : false);
   if (display) return { previewPath: display, isVideo };
   if (first && !isVideo) return { previewPath: first, isVideo: false };
   return { previewPath: undefined, isVideo };

@@ -27,6 +27,9 @@ export type SaleHistoryRow = {
   payment_status: string;
   team_member_id: string | null;
   team_member_name: string | null;
+  /** Card-machine amount after a gift already held on the sale. */
+  amount_due?: number;
+  gift_card_amount?: number;
 };
 
 export type WalkInOrderForSale = {

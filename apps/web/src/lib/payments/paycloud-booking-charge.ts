@@ -5,18 +5,22 @@ export function computePaycloudBookingChargeAmount(params: {
   depositAmount?: number | null;
   totalPaid?: number;
   unpaidAdditionalCharges?: number;
+  /** Wallet and gift already reserved but not yet included in totalPaid. */
+  pendingWalletGiftAmount?: number;
 }): { chargeAmount: number; depositAmount: number | null; fullOutstanding: number } {
   const fullOutstanding = Math.max(0, Number(params.outstanding) || 0);
   const totalPaid = Math.max(0, Number(params.totalPaid) || 0);
+  const pendingWalletGift = Math.max(0, Number(params.pendingWalletGiftAmount) || 0);
+  const depositCovered = totalPaid + pendingWalletGift;
   const configuredDeposit = Math.max(0, Number(params.depositAmount) || 0);
   const unpaidAdditional = Math.max(0, Number(params.unpaidAdditionalCharges) || 0);
 
   const depositStillDue =
     params.depositRequired &&
     configuredDeposit > 0 &&
-    totalPaid + 0.01 < configuredDeposit &&
+    depositCovered + 0.01 < configuredDeposit &&
     unpaidAdditional <= 0.01
-      ? Math.min(configuredDeposit - totalPaid, fullOutstanding)
+      ? Math.min(configuredDeposit - depositCovered, fullOutstanding)
       : null;
 
   const depositAmount =

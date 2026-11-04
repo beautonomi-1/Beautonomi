@@ -9,8 +9,17 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { PricingFeatureHtml } from "@/components/pricing/PricingFeatureHtml";
 import { ONBOARDING_BTN_PRIMARY } from "./onboarding-styles";
+import { filterPricingPlansForOnboarding } from "@/lib/pricing/onboarding-pricing-plan-filter";
 
 const FEATURE_PREVIEW = 6;
+
+function defaultBillingPeriodForPublicPlan(
+  periods: ("monthly" | "yearly")[] | null | undefined,
+): "monthly" | "yearly" {
+  if (periods?.includes("monthly")) return "monthly";
+  if (periods?.includes("yearly")) return "yearly";
+  return "monthly";
+}
 
 type PublicPricingPlan = {
   id: string;
@@ -23,10 +32,14 @@ type PublicPricingPlan = {
   features: string[];
   is_free?: boolean;
   currency?: string | null;
+  available_billing_periods?: ("monthly" | "yearly")[];
+  subscription_plan_id?: string | null;
 };
 
 export type PlanSelectionData = {
   selected_plan_id?: string;
+  selected_billing_period?: "monthly" | "yearly";
+  selected_plan_is_free?: boolean;
   no_plans_available?: boolean;
 };
 
@@ -82,7 +95,8 @@ export function Step14PlanSelection({ data, updateData }: Props) {
       setLoadError(false);
       const res = await fetcher.get<{ data: PublicPricingPlan[] }>("/api/public/pricing/plans");
       const raw = Array.isArray(res.data) ? res.data : [];
-      const sorted = sortPlansFreeFirst(raw);
+      const filtered = filterPricingPlansForOnboarding(raw);
+      const sorted = sortPlansFreeFirst(filtered);
       setPricingPlans(sorted);
       const sel = selectedPlanIdRef.current;
       if (sel && !sorted.find((p) => p.id === sel)) {
@@ -100,7 +114,6 @@ export function Step14PlanSelection({ data, updateData }: Props) {
 
   useEffect(() => {
     void loadPlans();
-    // Mount-only initial load; retry uses loadPlans() explicitly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -110,11 +123,28 @@ export function Step14PlanSelection({ data, updateData }: Props) {
     const free = pricingPlans.find((p) => p.is_free);
     const popular = pricingPlans.find((p) => p.is_popular);
     const chosen = free ?? popular ?? pricingPlans[0];
-    updateData({ selected_plan_id: chosen.id, no_plans_available: false });
+    updateData({
+      selected_plan_id: chosen.id,
+      selected_plan_is_free: chosen.is_free === true,
+      selected_billing_period: chosen.is_free
+        ? undefined
+        : defaultBillingPeriodForPublicPlan(chosen.available_billing_periods),
+      no_plans_available: false,
+    });
   }, [pricingPlans, data.selected_plan_id, updateData]);
 
   const selectPlan = useCallback(
-    (id: string) => updateData({ selected_plan_id: id, no_plans_available: false }),
+    (plan: PublicPricingPlan) => {
+      const periods = plan.available_billing_periods ?? [];
+      updateData({
+        selected_plan_id: plan.id,
+        selected_plan_is_free: plan.is_free === true,
+        selected_billing_period: plan.is_free
+          ? undefined
+          : defaultBillingPeriodForPublicPlan(periods.length ? periods : ["monthly"]),
+        no_plans_available: false,
+      });
+    },
     [updateData],
   );
 
@@ -122,7 +152,7 @@ export function Step14PlanSelection({ data, updateData }: Props) {
     (e: KeyboardEvent, planId: string, index: number) => {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
-        selectPlan(planId);
+        selectPlan(pricingPlans[index] ?? ({ id: planId } as PublicPricingPlan));
         return;
       }
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "ArrowUp" && e.key !== "ArrowDown") {
@@ -131,7 +161,7 @@ export function Step14PlanSelection({ data, updateData }: Props) {
       e.preventDefault();
       const delta = e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 1;
       const next = pricingPlans[index + delta];
-      if (next) selectPlan(next.id);
+      if (next) selectPlan(next);
     },
     [pricingPlans, selectPlan],
   );
@@ -176,6 +206,9 @@ export function Step14PlanSelection({ data, updateData }: Props) {
 
   const selectedPlan = pricingPlans.find((p) => p.id === data.selected_plan_id) ?? null;
   const selectedIsFree = selectedPlan?.is_free === true;
+  const billingPeriods = selectedPlan?.available_billing_periods ?? [];
+  const showBillingToggle =
+    Boolean(selectedPlan && !selectedIsFree && billingPeriods.length > 1);
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -187,6 +220,28 @@ export function Step14PlanSelection({ data, updateData }: Props) {
           {t("web.provider.onboarding.plan.planIntro")}
         </p>
       </div>
+
+      {showBillingToggle ? (
+        <div className="mx-auto flex max-w-md rounded-2xl border border-slate-200 bg-slate-50 p-1">
+          {billingPeriods.map((period) => {
+            const active =
+              (data.selected_billing_period ??
+                defaultBillingPeriodForPublicPlan(billingPeriods)) === period;
+            return (
+              <button
+                key={period}
+                type="button"
+                onClick={() => updateData({ selected_billing_period: period })}
+                className={`flex-1 rounded-xl py-2.5 text-sm font-semibold transition ${
+                  active ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                }`}
+              >
+                {period === "yearly" ? "Yearly" : "Monthly"}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
       <div
         className="grid grid-cols-1 gap-5 md:grid-cols-3 md:gap-6"
@@ -207,7 +262,7 @@ export function Step14PlanSelection({ data, updateData }: Props) {
               role="radio"
               aria-checked={isSelected}
               tabIndex={isSelected ? 0 : -1}
-              onClick={() => selectPlan(plan.id)}
+              onClick={() => selectPlan(plan)}
               onKeyDown={(e) => onPlanKeyDown(e, plan.id, index)}
               className={`relative flex cursor-pointer flex-col rounded-2xl border-2 p-5 shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 sm:rounded-3xl sm:p-7 ${
                 isSelected

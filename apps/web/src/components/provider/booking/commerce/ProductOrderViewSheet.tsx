@@ -32,7 +32,7 @@ import {
 } from "@/lib/orders/provider-shipping-ui";
 import {
   allowsInPersonProductOrderRefund,
-  computeInPersonCollectibleAmount,
+  displayedProductOrderAmountStillDue,
 } from "@/lib/orders/product-order-tender";
 import {
   isValidLineTransition,
@@ -278,7 +278,7 @@ export function ProductOrderViewSheet({
   };
 
   const isAppointmentOrder = order?.order_source === "appointment";
-  const inPersonDue = order ? computeInPersonCollectibleAmount(order) : 0;
+  const inPersonDue = order ? displayedProductOrderAmountStillDue(order) : 0;
   const refundInPerson = order ? allowsInPersonProductOrderRefund(order) : false;
   const refundCanWallet = Boolean(order?.customer?.id);
   const canCollect =

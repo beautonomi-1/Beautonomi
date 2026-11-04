@@ -32,15 +32,32 @@ export const CUSTOMER_CANCELLABLE_STATUSES = new Set(["pending", "confirmed", "p
 
 export type SelfCancelEligibility =
   | { ok: true }
-  | { ok: false; code: "ALREADY_CANCELLED" | "ALREADY_SHIPPED" | "NOT_CANCELLABLE"; message: string };
+  | {
+      ok: false;
+      code:
+        | "ALREADY_CANCELLED"
+        | "ALREADY_SHIPPED"
+        | "NOT_CANCELLABLE"
+        | "PARTIALLY_REFUNDED";
+      message: string;
+    };
 
 /** Pure eligibility check shared with tests / UI hints. */
 export function getSelfCancelEligibility(order: {
   status?: string | null;
+  payment_status?: string | null;
   shipped_at?: string | null;
   delivered_at?: string | null;
 }): SelfCancelEligibility {
   const status = String(order.status ?? "");
+  if (order.payment_status === "partially_refunded") {
+    return {
+      ok: false,
+      code: "PARTIALLY_REFUNDED",
+      message:
+        "This order was partially refunded. Contact the provider to refund the remaining balance.",
+    };
+  }
   if (status === "cancelled" || status === "refunded") {
     return { ok: false, code: "ALREADY_CANCELLED", message: "This order has already been cancelled." };
   }
@@ -181,8 +198,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       walletCreditFailed = released.failed;
       const gift = Math.max(0, Number(order.gift_card_amount ?? 0));
       refund = {
-        online_refunded: 0,
-        wallet_credited: released.amount,
+        online_refunded: released.onlineRefunded ?? 0,
+        wallet_credited: released.amount + (released.cardWalletFallback ?? 0),
         gift_card_restored: gift,
         in_person_refund_due: 0,
       };

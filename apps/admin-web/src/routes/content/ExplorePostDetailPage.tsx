@@ -68,6 +68,17 @@ export function ExplorePostDetailPage() {
     onError: (e: Error) => adminToast.error(e.message),
   });
 
+  const reprocessMutation = useMutation({
+    mutationFn: (force?: boolean) =>
+      adminApi.postJson(`/api/admin/explore/posts/${encodeURIComponent(id)}/reprocess`, { force: force === true }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.explorePostDetail(id) });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.explorePostsAll() });
+      adminToast.success("Video reprocess enqueued");
+    },
+    onError: (e: Error) => adminToast.error(e.message),
+  });
+
   const deleteCommentMutation = useMutation({
     mutationFn: (commentId: string) =>
       adminApi.deleteJson(`/api/admin/explore/comments/${encodeURIComponent(commentId)}`),
@@ -125,6 +136,16 @@ export function ExplorePostDetailPage() {
   const providers = Array.isArray(providersRaw) ? providersRaw[0] : providersRaw;
   const providerIdForLink = String(providers?.id ?? post.provider_id ?? "");
   const isHidden = Boolean(post.is_hidden);
+  const soundId = post.sound_id ? String(post.sound_id) : "";
+  const soundTitle =
+    (post.explore_sounds as { title?: string } | { title?: string }[] | null | undefined) != null
+      ? (() => {
+          const raw = post.explore_sounds as { title?: string } | { title?: string }[] | null;
+          const row = Array.isArray(raw) ? raw[0] : raw;
+          return row?.title?.trim() || "";
+        })()
+      : "";
+  const hasVideoSlide = (mediaMeta ?? []).some((s) => String(s.kind ?? "") === "video");
 
   return (
     <div className="space-y-6">
@@ -144,6 +165,7 @@ export function ExplorePostDetailPage() {
       <AdminMutationAlert
         errors={[
           patchMutation.error instanceof Error ? patchMutation.error : null,
+          reprocessMutation.error instanceof Error ? reprocessMutation.error : null,
           deleteCommentMutation.error instanceof Error ? deleteCommentMutation.error : null,
         ]}
       />
@@ -184,9 +206,36 @@ export function ExplorePostDetailPage() {
                     <li key={i} className="rounded border border-gray-100 px-2 py-1 font-mono">
                       #{i + 1} {String(slide.kind ?? "?")} · status={String(slide.status ?? "—")}
                       {slide.error_code ? ` · err=${String(slide.error_code)}` : ""}
+                      {slide.trim_start_ms != null && slide.trim_end_ms != null
+                        ? ` · trim=${String(slide.trim_start_ms)}–${String(slide.trim_end_ms)}ms`
+                        : ""}
+                      {slide.source_duration_ms != null ? ` · src=${String(slide.source_duration_ms)}ms` : ""}
                     </li>
                   ))}
                 </ul>
+                {soundId ? (
+                  <p className="mt-2 text-xs text-gray-600">Sound: {soundTitle || soundId}</p>
+                ) : null}
+                {hasVideoSlide ? (
+                  <button
+                    type="button"
+                    className={`${adminToolbarButtonClass(reprocessMutation.isPending)} mt-3`}
+                    disabled={reprocessMutation.isPending}
+                    onClick={() => {
+                      requestConfirm({
+                        title: "Reprocess video?",
+                        consequence:
+                          "Clears failed or in-progress encode state and enqueues Rendobar again for undelivered video slides.",
+                        confirmLabel: "Reprocess",
+                        onConfirm: async () => {
+                          await reprocessMutation.mutateAsync(false);
+                        },
+                      });
+                    }}
+                  >
+                    Reprocess video
+                  </button>
+                ) : null}
               </div>
             ) : null}
           </div>

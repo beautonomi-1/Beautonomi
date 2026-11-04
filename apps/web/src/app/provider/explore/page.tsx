@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Loader2, Plus, Pencil, Trash2, Image as ImageIcon, ExternalLink, Eye, Heart, MessageCircle, Gift } from "lucide-react";
 import type { ExplorePost } from "@/types/explore";
+import { ProviderExplorePostStatusBadge } from "@/components/provider/ProviderExplorePostStatusBadge";
 
 export default function ProviderExplorePage() {
   const { t } = useTranslation();
@@ -179,6 +180,7 @@ export default function ProviderExplorePage() {
                       >
                         {post.status}
                       </span>
+                      <ProviderExplorePostStatusBadge post={post} />
                       <span>{t("web.provider.explorePage.likes", { count: post.like_count ?? 0 })}</span>
                       <span>{t("web.provider.explorePage.comments", { count: post.comment_count ?? 0 })}</span>
                       {typeof post.view_count === "number" && (

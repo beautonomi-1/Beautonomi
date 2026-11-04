@@ -83,6 +83,10 @@ type PlansPayload =
         read_client?: string;
         empty_reason?: string | null;
       };
+      catalog_readiness?: {
+        ok?: boolean;
+        issues?: Array<{ kind?: string; message?: string }>;
+      };
     };
 
 function featuresFromRow(row: PlanRow): PlanFeaturesMap {
@@ -113,6 +117,9 @@ export function PlansListPage() {
 
   const rows = Array.isArray(q.data) ? q.data : q.data?.plans ?? [];
   const plansMeta = Array.isArray(q.data) ? null : q.data?.meta ?? null;
+  const catalogReadiness = Array.isArray(q.data) ? null : q.data?.catalog_readiness ?? null;
+  const catalogIssues =
+    catalogReadiness?.ok === false ? catalogReadiness.issues ?? [] : [];
   const pricingOnlyRows: PricingOnlyApiRow[] = Array.isArray(q.data) ? [] : (q.data?.pricing_only ?? []);
 
   const webOrigin = publicSiteOrigin();
@@ -508,6 +515,19 @@ export function PlansListPage() {
           </p>
         </AdminPanel>
       )}
+      {catalogIssues.length > 0 ? (
+        <AdminPanel className="border-red-200 bg-red-50/80">
+          <p className="text-sm font-semibold text-red-900">Catalog readiness</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-red-900">
+            {catalogIssues.slice(0, 8).map((issue, idx) => (
+              <li key={`${issue.kind ?? "issue"}-${idx}`}>{issue.message ?? issue.kind}</li>
+            ))}
+          </ul>
+          {catalogIssues.length > 8 ? (
+            <p className="mt-2 text-xs text-red-800">{catalogIssues.length - 8} more issue(s) not shown.</p>
+          ) : null}
+        </AdminPanel>
+      ) : null}
       {showPaystackOffBanner ? (
         <AdminPanel className="border-amber-200 bg-amber-50/80">
           <h3 className="text-sm font-semibold text-amber-950">Paystack checkout is off</h3>

@@ -6,6 +6,7 @@ import RoleGuard from "@/components/auth/RoleGuard";
 import { ShareReceiptButton } from "@/components/receipts/ShareReceiptButton";
 import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { isStandardVatRatePercent, normalizeTaxRatePercent } from "@/lib/tax/tax-rate-display";
 import { Button } from "@/components/ui/button";
 import { VerifiedBadge } from "@/components/ui/verified-badge";
 import { Input } from "@/components/ui/input";
@@ -140,6 +141,13 @@ const SEND_LINK_OPTIONS = [
 
 type SendLinkDelivery = (typeof SEND_LINK_OPTIONS)[number]["value"];
 
+function heldWalletGift(bookingLike: unknown): number {
+  return Math.max(
+    0,
+    Number((bookingLike as { pending_wallet_gift_amount?: number } | null)?.pending_wallet_gift_amount ?? 0),
+  );
+}
+
 export default function ProviderBookingDetail() {
   const { t } = useTranslation();
   const { format: formatMoney } = useProviderMoneyFormat();
@@ -220,7 +228,7 @@ export default function ProviderBookingDetail() {
 
   // Yoco (parity with provider app: pending sale → terminal → sale PATCH + mark-paid)
   const [cardMachineOpen, setCardMachineOpen] = useState(false);
-  const [yocoDialogAmount, setYocoDialogAmount] = useState(0);
+  const [cardMachineAmount, setCardMachineAmount] = useState(0);
   const [yocoIntegrationEnabled, setYocoIntegrationEnabled] = useState(false);
   const [preparingYocoSale, setPreparingYocoSale] = useState(false);
   const [yocoBookingSaleId, setYocoBookingSaleId] = useState<string | null>(null);
@@ -228,7 +236,6 @@ export default function ProviderBookingDetail() {
   const yocoPendingChargeAmountRef = useRef<number | null>(null);
   const yocoPendingSaleOutstandingSnapshotRef = useRef<number | null>(null);
 
-  const [paycloudDialogAmount, setPaycloudDialogAmount] = useState(0);
   const [paycloudEntityType, setPaycloudEntityType] = useState<
     "booking" | "additional_charge"
   >("booking");
@@ -712,6 +719,7 @@ export default function ProviderBookingDetail() {
       totalAmount: ta, totalPaid: tp, totalRefunded: tr,
       walletAmount: walletAmt, giftCardAmount: giftCardAmt,
       unpaidAdditionalCharges: unpaidChargesTotal, paymentStatus: booking.payment_status,
+      pendingWalletGiftAmount: heldWalletGift(booking),
     });
     const paymentAmount = Number(outstandingAmt.toFixed(2));
     if (paymentAmount <= 0) {
@@ -805,7 +813,7 @@ export default function ProviderBookingDetail() {
       const c = additionalCharges.find((x) => x.id === chargeMarkPaidId);
       if (!c) return;
       setChargeMarkPaidId(null);
-      openPaycloudAdditionalCharge(c.id, Number(c.amount ?? 0));
+      openPaycloudAdditionalCharge(c.id, Number(c.amount_due ?? c.amount ?? 0));
       return;
     }
     try {
@@ -896,6 +904,7 @@ export default function ProviderBookingDetail() {
       totalAmount: totalAmountLocal, totalPaid: totalPaidLocal, totalRefunded: totalRefundedLocal,
       walletAmount: walletLocal, giftCardAmount: giftLocal,
       unpaidAdditionalCharges: unpaidChargesTotal, paymentStatus: b.payment_status,
+      pendingWalletGiftAmount: heldWalletGift(b),
     });
     const chargeAmount = Number(outstandingLocal.toFixed(2));
     const isStartedLocal = ["started", "in_progress"].includes(b.status);
@@ -982,9 +991,7 @@ export default function ProviderBookingDetail() {
           total_amount: chargeAmount,
           payment_method: "yoco",
           payment_status: "pending",
-          notes: t("web.provider.bookings.detail.toast.yocoChargeBookingNote", {
-            number: b.booking_number ?? bookingId,
-          }),
+          notes: `booking_collection:${bookingId}`,
         });
         const newId = res.data?.id;
         if (!newId) {
@@ -1004,7 +1011,7 @@ export default function ProviderBookingDetail() {
     }
 
     yocoPendingChargeAmountRef.current = chargeAmount;
-    setYocoDialogAmount(chargeAmount);
+    setCardMachineAmount(chargeAmount);
     setCardMachineOpen(true);
   }, [booking, bookingId, yocoBookingSaleId]);
 
@@ -1024,6 +1031,7 @@ export default function ProviderBookingDetail() {
       giftCardAmount: Number((b as any).gift_card_amount ?? 0),
       unpaidAdditionalCharges: unpaidChargesTotal,
       paymentStatus: b.payment_status,
+      pendingWalletGiftAmount: heldWalletGift(b),
     });
     const { chargeAmount } = computePaycloudBookingChargeAmount({
       outstanding,
@@ -1031,6 +1039,7 @@ export default function ProviderBookingDetail() {
       depositAmount: Number((b as { deposit_amount?: number }).deposit_amount ?? 0),
       totalPaid: Number(b.total_paid ?? 0),
       unpaidAdditionalCharges: unpaidChargesTotal,
+      pendingWalletGiftAmount: heldWalletGift(b),
     });
     const rounded = Number(chargeAmount.toFixed(2));
     if (rounded <= 0) {
@@ -1039,7 +1048,7 @@ export default function ProviderBookingDetail() {
     }
     setPaycloudEntityType("booking");
     setPaycloudEntityId(bookingId);
-    setPaycloudDialogAmount(rounded);
+    setCardMachineAmount(rounded);
     setCardMachineOpen(true);
   }, [booking, bookingId]);
 
@@ -1051,7 +1060,7 @@ export default function ProviderBookingDetail() {
       }
       setPaycloudEntityType("additional_charge");
       setPaycloudEntityId(chargeId);
-      setPaycloudDialogAmount(chargeAmount);
+      setCardMachineAmount(chargeAmount);
       setCardMachineOpen(true);
     },
     [],
@@ -1085,6 +1094,7 @@ export default function ProviderBookingDetail() {
       giftCardAmount: Number((b as unknown as Record<string, unknown>).gift_card_amount ?? 0),
       unpaidAdditionalCharges: unpaidCharges,
       paymentStatus: b.payment_status,
+      pendingWalletGiftAmount: heldWalletGift(b),
     });
     if (outstandingAmt <= 0 || !canProcessPayments) return;
 
@@ -1155,6 +1165,7 @@ export default function ProviderBookingDetail() {
       giftCardAmount: giftLocal,
       unpaidAdditionalCharges: unpaidChargesTotal,
       paymentStatus: b.payment_status,
+      pendingWalletGiftAmount: heldWalletGift(b),
     });
     const expectedAmount = Number(outstandingLocal.toFixed(2));
     if (expectedAmount <= 0) {
@@ -1225,6 +1236,7 @@ export default function ProviderBookingDetail() {
         totalAmount: ta, totalPaid: tp, totalRefunded: tr,
         walletAmount: walletCalc, giftCardAmount: giftCalc,
         unpaidAdditionalCharges: unpaidChargesTotal, paymentStatus: b.payment_status,
+        pendingWalletGiftAmount: heldWalletGift(b),
       });
 
       try {
@@ -1604,6 +1616,7 @@ export default function ProviderBookingDetail() {
     giftCardAmount: giftCardAmountApplied,
     unpaidAdditionalCharges: unpaidChargesTotal,
     paymentStatus: b.payment_status,
+    pendingWalletGiftAmount: heldWalletGift(b),
   });
   const paymentDisplay = getBookingPaymentDisplay({
     paymentStatus: b.payment_status,
@@ -2556,7 +2569,9 @@ export default function ProviderBookingDetail() {
               <div className="flex justify-between">
                 <span className="text-gray-600">
                   {booking.tax_rate != null && booking.tax_rate > 0
-                    ? t("web.provider.bookings.detail.paymentSummary.vat", { rate: (booking.tax_rate * 100).toFixed(1) })
+                    ? t("web.provider.bookings.detail.paymentSummary.vat", {
+                        rate: normalizeTaxRatePercent(booking.tax_rate).toFixed(1),
+                      })
                     : t("web.provider.bookings.detail.paymentSummary.tax")}
                 </span>
                 <span className="font-medium text-blue-600">
@@ -2584,10 +2599,12 @@ export default function ProviderBookingDetail() {
               <div className="mt-2 pt-2 border-t">
                 <p className="text-xs text-gray-500">
                   {booking.tax_rate != null && booking.tax_rate > 0
-                    ? t("web.provider.bookings.detail.paymentSummary.vatAmount", { rate: (booking.tax_rate * 100).toFixed(1) })
+                    ? t("web.provider.bookings.detail.paymentSummary.vatAmount", {
+                        rate: normalizeTaxRatePercent(booking.tax_rate).toFixed(1),
+                      })
                     : t("web.provider.bookings.detail.paymentSummary.taxAmount")}
                   {booking.currency} {booking.tax_amount.toFixed(2)}.
-                  {booking.tax_rate != null && booking.tax_rate >= 0.15
+                  {booking.tax_rate != null && isStandardVatRatePercent(booking.tax_rate)
                     ? t("web.provider.bookings.detail.paymentSummary.sarsRemit")
                     : ""}
                 </p>
@@ -2703,11 +2720,11 @@ export default function ProviderBookingDetail() {
                         </Button>
                         {paycloudEnabled && (
                           <PaycloudCollectButton
-                            amount={Number(c.amount ?? 0)}
+                            amount={Number(c.amount_due ?? c.amount ?? 0)}
                             currency={bookingCurrency}
                             context="additional_charge"
                             onClick={() =>
-                              openPaycloudAdditionalCharge(c.id, Number(c.amount ?? 0))
+                              openPaycloudAdditionalCharge(c.id, Number(c.amount_due ?? c.amount ?? 0))
                             }
                           />
                         )}
@@ -3707,7 +3724,7 @@ export default function ProviderBookingDetail() {
         <CardMachineCollectDialog
           open={cardMachineOpen}
           onOpenChange={setCardMachineOpen}
-          amount={Math.max(paycloudDialogAmount, yocoDialogAmount)}
+          amount={cardMachineAmount}
           autoStart
           entity={{
             entityType: paycloudEntityType,

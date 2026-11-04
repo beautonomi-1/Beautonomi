@@ -31,8 +31,22 @@ interface TaxRate {
   metadata?: { rate?: number; included?: boolean; provider_tax_rate?: number };
 }
 
+type VatRate = {
+  id: string;
+  code: string;
+  name: string;
+  jurisdiction: string;
+  country_code: string | null;
+  rate: number;
+  inclusive: boolean;
+  is_platform_default: boolean;
+  effective_from: string;
+  effective_to: string | null;
+};
+
 type TaxesPayload = {
   tax_rates: TaxRate[];
+  vat_rates?: VatRate[];
   statistics?: Record<string, number>;
   /** Platform-wide default provider tax rate (fallback when provider has no explicit rate). */
   provider_tax_rate?: number | null;
@@ -219,10 +233,11 @@ export function TaxesPage() {
   const stats = q.data?.statistics;
   const defaultTaxRate = q.data?.default_tax_rate;
   const providerTaxRate = q.data?.provider_tax_rate;
+  const vatRates = q.data?.vat_rates ?? [];
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader title="Taxes" description="Manage platform tax rates applied to bookings." />
+      <AdminPageHeader title="Taxes" description="VAT (tax_rates) + legacy tax-rate picklists (reference_data)." />
 
       <AdminPanel>
         <div className="flex items-center justify-between mb-4">
@@ -260,8 +275,7 @@ export function TaxesPage() {
       <AdminPanel>
         <h2 className="mb-3 text-sm font-semibold text-gray-900">Platform Tax Defaults</h2>
         <p className="text-xs text-gray-500 mb-4">
-          These are the fallback tax rates used in booking calculations when a provider has not set an explicit tax rate.
-          Configure the platform default in General Settings → Taxes.
+          Booking/POS VAT resolution uses `tax_rates` first (F17), then falls back to `platform_settings.settings.taxes.default_tax_rate` in older environments.
         </p>
         <dl className="grid gap-4 text-sm sm:grid-cols-2">
           <div className="rounded-lg border border-gray-200 p-3">
@@ -300,12 +314,51 @@ export function TaxesPage() {
         </AdminPanel>
       ) : null}
 
+      {vatRates.length > 0 ? (
+        <AdminPanel>
+          <h2 className="mb-2 text-sm font-semibold text-gray-900">VAT rates (F17: tax_rates)</h2>
+          <p className="text-xs text-gray-500 mb-3">
+            These rates are the factual source used when resolving provider VAT rates by country/jurisdiction.
+          </p>
+          <AdminDataTable>
+            <AdminTableHead>
+              <tr>
+                <AdminTh>Jurisdiction</AdminTh>
+                <AdminTh>Country</AdminTh>
+                <AdminTh>Code</AdminTh>
+                <AdminTh>Name</AdminTh>
+                <AdminTh>Rate</AdminTh>
+                <AdminTh>Inclusive</AdminTh>
+                <AdminTh>Default</AdminTh>
+                <AdminTh>Effective</AdminTh>
+              </tr>
+            </AdminTableHead>
+            <AdminTableBody>
+              {vatRates.map((r) => (
+                <tr key={r.id}>
+                  <AdminTd>{r.jurisdiction}</AdminTd>
+                  <AdminTd>{r.country_code ?? "—"}</AdminTd>
+                  <AdminTd className="font-mono text-xs">{r.code}</AdminTd>
+                  <AdminTd>{r.name}</AdminTd>
+                  <AdminTd>{Number(r.rate).toFixed(3)}%</AdminTd>
+                  <AdminTd>{r.inclusive ? "Yes" : "No"}</AdminTd>
+                  <AdminTd>{r.is_platform_default ? "Yes" : "—"}</AdminTd>
+                  <AdminTd className="text-xs text-gray-600">
+                    {new Date(r.effective_from).toLocaleDateString()}
+                  </AdminTd>
+                </tr>
+              ))}
+            </AdminTableBody>
+          </AdminDataTable>
+        </AdminPanel>
+      ) : null}
+
       {mutError && !creating && !editId && (
         <p className="text-sm text-red-600 px-1">{mutError}</p>
       )}
 
       {rates.length === 0 ? (
-        <EmptyState title="No tax rates" description="Rates will appear here when configured for this tenant." />
+        <EmptyState title="No legacy tax-rate options" description="Reference-data tax rates will appear here when configured." />
       ) : (
         <AdminDataTable>
           <AdminTableHead>

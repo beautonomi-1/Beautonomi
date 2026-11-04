@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { sumPendingWalletGiftBookingPayments } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import { getAppBaseUrl } from "@/lib/env/app-url";
 import { getPaymentProviderForTenant } from "@/lib/payments/provider/registry";
@@ -69,6 +70,10 @@ export async function sendBookingPaymentLink(
     }
   }
 
+  const pendingWalletGift = await sumPendingWalletGiftBookingPayments(
+    supabaseAdmin,
+    input.bookingId,
+  );
   const amountDue = computeBookingOutstandingDisplay({
     totalAmount: totalAmountForLink,
     totalPaid: Number(input.amounts.totalPaid ?? 0),
@@ -77,6 +82,7 @@ export async function sendBookingPaymentLink(
     giftCardAmount: Number(input.amounts.giftCardAmount ?? 0),
     unpaidAdditionalCharges: 0,
     paymentStatus: input.amounts.paymentStatus ?? undefined,
+    pendingWalletGiftAmount: pendingWalletGift,
   });
 
   if (amountDue <= 0) {

@@ -25,6 +25,8 @@ export interface ExploreMediaSlideMeta {
   encode_job_id?: string | null;
   status?: string | null;
   error_code?: string | null;
+  retry_count?: number | null;
+  processing_started_at?: string | null;
   /** When video transcode is pending, defer portfolio append until poster is ready. */
   pending_gallery_append?: boolean;
   text_overlays?: ExploreTextOverlay[] | null;
@@ -53,6 +55,8 @@ export type ExplorePostRowLike = {
   playback_path?: string | null;
   media_meta?: ExploreMediaSlideMeta[] | null;
   sound_id?: string | null;
+  is_hidden?: boolean | null;
+  moderation_notes?: string | null;
   providers?:
     | { business_name?: string; slug?: string; avatar_url?: string | null }
     | { business_name?: string; slug?: string; avatar_url?: string | null }[]

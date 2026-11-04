@@ -398,6 +398,111 @@ export async function POST(request: Request) {
     const groupBookingId = validationResult.data.group_booking_id ?? null;
     const productOrderId = validationResult.data.product_order_id ?? null;
     const additionalChargeId = validationResult.data.additional_charge_id ?? null;
+    if (additionalChargeId) {
+      const { computeExpectedAmountForEntity } = await import(
+        "@/lib/payments/paycloud-amount-guards"
+      );
+      const expectedCharge = await computeExpectedAmountForEntity(
+        getSupabaseAdmin(),
+        providerId,
+        "additional_charge",
+        additionalChargeId,
+      );
+      const expectedDue = expectedCharge?.amount ?? 0;
+      const yocoBase = Math.max(0, amountInRands - tipAmount);
+      if (!expectedCharge || expectedDue <= 0.009 || Math.abs(yocoBase - expectedDue) > 0.02) {
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: "Amount does not match the extra charge still owed.",
+              code: "AMOUNT_MISMATCH",
+            },
+          },
+          { status: 400 },
+        );
+      }
+    }
+
+    const guardedEntity = additionalChargeId
+      ? null
+      : appointmentId
+        ? { type: "booking" as const, id: appointmentId }
+        : groupBookingId
+          ? { type: "group_booking" as const, id: groupBookingId }
+          : productOrderId
+            ? { type: "product_order" as const, id: productOrderId }
+            : null;
+    if (guardedEntity) {
+      const { computeExpectedAmountForEntity, yocoChargeMatchesExpected } = await import(
+        "@/lib/payments/paycloud-amount-guards"
+      );
+      const expected = await computeExpectedAmountForEntity(
+        getSupabaseAdmin(),
+        providerId,
+        guardedEntity.type,
+        guardedEntity.id,
+      );
+      if (
+        !expected ||
+        !yocoChargeMatchesExpected({
+          amount: amountInRands,
+          tipAmount,
+          expectedAmount: expected.amount,
+          depositAmount: expected.depositAmount,
+          serviceOutstanding: expected.serviceOutstanding,
+        })
+      ) {
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: "Amount does not match outstanding balance.",
+              code: "AMOUNT_MISMATCH",
+            },
+          },
+          { status: 400 },
+        );
+      }
+      if (guardedEntity.type === "booking" && tipAmount > 0.01 && amountInRands > expected.amount + 0.02) {
+        const { data: bookingTipRow } = await getSupabaseAdmin()
+          .from("bookings")
+          .select("tip_amount")
+          .eq("id", guardedEntity.id)
+          .eq("provider_id", providerId)
+          .maybeSingle();
+        if (Number((bookingTipRow as { tip_amount?: number } | null)?.tip_amount ?? 0) > 0.01) {
+          return NextResponse.json(
+            {
+              data: null,
+              error: {
+                message: "This booking already includes a checkout tip — do not add a terminal tip again.",
+                code: "TIP_ALREADY_INCLUDED",
+              },
+            },
+            { status: 400 },
+          );
+        }
+      }
+    }
+
+    if (saleId && !appointmentId && !groupBookingId && !productOrderId && !additionalChargeId) {
+      const { saleCardAmountStillDueForSale } = await import("@/lib/gift-cards/sale-gift-card");
+      const due = await saleCardAmountStillDueForSale(getSupabaseAdmin(), providerId, saleId);
+      const yocoBase = Math.max(0, amountInRands - tipAmount);
+      if (due == null || Math.abs(yocoBase - due) > 0.02) {
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: "Amount does not match what this sale still owes.",
+              code: "AMOUNT_MISMATCH",
+            },
+          },
+          { status: 400 },
+        );
+      }
+    }
 
     // client_reference is required by Yoco API; stable per entity for idempotency (Web POS retries).
     const clientReference =
@@ -415,18 +520,18 @@ export async function POST(request: Request) {
           ? "product_order"
           : additionalChargeId
             ? "additional_charge"
-            : validationResult.data.sale_id
-              ? "sale"
-              : appointmentId
-                ? "booking"
+            : appointmentId
+              ? "booking"
+              : validationResult.data.sale_id
+                ? "sale"
                 : undefined);
     let resolvedEntityId =
       validationResult.data.entity_id ??
       groupBookingId ??
       productOrderId ??
       additionalChargeId ??
-      validationResult.data.sale_id ??
       appointmentId ??
+      validationResult.data.sale_id ??
       null;
     let resolvedEntityTypeFinal = resolvedEntityType;
     if (resolvedEntityTypeFinal === "sale" && resolvedEntityId) {

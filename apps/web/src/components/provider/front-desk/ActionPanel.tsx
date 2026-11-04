@@ -106,6 +106,7 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
     giftCardAmount: Number((booking as any).gift_card_amount || 0),
     unpaidAdditionalCharges,
     paymentStatus: (booking as any).payment_status,
+    pendingWalletGiftAmount: Number((booking as any).pending_wallet_gift_amount ?? 0),
   });
 
   const handleCopyPhone = async () => {
@@ -305,6 +306,7 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
                   walletAmount={Number((booking as any).wallet_amount || 0)}
                   giftCardAmount={Number((booking as any).gift_card_amount || 0)}
                   unpaidAdditionalCharges={unpaidAdditionalCharges}
+                  pendingWalletGiftAmount={Number((booking as any).pending_wallet_gift_amount ?? 0)}
                   paymentStatus={(booking as any).payment_status}
                   currency={booking.currency || tenantCurrency}
                   bookingLocationId={(booking as any).location_id ?? null}

@@ -14,12 +14,14 @@ import { sendToUser } from '@/lib/notifications/onesignal';
 import { enqueueMultiChannel } from '@/lib/notifications/enqueue';
 import { insertNotification } from '@/lib/notifications/insert-notification';
 import { getGroupBooking } from './group-booking';
+import { hashGroupInviteToken } from './group-invites';
 import { resolveTwilioCredentials, sendTwilioSMS } from '@/lib/integrations/twilio';
 import { sendResendEmail } from '@/lib/integrations/resend';
 import { getTenantRegionConfig } from '@/lib/regions/config';
 import { getTenantLocaleTagFromRegionConfig } from '@/lib/locale/tenant-locale';
 
 type GroupNotificationParticipant = {
+  id?: string | null;
   participant_name: string;
   participant_email: string | null;
   participant_phone: string | null;
@@ -30,6 +32,16 @@ type GroupNotificationParticipant = {
 export type SendGroupBookingNotificationsOptions = {
   /** When true, skip the primary contact (e.g. online checkout already sent booking_confirmed). */
   skipPrimaryContact?: boolean;
+  /** Split-payment guests: invite link (and share) keyed by booking_participants.id. */
+  invitesByParticipantId?: Record<string, GroupGuestInvite>;
+  /** Notify only this participant (invite re-send). */
+  onlyParticipantId?: string;
+};
+
+export type GroupGuestInvite = {
+  token: string;
+  amountDue: number | null;
+  currency: string | null;
 };
 
 /**
@@ -48,6 +60,7 @@ export async function sendGroupBookingNotifications(
     const groupBooking = await getGroupBooking(supabase, groupBookingId);
     if (groupBooking) {
       participants = groupBooking.participants.map((p) => ({
+        id: (p as { id?: string | null }).id ?? null,
         participant_name: p.participant_name,
         participant_email: p.participant_email,
         participant_phone: p.participant_phone,
@@ -58,7 +71,7 @@ export async function sendGroupBookingNotifications(
   } else {
     const { data: bookingParticipants } = await supabase
       .from('booking_participants')
-      .select('participant_name, participant_email, participant_phone, is_primary_contact, customer_id')
+      .select('id, participant_name, participant_email, participant_phone, is_primary_contact, customer_id')
       .eq('booking_id', bookingId);
 
     if (bookingParticipants) {
@@ -89,12 +102,19 @@ export async function sendGroupBookingNotifications(
     if (options?.skipPrimaryContact && participant.is_primary_contact) {
       continue;
     }
+    if (options?.onlyParticipantId && participant.id !== options.onlyParticipantId) {
+      continue;
+    }
 
     const userId = await resolveParticipantUserId(supabase, participant);
     const walkInChannels = {
       email: Boolean(participant.participant_email),
       sms: Boolean(participant.participant_phone),
     };
+    const invite =
+      !participant.is_primary_contact && participant.id
+        ? options?.invitesByParticipantId?.[participant.id] ?? null
+        : null;
 
     if (userId) {
       await sendGroupBookingConfirmation(
@@ -106,6 +126,7 @@ export async function sendGroupBookingNotifications(
         participant.is_primary_contact,
         formatLocale,
         groupBookingId,
+        invite,
       );
       continue;
     }
@@ -117,6 +138,7 @@ export async function sendGroupBookingNotifications(
       provider,
       walkInChannels,
       formatLocale,
+      invite,
     );
   }
 }
@@ -162,6 +184,7 @@ function buildGroupConfirmationCopy(
   provider: { business_name?: string | null } | null,
   isPrimary: boolean,
   formatLocale: string,
+  invite?: GroupGuestInvite | null,
 ): { title: string; message: string; pushMessage: string } {
   const scheduledDate = new Date(booking.scheduled_at || Date.now());
   const dateStr = scheduledDate.toLocaleDateString(formatLocale, {
@@ -181,9 +204,17 @@ function buildGroupConfirmationCopy(
     ? `Group Booking Confirmation - ${bookingNumber}`
     : `You're Invited to a Group Booking - ${bookingNumber}`;
 
+  const inviteUrl = invite ? groupInviteUrl(invite.token) : null;
+  const shareText =
+    invite && invite.amountDue != null && invite.amountDue > 0
+      ? formatShareAmount(invite.amountDue, invite.currency, formatLocale)
+      : null;
+
   const pushMessage = isPrimary
     ? `Your group booking ${bookingNumber} is confirmed for ${dateStr} at ${timeStr}.`
-    : `You're invited to a group booking on ${dateStr} at ${timeStr}.`;
+    : shareText
+      ? `You're invited to a group booking on ${dateStr} at ${timeStr}. Pay your share of ${shareText} to confirm your spot.`
+      : `You're invited to a group booking on ${dateStr} at ${timeStr}.`;
 
   const message = `
 Hi ${name},
@@ -199,17 +230,32 @@ Booking Details:
 ${
   isPrimary
     ? 'As the primary contact, you are responsible for this booking. All participants will receive their own confirmation.'
-    : 'The primary contact will handle payment and coordination for this group booking.'
+    : inviteUrl
+      ? `Each guest pays their own share for this booking.${shareText ? ` Your share is ${shareText}.` : ''}`
+      : 'The primary contact will handle payment and coordination for this group booking.'
 }
 
-View your booking:
-${appUrl}/account-settings/bookings
+${inviteUrl ? `Accept your invite${shareText ? ' and pay your share' : ''}:\n${inviteUrl}` : `View your booking:\n${appUrl}/account-settings/bookings`}
 
 Best regards,
 Beautonomi Team
   `.trim();
 
   return { title, message, pushMessage };
+}
+
+export function groupInviteUrl(token: string): string {
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://beautonomi.com').replace(/\/$/, '');
+  return `${appUrl}/group-invite/${encodeURIComponent(token)}`;
+}
+
+function formatShareAmount(amount: number, currency: string | null, locale: string): string {
+  if (!currency) return amount.toFixed(2);
+  try {
+    return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(amount);
+  } catch {
+    return `${currency} ${amount.toFixed(2)}`;
+  }
 }
 
 function messageToHtml(body: string): string {
@@ -251,6 +297,7 @@ async function sendWalkInGroupBookingConfirmation(
   provider: { business_name?: string | null } | null,
   channels: { email: boolean; sms: boolean },
   formatLocale: string,
+  invite?: GroupGuestInvite | null,
 ): Promise<void> {
   const { title, message } = buildGroupConfirmationCopy(
     participant.participant_name,
@@ -258,6 +305,7 @@ async function sendWalkInGroupBookingConfirmation(
     provider,
     participant.is_primary_contact,
     formatLocale,
+    invite,
   );
 
   if (channels.email && participant.participant_email) {
@@ -315,6 +363,7 @@ async function sendGroupBookingConfirmation(
   isPrimary: boolean,
   formatLocale: string,
   groupBookingId?: string | null,
+  invite?: GroupGuestInvite | null,
 ): Promise<void> {
   const { title, message, pushMessage } = buildGroupConfirmationCopy(
     name,
@@ -322,21 +371,27 @@ async function sendGroupBookingConfirmation(
     provider,
     isPrimary,
     formatLocale,
+    invite,
   );
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://beautonomi.com';
   const tenantId = booking.tenant_id ?? null;
-  const dedupeBase = `group_booking_confirmation:${userId}:${groupBookingId ?? booking.id}`;
+  const dedupeBase = invite
+    ? `group_booking_invite:${userId}:${hashGroupInviteToken(invite.token).slice(0, 24)}`
+    : `group_booking_confirmation:${userId}:${groupBookingId ?? booking.id}`;
 
   const notificationData = {
     booking_id: booking.id,
     booking_number: booking.booking_number ?? null,
     group_booking: true,
     group_booking_id: groupBookingId ?? null,
+    ...(invite ? { group_invite_token: invite.token } : {}),
   };
 
-  const actionUrl = groupBookingId
-    ? `/group-booking-detail?id=${groupBookingId}`
-    : `/booking-detail?id=${booking.id}`;
+  const actionUrl = invite
+    ? `/group-invite/${encodeURIComponent(invite.token)}`
+    : groupBookingId
+      ? `/group-booking-detail?id=${groupBookingId}`
+      : `/booking-detail?id=${booking.id}`;
 
   try {
     await insertNotification({
@@ -359,9 +414,11 @@ async function sendGroupBookingConfirmation(
         message: pushMessage,
         type: 'group_booking_confirmation',
         data: notificationData,
-        url: groupBookingId
-          ? `${appUrl}/account-settings/bookings?group_booking_id=${groupBookingId}`
-          : `${appUrl}/account-settings/bookings`,
+        url: invite
+          ? groupInviteUrl(invite.token)
+          : groupBookingId
+            ? `${appUrl}/account-settings/bookings?group_booking_id=${groupBookingId}`
+            : `${appUrl}/account-settings/bookings`,
       },
       ['push'],
       { appType: 'customer' },
@@ -371,9 +428,20 @@ async function sendGroupBookingConfirmation(
   }
 
   try {
+    const inviteTemplateVars = invite
+      ? {
+          inviter_name: provider?.business_name?.trim() || 'Your host',
+          provider_name: provider?.business_name?.trim() || 'Beautonomi Partner',
+          invite_url: groupInviteUrl(invite.token),
+          group_booking_id: groupBookingId ?? '',
+          amount_due: invite.amountDue != null ? String(invite.amountDue) : '',
+          currency: invite.currency ?? '',
+        }
+      : {};
+
     await enqueueMultiChannel(
       {
-        templateKey: 'group_booking_confirmation',
+        templateKey: invite ? 'group_invite_guest' : 'group_booking_confirmation',
         recipientUserId: userId,
         bookingId: booking.id,
         tenantId,
@@ -382,6 +450,7 @@ async function sendGroupBookingConfirmation(
           html: messageToHtml(message),
           body: message,
           data: notificationData,
+          ...inviteTemplateVars,
         },
       },
       ['email', 'sms'],

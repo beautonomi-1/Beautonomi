@@ -3,6 +3,7 @@ import {
   buildSupportTicketsSearchParams,
   matchSupportTicketSavedView,
   mergeSupportTicketSavedViewIntoSearchParams,
+  supportTicketQueueQuery,
   SUPPORT_TICKET_SAVED_VIEWS,
   SUPPORT_TICKET_STATUS_GROUP_ACTIVE,
 } from "./buildSupportTicketsSearchParams";
@@ -106,6 +107,19 @@ describe("buildSupportTicketsSearchParams", () => {
     });
     const p = new URLSearchParams(qs);
     expect(p.get("assigned_to")).toBeNull();
+  });
+});
+
+describe("supportTicketQueueQuery", () => {
+  it("matches list API params with limit and offset", () => {
+    const qs = supportTicketQueueQuery({ ...defaults, pageIndex: 2, needsResponse: true });
+    const p = new URLSearchParams(qs);
+    expect(p.get("limit")).toBe("25");
+    expect(p.get("offset")).toBe("50");
+    expect(p.get("needs_response")).toBe("1");
+    expect(p.get("selected")).toBeNull();
+    expect(p.get("view")).toBeNull();
+    expect(p.get("include_counts")).toBeNull();
   });
 });
 

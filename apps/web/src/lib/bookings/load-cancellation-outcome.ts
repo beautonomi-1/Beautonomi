@@ -11,6 +11,8 @@ import {
   type CancelActor,
   outcomeToPreviewPayload,
 } from "@/lib/bookings/resolve-cancellation-outcome";
+import { computeLeadCancellationAmounts } from "@/lib/bookings/compute-lead-cancellation-amounts";
+import { listGroupGuestSharePayments } from "@/lib/bookings/group-guest-refunds";
 
 /**
  * Reads with the service-role client so payment rows are never hidden by RLS (a hidden payment
@@ -65,7 +67,17 @@ export async function loadCancellationOutcomeForBooking(
     inPersonRefunded,
   });
 
-  return { booking, outcome, preview: outcomeToPreviewPayload(outcome) };
+  const guestPayments = await listGroupGuestSharePayments(supabase, bookingId);
+  const guestSharesHeld = guestPayments.reduce((s, p) => s + p.net, 0);
+  const lead = computeLeadCancellationAmounts({
+    platformCollected: outcome.platformCollected,
+    guestSharesHeld,
+    feeRetained: outcome.feeRetained,
+    walletRefund: outcome.walletRefund,
+  });
+  const outcomeWithLead = { ...outcome, ...lead };
+
+  return { booking, outcome: outcomeWithLead, preview: outcomeToPreviewPayload(outcomeWithLead) };
 }
 
 export async function computePlatformCollectedForBooking(

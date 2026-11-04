@@ -16,6 +16,12 @@ import {
   applyPosProductStockDecrements,
   validatePosProductStock,
 } from "@/lib/provider-sales/pos-product-stock";
+import { isBookingCollectionSale } from "@/lib/reports/provider-sales-history";
+import {
+  saleCardAmountStillDueForSale,
+  saleChargeMatchesDue,
+  settleReservedSaleGiftCard,
+} from "@/lib/gift-cards/sale-gift-card";
 import { settleAdditionalChargePlatformHeld } from "@/lib/bookings/settle-additional-charge-platform-held";
 import { convertToSmallestUnit } from "@/lib/payments/paystack-complete";
 import { resolveSaleEntityTarget } from "@/lib/provider-sales/resolve-sale-entity-target";
@@ -177,7 +183,26 @@ export async function PATCH(
           return errorResponse("Product order target not found for this provider.", "TARGET_NOT_FOUND", 404);
         }
 
-        await recordProductOrderPayment({
+        const { productOrderCardAmountStillDue } = await import(
+          "@/lib/payments/resolve-paystack-initialize-amount"
+        );
+        const due = await productOrderCardAmountStillDue(
+          supabase,
+          body.entity_id,
+          String(payment.paystack_reference ?? ""),
+        );
+        if (due.ok === false) {
+          return errorResponse(due.message, "PAYMENT_LOOKUP_FAILED", 500);
+        }
+        if (allocationAmount > due.due + 0.02) {
+          return errorResponse(
+            "Allocation amount is more than this order still owes.",
+            "AMOUNT_MISMATCH",
+            400,
+          );
+        }
+
+        const payRecord = await recordProductOrderPayment({
           supabase: supabase as any,
           productOrderId: body.entity_id,
           reference: payment.paystack_reference,
@@ -187,6 +212,13 @@ export async function PATCH(
           provider: "paystack",
           platformHeld: true,
         });
+        if (!payRecord.ok) {
+          return errorResponse(
+            "Could not record the Paystack Terminal product order payment.",
+            "LEDGER_RECORDING_FAILED",
+            500,
+          );
+        }
 
         const { data: walkInOrder } = await (supabase.from("product_orders") as any)
           .select("id, order_source, status")
@@ -212,15 +244,31 @@ export async function PATCH(
       if (body.entity_type === "sale") {
         const { data: sale } = await supabase
           .from("sales")
-          .select("id, provider_id, payment_status")
+          .select("id, provider_id, payment_status, notes")
           .eq("id", body.entity_id)
           .eq("provider_id", payment.provider_id)
           .maybeSingle();
         if (!sale) {
           return errorResponse("Sale target not found for this provider.", "TARGET_NOT_FOUND", 404);
         }
+        if (!isBookingCollectionSale((sale as { notes?: string | null }).notes)) {
+          const saleDue = await saleCardAmountStillDueForSale(
+            getSupabaseAdmin(),
+            payment.provider_id,
+            body.entity_id,
+          );
+          if (!saleChargeMatchesDue(allocationAmount, saleDue)) {
+            return errorResponse(
+              "Amount does not match what this sale still owes.",
+              "AMOUNT_MISMATCH",
+              400,
+            );
+          }
+        }
 
-        const becomingCompleted = String((sale as any).payment_status ?? "") !== "completed";
+        const becomingCompleted =
+          String((sale as any).payment_status ?? "") !== "completed" &&
+          !isBookingCollectionSale((sale as { notes?: string | null }).notes);
         let itemsForStock: Array<{
           type?: string;
           item_id?: string | null;
@@ -241,6 +289,13 @@ export async function PATCH(
           }));
           const stockError = await validatePosProductStock(supabase as any, payment.provider_id, itemsForStock);
           if (stockError) return errorResponse(stockError, "STOCK_ERROR", 400);
+        }
+
+        if (String((sale as { payment_status?: string }).payment_status ?? "") !== "completed") {
+          const gift = await settleReservedSaleGiftCard(getSupabaseAdmin(), body.entity_id, {
+            cardAmount: allocationAmount,
+          });
+          if (gift.ok === false) return errorResponse(gift.message, "GIFT_CARD_ERROR", 400);
         }
 
         const { error: saleUpdateError } = await supabase

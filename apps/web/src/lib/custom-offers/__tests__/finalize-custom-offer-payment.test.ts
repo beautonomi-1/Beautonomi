@@ -24,6 +24,7 @@ vi.mock("@/lib/bookings/conflict-check", () => ({
 vi.mock("@/lib/bookings/ensure-wallet-gift-booking-payments", () => ({
   ensureWalletGiftBookingPayments: vi.fn(async () => undefined),
   completeWalletGiftSyntheticPayments: vi.fn(async () => undefined),
+  sumPendingWalletGiftBookingPayments: vi.fn(async () => 0),
 }));
 
 vi.mock("@/lib/loyalty/record-redemption", () => ({
@@ -115,6 +116,7 @@ function makeAdminMockForSuccessfulFinalize() {
       const chain: any = {
         select: () => chain,
         eq: () => chain,
+        ilike: () => chain,
         contains: () => chain,
         order: () => chain,
         limit: () => chain,

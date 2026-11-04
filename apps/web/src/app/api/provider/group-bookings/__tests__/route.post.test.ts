@@ -56,6 +56,11 @@ vi.mock("@/lib/bookings/group-booking-package-pricing", async (importOriginal) =
   };
 });
 
+const mockGroupBookingsEnabled = vi.fn();
+vi.mock("@/lib/bookings/assert-provider-group-bookings-enabled", () => ({
+  assertProviderStaffGroupBookingsEnabled: (...args: unknown[]) => mockGroupBookingsEnabled(...args),
+}));
+
 vi.mock("@/lib/bookings/create-group-participant-booking", () => ({
   createGroupParticipantChildBooking: (...args: unknown[]) =>
     mockCreateGroupParticipantChildBooking(...args),
@@ -148,6 +153,21 @@ describe("POST /api/provider/group-bookings", () => {
       .mockResolvedValueOnce({ bookingId: CHILD_B1 })
       .mockResolvedValueOnce({ bookingId: CHILD_B2 });
     mockGetSupabaseAdmin.mockReturnValue(buildCreateAdmin());
+    mockGroupBookingsEnabled.mockResolvedValue(true);
+  });
+
+  it("returns GROUP_BOOKINGS_DISABLED when the provider has group bookings off", async () => {
+    mockGroupBookingsEnabled.mockResolvedValue(false);
+    const { POST } = await import("../route");
+    const res = await POST(
+      new NextRequest("http://localhost/api/provider/group-bookings", {
+        method: "POST",
+        body: JSON.stringify({ title: "Bridal party", scheduled_at: "2026-06-01T10:00:00.000Z" }),
+      })
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error?.code ?? body.code).toBe("GROUP_BOOKINGS_DISABLED");
   });
 
   it("returns VALIDATION_ERROR when scheduled_at is missing", async () => {

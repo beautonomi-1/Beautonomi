@@ -1,10 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { applyPosProductStockDecrements } from "@/lib/provider-sales/pos-product-stock";
+import { isBookingCollectionSale } from "@/lib/reports/provider-sales-history";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import { resolveYocoSettleEntity, settleYocoPayment } from "@/lib/payments/settle-yoco-payment";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveSaleEntityTarget } from "@/lib/provider-sales/resolve-sale-entity-target";
 import { settleCardMachinePayment } from "@/lib/payments/settle-card-machine-payment";
+import { saleCardAmountStillDueForSale, settleReservedSaleGiftCard } from "@/lib/gift-cards/sale-gift-card";
 
 export type YocoPaymentRowForSettle = {
   id?: string | null;
@@ -48,7 +50,7 @@ export async function applyYocoSuccessfulSettlement(
     const providerIdForSale = String(existingPayment?.provider_id ?? mergedMeta.provider_id ?? "");
     const { data: saleBefore } = await supabase
       .from("sales")
-      .select("id, payment_status")
+      .select("id, payment_status, notes")
       .eq("id", saleId)
       .maybeSingle();
 
@@ -57,7 +59,7 @@ export async function applyYocoSuccessfulSettlement(
       const target = await resolveSaleEntityTarget(admin, providerIdForSale, "sale", saleId);
       if (target.entityType === "product_order") {
         const amountInCurrency = convertFromSmallestUnit(amountCents, currency);
-        await settleCardMachinePayment(supabase, {
+        const settleResult = await settleCardMachinePayment(supabase, {
           paymentProvider: "yoco",
           paymentId: yocoPaymentId,
           providerId: providerIdForSale,
@@ -66,12 +68,40 @@ export async function applyYocoSuccessfulSettlement(
           amount: amountInCurrency,
           providerPaymentId: yocoPaymentId,
         });
+        if (!settleResult.settled) {
+          throw new Error(
+            `Card payment does not cover product order ${target.entityId}: ${settleResult.reason ?? "not_settled"}`,
+          );
+        }
         return;
       }
     }
 
+    const saleBeforeRow = saleBefore as { payment_status?: string; notes?: string | null } | null;
     const shouldDecrementStock =
-      (saleBefore as { payment_status?: string } | null)?.payment_status !== "completed";
+      saleBeforeRow?.payment_status !== "completed" &&
+      !isBookingCollectionSale(saleBeforeRow?.notes);
+
+    if (saleBeforeRow?.payment_status !== "completed") {
+      if (!isBookingCollectionSale(saleBeforeRow?.notes)) {
+        const providerIdForDue = String(existingPayment?.provider_id ?? mergedMeta.provider_id ?? "");
+        const due = providerIdForDue
+          ? await saleCardAmountStillDueForSale(getSupabaseAdmin(), providerIdForDue, saleId)
+          : null;
+        if (due == null || due > 0.02) {
+          throw new Error(`Card payment does not cover sale ${saleId}`);
+        }
+      }
+      const gift = await settleReservedSaleGiftCard(getSupabaseAdmin(), saleId, {
+        cardAmount: convertFromSmallestUnit(amountCents, currency),
+        cardAmountAlreadyRecorded: true,
+      });
+      if (gift.ok === false) {
+        throw new Error(
+          `Gift card was not captured for sale ${saleId}: ${gift.message}`,
+        );
+      }
+    }
 
     const { error: saleError } = await supabase
       .from("sales")

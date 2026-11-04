@@ -49,6 +49,7 @@ import {
 import { useAppleIapProducts } from "@/lib/iap/useAppleIapProducts";
 import { useProvider } from "@/providers/ProviderContext";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { trackProviderCheckoutFunnelClient } from "@/lib/subscription/track-checkout-funnel";
 import { Colors } from "@/constants/colors";
 import { pushWebPrivacyPolicy, pushWebPartnerEula } from "@/lib/legal-web";
 import { useTranslation } from "@beautonomi/i18n";
@@ -100,6 +101,12 @@ interface Subscription {
   scheduled_plan_id?: string | null;
   scheduled_change_at?: string | null;
   scheduled_plan?: { id: string; name: string | null } | null;
+  pending_upgrade?: {
+    plan_id: string;
+    billing_period: "monthly" | "yearly";
+    plan_name: string | null;
+    set_at?: string | null;
+  } | null;
   plan?: {
     id: string;
     name: string;
@@ -394,6 +401,10 @@ export default function SubscriptionScreen() {
       }
 
       if (result?.outcome === "cancel") {
+        trackProviderCheckoutFunnelClient("provider_checkout_abandoned", {
+          source: "subscription_settings",
+          platform: "mobile",
+        });
         const failed = subscriptionFailedCopy(sub("paymentNotCompleted"));
         setPaymentOutcome({ phase: "failed", ...failed });
         refresh();
@@ -726,6 +737,24 @@ export default function SubscriptionScreen() {
             (!latest.billing_period || p.billing_period === latest.billing_period),
         )
       : null;
+
+    if (
+      subscription?.billing_issue?.action === "complete_payment" &&
+      subscription.pending_upgrade?.plan_id &&
+      !retryPlan
+    ) {
+      const pending = subscription.pending_upgrade;
+      const pendingMatch =
+        plans?.find(
+          (p) =>
+            p.plan_id === pending.plan_id &&
+            p.billing_period === (pending.billing_period ?? "monthly"),
+        ) ?? plans?.find((p) => p.plan_id === pending.plan_id);
+      if (pendingMatch) {
+        await handleUpgrade(pendingMatch.id);
+        return;
+      }
+    }
 
     if (
       retryPlan &&
@@ -1222,11 +1251,24 @@ export default function SubscriptionScreen() {
                   ? sub("billingIssuePaymentNotCompleted")
                   : subscription.billing_issue.type === "past_due"
                     ? sub("billingIssuePaymentActionNeeded")
-                    : sub("billingIssueActionNeeded")}
+                    : subscription.billing_issue.type === "upgrade_pending"
+                      ? sub("finishUpgradeTitle", {
+                          plan: subscription.pending_upgrade?.plan_name ?? subscription.plan?.name ?? "",
+                        })
+                      : sub("billingIssueActionNeeded")}
               </Text>
               <Text style={twStyle("mt-1 text-sm leading-5 text-amber-900")}>
                 {subscription.billing_issue.message}
               </Text>
+              {subscription.billing_issue.type === "upgrade_pending" && billingCta ? (
+                <TouchableOpacity
+                  style={twStyle("mt-3 rounded-xl bg-amber-600 py-3")}
+                  onPress={() => void handleBillingAction()}
+                  activeOpacity={0.85}
+                >
+                  <Text style={twStyle("text-center text-sm font-semibold text-white")}>{billingCta}</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           ) : null}
 

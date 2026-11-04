@@ -13,6 +13,7 @@ import { z } from "zod";
 const patchSchema = z.object({
   enable_group_booking: z.boolean().optional(),
   allow_online_group_booking: z.boolean().optional(),
+  allow_split_payment: z.boolean().optional(),
   max_group_size: z.number().min(2).max(10).optional(),
   enabled_locations: z.array(z.string()).optional(),
   excluded_services: z.array(z.string()).optional(),
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
     const { data: provider, error } = await supabase
       .from("providers")
       .select(
-        "group_booking_enabled, online_group_booking_enabled, max_group_size, group_booking_locations, group_booking_excluded_services"
+        "group_booking_enabled, online_group_booking_enabled, group_split_payment_enabled, max_group_size, group_booking_locations, group_booking_excluded_services"
       )
       .eq("id", providerId)
       .single();
@@ -68,6 +69,7 @@ export async function GET(request: NextRequest) {
     return successResponse({
       enableGroupBooking: provider?.group_booking_enabled ?? false,
       allowOnlineGroupBooking: provider?.online_group_booking_enabled ?? false,
+      allowSplitPayment: provider?.group_split_payment_enabled ?? false,
       maxGroupSize: provider?.max_group_size ?? 5,
       enabledLocations: Array.isArray(enabledLocations) ? enabledLocations : [],
       excludedServices: Array.isArray(excludedServices) ? excludedServices : [],
@@ -113,6 +115,9 @@ export async function PATCH(request: NextRequest) {
     if (body.allow_online_group_booking !== undefined) {
       updateData.online_group_booking_enabled = body.allow_online_group_booking;
     }
+    if (body.allow_split_payment !== undefined) {
+      updateData.group_split_payment_enabled = body.allow_split_payment;
+    }
     if (body.max_group_size !== undefined) {
       updateData.max_group_size = body.max_group_size;
     }
@@ -131,7 +136,7 @@ export async function PATCH(request: NextRequest) {
       .update(updateData)
       .eq("id", providerId)
       .select(
-        "group_booking_enabled, online_group_booking_enabled, max_group_size, group_booking_locations, group_booking_excluded_services"
+        "group_booking_enabled, online_group_booking_enabled, group_split_payment_enabled, max_group_size, group_booking_locations, group_booking_excluded_services"
       )
       .single();
 
@@ -158,6 +163,7 @@ export async function PATCH(request: NextRequest) {
     return successResponse({
       enableGroupBooking: data?.group_booking_enabled ?? false,
       allowOnlineGroupBooking: data?.online_group_booking_enabled ?? false,
+      allowSplitPayment: data?.group_split_payment_enabled ?? false,
       maxGroupSize: data?.max_group_size ?? 5,
       enabledLocations: Array.isArray(enabledLocations) ? enabledLocations : [],
       excludedServices: Array.isArray(excludedServices) ? excludedServices : [],

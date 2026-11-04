@@ -258,6 +258,22 @@ export async function POST(request: NextRequest) {
       })
       .eq("id", order.id);
 
+    const { trackProviderCheckoutFunnel } = await import(
+      "@/lib/analytics/provider-subscription-funnel"
+    );
+    trackProviderCheckoutFunnel(
+      "provider_checkout_started",
+      {
+        source: "initialize_payment",
+        platform: in_app ? "mobile" : "web",
+        gateway: onlineGateway,
+        subscription_plan_id: plan_id,
+        billing_period,
+        order_id: order.id,
+      },
+      user.id,
+    );
+
     return successResponse({
       order_id: order.id,
       reference,

@@ -9,6 +9,7 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { isBookingCollectionSale } from "@/lib/reports/provider-sales-history";
 import {
   fetchDefaultAddressesForUsers,
   parseAddressFromBody,
@@ -491,6 +492,7 @@ export async function GET(
           sale_number, 
           created_at, 
           total_amount, 
+          notes,
           staff_id,
           provider_staff:provider_staff!sales_staff_id_fkey(id, name)
         `)
@@ -501,6 +503,7 @@ export async function GET(
 
       if (sales) {
         sales.forEach((sale: any) => {
+          if (isBookingCollectionSale(sale.notes)) return;
           history.push({
             id: sale.id,
             type: "sale",

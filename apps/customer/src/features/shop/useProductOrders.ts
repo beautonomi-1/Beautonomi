@@ -19,6 +19,8 @@ export interface ProductOrder {
   /** Amount applied from customer wallet at checkout. */
   wallet_amount?: number | null;
   gift_card_amount?: number | null;
+  /** Remainder after wallet, gift card, and card charges already recorded. Null when that remainder could not be loaded. */
+  amount_still_due?: number | null;
   promotion_code?: string | null;
   total_amount: number;
   currency: string;

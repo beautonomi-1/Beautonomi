@@ -8,6 +8,8 @@ export interface PayoutReconciliation {
   excluded_provider_collected: number;
   already_paid_out: number;
   pending_payouts: number;
+  open_dispute_reserve?: number;
+  vat_held_for_provider?: number;
   available_balance: number;
 }
 
@@ -66,6 +68,20 @@ export function PayoutReconciliationCard({ reconciliation, currency, payoutHoldD
           muted
         />
         <Row label={prc("pendingRequests")} value={reconciliation.pending_payouts} muted />
+        {(reconciliation.open_dispute_reserve ?? 0) > 0 ? (
+          <Row
+            label={(prc("openDisputeReserve") as string) || "Open dispute reserve"}
+            value={reconciliation.open_dispute_reserve ?? 0}
+            muted
+          />
+        ) : null}
+        {(reconciliation.vat_held_for_provider ?? 0) > 0 ? (
+          <Row
+            label={(prc("vatHeldForProvider") as string) || "VAT held for payout"}
+            value={reconciliation.vat_held_for_provider ?? 0}
+            muted
+          />
+        ) : null}
         <Row label={prc("alreadyPaidOut")} value={reconciliation.already_paid_out} muted />
         <View style={twStyle("mt-2 flex-row items-center justify-between border-t border-gray-100 pt-2")}>
           <Text style={twStyle("text-sm font-semibold text-gray-900")}>{prc("available")}</Text>

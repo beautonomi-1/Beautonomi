@@ -100,6 +100,18 @@ export async function recordPayoutLedger(
           error.message?.includes("unique") ||
           error.message?.includes("duplicate")
         ) {
+          const { data: existing } = await supabase
+            .from("finance_transactions")
+            .select("id, payout_id, transaction_type, amount, net")
+            .eq("payout_id", payout.id)
+            .eq("transaction_type", "payout")
+            .maybeSingle();
+          if (!existing) {
+            logger.error("recordPayoutLedger.duplicate_without_row", error, {
+              payoutId: payout.id,
+            });
+            throw error;
+          }
           logger.info("recordPayoutLedger.idempotent_skip", {
             payoutId: payout.id,
             providerId: payout.provider_id,

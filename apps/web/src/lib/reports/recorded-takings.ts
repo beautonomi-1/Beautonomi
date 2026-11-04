@@ -12,6 +12,8 @@ import {
   type LedgerLocationAttributionSummary,
 } from "@/lib/reports/provider-report-utils";
 import { PAID_BOOKING_PAYMENT_STATUSES } from "@/lib/payments/booking-payment-status";
+import { posSaleCountsAsRevenue } from "@/lib/reports/provider-sales-history";
+import { productOrderTenderSplit } from "@/lib/orders/product-order-tender";
 import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
 
@@ -276,7 +278,7 @@ export async function getRecordedTakingsForRange(
   }>(async (from, to) => {
     let salesQuery = supabaseAdmin
       .from("sales")
-      .select("id, total_amount, payment_method, payment_provider")
+      .select("id, total_amount, payment_method, payment_provider, payment_status, notes")
       .eq("provider_id", providerId)
       .eq("payment_status", "completed")
       .gte("sale_date", rangeStartIso)
@@ -290,15 +292,23 @@ export async function getRecordedTakingsForRange(
     return { data, error };
   }, MAX_FINANCE_TRANSACTIONS);
 
-  type SalesRow = { total_amount?: number; payment_method?: string; payment_provider?: string | null };
+  type SalesRow = {
+    total_amount?: number;
+    payment_method?: string;
+    payment_provider?: string | null;
+    payment_status?: string | null;
+    notes?: string | null;
+  };
   let salesTotal = 0;
+  let salesCount = 0;
   for (const row of (salesRows ?? []) as SalesRow[]) {
+    if (!posSaleCountsAsRevenue(row)) continue;
     const amount = Number(row.total_amount ?? 0);
     const method = resolveRecordedTakingsBucket(row.payment_method, row.payment_provider);
     byPaymentMethod[method] = (byPaymentMethod[method] || 0) + amount;
     salesTotal += amount;
+    salesCount += 1;
   }
-  let salesCount = (salesRows || []).length;
 
   let productOrderSalesCount = 0;
   {
@@ -312,7 +322,9 @@ export async function getRecordedTakingsForRange(
     }>(async (from, to) => {
       let productOrderQuery = supabaseAdmin
         .from("product_orders")
-        .select("id, total_amount, payment_method, payment_provider, fulfillment_type, collection_location_id")
+        .select(
+          "id, total_amount, wallet_amount, gift_card_amount, payment_method, payment_provider, fulfillment_type, collection_location_id",
+        )
         .eq("provider_id", providerId)
         .eq("order_source", "walk_in")
         .eq("payment_status", "paid")
@@ -339,10 +351,18 @@ export async function getRecordedTakingsForRange(
     }
     productOrderSalesCount = walkInOrders.length;
     for (const row of walkInOrders) {
-      const amount = Number(row.total_amount ?? 0);
+      const split = productOrderTenderSplit(row);
       const method = resolveRecordedTakingsBucket(row.payment_method, row.payment_provider);
-      byPaymentMethod[method] = (byPaymentMethod[method] || 0) + amount;
-      salesTotal += amount;
+      if (split.remainder > 0) {
+        byPaymentMethod[method] = (byPaymentMethod[method] || 0) + split.remainder;
+      }
+      if (split.wallet > 0) {
+        byPaymentMethod.wallet = (byPaymentMethod.wallet || 0) + split.wallet;
+      }
+      if (split.gift > 0) {
+        byPaymentMethod.gift_card = (byPaymentMethod.gift_card || 0) + split.gift;
+      }
+      salesTotal += split.total;
     }
   }
 

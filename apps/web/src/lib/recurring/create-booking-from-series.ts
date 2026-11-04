@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getEffectiveTaxRate } from "@/lib/platform-tax-settings";
+import { computeVat } from "@beautonomi/utils";
+import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { checkBookingConflict, canOverrideDoubleBooking } from "@/lib/bookings/conflict-check";
 import { resolveTz, fromBusinessTime } from "@/lib/dates/provider-tz";
@@ -121,15 +122,16 @@ const BUFFER_MINUTES = 15;
 
 function taxSnapshotForRecurringLine(
   providerId: string,
-  providerTaxRatePct: unknown,
-  taxRate: number
+  taxRate: number,
+  inclusive: boolean,
+  source: string,
 ): Record<string, unknown> {
   return {
     code: "RESOLVED",
     rate: taxRate,
-    inclusive: false,
+    inclusive,
     jurisdiction: null,
-    source: providerTaxRatePct != null ? "provider_override" : "platform_default",
+    source,
     provider_id: providerId,
     resolved_at: new Date().toISOString(),
   };
@@ -162,7 +164,7 @@ export async function createBookingFromRecurringSeries(
 
   const { data: providerRow } = await admin
     .from("providers")
-    .select("tenant_id, currency, tax_rate_percent, customer_fee_config_id, timezone")
+    .select("tenant_id, currency, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code, customer_fee_config_id, timezone")
     .eq("id", row.provider_id)
     .maybeSingle();
 
@@ -213,11 +215,15 @@ export async function createBookingFromRecurringSeries(
     0
   );
 
-  // Pass provider's tax_rate_percent directly to avoid a second DB lookup.
-  // getEffectiveTaxRate treats null as "unset" and falls back to platform default.
-  const providerTaxRatePct = (providerRow as any)?.tax_rate_percent ?? null;
-  const taxRate = await getEffectiveTaxRate(row.provider_id, providerTaxRatePct);
-  const taxAmount = Math.round(subtotal * (Number(taxRate) / 100) * 100) / 100;
+  const providerVat = await resolveProviderVat(admin, providerRow ?? {});
+  const taxRate = providerVat.ratePercent;
+  const vatSplit = computeVat({
+    baseAmount: subtotal,
+    ratePercent: taxRate,
+    inclusive: providerVat.inclusive,
+    currency,
+  });
+  const taxAmount = vatSplit.taxAmount;
 
   // Platform Fee — mirrors validate-booking.ts priority:
   //   1. Provider customer_fee_config_id  2. platform_settings.payouts fallback
@@ -287,7 +293,7 @@ export async function createBookingFromRecurringSeries(
       duration_minutes: duration,
       price,
       currency: cur,
-      tax_snapshot: taxSnapshotForRecurringLine(row.provider_id, providerTaxRatePct, taxRate),
+      tax_snapshot: taxSnapshotForRecurringLine(row.provider_id, taxRate, providerVat.inclusive, providerVat.source),
       scheduled_start_at: start.toISOString(),
       scheduled_end_at: end.toISOString(),
     });

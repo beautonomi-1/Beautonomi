@@ -69,6 +69,12 @@ export interface SettleBookingCancellationParams {
   maxWalletCredit?: number;
   /** When true, void gift card redemption after a full refund. */
   voidGiftCardOnFullRefund?: boolean;
+  /**
+   * Set only after `void_gift_card_redemption` actually restored the balance.
+   * A captured redemption returns false from that RPC. Pass false so the gift
+   * amount is credited to the wallet instead of disappearing.
+   */
+  giftCardRestored?: boolean | "unknown";
   /** Provider at till: reverse on card machine vs wallet credit for non-terminal portion. */
   refundRail?: "terminal" | "wallet";
 }
@@ -143,10 +149,11 @@ export function computeReconciledCancellationAmounts(
   const giftCardCollected = roundCurrency2(
     Math.max(0, Number(params.booking.gift_card_amount ?? 0)),
   );
-  const willVoidGiftCard =
+  const intendsToRestoreGiftCard =
     params.voidGiftCardOnFullRefund !== false &&
     giftCardCollected > 0 &&
     policyRefundAmount + 0.01 >= bookingTotal;
+  const willVoidGiftCard = intendsToRestoreGiftCard && params.giftCardRestored !== false;
   const refundableWithoutGift = roundCurrency2(
     Math.max(0, effectiveCollected - (willVoidGiftCard ? giftCardCollected : 0)),
   );
@@ -175,12 +182,21 @@ export function walletStoreCreditAmountWhenVoidingGiftOnFullRefund(params: {
   giftCardCollected: number;
   totalRefundedBefore: number;
   totalCollectedAllSources: number;
+  /**
+   * Result of voiding the redemption before the credit.
+   * Omit to assume the void restores the card.
+   * `false` means the redemption is captured and cannot be undone, so the gift
+   * stays in the wallet credit. `"unknown"` means the void call failed; the
+   * hold may still be reserved, so the gift stays out of the wallet.
+   */
+  giftCardRestored?: boolean | "unknown";
 }): number {
   const projectedTotalRefunded = params.totalRefundedBefore + params.refundAmount;
   const willVoidGiftCardOnFullRefund =
     params.giftCardCollected > 0 &&
     projectedTotalRefunded + 0.01 >= params.totalCollectedAllSources;
   if (!willVoidGiftCardOnFullRefund) return params.refundAmount;
+  if (params.giftCardRestored === false) return roundCurrency2(params.refundAmount);
   return roundCurrency2(Math.max(0, params.refundAmount - params.giftCardCollected));
 }
 
@@ -341,25 +357,60 @@ async function clawBackEarnedLoyalty(
   }
 }
 
+type GiftCardVoidOutcome = "restored" | "spent" | "unknown";
+
 async function maybeVoidGiftCardRedemption(
   admin: SupabaseClient,
   bookingId: string,
   policyRefundAmount: number,
   bookingTotal: number,
-): Promise<boolean> {
-  if (policyRefundAmount + 0.01 < bookingTotal) return false;
+): Promise<GiftCardVoidOutcome> {
+  // A partial refund cannot split one redemption. Leave the card spent and
+  // include its value in the wallet credit.
+  if (policyRefundAmount + 0.01 < bookingTotal) return "spent";
   try {
-    const { error } = await (admin.rpc as any)("void_gift_card_redemption", {
+    const { data, error } = await (admin.rpc as any)("void_gift_card_redemption", {
       p_booking_id: bookingId,
     });
     if (error) {
-      console.warn("[settleBookingCancellation] void_gift_card_redemption:", error);
-      return false;
+      console.warn("[settleBookingCancellation] gift card void failed:", error);
+      return "unknown";
     }
-    return true;
+    if (data === true) return "restored";
+    return "spent";
   } catch (err) {
     console.warn("[settleBookingCancellation] void_gift_card_redemption:", err);
-    return false;
+    return "unknown";
+  }
+}
+
+/**
+ * Refund split-payment guest shares held on a cancelled booking to the guests' cards.
+ * Returns the guest-paid amount that was still held (refunded now, or left in a failed
+ * `booking_refunds` row for retry) so it can be excluded from the lead customer's credit.
+ */
+async function refundSplitGroupGuestSharesForCancellation(
+  admin: SupabaseClient,
+  params: SettleBookingCancellationParams,
+): Promise<number> {
+  try {
+    const { refundGroupGuestSharePayments } = await import("@/lib/bookings/group-guest-refunds");
+    const outcome = await refundGroupGuestSharePayments(admin, {
+      bookingId: params.booking.id,
+      currency: params.currency,
+      tenantId: params.booking.tenant_id ?? null,
+      reason: `Group booking ${params.booking.booking_number || params.booking.id} cancelled — guest share returned`,
+    });
+    if (outcome.failed > 0) {
+      console.error("[settleBookingCancellation] guest share refunds need retry", {
+        bookingId: params.booking.id,
+        failed: outcome.failed,
+      });
+    }
+    return outcome.guestPaidNet;
+  } catch (err) {
+    console.error("[settleBookingCancellation] guest share lookup failed:", err);
+    return 0;
   }
 }
 
@@ -373,26 +424,45 @@ export async function settleBookingCancellation(
   const booking = params.booking;
   const bookingId = booking.id;
   const bookingTotal = Number(params.refundBookingTotal ?? booking.total_amount ?? 0);
-  const effectiveCollected =
-    params.maxWalletCredit ?? computeEffectiveCollectedAmount(booking);
 
   const { cancellationFeeApplied: theoreticalFee, policyRefundAmount, isLate } =
     computeCancellationFeeForSettlement(params);
+
+  // Split-payment groups: guest shares recorded on this booking go back to each guest's
+  // card in full and are excluded from the lead customer's credit; any fee is borne by
+  // the lead customer's own funds.
+  const guestSharesHeld = await refundSplitGroupGuestSharesForCancellation(admin, params);
+  const effectiveCollected = roundCurrency2(
+    Math.max(
+      0,
+      (params.maxWalletCredit ?? computeEffectiveCollectedAmount(booking)) - guestSharesHeld,
+    ),
+  );
+  const leadPolicyRefundAmount = roundCurrency2(
+    Math.max(0, policyRefundAmount - guestSharesHeld),
+  );
 
   // On a full refund we also void the gift-card redemption (restoring balance
   // on the card). That gift leg must NOT also be credited to the wallet, or
   // the customer is refunded twice for the same money.
   const giftCardCollected = roundCurrency2(Math.max(0, Number(booking.gift_card_amount ?? 0)));
-  const willVoidGiftCard =
+  const intendsToRestoreGiftCard =
     params.voidGiftCardOnFullRefund !== false &&
     giftCardCollected > 0 &&
     policyRefundAmount + 0.01 >= bookingTotal;
+  const giftCardVoid: GiftCardVoidOutcome = intendsToRestoreGiftCard
+    ? await maybeVoidGiftCardRedemption(admin, bookingId, policyRefundAmount, bookingTotal)
+    : "spent";
+  // "unknown" is excluded too: the hold may still be reserved, and a later void
+  // would restore the card after this wallet credit.
+  const excludeGiftFromWallet = giftCardVoid === "restored" || giftCardVoid === "unknown";
+  const giftCardRestored = giftCardVoid === "restored";
   const refundableWithoutGift = roundCurrency2(
-    Math.max(0, effectiveCollected - (willVoidGiftCard ? giftCardCollected : 0)),
+    Math.max(0, effectiveCollected - (excludeGiftFromWallet ? giftCardCollected : 0)),
   );
 
   const walletRefundTarget = roundCurrency2(
-    Math.min(policyRefundAmount, refundableWithoutGift),
+    Math.min(leadPolicyRefundAmount, refundableWithoutGift),
   );
 
   let terminalRefundDue = 0;
@@ -464,7 +534,7 @@ export async function settleBookingCancellation(
   // Use the pre-gift-void collected amount so the retained fee still covers the
   // full non-refunded portion of what was actually taken.
   const cancellationFeeApplied = roundCurrency2(
-    Math.max(0, Math.min(theoreticalFee, effectiveCollected - walletRefundTarget - (willVoidGiftCard ? giftCardCollected : 0))),
+    Math.max(0, Math.min(theoreticalFee, effectiveCollected - walletRefundTarget - (giftCardRestored ? giftCardCollected : 0))),
   );
 
   let refundResult: RefundResult = { success: true, amount: 0 };
@@ -569,10 +639,7 @@ export async function settleBookingCancellation(
       ? await clawBackEarnedLoyalty(admin, booking)
       : false;
 
-  const giftCardVoidAttempted =
-    params.voidGiftCardOnFullRefund !== false
-      ? await maybeVoidGiftCardRedemption(admin, bookingId, policyRefundAmount, bookingTotal)
-      : false;
+  const giftCardVoidAttempted = giftCardRestored;
 
   let inPersonCashRefundDue = 0;
   try {

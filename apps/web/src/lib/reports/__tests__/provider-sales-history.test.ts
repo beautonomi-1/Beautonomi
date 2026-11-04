@@ -2,8 +2,30 @@ import { describe, expect, it } from "vitest";
 
 import {
   computeSalesHistoryTotalsFromAggs,
+  isBookingCollectionSale,
+  posSaleCountsAsRevenue,
   resolveSalesHistoryIsoRange,
 } from "@/lib/reports/provider-sales-history";
+
+describe("posSaleCountsAsRevenue", () => {
+  it("counts a completed till sale and leaves out an unpaid or booking-card sale", () => {
+    expect(isBookingCollectionSale("booking_collection:booking-1")).toBe(true);
+    expect(isBookingCollectionSale("Walk-in colour")).toBe(false);
+    expect(posSaleCountsAsRevenue({ payment_status: "completed", notes: "Walk-in" })).toBe(true);
+    expect(posSaleCountsAsRevenue({ payment_status: null })).toBe(true);
+    expect(posSaleCountsAsRevenue({ payment_status: "pending" })).toBe(false);
+    expect(posSaleCountsAsRevenue({ payment_status: "refunded" })).toBe(false);
+    expect(
+      posSaleCountsAsRevenue({
+        payment_status: "completed",
+        notes: "booking_collection:booking-1",
+      }),
+    ).toBe(false);
+    expect(
+      posSaleCountsAsRevenue({ payment_status: "completed", notes: "Booking BK-100" }),
+    ).toBe(false);
+  });
+});
 
 describe("resolveSalesHistoryIsoRange", () => {
   it("uses 24-month default when no explicit dates", () => {

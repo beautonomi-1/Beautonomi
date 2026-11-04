@@ -21,6 +21,7 @@ export async function recordBookingFlutterwavePayment(
     paymentOption?: string | null;
     requiresDeposit?: boolean;
     notes?: string | null;
+    providerData?: Record<string, unknown>;
   },
 ): Promise<RecordBookingFlutterwavePaymentResult> {
   const paymentProviderId =
@@ -74,6 +75,7 @@ export async function recordBookingFlutterwavePayment(
       flutterwave_transaction_id: paymentProviderId,
       payment_option: input.paymentOption ?? "full",
       requires_deposit: Boolean(input.requiresDeposit),
+      ...(input.providerData ?? {}),
     },
   };
 

@@ -94,7 +94,7 @@ export async function GET(
       id, slug, business_name, business_type, description,
       rating_average, review_count, thumbnail_url, avatar_url,
       gallery, is_featured, is_verified, currency,
-      years_in_business, tax_rate_percent, tax_inclusive, tips_enabled, tip_presets, timezone, website,
+      years_in_business, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code, tips_enabled, tip_presets, timezone, website,
       social_media_links, accepts_custom_requests,
       response_rate, response_time_hours, languages_spoken,
       offers_mobile_services, minimum_mobile_booking_amount,
@@ -377,19 +377,17 @@ export async function GET(
       console.warn(`Provider ${providerData.id} (slug: ${slug}) has no business_name`);
     }
 
-    let taxRatePercent: number;
-    let taxInclusive: boolean;
-    if (providerData.tax_rate_percent == null) {
-      const { getPlatformDefaultTaxRateAndInclusive } = await import(
-        "@/lib/pricing/checkout-tax-defaults"
-      );
-      const defaults = await getPlatformDefaultTaxRateAndInclusive(supabase);
-      taxRatePercent = defaults.taxRate;
-      taxInclusive = defaults.taxIncluded;
-    } else {
-      taxRatePercent = Math.max(0, Number(providerData.tax_rate_percent));
-      taxInclusive = Boolean((providerData as { tax_inclusive?: boolean | null }).tax_inclusive);
-    }
+    const { resolveProviderVat } = await import("@/lib/tax/resolve-provider-vat");
+    const resolvedVat = await resolveProviderVat(supabase, {
+      tax_rate_percent: providerData.tax_rate_percent ?? null,
+      tax_inclusive: (providerData as { tax_inclusive?: boolean | null }).tax_inclusive ?? null,
+      is_vat_registered: (providerData as { is_vat_registered?: boolean | null }).is_vat_registered ?? null,
+      vat_number: (providerData as { vat_number?: string | null }).vat_number ?? null,
+      country_code: (providerData as { country_code?: string | null }).country_code ?? null,
+      tax_rate_override_percent: null,
+    });
+    const taxRatePercent = resolvedVat.ratePercent;
+    const taxInclusive = resolvedVat.inclusive;
 
     const result = {
       id: providerData.id,

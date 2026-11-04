@@ -187,6 +187,17 @@ export async function PATCH(
       );
     }
 
+    if (
+      parsed.status === "cancelled" &&
+      orderRow.payment_status === "partially_refunded"
+    ) {
+      return errorResponse(
+        "This order was partially refunded. Mark it refunded for the remaining amount — cancel is not available.",
+        "PARTIALLY_REFUNDED_REFUND_REMAINING",
+        400,
+      );
+    }
+
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (parsed.status !== undefined) {
       updates.status = parsed.status;

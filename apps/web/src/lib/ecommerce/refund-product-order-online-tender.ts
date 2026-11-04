@@ -45,88 +45,133 @@ export type RefundOnlineTenderResult = {
 export async function refundProductOrderOnlineTender(
   admin: SupabaseClient,
   order: OnlineTenderOrder,
-  opts: { reason: string; idempotencyKey: string },
+  opts: { reason: string; idempotencyKey: string; amountMajor?: number },
 ): Promise<RefundOnlineTenderResult> {
-  const portion = computeProductOrderOnlinePortion(order);
+  const onlineCap = computeProductOrderOnlinePortion(order);
+  const requested =
+    typeof opts.amountMajor === "number" && Number.isFinite(opts.amountMajor)
+      ? Math.max(0, opts.amountMajor)
+      : onlineCap;
+  const portion = Math.min(onlineCap, requested);
   const method = String(order.payment_method ?? "").toLowerCase();
   const reference = order.payment_reference ?? null;
-  if (order.payment_status !== "paid" || portion <= 0 || !GATEWAY_METHODS.has(method) || !reference) {
+  if (order.payment_status !== "paid" || portion <= 0 || !GATEWAY_METHODS.has(method)) {
     return { attempted: false, refundedAmount: 0, refundId: null };
   }
 
-  const amountSmallest = Math.round(portion * 100);
   const currency = order.currency ?? "ZAR";
   const tenantId = order.tenant_id ?? null;
+  const round = (n: number) => Math.round(n * 100) / 100;
 
+  type ChargeRow = {
+    id?: string;
+    amount?: number | string | null;
+    reference?: string | null;
+    provider?: string | null;
+    refund_amount?: number | string | null;
+    status?: string | null;
+  };
+  let rows: ChargeRow[] = [];
   try {
-    let refundId: string | null = null;
-    const { getOnlinePaymentCheckoutByReference } = await import(
-      "@/lib/payments/online-payment-checkouts"
-    );
-    const checkout = reference ? await getOnlinePaymentCheckoutByReference(reference) : null;
-    const checkoutProvider = checkout?.provider ?? (method === "stripe" ? "stripe" : method === "flutterwave" ? "flutterwave" : "paystack");
-    const providerPaymentId =
-      checkoutProvider === "flutterwave" && checkout?.payment_intent_id
-        ? checkout.payment_intent_id
-        : reference;
-
-    if (checkoutProvider === "stripe") {
-      const { stripeProvider } = await import("@/lib/payments/provider/stripe-provider");
-      const result = await stripeProvider.refund({
-        providerPaymentId: providerPaymentId!,
-        amountInSmallestUnit: amountSmallest,
-        currency,
-        reason: opts.reason,
-        tenantId,
-        idempotencyKey: opts.idempotencyKey,
-      });
-      refundId = result.refundId || null;
-    } else if (checkoutProvider === "flutterwave") {
-      const { flutterwaveProvider } = await import("@/lib/payments/provider/flutterwave-provider");
-      const result = await flutterwaveProvider.refund({
-        providerPaymentId: providerPaymentId!,
-        amountInSmallestUnit: amountSmallest,
-        currency,
-        reason: opts.reason,
-        tenantId,
-        idempotencyKey: opts.idempotencyKey,
-      });
-      refundId = result.refundId || null;
-    } else {
-      const { paystackProvider } = await import("@/lib/payments/provider/paystack-provider");
-      const result = await paystackProvider.refund({
-        providerPaymentId: reference,
-        amountInSmallestUnit: amountSmallest,
-        currency,
-        reason: opts.reason,
-        tenantId,
-        idempotencyKey: opts.idempotencyKey,
-      });
-      refundId = result.refundId || null;
+    const { data, error } = await (admin.from("payment_transactions") as any)
+      .select("id, amount, reference, provider, refund_amount, status")
+      .in("status", ["success", "refunded", "partially_refunded"])
+      .filter("metadata->>product_order_id", "eq", order.id);
+    if (error) {
+      return { attempted: true, refundedAmount: 0, refundId: null, error: error.message };
     }
-
-    // Best-effort: reflect the refund on the charge row so finance reports reconcile.
-    try {
-      await (admin.from("payment_transactions") as any)
-        .update({
-          refund_amount: portion,
-          refunded_at: new Date().toISOString(),
-          status: "refunded",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("product_order_id", order.id)
-        .eq("status", "success");
-    } catch (e) {
-      console.warn("[refundProductOrderOnlineTender] payment_transactions sync failed:", e);
-    }
-
-    return { attempted: true, refundedAmount: portion, refundId };
+    rows = (data ?? []) as ChargeRow[];
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    console.error("[refundProductOrderOnlineTender] gateway refund failed:", message, {
-      productOrderId: order.id,
-      method,
-    });
     return { attempted: true, refundedAmount: 0, refundId: null, error: message };
   }
+
+  const gatewayRows = rows.filter((row) => {
+    const provider = String(row.provider ?? "").toLowerCase();
+    return provider === "paystack" || provider === "stripe" || provider === "flutterwave";
+  });
+
+  const refundedOnRow = (row: ChargeRow) => {
+    const amount = Math.max(0, Number(row.amount ?? 0));
+    const refunded = Math.max(0, Number(row.refund_amount ?? 0));
+    if (String(row.status ?? "") === "refunded") return refunded > 0 ? refunded : amount;
+    return refunded;
+  };
+  const alreadyRefunded = round(
+    Math.min(portion, gatewayRows.reduce((sum, row) => sum + refundedOnRow(row), 0)),
+  );
+  let remaining = round(portion - alreadyRefunded);
+  if (gatewayRows.length > 0 && remaining <= 0.009) {
+    return { attempted: false, refundedAmount: portion, refundId: null };
+  }
+
+  const { refundGatewayCharge } = await import("@/lib/payments/refund-gateway-charge");
+  const refundOne = async (chargeReference: string, amountMajor: number, provider: string) =>
+    refundGatewayCharge({
+      reference: chargeReference,
+      amountMajor,
+      currency,
+      tenantId,
+      reason: opts.reason,
+      idempotencyKey: `${opts.idempotencyKey}:${chargeReference}`,
+      fallbackProvider:
+        provider === "stripe" ? "stripe" : provider === "flutterwave" ? "flutterwave" : "paystack",
+    });
+
+  if (gatewayRows.length === 0) {
+    if (!reference) return { attempted: false, refundedAmount: 0, refundId: null };
+    try {
+      const { refundId } = await refundOne(reference, remaining, method);
+      return { attempted: true, refundedAmount: remaining, refundId };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.error("[refundProductOrderOnlineTender] gateway refund failed:", message, {
+        productOrderId: order.id,
+        method,
+      });
+      return { attempted: true, refundedAmount: 0, refundId: null, error: message };
+    }
+  }
+
+  let refundedNow = 0;
+  let refundId: string | null = null;
+  let errorMessage: string | null = null;
+  for (const row of gatewayRows) {
+    if (remaining <= 0.009) break;
+    if (String(row.status ?? "") !== "success" || !row.id) continue;
+    const chargeReference = String(row.reference ?? "").trim();
+    const available = round(Math.max(0, Number(row.amount ?? 0) - Number(row.refund_amount ?? 0)));
+    if (!chargeReference || available <= 0.009) continue;
+    const slice = round(Math.min(available, remaining));
+    const provider = String(row.provider ?? "").toLowerCase();
+    try {
+      const result = await refundOne(chargeReference, slice, provider);
+      refundId = result.refundId;
+      refundedNow = round(refundedNow + slice);
+      remaining = round(remaining - slice);
+      const refundAmount = round(Number(row.refund_amount ?? 0) + slice);
+      const fullyRefunded = refundAmount + 0.009 >= Number(row.amount ?? 0);
+      await (admin.from("payment_transactions") as any)
+        .update({
+          refund_amount: refundAmount,
+          refunded_at: new Date().toISOString(),
+          status: fullyRefunded ? "refunded" : "partially_refunded",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", row.id);
+    } catch (e) {
+      errorMessage = e instanceof Error ? e.message : String(e);
+      console.error("[refundProductOrderOnlineTender] gateway refund failed:", errorMessage, {
+        productOrderId: order.id,
+        reference: chargeReference,
+      });
+    }
+  }
+
+  return {
+    attempted: true,
+    refundedAmount: round(alreadyRefunded + refundedNow),
+    refundId,
+    ...(remaining > 0.009 ? { error: errorMessage ?? "Card refund did not cover the amount" } : {}),
+  };
 }

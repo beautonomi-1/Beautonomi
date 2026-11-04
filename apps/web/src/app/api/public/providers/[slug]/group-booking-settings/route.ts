@@ -63,11 +63,21 @@ export async function GET(
 
     const fields = await fetchGroupBookingPolicyFieldsFromDb(supabase, provider.id);
 
+    const { data: splitRow, error: splitErr } = await supabase
+      .from("providers")
+      .select("group_split_payment_enabled")
+      .eq("id", provider.id)
+      .maybeSingle();
+    const splitPaymentEnabled =
+      !splitErr &&
+      (splitRow as { group_split_payment_enabled?: boolean | null } | null)?.group_split_payment_enabled === true;
+
     return successResponse({
       enabled: fields.onlineGroupBookingEnabled,
       maxGroupSize: fields.maxGroupSize,
       excludedServices: fields.excludedServiceIds,
       enabledLocations: fields.enabledLocationIds ?? [],
+      splitPaymentEnabled,
     });
   } catch (error) {
     // Return default values on error instead of error response

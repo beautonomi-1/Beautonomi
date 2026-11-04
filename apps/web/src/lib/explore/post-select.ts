@@ -7,3 +7,9 @@ export const EXPLORE_POST_SELECT_WITH_PROVIDER = `
   ${EXPLORE_POST_COLUMNS},
   providers:provider_id(business_name, slug, avatar_url)
 `;
+
+/** Provider mine list — includes moderation fields not exposed on public feed. */
+export const EXPLORE_POST_MINE_SELECT_WITH_PROVIDER = `
+  ${EXPLORE_POST_COLUMNS}, is_hidden, moderation_notes,
+  providers:provider_id(business_name, slug, avatar_url)
+`;

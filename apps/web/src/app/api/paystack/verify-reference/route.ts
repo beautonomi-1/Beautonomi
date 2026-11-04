@@ -16,6 +16,7 @@ import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { processSuccessfulPayment } from "@/app/api/payments/webhook/_handlers/charge-success";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { sumPendingWalletGiftBookingPayments } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import { recordTerminalOrderPayment } from "@/lib/terminal/record-terminal-order-payment";
@@ -216,13 +217,29 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      const expectedMajor = Math.max(
-        0,
-        Number(order.total_amount ?? 0) -
-          Number(order.wallet_amount ?? 0) -
-          Number(order.gift_card_amount ?? 0),
-      );
-      if (Math.abs(amountInCurrency - expectedMajor) > 0.01 && existingReference !== (d.reference ?? reference)) {
+      const { loadSuccessfulProductOrderCardCharges, priorProductOrderCardPayments, productOrderPaystackChargeIsAllowed } =
+        await import("@/lib/payments/resolve-paystack-initialize-amount");
+      const chargeReference = String(d.reference ?? reference);
+      const recordedCharges = await loadSuccessfulProductOrderCardCharges(admin, productOrderId);
+      if (recordedCharges.ok === false) {
+        return errorResponse(
+          "Could not confirm what has already been paid on this order.",
+          "PAYMENT_LOOKUP_FAILED",
+          500,
+        );
+      }
+      const priorCharges = priorProductOrderCardPayments(recordedCharges.rows, chargeReference);
+      if (
+        !productOrderPaystackChargeIsAllowed({
+          total: Number(order.total_amount ?? 0),
+          wallet: Number(order.wallet_amount ?? 0),
+          gift: Number(order.gift_card_amount ?? 0),
+          priorCardPayments: priorCharges.priorCardPayments,
+          amountMajor: amountInCurrency,
+          referenceAlreadyRecorded: priorCharges.referenceAlreadyRecorded,
+        }) &&
+        existingReference !== chargeReference
+      ) {
         return successResponse({
           verified: false,
           paystackStatus: txStatus,
@@ -415,6 +432,7 @@ export async function GET(request: NextRequest) {
             .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
             .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
         : 0;
+      const pendingWalletGift = await sumPendingWalletGiftBookingPayments(admin, bookingIdParam);
       const remaining = computeBookingOutstandingDisplay({
         totalAmount: Number(booking.total_amount ?? 0),
         totalPaid: Number(booking.total_paid ?? 0),
@@ -423,6 +441,7 @@ export async function GET(request: NextRequest) {
         giftCardAmount: Number((booking as any).gift_card_amount ?? 0),
         unpaidAdditionalCharges,
         paymentStatus: (booking as any).payment_status ?? null,
+        pendingWalletGiftAmount: pendingWalletGift,
       });
 
       const remainingTip = Math.max(0, Number(metadata.tip_amount ?? 0) || 0);

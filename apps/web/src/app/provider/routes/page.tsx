@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { Loader2, MapPin, Navigation, Clock, DollarSign, TrendingDown, Route } from "lucide-react";
 import { toast } from "sonner";
-import { formatCurrency } from "@/lib/pricing/calculate-booking-price-complete";
+import { formatCurrency } from "@/lib/utils";
 import { fetcher } from "@/lib/http/fetcher";
 import { getDefaultMoneyLocale } from "@beautonomi/utils";
 

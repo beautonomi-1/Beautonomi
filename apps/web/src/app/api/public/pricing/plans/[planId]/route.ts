@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
 import {
+  buildIosPurchasablePeriods,
   buildPublicPricingBillingPeriods,
   loadLinkedSubscriptionPlanPrices,
 } from "@/lib/pricing/public-pricing-billing-periods";
@@ -10,19 +11,34 @@ import {
   loadActiveSubscriptionPlanIds,
 } from "@/lib/pricing/published-pricing-plans";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { resolvePricingPlanIsFree } from "@/lib/subscription/resolve-pricing-plan-is-free";
 
-function derivePricingPlanIsFree(plan: {
-  price: string;
-  paystack_plan_code_monthly?: string | null;
-  paystack_plan_code_yearly?: string | null;
-}): boolean {
-  const hasAnyPaystackCode = Boolean(
-    plan.paystack_plan_code_monthly || plan.paystack_plan_code_yearly,
+function appleFieldsFromLinked(
+  linked: Awaited<ReturnType<typeof loadLinkedSubscriptionPlanPrices>>,
+) {
+  return {
+    apple_product_id_monthly: linked.apple_product_id_monthly ?? null,
+    apple_product_id_yearly: linked.apple_product_id_yearly ?? null,
+    ios_purchasable_periods: buildIosPurchasablePeriods(linked),
+  };
+}
+
+function resolveIsFreeForPricingRow(
+  plan: {
+    price: string;
+    paystack_plan_code_monthly?: string | null;
+    paystack_plan_code_yearly?: string | null;
+  },
+  linked: Awaited<ReturnType<typeof loadLinkedSubscriptionPlanPrices>>,
+): boolean {
+  return resolvePricingPlanIsFree(
+    {
+      price: plan.price,
+      paystack_plan_code_monthly: plan.paystack_plan_code_monthly,
+      paystack_plan_code_yearly: plan.paystack_plan_code_yearly,
+    },
+    linked.is_free != null ? { is_free: linked.is_free } : null,
   );
-  const priceStr = String(plan.price ?? "").replace(/[^0-9.]/g, "");
-  const isFreeByPrice =
-    !priceStr || parseFloat(priceStr) === 0 || /free/i.test(String(plan.price ?? ""));
-  return isFreeByPrice && !hasAnyPaystackCode;
 }
 
 /**
@@ -125,7 +141,7 @@ export async function GET(
             );
           }
           const linked = await loadLinkedSubscriptionPlanPrices(supabase, subscriptionPlanId);
-          const isFree = derivePricingPlanIsFree(overrideByName);
+          const isFree = resolveIsFreeForPricingRow(overrideByName, linked);
           const available_billing_periods = buildPublicPricingBillingPeriods({
             isFree,
             paystackPlanCodeMonthly: overrideByName.paystack_plan_code_monthly,
@@ -149,6 +165,7 @@ export async function GET(
               subscription_plan_id: subscriptionPlanId,
               price_monthly: linked.price_monthly,
               price_yearly: linked.price_yearly,
+              ...appleFieldsFromLinked(linked),
             },
           });
         }
@@ -167,14 +184,6 @@ export async function GET(
       .select("feature_text")
       .eq("plan_id", plan.id)
       .order("display_order", { ascending: true });
-
-    const isFree = derivePricingPlanIsFree(
-      plan as {
-        price: string;
-        paystack_plan_code_monthly?: string | null;
-        paystack_plan_code_yearly?: string | null;
-      },
-    );
 
     const { data: fullPlan } = await supabase
       .from("pricing_plans")
@@ -195,6 +204,15 @@ export async function GET(
       );
     }
     const linked = await loadLinkedSubscriptionPlanPrices(supabase, subscriptionPlanId);
+
+    const isFree = resolveIsFreeForPricingRow(
+      plan as {
+        price: string;
+        paystack_plan_code_monthly?: string | null;
+        paystack_plan_code_yearly?: string | null;
+      },
+      linked,
+    );
 
     const available_billing_periods = buildPublicPricingBillingPeriods({
       isFree,
@@ -220,6 +238,7 @@ export async function GET(
         subscription_plan_id: subscriptionPlanId,
         price_monthly: linked.price_monthly,
         price_yearly: linked.price_yearly,
+        ...appleFieldsFromLinked(linked),
       },
     });
   } catch (error) {

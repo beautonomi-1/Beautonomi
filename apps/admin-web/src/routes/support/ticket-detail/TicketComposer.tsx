@@ -27,6 +27,7 @@ type TicketComposerProps = {
   uploadErr: string | null;
   onPickFiles: (files: FileList | null) => void;
   fileRef: RefObject<HTMLInputElement | null>;
+  layout?: "panel" | "page" | "page-mobile";
 };
 
 export function TicketComposer({
@@ -47,7 +48,11 @@ export function TicketComposer({
   uploadErr,
   onPickFiles,
   fileRef,
+  layout = "panel",
 }: TicketComposerProps) {
+  const isMobilePage = layout === "page-mobile";
+  const textareaMin =
+    layout === "page" ? "min-h-[5.5rem] max-h-40" : "min-h-[4.5rem] max-h-32";
   const [dragActive, setDragActive] = useState(false);
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [articlesOpen, setArticlesOpen] = useState(false);
@@ -84,7 +89,9 @@ export function TicketComposer({
 
   return (
     <div
-      className="z-10 shrink-0 border-t border-gray-200 bg-white pb-1 pe-16 pt-3 sm:pe-20"
+      className={`z-10 shrink-0 border-t border-gray-200 bg-white pb-1 pe-16 pt-3 sm:pe-20 ${
+        isMobilePage ? "sticky bottom-0 pb-[max(0.25rem,env(safe-area-inset-bottom))] shadow-[0_-4px_12px_rgb(0_0_0/0.06)]" : ""
+      }`}
       onDragOver={(e) => {
         e.preventDefault();
         setDragActive(true);
@@ -132,7 +139,7 @@ export function TicketComposer({
       </div>
 
       <textarea
-        className={`mb-2 w-full min-h-[88px] rounded-xl border px-3 py-2 text-sm focus:outline-none ${
+        className={`mb-2 w-full ${textareaMin} rounded-xl border px-3 py-2 text-sm focus:outline-none ${
           replyInternal
             ? "border-amber-300 bg-amber-50/70 focus:border-amber-500"
             : "border-gray-300 bg-white focus:border-gray-500"
@@ -244,7 +251,7 @@ export function TicketComposer({
           {replyAttachments.length === 0 ? (
             <p className="text-xs text-gray-600">Drop files here or use the paperclip.</p>
           ) : (
-            <ul className="grid gap-2 sm:grid-cols-2">
+            <ul className="admin-scrollbar grid max-h-32 gap-2 overflow-y-auto sm:grid-cols-2">
               {replyAttachments.map((a) => (
                 <li key={a.url} className="overflow-hidden rounded-xl border border-gray-200 bg-white text-xs shadow-sm">
                   {isImageAttachment(a) ? (

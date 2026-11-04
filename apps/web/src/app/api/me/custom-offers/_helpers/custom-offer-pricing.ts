@@ -6,8 +6,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { resolveCheckoutPromotionDiscount } from "@/lib/pricing/checkout-promotion-discount";
-import { getPlatformDefaultTaxRateAndInclusive } from "@/lib/pricing/checkout-tax-defaults";
-import { percentOf, sumMoney } from "@beautonomi/utils";
+import { percentOf, sumMoney, computeVat } from "@beautonomi/utils";
+import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
 
 export interface CustomOfferPricingInput {
   offerPrice: number;
@@ -76,7 +76,7 @@ export async function computeCustomOfferPricing(
   // Load provider for tax, tips, fee config, tenant (scoped payouts)
   const { data: provider } = await supabase
     .from("providers")
-    .select("tax_rate_percent, tax_inclusive, tips_enabled, customer_fee_config_id, tenant_id")
+    .select("tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code, tips_enabled, customer_fee_config_id, tenant_id")
     .eq("id", providerId)
     .single();
 
@@ -187,27 +187,28 @@ export async function computeCustomOfferPricing(
 
   const baseAfterLoyalty = Math.max(0, subtotalAfterMembership - loyaltyDiscountAmount);
 
-  // Tax: provider rate or platform default
-  const rawProviderTaxRate = (provider as any)?.tax_rate_percent;
-  let taxRate: number;
-  let taxIncluded = false;
-  if (rawProviderTaxRate == null) {
-    const defaults = await getPlatformDefaultTaxRateAndInclusive(supabaseAdmin);
-    taxRate = defaults.taxRate;
-    taxIncluded = defaults.taxIncluded;
-  } else {
-    taxRate = Math.max(0, Number(rawProviderTaxRate));
-    taxIncluded = Boolean((provider as any)?.tax_inclusive ?? false);
+  const resolvedVat = await resolveProviderVat(supabaseAdmin, {
+    tax_rate_percent: (provider as { tax_rate_percent?: number | null } | null)?.tax_rate_percent ?? null,
+    tax_inclusive: (provider as { tax_inclusive?: boolean | null } | null)?.tax_inclusive ?? null,
+    is_vat_registered: (provider as { is_vat_registered?: boolean | null } | null)?.is_vat_registered ?? null,
+    vat_number: (provider as { vat_number?: string | null } | null)?.vat_number ?? null,
+    country_code: (provider as { country_code?: string | null } | null)?.country_code ?? null,
+    tax_rate_override_percent: null,
+  });
+  if (resolvedVat.registered && resolvedVat.source === "none") {
+    return { ok: false, error: "VAT rate is not configured for this provider." };
   }
-
-  let taxAmount = 0;
-  if (taxRate > 0) {
-    if (taxIncluded) {
-      taxAmount = baseAfterLoyalty - baseAfterLoyalty / (1 + taxRate / 100);
-    } else {
-      taxAmount = percentOf(baseAfterLoyalty, taxRate);
-    }
-  }
+  const taxRate = resolvedVat.ratePercent;
+  const taxIncluded = resolvedVat.inclusive;
+  const taxAmount =
+    taxRate > 0
+      ? computeVat({
+          baseAmount: baseAfterLoyalty,
+          ratePercent: taxRate,
+          inclusive: taxIncluded,
+          currency: input.currency,
+        }).taxAmount
+      : 0;
 
   // Platform Fee: provider fee config or tenant-scoped platform settings (matches validate-booking)
   let serviceFeeAmount = 0;

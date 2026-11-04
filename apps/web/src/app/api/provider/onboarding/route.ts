@@ -27,6 +27,8 @@ import {
   applyOwnerBookableSetup,
   type CreatedOfferingRef,
 } from "@/lib/provider/apply-owner-bookable-setup";
+import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
+import { countryFilterIso2FromStorage } from "@beautonomi/utils";
 import {
   APP_REVIEW_DEMO_EMAIL,
   APP_REVIEW_DEMO_PHONE,
@@ -78,6 +80,7 @@ const onboardingSchema = z.object({
   payroll_details: z.string().optional().nullable(),
   is_vat_registered: z.boolean().optional().nullable(),
   vat_number: z.string().optional().nullable(),
+  tax_inclusive: z.boolean().optional().nullable(),
   // Business fields
   business_name: z.string().min(1, "Business name is required"),
   business_type: z.enum(["salon", "mobile", "both"]),
@@ -247,6 +250,7 @@ const onboardingSchema = z.object({
     .default({ preset: "standard" }),
   include_in_search_engines: z.boolean().optional().default(true),
   selected_plan_id: z.string().uuid("Invalid plan ID").optional().nullable(),
+  selected_billing_period: z.enum(["monthly", "yearly"]).optional().nullable(),
   // Provider Ops: invite token from an admin-sent onboarding invite link.
   // Used to deterministically match this signup back to the originating lead.
   invite_token: z.string().uuid().optional().nullable(),
@@ -309,9 +313,15 @@ export async function POST(request: NextRequest) {
 
     if (existingProviderEarly) {
       const planParse = z
-        .object({ selected_plan_id: z.string().uuid().optional().nullable() })
+        .object({
+          selected_plan_id: z.string().uuid().optional().nullable(),
+          selected_billing_period: z.enum(["monthly", "yearly"]).optional().nullable(),
+        })
         .safeParse(body);
       const selectedPlanIdEarly = planParse.success ? planParse.data.selected_plan_id : null;
+      const selectedBillingPeriodEarly = planParse.success
+        ? planParse.data.selected_billing_period
+        : null;
       const tenantIdEarly = await resolveTenantIdWithZaFallback(request);
 
       const { data: providerRow, error: providerLoadError } = await supabaseAdmin
@@ -330,6 +340,7 @@ export async function POST(request: NextRequest) {
         tenantId: tenantIdEarly,
         provider: providerRow as Record<string, unknown>,
         selectedPlanId: selectedPlanIdEarly,
+        selectedBillingPeriod: selectedBillingPeriodEarly,
         message:
           "Your provider profile is already set up. Continue in the app to finish any remaining steps.",
         autoApprove: (providerRow as { status?: string }).status === "active",
@@ -404,8 +415,10 @@ export async function POST(request: NextRequest) {
       booking_policy,
       include_in_search_engines,
       selected_plan_id,
+      selected_billing_period,
       is_vat_registered,
       vat_number,
+      tax_inclusive,
       invite_token,
     } = validationResult.data;
 
@@ -502,6 +515,17 @@ export async function POST(request: NextRequest) {
         longitude: address.longitude,
       }) ?? undefined;
 
+    const addressCountryCode = countryFilterIso2FromStorage(address.country) ?? null;
+    const resolvedOnboardingVat = await resolveProviderVat(supabaseAdmin, {
+      is_vat_registered: is_vat_registered === true,
+      tax_inclusive: tax_inclusive ?? true,
+      vat_number: is_vat_registered === true ? (vat_number ?? null) : null,
+      country_code: addressCountryCode,
+      tax_rate_percent: null,
+      tax_rate_override_percent: null,
+    });
+    const onboardingTaxRatePercent = is_vat_registered === true ? resolvedOnboardingVat.ratePercent : 0;
+
     // Note: Address and operating_hours are stored in provider_locations, not providers table
     const { data: provider, error: providerError } = await (supabaseAdmin
       .from("providers") as any)
@@ -535,7 +559,9 @@ export async function POST(request: NextRequest) {
         languages_spoken: languages_spoken || ["English"],
         social_media_links: social_media_links || {},
         website: website || null,
-        tax_rate_percent: is_vat_registered === true ? 15 : (tax_rate_percent ?? 0),
+        tax_rate_percent: onboardingTaxRatePercent,
+        tax_inclusive: is_vat_registered === true ? (tax_inclusive ?? true) : false,
+        country_code: addressCountryCode,
         tips_enabled: tips_enabled !== false,
         requires_deposit: depositFields.requires_deposit,
         deposit_percentage: depositFields.deposit_percentage,
@@ -1850,6 +1876,7 @@ export async function POST(request: NextRequest) {
       tenantId,
       provider: (providerForResponse ?? provider) as Record<string, unknown>,
       selectedPlanId: selected_plan_id,
+      selectedBillingPeriod: selected_billing_period,
       message,
       autoApprove: providerWentLive,
       autoConfigured: {
@@ -1859,6 +1886,36 @@ export async function POST(request: NextRequest) {
         travel_fee_defaults: supportsHouseCalls,
       },
     });
+
+    const { trackProviderCheckoutFunnel } = await import(
+      "@/lib/analytics/provider-subscription-funnel"
+    );
+    if (completion.selected_plan_id) {
+      trackProviderCheckoutFunnel(
+        "provider_checkout_plan_selected",
+        {
+          source: "onboarding",
+          platform: "web",
+          pricing_plan_id: completion.selected_plan_id,
+          subscription_plan_id: completion.selected_subscription_plan_id,
+          is_free: completion.selected_plan_is_free,
+          billing_period: selected_billing_period ?? null,
+        },
+        user.id,
+      );
+    }
+    if (completion.requires_checkout) {
+      trackProviderCheckoutFunnel(
+        "provider_checkout_started",
+        {
+          source: "onboarding",
+          platform: "web",
+          pricing_plan_id: completion.selected_plan_id,
+          billing_period: selected_billing_period ?? "monthly",
+        },
+        user.id,
+      );
+    }
 
     return attachActiveProviderCookie(
       successResponse(completion),

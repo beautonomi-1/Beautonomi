@@ -30,8 +30,37 @@ export async function splitProductOrderRefundTender(
   opts: { refundAmount: number; reason: string; idempotencyKey: string },
 ): Promise<ProductOrderRefundTenderResult> {
   const refundAmount = Math.max(0, opts.refundAmount);
-  const isFullRefund = refundAmount + 0.01 >= Number(order.total_amount ?? 0);
+  const orderTotal = Number(order.total_amount ?? 0);
+  const isFullRefund = refundAmount + 0.01 >= orderTotal;
+  const onlineCap = Math.max(
+    0,
+    orderTotal -
+      Math.max(0, Number(order.wallet_amount ?? 0)) -
+      Math.max(0, Number(order.gift_card_amount ?? 0)),
+  );
+
   if (!isFullRefund) {
+    const walletUsed = Math.max(0, Number(order.wallet_amount ?? 0));
+    const giftUsed = Math.max(0, Number(order.gift_card_amount ?? 0));
+    if (
+      onlineCap > 0 &&
+      walletUsed === 0 &&
+      giftUsed === 0 &&
+      refundAmount <= onlineCap + 0.01
+    ) {
+      const online = await refundProductOrderOnlineTender(admin, order, {
+        reason: opts.reason,
+        idempotencyKey: `${opts.idempotencyKey}:partial_online`,
+        amountMajor: refundAmount,
+      });
+      return {
+        onlineRefundedAmount: online.refundedAmount,
+        walletCreditAmount: 0,
+        giftCardRestored: 0,
+        onlineRefundFailed: Boolean(online.attempted && online.error),
+        tenderMoved: online.refundedAmount > 0,
+      };
+    }
     return {
       onlineRefundedAmount: 0,
       walletCreditAmount: refundAmount,

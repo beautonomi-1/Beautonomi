@@ -285,14 +285,18 @@ async function suggestFromOpenEntities(
   try {
     const { data: orders } = await supabase
       .from("product_orders")
-      .select("id, order_number, total_amount, payment_status, created_at")
+      .select("id, order_number, total_amount, wallet_amount, gift_card_amount, payment_status, created_at")
       .eq("provider_id", providerId)
       .neq("payment_status", "paid")
       .gte("created_at", windowStart)
       .order("created_at", { ascending: false })
       .limit(30);
+    const { productOrderCardAmountStillDue } = await import(
+      "@/lib/payments/resolve-paystack-initialize-amount"
+    );
     for (const order of (orders ?? []) as any[]) {
-      const expected = Number(order.total_amount ?? 0);
+      const due = await productOrderCardAmountStillDue(supabase, String(order.id), "");
+      const expected = due.ok ? due.due : Number(order.total_amount ?? 0);
       if (expected <= 0) continue;
       rawCandidates.push({
         entityType: "product_order",
@@ -593,6 +597,42 @@ export async function recordPaystackTerminalCharge(
       autoFinalized = result.finalized;
     } catch (autoErr) {
       console.error("[paystack-terminal] auto-finalize walk-in order failed:", autoErr);
+    }
+  }
+
+  if ((row as any)?.id && !autoFinalized && Number((row as any).allocated_amount ?? 0) <= 0) {
+    try {
+      const { data: paidWalkIn } = await (supabase.from("product_orders") as any)
+        .select("id")
+        .eq("provider_id", context.provider_id)
+        .eq("payment_reference", reference)
+        .eq("order_source", "walk_in")
+        .eq("payment_status", "paid")
+        .maybeSingle();
+      if (paidWalkIn?.id) {
+        const { data: providerRow } = await supabase
+          .from("providers")
+          .select("user_id")
+          .eq("id", context.provider_id)
+          .maybeSingle();
+        const { autoFinalizeTerminalWalkInProductOrder } = await import(
+          "@/lib/payments/auto-finalize-terminal-product-order"
+        );
+        const result = await autoFinalizeTerminalWalkInProductOrder({
+          supabase,
+          terminalPaymentId: String((row as any).id),
+          providerId: context.provider_id,
+          productOrderId: String(paidWalkIn.id),
+          paidAmount,
+          gatewayFee: feeAmount,
+          reference,
+          currency,
+          allocatedByUserId: (providerRow as { user_id?: string | null } | null)?.user_id ?? null,
+        });
+        autoFinalized = result.finalized;
+      }
+    } catch (retryErr) {
+      console.error("[paystack-terminal] finish paid walk-in allocation failed:", retryErr);
     }
   }
 

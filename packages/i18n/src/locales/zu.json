@@ -699,7 +699,26 @@
           "uploadFailedTitle": "layisha kuhlulekile",
           "uploadFailedBody": "Ayikwazanga uku-layisha isithombe.",
           "variantsTitle": "Izinhlobo",
-          "addOptionRequired": "Engeza okungenani inketho eyodwa enegama nenani elilodwa."
+          "addOptionRequired": "Engeza okungenani inketho eyodwa enegama nenani elilodwa.",
+          "createOptionsA11y": "Dala izinketho ezinhlotsheni zezinketho namanani",
+          "defaultMeasureLabel": "Iyunithi for okusha Izinketho",
+          "defaultMeasureHint": "Isetshenziselwa kuphela izinketho ozidalayo ngokulandelayo. Izinketho esezivele ohlwini zigcina iyunithi yazo.",
+          "defaultMeasureA11y": "Iyunithi for okusha Izinketho, {{value}}",
+          "moreDetails": "okuningi imininingwane",
+          "hideDetails": "fihla imininingwane",
+          "moreDetailsA11y": "okuningi imininingwane for {{name}}",
+          "hideDetailsA11y": "fihla imininingwane for {{name}}",
+          "fieldSkuLabel": "SKU",
+          "fieldBarcodeLabel": "Ibhakhodi",
+          "fieldMeasureLabel": "linganisa",
+          "fieldAmountLabel": "inani",
+          "fieldQuantityLabel": "Inani",
+          "fieldLowStockLevelLabel": "Izinga eliphansi lesitoko",
+          "fieldReorderQuantityLabel": "Rei-oda inani",
+          "fieldSupplyPriceLabel": "Cost intengo",
+          "fieldRetailPriceLabel": "Selling intengo",
+          "fieldMarkupLabel": "Inzuzo (%)",
+          "retailPriceA11y": "Selling intengo for {{name}}"
         },
         "bookingDateTimePicker": {
           "showingPeriodOnlyA11y": "Kuboniswa kuphela i-{{label}}. Thepha ukuze kubonke konke.",
@@ -949,7 +968,8 @@
           "nextA11y": "okulandelayo step",
           "existingProfileTitle": "Iphrofayela isivele idaliwe",
           "existingProfileBody": "Iphrofayela yebhizinisi yakho isilungisiwe. Sebenzisa uhlu lokusetha ukuze ushintshe imininingwane — izinguquko lapha azigciniwe.",
-          "openChecklist": "Vula uhlu lokusetha"
+          "openChecklist": "Vula uhlu lokusetha",
+          "useDifferentAccount": "Use a different i-akhawunti"
         },
         "accountStatusGuard": {
           "title": "i-akhawunti check needed",
@@ -1139,7 +1159,9 @@
           "pendingRequests": "− kulindile / iyacubungula izicelo",
           "alreadyPaidOut": "− Already kukhokhelwe out",
           "available": "= iyatholakala to withdraw",
-          "footer": "Ukubhalisa nezikhangiso kukhokhiswa ekhadini lakho ngokuhlukene futhi akulokothi kwehlise le bhalansi."
+          "footer": "Ukubhalisa nezikhangiso kukhokhiswa ekhadini lakho ngokuhlukene futhi akulokothi kwehlise le bhalansi.",
+          "openDisputeReserve": "− vula dispute reserve",
+          "vatHeldForProvider": "− VAT ibanjelwe ukukhokhelwa"
         },
         "reportRevenueGlossary": {
           "title": "What these inombolos mean"
@@ -1213,6 +1235,19 @@
             "booking_intake": "iklayenti forms",
             "booking_recurring": "Uchungechunge oluphindaphindayo"
           }
+        },
+        "staffPhotoField": {
+          "uploadFailedTitle": "layisha kuhlulekile",
+          "uploadFailedBody": "Ayikwazanga uku-layisha the isithombe. zama futhi.",
+          "changePhotoA11y": "Shintsha isithombe",
+          "customerHint": "amaklayenti see this isithombe when ukubhuka.",
+          "removePhoto": "Susa isithombe"
+        },
+        "staffCommissionEditor": {
+          "paysCommission": "Ikhokha ikhomishini",
+          "percentValue": "{{rate}}%",
+          "splitRates": "insizakalo {{service}}% · umkhiqizo {{product}}% (set on Ikhomishini yethimbas)",
+          "openTeamCommissions": "Ikhomishini yethimbas → ihoraly, salary, amathiphu"
         }
       },
       "screens": {
@@ -1560,7 +1595,8 @@
           "errTenant": "Iphutha lokumisa indawo yokusebenza. Hlola izilungiselelo zomhlinzeki/isiqashi noma usekelo.",
           "errValidation": "Hlola imininingwane yokudayisa bese uzama futhi.",
           "errUnauthorized": "Iseshini iphelelwe yisikhathi. Ngena futhi uzame.",
-          "errDefault": "Ayikwazanga ukuqeda ukudayisa. Sicela uzame futhi."
+          "errDefault": "Ayikwazanga ukuqeda ukudayisa. Sicela uzame futhi.",
+          "refundOnlineNoCustomer": "Le ntengiso ikhokhwe ku-inthanethi futhi ayinaso isikhwama semali yekhasimende, ngakho-ke ayikwazi ukubuyiselwa imali mathupha."
         },
         "productForm": {
           "editTitle": "Hlela umkhiqizo",
@@ -1659,7 +1695,19 @@
           "measureUnit": "Iyunithi",
           "defaultVariantType": "Usayizi",
           "weightGrams": "Ubukhulu besisindo bokuthumela (g)",
-          "weightGramsPlaceholder": "500"
+          "weightGramsPlaceholder": "500",
+          "variantsPerOptionNote": "Inketho ngayinye ngezansi inebhakhodi yayo, SKU, kanye nosayizi. Igama, izithombe, isigaba, kanye nokuhlala kwentela kulo mkhiqizo.",
+          "variantsHiddenDelete": "Lezi zinketho zifihliwe. Uma ulondoloza manje, ayasuswa, okuhlanganisa izintengo namabhakhodi.",
+          "variantsHiddenUntilOn": "Lezi zinketho zilondolozwa kuphela ngenkathi i-Has okuhlukile ivuliwe.",
+          "deleteOptionsTitle": "Sula these Izinketho?",
+          "deleteOptionsBody": "Ukulondoloza kususa wonke usayizi noma inketho, okuhlanganisa izintengo, isitoko, namabhakhodi.",
+          "keepOptions": "Gcina Izinketho",
+          "deleteOptionsConfirm": "Sula and gcina",
+          "freeOptionsTitle": "Some Izinketho are mahhala.",
+          "freeOptionsBody_one": "{{count}} Inketho is still intengod at 0. amakhasimende can thenga it for mahhala.",
+          "freeOptionsBody_other": "{{count}} izinketho zisathengiswa ku-0. Amakhasimende angazithenga mahhala.",
+          "reviewPrices": "isibuyekezo intengos",
+          "saveAnyway": "Londoloza anyway"
         },
         "ads": {
           "title": "Izikhangiso ezikhokhelwayo",
@@ -2302,7 +2350,14 @@
           "refundReasonPlaceholder": "Kungani lesi sibuyiselwe sikhishwa?",
           "viewFullBooking": "Buka kugcwele ukubhuka",
           "statusNoShow": "No bonisa",
-          "statusPendingPayment": "kulindile inkokhelo"
+          "statusPendingPayment": "kulindile inkokhelo",
+          "removeParticipantOverpaid": "Isivakashi susad. The ukubhuka is manje overkukhokhelwe by {{amount}}. imali ebuyisiwe the difference to the ikhasimende.",
+          "shareStatusPaid": "yabelana kukhokhelwe",
+          "shareStatusPending": "yabelana akukhokhelwe ({{amount}})",
+          "shareStatusCancelled": "Spot kukhanseliwe",
+          "resendInvite": "Re-thumela isimemo",
+          "inviteResent": "isimemo Kuthunyelwe",
+          "inviteResendFailed": "Ayikwazanga uku-re-thumela the isimemo."
         },
         "settingsIndex": {
           "title": "Izilungiselelo",
@@ -3132,7 +3187,9 @@
           "refundOriginalMachineHint": "Imali ibuyela ekhadini lekhasimende ngomshini wekhadi elikhokhelwe kuwo.",
           "cancelWalletNote": "Iklayenti lizothola imbuyiselo ephelele ku- wallet yalo Beautonomi yamanani asekhokhelwe. Inqubomgomo yakho yokukhansela ayisebenzi ekukhanselweni okuqalile.",
           "cancelRefundTo": "Buyisela inani elikhokhelwe ku",
-          "yocoRefundRecordCta": "Ibuyiselwe emshinini — qopha imbuyiselo"
+          "yocoRefundRecordCta": "Ibuyiselwe emshinini — qopha imbuyiselo",
+          "pendingCashRefundTitle": "{{amount}} to return ubuso nobuso",
+          "pendingCashRefundBody": "Ikhasimende kufanele liqinisekise ukuthi liyitholile le mbuyiselo kuhlelo lokusebenza. Ungarekhodi enye imbuyiselo yemali ngesikhathi lokhu kulindile — buyisela inani elibonisiwe bese ulinda ukuqinisekiswa (noma iwindi lamahora angu-48 ukuze livalwe)."
         },
         "operatingHoursSettings": {
           "title": "Opeisilinganiso amahora",
@@ -3321,7 +3378,8 @@
           "billedThroughStripeBody": "Buyekeza ikhadi lakho noma ubuke ama-invoyisi ku-portali yokukhokha ye-Stripe evikelekile. Thepha Phatha ukukhokha ngezansi.",
           "stripeManageUnavailable": "Stripe Ukukhokhisa is Akusethiwe up yet. qeda ukukhokha first, then zama futhi.",
           "paystackManageUnavailable": "Lo mhlelo awubhaliswanga nge-Paystack njalo. Qedela ukukhokha noma uxhumane nosizo.",
-          "planChangeScheduled": "Ukushintsha kohlelo kuhleliwe. Izinguquko ziqala ngo-{{when}}."
+          "planChangeScheduled": "Ukushintsha kohlelo kuhleliwe. Izinguquko ziqala ngo-{{when}}.",
+          "finishUpgradeTitle": "qeda Thuthukisa to {{plan}}"
         },
         "moreTab": {
           "sectionGrowBusiness": "Grow your Ibhizinisi",
@@ -4004,7 +4062,14 @@
           "courierBooking": "Courier ukubhuka",
           "bookCourier": "bhuka courier",
           "retryCourierBooking": "zama futhi ukubhuka",
-          "printLabel": "Phrinta label"
+          "printLabel": "Phrinta label",
+          "refundOnlineOnly": "Leli oda likhokhiwe nge-inthanethi. Isikweletu sesitolo sibuyisela inkokhiso yekhadi nanoma yisiphi isikhwama semali noma ingxenye yekhadi lesipho kukhasimende.",
+          "refundOnlineNoCustomer": "Leli oda likhokhiwe ku-inthanethi futhi alinaso isikhwama semali sekhasimende, ngakho alikwazi ukubuyiselwa imali mathupha.",
+          "refundAmountLabel": "imali ebuyisiwe inani (up to {{max}})",
+          "refundAmountA11y": "imali ebuyisiwe inani",
+          "refundAmountInvalid": "Faka inani elikhulu kuno-0 futhi elingengaphezu kuka-{{max}}.",
+          "partiallyRefundedRefundRemaining": "Leli oda libuyiselwe ingxenye yalo. Kuphawule ukuthi ibuyiselwe enanini elisele — ukukhansela akutholakali.",
+          "refundRemainingHint": "imali ebuyisiwe remaining"
         },
         "yocoDevices": {
           "title": "Yoco amadivaysi",
@@ -4764,7 +4829,9 @@
             "saveService": "Londoloza insizakalo",
             "addService": "Engeza insizakalo",
             "cancelEditingA11y": "Khansela hlelaing",
-            "cancelEdit": "Khansela hlela"
+            "cancelEdit": "Khansela hlela",
+            "bookingOptionCount_one": " · {{count}} ukubhuka Inketho",
+            "bookingOptionCount_other": " · {{count}} ukubhuka Izinketho"
           },
           "hours": {
             "freelancerHint": "We've qalaed you on broad ivikiusuku amahora (8 am–8 pm). Tap a usuku to toggle vula/valad, then set isikhathis.",
@@ -4844,7 +4911,12 @@
             "bizSalon": "isaloni / studio",
             "bizMobile": "Iselula / at-ikhaya",
             "bizBoth": "isaloni + Iselula",
-            "emDash": "—"
+            "emDash": "—",
+            "ownerGoLiveTitle": "iphrofayela on the ukubhuka page yakho",
+            "ownerTakesAppointments": "I take izikhathi myself",
+            "ownerPublicTitle": "Isihloko amakhasimende see (okukhethekayo)",
+            "ownerServicesLabel": "izinsizakalo you perform",
+            "ownerServicesAll": "Shiya konke kuhloliwe ukuze unikeze yonke isevisi kukhathalogi yakho."
           },
           "plan": {
             "popular": "Okudumile",
@@ -4860,10 +4932,95 @@
             "noneAvailable": "Azikho izinhlelo zokubhaliselwe ezitholakalayo njengamanje. Chofoza okuthi Thumela ukuze uqhubeke — sizokulungisa lokhu ngemva kwalokho.",
             "intro": "Khetha uhlelo olufanele namuhla. Okumahhala kuqala ngokushesha — izinhlelo ezikhokhelwayo zikuthumela ekukhokheni okuphephile ngemva kokuthumela. Ungathuthukisa noma wehle noma nini kusuka kuzimiso.",
             "yearly": "Minyaka yonke",
-            "monthly": "Nyanga zonke"
+            "monthly": "Nyanga zonke",
+            "periodAvailableOnWeb": "{{period}} inkokhelo itholakala kuwebhu kuphela kulolu hlelo."
           },
           "travelFees": {
             "skipHint": "Ungeqa lesi sinyathelo — sizosebenzisa indinganiso yesikhulumi futhi ungayilungisa ngokuhamba kwesikhathi."
+          },
+          "steps": {
+            "team_size": {
+              "title": "ithimba size",
+              "description": "Tell us Mayelana your ithimba"
+            },
+            "identity": {
+              "title": "Ubuwena yakho",
+              "description": "igama, kuqinisekisiwe i-imeyili, and kuqinisekisiwe ucingo"
+            },
+            "business": {
+              "title": "Ibhizinisi imininingwane",
+              "description": "How amakhasimende see your Ibhizinisi"
+            },
+            "payment": {
+              "title": "izinkokhelo & izinqubomgomo",
+              "description": "Terminals, VAT & ukubhuka protection"
+            },
+            "software": {
+              "title": "okwamanje software",
+              "description": "okukhethekayo — okudlule ukubhuka system"
+            },
+            "payroll": {
+              "title": "Uholo",
+              "description": "How you khokha abasebenzi"
+            },
+            "location": {
+              "title": "Indawo",
+              "description": "okuyinhloko ikheli"
+            },
+            "photos": {
+              "title": "izithombe",
+              "description": "kuyadingeka thumbnail & iphrofayela isithombes"
+            },
+            "zones": {
+              "title": "insizakalo Zones",
+              "description": "Wlapha you offer Iselula visits"
+            },
+            "travel_fees": {
+              "title": "Ukuhamba izimali",
+              "description": "khokhisa for at-ikhaya Ukuhamba"
+            },
+            "categories": {
+              "title": "izigaba",
+              "description": "Lokho okunikezayo"
+            },
+            "catalog": {
+              "title": "Izinsizakalo",
+              "description": "okukhethekayo — engeza izinsizakalo manje or kamuva"
+            },
+            "hours": {
+              "title": "amahora",
+              "description": "When you're iyatholakala"
+            },
+            "review": {
+              "title": "isibuyekezo",
+              "description": "Check your imininingwane"
+            },
+            "plan": {
+              "title": "Uhlelo",
+              "description": "Khetha a ukubhalisa"
+            }
+          },
+          "alerts": {
+            "errorTitle": "Iphutha",
+            "loadFailed": "Ayikwazanga uku-ulayisha onboarding.",
+            "checkStepTitle": "Hlola lesi sinyathelo",
+            "completeRequiredFields": "Sicela qeda inkambu edingekayos.",
+            "couldNotContinue": "Ayikwazanga uku-qhubeka.",
+            "almostThereTitle": "Sekuphelile",
+            "completeStepFirst": "qeda this step first.",
+            "missingInfoTitle": "Missing info",
+            "selectTeamSize": "Sicela khetha your ithimba size.",
+            "verifyPhoneTitle": "Qinisekisa ucingo",
+            "verifyPhoneBody": "Sicela Qinisekisa your inombolo yocingo.",
+            "categoriesTitle": "izigaba",
+            "selectCategory": "Khetha at least one isigaba.",
+            "addressTitle": "Ikheli",
+            "completeAddress": "Sicela qeda ikheli (line 1, idolobha, izwe).",
+            "stillSettingUpTitle": "Isasetha",
+            "stillSettingUpBody": "Iphrofayela yakho yebhizinisi kungenzeka ukuthi isalondolozwa. Ima kancane, bese uthepha okuthi Thumela futhi.",
+            "couldNotFinishTitle": "Ayikwazanga uku-qeda setup",
+            "tryAgain": "Sicela uzame futhi.",
+            "submitFailed": "thumela kuhlulekile."
           }
         },
         "newBooking": {
@@ -5480,7 +5637,27 @@
           "soundsSectionPlatform": "Okudumile sounds",
           "soundsSectionYours": "sounds yakho",
           "soundPreviewPlay": "Play pisibuyekezo",
-          "soundPreviewStop": "Stop pisibuyekezo"
+          "soundPreviewStop": "Stop pisibuyekezo",
+          "trimHandleStartA11y": "Clip qala",
+          "trimHandleEndA11y": "Clip qeda",
+          "trimSelectedLength": "{{seconds}}s · ubuningi {{max}}s",
+          "trimQueueCounter": "Ividiyo {{index}} of {{total}}",
+          "trimVideoLoadFailed": "Ayikwazanga uku-ulayisha this Ividiyo.",
+          "retake": "Thatha futhi",
+          "usePhoto": "Use isithombe",
+          "discardClip": "Lahla clip",
+          "retry": "Zama futhi",
+          "recordTooShort": "Bamba inkinobho isikhathi eside ukuze urekhode.",
+          "micPermissionOpenSettings": "Vula izilungiselelo",
+          "flashOn": "I-Flash ivuliwe",
+          "flashOff": "I-flash ivaliwe",
+          "mediaSkippedTooLarge": "{{count}} amafayela abemakhulu kakhulu futhi eqiwe.",
+          "cameraPermissionOpenSettings": "Vula izilungiselelo",
+          "statusVideoProcessing": "iyacubungula",
+          "statusVideoFailed": "Ividiyo kuhlulekile",
+          "statusHidden": "Kufihliwe by Beautonomi",
+          "statusHiddenNote": "Inothi lokulinganiswa: {{note}}",
+          "videoFailedDetail": "Ividiyo encoding kuhlulekile. hlela the Okushicilelwe and gcina to zama futhi."
         },
         "dashboard": {
           "title": "Ideshibhodi",
@@ -5630,7 +5807,9 @@
           "viewAllLower": "Buka konke",
           "activityWindow": "Izinsuku eziyi-14 ezedlule ({{window}}) · azihlungiwe ngesikhathi esingenhla.",
           "activityDefaultHint": "Izibuyekezo zakamuva kukho konke ukubhukha, izinkokhelo, nezibuyekezo — azihlungiwe ngesikhathi esingenhla.",
-          "noRecentActivity": "Ayikho imisebenzi yakamuva"
+          "noRecentActivity": "Ayikho imisebenzi yakamuva",
+          "giftCardLedgerIssuance": "ikhadi lesipho ledger issuance (Sonke isikhathi)",
+          "membershipSalesAllTime": "ubulungu sales (Sonke isikhathi)"
         },
         "staffSchedule": {
           "title": "abasebenzi Ishedulis",
@@ -5887,7 +6066,26 @@
           "resetSentTitle": "Setha kabusha Kuthunyelwe",
           "resetSentBody": "iphasiwedi Setha kabusha i-imeyili has been Kuthunyelwe.",
           "payPlanSummary": "Pay Uhlelo",
-          "payPlanEditHint": "Vula ithimba commissions to hlela khokha model and rates."
+          "payPlanEditHint": "Vula ithimba commissions to hlela khokha model and rates.",
+          "changePhotoA11y": "Shintsha isithombe sephrofayela",
+          "takesAppointmentsLabel": "Takes izikhathi",
+          "bookableFromLabel": "First bhukaable usuku",
+          "bookableImmediately": "Ngokushesha",
+          "timeClockLabel": "isikhathi clock",
+          "enabled": "kuvuliwe",
+          "disabled": "kuvaliwe",
+          "yes": "Yebo",
+          "no": "Cha",
+          "emailReadOnly": "i-imeyili",
+          "applyJobTitle": "sebenzisa job okumisiwes?",
+          "applyJobBody": "Lokhu kusetha kabusha izimvume zabo kokuzenzakalelayo {{job}}.",
+          "apply": "Sebenzisa",
+          "applyJobDefaults": "sebenzisa job okumisiwes",
+          "timeClockPin": "isikhathi clock PIN (4 digits)",
+          "pinInvalid": "PIN kumele kube izinombolo ezi-4.",
+          "partialSaveTitle": "Partially gcinad",
+          "partialSaveSettingsFailed": "iphrofayela gcinad, but ukubhuka izilungiselelo did not gcina. Pull to vuselela and zama futhi.",
+          "clearBookableDate": "sula usuku (bhukaable immediately)"
         },
         "serviceForm": {
           "serviceName": "insizakalo igama *",
@@ -5966,7 +6164,19 @@
           "deleteA11y": "Sula insizakalo",
           "saving": "Iyalondoloza…",
           "saveChanges": "Londoloza izinguquko",
-          "createService": "Dala insizakalo"
+          "createService": "Dala insizakalo",
+          "stillLoadingTitle": "Still iyalayisha.",
+          "stillLoadingBody": "Amasevisi akho asalayisha. Ima kancane, bese ulondoloza futhi.",
+          "couldNotCheckOptionsTitle": "Ayikwazanga uku-check Izinketho.",
+          "couldNotCheckOptionsBody": "Ukulondoloza kungase kuvale izinketho zokubhukha ezingakwazanga ukulayishwa.",
+          "goBackFromSave": "Buyela emuva",
+          "saveAnyway": "Londoloza anyway",
+          "turnOffOptionsTitle": "Turn these Izinketho off?",
+          "turnOffOptionsBodyMainOnly": "Amakhasimende ngeke esabona {{names}}. Bazobhukha isevisi eyinhloko kuphela.",
+          "turnOffOptionsBodyOthersStay": "Amakhasimende ngeke esabona {{names}}. Ezinye izinketho zokubhukha zihlala.",
+          "andMoreNames": "and {{count}} okuningi",
+          "keepThem": "Gcina them",
+          "turnOffAndSave": "Turn off and gcina"
         },
         "membershipPlans": {
           "title": "ubulungu Izinhlelo",
@@ -7179,7 +7389,38 @@
           "showOnProfileHint": "Amakhasimende asengasebenzisa le khodi ekuphumeni ngisho nalapho efihliwe.",
           "showOnProfileA11y": "Bonisa this ipromoshini on public iphrofayela",
           "creating": "Iyadala…",
-          "createCta": "Dala ikhodi yephromoshini"
+          "createCta": "Dala ikhodi yephromoshini",
+          "startsOn": "Iqala",
+          "endsOn": "Iyaphela",
+          "noEndDate": "No qeda usuku",
+          "endsLabel": "Iphela {{date}}",
+          "statusActive": "Iyasebenza",
+          "statusScheduled": "kuhleliwe",
+          "statusExpired": "kuphelelwe",
+          "statusUsedUp": "Jwayele",
+          "statusOff": "Kuvaliwe",
+          "limitsSection": "Imikhawulo",
+          "usageLimit": "isamba uses",
+          "minPurchase": "Minimum ukubhuka",
+          "maxDiscount": "Max isaphulelo",
+          "oncePerCustomer": "One use per iklayenti",
+          "branch": "Igalelo",
+          "branchAll": "All isalonis",
+          "detailTitle": "ipromoshini imininingwane",
+          "copyCode": "Kopisha ikhodi",
+          "copied": "Kukopishiwe",
+          "redemptions": "Ukuhlengwa",
+          "totalDiscountGiven": "isamba given: {{amount}}",
+          "noRedemptions": "Akukho redemptions okwamanje",
+          "deleteBlocked": "Ikhodi isetshenzisiwe - yivale esikhundleni salokho.",
+          "saveChanges": "Gcina",
+          "viewDetails": "Buka imininingwane",
+          "summaryLine": "{{discount}} · {{end}}",
+          "endAfterStart": "End usuku must be after qala usuku",
+          "savedOk": "Changes gcinad",
+          "redemptionBooking": "ukubhuka #{{number}}",
+          "redemptionOrder": "i-oda #{{number}}",
+          "usageLimitPlaceholder": "Akunamkhawulo"
         },
         "signup": {
           "agreeRequired": "Sicela agree to the imigomo yensizakalo and inqubomgomo yobumfihlo to qhubeka.",
@@ -7569,7 +7810,10 @@
           "invalidAmountTitle": "inani engavumelekile",
           "invalidAmountBody": "Faka inani elingaphezu kolunye, kuze kufike kusibalo esisele.",
           "exportFailedTitle": "Export kuhlulekile",
-          "exportFailedBody": "Ayikwazanga uku-landa the i-invoyisi export."
+          "exportFailedBody": "Ayikwazanga uku-landa the i-invoyisi export.",
+          "obligationsDueHeading": "Okukweletayo",
+          "obligationsDueHint": "Izinkokhelo zenkundla sezivele zigcinwa ekuphumeni. Khokha okubhaliselwe, imishini yamakhadi, futhi uvule ama-invoyisi ezikrinini zabo ezivamile.",
+          "obligationsView": "buka"
         },
         "payouts": {
           "dash": "—",
@@ -7863,7 +8107,9 @@
           "enabledLocations": "kuvuliwe izindawo",
           "excludedServices": "Excluded izinsizakalo",
           "excludedHint": "Izinsizakalo ezingabhukwa njengama-aphoyintment eqenjini",
-          "saveSettings": "Londoloza Izilungiselelo"
+          "saveSettings": "Londoloza Izilungiselelo",
+          "splitPaymentTitle": "Allow split inkokhelo",
+          "splitPaymentHint": "Isivakashi ngasinye sizikhokhela isabelo saso ku-inthanethi. Uma evaliwe, umhleli ukhokhela iqembu lonke."
         },
         "noteTemplates": {
           "title": "Inothi Templates",
@@ -8075,7 +8321,8 @@
           "offerMultipleTitle": "Offer multiple intengos or ubudes?",
           "offerMultipleBody": "isib. Izinwele ezimfishane vs ezinde, imizuzu engama-30 i-express vs 60 min yesevisi egcwele. Ngayinye iba inketho ebheke ikhasimende ekubhukheni.",
           "durationTitle": "Ubude",
-          "priceTypeTitle": "intengo Uhlobo"
+          "priceTypeTitle": "intengo Uhlobo",
+          "blankPriceUsesMain": "Shiya lokhu kungenalutho futhi amakhasimende akhokha {{amount}}, ngokufanayo nenketho yokuqala."
         },
         "endOfDayReport": {
           "factsDefinitions": "Amaqiniso nezincazelo",
@@ -10118,7 +10365,9 @@
           "signOutBody": "Ungaqeda ukusetha kamuva. Inqubekela phambili yakho ilondolozwe ku-akhawunti yakho.",
           "cancel": "Khansela",
           "verificationRequiredTitle": "ukuqinisekisa ubuwena kuyadingeka to go Bukhoma",
-          "verificationRequiredBody": "Qedela ukuqinisekiswa kobuwena ukuze sivume ukufakwa kwakho kokubhuka komphakathi."
+          "verificationRequiredBody": "Qedela ukuqinisekiswa kobuwena ukuze sivume ukufakwa kwakho kokubhuka komphakathi.",
+          "subscriptionActivatingTitle": "Inkokhelo itholiwe, iyavula your Uhlelo",
+          "subscriptionActivatingBody": "Lokhu ngokuvamile kuthatha imizuzwana embalwa. Ungaqhubeka nokusetha ibhizinisi lakho ngenkathi siqeda."
         },
         "packageSalesReport": {
           "factsDefinitions": "Amaqiniso nezincazelo",
@@ -10267,7 +10516,16 @@
           "topClients": "Top amaklayenti (kuqediwe Kubhukiwe gross)",
           "emptyTopClients": "No kuqediwe ukubhuka yet.",
           "bookingsPerMonth": "{{count}} ukubhuka · {{visits}}/mo",
-          "avgAmount": "Isiling. {{amount}}"
+          "avgAmount": "Isiling. {{amount}}",
+          "deliveredHoursTotal": "Kulethiwe",
+          "missedHoursTotal": "Uphuthelwe",
+          "stillOnBookHoursTotal": "Still on the bhuka",
+          "cancelledHoursTotal": "Kukhanseliwe",
+          "staffHourBuckets": "Delivered {{delivered}}h · Missed {{missed}}h · Still {{still}}h · kukhanseliwe {{cancelled}}h",
+          "staffCompletionRate": "{{pct}}% kuqediwe of kuqediwe or missed",
+          "avgBookedValue": "Avg Kubhukiwe value",
+          "avgEarned": "Isilinganiso esitholiwe",
+          "earnedAmount": "Izuziwe {{amount}}"
         },
         "paymentMethodsReport": {
           "factsDefinitions": "Amaqiniso nezincazelo",
@@ -10373,7 +10631,10 @@
           "activeSubscribers": "Iyasebenza subscribers",
           "activeStatusHint": "okwamanje isimo=Iyasebenza",
           "salesByDay": "Ukudayisas by usuku",
-          "dayGross": "{{amount}} ({{count}})"
+          "dayGross": "{{amount}} ({{count}})",
+          "title": "ubulungu sales",
+          "subtitle": "Isamba sesikweletu, amaholo abonwayo, nezaphulelo zelungu zesikhathi esikhethiwe",
+          "separateBases": "Isamba esithengisiwe nezinzuzo ezibonwayo zihlukene — ungazingezi ndawonye."
         },
         "travelFees": {
           "title": "Ukuhamba izimali",
@@ -10520,7 +10781,8 @@
           "emptyDesc": "Ukukhokhwa okubanjwe kule sikhathi kuzovela lapha.",
           "byPurchaser": "Ngo {{name}}",
           "toRecipient": "→ {{name}}",
-          "captureDate": "Thwebula · {{date}}"
+          "captureDate": "Thwebula · {{date}}",
+          "bookingNumber": "ukubhuka {{number}}"
         },
         "yocoReconciliationReport": {
           "factsDefinitions": "Amaqiniso nezincazelo",
@@ -11063,7 +11325,15 @@
           "back": "Emuva",
           "exportA11y": "Export and yabelana umbiko as CSV",
           "dateLabel": "Usuku",
-          "permissionMessage": "Cela umnikazi webhizinisi lakho ukuthi anikeze imvume yokubuka imibiko yokuthengisa nemibiko yezibalo."
+          "permissionMessage": "Cela umnikazi webhizinisi lakho ukuthi anikeze imvume yokubuka imibiko yokuthengisa nemibiko yezibalo.",
+          "eodToday": "Namuhla",
+          "eodYesterday": "izolo",
+          "eodPrevDay": "okudlule usuku",
+          "eodNextDay": "okulandelayo usuku",
+          "eodTodayA11y": "Khetha namuhla for ukuphela kosuku umbiko",
+          "eodYesterdayA11y": "Khetha izolo for ukuphela kosuku umbiko",
+          "eodPrevDayA11y": "Go to okudlule trading usuku",
+          "eodNextDayA11y": "Go to okulandelayo trading usuku"
         },
         "appUpdate": {
           "title": "Buyekeza kuyadingeka",
@@ -11092,7 +11362,9 @@
           "subtitle": "Ibhizinisi, Uhlelo & Ukukhokhisa",
           "tabBusiness": "Ibhizinisi",
           "tabSubscription": "Ukubhalisa",
-          "tabBilling": "Ukukhokhisa"
+          "tabBilling": "Ukukhokhisa",
+          "amountsDueBanner": "You have inanis okukhokhwayo — vula the Ukukhokhisa hub to khokha ukubhalisas, i-invoyisis, or imishini yamakhadi.",
+          "amountsDueCta": "Buka inanis okukhokhwayo"
         },
         "adsPaymentSuccess": {
           "defaultTitle": "ad is Bukhoma yakho",
@@ -11951,7 +12223,10 @@
           "sendFailed": "Kwehlulekile uku-thumela Okwezifiso offer",
           "unavailableTitle": "Okwezifiso Izinikelo ayitholakali",
           "errorTitle": "Iphutha",
-          "disabledBody": "{{message}}\n\nYour admin can vula the feature flag commerce.umhlinzeki_okwezifiso_offers for this market."
+          "disabledBody": "{{message}}\n\nYour admin can vula the feature flag commerce.umhlinzeki_okwezifiso_offers for this market.",
+          "addPhotos": "Engeza inspiration izithombe",
+          "uploadingPhotos": "iyalayisha…",
+          "photosAttached": "{{count}} isithombe(s) attached"
         },
         "salesSettings": {
           "title": "Ukudayisas izilungiselelo",
@@ -12816,6 +13091,18 @@
           "selectMachine": "Khetha machine",
           "chargeNamed": "khokhisa · {{name}}",
           "switchMachine": "Shintsha imishini yekhadi"
+        },
+        "cardMachineReconciliationReport": {
+          "yocoInWindow": "Yoco ebangeni",
+          "paycloudInWindow": "PayCloud ebangeni",
+          "paymentExceptions": "inkokhelo exceptions",
+          "awaitingRefunds": "Ikweletwa emshinini",
+          "allMatched": "Akukho okuhlukile kwenkokhelo ({{yoco}} Yoco kanye {{paycloud}} PayCloud izinkokhelo ezihloliwe).",
+          "awaitingSection": "Izimbuyiselo ezisakweletwa emshinini",
+          "awaitingHint": "Lezi zihlala ohlwini kungakhathaliseki ukuthi yiziphi izinsuku ezingenhla.",
+          "yocoPendingSection": "Yoco kulindile",
+          "paycloudSection": "PayCloud inani mismatch",
+          "unavailable": "vula Yoco or Beautonomi imishini yamakhadi to use this umbiko."
         }
       }
     },
@@ -13424,7 +13711,9 @@
       "providerFallback": "Umhlinzeki",
       "openProviderProfile": "Vula {{name}} iphrofayela",
       "userFallback": "User",
-      "postByProvider": "Okushicilelwe by {{name}}"
+      "postByProvider": "Okushicilelwe by {{name}}",
+      "shareMediaFailedTitle": "Couldn't yabelana media",
+      "shareMediaFailedBody": "Asikwazanga ukulungiselela leli fayela ukuze labiwe. Zama ukwabelana ngesixhumanisi esikhundleni salokho."
     },
     "exploreVideo": {
       "mute": "Thulisa",
@@ -15263,7 +15552,8 @@
           "buildingLabel": "Isakhiwo",
           "accessLabel": "Ukufinyelela",
           "parkingLabel": "Ukupaka",
-          "landmarksLabel": "Izikhombisi"
+          "landmarksLabel": "Izikhombisi",
+          "partiallyRefundedContactProvider": "Leli oda libuyiselwe ingxenye yalo. Xhumana nomhlinzeki ukuze ubuyisele imali esele."
         },
         "customRequestsList": {
           "startPaymentFailed": "Kwehlulekile uku-qala inkokhelo",
@@ -15803,7 +16093,20 @@
           "sessionStatus": "Iseshini · {{status}}",
           "yourBookingCancelled": "ukubhuka is kukhanseliwe yakho",
           "yourBookingNoShow": "ukubhuka was marked as a cha-bonisa yakho",
-          "participantBookingStatus": "ukubhuka isimo"
+          "participantBookingStatus": "ukubhuka isimo",
+          "shareStatusPaid": "yabelana kukhokhelwe",
+          "shareStatusPending": "yabelana akukhokhelwe ({{amount}})",
+          "shareStatusCancelled": "Spot kukhanseliwe",
+          "resendInvite": "Re-thumela isimemo",
+          "inviteResent": "isimemo Kuthunyelwe",
+          "inviteResendFailed": "Ayikwazanga uku-re-thumela the isimemo.",
+          "removeGuest": "Susa Isivakashi",
+          "removeGuestConfirm": "Susa u-{{name}} kulokhu kubhukha? Amasevisi abo ayasuswa futhi noma iyiphi inkokhelo ibuyiselwa.",
+          "cancelMySpot": "Khansela my spot",
+          "cancelMySpotConfirm": "Khansela indawo yakho kulokhu kubhukha kweqembu? Amasevisi akho ayasuswa futhi noma iyiphi inkokhelo oyenzile ibuyiselwa ekhadini lakho.",
+          "spotCancelled": "spot has been kukhanseliwe. yakho.",
+          "guestRemoved": "Isivakashi susad.",
+          "guestCancelFailed": "Ayikwazanga uku-buyekeza the ukubhuka kweqembu."
         },
         "announcements": {
           "retry": "Zama futhi",
@@ -17765,6 +18068,17 @@
           "couldNotLoadPage": "Ayikwazanga uku-ulayisha page",
           "httpError": "I-HTTP {{status}}",
           "appUrlNotConfigured": "I-URL ye-app ayilungiswanga."
+        },
+        "bookingReschedule": {
+          "title": "Reisheduli ukubhuka",
+          "body": "Khetha idethi entsha nesikhathi. Umhlinzeki wakho angase adinge ukuqinisekisa.",
+          "dateLabel": "Usuku",
+          "timeLabel": "Isikhathi",
+          "submit": "thumela isicelo",
+          "invalidTitle": "usuku or isikhathi engavumelekile",
+          "invalidBody": "Faka a kuvumelekile usuku (YYYY-MM-DD) and isikhathi (HH:MM).",
+          "failedTitle": "Ayikwazanga uku-reisheduli",
+          "noSlots": "No isikhathis iyatholakala on this usuku. Try anokunye usuku."
         }
       }
     },
@@ -18038,7 +18352,12 @@
     "cancelPreviousFullRefundBody": "{{refund}} izobuyela esikhwameni sakho Beautonomi. Khansela i-aphoyintimenti yangaphambilini?",
     "confirmCancelPrevious": "Khansela okudlule",
     "refundsStoreCreditNotePayAtVenue": "Uma ukhokha endaweni, imbuyiselo iphathwa ngqo nomhlinzeki — hhayi ekhadini noma esikhwameni sakho.",
-    "refundsStoreCreditNoteNoPenalty": "Lo mhlinzeki akakhokhisi inhlawulo yokukhansela. Izimali ezikhokhwe ku-inthanethi zibuyiselwa esikhwameni sakho se-Beautonomi."
+    "refundsStoreCreditNoteNoPenalty": "Lo mhlinzeki akakhokhisi inhlawulo yokukhansela. Izimali ezikhokhwe ku-inthanethi zibuyiselwa esikhwameni sakho se-Beautonomi.",
+    "groupPaymentMode": "Ubani okhokhayo?",
+    "payForEveryone": "I'll khokha for everyone",
+    "splitPayment": "Split inkokhelo",
+    "splitPaymentHint": "Ukhokha amasevisi akho kanye nezindleko zokubhukha manje. Isivakashi ngasinye sithola isixhumanisi sokukhokha isabelo saso.",
+    "guestSharesPaidByInvite": "Isivakashis khokha via isimemo isixhumanisi"
   },
   "payments": {
     "pay": "Khokha",
@@ -19082,7 +19401,10 @@
         "payAmount": "Khokha {{amount}}",
         "slotConflictTitle": "That isikhathi is cha longer iyatholakala",
         "slotConflictBody": "Khetha esinye isikhathi ekhalendeni noma weqele endaweni evulekile elandelayo.",
-        "pickNextAvailable": "Find okulandelayo iyatholakala isikhathi"
+        "pickNextAvailable": "Find okulandelayo iyatholakala isikhathi",
+        "splitPayment": "Split inkokhelo",
+        "guestSharesPaidByInvite": "Isivakashis khokha via isimemo isixhumanisi",
+        "splitPaymentHint": "Ukhokha amasevisi akho kanye nezindleko zokubhukha manje. Isivakashi ngasinye sithola isixhumanisi sokukhokha isabelo saso."
       },
       "addToWaitlist": {
         "enterName": "Sicela enter your igama",
@@ -20727,7 +21049,8 @@
           "groupSession": "Iqembu Iseshini · {{ref}}",
           "viewDetails": "Buka imininingwane",
           "reschedule": "Reisheduli",
-          "cancel": "Khansela"
+          "cancel": "Khansela",
+          "customOffer": "Okwezifiso offer"
         },
         "page": {
           "title": "Ukubhuka",
@@ -21302,7 +21625,9 @@
         "addressUnit": "Iyunithi:",
         "addressAccess": "Ukufinyelela:",
         "addressParking": "Ukupaka:",
-        "addressLandmarks": "Izimpawu zomhlaba:"
+        "addressLandmarks": "Izimpawu zomhlaba:",
+        "partiallyRefundedContactProvider": "Leli oda libuyiselwe ingxenye yalo. Xhumana nomhlinzeki ukuze ubuyisele imali esele.",
+        "paymentPartiallyRefunded": "Partially imali ibuyiselwe"
       },
       "bookingReceipt": {
         "methodWallet": "Isikhwama",
@@ -23439,7 +23764,13 @@
           "methodCard": "Ikhadi",
           "methodYoco": "Yoco",
           "methodBankTransfer": "Ukudlulisela kwasebhange",
-          "methodOther": "okunye"
+          "methodOther": "okunye",
+          "shareStatusPaid": "Share paid",
+          "shareStatusPending": "Share unpaid ({{amount}})",
+          "shareStatusCancelled": "Spot cancelled",
+          "resendInvite": "Re-send invite",
+          "inviteResent": "Invite sent",
+          "inviteResendFailed": "Could not re-send the invite."
         },
         "groupFinancials": {
           "title": "Ezezimali",
@@ -24126,7 +24457,9 @@
             "awaitingYocoTitle": "{{amount}} usazobuyisela imali emshinini Yoco",
             "awaitingYocoBody": "Lokhu kubhukha kukhanselwe ngembuyiselo ebuyiselwe ekhadini. Yibuyisele kuhlelo lokusebenza Yoco noma emshinini, bese uyiqopha lapha. Kuze kube yileso sikhathi lihlala livelele embikweni wokubuyisana komshini wekhadi.",
             "yocoOnMachineTitle": "Buyisela imali emshinini wakho we-Yoco kuqala",
-            "yocoRecordCta": "Ibuyiselwe emshinini — qopha imbuyiselo"
+            "yocoRecordCta": "Ibuyiselwe emshinini — qopha imbuyiselo",
+            "pendingCashTitle": "{{amount}} to return in person",
+            "pendingCashBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending."
           }
         },
         "createPayment": {
@@ -24460,7 +24793,9 @@
         "additionalCharges": "Izinkokhelo ezingeziwe",
         "request": "isicelo",
         "stripeConnectPayoutHint": "Izinkokhelo are Kuthunyelwe via Stripe Xhuma. qeda setup under izilungiselelo → Payout i-akhawuntis before isiceloing a withdrawal.",
-        "completeStripeConnect": "qeda Stripe Xhuma setup"
+        "completeStripeConnect": "qeda Stripe Xhuma setup",
+        "openDisputeReserve": "− Open dispute reserve",
+        "vatHeldForPayout": "− VAT held for payout"
       },
       "onboarding": {
         "steps": {
@@ -24787,7 +25122,9 @@
           "paymentHint": "This helps us understand how you accept in-person card payments and whether we can offer better terminal options in future.",
           "vatSarsHint": "Are you VAT registered with SARS? VAT registration is mandatory if your annual turnover is R1 million or more. If you make less than R1 million per year, you don't need to be VAT registered.",
           "bookingProtectionTitle": "Booking protection",
-          "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings."
+          "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings.",
+          "pricesIncludeTax": "My service prices include VAT",
+          "pricesIncludeTaxDesc": "Most South African salons show VAT-inclusive prices (recommended)."
         },
         "software": {
           "selectPlaceholder": "Khetha or Uhlobo software igama...",
@@ -24961,7 +25298,13 @@
           "draftServicesLabel": "okusalungiswa izinsizakalo:",
           "attachZones": "Attach Zones",
           "categorySelected": "isigaba Kukhethiwe",
-          "zonesSelected": "Kukhethiwe all {{count}} zones"
+          "zonesSelected": "Kukhethiwe all {{count}} zones",
+          "ownerGoLiveTitle": "Your profile on the booking page",
+          "ownerTakesAppointments": "I take appointments myself",
+          "ownerTakesAppointmentsHint": "Turn off if you only manage the team and won't appear for customers to book.",
+          "ownerPublicTitle": "Title customers see (optional)",
+          "ownerServicesLabel": "Services you perform",
+          "ownerServicesAll": "Leave all checked to offer every service in your catalog."
         },
         "plan": {
           "activatesInstantly": "Vulas instantly",
@@ -25035,7 +25378,9 @@
           "tierMaxKm": "Up to km",
           "tierFee": "Fee ({{currency}})",
           "addTier": "Engeza tier"
-        }
+        },
+        "submitLaunchFree": "Create my business",
+        "submitLaunchPaid": "Create my business and continue to payment"
       },
       "dashboard": {
         "pageTitle": "Ideshibhodi",
@@ -25201,7 +25546,9 @@
           "truncatedLedger": "Izinzuzo zesikhathi zingase zingaphelele kuma-akhawunti anevolumu ephezulu kakhulu.",
           "bookingsCount": "ukubhuka ({{count}})",
           "saleCount": "Ukudayisa ({{count}})"
-        }
+        },
+        "giftCardLedgerIssuance": "Gift card ledger issuance (all time)",
+        "membershipSalesAllTime": "Membership sales (all time)"
       },
       "settings": {
         "pageTitle": "Ibhizinisi izilungiselelo",
@@ -25314,6 +25661,10 @@
               "waitlist": {
                 "title": "uhlu lokulinda izilungiselelo",
                 "description": "Configure uhlu lokulinda behavior"
+              },
+              "businessSetup": {
+                "title": "Business profile for Get Started",
+                "description": "Business name, description (10+ characters), and contact details for your checklist"
               }
             }
           },
@@ -25974,7 +26325,9 @@
             "enableForLocationsHint": "Khetha which izindawo usizo ukubhuka kweqembus in Ku-inthanethi ukubhuka",
             "excludeServices": "Exclude izinsizakalo from Ku-inthanethi ukubhuka kweqembu",
             "excludeServicesHint": "Select services that should not be available for group booking online. This only excludes them from group appointments, not individual bookings.",
-            "noServicesAvailable": "No izinsizakalo iyatholakala"
+            "noServicesAvailable": "No izinsizakalo iyatholakala",
+            "allowSplitPayment": "Allow split payment",
+            "allowSplitPaymentHint": "Each guest pays their own share online. When off, the organizer pays for the whole group."
           },
           "appointment-activity/online-booking": {
             "onlineBooking": "Ku-inthanethi ukubhuka",
@@ -26267,7 +26620,11 @@
             "billsPaidCount_one": "{{count}} payment",
             "billsPaidCount_other": "{{count}} payments",
             "platformInvoices": "Platform invoices",
-            "platformInvoicePayment": "Platform invoice payment"
+            "platformInvoicePayment": "Platform invoice payment",
+            "obligationsDueHeading": "What you owe",
+            "obligationsDueHint": "Subscriptions, card machines, and open invoices — platform fees are already kept at checkout.",
+            "nonPayableFeeNote": "Platform fees are customer-paid and already retained at checkout. This invoice is not payable.",
+            "refundReviewRequired": "A payment was collected on this legacy fee invoice. Finance must review for a possible refund."
           },
           "business-description": {
             "businessDescription": "Ibhizinisi incazelo",
@@ -28552,6 +28909,24 @@
             "loading": "Iyalayisha…",
             "nativeCancelled": "You kukhanseliwe the inkokhelo. No khokhisa was made.",
             "nativeInvalid": "This inkokhelo return isixhumanisi is okungavumelekile or inqeda."
+          },
+          "business": {
+            "failedToLoad": "Failed to load business profile",
+            "failedToUpdate": "Failed to update business profile. Please try again.",
+            "savedSuccess": "Business profile updated successfully",
+            "validationBusinessName": "Enter a business name longer than one character",
+            "validationDescriptionMin": "Description must be at least 10 characters for Get Started",
+            "validationEmail": "Enter a valid email address",
+            "validationPhone": "Enter a complete phone number in international format",
+            "contactHint": "Get Started also counts phone or email on your account. You do not need both business phone and email if your account already has one.",
+            "setupBannerTitle": "Complete this step for Get Started",
+            "setupBannerBody": "Save your business name, a description of at least 10 characters, and optional contact details.",
+            "businessNameLabel": "Business name",
+            "descriptionLabel": "Business description",
+            "descriptionHint": "At least 10 characters required to complete Get Started.",
+            "emailLabel": "Business email",
+            "phoneLabel": "Business phone",
+            "getStartedIncompleteHint": "Get Started stays incomplete until your description is at least 10 characters."
           }
         },
         "serviceZones": {
@@ -28613,7 +28988,47 @@
           "creating": "Iyadala…",
           "percentage": "Percentage",
           "fixedAmount": "Fixed inani",
-          "placeholderCode": "SUMMER20"
+          "placeholderCode": "SUMMER20",
+          "newPromo": "New promo code",
+          "percentOff": "{{value}}% off",
+          "amountOff": "{{amount}} off",
+          "usedCount": "{{count}} uses",
+          "hidden": "Hidden",
+          "public": "Public",
+          "viewDetails": "View details",
+          "createCta": "Create promo code",
+          "delete": "Delete",
+          "startsOn": "Starts",
+          "endsOn": "Ends",
+          "noEndDate": "No end date",
+          "endsLabel": "Ends {{date}}",
+          "usedCountMax": "{{count}} of {{max}} used",
+          "statusActive": "Active",
+          "statusScheduled": "Scheduled",
+          "statusExpired": "Expired",
+          "statusUsedUp": "Used up",
+          "statusOff": "Off",
+          "limitsSection": "Limits",
+          "usageLimit": "Total uses",
+          "usageLimitPlaceholder": "Unlimited",
+          "minPurchase": "Minimum booking amount",
+          "maxDiscount": "Max discount (%)",
+          "oncePerCustomer": "One use per client",
+          "branch": "Salon branch",
+          "branchAll": "All salons",
+          "summaryLine": "{{discount}} · {{end}}",
+          "detailTitle": "Promo details",
+          "copyCode": "Copy code",
+          "copied": "Code copied",
+          "redemptions": "Redemptions",
+          "totalDiscountGiven": "Total discount given: {{amount}}",
+          "noRedemptions": "No redemptions yet",
+          "redemptionBooking": "Booking #{{number}}",
+          "redemptionOrder": "Order #{{number}}",
+          "deleteBlocked": "This code has been used. Turn it off instead of deleting.",
+          "saveChanges": "Save changes",
+          "endAfterStart": "End date must be after start date",
+          "savedOk": "Changes saved"
         },
         "catalogue": {
           "title": "ikhathalogu",
@@ -29033,7 +29448,13 @@
           "aramexPin": "i-akhawunti PIN",
           "aramexUser": "Umsebenzisiigama",
           "aramexPassword": "Iphasiwedi",
-          "aramexProductType": "Domestic umkhiqizo Uhlobo (e.g. ONP)"
+          "aramexProductType": "Domestic umkhiqizo Uhlobo (e.g. ONP)",
+          "bobGoWebhookSecret": "Bob Go webhook secret (optional)",
+          "bobGoWebhookSecretOptional": "Optional — from Bob Go → Settings → Webhook subscriptions",
+          "bobGoWebhookSecretConfigured": "Secret saved — paste only to replace",
+          "bobGoWebhookSecretHint": "Live shipment updates use webhooks when this is set. Without it, orders catch up within about 10 minutes.",
+          "bobGoWebhookSubscribeFailed": "Could not register Bob Go webhooks",
+          "bobGoWebhookCatchUpHint": "Your API key is saved. Shipment status will still catch up within about 10 minutes."
         },
         "packages/new": {
           "failedToLoadItems": "Kwehlulekile uku-ulayisha Izinto",
@@ -29333,7 +29754,11 @@
           "statusRefunded": "imali ibuyiselwe",
           "paid": "kukhokhelwe",
           "estimatedDeliveryDate": "Estimated Ukulethwa usuku (okukhethekayo)",
-          "partialWalletRefundHint": "Partial wallet refunds credit the customer's store balance only. Card and gift-card payments are not returned unless you refund the full order total."
+          "partialWalletRefundHint": "Partial wallet refunds credit the customer's store balance only. Card and gift-card payments are not returned unless you refund the full order total.",
+          "refundOnlineOnly": "This order was paid online. Store credit returns the card charge and any wallet or gift-card portion to the customer.",
+          "refundNoWallet": "This order was paid online and has no customer wallet, so it cannot be refunded in person.",
+          "partiallyRefundedRefundRemaining": "This order was partially refunded. Mark it refunded for the remaining amount — cancel is not available.",
+          "refundRemainingHint": "Refund remaining"
         },
         "team/shifts/dialog": {
           "overrideLocation": "Override indawo Opeisilinganiso amahora",
@@ -29915,7 +30340,8 @@
             "business-overview": "Ibhizinisi Overbuka",
             "performance-dashboard": "Performance Dashboard",
             "comparison": "Period Comparison",
-            "card-machine-reconciliation": "Ukubuyisana komshini wekhadi"
+            "card-machine-reconciliation": "Ukubuyisana komshini wekhadi",
+            "membership-sales": "Membership sales"
           }
         },
         "pages": {
@@ -29932,7 +30358,11 @@
             "recent": "Recent No-Shows",
             "emptyTitle": "No cha-bonisas",
             "emptyDesc": "No cha-bonisas in the Kukhethiwe period.",
-            "unknownClient": "akwaziwa iklayenti"
+            "unknownClient": "akwaziwa iklayenti",
+            "ledgerRecognised": "Ledger already recognised",
+            "ledgerRecognisedHint": "Fees already recorded for these missed visits, including any no-show fee — not the appointment price.",
+            "repeatOffendersHint": "The appointment price for each client is listed as booked value below.",
+            "bookedValueAmount": "{{amount}} booked value"
           },
           "clients/new": {
             "title": "amaklayenti entsha",
@@ -30007,7 +30437,10 @@
             "topClients": "Top amaklayenti by Lifeisikhathi Value",
             "visitsMonths": "{{visits}} visits • {{months}} izinyanga",
             "emptyTitle": "No amaklayenti found",
-            "emptyDesc": "No iklayenti Idatha iyatholakala."
+            "emptyDesc": "No iklayenti Idatha iyatholakala.",
+            "averageBookedValue": "Average booked value",
+            "averageEarned": "Average earned",
+            "clientEarned": "Earned {{amount}}"
           },
           "payments/methods": {
             "title": "izindlela zokukhokha",
@@ -30069,7 +30502,14 @@
             "hoursValue": "{{hours}}h",
             "breakdown": "abasebenzi amahora Breakdown",
             "emptyTitle": "No amahora Idatha",
-            "emptyDesc": "No amahora Idatha iyatholakala for the Kukhethiwe period."
+            "emptyDesc": "No amahora Idatha iyatholakala for the Kukhethiwe period.",
+            "deliveredHours": "Delivered",
+            "missedHours": "Missed (no-show)",
+            "stillOnBookHours": "Still on the book",
+            "cancelledHours": "Cancelled",
+            "completionRateLine": "Of visits that were completed or missed, {{pct}}% were completed.",
+            "staffBuckets": "Delivered {{delivered}}h · Missed {{missed}}h · Still on book {{still}}h · Cancelled {{cancelled}}h",
+            "staffCompletionRate": "{{pct}}% completed of completed or missed visits"
           },
           "sales/summary": {
             "title": "Ukudayisas Isifinyezo",
@@ -30300,7 +30740,8 @@
             "noCommission": "No commission",
             "noTips": "No amathiphu",
             "cancelledCount": "({{count}} kukhanseliwe)",
-            "noStaffData": "No staff performance data available for the selected period."
+            "noStaffData": "No staff performance data available for the selected period.",
+            "deliveredHours": "{{hours}}h delivered (catalogue)"
           },
           "products/inventory": {
             "title": "uhlu lwesitoko",
@@ -30937,7 +31378,10 @@
             "match": "Inani elifanayo",
             "order": "Inombolo Ye-oda",
             "openBooking": "Vula ukubhukha ukuze ukurekhode",
-            "awaitingSince": "Ilindile kusukela lapho"
+            "awaitingSince": "Ilindile kusukela lapho",
+            "yocoPaymentsInWindow": "Yoco payments in range",
+            "paycloudPaymentsInWindow": "PayCloud payments in range",
+            "allMatchedLine": "No payment exceptions in this period ({{yoco}} Yoco and {{paycloud}} PayCloud payments checked)."
           }
         },
         "export": {
@@ -32183,7 +32627,8 @@
           "checkoutFailed": "ukukhokha kuhlulekile. Sicela uzame futhi.",
           "taxes": "Intela",
           "total": "Isamba",
-          "planNotFound": "Uhlelo akutholakali."
+          "planNotFound": "Uhlelo akutholakali.",
+          "backToSetup": "Back to setup checklist"
         },
         "stripeBillingTitle": "Kukhokhiswa nge-Stripe",
         "stripeBillingBody": "Buyekeza your Ikhadi or buka i-invoyisis in the secure Stripe Ukukhokhisa portal. Use Manage Ukukhokhisa below — the same flow as Paystack regions, but hosted by Stripe for your market.",
@@ -32264,7 +32709,9 @@
         "soundsSectionPlatform": "Okudumile sounds",
         "soundsSectionYours": "sounds yakho",
         "soundPreviewPlay": "Play pisibuyekezo",
-        "soundPreviewStop": "Stop pisibuyekezo"
+        "soundPreviewStop": "Stop pisibuyekezo",
+        "trimHandleStartA11y": "Clip start",
+        "trimHandleEndA11y": "Clip end"
       },
       "calendarMobile": {
         "timeOff": "isikhathi off",
@@ -32410,7 +32857,9 @@
         "storeCredit": "Store crhlela",
         "cash": "Imali / ubuso nobuso",
         "reason": "Isizathu",
-        "reasonPlaceholder": "okukhethekayo Isizathu for audit trail"
+        "reasonPlaceholder": "okukhethekayo Isizathu for audit trail",
+        "pendingCashBlockTitle": "Cash refund already pending",
+        "pendingCashBlockBody": "This booking already has {{amount}} awaiting customer confirmation. Hand that amount back in person — do not issue another cash refund until it is confirmed or closed."
       },
       "appointmentViewSheet": {
         "bookingFallback": "Ukubhuka",
@@ -32527,7 +32976,12 @@
         "bookingInProgress": "Ukubhuka…",
         "bookingSuccess": "Courier Kubhukiwe",
         "bookingFailed": "Ayikwazanga uku-bhuka courier",
-        "printLabel": "Phrinta label"
+        "printLabel": "Phrinta label",
+        "refundOnlineOnly": "This order was paid online. Store credit returns the card charge and any wallet or gift-card portion to the customer.",
+        "refundNoWallet": "This order was paid online and has no customer wallet, so it cannot be refunded in person.",
+        "nothingLeftToCollect": "Wallet or a gift card already covers this order. Nothing is left to collect in person.",
+        "courierChargedAmount": "Bob Go charged (salon)",
+        "courierChargedWeight": "Charged weight (kg)"
       },
       "appointmentEditSheet": {
         "updated": "ukubhuka buyekezad",
@@ -33118,7 +33572,9 @@
         "updateStaffMember": "Buyekeza Isisebenzi",
         "createStaffMember": "Dala Isisebenzi",
         "emailPlaceholder": "i-imeyili@example.com",
-        "moneyPlaceholder": "0.00"
+        "moneyPlaceholder": "0.00",
+        "removePhoto": "Remove photo",
+        "avatarUploadFailed": "Could not upload the photo. Try again."
       },
       "expressBooking": {
         "loadFailed": "Kwehlulekile uku-ulayisha express ukubhuka isixhumanisis",
@@ -33438,7 +33894,12 @@
         "viewComments": "Buka & amazwanas",
         "comments": "{{count}} amazwanas",
         "likes": "{{count}} likes",
-        "views": "{{count}} bukas"
+        "views": "{{count}} bukas",
+        "statusVideoProcessing": "Processing",
+        "statusVideoFailed": "Video failed",
+        "statusHidden": "Hidden by Beautonomi",
+        "statusHiddenNote": "Moderation note: {{note}}",
+        "videoFailedDetail": "Video encoding failed. Edit the post and save to try again."
       },
       "formsPage": {
         "failedToLoad": "Kwehlulekile uku-ulayisha forms",
@@ -34125,6 +34586,67 @@
           "isWalkIn": "Ukungena nje",
           "isAtHome": "At-ikhaya insizakalo"
         }
+      },
+      "teamAddWizard": {
+        "title": "Add team member",
+        "readyTitle": "Ready to go",
+        "seatLine": "{{current}} of {{max}} seats used on your plan",
+        "limitBlocked": "Your plan does not have room for another team member. Upgrade or remove someone first.",
+        "nameEmailRequired": "Name and email are required.",
+        "invalidPhone": "Enter a valid phone number or leave the field blank.",
+        "createFailed": "Could not add team member.",
+        "linkCopied": "Invite link copied",
+        "inviteEmailed": "We emailed {{name}} an invite to join.",
+        "inviteLinkReady": "Copy the invite link and share it (WhatsApp, SMS, or in person).",
+        "copyLink": "Copy link",
+        "shareLink": "Share link",
+        "publicTitle": "Title customers see (optional)",
+        "publicTitleHint": "Shown on your booking page instead of their role, e.g. Senior stylist.",
+        "takesAppointments": "Takes appointments",
+        "takesAppointmentsHint": "Turn off for managers who only run the calendar, not the chair.",
+        "branches": "Branches",
+        "servicesOffered": "Services they perform",
+        "selectAllServices": "All services",
+        "selectBranch": "Select at least one branch",
+        "bookableSummary": "Customers can book them for {{count}} service(s), starting {{from}}.",
+        "bookableNow": "immediately",
+        "notOnPublicBooking": "They will not appear for online booking (front desk role).",
+        "hintNoCommission": "Commission was left off — you can turn it on in their profile.",
+        "hintNoTimeClock": "Time clock is off — enable it in their profile if they should clock in.",
+        "hintNoServices": "No services were linked — assign services before customers can book them online.",
+        "hintNoHoursCopied": "Working hours were not copied — set their weekly schedule in the team profile (salon hours still apply until then).",
+        "name": "Full name",
+        "email": "Email",
+        "mobile": "Mobile",
+        "photoOptional": "Add photo (optional)",
+        "photoUploadFailed": "Could not upload the photo.",
+        "paysCommission": "Pays commission",
+        "job": "Job",
+        "job_stylist": "Stylist",
+        "job_senior": "Senior stylist",
+        "job_front_desk": "Front desk",
+        "job_manager": "Manager",
+        "frontDeskHint": "Front desk can manage the calendar but will not show up for customers to book.",
+        "commissionOptional": "Commission % (optional)",
+        "servicesDefaultAll": "All bookable services are selected by default.",
+        "hoursSource": "Working hours",
+        "hoursSalon": "Same as the salon",
+        "hoursCopyFrom": "Copy {{name}}",
+        "startDateOptional": "First day customers can book online (optional)",
+        "timeClock": "Use time clock",
+        "back": "Back",
+        "next": "Next",
+        "cancel": "Cancel",
+        "done": "Done",
+        "saving": "Adding…",
+        "addAndInvite": "Add and send invite"
+      },
+      "teamReassign": {
+        "title": "Upcoming bookings",
+        "body": "{{name}} has upcoming bookings. Who should take them?",
+        "firstAvailable": "First available stylist",
+        "confirm": "Reassign and continue",
+        "cancel": "Cancel"
       }
     },
     "global": {
@@ -35704,7 +36226,14 @@
     },
     "giftCard": {
       "breadcrumb": {
-        "navLabel": "Indlela yokuzula"
+        "navLabel": "Indlela yokuzula",
+        "home": "Home",
+        "giftCards": "Gift cards",
+        "purchase": "Buy a gift card",
+        "purchaseBulk": "Buy gift cards in bulk",
+        "confirmation": "Confirmation",
+        "cancelled": "Purchase cancelled",
+        "claim": "Claim"
       },
       "purchaseSuccess": {
         "noRefTitle": "ikhadi lesipho purchase",
@@ -35726,6 +36255,43 @@
         "wrongReceipt": "Le residi ayiyona eyokuthenga ikhadi lesipho. Uma ukhokhele ikhadi lesipho, hlola Izinkokhelo namakhadi esipho — amakhodi akho kungenzeka ukuthi asevele akhona.",
         "copyCode": "Kopieer kode"
       }
+    },
+    "checkout": {
+      "customOffer": {
+        "title": "Pay Okwezifiso offer",
+        "subtitle": "isibuyekezo isambas and khokha securely.",
+        "subtotal": "Ingxenye yesamba",
+        "travel": "Travel",
+        "total": "Total",
+        "payNow": "Khokha manje",
+        "cancel": "Cancel",
+        "loadFailed": "Ayikwazanga uku-ulayisha this offer.",
+        "paymentSuccessful": "inkokhelo impumeleloful.",
+        "paymentStartFailed": "Ayikwazanga uku-qala inkokhelo.",
+        "waitingTitle": "inkokhelo iyacubungula",
+        "waitingBody": "Siqinisekisa inkokhelo yakho. Vuselela izicelo zakho zangokwezifiso ngokushesha.",
+        "backToRequests": "emuva to Okwezifiso izicelo",
+        "changesRequestedTitle": "Okunikezwayo kubuyekezwa",
+        "changesRequestedBody": "Umhlinzeki wakho ubuyekeza lokhu kunikezwa ngemva kwesicelo sakho sokushintsha."
+      }
+    },
+    "groupInvite": {
+      "title": "ukubhuka kweqembu isimemo",
+      "body": "You are isimemod to join a Iqembu Iseshini.",
+      "accept": "Accept isimemo",
+      "notFound": "This isimemo isixhumanisi is okungavumelekile or kuphelelwe.",
+      "acceptFailed": "Ayikwazanga uku-accept isimemo.",
+      "payShare": "Pay my yabelana",
+      "payFailed": "Ayikwazanga uku-qala inkokhelo.",
+      "paymentProcessing": "Siyabonga! Inkokhelo yakho iyaqinisekiswa. Leli khasi lizobuyekezwa maduze.",
+      "yourShare": "yabelana: {{amount}} yakho",
+      "sharePaid": "yabelana is kukhokhelwe. See you tlapha! yakho!",
+      "payShareAmount": "Pay my yabelana ({{amount}})",
+      "cancelSpot": "Khansela my spot",
+      "cancelConfirm": "Khansela indawo yakho kulokhu kubhukha kweqembu? Amasevisi akho ayasuswa futhi noma iyiphi inkokhelo oyenzile ibuyiselwa ekhadini lakho.",
+      "cancelled": "spot has been kukhanseliwe. yakho.",
+      "cancelledRefunded": "Indawo yakho ikhanseliwe. {{amount}} ibuyiselwa ekhadini lakho.",
+      "cancelFailed": "Ayikwazanga uku-khansela your spot."
     }
   },
   "errors": {

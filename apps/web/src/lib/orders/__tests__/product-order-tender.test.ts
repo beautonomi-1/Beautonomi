@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   allowsInPersonProductOrderRefund,
   computeInPersonCollectibleAmount,
+  displayedProductOrderAmountStillDue,
   computeInPersonProductOrderRefundDue,
   computeProductOrderCancelWalletCredit,
+  productOrderCancelIncludesGiftInWallet,
   computeProviderCollectedStoreCreditClawback,
 } from "../product-order-tender";
 
@@ -80,8 +82,28 @@ describe("product order tender splits", () => {
     ).toBe(100);
     expect(computeInPersonCollectibleAmount({ total_amount: 80 })).toBe(80);
     expect(
+      displayedProductOrderAmountStillDue({
+        total_amount: 100,
+        wallet_amount: 0,
+        gift_card_amount: 0,
+        amount_still_due: 40,
+      }),
+    ).toBe(40);
+    expect(
+      displayedProductOrderAmountStillDue({
+        total_amount: 100,
+        amount_still_due: null,
+      }),
+    ).toBe(0);
+    expect(
       computeInPersonCollectibleAmount({ total_amount: 80, wallet_amount: 80 }),
     ).toBe(0);
+  });
+
+  it("adds a cancelled gift to the wallet only when no redemption remains", () => {
+    expect(productOrderCancelIncludesGiftInWallet("missing")).toBe(true);
+    expect(productOrderCancelIncludesGiftInWallet("restored")).toBe(false);
+    expect(productOrderCancelIncludesGiftInWallet("failed")).toBe(false);
   });
 
   it("preserves the legacy remainder when the tender method was not stored", () => {

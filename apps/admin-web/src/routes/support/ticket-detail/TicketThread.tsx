@@ -2,6 +2,7 @@ import { Fragment, type RefObject } from "react";
 import { Copy, FileText } from "lucide-react";
 import { LinkifiedMessageText } from "@/lib/linkifyMessage";
 import { adminToast } from "@/lib/adminToast";
+import { supportTicketMessageHref } from "@/lib/supportTicketMessageLink";
 import {
   attachmentsFromRow,
   deliveryStatusBadge,
@@ -16,20 +17,31 @@ import {
 type TicketThreadProps = {
   threadRef: RefObject<HTMLDivElement | null>;
   threadItems: ThreadItem[];
+  ticketId: string;
   customerUserId: string | null;
   originalRequestText: string | null;
   ticketCreatedAt?: string;
+  scrollMode?: "panel" | "page" | "page-mobile";
 };
 
 export function TicketThread({
   threadRef,
   threadItems,
+  ticketId,
   customerUserId,
   originalRequestText,
   ticketCreatedAt,
+  scrollMode = "panel",
 }: TicketThreadProps) {
+  const scrollClass =
+    scrollMode === "page-mobile"
+      ? "min-h-0 flex-none px-1 py-3"
+      : scrollMode === "page"
+        ? "admin-scrollbar min-h-0 flex-1 overflow-y-auto px-1 py-3"
+        : "admin-scrollbar min-h-0 flex-1 overflow-y-auto px-1 py-3";
+
   return (
-    <div ref={threadRef} className="min-h-0 flex-1 overflow-y-auto px-1 py-3">
+    <div ref={threadRef} className={scrollClass}>
       {originalRequestText ? (
         <div className="mb-3 flex w-full justify-start">
           <div className="max-w-[min(100%,42rem)] rounded-xl border border-gray-200 bg-gray-50/90 p-3 shadow-sm">
@@ -49,7 +61,7 @@ export function TicketThread({
         </div>
       ) : null}
 
-      <ul className="space-y-3">
+      <ul className="space-y-4">
         {threadItems.length === 0 && !originalRequestText ? (
           <li className="text-sm text-gray-500">No messages yet.</li>
         ) : (
@@ -69,7 +81,7 @@ export function TicketThread({
                     </li>
                   ) : null}
                   <li id={`note-${item.id}`} className="group flex w-full justify-end">
-                    <div className="max-w-[min(100%,42rem)] rounded-xl border border-amber-300 bg-amber-50/90 p-3 shadow-sm">
+                    <div className="relative max-w-[min(100%,42rem)] rounded-xl border border-amber-300 bg-amber-50/90 px-4 py-3 shadow-sm">
                       <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
                         <span className="font-medium text-amber-950">Team note</span>
                         <span>·</span>
@@ -82,7 +94,7 @@ export function TicketThread({
                           Legacy note · staff only
                         </span>
                       </div>
-                      <p className="mt-2 whitespace-pre-wrap text-sm text-gray-800">{str(n.note)}</p>
+                      <p className="mt-2 whitespace-pre-wrap text-[15px] leading-6 text-gray-800">{str(n.note)}</p>
                     </div>
                   </li>
                 </Fragment>
@@ -129,8 +141,8 @@ export function TicketThread({
                   id={`message-${messageId}`}
                   className={`group flex w-full ${fromStaff || internal ? "justify-end" : "justify-start"}`}
                 >
-                  <div className={`max-w-[min(100%,42rem)] rounded-xl border p-3 shadow-sm ${bubble}`}>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                  <div className={`relative max-w-[min(100%,42rem)] rounded-xl border px-4 py-3 shadow-sm ${bubble}`}>
+                    <div className="flex flex-wrap items-center gap-2 pe-8 text-xs text-gray-500">
                       <span className="font-medium text-gray-700">{roleLabel}</span>
                       <span>·</span>
                       <span>{m.user?.full_name || m.user?.email || "User"}</span>
@@ -142,12 +154,14 @@ export function TicketThread({
                       {internal ? (
                         <span className="rounded-full bg-amber-200/80 px-2 py-0.5 text-amber-950">Not visible to customer</span>
                       ) : null}
+                    </div>
                       {messageId ? (
                         <button
                           type="button"
-                          className="ml-auto inline-flex min-h-11 items-center gap-1 rounded-md px-1.5 py-1 text-gray-500 opacity-0 transition-opacity hover:bg-white/70 hover:text-gray-800 group-hover:opacity-100 focus:opacity-100"
+                          className="absolute end-2 top-2 inline-flex items-center gap-1 rounded-md p-1.5 text-gray-500 opacity-0 transition-opacity hover:bg-white/70 hover:text-gray-800 group-hover:opacity-100 focus:opacity-100"
+                          aria-label="Copy message link"
                           onClick={() => {
-                            const href = `${window.location.origin}${window.location.pathname}#message-${messageId}`;
+                            const href = supportTicketMessageHref(ticketId, messageId);
                             void navigator.clipboard?.writeText(href).then(
                               () => adminToast.success("Message link copied"),
                               () => adminToast.error("Could not copy link"),
@@ -155,11 +169,9 @@ export function TicketThread({
                           }}
                         >
                           <Copy className="h-3 w-3" />
-                          Copy link
                         </button>
                       ) : null}
-                    </div>
-                    <p className="mt-2 whitespace-pre-wrap text-sm text-gray-800">
+                    <p className="mt-2 whitespace-pre-wrap text-[15px] leading-6 text-gray-800">
                       <LinkifiedMessageText text={str(m.message)} />
                     </p>
                     {atts.length > 0 ? (

@@ -197,37 +197,6 @@ export async function POST(
       }
 
       const stripe = await getStripeClient(tenantId);
-      const { recordPayoutLedger } = await import("@/lib/provider/record-payout-ledger");
-      try {
-        await recordPayoutLedger(supabase, {
-          id: p.id,
-          provider_id: p.provider_id,
-          net_amount: (payout as { net_amount?: number }).net_amount ?? p.amount,
-          amount: p.amount,
-          payout_number: p.payout_number,
-          currency: payoutCurrency,
-          transferFeeMajor: 0,
-        });
-      } catch (ledgerErr) {
-        console.error("[initiate-transfer/stripe] payout ledger failed:", ledgerErr);
-        await supabase
-          .from("payouts")
-          .update({ payout_provider: null, updated_at: new Date().toISOString() })
-          .eq("id", id)
-          .eq("status", "processing")
-          .is("transfer_code", null)
-          .eq("payout_provider", "stripe");
-        return NextResponse.json(
-          {
-            data: null,
-            error: {
-              message: "Failed to record payout in the finance ledger",
-              code: "LEDGER_WRITE_FAILED",
-            },
-          },
-          { status: 500 },
-        );
-      }
 
       let transfer: { id: string };
       try {
@@ -249,6 +218,33 @@ export async function POST(
           .is("transfer_code", null)
           .eq("payout_provider", "stripe");
         throw transferErr;
+      }
+
+      const { recordPayoutLedger } = await import("@/lib/provider/record-payout-ledger");
+      try {
+        await recordPayoutLedger(supabase, {
+          id: p.id,
+          provider_id: p.provider_id,
+          net_amount: (payout as { net_amount?: number }).net_amount ?? p.amount,
+          amount: p.amount,
+          payout_number: p.payout_number,
+          currency: payoutCurrency,
+          transferFeeMajor: 0,
+          feeGateway: "stripe",
+        });
+      } catch (ledgerErr) {
+        console.error("[initiate-transfer/stripe] payout ledger failed after transfer:", ledgerErr);
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message:
+                "Stripe transfer succeeded but finance ledger write failed. Do not retry blindly — contact engineering.",
+              code: "LEDGER_WRITE_FAILED",
+            },
+          },
+          { status: 500 },
+        );
       }
 
       await supabase

@@ -94,10 +94,9 @@ export async function POST(
       }
     }
 
-    // Ready status (confirmed or provider-confirmed "booked") or at-home arrived stage
+    // Ready status (confirmed) or at-home arrived stage
     if (
       bookingData.status !== "confirmed" &&
-      bookingData.status !== "booked" &&
       bookingData.status !== "waiting" &&
       bookingData.status !== "checked_in" &&
       bookingData.current_stage !== "provider_arrived"
@@ -110,7 +109,7 @@ export async function POST(
           current_status: bookingData.status,
           current_stage: bookingData.current_stage,
           location_type: bookingData.location_type,
-          allowed_statuses: ["confirmed", "booked", "waiting", "checked_in"],
+          allowed_statuses: ["confirmed", "waiting", "checked_in"],
           allowed_stage: "provider_arrived",
         },
       );

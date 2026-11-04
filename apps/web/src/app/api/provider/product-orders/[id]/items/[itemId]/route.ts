@@ -67,7 +67,7 @@ export async function PATCH(
 
     const { data: order, error: orderErr } = await (supabase.from("product_orders") as any)
       .select(
-        "id, provider_id, customer_id, tenant_id, order_number, status, fulfillment_type, collection_location_id, tracking_number, carrier, partially_shipped_notified_at",
+        "id, provider_id, customer_id, tenant_id, order_number, status, payment_status, payment_method, fulfillment_type, collection_location_id, tracking_number, carrier, partially_shipped_notified_at",
       )
       .eq("id", id)
       .eq("provider_id", providerId)
@@ -76,6 +76,20 @@ export async function PATCH(
     if (!order) return notFoundResponse("Order not found");
     if (order.status === "cancelled" || order.status === "refunded") {
       return errorResponse(`Cannot update lines on a ${order.status} order.`, "INVALID_TRANSITION", 400);
+    }
+
+    const payStatus = String((order as { payment_status?: string }).payment_status ?? "").toLowerCase();
+    const payMethod = String((order as { payment_method?: string }).payment_method ?? "").toLowerCase();
+    if (
+      payMethod === "paystack" &&
+      payStatus !== "paid" &&
+      parsed.fulfilment_status !== "pending"
+    ) {
+      return errorResponse(
+        "Mark the order as paid before updating fulfilment for online card orders.",
+        "PAYMENT_REQUIRED",
+        400,
+      );
     }
 
     const { data: lines, error: linesErr } = await (supabase.from("product_order_items") as any)

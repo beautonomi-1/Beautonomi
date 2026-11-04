@@ -699,7 +699,26 @@
           "uploadFailedTitle": "laiša e paletšwe",
           "uploadFailedBody": "Ga e kgona go laiša seswantšho.",
           "variantsTitle": "Mefuta",
-          "addOptionRequired": "Oketša ka fase ga kgetho e tee ye e nago le leina le boleng bjo bong."
+          "addOptionRequired": "Oketša ka fase ga kgetho e tee ye e nago le leina le boleng bjo bong.",
+          "createOptionsA11y": "Hlama dikgetho go tšwa go mehuta ya dikgetho le boleng",
+          "defaultMeasureLabel": "Yuniti for ye mpsha Dikgetho",
+          "defaultMeasureHint": "E šomišwa fela bakeng sa dikgetho tšeo o di hlamago ka morago. Dikgetho se a lokeleditšwe boloka yuniti ya bona.",
+          "defaultMeasureA11y": "Yuniti for ye mpsha Dikgetho, {{value}}",
+          "moreDetails": "tše dingwe dintlha",
+          "hideDetails": "pita dintlha",
+          "moreDetailsA11y": "tše dingwe dintlha for {{name}}",
+          "hideDetailsA11y": "pita dintlha for {{name}}",
+          "fieldSkuLabel": "SKU",
+          "fieldBarcodeLabel": "Khoutu ya mela",
+          "fieldMeasureLabel": "lekanya",
+          "fieldAmountLabel": "palo",
+          "fieldQuantityLabel": "Palo",
+          "fieldLowStockLevelLabel": "Maemo a fase a stock",
+          "fieldReorderQuantityLabel": "Reodara palo",
+          "fieldSupplyPriceLabel": "Cost theko",
+          "fieldRetailPriceLabel": "Selling theko",
+          "fieldMarkupLabel": "Phaelo (%)",
+          "retailPriceA11y": "Selling theko for {{name}}"
         },
         "bookingDateTimePicker": {
           "showingPeriodOnlyA11y": "E bontšha fela {{label}}. Kgotla go bontšha tšohle.",
@@ -949,7 +968,8 @@
           "nextA11y": "e latelago step",
           "existingProfileTitle": "Profaele e šetše e hlotšwe",
           "existingProfileBody": "Profaele ya kgwebo ya gago e šetše e lokile. Šomiša lenaneo la go beakanya go fetola dintlha — diphetogo mo ga di bolokwe.",
-          "openChecklist": "Bula lenaneo la go beakanya"
+          "openChecklist": "Bula lenaneo la go beakanya",
+          "useDifferentAccount": "Use a different akhauute"
         },
         "accountStatusGuard": {
           "title": "akhauute check needed",
@@ -1139,7 +1159,9 @@
           "pendingRequests": "− e emetše / e a šoma dikgopelo",
           "alreadyPaidOut": "− Already e lefilwe out",
           "available": "= e gona to withdraw",
-          "footer": "Peeletšo le dipapatšo di lefišwa karateng ya gago ka thoko gomme le ka mohla le ka mohla di fokotša tekatekano ye."
+          "footer": "Peeletšo le dipapatšo di lefišwa karateng ya gago ka thoko gomme le ka mohla le ka mohla di fokotša tekatekano ye.",
+          "openDisputeReserve": "− bula dispute reserve",
+          "vatHeldForProvider": "− VAT e swerwe bakeng sa tefo"
         },
         "reportRevenueGlossary": {
           "title": "What these nomoros mean"
@@ -1213,6 +1235,19 @@
             "booking_intake": "moreki forms",
             "booking_recurring": "Matseno a a pheta-pheta"
           }
+        },
+        "staffPhotoField": {
+          "uploadFailedTitle": "laiša e paletšwe",
+          "uploadFailedBody": "Ga e kgona go laiša the senepe. leka gape.",
+          "changePhotoA11y": "Fetoša senepe",
+          "customerHint": "bareki see this senepe when bukingo.",
+          "removePhoto": "Tloša senepe"
+        },
+        "staffCommissionEditor": {
+          "paysCommission": "O lefa khomišene",
+          "percentValue": "{{rate}}%",
+          "splitRates": "tirelo {{service}}% · setšweletšwa {{product}}% (set on Khomišene ya sehlophas)",
+          "openTeamCommissions": "Khomišene ya sehlophas → irily, salary, dithepa"
         }
       },
       "screens": {
@@ -1560,7 +1595,8 @@
           "errTenant": "Phoso ea tlhophiso ea sebaka sa mosebetsi. Sheba litlhophiso tsa mofani/mohiri kapa tšehetso.",
           "errValidation": "Hlahloba dintlha tša thekišo o leke gape.",
           "errUnauthorized": "Seshene e feletšwe ke nako. Tsena gape o leke.",
-          "errDefault": "Ga e kgona go fediša thekišo. Hle leka gape."
+          "errDefault": "Ga e kgona go fediša thekišo. Hle leka gape.",
+          "refundOnlineNoCustomer": "Thekiso ye e lefilwe inthaneteng gomme ga e na sepache sa bareki, ka fao e ka se bušetšwe ka sebele."
         },
         "productForm": {
           "editTitle": "Lokiša setšweletšwa",
@@ -1659,7 +1695,19 @@
           "measureUnit": "Yuniti",
           "defaultVariantType": "Bogolo",
           "weightGrams": "Versending gewig (g)",
-          "weightGramsPlaceholder": "500"
+          "weightGramsPlaceholder": "500",
+          "variantsPerOptionNote": "Kgetho ye nngwe le ye nngwe ye e lego ka mo tlase e na le khoutu ya yona ya dibara, SKU, le bogolo. Lebitso, dinepe, sehlopha, le lekgetho lula ka sehlahiswa sena.",
+          "variantsHiddenDelete": "dikgetho tsena di patiloe. Ge o boloka bjale, di a phumolwa, go akaretšwa ditheko le di-barcode.",
+          "variantsHiddenUntilOn": "Dikgetho tše di bolokwa fela ge Has variants e bulegile.",
+          "deleteOptionsTitle": "Phumola these Dikgetho?",
+          "deleteOptionsBody": "Go boloka go tloša bogolo bjo bongwe le bjo bongwe goba kgetho, go akaretša le ditheko, setoko le di-barcode.",
+          "keepOptions": "Boloka Dikgetho",
+          "deleteOptionsConfirm": "Phumola and boloka",
+          "freeOptionsTitle": "Some Dikgetho are mahala.",
+          "freeOptionsBody_one": "{{count}} Kgetho is still thekod at 0. bareki can reka it for mahala.",
+          "freeOptionsBody_other": "{{count}} dikgetho di sa le theko ya 0. Bareki ba ka di reka mahala.",
+          "reviewPrices": "tshekatsheko thekos",
+          "saveAnyway": "Boloka anyway"
         },
         "ads": {
           "title": "Dipapatšo tše di lefelwago",
@@ -2302,7 +2350,14 @@
           "refundReasonPlaceholder": "Ke ka baka la'ng go bušetšwa tšhelete ye?",
           "viewFullBooking": "Bona e tletše bukingo",
           "statusNoShow": "No bontšha",
-          "statusPendingPayment": "e emetše tefo"
+          "statusPendingPayment": "e emetše tefo",
+          "removeParticipantOverpaid": "Moeng tlošad. The bukingo is gabjale overe lefilwe by {{amount}}. pusetšo the difference to the moreki.",
+          "shareStatusPaid": "abelana e lefilwe",
+          "shareStatusPending": "abelana ga e a lefelwa ({{amount}})",
+          "shareStatusCancelled": "Spot e khansetšwe",
+          "resendInvite": "Re-romela taletšo",
+          "inviteResent": "taletšo E rometšwe",
+          "inviteResendFailed": "Ga e kgona go re-romela the taletšo."
         },
         "settingsIndex": {
           "title": "Dipeakanyo",
@@ -3132,7 +3187,9 @@
           "refundOriginalMachineHint": "Tšhelete yeo e boela karateng ya moreki ka motšhene wa karata wo e lefilwego go wona.",
           "cancelWalletNote": "Moreki o tla amogela pušetšo ka botlalo sepache sa gagwe sa Beautonomi bakeng sa ditšhelete tšeo di šetšego di lefilwe. Pholisi ya gago ya go phumola ga e šome go diphimolo tšeo o di thomago.",
           "cancelRefundTo": "Bušetša tšhelete yeo e lefilwego go",
-          "yocoRefundRecordCta": "Refunded ka mochine - rekota pušetšo"
+          "yocoRefundRecordCta": "Refunded ka mochine - rekota pušetšo",
+          "pendingCashRefundTitle": "{{amount}} to return ka sefahlego",
+          "pendingCashRefundBody": "Moreki o swanetše go tiišetša gore o amogetše pušetšo ye ka go tirišo. O se ke wa rekota pušetšo ye nngwe ya tšhelete mola se se sa emetše — bušetša morago tšhelete ye e bontšhitšwego gomme o emele tiišetšo (goba lefasetere la diiri tše 48 go tswalela)."
         },
         "operatingHoursSettings": {
           "title": "Opetekanyo diiri",
@@ -3321,7 +3378,8 @@
           "billedThroughStripeBody": "Dateer jou kaart op of sien fakture in die veilige Stripe-faktureringsportaal. Tik Bestuur fakturering hieronder.",
           "stripeManageUnavailable": "Stripe Tefiso is Ga e a beiwa up yet. fediša go lefa first, then leka gape.",
           "paystackManageUnavailable": "Hierdie plan is nie op Paystack-herhalende fakturering nie. Voltooi afhandeling of kontak ondersteuning.",
-          "planChangeScheduled": "Phetogo ya lenaneo e beakantšwe. Diphetogo di thoma ka {{when}}."
+          "planChangeScheduled": "Phetogo ya lenaneo e beakantšwe. Diphetogo di thoma ka {{when}}.",
+          "finishUpgradeTitle": "fediša Kaonafatša to {{plan}}"
         },
         "moreTab": {
           "sectionGrowBusiness": "Grow your Kgwebo",
@@ -4004,7 +4062,14 @@
           "courierBooking": "Courier bukingo",
           "bookCourier": "buka courier",
           "retryCourierBooking": "leka gape bukingo",
-          "printLabel": "Printa label"
+          "printLabel": "Printa label",
+          "refundOnlineOnly": "Taelo ye e ile ya lefša inthaneteng. Mokitlana wa lebenkele o bušetša tefo ya karata le karolo efe goba efe ya sepache goba ya karata ya mpho go moreki.",
+          "refundOnlineNoCustomer": "Taelo ye e lefilwe inthaneteng gomme ga e na sepache sa bareki, ka fao e ka se bušetšwe ka sebele.",
+          "refundAmountLabel": "pusetšo palo (up to {{max}})",
+          "refundAmountA11y": "pusetšo palo",
+          "refundAmountInvalid": "Tsenya tšhelete ye e fetago 0 gomme e se fete {{max}}.",
+          "partiallyRefundedRefundRemaining": "Taelo ye e ile ya bušetšwa ka karolo. Swaya e bušeditšwe bakeng sa tšhelete ye e šetšego - hlakola ga e hwetšagale.",
+          "refundRemainingHint": "pusetšo remaining"
         },
         "yocoDevices": {
           "title": "Yoco didirišwa",
@@ -4764,7 +4829,9 @@
             "saveService": "Boloka tirelo",
             "addService": "Oketsa tirelo",
             "cancelEditingA11y": "Khansela lokišaing",
-            "cancelEdit": "Khansela lokiša"
+            "cancelEdit": "Khansela lokiša",
+            "bookingOptionCount_one": " · {{count}} bukingo Kgetho",
+            "bookingOptionCount_other": " · {{count}} bukingo Dikgetho"
           },
           "hours": {
             "freelancerHint": "We've thomaed you on broad bekeletšatši diiri (8 am–8 pm). Tap a letšatši to toggle bula/tswalelad, then set nakos.",
@@ -4844,7 +4911,12 @@
             "bizSalon": "salon / studio",
             "bizMobile": "Mofounu / at-gae",
             "bizBoth": "salon + Mofounu",
-            "emDash": "—"
+            "emDash": "—",
+            "ownerGoLiveTitle": "profaele on the bukingo page ya gago",
+            "ownerTakesAppointments": "I take dikopano myself",
+            "ownerPublicTitle": "Sehlogo bareki see (boikgethelo)",
+            "ownerServicesLabel": "ditirelo you perform",
+            "ownerServicesAll": "Tlogela ka moka di hlahlobja go fana ka tirelo ye nngwe le ye nngwe ka gare ga lelokelelo la gago."
           },
           "plan": {
             "popular": "E tumilego",
@@ -4860,10 +4932,95 @@
             "noneAvailable": "Ga go na maano a peeletšo ao a hwetšagalago gona bjale. Hit Submit go tšwela pele — re tla hlopha se ka morago.",
             "intro": "Khetha moralo o loketseng kajeno. Mahala o qala hang — moralo o lefuoang o u isa tefong e sireletsehileng ea karete ka mor'a hore u kenye. O ka atolosa kapa theoha nako efe kapa efe ho tloha ho litlhophiso.",
             "yearly": "Ngwaga ka ngwaga",
-            "monthly": "Kgwedi ka kgwedi"
+            "monthly": "Kgwedi ka kgwedi",
+            "periodAvailableOnWeb": "{{period}} go lefela go hwetšagala mo wepeng fela bakeng sa leano le."
           },
           "travelFees": {
             "skipHint": "O ka tlola kgato ye — re tla diriša tekanyetšo ya sefala gomme o ka e beakanya ka morago."
+          },
+          "steps": {
+            "team_size": {
+              "title": "sehlopha size",
+              "description": "Tell us Mabapi your sehlopha"
+            },
+            "identity": {
+              "title": "Boitsebišo ya gago",
+              "description": "leina, e netefaditšwe imeile, and e netefaditšwe mogala"
+            },
+            "business": {
+              "title": "Kgwebo dintlha",
+              "description": "How bareki see your Kgwebo"
+            },
+            "payment": {
+              "title": "ditefo & diphologisi",
+              "description": "Terminals, VAT & bukingo protection"
+            },
+            "software": {
+              "title": "ya gabjale software",
+              "description": "boikgethelo — e fetilego bukingo system"
+            },
+            "payroll": {
+              "title": "Moputso",
+              "description": "How you lefa bašomi"
+            },
+            "location": {
+              "title": "Lefelo",
+              "description": "ya mathomo aterese"
+            },
+            "photos": {
+              "title": "disenepe",
+              "description": "go a nyakega thumbnail & profaele seswantšhos"
+            },
+            "zones": {
+              "title": "tirelo Zones",
+              "description": "Wmo you offer Mofounu visits"
+            },
+            "travel_fees": {
+              "title": "Leeto ditefo",
+              "description": "lefisa for at-gae Leeto"
+            },
+            "categories": {
+              "title": "dihlopha",
+              "description": "Seo o ka se neago"
+            },
+            "catalog": {
+              "title": "Ditirelo",
+              "description": "boikgethelo — oketsa ditirelo gabjale or ka morago"
+            },
+            "hours": {
+              "title": "diiri",
+              "description": "When you're e gona"
+            },
+            "review": {
+              "title": "tshekatsheko",
+              "description": "Check your dintlha"
+            },
+            "plan": {
+              "title": "Leano",
+              "description": "Kgetha a ngodišo"
+            }
+          },
+          "alerts": {
+            "errorTitle": "Phošo",
+            "loadFailed": "Ga e kgona go laiša onboarding.",
+            "checkStepTitle": "Lekola kgato ye",
+            "completeRequiredFields": "Hle fediša lefelo le nyakegagos.",
+            "couldNotContinue": "Ga e kgona go tšwela pele.",
+            "almostThereTitle": "E batetše go fela",
+            "completeStepFirst": "fediša this step first.",
+            "missingInfoTitle": "Missing info",
+            "selectTeamSize": "Hle kgetha your sehlopha size.",
+            "verifyPhoneTitle": "Netefatša mogala",
+            "verifyPhoneBody": "Hle Netefatša your nomoro ya mogala.",
+            "categoriesTitle": "dihlopha",
+            "selectCategory": "Kgetha at least one sehlopha.",
+            "addressTitle": "Aterese",
+            "completeAddress": "Hle fediša aterese (line 1, toropo, naga).",
+            "stillSettingUpTitle": "E sa dutše e hloma",
+            "stillSettingUpBody": "Profaele ya gago ya kgwebo e ka no ba e sa dutše e boloka. Ema motsotswana, ke moka o klike Romela gape.",
+            "couldNotFinishTitle": "Ga e kgona go fediša setup",
+            "tryAgain": "Hle leka gape.",
+            "submitFailed": "romela e paletšwe."
           }
         },
         "newBooking": {
@@ -5480,7 +5637,27 @@
           "soundsSectionPlatform": "E tumilego sounds",
           "soundsSectionYours": "sounds ya gago",
           "soundPreviewPlay": "Play ptshekatsheko",
-          "soundPreviewStop": "Stop ptshekatsheko"
+          "soundPreviewStop": "Stop ptshekatsheko",
+          "trimHandleStartA11y": "Clip thoma",
+          "trimHandleEndA11y": "Clip fediša",
+          "trimSelectedLength": "{{seconds}}s · bogolo {{max}}s",
+          "trimQueueCounter": "Video {{index}} ya {{total}}",
+          "trimVideoLoadFailed": "Ga e kgona go laiša this Video.",
+          "retake": "Tšea gape",
+          "usePhoto": "Use senepe",
+          "discardClip": "Lahla clip",
+          "retry": "Leka gape",
+          "recordTooShort": "Swara konope nako ye telele go se nene go rekota.",
+          "micPermissionOpenSettings": "Bula dipeakanyo",
+          "flashOn": "Flash ka",
+          "flashOff": "Flash tima",
+          "mediaSkippedTooLarge": "{{count}} faele (difaele) e be e le tše kgolo kudu gomme di ile tša tlolwa.",
+          "cameraPermissionOpenSettings": "Bula dipeakanyo",
+          "statusVideoProcessing": "e a šoma",
+          "statusVideoFailed": "Video e paletšwe",
+          "statusHidden": "E fihlilwe by Beautonomi",
+          "statusHiddenNote": "Tlhokomedišo ya tekatekano: {{note}}",
+          "videoFailedDetail": "Go ngwala khoutu ya bidio go paletšwe. Edita poso gomme o e boloke go leka gape."
         },
         "dashboard": {
           "title": "Boto ya Dashboard",
@@ -5630,7 +5807,9 @@
           "viewAllLower": "Bona ka moka",
           "activityWindow": "Matšatši a 14 a go feta ({{window}}) · ga se a sefiwa ke nako ye e lego ka mo godimo.",
           "activityDefaultHint": "Diapdeite tša moragorago go ralala le dipeeletšo, ditefelo, le ditlhahlobo — ga se tša sefa ke nako ye e lego ka mo godimo.",
-          "noRecentActivity": "No recent activity"
+          "noRecentActivity": "No recent activity",
+          "giftCardLedgerIssuance": "karata ya mpho ledger issuance (Nako ka moka)",
+          "membershipSalesAllTime": "boleloko sales (Nako ka moka)"
         },
         "staffSchedule": {
           "title": "bašomi Kemisos",
@@ -5887,7 +6066,26 @@
           "resetSentTitle": "Bea leswa E rometšwe",
           "resetSentBody": "phasewete Bea leswa imeile has been E rometšwe.",
           "payPlanSummary": "Pay Leano",
-          "payPlanEditHint": "Bula sehlopha commissions to lokiša lefa model and rates."
+          "payPlanEditHint": "Bula sehlopha commissions to lokiša lefa model and rates.",
+          "changePhotoA11y": "Fetoša senepe sa profaele",
+          "takesAppointmentsLabel": "Takes dikopano",
+          "bookableFromLabel": "First bukaable letšatši",
+          "bookableImmediately": "Ka potlako",
+          "timeClockLabel": "nako clock",
+          "enabled": "e butšwe",
+          "disabled": "e timilwe",
+          "yes": "Ee",
+          "no": "Aowa",
+          "emailReadOnly": "imeile",
+          "applyJobTitle": "šomiša job ya tlwaelos?",
+          "applyJobBody": "Se se bušetša ditumelelo tša bona go di-default tša {{job}}.",
+          "apply": "Šomiša",
+          "applyJobDefaults": "šomiša job ya tlwaelos",
+          "timeClockPin": "nako clock PIN (4 digits)",
+          "pinInvalid": "PIN e swanetše go ba go fihla go dinomoro tše 4.",
+          "partialSaveTitle": "Partially bolokad",
+          "partialSaveSettingsFailed": "profaele bolokad, but bukingo dipeakanyo did not boloka. Pull to mpshafatša and leka gape.",
+          "clearBookableDate": "phumola letšatši (bukaable immediately)"
         },
         "serviceForm": {
           "serviceName": "tirelo leina *",
@@ -5966,7 +6164,19 @@
           "deleteA11y": "Phumola tirelo",
           "saving": "E a boloka…",
           "saveChanges": "Boloka diphetogo",
-          "createService": "Hlama tirelo"
+          "createService": "Hlama tirelo",
+          "stillLoadingTitle": "Still e a laiša.",
+          "stillLoadingBody": "Ditirelo tša gago di sa laetša. Ema motsotswana, ke moka o boloke gape.",
+          "couldNotCheckOptionsTitle": "Ga e kgona go check Dikgetho.",
+          "couldNotCheckOptionsBody": "Go boloka go ka tima dikgetho tša go beakanya tšeo di bego di sa kgone go laetšwa.",
+          "goBackFromSave": "Boela morago",
+          "saveAnyway": "Boloka anyway",
+          "turnOffOptionsTitle": "Turn these Dikgetho off?",
+          "turnOffOptionsBodyMainOnly": "Bareki ba ka se sa bona {{names}}. Ba tla beakanya tirelo e kgolo feela.",
+          "turnOffOptionsBodyOthersStay": "Bareki ba ka se sa bona {{names}}. Dikgetho tše dingwe tša go beakanya di dula.",
+          "andMoreNames": "and {{count}} tše dingwe",
+          "keepThem": "Boloka them",
+          "turnOffAndSave": "Turn off and boloka"
         },
         "membershipPlans": {
           "title": "boleloko Melao",
@@ -7179,7 +7389,38 @@
           "showOnProfileHint": "Bareki ba sa dutše ba ka diriša khoutu ye ge ba reka gaešita le ge e utilwe.",
           "showOnProfileA11y": "Bontšha this papatšo on public profaele",
           "creating": "E a hlama…",
-          "createCta": "Hlama khoutu ya papatšo"
+          "createCta": "Hlama khoutu ya papatšo",
+          "startsOn": "E thoma",
+          "endsOn": "E a fela",
+          "noEndDate": "No fediša letšatši",
+          "endsLabel": "E fela {{date}}",
+          "statusActive": "E a šoma",
+          "statusScheduled": "e beakantšwe",
+          "statusExpired": "e feletšwe ke nako",
+          "statusUsedUp": "E dirišitšwe go fihla",
+          "statusOff": "E timilwe",
+          "limitsSection": "Mellwane",
+          "usageLimit": "palomoka uses",
+          "minPurchase": "Minimum bukingo",
+          "maxDiscount": "Max theolelo",
+          "oncePerCustomer": "One use per moreki",
+          "branch": "Lekala",
+          "branchAll": "Di-salon ka moka",
+          "detailTitle": "papatšo dintlha",
+          "copyCode": "Kopiša khoutu",
+          "copied": "E kopišitšwe",
+          "redemptions": "Ditopollo",
+          "totalDiscountGiven": "palomoka given: {{amount}}",
+          "noRedemptions": "Ga go na redemptions gabjale",
+          "deleteBlocked": "Khoutu e ile ya dirišwa - e tima go e na le moo.",
+          "saveChanges": "Boloka",
+          "viewDetails": "Bona dintlha",
+          "summaryLine": "{{discount}} · {{end}}",
+          "endAfterStart": "End letšatši must be after thoma letšatši",
+          "savedOk": "Changes bolokad",
+          "redemptionBooking": "bukingo #{{number}}",
+          "redemptionOrder": "odara #{{number}}",
+          "usageLimitPlaceholder": "Ga e na magomo"
         },
         "signup": {
           "agreeRequired": "Hle agree to the mabaka a tirelo and pholisi ya sephiri to tšwela pele.",
@@ -7569,7 +7810,10 @@
           "invalidAmountTitle": "palo ye e sa šomego",
           "invalidAmountBody": "Tsenya palo ye kgolo go feta lefeela, go fihla go tekanyo ye e šetšego.",
           "exportFailedTitle": "Export e paletšwe",
-          "exportFailedBody": "Ga e kgona go laolla the invose export."
+          "exportFailedBody": "Ga e kgona go laolla the invose export.",
+          "obligationsDueHeading": "Seo o se kolotago",
+          "obligationsDueHint": "Ditefelo tša sefala di šetše di bolokilwe ka nako ya go reka. Lefa dipeeletšo, metšhene ya dikarata le di-invoice tše di bulegilego diskrineng tša bona tše di tlwaelegilego.",
+          "obligationsView": "bona"
         },
         "payouts": {
           "dash": "—",
@@ -7863,7 +8107,9 @@
           "enabledLocations": "e butšwe mafelo",
           "excludedServices": "Excluded ditirelo",
           "excludedHint": "Litšebeletso tse ke keng tsa beha e le likopano tsa sehlopha",
-          "saveSettings": "Boloka Dipeakanyo"
+          "saveSettings": "Boloka Dipeakanyo",
+          "splitPaymentTitle": "Allow split tefo",
+          "splitPaymentHint": "Moeng yo mongwe le yo mongwe o lefa karolo ya gagwe ka noši inthaneteng. Ge a sa šome, morulaganyi o lefa sehlopha ka moka."
         },
         "noteTemplates": {
           "title": "Tlhaloso Templates",
@@ -8075,7 +8321,8 @@
           "offerMultipleTitle": "Offer multiple thekos or nakos?",
           "offerMultipleBody": "e.g. Short vs long Moriri, 30 min express vs 60 min e tletše tirelo. Each becomes a moreki-facing Kgetho at bukingo.",
           "durationTitle": "Nako",
-          "priceTypeTitle": "theko Mohuta"
+          "priceTypeTitle": "theko Mohuta",
+          "blankPriceUsesMain": "Tlogela se se se na selo gomme bareki ba lefe {{amount}}, go swana le kgetho ya mathomo."
         },
         "endOfDayReport": {
           "factsDefinitions": "Facts & definitions",
@@ -10118,7 +10365,9 @@
           "signOutBody": "O ka qetella ho theha hamorao. Tsoelo-pele ea hau e bolokiloe akhaonteng ea hau.",
           "cancel": "Khansela",
           "verificationRequiredTitle": "netefatšo ya boitsebišo go a nyakega to go Ya nnete",
-          "verificationRequiredBody": "Feditša netefatšo ya boitsebišo gore re ka dumelela lenaneo la gago bakeng sa dibukingo tša setšhaba."
+          "verificationRequiredBody": "Feditša netefatšo ya boitsebišo gore re ka dumelela lenaneo la gago bakeng sa dibukingo tša setšhaba.",
+          "subscriptionActivatingTitle": "Tefo e amogetšwe, e a bula your Leano",
+          "subscriptionActivatingBody": "Se gantši se tšea metsotswana e sego kae. O ka dula o hloma kgwebo ya gago ge re sa fetša."
         },
         "packageSalesReport": {
           "factsDefinitions": "Facts & definitions",
@@ -10267,7 +10516,16 @@
           "topClients": "Top bareki (e fedile E bukilwe gross)",
           "emptyTopClients": "No e fedile dibukingo yet.",
           "bookingsPerMonth": "{{count}} dibukingo · {{visits}}/mo",
-          "avgAmount": "Avg {{amount}}"
+          "avgAmount": "Avg {{amount}}",
+          "deliveredHoursTotal": "E isitšwe",
+          "missedHoursTotal": "E hlologetšwe",
+          "stillOnBookHoursTotal": "Still on the buka",
+          "cancelledHoursTotal": "E khansetšwe",
+          "staffHourBuckets": "Delivered {{delivered}}h · Missed {{missed}}h · Still {{still}}h · e khansetšwe {{cancelled}}h",
+          "staffCompletionRate": "{{pct}}% e fedile of e fedile or missed",
+          "avgBookedValue": "Avg E bukilwe value",
+          "avgEarned": "Avg e hweditšwego",
+          "earnedAmount": "E hweditšwe {{amount}}"
         },
         "paymentMethodsReport": {
           "factsDefinitions": "Facts & definitions",
@@ -10373,7 +10631,10 @@
           "activeSubscribers": "E a šoma subscribers",
           "activeStatusHint": "ya gabjale maemo=E a šoma",
           "salesByDay": "Thekišos by letšatši",
-          "dayGross": "{{amount}} ({{count}})"
+          "dayGross": "{{amount}} ({{count}})",
+          "title": "boleloko sales",
+          "subtitle": "Palomoka ya maikarabelo, meputso ye e amogetšwego, le ditheolelo tša maloko tša nako ye e kgethilwego",
+          "separateBases": "Palomoka thekiso le moputso amogetšwego di arogane - o se ke wa di oketša mmogo."
         },
         "travelFees": {
           "title": "Leeto ditefo",
@@ -10520,7 +10781,8 @@
           "emptyDesc": "Ho fapanyetsa ho tshoailoeng nakong ena ho tla hlaha mona.",
           "byPurchaser": "By {{name}}",
           "toRecipient": " → {{name}}",
-          "captureDate": "Capture · {{date}}"
+          "captureDate": "Capture · {{date}}",
+          "bookingNumber": "bukingo {{number}}"
         },
         "yocoReconciliationReport": {
           "factsDefinitions": "Facts & definitions",
@@ -11063,7 +11325,15 @@
           "back": "Morago",
           "exportA11y": "Export and abelana pego as CSV",
           "dateLabel": "Letšatši",
-          "permissionMessage": "Kgopela mong wa kgwebo ya gago go fa tumelelo ya dipego tša go lebelela bakeng sa dipego tša thekišo le tša ditshekatsheko."
+          "permissionMessage": "Kgopela mong wa kgwebo ya gago go fa tumelelo ya dipego tša go lebelela bakeng sa dipego tša thekišo le tša ditshekatsheko.",
+          "eodToday": "Lehono",
+          "eodYesterday": "maabane",
+          "eodPrevDay": "e fetilego letšatši",
+          "eodNextDay": "e latelago letšatši",
+          "eodTodayA11y": "Kgetha lehono for mafelelo a letšatši pego",
+          "eodYesterdayA11y": "Kgetha maabane for mafelelo a letšatši pego",
+          "eodPrevDayA11y": "Go to e fetilego trading letšatši",
+          "eodNextDayA11y": "Go to e latelago trading letšatši"
         },
         "appUpdate": {
           "title": "Mpshafatša go a nyakega",
@@ -11092,7 +11362,9 @@
           "subtitle": "Kgwebo, Leano & Tefiso",
           "tabBusiness": "Kgwebo",
           "tabSubscription": "Ngodišo",
-          "tabBilling": "Tefiso"
+          "tabBilling": "Tefiso",
+          "amountsDueBanner": "You have palos e kolotwago — bula the Tefiso hub to lefa ngodišos, invoses, or metšhene ya dikarata.",
+          "amountsDueCta": "Bona palos e kolotwago"
         },
         "adsPaymentSuccess": {
           "defaultTitle": "ad is Ya nnete ya gago",
@@ -11951,7 +12223,10 @@
           "sendFailed": "E paletšwe go romela Ya tlwaelo offer",
           "unavailableTitle": "Ya tlwaelo Dineelo ga e gona",
           "errorTitle": "Phošo",
-          "disabledBody": "{{message}}\n\nYour admin can bula the feature flag commerce.mophakeri_ya tlwaelo_offers for this market."
+          "disabledBody": "{{message}}\n\nYour admin can bula the feature flag commerce.mophakeri_ya tlwaelo_offers for this market.",
+          "addPhotos": "Oketsa inspiration disenepe",
+          "uploadingPhotos": "e a laiša…",
+          "photosAttached": "{{count}} senepe(s) attached"
         },
         "salesSettings": {
           "title": "Thekišos dipeakanyo",
@@ -12816,6 +13091,18 @@
           "selectMachine": "Kgetha machine",
           "chargeNamed": "lefisa · {{name}}",
           "switchMachine": "Wissel kaartmasjien"
+        },
+        "cardMachineReconciliationReport": {
+          "yocoInWindow": "Yoco ka fapaneng",
+          "paycloudInWindow": "PayCloud ka fapaneng",
+          "paymentExceptions": "tefo exceptions",
+          "awaitingRefunds": "E kolota ka mochine",
+          "allMatched": "Ga go na mekgekolo ya tefelo ({{yoco}} Yoco le {{paycloud}} PayCloud ditefelo di hlahlobja).",
+          "awaitingSection": "Dipušetšo di sa kolotwa motšheneng",
+          "awaitingHint": "Tše di dula lenaneong go sa šetšwe matšatšikgwedi a ka godimo.",
+          "yocoPendingSection": "Yoco e emetše",
+          "paycloudSection": "PayCloud palo mismatch",
+          "unavailable": "bula Yoco or Beautonomi metšhene ya dikarata to use this pego."
         }
       }
     },
@@ -13424,7 +13711,9 @@
       "postByProvider": "Poso by {{name}}",
       "reply": "Fetola",
       "replying": "O fetola tshwaelo",
-      "replyPlaceholder": "Ngwala phetolo…"
+      "replyPlaceholder": "Ngwala phetolo…",
+      "shareMediaFailedTitle": "Couldn't abelana media",
+      "shareMediaFailedBody": "Re be re sa kgone go lokišetša faele ye gore e abelane. Leka go abelana kgokagano go e na le moo."
     },
     "searchScreen": {
       "title": "Nyaka",
@@ -15259,7 +15548,8 @@
           "buildingLabel": "Moagi",
           "accessLabel": "Go tsena",
           "parkingLabel": "Go paka",
-          "landmarksLabel": "Matshwao"
+          "landmarksLabel": "Matshwao",
+          "partiallyRefundedContactProvider": "Taelo ye e ile ya bušetšwa ka karolo. Ikgokaganye le moabi go bušetša tšhelete ye e šetšego."
         },
         "customRequestsList": {
           "startPaymentFailed": "E paletšwe go thoma tefo",
@@ -15799,7 +16089,20 @@
           "sessionStatus": "Seshene · {{status}}",
           "yourBookingCancelled": "bukingo is e khansetšwe ya gago",
           "yourBookingNoShow": "bukingo was marked as a aowa-bontšha ya gago",
-          "participantBookingStatus": "bukingo maemo"
+          "participantBookingStatus": "bukingo maemo",
+          "shareStatusPaid": "abelana e lefilwe",
+          "shareStatusPending": "abelana ga e a lefelwa ({{amount}})",
+          "shareStatusCancelled": "Spot e khansetšwe",
+          "resendInvite": "Re-romela taletšo",
+          "inviteResent": "taletšo E rometšwe",
+          "inviteResendFailed": "Ga e kgona go re-romela the taletšo.",
+          "removeGuest": "Tloša Moeng",
+          "removeGuestConfirm": "Tlosa {{name}} mo booking ye? Ditirelo tša bona di a tlošwa gomme tefo efe goba efe e a bušetšwa.",
+          "cancelMySpot": "Khansela my spot",
+          "cancelMySpotConfirm": "Khansela lefelo la gago ka go beakanya ye ya sehlopha? Ditirelo tša gago di a tlošwa gomme tefo efe goba efe yeo o e dirilego e bušetšwa karateng ya gago.",
+          "spotCancelled": "spot has been e khansetšwe. ya gago.",
+          "guestRemoved": "Moeng tlošad.",
+          "guestCancelFailed": "Ga e kgona go mpshafatša the bukingo ya sehlopha."
         },
         "announcements": {
           "retry": "Leka gape",
@@ -17761,6 +18064,17 @@
           "couldNotLoadPage": "Ga e kgona go laiša page",
           "httpError": "HTTP {{status}}",
           "appUrlNotConfigured": "URL ya app ga e sa beakanywe."
+        },
+        "bookingReschedule": {
+          "title": "Rekemiso bukingo",
+          "body": "Kgetha letšatšikgwedi le nako ye mpsha. Moabi wa gago a ka swanelwa ke go tiišetša.",
+          "dateLabel": "Letšatši",
+          "timeLabel": "Nako",
+          "submit": "romela kgopelo",
+          "invalidTitle": "letšatši or nako ye e sa šomego",
+          "invalidBody": "Tsenya a e nepagetše letšatši (YYYY-MM-DD) and nako (HH:MM).",
+          "failedTitle": "Ga e kgona go rekemiso",
+          "noSlots": "No nakos e gona on this letšatši. Try antše dingwe letšatši."
         }
       }
     },
@@ -18038,7 +18352,12 @@
     "confirmCancelPrevious": "Khansela e fetilego",
     "holdRateLimitWait": "Maiteko a mantši kudu. Leka gape ka morago ga metsotso e {{minutes}}.",
     "refundsStoreCreditNotePayAtVenue": "Ge o lefa lefelong, dipusetso di swarwa ka go lebanya le mohlami — e sego kareteng goba sepacheng sa gago.",
-    "refundsStoreCreditNoteNoPenalty": "Mohlami yo ga a lefise dikotlo tša go phumola. Ditefiso tšeo di lefilwego inthaneteng di bušetšwa sepacheng sa gago sa Beautonomi."
+    "refundsStoreCreditNoteNoPenalty": "Mohlami yo ga a lefise dikotlo tša go phumola. Ditefiso tšeo di lefilwego inthaneteng di bušetšwa sepacheng sa gago sa Beautonomi.",
+    "groupPaymentMode": "Ke mang yo a lefago?",
+    "payForEveryone": "I'll lefa for everyone",
+    "splitPayment": "Split tefo",
+    "splitPaymentHint": "O lefa ditirelo tša gago le ditefelo tša go beakanya bjale. Moeng yo mongwe le yo mongwe o hwetša kgokagano ya go lefa kabelo ya bona.",
+    "guestSharesPaidByInvite": "Moengs lefa via taletšo kgokagano"
   },
   "payments": {
     "pay": "Lefa",
@@ -19082,7 +19401,10 @@
         "payAmount": "Lefa {{amount}}",
         "slotConflictTitle": "That nako is aowa longer e gona",
         "slotConflictBody": "Kies 'n ander tyd op die kalender of spring na die volgende oop gleuf.",
-        "pickNextAvailable": "Find e latelago e gona nako"
+        "pickNextAvailable": "Find e latelago e gona nako",
+        "splitPayment": "Split tefo",
+        "guestSharesPaidByInvite": "Moengs lefa via taletšo kgokagano",
+        "splitPaymentHint": "O lefa ditirelo tša gago le ditefelo tša go beakanya bjale. Moeng yo mongwe le yo mongwe o hwetša kgokagano ya go lefa kabelo ya bona."
       },
       "addToWaitlist": {
         "enterName": "Hle enter your leina",
@@ -20727,7 +21049,8 @@
           "groupSession": "Sehlopha Seshene · {{ref}}",
           "viewDetails": "Bona dintlha",
           "reschedule": "Rekemiso",
-          "cancel": "Khansela"
+          "cancel": "Khansela",
+          "customOffer": "Ya tlwaelo offer"
         },
         "page": {
           "title": "Dibukingo",
@@ -21302,7 +21625,9 @@
         "addressUnit": "Yuniti:",
         "addressAccess": "Go tsena:",
         "addressParking": "Go paka:",
-        "addressLandmarks": "Landmerk"
+        "addressLandmarks": "Landmerk",
+        "partiallyRefundedContactProvider": "Taelo ye e ile ya bušetšwa ka karolo. Ikgokaganye le moabi go bušetša tšhelete ye e šetšego.",
+        "paymentPartiallyRefunded": "Partially e pusetšwe"
       },
       "bookingReceipt": {
         "methodWallet": "Sepatši",
@@ -23439,7 +23764,13 @@
           "methodCard": "Karata",
           "methodYoco": "Yoco",
           "methodBankTransfer": "Phetiso ya panka",
-          "methodOther": "tše dingwe"
+          "methodOther": "tše dingwe",
+          "shareStatusPaid": "Share paid",
+          "shareStatusPending": "Share unpaid ({{amount}})",
+          "shareStatusCancelled": "Spot cancelled",
+          "resendInvite": "Re-send invite",
+          "inviteResent": "Invite sent",
+          "inviteResendFailed": "Could not re-send the invite."
         },
         "groupFinancials": {
           "title": "Ezezimali",
@@ -24126,7 +24457,9 @@
             "yocoRecorded": "Yoco pušetšo e ngwadilwe",
             "awaitingYocoTitle": "{{amount}} e sa le go bušetša tšhelete mo motšheneng wa Yoco",
             "awaitingYocoBody": "Peeletšo ye e ile ya phumolwa ka pušetšo ya tšhelete morago karateng. E bušetše mo tirišong ya Yoco goba mo motšheneng, ke moka o e rekote mo. Go fihla ka nako yeo e dula e tšwelela pegong ya poelano ya motšhene wa dikarata.",
-            "yocoRecordCta": "Refunded ka mochine - rekota pušetšo"
+            "yocoRecordCta": "Refunded ka mochine - rekota pušetšo",
+            "pendingCashTitle": "{{amount}} to return in person",
+            "pendingCashBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending."
           }
         },
         "createPayment": {
@@ -24460,7 +24793,9 @@
         "additionalCharges": "Ditefo tše oketšegilego",
         "request": "kgopelo",
         "stripeConnectPayoutHint": "Ditefo are E rometšwe via Stripe Kgokaganya. fediša setup under dipeakanyo → Payout akhauutes before kgopeloing a withdrawal.",
-        "completeStripeConnect": "fediša Stripe Kgokaganya setup"
+        "completeStripeConnect": "fediša Stripe Kgokaganya setup",
+        "openDisputeReserve": "− Open dispute reserve",
+        "vatHeldForPayout": "− VAT held for payout"
       },
       "onboarding": {
         "steps": {
@@ -24787,7 +25122,9 @@
           "paymentHint": "This helps us understand how you accept in-person card payments and whether we can offer better terminal options in future.",
           "vatSarsHint": "Are you VAT registered with SARS? VAT registration is mandatory if your annual turnover is R1 million or more. If you make less than R1 million per year, you don't need to be VAT registered.",
           "bookingProtectionTitle": "Booking protection",
-          "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings."
+          "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings.",
+          "pricesIncludeTax": "My service prices include VAT",
+          "pricesIncludeTaxDesc": "Most South African salons show VAT-inclusive prices (recommended)."
         },
         "software": {
           "selectPlaceholder": "Kgetha or Mohuta software leina...",
@@ -24961,7 +25298,13 @@
           "draftServicesLabel": "tlhophiso ditirelo:",
           "attachZones": "Attach Zones",
           "categorySelected": "sehlopha E kgethilwe",
-          "zonesSelected": "E kgethilwe all {{count}} zones"
+          "zonesSelected": "E kgethilwe all {{count}} zones",
+          "ownerGoLiveTitle": "Your profile on the booking page",
+          "ownerTakesAppointments": "I take appointments myself",
+          "ownerTakesAppointmentsHint": "Turn off if you only manage the team and won't appear for customers to book.",
+          "ownerPublicTitle": "Title customers see (optional)",
+          "ownerServicesLabel": "Services you perform",
+          "ownerServicesAll": "Leave all checked to offer every service in your catalog."
         },
         "plan": {
           "activatesInstantly": "Bulas instantly",
@@ -25035,7 +25378,9 @@
           "tierMaxKm": "Up to km",
           "tierFee": "Fee ({{currency}})",
           "addTier": "Oketsa tier"
-        }
+        },
+        "submitLaunchFree": "Create my business",
+        "submitLaunchPaid": "Create my business and continue to payment"
       },
       "dashboard": {
         "pageTitle": "Boto ya Dashboard",
@@ -25201,7 +25546,9 @@
           "truncatedLedger": "Meputso ya nako e ka ba e sa felela bakeng sa diakhaonto tša bophagamo bjo bo phagamego kudu.",
           "bookingsCount": "dibukingo ({{count}})",
           "saleCount": "Thekišo ({{count}})"
-        }
+        },
+        "giftCardLedgerIssuance": "Gift card ledger issuance (all time)",
+        "membershipSalesAllTime": "Membership sales (all time)"
       },
       "settings": {
         "pageTitle": "Kgwebo dipeakanyo",
@@ -25314,6 +25661,10 @@
               "waitlist": {
                 "title": "lenaneo la go leta dipeakanyo",
                 "description": "Configure lenaneo la go leta behavior"
+              },
+              "businessSetup": {
+                "title": "Business profile for Get Started",
+                "description": "Business name, description (10+ characters), and contact details for your checklist"
               }
             }
           },
@@ -25974,7 +26325,9 @@
             "enableForLocationsHint": "Kgetha which mafelo thekgo bukingo ya sehlophas in Inthaneteng bukingo",
             "excludeServices": "Exclude ditirelo from Inthaneteng bukingo ya sehlopha",
             "excludeServicesHint": "Select services that should not be available for group booking online. This only excludes them from group appointments, not individual bookings.",
-            "noServicesAvailable": "No ditirelo e gona"
+            "noServicesAvailable": "No ditirelo e gona",
+            "allowSplitPayment": "Allow split payment",
+            "allowSplitPaymentHint": "Each guest pays their own share online. When off, the organizer pays for the whole group."
           },
           "appointment-activity/online-booking": {
             "onlineBooking": "Inthaneteng bukingo",
@@ -26267,7 +26620,11 @@
             "billsPaidCount_one": "{{count}} payment",
             "billsPaidCount_other": "{{count}} payments",
             "platformInvoices": "Platform invoices",
-            "platformInvoicePayment": "Platform invoice payment"
+            "platformInvoicePayment": "Platform invoice payment",
+            "obligationsDueHeading": "What you owe",
+            "obligationsDueHint": "Subscriptions, card machines, and open invoices — platform fees are already kept at checkout.",
+            "nonPayableFeeNote": "Platform fees are customer-paid and already retained at checkout. This invoice is not payable.",
+            "refundReviewRequired": "A payment was collected on this legacy fee invoice. Finance must review for a possible refund."
           },
           "business-description": {
             "businessDescription": "Kgwebo tlhaloso",
@@ -28552,6 +28909,24 @@
             "loading": "E a laiša…",
             "nativeCancelled": "You e khansetšwe the tefo. No lefisa was made.",
             "nativeInvalid": "This tefo return kgokagano is ye e sa šomego or infediša."
+          },
+          "business": {
+            "failedToLoad": "Failed to load business profile",
+            "failedToUpdate": "Failed to update business profile. Please try again.",
+            "savedSuccess": "Business profile updated successfully",
+            "validationBusinessName": "Enter a business name longer than one character",
+            "validationDescriptionMin": "Description must be at least 10 characters for Get Started",
+            "validationEmail": "Enter a valid email address",
+            "validationPhone": "Enter a complete phone number in international format",
+            "contactHint": "Get Started also counts phone or email on your account. You do not need both business phone and email if your account already has one.",
+            "setupBannerTitle": "Complete this step for Get Started",
+            "setupBannerBody": "Save your business name, a description of at least 10 characters, and optional contact details.",
+            "businessNameLabel": "Business name",
+            "descriptionLabel": "Business description",
+            "descriptionHint": "At least 10 characters required to complete Get Started.",
+            "emailLabel": "Business email",
+            "phoneLabel": "Business phone",
+            "getStartedIncompleteHint": "Get Started stays incomplete until your description is at least 10 characters."
           }
         },
         "serviceZones": {
@@ -28613,7 +28988,47 @@
           "creating": "E a hlama…",
           "percentage": "Percentage",
           "fixedAmount": "Fixed palo",
-          "placeholderCode": "SUMMER20"
+          "placeholderCode": "SUMMER20",
+          "newPromo": "New promo code",
+          "percentOff": "{{value}}% off",
+          "amountOff": "{{amount}} off",
+          "usedCount": "{{count}} uses",
+          "hidden": "Hidden",
+          "public": "Public",
+          "viewDetails": "View details",
+          "createCta": "Create promo code",
+          "delete": "Delete",
+          "startsOn": "Starts",
+          "endsOn": "Ends",
+          "noEndDate": "No end date",
+          "endsLabel": "Ends {{date}}",
+          "usedCountMax": "{{count}} of {{max}} used",
+          "statusActive": "Active",
+          "statusScheduled": "Scheduled",
+          "statusExpired": "Expired",
+          "statusUsedUp": "Used up",
+          "statusOff": "Off",
+          "limitsSection": "Limits",
+          "usageLimit": "Total uses",
+          "usageLimitPlaceholder": "Unlimited",
+          "minPurchase": "Minimum booking amount",
+          "maxDiscount": "Max discount (%)",
+          "oncePerCustomer": "One use per client",
+          "branch": "Salon branch",
+          "branchAll": "All salons",
+          "summaryLine": "{{discount}} · {{end}}",
+          "detailTitle": "Promo details",
+          "copyCode": "Copy code",
+          "copied": "Code copied",
+          "redemptions": "Redemptions",
+          "totalDiscountGiven": "Total discount given: {{amount}}",
+          "noRedemptions": "No redemptions yet",
+          "redemptionBooking": "Booking #{{number}}",
+          "redemptionOrder": "Order #{{number}}",
+          "deleteBlocked": "This code has been used. Turn it off instead of deleting.",
+          "saveChanges": "Save changes",
+          "endAfterStart": "End date must be after start date",
+          "savedOk": "Changes saved"
         },
         "catalogue": {
           "title": "lethathamo",
@@ -29033,7 +29448,13 @@
           "aramexPin": "akhauute PIN",
           "aramexUser": "Modirišileina",
           "aramexPassword": "Phasewete",
-          "aramexProductType": "Domestic setšweletšwa Mohuta (e.g. ONP)"
+          "aramexProductType": "Domestic setšweletšwa Mohuta (e.g. ONP)",
+          "bobGoWebhookSecret": "Bob Go webhook secret (optional)",
+          "bobGoWebhookSecretOptional": "Optional — from Bob Go → Settings → Webhook subscriptions",
+          "bobGoWebhookSecretConfigured": "Secret saved — paste only to replace",
+          "bobGoWebhookSecretHint": "Live shipment updates use webhooks when this is set. Without it, orders catch up within about 10 minutes.",
+          "bobGoWebhookSubscribeFailed": "Could not register Bob Go webhooks",
+          "bobGoWebhookCatchUpHint": "Your API key is saved. Shipment status will still catch up within about 10 minutes."
         },
         "packages/new": {
           "failedToLoadItems": "E paletšwe go laiša Dilo",
@@ -29333,7 +29754,11 @@
           "statusRefunded": "e pusetšwe",
           "paid": "e lefilwe",
           "estimatedDeliveryDate": "Estimated Go isišwa letšatši (boikgethelo)",
-          "partialWalletRefundHint": "Partial wallet refunds credit the customer's store balance only. Card and gift-card payments are not returned unless you refund the full order total."
+          "partialWalletRefundHint": "Partial wallet refunds credit the customer's store balance only. Card and gift-card payments are not returned unless you refund the full order total.",
+          "refundOnlineOnly": "This order was paid online. Store credit returns the card charge and any wallet or gift-card portion to the customer.",
+          "refundNoWallet": "This order was paid online and has no customer wallet, so it cannot be refunded in person.",
+          "partiallyRefundedRefundRemaining": "This order was partially refunded. Mark it refunded for the remaining amount — cancel is not available.",
+          "refundRemainingHint": "Refund remaining"
         },
         "team/shifts/dialog": {
           "overrideLocation": "Override lefelo Opetekanyo diiri",
@@ -29915,7 +30340,8 @@
             "business-overview": "Kgwebo Overbona",
             "performance-dashboard": "Performance Dashboard",
             "comparison": "Period Comparison",
-            "card-machine-reconciliation": "Poelano ya motšhene wa karata"
+            "card-machine-reconciliation": "Poelano ya motšhene wa karata",
+            "membership-sales": "Membership sales"
           }
         },
         "pages": {
@@ -29932,7 +30358,11 @@
             "recent": "Recent No-Shows",
             "emptyTitle": "No aowa-bontšhas",
             "emptyDesc": "No aowa-bontšhas in the E kgethilwe period.",
-            "unknownClient": "ga e tsebjwe moreki"
+            "unknownClient": "ga e tsebjwe moreki",
+            "ledgerRecognised": "Ledger already recognised",
+            "ledgerRecognisedHint": "Fees already recorded for these missed visits, including any no-show fee — not the appointment price.",
+            "repeatOffendersHint": "The appointment price for each client is listed as booked value below.",
+            "bookedValueAmount": "{{amount}} booked value"
           },
           "clients/new": {
             "title": "bareki ye mpsha",
@@ -30007,7 +30437,10 @@
             "topClients": "Top bareki by Lifenako Value",
             "visitsMonths": "{{visits}} visits • {{months}} dikgwedi",
             "emptyTitle": "No bareki found",
-            "emptyDesc": "No moreki Datha e gona."
+            "emptyDesc": "No moreki Datha e gona.",
+            "averageBookedValue": "Average booked value",
+            "averageEarned": "Average earned",
+            "clientEarned": "Earned {{amount}}"
           },
           "payments/methods": {
             "title": "mekgwa ya tefo",
@@ -30069,7 +30502,14 @@
             "hoursValue": "{{hours}}h",
             "breakdown": "bašomi diiri Breakdown",
             "emptyTitle": "No diiri Datha",
-            "emptyDesc": "No diiri Datha e gona for the E kgethilwe period."
+            "emptyDesc": "No diiri Datha e gona for the E kgethilwe period.",
+            "deliveredHours": "Delivered",
+            "missedHours": "Missed (no-show)",
+            "stillOnBookHours": "Still on the book",
+            "cancelledHours": "Cancelled",
+            "completionRateLine": "Of visits that were completed or missed, {{pct}}% were completed.",
+            "staffBuckets": "Delivered {{delivered}}h · Missed {{missed}}h · Still on book {{still}}h · Cancelled {{cancelled}}h",
+            "staffCompletionRate": "{{pct}}% completed of completed or missed visits"
           },
           "sales/summary": {
             "title": "Thekišos Kakaretšo",
@@ -30300,7 +30740,8 @@
             "noCommission": "No commission",
             "noTips": "No dithepa",
             "cancelledCount": "({{count}} e khansetšwe)",
-            "noStaffData": "No staff performance data available for the selected period."
+            "noStaffData": "No staff performance data available for the selected period.",
+            "deliveredHours": "{{hours}}h delivered (catalogue)"
           },
           "products/inventory": {
             "title": "lethathamo la stock",
@@ -30937,7 +31378,10 @@
             "match": "Tšhelete ya go swana",
             "order": "Nomoro ya taelo",
             "openBooking": "Bula peeletšo go e rekota",
-            "awaitingSince": "Go leta go tloga ka nako yeo"
+            "awaitingSince": "Go leta go tloga ka nako yeo",
+            "yocoPaymentsInWindow": "Yoco payments in range",
+            "paycloudPaymentsInWindow": "PayCloud payments in range",
+            "allMatchedLine": "No payment exceptions in this period ({{yoco}} Yoco and {{paycloud}} PayCloud payments checked)."
           }
         },
         "export": {
@@ -32183,7 +32627,8 @@
           "checkoutFailed": "go lefa e paletšwe. Hle leka gape.",
           "taxes": "Lekgetho",
           "total": "Palomoka",
-          "planNotFound": "Leano ga e humanwe."
+          "planNotFound": "Leano ga e humanwe.",
+          "backToSetup": "Back to setup checklist"
         },
         "stripeBillingTitle": "Gefaktureer deur Stripe",
         "stripeBillingBody": "Mpshafatša your Karata or bona invoses in the secure Stripe Tefiso portal. Use Manage Tefiso below — the same flow as Paystack regions, but hosted by Stripe for your market.",
@@ -32264,7 +32709,9 @@
         "soundsSectionPlatform": "E tumilego sounds",
         "soundsSectionYours": "sounds ya gago",
         "soundPreviewPlay": "Play ptshekatsheko",
-        "soundPreviewStop": "Stop ptshekatsheko"
+        "soundPreviewStop": "Stop ptshekatsheko",
+        "trimHandleStartA11y": "Clip start",
+        "trimHandleEndA11y": "Clip end"
       },
       "calendarMobile": {
         "timeOff": "nako off",
@@ -32410,7 +32857,9 @@
         "storeCredit": "Store crlokiša",
         "cash": "Tšhelete / ka sefahlego",
         "reason": "Lebaka",
-        "reasonPlaceholder": "boikgethelo Lebaka for audit trail"
+        "reasonPlaceholder": "boikgethelo Lebaka for audit trail",
+        "pendingCashBlockTitle": "Cash refund already pending",
+        "pendingCashBlockBody": "This booking already has {{amount}} awaiting customer confirmation. Hand that amount back in person — do not issue another cash refund until it is confirmed or closed."
       },
       "appointmentViewSheet": {
         "bookingFallback": "Bukingo",
@@ -32527,7 +32976,12 @@
         "bookingInProgress": "Bukingo…",
         "bookingSuccess": "Courier E bukilwe",
         "bookingFailed": "Ga e kgona go buka courier",
-        "printLabel": "Printa label"
+        "printLabel": "Printa label",
+        "refundOnlineOnly": "This order was paid online. Store credit returns the card charge and any wallet or gift-card portion to the customer.",
+        "refundNoWallet": "This order was paid online and has no customer wallet, so it cannot be refunded in person.",
+        "nothingLeftToCollect": "Wallet or a gift card already covers this order. Nothing is left to collect in person.",
+        "courierChargedAmount": "Bob Go charged (salon)",
+        "courierChargedWeight": "Charged weight (kg)"
       },
       "appointmentEditSheet": {
         "updated": "bukingo mpshafatšad",
@@ -33118,7 +33572,9 @@
         "updateStaffMember": "Mpshafatša Mošomi",
         "createStaffMember": "Hlama Mošomi",
         "emailPlaceholder": "imeile@example.com",
-        "moneyPlaceholder": "0.00"
+        "moneyPlaceholder": "0.00",
+        "removePhoto": "Remove photo",
+        "avatarUploadFailed": "Could not upload the photo. Try again."
       },
       "expressBooking": {
         "loadFailed": "E paletšwe go laiša express bukingo kgokaganos",
@@ -33438,7 +33894,12 @@
         "viewComments": "Bona & tlhagišos",
         "comments": "{{count}} tlhagišos",
         "likes": "{{count}} likes",
-        "views": "{{count}} bonas"
+        "views": "{{count}} bonas",
+        "statusVideoProcessing": "Processing",
+        "statusVideoFailed": "Video failed",
+        "statusHidden": "Hidden by Beautonomi",
+        "statusHiddenNote": "Moderation note: {{note}}",
+        "videoFailedDetail": "Video encoding failed. Edit the post and save to try again."
       },
       "formsPage": {
         "failedToLoad": "E paletšwe go laiša forms",
@@ -34125,6 +34586,67 @@
           "isWalkIn": "Go tsena fela",
           "isAtHome": "At-gae tirelo"
         }
+      },
+      "teamAddWizard": {
+        "title": "Add team member",
+        "readyTitle": "Ready to go",
+        "seatLine": "{{current}} of {{max}} seats used on your plan",
+        "limitBlocked": "Your plan does not have room for another team member. Upgrade or remove someone first.",
+        "nameEmailRequired": "Name and email are required.",
+        "invalidPhone": "Enter a valid phone number or leave the field blank.",
+        "createFailed": "Could not add team member.",
+        "linkCopied": "Invite link copied",
+        "inviteEmailed": "We emailed {{name}} an invite to join.",
+        "inviteLinkReady": "Copy the invite link and share it (WhatsApp, SMS, or in person).",
+        "copyLink": "Copy link",
+        "shareLink": "Share link",
+        "publicTitle": "Title customers see (optional)",
+        "publicTitleHint": "Shown on your booking page instead of their role, e.g. Senior stylist.",
+        "takesAppointments": "Takes appointments",
+        "takesAppointmentsHint": "Turn off for managers who only run the calendar, not the chair.",
+        "branches": "Branches",
+        "servicesOffered": "Services they perform",
+        "selectAllServices": "All services",
+        "selectBranch": "Select at least one branch",
+        "bookableSummary": "Customers can book them for {{count}} service(s), starting {{from}}.",
+        "bookableNow": "immediately",
+        "notOnPublicBooking": "They will not appear for online booking (front desk role).",
+        "hintNoCommission": "Commission was left off — you can turn it on in their profile.",
+        "hintNoTimeClock": "Time clock is off — enable it in their profile if they should clock in.",
+        "hintNoServices": "No services were linked — assign services before customers can book them online.",
+        "hintNoHoursCopied": "Working hours were not copied — set their weekly schedule in the team profile (salon hours still apply until then).",
+        "name": "Full name",
+        "email": "Email",
+        "mobile": "Mobile",
+        "photoOptional": "Add photo (optional)",
+        "photoUploadFailed": "Could not upload the photo.",
+        "paysCommission": "Pays commission",
+        "job": "Job",
+        "job_stylist": "Stylist",
+        "job_senior": "Senior stylist",
+        "job_front_desk": "Front desk",
+        "job_manager": "Manager",
+        "frontDeskHint": "Front desk can manage the calendar but will not show up for customers to book.",
+        "commissionOptional": "Commission % (optional)",
+        "servicesDefaultAll": "All bookable services are selected by default.",
+        "hoursSource": "Working hours",
+        "hoursSalon": "Same as the salon",
+        "hoursCopyFrom": "Copy {{name}}",
+        "startDateOptional": "First day customers can book online (optional)",
+        "timeClock": "Use time clock",
+        "back": "Back",
+        "next": "Next",
+        "cancel": "Cancel",
+        "done": "Done",
+        "saving": "Adding…",
+        "addAndInvite": "Add and send invite"
+      },
+      "teamReassign": {
+        "title": "Upcoming bookings",
+        "body": "{{name}} has upcoming bookings. Who should take them?",
+        "firstAvailable": "First available stylist",
+        "confirm": "Reassign and continue",
+        "cancel": "Cancel"
       }
     },
     "global": {
@@ -35704,7 +36226,14 @@
     },
     "giftCard": {
       "breadcrumb": {
-        "navLabel": "Tsela ya go sepela"
+        "navLabel": "Tsela ya go sepela",
+        "home": "Home",
+        "giftCards": "Gift cards",
+        "purchase": "Buy a gift card",
+        "purchaseBulk": "Buy gift cards in bulk",
+        "confirmation": "Confirmation",
+        "cancelled": "Purchase cancelled",
+        "claim": "Claim"
       },
       "purchaseSuccess": {
         "noRefTitle": "karata ya mpho purchase",
@@ -35726,6 +36255,43 @@
         "verifyFailed": "Ons kon nie hierdie geskenkbewysbetaling bevestig nie. As jou bank gedebiteer is, gaan betalings en geskenkbewyse binne 'n minuut na.",
         "wrongReceipt": "Hierdie kwitansie is nie vir 'n geskenkbewysaankoop nie. As jy vir 'n geskenkbewys betaal het, gaan Betalings en geskenkbewyse na – jou kodes is dalk reeds daar."
       }
+    },
+    "checkout": {
+      "customOffer": {
+        "title": "Pay Ya tlwaelo offer",
+        "subtitle": "tshekatsheko palomokas and lefa securely.",
+        "subtotal": "Palomoka ye nnyane",
+        "travel": "Travel",
+        "total": "Total",
+        "payNow": "Lefa gabjale",
+        "cancel": "Cancel",
+        "loadFailed": "Ga e kgona go laiša this offer.",
+        "paymentSuccessful": "tefo katlegoful.",
+        "paymentStartFailed": "Ga e kgona go thoma tefo.",
+        "waitingTitle": "tefo e a šoma",
+        "waitingBody": "Re tiišetša tefo ya gago. Hlabolla dikgopelo tša gago tša tlwaelo ka motsotswana.",
+        "backToRequests": "morago to Ya tlwaelo dikgopelo",
+        "changesRequestedTitle": "Tlhagišo e boeletšwa",
+        "changesRequestedBody": "Moabi wa gago o mpshafatša tlhagišo ye ka morago ga kgopelo ya gago ya phetogo."
+      }
+    },
+    "groupInvite": {
+      "title": "bukingo ya sehlopha taletšo",
+      "body": "You are taletšod to join a Sehlopha Seshene.",
+      "accept": "Accept taletšo",
+      "notFound": "This taletšo kgokagano is ye e sa šomego or e feletšwe ke nako.",
+      "acceptFailed": "Ga e kgona go accept taletšo.",
+      "payShare": "Pay my abelana",
+      "payFailed": "Ga e kgona go thoma tefo.",
+      "paymentProcessing": "Ke a leboga! Tefo ya gago e a tiišetšwa. Letlakala le le tla mpshafatša kgauswinyane.",
+      "yourShare": "abelana: {{amount}} ya gago",
+      "sharePaid": "abelana is e lefilwe. See you tmo! ya gago!",
+      "payShareAmount": "Pay my abelana ({{amount}})",
+      "cancelSpot": "Khansela my spot",
+      "cancelConfirm": "Khansela lefelo la gago ka go beakanya ye ya sehlopha? Ditirelo tša gago di a tlošwa gomme tefo efe goba efe yeo o e dirilego e bušetšwa karateng ya gago.",
+      "cancelled": "spot has been e khansetšwe. ya gago.",
+      "cancelledRefunded": "Lefelo la gago le phumotšwe. {{amount}} e bušetšwa karateng ya gago.",
+      "cancelFailed": "Ga e kgona go khansela your spot."
     }
   },
   "errors": {

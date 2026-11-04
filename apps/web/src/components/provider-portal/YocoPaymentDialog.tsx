@@ -50,6 +50,8 @@ interface YocoPaymentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   amount: number; // Major currency units (converted to cents server-side)
+  /** Included in `amount`. Stored so settlement can split it off the balance. */
+  tipAmount?: number;
   appointmentId?: string;
   /** Provider booking UUID — links terminal payment to the booking row */
   bookingId?: string;
@@ -71,6 +73,7 @@ export function YocoPaymentDialog({
   open,
   onOpenChange,
   amount,
+  tipAmount = 0,
   appointmentId,
   bookingId,
   saleId,
@@ -161,6 +164,7 @@ export function YocoPaymentDialog({
       let payment = await providerApi.createYocoPayment({
         device_id: selectedDeviceId,
         amount: amount,
+        ...(tipAmount > 0.01 ? { tip_amount: tipAmount } : {}),
         currency: tenantCurrency,
         attempt_id: attemptId,
         ...(appointmentId ? { appointment_id: appointmentId } : {}),

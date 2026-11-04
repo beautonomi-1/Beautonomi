@@ -159,6 +159,9 @@ async function applySubscriptionEntitlement(
   await disablePaystackSubscriptionForProvider(supabase, providerId, tenantId);
   await failPendingProviderSubscriptionOrders(supabase, providerId, "switched_to_apple");
 
+  const { CLEAR_PENDING_UPGRADE_FIELDS } = await import(
+    "@/lib/subscriptions/pending-upgrade-fields"
+  );
   await supabase.from("provider_subscriptions").upsert(
     {
       provider_id: providerId,
@@ -181,6 +184,7 @@ async function applySubscriptionEntitlement(
       paystack_customer_code: null,
       paystack_sync_pending: false,
       paystack_sync_note: null,
+      ...CLEAR_PENDING_UPGRADE_FIELDS,
     },
     { onConflict: "provider_id" },
   );

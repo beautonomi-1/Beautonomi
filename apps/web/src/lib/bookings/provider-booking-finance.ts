@@ -163,6 +163,7 @@ export function computeWalletGiftCoverageOutstanding({
   walletAmount,
   giftCardAmount,
   unpaidAdditionalCharges = 0,
+  pendingWalletGiftAmount = 0,
 }: {
   totalAmount: number;
   totalPaid: number;
@@ -170,9 +171,12 @@ export function computeWalletGiftCoverageOutstanding({
   walletAmount: number;
   giftCardAmount: number;
   unpaidAdditionalCharges?: number;
+  /** Wallet and gift booking payments still pending, so they are not in totalPaid yet. */
+  pendingWalletGiftAmount?: number;
 }): number {
   const paidAfterRefunds = Math.max(0, (Number(totalPaid) || 0) - (Number(totalRefunded) || 0));
   const walletGiftCoverage = Math.max(0, (Number(walletAmount) || 0) + (Number(giftCardAmount) || 0));
-  const coverage = Math.max(paidAfterRefunds, walletGiftCoverage);
+  const pendingWalletGift = Math.max(0, Number(pendingWalletGiftAmount) || 0);
+  const coverage = Math.max(paidAfterRefunds + pendingWalletGift, walletGiftCoverage);
   return Math.max(0, (Number(totalAmount) || 0) - coverage + (Number(unpaidAdditionalCharges) || 0));
 }

@@ -135,8 +135,10 @@ function ProviderSalesContent() {
    * states are collectable — offering a charge on a completed sale invites a
    * duplicate payment.
    */
+  const saleCardDue = (sale: Sale) => Number(sale.amount_due ?? sale.total ?? 0);
+
   const isSaleCollectable = (sale: Sale) => {
-    if (Number(sale.total ?? 0) <= 0) return false;
+    if (saleCardDue(sale) <= 0) return false;
     const status = (sale.payment_status || "").toLowerCase();
     return status === "pending" || status === "failed";
   };
@@ -352,7 +354,7 @@ function ProviderSalesContent() {
         <CardMachineCollectDialog
           open={cardMachineOpen}
           onOpenChange={setCardMachineOpen}
-          amount={selectedSale.total}
+          amount={saleCardDue(selectedSale)}
           autoStart
           entity={{
             entityType: "sale",

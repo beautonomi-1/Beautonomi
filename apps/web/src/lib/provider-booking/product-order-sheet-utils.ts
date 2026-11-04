@@ -18,6 +18,7 @@ export interface ProductOrderSheetOrder {
   discount_amount?: number;
   gift_card_amount?: number | null;
   wallet_amount?: number | null;
+  amount_still_due?: number | null;
   payment_method?: string | null;
   promotion_code?: string | null;
   platform_fee?: number;

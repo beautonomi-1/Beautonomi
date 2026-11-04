@@ -34,6 +34,12 @@ describe("setup-status NATIVE_ROUTE_BY_ID", () => {
     }
   });
 
+  it("routes subscription-upgrade to native subscription settings", () => {
+    expect(NATIVE_ROUTE_BY_ID["subscription-upgrade"]).toBe(
+      "/(app)/(tabs)/more/settings/subscription",
+    );
+  });
+
   it("does not leak any web-style /provider/ paths", () => {
     for (const route of Object.values(NATIVE_ROUTE_BY_ID)) {
       expect(route).not.toMatch(/^\/provider\//);

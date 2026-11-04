@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { View, Text, TouchableOpacity, Alert, DeviceEventEmitter } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useTranslation } from "@beautonomi/i18n";
@@ -27,6 +27,11 @@ import {
 } from "@/lib/setup-step-navigation";
 import { PROVIDER_SETUP_STATUS_CHANGED } from "@/lib/setup-status-cache";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+import {
+  clearSubscriptionActivationPending,
+  readSubscriptionActivationPending,
+} from "@/lib/subscription/subscription-activation-pending";
+import { pollSubscriptionProvisioned } from "@/lib/payments/providerPaystackReturn";
 
 type SetupStep = {
   id: string;
@@ -60,6 +65,7 @@ export default function OnboardingHubScreen() {
   const { provider } = useProvider();
   const { screenPadding, isTablet, contentMaxWidth } = useResponsive();
   const { data, loading, error, refresh } = useApi<SetupStatus>("/api/provider/setup-status");
+  const [subscriptionActivating, setSubscriptionActivating] = useState(false);
 
   const isPendingApproval = provider?.status === "pending_approval";
   const isSuspended = provider?.status === "suspended";
@@ -148,6 +154,24 @@ export default function OnboardingHubScreen() {
   useFocusEffect(
     useCallback(() => {
       void refresh();
+      void (async () => {
+        const pending = await readSubscriptionActivationPending();
+        if (!pending) {
+          setSubscriptionActivating(false);
+          return;
+        }
+        setSubscriptionActivating(true);
+        const poll = await pollSubscriptionProvisioned({
+          orderId: null,
+          maxAttempts: 4,
+          delayMs: 1500,
+        });
+        if (poll.state === "provisioned") {
+          await clearSubscriptionActivationPending();
+          setSubscriptionActivating(false);
+          void refresh();
+        }
+      })();
     }, [refresh]),
   );
 
@@ -222,6 +246,17 @@ export default function OnboardingHubScreen() {
               ) : undefined
             }
           />
+
+          {subscriptionActivating ? (
+            <View style={twStyle("mb-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3")}>
+              <Text style={twStyle("text-sm font-semibold text-sky-900")}>
+                Payment received, activating your plan
+              </Text>
+              <Text style={twStyle("mt-1 text-sm leading-5 text-sky-800")}>
+                This usually takes a few seconds. You can keep setting up while we finish.
+              </Text>
+            </View>
+          ) : null}
 
           <View style={twStyle("mb-6 items-center")}>
             <View

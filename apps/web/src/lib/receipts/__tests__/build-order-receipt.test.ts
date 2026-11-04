@@ -71,6 +71,39 @@ describe("build-order-receipt", () => {
     expect(finances.balanceDue).toBe(60);
   });
 
+  it("pending order counts a held gift and a card charge already taken", () => {
+    const finances = computeOrderReceiptFinancials({
+      order: {
+        subtotal: 100,
+        tax_amount: 0,
+        delivery_fee: 0,
+        discount_amount: 0,
+        platform_fee: 0,
+        wallet_amount: 0,
+        gift_card_amount: 40,
+        total_amount: 100,
+        payment_status: "pending",
+      },
+      cardPaid: 60,
+    });
+    expect(finances.amountPaid).toBe(100);
+    expect(finances.balanceDue).toBe(0);
+  });
+
+  it("does not let card payments push amount paid above the order total", () => {
+    const finances = computeOrderReceiptFinancials({
+      order: {
+        wallet_amount: 40,
+        gift_card_amount: 40,
+        total_amount: 100,
+        payment_status: "failed",
+      },
+      cardPaid: 60,
+    });
+    expect(finances.amountPaid).toBe(100);
+    expect(finances.balanceDue).toBe(0);
+  });
+
   it("refunded order nets to zero paid with no balance due", () => {
     const finances = computeOrderReceiptFinancials({
       order: {

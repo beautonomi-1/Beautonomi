@@ -9,7 +9,6 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
-import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { z } from "zod";
 import {
   notifyProductOrderPaidIfTransitioned,
@@ -29,21 +28,17 @@ import {
   lookupIdempotentResponse,
   rememberIdempotentResponse,
 } from "@/lib/http/idempotency";
+import { validateCollectionLocationForProvider } from "@/lib/orders/product-order-delivery-quote";
 import {
-  computeProductOrderDeliveryQuote,
-  validateCollectionLocationForProvider,
-} from "@/lib/orders/product-order-delivery-quote";
+  collectProductOrderStockIssues,
+  computeProductOrderTotals,
+} from "@/lib/orders/compute-product-order-totals";
 import { stripCustomerProductOrderList } from "@/lib/orders/customer-order-response";
-import { percentOf, sumMoney } from "@beautonomi/utils";
-import { applyProductOrderPromotion } from "@/lib/ecommerce/product-order-promotion";
 import {
+  plannedProductOrderGiftAmount,
   reserveProductOrderGiftCard,
   voidProductOrderGiftCard,
 } from "@/lib/ecommerce/product-order-gift-card";
-import {
-  calculatePlatformFeeAmount,
-  getEffectivePlatformFeeConfig,
-} from "@/lib/platform-service-fee-settings";
 
 const createOrderSchema = z.object({
   provider_id: z.string().uuid(),
@@ -218,17 +213,14 @@ export async function POST(request: NextRequest) {
 
     const { data: providerForTenant } = await supabase
       .from("providers")
-      .select("tenant_id, customer_fee_config_id")
+      .select("tenant_id")
       .eq("id", parsed.provider_id)
       .maybeSingle();
-    const providerRow = providerForTenant as
-      | { tenant_id?: string | null; customer_fee_config_id?: string | null }
-      | null;
+    const providerRow = providerForTenant as { tenant_id?: string | null } | null;
     const orderTenantId = providerRow?.tenant_id ?? null;
     if (!orderTenantId || orderTenantId !== tenantId) {
       return errorResponse("Provider not available in this market", "TENANT_MISMATCH", 404);
     }
-    const providerCustomerFeeConfigId = providerRow?.customer_fee_config_id ?? null;
 
     const paymentMethod = parsed.payment_method ?? "paystack";
     const paymentFlags = await getPaymentFeatureFlagsForTenant(orderTenantId);
@@ -323,162 +315,76 @@ export async function POST(request: NextRequest) {
       return errorResponse("No cart items found for this provider", "EMPTY_CART", 400);
     }
 
-    const stockErrors: string[] = [];
-    for (const item of validatedCartItems) {
-      const p = item.product;
-      const variant = item.product_variant;
-      const effectiveQty = variant ? (variant.quantity ?? 0) : (p?.quantity ?? 0);
-      const tracksStock = p?.track_stock_quantity !== false;
-      if (!p || !p.is_active || !p.retail_sales_enabled) {
-        stockErrors.push(`${p?.name ?? "Unknown product"} is no longer available`);
-      } else if (p.has_variants && !variant) {
-        stockErrors.push(`${p.name}: variant required`);
-      } else if (tracksStock && effectiveQty < item.quantity) {
-        stockErrors.push(`${p.name}: only ${effectiveQty} available (requested ${item.quantity})`);
-      }
-    }
+    const stockErrors = collectProductOrderStockIssues(validatedCartItems);
     if (stockErrors.length > 0) {
       return errorResponse(stockErrors.join("; "), "INSUFFICIENT_STOCK", 400);
     }
 
-    // Get shipping config for delivery fee
-    let deliveryFee = 0;
-    let deliveryFeeType: string | null = null;
-    let deliveryDistanceKm: number | null = null;
-    if (parsed.fulfillment_type === "delivery" && parsed.delivery_address_id) {
-      const quoteResult = await computeProductOrderDeliveryQuote({
-        supabase,
-        userId: user.id,
-        providerId: parsed.provider_id,
-        deliveryAddressId: parsed.delivery_address_id,
-        cartItems: validatedCartItems,
-      });
-      if (quoteResult.ok === false) {
-        const messages: Record<string, string> = {
-          ADDRESS_NOT_FOUND: "Delivery address not found.",
-          DELIVERY_RADIUS_EXCEEDED: "Delivery address is outside this provider's delivery radius.",
-          DELIVERY_ADDRESS_UNVERIFIED:
-            "We could not verify this address for delivery. Please confirm it on the map.",
-        };
-        return errorResponse(messages[quoteResult.code], quoteResult.code, 400);
-      }
-      deliveryFee = quoteResult.quote.fee;
-      deliveryFeeType = quoteResult.quote.feeType;
-      deliveryDistanceKm = quoteResult.quote.distanceKm;
+    const { isOnlineProductOrderCheckout } = await import("@/lib/orders/product-order-online-checkout");
+    const isOnline = isOnlineProductOrderCheckout(parsed.payment_method);
+    const totalsResult = await computeProductOrderTotals(supabase as any, {
+      cartItems: validatedCartItems,
+      providerId: parsed.provider_id,
+      tenantId,
+      customerId: user.id,
+      fulfillmentType: parsed.fulfillment_type,
+      deliveryAddressId: parsed.delivery_address_id ?? null,
+      collectionLocationId: parsed.collection_location_id ?? null,
+      promotionCode: parsed.promotion_code ?? null,
+      onlineCheckout: isOnline,
+    });
+    if (totalsResult.ok === false) {
+      return errorResponse(totalsResult.message, totalsResult.code, 400);
     }
-
-    // Calculate totals (tax applies after promotion discount on the discounted subtotal)
-    let subtotal = 0;
-    const orderItems: Array<{
-      product_id: string;
-      product_variant_id: string | null;
-      product_name: string;
-      product_image_url: string | null;
-      quantity: number;
-      unit_price: number;
-      total_price: number;
-    }> = [];
-
-    for (const item of validatedCartItems) {
-      const p = item.product;
-      const variant = item.product_variant;
-      const unitPrice = variant ? parseFloat(variant.retail_price) : parseFloat(p.retail_price);
-      const lineTotal = unitPrice * item.quantity;
-      subtotal += lineTotal;
-      orderItems.push({
-        product_id: p.id,
-        product_variant_id: variant?.id ?? null,
-        product_name: p.name,
-        product_image_url: p.image_urls?.[0] ?? null,
-        quantity: item.quantity,
-        unit_price: unitPrice,
-        total_price: lineTotal,
-      });
-    }
-
-    // Promotion code (same rules as bookings) — discount applies to the product subtotal.
-    let promotionId: string | null = null;
-    let promotionCode: string | null = null;
-    let promotionDiscount = 0;
-    if (parsed.promotion_code) {
-      const promo = await applyProductOrderPromotion(supabase as any, {
-        code: parsed.promotion_code,
-        subtotal,
-        providerId: parsed.provider_id,
-        locationId: parsed.collection_location_id ?? null,
-        customerId: user.id,
-      });
-      if (promo.ok === false) {
-        return errorResponse(promo.message, "PROMO_INVALID", 400);
-      }
-      promotionId = promo.promotionId;
-      promotionCode = promo.code;
-      promotionDiscount = Math.min(promo.discountAmount, subtotal);
-    }
-    const discountedSubtotal = Math.max(0, Math.round((subtotal - promotionDiscount) * 100) / 100);
-
-    let taxAmount = 0;
-    if (subtotal > 0 && promotionDiscount > 0) {
-      const discountRatio = discountedSubtotal / subtotal;
-      for (const item of validatedCartItems) {
-        const p = item.product;
-        const variant = item.product_variant;
-        const unitPrice = variant ? parseFloat(variant.retail_price) : parseFloat(p.retail_price);
-        const lineTotal = unitPrice * item.quantity;
-        const discountedLine = Math.round(lineTotal * discountRatio * 100) / 100;
-        taxAmount += percentOf(discountedLine, parseFloat(p.tax_rate || "0"));
-      }
-    } else {
-      for (const item of validatedCartItems) {
-        const p = item.product;
-        const variant = item.product_variant;
-        const unitPrice = variant ? parseFloat(variant.retail_price) : parseFloat(p.retail_price);
-        const lineTotal = unitPrice * item.quantity;
-        taxAmount += percentOf(lineTotal, parseFloat(p.tax_rate || "0"));
-      }
-    }
-    taxAmount = Math.round(taxAmount * 100) / 100;
-
-    // Calculate platform fee for online orders
-    let platformFee = 0;
-    const isOnline = !["cash", "yoco", "paycloud", "card_on_delivery"].includes(parsed.payment_method ?? "paystack");
-    if (isOnline && providerCustomerFeeConfigId) {
-      // Provider-level customer fee override (`providers.customer_fee_config_id`), same
-      // resolver bookings use; falls back to platform payouts settings internally.
-      const feeConfig = await getEffectivePlatformFeeConfig(parsed.provider_id, discountedSubtotal);
-      platformFee = calculatePlatformFeeAmount(feeConfig, discountedSubtotal);
-    } else if (isOnline) {
-      const scopedSettings = await fetchScopedSingle<Record<string, unknown>>({
-        supabase,
-        table: "platform_settings",
-        tenantId,
-        select: "settings",
-        apply: (q) => q.eq("is_active", true),
-        orderBy: { column: "updated_at", ascending: false },
-      });
-      const settings = (scopedSettings.data as { settings?: Record<string, unknown> } | null)?.settings;
-      const payouts = (settings as Record<string, any> | undefined)?.payouts as Record<string, any> | undefined;
-      if (payouts) {
-        const feeType = (payouts.platform_service_fee_type as string) || "fixed";
-        if (feeType === "percentage") {
-          const pct = Number(payouts.platform_service_fee_percentage) || 0;
-          platformFee = percentOf(discountedSubtotal, pct);
-        } else {
-          platformFee = Number(payouts.platform_service_fee_fixed) || 0;
-        }
-      } else {
-        platformFee = 0;
-      }
-    }
-
-    const totalAmount = sumMoney(discountedSubtotal, taxAmount, deliveryFee, platformFee);
+    const {
+      subtotal,
+      promotionDiscount,
+      taxAmount,
+      deliveryFee,
+      deliveryFeeType,
+      deliveryDistanceKm,
+      promotionId,
+      promotionCode,
+      platformFee,
+      totalAmount,
+      items: orderItems,
+    } = totalsResult.totals;
 
     // Gift card is applied first (reserved after the order row exists), then wallet,
     // then card for whatever remains — same tender order as bookings.
     let giftCardAmountPlanned = 0;
     if (giftCardInput && totalAmount > 0) {
-      const requested = giftCardInput.amount != null ? Number(giftCardInput.amount) : totalAmount;
-      giftCardAmountPlanned = Math.max(0, Math.min(Math.round(requested * 100) / 100, totalAmount));
+      const code = giftCardInput.code.trim().toUpperCase();
+      const { data: giftCards, error: giftLookupError } = await (adminSupabase.from("gift_cards") as any)
+        .select("code, balance, currency, is_active, expires_at")
+        .ilike("code", code)
+        .limit(5);
+      if (giftLookupError) {
+        return errorResponse("Gift card could not be checked.", "GIFT_CARD_INVALID", 400);
+      }
+      const giftCard = (giftCards ?? []).find(
+        (row: { code?: string }) => String(row.code ?? "").trim().toUpperCase() === code,
+      ) as
+        | { balance?: number | string; currency?: string; is_active?: boolean; expires_at?: string | null }
+        | undefined;
+      if (!giftCard || giftCard.is_active === false) {
+        return errorResponse("Invalid gift card code", "GIFT_CARD_INVALID", 400);
+      }
+      if (giftCard.expires_at && new Date(giftCard.expires_at).getTime() <= Date.now()) {
+        return errorResponse("Gift card has expired", "GIFT_CARD_INVALID", 400);
+      }
+      const cardCurrency = String(giftCard.currency || orderCurrency).toUpperCase();
+      if (cardCurrency !== orderCurrency.toUpperCase()) {
+        return errorResponse("Gift card currency does not match this order.", "GIFT_CARD_INVALID", 400);
+      }
+      giftCardAmountPlanned = plannedProductOrderGiftAmount({
+        requested: giftCardInput.amount != null ? Number(giftCardInput.amount) : null,
+        orderTotal: totalAmount,
+        cardBalance: Number(giftCard.balance ?? 0),
+      });
+      if (giftCardAmountPlanned <= 0) {
+        return errorResponse("This gift card has no balance left.", "GIFT_CARD_INVALID", 400);
+      }
     }
     const amountAfterGift = Math.max(0, Math.round((totalAmount - giftCardAmountPlanned) * 100) / 100);
 
@@ -705,6 +611,9 @@ export async function POST(request: NextRequest) {
           source: "wallet_checkout",
           provider: settledByWallet ? "wallet" : "gift_card",
         });
+        if (!paymentRecordResult.ok) {
+          throw new Error("Gift card could not be captured.");
+        }
         if (paymentRecordResult.ledgerIncomplete) {
           console.error("[me/orders] Wallet checkout paid but finance ledger incomplete", {
             productOrderId: order.id,

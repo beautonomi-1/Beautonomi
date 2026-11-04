@@ -10,6 +10,13 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { requireManualCardEnabledForProvider } from "@/lib/payments/require-manual-card-enabled";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { notifyAdditionalChargePaid } from "@/lib/notifications/notify-additional-charge-paid";
+import { additionalChargeAmountStillDue } from "@/lib/bookings/display-invariants";
+import { sumAdditionalChargeTenderLegs } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
+import {
+  settleAdditionalChargeRemainderAfterHold,
+  settleAdditionalChargeWithoutPaystack,
+} from "@/lib/bookings/settle-additional-charge-without-paystack";
+import { rollbackCollectibleSplitLeg } from "@/lib/bookings/rollback-collectible-split-leg";
 
 /**
  * POST /api/provider/bookings/[id]/additional-charges/[chargeId]/mark-paid
@@ -127,6 +134,14 @@ export async function POST(
       return notFoundResponse("Additional charge not found");
     }
 
+    const chargeStatus = String(charge.status || "").toLowerCase();
+    if (chargeStatus === "paid") {
+      return errorResponse("This charge has already been paid", "ALREADY_PAID", 400);
+    }
+    if (chargeStatus === "rejected") {
+      return errorResponse("This charge has been rejected", "CHARGE_REJECTED", 400);
+    }
+
     const chargeAmount = Number(charge.amount);
     const currency = charge.currency || booking.currency || lastResortCurrency;
 
@@ -151,6 +166,66 @@ export async function POST(
       );
     }
 
+    const held = await sumAdditionalChargeTenderLegs(supabaseAdmin, bookingId, chargeId);
+    const heldTotal = held.wallet + held.gift;
+    const stillDue = additionalChargeAmountStillDue(chargeAmount, heldTotal);
+    if (heldTotal > 0.009) {
+      if (stillDue <= 0.009) {
+        const covered = await settleAdditionalChargeWithoutPaystack(supabaseAdmin, {
+          bookingId,
+          chargeId,
+          customerId: String((booking as { customer_id?: string }).customer_id ?? user.id),
+          providerId,
+          tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
+          bookingNumber: String(
+            (booking as { booking_number?: string | null }).booking_number ??
+              (booking as { ref_number?: string | null }).ref_number ??
+              bookingId.slice(0, 8),
+          ),
+          chargeAmount,
+          walletAmountApplied: held.wallet,
+          giftCardAmountApplied: held.gift,
+        });
+        if (covered.ok === false) {
+          await rollbackCollectibleSplitLeg(supabaseAdmin, {
+            bookingId,
+            customerId: String((booking as { customer_id?: string }).customer_id ?? user.id),
+            currency: String((booking as { currency?: string | null }).currency ?? LAST_RESORT_CURRENCY),
+            tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
+            providerId,
+            walletAmountToReverse: held.wallet,
+            giftCardAmountToReverse: held.gift,
+            paymentLegSuffix: `:additional:${chargeId}`,
+            idempotencyKey: `additional_charge_mark_paid_rollback:${chargeId}`,
+          });
+          return errorResponse(covered.error, "ADDITIONAL_CHARGE_SETTLEMENT_ERROR", 500);
+        }
+        return successResponse({
+          payment: { provider: paymentProvider, reference: stableReference },
+          charge: { ...charge, status: "paid", paid_at: new Date().toISOString() },
+          message: "Additional charge marked as paid successfully",
+        });
+      } else {
+        const remainder = await settleAdditionalChargeRemainderAfterHold(supabaseAdmin, {
+          bookingId,
+          chargeId,
+          providerId,
+          tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
+          chargeAmount,
+          chargeDescription: (charge as { description?: string | null }).description ?? null,
+          heldWallet: held.wallet,
+          heldGift: held.gift,
+          remainderAmount: stillDue,
+          paymentProvider,
+          paymentMethod: effectiveMethod,
+          reference: stableReference,
+          createdBy: user.id,
+        });
+        if (remainder.ok === false) {
+          return errorResponse(remainder.error, "ADDITIONAL_CHARGE_SETTLEMENT_ERROR", 500);
+        }
+      }
+    } else {
     const { error: settlementError } = await supabaseAdmin.rpc(
       "record_walk_in_additional_charge_payment",
       {
@@ -172,6 +247,7 @@ export async function POST(
         500,
         settlementError
       );
+    }
     }
 
     // Create booking event

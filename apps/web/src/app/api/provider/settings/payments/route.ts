@@ -29,6 +29,11 @@ import {
   normalizeTipPercentPresets,
   validateTipPercentPresetsForSave,
 } from "@beautonomi/utils";
+import {
+  applyProviderTaxSettingsPatch,
+  type ProviderTaxSettingsPatch,
+} from "@/lib/provider-settings/apply-provider-tax-settings-patch";
+import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
 
 const PROVIDER_SETTINGS_ROLES = [
   "provider_owner",
@@ -63,7 +68,7 @@ export async function GET(request: NextRequest) {
     const { data: provider, error: providerError } = await supabase
       .from("providers")
       .select(
-        "tenant_id, currency, tax_rate_percent, is_vat_registered, vat_number, requires_deposit, deposit_percentage, no_show_fee_enabled, no_show_fee_amount, accept_cash, accept_card, accept_online, accept_paystack_terminal, accept_paycloud, tax_inclusive, tips_enabled, tip_presets, receipt_auto_send, tips_distribution"
+        "tenant_id, currency, tax_rate_percent, is_vat_registered, vat_number, country_code, requires_deposit, deposit_percentage, no_show_fee_enabled, no_show_fee_amount, accept_cash, accept_card, accept_online, accept_paystack_terminal, accept_paycloud, tax_inclusive, tips_enabled, tip_presets, receipt_auto_send, tips_distribution"
       )
       .eq("id", providerId)
       .single();
@@ -115,12 +120,20 @@ export async function GET(request: NextRequest) {
 
     const defaultTaxRate =
       platformSettings?.settings?.taxes?.default_tax_rate ?? 0;
+    const resolvedVat = await resolveProviderVat(supabase, {
+      tax_rate_percent: provider.tax_rate_percent ?? null,
+      tax_inclusive: provider.tax_inclusive ?? null,
+      is_vat_registered: provider.is_vat_registered ?? null,
+      vat_number: provider.vat_number ?? null,
+      country_code: provider.country_code ?? null,
+      tax_rate_override_percent: null,
+    });
 
     const result = {
       currency: provider.currency || lastResortCurrency,
-      taxRatePercent: provider.tax_rate_percent ?? defaultTaxRate,
-      isVatRegistered: provider.is_vat_registered ?? false,
-      vatNumber: provider.vat_number || null,
+      taxRatePercent: resolvedVat.registered ? resolvedVat.ratePercent : 0,
+      isVatRegistered: resolvedVat.registered,
+      vatNumber: resolvedVat.vatNumber,
       requiresDeposit: provider.requires_deposit ?? false,
       depositPercentage: provider.deposit_percentage ?? 0,
       noShowFeeEnabled: provider.no_show_fee_enabled ?? false,
@@ -132,7 +145,7 @@ export async function GET(request: NextRequest) {
         ? (provider.accept_paystack_terminal ?? false)
         : false,
       acceptPaycloud: paycloudEnabled ? (provider.accept_paycloud ?? false) : false,
-      taxInclusive: provider.tax_inclusive ?? true,
+      taxInclusive: resolvedVat.inclusive,
       tipsEnabled: provider.tips_enabled ?? true,
       tipPresets: normalizeTipPercentPresets(provider.tip_presets),
       receiptAutoSend: provider.receipt_auto_send ?? true,
@@ -206,15 +219,6 @@ export async function PATCH(request: NextRequest) {
     if (body.currency !== undefined) {
       updates.currency = body.currency;
     }
-    if (body.taxRatePercent !== undefined) {
-      updates.tax_rate_percent = Number(body.taxRatePercent);
-    }
-    if (body.isVatRegistered !== undefined) {
-      updates.is_vat_registered = body.isVatRegistered;
-    }
-    if (body.vatNumber !== undefined) {
-      updates.vat_number = body.vatNumber || null;
-    }
     if (body.requiresDeposit !== undefined) {
       updates.requires_deposit = body.requiresDeposit;
     }
@@ -242,9 +246,6 @@ export async function PATCH(request: NextRequest) {
     if (body.acceptPaycloud !== undefined) {
       updates.accept_paycloud = paycloudEnabled ? body.acceptPaycloud : false;
     }
-    if (body.taxInclusive !== undefined) {
-      updates.tax_inclusive = body.taxInclusive;
-    }
     if (body.tipsEnabled !== undefined) {
       updates.tips_enabled = body.tipsEnabled;
     }
@@ -266,15 +267,41 @@ export async function PATCH(request: NextRequest) {
       updates.tips_distribution = body.tipsDistribution;
     }
 
-    const { data: provider, error } = await supabase
-      .from("providers")
-      .update(updates)
-      .eq("id", providerId)
-      .select()
-      .single();
+    // VAT rate is derived from the country tax_rates table; a client-sent taxRatePercent is ignored.
+    const taxPatch: ProviderTaxSettingsPatch = {};
+    if (body.isVatRegistered !== undefined) taxPatch.is_vat_registered = Boolean(body.isVatRegistered);
+    if (body.vatNumber !== undefined) taxPatch.vat_number = body.vatNumber || null;
+    if (body.taxInclusive !== undefined) taxPatch.tax_inclusive = Boolean(body.taxInclusive);
+    if (Object.keys(taxPatch).length > 0) {
+      const taxResult = await applyProviderTaxSettingsPatch(supabase, providerId, taxPatch);
+      if (taxResult.ok === false) {
+        return errorResponse(taxResult.message, taxResult.code, taxResult.status);
+      }
+    }
 
-    if (error) {
-      throw error;
+    let provider: Record<string, unknown>;
+    if (Object.keys(updates).length > 0) {
+      const { data, error } = await supabase
+        .from("providers")
+        .update(updates)
+        .eq("id", providerId)
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+      provider = data as Record<string, unknown>;
+    } else {
+      const { data, error } = await supabase
+        .from("providers")
+        .select("*")
+        .eq("id", providerId)
+        .single();
+      if (error) {
+        throw error;
+      }
+      provider = data as Record<string, unknown>;
     }
 
     const onlineBookingUpdates: Record<string, any> = {};

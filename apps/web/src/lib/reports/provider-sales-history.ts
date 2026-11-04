@@ -84,6 +84,26 @@ const LEDGER_TYPES = [
 ] as const;
 
 export const SALES_HISTORY_MAX_LEDGER_ROWS = 40_000;
+
+/** Sale rows created only so a booking card charge has a terminal record. The booking ledger is the revenue. */
+export const BOOKING_COLLECTION_SALE_NOTE_PREFIX = "booking_collection:";
+
+export function isBookingCollectionSale(notes: string | null | undefined): boolean {
+  const text = String(notes ?? "");
+  if (text.startsWith(BOOKING_COLLECTION_SALE_NOTE_PREFIX)) return true;
+  // Phone and English web booking-card sales created before the prefix above.
+  return text.startsWith("Booking ");
+}
+
+export function posSaleCountsAsRevenue(sale: {
+  payment_status?: string | null;
+  notes?: string | null;
+}): boolean {
+  const status = String(sale.payment_status ?? "completed").toLowerCase();
+  if (status === "pending" || status === "failed" || status === "refunded") return false;
+  if (isBookingCollectionSale(sale.notes)) return false;
+  return true;
+}
 const MAX_POS_ROWS = 8_000;
 
 function emptyAgg(): LedgerAgg {
@@ -553,7 +573,7 @@ export async function queryProviderSalesHistory(
       const sales = await fetchAllPaged(async (from, to) => {
         const { data, error } = await db
           .from("sales")
-          .select("id, sale_number, ref_number, sale_date, total_amount, customer_id, location_id")
+          .select("id, sale_number, ref_number, sale_date, total_amount, customer_id, location_id, payment_status, notes")
           .eq("provider_id", providerId)
           .gte("sale_date", fromIso)
           .lte("sale_date", toIso)
@@ -574,6 +594,7 @@ export async function queryProviderSalesHistory(
 
       for (const s of sales ?? []) {
         const row = s as any;
+        if (!posSaleCountsAsRevenue(row)) continue;
         const reportLoc = row.location_id ?? (locationId ? primaryLocationId : null);
         if (locationId && reportLoc !== locationId) continue;
         const customerName = row.customer_id ? customerMap.get(row.customer_id) ?? null : null;

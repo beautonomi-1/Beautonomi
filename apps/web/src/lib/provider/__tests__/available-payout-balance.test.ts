@@ -120,6 +120,7 @@ describe("getAvailablePayoutBalance", () => {
         completedPayouts: 30,
         pendingPayouts: 15,
         availableBalance: 85,
+        vatHeldForProvider: 0,
       },
     });
   });
@@ -431,6 +432,7 @@ describe("getAvailablePayoutBalance", () => {
       completedPayouts: 30,
       pendingPayouts: 25,
       availableBalance: 145,
+      vatHeldForProvider: 0,
     });
     // recognized 260 - onHold 60 - completed 30 - pending 25 = 145.
     expect(result.rawBalance).toBe(145);
@@ -560,5 +562,49 @@ describe("getAvailablePayoutBalance", () => {
     const result = await getAvailablePayoutBalance(db as never, providerId);
     expect(financeRangeCalls).toBe(2);
     expect(result.availableBalance).toBe(1000);
+  });
+
+  it("adds platform-held VAT flagged in tax row metadata and subtracts refund vat_held_for_provider_amount", async () => {
+    const result = await getAvailablePayoutBalance(
+      mockSupabase({
+        finance_transactions: [
+          {
+            provider_id: providerId,
+            transaction_type: "provider_earnings",
+            amount: 100,
+            net: 100,
+            booking_id: "b1",
+            created_at: "2026-01-01T00:00:00.000Z",
+          },
+          {
+            provider_id: providerId,
+            transaction_type: "tax",
+            amount: 15,
+            net: 0,
+            booking_id: "b1",
+            created_at: "2026-01-01T00:00:00.000Z",
+            metadata: { vat_held_for_provider: true },
+          },
+          {
+            provider_id: providerId,
+            transaction_type: "refund",
+            amount: -5,
+            net: -5,
+            booking_id: "b1",
+            created_at: "2026-01-02T00:00:00.000Z",
+            refund_component: "tax",
+            metadata: { vat_held_for_provider_amount: 5 },
+          },
+        ],
+        bookings: [{ id: "b1", booking_source: "online" }],
+        booking_payments: [{ booking_id: "b1", payment_provider: "paystack", status: "completed" }],
+        payouts: [],
+      }),
+      providerId,
+    );
+
+    expect(result.breakdown.vatHeldForProvider).toBe(10);
+    expect(result.rawBalance).toBe(110);
+    expect(result.availableBalance).toBe(110);
   });
 });

@@ -48,6 +48,7 @@ export function PaystackTerminalCollectDialog({
     giftCardAmount: Number(raw.gift_card_amount ?? 0),
     unpaidAdditionalCharges: Number(raw.unpaid_additional_charges ?? 0),
     paymentStatus: appointment.payment_status,
+    pendingWalletGiftAmount: Number(raw.pending_wallet_gift_amount ?? 0),
   });
 
   const prepareTerminal = useCallback(async () => {

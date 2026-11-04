@@ -18,6 +18,9 @@ import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { useTranslation } from "@beautonomi/i18n";
 
+/** Seeded participant representing the booker; the server excludes it from guests. */
+export const PRIMARY_GROUP_PARTICIPANT_ID = "1";
+
 interface StepGroupParticipantsProps {
   bookingState: BookingState;
   updateBookingState: (updates: Partial<BookingState>) => void;
@@ -48,7 +51,7 @@ export default function StepGroupParticipants({
   const [participants, setParticipants] = useState(
     bookingState.groupParticipants || [
       {
-        id: "1",
+        id: PRIMARY_GROUP_PARTICIPANT_ID,
         name: bookingState.clientInfo?.firstName 
           ? `${bookingState.clientInfo.firstName} ${bookingState.clientInfo.lastName}`.trim()
           : t(`${gp}.you`),
@@ -79,11 +82,16 @@ export default function StepGroupParticipants({
       if (!providerSlug) return;
       try {
         const response = await fetcher.get<{
-          data: { maxGroupSize: number };
+          data: { maxGroupSize: number; splitPaymentEnabled?: boolean };
         }>(`/api/public/providers/${encodeURIComponent(providerSlug)}/group-booking-settings`);
         if (response.data?.maxGroupSize) {
           setMaxGroupSize(response.data.maxGroupSize);
         }
+        const splitEnabled = response.data?.splitPaymentEnabled === true;
+        updateBookingState({
+          groupSplitPaymentEnabled: splitEnabled,
+          ...(splitEnabled ? {} : { groupPaymentMode: "organizer_pays_all" as const }),
+        });
       } catch (error) {
         // Use default if API fails
         console.error("Failed to load group booking settings:", error);

@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
 
-    // Get tax rates from reference_data
+    // Reference tax-rate options (legacy / UI picklists).
     const { data: taxRates, error: taxError } = await supabase
       .from("reference_data")
       .select("*")
@@ -33,6 +33,25 @@ export async function GET(request: NextRequest) {
       .order("display_order", { ascending: true });
 
     if (taxError) throw taxError;
+
+    // VAT source-of-truth rates (F17): used by provider VAT resolution.
+    // Read-only here (admin SQL/migrations are the current write surface).
+    let vatRates: unknown[] = [];
+    try {
+      const { data: tr, error: trError } = await supabase
+        .from("tax_rates")
+        .select(
+          "id, code, name, jurisdiction, country_code, rate, inclusive, is_platform_default, effective_from, effective_to",
+        )
+        .is("effective_to", null)
+        .order("is_platform_default", { ascending: false })
+        .order("jurisdiction", { ascending: true })
+        .order("code", { ascending: true });
+      if (trError) throw trError;
+      vatRates = Array.isArray(tr) ? tr : [];
+    } catch {
+      vatRates = [];
+    }
 
     // Get provider-specific tax rates if provider_id is provided
     let providerTaxRate = null;
@@ -87,6 +106,7 @@ export async function GET(request: NextRequest) {
 
     return successResponse({
       tax_rates: taxRates || [],
+      vat_rates: vatRates,
       provider_tax_rate: providerTaxRate,
       default_tax_rate: defaultTaxRate,
       statistics: {

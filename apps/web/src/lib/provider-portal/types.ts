@@ -402,6 +402,8 @@ export interface Sale {
   coupon_code?: string;
   gift_card_code?: string;
   gift_card_amount?: number;
+  /** Card-machine amount after a gift already held on the sale. */
+  amount_due?: number;
 }
 
 export interface SaleItem {

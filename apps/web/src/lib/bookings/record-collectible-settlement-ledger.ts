@@ -6,6 +6,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { resolveCommissionPercentageForBooking } from "@/lib/finance/resolve-commission-percentage-for-booking";
 import { percentOf, subtractMoney } from "@beautonomi/utils";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { fetchBookingCommissionContext } from "./fetch-booking-commission-context";
 import {
   resolveCommissionBaseForBookingPayment,
@@ -65,12 +67,17 @@ export async function recordCollectibleSettlementLedger(
   if (existingTx) return;
 
   const amountCollected = Math.max(0, collectibleAmount);
-  const totalCollectedForCommission =
-    amountCollected + Math.max(0, walletAmountApplied) + Math.max(0, giftCardAmountApplied);
+  // Wallet and gift are parts of this settlement, not cash on top of it.
+  const totalCollectedForCommission = amountCollected;
+  const vatHeldForProviderPayout = await isFeatureEnabledServer(
+    FEATURE_FLAG_KEYS.FINANCE_PROVIDER_VAT_PAYOUT,
+    financeTenantId,
+  );
 
   const commissionContext = await fetchBookingCommissionContext(admin, bookingId, {
     chargeAmount: totalCollectedForCommission,
     excludeReference: internalRef,
+    excludeProviderIdSuffix: `:remaining:${idempotencyReference}`,
   });
 
   const postBookingLevelFees =
@@ -80,6 +87,7 @@ export async function recordCollectibleSettlementLedger(
         tipAmount,
         travelFee,
         platformFee: serviceFeeAmount,
+        taxAmount,
         existingTypes: commissionContext.existingBookingLevelTypes,
       })
     : 0;
@@ -195,6 +203,7 @@ export async function recordCollectibleSettlementLedger(
         commission: 0,
         net: 0,
         description: `Tax for booking ${bookingNumber}`,
+        metadata: vatHeldForProviderPayout ? { vat_held_for_provider: true } : undefined,
         created_at: now,
       });
     }

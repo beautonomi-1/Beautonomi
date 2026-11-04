@@ -84,5 +84,7 @@ export function mapExplorePostRow(
     playback_path: playbackPath,
     media_meta: mapMediaMeta(row.media_meta ?? null, supabaseUrl),
     sound_id: row.sound_id ?? null,
+    ...("is_hidden" in row && row.is_hidden != null ? { is_hidden: Boolean(row.is_hidden) } : {}),
+    ...(row.moderation_notes !== undefined ? { moderation_notes: row.moderation_notes ?? null } : {}),
   };
 }

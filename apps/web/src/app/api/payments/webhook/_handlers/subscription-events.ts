@@ -168,6 +168,9 @@ async function handleSubscriptionCreate(payload: any, supabase: SupabaseClient) 
     ? new Date(payload.createdAt).toISOString()
     : new Date().toISOString();
 
+  const { CLEAR_PENDING_UPGRADE_FIELDS } = await import(
+    "@/lib/subscriptions/pending-upgrade-fields"
+  );
   await supabase.from("provider_subscriptions").upsert(
     {
       provider_id: provider.id,
@@ -185,6 +188,7 @@ async function handleSubscriptionCreate(payload: any, supabase: SupabaseClient) 
         : null,
       started_at: startedAt,
       ...paystackActivationFields(),
+      ...CLEAR_PENDING_UPGRADE_FIELDS,
     },
     { onConflict: "provider_id" },
   );

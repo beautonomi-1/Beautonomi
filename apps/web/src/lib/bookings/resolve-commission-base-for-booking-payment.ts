@@ -58,13 +58,19 @@ export const RESIDUAL_POSTED_LEG_TYPES = [
 ] as const;
 
 export function sumPostedPositiveLegs(
-  rows: Array<{ transaction_type?: string | null; net?: number | null }>,
+  rows: Array<{ transaction_type?: string | null; net?: number | null; amount?: number | null }>,
 ): number {
   const allowed = new Set<string>(RESIDUAL_POSTED_LEG_TYPES);
   return rows.reduce((sum, row) => {
     const type = String(row.transaction_type ?? "");
+    if (!allowed.has(type)) return sum;
+    if (type === "tax") {
+      const amount = Number(row.amount ?? 0);
+      if (amount > 0) return sum + amount;
+      return sum;
+    }
     const net = Number(row.net ?? 0);
-    if (allowed.has(type) && net > 0) return sum + net;
+    if (net > 0) return sum + net;
     return sum;
   }, 0);
 }
@@ -95,6 +101,7 @@ export function sumPendingBookingLevelCatchUpNet(input: {
   tipAmount: number;
   travelFee: number;
   platformFee: number;
+  taxAmount?: number;
   existingTypes: ReadonlySet<string>;
 }): number {
   let sum = 0;
@@ -114,6 +121,10 @@ export function sumPendingBookingLevelCatchUpNet(input: {
   }
   if (travelFee > 0 && !existing.has("travel_fee")) {
     sum += travelFee;
+  }
+  const taxAmount = Math.max(0, Number(input.taxAmount ?? 0));
+  if (taxAmount > 0 && !existing.has("tax")) {
+    sum += taxAmount;
   }
   return Math.round(sum * 100) / 100;
 }

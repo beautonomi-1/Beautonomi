@@ -21,6 +21,8 @@ import { verifyFlutterwaveTransactionById } from "@/lib/payments/flutterwave-ser
 import { recordFlutterwaveBookingSettlement } from "./record-flutterwave-booking-settlement";
 import { toMinorUnits } from "@beautonomi/utils";
 import { tryNotifySlackEvent } from "@/lib/integrations/slack/dispatch";
+import { bookingNeedsReviewForPayment as reviewPaymentForReconcile, isGroupGuestSharePayment } from "./reconcile-guest-share-helpers";
+import { listMissingOnlineBookingPayments } from "./list-missing-ledger-booking-payments";
 import { SLACK_EVENT_KEYS } from "@/lib/integrations/slack/event-keys";
 
 export const RECONCILE_ONLINE_CHARGE_LEDGER_SOURCE = "reconcile_online_charge_ledger";
@@ -200,39 +202,20 @@ async function reconcilePaystackMissingLedger(
 ): Promise<{ scannedPaymentIds: string[] }> {
   const scannedPaymentIds: string[] = [];
 
-  const { data: rows, error } = await supabase
-    .from("booking_payments")
-    .select(
-      "id, booking_id, amount, payment_provider, payment_provider_id, payment_provider_data, created_at, bookings(id, status, tenant_id, currency, total_amount, payment_option)",
-    )
-    .eq("payment_provider", "paystack")
-    .eq("status", "completed")
-    .lt("created_at", cutoffIso)
-    .order("created_at", { ascending: true })
-    .limit(PAYSTACK_SCAN_LIMIT);
+  const rows = await listMissingOnlineBookingPayments(
+    supabase,
+    "paystack",
+    cutoffIso,
+    PAYSTACK_SCAN_LIMIT,
+  );
 
-  if (error) {
-    console.error("[reconcile-online-charge-ledger] query failed:", error);
-    return { scannedPaymentIds };
-  }
-
-  for (const raw of rows ?? []) {
+  for (const raw of rows) {
     const row = normaliseBookingPaymentRow(raw);
     summary.scanned += 1;
     scannedPaymentIds.push(row.id);
 
     const reference = row.payment_provider_id?.trim();
     if (!reference) {
-      summary.skipped += 1;
-      continue;
-    }
-
-    if (await bookingPredatesSourceAttribution(supabase, row.booking_id)) {
-      summary.skipped += 1;
-      continue;
-    }
-
-    if (await bookingHasLedgerForPayment(supabase, row.booking_id, row.id)) {
       summary.skipped += 1;
       continue;
     }
@@ -246,7 +229,14 @@ async function reconcilePaystackMissingLedger(
       amount: Number(row.amount ?? 0),
     };
 
-    const review = await bookingNeedsReview(supabase, row.booking_id, row.bookings?.status);
+    const review = await reviewPaymentForReconcile(
+      supabase,
+      row.booking_id,
+      row.id,
+      row.bookings?.status,
+      row.payment_provider_data ?? null,
+      bookingNeedsReview,
+    );
     if (review.needsReview) {
       summary.needsReview.push({ ...reviewBase, reason: review.reason ?? "unknown" });
       continue;
@@ -258,8 +248,9 @@ async function reconcilePaystackMissingLedger(
       continue;
     }
 
-    const amountMajor =
-      typeof verified.amount === "number"
+    const amountMajor = isGroupGuestSharePayment(row)
+      ? Number(row.amount ?? 0)
+      : typeof verified.amount === "number"
         ? convertFromSmallestUnit(verified.amount, verified.currency || row.bookings?.currency || "ZAR")
         : Number(row.amount ?? 0);
 
@@ -298,39 +289,20 @@ async function reconcileStripeMissingLedger(
 ): Promise<{ scannedPaymentIds: string[] }> {
   const scannedPaymentIds: string[] = [];
 
-  const { data: rows, error } = await supabase
-    .from("booking_payments")
-    .select(
-      "id, booking_id, amount, payment_provider, payment_provider_id, payment_provider_data, created_at, bookings(id, status, tenant_id, currency, total_amount, payment_option)",
-    )
-    .eq("payment_provider", "stripe")
-    .eq("status", "completed")
-    .lt("created_at", cutoffIso)
-    .order("created_at", { ascending: true })
-    .limit(OTHER_GATEWAY_SCAN_LIMIT);
+  const rows = await listMissingOnlineBookingPayments(
+    supabase,
+    "stripe",
+    cutoffIso,
+    OTHER_GATEWAY_SCAN_LIMIT,
+  );
 
-  if (error) {
-    console.error("[reconcile-online-charge-ledger] stripe query failed:", error);
-    return { scannedPaymentIds };
-  }
-
-  for (const raw of rows ?? []) {
+  for (const raw of rows) {
     const row = normaliseBookingPaymentRow(raw);
     summary.scanned += 1;
     scannedPaymentIds.push(row.id);
 
     const reference = row.payment_provider_id?.trim();
     if (!reference) {
-      summary.skipped += 1;
-      continue;
-    }
-
-    if (await bookingPredatesSourceAttribution(supabase, row.booking_id)) {
-      summary.skipped += 1;
-      continue;
-    }
-
-    if (await bookingHasLedgerForPayment(supabase, row.booking_id, row.id)) {
       summary.skipped += 1;
       continue;
     }
@@ -344,7 +316,14 @@ async function reconcileStripeMissingLedger(
       amount: Number(row.amount ?? 0),
     };
 
-    const review = await bookingNeedsReview(supabase, row.booking_id, row.bookings?.status);
+    const review = await reviewPaymentForReconcile(
+      supabase,
+      row.booking_id,
+      row.id,
+      row.bookings?.status,
+      row.payment_provider_data ?? null,
+      bookingNeedsReview,
+    );
     if (review.needsReview) {
       summary.needsReview.push({ ...reviewBase, reason: review.reason ?? "unknown" });
       continue;
@@ -362,7 +341,9 @@ async function reconcileStripeMissingLedger(
       }
 
       const currency = (intent.currency || row.bookings?.currency || "ZAR").toUpperCase();
-      const amountMajor = convertFromSmallestUnit(intent.amount_received ?? intent.amount ?? 0, currency);
+      const amountMajor = isGroupGuestSharePayment(row)
+        ? Number(row.amount ?? 0)
+        : convertFromSmallestUnit(intent.amount_received ?? intent.amount ?? 0, currency);
       const feeMinor = await retrieveStripeFeeMinorForPaymentIntent(
         reference,
         row.bookings?.tenant_id ?? null,
@@ -407,39 +388,20 @@ async function reconcileFlutterwaveMissingLedger(
 ): Promise<{ scannedPaymentIds: string[] }> {
   const scannedPaymentIds: string[] = [];
 
-  const { data: rows, error } = await supabase
-    .from("booking_payments")
-    .select(
-      "id, booking_id, amount, payment_provider, payment_provider_id, payment_provider_data, created_at, bookings(id, status, tenant_id, currency, total_amount, payment_option)",
-    )
-    .eq("payment_provider", "flutterwave")
-    .eq("status", "completed")
-    .lt("created_at", cutoffIso)
-    .order("created_at", { ascending: true })
-    .limit(OTHER_GATEWAY_SCAN_LIMIT);
+  const rows = await listMissingOnlineBookingPayments(
+    supabase,
+    "flutterwave",
+    cutoffIso,
+    OTHER_GATEWAY_SCAN_LIMIT,
+  );
 
-  if (error) {
-    console.error("[reconcile-online-charge-ledger] flutterwave query failed:", error);
-    return { scannedPaymentIds };
-  }
-
-  for (const raw of rows ?? []) {
+  for (const raw of rows) {
     const row = normaliseBookingPaymentRow(raw);
     summary.scanned += 1;
     scannedPaymentIds.push(row.id);
 
     const transactionId = row.payment_provider_id?.trim();
     if (!transactionId) {
-      summary.skipped += 1;
-      continue;
-    }
-
-    if (await bookingPredatesSourceAttribution(supabase, row.booking_id)) {
-      summary.skipped += 1;
-      continue;
-    }
-
-    if (await bookingHasLedgerForPayment(supabase, row.booking_id, row.id)) {
       summary.skipped += 1;
       continue;
     }
@@ -453,7 +415,14 @@ async function reconcileFlutterwaveMissingLedger(
       amount: Number(row.amount ?? 0),
     };
 
-    const review = await bookingNeedsReview(supabase, row.booking_id, row.bookings?.status);
+    const review = await reviewPaymentForReconcile(
+      supabase,
+      row.booking_id,
+      row.id,
+      row.bookings?.status,
+      row.payment_provider_data ?? null,
+      bookingNeedsReview,
+    );
     if (review.needsReview) {
       summary.needsReview.push({ ...reviewBase, reason: review.reason ?? "unknown" });
       continue;
@@ -486,8 +455,11 @@ async function reconcileFlutterwaveMissingLedger(
       bookingId: row.booking_id,
       reference: verified.tx.tx_ref || txRef || transactionId,
       transactionId,
-      amountMajor:
-        verified.tx.amount > 0 ? verified.tx.amount : amountMajor,
+      amountMajor: isGroupGuestSharePayment(row)
+        ? amountMajor
+        : verified.tx.amount > 0
+          ? verified.tx.amount
+          : amountMajor,
       feesSmallestOrMajor: feeMinor,
       bookingPaymentId: row.id,
       isDeposit: resolveIsDeposit(row),
@@ -665,6 +637,7 @@ async function scanOtherGatewaysMissingLedger(
 type OpenExceptionRow = {
   id: string;
   external_id?: string | null;
+  internal_id?: string | null;
   created_at?: string | null;
   metadata?: Record<string, unknown> | null;
 };
@@ -679,7 +652,7 @@ async function persistReviewItemsAndAlert(
 
   const { data: openRows, error } = await supabase
     .from("reconciliation_exceptions")
-    .select("id, external_id, created_at, metadata")
+    .select("id, external_id, internal_id, created_at, metadata")
     .eq("psp", "paystack")
     .eq("source", "ledger")
     .eq("status", "open")
@@ -698,12 +671,22 @@ async function persistReviewItemsAndAlert(
 
   const stillNeedsReview = new Set(summary.needsReview.map((item) => item.bookingPaymentId));
 
-  // Resolve exceptions whose payment was scanned this run and no longer needs review
-  // (ledger posted, or the payment no longer qualifies).
-  for (const paymentId of scannedPaymentIds) {
+  // Resolve open exceptions when the booking already has an attributed ledger row
+  // (including payments omitted from the missing-ledger RPC list).
+  for (const [paymentId, existing] of openByPaymentId.entries()) {
     if (stillNeedsReview.has(paymentId)) continue;
-    const existing = openByPaymentId.get(paymentId);
-    if (!existing) continue;
+    let bookingId = existing.internal_id ? String(existing.internal_id) : "";
+    if (!bookingId) {
+      const { data: bp } = await supabase
+        .from("booking_payments")
+        .select("booking_id")
+        .eq("id", paymentId)
+        .maybeSingle();
+      bookingId = bp?.booking_id ? String(bp.booking_id) : "";
+    }
+    if (!bookingId) continue;
+    const hasLedger = await bookingHasLedgerForPayment(supabase, bookingId, paymentId);
+    if (!hasLedger) continue;
     await supabase
       .from("reconciliation_exceptions")
       .update({
@@ -856,6 +839,14 @@ export async function reconcileOnlineChargeLedger(
     await persistReviewItemsAndAlert(supabase, summary, scannedPaymentIds, now);
   } catch (err) {
     console.error("[reconcile-online-charge-ledger] review persistence failed:", err);
+  }
+
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { retryStalePaymentRefunds } = await import("@/lib/payments/retry-stale-payment-refunds");
+    await retryStalePaymentRefunds(getSupabaseAdmin(), { now });
+  } catch (err) {
+    console.error("[reconcile-online-charge-ledger] stale refund retry failed:", err);
   }
 
   if (summary.needsReview.length > 0) {

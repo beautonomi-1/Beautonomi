@@ -7,11 +7,15 @@ import { enqueueExploreVideoProcessing } from "@/lib/explore/enqueue-video-proce
 import { firstSlideIsVideo } from "@/lib/explore/video-media";
 import type { ExploreMediaSlideMeta } from "@/lib/explore/media-types";
 import { denormalizeFirstSlideFromMeta } from "@/lib/explore/media-meta";
+import { planExploreVideoRetry } from "@/lib/explore/plan-explore-video-retry";
+import { isExploreVideoTranscodeEnabled } from "@/lib/explore/explore-feature-gates";
+import { loadRendobarSecrets, rendobarIntegrationReady } from "@/lib/explore/rendobar-config";
 
 const JOB_NAME = "explore-media-backfill";
 export const maxDuration = 300;
 
 const BATCH = 8;
+const VIDEO_SCAN_LIMIT = 100;
 
 export async function GET(request: NextRequest) {
   const auth = verifyCronRequest(request);
@@ -25,6 +29,7 @@ async function runJob() {
   const supabase = getSupabaseAdmin();
   let photoBackfilled = 0;
   let videoEnqueued = 0;
+  let videoReset = 0;
 
   const { data: photoRows } = await supabase
     .from("explore_posts")
@@ -71,21 +76,44 @@ async function runJob() {
     }
   }
 
+  const transcodeOn = await isExploreVideoTranscodeEnabled(null);
+  const rendobarReady = transcodeOn && rendobarIntegrationReady(await loadRendobarSecrets());
+  if (!rendobarReady) {
+    return NextResponse.json({ ok: true, photoBackfilled, videoEnqueued, videoReset, videoSkipped: "transcode_unavailable" });
+  }
+
   const { data: videoRows } = await supabase
     .from("explore_posts")
     .select("id, media_urls, media_meta, playback_path")
     .eq("status", "published")
-    .is("playback_path", null)
-    .limit(BATCH);
+    .contains("media_meta", [{ kind: "video" }])
+    .or(
+      [
+        "playback_path.is.null",
+        'media_meta.cs.[{"kind":"video","status":"failed"}]',
+        'media_meta.cs.[{"kind":"video","status":"probing"}]',
+        'media_meta.cs.[{"kind":"video","status":"encoding"}]',
+      ].join(","),
+    )
+    .order("published_at", { ascending: false })
+    .limit(VIDEO_SCAN_LIMIT);
 
+  const nowMs = Date.now();
   for (const row of videoRows ?? []) {
+    if (videoEnqueued >= BATCH * 3) break;
     const meta = (row.media_meta ?? []) as ExploreMediaSlideMeta[];
-    if (!firstSlideIsVideo(row.media_urls as string[], meta)) continue;
-    const slide = meta[0];
-    if (slide?.probe_job_id || slide?.encode_job_id) continue;
+    const plan = planExploreVideoRetry(meta, nowMs);
+    if (plan.retried === 0) continue;
+
+    const denorm = denormalizeFirstSlideFromMeta(row.media_urls as string[], plan.meta);
+    await supabase
+      .from("explore_posts")
+      .update({ media_meta: plan.meta, playback_path: denorm.playback_path })
+      .eq("id", row.id);
+    videoReset += 1;
     await enqueueExploreVideoProcessing(row.id as string);
     videoEnqueued += 1;
   }
 
-  return NextResponse.json({ ok: true, photoBackfilled, videoEnqueued });
+  return NextResponse.json({ ok: true, photoBackfilled, videoEnqueued, videoReset });
 }

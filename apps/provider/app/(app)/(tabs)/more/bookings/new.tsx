@@ -382,6 +382,7 @@ function SectionLabel({ label, required }: { label: string; required?: boolean }
 interface PaymentSettings {
   taxRatePercent?: number;
   taxInclusive?: boolean;
+  isVatRegistered?: boolean;
   tipPresets?: number[];
 }
 
@@ -1366,7 +1367,8 @@ export default function NewBookingScreen() {
     const discountAmt = baseDiscountAmt;
     const discountAmtForTotals = baseDiscountAmt + membershipDiscountAmt;
 
-    const taxRatePercent = safeNum(paymentSettings?.taxRatePercent);
+    const taxRatePercent =
+      paymentSettings?.isVatRegistered === true ? safeNum(paymentSettings.taxRatePercent) : 0;
     const taxRate = taxRatePercent / 100;
     const taxInclusive = paymentSettings?.taxInclusive ?? true;
     const travelFeeNum = effectiveTravelFee(locationType, safeNum(travelFee));

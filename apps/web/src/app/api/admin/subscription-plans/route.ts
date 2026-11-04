@@ -84,7 +84,18 @@ export async function GET(request: NextRequest) {
       orderBy: { column: "display_order", ascending: true },
     });
 
-    return successResponse(scopedPlans.data || []);
+    const { evaluateSubscriptionCatalogReadiness } = await import(
+      "@/lib/subscription/catalog-readiness"
+    );
+    const catalog_readiness = await evaluateSubscriptionCatalogReadiness(
+      supabase,
+      currentTenantId,
+    );
+
+    return successResponse({
+      plans: scopedPlans.data || [],
+      catalog_readiness,
+    });
   } catch (error) {
     return handleApiError(error, 'Failed to fetch subscription plans');
   }

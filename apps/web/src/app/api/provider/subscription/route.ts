@@ -124,6 +124,10 @@ export async function GET(request: NextRequest) {
       currentPlanIsFree &&
       (effectiveOrder?.status === "pending" || effectiveOrder?.status === "failed");
 
+    const pendingUpgradePlanIdEarly = (subscription as {
+      pending_upgrade_plan_id?: string | null;
+    }).pending_upgrade_plan_id?.trim();
+
     const billingIssue = checkoutIssueOnFree
       ? effectiveOrder?.status === "failed"
         ? {
@@ -140,7 +144,14 @@ export async function GET(request: NextRequest) {
             action: "complete_payment",
           }
       : currentPlanIsFree
-      ? null
+      ? pendingUpgradePlanIdEarly
+        ? {
+            type: "upgrade_pending",
+            message:
+              "You selected a paid plan during onboarding. Finish checkout to unlock it.",
+            action: "complete_payment",
+          }
+        : null
       : isAppleBillingActive(sub.billing_provider, sub.status) &&
           sub.apple_price_increase_status === "pending"
         ? {
@@ -203,12 +214,46 @@ export async function GET(request: NextRequest) {
 
     const { appleIapEnabledFromEnv } = await import("@/lib/iap/apple/config");
 
+    const pendingPlanId = (subscription as {
+      pending_upgrade_plan_id?: string | null;
+      pending_upgrade_billing_period?: string | null;
+      pending_upgrade_set_at?: string | null;
+    }).pending_upgrade_plan_id?.trim();
+    const pendingBillingPeriod = (subscription as {
+      pending_upgrade_billing_period?: string | null;
+    }).pending_upgrade_billing_period;
+    let pending_upgrade: {
+      plan_id: string;
+      billing_period: "monthly" | "yearly";
+      plan_name: string | null;
+      set_at: string | null;
+    } | null = null;
+    if (
+      pendingPlanId &&
+      (pendingBillingPeriod === "monthly" || pendingBillingPeriod === "yearly")
+    ) {
+      const { data: pendingPlanRow } = await supabase
+        .from("subscription_plans")
+        .select("name")
+        .eq("id", pendingPlanId)
+        .maybeSingle();
+      pending_upgrade = {
+        plan_id: pendingPlanId,
+        billing_period: pendingBillingPeriod,
+        plan_name: (pendingPlanRow as { name?: string | null } | null)?.name ?? null,
+        set_at:
+          (subscription as { pending_upgrade_set_at?: string | null }).pending_upgrade_set_at ??
+          null,
+      };
+    }
+
     return successResponse({
       ...(subscription as any),
       status: sub.status,
       latest_order: effectiveOrder,
       billing_issue: billingIssue,
       scheduled_plan,
+      pending_upgrade,
       ios_purchase_eligible: iosPurchaseEligible.eligible,
       ios_purchase_eligible_reason: iosPurchaseEligible.reason,
       billing_provider: sub.billing_provider ?? "paystack",

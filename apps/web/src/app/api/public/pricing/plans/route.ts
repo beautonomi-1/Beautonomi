@@ -7,6 +7,7 @@ import {
   loadLinkedSubscriptionPlanPricesMap,
 } from "@/lib/pricing/public-pricing-billing-periods";
 import { resolvePublishedPricingPlanRows } from "@/lib/pricing/published-pricing-plans";
+import { resolvePricingPlanIsFree } from "@/lib/subscription/resolve-pricing-plan-is-free";
 
 /**
  * GET /api/public/pricing/plans
@@ -69,18 +70,18 @@ export async function GET(request: Request) {
           .eq("plan_id", plan.id)
           .order("display_order", { ascending: true });
 
-        const hasAnyPaystackCode = Boolean(
-          plan.paystack_plan_code_monthly || plan.paystack_plan_code_yearly,
-        );
-        const priceStr = String(plan.price ?? "").replace(/[^0-9.]/g, "");
-        const numericPrice = priceStr ? parseFloat(priceStr) : NaN;
-        const isFreeByPrice =
-          !priceStr || Number.isNaN(numericPrice) || numericPrice === 0 || /free/i.test(String(plan.price ?? ""));
-        const isFree = isFreeByPrice && !hasAnyPaystackCode;
-
         const linked = plan.subscription_plan_id
           ? linkedMap.get(plan.subscription_plan_id.trim())
           : undefined;
+
+        const isFree = resolvePricingPlanIsFree(
+          {
+            price: plan.price,
+            paystack_plan_code_monthly: plan.paystack_plan_code_monthly,
+            paystack_plan_code_yearly: plan.paystack_plan_code_yearly,
+          },
+          linked ? { is_free: linked.is_free } : null,
+        );
 
         const available_billing_periods = buildPublicPricingBillingPeriods({
           isFree,
@@ -107,6 +108,14 @@ export async function GET(request: Request) {
           subscription_plan_id: plan.subscription_plan_id ?? null,
           price_monthly: linked?.price_monthly ?? null,
           price_yearly: linked?.price_yearly ?? null,
+          apple_product_id_monthly: linked?.apple_product_id_monthly ?? null,
+          apple_product_id_yearly: linked?.apple_product_id_yearly ?? null,
+          ios_purchasable_periods: (() => {
+            const periods: ("monthly" | "yearly")[] = [];
+            if (linked?.apple_product_id_monthly?.trim()) periods.push("monthly");
+            if (linked?.apple_product_id_yearly?.trim()) periods.push("yearly");
+            return periods;
+          })(),
         };
       }),
     );

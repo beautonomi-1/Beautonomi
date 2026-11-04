@@ -30,6 +30,31 @@ body {
   height: 0;
 }
 
+/* Visible thin scrollbars for admin scrollports (support queue, nav, tables) */
+.admin-scrollbar {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(209 213 219) rgb(249 250 251);
+}
+
+.admin-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.admin-scrollbar::-webkit-scrollbar-track {
+  background: rgb(249 250 251);
+}
+
+.admin-scrollbar::-webkit-scrollbar-thumb {
+  background: rgb(209 213 219);
+  border-radius: 4px;
+}
+
+.admin-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgb(156 163 175);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

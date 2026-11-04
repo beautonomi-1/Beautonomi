@@ -62,6 +62,7 @@ export const NATIVE_ROUTE_BY_ID: Record<string, string> = {
   payout: "/(app)/(tabs)/more/settings/payout-accounts",
   gallery: "/(app)/(tabs)/more/gallery",
   "identity-verification": "/(app)/(tabs)/more/settings/verification",
+  "subscription-upgrade": "/(app)/(tabs)/more/settings/subscription",
 };
 
 /**
@@ -373,12 +374,60 @@ export async function GET(request: NextRequest) {
         )
       : false;
 
-    // ── Step definitions ──────────────────────────────────────────────────────
+    let subscriptionUpgradeStep: {
+      id: string;
+      title: string;
+      description: string;
+      completed: boolean;
+      required: boolean;
+      link: string;
+    } | null = null;
+    if (providerId) {
+      const { data: subPending } = await supabaseAdmin
+        .from("provider_subscriptions")
+        .select(
+          "pending_upgrade_plan_id, pending_upgrade_billing_period, plan:subscription_plans!plan_id(is_free)",
+        )
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      const pendingPlanId = (subPending as { pending_upgrade_plan_id?: string | null } | null)
+        ?.pending_upgrade_plan_id?.trim();
+      const pendingPeriod = (subPending as { pending_upgrade_billing_period?: string | null } | null)
+        ?.pending_upgrade_billing_period;
+      if (
+        pendingPlanId &&
+        (pendingPeriod === "monthly" || pendingPeriod === "yearly")
+      ) {
+        const { data: pricingRow } = await supabaseAdmin
+          .from("pricing_plans")
+          .select("id, name")
+          .eq("subscription_plan_id", pendingPlanId)
+          .eq("is_active", true)
+          .order("display_order", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        const pricingPlanId = (pricingRow as { id?: string } | null)?.id;
+        const checkoutLink = pricingPlanId
+          ? `/provider/subscription-checkout?planId=${encodeURIComponent(pricingPlanId)}&billing_period=${pendingPeriod}&return_to=dashboard`
+          : "/provider/subscription";
+        subscriptionUpgradeStep = {
+          id: "subscription-upgrade",
+          title: "Finish subscription upgrade",
+          description: "Complete checkout for the paid plan you selected during onboarding.",
+          completed: false,
+          required: false,
+          link: checkoutLink,
+        };
+      }
+    }
+
+        // ── Step definitions ──────────────────────────────────────────────────────
     // Only include steps that are genuinely needed to start accepting bookings.
     // Website, social media, languages, and years-in-business are profile
     // enhancements — they do not gate bookings and are not shown here.
 
     const steps = [
+      ...(subscriptionUpgradeStep ? [subscriptionUpgradeStep] : []),
       {
         id: "profile-details",
         title: isFreelancer ? "Business Profile" : "Business Details",

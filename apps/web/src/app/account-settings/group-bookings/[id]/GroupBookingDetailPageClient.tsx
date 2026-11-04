@@ -37,6 +37,9 @@ type GroupParticipant = {
   payment_status: string | null;
   booking_number: string | null;
   booking_status: string | null;
+  share_amount_due?: number | null;
+  share_amount_paid?: number;
+  share_status?: string | null;
 };
 
 function humanGroupSessionStatus(status: string, gbd: (key: string) => string): string {
@@ -120,6 +123,43 @@ export default function GroupBookingDetailPageClient() {
     void load();
   }, [load]);
 
+  const [guestActionId, setGuestActionId] = useState<string | null>(null);
+
+  const resendInvite = async (participantId: string) => {
+    setGuestActionId(participantId);
+    try {
+      await fetcher.post(
+        `/api/me/group-bookings/${encodeURIComponent(groupId)}/participants/${encodeURIComponent(participantId)}/invite`,
+        {},
+      );
+      toast.success(gbd("inviteResent"));
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : gbd("inviteResendFailed"));
+    } finally {
+      setGuestActionId(null);
+    }
+  };
+
+  const cancelGuest = async (participant: GroupParticipant) => {
+    const confirmText = participant.is_current_user
+      ? gbd("cancelMySpotConfirm")
+      : gbd("removeGuestConfirm", { name: participant.name });
+    if (!window.confirm(confirmText)) return;
+    setGuestActionId(participant.id);
+    try {
+      await fetcher.post(
+        `/api/me/group-bookings/${encodeURIComponent(groupId)}/participants/${encodeURIComponent(participant.id)}/cancel`,
+        {},
+      );
+      toast.success(participant.is_current_user ? gbd("spotCancelled") : gbd("guestRemoved"));
+      await load();
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : gbd("guestCancelFailed"));
+    } finally {
+      setGuestActionId(null);
+    }
+  };
+
   const handleReschedule = async () => {
     if (!groupId || !rescheduleDate || !rescheduleTime) return;
     const parsed = Date.parse(`${rescheduleDate}T${rescheduleTime}:00`);
@@ -172,6 +212,7 @@ export default function GroupBookingDetailPageClient() {
   const currentUserParticipant = detail.participants.find((p) => p.is_current_user);
   const currentUserBookingStatus = String(currentUserParticipant?.booking_status ?? "").toLowerCase();
   const sessionStatusLabel = humanGroupSessionStatus(detail.status, (k) => gbd(k));
+  const groupOpen = !["completed", "cancelled", "started", "in_progress"].includes(detail.status);
   const canRescheduleGroup =
     Boolean(detail.is_primary_payer) &&
     !["completed", "cancelled", "started"].includes(detail.status) &&
@@ -238,13 +279,60 @@ export default function GroupBookingDetailPageClient() {
                     ) : null}
                   </p>
                   <p className="text-sm text-gray-600">{p.service_name}</p>
-                  {p.booking_number && p.booking_id ? (
+                    {p.booking_number && p.booking_id ? (
                     <Link
                       href={`/account-settings/bookings/${p.booking_id}`}
                       className="text-xs text-[#FF0077] hover:underline"
                     >
                       {t("web.accountSettings.bookings.bookingNumber", { number: p.booking_number })}
                     </Link>
+                  ) : null}
+                  {!p.is_primary_contact && p.share_status ? (
+                    <p
+                      className={`text-xs mt-1 ${
+                        p.share_status === "paid"
+                          ? "text-green-700"
+                          : p.share_status === "cancelled"
+                            ? "text-gray-500"
+                            : "text-amber-800"
+                      }`}
+                    >
+                      {p.share_status === "paid"
+                        ? gbd("shareStatusPaid")
+                        : p.share_status === "cancelled"
+                          ? gbd("shareStatusCancelled")
+                          : gbd("shareStatusPending", {
+                              amount: fmt(
+                                Math.max(0, Number(p.share_amount_due ?? 0) - Number(p.share_amount_paid ?? 0)),
+                              ),
+                            })}
+                    </p>
+                  ) : null}
+                  {groupOpen && !p.is_primary_contact && !p.booking_id && p.share_status !== "cancelled" ? (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {detail.is_primary_payer && p.share_status === "pending" ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={guestActionId === p.id}
+                          onClick={() => void resendInvite(p.id)}
+                        >
+                          {gbd("resendInvite")}
+                        </Button>
+                      ) : null}
+                      {detail.is_primary_payer || p.is_current_user ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={guestActionId === p.id}
+                          onClick={() => void cancelGuest(p)}
+                        >
+                          {p.is_current_user ? gbd("cancelMySpot") : gbd("removeGuest")}
+                        </Button>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
                 <div className="text-right text-sm space-y-1">

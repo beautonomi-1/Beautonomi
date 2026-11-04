@@ -131,6 +131,7 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
         giftCardAmount: Number(raw?.gift_card_amount ?? 0),
         unpaidAdditionalCharges: Number(raw?.unpaid_additional_charges ?? 0),
         paymentStatus: appt.payment_status,
+        pendingWalletGiftAmount: Number(raw?.pending_wallet_gift_amount ?? 0),
       })
     : 0;
 

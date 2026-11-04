@@ -17,6 +17,7 @@ type OrderReceiptPdfExtras = {
   amount_paid?: number | null;
   balance_due?: number | null;
   wallet_amount?: number | null;
+  gift_card_amount?: number | null;
   tracking_number?: string | null;
   carrier?: string | null;
   tracking_url?: string | null;
@@ -45,6 +46,7 @@ export function drawOrderReceiptPdfExtras(doc: PdfDoc, receipt: OrderReceiptPdfE
   }
 
   const walletAmt = Number(receipt.wallet_amount || 0);
+  const giftAmt = Number(receipt.gift_card_amount || 0);
   const amountPaid = Number(receipt.amount_paid ?? 0);
   const paymentLines: Parameters<typeof drawPdfPayments>[1] = [];
 
@@ -55,9 +57,16 @@ export function drawOrderReceiptPdfExtras(doc: PdfDoc, receipt: OrderReceiptPdfE
       tone: "success",
     });
   }
+  if (giftAmt > 0.01) {
+    paymentLines.push({
+      label: "Gift card",
+      amount: moneyPdf(giftAmt, currency),
+      tone: "success",
+    });
+  }
 
   const method = receipt.payment_method;
-  const nonWalletPaid = Math.max(0, amountPaid - walletAmt);
+  const nonWalletPaid = Math.max(0, amountPaid - walletAmt - giftAmt);
   if (method && nonWalletPaid > 0.01) {
     paymentLines.push({
       label: formatPaymentMethodLabel(method, receipt.payment_provider ?? null),

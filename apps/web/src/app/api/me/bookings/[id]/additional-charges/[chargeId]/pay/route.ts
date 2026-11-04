@@ -15,6 +15,8 @@ import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-pa
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { applyCollectibleGiftAndWallet } from "@/lib/bookings/apply-collectible-gift-wallet";
+import { additionalChargeAmountStillDue } from "@/lib/bookings/display-invariants";
+import { sumAdditionalChargeTenderLegs } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { settleAdditionalChargeWithoutPaystack } from "@/lib/bookings/settle-additional-charge-without-paystack";
 import { rollbackCollectibleSplitLeg } from "@/lib/bookings/rollback-collectible-split-leg";
 import { z } from "zod";
@@ -109,12 +111,44 @@ export async function POST(
     const bookingNumber =
       booking.booking_number || booking.ref_number || bookingId.slice(0, 8).toUpperCase();
 
+    const alreadyHeld = await sumAdditionalChargeTenderLegs(admin, bookingId, chargeId);
+    const stillDue = additionalChargeAmountStillDue(
+      chargeAmount,
+      alreadyHeld.wallet + alreadyHeld.gift,
+    );
+
     let walletAmountApplied = 0;
     let giftCardAmountApplied = 0;
-    let paystackAmount = chargeAmount;
+    let paystackAmount = stillDue;
 
     const reference = generateTransactionReference("charge", chargeId);
     const paymentLegSuffix = `:additional:${chargeId}`;
+
+    if (stillDue <= 0.005) {
+      const settled = await settleAdditionalChargeWithoutPaystack(admin, {
+        bookingId,
+        chargeId,
+        customerId: user.id,
+        providerId: (booking as { provider_id: string }).provider_id,
+        tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? null,
+        bookingNumber,
+        chargeAmount,
+        walletAmountApplied: alreadyHeld.wallet,
+        giftCardAmountApplied: alreadyHeld.gift,
+      });
+      if (settled.ok === false) {
+        return errorResponse(settled.error, "SETTLEMENT_ERROR", 500);
+      }
+      return successResponse({
+        authorization_url: "",
+        access_code: "",
+        reference: null,
+        wallet_amount_applied: alreadyHeld.wallet,
+        gift_card_amount_applied: alreadyHeld.gift,
+        paystack_amount: 0,
+        fully_settled: true,
+      });
+    }
 
     if (useWallet || giftCardCode) {
       const applied = await applyCollectibleGiftAndWallet({
@@ -126,7 +160,7 @@ export async function POST(
         providerId: (booking as { provider_id: string }).provider_id,
         tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? null,
         currency,
-        collectibleAmount: chargeAmount,
+        collectibleAmount: stillDue,
         useWallet,
         giftCardCode: giftCardCode || null,
         walletDescription: `Wallet spend (additional charge) for booking ${bookingNumber}`,

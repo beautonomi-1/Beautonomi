@@ -24,6 +24,7 @@ import { formatCurrency } from "@/lib/format";
 interface GroupBookingSettings {
   enableGroupBooking: boolean;
   allowOnlineGroupBooking: boolean;
+  allowSplitPayment: boolean;
   maxGroupSize: number;
   enabledLocations: string[];
   excludedServices: string[];
@@ -63,6 +64,7 @@ export default function GroupAppointmentsSettingsScreen() {
   const [form, setForm] = useState<GroupBookingSettings>({
     enableGroupBooking: false,
     allowOnlineGroupBooking: false,
+    allowSplitPayment: false,
     maxGroupSize: 5,
     enabledLocations: [],
     excludedServices: [],
@@ -73,6 +75,7 @@ export default function GroupAppointmentsSettingsScreen() {
       setForm({
         enableGroupBooking: settings.enableGroupBooking,
         allowOnlineGroupBooking: settings.allowOnlineGroupBooking,
+        allowSplitPayment: settings.allowSplitPayment ?? false,
         maxGroupSize: settings.maxGroupSize,
         enabledLocations: settings.enabledLocations ?? [],
         excludedServices: settings.excludedServices ?? [],
@@ -84,6 +87,7 @@ export default function GroupAppointmentsSettingsScreen() {
     const { error: err } = await updateSettings("/api/provider/settings/group-bookings", {
       enable_group_booking: form.enableGroupBooking,
       allow_online_group_booking: form.allowOnlineGroupBooking,
+      allow_split_payment: form.allowSplitPayment,
       max_group_size: form.maxGroupSize,
       enabled_locations: form.enabledLocations,
       excluded_services: form.excludedServices,
@@ -165,6 +169,21 @@ export default function GroupAppointmentsSettingsScreen() {
                 thumbColor={form.allowOnlineGroupBooking ? "#6366f1" : "#f4f4f5"}
               />
             </View>
+
+            {form.allowOnlineGroupBooking && (
+              <View style={twStyle("flex-row items-center justify-between py-2")}>
+                <View style={twStyle("flex-1")}>
+                  <Text style={twStyle("text-sm font-medium text-gray-900")}>{ga("splitPaymentTitle")}</Text>
+                  <Text style={twStyle("text-xs text-gray-500")}>{ga("splitPaymentHint")}</Text>
+                </View>
+                <Switch
+                  value={form.allowSplitPayment}
+                  onValueChange={(v) => setForm((p) => ({ ...p, allowSplitPayment: v }))}
+                  trackColor={{ false: "#d1d5db", true: "#818cf8" }}
+                  thumbColor={form.allowSplitPayment ? "#6366f1" : "#f4f4f5"}
+                />
+              </View>
+            )}
 
             <View style={twStyle("my-2 border-t border-gray-100")} />
 

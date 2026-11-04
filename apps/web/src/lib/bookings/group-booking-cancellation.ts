@@ -111,7 +111,9 @@ export async function cancelGroupBooking(
       );
       loadedOutcome = loaded.outcome;
       if (loaded.outcome) {
-        cancellationFee = loaded.outcome.feeRetained;
+        cancellationFee =
+          (loaded.outcome as { leadFeeRetained?: number }).leadFeeRetained ??
+          loaded.outcome.feeRetained;
       }
     }
 
@@ -163,6 +165,10 @@ export async function cancelGroupBooking(
                 }),
               );
               walletRefund = settleResult.walletRefundAmount;
+              await bookingsAdmin
+                .from("bookings")
+                .update({ cancellation_fee: settleResult.cancellationFeeApplied })
+                .eq("id", bookingId);
             }
           } else {
             const settleResult = await settleBookingFinanceById(bookingsAdmin, bookingId, financeActor, {
@@ -220,19 +226,19 @@ export async function cancelGroupBooking(
  * deleted — audit trail must be preserved) and unlinked from the group.
  * The booking_participants row stays for history; it is not deleted.
  *
- * NOTE: this function is not called by any API route today. The authoritative
- * cancel path is:
- *   • Customer cancel → POST /api/me/bookings/[id]/cancel → calls cancelGroupBooking
- *   • Provider remove participant → DELETE /api/provider/group-bookings/[id]/participants/[pid]
- * If you need to invoke group participant cancellation programmatically (e.g. a
- * future cron or admin action), use this helper rather than writing ad-hoc SQL.
+ * Callers should go through `cancelGroupGuest`, which also handles guests stored as
+ * tagged lines on the lead booking (no child booking).
  */
 export async function cancelGroupBookingParticipant(
   supabase: SupabaseClient,
   bookingId: string,
   participantId: string,
   cancelledBy: string,
-  reason?: string
+  reason?: string,
+  options?: {
+    /** Customer cancel route already marked the booking cancelled and will settle finance. */
+    bookingAlreadyCancelled?: boolean;
+  },
 ): Promise<void> {
   const { data: participant } = await supabase
     .from('booking_participants')
@@ -259,24 +265,34 @@ export async function cancelGroupBookingParticipant(
   if (linkedBookingId) {
     const now = new Date().toISOString();
     const bookingsAdmin = getBookingsAdminClient();
-    await bookingsAdmin
-      .from('bookings')
-      .update({
-        status: 'cancelled',
-        cancelled_at: now,
-        cancelled_by: cancelledBy,
-        cancellation_reason: reason || 'Removed from group booking',
-        group_booking_id: null,
-        updated_at: now,
-      })
-      .eq('id', linkedBookingId)
-      .not('status', 'in', '(completed,no_show,cancelled)');
+    if (options?.bookingAlreadyCancelled) {
+      await bookingsAdmin
+        .from('bookings')
+        .update({
+          group_booking_id: null,
+          updated_at: now,
+        })
+        .eq('id', linkedBookingId);
+    } else {
+      await bookingsAdmin
+        .from('bookings')
+        .update({
+          status: 'cancelled',
+          cancelled_at: now,
+          cancelled_by: cancelledBy,
+          cancellation_reason: reason || 'Removed from group booking',
+          group_booking_id: null,
+          updated_at: now,
+        })
+        .eq('id', linkedBookingId)
+        .not('status', 'in', '(completed,no_show,cancelled)');
 
-    try {
-      const { settleBookingFinanceById } = await import("./settle-booking-cancellation");
-      await settleBookingFinanceById(bookingsAdmin, linkedBookingId, "provider");
-    } catch (settleErr) {
-      console.error("[group participant cancel] finance settlement failed:", settleErr);
+      try {
+        const { settleBookingFinanceById } = await import("./settle-booking-cancellation");
+        await settleBookingFinanceById(bookingsAdmin, linkedBookingId, "provider");
+      } catch (settleErr) {
+        console.error("[group participant cancel] finance settlement failed:", settleErr);
+      }
     }
 
     try {

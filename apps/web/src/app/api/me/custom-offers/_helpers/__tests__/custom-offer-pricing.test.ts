@@ -46,6 +46,7 @@ function makeSupabase(overrides?: {
   const provider = {
     tax_rate_percent: overrides?.taxRate ?? 15,
     tax_inclusive: overrides?.taxInclusive ?? false,
+    is_vat_registered: true,
     tips_enabled: true,
     customer_fee_config_id: null,
     tenant_id: "tenant-1",
@@ -56,6 +57,10 @@ function makeSupabase(overrides?: {
       const chain: Record<string, unknown> = {};
       chain.select = () => chain;
       chain.eq = () => chain;
+      chain.lte = () => chain;
+      chain.or = () => chain;
+      chain.order = () => chain;
+      chain.limit = () => chain;
       chain.order = () => chain;
       chain.limit = () => chain;
       chain.maybeSingle = async () => {

@@ -7,7 +7,8 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { determineAppointmentStatusFromDB } from "@/lib/provider-portal/appointment-settings";
 import { lockBookingServices } from "./conflict-check";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { percentOf, sumMoney } from "@beautonomi/utils";
+import { computeVat, percentOf, sumMoney } from "@beautonomi/utils";
+import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
 
 export interface HoldConsumeInput {
   holdId: string;
@@ -68,7 +69,7 @@ export async function createBookingFromHold(
   // Load provider for tax/fee defaults
   const { data: provider, error: provErr } = await supabase
     .from("providers")
-    .select("id, currency, tax_rate_percent, customer_fee_config_id, tips_enabled")
+    .select("id, currency, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code, customer_fee_config_id, tips_enabled")
     .eq("id", hold.provider_id)
     .single();
 
@@ -76,16 +77,21 @@ export async function createBookingFromHold(
     throw new Error("Provider not found");
   }
 
-  // Null check — 0% is explicit "no tax", not "unset". Only fall back to platform default when NULL.
-  const rawHoldTaxRate = (provider as any)?.tax_rate_percent;
-  let taxRate: number;
-  if (rawHoldTaxRate == null) {
-    const { getPlatformDefaultTaxRate } = await import("@/lib/platform-tax-settings");
-    taxRate = await getPlatformDefaultTaxRate();
-  } else {
-    taxRate = Math.max(0, Number(rawHoldTaxRate));
+  const providerVat = await resolveProviderVat(supabase, {
+    ...(provider as object),
+    tax_rate_override_percent: null,
+  });
+  if (providerVat.registered && providerVat.source === "none") {
+    throw new Error("VAT rate is not configured for this provider");
   }
-  const taxAmount = taxRate > 0 ? percentOf(subtotal, taxRate) : 0;
+  const vatSplit = computeVat({
+    baseAmount: subtotal,
+    ratePercent: providerVat.ratePercent,
+    inclusive: providerVat.inclusive,
+    currency,
+  });
+  const taxAmount = providerVat.registered ? vatSplit.taxAmount : 0;
+  const taxRate = providerVat.registered ? providerVat.ratePercent : 0;
 
   let serviceFeeAmount = 0;
   let serviceFeePercentage = 0;
@@ -130,7 +136,9 @@ export async function createBookingFromHold(
     }
   }
 
-  const totalAmount = sumMoney(subtotal, taxAmount, serviceFeeAmount);
+  const totalAmount = providerVat.inclusive
+    ? sumMoney(subtotal, serviceFeeAmount)
+    : sumMoney(subtotal, taxAmount, serviceFeeAmount);
   const appointmentStatus = await determineAppointmentStatusFromDB(adminSupabase, hold.provider_id, undefined, {
     bookingSource: "online",
   });
@@ -159,6 +167,7 @@ export async function createBookingFromHold(
     service_fee_paid_by: "customer",
     tip_amount: 0,
     tax_amount: taxAmount,
+    tax_rate: taxRate,
     discount_amount: 0,
     promotion_discount_amount: 0,
     membership_discount_amount: 0,

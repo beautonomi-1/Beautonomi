@@ -15,7 +15,7 @@ import {
 import { toast } from "sonner";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { GroupBooking, GroupBookingParticipant } from "@/lib/provider-portal/types";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
@@ -173,6 +173,19 @@ export function GroupBookingViewSheet({
       await load();
     } catch {
       toast.error(t(`${gv}.checkOutFailed`));
+    }
+  };
+
+  const handleResendInvite = async (participantId: string) => {
+    if (!booking) return;
+    try {
+      await fetcher.post(
+        `/api/provider/group-bookings/${normalizeGroupBookingId(booking.id)}/participants/${encodeURIComponent(participantId)}/invite`,
+        {},
+      );
+      toast.success(t(`${gv}.inviteResent`));
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : t(`${gv}.inviteResendFailed`));
     }
   };
 
@@ -374,12 +387,53 @@ export function GroupBookingViewSheet({
                               <BookingStatusChip status={p.booking_status} />
                             </div>
                           ) : null}
+                          {(() => {
+                            const share = p as {
+                              share_status?: string | null;
+                              share_amount_due?: number | null;
+                              share_amount_paid?: number;
+                            };
+                            if (p.is_primary_contact || !share.share_status) return null;
+                            const owed = Math.max(
+                              0,
+                              Number(share.share_amount_due ?? 0) - Number(share.share_amount_paid ?? 0),
+                            );
+                            return (
+                              <p
+                                className={`mt-1 text-xs font-medium ${
+                                  share.share_status === "paid"
+                                    ? "text-green-700"
+                                    : share.share_status === "cancelled"
+                                      ? "text-gray-500"
+                                      : "text-amber-800"
+                                }`}
+                              >
+                                {share.share_status === "paid"
+                                  ? t(`${gv}.shareStatusPaid`)
+                                  : share.share_status === "cancelled"
+                                    ? t(`${gv}.shareStatusCancelled`)
+                                    : t(`${gv}.shareStatusPending`, { amount: formatMoney(owed) })}
+                              </p>
+                            );
+                          })()}
                         </div>
                         {p.price != null ? (
                           <span className="font-semibold">{formatMoney(Number(p.price))}</span>
                         ) : null}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2">
+                        {canEdit &&
+                        !isFinal &&
+                        !p.is_primary_contact &&
+                        (p as { share_status?: string | null }).share_status === "pending" ? (
+                          <button
+                            type="button"
+                            className="text-xs font-semibold underline"
+                            onClick={() => void handleResendInvite(p.id)}
+                          >
+                            {t(`${gv}.resendInvite`)}
+                          </button>
+                        ) : null}
                         {canEdit && !isFinal && !inactiveChild && !p.checked_in ? (
                           <button type="button" className="text-xs font-semibold underline" onClick={() => void handleCheckIn(p.id)}>
                             {t(`${gv}.checkIn`)}

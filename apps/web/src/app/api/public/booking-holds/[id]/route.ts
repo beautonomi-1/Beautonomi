@@ -17,7 +17,7 @@ import { getPaymentProviderForTenant } from "@/lib/payments/provider/registry";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { getRequestNowAvailability } from "@/lib/on-demand/request-now-availability";
 import { withNoStore } from "@/lib/http/no-store";
-import { getPlatformDefaultTaxRateAndInclusive } from "@/lib/pricing/checkout-tax-defaults";
+import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
 import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-payment-types";
 import { normalizeTipPercentPresets } from "@beautonomi/utils";
 
@@ -128,7 +128,7 @@ async function handleGet(
       supabase
         .from("providers")
         .select(
-          "tips_enabled, tip_presets, currency, no_show_fee_enabled, no_show_fee_amount, requires_deposit, deposit_percentage, tax_rate_percent, tax_inclusive, customer_fee_config_id, accept_online, accept_cash",
+          "tips_enabled, tip_presets, currency, no_show_fee_enabled, no_show_fee_amount, requires_deposit, deposit_percentage, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code, customer_fee_config_id, accept_online, accept_cash",
         )
         .eq("id", hold.provider_id)
         .eq("tenant_id", tenantId)
@@ -191,17 +191,16 @@ async function handleGet(
           : undefined,
     };
 
-    const rawProviderTaxRate = (providerRow as { tax_rate_percent?: number | null })?.tax_rate_percent;
-    let providerTaxRate: number;
-    let taxInclusive: boolean;
-    if (rawProviderTaxRate == null) {
-      const defaults = await getPlatformDefaultTaxRateAndInclusive(supabase);
-      providerTaxRate = defaults.taxRate;
-      taxInclusive = defaults.taxIncluded;
-    } else {
-      providerTaxRate = Math.max(0, Number(rawProviderTaxRate));
-      taxInclusive = Boolean((providerRow as { tax_inclusive?: boolean })?.tax_inclusive ?? false);
-    }
+    const resolvedVat = await resolveProviderVat(supabase, {
+      tax_rate_percent: (providerRow as { tax_rate_percent?: number | null } | null)?.tax_rate_percent ?? null,
+      tax_inclusive: (providerRow as { tax_inclusive?: boolean | null } | null)?.tax_inclusive ?? null,
+      is_vat_registered: (providerRow as { is_vat_registered?: boolean | null } | null)?.is_vat_registered ?? null,
+      vat_number: (providerRow as { vat_number?: string | null } | null)?.vat_number ?? null,
+      country_code: (providerRow as { country_code?: string | null } | null)?.country_code ?? null,
+      tax_rate_override_percent: null,
+    });
+    const providerTaxRate = resolvedVat.ratePercent;
+    const taxInclusive = resolvedVat.inclusive;
 
     // Resolve customer-paid Platform Fee config (same priority as validate-booking / platform-fees API)
     let serviceFeeConfig = {

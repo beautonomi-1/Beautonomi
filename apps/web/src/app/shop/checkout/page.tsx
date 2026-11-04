@@ -30,6 +30,7 @@ import {
   type GiftCardListRow,
 } from "@/lib/checkout/filter-usable-gift-cards";
 import { OwnedGiftCardPicker } from "@/components/checkout/OwnedGiftCardPicker";
+import { recoveredOrderAmountDue } from "@/lib/orders/recovered-order-amount-due";
 
 interface CartItem {
   id: string;
@@ -430,13 +431,84 @@ export default function ProductCheckoutPage() {
     };
   }, [user, fulfillment, selectedAddress, providerId, items.length]);
 
+  // Server-calculated totals (same math as POST /api/me/orders); local math is the fallback.
+  const [serverQuote, setServerQuote] = useState<{
+    subtotal: number;
+    promotionDiscount: number;
+    taxAmount: number;
+    deliveryFee: number;
+    platformFee: number;
+    totalAmount: number;
+  } | null>(null);
+  const itemsQuoteKey = items.map((i) => `${i.id}:${i.quantity}`).join(",");
+  useEffect(() => {
+    const quotable =
+      Boolean(user) &&
+      Boolean(providerId) &&
+      items.length > 0 &&
+      (fulfillment === "collection" || Boolean(selectedAddress));
+    if (!quotable) {
+      setServerQuote(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void fetcher
+        .post<{ data?: { totals?: Record<string, unknown> } }>("/api/me/orders/quote", {
+          provider_id: providerId,
+          fulfillment_type: fulfillment,
+          ...(fulfillment === "delivery" && selectedAddress
+            ? { delivery_address_id: selectedAddress }
+            : {}),
+          ...(fulfillment === "collection" && selectedLocation
+            ? { collection_location_id: selectedLocation }
+            : {}),
+          ...(promotionCode.trim() ? { promotion_code: promotionCode.trim() } : {}),
+          online_checkout: paymentMethod === "paystack",
+        })
+        .then((res) => {
+          if (cancelled) return;
+          const q = res?.data?.totals;
+          const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+          setServerQuote(
+            q
+              ? {
+                  subtotal: num(q.subtotal),
+                  promotionDiscount: num(q.promotionDiscount),
+                  taxAmount: num(q.taxAmount),
+                  deliveryFee: num(q.deliveryFee),
+                  platformFee: num(q.platformFee),
+                  totalAmount: num(q.totalAmount),
+                }
+              : null
+          );
+        })
+        .catch(() => {
+          if (!cancelled) setServerQuote(null);
+        });
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    user,
+    providerId,
+    fulfillment,
+    selectedAddress,
+    selectedLocation,
+    promotionCode,
+    paymentMethod,
+    itemsQuoteKey,
+    items.length,
+  ]);
+
   const linePrice = (i: CartItem) =>
     (i.effective_price ?? i.product?.retail_price ?? 0) * i.quantity;
-  const subtotal = items.reduce((s, i) => s + linePrice(i), 0);
-  const taxAmount = items.reduce((s, i) => {
-    const rate = parseFloat(String(i.product?.tax_rate || "0")) || 0;
-    return s + Math.round(((linePrice(i) * rate) / 100) * 100) / 100;
-  }, 0);
+  const localSubtotal = items.reduce((s, i) => s + linePrice(i), 0);
+  const subtotal = serverQuote?.subtotal ?? localSubtotal;
+  const promotionDiscount = serverQuote?.promotionDiscount ?? 0;
+  const taxAmount = serverQuote?.taxAmount ?? 0;
   const guestDeliveryEstimate =
     fulfillment === "delivery" && shippingConfig
       ? shippingConfig.free_delivery_threshold && subtotal >= shippingConfig.free_delivery_threshold
@@ -447,8 +519,9 @@ export default function ProductCheckoutPage() {
           ? null
           : Number(shippingConfig.delivery_fee) || 0
       : 0;
-  const deliveryFee =
-    fulfillment === "delivery"
+  const deliveryFee = serverQuote
+    ? serverQuote.deliveryFee
+    : fulfillment === "delivery"
       ? user && previewDeliveryFee != null
         ? previewDeliveryFee
         : guestDeliveryEstimate ?? 0
@@ -459,13 +532,14 @@ export default function ProductCheckoutPage() {
     previewLoading &&
     previewDeliveryFee == null &&
     !deliveryPreviewBlocked;
-  const platformFee =
-    paymentMethod === "paystack"
+  const platformFee = serverQuote
+    ? serverQuote.platformFee
+    : paymentMethod === "paystack"
       ? platformFeeConfig.type === "fixed"
         ? platformFeeConfig.fixed
         : Math.round(subtotal * platformFeeConfig.percentage) / 100
       : 0;
-  const total = subtotal + taxAmount + deliveryFee + platformFee;
+  const total = serverQuote?.totalAmount ?? subtotal + deliveryFee + platformFee;
   const hasAnyEnabledPaymentMethod = onlineCardEnabled || cashEnabledOnPlatform;
 
   const hasOutOfStock = items.some((i) => i.in_stock === false);
@@ -518,14 +592,29 @@ export default function ProductCheckoutPage() {
           o.status !== "cancelled",
       );
       if (!match) return null;
-      const walletApplied = Number(match.wallet_amount ?? 0);
-      const alreadyPaid = match.payment_status === "paid";
+      const detail = await fetcher.get<{
+        data?: {
+          order?: {
+            payment_status?: string;
+            total_amount?: number | string;
+            wallet_amount?: number | string;
+            gift_card_amount?: number | string;
+          };
+        };
+      }>(`/api/me/orders/${match.id}`, { staleTimeMs: 0 });
+      const saved = detail?.data?.order;
+      if (!saved) return null;
+      const alreadyPaid = String(saved.payment_status ?? match.payment_status ?? "").toLowerCase() === "paid";
       return {
         id: match.id,
         order_number: match.order_number,
-        // Reused by checkout to skip Paystack when recovery finds a settled order.
         paid_with_wallet: alreadyPaid,
-        amount_due: alreadyPaid ? 0 : Math.max(0, total - walletApplied),
+        amount_due: recoveredOrderAmountDue({
+          paymentStatus: saved.payment_status ?? match.payment_status,
+          totalAmount: Number(saved.total_amount ?? 0),
+          walletAmount: Number(saved.wallet_amount ?? 0),
+          giftCardAmount: Number(saved.gift_card_amount ?? 0),
+        }),
       };
     } catch {
       return null;
@@ -1299,6 +1388,15 @@ export default function ProductCheckoutPage() {
                   {subtotal.toFixed(2)}
                 </span>
               </div>
+              {promotionDiscount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Discount</span>
+                  <span className="text-green-600">
+                    −{tenantCurrency}
+                    {promotionDiscount.toFixed(2)}
+                  </span>
+                </div>
+              )}
               {taxAmount > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Tax</span>

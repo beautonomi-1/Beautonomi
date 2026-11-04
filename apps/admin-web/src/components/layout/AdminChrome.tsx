@@ -388,6 +388,9 @@ export function AdminChrome() {
   useEffect(() => {
     const hash = location.hash.replace(/^#/, "").trim();
     if (!hash) return;
+    if (hash.startsWith("message-") && /\/support-tickets\//.test(location.pathname)) {
+      return;
+    }
     const timer = window.setTimeout(() => {
       document.getElementById(hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 120);
@@ -517,7 +520,7 @@ export function AdminChrome() {
         <nav
           ref={navScrollRef}
           className={cn(
-            "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain text-sm [scrollbar-gutter:stable] [scrollbar-width:thin] hover:[scrollbar-color:rgb(209_213_219)_transparent]",
+            "admin-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain text-sm",
             sidebarCollapsed ? "p-1.5" : "p-3",
           )}
         >

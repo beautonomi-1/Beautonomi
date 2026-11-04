@@ -41,6 +41,20 @@ export async function pollProductOrderPaid(
   return false;
 }
 
+/** Card amount still owed when checkout recovers an order that was already saved. */
+export function recoveredProductOrderAmountDue(input: {
+  paymentStatus?: string | null;
+  totalAmount: number;
+  walletAmount: number;
+  giftCardAmount: number;
+}): number {
+  if (String(input.paymentStatus ?? "").toLowerCase() === "paid") return 0;
+  const total = Math.max(0, Number(input.totalAmount) || 0);
+  const covered =
+    Math.max(0, Number(input.walletAmount) || 0) + Math.max(0, Number(input.giftCardAmount) || 0);
+  return Math.max(0, Math.round((total - covered) * 100) / 100);
+}
+
 /** After a transient create failure, look for a very recent order for this provider. */
 export async function recoverRecentProductOrderForProvider(
   providerId: string,

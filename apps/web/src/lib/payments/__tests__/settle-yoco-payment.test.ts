@@ -44,6 +44,30 @@ describe("resolveYocoSettleEntity", () => {
     ).toEqual({ entityType: "product_order", entityId: "po-1" });
   });
 
+  it("records a booking card sale against the booking", () => {
+    expect(
+      resolveYocoSettleEntity({
+        entity_type: "sale",
+        entity_id: "sale-1",
+        sale_id: "sale-1",
+        appointment_id: "b-1",
+      }),
+    ).toEqual({ entityType: "booking", entityId: "b-1" });
+    expect(
+      resolveYocoSettleEntity({
+        sale_id: "sale-1",
+        appointment_id: "b-1",
+      }),
+    ).toEqual({ entityType: "booking", entityId: "b-1" });
+    expect(
+      resolveYocoSettleEntity({
+        entity_type: "sale",
+        entity_id: "sale-1",
+        sale_id: "sale-1",
+      }),
+    ).toEqual({ entityType: "sale", entityId: "sale-1" });
+  });
+
   it("falls back to appointment_id as booking", () => {
     expect(resolveYocoSettleEntity({ appointment_id: "b-1" })).toEqual({
       entityType: "booking",
@@ -126,6 +150,31 @@ describe("settleYocoPayment", () => {
   });
 
   it("settles product orders as provider-collected yoco", async () => {
+    adminFromMock.mockImplementation((table: string) => {
+      if (table === "payment_transactions") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          filter: vi.fn().mockResolvedValue({ data: [], error: null }),
+        };
+      }
+      return chain({
+        data: {
+          id: "order-1",
+          total_amount: 50,
+          wallet_amount: 0,
+          gift_card_amount: 0,
+          order_source: "online",
+          status: "pending",
+          provider_id: "provider-1",
+        },
+      });
+    });
+    vi.mocked(recordProductOrderPayment).mockResolvedValueOnce({
+      ok: true,
+      duplicate: false,
+      transitionedToPaid: true,
+    });
     const supabase = { from: vi.fn(() => chain({ data: null })) } as never;
     const result = await settleYocoPayment(supabase, {
       paymentId: "yp-2",

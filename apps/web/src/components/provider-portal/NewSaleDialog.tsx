@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { computeVat } from "@beautonomi/utils";
 import {
   Sheet,
   SheetContent,
@@ -261,13 +262,21 @@ export function NewSaleDialog({
     "sale",
   );
   const cardMachinePendingSaleIdRef = useRef<string | null>(null);
+  const cardMachineOpenRef = useRef(false);
+  cardMachineOpenRef.current = cardMachineOpen;
 
   useEffect(() => {
     if (!open) {
-      cardMachinePendingSaleIdRef.current = null;
-      setCardMachineLinkedSaleId(null);
+      const pendingSaleId = cardMachinePendingSaleIdRef.current;
+      const machineStillOpen = cardMachineOpenRef.current;
       setCardMachineOpen(false);
       setBarcodeScanError("");
+      if (machineStillOpen) return;
+      cardMachinePendingSaleIdRef.current = null;
+      setCardMachineLinkedSaleId(null);
+      if (pendingSaleId) {
+        void providerApi.updateSale(pendingSaleId, { payment_status: "failed" }).catch(() => undefined);
+      }
     }
   }, [open]);
 
@@ -315,7 +324,8 @@ export function NewSaleDialog({
   // Amounts
   const [tipAmount, setTipAmount] = useState(0);
   const [discountAmount, setDiscountAmount] = useState(0);
-  const [taxRatePercent, setTaxRatePercent] = useState(15);
+  const [taxRatePercent, setTaxRatePercent] = useState(0);
+  const [taxInclusive, setTaxInclusive] = useState(true);
 
   useEffect(() => {
     if (open) {
@@ -409,7 +419,7 @@ export function NewSaleDialog({
       providerApi.listTeamMembers(),
       providerApi.listServiceCategories(),
       providerApi.listProducts(),
-      providerPortalFetch("/api/provider/tax-rate"),
+      providerPortalFetch("/api/provider/settings/sales/taxes"),
     ]);
 
     // Handle team members
@@ -446,10 +456,11 @@ export function NewSaleDialog({
     if (taxResult.status === "fulfilled" && taxResult.value.ok) {
       try {
         const payload = await taxResult.value.json();
-        const rate = Number(payload?.data?.taxRate ?? payload?.taxRate);
-        if (Number.isFinite(rate) && rate >= 0) {
-          setTaxRatePercent(rate);
-        }
+        const data = payload?.data ?? payload;
+        const registered = data?.is_vat_registered === true;
+        const rate = Number(data?.tax_rate_percent);
+        setTaxRatePercent(registered && Number.isFinite(rate) && rate > 0 ? rate : 0);
+        setTaxInclusive(data?.tax_inclusive !== false);
       } catch {
         /* keep default */
       }
@@ -850,9 +861,16 @@ export function NewSaleDialog({
   };
 
   const subtotal = cart.reduce((sum, item) => sum + item.total, 0);
-  const tax = subtotal * (taxRatePercent / 100);
-  const giftCardApplied = Math.min(giftCardBalance, subtotal + tax + tipAmount - discountAmount);
-  const total = Math.max(0, subtotal + tax + tipAmount - discountAmount - giftCardApplied);
+  const taxableSubtotal = Math.max(0, subtotal - discountAmount);
+  const vatSplit = computeVat({
+    baseAmount: taxableSubtotal,
+    ratePercent: taxRatePercent,
+    inclusive: taxInclusive,
+  });
+  const tax = vatSplit.taxAmount;
+  const saleGross = (taxInclusive ? taxableSubtotal : vatSplit.grossAmount) + tipAmount;
+  const giftCardApplied = Math.min(giftCardBalance, saleGross);
+  const total = Math.max(0, saleGross - giftCardApplied);
 
   const mapPosMethodToSaleLeg = (method: string): string => {
     if (method === "card_machine" || method === "card") return "card";
@@ -1018,7 +1036,18 @@ export function NewSaleDialog({
     }
   };
 
+  const handleCardMachineOpenChange = (next: boolean) => {
+    setCardMachineOpen(next);
+    if (next) return;
+    const pendingSaleId = cardMachinePendingSaleIdRef.current;
+    if (!pendingSaleId) return;
+    cardMachinePendingSaleIdRef.current = null;
+    setCardMachineLinkedSaleId(null);
+    void providerApi.updateSale(pendingSaleId, { payment_status: "failed" }).catch(() => undefined);
+  };
+
   const handleCardMachineSuccess = () => {
+    cardMachinePendingSaleIdRef.current = null;
     setCardMachineOpen(false);
     void handleSubmit({ afterCardMachineSuccess: true });
   };
@@ -2074,7 +2103,7 @@ export function NewSaleDialog({
       {cardMachineLinkedSaleId ? (
         <CardMachineCollectDialog
           open={cardMachineOpen}
-          onOpenChange={setCardMachineOpen}
+          onOpenChange={handleCardMachineOpenChange}
           amount={total}
           autoStart
           tipIncludedInAmount={tipAmount > 0}

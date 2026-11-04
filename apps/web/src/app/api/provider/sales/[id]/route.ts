@@ -15,7 +15,9 @@ import {
 } from "@/lib/provider-sales/pos-product-stock";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
+import { isBookingCollectionSale } from "@/lib/reports/provider-sales-history";
 import { fulfillWalkInProductOrderDelivery } from "@/lib/provider-sales/fulfill-walk-in-product-order-delivery";
+import { settleReservedSaleGiftCard, voidSaleGiftCard } from "@/lib/gift-cards/sale-gift-card";
 
 const patchBodySchema = z.object({
   payment_status: z.enum(["pending", "completed", "failed", "refunded"]).optional(),
@@ -76,7 +78,7 @@ export async function PATCH(
 
     const { data: existingSale, error: existingErr } = await supabase
       .from("sales")
-      .select("id, payment_status, payment_provider, payment_provider_id")
+      .select("id, payment_status, payment_provider, payment_provider_id, notes")
       .eq("id", saleId)
       .eq("provider_id", providerId)
       .maybeSingle();
@@ -128,12 +130,27 @@ export async function PATCH(
       return notFoundResponse("Sale not found");
     }
 
+    if (
+      parsed.data.payment_status === "failed" &&
+      (existingSale.payment_status === "completed" || existingSale.payment_status === "refunded")
+    ) {
+      return successResponse({
+        id: existingSale.id,
+        payment_status: existingSale.payment_status,
+      });
+    }
+
     const nextPaymentStatus =
       parsed.data.payment_status !== undefined
         ? parsed.data.payment_status
         : (existingSale.payment_status as string);
     const becomingCompleted =
       existingSale.payment_status === "pending" && nextPaymentStatus === "completed";
+    // Booking products are taken when the booking is completed. This sale only
+    // records the card charge, so a second decrement must not block mark-paid.
+    const movesStock =
+      becomingCompleted &&
+      !isBookingCollectionSale((existingSale as { notes?: string | null }).notes);
 
     let itemsForStock: Array<{
       type?: string;
@@ -142,7 +159,7 @@ export async function PATCH(
       quantity?: number;
     }> = [];
 
-    if (becomingCompleted) {
+    if (movesStock) {
       const { data: lineRows, error: lineErr } = await supabase
         .from("sale_items")
         .select("item_type, item_id, product_variant_id, quantity")
@@ -177,7 +194,7 @@ export async function PATCH(
       return notFoundResponse("Sale not found");
     }
 
-    if (becomingCompleted) {
+    if (movesStock) {
       try {
         await applyPosProductStockDecrements(supabase, itemsForStock);
       } catch (stockErr) {
@@ -198,6 +215,27 @@ export async function PATCH(
           500,
         );
       }
+    }
+
+    if (parsed.data.payment_status === "completed") {
+      const gift = await settleReservedSaleGiftCard(getSupabaseAdmin(), saleId);
+      if (gift.ok === false) {
+        await supabase
+          .from("sales")
+          .update({
+            payment_status: existingSale.payment_status,
+            payment_provider: existingSale.payment_provider,
+            payment_provider_id: existingSale.payment_provider_id,
+          })
+          .eq("id", saleId)
+          .eq("provider_id", providerId);
+        return errorResponse(gift.message, "GIFT_CARD_ERROR", 400);
+      }
+    } else if (
+      (parsed.data.payment_status === "failed" || parsed.data.payment_status === "refunded") &&
+      String(existingSale.payment_status ?? "") === "pending"
+    ) {
+      await voidSaleGiftCard(getSupabaseAdmin(), saleId);
     }
 
     const { data: fetchedSaleItems } = await supabase

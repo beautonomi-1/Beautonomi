@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "@/lib/cn";
 
@@ -14,11 +14,15 @@ export type AdminVirtualListProps<T> = {
   className?: string;
   /** Scrollport max height, e.g. `calc(100dvh - 14rem)` */
   maxHeight?: string;
-  /** When true, short lists use h-full overflow-y-auto instead of unbounded space-y-3 */
+  /** When true, short lists use flex-1 min-h-0 overflow-y-auto instead of unbounded space-y-3 */
   fill?: boolean;
   overscan?: number;
   ariaLabel?: string;
+  /** Scroll the active row into view (virtualized or plain list). */
+  activeIndex?: number | null;
 };
+
+const fillScrollClass = "admin-scrollbar min-h-0 flex-1 overflow-y-auto pr-1";
 
 /**
  * Virtual scroll list for long admin queues (support cards, booking cards, etc.).
@@ -35,6 +39,7 @@ export function AdminVirtualList<T>({
   fill = false,
   overscan = 6,
   ariaLabel,
+  activeIndex = null,
 }: AdminVirtualListProps<T>) {
   const parentRef = useRef<HTMLDivElement>(null);
   const shouldVirtualize = items.length >= threshold;
@@ -51,10 +56,23 @@ export function AdminVirtualList<T>({
     overscan,
   });
 
+  useEffect(() => {
+    if (activeIndex == null || activeIndex < 0 || activeIndex >= items.length) return;
+    if (shouldVirtualize) {
+      virtualizer.scrollToIndex(activeIndex, { align: "auto" });
+      return;
+    }
+    const el = parentRef.current;
+    if (!el) return;
+    const row = el.children[activeIndex] as HTMLElement | undefined;
+    row?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [activeIndex, items.length, shouldVirtualize, virtualizer]);
+
   if (!shouldVirtualize) {
     return (
       <div
-        className={cn(fill ? "h-full min-h-0 overflow-y-auto pr-1" : "space-y-3", className)}
+        ref={parentRef}
+        className={cn(fill ? fillScrollClass : "admin-scrollbar space-y-3", className)}
         aria-label={ariaLabel}
       >
         {items.map((item, index) => (
@@ -71,7 +89,7 @@ export function AdminVirtualList<T>({
   return (
     <div
       ref={parentRef}
-      className={cn("overflow-y-auto pr-1", fill && "h-full min-h-0", className)}
+      className={cn("admin-scrollbar overflow-y-auto pr-1", fill && "min-h-0 flex-1", className)}
       style={fill ? undefined : { maxHeight }}
       aria-label={ariaLabel}
     >

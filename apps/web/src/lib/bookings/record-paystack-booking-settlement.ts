@@ -37,6 +37,7 @@ export type RecordPaystackBookingSettlementInput = {
     saveCard?: boolean | null;
     paymentMethodId?: string | null;
     notes?: string | null;
+    providerData?: Record<string, unknown>;
   };
   auditLegStyle?: "shared" | "paystack_pay_remaining";
   descriptions?: { payment?: string; providerEarnings?: string };
@@ -77,6 +78,7 @@ export async function recordPaystackBookingSettlement(
         saveCard: input.recordPayment.saveCard ?? null,
         paymentMethodId: input.recordPayment.paymentMethodId ?? null,
         notes: input.recordPayment.notes ?? null,
+        providerData: input.recordPayment.providerData ?? null,
       });
       if (recorded.ok === false) {
         return {

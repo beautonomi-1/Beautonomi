@@ -294,6 +294,7 @@ export default function AppLayout() {
         <Stack.Screen name="notifications" options={{ headerShown: true, title: stackTitle("notifications") }} />
         <Stack.Screen name="announcements" options={{ headerShown: true, title: stackTitle("announcements") }} />
         <Stack.Screen name="booking-detail" options={{ headerShown: true, title: stackTitle("booking") }} />
+        <Stack.Screen name="booking-reschedule" options={{ headerShown: true, title: stackTitle("booking") }} />
         <Stack.Screen name="help" options={{ headerShown: true, title: stackTitle("help") }} />
         <Stack.Screen name="privacy-policy" options={{ headerShown: true, title: stackTitle("privacyPolicy") }} />
         <Stack.Screen name="terms-of-service" options={{ headerShown: true, title: stackTitle("termsOfService") }} />

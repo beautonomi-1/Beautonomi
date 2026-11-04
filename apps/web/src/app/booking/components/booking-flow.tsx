@@ -213,6 +213,8 @@ export interface BookingState {
     serviceIds: string[];
     notes?: string;
   }>;
+  groupPaymentMode?: "organizer_pays_all" | "split";
+  groupSplitPaymentEnabled?: boolean;
   /** @deprecated Do not use — step navigation is via `onNavigateToStep` on payment. */
   currentStepIndex?: number;
   clientInfo: {

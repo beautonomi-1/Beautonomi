@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addMinutes } from "date-fns";
+import { computeVat } from "@beautonomi/utils";
 import { ensureWalkInCustomerLinkedForProductSale } from "@/lib/provider/ensure-walk-in-customer-for-product-sale";
+import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
 
 export type GroupParticipantBookingInput = {
   customerId: string;
@@ -80,7 +82,26 @@ export async function createGroupParticipantChildBooking(
     const priceVal = Number((row as { price?: unknown }).price ?? 0);
     return sum + (Number.isFinite(priceVal) ? Math.max(0, priceVal) : 0);
   }, 0);
-  const totalAmount = price + travelFee + addonTotal;
+  const merchandiseSubtotal = price + addonTotal;
+  const grossBeforeTax = merchandiseSubtotal + travelFee;
+
+  const { data: providerVatRow } = await admin
+    .from("providers")
+    .select(
+      "tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code",
+    )
+    .eq("id", session.providerId)
+    .maybeSingle();
+  const providerVat = await resolveProviderVat(admin, providerVatRow ?? {});
+  const vatSplit = computeVat({
+    baseAmount: grossBeforeTax,
+    ratePercent: providerVat.ratePercent,
+    inclusive: providerVat.inclusive,
+    currency: session.currency,
+  });
+  const taxAmount = providerVat.registered ? vatSplit.taxAmount : 0;
+  const taxRate = providerVat.registered ? providerVat.ratePercent : 0;
+  const totalAmount = providerVat.inclusive ? grossBeforeTax : vatSplit.grossAmount;
 
   const noteTrim =
     typeof participant.notes === "string" && participant.notes.trim().length > 0
@@ -112,12 +133,14 @@ export async function createGroupParticipantChildBooking(
       locType === "at_home" && session.address?.longitude != null
         ? Number(session.address.longitude)
         : null,
-    subtotal: price + addonTotal,
+    subtotal: merchandiseSubtotal,
     discount_amount: 0,
     promotion_discount_amount: 0,
     membership_discount_amount: 0,
-    tax_amount: 0,
-    tax_rate: 0,
+    tax_amount: taxAmount,
+    tax_rate: taxRate,
+    tax_inclusive: providerVat.inclusive,
+    provider_vat_number_snapshot: providerVat.vatNumber,
     tip_amount: 0,
     total_amount: totalAmount,
     currency: session.currency,

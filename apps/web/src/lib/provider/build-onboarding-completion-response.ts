@@ -1,10 +1,17 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
+import { resolvePricingPlanIsFree } from "@/lib/subscription/resolve-pricing-plan-is-free";
+import { normalizeBillingPeriod } from "@/lib/subscriptions/pending-upgrade-fields";
 
 export interface ResolvedOnboardingPlan {
   selectedPlanIsFree: boolean;
   selectedPlanRequiresCheckout: boolean;
   selectedSubscriptionPlanId: string | null;
+}
+
+export interface OnboardingPendingUpgrade {
+  plan_id: string;
+  billing_period: "monthly" | "yearly";
 }
 
 export interface OnboardingCompletionPayload {
@@ -18,6 +25,7 @@ export interface OnboardingCompletionPayload {
   checkout_path: string | null;
   subscription_endpoint: string | null;
   subscription_active: boolean;
+  pending_upgrade: OnboardingPendingUpgrade | null;
   already_completed?: boolean;
   auto_configured?: {
     zones: number;
@@ -62,27 +70,30 @@ export async function resolveSelectedOnboardingPlan(
       }
     | null;
 
-  const hasAnyPaystackCode = Boolean(
-    selectedPlan?.paystack_plan_code_monthly || selectedPlan?.paystack_plan_code_yearly,
-  );
+  const subscriptionPlanId = selectedPlan?.subscription_plan_id?.trim() || null;
+  let linkedPlan: { is_free?: boolean | null } | null = null;
+  if (subscriptionPlanId) {
+    const { data: linked } = await supabaseAdmin
+      .from("subscription_plans")
+      .select("is_free")
+      .eq("id", subscriptionPlanId)
+      .maybeSingle();
+    linkedPlan = linked as { is_free?: boolean | null } | null;
+  }
 
-  const numericPrice = Number.parseFloat(
-    String(selectedPlan?.price ?? "")
-      .replace(/[^0-9.]/g, "")
-      .trim(),
+  const selectedPlanIsFree = resolvePricingPlanIsFree(
+    {
+      price: selectedPlan?.price,
+      paystack_plan_code_monthly: selectedPlan?.paystack_plan_code_monthly,
+      paystack_plan_code_yearly: selectedPlan?.paystack_plan_code_yearly,
+    },
+    linkedPlan,
   );
-  const isFreeByPrice =
-    !selectedPlan?.price ||
-    Number.isNaN(numericPrice) ||
-    numericPrice === 0 ||
-    /free/i.test(String(selectedPlan?.price ?? ""));
-
-  const selectedPlanIsFree = isFreeByPrice && !hasAnyPaystackCode;
 
   return {
     selectedPlanIsFree,
     selectedPlanRequiresCheckout: !selectedPlanIsFree,
-    selectedSubscriptionPlanId: selectedPlan?.subscription_plan_id ?? null,
+    selectedSubscriptionPlanId: subscriptionPlanId,
   };
 }
 
@@ -122,20 +133,16 @@ async function providerHasActivePaidSubscription(
 }
 
 /**
- * Ensure subscription row exists for free-plan onboarding; retry once on failure.
+ * Ensure a baseline free subscription row exists; retry once on failure.
  */
-export async function ensureSubscriptionForOnboardingCompletion(
+export async function ensureBaselineSubscriptionForOnboarding(
   supabaseAdmin: SupabaseClient,
   providerId: string,
   tenantId: string,
-  plan: ResolvedOnboardingPlan,
+  preferredFreeSubscriptionPlanId: string | null | undefined,
 ): Promise<boolean> {
   const hasSubscription = await providerHasActiveSubscription(supabaseAdmin, providerId);
   if (hasSubscription) return true;
-
-  if (!plan.selectedPlanIsFree) {
-    return false;
-  }
 
   const { ensureProviderFreeSubscriptionRow } = await import(
     "@/lib/subscriptions/ensure-provider-free-subscription"
@@ -147,7 +154,7 @@ export async function ensureSubscriptionForOnboardingCompletion(
         supabaseAdmin,
         providerId,
         tenantId,
-        plan.selectedSubscriptionPlanId,
+        preferredFreeSubscriptionPlanId,
       );
       if (result.ok || result.skipped === "already_subscribed") {
         return providerHasActiveSubscription(supabaseAdmin, providerId);
@@ -160,11 +167,57 @@ export async function ensureSubscriptionForOnboardingCompletion(
   return providerHasActiveSubscription(supabaseAdmin, providerId);
 }
 
+/** @deprecated Use ensureBaselineSubscriptionForOnboarding */
+export async function ensureSubscriptionForOnboardingCompletion(
+  supabaseAdmin: SupabaseClient,
+  providerId: string,
+  tenantId: string,
+  plan: ResolvedOnboardingPlan,
+): Promise<boolean> {
+  if (!plan.selectedPlanIsFree) {
+    return ensureBaselineSubscriptionForOnboarding(
+      supabaseAdmin,
+      providerId,
+      tenantId,
+      plan.selectedSubscriptionPlanId,
+    );
+  }
+  return ensureBaselineSubscriptionForOnboarding(
+    supabaseAdmin,
+    providerId,
+    tenantId,
+    plan.selectedSubscriptionPlanId,
+  );
+}
+
+async function applyPendingUpgradeIntent(
+  supabaseAdmin: SupabaseClient,
+  providerId: string,
+  subscriptionPlanId: string,
+  billingPeriod: "monthly" | "yearly",
+): Promise<void> {
+  const now = new Date().toISOString();
+  const { error } = await supabaseAdmin
+    .from("provider_subscriptions")
+    .update({
+      pending_upgrade_plan_id: subscriptionPlanId,
+      pending_upgrade_billing_period: billingPeriod,
+      pending_upgrade_set_at: now,
+      updated_at: now,
+    })
+    .eq("provider_id", providerId);
+
+  if (error) {
+    console.warn("[onboarding] pending_upgrade update failed:", error.message);
+  }
+}
+
 export interface BuildOnboardingCompletionOptions {
   supabaseAdmin: SupabaseClient;
   tenantId: string;
   provider: Record<string, unknown>;
   selectedPlanId: string | null | undefined;
+  selectedBillingPeriod?: string | null;
   message: string;
   autoApprove?: boolean;
   alreadyCompleted?: boolean;
@@ -182,6 +235,7 @@ export async function buildOnboardingCompletionResponse(
     tenantId,
     provider,
     selectedPlanId,
+    selectedBillingPeriod,
     message,
     autoApprove,
     alreadyCompleted,
@@ -191,15 +245,40 @@ export async function buildOnboardingCompletionResponse(
   const providerId = String(provider.id ?? "");
   const plan = await resolveSelectedOnboardingPlan(supabaseAdmin, tenantId, selectedPlanId);
 
+  const billingPeriod = normalizeBillingPeriod(selectedBillingPeriod) ?? "monthly";
+
   let subscriptionActive = await providerHasActiveSubscription(supabaseAdmin, providerId);
 
-  if (plan.selectedPlanIsFree && !subscriptionActive) {
-    subscriptionActive = await ensureSubscriptionForOnboardingCompletion(
+  if (!subscriptionActive) {
+    subscriptionActive = await ensureBaselineSubscriptionForOnboarding(
       supabaseAdmin,
       providerId,
       tenantId,
-      plan,
+      plan.selectedPlanIsFree ? plan.selectedSubscriptionPlanId : null,
     );
+  }
+
+  let pendingUpgrade: OnboardingPendingUpgrade | null = null;
+
+  if (
+    !plan.selectedPlanIsFree &&
+    plan.selectedSubscriptionPlanId &&
+    selectedPlanId &&
+    providerId
+  ) {
+    const hasPaid = await providerHasActivePaidSubscription(supabaseAdmin, providerId);
+    if (!hasPaid) {
+      await applyPendingUpgradeIntent(
+        supabaseAdmin,
+        providerId,
+        plan.selectedSubscriptionPlanId,
+        billingPeriod,
+      );
+      pendingUpgrade = {
+        plan_id: plan.selectedSubscriptionPlanId,
+        billing_period: billingPeriod,
+      };
+    }
   }
 
   let requiresCheckout = Boolean(selectedPlanId && plan.selectedPlanRequiresCheckout);
@@ -208,8 +287,14 @@ export async function buildOnboardingCompletionResponse(
     const hasPaid = await providerHasActivePaidSubscription(supabaseAdmin, providerId);
     if (hasPaid) {
       requiresCheckout = false;
+      pendingUpgrade = null;
     }
   }
+
+  const checkoutPath =
+    requiresCheckout && selectedPlanId
+      ? `/provider/subscription-checkout?planId=${encodeURIComponent(selectedPlanId)}&billing_period=${billingPeriod}`
+      : null;
 
   return {
     provider,
@@ -219,12 +304,10 @@ export async function buildOnboardingCompletionResponse(
     selected_plan_is_free: plan.selectedPlanIsFree,
     selected_subscription_plan_id: plan.selectedSubscriptionPlanId,
     requires_checkout: requiresCheckout,
-    checkout_path:
-      requiresCheckout && selectedPlanId
-        ? `/provider/subscription-checkout?planId=${encodeURIComponent(selectedPlanId)}`
-        : null,
+    checkout_path: checkoutPath,
     subscription_endpoint: requiresCheckout ? "/api/provider/subscription/initialize-payment" : null,
     subscription_active: subscriptionActive,
+    pending_upgrade: pendingUpgrade,
     ...(alreadyCompleted ? { already_completed: true } : {}),
     ...(autoConfigured ? { auto_configured: autoConfigured } : {}),
   };

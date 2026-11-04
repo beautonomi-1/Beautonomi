@@ -3081,6 +3081,7 @@ export class ProviderApiClient implements ProviderApi {
     product_order_id?: string;
     additional_charge_id?: string;
     attempt_id?: string;
+    tip_amount?: number;
     metadata?: Record<string, unknown>;
   }): Promise<YocoPayment> {
     try {
@@ -3097,6 +3098,7 @@ export class ProviderApiClient implements ProviderApi {
         product_order_id: data.product_order_id,
         additional_charge_id: data.additional_charge_id,
         attempt_id: data.attempt_id,
+        tip_amount: data.tip_amount,
         metadata: data.metadata,
       });
     } catch (error: any) {
