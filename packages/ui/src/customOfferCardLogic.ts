@@ -122,7 +122,13 @@ export function getStatusAccentColor(s: EffectiveOfferStatus): StatusAccentColor
 
 /** Whether a customer CTA (Accept & pay) should be shown. */
 export function shouldShowCustomerAcceptCta(s: EffectiveOfferStatus, isMe: boolean): boolean {
-  return !isMe && !s.isInactive && !s.isPaymentPending && !s.isPaid;
+  return (
+    !isMe &&
+    !s.isInactive &&
+    !s.isPaymentPending &&
+    !s.isPaid &&
+    !s.isChangesRequested
+  );
 }
 
 /** Whether the customer "Request changes" CTA should be shown. */

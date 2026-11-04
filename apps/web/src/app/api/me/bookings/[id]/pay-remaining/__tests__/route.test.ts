@@ -55,6 +55,7 @@ vi.mock("@/lib/bookings/record-collectible-settlement-ledger", () => ({
 vi.mock("@/lib/bookings/ensure-wallet-gift-booking-payments", () => ({
   completeWalletGiftSyntheticPayments: (...args: unknown[]) =>
     mockCompleteWalletGiftSyntheticPayments(...args),
+  sumPendingWalletGiftBookingPayments: vi.fn(async () => 0),
 }));
 
 vi.mock("@/lib/bookings/sync-booking-after-paystack-success", () => ({
@@ -167,10 +168,18 @@ function makeAdminMock(
   return {
     from: vi.fn((table: string) => {
       if (table === "booking_payments") {
+        const result = { data: [], error: null };
+        const chain: {
+          eq: () => typeof chain;
+          in: () => Promise<typeof result>;
+          then: Promise<typeof result>["then"];
+        } = {
+          eq: () => chain,
+          in: () => Promise.resolve(result),
+          then: (resolve, reject) => Promise.resolve(result).then(resolve, reject),
+        };
         return {
-          select: vi.fn(() => ({
-            eq: vi.fn(async () => ({ data: [], error: null })),
-          })),
+          select: vi.fn(() => chain),
         };
       }
       if (table === "bookings") {

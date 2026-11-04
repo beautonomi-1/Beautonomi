@@ -57,6 +57,99 @@ export async function validatePosProductStock(
   return null;
 }
 
+/**
+ * Same decrements as `applyPosProductStockDecrements`, but a failure puts back
+ * every unit this call already took. Callers that abort the sale can then void
+ * a still-reserved gift card without leaving stock or the card short.
+ */
+export type PosStockLineTaken = {
+  productId: string;
+  variantId: string | null;
+  quantity: number;
+};
+
+export async function restorePosProductStock(
+  supabase: any,
+  lines: PosStockLineTaken[],
+): Promise<void> {
+  for (const line of lines) {
+    if (line.variantId) {
+      await supabase.rpc("increment_product_variant_stock", {
+        p_variant_id: line.variantId,
+        p_quantity: line.quantity,
+      }).catch(() => undefined);
+    } else {
+      await supabase.rpc("increment_product_stock", {
+        p_product_id: line.productId,
+        p_quantity: line.quantity,
+      }).catch(() => undefined);
+    }
+  }
+}
+
+export async function applyPosProductStockDecrementsReversible(
+  supabase: any,
+  items: Array<{
+    type?: string;
+    item_id?: string | null;
+    product_variant_id?: string | null;
+    quantity?: number;
+  }>,
+): Promise<PosStockLineTaken[]> {
+  const applied: Array<{ productId: string; variantId: string | null; quantity: number }> = [];
+  try {
+    for (const item of items) {
+      const lineType = item.type || "product";
+      if (lineType !== "product") continue;
+      const productId = item.item_id;
+      const variantId = item.product_variant_id ?? null;
+      const qty = Math.max(1, Math.floor(Number(item.quantity || 1)));
+      if (!productId) continue;
+
+      const { data: prodRow, error: pe } = await supabase
+        .from("products")
+        .select("track_stock_quantity")
+        .eq("id", productId)
+        .maybeSingle();
+      if (pe) throw new Error(pe.message || "product stock lookup failed");
+      if ((prodRow as { track_stock_quantity?: boolean } | null)?.track_stock_quantity === false) {
+        continue;
+      }
+
+      if (variantId) {
+        const { error } = await supabase.rpc("decrement_product_variant_stock", {
+          p_variant_id: variantId,
+          p_quantity: qty,
+        });
+        if (error) throw new Error(error.message || "decrement_product_variant_stock failed");
+      } else {
+        const { error } = await supabase.rpc("decrement_product_stock", {
+          p_product_id: productId,
+          p_quantity: qty,
+        });
+        if (error) throw new Error(error.message || "decrement_product_stock failed");
+      }
+      applied.push({ productId, variantId, quantity: qty });
+    }
+  } catch (error) {
+    for (const line of applied.reverse()) {
+      if (line.variantId) {
+        await supabase.rpc("increment_product_variant_stock", {
+          p_variant_id: line.variantId,
+          p_quantity: line.quantity,
+        }).catch(() => undefined);
+      } else {
+        await supabase.rpc("increment_product_stock", {
+          p_product_id: line.productId,
+          p_quantity: line.quantity,
+        }).catch(() => undefined);
+      }
+    }
+    throw error;
+  }
+  return applied;
+}
+
 export async function applyPosProductStockDecrements(
   supabase: any,
   items: Array<{

@@ -56,6 +56,46 @@ export function formatGroupPaymentStatusLabel(status: string | undefined | null)
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/** Use a known balance, including zero. A zero balance is not a missing value. */
+export function amountDueOrFallback(
+  balanceDue: number | null | undefined,
+  fallback: number,
+): number {
+  if (balanceDue != null && Number.isFinite(Number(balanceDue))) {
+    return Math.max(0, Math.round(Number(balanceDue) * 100) / 100);
+  }
+  return Math.max(0, fallback);
+}
+
+export function participantCollectAmount(participant: {
+  balance_due?: number | null;
+  price?: number | null;
+  total_paid?: number | null;
+}): number {
+  return amountDueOrFallback(
+    participant.balance_due,
+    Math.max(0, Number(participant.price ?? 0) - Number(participant.total_paid ?? 0)),
+  );
+}
+
+export function groupCollectAmount(group: {
+  balance_due?: number | null;
+  total_price?: number | null;
+  participants?: Array<{
+    balance_due?: number | null;
+    price?: number | null;
+    total_paid?: number | null;
+  }> | null;
+}): number {
+  if (group.balance_due != null && Number.isFinite(Number(group.balance_due))) {
+    return Math.max(0, Math.round(Number(group.balance_due) * 100) / 100);
+  }
+  if (group.participants && group.participants.length > 0) {
+    return group.participants.reduce((sum, participant) => sum + participantCollectAmount(participant), 0);
+  }
+  return Math.max(0, Number(group.total_price ?? 0));
+}
+
 export function groupIsFullyPaid(group: GroupPaymentSummarySource): boolean {
   const status = String(group.payment_status ?? "").toLowerCase();
   if (status === "paid" || status === "refunded") return true;

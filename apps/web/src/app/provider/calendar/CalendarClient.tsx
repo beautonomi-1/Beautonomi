@@ -30,7 +30,8 @@ import { dateRangeBoundsUtc, resolveTz, nowInTz } from "@/lib/dates/provider-tz"
 import { useRoutePerformance } from "@/lib/performance/useRoutePerformance";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import {
   Sheet,
   SheetContent,
@@ -456,6 +457,22 @@ type CheckoutSaleLine = {
 function rootBookingIdFromAppointment(apt: Appointment): string {
   const id = String(apt.booking_id ?? apt.id);
   return id.includes("-svc-") ? id.split("-svc-")[0]! : id;
+}
+
+/** Balance still owed. VAT, travel, and fees are already inside total_amount. */
+function appointmentAmountDue(apt: Appointment): number {
+  return computeBookingOutstandingDisplay({
+    totalAmount: Number(apt.total_amount ?? apt.price ?? 0),
+    totalPaid: Number(apt.total_paid ?? 0),
+    totalRefunded: Number(apt.total_refunded ?? 0),
+    walletAmount: Number(apt.wallet_amount ?? 0),
+    giftCardAmount: Number(apt.gift_card_amount ?? 0),
+    unpaidAdditionalCharges: 0,
+    paymentStatus: apt.payment_status,
+    pendingWalletGiftAmount: Number(
+      (apt as { pending_wallet_gift_amount?: number }).pending_wallet_gift_amount ?? 0,
+    ),
+  });
 }
 
 /** Build POS sale lines from calendar appointment (multi-service + booking products). */
@@ -1539,6 +1556,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
       gift_card_code?: string;
       gift_card_amount?: number;
       payments?: Array<{ method: string; amount: number }>;
+      secondary_payment_method?: "cash" | "card";
     },
   ) => {
     if (!selectedAppointment) {
@@ -1550,10 +1568,13 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     const clientIdForRating = apt.client_id?.trim() || "";
     const clientNameForRating = apt.client_name?.trim() || t("web.provider.calendarPage.clientFallback");
 
+    const serviceStarted =
+      apt.status === "started" ||
+      (apt as { db_status?: string }).db_status === "in_progress";
+
     try {
-      await providerApi.completeService(apt.id);
-      if (notes && notes !== apt.notes) {
-        await providerApi.updateAppointment(apt.id, { notes }).catch(() => {});
+      if (!serviceStarted) {
+        await providerApi.completeService(apt.id);
       }
 
       const skipSaleRecord =
@@ -1564,65 +1585,31 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
 
       if (!skipSaleRecord) {
         try {
-          const saleItems = buildSaleItemsFromAppointment(apt, { service: t("web.provider.calendarPage.serviceFallback"), product: t("web.provider.calendarPage.productFallback") });
-          const lineSum = saleItems.reduce((s, i) => s + i.total, 0);
-          const subtotalForSale = Number(apt.subtotal ?? lineSum);
-          const taxForSale = Number(apt.tax_amount ?? 0);
-          const travel = Number(apt.travel_fee ?? 0);
-          const bookingTotal =
-            Number(apt.total_amount) > 0
-              ? Number(apt.total_amount)
-              : subtotalForSale + taxForSale + travel;
-          const saleTotal = Math.max(0, bookingTotal + tipAmount - discountAmount);
-
-          const salePaymentMethod =
-            paymentMethod === "split" ? "split" : paymentMethod === "mobile" ? "other" : paymentMethod;
-
-          await providerApi.createSale({
-            customer_id: apt.client_id,
-            client_name: apt.client_name,
-            date: apt.scheduled_date,
-            items: saleItems.map((i) => ({
-              id: i.id,
-              type: i.type,
-              name: i.name,
-              quantity: i.quantity,
-              unit_price: i.unit_price,
-              total: i.total,
-              item_id: i.item_id ?? undefined,
-              product_variant_id: i.product_variant_id ?? undefined,
-            })),
-            subtotal: subtotalForSale,
-            tax: taxForSale,
-            total: saleTotal,
-            payment_method: salePaymentMethod,
-            location_id: apt.location_id || undefined,
-            team_member_id: apt.team_member_id || undefined,
-            notes: notes ? `${notes}${tipAmount > 0 ? ` (Tip: ${formatCurrency(tipAmount)})` : ""}`.trim() : undefined,
-            discount_amount: discountAmount,
-            gift_card_code: options?.gift_card_code,
-            gift_card_amount: options?.gift_card_amount,
-            payments: options?.payments,
-          } as Parameters<typeof providerApi.createSale>[0]);
+          const collectedMethod =
+            paymentMethod === "split"
+              ? options?.secondary_payment_method || "cash"
+              : paymentMethod === "mobile"
+                ? "other"
+                : paymentMethod;
 
           if (
             bookingIdForRating &&
             apt.payment_status !== "paid" &&
             !options?.paycloudSettled &&
-            !options?.yocoSettled &&
-            paymentMethod !== "card"
+            !options?.yocoSettled
           ) {
             const { fetcher } = await import("@/lib/http/fetcher");
             await fetcher.post(`/api/provider/bookings/${bookingIdForRating}/mark-paid`, {
-              payment_method: paymentMethod === "gift_card" ? "gift_card" : paymentMethod,
-              amount: saleTotal,
+              payment_method: collectedMethod,
+              checkout_tip: tipAmount,
+              checkout_discount: discountAmount,
+              gift_card_code: options?.gift_card_code,
+              gift_card_amount: options?.gift_card_amount,
             });
           }
         } catch (error) {
-          console.error("Failed to create sale record:", error);
-          throw new Error(
-            t("web.provider.calendarPage.saleRecordFailed"),
-          );
+          console.error("Failed to record booking payment:", error);
+          throw new Error(t("web.provider.calendarPage.saleRecordFailed"));
         }
       } else if (options?.sendReceipt && bookingIdForRating && !options?.paycloudSettled) {
         // PayCloud settle emails via handlePaycloudPostSettle when receipt_auto_send is on.
@@ -1635,6 +1622,13 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         } catch (receiptError) {
           console.error("Failed to send checkout receipt:", receiptError);
         }
+      }
+
+      if (serviceStarted) {
+        await providerApi.completeService(apt.id);
+      }
+      if (notes && notes !== apt.notes) {
+        await providerApi.updateAppointment(apt.id, { notes }).catch(() => {});
       }
 
       setIsCheckoutDialogOpen(false);
@@ -2664,6 +2658,48 @@ team_member_name: selectedAppointment.team_member_name || t("web.provider.calend
                     price: item.unit_price,
                     quantity: item.quantity,
                   })),
+                amountDue: appointmentAmountDue(selectedAppointment),
+              }}
+              onBeforeCardCharge={async (tipAmount, discountAmount) => {
+                const { fetcher } = await import("@/lib/http/fetcher");
+                await fetcher.post(
+                  `/api/provider/bookings/${rootBookingIdFromAppointment(selectedAppointment)}/mark-paid`,
+                  {
+                    payment_method: "card",
+                    payment_provider: "paycloud",
+                    bill_only: true,
+                    checkout_tip: 0,
+                    checkout_discount: discountAmount,
+                  },
+                );
+              }}
+              onPrepareSplitCard={async ({ discountAmount, giftCode, giftAmount }) => {
+                const { fetcher } = await import("@/lib/http/fetcher");
+                await fetcher.post(
+                  `/api/provider/bookings/${rootBookingIdFromAppointment(selectedAppointment)}/mark-paid`,
+                  {
+                    payment_method: "cash",
+                    gift_only: true,
+                    checkout_tip: 0,
+                    checkout_discount: discountAmount,
+                    gift_card_code: giftCode,
+                    gift_card_amount: giftAmount,
+                  },
+                );
+              }}
+              onRevertCardCharge={async (tipAmount, discountAmount) => {
+                const { fetcher } = await import("@/lib/http/fetcher");
+                await fetcher.post(
+                  `/api/provider/bookings/${rootBookingIdFromAppointment(selectedAppointment)}/mark-paid`,
+                  {
+                    payment_method: "card",
+                    payment_provider: "paycloud",
+                    bill_only: true,
+                    checkout_revert: true,
+                    checkout_tip: 0,
+                    checkout_discount: discountAmount,
+                  },
+                );
               }}
               onComplete={handleCheckoutComplete}
             />

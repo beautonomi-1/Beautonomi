@@ -300,6 +300,14 @@ export default function BookingsList({
                     {t("web.accountSettings.bookings.list.group")}
                   </span>
                 )}
+                {Boolean(
+                  (booking as { custom_offer_id?: string | null }).custom_offer_id ||
+                    (booking as { custom_offer?: unknown }).custom_offer,
+                ) && (
+                  <span className="px-3 py-1.5 rounded-full text-xs font-semibold tracking-tight bg-fuchsia-50 text-fuchsia-800 border border-fuchsia-200">
+                    {t("web.accountSettings.bookings.list.customOffer")}
+                  </span>
+                )}
               </div>
 
               {isGroupBooking && groupBookingRef ? (

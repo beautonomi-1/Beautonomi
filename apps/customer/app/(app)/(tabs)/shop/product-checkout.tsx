@@ -36,6 +36,7 @@ import {
   isCreateOrderTransientError,
   pollProductOrderPaid,
   recoverRecentProductOrderForProvider,
+  recoveredProductOrderAmountDue,
 } from "@/features/shop/productOrderCheckoutHelpers";
 import { useCart } from "@/features/shop/useCart";
 import { emitCartUpdated } from "@/lib/cart-events";
@@ -441,6 +442,77 @@ export default function ProductCheckoutScreen() {
     };
   }, [user, fulfillment, selectedAddress, provider_id, providerCart?.items.length]);
 
+  // Server-calculated totals (same math as POST /api/me/orders); local math is the fallback.
+  const [serverQuote, setServerQuote] = useState<{
+    subtotal: number;
+    promotionDiscount: number;
+    taxAmount: number;
+    deliveryFee: number;
+    platformFee: number;
+    totalAmount: number;
+  } | null>(null);
+  const itemsQuoteKey = (providerCart?.items ?? []).map((i) => `${i.id}:${i.quantity}`).join(",");
+  useEffect(() => {
+    const quotable =
+      Boolean(user) &&
+      Boolean(provider_id) &&
+      itemsQuoteKey.length > 0 &&
+      (fulfillment === "collection" || Boolean(selectedAddress));
+    if (!quotable) {
+      setServerQuote(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void api
+        .post<{ totals?: Record<string, unknown> }>("/api/me/orders/quote", {
+          provider_id,
+          fulfillment_type: fulfillment,
+          ...(fulfillment === "delivery" && selectedAddress
+            ? { delivery_address_id: selectedAddress }
+            : {}),
+          ...(fulfillment === "collection" && selectedLocation
+            ? { collection_location_id: selectedLocation }
+            : {}),
+          ...(promotionCode.trim() ? { promotion_code: promotionCode.trim() } : {}),
+          online_checkout: paymentMethod === "paystack",
+        })
+        .then((res) => {
+          if (cancelled) return;
+          const q = res.error ? undefined : (res.data as { totals?: Record<string, unknown> } | undefined)?.totals;
+          const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+          setServerQuote(
+            q
+              ? {
+                  subtotal: num(q.subtotal),
+                  promotionDiscount: num(q.promotionDiscount),
+                  taxAmount: num(q.taxAmount),
+                  deliveryFee: num(q.deliveryFee),
+                  platformFee: num(q.platformFee),
+                  totalAmount: num(q.totalAmount),
+                }
+              : null,
+          );
+        })
+        .catch(() => {
+          if (!cancelled) setServerQuote(null);
+        });
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    user,
+    provider_id,
+    fulfillment,
+    selectedAddress,
+    selectedLocation,
+    promotionCode,
+    paymentMethod,
+    itemsQuoteKey,
+  ]);
+
   useEffect(() => {
     if (locations.length === 0 || fulfillment !== "collection") return;
     const addr = addresses.find((a) => a.id === selectedAddress);
@@ -464,12 +536,14 @@ export default function ProductCheckoutScreen() {
     setSelectedLocation(nearest.id);
   }, [locations, selectedAddress, addresses, fulfillment]);
   const providerItems = providerCart?.items ?? [];
-  const subtotal = providerCart?.subtotal ?? 0;
-  const taxAmount = providerItems.reduce((s, i) => {
+  const subtotal = serverQuote?.subtotal ?? providerCart?.subtotal ?? 0;
+  const promotionDiscount = serverQuote?.promotionDiscount ?? 0;
+  const localTaxAmount = providerItems.reduce((s, i) => {
     const rate = parseFloat(String(i.product?.tax_rate || "0")) || 0;
     const linePrice = (i.effective_price ?? i.product?.retail_price ?? 0) * i.quantity;
     return s + Math.round(((linePrice * rate) / 100) * 100) / 100;
   }, 0);
+  const taxAmount = serverQuote?.taxAmount ?? localTaxAmount;
   const guestDeliveryEstimate =
     fulfillment === "delivery" && shippingConfig
       ? shippingConfig.free_delivery_threshold && subtotal >= shippingConfig.free_delivery_threshold
@@ -480,8 +554,9 @@ export default function ProductCheckoutScreen() {
           ? null
           : Number(shippingConfig.delivery_fee) || 0
       : 0;
-  const deliveryFee =
-    fulfillment === "delivery"
+  const deliveryFee = serverQuote
+    ? serverQuote.deliveryFee
+    : fulfillment === "delivery"
       ? user && previewDeliveryFee != null
         ? previewDeliveryFee
         : guestDeliveryEstimate ?? 0
@@ -494,22 +569,24 @@ export default function ProductCheckoutScreen() {
     previewDeliveryFee == null &&
     !deliveryPreviewBlocked;
   const deliveryFeeUnknown =
+    !serverQuote &&
     fulfillment === "delivery" &&
     previewDeliveryFee == null &&
     guestDeliveryEstimate === null &&
     !deliveryFeePending;
-  const platformFee =
-    paymentMethod === "paystack"
+  const platformFee = serverQuote
+    ? serverQuote.platformFee
+    : paymentMethod === "paystack"
       ? platformFeeConfig.type === "fixed"
         ? platformFeeConfig.fixed
         : Math.round(subtotal * platformFeeConfig.percentage) / 100
       : 0;
-  const total = subtotal + taxAmount + deliveryFee + platformFee;
-  const walletCredit =
-    paymentMethod === "paystack" && useWallet && user ? Math.min(walletBalance, total) : 0;
+  const total = serverQuote?.totalAmount ?? subtotal + taxAmount + deliveryFee + platformFee;
   const giftCredit =
-    giftCardValid && giftCardCode.trim()
-      ? Math.min(giftCardValid.balance, Math.max(0, total - walletCredit))
+    giftCardValid && giftCardCode.trim() ? Math.min(giftCardValid.balance, total) : 0;
+  const walletCredit =
+    paymentMethod === "paystack" && useWallet && user
+      ? Math.min(walletBalance, Math.max(0, total - giftCredit))
       : 0;
   const cardPayTotal = Math.max(0, Math.round((total - walletCredit - giftCredit) * 100) / 100);
   const fb = getTenantDefaultCurrency();
@@ -662,11 +739,14 @@ export default function ProductCheckoutScreen() {
         );
         const recovered = await recoverRecentProductOrderForProvider(provider_id);
         if (recovered) {
-          const paidWithWalletRecovered =
-            recovered.payment_status === "paid" &&
-            (recovered.payment_method === "wallet" ||
-              Number(recovered.wallet_amount ?? 0) >= total - 0.01);
-          if (paidWithWalletRecovered) {
+          const amountDueRecovered = recoveredProductOrderAmountDue({
+            paymentStatus: recovered.payment_status,
+            totalAmount: Number(recovered.total_amount ?? total),
+            walletAmount: Number(recovered.wallet_amount ?? 0),
+            giftCardAmount: Number(recovered.gift_card_amount ?? 0),
+          });
+          const alreadySettled = amountDueRecovered <= 0.005;
+          if (alreadySettled) {
             await fetchCart().catch(() => {});
             emitCartUpdated();
             haptic.success();
@@ -686,10 +766,7 @@ export default function ProductCheckoutScreen() {
           }
           order = recovered;
           paidWithWallet = false;
-          amountDue = Math.max(
-            0,
-            total - Number(recovered.wallet_amount ?? 0) - Number(recovered.gift_card_amount ?? 0),
-          );
+          amountDue = amountDueRecovered;
         } else {
           placingRef.current = false;
           setPlacing(false);
@@ -2218,6 +2295,16 @@ export default function ProductCheckoutScreen() {
                 <Text style={{ fontSize: 14, color: "#6B7280" }}>{pc("subtotal")}</Text>
                 <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(subtotal)}</Text>
               </View>
+              {promotionDiscount > 0 && (
+                <View
+                  style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}
+                >
+                  <Text style={{ fontSize: 14, color: "#6B7280" }}>
+                    {pc("discount", undefined, "Discount")}
+                  </Text>
+                  <Text style={{ fontSize: 14, color: "#059669" }}>−{fmt(promotionDiscount)}</Text>
+                </View>
+              )}
               {taxAmount > 0 && (
                 <View
                   style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}

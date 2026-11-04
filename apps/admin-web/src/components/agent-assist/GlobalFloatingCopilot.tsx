@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bot, X } from "lucide-react";
-import { Link, useLocation } from "react-router";
+import { Link, useLocation, useSearchParams } from "react-router";
+import { useIsDesktop } from "@/hooks/useIsDesktop";
 import { GLOBAL_COPILOT_STARTERS, useAdminCopilot, type CopilotPageContext } from "@/hooks/useAdminCopilot";
 import { useAgentShadowMode } from "@/hooks/useAgentShadowMode";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { NAV_REVEAL_STATE } from "@/lib/navReveal";
 import { copilotStartersForDesk, deskFromAdminPath } from "@/lib/adminCopilotDesk";
 
-function pageContextFromPath(pathname: string): CopilotPageContext | undefined {
+function pageContextFromPath(pathname: string, searchParams: URLSearchParams): CopilotPageContext | undefined {
   const p = pathname.replace(/^\/admin/, "") || pathname;
   const provider = /^\/providers\/([^/]+)/.exec(p);
   if (provider) return { entityType: "provider", entityId: provider[1]! };
@@ -15,6 +16,10 @@ function pageContextFromPath(pathname: string): CopilotPageContext | undefined {
   if (user) return { entityType: "user", entityId: user[1]! };
   const ticket = /^\/support-tickets\/([^/]+)/.exec(p);
   if (ticket) return { entityType: "support_ticket", entityId: ticket[1]! };
+  if (p === "/support-tickets") {
+    const selected = searchParams.get("selected");
+    if (selected) return { entityType: "support_ticket", entityId: selected };
+  }
   const booking = /^\/bookings\/([^/]+)/.exec(p);
   if (booking) return { entityType: "booking", entityId: booking[1]! };
   return undefined;
@@ -22,7 +27,12 @@ function pageContextFromPath(pathname: string): CopilotPageContext | undefined {
 
 export function GlobalFloatingCopilot() {
   const location = useLocation();
-  const pageContext = useMemo(() => pageContextFromPath(location.pathname), [location.pathname]);
+  const [searchParams] = useSearchParams();
+  const isDesktop = useIsDesktop();
+  const pageContext = useMemo(
+    () => pageContextFromPath(location.pathname, searchParams),
+    [location.pathname, searchParams],
+  );
   const desk = useMemo(() => deskFromAdminPath(location.pathname), [location.pathname]);
   const starterChips = useMemo(
     () => copilotStartersForDesk(desk) ?? GLOBAL_COPILOT_STARTERS,
@@ -61,13 +71,21 @@ export function GlobalFloatingCopilot() {
 
   const lastUserQuestion = [...messages].reverse().find((m) => m.role === "user")?.content ?? question;
 
+  const pathNorm = location.pathname.replace(/^\/admin/, "") || location.pathname;
+  const onSupportQueue =
+    pathNorm === "/support-tickets" && Boolean(searchParams.get("selected"));
+  const onSupportTicketPage = /^\/support-tickets\/[^/]+/.test(pathNorm);
+  const liftAboveComposer = !isDesktop && (onSupportQueue || onSupportTicketPage);
+
   return (
     <>
       {!open ? (
         <button
           type="button"
           aria-label="Open Copilot"
-          className="fixed bottom-6 end-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-lg hover:bg-primary/90"
+          className={`fixed end-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-lg hover:bg-primary/90 ${
+            liftAboveComposer ? "bottom-[max(5.5rem,env(safe-area-inset-bottom))]" : "bottom-6"
+          }`}
           onClick={() => setOpen(true)}
         >
           <Bot className="h-6 w-6" />

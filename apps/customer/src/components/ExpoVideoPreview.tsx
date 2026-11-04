@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { StyleProp, ViewStyle } from "react-native";
 import { useVideoPlayer, VideoView } from "expo-video";
+import type { ExplorePlaybackTrimWindow } from "@/lib/explore-video-playback-trim";
+import { useExploreTrimLoop } from "@/hooks/useExploreTrimLoop";
 
 type ContentFit = "cover" | "contain" | "fill";
 
@@ -13,6 +15,8 @@ type ExpoVideoPreviewProps = {
   /** When true, playback is paused (e.g. off-screen carousel slide). */
   paused?: boolean;
   muted?: boolean;
+  /** Client trim window while waiting for encoded playback. */
+  playbackTrim?: ExplorePlaybackTrimWindow | null;
   /** Fired ~5×/s while playing (for timed on-media text overlays). */
   onPlaybackTimeUpdate?: (timeMs: number) => void;
 };
@@ -25,10 +29,15 @@ export function ExpoVideoPreview({
   loop = false,
   paused = true,
   muted = false,
+  playbackTrim = null,
   onPlaybackTimeUpdate,
 }: ExpoVideoPreviewProps) {
+  const trimStartMs = playbackTrim?.trim_start_ms ?? null;
+  const trimEndMs = playbackTrim?.trim_end_ms ?? null;
+  const hasTrim = trimStartMs != null && trimEndMs != null;
+
   const player = useVideoPlayer(uri, (p) => {
-    p.loop = loop;
+    p.loop = hasTrim ? false : loop;
     p.muted = muted;
     if (paused) {
       p.pause();
@@ -36,6 +45,8 @@ export function ExpoVideoPreview({
       p.play();
     }
   });
+
+  useExploreTrimLoop(player, trimStartMs, trimEndMs, !paused);
 
   useEffect(() => {
     player.muted = muted;
@@ -49,10 +60,11 @@ export function ExpoVideoPreview({
   useEffect(() => {
     if (paused || !onPlaybackTimeUpdate) return;
     const timer = setInterval(() => {
-      onPlaybackTimeUpdate(Math.floor((player.currentTime || 0) * 1000));
+      const ms = Math.floor((player.currentTime || 0) * 1000);
+      onPlaybackTimeUpdate(trimStartMs != null ? Math.max(0, ms - trimStartMs) : ms);
     }, 200);
     return () => clearInterval(timer);
-  }, [paused, player, onPlaybackTimeUpdate]);
+  }, [paused, player, onPlaybackTimeUpdate, trimStartMs]);
 
   return (
     <VideoView

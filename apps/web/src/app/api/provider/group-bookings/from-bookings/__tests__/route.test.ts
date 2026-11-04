@@ -32,6 +32,11 @@ vi.mock("@/lib/auth/requirePermission", () => ({
   requirePermission: (...args: unknown[]) => mockRequirePermission(...args),
 }));
 
+const mockGroupBookingsEnabled = vi.fn();
+vi.mock("@/lib/bookings/assert-provider-group-bookings-enabled", () => ({
+  assertProviderStaffGroupBookingsEnabled: (...args: unknown[]) => mockGroupBookingsEnabled(...args),
+}));
+
 function makeBookings(overrides: Record<string, unknown>[] = []) {
   const base = [
     {
@@ -138,6 +143,23 @@ describe("POST /api/provider/group-bookings/from-bookings", () => {
     });
     mockGetProviderIdForUser.mockResolvedValue(PROVIDER_ID);
     mockGetSupabaseServer.mockResolvedValue({});
+    mockGroupBookingsEnabled.mockResolvedValue(true);
+  });
+
+  it("returns GROUP_BOOKINGS_DISABLED when the provider has group bookings off", async () => {
+    mockGroupBookingsEnabled.mockResolvedValue(false);
+    mockGetSupabaseAdmin.mockReturnValue(buildAdmin({ bookings: makeBookings() }));
+    const { POST } = await import("../route");
+    const res = await POST(
+      new NextRequest("http://localhost/api/provider/group-bookings/from-bookings", {
+        method: "POST",
+        body: JSON.stringify({ booking_ids: [B1, B2] }),
+      })
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error?.code ?? body.code).toBe("GROUP_BOOKINGS_DISABLED");
+    expect(groupDeleteEq).not.toHaveBeenCalled();
   });
 
   it("returns 409 when a booking is already in a group", async () => {

@@ -119,9 +119,11 @@ export async function GET(request: NextRequest) {
       fetchAllPaged(async (from, to) => {
         const { data, error } = await supabase
           .from("finance_transactions")
-          .select("id, amount, net, created_at, booking_id, description")
+          .select("id, amount, net, created_at, booking_id, description, metadata, refund_component")
           .eq("provider_id", providerId)
-          .eq("transaction_type", "tax")
+          // VAT reports are built from tax legs PLUS tax-attributed refund legs.
+          // Refund legs use transaction_type='refund' + refund_component='tax'.
+          .in("transaction_type", ["tax", "refund"])
           .gte("created_at", yearFromIso)
           .lte("created_at", yearToIso)
           .order("created_at", { ascending: false })
@@ -171,14 +173,31 @@ export async function GET(request: NextRequest) {
 
       const vatTransactions = allVatTx.filter((t: any) => {
         const d = new Date(t.created_at);
-        return d >= periodFrom && d <= periodTo;
+        if (d < periodFrom || d > periodTo) return false;
+        const vatSource = t.metadata?.vat_source;
+        if (vatSource === "provider_subscription_payment" || vatSource === "provider_subscription_refund") {
+          return false;
+        }
+        // Include:
+        // - tax legs (transaction_type='tax')
+        // - refund legs attributed to tax (transaction_type='refund' + refund_component='tax')
+        if (t.transaction_type !== "tax") {
+          return t.transaction_type === "refund" && t.refund_component === "tax";
+        }
+        return true;
       });
 
       const vatCollected = vatTransactions.reduce(
         (sum: number, t: any) => {
           // F7: tax rows keep net=0; VAT liability is tracked on `amount`.
           const net = Number(t.net ?? 0);
-          return sum + (net !== 0 ? net : Number(t.amount ?? 0));
+          const raw = net !== 0 ? net : Number(t.amount ?? 0);
+          // Refund rows encode direction via transaction_type/refund_component, not sign.
+          if (t.transaction_type === "refund" && t.refund_component === "tax") {
+            if (raw < 0) return sum + raw;
+            return sum - Math.abs(raw);
+          }
+          return sum + raw;
         },
         0
       );
@@ -198,9 +217,17 @@ export async function GET(request: NextRequest) {
         transaction_count: vatTransactions.length,
         transactions: vatTransactions.map((t: any) => {
           const booking = bookingMap.get(t.booking_id);
+          const net = Number(t.net ?? 0);
+          const raw = net !== 0 ? net : Number(t.amount ?? 0);
+          const amount =
+            t.transaction_type === "refund" && t.refund_component === "tax"
+              ? raw < 0
+                ? raw
+                : -Math.abs(raw)
+              : raw;
           return {
             id: t.id,
-            amount: Number(t.net || 0) !== 0 ? Number(t.net || 0) : Number(t.amount || 0),
+            amount,
             booking_number: booking?.booking_number ?? "N/A",
             booking_date: booking?.scheduled_at ?? t.created_at,
             description: t.description,

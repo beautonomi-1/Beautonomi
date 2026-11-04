@@ -36,7 +36,7 @@ export function providerShippingBookingDisplay(order: {
   if (detail === "rates_pending") detailLabel = "Bob Go is still collecting rates. Try Book courier again in a moment.";
 
   const paid =
-    order.payment_status === "paid" &&
+    (order.payment_status === "paid" || order.payment_status === "partially_refunded") &&
     order.status !== "cancelled" &&
     order.status !== "refunded";
 

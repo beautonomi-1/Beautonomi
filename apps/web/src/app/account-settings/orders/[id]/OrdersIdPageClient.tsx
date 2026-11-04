@@ -17,7 +17,7 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { ShareReceiptButton } from "@/components/receipts/ShareReceiptButton";
 import { copyTextToClipboard } from "@/lib/browser/clipboard";
 import { getProductOrderSupportPrompt, supportTicketQuery } from "@beautonomi/utils";
-import { productOrderTenderSplit } from "@/lib/orders/product-order-tender";
+import { displayedProductOrderAmountStillDue } from "@/lib/orders/product-order-tender";
 import { useTranslation, type TFunction } from "@beautonomi/i18n";
 import { PickupStoreCard } from "@/components/shop/PickupStoreCard";
 
@@ -34,6 +34,7 @@ interface ProductOrder {
   platform_fee?: number | null;
   wallet_amount?: number | null;
   gift_card_amount?: number | null;
+  amount_still_due?: number | null;
   promotion_code?: string | null;
   total_amount: number;
   payment_status?: string | null;
@@ -194,6 +195,8 @@ function paymentStatusLabel(status: string, t: TFunction): string {
       return t("web.accountSettings.orderDetail.paymentFailed");
     case "refunded":
       return t("web.accountSettings.orderDetail.paymentRefunded");
+    case "partially_refunded":
+      return t("web.accountSettings.orderDetail.paymentPartiallyRefunded");
     default:
       return status.replace(/_/g, " ");
   }
@@ -338,13 +341,14 @@ export default function OrderDetailPage() {
   const sym = (order.currency && String(order.currency).trim()) || tenantCurrency;
   const walletAmount = Number(order.wallet_amount ?? 0);
   const platformFee = Number(order.platform_fee ?? 0);
-  const onlineAmountDue = productOrderTenderSplit(order).remainder;
+  const onlineAmountDue = displayedProductOrderAmountStillDue(order);
   const canPayOnline =
     order.payment_status === "pending" &&
     (order.payment_method === "paystack" || order.payment_method == null) &&
     onlineAmountDue > 0;
   const canSelfCancel =
     !isCancelled &&
+    order.payment_status !== "partially_refunded" &&
     !order.shipped_at &&
     !order.delivered_at &&
     ["pending", "confirmed", "processing"].includes(order.status);
@@ -433,6 +437,12 @@ export default function OrderDetailPage() {
           </svg>
           {t("web.accountSettings.orderDetail.backToOrders")}
         </button>
+
+        {order.payment_status === "partially_refunded" ? (
+          <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {t("web.accountSettings.orderDetail.partiallyRefundedContactProvider")}
+          </p>
+        ) : null}
 
         <div className="mb-4 flex items-center justify-between">
           <div>

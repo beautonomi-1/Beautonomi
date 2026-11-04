@@ -6,6 +6,7 @@ import {
   isCreateOrderTransientError,
   pollProductOrderPaid,
   recoverRecentProductOrderForProvider,
+  recoveredProductOrderAmountDue,
   toCreateOrderApiError,
 } from "@/features/shop/productOrderCheckoutHelpers";
 import { api } from "@/lib/api-client";
@@ -17,6 +18,30 @@ jest.mock("@/lib/api-client", () => ({
 }));
 
 const apiGetMock = api.get as jest.Mock;
+
+describe("recoveredProductOrderAmountDue", () => {
+  it("does not charge a card payment that already succeeded", () => {
+    expect(
+      recoveredProductOrderAmountDue({
+        paymentStatus: "paid",
+        totalAmount: 100,
+        walletAmount: 0,
+        giftCardAmount: 40,
+      }),
+    ).toBe(0);
+  });
+
+  it("charges only the part the gift card and wallet did not cover", () => {
+    expect(
+      recoveredProductOrderAmountDue({
+        paymentStatus: "pending",
+        totalAmount: 100,
+        walletAmount: 10,
+        giftCardAmount: 40,
+      }),
+    ).toBe(50);
+  });
+});
 
 describe("productOrderCheckoutHelpers", () => {
   beforeEach(() => {

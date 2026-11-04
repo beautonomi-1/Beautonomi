@@ -42,6 +42,8 @@ import { CustomOfferCard } from "@beautonomi/ui/web";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@beautonomi/i18n";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 
 interface Attachment {
   url: string;
@@ -127,6 +129,7 @@ export default function WhatsAppChat({
 }: WhatsAppChatProps) {
   const clientMounted = useClientMounted();
   const { t } = useTranslation();
+  const customOfferFullCheckout = useFeatureFlag(FEATURE_FLAG_KEYS.CUSTOM_OFFER_FULL_CHECKOUT);
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageInput, setMessageInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -415,6 +418,10 @@ export default function WhatsAppChat({
   };
 
   const openPaymentDialog = async (offerId: string, currency?: string) => {
+    if (customOfferFullCheckout) {
+      window.location.href = `/checkout/custom-offer/${encodeURIComponent(offerId)}`;
+      return;
+    }
     setSelectedOfferIdForPayment(offerId);
     setPaymentOfferCurrency(currency);
     setPaymentQuote(null);
@@ -1977,6 +1984,7 @@ export default function WhatsAppChat({
                     !isExpiredDetail &&
                     !isDeclinedDetail &&
                     !isPaymentPendingDetail &&
+                    !isChangesRequestedDetail &&
                     d.id && (
                     <>
                     <Button

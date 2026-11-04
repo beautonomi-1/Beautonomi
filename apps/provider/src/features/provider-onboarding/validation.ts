@@ -269,12 +269,15 @@ export function buildSubmitPayload(formData: Partial<OnboardingFormData>): Recor
     social_media_links: formData.social_media_links || {},
     website: formData.website ?? null,
     tax_rate_percent: null,
+    tax_inclusive:
+      formData.is_vat_registered === true ? (formData.tax_inclusive ?? true) : false,
     tips_enabled: formData.tips_enabled ?? true,
     booking_policy: {
       preset: formData.booking_policy?.preset ?? DEFAULT_BOOKING_POLICY_PRESET,
     },
     include_in_search_engines: true,
     selected_plan_id: formData.selected_plan_id ?? null,
+    selected_billing_period: formData.selected_billing_period ?? null,
     owner_takes_appointments: formData.owner_takes_appointments,
     owner_public_title: optionalText(formData.owner_public_title) ?? null,
     owner_service_indexes: formData.owner_service_indexes,

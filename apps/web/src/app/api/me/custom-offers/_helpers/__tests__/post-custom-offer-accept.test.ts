@@ -438,6 +438,39 @@ describe("postCustomOfferAccept — zero-Paystack (wallet fully covers)", () => 
     return supabase;
   }
 
+  it("returns 409 when offer is changes_requested", async () => {
+    mockGetSupabaseServer.mockResolvedValue(
+      buildSupabaseMock({
+        offer: {
+          id: OFFER_ID,
+          status: "changes_requested",
+          price: 1000,
+          currency: "ZAR",
+          request_id: "req-1",
+          request: {
+            id: "req-1",
+            customer_id: CUSTOMER_ID,
+            provider_id: PROVIDER_ID,
+            location_type: "at_salon",
+            status: "pending",
+            expires_at: new Date(Date.now() + 86400000).toISOString(),
+          },
+        },
+      }),
+    );
+    mockGetSupabaseAdmin.mockReturnValue(buildAdminMock());
+
+    const { postCustomOfferAccept } = await import("../post-custom-offer-accept");
+    const res = await postCustomOfferAccept(
+      buildPostRequest({ payment_option: "full" }),
+      { params: Promise.resolve({ id: OFFER_ID }) },
+    );
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error.code).toBe("OFFER_CHANGES_REQUESTED");
+    expect(mockFinalizeCustomOfferPayment).not.toHaveBeenCalled();
+  });
+
   it("claims payment_pending before calling finalize", async () => {
     const { admin, updates, updateMock } = buildRecordingAdminMock();
     mockGetSupabaseAdmin.mockReturnValue(admin);

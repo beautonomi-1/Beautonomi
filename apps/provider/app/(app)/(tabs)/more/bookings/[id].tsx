@@ -436,6 +436,7 @@ type AdditionalCharge = {
   status: "pending" | "approved" | "rejected" | "paid";
   requested_at?: string;
   paid_at?: string | null;
+  amount_due?: number;
 };
 
 type AuditLogEntry = {
@@ -2009,36 +2010,27 @@ export default function BookingDetailScreen() {
   const markPaidPrimary =
     outstanding > 0 && (b.current_stage === "service_completed" || b.status === "completed");
   /**
-   * Amount for Yoco / POS sale / "Mark paid" without a custom line: deposit bookings collect the
-   * remaining deposit first (pending or partially_paid until deposit is satisfied), then full AR.
+   * One amount for the card machine, the Yoco sale, and mark-paid. A deposit still due is
+   * collected first only when no add-on is unpaid; otherwise the charge is the full balance.
+   * serviceCovered already includes a reserved wallet or gift because outstanding does.
    */
-  const depositTarget =
-    b.deposit_required === true &&
-    b.payment_option === "deposit" &&
-    typeof b.deposit_amount === "number" &&
-    b.deposit_amount > 0
-      ? b.deposit_amount
-      : null;
-  const depositRemaining =
-    depositTarget != null ? Math.max(0, depositTarget - coverageLocal) : 0;
-  const yocoTerminalAmount =
-    depositRemaining > 0 && (ps === "pending" || ps === "partially_paid")
-      ? Math.min(outstanding, depositRemaining)
-      : outstanding;
+  const serviceStillDue = Math.max(0, outstanding - unpaidAdditionalChargesTotal);
+  const serviceCovered = Math.max(0, totalAmount - serviceStillDue);
   const paycloudBookingCharge = computePaycloudBookingChargeAmount({
     outstanding,
     depositRequired: b.deposit_required === true && b.payment_option === "deposit",
     depositAmount: b.deposit_amount ?? null,
-    totalPaid: coverageLocal,
+    totalPaid: serviceCovered,
     unpaidAdditionalCharges: unpaidAdditionalChargesTotal,
   });
+  const yocoTerminalAmount = paycloudBookingCharge.chargeAmount;
   const paycloudTerminalAmount =
     paycloudEntityType === "additional_charge"
       ? paycloudAdditionalChargeAmount
       : paycloudBookingCharge.chargeAmount;
   const paycloudCollectContext = inferBookingCollectContext({
     totalAmount,
-    totalPaid: coverageLocal,
+    totalPaid: serviceCovered,
     unpaidAdditionalCharges: unpaidAdditionalChargesTotal,
     outstanding,
   });
@@ -2245,7 +2237,7 @@ export default function BookingDetailScreen() {
         total_amount: chargeAmount,
         payment_method: "yoco",
         payment_status: "pending",
-        notes: `Booking ${b.booking_number ?? id}`,
+        notes: `booking_collection:${id}`,
       });
       if (error) {
         Alert.alert(bk("errorTitle"), error);
@@ -3259,7 +3251,7 @@ export default function BookingDetailScreen() {
       const c = additionalCharges.find((x) => x.id === chargeMarkPaidId);
       if (!c) return;
       setChargeMarkPaidId(null);
-      openPaycloudAdditionalCharge(c.id, Number(c.amount ?? 0));
+      openPaycloudAdditionalCharge(c.id, Number(c.amount_due ?? c.amount ?? 0));
       return;
     }
     setMarkingChargePaid(true);
@@ -4944,14 +4936,14 @@ export default function BookingDetailScreen() {
                       {paycloudEnabled && paycloudCollectEnabled ? (
                         <TouchableOpacity
                           onPress={() =>
-                            openPaycloudAdditionalCharge(c.id, Number(c.amount ?? 0))
+                            openPaycloudAdditionalCharge(c.id, Number(c.amount_due ?? c.amount ?? 0))
                           }
                           style={twStyle("flex-1 min-w-[120px] rounded-lg border border-slate-300 bg-slate-50 py-2 px-3 items-center")}
                         >
                           <Text style={twStyle("text-xs font-medium text-slate-900 text-center")}>
                             {formatPaycloudCollectLabel({
                               context: "additional_charge",
-                              amount: Number(c.amount ?? 0),
+                              amount: Number(c.amount_due ?? c.amount ?? 0),
                               currency: c.currency ?? b.currency ?? getTenantDefaultCurrency(),
                               inFlight: paycloudInFlight,
                             })}
@@ -5388,7 +5380,7 @@ export default function BookingDetailScreen() {
               </Text>
               <Text style={twStyle("text-sm font-medium text-gray-900 mb-2")}>
                 {bk("thisPayment", { currency: b.currency ?? getTenantDefaultCurrency(), amount: yocoTerminalAmount.toFixed(2) })}
-                {depositTarget != null ? bk("depositDue") : ""}
+                {paycloudBookingCharge.depositAmount != null ? bk("depositDue") : ""}
               </Text>
             </>
           ) : (

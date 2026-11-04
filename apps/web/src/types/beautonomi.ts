@@ -580,6 +580,8 @@ export interface AdditionalCharge {
   approved_at?: string | null;
   paid_at?: string | null;
   requested_by: string; // Provider user ID
+  /** What the till should still collect after a wallet or gift card hold. */
+  amount_due?: number;
 }
 
 // Availability Types

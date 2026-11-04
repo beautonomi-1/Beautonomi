@@ -4,18 +4,25 @@ interface AdminBreadcrumbContextValue {
   /** Current leaf-label override (set by detail pages once they resolve entity names). */
   leafLabel: string | undefined;
   setLeafLabel: (label: string | undefined) => void;
+  /** Override parent crumb href (e.g. filtered support queue). */
+  parentHref: string | undefined;
+  setParentHref: (href: string | undefined) => void;
 }
 
 const AdminBreadcrumbContext = createContext<AdminBreadcrumbContextValue>({
   leafLabel: undefined,
   setLeafLabel: () => {},
+  parentHref: undefined,
+  setParentHref: () => {},
 });
 
 export function AdminBreadcrumbProvider({ children }: { children: ReactNode }) {
   const [leafLabel, setLeafLabelRaw] = useState<string | undefined>(undefined);
+  const [parentHref, setParentHrefRaw] = useState<string | undefined>(undefined);
   const setLeafLabel = useCallback((label: string | undefined) => setLeafLabelRaw(label), []);
+  const setParentHref = useCallback((href: string | undefined) => setParentHrefRaw(href), []);
   return (
-    <AdminBreadcrumbContext.Provider value={{ leafLabel, setLeafLabel }}>
+    <AdminBreadcrumbContext.Provider value={{ leafLabel, setLeafLabel, parentHref, setParentHref }}>
       {children}
     </AdminBreadcrumbContext.Provider>
   );
@@ -60,4 +67,13 @@ function useAdminBreadcrumbLeafEffect(
     set(label);
     return () => set(undefined);
   }, [label, set]);
+}
+
+/** Override the parent breadcrumb href for the current page (cleared on unmount). */
+export function useAdminBreadcrumbParentHref(href: string | undefined) {
+  const { setParentHref } = useAdminBreadcrumbContext();
+  useEffect(() => {
+    setParentHref(href);
+    return () => setParentHref(undefined);
+  }, [href, setParentHref]);
 }

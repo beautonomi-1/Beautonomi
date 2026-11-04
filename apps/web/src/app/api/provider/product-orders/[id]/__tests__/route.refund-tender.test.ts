@@ -38,9 +38,13 @@ const ORDER_ID = "oooooooo-oooo-oooo-oooo-oooooooooooo";
 const PROVIDER_ID = "pppppppp-pppp-pppp-pppp-pppppppppppp";
 
 type OrderOverrides = Partial<{
+  status: string;
+  payment_status: string;
+  payment_method: string;
   total_amount: number;
   wallet_amount: number;
   gift_card_amount: number;
+  refunded_amount: number | null;
   fulfillment_type: string;
   courier_shipment_id: string | null;
 }>;
@@ -76,6 +80,7 @@ function makeServerClient(order: ReturnType<typeof makeOrder>) {
       const self = () => chain;
       chain.select = vi.fn(self);
       chain.eq = vi.fn(self);
+      chain.is = vi.fn(self);
       chain.update = vi.fn((payload: Record<string, unknown>) => {
         updates.push(payload);
         return chain;
@@ -211,6 +216,81 @@ describe("PATCH /api/provider/product-orders/[id] refund tender split", () => {
     );
   });
 
+  it("partial refund keeps the order active: partially_refunded, no restock, no shipment cancel", async () => {
+    const { restockProductOrderLineItems, applyProductOrderCancelRefundSideEffects } =
+      await import("@/lib/orders/product-order-lifecycle");
+    const { cancelCourierShipmentForOrder } = await import("@/lib/orders/shipping");
+    const server = await setup(
+      makeOrder({ fulfillment_type: "delivery", courier_shipment_id: "shp_1" }),
+    );
+
+    const res = await patch({ status: "refunded", refund_method: "store_credit", refund_amount: 50 });
+
+    expect(res.status).toBe(200);
+    const update = server.updates[0];
+    expect(update.payment_status).toBe("partially_refunded");
+    expect(update.refunded_amount).toBe(50);
+    expect(update).not.toHaveProperty("status");
+    expect(restockProductOrderLineItems).not.toHaveBeenCalled();
+    expect(cancelCourierShipmentForOrder).not.toHaveBeenCalled();
+    expect(vi.mocked(applyProductOrderCancelRefundSideEffects).mock.calls[0][3]).toMatchObject({
+      newStatus: "refunded",
+      refundAmount: 50,
+    });
+  });
+
+  it("refund that completes a partially refunded order goes terminal and uses a per-refund wallet key", async () => {
+    const { restockProductOrderLineItems } = await import("@/lib/orders/product-order-lifecycle");
+    const server = await setup(
+      makeOrder({ payment_status: "partially_refunded", refunded_amount: 50 }),
+    );
+
+    const res = await patch({ status: "refunded", refund_method: "store_credit", refund_amount: 100 });
+
+    expect(res.status).toBe(200);
+    expect(server.updates[0]).toMatchObject({
+      status: "refunded",
+      payment_status: "refunded",
+      refunded_amount: 150,
+    });
+    expect(restockProductOrderLineItems).toHaveBeenCalledOnce();
+    expect(adminRpc).toHaveBeenCalledWith(
+      "wallet_credit_admin",
+      expect.objectContaining({ p_idempotency_key: `product_order_refund:${ORDER_ID}:50.00:100.00` }),
+    );
+  });
+
+  it("rejects a refund larger than what is left on a partially refunded order", async () => {
+    await setup(makeOrder({ payment_status: "partially_refunded", refunded_amount: 120 }));
+
+    const res = await patch({ status: "refunded", refund_method: "store_credit", refund_amount: 50 });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error?.code).toBe("INVALID_REFUND_AMOUNT");
+  });
+
+  it("rejects cancel on a partially_refunded order", async () => {
+    const { releaseUnpaidProductOrderHolds } = await import("@/lib/orders/product-order-lifecycle");
+    await setup(makeOrder({ status: "confirmed", payment_status: "partially_refunded", refunded_amount: 50 }));
+
+    const res = await patch({ status: "cancelled", cancellation_reason: "test" });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error?.code).toBe("PARTIALLY_REFUNDED_REFUND_REMAINING");
+    expect(releaseUnpaidProductOrderHolds).not.toHaveBeenCalled();
+  });
+
+  it("blocks fulfilment of an unpaid Paystack order but still allows cancelling it", async () => {
+    await setup(makeOrder({ status: "pending", payment_status: "pending" }));
+
+    const confirm = await patch({ status: "confirmed" });
+    expect(confirm.status).toBe(400);
+    expect((await confirm.json()).error?.code).toBe("PAYMENT_REQUIRED");
+
+    const cancel = await patch({ status: "cancelled" });
+    expect(cancel.status).toBe(200);
+  });
+
   it("wallet failure after the card refund keeps the order refunded and still restocks + reverses the ledger", async () => {
     const { refundProductOrderOnlineTender } = await import(
       "@/lib/ecommerce/refund-product-order-online-tender"
@@ -263,11 +343,20 @@ describe("PATCH /api/provider/product-orders/[id] refund tender split", () => {
 
   it("retrying after a rolled-back refund restocks exactly once in total", async () => {
     const { restockProductOrderLineItems } = await import("@/lib/orders/product-order-lifecycle");
+    const { refundProductOrderOnlineTender } = await import(
+      "@/lib/ecommerce/refund-product-order-online-tender"
+    );
+    vi.mocked(refundProductOrderOnlineTender).mockResolvedValue({
+      attempted: true,
+      refundedAmount: 0,
+      refundId: null,
+      error: "gateway down",
+    });
     await setup(makeOrder());
     adminRpc.mockResolvedValueOnce({ data: null, error: { message: "wallet down" } });
 
-    const first = await patch({ status: "refunded", refund_method: "store_credit", refund_amount: 50 });
-    const second = await patch({ status: "refunded", refund_method: "store_credit", refund_amount: 50 });
+    const first = await patch({ status: "refunded", refund_method: "store_credit" });
+    const second = await patch({ status: "refunded", refund_method: "store_credit" });
 
     expect(first.status).toBe(500);
     expect(second.status).toBe(200);
@@ -304,9 +393,17 @@ describe("PATCH /api/provider/product-orders/[id] refund tender split", () => {
     expect((await res.json()).error?.code).toBe("REFUND_PENDING");
   });
 
-  it("successful delivery refund restocks and cancels the courier shipment once", async () => {
+  it("successful full delivery refund restocks and cancels the courier shipment once", async () => {
     const { restockProductOrderLineItems } = await import("@/lib/orders/product-order-lifecycle");
     const { cancelCourierShipmentForOrder } = await import("@/lib/orders/shipping");
+    const { refundProductOrderOnlineTender } = await import(
+      "@/lib/ecommerce/refund-product-order-online-tender"
+    );
+    vi.mocked(refundProductOrderOnlineTender).mockResolvedValue({
+      attempted: true,
+      refundedAmount: 100,
+      refundId: "rf_2",
+    });
     await setup(
       makeOrder({
         fulfillment_type: "delivery",
@@ -314,7 +411,7 @@ describe("PATCH /api/provider/product-orders/[id] refund tender split", () => {
       } as OrderOverrides),
     );
 
-    const res = await patch({ status: "refunded", refund_method: "store_credit", refund_amount: 50 });
+    const res = await patch({ status: "refunded", refund_method: "store_credit" });
 
     expect(res.status).toBe(200);
     expect(restockProductOrderLineItems).toHaveBeenCalledOnce();

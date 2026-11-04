@@ -127,6 +127,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
   const { data: paymentSettings } = useApi<{
     taxRatePercent?: number;
     taxInclusive?: boolean;
+    isVatRegistered?: boolean;
   }>(paymentSettingsUrl, { enabled: visible });
 
   const catalogServices = useMemo(() => {
@@ -210,7 +211,13 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
     );
   }, [booking]);
 
-  const taxRatePercent = safeNum(paymentSettings?.taxRatePercent ?? booking.tax_rate);
+  const storedTaxRate = booking.tax_rate;
+  const taxRatePercent =
+    typeof storedTaxRate === "number" && Number.isFinite(storedTaxRate)
+      ? storedTaxRate
+      : paymentSettings?.isVatRegistered === true
+        ? safeNum(paymentSettings.taxRatePercent)
+        : 0;
   const taxInclusive = paymentSettings?.taxInclusive ?? true;
 
   const { subtotal } = useMemo(

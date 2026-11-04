@@ -4,6 +4,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
 import { resolveAdditionalChargeSettlementPlan } from "@/lib/bookings/resolve-additional-charge-settlement";
+import { additionalChargeAmountStillDue } from "@/lib/bookings/display-invariants";
+import { sumAdditionalChargeTenderLegs } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 
 /**
  * GET /api/provider/bookings/[id]/additional-charges
@@ -74,13 +76,27 @@ export async function GET(
       }
     }
 
+    const chargesWithDue = await Promise.all(
+      ((charges || []) as Array<{ id: string; amount?: number; status?: string }>).map(async (charge) => {
+        const status = String(charge.status ?? "").toLowerCase();
+        if (status === "paid" || status === "rejected") {
+          return { ...charge, amount_due: 0 };
+        }
+        const held = await sumAdditionalChargeTenderLegs(supabaseAdminCharges, id, charge.id);
+        return {
+          ...charge,
+          amount_due: additionalChargeAmountStillDue(Number(charge.amount ?? 0), held.wallet + held.gift),
+        };
+      }),
+    );
+
     const settlementPlan = resolveAdditionalChargeSettlementPlan({
       bookingSource: (booking as { booking_source?: string | null }).booking_source,
       originalPaymentProvider: (booking as { payment_provider?: string | null }).payment_provider,
       customerHasSavedCard,
     });
 
-    return successResponse({ charges: charges || [], settlementPlan });
+    return successResponse({ charges: chargesWithDue, settlementPlan });
   } catch (error) {
     return handleApiError(error, "Failed to fetch additional charges");
   }

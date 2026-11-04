@@ -31,6 +31,13 @@ function buildSupabaseMock(groupDetail: Record<string, unknown> | null) {
   const detailResult = Promise.resolve({ data: groupDetail, error: null });
 
   const from = vi.fn().mockImplementation((table: string) => {
+    if (table === "booking_participants") {
+      return {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+        }),
+      };
+    }
     if (table !== "group_bookings") throw new Error(`unexpected table ${table}`);
     return {
       select: vi.fn().mockImplementation((selectArg: string) => {

@@ -24,6 +24,7 @@ import {
 } from "@/lib/bookings/group-booking-package-pricing";
 import { requireManualCardEnabledForProvider } from "@/lib/payments/require-manual-card-enabled";
 import { computeWalletGiftCoverageOutstanding } from "@/lib/bookings/provider-booking-finance";
+import { sumPendingWalletGiftBookingPayments } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { autoInvoiceInlineGroupParticipants } from "@/lib/bookings/create-group-participant-booking";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -133,8 +134,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const pkg = Array.isArray((groupBooking as any).service_packages)
       ? (groupBooking as any).service_packages[0]
       : (groupBooking as any).service_packages;
+    const groupChildBookings = (((groupBooking as any).bookings ?? []) as any[]);
+    const pendingByChild = new Map<string, number>();
+    for (const booking of groupChildBookings) {
+      const bookingId = String(booking?.id ?? "");
+      if (!bookingId) continue;
+      pendingByChild.set(bookingId, await sumPendingWalletGiftBookingPayments(admin, bookingId));
+    }
     const bookingPaymentById = new Map(
-      (((groupBooking as any).bookings ?? []) as any[]).map((booking: any) => {
+      groupChildBookings.map((booking: any) => {
         const paidAfterRefunds = Math.max(
           0,
           Number(booking.total_paid ?? 0) - Number(booking.total_refunded ?? 0)
@@ -154,6 +162,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           walletAmount: Number(booking.wallet_amount ?? 0),
           giftCardAmount: Number(booking.gift_card_amount ?? 0),
           unpaidAdditionalCharges,
+          pendingWalletGiftAmount: pendingByChild.get(String(booking.id ?? "")) ?? 0,
         });
         return [
           booking.id,
@@ -176,12 +185,34 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         ];
       })
     );
+    // Split-payment share columns (migration 1034) are read separately so this view keeps
+    // working where that migration has not been applied.
+    const shareById = new Map<string, { due: number | null; paid: number; status: string | null }>();
+    {
+      const { data: shareRows, error: shareErr } = await admin
+        .from("booking_participants")
+        .select("id, amount_due, amount_paid, participant_payment_status")
+        .eq("group_booking_id", id);
+      if (!shareErr) {
+        for (const s of (shareRows ?? []) as any[]) {
+          shareById.set(String(s.id), {
+            due: s.amount_due == null ? null : Number(s.amount_due),
+            paid: Number(s.amount_paid ?? 0),
+            status: s.participant_payment_status ?? null,
+          });
+        }
+      }
+    }
     const participants = (((groupBooking as any).booking_participants ?? []) as any[]).map(
       (participant) => {
         const payment = participant.booking_id
           ? bookingPaymentById.get(participant.booking_id)
           : null;
+        const share = shareById.get(String(participant.id));
         return {
+          share_amount_due: share?.due ?? null,
+          share_amount_paid: share?.paid ?? 0,
+          share_status: share?.due != null ? share.status : null,
           id: participant.id,
           booking_id: participant.booking_id ?? null,
           group_booking_id: id,
@@ -952,6 +983,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
       const paymentProvider =
         paymentMethod === "cash" ? "cash" : paymentMethod === "yoco" ? "yoco" : "other";
+      const pendingByBooking = new Map<string, number>();
+      for (const booking of bookings ?? []) {
+        const bookingId = String((booking as { id?: string }).id ?? "");
+        if (!bookingId) continue;
+        pendingByBooking.set(
+          bookingId,
+          await sumPendingWalletGiftBookingPayments(admin, bookingId),
+        );
+      }
       const rows = (bookings ?? [])
         .map((booking: any) => {
           const unpaidAdditionalCharges = Array.isArray(booking.additional_charges)
@@ -966,6 +1006,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             walletAmount: Number(booking.wallet_amount ?? 0),
             giftCardAmount: Number(booking.gift_card_amount ?? 0),
             unpaidAdditionalCharges,
+            pendingWalletGiftAmount: pendingByBooking.get(String(booking.id ?? "")) ?? 0,
           });
           if (remaining <= 0) return null;
           return {

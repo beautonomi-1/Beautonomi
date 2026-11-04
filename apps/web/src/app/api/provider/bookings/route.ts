@@ -24,6 +24,7 @@ import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import { startOfDay, startOfMonth } from "date-fns";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
+import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
 
 import {
   dashboardBookingLocationOrFilter,
@@ -64,6 +65,7 @@ import {
   sumExplicitProviderAddonsSubtotal,
 } from "@/lib/bookings/provider-booking-finance";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { sumPendingWalletGiftByBookingIds } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { sendBookingPaymentLink } from "@/lib/bookings/send-booking-payment-link";
 import { validateProviderBookingProducts } from "@/lib/bookings/validate-provider-booking-products";
 import { resolveCustomServicesInBookingBody } from "@/lib/bookings/resolve-custom-services-in-booking-body";
@@ -391,6 +393,11 @@ async function handleGetProviderBookings(request: NextRequest) {
       throw error;
     }
 
+    const pendingWalletGiftByBooking = await sumPendingWalletGiftByBookingIds(
+      supabaseAdmin,
+      (bookings || []).map((row: { id?: string }) => String(row.id ?? "")),
+    );
+
     // Transform to match Booking type
     const transformedBookings = (bookings || []).map((booking: any) => {
       // Transform booking_services to include staff info and guest_name for group bookings
@@ -421,6 +428,7 @@ async function handleGetProviderBookings(request: NextRequest) {
         ? booking.recurring_appointments[0]
         : booking.recurring_appointments;
       const unpaidAdditionalCharges = sumUnpaidAdditionalCharges(booking.additional_charges);
+      const pendingWalletGift = pendingWalletGiftByBooking.get(String(booking.id ?? "")) ?? 0;
       const outstandingBalance = computeBookingOutstandingDisplay({
         totalAmount: Number(booking.total_amount ?? 0),
         totalPaid: Number(booking.total_paid ?? 0),
@@ -429,6 +437,7 @@ async function handleGetProviderBookings(request: NextRequest) {
         giftCardAmount: Number(booking.gift_card_amount ?? 0),
         unpaidAdditionalCharges,
         paymentStatus: booking.payment_status,
+        pendingWalletGiftAmount: pendingWalletGift,
       });
 
       // If a booking is stuck in pending_payment but payment is confirmed, normalise
@@ -531,6 +540,7 @@ async function handleGetProviderBookings(request: NextRequest) {
         payment_status: booking.payment_status,
         payment_method: null, // payment_method_id is the actual column
         outstanding_balance: outstandingBalance,
+        pending_wallet_gift_amount: pendingWalletGift,
         additional_charges: booking.additional_charges || [],
         special_requests: booking.special_requests || null,
         loyalty_points_earned: booking.loyalty_points_earned || 0,
@@ -697,6 +707,10 @@ async function handleGetProviderBookings(request: NextRequest) {
         hasRefundStatus: boolean;
       }
     >();
+    const pendingWalletGiftByChild = await sumPendingWalletGiftByBookingIds(
+      supabaseAdmin,
+      (groupChildBookingsRes.data ?? []).map((row: { id?: string }) => String(row.id ?? "")),
+    );
     for (const child of groupChildBookingsRes.data ?? []) {
       if (!child.group_booking_id || ["cancelled", "no_show"].includes(String(child.status ?? "")))
         continue;
@@ -729,6 +743,7 @@ async function handleGetProviderBookings(request: NextRequest) {
         giftCardAmount: Number(child.gift_card_amount ?? 0),
         unpaidAdditionalCharges: childUnpaidCharges,
         paymentStatus: child.payment_status ?? null,
+        pendingWalletGiftAmount: pendingWalletGiftByChild.get(String(child.id ?? "")) ?? 0,
       });
       groupPaymentById.set(child.group_booking_id, {
         totalAmount: prev.totalAmount + childTotal + childUnpaidCharges,
@@ -1185,32 +1200,28 @@ async function handleCreateProviderBooking(request: NextRequest) {
     // participant creates and break once any booking uses BTN-… (parseInt
     // on legacy BK logic → NaN → duplicate `bookings_tenant_id_booking_number_key`).
 
-    // Get effective tax rate if not provided: provider tax_rate_percent → platform default → 0% fallback
-    // Also fetch tax_inclusive flag from the provider record to correctly branch the pricing formula
-    let effectiveTaxRate = body.tax_rate;
-    let taxInclusive = true; // SA default — most providers use VAT-inclusive pricing
-    {
-      const { data: providerTaxRow } = await supabaseAdmin
-        .from("providers")
-        .select("tax_rate_percent, tax_inclusive")
-        .eq("id", providerId)
-        .maybeSingle();
-      if (providerTaxRow) {
-        taxInclusive = providerTaxRow.tax_inclusive ?? true;
-        if (!effectiveTaxRate || effectiveTaxRate === 0) {
-          if (
-            providerTaxRow.tax_rate_percent !== null &&
-            providerTaxRow.tax_rate_percent !== undefined
-          ) {
-            effectiveTaxRate = providerTaxRow.tax_rate_percent;
-          }
-        }
-      }
-      if (!effectiveTaxRate || effectiveTaxRate === 0) {
-        const { getEffectiveTaxRate } = await import("@/lib/platform-tax-settings");
-        effectiveTaxRate = await getEffectiveTaxRate(providerId);
-      }
+    const { data: providerTaxRow } = await supabaseAdmin
+      .from("providers")
+      .select("tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code")
+      .eq("id", providerId)
+      .maybeSingle();
+    const resolvedVat = await resolveProviderVat(supabaseAdmin, {
+      tax_rate_percent: providerTaxRow?.tax_rate_percent ?? null,
+      tax_inclusive: providerTaxRow?.tax_inclusive ?? null,
+      is_vat_registered: providerTaxRow?.is_vat_registered ?? null,
+      vat_number: providerTaxRow?.vat_number ?? null,
+      country_code: providerTaxRow?.country_code ?? null,
+      tax_rate_override_percent: null,
+    });
+    if (resolvedVat.registered && resolvedVat.source === "none") {
+      return errorResponse(
+        "This provider is VAT registered but no country VAT rate is configured.",
+        "VAT_RATE_UNAVAILABLE",
+        503,
+      );
     }
+    const effectiveTaxRate = resolvedVat.ratePercent;
+    const taxInclusive = resolvedVat.inclusive;
 
     // Determine location_id: use provided value, or default to provider's first salon location for at_salon bookings
     // Only salon locations (location_type = 'salon') accept at_salon/walk-in; base-only is for distance/travel.

@@ -240,12 +240,29 @@ export async function issueAdminWalletRefund(
   const isFullRefundForGiftCard =
     originalChargeAmount > 0 && cumulativeRefundPreview + 0.001 >= originalChargeAmount;
   const willVoidGiftCard = isFullRefundForGiftCard && giftCardAmount > 0;
+  // Void before the credit. A captured redemption cannot be restored, so that
+  // gift has to stay in the wallet. A failed void may still be holding the
+  // balance, so it stays out of the wallet.
+  let giftVoid: "restored" | "spent" | "unknown" = "unknown";
+  if (willVoidGiftCard) {
+    try {
+      const { data, error } = await (supabase.rpc as any)("void_gift_card_redemption", {
+        p_booking_id: bookingId,
+      });
+      if (error) giftVoid = "unknown";
+      else giftVoid = data === true ? "restored" : "spent";
+    } catch (voidErr) {
+      console.warn("[issueAdminWalletRefund] gift card void failed:", voidErr);
+      giftVoid = "unknown";
+    }
+  }
+  const excludeGift = willVoidGiftCard && giftVoid !== "spent";
   // Only subtract the gift leg once — on the refund that completes the full amount.
   const giftOffset =
-    willVoidGiftCard && prior < giftCardAmount
+    excludeGift && prior < giftCardAmount
       ? Math.max(0, Math.round((giftCardAmount - prior) * 100) / 100)
       : 0;
-  const walletCreditAmount = willVoidGiftCard
+  const walletCreditAmount = excludeGift
     ? Math.max(0, Math.round((amount - giftOffset) * 100) / 100)
     : amount;
 

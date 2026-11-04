@@ -7,6 +7,7 @@ import {
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
 import { stripCustomerProductOrderFields } from "@/lib/orders/customer-order-response";
+import { withProductOrderAmountStillDue } from "@/lib/payments/resolve-paystack-initialize-amount";
 
 /**
  * GET /api/me/orders/[id]
@@ -96,8 +97,9 @@ export async function GET(
 
     // DB column is `thumbnail_url`; web clients historically expect `logo_url` on provider.
     const rawProvider = (order as { provider?: { thumbnail_url?: string | null } | null }).provider;
+    const [orderWithDue] = await withProductOrderAmountStillDue(supabaseAdmin, [order]);
     const orderOut = stripCustomerProductOrderFields({
-      ...order,
+      ...(orderWithDue ?? order),
       provider: rawProvider
         ? {
             ...rawProvider,

@@ -89,9 +89,14 @@ interface ProviderSubscription {
   scheduled_change_at?: string | null;
   scheduled_plan?: { id: string; name: string | null } | null;
   billing_issue?: {
-    type: "past_due" | "sync_pending" | "payment_failed" | "payment_pending" | string;
+    type: "past_due" | "sync_pending" | "payment_failed" | "payment_pending" | "upgrade_pending" | string;
     message: string;
     action: "pay_now" | "update_payment" | "retry_payment" | "complete_payment" | string;
+  } | null;
+  pending_upgrade?: {
+    plan_id: string;
+    billing_period: "monthly" | "yearly";
+    plan_name?: string | null;
   } | null;
   billing_provider?: "paystack" | "stripe" | "flutterwave" | "apple" | "manual" | null;
 }
@@ -284,6 +289,15 @@ export default function SubscriptionPage() {
         const cleanSearch = inApp ? "?in_app=1" : "";
         window.history.replaceState({}, "", window.location.pathname + cleanSearch);
         toast.info(tx("paymentCancelled"));
+        void fetcher
+          .post("/api/provider/subscription/funnel-event", {
+            event: "provider_checkout_abandoned",
+            properties: {
+              source: "subscription_return",
+              platform: inApp ? "mobile" : "web",
+            },
+          })
+          .catch(() => undefined);
         await loadData();
 
         if (inApp && typeof window !== "undefined") {
@@ -639,6 +653,27 @@ export default function SubscriptionPage() {
             (!latest.billing_period || p.billing_period === latest.billing_period)
         )
       : null;
+
+    if (
+      subscription?.billing_issue?.action === "complete_payment" &&
+      subscription.pending_upgrade?.plan_id &&
+      !retryPlan
+    ) {
+      const pending = subscription.pending_upgrade;
+      const pendingMatch =
+        plans.find(
+          (p) =>
+            p.plan_id === pending.plan_id &&
+            p.billing_period === (pending.billing_period ?? "monthly"),
+        ) ?? plans.find((p) => p.plan_id === pending.plan_id);
+      if (pendingMatch) {
+        await handleUpgrade(pendingMatch.id);
+        return;
+      }
+      toast.message(subscription.billing_issue?.message ?? tx("completePayment"));
+      router.push("/provider/get-started");
+      return;
+    }
 
     if (
       retryPlan &&

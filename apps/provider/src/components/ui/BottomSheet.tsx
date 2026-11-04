@@ -34,6 +34,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
+import { useAfterHide } from "@/hooks/useAfterHide";
+import { scheduleBottomSheetReopenIfStillVisible } from "@/components/ui/bottomSheetScheduleReopen";
 
 interface BottomSheetProps {
   visible: boolean;
@@ -69,6 +71,8 @@ export function BottomSheet({
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
   const wasVisibleRef = useRef(false);
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
 
   // Initialize with a large enough value to be off-screen
   const translateY = useSharedValue(Dimensions.get("window").height * 2);
@@ -81,6 +85,16 @@ export function BottomSheet({
   };
   const sheetHeight = snapHeights[snapHeight];
 
+  const reopenIfStillVisible = useCallback(() => {
+    scheduleBottomSheetReopenIfStillVisible(
+      () => visibleRef.current,
+      () => {
+        translateY.value = withSpring(0, { damping: 20, stiffness: 90 });
+        backdropOpacity.value = withTiming(1, { duration: 200 });
+      },
+    );
+  }, [translateY, backdropOpacity]);
+
   const closeSheet = useCallback(() => {
     Keyboard.dismiss();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -90,8 +104,9 @@ export function BottomSheet({
     });
     backdropOpacity.value = withTiming(0, { duration: 200 }, () => {
       runOnJS(onClose)();
+      runOnJS(reopenIfStillVisible)();
     });
-  }, [onClose, translateY, backdropOpacity, screenHeight]);
+  }, [onClose, translateY, backdropOpacity, screenHeight, reopenIfStillVisible]);
 
   useEffect(() => {
     const opening = visible && !wasVisibleRef.current;
@@ -103,11 +118,7 @@ export function BottomSheet({
     backdropOpacity.value = withTiming(1, { duration: 250 });
   }, [visible, translateY, backdropOpacity, screenHeight]);
 
-  useEffect(() => {
-    if (visible || !onModalHide) return;
-    const timer = setTimeout(() => onModalHide(), 280);
-    return () => clearTimeout(timer);
-  }, [visible, onModalHide]);
+  useAfterHide(visible, onModalHide);
 
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {

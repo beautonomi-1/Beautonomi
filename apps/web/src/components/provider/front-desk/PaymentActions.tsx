@@ -37,6 +37,7 @@ interface PaymentActionsProps {
   walletAmount?: number;
   giftCardAmount?: number;
   unpaidAdditionalCharges?: number;
+  pendingWalletGiftAmount?: number;
   paymentStatus?: string;
   currency: string;
   onComplete: () => void;
@@ -53,6 +54,7 @@ export function PaymentActions({
   walletAmount = 0,
   giftCardAmount = 0,
   unpaidAdditionalCharges = 0,
+  pendingWalletGiftAmount = 0,
   paymentStatus,
   currency,
   onComplete,
@@ -69,6 +71,7 @@ export function PaymentActions({
     giftCardAmount,
     unpaidAdditionalCharges,
     paymentStatus,
+    pendingWalletGiftAmount,
   });
   const paymentLinkEnabled = useFeatureFlag("payment_link");
   const yocoEnabled = useFeatureFlag("payment_yoco");

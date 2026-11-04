@@ -75,6 +75,7 @@ function bookingFullyPaidMock() {
       const self = () => chain;
       chain.select = vi.fn(self);
       chain.eq = vi.fn(self);
+      chain.in = vi.fn(async () => ({ data: [], error: null }));
       chain.single = vi.fn(async () =>
         table === "bookings" ? { data: booking, error: null } : { data: null, error: null },
       );

@@ -66,6 +66,7 @@ export function ExplorePostsPage() {
   const offset = Math.max(0, parseInt(sp.get("offset") || "0", 10) || 0);
   const statusFilter = sp.get("status") ?? "";
   const hiddenFilter = sp.get("hidden") ?? "";
+  const processingFilter = sp.get("processing") ?? "";
   const sortFilter = sp.get("sort") ?? "published_at_desc";
   const dateFrom = sp.get("date_from") ?? "";
   const dateTo = sp.get("date_to") ?? "";
@@ -211,6 +212,7 @@ export function ExplorePostsPage() {
     searchFromUrl ||
     statusFilter ||
     hiddenFilter ||
+    processingFilter ||
     (sortFilter && sortFilter !== "published_at_desc") ||
     dateFrom ||
     dateTo ||
@@ -291,6 +293,15 @@ export function ExplorePostsPage() {
             <option value="">All visibility</option>
             <option value="true">Hidden only</option>
             <option value="false">Visible only</option>
+          </select>
+          <select
+            value={processingFilter}
+            onChange={(e) => setFilter("processing", e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm lg:w-44"
+          >
+            <option value="">All video states</option>
+            <option value="pending">Video processing</option>
+            <option value="failed">Video failed</option>
           </select>
           <select
             value={sortFilter}
@@ -466,7 +477,35 @@ export function ExplorePostsPage() {
                     <p className="line-clamp-2 text-xs text-gray-800">{String(row.caption ?? "")}</p>
                   </AdminTd>
                   <AdminTd>
-                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs">{String(row.status ?? "")}</span>
+                    <div className="flex flex-col gap-1">
+                      <span className="w-fit rounded-full bg-gray-100 px-2 py-0.5 text-xs">{String(row.status ?? "")}</span>
+                      {(() => {
+                        const meta =
+                          (row.media_meta as Array<{ kind?: string; status?: string; playback_path?: string }> | null) ??
+                          [];
+                        const videos = meta.filter((s) => s.kind === "video");
+                        if (!videos.length) return null;
+                        if (videos.some((s) => s.status === "failed")) {
+                          return (
+                            <span className="w-fit rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-900">
+                              Video failed
+                            </span>
+                          );
+                        }
+                        if (
+                          videos.some(
+                            (s) => s.status !== "delivered" || !String(s.playback_path ?? "").trim(),
+                          )
+                        ) {
+                          return (
+                            <span className="w-fit rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-900">
+                              Processing
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
                   </AdminTd>
                   <AdminTd className="whitespace-nowrap text-xs tabular-nums text-gray-700">
                     Likes {String(row.like_count ?? 0)} · Cmt {String(row.comment_count ?? 0)} · Saves {String(row.save_count ?? 0)}

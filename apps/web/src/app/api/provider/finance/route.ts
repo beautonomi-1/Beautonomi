@@ -431,6 +431,7 @@ export async function GET(request: NextRequest) {
     let rawBalance = EMPTY_PAYOUT_BALANCE.rawBalance;
     let hasNegativeBalance = EMPTY_PAYOUT_BALANCE.hasNegativeBalance;
     let payoutBreakdown = EMPTY_PAYOUT_BALANCE.breakdown;
+    let openDisputeReserve = EMPTY_PAYOUT_BALANCE.openDisputeReserve;
     let payoutBalanceUnavailable = false;
     try {
       const payout = await getAvailablePayoutBalance(db, providerId, {
@@ -441,6 +442,7 @@ export async function GET(request: NextRequest) {
       pendingPayoutsSum = payout.pendingPayoutsSum;
       rawBalance = payout.rawBalance;
       hasNegativeBalance = payout.hasNegativeBalance;
+      openDisputeReserve = payout.openDisputeReserve;
       payoutBreakdown = payout.breakdown;
     } catch (payoutError) {
       payoutBalanceUnavailable = true;
@@ -599,6 +601,8 @@ export async function GET(request: NextRequest) {
           excluded_provider_collected: payoutBreakdown.excludedProviderCollected,
           already_paid_out: payoutBreakdown.completedPayouts,
           pending_payouts: payoutBreakdown.pendingPayouts,
+          open_dispute_reserve: openDisputeReserve,
+          vat_held_for_provider: payoutBreakdown.vatHeldForProvider,
           available_balance: payoutBreakdown.availableBalance,
         },
         balance_owed_to_platform: hasNegativeBalance ? Math.abs(rawBalance) : 0,

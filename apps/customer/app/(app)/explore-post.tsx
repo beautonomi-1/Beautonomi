@@ -29,7 +29,13 @@ import {
   shareExplorePostMedia,
   type ExploreShareAction,
 } from "@/lib/share-explore-post";
-import { buildExploreSlides, firstSlideIsVideo } from "@/lib/explore-media";
+import {
+  buildExploreSlides,
+  firstSlideIsVideo,
+  resolveExploreVideoSrc,
+  shouldOpenExploreVideoFeed,
+} from "@/lib/explore-media";
+import { getExploreVideoPlaybackTrimWindow } from "@/lib/explore-video-playback-trim";
 import { ExplorePhotoZoomModal } from "@/components/explore/ExplorePhotoZoomModal";
 import { ExploreTextOverlayLayer } from "@/components/explore/ExploreTextOverlayLayer";
 import {
@@ -157,7 +163,7 @@ export default function ExplorePostScreen() {
 
   useEffect(() => {
     if (!post || loading) return;
-    if (firstSlideIsVideo(post.media_urls, post.media_meta)) {
+    if (shouldOpenExploreVideoFeed(post.media_urls, post.media_meta)) {
       router.replace({ pathname: "/(app)/explore-video", params: { id: post.id } });
     }
   }, [post, loading, router]);
@@ -526,16 +532,30 @@ export default function ExplorePostScreen() {
                 showsHorizontalScrollIndicator={false}
                 onMomentumScrollEnd={(e) => setMediaIndex(Math.round(e.nativeEvent.contentOffset.x / screenWidth))}
                 keyExtractor={(_, i) => String(i)}
-                renderItem={({ item, index }) =>
-                  item.kind === "video" ? (
+                renderItem={({ item, index }) => {
+                  const slideTrim =
+                    item.kind === "video"
+                      ? getExploreVideoPlaybackTrimWindow({
+                          slide: post.media_meta?.[index],
+                          mediaUrl: post.media_urls?.[index],
+                          slideIndex: index,
+                          postPlaybackPath: post.playback_path,
+                        })
+                      : null;
+                  const videoUri = slideTrim
+                    ? resolveExploreVideoSrc({ mediaUrls: post.media_urls ?? [], slideIndex: index }) ??
+                      item.displayUrl
+                    : item.playbackUrl ?? item.displayUrl;
+                  return item.kind === "video" ? (
                     <View style={{ width: screenWidth, aspectRatio: 4 / 5 }}>
                       <ExpoVideoPreview
-                        uri={item.playbackUrl ?? item.displayUrl}
+                        uri={videoUri}
                         style={{ width: screenWidth, aspectRatio: 4 / 5 }}
                         contentFit="cover"
                         nativeControls
                         loop
                         paused={mediaIndex !== index}
+                        playbackTrim={slideTrim}
                         onPlaybackTimeUpdate={
                           mediaIndex === index ? setVideoPlaybackMs : undefined
                         }
@@ -559,8 +579,8 @@ export default function ExplorePostScreen() {
                         transition={200}
                       />
                     </Pressable>
-                  )
-                }
+                  );
+                }}
               />
 
               {/* Double-tap heart overlay */}

@@ -41,6 +41,8 @@ export interface BookingParticipant {
 }
 
 export interface GroupParticipantInput {
+  /** Optional stable id (must match booking_services.group_participant_id when set at checkout) */
+  id?: string;
   /** Nullable: guests created inline do not yet have an individual booking row */
   booking_id: string | null;
   participant_name: string;
@@ -55,6 +57,8 @@ export interface GroupParticipantInput {
   duration_minutes?: number | null;
   /** Linked customer profile (for analytics / history) */
   customer_id?: string | null;
+  amount_due?: number | null;
+  participant_payment_status?: string | null;
 }
 
 /**
@@ -67,7 +71,8 @@ export async function createGroupBooking(
   providerId: string,
   primaryBookingId: string,
   bookingIds: string[],
-  participants: GroupParticipantInput[]
+  participants: GroupParticipantInput[],
+  options?: { groupPaymentMode?: "organizer_pays_all" | "split" },
 ): Promise<GroupBooking> {
   const { data: primaryBooking, error: bookingError } = await supabase
     .from('bookings')
@@ -102,6 +107,7 @@ export async function createGroupBooking(
       status: initialGroupStatus,
       location_id: primaryLocationId,
       location_type: primaryLocationType,
+      ...(options?.groupPaymentMode === "split" ? { group_payment_mode: "split" } : {}),
     })
     .select()
     .single();
@@ -130,6 +136,7 @@ export async function linkBookingsToGroup(
   participants: GroupParticipantInput[]
 ): Promise<void> {
   const participantRecords = participants.map((p) => ({
+    ...(p.id ? { id: p.id } : {}),
     booking_id: p.booking_id ?? null,
     group_booking_id: groupBookingId,
     participant_name: p.participant_name,
@@ -141,6 +148,9 @@ export async function linkBookingsToGroup(
     service_name: p.service_name ?? null,
     duration_minutes: p.duration_minutes ?? null,
     customer_id: p.customer_id ?? null,
+    ...(typeof p.amount_due === "number"
+      ? { amount_due: p.amount_due, participant_payment_status: p.participant_payment_status ?? "pending" }
+      : {}),
   }));
 
   const { error } = await supabase

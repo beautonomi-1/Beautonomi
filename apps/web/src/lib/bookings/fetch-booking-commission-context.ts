@@ -16,6 +16,12 @@ export type BookingCommissionContextInput = {
   excludeReference?: string | null;
   /** booking_payments.id for this charge, when the caller already inserted it. */
   excludePaymentId?: string | null;
+  /**
+   * Drop completed rows whose payment_provider_id ends with this suffix, then
+   * re-add them via chargeAmount. Wallet and gift legs use synthetic ids, so an
+   * exact reference match does not see them.
+   */
+  excludeProviderIdSuffix?: string | null;
 };
 
 export async function fetchBookingCommissionContext(
@@ -42,6 +48,7 @@ export async function fetchBookingCommissionContext(
 
   const excludeReference = input.excludeReference ?? null;
   const excludePaymentId = input.excludePaymentId ?? null;
+  const excludeProviderIdSuffix = input.excludeProviderIdSuffix ?? null;
 
   const priorPaid = (payments ?? [])
     .filter((row) => {
@@ -49,7 +56,9 @@ export async function fetchBookingCommissionContext(
       const status = String(typed.status ?? "");
       if (status !== "completed" && status !== "partially_refunded") return false;
       if (excludePaymentId && String(typed.id ?? "") === excludePaymentId) return false;
-      if (excludeReference && String(typed.payment_provider_id ?? "") === excludeReference) return false;
+      const providerId = String(typed.payment_provider_id ?? "");
+      if (excludeReference && providerId === excludeReference) return false;
+      if (excludeProviderIdSuffix && providerId.endsWith(excludeProviderIdSuffix)) return false;
       return true;
     })
     .reduce((sum, row) => sum + Number((row as { amount?: number }).amount ?? 0), 0);

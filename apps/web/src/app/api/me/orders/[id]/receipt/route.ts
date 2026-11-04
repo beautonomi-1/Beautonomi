@@ -5,7 +5,7 @@ import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
-import { buildOrderReceiptCore } from "@/lib/receipts/build-order-receipt";
+import { buildOrderReceiptCore, loadProductOrderReceiptCardPaid } from "@/lib/receipts/build-order-receipt";
 
 type OrderItemRow = {
   product_name?: string | null;
@@ -170,9 +170,11 @@ export async function GET(
     const currencyFallback = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     const subtotal = Number(order.subtotal || 0);
+    const cardPaid = await loadProductOrderReceiptCardPaid(getSupabaseAdmin(), order.id);
     const core = buildOrderReceiptCore({
       order: order as unknown as Record<string, unknown>,
       items: order.items ?? [],
+      cardPaid,
     });
 
     const headerText = prov?.receipt_header ?? null;
@@ -208,6 +210,7 @@ export async function GET(
       discount: core.discount,
       platform_fee: core.platformFee,
       wallet_amount: core.walletPaid,
+      gift_card_amount: core.giftPaid,
       total: core.totalFromRow,
       currency: order.currency || currencyFallback,
       payment_status: order.payment_status,

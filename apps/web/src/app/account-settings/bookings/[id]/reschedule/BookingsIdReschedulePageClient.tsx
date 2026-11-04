@@ -7,7 +7,21 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { Calendar, Clock } from "lucide-react";
-import type { Booking } from "@/types/beautonomi";
+type RescheduleBookingView = {
+  id: string;
+  booking_number?: string | null;
+  scheduled_at?: string | null;
+  provider_id?: string | null;
+  location_id?: string | null;
+  location_type?: string | null;
+  provider?: { slug?: string | null } | null;
+  services?: Array<{
+    offering_id?: string | null;
+    staff_id?: string | null;
+    duration_minutes?: number | null;
+    buffer_minutes?: number | null;
+  }> | null;
+};
 import { toast } from "sonner";
 import AvailabilityCalendar from "@/app/checkout/components/availability-calendar";
 import { useTranslation } from "@beautonomi/i18n";
@@ -21,7 +35,7 @@ export default function RescheduleBookingPage() {
   const router = useRouter();
   const bookingId = params.id as string;
 
-  const [booking, setBooking] = useState<Booking | null>(null);
+  const [booking, setBooking] = useState<RescheduleBookingView | null>(null);
   const [providerSlug, setProviderSlug] = useState<string | undefined>();
   const [selectedDateTime, setSelectedDateTime] = useState<Date | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -36,7 +50,7 @@ export default function RescheduleBookingPage() {
         setError(null);
 
         const response = await fetcher.get<{
-          data: Booking & { provider?: { slug?: string } };
+          data: RescheduleBookingView;
           error: null;
         }>(`/api/me/bookings/${bookingId}`, { cache: "no-store" });
 
@@ -85,19 +99,15 @@ export default function RescheduleBookingPage() {
 
     try {
       setIsSubmitting(true);
-      const response = await fetcher.post<{
-        data: { booking: Booking; requires_confirmation: boolean };
+      await fetcher.post<{
+        data: { booking: RescheduleBookingView; message: string };
         error: null;
       }>(`/api/me/bookings/${bookingId}/reschedule`, {
         new_datetime: selectedDateTime.toISOString(),
         reason: "Customer request",
       });
 
-      toast.success(
-        response.data.requires_confirmation
-          ? t("web.accountSettings.reschedule.submittedPending")
-          : t("web.accountSettings.reschedule.success")
-      );
+      toast.success(t("web.accountSettings.reschedule.success"));
       router.push(`/account-settings/bookings/${bookingId}`);
     } catch (err) {
       const errorMessage =

@@ -20,7 +20,7 @@ import {
 } from "@/lib/payments/paycloud-credentials";
 import { buildMerchantOrderNo } from "@/lib/payments/paycloud";
 import { resolvePayScenario } from "@/lib/payments/paycloud-scenarios";
-import { computeExpectedAmountForEntity } from "@/lib/payments/paycloud-amount-guards";
+import { computeExpectedAmountForEntity, paycloudTerminalTipAmount } from "@/lib/payments/paycloud-amount-guards";
 import { normalizePaycloudMajorAmount } from "@/lib/payments/paycloud-cloud-amount";
 import { paycloudTipIncludedInChargeAmount } from "@/lib/payments/paycloud-booking-charge";
 import { validatePaycloudPaymentInitiate } from "@/lib/payments/paycloud-initiate-guards";
@@ -157,7 +157,14 @@ export async function POST(request: NextRequest) {
         .eq("id", paymentEntityId)
         .eq("provider_id", providerId)
         .maybeSingle();
-      if (paycloudTipIncludedInChargeAmount(Number(bookingTipRow?.tip_amount ?? 0))) {
+      const chargeAboveExpected =
+        expected?.amount != null &&
+        parsed.data.amount != null &&
+        parsed.data.amount > expected.amount + 0.02;
+      if (
+        paycloudTipIncludedInChargeAmount(Number(bookingTipRow?.tip_amount ?? 0)) &&
+        chargeAboveExpected
+      ) {
         return NextResponse.json(
           {
             data: null,
@@ -176,6 +183,20 @@ export async function POST(request: NextRequest) {
       if (expected.depositAmount != null && expected.depositAmount > 0.01) {
         acceptableAmounts.push(expected.depositAmount);
       }
+      if (
+        expected.serviceOutstanding != null &&
+        expected.serviceOutstanding > 0.01 &&
+        Math.abs(expected.serviceOutstanding - expected.amount) > 0.02
+      ) {
+        acceptableAmounts.push(expected.serviceOutstanding);
+      }
+      if (
+        expected.serviceOutstanding != null &&
+        expected.serviceOutstanding <= 0.02 &&
+        tipAmount > 0.01
+      ) {
+        acceptableAmounts.push(tipAmount);
+      }
       const matchesExpected = acceptableAmounts.some(
         (candidate) => Math.abs(parsed.data.amount! - candidate) <= 0.02,
       );
@@ -190,6 +211,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const terminalTip = paycloudTerminalTipAmount({
+      chargeAmount,
+      tipAmount,
+      serviceOutstanding: expected?.serviceOutstanding,
+    });
     const currency = parsed.data.currency ?? expected?.currency ?? "ZAR";
     const resolved = await resolvePaycloudContextForProvider(supabase, providerId, parsed.data.terminal_id);
     if (!resolved.ok) {
@@ -474,7 +500,7 @@ export async function POST(request: NextRequest) {
         chargeAmount,
         payScenario: scenario.pay_scenario,
         payMethodId: scenario.pay_method_id,
-        tipAmount: tipAmount > 0 ? tipAmount : undefined,
+        tipAmount: terminalTip > 0 ? terminalTip : undefined,
         cashbackAmount: normalizedCashbackAmount > 0 ? normalizedCashbackAmount : undefined,
         appId: ctx.credentials.app_id,
         notifyUrl,
@@ -501,7 +527,7 @@ export async function POST(request: NextRequest) {
       terminal_sn: terminal.terminal_sn,
       merchant_order_no: merchantOrderNo,
       order_amount: chargeAmount,
-      tip_amount: tipAmount > 0 ? tipAmount : undefined,
+      tip_amount: terminalTip > 0 ? terminalTip : undefined,
       cashback_amount: normalizedCashbackAmount > 0 ? normalizedCashbackAmount : undefined,
       price_currency: currency,
       pay_scenario: scenario.pay_scenario,

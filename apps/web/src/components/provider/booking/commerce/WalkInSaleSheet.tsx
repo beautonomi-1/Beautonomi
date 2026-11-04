@@ -6,7 +6,7 @@ import { Loader2, Minus, Plus, Search, ShoppingCart, X } from "lucide-react";
 import { toast } from "sonner";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { openProductOrderView } from "@/stores/appointment-sidebar-store";
-import { percentOf, sumMoney } from "@beautonomi/utils";
+import { computeVat, sumMoney } from "@beautonomi/utils";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
@@ -69,10 +69,19 @@ function cartLineKey(productId: string, variantId?: string) {
   return variantId ? `${productId}::${variantId}` : productId;
 }
 
-function cartTotals(cart: CartLine[], taxRate: number) {
+function cartTotals(cart: CartLine[], taxRate: number, taxInclusive: boolean) {
   const subtotal = sumMoney(...cart.map((c) => c.unitPrice * c.qty));
-  const taxAmount = percentOf(subtotal, taxRate);
-  return { subtotal, taxAmount, grandTotal: subtotal + taxAmount };
+  if (taxRate <= 0) return { subtotal, taxAmount: 0, grandTotal: subtotal };
+  const split = computeVat({
+    baseAmount: subtotal,
+    ratePercent: taxRate,
+    inclusive: taxInclusive,
+  });
+  return {
+    subtotal,
+    taxAmount: split.taxAmount,
+    grandTotal: taxInclusive ? subtotal : split.grossAmount,
+  };
 }
 
 export function WalkInSaleSheet({ open, onOpenChange, onSuccess }: WalkInSaleSheetProps) {
@@ -87,6 +96,7 @@ export function WalkInSaleSheet({ open, onOpenChange, onSuccess }: WalkInSaleShe
   const [products, setProducts] = useState<WalkInProduct[]>([]);
   const [loading, setLoading] = useState(false);
   const [walkInTaxRate, setWalkInTaxRate] = useState(0);
+  const [walkInTaxInclusive, setWalkInTaxInclusive] = useState(true);
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [variantPickerProduct, setVariantPickerProduct] = useState<WalkInProduct | null>(null);
@@ -105,12 +115,16 @@ export function WalkInSaleSheet({ open, onOpenChange, onSuccess }: WalkInSaleShe
   const fetchTaxSettings = useCallback(async () => {
     try {
       const res = await fetcher.get<{
-        data?: { tax_rate_percent?: number; is_vat_registered?: boolean };
+        data?: { tax_rate_percent?: number; is_vat_registered?: boolean; tax_inclusive?: boolean };
         tax_rate_percent?: number;
         is_vat_registered?: boolean;
+        tax_inclusive?: boolean;
       }>("/api/provider/settings/sales/taxes");
-      const raw = (res as { data?: { tax_rate_percent?: number; is_vat_registered?: boolean } })?.data ?? res;
+      const raw =
+        (res as { data?: { tax_rate_percent?: number; is_vat_registered?: boolean; tax_inclusive?: boolean } })
+          ?.data ?? res;
       setWalkInTaxRate(raw?.is_vat_registered ? Number(raw.tax_rate_percent || 0) : 0);
+      setWalkInTaxInclusive(raw?.tax_inclusive !== false);
     } catch {
       setWalkInTaxRate(0);
     }
@@ -169,8 +183,8 @@ export function WalkInSaleSheet({ open, onOpenChange, onSuccess }: WalkInSaleShe
   }, [products, query]);
 
   const { subtotal, taxAmount, grandTotal } = useMemo(
-    () => cartTotals(cart, walkInTaxRate),
-    [cart, walkInTaxRate],
+    () => cartTotals(cart, walkInTaxRate, walkInTaxInclusive),
+    [cart, walkInTaxRate, walkInTaxInclusive],
   );
 
   const addToCart = useCallback((product: WalkInProduct, variant?: WalkInVariant) => {

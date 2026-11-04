@@ -120,10 +120,22 @@ export async function GET(
 
     const post = result.post as Record<string, any>;
     const prov = post.providers as unknown as ProviderJoin;
-    const postOut = {
+    const postOut: Record<string, unknown> = {
       ...post,
       providers: { id: prov.id, business_name: prov.business_name, slug: prov.slug },
     };
+
+    const soundId = typeof post.sound_id === "string" ? post.sound_id : null;
+    if (soundId) {
+      const { data: soundRow } = await supabaseAdmin
+        .from("explore_sounds")
+        .select("title")
+        .eq("id", soundId)
+        .maybeSingle();
+      if (soundRow?.title) {
+        postOut.explore_sounds = { title: soundRow.title };
+      }
+    }
 
     const { data: comments, error: cErr } = await supabaseAdmin
       .from("explore_comments")

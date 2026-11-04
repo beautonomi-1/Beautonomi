@@ -1,6 +1,6 @@
+import { useState } from "react";
 import { Link } from "react-router";
-import { ArrowRight, Copy, ExternalLink } from "lucide-react";
-import { adminSpaTo } from "@/lib/adminSpaPath";
+import { ArrowRight, Copy, ExternalLink, MoreHorizontal } from "lucide-react";
 import { adminToast } from "@/lib/adminToast";
 import {
   formatStatusLabel,
@@ -22,7 +22,10 @@ type TicketDetailHeaderProps = {
   isFetching: boolean;
   queueNavLabel: QueueNavButtonLabel;
   queueNavDisabled?: boolean;
-  queueTicketIds?: string[] | null;
+  queueBackHref: string;
+  fullPageHref: string;
+  fullPageState?: { queueTicketIds?: string[] };
+  compactActions?: boolean;
   onNextInQueue: () => void;
   onRefresh: () => void;
   onAssignToMe: () => void;
@@ -43,7 +46,10 @@ export function TicketDetailHeader({
   isFetching,
   queueNavLabel,
   queueNavDisabled = false,
-  queueTicketIds,
+  queueBackHref,
+  fullPageHref,
+  fullPageState,
+  compactActions = false,
   onNextInQueue,
   onRefresh,
   onAssignToMe,
@@ -55,6 +61,62 @@ export function TicketDetailHeader({
   const priority = str(ticket.priority) || "medium";
   const status = str(ticket.status);
   const TitleTag = isPanel ? "h2" : "h1";
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  const secondaryActions = (
+    <>
+      {myStaffUserId ? (
+        <>
+          <button
+            type="button"
+            className="inline-flex min-h-9 w-full items-center rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-40 sm:w-auto"
+            disabled={patchPending || assignedId === myStaffUserId}
+            onClick={() => {
+              setMoreOpen(false);
+              onAssignToMe();
+            }}
+          >
+            Assign to me
+          </button>
+          <button
+            type="button"
+            className="inline-flex min-h-9 w-full items-center rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-40 sm:w-auto"
+            disabled={patchPending || claimStartDisabled}
+            onClick={() => {
+              setMoreOpen(false);
+              onClaimAndStart();
+            }}
+          >
+            Claim &amp; start
+          </button>
+        </>
+      ) : null}
+      {assignedId ? (
+        <button
+          type="button"
+          className="inline-flex min-h-9 w-full items-center rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-40 sm:w-auto"
+          disabled={patchPending}
+          onClick={() => {
+            setMoreOpen(false);
+            onUnassign();
+          }}
+        >
+          Unassign
+        </button>
+      ) : null}
+      <button
+        type="button"
+        className="inline-flex min-h-9 w-full items-center text-xs font-medium text-gray-600 underline-offset-2 hover:text-gray-900 hover:underline sm:w-auto"
+        onClick={() => {
+          setMoreOpen(false);
+          onRefresh();
+        }}
+        disabled={isFetching}
+      >
+        {isFetching ? "Refreshing…" : "Refresh"}
+      </button>
+    </>
+  );
 
   return (
     <header className="shrink-0 space-y-2 border-b border-gray-100 pb-3">
@@ -118,60 +180,54 @@ export function TicketDetailHeader({
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
-        {myStaffUserId ? (
+        {compactActions ? (
           <>
-            <button
-              type="button"
-              className="inline-flex min-h-9 items-center rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-40"
-              disabled={patchPending || assignedId === myStaffUserId}
-              onClick={onAssignToMe}
+            <div className="relative">
+              <button
+                type="button"
+                className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-medium text-gray-800 hover:bg-gray-50"
+                aria-expanded={moreOpen}
+                onClick={() => setMoreOpen((v) => !v)}
+              >
+                <MoreHorizontal className="h-4 w-4" aria-hidden />
+                More
+              </button>
+              {moreOpen ? (
+                <div className="absolute left-0 top-full z-30 mt-1 flex min-w-[11rem] flex-col gap-1 rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
+                  {secondaryActions}
+                </div>
+              ) : null}
+            </div>
+            <Link
+              to={fullPageHref}
+              state={fullPageState}
+              className="inline-flex items-center gap-1 text-xs font-medium text-gray-600 underline-offset-2 hover:text-gray-900 hover:underline"
             >
-              Assign to me
-            </button>
-            <button
-              type="button"
-              className="inline-flex min-h-9 items-center rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-40"
-              disabled={patchPending || claimStartDisabled}
-              onClick={onClaimAndStart}
-            >
-              Claim &amp; start
-            </button>
+              Open full page
+              <ExternalLink className="h-3 w-3" aria-hidden />
+            </Link>
           </>
-        ) : null}
-        {assignedId ? (
-          <button
-            type="button"
-            className="inline-flex min-h-9 items-center rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-40"
-            disabled={patchPending}
-            onClick={onUnassign}
-          >
-            Unassign
-          </button>
-        ) : null}
-        <button
-          type="button"
-          className="text-xs font-medium text-gray-600 underline-offset-2 hover:text-gray-900 hover:underline"
-          onClick={onRefresh}
-          disabled={isFetching}
-        >
-          {isFetching ? "Refreshing…" : "Refresh"}
-        </button>
-        {isPanel ? (
-          <Link
-            to={adminSpaTo(`/admin/support-tickets/${encodeURIComponent(ticketId)}`)}
-            state={queueTicketIds?.length ? { queueTicketIds } : undefined}
-            className="inline-flex items-center gap-1 text-xs font-medium text-gray-600 underline-offset-2 hover:text-gray-900 hover:underline"
-          >
-            Open full page
-            <ExternalLink className="h-3 w-3" aria-hidden />
-          </Link>
         ) : (
-          <Link
-            to={adminSpaTo("/admin/support-tickets")}
-            className="text-xs font-medium text-gray-600 underline-offset-2 hover:text-gray-900 hover:underline"
-          >
-            ← Queue
-          </Link>
+          <>
+            {secondaryActions}
+            {isPanel ? (
+              <Link
+                to={fullPageHref}
+                state={fullPageState}
+                className="inline-flex items-center gap-1 text-xs font-medium text-gray-600 underline-offset-2 hover:text-gray-900 hover:underline"
+              >
+                Open full page
+                <ExternalLink className="h-3 w-3" aria-hidden />
+              </Link>
+            ) : (
+              <Link
+                to={queueBackHref}
+                className="text-xs font-medium text-gray-600 underline-offset-2 hover:text-gray-900 hover:underline"
+              >
+                ← Queue
+              </Link>
+            )}
+          </>
         )}
       </div>
     </header>

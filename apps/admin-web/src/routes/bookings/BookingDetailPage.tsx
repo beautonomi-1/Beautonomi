@@ -255,6 +255,13 @@ function money(currency: string, n: number | null | undefined) {
   return `${currency} ${Number(n).toFixed(2)}`;
 }
 
+function normalizeTaxRatePercent(raw: unknown): number | null {
+  const n = typeof raw === "number" ? raw : raw != null && raw !== "" ? Number(raw) : NaN;
+  if (!Number.isFinite(n) || n <= 0) return null;
+  // Legacy snapshots sometimes stored 0.15 for 15%.
+  return n > 0 && n <= 1 ? n * 100 : n;
+}
+
 function cityField(b: BookingDetail): string {
   return (b.address_city ?? b.city ?? "").trim();
 }
@@ -959,7 +966,10 @@ export function BookingDetailPage() {
                 <div className="flex justify-between gap-2">
                   <dt className="text-gray-600">
                     Tax
-                    {booking.tax_rate != null ? ` (${Number(booking.tax_rate).toFixed(2)}%)` : ""}
+                    {(() => {
+                      const pct = normalizeTaxRatePercent(booking.tax_rate);
+                      return pct != null ? ` (${pct.toFixed(pct % 1 === 0 ? 0 : 2)}%)` : "";
+                    })()}
                   </dt>
                   <dd className="tabular-nums font-medium">{money(booking.currency, booking.tax_amount)}</dd>
                 </div>

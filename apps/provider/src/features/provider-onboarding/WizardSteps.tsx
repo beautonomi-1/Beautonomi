@@ -84,6 +84,8 @@ import { useOnboardingWizard } from "./OnboardingWizardContext";
 import { useAuth } from "@/providers/AuthProvider";
 import { isAppReviewDemoUserId, APP_REVIEW_DEMO_EMAIL, APP_REVIEW_DEMO_PHONE } from "@/lib/auth/app-review-demo";
 import { defaultBillingPeriod } from "@/lib/subscription/start-paid-checkout";
+import { filterPricingPlansForOnboarding } from "@/lib/pricing/onboarding-pricing-plan-filter";
+import { shouldUseAppleIap } from "@/lib/iap/platform";
 import { OnboardingTextField } from "./OnboardingTextField";
 import { FocusAwareTextInput } from "./FocusAwareTextInput";
 import { KeyboardDoneAccessory } from "./KeyboardDoneAccessory";
@@ -1466,6 +1468,16 @@ placeholder={ow("payment.vatPlaceholder")}
               inputAccessoryViewID={KEYBOARD_ACCESSORY.vat}
             />
             <KeyboardDoneAccessory nativeID={KEYBOARD_ACCESSORY.vat} />
+            <View style={twStyle("flex-row items-center justify-between pt-2")}>
+              <Text style={twStyle("flex-1 text-[14px] text-slate-700 pr-3")}>
+                {ow("payment.pricesIncludeVat")}
+              </Text>
+              <Switch
+                value={formData.tax_inclusive !== false}
+                onValueChange={(v) => updateFormData({ tax_inclusive: v })}
+                trackColor={{ false: "#e2e8f0", true: Colors.primary }}
+              />
+            </View>
           </>
         ) : null}
       </View>
@@ -4056,10 +4068,13 @@ type PlanRow = {
   features: string[];
   is_free?: boolean;
   available_billing_periods?: ("monthly" | "yearly")[];
+  apple_product_id_monthly?: string | null;
+  apple_product_id_yearly?: string | null;
+  ios_purchasable_periods?: ("monthly" | "yearly")[];
 };
 
 function planSelectionPatch(plan: PlanRow) {
-  const periods = plan.available_billing_periods ?? (plan.is_free ? [] : ["monthly" as const]);
+  const periods = plan.available_billing_periods ?? (plan.is_free ? [] : []);
   return {
     selected_plan_id: plan.id,
     selected_plan_name: plan.name,
@@ -4241,7 +4256,8 @@ function Step14Plan() {
         // surface the Free plan first so anyone who just wants to ship can
         // confirm-and-go without a card. We pin free plans to the top and
         // otherwise preserve the backend's curated ordering.
-        const list = [...unsorted].sort((a, b) => {
+        const filtered = filterPricingPlansForOnboarding(unsorted);
+        const list = [...filtered].sort((a, b) => {
           const aFree = a.is_free ? 1 : 0;
           const bFree = b.is_free ? 1 : 0;
           if (aFree !== bFree) return bFree - aFree;
@@ -4304,7 +4320,21 @@ function Step14Plan() {
 
   const selectedPlan = plans.find((p) => p.id === formData.selected_plan_id);
   const billingPeriods = selectedPlan?.available_billing_periods ?? [];
-  const showBillingToggle = Boolean(selectedPlan && !selectedPlan.is_free && billingPeriods.length > 1);
+  const useApple = shouldUseAppleIap();
+  const checkoutPeriods = useApple
+    ? billingPeriods.filter((period) =>
+        period === "monthly"
+          ? Boolean(selectedPlan?.apple_product_id_monthly?.trim())
+          : Boolean(selectedPlan?.apple_product_id_yearly?.trim()),
+      )
+    : billingPeriods;
+  const iosWebOnlyPeriods =
+    useApple && selectedPlan && !selectedPlan.is_free
+      ? billingPeriods.filter((period) => !checkoutPeriods.includes(period))
+      : [];
+  const showBillingToggle = Boolean(
+    selectedPlan && !selectedPlan.is_free && checkoutPeriods.length > 1,
+  );
 
   return (
     <View style={twStyle("gap-4")}>
@@ -4319,8 +4349,8 @@ function Step14Plan() {
       </View>
       {showBillingToggle ? (
         <View style={twStyle("flex-row rounded-2xl border border-slate-200 bg-slate-50 p-1")}>
-          {billingPeriods.map((period) => {
-            const active = (formData.selected_billing_period ?? defaultBillingPeriod(billingPeriods)) === period;
+          {checkoutPeriods.map((period) => {
+            const active = (formData.selected_billing_period ?? defaultBillingPeriod(checkoutPeriods)) === period;
             return (
               <TouchableOpacity
                 key={period}
@@ -4344,6 +4374,15 @@ function Step14Plan() {
             );
           })}
         </View>
+      ) : null}
+      {iosWebOnlyPeriods.length > 0 ? (
+        <Text style={twStyle("text-center text-xs leading-5 text-slate-500 px-2")}>
+          {iosWebOnlyPeriods.map((period) =>
+            ow("plan.periodAvailableOnWeb", {
+              period: period === "yearly" ? ow("plan.yearly") : ow("plan.monthly"),
+            }),
+          ).join(" ")}
+        </Text>
       ) : null}
       {plans.map((p) => (
         <PlanCard

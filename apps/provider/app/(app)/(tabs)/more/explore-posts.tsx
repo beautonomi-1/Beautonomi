@@ -34,21 +34,23 @@ import { Image, type ImageStyle as ExpoImageStyle } from "expo-image";
 import { getWebProviderBaseUrl } from "@/lib/web-url";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { tabScreenScrollBottomPadding } from "@/constants/layout";
-import {
-  launchImageLibraryWithPermission,
-  PERMISSION_COPY,
-} from "@/lib/native-permissions";
 import { useTranslation } from "@beautonomi/i18n";
 import { ContentReportSheet, type ContentReportTargetType } from "@/components/safety/ContentReportSheet";
 import { ExploreSlideOverlayComposer } from "@/components/explore/ExploreSlideOverlayComposer";
 import {
-  ExploreVideoTrimSheet,
+  ExploreVideoTrimEditor,
   type ExploreVideoTrimResult,
-} from "@/components/explore/ExploreVideoTrimSheet";
+} from "@/components/explore/ExploreVideoTrimEditor";
+import { ExploreCameraCaptureSheet } from "@/components/explore/ExploreCameraCaptureSheet";
+import { ExplorePostProviderStatusChip } from "@/components/explore/ExplorePostProviderStatusChip";
+import { useExploreMediaFlow } from "@/features/explore/useExploreMediaFlow";
+import { libraryTrimQueueLabel, resolveTrimEditorStep } from "@/features/explore/exploreMediaFlow";
+import type { MediaFlowCommit } from "@/features/explore/exploreMediaFlow";
 import {
-  ExploreCameraCaptureSheet,
-  type ExploreCameraCaptureResult,
-} from "@/components/explore/ExploreCameraCaptureSheet";
+  type PickedAsset,
+  isVideoAsset,
+} from "@/lib/explore-picked-asset";
+import type { ExploreUploadCaps } from "@/lib/explore-picked-asset";
 import {
   ExploreSoundPicker,
   type ExploreSoundPickerItem,
@@ -86,7 +88,15 @@ interface ExplorePost {
   offering?: { id: string; name: string; price?: number; duration_minutes?: number } | null;
   created_at: string;
   updated_at: string;
-  media_meta?: Array<{ kind?: string; text_overlays?: SlideTextOverlay[] }>;
+  is_hidden?: boolean;
+  moderation_notes?: string | null;
+  media_meta?: Array<{
+    kind?: string;
+    text_overlays?: SlideTextOverlay[];
+    status?: string;
+    playback_path?: string | null;
+    error_code?: string | null;
+  }>;
 }
 
 interface GlobalCategory {
@@ -127,52 +137,6 @@ function formatDateSafe(value: unknown): string {
 function isVideoUrl(url: string): boolean {
   const lower = url.toLowerCase().split("?")[0].split("#")[0];
   return lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mov") || lower.endsWith(".m4v");
-}
-
-type PickedAsset = {
-  uri: string;
-  mimeType?: string;
-  fileName?: string;
-  isVideo?: boolean;
-  fileSize?: number;
-  /** Source file duration in ms (from picker or trim sheet). */
-  source_duration_ms?: number;
-  duration_ms?: number;
-  trim_start_ms?: number;
-  trim_end_ms?: number;
-};
-
-function isVideoAsset(asset: PickedAsset): boolean {
-  return asset.isVideo === true || (asset.mimeType?.startsWith("video/") ?? false);
-}
-
-function splitPickedImageVideo(assets: PickedAsset[]) {
-  const images: PickedAsset[] = [];
-  const videos: PickedAsset[] = [];
-  for (const a of assets) {
-    if (isVideoAsset(a)) videos.push(a);
-    else images.push(a);
-  }
-  return { images, videos };
-}
-
-function mapPickerAsset(a: {
-  uri: string;
-  type?: string | null;
-  mimeType?: string | null;
-  fileName?: string | null;
-  duration?: number | null;
-}): PickedAsset {
-  const isVideo = a.type === "video" || a.type === "pairedVideo" || (a.mimeType?.startsWith("video/") ?? false);
-  const durationSec = typeof a.duration === "number" && Number.isFinite(a.duration) && a.duration > 0 ? a.duration : undefined;
-  return {
-    uri: a.uri,
-    mimeType: a.mimeType ?? (isVideo ? "video/mp4" : "image/jpeg"),
-    fileName: a.fileName ?? (isVideo ? "video.mp4" : "image.jpg"),
-    isVideo,
-    fileSize: typeof (a as { fileSize?: number }).fileSize === "number" ? (a as { fileSize?: number }).fileSize : undefined,
-    ...(durationSec != null ? { source_duration_ms: Math.round(durationSec * 1000) } : {}),
-  };
 }
 
 type UploadSlotResult = {
@@ -435,6 +399,7 @@ function LocalMediaPreview({ asset, size }: { asset: PickedAsset; size: number }
           contentFit="cover"
           paused
           muted
+          startAtMs={asset.trim_start_ms}
         />
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <View
@@ -613,20 +578,8 @@ export default function ExplorePostsScreen() {
   const [editLocalAssets, setEditLocalAssets] = useState<PickedAsset[]>([]);
   const [editUploading, setEditUploading] = useState(false);
   const [maxVideoClipMs, setMaxVideoClipMs] = useState(60_000);
-  const [trimSheetAsset, setTrimSheetAsset] = useState<PickedAsset | null>(null);
-  const [trimRemainder, setTrimRemainder] = useState<PickedAsset[]>([]);
-  const [trimTarget, setTrimTarget] = useState<"create" | "edit">("create");
-  const [cameraCaptureOpen, setCameraCaptureOpen] = useState(false);
-  const [cameraCaptureTarget, setCameraCaptureTarget] = useState<"create" | "edit">("create");
-  /** Hide create/edit draft sheet while camera, library, or trim is presented (one at a time). */
-  const [postSheetHostHidden, setPostSheetHostHidden] = useState<"create" | "edit" | null>(null);
-  const postSheetPendingRef = useRef<
-    { kind: "camera" | "library"; target: "create" | "edit" } | null
-  >(null);
-  const pendingCameraCaptureRef = useRef<ExploreCameraCaptureResult | null>(null);
-  const trimSheetAssetRef = useRef<PickedAsset | null>(null);
-  const trimRemainderRef = useRef<PickedAsset[]>([]);
-  const cameraCaptureOpenRef = useRef(false);
+  const [uploadCaps, setUploadCaps] = useState<ExploreUploadCaps>({});
+  const [videoUploadEnabled, setVideoUploadEnabled] = useState(true);
   const screenMountedRef = useRef(true);
   const [extraPosts, setExtraPosts] = useState<ExplorePost[]>([]);
   const [loadingMorePosts, setLoadingMorePosts] = useState(false);
@@ -943,6 +896,36 @@ export default function ExplorePostsScreen() {
   const editMediaSlotsLeft = 5 - editRemoteUrls.length - editLocalAssets.length;
   const createMediaSlotsLeft = 5 - selectedAssets.length;
 
+  const handleMediaFlowCommit = useCallback((commit: MediaFlowCommit) => {
+    if (commit.type === "append") {
+      if (commit.target === "create") {
+        setSelectedAssets((prev) => [...prev, ...commit.assets].slice(0, 5));
+      } else {
+        setEditLocalAssets((prev) => [...prev, ...commit.assets]);
+      }
+    } else if (commit.type === "appendOne") {
+      if (commit.target === "create") {
+        setSelectedAssets((prev) => [...prev, commit.asset].slice(0, 5));
+      } else {
+        setEditLocalAssets((prev) => [...prev, commit.asset]);
+      }
+    } else if (commit.type === "replace") {
+      if (commit.target === "create") {
+        setSelectedAssets((prev) => prev.map((a, i) => (i === commit.index ? commit.asset : a)));
+      } else {
+        setEditLocalAssets((prev) => prev.map((a, i) => (i === commit.index ? commit.asset : a)));
+      }
+    }
+  }, []);
+
+  const mediaFlow = useExploreMediaFlow({
+    caps: { ...uploadCaps, max_duration_ms: maxVideoClipMs },
+    videoUploadEnabled,
+    ep,
+    slotsLeft: (target) => (target === "create" ? createMediaSlotsLeft : editMediaSlotsLeft),
+    onCommit: handleMediaFlowCommit,
+  });
+
   useEffect(() => {
     screenMountedRef.current = true;
     return () => {
@@ -951,16 +934,10 @@ export default function ExplorePostsScreen() {
   }, []);
 
   useEffect(() => {
-    trimSheetAssetRef.current = trimSheetAsset;
-  }, [trimSheetAsset]);
-
-  useEffect(() => {
-    trimRemainderRef.current = trimRemainder;
-  }, [trimRemainder]);
-
-  useEffect(() => {
-    cameraCaptureOpenRef.current = cameraCaptureOpen;
-  }, [cameraCaptureOpen]);
+    if (mediaFlow.state.step === "picking") {
+      void mediaFlow.runLibraryPick();
+    }
+  }, [mediaFlow.state.step, mediaFlow.runLibraryPick]);
   const hasVideoInEdit = useMemo(
     () => editRemoteUrls.some((url) => isVideoUrl(url)) || editLocalAssets.some((a) => isVideoAsset(a)),
     [editRemoteUrls, editLocalAssets],
@@ -974,7 +951,7 @@ export default function ExplorePostsScreen() {
   const handleSaveEdit = useCallback(async (publish: boolean) => {
     if (!viewPost) return;
     if (blockExploreUgcAction(ep("noPermissionManage"))) return;
-    if (trimSheetAsset) {
+    if (mediaFlow.isBusy) {
       Alert.alert(ep("trimVideoTitle"), ep("trimVideoFinishFirst"));
       return;
     }
@@ -1072,7 +1049,7 @@ export default function ExplorePostsScreen() {
     editSlideOverlays,
     hasVideoInEdit,
     editSoundId,
-    trimSheetAsset,
+    mediaFlow.isBusy,
     updatePost,
     refresh,
     blockExploreUgcAction,
@@ -1081,180 +1058,41 @@ export default function ExplorePostsScreen() {
   ]);
 
   useEffect(() => {
-    if (!createOpen && !editMode && !trimSheetAsset) return;
+    if (!createOpen && !editMode && !mediaFlow.isBusy) return;
     void api
-      .fetch<{ max_duration_ms?: number; sound_catalog_enabled?: boolean }>("/api/explore/upload", {
+      .fetch<{
+        max_duration_ms?: number;
+        max_video_bytes?: number;
+        max_image_bytes?: number;
+        sound_catalog_enabled?: boolean;
+        video_upload_enabled?: boolean;
+      }>("/api/explore/upload", {
         method: "GET",
       })
       .then((res) => {
         if (res.data?.max_duration_ms) setMaxVideoClipMs(res.data.max_duration_ms);
+        setUploadCaps({
+          max_duration_ms: res.data?.max_duration_ms,
+          max_video_bytes: res.data?.max_video_bytes,
+          max_image_bytes: res.data?.max_image_bytes,
+        });
         setSoundCatalogEnabled(res.data?.sound_catalog_enabled === true);
+        setVideoUploadEnabled(res.data?.video_upload_enabled !== false);
       });
-  }, [createOpen, editMode, trimSheetAsset]);
-
-  /** @returns true when a video trim sheet was opened (draft sheet stays hidden). */
-  const ingestNewAssets = useCallback(
-    (target: "create" | "edit", incoming: PickedAsset[], options?: { silentLimit?: boolean }) => {
-      const room =
-        target === "create"
-          ? 5 - selectedAssets.length
-          : 5 - editRemoteUrls.length - editLocalAssets.length;
-      if (room <= 0) {
-        if (!options?.silentLimit) {
-          Alert.alert(ep("limitReachedTitle"), ep("limitReachedBody"));
-        }
-        return false;
-      }
-      const batch = incoming.slice(0, room);
-      const { images, videos } = splitPickedImageVideo(batch);
-      if (target === "create") {
-        if (images.length) setSelectedAssets((prev) => [...prev, ...images].slice(0, 5));
-      } else if (images.length) {
-        setEditLocalAssets((prev) => [...prev, ...images]);
-      }
-      if (videos.length) {
-        setTrimTarget(target);
-        if (trimSheetAsset) {
-          setTrimRemainder((prev) => [...prev, ...videos]);
-        } else {
-          setTrimRemainder(videos.slice(1));
-          setTrimSheetAsset(videos[0]!);
-        }
-        return true;
-      }
-      return false;
-    },
-    [selectedAssets.length, editRemoteUrls.length, editLocalAssets.length, trimSheetAsset, ep],
-  );
-
-  const mapCameraCaptureToAsset = useCallback((result: ExploreCameraCaptureResult): PickedAsset => {
-    return {
-      uri: result.uri,
-      mimeType: result.mimeType,
-      fileName: result.fileName,
-      isVideo: result.isVideo,
-      ...(result.source_duration_ms ? { source_duration_ms: result.source_duration_ms } : {}),
-    };
-  }, []);
-
-  const beginPostMediaPick = useCallback(
-    (target: "create" | "edit", kind: "camera" | "library") => {
-      if (trimSheetAsset) {
-        Alert.alert(ep("trimVideoTitle"), ep("trimVideoFinishFirst"));
-        return;
-      }
-      const slotsLeft = target === "create" ? createMediaSlotsLeft : editMediaSlotsLeft;
-      if (slotsLeft <= 0) return;
-      postSheetPendingRef.current = { kind, target };
-      setPostSheetHostHidden(target);
-    },
-    [trimSheetAsset, createMediaSlotsLeft, editMediaSlotsLeft, ep],
-  );
+  }, [createOpen, editMode, mediaFlow.isBusy]);
 
   const onPostDraftSheetHidden = useCallback(() => {
     if (!screenMountedRef.current) return;
-    const pending = postSheetPendingRef.current;
-    if (!pending) return;
-    postSheetPendingRef.current = null;
-    setCameraCaptureTarget(pending.target);
-    if (pending.kind === "camera") {
-      setCameraCaptureOpen(true);
-      return;
-    }
-    void (async () => {
-      const target = pending.target;
-      const result = await launchImageLibraryWithPermission(
-        {
-          mediaTypes: ["images", "videos"],
-          allowsMultipleSelection: true,
-          quality: 0.9,
-        },
-        PERMISSION_COPY.photosPost,
-      );
-      if (!screenMountedRef.current) return;
-      if (!result || result.canceled) {
-        setPostSheetHostHidden(null);
-        return;
-      }
-      const newAssets: PickedAsset[] = result.assets.map((a) => mapPickerAsset(a));
-      const openedTrim = ingestNewAssets(target, newAssets, { silentLimit: true });
-      if (!openedTrim) {
-        setPostSheetHostHidden(null);
-      }
-    })();
-  }, [ingestNewAssets]);
-
-  const onCameraCaptureSheetHidden = useCallback(() => {
-    if (!screenMountedRef.current) return;
-    const cap = pendingCameraCaptureRef.current;
-    if (cap) {
-      pendingCameraCaptureRef.current = null;
-      const openedTrim = ingestNewAssets(cameraCaptureTarget, [mapCameraCaptureToAsset(cap)], {
-        silentLimit: true,
-      });
-      if (!openedTrim) {
-        setPostSheetHostHidden(null);
-      }
-      return;
-    }
-    setPostSheetHostHidden(null);
-  }, [cameraCaptureTarget, ingestNewAssets, mapCameraCaptureToAsset]);
-
-  const onTrimSheetModalHide = useCallback(() => {
-    if (trimSheetAssetRef.current) return;
-    if (trimRemainderRef.current.length > 0) return;
-    if (cameraCaptureOpenRef.current) return;
-    setPostSheetHostHidden(null);
-  }, []);
-
-  const confirmTrimSheet = useCallback(
-    (result: ExploreVideoTrimResult) => {
-      if (!trimSheetAsset) return;
-      const trimmed: PickedAsset = {
-        ...trimSheetAsset,
-        source_duration_ms: result.source_duration_ms,
-        trim_start_ms: result.trim_start_ms,
-        trim_end_ms: result.trim_end_ms,
-        duration_ms: trimWindowDurationMs(result),
-      };
-      if (trimTarget === "create") {
-        setSelectedAssets((prev) => [...prev, trimmed].slice(0, 5));
-      } else {
-        setEditLocalAssets((prev) => [...prev, trimmed]);
-      }
-      if (trimRemainder.length > 0) {
-        setTrimSheetAsset(trimRemainder[0]!);
-        setTrimRemainder(trimRemainder.slice(1));
-      } else {
-        setTrimSheetAsset(null);
-        setTrimRemainder([]);
-      }
-    },
-    [trimSheetAsset, trimRemainder, trimTarget],
-  );
-
-  const cancelTrimSheet = useCallback(() => {
-    if (trimRemainder.length > 0) {
-      setTrimSheetAsset(trimRemainder[0]!);
-      setTrimRemainder(trimRemainder.slice(1));
-    } else {
-      setTrimSheetAsset(null);
-      setTrimRemainder([]);
-    }
-  }, [trimRemainder]);
-
-  const onCameraCapture = useCallback((result: ExploreCameraCaptureResult) => {
-    pendingCameraCaptureRef.current = result;
-    setCameraCaptureOpen(false);
-  }, []);
+    mediaFlow.onDraftHidden();
+  }, [mediaFlow]);
 
   const pickMediaForEdit = useCallback(() => {
-    beginPostMediaPick("edit", "library");
-  }, [beginPostMediaPick]);
+    mediaFlow.openLibrary("edit");
+  }, [mediaFlow]);
 
   const pickFromCameraForEdit = useCallback(() => {
-    beginPostMediaPick("edit", "camera");
-  }, [beginPostMediaPick]);
+    mediaFlow.openCamera("edit");
+  }, [mediaFlow]);
 
   const removeEditRemote = useCallback((index: number) => {
     setEditRemoteUrls((prev) => prev.filter((_, i) => i !== index));
@@ -1288,13 +1126,8 @@ export default function ExplorePostsScreen() {
     setOverlayDraft("");
     setSlideOverlays({});
     setOverlaySlideIndex(0);
-    setTrimSheetAsset(null);
-    setTrimRemainder([]);
-    setCameraCaptureOpen(false);
-    setPostSheetHostHidden(null);
-    postSheetPendingRef.current = null;
-    pendingCameraCaptureRef.current = null;
-  }, []);
+    mediaFlow.resetFlow();
+  }, [mediaFlow]);
 
   useEffect(() => {
     const needsSounds =
@@ -1318,18 +1151,18 @@ export default function ExplorePostsScreen() {
   }, [resetCreateForm]);
 
   const closeCreate = useCallback(() => {
-    if (uploading || creating || trimSheetAsset) return;
+    if (uploading || creating || mediaFlow.isBusy) return;
     resetCreateForm();
     setCreateOpen(false);
-  }, [uploading, creating, resetCreateForm, trimSheetAsset]);
+  }, [uploading, creating, resetCreateForm, mediaFlow.isBusy]);
 
   const pickMedia = useCallback(() => {
-    beginPostMediaPick("create", "library");
-  }, [beginPostMediaPick]);
+    mediaFlow.openLibrary("create");
+  }, [mediaFlow]);
 
   const pickFromCamera = useCallback(() => {
-    beginPostMediaPick("create", "camera");
-  }, [beginPostMediaPick]);
+    mediaFlow.openCamera("create");
+  }, [mediaFlow]);
 
   const removeAsset = useCallback((index: number) => {
     setSelectedAssets((prev) => prev.filter((_, i) => i !== index));
@@ -1339,7 +1172,7 @@ export default function ExplorePostsScreen() {
 
   const submitPost = useCallback(async (publish: boolean) => {
     if (blockExploreUgcAction(ep("noPermissionCreate"))) return;
-    if (trimSheetAsset) {
+    if (mediaFlow.isBusy) {
       Alert.alert(ep("trimVideoTitle"), ep("trimVideoFinishFirst"));
       return;
     }
@@ -1416,7 +1249,7 @@ export default function ExplorePostsScreen() {
         e instanceof Error ? e.message : ep("somethingWentWrong"),
       );
     }
-  }, [blockExploreUgcAction, trimSheetAsset, selectedAssets, caption, primaryCategorySlug, offeringId, alsoAddToGallery, hasVideoInSelection, soundId, preseedBookingId, params.bookingId, params.returnTo, tagInput, slideOverlays, createPost, refresh, resetCreateForm, router, ep]);
+  }, [blockExploreUgcAction, mediaFlow.isBusy, selectedAssets, caption, primaryCategorySlug, offeringId, alsoAddToGallery, hasVideoInSelection, soundId, preseedBookingId, params.bookingId, params.returnTo, tagInput, slideOverlays, createPost, refresh, resetCreateForm, router, ep]);
 
   const openCreateIfAllowed = useCallback(() => {
     if (blockExploreUgcAction(ep("noPermissionCreate"))) return;
@@ -1497,6 +1330,7 @@ export default function ExplorePostsScreen() {
               <Ionicons name="layers-outline" size={18} color="rgba(255,255,255,0.95)" />
             </View>
           ) : null}
+          <ExplorePostProviderStatusChip post={post} ep={ep} />
         </TouchableOpacity>
       );
     },
@@ -1646,6 +1480,8 @@ export default function ExplorePostsScreen() {
     );
   }
 
+  const trimEditor = resolveTrimEditorStep(mediaFlow.state);
+
   return (
     <ScreenContainer scrollable={false}>
       <View style={{ flex: 1, minHeight: 0 }}>
@@ -1710,7 +1546,7 @@ export default function ExplorePostsScreen() {
       </View>
 
       <BottomSheet
-        visible={createOpen && postSheetHostHidden !== "create"}
+        visible={createOpen && mediaFlow.state.step === "idle"}
         onClose={closeCreate}
         onModalHide={onPostDraftSheetHidden}
         title={ep("newPostTitle")}
@@ -1719,9 +1555,9 @@ export default function ExplorePostsScreen() {
         <View style={twStyle("mb-4 flex-row gap-2")}>
           <TouchableOpacity
             onPress={pickMedia}
-            disabled={!!trimSheetAsset || createMediaSlotsLeft <= 0}
+            disabled={!!mediaFlow.isBusy || createMediaSlotsLeft <= 0}
             style={twStyle(
-              `flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-5 px-2 ${trimSheetAsset || createMediaSlotsLeft <= 0 ? "opacity-50" : ""}`,
+              `flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-5 px-2 ${mediaFlow.isBusy || createMediaSlotsLeft <= 0 ? "opacity-50" : ""}`,
             )}
           >
             <Ionicons name="images-outline" size={24} color="#9ca3af" />
@@ -1731,9 +1567,9 @@ export default function ExplorePostsScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             onPress={pickFromCamera}
-            disabled={!!trimSheetAsset || createMediaSlotsLeft <= 0}
+            disabled={!!mediaFlow.isBusy || createMediaSlotsLeft <= 0}
             style={twStyle(
-              `flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-5 px-2 ${trimSheetAsset || createMediaSlotsLeft <= 0 ? "opacity-50" : ""}`,
+              `flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-5 px-2 ${mediaFlow.isBusy || createMediaSlotsLeft <= 0 ? "opacity-50" : ""}`,
             )}
           >
             <Ionicons name="camera-outline" size={24} color="#9ca3af" />
@@ -1760,6 +1596,15 @@ export default function ExplorePostsScreen() {
                   <View style={twStyle("absolute bottom-1 left-1 rounded bg-violet-600 px-1")}>
                     <Text style={twStyle("text-[10px] font-medium text-white")}>Aa</Text>
                   </View>
+                ) : null}
+                {isVideoAsset(asset) ? (
+                  <TouchableOpacity
+                    onPress={() => mediaFlow.retrim("create", i, asset)}
+                    style={twStyle("absolute left-1 top-1 h-6 w-6 items-center justify-center rounded-full bg-black/60")}
+                    accessibilityLabel={ep("trimVideoTitle")}
+                  >
+                    <Ionicons name="cut-outline" size={13} color="#fff" />
+                  </TouchableOpacity>
                 ) : null}
                 <TouchableOpacity
                   onPress={() => removeAsset(i)}
@@ -1934,7 +1779,7 @@ export default function ExplorePostsScreen() {
               }
               onPress={() => void submitPost(true)}
               loading={(uploading || creating) && submittingMode === "publish"}
-              disabled={!!trimSheetAsset || ((uploading || creating) && submittingMode !== "publish")}
+              disabled={!!mediaFlow.isBusy || ((uploading || creating) && submittingMode !== "publish")}
               fullWidth
             />
           </View>
@@ -1947,7 +1792,7 @@ export default function ExplorePostsScreen() {
               }
               onPress={() => void submitPost(false)}
               loading={(uploading || creating) && submittingMode === "draft"}
-              disabled={!!trimSheetAsset || ((uploading || creating) && submittingMode !== "draft")}
+              disabled={!!mediaFlow.isBusy || ((uploading || creating) && submittingMode !== "draft")}
               variant="secondary"
               fullWidth
             />
@@ -1960,7 +1805,7 @@ export default function ExplorePostsScreen() {
 
       {viewPost && (
         <BottomSheet
-          visible={!!viewPost && postSheetHostHidden !== "edit"}
+          visible={!!viewPost && (mediaFlow.state.step === "idle" || !editMode)}
           onClose={() => !updating && !editUploading && setViewPost(null)}
           onModalHide={onPostDraftSheetHidden}
           title={editMode ? ep("editPostTitle") : ep("postTitle")}
@@ -1984,9 +1829,9 @@ export default function ExplorePostsScreen() {
               <View style={twStyle("mb-3 flex-row gap-2")}>
                 <TouchableOpacity
                   onPress={pickMediaForEdit}
-                  disabled={editMediaSlotsLeft <= 0 || editUploading || !!trimSheetAsset}
+                  disabled={editMediaSlotsLeft <= 0 || editUploading || !!mediaFlow.isBusy}
                   style={twStyle(
-                    `flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-4 px-2 ${editMediaSlotsLeft <= 0 || trimSheetAsset ? "opacity-50" : ""}`,
+                    `flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-4 px-2 ${editMediaSlotsLeft <= 0 || mediaFlow.isBusy ? "opacity-50" : ""}`,
                   )}
                 >
                   <Ionicons name="images-outline" size={22} color="#9ca3af" />
@@ -1994,9 +1839,9 @@ export default function ExplorePostsScreen() {
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={pickFromCameraForEdit}
-                  disabled={editMediaSlotsLeft <= 0 || editUploading || !!trimSheetAsset}
+                  disabled={editMediaSlotsLeft <= 0 || editUploading || !!mediaFlow.isBusy}
                   style={twStyle(
-                    `flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-4 px-2 ${editMediaSlotsLeft <= 0 || trimSheetAsset ? "opacity-50" : ""}`,
+                    `flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-4 px-2 ${editMediaSlotsLeft <= 0 || mediaFlow.isBusy ? "opacity-50" : ""}`,
                   )}
                 >
                   <Ionicons name="camera-outline" size={22} color="#9ca3af" />
@@ -2078,6 +1923,15 @@ export default function ExplorePostsScreen() {
                           <View style={twStyle("absolute bottom-1 left-1 rounded bg-violet-600 px-1")}>
                             <Text style={twStyle("text-[10px] font-medium text-white")}>Aa</Text>
                           </View>
+                        ) : null}
+                        {isVideoAsset(asset) ? (
+                          <TouchableOpacity
+                            onPress={() => mediaFlow.retrim("edit", i, asset)}
+                            style={twStyle("absolute left-1 top-1 h-6 w-6 items-center justify-center rounded-full bg-black/60")}
+                            accessibilityLabel={ep("trimVideoTitle")}
+                          >
+                            <Ionicons name="cut-outline" size={13} color="#fff" />
+                          </TouchableOpacity>
                         ) : null}
                         <TouchableOpacity
                           onPress={() => removeEditLocal(i)}
@@ -2301,7 +2155,7 @@ export default function ExplorePostsScreen() {
                     }
                     onPress={() => void handleSaveEdit(true)}
                     loading={(editUploading || updating) && editSubmittingMode === "publish"}
-                    disabled={!!trimSheetAsset || ((editUploading || updating) && editSubmittingMode !== "publish")}
+                    disabled={!!mediaFlow.isBusy || ((editUploading || updating) && editSubmittingMode !== "publish")}
                     fullWidth
                   />
                 </View>
@@ -2314,7 +2168,7 @@ export default function ExplorePostsScreen() {
                     }
                     onPress={() => void handleSaveEdit(false)}
                     loading={(editUploading || updating) && editSubmittingMode === "draft"}
-                    disabled={!!trimSheetAsset || ((editUploading || updating) && editSubmittingMode !== "draft")}
+                    disabled={!!mediaFlow.isBusy || ((editUploading || updating) && editSubmittingMode !== "draft")}
                     variant="secondary"
                     fullWidth
                   />
@@ -2421,6 +2275,7 @@ export default function ExplorePostsScreen() {
                 );
               })()}
               <Text style={twStyle("mb-2 text-xs text-gray-500")}>{formatPublishedLine(viewPost, ep)}</Text>
+              <ExplorePostProviderStatusChip post={viewPost} ep={ep} variant="detail" />
               {viewPost.primary_category_id ? (
                 <View style={twStyle("mb-3 flex-row flex-wrap")}>
                   <View style={twStyle("rounded-full bg-indigo-50 px-2.5 py-1")}>
@@ -2639,22 +2494,50 @@ export default function ExplorePostsScreen() {
           title={reportTarget.title}
         />
       ) : null}
-      <ExploreVideoTrimSheet
-        visible={!!trimSheetAsset}
-        videoUri={trimSheetAsset?.uri ?? ""}
-        fullDurationMs={trimSheetAsset?.source_duration_ms ?? 0}
-        maxClipMs={maxVideoClipMs}
-        onConfirm={confirmTrimSheet}
-        onCancel={cancelTrimSheet}
-        onModalHide={onTrimSheetModalHide}
-      />
-      <ExploreCameraCaptureSheet
-        visible={cameraCaptureOpen}
-        maxVideoDurationMs={maxVideoClipMs}
-        onClose={() => setCameraCaptureOpen(false)}
-        onAfterHide={onCameraCaptureSheetHidden}
-        onCapture={onCameraCapture}
-      />
+      {trimEditor ? (
+        <ExploreVideoTrimEditor
+          key={trimEditor.current.uri}
+          visible={mediaFlow.state.step === "trim"}
+          videoUri={trimEditor.current.uri}
+          fullDurationMs={trimEditor.current.source_duration_ms ?? 0}
+          maxClipMs={maxVideoClipMs}
+          source={trimEditor.source}
+          initialTrim={
+            trimEditor.current.trim_start_ms != null && trimEditor.current.trim_end_ms != null
+              ? {
+                  trim_start_ms: trimEditor.current.trim_start_ms,
+                  trim_end_ms: trimEditor.current.trim_end_ms,
+                }
+              : undefined
+          }
+          queueLabel={libraryTrimQueueLabel(mediaFlow.state)}
+          onConfirm={(result) =>
+            mediaFlow.dispatch({
+              type: "TRIM_CONFIRM",
+              trim: { trim_start_ms: result.trim_start_ms, trim_end_ms: result.trim_end_ms },
+              sourceDurationMs: result.source_duration_ms,
+            })
+          }
+          onCancel={() => mediaFlow.dispatch({ type: "TRIM_CANCEL" })}
+          onAfterHide={mediaFlow.onTrimHidden}
+        />
+      ) : null}
+      {mediaFlow.state.step === "camera" || mediaFlow.state.step === "hidingCamera" ? (
+        <ExploreCameraCaptureSheet
+          visible={mediaFlow.state.step === "camera"}
+          maxVideoDurationMs={maxVideoClipMs}
+          initialMode={
+            mediaFlow.state.step === "camera" ? mediaFlow.state.initialMode : "photo"
+          }
+          initialFacing={
+            mediaFlow.state.step === "camera" ? mediaFlow.state.initialFacing : "front"
+          }
+          onClose={mediaFlow.closeCamera}
+          onAfterHide={mediaFlow.onCameraHidden}
+          onCapture={mediaFlow.onCaptured}
+          videoCaptureEnabled={videoUploadEnabled}
+        />
+      ) : null}
     </ScreenContainer>
   );
 }

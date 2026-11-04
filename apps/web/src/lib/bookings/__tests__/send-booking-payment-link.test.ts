@@ -41,6 +41,17 @@ import { sendBookingPaymentLink } from "../send-booking-payment-link";
 function buildSupabase(contact: { email?: string | null; phone?: string | null } | null) {
   return {
     from: vi.fn((table: string) => {
+      if (table === "booking_payments") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                in: vi.fn().mockResolvedValue({ data: [], error: null }),
+              })),
+            })),
+          })),
+        };
+      }
       if (table === "bookings") {
         return {
           select: vi.fn(() => ({

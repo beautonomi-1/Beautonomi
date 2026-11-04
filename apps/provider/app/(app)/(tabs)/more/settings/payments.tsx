@@ -76,7 +76,7 @@ const DEFAULT_SETTINGS: PaymentSettings = {
   accept_paystack_terminal: false,
   vat_registered: false,
   vat_number: null,
-  tax_rate: 15,
+  tax_rate: 0,
   tax_inclusive: true,
   currency: getTenantDefaultCurrency(),
   receipt_auto_send: true,
@@ -230,7 +230,6 @@ export default function PaymentSettingsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const payload = {
       currency: form.currency,
-      taxRatePercent: form.tax_rate,
       isVatRegistered: form.vat_registered,
       vatNumber: form.vat_number,
       acceptCash: form.accept_cash,
@@ -469,13 +468,9 @@ export default function PaymentSettingsScreen() {
           </Text>
           <View style={twStyle("flex-row items-center")}>
             <TextInput
-              style={twStyle("flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900")}
+              style={twStyle("flex-1 rounded-lg border border-gray-200 bg-gray-100 px-3 py-2.5 text-sm text-gray-500")}
               value={form.tax_rate.toString()}
-              onChangeText={(v) => {
-                const num = parseFloat(v) || 0;
-                update("tax_rate", Math.min(100, Math.max(0, num)));
-              }}
-              keyboardType="decimal-pad"
+              editable={false}
               placeholder={ps("taxRatePlaceholder")}
               placeholderTextColor="#9ca3af"
               accessibilityLabel={ps("taxRateA11y")}

@@ -196,6 +196,7 @@ function makeVatServerClient(opts: {
         const chain: Record<string, unknown> = {};
         chain.select = vi.fn(() => chain);
         chain.eq = vi.fn(() => chain);
+        chain.in = vi.fn(() => chain);
         chain.gte = vi.fn(() => chain);
         chain.lte = vi.fn(() =>
           Promise.resolve({ data: vatTxRows, error: null }),

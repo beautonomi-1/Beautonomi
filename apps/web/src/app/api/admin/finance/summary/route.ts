@@ -249,6 +249,7 @@ export async function GET(request: Request) {
 
         tips_gross: agg.tips_gross,
         taxes_gross: agg.taxes_gross,
+        subscription_vat: agg.subscription_vat,
 
         subscription_collected_gross: agg.subscription_gross,
         subscription_net: agg.subscription_net,

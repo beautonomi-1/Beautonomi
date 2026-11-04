@@ -140,8 +140,10 @@ interface Order {
   id: string;
   order_number: string;
   total_amount: number | string;
+  refunded_amount?: number | string | null;
   wallet_amount?: number | string | null;
   gift_card_amount?: number | string | null;
+  amount_still_due?: number | null;
   promotion_code?: string | null;
   subtotal?: number | string | null;
   tax_amount?: number | string | null;
@@ -303,12 +305,17 @@ function getWorkflowPrimaryNext(
   }
 }
 
-function getDestructiveNextStatuses(current: string, orderSource?: string | null): string[] {
+function getDestructiveNextStatuses(
+  current: string,
+  orderSource?: string | null,
+  paymentStatus?: string | null,
+): string[] {
   if (current === "cancelled" || current === "refunded") return [];
   // Walk-in orders start as "delivered" (already fulfilled in-store) but still need a refund path.
   if (current === "delivered") {
     return orderSource === "walk_in" ? ["refunded"] : [];
   }
+  if (paymentStatus === "partially_refunded") return ["refunded"];
   return ["cancelled", "refunded"];
 }
 
@@ -316,6 +323,16 @@ function numOrZero(v: unknown): number {
   if (v == null) return 0;
   const n = typeof v === "string" ? parseFloat(v) : Number(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+function isRefundablePaymentStatus(paymentStatus?: string | null): boolean {
+  const ps = (paymentStatus ?? "").toLowerCase();
+  return ps === "paid" || ps === "partially_refunded";
+}
+
+function remainingRefundable(order: Pick<Order, "total_amount" | "refunded_amount">): number {
+  const remaining = numOrZero(order.total_amount) - Math.max(0, numOrZero(order.refunded_amount));
+  return Math.max(0, Math.round(remaining * 100) / 100);
 }
 
 function formatOrderDateLabel(value: unknown): string | null {
@@ -412,6 +429,8 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
   const [cancelReasonSheetOpen, setCancelReasonSheetOpen] = useState(false);
   const [cancelReasonOrderId, setCancelReasonOrderId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState("");
+  const [refundSheetOrder, setRefundSheetOrder] = useState<Order | null>(null);
+  const [refundAmountInput, setRefundAmountInput] = useState("");
   const [recordPaymentSheetOpen, setRecordPaymentSheetOpen] = useState(false);
   const [recordPaymentMethod, setRecordPaymentMethod] = useState<
     "cash" | "card_on_delivery" | "card_machine"
@@ -558,6 +577,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         estimated_delivery_date?: string;
         cancellation_reason?: string;
         refund_method?: "cash" | "store_credit";
+        refund_amount?: number;
       },
     ) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -580,6 +600,8 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         setCancelReasonSheetOpen(false);
         setCancelReasonOrderId(null);
         setCancelReason("");
+        setRefundSheetOrder(null);
+        setRefundAmountInput("");
         refresh();
       }
     },
@@ -617,31 +639,13 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         // those (and any order without a linked customer) are refunded in person.
         const inPerson = allowsInPersonProductRefund(order?.payment_method);
         const canWallet = !!order?.customer?.id;
+        if (!order) return;
         if (!inPerson && !canWallet) {
           Alert.alert(po("refundOrderTitle"), po("refundOnlineNoCustomer"));
           return;
         }
-        const buttons: Parameters<typeof Alert.alert>[2] = [
-          { text: po("cancel"), style: "cancel" },
-        ];
-        if (inPerson) {
-          buttons.push({
-            text: po("refundInPerson"),
-            onPress: () => doUpdateStatus(orderId, status, { refund_method: "cash" }),
-          });
-        }
-        if (canWallet) {
-          buttons.push({
-            text: po("refundWallet"),
-            onPress: () => doUpdateStatus(orderId, status, { refund_method: "store_credit" }),
-          });
-        }
-        const body = !inPerson
-          ? po("refundOnlineOnly")
-          : canWallet
-            ? po("refundOrderBodyWallet")
-            : po("refundOrderBodyCash");
-        Alert.alert(po("refundOrderTitle"), body, buttons);
+        setRefundAmountInput(remainingRefundable(order).toFixed(2));
+        setRefundSheetOrder(order);
       } else {
         doUpdateStatus(orderId, status);
       }
@@ -658,6 +662,23 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
     }
     doUpdateStatus(cancelReasonOrderId, "cancelled", { cancellation_reason: reason });
   }, [cancelReason, cancelReasonOrderId, doUpdateStatus, po]);
+
+  const handleConfirmRefund = useCallback(
+    (refundMethod: "cash" | "store_credit") => {
+      if (!refundSheetOrder) return;
+      const remaining = remainingRefundable(refundSheetOrder);
+      const amount = Math.round(parseFloat(refundAmountInput.replace(",", ".")) * 100) / 100;
+      if (!Number.isFinite(amount) || amount <= 0 || amount > remaining + 0.01) {
+        Alert.alert(po("refundOrderTitle"), po("refundAmountInvalid", { max: remaining.toFixed(2) }));
+        return;
+      }
+      doUpdateStatus(refundSheetOrder.id, "refunded", {
+        refund_method: refundMethod,
+        refund_amount: Math.min(amount, remaining),
+      });
+    },
+    [doUpdateStatus, po, refundAmountInput, refundSheetOrder],
+  );
 
   const recordCollectionPayment = useCallback(async (referenceOverride?: string) => {
     if (!activeOrder) return;
@@ -979,6 +1000,18 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                 )}
               </View>
 
+              {(activeOrder.payment_status ?? "").toLowerCase() === "partially_refunded" ? (
+                <View
+                  style={twStyle(
+                    "mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5",
+                  )}
+                >
+                  <Text style={twStyle("text-sm leading-relaxed text-amber-900")}>
+                    {po("partiallyRefundedRefundRemaining")}
+                  </Text>
+                </View>
+              ) : null}
+
               {/* Fulfillment: delivery / collection */}
               {(() => {
                 const addr = unwrapOne(activeOrder.delivery_address);
@@ -1215,12 +1248,16 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                     ? " · " + Object.values(item.product_variant.option_values).join(", ")
                     : "";
                 const currentFulfilment = item.fulfilment_status ?? "pending";
+                const paystackUnpaid =
+                  String(activeOrder.payment_method ?? "").toLowerCase() === "paystack" &&
+                  String(activeOrder.payment_status ?? "").toLowerCase() !== "paid";
                 const lineLocked =
                   patchingLine ||
                   activeOrder.status === "cancelled" ||
                   activeOrder.status === "refunded" ||
                   currentFulfilment === "delivered" ||
-                  currentFulfilment === "cancelled";
+                  currentFulfilment === "cancelled" ||
+                  paystackUnpaid;
                 return (
                   <View
                     key={item.id}
@@ -1451,7 +1488,13 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                   activeOrder.payment_status,
                   activeOrder.order_source,
                 );
-                const destructive = getDestructiveNextStatuses(activeOrder.status, activeOrder.order_source);
+                const destructive = getDestructiveNextStatuses(
+                  activeOrder.status,
+                  activeOrder.order_source,
+                  activeOrder.payment_status,
+                ).filter(
+                  (st) => st !== "refunded" || (isRefundablePaymentStatus(activeOrder.payment_status) && remainingRefundable(activeOrder) > 0),
+                );
                 if (!primary && destructive.length === 0) return null;
                 const primaryLabel =
                   primary === "confirmed"
@@ -1575,6 +1618,63 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
             fullWidth
           />
         </View>
+      </BottomSheet>
+
+      <BottomSheet
+        visible={refundSheetOrder != null}
+        onClose={() => {
+          setRefundSheetOrder(null);
+          setRefundAmountInput("");
+        }}
+        title={po("refundOrderTitle")}
+      >
+        {refundSheetOrder ? (() => {
+          const inPerson = allowsInPersonProductRefund(refundSheetOrder.payment_method);
+          const canWallet = !!refundSheetOrder.customer?.id;
+          const remaining = remainingRefundable(refundSheetOrder);
+          const sheetCurrency = refundSheetOrder.currency ?? currency;
+          const body = !inPerson
+            ? po("refundOnlineOnly")
+            : canWallet
+              ? po("refundOrderBodyWallet")
+              : po("refundOrderBodyCash");
+          return (
+            <View style={twStyle("gap-3 pb-6")}>
+              <Text style={twStyle("text-sm text-gray-600")}>{body}</Text>
+              <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400")}>
+                {po("refundAmountLabel", { max: formatCurrency(remaining, sheetCurrency) })}
+              </Text>
+              <TextInput
+                value={refundAmountInput}
+                onChangeText={setRefundAmountInput}
+                keyboardType="decimal-pad"
+                placeholder={remaining.toFixed(2)}
+                placeholderTextColor="#9ca3af"
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                accessibilityLabel={po("refundAmountA11y")}
+              />
+              {inPerson ? (
+                <ActionButton
+                  label={po("refundInPerson")}
+                  onPress={() => handleConfirmRefund("cash")}
+                  loading={patching}
+                  disabled={patching}
+                  variant={canWallet ? "outline" : "primary"}
+                  fullWidth
+                />
+              ) : null}
+              {canWallet ? (
+                <ActionButton
+                  label={po("refundWallet")}
+                  onPress={() => handleConfirmRefund("store_credit")}
+                  loading={patching}
+                  disabled={patching}
+                  fullWidth
+                />
+              ) : null}
+            </View>
+          );
+        })() : null}
       </BottomSheet>
 
       <BottomSheet

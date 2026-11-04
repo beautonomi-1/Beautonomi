@@ -89,6 +89,10 @@ export const bookingDraftSchema = z.object({
   membership_plan_id: z.string().uuid().optional().nullable(),
   use_wallet: z.boolean().optional(),
   is_group_booking: z.boolean().optional(),
+  /** When `split`, organizer pays their share + fees at checkout; guests pay via invite. */
+  group_payment_mode: z.enum(["organizer_pays_all", "split"]).optional(),
+  /** True when group_participants[0] is the booker (web); false when the list is guests only (hold consume). */
+  group_participants_include_primary: z.boolean().optional(),
   group_participants: z
     .array(
       z.object({

@@ -20,12 +20,17 @@ export function allowsInPersonProductRefund(paymentMethod: string | null | undef
   return PROVIDER_COLLECTED_PRODUCT_METHODS.has(method);
 }
 
-/** In-person remainder after wallet and gift card. Matches the server collectible. */
+/** In-person remainder after wallet, gift card, and card charges already recorded. */
 export function productOrderInPersonDue(order: {
   total_amount?: number | string | null;
   wallet_amount?: number | string | null;
   gift_card_amount?: number | string | null;
+  amount_still_due?: number | null;
 }): number {
+  if (typeof order.amount_still_due === "number" && Number.isFinite(order.amount_still_due)) {
+    return Math.max(0, Math.round(order.amount_still_due * 100) / 100);
+  }
+  if (order.amount_still_due === null) return 0;
   const total = Math.max(0, Number(order.total_amount ?? 0));
   const gift = Math.min(total, Math.max(0, Number(order.gift_card_amount ?? 0)));
   const wallet = Math.min(Math.max(0, Number(order.wallet_amount ?? 0)), Math.max(0, total - gift));

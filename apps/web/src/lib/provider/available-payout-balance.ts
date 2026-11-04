@@ -54,6 +54,8 @@ export type PayoutBalanceBreakdown = {
   pendingPayouts: number;
   /** Final withdrawable amount (floored at 0). */
   availableBalance: number;
+  /** Platform-held VAT flagged for provider payout (metadata.vat_held_for_provider). */
+  vatHeldForProvider: number;
 };
 
 export const EMPTY_PAYOUT_BALANCE = {
@@ -69,8 +71,20 @@ export const EMPTY_PAYOUT_BALANCE = {
     completedPayouts: 0,
     pendingPayouts: 0,
     availableBalance: 0,
+    vatHeldForProvider: 0,
   } satisfies PayoutBalanceBreakdown,
 };
+
+function metadataFlag(meta: unknown, key: string): boolean {
+  if (!meta || typeof meta !== "object") return false;
+  return (meta as Record<string, unknown>)[key] === true;
+}
+
+function metadataNumber(meta: unknown, key: string): number {
+  if (!meta || typeof meta !== "object") return 0;
+  const v = (meta as Record<string, unknown>)[key];
+  return Number.isFinite(Number(v)) ? Math.max(0, Number(v)) : 0;
+}
 
 export const PLATFORM_HELD_PAYMENT_PROVIDERS = new Set([
   "paystack",
@@ -160,7 +174,9 @@ export async function getAvailablePayoutBalance(
     rows = await fetchAllPaged(async (from, to) => {
       const { data, error } = await supabase
         .from("finance_transactions")
-        .select("id, transaction_type, amount, net, created_at, booking_id, refund_component, source_payment_id")
+        .select(
+          "id, transaction_type, amount, net, created_at, booking_id, refund_component, source_payment_id, metadata",
+        )
         .eq("provider_id", providerId)
         .in("transaction_type", [
           "provider_earnings",
@@ -171,6 +187,7 @@ export async function getAvailablePayoutBalance(
           "tip",
           "travel_fee",
           "service_fee",
+          "tax",
         ])
         .gte("created_at", allTime)
         .lte("created_at", nowIso)
@@ -282,6 +299,7 @@ export async function getAvailablePayoutBalance(
   };
 
   let onlineEarnings = 0;
+  let vatHeldForProvider = 0;
   let completedPayouts = 0;
   // Reconciliation buckets (do not affect the balance math; exposed in `breakdown`):
   let onHoldAmount = 0; // provider_earnings/tip/travel skipped only because of the hold window
@@ -368,6 +386,10 @@ export async function getAvailablePayoutBalance(
       continue;
     }
     if (row.transaction_type === "refund") {
+      const vatHeldRefund = metadataNumber(row.metadata, "vat_held_for_provider_amount");
+      if (vatHeldRefund > 0) {
+        vatHeldForProvider -= vatHeldRefund;
+      }
       // The refund trigger splits a refund into per-component rows. Only the
       // provider-payoutable components (provider_earnings/tip/travel/cancellation,
       // plus legacy/manual whole-refund rows) claw back the payout balance. Platform
@@ -376,6 +398,23 @@ export async function getAvailablePayoutBalance(
       if (!isPayoutRefundComponent(row.refund_component)) continue;
       if (shouldExcludeProviderCollectedRow(row)) continue;
       onlineEarnings += Number(row.net ?? row.amount ?? 0);
+      continue;
+    }
+    if (row.transaction_type === "tax") {
+      if (!metadataFlag(row.metadata, "vat_held_for_provider")) continue;
+      if (shouldExcludeProviderCollectedRow(row)) continue;
+      const vatAmount = Number(row.amount ?? 0);
+      if (vatAmount <= 0) continue;
+      if (
+        bookingLinkedEarningsOnHold({
+          bookingId: row.booking_id,
+          rowCreatedAt: row.created_at,
+          meta: row.booking_id ? bookingMap[row.booking_id as string] : undefined,
+        })
+      ) {
+        continue;
+      }
+      vatHeldForProvider += vatAmount;
       continue;
     }
     if (row.transaction_type === "cancellation_fee") {
@@ -469,10 +508,11 @@ export async function getAvailablePayoutBalance(
     );
   } catch (err) {
     console.error("[available-payout-balance] open dispute reserve lookup failed:", err);
-    openDisputeReserve = 0;
+    throw err;
   }
 
-  const rawAvailable = onlineEarnings - completedPayouts - pendingPayoutsSum - openDisputeReserve;
+  const rawAvailable =
+    onlineEarnings + vatHeldForProvider - completedPayouts - pendingPayoutsSum - openDisputeReserve;
   const rawBalance = roundMoney2(rawAvailable);
   const availableBalance = Math.max(0, rawBalance);
   const hasNegativeBalance = rawBalance < -0.01;
@@ -485,6 +525,7 @@ export async function getAvailablePayoutBalance(
     completedPayouts: roundMoney2(completedPayouts),
     pendingPayouts: roundedPending,
     availableBalance,
+    vatHeldForProvider: roundMoney2(vatHeldForProvider),
   };
 
   return {

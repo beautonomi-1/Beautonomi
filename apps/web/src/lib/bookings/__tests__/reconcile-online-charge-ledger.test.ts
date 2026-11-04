@@ -73,6 +73,21 @@ vi.mock("@/lib/integrations/slack/dispatch", () => ({
   tryNotifySlackEvent: (...args: unknown[]) => mockNotifySlack(...(args as [])),
 }));
 
+const mockRetryStalePaymentRefunds = vi.fn(async () => ({
+  attempted: 0,
+  completed: 0,
+  failed: 0,
+  skipped: 0,
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: vi.fn(() => ({ from: vi.fn() })),
+}));
+
+vi.mock("@/lib/payments/retry-stale-payment-refunds", () => ({
+  retryStalePaymentRefunds: (...args: unknown[]) => mockRetryStalePaymentRefunds(...args),
+}));
+
 import {
   reconcileOnlineChargeLedger,
   RECONCILE_ONLINE_CHARGE_LEDGER_SOURCE,
@@ -218,6 +233,48 @@ function makeSupabase(initial: Partial<Stores> = {}) {
         }
         return { data: null, error: null };
       }
+      if (name === "list_online_booking_payments_missing_ledger") {
+        const provider = String(args.p_provider ?? "");
+        const before = String(args.p_before ?? "");
+        const limit = Number(args.p_limit ?? 500);
+        const payments = (stores.booking_payments ?? []).filter((p) => {
+          if (p.payment_provider !== provider) return false;
+          if (p.status != null && p.status !== "completed") return false;
+          if (String(p.created_at ?? "") >= before) return false;
+          const finance = stores.finance_transactions ?? [];
+          const hasLedger = finance.some(
+            (ft) =>
+              ft.booking_id === p.booking_id &&
+              ft.transaction_type === "payment" &&
+              ft.source_payment_id === p.id,
+          );
+          const hasLegacyUnattributed = finance.some(
+            (ft) =>
+              ft.booking_id === p.booking_id &&
+              ft.transaction_type === "payment" &&
+              (ft.source_payment_id == null || ft.source_payment_id === ""),
+          );
+          return !hasLedger && !hasLegacyUnattributed;
+        });
+        const data = payments.slice(0, limit).map((p) => {
+          const b = stores.bookings.find((x) => x.id === p.booking_id);
+          return {
+            id: p.id,
+            booking_id: p.booking_id,
+            amount: p.amount,
+            payment_provider: p.payment_provider,
+            payment_provider_id: p.payment_provider_id,
+            payment_provider_data: p.payment_provider_data,
+            created_at: p.created_at,
+            booking_status: b?.status ?? null,
+            tenant_id: b?.tenant_id ?? null,
+            currency: b?.currency ?? null,
+            total_amount: b?.total_amount ?? null,
+            payment_option: b?.payment_option ?? null,
+          };
+        });
+        return { data, error: null };
+      }
       return { data: null, error: { message: `unknown rpc: ${name}` } };
     },
   };
@@ -251,6 +308,15 @@ const bookingPayment = (overrides: Row = {}): Row => ({
   created_at: AN_HOUR_AGO,
   ...overrides,
 });
+
+const guestSharePayment = (overrides: Row = {}): Row =>
+  bookingPayment({
+    id: "bp-guest",
+    amount: 50,
+    payment_provider_id: "ref-guest",
+    payment_provider_data: { source: "group_participant_paystack" },
+    ...overrides,
+  });
 
 function paystackVerify(byReference: Record<string, { status?: string; amount?: number; fees?: number } | null>) {
   mockFetch.mockImplementation(async (url: string) => {
@@ -469,7 +535,7 @@ describe("reconcileOnlineChargeLedger", () => {
 
     const summary = await reconcileOnlineChargeLedger(supabase, { now: NOW });
 
-    expect(summary.skipped).toBe(1);
+    expect(summary.scanned).toBe(0);
     expect(stores.reconciliation_exceptions[0]).toMatchObject({
       status: "matched",
       resolved_at: NOW_ISO,
@@ -530,9 +596,9 @@ describe("reconcileOnlineChargeLedger", () => {
 
     const summary = await reconcileOnlineChargeLedger(supabase, { now: NOW });
 
-    // Pass 1 skips (ledger already attributed) — the fee patch must still run.
+    // Pass 1 does not scan (RPC excludes attributed payments) — the fee patch must still run.
     expect(mockSettlement).not.toHaveBeenCalled();
-    expect(summary.skipped).toBe(1);
+    expect(summary.scanned).toBe(0);
     expect(summary.feePatched).toBe(1);
 
     const patched = stores.payment_transactions.find((r) => r.id === "pt-backfill");
@@ -590,7 +656,7 @@ describe("reconcileOnlineChargeLedger", () => {
     expect(mockSettlement).toHaveBeenCalledTimes(1);
 
     const second = await reconcileOnlineChargeLedger(supabase, { now: NOW });
-    expect(second).toMatchObject({ scanned: 1, posted: 0, skipped: 1 });
+    expect(second).toMatchObject({ scanned: 0, posted: 0, skipped: 0 });
     expect(mockSettlement).toHaveBeenCalledTimes(1);
     expect(
       stores.finance_transactions.filter((r) => r.transaction_type === "payment"),
@@ -609,7 +675,7 @@ describe("reconcileOnlineChargeLedger", () => {
 
     const summary = await reconcileOnlineChargeLedger(supabase, { now: NOW });
 
-    expect(summary).toMatchObject({ scanned: 1, posted: 0, skipped: 1 });
+    expect(summary).toMatchObject({ scanned: 0, posted: 0, skipped: 0 });
     expect(mockSettlement).not.toHaveBeenCalled();
   });
 
@@ -647,7 +713,7 @@ describe("reconcileOnlineChargeLedger", () => {
       supabase,
       expect.objectContaining({ bookingPaymentId: "bp-flw", transactionId: "flw_1" }),
     );
-    expect(summary).toMatchObject({ scanned: 3, posted: 2, skipped: 1 });
+    expect(summary).toMatchObject({ scanned: 2, posted: 2, skipped: 0 });
     expect(summary.otherGatewaysMissing).toEqual([]);
     expect(stores.finance_transactions).toHaveLength(1);
   });
@@ -664,5 +730,55 @@ describe("reconcileOnlineChargeLedger", () => {
 
     expect(summary.errors).toEqual([{ bookingPaymentId: "bp-1", reason: "insert_failed" }]);
     expect(summary.posted).toBe(0);
+  });
+
+  it("posts guest-share ledger when another payment on the booking has refunds", async () => {
+    const { supabase } = makeSupabase({
+      bookings: [booking({ id: "booking-group" })],
+      booking_payments: [guestSharePayment({ booking_id: "booking-group" })],
+      booking_refunds: [{ id: "rf-lead", booking_id: "booking-group", payment_id: "bp-lead" }],
+    });
+    paystackVerify({ "ref-guest": { status: "success", amount: 5000, fees: 150 } });
+
+    const summary = await reconcileOnlineChargeLedger(supabase, { now: NOW });
+
+    expect(summary.posted).toBe(1);
+    expect(mockSettlement).toHaveBeenCalledWith(
+      supabase,
+      expect.objectContaining({
+        bookingPaymentId: "bp-guest",
+        amountMajor: 50,
+      }),
+    );
+  });
+
+  it("routes guest-share payment to needs_review when that payment has refunds", async () => {
+    const { supabase } = makeSupabase({
+      bookings: [booking({ id: "booking-group" })],
+      booking_payments: [guestSharePayment({ booking_id: "booking-group" })],
+      booking_refunds: [{ id: "rf-guest", booking_id: "booking-group", payment_id: "bp-guest" }],
+    });
+    paystackVerify({ "ref-guest": { status: "success", amount: 5000, fees: 150 } });
+
+    const summary = await reconcileOnlineChargeLedger(supabase, { now: NOW });
+
+    expect(mockSettlement).not.toHaveBeenCalled();
+    expect(summary.needsReview).toEqual([
+      expect.objectContaining({ bookingPaymentId: "bp-guest", reason: "payment_has_refunds" }),
+    ]);
+  });
+
+  it("invokes stale refund retry at end of the run", async () => {
+    const { supabase } = makeSupabase({
+      bookings: [booking()],
+      booking_payments: [bookingPayment()],
+      finance_transactions: [
+        { id: "ft-1", booking_id: "booking-1", transaction_type: "payment", source_payment_id: "bp-1" },
+      ],
+    });
+
+    await reconcileOnlineChargeLedger(supabase, { now: NOW });
+
+    expect(mockRetryStalePaymentRefunds).toHaveBeenCalledTimes(1);
   });
 });

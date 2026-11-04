@@ -3,6 +3,7 @@ import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import {
   computeProductOrderCancelWalletCredit,
+  productOrderCancelIncludesGiftInWallet,
   computeProviderCollectedStoreCreditClawback,
   isProviderCollectedProductMethod,
   roundProductOrderMoney,
@@ -55,6 +56,13 @@ export async function applyProductOrderCancelRefundSideEffects(
   order: ProductOrderSideEffectRow,
   options: ApplyProductOrderCancelRefundOptions,
 ): Promise<{ walletCreditFailed: boolean }> {
+  if (order.payment_status === "partially_refunded" && options.newStatus === "cancelled") {
+    console.warn(
+      "[product-order] refused cancel side effects on partially_refunded order",
+      order.id,
+    );
+    return { walletCreditFailed: false };
+  }
   const { newStatus, refundAmount, cancellationReason, refundReason, onlineRefundedAmount } = options;
   const shouldReversePlatformLedger =
     newStatus === "refunded" ||
@@ -84,7 +92,7 @@ export async function applyProductOrderCancelRefundSideEffects(
   const { data: ledgerRows } = await (admin.from("finance_transactions") as any)
     .select("id, tenant_id")
     .eq("product_order_id", order.id)
-    .in("transaction_type", ["payment", "provider_earnings", "platform_fee"])
+    .in("transaction_type", ["payment", "provider_earnings", "platform_fee", "tax"])
     .limit(1);
   const isPlatformHeld = Array.isArray(ledgerRows) && ledgerRows.length > 0;
   if (clawStoreCreditInsteadOfRatio) {
@@ -126,23 +134,31 @@ export async function applyProductOrderCancelRefundSideEffects(
     const ledgerTenantId =
       (ledgerRows[0] as { tenant_id?: string | null })?.tenant_id ?? order.tenant_id ?? null;
     const { data: captureRows } = await (admin.from("finance_transactions") as any)
-      .select("transaction_type, amount, net")
+      .select("transaction_type, amount, net, metadata")
       .eq("product_order_id", order.id)
-      .in("transaction_type", ["provider_earnings", "platform_fee"]);
+      .in("transaction_type", ["provider_earnings", "platform_fee", "tax"]);
     const earningsRow = (captureRows ?? []).find(
       (r: { transaction_type?: string }) => r.transaction_type === "provider_earnings",
     ) as { amount?: number; net?: number } | undefined;
     const feeRow = (captureRows ?? []).find(
       (r: { transaction_type?: string }) => r.transaction_type === "platform_fee",
     ) as { amount?: number; net?: number } | undefined;
+    const taxRow = (captureRows ?? []).find(
+      (r: { transaction_type?: string }) => r.transaction_type === "tax",
+    ) as { amount?: number; metadata?: Record<string, unknown> } | undefined;
     const capturedProviderEarnings = Number(earningsRow?.net ?? earningsRow?.amount ?? 0);
     const capturedPlatformFee = Number(feeRow?.net ?? feeRow?.amount ?? 0);
+    const capturedTax = Number(taxRow?.amount ?? 0);
+    const taxVatHeldFlag =
+      taxRow?.metadata != null &&
+      (taxRow.metadata as { vat_held_for_provider?: boolean }).vat_held_for_provider === true;
     const orderTotal = Number(order.total_amount ?? 0);
     const refundRatio =
       orderTotal > 0 ? Math.min(1, Math.max(0, ledgerRefundAmount / orderTotal)) : 1;
     const refundProviderEarnings =
       Math.round(capturedProviderEarnings * refundRatio * 100) / 100;
     const refundPlatformFee = Math.round(capturedPlatformFee * refundRatio * 100) / 100;
+    const refundTax = Math.round(capturedTax * refundRatio * 100) / 100;
     const refundDescription = `Refund for product order ${order.order_number || order.id.slice(0, 8)}${
       refundReason
         ? ` (${refundReason})`
@@ -185,6 +201,27 @@ export async function applyProductOrderCancelRefundSideEffects(
         created_at: new Date().toISOString(),
       });
     }
+    if (refundTax > 0) {
+      const taxRefundRow: Record<string, unknown> = {
+        booking_id: null,
+        product_order_id: order.id,
+        provider_id: order.provider_id,
+        tenant_id: ledgerTenantId,
+        transaction_type: "refund",
+        refund_component: "tax",
+        amount: refundTax,
+        fees: 0,
+        commission: 0,
+        net: 0,
+        currency: order.currency || LAST_RESORT_CURRENCY,
+        description: refundDescription,
+        created_at: new Date().toISOString(),
+      };
+      if (taxVatHeldFlag) {
+        taxRefundRow.metadata = { vat_held_for_provider_amount: refundTax };
+      }
+      refundRows.push(taxRefundRow);
+    }
     if (refundRows.length === 0 && ledgerRefundAmount > 0) {
       refundRows.push({
         booking_id: null,
@@ -226,7 +263,7 @@ export async function applyProductOrderCancelRefundSideEffects(
     if (giftPortion > 0) {
       const { voidProductOrderGiftCard } = await import("@/lib/ecommerce/product-order-gift-card");
       const voided = await voidProductOrderGiftCard(admin, order.id);
-      if (!voided) {
+      if (productOrderCancelIncludesGiftInWallet(voided)) {
         walletCreditAmount = roundProductOrderMoney(walletCreditAmount + giftPortion);
       }
     }
@@ -438,6 +475,7 @@ type OrderRow = {
   customer_id: string;
   provider_id: string;
   tenant_id?: string | null;
+  payment_status?: string | null;
   wallet_amount?: number | string | null;
   gift_card_amount?: number | string | null;
   currency?: string | null;
@@ -556,11 +594,120 @@ export async function creditWalletForProductOrderIfNeeded(
  * Return a wallet debit and release a reserved gift card when an order is
  * cancelled before it was paid. Paid orders use the refund side effects instead.
  */
+const UNPAID_CARD_GATEWAY_PROVIDERS = new Set(["paystack", "stripe", "flutterwave"]);
+
+/**
+ * A card charge can be recorded before the order is paid (the gift was not
+ * captured, so the charge did not cover the total). Cancelling that order
+ * must return the charge. Provider card machines are not refunded here.
+ */
+export async function refundUnpaidProductOrderCardCharges(
+  supabase: SupabaseClient,
+  order: OrderRow,
+  reason: string,
+): Promise<{ onlineRefunded: number; walletFallback: number; failed: boolean }> {
+  const { data, error } = await (supabase.from("payment_transactions") as any)
+    .select("id, amount, reference, provider, refund_amount")
+    .eq("status", "success")
+    .filter("metadata->>product_order_id", "eq", order.id);
+  if (error) {
+    console.error("[product-order] unpaid card lookup failed:", error.message, { orderId: order.id });
+    return { onlineRefunded: 0, walletFallback: 0, failed: true };
+  }
+
+  let onlineRefunded = 0;
+  let walletFallback = 0;
+  let failed = false;
+  for (const row of (data ?? []) as Array<{
+    id?: string;
+    amount?: number | string | null;
+    reference?: string | null;
+    provider?: string | null;
+    refund_amount?: number | string | null;
+  }>) {
+    const provider = String(row.provider ?? "").toLowerCase();
+    if (!UNPAID_CARD_GATEWAY_PROVIDERS.has(provider)) continue;
+    const reference = String(row.reference ?? "").trim();
+    const amount = roundProductOrderMoney(
+      Math.max(0, Number(row.amount ?? 0) - Number(row.refund_amount ?? 0)),
+    );
+    if (!reference || amount <= 0.009 || !row.id) continue;
+
+    let returned = false;
+    try {
+      const { refundGatewayCharge } = await import("@/lib/payments/refund-gateway-charge");
+      await refundGatewayCharge({
+        reference,
+        amountMajor: amount,
+        currency: order.currency || LAST_RESORT_CURRENCY,
+        tenantId: order.tenant_id ?? null,
+        reason,
+        idempotencyKey: `product_order_unpaid_card:${order.id}:${reference}`,
+        fallbackProvider:
+          provider === "stripe" ? "stripe" : provider === "flutterwave" ? "flutterwave" : "paystack",
+      });
+      onlineRefunded = roundProductOrderMoney(onlineRefunded + amount);
+      returned = true;
+    } catch (e) {
+      console.error("[product-order] unpaid card refund failed:", e, { orderId: order.id, reference });
+      if (order.customer_id) {
+        const { error: walletError } = await (supabase.rpc as any)("wallet_credit_admin", {
+          p_user_id: order.customer_id,
+          p_amount: amount,
+          p_currency: order.currency || LAST_RESORT_CURRENCY,
+          p_description: reason,
+          p_reference_id: order.id,
+          p_reference_type: "product_order_unpaid_card_refund",
+          p_tenant_id: order.tenant_id ?? null,
+          p_idempotency_key: `product_order_unpaid_card_refund:${order.id}:${reference}`,
+        });
+        if (!walletError) {
+          walletFallback = roundProductOrderMoney(walletFallback + amount);
+          returned = true;
+        }
+      }
+      if (!returned) failed = true;
+    }
+
+    if (returned) {
+      const { error: markError } = await (supabase.from("payment_transactions") as any)
+        .update({
+          status: "refunded",
+          refund_amount: amount,
+          refunded_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", row.id);
+      if (markError) {
+        console.error("[product-order] unpaid card refund mark failed:", markError.message, {
+          orderId: order.id,
+          reference,
+        });
+      }
+    }
+  }
+
+  return { onlineRefunded, walletFallback, failed };
+}
+
 export async function releaseUnpaidProductOrderHolds(
   supabase: SupabaseClient,
   order: OrderRow,
   description: string,
-): Promise<{ credited: boolean; failed: boolean; amount: number }> {
+): Promise<{
+  credited: boolean;
+  failed: boolean;
+  amount: number;
+  onlineRefunded: number;
+  cardWalletFallback: number;
+}> {
+  if (order.payment_status === "partially_refunded") {
+    console.warn(
+      "[product-order] refused unpaid hold release on partially_refunded order",
+      order.id,
+    );
+    return { credited: false, failed: false, amount: 0, onlineRefunded: 0, cardWalletFallback: 0 };
+  }
   const amount = Math.max(0, Number(order.wallet_amount ?? 0));
   const wallet = await creditWalletForProductOrderIfNeeded(
     supabase,
@@ -569,7 +716,14 @@ export async function releaseUnpaidProductOrderHolds(
     "product_order_unpaid_cancel",
   );
   await voidProductOrderGiftCardIfNeeded(supabase, order);
-  return { ...wallet, amount: wallet.credited ? amount : 0 };
+  const card = await refundUnpaidProductOrderCardCharges(supabase, order, description);
+  return {
+    credited: wallet.credited,
+    failed: wallet.failed || card.failed,
+    amount: wallet.credited ? amount : 0,
+    onlineRefunded: card.onlineRefunded,
+    cardWalletFallback: card.walletFallback,
+  };
 }
 
 /**
@@ -620,6 +774,11 @@ export async function cancelStalePendingPaystackProductOrders(
       "product_order_superseded",
     );
     await voidProductOrderGiftCardIfNeeded(supabase, o);
+    await refundUnpaidProductOrderCardCharges(
+      supabase,
+      o,
+      `Card refund (checkout restarted) for order`,
+    );
     await restockProductOrderLineItems(supabase, o.id, {
       movementType: "cancel",
       reason: "Replaced by a new checkout",

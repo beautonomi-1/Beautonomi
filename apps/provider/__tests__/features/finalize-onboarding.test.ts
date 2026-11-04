@@ -72,6 +72,12 @@ jest.mock("@/lib/subscription/start-paid-checkout", () => ({
   startPaidSubscriptionCheckout: jest.fn(),
 }));
 
+const mockSetSubscriptionActivationPending = jest.fn().mockResolvedValue(undefined);
+jest.mock("@/lib/subscription/subscription-activation-pending", () => ({
+  setSubscriptionActivationPending: (...args: unknown[]) =>
+    mockSetSubscriptionActivationPending(...args),
+}));
+
 describe("finalizeOnboardingSuccess", () => {
   const { api } = jest.requireMock<{ api: { get: jest.Mock; post: jest.Mock } }>("@/lib/api-client");
   const { startPaidSubscriptionCheckout, resolveSubscriptionPlanIdForCheckout } =
@@ -201,6 +207,40 @@ describe("finalizeOnboardingSuccess", () => {
       sessionId: null,
       transactionId: null,
     });
+    expect(mockReplace).toHaveBeenCalledWith("/(app)/onboarding");
+  });
+
+  it("marks subscription activation pending when poll does not provision", async () => {
+    const { pollSubscriptionProvisioned } = jest.requireMock<{
+      pollSubscriptionProvisioned: jest.Mock;
+    }>("@/lib/payments/providerPaystackReturn");
+    pollSubscriptionProvisioned.mockResolvedValueOnce({ state: "pending" });
+    const waitForCheckout = jest.fn().mockResolvedValue({
+      outcome: "success",
+      url: "https://app.test/provider/subscription?reference=checkout_ref_1&payment_success=true",
+    });
+    startPaidSubscriptionCheckout.mockResolvedValue({
+      ok: true,
+      authorizationUrl: "https://checkout.paystack.com/test",
+      orderId: "order-1",
+      reference: "checkout_ref_1",
+    });
+
+    await finalizeOnboardingSuccess({
+      data: {
+        selected_plan_id: "paid-plan",
+        selected_subscription_plan_id: "subscription-plan-paid",
+        requires_checkout: true,
+      },
+      formData: { selected_billing_period: "monthly" },
+      router: { replace: mockReplace } as never,
+      refreshProvider: mockRefresh,
+      userId: "user-1",
+      showSuccessAlert: false,
+      waitForCheckout,
+    });
+
+    expect(mockSetSubscriptionActivationPending).toHaveBeenCalled();
     expect(mockReplace).toHaveBeenCalledWith("/(app)/onboarding");
   });
 

@@ -34,6 +34,7 @@ export default function GroupAppointmentsSettings() {
   const [settings, setSettings] = useState({
     enableGroupBooking: false,
     allowOnlineGroupBooking: false,
+    allowSplitPayment: false,
     maxGroupSize: 5,
     enabledLocations: [] as string[], // Location IDs where group booking is enabled
     excludedServices: [] as string[], // Service IDs excluded from online group booking
@@ -52,12 +53,13 @@ export default function GroupAppointmentsSettings() {
         data: {
           enableGroupBooking: boolean;
           allowOnlineGroupBooking: boolean;
+          allowSplitPayment?: boolean;
           maxGroupSize: number;
           enabledLocations: string[];
           excludedServices: string[];
         };
       }>("/api/provider/settings/group-bookings");
-      setSettings(response.data);
+      setSettings({ ...response.data, allowSplitPayment: response.data.allowSplitPayment ?? false });
     } catch (error) {
       console.error("Failed to load settings:", error);
       toast.error(t("web.provider.settings.pages.appointment-activity/group-appointments.failedToLoadSettings"));
@@ -65,6 +67,7 @@ export default function GroupAppointmentsSettings() {
       setSettings({
         enableGroupBooking: false,
         allowOnlineGroupBooking: false,
+        allowSplitPayment: false,
         maxGroupSize: 5,
         enabledLocations: [],
         excludedServices: [],
@@ -100,6 +103,7 @@ export default function GroupAppointmentsSettings() {
       await fetcher.patch("/api/provider/settings/group-bookings", {
         enable_group_booking: settings.enableGroupBooking,
         allow_online_group_booking: settings.allowOnlineGroupBooking,
+        allow_split_payment: settings.allowSplitPayment,
         max_group_size: settings.maxGroupSize,
         enabled_locations: settings.enabledLocations,
         excluded_services: settings.excludedServices,
@@ -192,6 +196,26 @@ export default function GroupAppointmentsSettings() {
                     </p>
                   </div>
                 </div>
+
+                {settings.allowOnlineGroupBooking && (
+                  <div className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
+                    <Switch
+                      checked={settings.allowSplitPayment}
+                      onCheckedChange={(checked) =>
+                        setSettings({ ...settings, allowSplitPayment: checked })
+                      }
+                      className="mt-1"
+                    />
+                    <div className="flex-1">
+                      <Label className="text-base font-medium cursor-pointer">
+                        {t("web.provider.settings.pages.appointment-activity/group-appointments.allowSplitPayment")}
+                      </Label>
+                      <p className="text-sm text-gray-500 mt-1">
+                        {t("web.provider.settings.pages.appointment-activity/group-appointments.allowSplitPaymentHint")}
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {settings.allowOnlineGroupBooking && (
                   <div className="ms-0 sm:ms-12 space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">

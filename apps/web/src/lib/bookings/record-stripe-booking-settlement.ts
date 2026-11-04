@@ -30,6 +30,7 @@ export type RecordStripeBookingSettlementInput = {
     source: string;
     notes?: string | null;
     currency?: string | null;
+    providerData?: Record<string, unknown>;
   };
   auditLegStyle?: "shared" | "paystack_pay_remaining";
   descriptions?: { payment?: string; providerEarnings?: string };
@@ -67,6 +68,7 @@ export async function recordStripeBookingSettlement(
         source: input.recordPayment.source,
         notes: input.recordPayment.notes ?? null,
         currency: input.recordPayment.currency ?? null,
+        providerData: input.recordPayment.providerData ?? null,
       });
       if (recorded.ok === false) {
         return {

@@ -14,6 +14,7 @@ import { toast } from "sonner";
 
 interface TaxSettingsData {
   tax_rate_percent: number;
+  tax_inclusive: boolean;
   is_vat_registered: boolean;
   vat_number: string | null;
   isUsingPlatformDefault: boolean;
@@ -24,6 +25,7 @@ export default function TaxesSettings() {
   const [isVatRegistered, setIsVatRegistered] = useState<boolean>(false);
   const [vatNumber, setVatNumber] = useState<string>("");
   const [taxRate, setTaxRate] = useState<number>(0);
+  const [taxInclusive, setTaxInclusive] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -38,6 +40,7 @@ export default function TaxesSettings() {
         setIsVatRegistered(data.is_vat_registered ?? false);
         setVatNumber(data.vat_number || "");
         setTaxRate(Number(data.tax_rate_percent || 0));
+        setTaxInclusive(data.tax_inclusive ?? true);
       } catch {
         toast.error(t("web.provider.settings.pages.sales/taxes.failedToLoadTaxSettings"));
       } finally {
@@ -71,7 +74,7 @@ export default function TaxesSettings() {
         {
           is_vat_registered: isVatRegistered,
           vat_number: isVatRegistered ? vatNumber.trim() : null,
-          // Tax rate will be auto-set: 15% if VAT registered, 0% if not
+          tax_inclusive: taxInclusive,
         }
       );
       
@@ -79,6 +82,7 @@ export default function TaxesSettings() {
       setIsVatRegistered(data.is_vat_registered ?? false);
       setVatNumber(data.vat_number || "");
       setTaxRate(Number(data.tax_rate_percent || 0));
+      setTaxInclusive(data.tax_inclusive ?? true);
       
       toast.success(t("web.provider.settings.pages.sales/taxes.taxSettingsSavedSuccessfully"));
     } catch (e: any) {
@@ -198,6 +202,25 @@ export default function TaxesSettings() {
             </div>
           </SectionCard>
         )}
+
+        <SectionCard>
+          <div className="flex items-start space-x-3">
+            <Checkbox
+              id="tax-inclusive"
+              checked={taxInclusive}
+              onCheckedChange={(checked) => setTaxInclusive(checked === true)}
+              className="mt-1"
+            />
+            <div className="flex-1 space-y-1">
+              <Label htmlFor="tax-inclusive" className="text-base font-semibold cursor-pointer">
+                Prices include VAT
+              </Label>
+              <p className="text-sm text-gray-600">
+                When enabled, your retail and service prices already include VAT. When disabled, VAT is added at checkout.
+              </p>
+            </div>
+          </div>
+        </SectionCard>
 
         {/* Tax Rate Display (read-only, auto-calculated) */}
         <SectionCard>

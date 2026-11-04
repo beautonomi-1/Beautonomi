@@ -93,6 +93,7 @@ export function BookingPaymentCollectSection({
   const { outstanding, chargeAmount, depositAmount, fullOutstanding, paycloudContext } =
     useMemo(() => {
       const unpaidAdditional = Number(raw.unpaid_additional_charges ?? 0);
+      const pendingWalletGift = Math.max(0, Number(raw.pending_wallet_gift_amount ?? 0));
       const outstandingDisplay = computeBookingOutstandingDisplay({
         totalAmount: Number(appointment.total_amount ?? appointment.price ?? 0),
         totalPaid: Number(raw.total_paid ?? 0),
@@ -101,6 +102,7 @@ export function BookingPaymentCollectSection({
         giftCardAmount: Number(raw.gift_card_amount ?? 0),
         unpaidAdditionalCharges: unpaidAdditional,
         paymentStatus: appointment.payment_status,
+        pendingWalletGiftAmount: pendingWalletGift,
       });
       const charge = computePaycloudBookingChargeAmount({
         outstanding: outstandingDisplay,
@@ -108,6 +110,7 @@ export function BookingPaymentCollectSection({
         depositAmount: Number(raw.deposit_amount ?? 0),
         totalPaid: Number(raw.total_paid ?? 0),
         unpaidAdditionalCharges: unpaidAdditional,
+        pendingWalletGiftAmount: pendingWalletGift,
       });
       const context = inferBookingCollectContext({
         totalAmount: Number(appointment.total_amount ?? 0),

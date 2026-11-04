@@ -5,15 +5,17 @@ Auth entry paths are documented in [AUTH.md](./AUTH.md). After auth, subscriptio
 ## Web
 
 1. Logged out: `/provider/onboarding` → `/become-a-partner` → sign up or log in (provider context).
-2. Complete wizard; **free plan** → `/provider/get-started` with active free subscription.
-3. **Paid plan** → `/provider/subscription-checkout` → hosted checkout (Paystack or Stripe per region) → active paid row.
+2. Complete wizard; **free plan** → `/provider/get-started` with active free subscription row.
+3. **Paid plan** → `/provider/subscription-checkout?planId=…&billing_period=…` → hosted checkout (Paystack or Stripe per region) → active paid row replaces free baseline.
+4. **Abandon paid checkout** → provider still has free baseline + `pending_upgrade` on `provider_subscriptions`; setup checklist shows **Finish subscription upgrade**; Settings → Subscription shows billing banner.
 
 ## Mobile
 
 1. Sign up / log in (OTP, email, or OAuth) → root index → onboarding wizard.
-2. **Free plan** → setup hub, no payment.
-3. **Paid iOS** → App Store only; cancel shows “Payment cancelled” with Settings / Continue.
-4. **Paid Android** → upgrade + initialize-payment → in-app hosted checkout.
+2. **Free plan** → setup hub, no payment; free subscription row exists.
+3. **Paid iOS** → App Store only; cancel shows “Payment cancelled” with Settings / Continue; `pending_upgrade` remains until IAP verify succeeds.
+4. **Paid Android** → upgrade + initialize-payment → in-app hosted checkout; if webhook is slow, hub may show “activating” state until subscription poll succeeds.
+5. **Resume upgrade** → More → Subscription banner or setup checklist → complete checkout.
 
 ## Superadmin (web smoke)
 
@@ -34,6 +36,7 @@ Auth entry paths are documented in [AUTH.md](./AUTH.md). After auth, subscriptio
 
 ## Regression checks
 
-- Tenant pricing on web step 15 matches `GET /api/public/pricing/plans`.
-- Checkout total matches selected billing period (monthly vs yearly).
+- Tenant pricing on web step 15 matches `GET /api/public/pricing/plans` (onboarding filters out unlinked paid cards client-side).
+- Checkout total matches selected billing period (monthly vs yearly) on web step 15 and checkout page.
 - Stripe regions: upgrade returns `requires_payment` without Paystack customer errors.
+- Paid fulfilment clears `pending_upgrade_*` columns (Paystack/Stripe/Flutterwave via `charge-success`, Apple via IAP bridge, Paystack recurring via subscription webhooks).

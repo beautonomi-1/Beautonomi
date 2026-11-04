@@ -3,7 +3,7 @@ import { useTranslation } from "@beautonomi/i18n";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
-import { percentOf, sumMoney } from "@beautonomi/utils";
+import { computeVat } from "@beautonomi/utils";
 import {
   Search,
   Plus,
@@ -127,18 +127,18 @@ function buildWalkInProductFromBarcodeHit(
   };
 }
 
-function walkInCartTotals(cart: CartItem[], taxRatePercent = 0) {
-  let subtotal = 0;
-  let taxAmount = 0;
-  for (const c of cart) {
-    const line = c.unitPrice * c.qty;
-    subtotal += line;
-    taxAmount += percentOf(line, taxRatePercent);
-  }
+function walkInCartTotals(cart: CartItem[], taxRatePercent = 0, taxInclusive = true) {
+  const subtotal = cart.reduce((sum, c) => sum + c.unitPrice * c.qty, 0);
+  if (taxRatePercent <= 0) return { subtotal, taxAmount: 0, grandTotal: subtotal };
+  const split = computeVat({
+    baseAmount: subtotal,
+    ratePercent: taxRatePercent,
+    inclusive: taxInclusive,
+  });
   return {
     subtotal,
-    taxAmount,
-    grandTotal: sumMoney(subtotal, taxAmount),
+    taxAmount: split.taxAmount,
+    grandTotal: taxInclusive ? subtotal : split.grossAmount,
   };
 }
 
@@ -182,6 +182,7 @@ export default function WalkInSalePage() {
     setPendingOrderId(null);
   }, [cart]);
   const [walkInTaxRate, setWalkInTaxRate] = useState(0);
+  const [walkInTaxInclusive, setWalkInTaxInclusive] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [barcodeScanError, setBarcodeScanError] = useState("");
 
@@ -243,12 +244,14 @@ export default function WalkInSalePage() {
   const fetchTaxSettings = useCallback(async () => {
     try {
       const res = await fetcher.get<{
-        data?: { tax_rate_percent?: number; is_vat_registered?: boolean };
+        data?: { tax_rate_percent?: number; is_vat_registered?: boolean; tax_inclusive?: boolean };
         tax_rate_percent?: number;
         is_vat_registered?: boolean;
+        tax_inclusive?: boolean;
       }>("/api/provider/settings/sales/taxes");
       const raw = (res as any)?.data ?? res;
       setWalkInTaxRate(raw?.is_vat_registered ? Number(raw.tax_rate_percent || 0) : 0);
+      setWalkInTaxInclusive(raw?.tax_inclusive !== false);
     } catch {
       setWalkInTaxRate(0);
     }
@@ -383,8 +386,8 @@ export default function WalkInSalePage() {
   };
 
   const { subtotal, taxAmount, grandTotal } = useMemo(
-    () => walkInCartTotals(cart, walkInTaxRate),
-    [cart, walkInTaxRate],
+    () => walkInCartTotals(cart, walkInTaxRate, walkInTaxInclusive),
+    [cart, walkInTaxRate, walkInTaxInclusive],
   );
 
   const buildWalkInSalePayload = (overrides?: {
@@ -416,7 +419,7 @@ export default function WalkInSalePage() {
 
     if (res?.data?.order) {
       const serverTotal = parseFloat(String(res.data.order.total_amount ?? ""));
-      const fallback = walkInCartTotals(cart, walkInTaxRate).grandTotal;
+      const fallback = walkInCartTotals(cart, walkInTaxRate, walkInTaxInclusive).grandTotal;
       setSuccess({
         orderNumber: res.data.order.order_number,
         total: Number.isFinite(serverTotal) ? serverTotal : fallback,
@@ -793,7 +796,7 @@ export default function WalkInSalePage() {
                 <div className="border-t px-5 py-4">
                   <div className="mb-3 space-y-1 text-sm text-gray-600">
                     <div className="flex justify-between">
-                      <span>{walkInTaxRate > 0 ? t("web.provider.ecommerceWalkIn.subtotalExclVat") : t("web.provider.common.subtotal")}</span>
+                      <span>{walkInTaxRate > 0 && !walkInTaxInclusive ? t("web.provider.ecommerceWalkIn.subtotalExclVat") : t("web.provider.common.subtotal")}</span>
                       <span className="font-medium text-gray-900">{formatMoney(subtotal)}</span>
                     </div>
                     {taxAmount > 0 && (

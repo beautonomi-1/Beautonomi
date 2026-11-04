@@ -267,13 +267,28 @@ export async function GET(request: NextRequest) {
 
         const poCurrency = String(poBeforeRow.currency || "ZAR").toUpperCase();
         const amountMajor = convertFromSmallestUnit(Number(data.data.amount || 0), poCurrency);
-        const expectedMajor = Math.max(
-          0,
-          Number(poBeforeRow.total_amount ?? 0) -
-            Number(poBeforeRow.wallet_amount ?? 0) -
-            Number(poBeforeRow.gift_card_amount ?? 0),
-        );
-        if (Math.abs(amountMajor - expectedMajor) > 0.01 && existingReference !== reference) {
+        const { loadSuccessfulProductOrderCardCharges, priorProductOrderCardPayments, productOrderPaystackChargeIsAllowed } =
+          await import("@/lib/payments/resolve-paystack-initialize-amount");
+        const recordedCharges = await loadSuccessfulProductOrderCardCharges(admin, productOrderId);
+        if (recordedCharges.ok === false) {
+          return errorResponse(
+            "Could not confirm what has already been paid on this order.",
+            "PAYMENT_LOOKUP_FAILED",
+            500,
+          );
+        }
+        const priorCharges = priorProductOrderCardPayments(recordedCharges.rows, reference);
+        if (
+          !productOrderPaystackChargeIsAllowed({
+            total: Number(poBeforeRow.total_amount ?? 0),
+            wallet: Number(poBeforeRow.wallet_amount ?? 0),
+            gift: Number(poBeforeRow.gift_card_amount ?? 0),
+            priorCardPayments: priorCharges.priorCardPayments,
+            amountMajor,
+            referenceAlreadyRecorded: priorCharges.referenceAlreadyRecorded,
+          }) &&
+          existingReference !== reference
+        ) {
           return errorResponse(
             "Payment amount does not match this order.",
             "AMOUNT_MISMATCH",

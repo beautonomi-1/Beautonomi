@@ -11,6 +11,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import type { ExplorePost, ExploreComment } from "@/types/explore";
 import { firstSlideIsVideo, resolveExploreVideoSrc } from "@/lib/explore/video-media";
+import { getExploreVideoPlaybackTrimWindow } from "@/lib/explore/explore-video-playback-trim";
 import {
   filterOverlaysForPlaybackTime,
   shouldDrawVideoTextOverlays,
@@ -365,6 +366,14 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
   };
 
   const videoFirst = firstSlideIsVideo(post.media_urls, post.media_meta);
+  const videoTrimWindow = videoFirst
+    ? getExploreVideoPlaybackTrimWindow({
+        slide: post.media_meta?.[0],
+        mediaUrl: post.media_urls?.[0],
+        slideIndex: 0,
+        postPlaybackPath: post.playback_path,
+      })
+    : null;
   const activeSlideMeta = post.media_meta?.[mediaIndex] ?? post.media_meta?.[0];
   const videoOverlayLayers =
     videoFirst && shouldDrawVideoTextOverlays(activeSlideMeta)
@@ -374,10 +383,37 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
   const primaryMedia = videoFirst
     ? resolveExploreVideoSrc({
         mediaUrls: post.media_urls ?? [],
-        playbackPath: post.playback_path,
-        mediaMeta: post.media_meta,
+        playbackPath: videoTrimWindow ? null : post.playback_path,
+        mediaMeta: videoTrimWindow ? null : post.media_meta,
       })
     : photoSlides[mediaIndex] ?? post.display_url ?? post.media_urls?.[0];
+  const videoTrimHandlers = {
+    loop: !videoTrimWindow,
+    onLoadedMetadata: (e: React.SyntheticEvent<HTMLVideoElement>) => {
+      if (videoTrimWindow) e.currentTarget.currentTime = videoTrimWindow.trim_start_ms / 1000;
+    },
+    onTimeUpdate: (e: React.SyntheticEvent<HTMLVideoElement>) => {
+      const v = e.currentTarget;
+      const ms = Math.floor(v.currentTime * 1000);
+      if (!videoTrimWindow) {
+        setVideoTimeMs(ms);
+        return;
+      }
+      const { trim_start_ms: start, trim_end_ms: end } = videoTrimWindow;
+      if (ms >= end - 50 || ms < start - 300) {
+        v.currentTime = start / 1000;
+        setVideoTimeMs(0);
+        return;
+      }
+      setVideoTimeMs(ms - start);
+    },
+    onEnded: (e: React.SyntheticEvent<HTMLVideoElement>) => {
+      if (!videoTrimWindow) return;
+      const v = e.currentTarget;
+      v.currentTime = videoTrimWindow.trim_start_ms / 1000;
+      void v.play().catch(() => undefined);
+    },
+  };
   const primaryPoster = post.display_url ?? photoSlides[mediaIndex] ?? post.media_urls?.[0];
   const firstRelated = relatedPosts[0];
   const moreRelated = relatedPosts.slice(1, 13);
@@ -406,7 +442,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                     controls
                     playsInline
                     className="w-full h-full object-cover"
-                    onTimeUpdate={(e) => setVideoTimeMs(Math.floor(e.currentTarget.currentTime * 1000))}
+                    {...videoTrimHandlers}
                   />
                   <ExploreTextOverlayLayer overlays={videoOverlayLayers} />
                 </>
@@ -774,12 +810,13 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                 >
                   <div className="relative aspect-[4/5] w-full rounded-xl overflow-hidden bg-gray-100">
                     {p.media_urls?.[0] &&
-                      (isVideoUrl(p.media_urls[0]) ? (
-                        <video
-                          src={p.media_urls[0]}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                          muted
-                          playsInline
+                      (isVideoUrl(p.media_urls[0]) || p.media_meta?.[0]?.kind === "video" ? (
+                        <Image
+                          src={p.display_url ?? p.media_urls[0]}
+                          alt={p.caption || "Post"}
+                          fill
+                          className="object-cover group-hover:scale-105 transition-transform"
+                          sizes="50vw"
                         />
                       ) : (
                         <Image
@@ -820,7 +857,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                           controls
                           playsInline
                           className="w-full h-full object-cover"
-                          onTimeUpdate={(e) => setVideoTimeMs(Math.floor(e.currentTarget.currentTime * 1000))}
+                          {...videoTrimHandlers}
                         />
                         <ExploreTextOverlayLayer overlays={videoOverlayLayers} />
                       </>
@@ -1031,7 +1068,13 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                     <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">{t(`${pd}.moreLikeThis`)}</h2>
                     <Link href={`/explore/${firstRelated.id}`} className="block relative aspect-[4/5] max-h-64 w-full rounded-xl overflow-hidden bg-gray-100 group">
                       {isVideoUrl(firstRelated.media_urls[0]) ? (
-                        <video src={firstRelated.media_urls[0]} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" muted playsInline />
+                        <Image
+                          src={firstRelated.display_url ?? firstRelated.media_urls[0]}
+                          alt={firstRelated.caption || t(`${pd}.altRelated`)}
+                          fill
+                          className="object-cover group-hover:scale-105 transition-transform duration-300"
+                          sizes="400px"
+                        />
                       ) : (
                         <Image src={firstRelated.media_urls[0]} alt={firstRelated.caption || t(`${pd}.altRelated`)} fill className="object-cover group-hover:scale-105 transition-transform duration-300" sizes="400px" />
                       )}
@@ -1048,11 +1091,24 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                 {moreRelated.map((p) => (
                   <Link key={p.id} href={`/explore/${p.id}`} className="block break-inside-avoid mb-4 group">
                     <div className="relative aspect-[4/5] w-full rounded-xl overflow-hidden bg-gray-100">
-                      {p.media_urls?.[0] && (isVideoUrl(p.media_urls[0]) ? (
-                        <video src={p.media_urls[0]} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" muted playsInline />
-                      ) : (
-                        <Image src={p.media_urls[0]} alt={p.caption || "Post"} fill className="object-cover group-hover:scale-105 transition-transform duration-300" sizes="25vw" />
-                      ))}
+                      {p.media_urls?.[0] &&
+                        (isVideoUrl(p.media_urls[0]) || p.media_meta?.[0]?.kind === "video" ? (
+                          <Image
+                            src={p.display_url ?? p.media_urls[0]}
+                            alt={p.caption || "Post"}
+                            fill
+                            className="object-cover group-hover:scale-105 transition-transform duration-300"
+                            sizes="25vw"
+                          />
+                        ) : (
+                          <Image
+                            src={p.media_urls[0]}
+                            alt={p.caption || "Post"}
+                            fill
+                            className="object-cover group-hover:scale-105 transition-transform duration-300"
+                            sizes="25vw"
+                          />
+                        ))}
                     </div>
                     {p.caption && <p className="mt-2 text-sm text-gray-700 line-clamp-2">{p.caption}</p>}
                   </Link>

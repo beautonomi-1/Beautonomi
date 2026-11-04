@@ -15,6 +15,7 @@ vi.mock("@/lib/orders/record-product-order-payment", () => ({
 }));
 
 import { settlePaycloudPayment, reversePaycloudSettlement } from "../settle-paycloud-payment";
+import { capturedFundsCoverCharges } from "../settle-card-machine-payment";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 
 function chain(result: { data?: unknown; error?: unknown }) {
@@ -28,6 +29,32 @@ function chain(result: { data?: unknown; error?: unknown }) {
   api.insert = vi.fn(async () => ({ ...result, error: result.error ?? null }));
   return api;
 }
+
+describe("capturedFundsCoverCharges", () => {
+  it("does not treat a balance-only capture as payment for add-ons", () => {
+    expect(
+      capturedFundsCoverCharges({
+        captured: 100,
+        baseApplied: 100,
+        tip: 0,
+        cashback: 0,
+        chargesTotal: 25,
+      }),
+    ).toBe(false);
+  });
+
+  it("covers add-ons when the capture includes them on top of the balance and tip", () => {
+    expect(
+      capturedFundsCoverCharges({
+        captured: 135,
+        baseApplied: 100,
+        tip: 10,
+        cashback: 0,
+        chargesTotal: 25,
+      }),
+    ).toBe(true);
+  });
+});
 
 describe("settlePaycloudPayment", () => {
   beforeEach(() => {
@@ -87,6 +114,51 @@ describe("settlePaycloudPayment", () => {
     );
   });
 
+  it("leaves add-ons unpaid when the capture is only the booking balance", async () => {
+    const bookingPayments = chain({ data: null });
+    const bookings = chain({
+      data: {
+        id: "booking-1",
+        booking_number: "B1",
+        payment_status: "pending",
+        tenant_id: "tenant-1",
+        status: "confirmed",
+        total_amount: 100,
+        total_paid: 0,
+        total_refunded: 0,
+        wallet_amount: 0,
+        gift_card_amount: 0,
+        additional_charges: [
+          { id: "charge-1", amount: 25, status: "pending", description: "Add-on", currency: "ZAR" },
+        ],
+      },
+    });
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "booking_payments") return bookingPayments;
+        if (table === "bookings") return bookings;
+        return chain({ data: null });
+      }),
+    } as never;
+
+    const result = await settlePaycloudPayment(supabase, {
+      paymentId: "pay-2",
+      providerId: "provider-1",
+      entityType: "booking",
+      entityId: "booking-1",
+      amount: 100,
+      paycloudOrderId: "pc-order-2",
+      merchantOrderNo: "BN124",
+      processedBy: "user-1",
+    });
+
+    expect(result.settled).toBe(true);
+    expect(rpcMock).not.toHaveBeenCalledWith(
+      "record_walk_in_additional_charge_payment",
+      expect.anything(),
+    );
+  });
+
   it("settles additional_charge via RPC on additional_charges table only", async () => {
     adminFromMock.mockImplementation((table: string) => {
       if (table === "additional_charges") {
@@ -133,6 +205,31 @@ describe("settlePaycloudPayment", () => {
   });
 
   it("settles product_order via recordProductOrderPayment", async () => {
+    adminFromMock.mockImplementation((table: string) => {
+      if (table === "payment_transactions") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          filter: vi.fn().mockResolvedValue({ data: [], error: null }),
+        };
+      }
+      return chain({
+        data: {
+          id: "order-1",
+          total_amount: 80,
+          wallet_amount: 0,
+          gift_card_amount: 0,
+          order_source: "online",
+          status: "pending",
+          provider_id: "provider-1",
+        },
+      });
+    });
+    vi.mocked(recordProductOrderPayment).mockResolvedValueOnce({
+      ok: true,
+      duplicate: false,
+      transitionedToPaid: true,
+    });
     const supabase = { from: vi.fn() } as never;
     const result = await settlePaycloudPayment(supabase, {
       paymentId: "pay-3",

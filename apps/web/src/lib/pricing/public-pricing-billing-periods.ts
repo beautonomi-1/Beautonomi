@@ -3,7 +3,20 @@ export type LinkedSubscriptionPlanPrices = {
   price_monthly: number | null;
   price_yearly: number | null;
   currency: string | null;
+  is_free?: boolean | null;
+  apple_product_id_monthly?: string | null;
+  apple_product_id_yearly?: string | null;
 };
+
+export function buildIosPurchasablePeriods(linked?: {
+  apple_product_id_monthly?: string | null;
+  apple_product_id_yearly?: string | null;
+} | null): ("monthly" | "yearly")[] {
+  const periods: ("monthly" | "yearly")[] = [];
+  if (linked?.apple_product_id_monthly?.trim()) periods.push("monthly");
+  if (linked?.apple_product_id_yearly?.trim()) periods.push("yearly");
+  return periods;
+}
 
 export function buildPublicPricingBillingPeriods(input: {
   isFree: boolean;
@@ -60,7 +73,9 @@ export async function loadLinkedSubscriptionPlanPrices(
   }
   const { data } = await supabase
     .from("subscription_plans")
-    .select("id, price_monthly, price_yearly, currency")
+    .select(
+      "id, price_monthly, price_yearly, currency, is_free, apple_product_id_monthly, apple_product_id_yearly",
+    )
     .eq("id", id)
     .maybeSingle();
   if (!data) {
@@ -70,12 +85,18 @@ export async function loadLinkedSubscriptionPlanPrices(
     price_monthly?: number | null;
     price_yearly?: number | null;
     currency?: string | null;
+    is_free?: boolean | null;
+    apple_product_id_monthly?: string | null;
+    apple_product_id_yearly?: string | null;
   };
   return {
     subscription_plan_id: id,
     price_monthly: row.price_monthly != null ? Number(row.price_monthly) : null,
     price_yearly: row.price_yearly != null ? Number(row.price_yearly) : null,
     currency: row.currency ?? null,
+    is_free: row.is_free ?? null,
+    apple_product_id_monthly: row.apple_product_id_monthly ?? null,
+    apple_product_id_yearly: row.apple_product_id_yearly ?? null,
   };
 }
 
@@ -89,7 +110,9 @@ export async function loadLinkedSubscriptionPlanPricesMap(
 
   const { data: rows } = await supabase
     .from("subscription_plans")
-    .select("id, price_monthly, price_yearly, currency")
+    .select(
+      "id, price_monthly, price_yearly, currency, is_free, apple_product_id_monthly, apple_product_id_yearly",
+    )
     .in("id", unique);
 
   for (const raw of rows ?? []) {
@@ -98,11 +121,17 @@ export async function loadLinkedSubscriptionPlanPricesMap(
       price_monthly?: number | null;
       price_yearly?: number | null;
       currency?: string | null;
+      is_free?: boolean | null;
+      apple_product_id_monthly?: string | null;
+      apple_product_id_yearly?: string | null;
     };
     map.set(row.id, {
       price_monthly: row.price_monthly != null ? Number(row.price_monthly) : null,
       price_yearly: row.price_yearly != null ? Number(row.price_yearly) : null,
       currency: row.currency ?? null,
+      is_free: row.is_free ?? null,
+      apple_product_id_monthly: row.apple_product_id_monthly ?? null,
+      apple_product_id_yearly: row.apple_product_id_yearly ?? null,
     });
   }
   return map;

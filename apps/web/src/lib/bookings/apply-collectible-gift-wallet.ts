@@ -6,9 +6,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { isGiftCardsEnabledForTenant, isWalletEnabledForTenant } from "@/lib/subscriptions/entitlements";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import {
+  buildSyntheticWalletGiftProviderId,
   completeWalletGiftSyntheticPayments,
   ensureWalletGiftBookingPayments,
 } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
+import { giftRedemptionCreditDecision } from "@/lib/bookings/checkout-bill-adjustment";
 import { computeCollectibleSplits } from "@/lib/bookings/compute-collectible-splits";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 
@@ -98,6 +100,8 @@ export async function applyCollectibleGiftAndWallet(
   let giftCardAmountApplied = 0;
   let walletAmountApplied = 0;
   let resolvedGiftCardId: string | null = null;
+  let giftHoldCreated = false;
+  let giftColumnIncreased = false;
 
   const ledgerTenantId = await resolveTenantIdForFinanceLedger(admin, {
     tenant_id: tenantId,
@@ -122,9 +126,49 @@ export async function applyCollectibleGiftAndWallet(
       };
     }
     const row = Array.isArray(reserved) ? reserved[0] : reserved;
+    const remainingBalance = row?.remaining_balance == null ? null : Number(row.remaining_balance);
+    giftHoldCreated = remainingBalance != null;
+    const { data: redemptionRow } = await admin
+      .from("gift_card_redemptions")
+      .select("amount, status")
+      .eq("booking_id", bookingId)
+      .limit(1)
+      .maybeSingle();
+    const { data: recordedGiftRows } = await admin
+      .from("booking_payments")
+      .select("amount")
+      .eq("booking_id", bookingId)
+      .eq("payment_provider", "gift_card")
+      .in("status", ["pending", "completed", "partially_refunded"]);
+    const recordedGiftPayments = (recordedGiftRows ?? []).reduce(
+      (sum, payment) => sum + Number((payment as { amount?: number }).amount || 0),
+      0,
+    );
+    const giftLegId = buildSyntheticWalletGiftProviderId("gift_card", bookingId, paymentLegSuffix);
+    const { data: existingGiftPay } = await admin
+      .from("booking_payments")
+      .select("id")
+      .eq("payment_provider_id", giftLegId)
+      .maybeSingle();
+    const giftDecision = giftRedemptionCreditDecision({
+      remainingBalance,
+      redemptionAmount: redemptionRow == null ? null : Number((redemptionRow as { amount?: number }).amount),
+      redemptionStatus: redemptionRow == null ? null : String((redemptionRow as { status?: string }).status ?? ""),
+      giftApply: giftCardAmount,
+      existingCheckoutPayment: Boolean(existingGiftPay),
+      recordedGiftPayments,
+    });
+    if (giftDecision === "reject") {
+      return {
+        ok: false,
+        error:
+          "This booking already has a gift card redemption. A second gift card cannot be applied to the same booking.",
+        code: "GIFT_CARD_ALREADY_APPLIED",
+      };
+    }
     resolvedGiftCardId = row?.gift_card_id ?? giftCardId;
     giftCardAmountApplied = giftCardAmount;
-
+    if (giftDecision === "credit" && giftHoldCreated) {
     const { data: bookingRow } = await admin
       .from("bookings")
       .select("gift_card_amount, gift_card_id")
@@ -138,6 +182,8 @@ export async function applyCollectibleGiftAndWallet(
         gift_card_amount: Math.round((prevGift + giftCardAmountApplied) * 100) / 100,
       })
       .eq("id", bookingId);
+      giftColumnIncreased = true;
+    }
   }
 
   if (useWallet && walletAmount > 0) {
@@ -149,7 +195,21 @@ export async function applyCollectibleGiftAndWallet(
       p_tenant_id: ledgerTenantId,
     });
     if (walletErr || !debitResult) {
-      if (giftCardAmountApplied > 0) {
+      if (giftHoldCreated) {
+        if (giftColumnIncreased && giftCardAmountApplied > 0) {
+          const { data: bookingRow } = await admin
+            .from("bookings")
+            .select("gift_card_amount")
+            .eq("id", bookingId)
+            .maybeSingle();
+          const prevGift = Number((bookingRow as { gift_card_amount?: number } | null)?.gift_card_amount ?? 0);
+          await admin
+            .from("bookings")
+            .update({
+              gift_card_amount: Math.max(0, Math.round((prevGift - giftCardAmountApplied) * 100) / 100),
+            })
+            .eq("id", bookingId);
+        }
         await (admin.rpc as any)("void_gift_card_redemption", { p_booking_id: bookingId }).catch(() => {});
       }
       return {
@@ -180,7 +240,9 @@ export async function applyCollectibleGiftAndWallet(
     tenantId,
     walletAmount: walletAmountApplied,
     giftCardAmount: giftCardAmountApplied,
-    initialStatus: cardLegPending ? "pending" : "completed",
+    // Pending until the caller writes the finance rows. Inserting `completed` here
+    // fires the payment trigger before that ledger and posts the charge twice.
+    initialStatus: cardLegPending || deferFullSettlement ? "pending" : "completed",
     paymentLegSuffix,
   });
 
@@ -189,7 +251,7 @@ export async function applyCollectibleGiftAndWallet(
   }
 
   if (!deferFullSettlement && !cardLegPending) {
-    await completeWalletGiftSyntheticPayments(admin, bookingId);
+    await completeWalletGiftSyntheticPayments(admin, bookingId, { paymentLegSuffix });
     await syncBookingAfterPaystackSuccess(admin, bookingId, {
       paymentProvider: walletAmountApplied > 0 ? "wallet" : "gift_card",
     });

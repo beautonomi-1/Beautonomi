@@ -66,6 +66,8 @@ interface FinanceEarnings {
     excluded_provider_collected: number;
     already_paid_out: number;
     pending_payouts: number;
+    open_dispute_reserve?: number;
+    vat_held_for_provider?: number;
     available_balance: number;
   };
 }

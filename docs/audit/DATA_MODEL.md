@@ -100,7 +100,7 @@ The database is managed through **229 sequential SQL migrations** in `beautonomi
 | `availability_blocks` | Available windows | provider_id, staff_id, day_of_week, start_time, end_time | Custom availability |
 | `recurring_appointments` | Recurring booking templates | provider_id, customer_id, pattern, next_occurrence | Auto-creates bookings |
 | `group_booking_settings` | Group class config | provider_id, max_participants, enabled | |
-| `group_booking_participants` | Participants in groups | booking_id, user_id, status | |
+| `booking_participants` | Participants in groups | group_booking_id, booking_id, participant_name, is_primary_contact | |
 | `waitlist_entries` | Waitlist queue | provider_id, customer_id, service_id, preferred_date | |
 | `waiting_room_entries` | Day-of waiting room | provider_id, customer_id, status, check_in_time | |
 

@@ -13,9 +13,9 @@ import { adminSpaTo } from "@/lib/adminSpaPath";
  */
 export function AdminBreadcrumbs() {
   const { pathname } = useLocation();
-  const { leafLabel } = useAdminBreadcrumbContext();
+  const { leafLabel, parentHref } = useAdminBreadcrumbContext();
 
-  const crumbs = breadcrumbsForPath(pathname, leafLabel);
+  const crumbs = breadcrumbsForPath(pathname, leafLabel, parentHref);
 
   // Only render when there are 2+ crumbs (leaf + at least one parent)
   if (crumbs.length < 2) return null;

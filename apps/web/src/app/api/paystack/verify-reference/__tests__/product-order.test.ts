@@ -79,9 +79,19 @@ function productOrdersQuery(row: Record<string, unknown> | null) {
   };
 }
 
+function paymentTransactionsQuery() {
+  const chain = {
+    select: vi.fn(() => chain),
+    eq: vi.fn(() => chain),
+    filter: vi.fn(async () => ({ data: [], error: null })),
+  };
+  return chain;
+}
+
 function mockSupabase(orderRow: Record<string, unknown> | null) {
   return {
     from: vi.fn((table: string) => {
+      if (table === "payment_transactions") return paymentTransactionsQuery();
       if (table !== "product_orders") throw new Error(`Unexpected table ${table}`);
       return productOrdersQuery(orderRow);
     }),

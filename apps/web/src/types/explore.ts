@@ -71,6 +71,9 @@ export interface ExplorePost {
   sound_id?: string | null;
   /** Resolved public URL when sound_id is set (feed/detail APIs). */
   sound_url?: string | null;
+  /** Provider mine / admin only */
+  is_hidden?: boolean;
+  moderation_notes?: string | null;
 }
 
 export interface ExploreCommentAuthor {

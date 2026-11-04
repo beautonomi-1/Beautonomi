@@ -92,6 +92,22 @@ describe("GET /api/provider/group-bookings/[id] participant booking_status", () 
 
     mockGetSupabaseAdmin.mockReturnValue({
       from: vi.fn().mockImplementation((table: string) => {
+        if (table === "booking_participants") {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+            }),
+          };
+        }
+        if (table === "booking_payments") {
+          const result = { data: [], error: null };
+          const query = {
+            select: vi.fn(() => query),
+            eq: vi.fn(() => query),
+            in: vi.fn().mockResolvedValue(result),
+          };
+          return query;
+        }
         if (table !== "group_bookings") throw new Error(`unexpected table ${table}`);
         return {
           select: vi.fn().mockReturnValue({

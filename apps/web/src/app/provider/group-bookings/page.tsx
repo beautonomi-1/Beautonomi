@@ -41,7 +41,31 @@ function GroupBookingsPageInner() {
   const { t } = useTranslation();
   const { formatLocale } = useLocale();
   const { hasPermission, isOwner } = usePermissions();
-  const canCreateGroups = isOwner || hasPermission("create_appointments");
+  const canCreateGroupsPermission = isOwner || hasPermission("create_appointments");
+  const [staffGroupBookingEnabled, setStaffGroupBookingEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/provider/settings/group-bookings");
+        if (!res.ok) return;
+        const json = (await res.json()) as { data?: { enableGroupBooking?: boolean } };
+        if (!cancelled) {
+          setStaffGroupBookingEnabled(Boolean(json.data?.enableGroupBooking));
+        }
+      } catch {
+        if (!cancelled) setStaffGroupBookingEnabled(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const canCreateGroups =
+    canCreateGroupsPermission &&
+    (staffGroupBookingEnabled === null ? true : staffGroupBookingEnabled);
   const canEditGroups = isOwner || hasPermission("edit_appointments");
   const canCancelGroups =
     isOwner || hasPermission("cancel_appointments") || hasPermission("edit_appointments");

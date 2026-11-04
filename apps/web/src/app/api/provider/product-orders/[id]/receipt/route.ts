@@ -10,7 +10,7 @@ import {
 import { hasPermission, isProviderOwner } from "@/lib/auth/permissions";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
-import { buildOrderReceiptCore } from "@/lib/receipts/build-order-receipt";
+import { buildOrderReceiptCore, loadProductOrderReceiptCardPaid } from "@/lib/receipts/build-order-receipt";
 
 type OrderItemRow = {
   product_name?: string | null;
@@ -176,9 +176,11 @@ export async function GET(
       : null;
     const currencyFallback = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
+    const cardPaid = await loadProductOrderReceiptCardPaid(admin, id);
     const core = buildOrderReceiptCore({
       order: order as unknown as Record<string, unknown>,
       items: order.items ?? [],
+      cardPaid,
     });
 
     const prov = order.provider as {
@@ -226,6 +228,7 @@ export async function GET(
       discount: core.discount,
       platform_fee: core.platformFee,
       wallet_amount: core.walletPaid,
+      gift_card_amount: core.giftPaid,
       total: core.totalFromRow,
       currency: order.currency || currencyFallback,
       payment_status: order.payment_status,

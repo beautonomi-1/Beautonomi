@@ -48,6 +48,9 @@ type Participant = {
   booking_number: string | null;
   total_paid?: number;
   total_refunded?: number;
+  share_amount_due?: number | null;
+  share_amount_paid?: number;
+  share_status?: string | null;
 };
 
 type GroupProduct = {
@@ -207,6 +210,62 @@ export default function GroupBookingDetailScreen() {
     (key: string, opts?: Record<string, string | number>) =>
       String(t(`customer.mobile.screens.bookingDetail.${key}`, opts as never)),
     [t],
+  );
+
+  const [guestActionId, setGuestActionId] = useState<string | null>(null);
+  const groupOpen = data != null && !["completed", "cancelled", "started", "in_progress"].includes(data.status);
+
+  const resendInvite = useCallback(
+    async (participantId: string) => {
+      setGuestActionId(participantId);
+      const res = await api.post(
+        `/api/me/group-bookings/${encodeURIComponent(id)}/participants/${encodeURIComponent(participantId)}/invite`,
+        {},
+      );
+      setGuestActionId(null);
+      if (res.error) {
+        Alert.alert(gbd("inviteResendFailed"), getApiErrorMessage(res.error));
+        return;
+      }
+      haptic.success();
+      Alert.alert(gbd("inviteResent"));
+    },
+    [gbd, id],
+  );
+
+  const cancelGuest = useCallback(
+    (participant: Participant) => {
+      const self = participant.is_current_user;
+      Alert.alert(
+        self ? gbd("cancelMySpot") : gbd("removeGuest"),
+        self ? gbd("cancelMySpotConfirm") : gbd("removeGuestConfirm", { name: participant.name }),
+        [
+          { text: t("common.cancel") as string, style: "cancel" },
+          {
+            text: self ? gbd("cancelMySpot") : gbd("removeGuest"),
+            style: "destructive",
+            onPress: () => {
+              void (async () => {
+                setGuestActionId(participant.id);
+                const res = await api.post(
+                  `/api/me/group-bookings/${encodeURIComponent(id)}/participants/${encodeURIComponent(participant.id)}/cancel`,
+                  {},
+                );
+                setGuestActionId(null);
+                if (res.error) {
+                  Alert.alert(gbd("guestCancelFailed"), getApiErrorMessage(res.error));
+                  return;
+                }
+                haptic.success();
+                Alert.alert(self ? gbd("spotCancelled") : gbd("guestRemoved"));
+                await load(true);
+              })();
+            },
+          },
+        ],
+      );
+    },
+    [gbd, id, load, t],
   );
 
   const submitReschedule = useCallback(async () => {
@@ -489,6 +548,58 @@ export default function GroupBookingDetailScreen() {
                           {gbd("bookingDetailsUnavailable")}
                         </Text>
                       )}
+                      {!p.is_primary_contact && p.share_status ? (
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: "600",
+                            marginTop: 4,
+                            color:
+                              p.share_status === "paid"
+                                ? "#15803D"
+                                : p.share_status === "cancelled"
+                                  ? Colors.gray[500]
+                                  : "#92400E",
+                          }}
+                        >
+                          {p.share_status === "paid"
+                            ? gbd("shareStatusPaid")
+                            : p.share_status === "cancelled"
+                              ? gbd("shareStatusCancelled")
+                              : gbd("shareStatusPending", {
+                                  amount: formatGroupMoney(
+                                    Math.max(0, Number(p.share_amount_due ?? 0) - Number(p.share_amount_paid ?? 0)),
+                                    data.currency,
+                                  ),
+                                })}
+                        </Text>
+                      ) : null}
+                      {groupOpen && !p.is_primary_contact && !p.booking_id && p.share_status !== "cancelled" ? (
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+                          {data.is_primary_payer && p.share_status === "pending" ? (
+                            <TouchableOpacity
+                              accessibilityRole="button"
+                              disabled={guestActionId === p.id}
+                              onPress={() => void resendInvite(p.id)}
+                              style={{ borderWidth: 1, borderColor: Colors.gray[300], borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 }}
+                            >
+                              <Text style={{ fontSize: 12, fontWeight: "700", color: Colors.gray[800] }}>{gbd("resendInvite")}</Text>
+                            </TouchableOpacity>
+                          ) : null}
+                          {data.is_primary_payer || p.is_current_user ? (
+                            <TouchableOpacity
+                              accessibilityRole="button"
+                              disabled={guestActionId === p.id}
+                              onPress={() => cancelGuest(p)}
+                              style={{ borderWidth: 1, borderColor: "#FCA5A5", borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 }}
+                            >
+                              <Text style={{ fontSize: 12, fontWeight: "700", color: "#B91C1C" }}>
+                                {p.is_current_user ? gbd("cancelMySpot") : gbd("removeGuest")}
+                              </Text>
+                            </TouchableOpacity>
+                          ) : null}
+                        </View>
+                      ) : null}
                     </View>
                     {p.booking_id ? <DirectionalIcon name="chevron-forward" size={18} color={Colors.gray[400]} style={{ marginTop: 2 }} /> : null}
                   </View>

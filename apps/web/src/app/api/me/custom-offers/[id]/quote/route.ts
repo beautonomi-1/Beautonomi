@@ -47,7 +47,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { data: offerRow, error: offerError } = await supabase
       .from("custom_offers")
       .select(
-        "*, request:custom_requests(id, customer_id, provider_id, preferred_start_at, location_type, status)",
+        "*, request:custom_requests(id, customer_id, provider_id, preferred_start_at, location_type, status, expires_at)",
       )
       .eq("id", id)
       .single();
@@ -63,6 +63,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         provider_id?: string;
         location_type?: string;
         status?: string;
+        expires_at?: string | null;
       } | null;
     };
     const req = offer.request;
@@ -163,9 +164,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       });
     }
 
+    const offerMeta = offerRow as { status?: string; expiration_at?: string | null; payment_url?: string | null };
+    const offerStatus = offerMeta.status;
+    const now = Date.now();
+    const requestClosed =
+      req.status === "cancelled" ||
+      req.status === "fulfilled" ||
+      req.status === "expired" ||
+      req.status === "declined" ||
+      (req.expires_at != null && new Date(req.expires_at).getTime() < now);
+    const offerExpired = offerMeta.expiration_at != null && new Date(offerMeta.expiration_at).getTime() < now;
+    const canPay =
+      !requestClosed &&
+      !offerExpired &&
+      (offerStatus === "pending" || (offerStatus === "payment_pending" && Boolean(offerMeta.payment_url)));
+
     return successResponse({
       offer_id: id,
-      status: (offerRow as { status?: string }).status,
+      status: offerStatus,
+      /** Mirrors the accept/pay guards; false for changes_requested, closed or expired offers. */
+      can_pay: canPay,
       booking_id: (offerRow as { booking_id?: string | null }).booking_id ?? null,
       pricing: pricing.result,
       deposit: {

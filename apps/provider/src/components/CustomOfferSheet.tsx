@@ -13,6 +13,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useApi } from "@/hooks/useApi";
 import { useBookingAvailableSlots } from "@/hooks/useBookingAvailableSlots";
 import { api } from "@/lib/api-client";
+import { appendUploadFile } from "@/lib/form-data-file";
 import { twStyle } from "@/lib/twStyle";
 import { getCachedConfigBundle, getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { AddressAutocomplete, type ParsedAddress } from "@/components/ui/AddressAutocomplete";
@@ -20,6 +21,8 @@ import { countryFilterIso2FromStorage } from "@beautonomi/utils";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { useProvider } from "@/providers/ProviderContext";
 import { useTranslation } from "@beautonomi/i18n";
+import * as ImagePicker from "expo-image-picker";
+import { launchImageLibraryWithPermission, PERMISSION_COPY } from "@/lib/native-permissions";
 
 export interface CustomOfferSheetProps {
   visible: boolean;
@@ -104,6 +107,8 @@ export function CustomOfferSheet({
   const [duration, setDuration] = useState("60");
   const [expirationDays, setExpirationDays] = useState("7");
   const [notes, setNotes] = useState("");
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
   const [locationType, setLocationType] = useState<"at_salon" | "at_home">("at_salon");
   const [locationId, setLocationId] = useState<string | null>(null);
   const [staffId, setStaffId] = useState<string | null>(null);
@@ -203,7 +208,46 @@ export function CustomOfferSheet({
     setTravelPreviewMinutes(null);
     travelFeeUserLockedRef.current = false;
     setCategoryQuery("");
+    setImageUrls([]);
+    setUploadingImages(false);
   }, []);
+
+  const pickInspirationPhotos = useCallback(async () => {
+    if (imageUrls.length >= 6) return;
+    const result = await launchImageLibraryWithPermission(
+      {
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: true,
+        selectionLimit: Math.max(1, 6 - imageUrls.length),
+        quality: 0.85,
+      },
+      PERMISSION_COPY.photosAttach,
+    );
+    if (!result || result.canceled || !result.assets?.length) return;
+    setUploadingImages(true);
+    try {
+      const formData = new FormData();
+      for (const asset of result.assets) {
+        await appendUploadFile(formData, "files", {
+          uri: asset.uri,
+          name: asset.fileName ?? "photo.jpg",
+          type: asset.mimeType ?? "image/jpeg",
+        });
+      }
+      const res = await api.fetch<{ urls?: string[] }>("/api/provider/custom-offers/upload", {
+        method: "POST",
+        body: formData,
+      });
+      if (res.error) {
+        Alert.alert(co("errorTitle"), res.error.message ?? co("sendFailed"));
+        return;
+      }
+      const urls = res.data?.urls ?? [];
+      if (urls.length) setImageUrls((prev) => [...prev, ...urls].slice(0, 6));
+    } finally {
+      setUploadingImages(false);
+    }
+  }, [co, imageUrls.length]);
 
   const handleClose = useCallback(() => {
     resetForm();
@@ -358,6 +402,7 @@ export function CustomOfferSheet({
       if (serviceCategoryId) payload.service_category_id = serviceCategoryId;
       if (locationType === "at_salon" && locationId) payload.location_id = locationId;
       if (staffId) payload.staff_id = staffId;
+      if (imageUrls.length > 0) payload.image_urls = imageUrls;
       payload.preferred_start_at = buildZonedIsoForWallClock(
         selectedDateKey,
         selectedTimeKey,
@@ -733,6 +778,19 @@ export function CustomOfferSheet({
             </Text>
           </>
         )}
+
+        <TouchableOpacity
+          onPress={() => void pickInspirationPhotos()}
+          disabled={uploadingImages || imageUrls.length >= 6}
+          style={twStyle("mb-3 rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-3")}
+        >
+          <Text style={twStyle("text-sm font-semibold text-primary")}>
+            {uploadingImages ? co("uploadingPhotos") : co("addPhotos")}
+          </Text>
+          {imageUrls.length > 0 ? (
+            <Text style={twStyle("mt-1 text-xs text-gray-600")}>{co("photosAttached", { count: imageUrls.length })}</Text>
+          ) : null}
+        </TouchableOpacity>
 
         <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{co("notesOptional")}</Text>
         <TextInput

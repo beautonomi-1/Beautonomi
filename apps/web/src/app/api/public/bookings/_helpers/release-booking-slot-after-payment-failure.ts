@@ -18,7 +18,7 @@ export async function releaseBookingSlotAfterPaymentFailure(
 ): Promise<void> {
   const { data: row, error: fetchErr } = await adminSupabase
     .from("bookings")
-    .select("id, wallet_amount, currency, tenant_id, provider_id")
+    .select("id, wallet_amount, gift_card_amount, currency, tenant_id, provider_id")
     .eq("id", bookingId)
     .eq("customer_id", customerId)
     .maybeSingle();
@@ -32,10 +32,14 @@ export async function releaseBookingSlotAfterPaymentFailure(
     return;
   }
 
+  let giftCapturedNotRestored = false;
   try {
-    const { error: voidErr } = await (adminSupabase.rpc as any)("void_gift_card_redemption", {
+    const { data: voided, error: voidErr } = await (adminSupabase.rpc as any)("void_gift_card_redemption", {
       p_booking_id: bookingId,
     });
+    // Credit the wallet only when the void answered and the card was not restored.
+    // A void error leaves a reserved hold in place; crediting as well would pay twice.
+    giftCapturedNotRestored = voided === false && !voidErr;
     if (voidErr) {
       console.warn(
         "[releaseBookingSlotAfterPaymentFailure] void_gift_card_redemption",
@@ -45,6 +49,36 @@ export async function releaseBookingSlotAfterPaymentFailure(
     }
   } catch (e) {
     console.warn("[releaseBookingSlotAfterPaymentFailure] void_gift_card_redemption", bookingId, e);
+  }
+
+  const giftHeld = Number((row as { gift_card_amount?: unknown }).gift_card_amount ?? 0);
+  if (giftCapturedNotRestored && giftHeld > 0.009) {
+    try {
+      const currency = String((row as { currency?: string }).currency || LAST_RESORT_CURRENCY);
+      const walletTenantId = await resolveTenantIdForFinanceLedger(adminSupabase, {
+        tenant_id: (row as { tenant_id?: string | null }).tenant_id,
+        provider_id: (row as { provider_id?: string | null }).provider_id,
+      });
+      const { error: giftCreditErr } = await (adminSupabase.rpc as any)("wallet_credit_admin", {
+        p_user_id: customerId,
+        p_amount: giftHeld,
+        p_currency: currency,
+        p_description: `Reversal: gift card could not be restored (${bookingId.slice(0, 8)})`,
+        p_reference_id: bookingId,
+        p_reference_type: "booking",
+        p_tenant_id: walletTenantId,
+        p_idempotency_key: `booking_payment_failure_gift:${bookingId}`,
+      });
+      if (giftCreditErr) {
+        console.error(
+          "[releaseBookingSlotAfterPaymentFailure] gift wallet credit",
+          bookingId,
+          giftCreditErr
+        );
+      }
+    } catch (e) {
+      console.error("[releaseBookingSlotAfterPaymentFailure] gift wallet credit", bookingId, e);
+    }
   }
 
   try {

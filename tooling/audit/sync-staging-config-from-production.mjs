@@ -21,7 +21,6 @@ const CONFIG_TABLES = [
   { table: "notification_template_translations", onConflict: "template_key,language_code" },
   { table: "region_settings", onConflict: "region_id" },
   { table: "payment_gateway_fee_configs", onConflict: "id" },
-  { table: "tax_rates", onConflict: "id" },
   { table: "iso_languages", onConflict: "code" },
   { table: "iso_locales", onConflict: "code" },
   { table: "iso_timezones", onConflict: "code" },
@@ -206,7 +205,7 @@ async function buildRegionIdMap(prod, stage) {
 
 const STRIP_USER_FKS = ["updated_by", "created_by", "author_id"];
 
-function remapEnvIds(row, tenantIdMap, regionIdMap) {
+function remapEnvIds(row, tenantIdMap, regionIdMap, subscriptionPlanIdMap = null) {
   const out = { ...row };
   if (out.tenant_id && tenantIdMap.has(out.tenant_id)) {
     out.tenant_id = tenantIdMap.get(out.tenant_id);
@@ -214,10 +213,30 @@ function remapEnvIds(row, tenantIdMap, regionIdMap) {
   if (out.region_id && regionIdMap.has(out.region_id)) {
     out.region_id = regionIdMap.get(out.region_id);
   }
+  if (subscriptionPlanIdMap && "subscription_plan_id" in out) {
+    out.subscription_plan_id = out.subscription_plan_id
+      ? (subscriptionPlanIdMap.get(out.subscription_plan_id) ?? null)
+      : null;
+  }
   for (const k of STRIP_USER_FKS) {
     if (k in out) out[k] = null;
   }
   return out;
+}
+
+async function buildSubscriptionPlanIdMap(prod, stage, tenantIdMap) {
+  const prodPlans = await fetchAll(prod, "subscription_plans");
+  const stagePlans = await fetchAll(stage, "subscription_plans");
+  const keyOf = (tenantId, slug) => `${tenantId ?? ""}:${slug}`;
+  const stageByKey = new Map(stagePlans.map((plan) => [keyOf(plan.tenant_id, plan.slug), plan]));
+  const idMap = new Map();
+  for (const plan of prodPlans) {
+    const mappedTenant = plan.tenant_id ? (tenantIdMap.get(plan.tenant_id) ?? null) : null;
+    if (plan.tenant_id && !mappedTenant) continue;
+    const match = stageByKey.get(keyOf(mappedTenant, plan.slug));
+    if (match) idMap.set(plan.id, match.id);
+  }
+  return idMap;
 }
 
 async function syncRegionsByCode(prod, stage, report) {
@@ -301,7 +320,16 @@ async function ensureStagingE2ePreviewDomains(stage, report) {
 }
 
 /** Rows keyed by (tenant_id, key) — staging UUIDs differ from production. */
-async function syncKeyedTenantRows(prod, stage, table, keyColumn, tenantIdMap, regionIdMap, report) {
+async function syncKeyedTenantRows(
+  prod,
+  stage,
+  table,
+  keyColumn,
+  tenantIdMap,
+  regionIdMap,
+  report,
+  subscriptionPlanIdMap = null,
+) {
   const rows = await fetchAll(prod, table);
   let updated = 0;
   let inserted = 0;
@@ -316,6 +344,7 @@ async function syncKeyedTenantRows(prod, stage, table, keyColumn, tenantIdMap, r
       hasTenantCol ? { ...patch, tenant_id: mappedTenant } : patch,
       tenantIdMap,
       regionIdMap,
+      subscriptionPlanIdMap,
     );
     if (dryRun) {
       updated++;
@@ -586,6 +615,40 @@ async function syncMapboxConfig(prod, stage, report, tenantIdMap) {
   }
 }
 
+async function syncTaxRates(prod, stage, tenantIdMap, regionIdMap, report) {
+  const rows = await fetchAll(prod, "tax_rates");
+  const stageRows = await fetchAll(stage, "tax_rates");
+  const activeKey = (row) =>
+    row.effective_to == null ? `${row.jurisdiction ?? ""}:${row.code}` : null;
+  const stageActive = new Map();
+  for (const row of stageRows) {
+    const key = activeKey(row);
+    if (key && !stageActive.has(key)) stageActive.set(key, row);
+  }
+  let updated = 0;
+  let inserted = 0;
+  for (const row of rows) {
+    const payload = remapEnvIds(row, tenantIdMap, regionIdMap);
+    const existing = activeKey(payload) ? stageActive.get(activeKey(payload)) : null;
+    if (dryRun) {
+      if (existing) updated += 1;
+      else inserted += 1;
+      continue;
+    }
+    if (existing) {
+      const { id: _id, ...patch } = payload;
+      const { error } = await stage.from("tax_rates").update(patch).eq("id", existing.id);
+      if (error) throw new Error(`tax_rates update ${payload.code}: ${error.message}`);
+      updated += 1;
+    } else {
+      const { error } = await stage.from("tax_rates").insert(payload);
+      if (error) throw new Error(`tax_rates insert ${payload.code}: ${error.message}`);
+      inserted += 1;
+    }
+  }
+  report.tax_rates = { prod_rows: rows.length, updated, inserted };
+}
+
 async function syncTable(prod, stage, cfg, report, tenantIdMap, regionIdMap) {
   const { table, onConflict, optional } = cfg;
   let rows;
@@ -645,6 +708,7 @@ async function main() {
     regionIdMap,
     report,
   );
+  const subscriptionPlanIdMap = await buildSubscriptionPlanIdMap(prod, stage, tenantIdMap);
   await syncKeyedTenantRows(
     prod,
     stage,
@@ -653,12 +717,14 @@ async function main() {
     tenantIdMap,
     regionIdMap,
     report,
+    subscriptionPlanIdMap,
   );
   await syncRegionPaymentGateways(prod, stage, regionIdMap, report);
   await syncPreferenceOptions(prod, stage, tenantIdMap, regionIdMap, report);
   await syncAiRuntimeConfig(prod, stage, tenantIdMap, report);
   await syncAiModelCatalog(prod, stage, tenantIdMap, report);
   await syncMapboxConfig(prod, stage, report, tenantIdMap);
+  await syncTaxRates(prod, stage, tenantIdMap, regionIdMap, report);
 
   for (const cfg of CONFIG_TABLES) {
     await syncTable(prod, stage, cfg, report, tenantIdMap, regionIdMap);

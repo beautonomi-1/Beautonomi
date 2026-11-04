@@ -1,13 +1,33 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  restoreSaleGiftCard,
+  saleCardAmountStillDueForSale,
+  settleReservedSaleGiftCard,
+} from "@/lib/gift-cards/sale-gift-card";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
-import { computeInPersonCollectibleAmount } from "@/lib/orders/product-order-tender";
+import {
+  computeInPersonCollectibleAmount,
+  computeProductOrderCancelWalletCredit,
+  isProviderCollectedProductMethod,
+  productOrderCancelIncludesGiftInWallet,
+  productOrderTenderSplit,
+  roundProductOrderMoney,
+} from "@/lib/orders/product-order-tender";
 import { normalizePaycloudMajorAmount } from "@/lib/payments/paycloud-cloud-amount";
 import { resolveSaleEntityTarget } from "@/lib/provider-sales/resolve-sale-entity-target";
 import {
   clearUncollectedProviderPortalPlatformFeeIfNeeded,
   type BookingFeeClearRow,
 } from "@/lib/bookings/provider-booking-platform-fee";
+import { sumPendingWalletGiftBookingPayments, sumAdditionalChargeTenderLegs } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
+import { additionalChargeAmountStillDue } from "@/lib/bookings/display-invariants";
+import {
+  settleAdditionalChargeRemainderAfterHold,
+  settleAdditionalChargeWithoutPaystack,
+} from "@/lib/bookings/settle-additional-charge-without-paystack";
+import { rollbackCollectibleSplitLeg } from "@/lib/bookings/rollback-collectible-split-leg";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /** Provider-collected card-machine rails that share settle/reverse semantics. */
 export type CardMachinePaymentProvider = "paycloud" | "yoco";
@@ -66,13 +86,16 @@ const PROVIDER_LABEL: Record<CardMachinePaymentProvider, string> = {
   yoco: "Yoco card machine",
 };
 
-function computeBaseRemaining(booking: {
-  total_amount?: number | null;
-  total_paid?: number | null;
-  total_refunded?: number | null;
-  wallet_amount?: number | null;
-  gift_card_amount?: number | null;
-}): number {
+function computeBaseRemaining(
+  booking: {
+    total_amount?: number | null;
+    total_paid?: number | null;
+    total_refunded?: number | null;
+    wallet_amount?: number | null;
+    gift_card_amount?: number | null;
+  },
+  pendingWalletGift = 0,
+): number {
   const bookingTotal = Number(booking.total_amount ?? 0);
   const totalPaid = Number(booking.total_paid ?? 0);
   const totalRefunded = Number(booking.total_refunded ?? 0);
@@ -80,8 +103,18 @@ function computeBaseRemaining(booking: {
   const giftCardAmount = Number(booking.gift_card_amount ?? 0);
   const effectivePaid = Math.max(0, totalPaid - totalRefunded);
   const walletGiftCoverage = walletAmount + giftCardAmount;
-  const coverage = Math.max(effectivePaid, walletGiftCoverage);
+  const pending = Math.max(0, pendingWalletGift);
+  const coverage = Math.max(effectivePaid + pending, walletGiftCoverage);
   return Math.max(0, bookingTotal - coverage);
+}
+
+async function baseRemainingForBooking(
+  supabase: SupabaseClient,
+  booking: { id?: string | null } & Parameters<typeof computeBaseRemaining>[0],
+): Promise<number> {
+  const bookingId = String(booking.id ?? "");
+  const pending = bookingId ? await sumPendingWalletGiftBookingPayments(supabase, bookingId) : 0;
+  return computeBaseRemaining(booking, pending);
 }
 
 /**
@@ -126,6 +159,24 @@ export function allocateBaseFromCapture(params: {
   }
 
   return Math.min(captured, baseRemaining);
+}
+
+/** True when the capture still has enough left, after the booking balance and tip, to pay these add-ons. */
+export function capturedFundsCoverCharges(input: {
+  captured: number;
+  baseApplied: number;
+  tip: number;
+  cashback: number;
+  chargesTotal: number;
+}): boolean {
+  const charges = Math.max(0, Number(input.chargesTotal) || 0);
+  if (charges <= 0.01) return false;
+  const leftover =
+    Math.max(0, Number(input.captured) || 0) -
+    Math.max(0, Number(input.baseApplied) || 0) -
+    Math.max(0, Number(input.tip) || 0) -
+    Math.max(0, Number(input.cashback) || 0);
+  return leftover + 0.01 >= charges;
 }
 
 function unpaidChargeRows(booking: { additional_charges?: AdditionalChargeRow[] | null }): AdditionalChargeRow[] {
@@ -400,7 +451,7 @@ async function settleBookingPayment(
     return { settled: false, reason: "booking_not_collectible" };
   }
 
-  const baseRemaining = computeBaseRemaining(booking);
+  const baseRemaining = await baseRemainingForBooking(supabase, booking);
   const chargeRows = unpaidChargeRows(booking as { additional_charges?: AdditionalChargeRow[] });
 
   if (baseRemaining <= 0 && chargeRows.length === 0) {
@@ -452,7 +503,17 @@ async function settleBookingPayment(
     baseRemaining <= 0 ||
     (basePaymentInserted && basePaymentAmount >= baseRemaining - 0.01);
 
-  if (baseFullySettled && chargeRows.length > 0) {
+  const chargesTotal = chargeRows.reduce((sum, charge) => sum + Number(charge?.amount || 0), 0);
+  if (
+    baseFullySettled &&
+    capturedFundsCoverCharges({
+      captured: input.amount,
+      baseApplied: basePaymentAmount,
+      tip,
+      cashback,
+      chargesTotal,
+    })
+  ) {
     await settleUnpaidAdditionalCharges(
       input.paymentProvider,
       bookingId,
@@ -494,10 +555,13 @@ async function settleGroupBookingPayment(
   const bookings = bookingsRaw ?? [];
   if (!bookings.length) return { settled: false, reason: "no_child_bookings" };
 
-  const { data: groupParticipants } = await supabase
-    .from("group_booking_participants")
+  const { data: groupParticipants, error: groupParticipantsError } = await supabase
+    .from("booking_participants")
     .select("booking_id, is_primary_contact")
     .eq("group_booking_id", groupId);
+  if (groupParticipantsError) {
+    console.error("[settle-card-machine-payment] booking_participants lookup failed", groupParticipantsError);
+  }
 
   const primaryParticipantBookingId =
     (groupParticipants ?? []).find(
@@ -509,10 +573,13 @@ async function settleGroupBookingPayment(
   const tip = Math.max(0, Number(input.tipAmount ?? 0));
   const cashback = Math.max(0, Number(input.cashbackAmount ?? 0));
   const baseBudget = Math.max(0, input.amount - tip - cashback);
-  const totalBaseOwed = bookings.reduce(
-    (sum, booking) => sum + computeBaseRemaining(booking),
-    0,
-  );
+  let totalBaseOwed = 0;
+  const baseRemainingById = new Map<string, number>();
+  for (const booking of bookings) {
+    const remaining = await baseRemainingForBooking(supabase, booking);
+    baseRemainingById.set(String(booking.id ?? ""), remaining);
+    totalBaseOwed += remaining;
+  }
 
   const rows: Record<string, unknown>[] = [];
   const addonSettlements: {
@@ -524,7 +591,7 @@ async function settleGroupBookingPayment(
   let remainingBudget = baseBudget;
 
   for (const booking of bookings) {
-    const baseRemaining = computeBaseRemaining(booking);
+    const baseRemaining = baseRemainingById.get(String(booking.id ?? "")) ?? 0;
     const chargeRows = unpaidChargeRows(booking as { additional_charges?: AdditionalChargeRow[] });
 
     if (baseRemaining > 0 && remainingBudget > 0) {
@@ -575,6 +642,14 @@ async function settleGroupBookingPayment(
     }
   }
 
+  const groupChargesTotal = addonSettlements.reduce(
+    (sum, item) => sum + item.charges.reduce((inner, charge) => inner + Number(charge?.amount || 0), 0),
+    0,
+  );
+  if (groupChargesTotal > 0.01 && remainingBudget + 0.01 < groupChargesTotal) {
+    addonSettlements.length = 0;
+  }
+
   for (const item of addonSettlements) {
     await settleUnpaidAdditionalCharges(
       input.paymentProvider,
@@ -607,6 +682,26 @@ async function settleSalePayment(
   input: SettleCardMachinePaymentInput,
   providerPaymentId: string,
 ): Promise<{ settled: boolean; reason?: string }> {
+  const admin = getSupabaseAdmin();
+  const { data: saleRow, error: saleRowError } = await admin
+    .from("sales")
+    .select("payment_status")
+    .eq("id", input.entityId)
+    .eq("provider_id", input.providerId)
+    .maybeSingle();
+  if (saleRowError) throw new Error(saleRowError.message);
+  if (!saleRow) return { settled: false, reason: "sale_not_found" };
+  if (String((saleRow as { payment_status?: string }).payment_status ?? "") === "completed") {
+    return { settled: true };
+  }
+  const due = await saleCardAmountStillDueForSale(admin, input.providerId, input.entityId);
+  if (due == null || due > 0.02) return { settled: false, reason: "amount_mismatch" };
+  const gift = await settleReservedSaleGiftCard(getSupabaseAdmin(), input.entityId, {
+    cardAmount: input.amount,
+    cardAmountAlreadyRecorded: true,
+  });
+  if (!gift.ok) return { settled: false, reason: "gift_card_not_captured" };
+
   const { error } = await supabase
     .from("sales")
     .update({
@@ -629,16 +724,30 @@ async function settleProductOrderPayment(
   providerPaymentId: string,
 ): Promise<{ settled: boolean; reason?: string }> {
   const admin = getSupabaseAdmin();
+  const tip = Math.max(0, Number(input.tipAmount ?? 0));
+  const cashback = Math.max(0, Number(input.cashbackAmount ?? 0));
+  const base = Math.round(Math.max(0, Number(input.amount) - tip - cashback) * 100) / 100;
+  const { productOrderCardAmountStillDue } = await import(
+    "@/lib/payments/resolve-paystack-initialize-amount"
+  );
+  const due = await productOrderCardAmountStillDue(admin, input.entityId, providerPaymentId);
+  if (due.ok === false) return { settled: false, reason: "payment_lookup_failed" };
+  const baseCoversDue = Math.abs(base - due.due) <= 0.02;
+  if (base > due.due + 0.02) return { settled: false, reason: "amount_mismatch" };
+
   const result = await recordProductOrderPayment({
     supabase: admin,
     productOrderId: input.entityId,
     reference: providerPaymentId,
-    amountMajor: input.amount,
+    amountMajor: base,
     source: input.paymentProvider === "yoco" ? "yoco_terminal" : "paycloud_terminal",
     provider: input.paymentProvider,
     platformHeld: false,
   });
   if (!result.ok) return { settled: false, reason: "product_order_record_failed" };
+  if (!baseCoversDue || !result.transitionedToPaid) {
+    return { settled: false, reason: "payment_not_settled" };
+  }
 
   const { data: order } = await (admin.from("product_orders") as any)
     .select("id, order_source, status, provider_id")
@@ -673,7 +782,7 @@ async function settleAdditionalChargePayment(
   const admin = getSupabaseAdmin();
   const { data: charge } = await admin
     .from("additional_charges")
-    .select("id, booking_id, amount, status, bookings!inner(provider_id, tenant_id)")
+    .select("id, booking_id, amount, status, description, bookings!inner(provider_id, tenant_id, booking_number, ref_number, customer_id, currency)")
     .eq("id", input.entityId)
     .maybeSingle();
 
@@ -694,6 +803,78 @@ async function settleAdditionalChargePayment(
     .eq("payment_provider_id", chargeRef)
     .maybeSingle();
   if (existing) return { settled: true, reason: "already_settled", bookingId: charge.booking_id };
+
+  const held = await sumAdditionalChargeTenderLegs(admin, charge.booking_id, charge.id);
+  const heldTotal = held.wallet + held.gift;
+  if (heldTotal > 0.009) {
+    const chargeAmount = Number(charge.amount ?? 0);
+    const stillDue = additionalChargeAmountStillDue(chargeAmount, heldTotal);
+    const tip = Math.max(0, Number(input.tipAmount ?? 0));
+    const cashback = Math.max(0, Number(input.cashbackAmount ?? 0));
+    const capturedBase =
+      input.expectedBaseAmount != null
+        ? Number(input.expectedBaseAmount)
+        : Math.max(0, Number(input.amount) - tip - cashback);
+    const bookingJoin = booking as {
+      provider_id?: string;
+      tenant_id?: string | null;
+      booking_number?: string | null;
+      ref_number?: string | null;
+      customer_id?: string | null;
+      currency?: string | null;
+    };
+    if (stillDue <= 0.009) {
+      if (capturedBase > 0.02) {
+        return { settled: false, reason: "charge_already_covered", bookingId: charge.booking_id };
+      }
+      const covered = await settleAdditionalChargeWithoutPaystack(admin, {
+        bookingId: charge.booking_id,
+        chargeId: charge.id,
+        customerId: String(bookingJoin.customer_id ?? input.processedBy ?? input.providerId),
+        providerId: input.providerId,
+        tenantId: booking.tenant_id ?? null,
+        bookingNumber: String(bookingJoin.booking_number ?? bookingJoin.ref_number ?? charge.booking_id),
+        chargeAmount,
+        walletAmountApplied: held.wallet,
+        giftCardAmountApplied: held.gift,
+      });
+      if (covered.ok === false) {
+        await rollbackCollectibleSplitLeg(admin, {
+          bookingId: charge.booking_id,
+          customerId: String(bookingJoin.customer_id ?? input.processedBy ?? input.providerId),
+          currency: String(bookingJoin.currency ?? LAST_RESORT_CURRENCY),
+          tenantId: booking.tenant_id ?? null,
+          providerId: input.providerId,
+          walletAmountToReverse: held.wallet,
+          giftCardAmountToReverse: held.gift,
+          paymentLegSuffix: `:additional:${charge.id}`,
+          idempotencyKey: `additional_charge_card_machine_rollback:${charge.id}`,
+        });
+        return { settled: false, reason: covered.error, bookingId: charge.booking_id };
+      }
+      return { settled: true, bookingId: charge.booking_id };
+    }
+    const remainder = await settleAdditionalChargeRemainderAfterHold(admin, {
+      bookingId: charge.booking_id,
+      chargeId: charge.id,
+      providerId: input.providerId,
+      tenantId: booking.tenant_id ?? null,
+      chargeAmount,
+      chargeDescription: (charge as { description?: string | null }).description ?? null,
+      heldWallet: held.wallet,
+      heldGift: held.gift,
+      remainderAmount: capturedBase,
+      paymentProvider: input.paymentProvider,
+      paymentMethod: "card",
+      reference: chargeRef,
+      createdBy: input.processedBy ?? null,
+    });
+    if (remainder.ok === false) {
+      return { settled: false, reason: remainder.error, bookingId: charge.booking_id };
+    }
+    await notifyCardMachineAdditionalChargePaid(admin, charge.id);
+    return { settled: true, bookingId: charge.booking_id };
+  }
 
   const { error } = await admin.rpc("record_walk_in_additional_charge_payment", {
     p_booking_id: charge.booking_id,
@@ -892,7 +1073,9 @@ async function reverseProductOrderCardMachinePayment(
   const admin = getSupabaseAdmin();
   const { data: order } = await admin
     .from("product_orders")
-    .select("id, payment_status, payment_reference, provider_id, total_amount, wallet_amount, gift_card_amount, status")
+    .select(
+      "id, payment_status, payment_reference, payment_method, provider_id, customer_id, tenant_id, currency, order_number, total_amount, wallet_amount, gift_card_amount, status",
+    )
     .eq("id", input.entityId)
     .eq("provider_id", input.providerId)
     .maybeSingle();
@@ -922,10 +1105,119 @@ async function reverseProductOrderCardMachinePayment(
     input.refundAmount != null && input.refundAmount > 0 ? Number(input.refundAmount) : paidAmount;
   const isFullRefund = refundAmount + 0.01 >= paidAmount;
 
+  let giftReturned = false;
+  let giftVoidResult: "restored" | "missing" | "failed" | null = null;
+  if (isFullRefund && isProviderCollectedProductMethod(String(order.payment_method ?? ""))) {
+    const split = productOrderTenderSplit(order);
+    let walletCredit = computeProductOrderCancelWalletCredit(order, 0);
+    if (split.gift > 0.009) {
+      const { voidProductOrderGiftCard } = await import("@/lib/ecommerce/product-order-gift-card");
+      const voided = await voidProductOrderGiftCard(admin, input.entityId);
+      giftVoidResult = voided;
+      if (voided === "failed") return { reversed: false, reason: "gift_card_not_restored" };
+      giftReturned = true;
+      if (productOrderCancelIncludesGiftInWallet(voided)) {
+        walletCredit = roundProductOrderMoney(walletCredit + split.gift);
+      }
+    }
+    const customerId = (order as { customer_id?: string | null }).customer_id;
+    if (walletCredit > 0.009 && customerId) {
+      const { error: walletError } = await (admin.rpc as any)("wallet_credit_admin", {
+        p_user_id: customerId,
+        p_amount: walletCredit,
+        p_currency: (order as { currency?: string | null }).currency || LAST_RESORT_CURRENCY,
+        p_description: `Refund for order ${(order as { order_number?: string | null }).order_number || input.entityId.slice(0, 8)}`,
+        p_reference_id: input.entityId,
+        p_reference_type: "product_order_refund",
+        p_tenant_id: (order as { tenant_id?: string | null }).tenant_id ?? null,
+        p_idempotency_key: `product_order_cancel_refund:${input.entityId}`,
+      });
+      if (walletError) return { reversed: false, reason: "wallet_credit_failed" };
+    }
+    // Wallet and gift were platform-held. Earnings for that slice are net of
+    // the platform fee, so the payout is reduced by the posted earnings, not
+    // by the gross amount returned to the customer. The card refund already
+    // left the provider's till and is not clawed again.
+    if (giftVoidResult != null || walletCredit > 0.009) {
+      const clawKey = `product_order_card_refund:${input.entityId}`;
+      const description = `Card refund returned platform-held tender (${clawKey})`;
+      const { data: heldRows, error: heldError } = await admin
+        .from("finance_transactions")
+        .select("transaction_type, net, amount, description")
+        .eq("product_order_id", input.entityId)
+        .in("transaction_type", ["provider_earnings", "platform_fee", "refund"]);
+      if (heldError) throw new Error(heldError.message);
+      const rows = (heldRows ?? []) as Array<{
+        transaction_type?: string;
+        net?: number | string | null;
+        amount?: number | string | null;
+        description?: string | null;
+      }>;
+      const alreadyClawed = rows.some(
+        (row) => row.transaction_type === "refund" && String(row.description ?? "") === description,
+      );
+      if (!alreadyClawed) {
+        const sumNet = (type: string) =>
+          roundProductOrderMoney(
+            rows
+              .filter((row) => row.transaction_type === type)
+              .reduce((sum, row) => sum + Number(row.net ?? row.amount ?? 0), 0),
+          );
+        const earnings = sumNet("provider_earnings");
+        const fee = sumNet("platform_fee");
+        const currency = (order as { currency?: string | null }).currency || LAST_RESORT_CURRENCY;
+        const tenantId = (order as { tenant_id?: string | null }).tenant_id ?? null;
+        const refundRows: Record<string, unknown>[] = [];
+        if (earnings > 0.009) {
+          refundRows.push({
+            booking_id: null,
+            product_order_id: input.entityId,
+            provider_id: input.providerId,
+            tenant_id: tenantId,
+            transaction_type: "refund",
+            refund_component: "provider_earnings",
+            amount: earnings,
+            fees: 0,
+            commission: 0,
+            net: -earnings,
+            currency,
+            description,
+            created_at: new Date().toISOString(),
+          });
+        }
+        if (fee > 0.009) {
+          refundRows.push({
+            booking_id: null,
+            product_order_id: input.entityId,
+            provider_id: input.providerId,
+            tenant_id: tenantId,
+            transaction_type: "refund",
+            refund_component: "platform_fee",
+            amount: fee,
+            fees: 0,
+            commission: 0,
+            net: -fee,
+            currency,
+            description,
+            created_at: new Date().toISOString(),
+          });
+        }
+        if (refundRows.length > 0) {
+          const { error: refundError } = await admin.from("finance_transactions").insert(refundRows);
+          if (refundError) throw new Error(refundError.message);
+        }
+      }
+    }
+  }
+
   const orderUpdate: Record<string, unknown> = {
     payment_status: isFullRefund ? "refunded" : "partially_refunded",
     updated_at: new Date().toISOString(),
   };
+  if (giftReturned) {
+    orderUpdate.gift_card_amount = 0;
+    orderUpdate.gift_card_id = null;
+  }
   if (isFullRefund) {
     orderUpdate.status = "refunded";
   }
@@ -954,7 +1246,7 @@ async function reverseSaleCardMachinePayment(
   supabase: SupabaseClient,
   input: ReverseCardMachineSettlementInput,
 ): Promise<{ reversed: boolean; reason?: string }> {
-  const { error } = await supabase
+  const { data: refunded, error } = await supabase
     .from("sales")
     .update({
       payment_status: "refunded",
@@ -962,7 +1254,11 @@ async function reverseSaleCardMachinePayment(
     })
     .eq("id", input.entityId)
     .eq("provider_id", input.providerId)
-    .eq("payment_provider", input.paymentProvider);
+    .eq("payment_provider", input.paymentProvider)
+    .select("id")
+    .maybeSingle();
   if (error) throw error;
+  if (!refunded) return { reversed: false, reason: "sale_not_refunded" };
+  await restoreSaleGiftCard(getSupabaseAdmin(), input.entityId);
   return { reversed: true };
 }

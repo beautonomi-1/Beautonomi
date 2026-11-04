@@ -12,6 +12,8 @@ type ExpoVideoPreviewProps = {
   loop?: boolean;
   paused?: boolean;
   muted?: boolean;
+  /** Seek once when the source loads (e.g. trim start for thumbnails). */
+  startAtMs?: number;
 };
 
 export function ExpoVideoPreview({
@@ -22,6 +24,7 @@ export function ExpoVideoPreview({
   loop = false,
   paused = true,
   muted = false,
+  startAtMs,
 }: ExpoVideoPreviewProps) {
   const player = useVideoPlayer(uri, (p) => {
     p.loop = loop;
@@ -32,6 +35,12 @@ export function ExpoVideoPreview({
       p.play();
     }
   });
+
+  useEffect(() => {
+    if (startAtMs == null || !Number.isFinite(startAtMs)) return;
+    player.currentTime = startAtMs / 1000;
+    player.pause();
+  }, [startAtMs, player, uri]);
 
   useEffect(() => {
     if (paused) {

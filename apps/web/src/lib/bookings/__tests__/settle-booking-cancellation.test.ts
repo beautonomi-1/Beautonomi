@@ -230,6 +230,67 @@ describe("customer/portal cancel wallet cap", () => {
     expect(cancellationFeeApplied).toBe(0);
   });
 
+  it("credits the gift amount to the wallet when the card balance was not restored", () => {
+    const booking = {
+      id: "b1",
+      provider_id: "p1",
+      total_amount: 100,
+      total_paid: 100,
+      wallet_amount: 0,
+      gift_card_amount: 40,
+      total_refunded: 0,
+    };
+    const { walletRefundAmount } = computeReconciledCancellationAmounts({
+      booking,
+      cancelledBy: "provider",
+      currency: "ZAR",
+      policy: null,
+      giftCardRestored: false,
+    });
+    expect(walletRefundAmount).toBe(100);
+  });
+
+  it("leaves the gift out of the wallet when the void result is unknown", () => {
+    const booking = {
+      id: "b1",
+      provider_id: "p1",
+      total_amount: 100,
+      total_paid: 100,
+      wallet_amount: 0,
+      gift_card_amount: 40,
+      total_refunded: 0,
+    };
+    const { walletRefundAmount } = computeReconciledCancellationAmounts({
+      booking,
+      cancelledBy: "provider",
+      currency: "ZAR",
+      policy: null,
+      giftCardRestored: "unknown",
+    });
+    expect(walletRefundAmount).toBe(60);
+  });
+
+  it("leaves the gift out of the wallet when the void result is unknown", () => {
+    const booking = {
+      id: "b1",
+      provider_id: "p1",
+      total_amount: 100,
+      total_paid: 100,
+      wallet_amount: 0,
+      gift_card_amount: 40,
+      total_refunded: 0,
+    };
+    const { walletRefundAmount } = computeReconciledCancellationAmounts({
+      booking,
+      cancelledBy: "provider",
+      currency: "ZAR",
+      policy: null,
+      giftCardRestored: "unknown",
+    });
+    // Void failed. The R40 may still be reserved, so the wallet gets only the R60.
+    expect(walletRefundAmount).toBe(60);
+  });
+
   it("excludes tip from cancellation fee basis on customer cancel", () => {
     const booking = {
       id: "b1",
@@ -312,6 +373,24 @@ describe("customer/portal cancel wallet cap", () => {
         totalCollectedAllSources: 200,
       }),
     ).toBe(80);
+    expect(
+      walletStoreCreditAmountWhenVoidingGiftOnFullRefund({
+        refundAmount: 200,
+        giftCardCollected: 50,
+        totalRefundedBefore: 0,
+        totalCollectedAllSources: 200,
+        giftCardRestored: false,
+      }),
+    ).toBe(200);
+    expect(
+      walletStoreCreditAmountWhenVoidingGiftOnFullRefund({
+        refundAmount: 200,
+        giftCardCollected: 50,
+        totalRefundedBefore: 0,
+        totalCollectedAllSources: 200,
+        giftCardRestored: "unknown",
+      }),
+    ).toBe(150);
   });
 
   it("admin cancel defaults to full refund and zero fee", () => {

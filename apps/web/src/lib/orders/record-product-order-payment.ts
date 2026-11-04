@@ -6,8 +6,10 @@ import { clearCustomerCartForProvider } from "@/lib/orders/product-order-lifecyc
 import { ensurePackageEntitlementsFromProductOrder } from "@/lib/orders/ensure-package-entitlements-from-product-order";
 import { bookShippingForOrder } from "@/lib/orders/shipping";
 import { logger } from "@/lib/utils/logger";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 
-const PLATFORM_HELD_LEG_TYPES = ["payment", "provider_earnings", "platform_fee"] as const;
+const PLATFORM_HELD_LEG_TYPES = ["payment", "provider_earnings", "platform_fee", "tax"] as const;
 const FINANCE_INSERT_MAX_ATTEMPTS = 3;
 
 export type RecordProductOrderPaymentInput = {
@@ -178,7 +180,7 @@ async function recordProductOrderPaymentInner(
 
   const { data: order, error: orderErr } = await (supabase.from("product_orders") as any)
     .select(
-      "id, tenant_id, provider_id, customer_id, order_number, total_amount, platform_fee, payment_status, payment_reference, status, currency, promotion_id, promotion_discount_amount, gift_card_amount, paid_at, confirmed_at, created_at, wallet_amount",
+      "id, tenant_id, provider_id, customer_id, order_number, total_amount, platform_fee, tax_amount, payment_status, payment_reference, status, currency, promotion_id, promotion_discount_amount, gift_card_amount, paid_at, confirmed_at, created_at, wallet_amount",
     )
     .eq("id", productOrderId)
     .maybeSingle();
@@ -218,10 +220,10 @@ async function recordProductOrderPaymentInner(
   const walletHeld = Math.max(0, Number((order as any).wallet_amount ?? 0));
   // In-person collection still leaves wallet/gift money with the platform.
   // Those legs are payoutable; the cash/terminal remainder is not.
-  const supplementalHeld = !isPlatformHeld
+  let supplementalHeld = !isPlatformHeld
     ? Math.round(Math.min(orderTotal, walletHeld + giftCardAmount) * 100) / 100
     : 0;
-  const postsHeldLedger = isPlatformHeld || supplementalHeld > 0.009;
+  let postsHeldLedger = isPlatformHeld || supplementalHeld > 0.009;
   const promotionDiscount = Math.max(0, Number((order as any).promotion_discount_amount ?? 0));
   const orderReferenceForLedger = orderNumber;
 
@@ -229,6 +231,90 @@ async function recordProductOrderPaymentInner(
 
   if ((order as any).payment_status === "paid" && alreadyRecorded && (!postsHeldLedger || hasLedger)) {
     return { ok: true, duplicate: true, transitionedToPaid: false };
+  }
+
+  // Capture the gift before the order is marked paid. A false return (not reserved,
+  // or the card expired and the balance was restored) means that money is not collected.
+  // Release any hold that is still reserved so a later retry cannot take the gift
+  // after this payment has already covered the order without it.
+  let effectiveGift = giftCardAmount;
+  let giftReleaseFailed = false;
+  if (!wasAlreadyPaid && !skipSideEffects && effectiveGift > 0.009) {
+    const { captureProductOrderGiftCard, voidProductOrderGiftCard } = await import(
+      "@/lib/ecommerce/product-order-gift-card"
+    );
+    const captured = await captureProductOrderGiftCard(supabase, productOrderId);
+    if (!captured) {
+      const voided = await voidProductOrderGiftCard(supabase, productOrderId);
+      if (voided === "failed") {
+        giftReleaseFailed = true;
+      } else {
+        effectiveGift = 0;
+        await (supabase.from("product_orders") as any)
+          .update({ gift_card_amount: 0, gift_card_id: null })
+          .eq("id", productOrderId);
+      }
+    }
+  }
+
+  if (!isPlatformHeld) {
+    supplementalHeld = Math.round(Math.min(orderTotal, walletHeld + effectiveGift) * 100) / 100;
+    postsHeldLedger = supplementalHeld > 0.009;
+  }
+
+  if (!wasAlreadyPaid) {
+    const { data: recordedPayments, error: recordedError } = await (supabase.from("payment_transactions") as any)
+      .select("amount")
+      .eq("status", "success")
+      .filter("metadata->>product_order_id", "eq", productOrderId);
+    if (recordedError) {
+      return { ok: false, duplicate: false, transitionedToPaid: false };
+    }
+    const alreadyCollected = (recordedPayments ?? []).reduce(
+      (sum: number, row: { amount?: number | string | null }) => sum + Number(row.amount ?? 0),
+      0,
+    );
+    const checkoutTender = provider === "wallet" || provider === "gift_card";
+    const droppedGift = Math.max(0, giftCardAmount - effectiveGift);
+    const incoming = checkoutTender || alreadyRecorded ? 0 : Math.max(0, Number(amountMajor) || 0);
+    // Wallet checkout stores the whole order total on amountMajor, including the gift.
+    // After a failed capture that total is not money collected.
+    const checkoutCover = Math.max(
+      walletHeld + effectiveGift,
+      Math.max(0, Number(amountMajor) || 0) - droppedGift,
+    );
+    const collected = checkoutTender
+      ? checkoutCover
+      : walletHeld + effectiveGift + alreadyCollected + incoming;
+    if (giftReleaseFailed || collected + 0.009 < orderTotal) {
+      if (!checkoutTender && incoming > 0.009) {
+        const { error: partialTxError } = await (supabase.from("payment_transactions") as any).insert({
+          booking_id: null,
+          reference,
+          amount: amountMajor,
+          fees: feesMajor,
+          net_amount: subtractMoney(amountMajor, feesMajor),
+          status: "success",
+          provider,
+          transaction_type: "charge",
+          metadata: {
+            kind: "product_order",
+            product_order_id: productOrderId,
+            source,
+            gift_card_uncaptured: droppedGift > 0.009,
+          },
+          created_at: new Date().toISOString(),
+        });
+        if (partialTxError && partialTxError.code !== "23505") {
+          return { ok: false, duplicate: false, transitionedToPaid: false };
+        }
+      }
+      return {
+        ok: !checkoutTender,
+        duplicate: false,
+        transitionedToPaid: false,
+      };
+    }
   }
 
   const paymentMethodForOrder =
@@ -282,7 +368,7 @@ async function recordProductOrderPaymentInner(
             trackProductOrderPaidServer({
               reference,
               orderId: productOrderId,
-              amount: amountMajor,
+              amount: orderTotal > 0 ? orderTotal : amountMajor,
               currency: (order as any).currency ?? null,
               customerId: (order as any).customer_id ?? null,
               providerId: providerId ?? null,
@@ -313,7 +399,7 @@ async function recordProductOrderPaymentInner(
     }
   }
 
-  if (giftCardAmount > 0 && !skipSideEffects && (transitionedToPaid || !alreadyRecorded)) {
+  if (effectiveGift > 0.009 && !skipSideEffects && (transitionedToPaid || !alreadyRecorded)) {
     const { captureProductOrderGiftCard } = await import("@/lib/ecommerce/product-order-gift-card");
     await captureProductOrderGiftCard(supabase, productOrderId);
   }
@@ -387,10 +473,32 @@ async function recordProductOrderPaymentInner(
   }
 
   const feeForLedger = isPlatformHeld ? platformFee : Math.min(platformFee, supplementalHeld);
-  const earningsForLedger = isPlatformHeld
+  let earningsForLedger = isPlatformHeld
     ? providerEarnings
     : Math.max(0, Math.round((supplementalHeld - feeForLedger) * 100) / 100);
   const paymentGrossForLedger = isPlatformHeld ? grossForProvider : earningsForLedger;
+
+  const orderTaxAmount = Math.max(0, Number((order as any).tax_amount ?? 0));
+  const vatHeldForProviderPayout =
+    isPlatformHeld &&
+    (await isFeatureEnabledServer(FEATURE_FLAG_KEYS.FINANCE_PROVIDER_VAT_PAYOUT, financeTenantId));
+  let taxForLedger = 0;
+  /**
+   * VAT reporting vs VAT payout:
+   * - Always write a `tax` leg for platform-held orders when `tax_amount` is present so VAT reports
+   *   remain factually correct (they are sourced from `finance_transactions` tax legs).
+   * - Only *carve* VAT out of provider earnings when VAT payouts are enabled; otherwise VAT remains
+   *   inside provider earnings (no payout behavior change).
+   */
+  if (orderTaxAmount > 0 && isPlatformHeld) {
+    taxForLedger = vatHeldForProviderPayout ? Math.min(orderTaxAmount, earningsForLedger) : orderTaxAmount;
+    if (vatHeldForProviderPayout) {
+      earningsForLedger = Math.max(
+        0,
+        Math.round((earningsForLedger - taxForLedger) * 100) / 100,
+      );
+    }
+  }
 
   const ledgerCreatedAt = resolveLedgerCreatedAt(input, order as any, transitionedToPaid);
   const existingLegTypes = await loadExistingPlatformLegTypes(
@@ -446,6 +554,25 @@ async function recordProductOrderPaymentInner(
       commission: 0,
       net: feeForLedger,
       description: `Platform fee from product order ${orderNumber}`,
+      created_at: ledgerCreatedAt,
+    });
+  }
+
+  if (!existingLegTypes.has("tax") && taxForLedger > 0) {
+    const taxMetadata: Record<string, unknown> = { vat_source: "product_order" };
+    if (vatHeldForProviderPayout) taxMetadata.vat_held_for_provider = true;
+    financeRows.push({
+      booking_id: null,
+      product_order_id: productOrderId,
+      provider_id: providerId,
+      tenant_id: financeTenantId,
+      transaction_type: "tax",
+      amount: taxForLedger,
+      fees: 0,
+      commission: 0,
+      net: 0,
+      description: `Tax from product order ${orderNumber}`,
+      metadata: taxMetadata,
       created_at: ledgerCreatedAt,
     });
   }

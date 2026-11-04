@@ -156,6 +156,21 @@ export async function processPayment(
     amountToCollect = isDepositPayment ? computedDeposit : v.totalAmount;
   }
 
+  if (
+    v.groupSplit &&
+    v.groupPaymentMode === "split" &&
+    validatedDraft.is_group_booking
+  ) {
+    const organizerBase = v.groupSplit.organizerCheckoutAmount;
+    if (providerRequiresDeposit) {
+      amountToCollect = isDepositPayment
+        ? percentOf(organizerBase, depositPct)
+        : organizerBase;
+    } else {
+      amountToCollect = organizerBase;
+    }
+  }
+
   // Persist deposit context on the booking row so receipts, invoices, and
   // reports can display deposit vs balance information.
   if (providerRequiresDeposit) {
@@ -271,10 +286,10 @@ export async function processPayment(
     }
   }
 
-  // Capture gift card immediately if no card payment or nothing left
-  if (giftCardAmountApplied > 0 && (paymentMethod !== "card" || amountToCollect <= 0)) {
-    await (supabase.rpc as any)("capture_gift_card_redemption", { p_booking_id: booking.id });
-  }
+  // Leave the gift card reserved until this checkout succeeds. Capturing here
+  // used to run before the wallet debit and before the "gift card too small"
+  // check. A later error cancels the booking, and void only restores a
+  // reserved redemption, so the card balance was lost.
 
   // ── Wallet application ───────────────────────────────────────────────────
   const useWallet = Boolean(validatedDraft.use_wallet);
@@ -382,6 +397,21 @@ export async function processPayment(
     // Loyalty debited at booking create (createBookingRecord).
     const effectivePaymentStatus = isDepositPayment ? "partially_paid" : "paid";
 
+    if (giftCardAmountApplied > 0) {
+      const { data: captured, error: captureErr } = await (supabaseAdmin.rpc as any)(
+        "capture_gift_card_redemption",
+        { p_booking_id: booking.id },
+      );
+      if (captureErr || captured === false) {
+        return handleApiError(
+          captureErr ?? new Error("Gift card could not be captured"),
+          captureErr?.message || "Gift card could not be captured.",
+          "GIFT_CARD_INVALID",
+          400,
+        );
+      }
+    }
+
     await ensureWalletGiftBookingPayments(supabaseAdmin, {
       bookingId: booking.id,
       tenantId: booking.tenant_id,
@@ -411,7 +441,9 @@ export async function processPayment(
       .eq("id", booking.id)
       .eq("customer_id", v.customerId);
 
-    await completeWalletGiftSyntheticPayments(supabaseAdmin, booking.id);
+    await completeWalletGiftSyntheticPayments(supabaseAdmin, booking.id, {
+      paymentLegSuffix: "",
+    });
 
     // §Promo-usage (audit 2026-06): the Paystack webhook was the only path that
     // recorded promotion usage, so wallet/gift-settled bookings never counted —
@@ -643,8 +675,8 @@ export async function processPayment(
               await (supabaseAdmin.rpc as any)("capture_gift_card_redemption", {
                 p_booking_id: booking.id,
               });
-            } catch {
-              /* webhook may retry */
+            } catch (giftCaptureErr) {
+              await clearRestoredGiftCardHold(supabaseAdmin, booking.id, giftCaptureErr);
             }
           }
           if (recurringSubscribeEligible) {
@@ -701,6 +733,7 @@ export async function processPayment(
             });
           }
         } catch (reconcileErr) {
+          await clearRestoredGiftCardHold(supabaseAdmin, booking.id, reconcileErr);
           console.error("[process-payment] post-flutterwave saved-card reconcile threw", {
             bookingId: booking.id,
             err: reconcileErr,
@@ -845,6 +878,37 @@ export async function processPayment(
           );
         }
 
+        let giftForLedger = giftCardAmountApplied;
+        if (giftCardAmountApplied > 0) {
+          try {
+            const { data: captureResult, error: captureErr } = await (supabaseAdmin.rpc as any)(
+              "capture_gift_card_redemption",
+              {
+                p_booking_id: booking.id,
+              }
+            );
+            if (captureErr) throw captureErr;
+            if (captureResult === false || captureResult === null) {
+              giftForLedger = 0;
+              console.warn("[process-payment] saved-card gift card capture returned no capture", {
+                bookingId: booking.id,
+                giftCardAmountApplied,
+              });
+              await supabaseAdmin
+                .from("bookings")
+                .update({ gift_card_id: null, gift_card_amount: 0 })
+                .eq("id", booking.id);
+            }
+          } catch (giftCaptureErr) {
+            giftForLedger = 0;
+            await clearRestoredGiftCardHold(supabaseAdmin, booking.id, giftCaptureErr);
+            console.error(
+              "[process-payment] saved-card gift card capture failed before the ledger; card charge stands without the gift",
+              { bookingId: booking.id, err: giftCaptureErr }
+            );
+          }
+        }
+
         const settlement = await recordPaystackBookingSettlement(supabaseAdmin, {
           bookingId: booking.id,
           reference: chargeData.reference ?? reference,
@@ -856,7 +920,7 @@ export async function processPayment(
           bookingPaymentId: recordedPayment.ok ? recordedPayment.bookingPaymentId : null,
           isDeposit: isDepositPayment,
           walletAmountApplied,
-          giftCardAmountApplied,
+          giftCardAmountApplied: giftForLedger,
           feeSource: "process_payment_saved_card",
           metadata: { source: "process_payment_saved_card" },
         });
@@ -867,38 +931,19 @@ export async function processPayment(
           );
         }
 
-        if (giftCardAmountApplied > 0) {
-          try {
-            const { data: captureResult } = await (supabaseAdmin.rpc as any)(
-              "capture_gift_card_redemption",
-              {
-                p_booking_id: booking.id,
-              }
-            );
-            if (captureResult === false || captureResult === null) {
-              console.warn("[process-payment] saved-card gift card capture returned no capture", {
-                bookingId: booking.id,
-                giftCardAmountApplied,
-              });
-              await supabaseAdmin
-                .from("bookings")
-                .update({ gift_card_id: null, gift_card_amount: 0 })
-                .eq("id", booking.id);
-            } else {
-              await ensureWalletGiftBookingPayments(supabaseAdmin, {
-                bookingId: booking.id,
-                tenantId: booking.tenant_id,
-                walletAmount: walletAmountApplied,
-                giftCardAmount: giftCardAmountApplied,
-                initialStatus: "pending",
-              });
-            }
-          } catch (giftCaptureErr) {
-            console.error(
-              "[process-payment] saved-card gift card capture threw after successful charge; webhook will retry",
-              { bookingId: booking.id, err: giftCaptureErr }
-            );
+        if (settlement.ok && (walletAmountApplied > 0 || giftForLedger > 0)) {
+          if (giftForLedger > 0) {
+            await ensureWalletGiftBookingPayments(supabaseAdmin, {
+              bookingId: booking.id,
+              tenantId: booking.tenant_id,
+              walletAmount: walletAmountApplied,
+              giftCardAmount: giftForLedger,
+              initialStatus: "pending",
+            });
           }
+          await completeWalletGiftSyntheticPayments(supabaseAdmin, booking.id, {
+            paymentLegSuffix: "",
+          });
         }
 
         try {
@@ -1067,6 +1112,24 @@ export async function processPayment(
  * Insert payment_transactions + finance_transactions when no external gateway
  * is involved (gift-card / wallet covers the full amount).
  */
+/** Capture RPC restores the balance and raises when the card expired or was deactivated. */
+async function clearRestoredGiftCardHold(
+  admin: { from: (table: string) => any },
+  bookingId: string,
+  err: unknown,
+): Promise<void> {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  if (!/expired|no longer active/i.test(message)) return;
+  await admin
+    .from("bookings")
+    .update({
+      gift_card_amount: 0,
+      gift_card_id: null,
+      payment_status: "partially_paid",
+    })
+    .eq("id", bookingId);
+}
+
 async function insertNoGatewayLedger(
   supabase: SupabaseClient,
   ctx: {

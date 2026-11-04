@@ -456,11 +456,13 @@ export default function SubscriptionCheckoutPage() {
       <PartnerNavbar />
       <div className="max-w-5xl mx-auto px-4 py-6 sm:py-8">
         <Link
-          href="/pricing"
+          href={returnToDashboard ? "/provider/get-started" : "/pricing"}
           className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-4 sm:mb-6"
         >
           <ChevronLeft className="w-4 h-4" />
-          {t("web.provider.subscription.checkout.backToPricing")}
+          {returnToDashboard
+            ? t("web.provider.subscription.checkout.backToSetup")
+            : t("web.provider.subscription.checkout.backToPricing")}
         </Link>
         <div className="mb-5 sm:mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">

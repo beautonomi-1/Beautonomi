@@ -40,6 +40,17 @@ export async function POST(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
+    const { assertProviderStaffGroupBookingsEnabled } = await import(
+      "@/lib/bookings/assert-provider-group-bookings-enabled"
+    );
+    if (!(await assertProviderStaffGroupBookingsEnabled(supabase, providerId))) {
+      return errorResponse(
+        "Group appointments are disabled for this business. Enable them in settings.",
+        "GROUP_BOOKINGS_DISABLED",
+        403,
+      );
+    }
+
     const { booking_ids } = bodySchema.parse(await request.json());
 
     const { data: bookings, error: bErr } = await admin

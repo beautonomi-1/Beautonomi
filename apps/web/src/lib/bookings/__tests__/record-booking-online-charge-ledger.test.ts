@@ -13,6 +13,10 @@ vi.mock("@/lib/notifications/notify-staff-event", () => ({
   notifyStaffTipReceivedForBooking: vi.fn(async () => 0),
 }));
 
+vi.mock("@/lib/server/feature-flags", () => ({
+  isFeatureEnabledServer: vi.fn(async () => false),
+}));
+
 type Row = Record<string, unknown>;
 
 type LedgerScenario = {

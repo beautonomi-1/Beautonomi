@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ADMIN_SECTION_PROVIDERS_OPERATIONS,
@@ -7,7 +7,7 @@ import {
   ADMIN_SECTION_USERS_TRUST,
   canAccessSection,
 } from "@beautonomi/admin-access";
-import { AdminApiError } from "@beautonomi/admin-api-client";
+import { AdminApiError, withAdminScopeUrl } from "@beautonomi/admin-api-client";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
@@ -62,6 +62,14 @@ import {
   type TicketRow,
 } from "@/routes/support/ticket-detail/ticketDetailHelpers";
 import { useAdminWorkspaceHeight } from "@/hooks/useAdminWorkspaceHeight";
+import { useIsDesktop } from "@/hooks/useIsDesktop";
+import {
+  clearSupportTicketComposerDraft,
+  loadSupportTicketComposerDraft,
+  saveSupportTicketComposerDraft,
+} from "@/lib/supportTicketComposerDrafts";
+import { supportTicketsQueueHref } from "@/lib/supportTicketQueueSession";
+import { useAdminBreadcrumbParentHref } from "@/providers/AdminBreadcrumbProvider";
 
 type Assignee = { id: string; email: string | null; full_name: string | null; role: string };
 
@@ -95,30 +103,6 @@ type SupportTicketDetailViewProps = {
   onNavigateNext?: (nextId: string | null) => void;
 };
 
-function resetComposerState(setters: {
-  setReply: (v: string) => void;
-  setReplyInternal: (v: boolean) => void;
-  setReplyAttachments: (v: AttachmentItem[]) => void;
-  setUploadErr: (v: string | null) => void;
-  setContextAttachSearch: (v: string) => void;
-  setAttachBookingNumber: (v: string) => void;
-  setAttachOrderNumber: (v: string) => void;
-  setAttachGiftCode: (v: string) => void;
-  setShowCancelBooking: (v: boolean) => void;
-  setShowRefundBooking: (v: boolean) => void;
-}) {
-  setters.setReply("");
-  setters.setReplyInternal(false);
-  setters.setReplyAttachments([]);
-  setters.setUploadErr(null);
-  setters.setContextAttachSearch("");
-  setters.setAttachBookingNumber("");
-  setters.setAttachOrderNumber("");
-  setters.setAttachGiftCode("");
-  setters.setShowCancelBooking(false);
-  setters.setShowRefundBooking(false);
-}
-
 export function SupportTicketDetailView({
   id,
   variant = "page",
@@ -127,7 +111,9 @@ export function SupportTicketDetailView({
   onNavigateNext,
 }: SupportTicketDetailViewProps) {
   const isPanel = variant === "panel";
-  const { shellRef, heightPx } = useAdminWorkspaceHeight(!isPanel);
+  const isDesktop = useIsDesktop();
+  const lockPageHeight = !isPanel && isDesktop;
+  const { shellRef, heightPx } = useAdminWorkspaceHeight(lockPageHeight);
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_SUPPORT, "Support access is required.");
@@ -145,8 +131,15 @@ export function SupportTicketDetailView({
   const fileRef = useRef<HTMLInputElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
   const seenStampedRef = useRef<string | null>(null);
+  const suppressPatchToastRef = useRef(false);
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const assistId = searchParams.get("assist");
+  const queueParam = searchParams.get("queue");
+  const messageHashId = useMemo(() => {
+    const raw = location.hash.replace(/^#/, "").trim();
+    return raw.startsWith("message-") ? raw.slice("message-".length) : null;
+  }, [location.hash]);
   const [patchError, setPatchError] = useState<string | null>(null);
   const [tagsInput, setTagsInput] = useState("");
   const [slaDueInput, setSlaDueInput] = useState("");
@@ -181,6 +174,7 @@ export function SupportTicketDetailView({
       ? undefined
       : str(detailQ.data?.ticket?.ticket_number) || str(detailQ.data?.ticket?.subject) || undefined,
   );
+  useAdminBreadcrumbParentHref(isPanel ? undefined : supportTicketsQueueHref());
 
   const ticketTenantId = detailQ.data?.ticket?.tenant_id ?? null;
 
@@ -233,19 +227,35 @@ export function SupportTicketDetailView({
     invalidateAdminShellCounts(qc);
   }, [qc, id]);
 
+  const composerDraftSaveRef = useRef({ reply: "", replyInternal: false, ticketId: id });
+
   useEffect(() => {
-    resetComposerState({
-      setReply,
-      setReplyInternal,
-      setReplyAttachments,
-      setUploadErr,
-      setContextAttachSearch,
-      setAttachBookingNumber,
-      setAttachOrderNumber,
-      setAttachGiftCode,
-      setShowCancelBooking,
-      setShowRefundBooking,
-    });
+    composerDraftSaveRef.current = { reply, replyInternal, ticketId: id };
+  }, [reply, replyInternal, id]);
+
+  useEffect(() => {
+    saveSupportTicketComposerDraft(id, { reply, replyInternal });
+  }, [id, reply, replyInternal]);
+
+  useEffect(() => {
+    return () => {
+      const { reply: r, replyInternal: internal, ticketId } = composerDraftSaveRef.current;
+      saveSupportTicketComposerDraft(ticketId, { reply: r, replyInternal: internal });
+    };
+  }, [id]);
+
+  useEffect(() => {
+    const draft = loadSupportTicketComposerDraft(id);
+    setReply(draft?.reply ?? "");
+    setReplyInternal(draft?.replyInternal ?? false);
+    setReplyAttachments([]);
+    setUploadErr(null);
+    setContextAttachSearch("");
+    setAttachBookingNumber("");
+    setAttachOrderNumber("");
+    setAttachGiftCode("");
+    setShowCancelBooking(false);
+    setShowRefundBooking(false);
     setCancelReason("");
     setRefundReasonPreset("");
     setRefundReasonOther("");
@@ -287,7 +297,34 @@ export function SupportTicketDetailView({
       .catch(() => {});
   }, [allowed, id, qc]);
 
-  const usePageQueue = Boolean(queueTicketIds && queueTicketIds.length > 0);
+  const queueFromApiQ = useQuery({
+    queryKey: ["support-tickets-queue-ids", queueParam],
+    queryFn: () =>
+      adminApi.getJson<{ tickets: Array<{ id: string }> }>(
+        `/api/admin/support-tickets?${queueParam}`,
+        { timeoutMs: 45_000 },
+      ),
+    enabled: allowed && !!id && !!queueParam && !(queueTicketIds && queueTicketIds.length > 0),
+    staleTime: 30_000,
+  });
+
+  const effectiveQueueTicketIds = useMemo(() => {
+    if (queueTicketIds && queueTicketIds.length > 0) return queueTicketIds;
+    const fromApi = queueFromApiQ.data?.tickets ?? [];
+    return fromApi.length > 0 ? fromApi.map((t) => t.id) : null;
+  }, [queueTicketIds, queueFromApiQ.data?.tickets]);
+
+  const ticketDetailUrl = useCallback(
+    (ticketId: string) => {
+      const qs = new URLSearchParams();
+      if (queueParam) qs.set("queue", queueParam);
+      const tail = qs.toString() ? `?${qs.toString()}` : "";
+      return adminSpaTo(`/admin/support-tickets/${encodeURIComponent(ticketId)}${tail}`);
+    },
+    [queueParam],
+  );
+
+  const usePageQueue = Boolean(effectiveQueueTicketIds && effectiveQueueTicketIds.length > 0);
   const nextQueueQ = useQuery({
     queryKey: ["support-tickets-next-queue", id],
     queryFn: () =>
@@ -310,7 +347,7 @@ export function SupportTicketDetailView({
 
   const queueNav = resolveQueueNav({
     currentId: id,
-    queueTicketIds: usePageQueue ? queueTicketIds : null,
+    queueTicketIds: usePageQueue ? effectiveQueueTicketIds : null,
     remoteNextId,
   });
 
@@ -322,13 +359,21 @@ export function SupportTicketDetailView({
       return;
     }
     if (targetId) {
-      navigate(adminSpaTo(`/admin/support-tickets/${encodeURIComponent(targetId)}`), {
-        state: queueTicketIds?.length ? { queueTicketIds } : undefined,
+      navigate(ticketDetailUrl(targetId), {
+        state: effectiveQueueTicketIds?.length ? { queueTicketIds: effectiveQueueTicketIds } : undefined,
       });
     } else {
-      navigate(adminSpaTo("/admin/support-tickets"));
+      navigate(supportTicketsQueueHref());
     }
-  }, [isPanel, onNavigateNext, queueNav.endOfPage, queueNav.nextId, queueTicketIds, navigate]);
+  }, [
+    isPanel,
+    onNavigateNext,
+    queueNav.endOfPage,
+    queueNav.nextId,
+    effectiveQueueTicketIds,
+    navigate,
+    ticketDetailUrl,
+  ]);
 
   const rtDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -400,6 +445,11 @@ export function SupportTicketDetailView({
       }
     },
     onError: (e: Error) => {
+      if (suppressPatchToastRef.current) {
+        suppressPatchToastRef.current = false;
+        setPatchError(e.message);
+        return;
+      }
       if (e instanceof AdminApiError && e.status === 409) {
         setPatchError(null);
         adminToast.error("Another teammate updated this ticket — refreshed from server.");
@@ -424,6 +474,7 @@ export function SupportTicketDetailView({
       setReplyInternal(false);
       setReplyAttachments([]);
       setUploadErr(null);
+      clearSupportTicketComposerDraft(id);
       invalidateTicket();
       adminToast.success(wasInternal ? "Internal note saved" : "Reply sent");
     },
@@ -436,12 +487,16 @@ export function SupportTicketDetailView({
     try {
       await sendMessage.mutateAsync();
       if (nextStatus) {
-        await adminApi.patchJson(`/api/admin/support-tickets/${encodeURIComponent(id)}`, { status: nextStatus });
-        invalidateTicket();
-        adminToast.success(`Ticket marked ${nextStatus.replace(/_/g, " ")}`);
+        suppressPatchToastRef.current = true;
+        try {
+          await patchTicket.mutateAsync({ status: nextStatus });
+        } catch {
+          suppressPatchToastRef.current = false;
+          adminToast.error("Reply sent, status not changed.");
+        }
       }
     } catch {
-      // Mutation handlers already surface the specific error.
+      // sendMessage surfaces its own error.
     }
   };
 
@@ -452,7 +507,11 @@ export function SupportTicketDetailView({
     try {
       const fd = new FormData();
       for (const f of Array.from(files)) fd.append("files", f);
-      const res = await fetch(`/api/admin/support-tickets/${encodeURIComponent(id)}/upload`, {
+      const uploadPath = withAdminScopeUrl(
+        `/api/admin/support-tickets/${encodeURIComponent(id)}/upload`,
+        "POST",
+      );
+      const res = await fetch(uploadPath, {
         method: "POST",
         body: fd,
         credentials: "include",
@@ -565,14 +624,45 @@ export function SupportTicketDetailView({
   );
 
   const scrolledForRef = useRef<{ id: string | null; count: number }>({ id: null, count: 0 });
+  const skipJumpToLatestRef = useRef(Boolean(messageHashId));
+  useEffect(() => {
+    skipJumpToLatestRef.current = Boolean(messageHashId);
+  }, [messageHashId, id]);
+
   const threadItemCount = threadItems.length;
   const hasTicket = Boolean(detailQ.data?.ticket);
+  const threadScrollMode: "panel" | "page" | "page-mobile" =
+    isPanel ? "panel" : isDesktop ? "page" : "page-mobile";
+
   const scrollThreadToEnd = useCallback(
     (forceTicketChanged: boolean) => {
-      const el = threadRef.current;
-      if (!el || el.clientHeight === 0) return false;
+      if (skipJumpToLatestRef.current) return true;
       const prev = scrolledForRef.current;
       const ticketChanged = forceTicketChanged || prev.id !== id;
+
+      if (!isPanel && !isDesktop) {
+        const lastItem = threadItems[threadItems.length - 1];
+        const lastId = lastItem?.id ?? null;
+        const target = lastId
+          ? document.getElementById(`message-${lastId}`)
+          : threadRef.current?.querySelector("li:last-child");
+        scrolledForRef.current = { id, count: threadItemCount };
+        if (!target) return false;
+        const auto = shouldAutoScrollThread({
+          ticketChanged,
+          prevItemCount: prev.count,
+          nextItemCount: threadItemCount,
+          distanceFromBottom: 0,
+        });
+        if (!auto) return true;
+        requestAnimationFrame(() => {
+          target.scrollIntoView({ block: "end", behavior: ticketChanged ? "auto" : "smooth" });
+        });
+        return true;
+      }
+
+      const el = threadRef.current;
+      if (!el || el.clientHeight === 0) return false;
       const auto = shouldAutoScrollThread({
         ticketChanged,
         prevItemCount: prev.count,
@@ -586,8 +676,23 @@ export function SupportTicketDetailView({
       });
       return true;
     },
-    [id, threadItemCount],
+    [id, threadItemCount, threadItems, isPanel, isDesktop],
   );
+
+  useEffect(() => {
+    if (!hasTicket || !showConversation || !messageHashId) return;
+    const timer = window.setTimeout(() => {
+      const el = document.getElementById(`message-${messageHashId}`);
+      if (!el) return;
+      skipJumpToLatestRef.current = true;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("ring-2", "ring-primary/60", "ring-offset-2");
+      window.setTimeout(() => {
+        el.classList.remove("ring-2", "ring-primary/60", "ring-offset-2");
+      }, 2000);
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [hasTicket, showConversation, messageHashId, threadItemCount]);
 
   useEffect(() => {
     if (!hasTicket || !showConversation) return;
@@ -604,9 +709,20 @@ export function SupportTicketDetailView({
   if (denied) return denied;
   if (!id) return <AdminRetryBlock message="Missing ticket id" onRetry={() => {}} />;
 
+  const loadingShellStyle =
+    lockPageHeight && heightPx != null ? ({ height: `${heightPx}px` } as const) : undefined;
+
   if (detailQ.isLoading) {
     return (
-      <div className={isPanel ? "flex h-full min-h-0 flex-col overflow-hidden p-4" : "flex min-h-0 flex-col"}>
+      <div
+        ref={!isPanel ? shellRef : undefined}
+        style={loadingShellStyle}
+        className={
+          isPanel
+            ? "flex h-full min-h-0 flex-col overflow-hidden p-4"
+            : "flex min-h-0 flex-col overflow-hidden"
+        }
+      >
         <AdminPageSkeleton rows={4} />
       </div>
     );
@@ -625,7 +741,17 @@ export function SupportTicketDetailView({
   const ticket = bundle?.ticket;
 
   if (!ticket) {
-    return <p className="p-4 text-sm text-gray-600">Ticket not found.</p>;
+    return (
+      <div className="space-y-3 p-4">
+        <p className="text-sm text-gray-600">Ticket not found.</p>
+        <Link
+          to={supportTicketsQueueHref()}
+          className="text-sm font-medium text-gray-800 underline-offset-2 hover:underline"
+        >
+          Back to queue
+        </Link>
+      </div>
+    );
   }
 
   const assignees = assigneesQ.data?.assignees ?? [];
@@ -678,7 +804,18 @@ export function SupportTicketDetailView({
   const claimStartDisabled = assignedId === myStaffUserId && str(ticket.status) === "in_progress";
 
   const rootStyle =
-    !isPanel && heightPx != null ? ({ height: `${heightPx}px` } as const) : undefined;
+    lockPageHeight && heightPx != null ? ({ height: `${heightPx}px` } as const) : undefined;
+
+  const conversationGridRows =
+    isPanel || (isDesktop && !isPanel)
+      ? isPanel
+        ? "grid-rows-[minmax(12rem,1fr)_auto]"
+        : "grid-rows-[minmax(24rem,1fr)_auto]"
+      : "grid-rows-[auto_auto]";
+
+  const fullPageState = effectiveQueueTicketIds?.length
+    ? { queueTicketIds: effectiveQueueTicketIds }
+    : undefined;
 
   return (
     <div
@@ -690,15 +827,9 @@ export function SupportTicketDetailView({
       className={
         isPanel
           ? "flex h-full min-h-0 flex-col gap-3 overflow-hidden p-4"
-          : "flex min-h-0 flex-col gap-3 overflow-hidden"
+          : `flex min-h-0 flex-col gap-3 ${lockPageHeight ? "overflow-y-auto" : ""}`
       }
     >
-      {selectedOffPage ? (
-        <p className="shrink-0 text-xs text-amber-800">Not on this page.</p>
-      ) : null}
-
-      <TicketAttentionBanner banners={attentionBanners} />
-
       <TicketDetailHeader
         ticket={ticket}
         ticketId={id}
@@ -711,7 +842,10 @@ export function SupportTicketDetailView({
         isFetching={detailQ.isFetching}
         queueNavLabel={queueNav.label}
         queueNavDisabled={queueNav.endOfPage}
-        queueTicketIds={queueTicketIds}
+        queueBackHref={supportTicketsQueueHref()}
+        fullPageHref={ticketDetailUrl(id)}
+        fullPageState={fullPageState}
+        compactActions={isPanel && !isWide}
         onNextInQueue={handleNextInQueue}
         onRefresh={() => void detailQ.refetch()}
         onAssignToMe={() => void patchTicket.mutateAsync({ assigned_to: myStaffUserId })}
@@ -722,35 +856,43 @@ export function SupportTicketDetailView({
         claimStartDisabled={claimStartDisabled}
       />
 
-      {ticket.channel === "email" ? (
-        <div className="shrink-0 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 text-xs text-sky-950 sm:text-sm">
-          Email from {ticket.requester_email || ticket.user?.email || "unknown sender"} to{" "}
-          {ticket.mailbox?.address || "support mailbox"}
-          {ticket.tenant?.name ? (
-            <>
-              , {ticket.tenant.name}
-              {ticket.tenant.region_code ? ` (${ticket.tenant.region_code})` : ""}
-            </>
-          ) : null}
-          . Public replies send from {ticket.mailbox?.address || "the mailbox"}.
-          {ticket.mailbox?.outbound_enabled === false ? (
-            <span className="mt-1 block font-medium text-amber-900">Outbound email is off for this mailbox.</span>
-          ) : null}
-        </div>
+      {selectedOffPage ? (
+        <p className="shrink-0 text-xs text-amber-900">
+          This ticket isn&apos;t in the current list. You can still work it here; Next follows the loaded queue.
+        </p>
       ) : null}
 
-      <div id="agent-assist-panel" className="max-h-32 shrink-0 overflow-y-auto">
-        <AgentAssistPanel
-          targetType="support_ticket"
-          targetId={id}
-          actionTypes={["support.reply", "support.assign", "support.resolve"]}
-          entityLabel={`#${str(ticket.ticket_number)}`}
-          shadowMode={shadowMode}
-          hideWhenEmpty
-          emptyTitle="No AI draft for this ticket"
-          emptyDescription="When Support Triage drafts a reply, it will appear here for your approval."
-        />
+      <div className="admin-scrollbar max-h-32 shrink-0 space-y-2 overflow-y-auto">
+        <TicketAttentionBanner banners={attentionBanners} />
+        {ticket.channel === "email" ? (
+          <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 text-xs text-sky-950 sm:text-sm">
+            Email from {ticket.requester_email || ticket.user?.email || "unknown sender"} to{" "}
+            {ticket.mailbox?.address || "support mailbox"}
+            {ticket.tenant?.name ? (
+              <>
+                , {ticket.tenant.name}
+                {ticket.tenant.region_code ? ` (${ticket.tenant.region_code})` : ""}
+              </>
+            ) : null}
+            . Public replies send from {ticket.mailbox?.address || "the mailbox"}.
+            {ticket.mailbox?.outbound_enabled === false ? (
+              <span className="mt-1 block font-medium text-amber-900">Outbound email is off for this mailbox.</span>
+            ) : null}
+          </div>
+        ) : null}
       </div>
+
+      <AgentAssistPanel
+        targetType="support_ticket"
+        targetId={id}
+        actionTypes={["support.reply", "support.assign", "support.resolve"]}
+        entityLabel={`#${str(ticket.ticket_number)}`}
+        shadowMode={shadowMode}
+        hideWhenEmpty
+        collapsible
+        emptyTitle="No AI draft for this ticket"
+        emptyDescription="When Support Triage drafts a reply, it will appear here for your approval."
+      />
 
       {patchError ? (
         <p className="shrink-0 text-sm text-red-700" role="alert">
@@ -769,7 +911,9 @@ export function SupportTicketDetailView({
         <div
           role="tablist"
           aria-label="Ticket workspace"
-          className="flex shrink-0 gap-1 rounded-xl bg-gray-100 p-1 text-sm font-medium"
+          className={`flex shrink-0 gap-1 rounded-xl bg-gray-100 p-1 text-sm font-medium ${
+            !isPanel && !isDesktop ? "sticky top-0 z-20 bg-gray-100/95 backdrop-blur-sm" : ""
+          }`}
         >
           {(
             [
@@ -811,14 +955,16 @@ export function SupportTicketDetailView({
           role="tabpanel"
           aria-labelledby="ticket-tab-conversation"
           hidden={!showConversation}
-          className={`${showConversation ? "flex" : "hidden"} min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white p-3 shadow-sm ring-1 ring-gray-950/[0.03]`}
+          className={`${showConversation ? "grid" : "hidden"} min-h-0 min-w-0 ${conversationGridRows} overflow-hidden rounded-2xl border border-gray-200 bg-white p-3 shadow-sm ring-1 ring-gray-950/[0.03]`}
         >
           <TicketThread
             threadRef={threadRef}
             threadItems={threadItems}
+            ticketId={id}
             customerUserId={customerUserId}
             originalRequestText={originalRequestText}
             ticketCreatedAt={ticket.created_at ? str(ticket.created_at) : undefined}
+            scrollMode={threadScrollMode}
           />
           <TicketComposer
             ticket={ticket}
@@ -838,6 +984,7 @@ export function SupportTicketDetailView({
             uploadErr={uploadErr}
             onPickFiles={onPickFiles}
             fileRef={fileRef}
+            layout={isPanel ? "panel" : isDesktop ? "page" : "page-mobile"}
           />
         </section>
 
@@ -846,7 +993,7 @@ export function SupportTicketDetailView({
           role="tabpanel"
           aria-labelledby="ticket-tab-details"
           hidden={!showDetails}
-          className={showDetails ? "h-full min-h-0 overflow-hidden" : "hidden"}
+          className={showDetails ? "admin-scrollbar min-h-0 overflow-y-auto" : "hidden"}
         >
         <TicketSidebar
           ticket={ticket}

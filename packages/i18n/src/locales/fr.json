@@ -699,7 +699,26 @@
           "uploadFailedTitle": "Échec : Upload",
           "uploadFailedBody": "Impossible de upload image.",
           "variantsTitle": "Variantes",
-          "addOptionRequired": "Add à au moins one option avec a name et one value."
+          "addOptionRequired": "Add à au moins one option avec a name et one value.",
+          "createOptionsA11y": "Créer des choix depuis les types et les valeurs",
+          "defaultMeasureLabel": "Unité pour de nouvelles options",
+          "defaultMeasureHint": "Utilisé uniquement pour les options que vous créez ensuite. Les options déjà répertoriées conservent leur propre unité.",
+          "defaultMeasureA11y": "Unité pour nouvelles options, {{value}}",
+          "moreDetails": "Plus de détails",
+          "hideDetails": "Masquer les détails",
+          "moreDetailsA11y": "Plus de détails pour {{name}}",
+          "hideDetailsA11y": "Masquer les détails pour {{name}}",
+          "fieldSkuLabel": "SKU",
+          "fieldBarcodeLabel": "Code-barres",
+          "fieldMeasureLabel": "Mesure",
+          "fieldAmountLabel": "Montant",
+          "fieldQuantityLabel": "Quantité",
+          "fieldLowStockLevelLabel": "Stock bas level",
+          "fieldReorderQuantityLabel": "Quantité à commander",
+          "fieldSupplyPriceLabel": "Cost prix",
+          "fieldRetailPriceLabel": "Selling prix",
+          "fieldMarkupLabel": "Marge (%)",
+          "retailPriceA11y": "Selling prix for {{name}}"
         },
         "bookingDateTimePicker": {
           "showingPeriodOnlyA11y": "Showing {{label}} uniquement. Tap to afficher tous.",
@@ -949,7 +968,8 @@
           "nextA11y": "Suivant step",
           "existingProfileTitle": "Profil déjà créé",
           "existingProfileBody": "Votre profil d’entreprise est prêt. Utilisez la liste de configuration pour modifier les détails — les changements ici ne sont pas enregistrés.",
-          "openChecklist": "Ouvrir la liste de configuration"
+          "openChecklist": "Ouvrir la liste de configuration",
+          "useDifferentAccount": "Utiliser un autre compte"
         },
         "accountStatusGuard": {
           "title": "Vérification du compte requise",
@@ -1139,7 +1159,9 @@
           "pendingRequests": "− En attente / processing requests",
           "alreadyPaidOut": "− Already paid out",
           "available": "= Disponible to withdraw",
-          "footer": "Abonnement et publicités sont facturés séparément sur votre carte et ne réduisent jamais ce solde."
+          "footer": "Abonnement et publicités sont facturés séparément sur votre carte et ne réduisent jamais ce solde.",
+          "openDisputeReserve": "− Ouvrir dispute reserve",
+          "vatHeldForProvider": "− VAT retenus pour paiement"
         },
         "reportRevenueGlossary": {
           "title": "What these numbers mean"
@@ -1213,6 +1235,19 @@
             "booking_intake": "Formulaires client",
             "booking_recurring": "Répétition série"
           }
+        },
+        "staffPhotoField": {
+          "uploadFailedTitle": "Échec : Upload",
+          "uploadFailedBody": "Impossible de upload the photo. Réessayer.",
+          "changePhotoA11y": "Changer la photo",
+          "customerHint": "Les clients voient cette photo lors de la réservation.",
+          "removePhoto": "Retirer photo"
+        },
+        "staffCommissionEditor": {
+          "paysCommission": "Paye des commissions",
+          "percentValue": "{{rate}}%",
+          "splitRates": "Service {{service}}% · Produit {{product}}% (fixé aux commissions d'équipe)",
+          "openTeamCommissions": "Commissions d'équipe → horaire, salaire, pourboires"
         }
       },
       "screens": {
@@ -1560,7 +1595,8 @@
           "errTenant": "Workspace configuration erreur. Vérifier prestataire/tenant réglages or assistance.",
           "errValidation": "Vérifier the sale details and réessayer.",
           "errUnauthorized": "Session expiré. Se connecter again and réessayer.",
-          "errDefault": "Impossible de terminer sale. Veuillez réessayer."
+          "errDefault": "Impossible de terminer sale. Veuillez réessayer.",
+          "refundOnlineNoCustomer": "Cette vente a été payée en ligne et n’a pas de portefeuille client, elle ne peut donc pas être remboursée en personne."
         },
         "productForm": {
           "editTitle": "Modifier Produit",
@@ -1659,7 +1695,19 @@
           "measureUnit": "Unité",
           "defaultVariantType": "Taille",
           "weightGrams": "Poids d'expédition (g)",
-          "weightGramsPlaceholder": "500"
+          "weightGramsPlaceholder": "500",
+          "variantsPerOptionNote": "Chaque option ci-dessous possède son propre code-barres, SKU et sa propre taille. Le nom, les photos, la catégorie et la taxe restent sur ce produit.",
+          "variantsHiddenDelete": "Ces options sont masquées. Si vous enregistrez maintenant, ils sont supprimés, y compris les prix et les codes-barres.",
+          "variantsHiddenUntilOn": "Ces options sont enregistrées uniquement lorsque l'option A des variantes est activée.",
+          "deleteOptionsTitle": "Supprimer these options?",
+          "deleteOptionsBody": "L'enregistrement supprime toutes les tailles ou options, y compris les prix, les stocks et les codes-barres.",
+          "keepOptions": "Conserver les options",
+          "deleteOptionsConfirm": "Supprimer and enregistrer",
+          "freeOptionsTitle": "Certaines options sont gratuites.",
+          "freeOptionsBody_one": "L'option {{count}} est toujours au prix de 0. Les clients peuvent l'acheter gratuitement.",
+          "freeOptionsBody_other": "Les options {{count}} sont toujours au prix de 0. Les clients peuvent les acheter gratuitement.",
+          "reviewPrices": "Avis prices",
+          "saveAnyway": "Enregistrer anyway"
         },
         "ads": {
           "title": "Annonces payantes",
@@ -2302,7 +2350,14 @@
           "refundReasonPlaceholder": "Why is this refund being issued?",
           "viewFullBooking": "Voir full réservation",
           "statusNoShow": "Non show",
-          "statusPendingPayment": "En attente paiement"
+          "statusPendingPayment": "En attente paiement",
+          "removeParticipantOverpaid": "Invité supprimé. La réservation est désormais payée en trop de {{amount}}. Remboursez la différence au client.",
+          "shareStatusPaid": "Part payée",
+          "shareStatusPending": "Part impayée ({{amount}})",
+          "shareStatusCancelled": "Spot annulé",
+          "resendInvite": "Renvoyer l'invitation",
+          "inviteResent": "Invitation envoyée",
+          "inviteResendFailed": "Impossible de re-send the invite."
         },
         "settingsIndex": {
           "title": "Réglages",
@@ -3132,7 +3187,9 @@
           "refundOriginalMachineHint": "L'argent est reversé sur la carte du client via la machine à cartes utilisée pour le paiement.",
           "cancelWalletNote": "Le client recevra un remboursement intégral sur son portefeuille Beautonomi des montants déjà payés. Votre politique d'annulation ne s'applique pas aux annulations que vous effectuez.",
           "cancelRefundTo": "Rembourser le montant payé à",
-          "yocoRefundRecordCta": "Remboursé sur la machine — enregistrer le remboursement"
+          "yocoRefundRecordCta": "Remboursé sur la machine — enregistrer le remboursement",
+          "pendingCashRefundTitle": "{{amount}} pour revenir en personne",
+          "pendingCashRefundBody": "Le client doit confirmer avoir reçu ce remboursement dans l'application. N'enregistrez pas un autre remboursement en espèces tant qu'il est en attente : restituez le montant indiqué et attendez la confirmation (ou la fermeture de la fenêtre de 48 heures)."
         },
         "operatingHoursSettings": {
           "title": "Operating Heures",
@@ -3321,7 +3378,8 @@
           "billedThroughStripeBody": "Mettez à jour votre carte ou consultez vos factures dans le portail de facturation Stripe sécurisé. Touchez Gérer la facturation ci-dessous.",
           "stripeManageUnavailable": "La facturation Stripe n’est pas encore configurée. Terminez d’abord le paiement, puis réessayez.",
           "paystackManageUnavailable": "Ce forfait n’utilise pas la facturation récurrente Paystack. Terminez le paiement ou contactez l’assistance.",
-          "planChangeScheduled": "Changement de forfait planifié. Modifications le {{when}}."
+          "planChangeScheduled": "Changement de forfait planifié. Modifications le {{when}}.",
+          "finishUpgradeTitle": "Terminer la mise à niveau vers {{plan}}"
         },
         "moreTab": {
           "sectionGrowBusiness": "Grow your business",
@@ -4004,7 +4062,14 @@
           "courierBooking": "Courier réservation",
           "bookCourier": "Réserver un coursier",
           "retryCourierBooking": "Réessayer réservation",
-          "printLabel": "Imprimer l'étiquette"
+          "printLabel": "Imprimer l'étiquette",
+          "refundOnlineOnly": "Cette commande a été payée en ligne. Le crédit en magasin restitue les frais de la carte et toute partie du portefeuille ou de la carte-cadeau au client.",
+          "refundOnlineNoCustomer": "Cette commande a été payée en ligne et n'a pas de portefeuille client, elle ne peut donc pas être remboursée en personne.",
+          "refundAmountLabel": "Remboursement amount (up to {{max}})",
+          "refundAmountA11y": "Remboursement amount",
+          "refundAmountInvalid": "Saisissez un montant supérieur à 0 et pas supérieur à {{max}}.",
+          "partiallyRefundedRefundRemaining": "Cette commande a été partiellement remboursée. Marquez-le comme remboursé pour le montant restant – l’annulation n’est pas disponible.",
+          "refundRemainingHint": "Remboursement remaining"
         },
         "yocoDevices": {
           "title": "Appareils Yoco",
@@ -4764,7 +4829,9 @@
             "saveService": "Enregistrer service",
             "addService": "Ajouter service",
             "cancelEditingA11y": "Annuler editing",
-            "cancelEdit": "Annuler modifier"
+            "cancelEdit": "Annuler modifier",
+            "bookingOptionCount_one": " · {{count}} réservation option",
+            "bookingOptionCount_other": " · {{count}} réservation options"
           },
           "hours": {
             "freelancerHint": "Nous avons prérempli des horaires larges en semaine (8 h–20 h). Touchez un jour pour ouvrir ou fermer, puis réglez les heures.",
@@ -4844,7 +4911,12 @@
             "bizSalon": "Salon / studio",
             "bizMobile": "Mobile / à domicile",
             "bizBoth": "Salon + mobile",
-            "emDash": "—"
+            "emDash": "—",
+            "ownerGoLiveTitle": "Your profil on the réservation page",
+            "ownerTakesAppointments": "I take rendez-vous myself",
+            "ownerPublicTitle": "Title clients see (facultatif)",
+            "ownerServicesLabel": "Services que vous effectuez",
+            "ownerServicesAll": "Laissez tout coché pour proposer tous les services de votre catalogue."
           },
           "plan": {
             "popular": "Populaire",
@@ -4860,10 +4932,95 @@
             "noneAvailable": "No subscription plans available right now. Hit Submit to continue — we'll sort this after.",
             "intro": "Pick the plan that fits today. Free activates instantly — paid plans take you to a secure card payment after you submit. You can upgrade or downgrade any time from settings.",
             "yearly": "Annuel",
-            "monthly": "Mensuel"
+            "monthly": "Mensuel",
+            "periodAvailableOnWeb": "La facturation {{period}} est disponible sur le Web uniquement pour ce forfait."
           },
           "travelFees": {
             "skipHint": "Vous pouvez passer cette étape — nous appliquons la norme plateforme et vous ajusterez plus tard."
+          },
+          "steps": {
+            "team_size": {
+              "title": "Équipe size",
+              "description": "Parlez-nous de votre équipe"
+            },
+            "identity": {
+              "title": "Votre identité",
+              "description": "Nom, vérifié e-mail, and vérifié téléphone"
+            },
+            "business": {
+              "title": "Business details",
+              "description": "How clients see your business"
+            },
+            "payment": {
+              "title": "Paiements & policies",
+              "description": "Terminals, VAT & réservation protection"
+            },
+            "software": {
+              "title": "Actuel software",
+              "description": "Facultatif — previous réservation system"
+            },
+            "payroll": {
+              "title": "Paie",
+              "description": "How you pay équipe"
+            },
+            "location": {
+              "title": "Lieu",
+              "description": "Primary adresse"
+            },
+            "photos": {
+              "title": "Photos",
+              "description": "Obligatoire thumbnail & profil images"
+            },
+            "zones": {
+              "title": "Service zones",
+              "description": "Où vous proposez des visites mobiles"
+            },
+            "travel_fees": {
+              "title": "Frais de déplacement",
+              "description": "Frais de déplacement à domicile"
+            },
+            "categories": {
+              "title": "Catégories",
+              "description": "Ce que vous proposez"
+            },
+            "catalog": {
+              "title": "Services",
+              "description": "Facultatif — ajouter services now or later"
+            },
+            "hours": {
+              "title": "Heures",
+              "description": "When you're disponible"
+            },
+            "review": {
+              "title": "Avis",
+              "description": "Vérifiez vos informations"
+            },
+            "plan": {
+              "title": "Forfait",
+              "description": "Choose a abonnement"
+            }
+          },
+          "alerts": {
+            "errorTitle": "Erreur",
+            "loadFailed": "Impossible de load onboarding.",
+            "checkStepTitle": "Vérifiez cette étape",
+            "completeRequiredFields": "Please terminer obligatoire fields.",
+            "couldNotContinue": "Impossible de continue.",
+            "almostThereTitle": "Presque terminé",
+            "completeStepFirst": "Terminer this step first.",
+            "missingInfoTitle": "Infos manquantes",
+            "selectTeamSize": "Veuillez sélectionner la taille de votre équipe.",
+            "verifyPhoneTitle": "Verify téléphone",
+            "verifyPhoneBody": "Veuillez vérifier votre numéro de téléphone.",
+            "categoriesTitle": "Catégories",
+            "selectCategory": "Sélectionner at least one category.",
+            "addressTitle": "Adresse",
+            "completeAddress": "Veuillez compléter l'adresse (ligne 1, ville, pays).",
+            "stillSettingUpTitle": "Toujours en train de mettre en place",
+            "stillSettingUpBody": "Votre profil d'entreprise est peut-être encore en cours d'enregistrement. Attendez un moment, puis appuyez à nouveau sur Soumettre.",
+            "couldNotFinishTitle": "Impossible de finish setup",
+            "tryAgain": "Veuillez réessayer.",
+            "submitFailed": "Échec : Envoyer"
           }
         },
         "newBooking": {
@@ -5480,7 +5637,27 @@
           "soundsSectionPlatform": "Sons populaires",
           "soundsSectionYours": "Vos sons",
           "soundPreviewPlay": "Lire l'aperçu",
-          "soundPreviewStop": "Arrêter l'aperçu"
+          "soundPreviewStop": "Arrêter l'aperçu",
+          "trimHandleStartA11y": "Début du clip",
+          "trimHandleEndA11y": "Fin du clip",
+          "trimSelectedLength": "{{seconds}}s · plafond {{max}}s",
+          "trimQueueCounter": "Vidéo {{index}} du {{total}}",
+          "trimVideoLoadFailed": "Impossible de load this video.",
+          "retake": "Reprendre",
+          "usePhoto": "Utiliser une photo",
+          "discardClip": "Jeter le clip",
+          "retry": "Réessayer",
+          "recordTooShort": "Maintenez le bouton un peu plus longtemps pour enregistrer.",
+          "micPermissionOpenSettings": "Ouvrir Réglages",
+          "flashOn": "Flash activé",
+          "flashOff": "Flash éteint",
+          "mediaSkippedTooLarge": "{{count}} fichier(s) étaient trop volumineux et ont été ignorés.",
+          "cameraPermissionOpenSettings": "Ouvrir Réglages",
+          "statusVideoProcessing": "Traitement",
+          "statusVideoFailed": "Échec : Vidéo",
+          "statusHidden": "Masqué par Beautonomi",
+          "statusHiddenNote": "Note de modération : {{note}}",
+          "videoFailedDetail": "L'encodage vidéo a échoué. Modifiez le message et enregistrez-le pour réessayer."
         },
         "dashboard": {
           "title": "Tableau de bord",
@@ -5630,7 +5807,9 @@
           "viewAllLower": "Tout voir",
           "activityWindow": "Last 14 jours ({{window}}) · not filtered by the période above.",
           "activityDefaultHint": "Latest updates across bookings, payments, and reviews — not filtered by the period above.",
-          "noRecentActivity": "Non recent activity"
+          "noRecentActivity": "Non recent activity",
+          "giftCardLedgerIssuance": "Carte cadeau ledger issuance (all heure)",
+          "membershipSalesAllTime": "Membership sales (all heure)"
         },
         "staffSchedule": {
           "title": "Horaires de l’équipe",
@@ -5887,7 +6066,26 @@
           "resetSentTitle": "Réinitialisation envoyée",
           "resetSentBody": "Password reset email has been sent.",
           "payPlanSummary": "Plan de paie",
-          "payPlanEditHint": "Ouvrez les rémunérations d'équipe pour modifier le barème de paie et les pourcentages."
+          "payPlanEditHint": "Ouvrez les rémunérations d'équipe pour modifier le barème de paie et les pourcentages.",
+          "changePhotoA11y": "Change profil photo",
+          "takesAppointmentsLabel": "Takes rendez-vous",
+          "bookableFromLabel": "First bookable jour",
+          "bookableImmediately": "Immédiatement",
+          "timeClockLabel": "Heure clock",
+          "enabled": "Activé",
+          "disabled": "Désactivé",
+          "yes": "Oui",
+          "no": "Non",
+          "emailReadOnly": "E-mail",
+          "applyJobTitle": "Appliquer job defaults?",
+          "applyJobBody": "Cela réinitialise leurs autorisations aux {{job}} valeurs par défaut.",
+          "apply": "Appliquer",
+          "applyJobDefaults": "Appliquer job defaults",
+          "timeClockPin": "Heure clock PIN (4 digits)",
+          "pinInvalid": "PIN doit comporter jusqu'à 4 chiffres.",
+          "partialSaveTitle": "Partially enregistré",
+          "partialSaveSettingsFailed": "Profil enregistré, mais les paramètres de réservation n'ont pas été enregistrés. Tirez pour actualiser et réessayez.",
+          "clearBookableDate": "Date claire (réservable immédiatement)"
         },
         "serviceForm": {
           "serviceName": "Service nom *",
@@ -5966,7 +6164,19 @@
           "deleteA11y": "Supprimer service",
           "saving": "Enregistrement…",
           "saveChanges": "Enregistrer les modifications",
-          "createService": "Créer service"
+          "createService": "Créer service",
+          "stillLoadingTitle": "Still chargement.",
+          "stillLoadingBody": "Vos services sont toujours en cours de chargement. Attendez un instant, puis enregistrez à nouveau.",
+          "couldNotCheckOptionsTitle": "Impossible de check options.",
+          "couldNotCheckOptionsBody": "L'enregistrement peut désactiver les options de réservation qui n'ont pas pu être chargées.",
+          "goBackFromSave": "Retour",
+          "saveAnyway": "Enregistrer anyway",
+          "turnOffOptionsTitle": "Désactiver ces options ?",
+          "turnOffOptionsBodyMainOnly": "Les clients ne verront plus {{names}}. Ils réserveront uniquement le service principal.",
+          "turnOffOptionsBodyOthersStay": "Les clients ne verront plus {{names}}. Les autres options de réservation restent.",
+          "andMoreNames": "et {{count}} de plus",
+          "keepThem": "Gardez-les",
+          "turnOffAndSave": "Turn off and enregistrer"
         },
         "membershipPlans": {
           "title": "Offres d’abonnement",
@@ -7179,7 +7389,38 @@
           "showOnProfileHint": "Customers can still use this code à checkout even when hidden.",
           "showOnProfileA11y": "Afficher cette promo sur le profil public",
           "creating": "Création…",
-          "createCta": "Créer promo code"
+          "createCta": "Créer promo code",
+          "startsOn": "Commence",
+          "endsOn": "Se termine",
+          "noEndDate": "Non end date",
+          "endsLabel": "Se termine le {{date}}",
+          "statusActive": "Actif",
+          "statusScheduled": "Programmé",
+          "statusExpired": "Expiré",
+          "statusUsedUp": "Épuisé",
+          "statusOff": "Désactivé",
+          "limitsSection": "Limites",
+          "usageLimit": "Utilisations totales",
+          "minPurchase": "Minimum réservation",
+          "maxDiscount": "Max réduction",
+          "oncePerCustomer": "Une utilisation par client",
+          "branch": "Succursale",
+          "branchAll": "Tous les salons",
+          "detailTitle": "Détails de la promotion",
+          "copyCode": "Copier le code",
+          "copied": "Copié",
+          "redemptions": "Rachats",
+          "totalDiscountGiven": "Total donné : {{amount}}",
+          "noRedemptions": "Pas encore de redemptions",
+          "deleteBlocked": "Du code a été utilisé ; désactivez-le à la place.",
+          "saveChanges": "Enregistrer",
+          "viewDetails": "Voir details",
+          "summaryLine": "{{discount}} · {{end}}",
+          "endAfterStart": "La date de fin doit être postérieure à la date de début",
+          "savedOk": "Changes enregistré",
+          "redemptionBooking": "Réservation #{{number}}",
+          "redemptionOrder": "Commande #{{number}}",
+          "usageLimitPlaceholder": "Illimité"
         },
         "signup": {
           "agreeRequired": "Please agree to the Conditions of Service and Confidentialité Politique to continuer.",
@@ -7569,7 +7810,10 @@
           "invalidAmountTitle": "Montant invalide",
           "invalidAmountBody": "Saisissez un montant supérieur à zéro, jusqu'au solde restant.",
           "exportFailedTitle": "Échec : Exporter",
-          "exportFailedBody": "Impossible de télécharger le fichier de facture."
+          "exportFailedBody": "Impossible de télécharger le fichier de facture.",
+          "obligationsDueHeading": "Ce que tu dois",
+          "obligationsDueHint": "Les frais de plateforme sont déjà conservés au moment du paiement. Payez les abonnements, les distributeurs de cartes et ouvrez les factures sur leurs écrans habituels.",
+          "obligationsView": "Voir"
         },
         "payouts": {
           "dash": "—",
@@ -7863,7 +8107,9 @@
           "enabledLocations": "Enabled Lieux",
           "excludedServices": "Exclus Services",
           "excludedHint": "Services that cannot be booked as group appointments",
-          "saveSettings": "Enregistrer Réglages"
+          "saveSettings": "Enregistrer Réglages",
+          "splitPaymentTitle": "Allow split paiement",
+          "splitPaymentHint": "Chaque invité paie sa part en ligne. En cas de congé, l'organisateur paie pour l'ensemble du groupe."
         },
         "noteTemplates": {
           "title": "Note Modèles",
@@ -8075,7 +8321,8 @@
           "offerMultipleTitle": "Offer multiple prices or durations?",
           "offerMultipleBody": "p. ex. Short vs long hair, 30 min express vs 60 min full service. Each becomes a customer-facing option à booking.",
           "durationTitle": "Durée",
-          "priceTypeTitle": "Prix type"
+          "priceTypeTitle": "Prix type",
+          "blankPriceUsesMain": "Laissez ce champ vide et les clients paieront {{amount}}, comme pour la première option."
         },
         "endOfDayReport": {
           "factsDefinitions": "Facts & définitions",
@@ -10118,7 +10365,9 @@
           "signOutBody": "You can terminer configuration plus tard. Your progress is enregistré to your account.",
           "cancel": "Annuler",
           "verificationRequiredTitle": "Vérification d’identité requise pour passer en ligne",
-          "verificationRequiredBody": "Terminez la vérification d’identité pour que nous puissions valider votre fiche pour les réservations publiques."
+          "verificationRequiredBody": "Terminez la vérification d’identité pour que nous puissions valider votre fiche pour les réservations publiques.",
+          "subscriptionActivatingTitle": "Paiement reçu, activation de votre forfait",
+          "subscriptionActivatingBody": "Cela prend généralement quelques secondes. Vous pouvez continuer à créer votre entreprise pendant que nous terminons."
         },
         "packageSalesReport": {
           "factsDefinitions": "Facts & définitions",
@@ -10267,7 +10516,16 @@
           "topClients": "Top clients (terminé booked gross)",
           "emptyTopClients": "Non terminé réservations yet.",
           "bookingsPerMonth": "{{count}} réservations · {{visits}}/mo",
-          "avgAmount": "Moy. {{amount}}"
+          "avgAmount": "Moy. {{amount}}",
+          "deliveredHoursTotal": "Livré",
+          "missedHoursTotal": "Manqué",
+          "stillOnBookHoursTotal": "Toujours sur le livre",
+          "cancelledHoursTotal": "Annulé",
+          "staffHourBuckets": "Livré {{delivered}}h · Manqué {{missed}}h · Toujours {{still}}h · Annulé {{cancelled}}h",
+          "staffCompletionRate": "{{pct}}% terminé of terminé or missed",
+          "avgBookedValue": "Valeur moyenne réservée",
+          "avgEarned": "Moy. gagnée",
+          "earnedAmount": "Gagné {{amount}}"
         },
         "paymentMethodsReport": {
           "factsDefinitions": "Facts & définitions",
@@ -10373,7 +10631,10 @@
           "activeSubscribers": "Actif abonnés",
           "activeStatusHint": "Current statut=active",
           "salesByDay": "Sales by jour",
-          "dayGross": "{{amount}} ({{count}})"
+          "dayGross": "{{amount}} ({{count}})",
+          "title": "Ventes d’abonnements",
+          "subtitle": "Passif brut, bénéfices comptabilisés et réductions réservées aux membres pour la période sélectionnée",
+          "separateBases": "Les ventes brutes et les bénéfices comptabilisés sont distincts : ne les additionnez pas."
         },
         "travelFees": {
           "title": "Travel Frais",
@@ -10520,7 +10781,8 @@
           "emptyDesc": "Captured redemptions in this période will appear here.",
           "byPurchaser": "Par {{name}}",
           "toRecipient": " → {{name}}",
-          "captureDate": "Capture · {{date}}"
+          "captureDate": "Capture · {{date}}",
+          "bookingNumber": "Réservation {{number}}"
         },
         "yocoReconciliationReport": {
           "factsDefinitions": "Facts & définitions",
@@ -11063,7 +11325,15 @@
           "back": "Retour",
           "exportA11y": "Exporter and partager rapport as CSV",
           "dateLabel": "Date",
-          "permissionMessage": "Ask your business owner to grant view reports permission for sales and analytics reports."
+          "permissionMessage": "Ask your business owner to grant view reports permission for sales and analytics reports.",
+          "eodToday": "Aujourd’hui",
+          "eodYesterday": "Hier",
+          "eodPrevDay": "Previous jour",
+          "eodNextDay": "Suivant jour",
+          "eodTodayA11y": "Sélectionner aujourd’hui for end of jour report",
+          "eodYesterdayA11y": "Sélectionner hier for end of jour report",
+          "eodPrevDayA11y": "Go to previous trading jour",
+          "eodNextDayA11y": "Go to suivant trading jour"
         },
         "appUpdate": {
           "title": "Mettre à jour obligatoire",
@@ -11092,7 +11362,9 @@
           "subtitle": "Business, plan & billing",
           "tabBusiness": "Entreprise",
           "tabSubscription": "Abonnement",
-          "tabBilling": "Facturation"
+          "tabBilling": "Facturation",
+          "amountsDueBanner": "Vous avez des montants dus : ouvrez le hub de facturation pour payer des abonnements, des factures ou des machines à cartes.",
+          "amountsDueCta": "Voir amounts due"
         },
         "adsPaymentSuccess": {
           "defaultTitle": "Your ad is live",
@@ -11951,7 +12223,10 @@
           "sendFailed": "Impossible de send custom offer",
           "unavailableTitle": "Custom offers indisponible",
           "errorTitle": "Erreur",
-          "disabledBody": "{{message}}\n\nYour admin can enable the feature flag commerce.provider_custom_offers for this market."
+          "disabledBody": "{{message}}\n\nYour admin can enable the feature flag commerce.provider_custom_offers for this market.",
+          "addPhotos": "Ajouter inspiration photos",
+          "uploadingPhotos": "Uploading…",
+          "photosAttached": "{{count}} photo(s) jointe(s)"
         },
         "salesSettings": {
           "title": "Sales Réglages",
@@ -12816,6 +13091,18 @@
           "selectMachine": "Sélectionner machine",
           "chargeNamed": "Encaissement · {{name}}",
           "switchMachine": "Changer de terminal"
+        },
+        "cardMachineReconciliationReport": {
+          "yocoInWindow": "Yoco dans la plage",
+          "paycloudInWindow": "PayCloud dans la plage",
+          "paymentExceptions": "Paiement exceptions",
+          "awaitingRefunds": "À payer sur la machine",
+          "allMatched": "Aucune exception de paiement ({{yoco}} Yoco et {{paycloud}} PayCloud paiements vérifiés).",
+          "awaitingSection": "Remboursements encore dus sur la machine",
+          "awaitingHint": "Ceux-ci restent sur la liste quelles que soient les dates ci-dessus.",
+          "yocoPendingSection": "Yoco en attente",
+          "paycloudSection": "PayCloud inadéquation du montant",
+          "unavailable": "Activez les machines à cartes Yoco ou Beautonomi pour utiliser ce rapport."
         }
       }
     },
@@ -13424,7 +13711,9 @@
       "postByProvider": "Publicación by {{name}}",
       "reply": "Répondre",
       "replying": "Réponse à un commentaire",
-      "replyPlaceholder": "Écrire une réponse…"
+      "replyPlaceholder": "Écrire une réponse…",
+      "shareMediaFailedTitle": "Impossible de partager des médias",
+      "shareMediaFailedBody": "Nous n'avons pas pu préparer ce fichier pour le partage. Essayez plutôt de partager le lien."
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -15259,7 +15548,8 @@
           "buildingLabel": "Bâtiment",
           "accessLabel": "Accès",
           "parkingLabel": "Parking",
-          "landmarksLabel": "Points de repère"
+          "landmarksLabel": "Points de repère",
+          "partiallyRefundedContactProvider": "Cette commande a été partiellement remboursée. Contactez le fournisseur pour rembourser le solde restant."
         },
         "customRequestsList": {
           "startPaymentFailed": "Impossible de start paiement",
@@ -15799,7 +16089,20 @@
           "yourBookingCancelled": "Your réservation is annulé",
           "participantBookingStatus": "Réservation statut",
           "yourBookingNoShow": "Votre réservation a été marquée comme non-présentation",
-          "sessionStatus": "Séance · {{status}}"
+          "sessionStatus": "Séance · {{status}}",
+          "shareStatusPaid": "Part payée",
+          "shareStatusPending": "Part impayée ({{amount}})",
+          "shareStatusCancelled": "Spot annulé",
+          "resendInvite": "Renvoyer l'invitation",
+          "inviteResent": "Invitation envoyée",
+          "inviteResendFailed": "Impossible de re-send the invite.",
+          "removeGuest": "Retirer guest",
+          "removeGuestConfirm": "Supprimer {{name}} de cette réservation ? Leurs services sont supprimés et tout paiement est remboursé.",
+          "cancelMySpot": "Annuler my spot",
+          "cancelMySpotConfirm": "Annuler votre place dans cette réservation de groupe ? Vos services sont supprimés et tout paiement que vous avez effectué est remboursé sur votre carte.",
+          "spotCancelled": "Votre place a été annulée.",
+          "guestRemoved": "Invité supprimé.",
+          "guestCancelFailed": "Impossible de mettre à jour the réservation de groupe."
         },
         "announcements": {
           "retry": "Réessayer",
@@ -17761,6 +18064,17 @@
           "couldNotLoadPage": "Impossible de load page",
           "httpError": "HTTP {{status}}",
           "appUrlNotConfigured": "L’URL de l’app n’est pas configurée."
+        },
+        "bookingReschedule": {
+          "title": "Reschedule réservation",
+          "body": "Choisissez une nouvelle date et heure. Votre fournisseur devra peut-être confirmer.",
+          "dateLabel": "Date",
+          "timeLabel": "Heure",
+          "submit": "Envoyer request",
+          "invalidTitle": "Invalid date or heure",
+          "invalidBody": "Saisissez une date (YYYY-MM-DD) et une heure (HH:MM) valides.",
+          "failedTitle": "Impossible de reschedule",
+          "noSlots": "Aucun horaire disponible ce jour-là. Essayez une autre date."
         }
       }
     },
@@ -18038,7 +18352,12 @@
     "cancelPreviousFullRefundBody": "{{refund}} reviendra dans votre portefeuille Beautonomi. Annuler le rendez-vous précédent ?",
     "confirmCancelPrevious": "Annuler previous",
     "refundsStoreCreditNotePayAtVenue": "Si vous payez sur place, les remboursements se font directement avec le prestataire — pas vers votre carte ou portefeuille.",
-    "refundsStoreCreditNoteNoPenalty": "Ce prestataire ne facture pas de pénalités d’annulation. Les montants payés en ligne sont remboursés sur votre portefeuille Beautonomi."
+    "refundsStoreCreditNoteNoPenalty": "Ce prestataire ne facture pas de pénalités d’annulation. Les montants payés en ligne sont remboursés sur votre portefeuille Beautonomi.",
+    "groupPaymentMode": "Qui paie ?",
+    "payForEveryone": "je paierai pour tout le monde",
+    "splitPayment": "Split paiement",
+    "splitPaymentHint": "Vous payez maintenant vos propres services et les frais de réservation. Chaque invité reçoit un lien pour payer sa part.",
+    "guestSharesPaidByInvite": "Les invités paient via le lien d'invitation"
   },
   "payments": {
     "pay": "Payer",
@@ -19082,7 +19401,10 @@
         "payAmount": "Payer {{amount}}",
         "slotConflictTitle": "That heure is non longer disponible",
         "slotConflictBody": "Khetha esinye isikhathi ekhalendeni noma weqele endaweni evulekile elandelayo.",
-        "pickNextAvailable": "Find suivant disponible heure"
+        "pickNextAvailable": "Find suivant disponible heure",
+        "splitPayment": "Split paiement",
+        "guestSharesPaidByInvite": "Les invités paient via le lien d'invitation",
+        "splitPaymentHint": "Vous payez maintenant vos propres services et les frais de réservation. Chaque invité reçoit un lien pour payer sa part."
       },
       "addToWaitlist": {
         "enterName": "Veuillez saisir your nom",
@@ -20727,7 +21049,8 @@
           "groupSession": "Grupo Sesión · {{ref}}",
           "viewDetails": "Voir Détails",
           "reschedule": "Reprogrammer",
-          "cancel": "Annuler"
+          "cancel": "Annuler",
+          "customOffer": "Offre personnalisée"
         },
         "page": {
           "title": "Réservations",
@@ -21302,7 +21625,9 @@
         "addressUnit": "Unit:",
         "addressAccess": "Access:",
         "addressParking": "Aparcamiento:",
-        "addressLandmarks": "Landmerk"
+        "addressLandmarks": "Landmerk",
+        "partiallyRefundedContactProvider": "Cette commande a été partiellement remboursée. Contactez le fournisseur pour rembourser le solde restant.",
+        "paymentPartiallyRefunded": "Partiellement remboursé"
       },
       "bookingReceipt": {
         "methodWallet": "Portefeuille",
@@ -23439,7 +23764,13 @@
           "methodCard": "carte",
           "methodYoco": "yoco",
           "methodBankTransfer": "bank transfer",
-          "methodOther": "autre"
+          "methodOther": "autre",
+          "shareStatusPaid": "Share paid",
+          "shareStatusPending": "Share unpaid ({{amount}})",
+          "shareStatusCancelled": "Spot cancelled",
+          "resendInvite": "Re-send invite",
+          "inviteResent": "Invite sent",
+          "inviteResendFailed": "Could not re-send the invite."
         },
         "groupFinancials": {
           "title": "Finances",
@@ -24126,7 +24457,9 @@
             "yocoRecorded": "Remboursement Yoco enregistré",
             "awaitingYocoTitle": "{{amount}} restant à rembourser sur la machine Yoco",
             "awaitingYocoBody": "Cette réservation a été annulée avec un remboursement sur la carte. Remboursez-le dans l'application Yoco ou sur la machine, puis enregistrez-le ici. En attendant, il reste en suspens dans le rapport de rapprochement de la machine à cartes.",
-            "yocoRecordCta": "Remboursé sur la machine — enregistrer le remboursement"
+            "yocoRecordCta": "Remboursé sur la machine — enregistrer le remboursement",
+            "pendingCashTitle": "{{amount}} to return in person",
+            "pendingCashBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending."
           }
         },
         "createPayment": {
@@ -24460,7 +24793,9 @@
         "additionalCharges": "Frais supplémentaires",
         "request": "Demande",
         "stripeConnectPayoutHint": "Payouts are sent via Stripe Connect. Complete setup under Settings → Payout accounts before requesting a withdrawal.",
-        "completeStripeConnect": "Terminer Stripe Connect setup"
+        "completeStripeConnect": "Terminer Stripe Connect setup",
+        "openDisputeReserve": "− Open dispute reserve",
+        "vatHeldForPayout": "− VAT held for payout"
       },
       "onboarding": {
         "steps": {
@@ -24787,7 +25122,9 @@
           "paymentHint": "This helps us understand how you accept in-person card payments and whether we can offer better terminal options in future.",
           "vatSarsHint": "Are you VAT registered with SARS? VAT registration is mandatory if your annual turnover is R1 million or more. If you make less than R1 million per year, you don't need to be VAT registered.",
           "bookingProtectionTitle": "Booking protection",
-          "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings."
+          "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings.",
+          "pricesIncludeTax": "My service prices include VAT",
+          "pricesIncludeTaxDesc": "Most South African salons show VAT-inclusive prices (recommended)."
         },
         "software": {
           "selectPlaceholder": "Sélectionner or type software nom...",
@@ -24961,7 +25298,13 @@
           "draftServicesLabel": "Draft services:",
           "attachZones": "Attach Zones",
           "categorySelected": "Category Selected",
-          "zonesSelected": "Selected all {{count}} zones"
+          "zonesSelected": "Selected all {{count}} zones",
+          "ownerGoLiveTitle": "Your profile on the booking page",
+          "ownerTakesAppointments": "I take appointments myself",
+          "ownerTakesAppointmentsHint": "Turn off if you only manage the team and won't appear for customers to book.",
+          "ownerPublicTitle": "Title customers see (optional)",
+          "ownerServicesLabel": "Services you perform",
+          "ownerServicesAll": "Leave all checked to offer every service in your catalog."
         },
         "plan": {
           "activatesInstantly": "Activates instantly",
@@ -25035,7 +25378,9 @@
           "tierMaxKm": "Up to km",
           "tierFee": "Fee ({{currency}})",
           "addTier": "Ajouter tier"
-        }
+        },
+        "submitLaunchFree": "Create my business",
+        "submitLaunchPaid": "Create my business and continue to payment"
       },
       "dashboard": {
         "pageTitle": "Tableau de bord",
@@ -25201,7 +25546,9 @@
           "truncatedLedger": "Period earnings may be incomplete for very high-volume accounts.",
           "bookingsCount": "Réservations ({{count}})",
           "saleCount": "Sale ({{count}})"
-        }
+        },
+        "giftCardLedgerIssuance": "Gift card ledger issuance (all time)",
+        "membershipSalesAllTime": "Membership sales (all time)"
       },
       "settings": {
         "pageTitle": "Business Réglages",
@@ -25314,6 +25661,10 @@
               "waitlist": {
                 "title": "Waitlist réglages",
                 "description": "Configure waitlist behavior"
+              },
+              "businessSetup": {
+                "title": "Business profile for Get Started",
+                "description": "Business name, description (10+ characters), and contact details for your checklist"
               }
             }
           },
@@ -25974,7 +26325,9 @@
             "enableForLocationsHint": "Sélectionner which locations support group bookings in online booking",
             "excludeServices": "Exclude Services from Online Réservation de groupe",
             "excludeServicesHint": "Sélectionner services that should not be available for réservation de groupe online. This only excludes them from group appointments, not individual bookings.",
-            "noServicesAvailable": "Non services disponible"
+            "noServicesAvailable": "Non services disponible",
+            "allowSplitPayment": "Allow split payment",
+            "allowSplitPaymentHint": "Each guest pays their own share online. When off, the organizer pays for the whole group."
           },
           "appointment-activity/online-booking": {
             "onlineBooking": "Online Réservation",
@@ -26267,7 +26620,11 @@
             "billsPaidCount_one": "{{count}} payment",
             "billsPaidCount_other": "{{count}} payments",
             "platformInvoices": "Platform invoices",
-            "platformInvoicePayment": "Platform invoice payment"
+            "platformInvoicePayment": "Platform invoice payment",
+            "obligationsDueHeading": "What you owe",
+            "obligationsDueHint": "Subscriptions, card machines, and open invoices — platform fees are already kept at checkout.",
+            "nonPayableFeeNote": "Platform fees are customer-paid and already retained at checkout. This invoice is not payable.",
+            "refundReviewRequired": "A payment was collected on this legacy fee invoice. Finance must review for a possible refund."
           },
           "business-description": {
             "businessDescription": "Business Description",
@@ -28552,6 +28909,24 @@
             "loading": "Chargement…",
             "nativeCancelled": "You annulé the paiement. Non charge was made.",
             "nativeInvalid": "This paiement return link is invalid or interminer."
+          },
+          "business": {
+            "failedToLoad": "Failed to load business profile",
+            "failedToUpdate": "Failed to update business profile. Please try again.",
+            "savedSuccess": "Business profile updated successfully",
+            "validationBusinessName": "Enter a business name longer than one character",
+            "validationDescriptionMin": "Description must be at least 10 characters for Get Started",
+            "validationEmail": "Enter a valid email address",
+            "validationPhone": "Enter a complete phone number in international format",
+            "contactHint": "Get Started also counts phone or email on your account. You do not need both business phone and email if your account already has one.",
+            "setupBannerTitle": "Complete this step for Get Started",
+            "setupBannerBody": "Save your business name, a description of at least 10 characters, and optional contact details.",
+            "businessNameLabel": "Business name",
+            "descriptionLabel": "Business description",
+            "descriptionHint": "At least 10 characters required to complete Get Started.",
+            "emailLabel": "Business email",
+            "phoneLabel": "Business phone",
+            "getStartedIncompleteHint": "Get Started stays incomplete until your description is at least 10 characters."
           }
         },
         "serviceZones": {
@@ -28613,7 +28988,47 @@
           "creating": "Création…",
           "percentage": "Pourcentage",
           "fixedAmount": "Fixe montant",
-          "placeholderCode": "SUMMER20"
+          "placeholderCode": "SUMMER20",
+          "newPromo": "New promo code",
+          "percentOff": "{{value}}% off",
+          "amountOff": "{{amount}} off",
+          "usedCount": "{{count}} uses",
+          "hidden": "Hidden",
+          "public": "Public",
+          "viewDetails": "View details",
+          "createCta": "Create promo code",
+          "delete": "Delete",
+          "startsOn": "Starts",
+          "endsOn": "Ends",
+          "noEndDate": "No end date",
+          "endsLabel": "Ends {{date}}",
+          "usedCountMax": "{{count}} of {{max}} used",
+          "statusActive": "Active",
+          "statusScheduled": "Scheduled",
+          "statusExpired": "Expired",
+          "statusUsedUp": "Used up",
+          "statusOff": "Off",
+          "limitsSection": "Limits",
+          "usageLimit": "Total uses",
+          "usageLimitPlaceholder": "Unlimited",
+          "minPurchase": "Minimum booking amount",
+          "maxDiscount": "Max discount (%)",
+          "oncePerCustomer": "One use per client",
+          "branch": "Salon branch",
+          "branchAll": "All salons",
+          "summaryLine": "{{discount}} · {{end}}",
+          "detailTitle": "Promo details",
+          "copyCode": "Copy code",
+          "copied": "Code copied",
+          "redemptions": "Redemptions",
+          "totalDiscountGiven": "Total discount given: {{amount}}",
+          "noRedemptions": "No redemptions yet",
+          "redemptionBooking": "Booking #{{number}}",
+          "redemptionOrder": "Order #{{number}}",
+          "deleteBlocked": "This code has been used. Turn it off instead of deleting.",
+          "saveChanges": "Save changes",
+          "endAfterStart": "End date must be after start date",
+          "savedOk": "Changes saved"
         },
         "catalogue": {
           "title": "Catalogue",
@@ -29033,7 +29448,13 @@
           "aramexPin": "Account PIN",
           "aramexUser": "Username",
           "aramexPassword": "Mot de passe",
-          "aramexProductType": "Domestic produit type (e.g. ONP)"
+          "aramexProductType": "Domestic produit type (e.g. ONP)",
+          "bobGoWebhookSecret": "Bob Go webhook secret (optional)",
+          "bobGoWebhookSecretOptional": "Optional — from Bob Go → Settings → Webhook subscriptions",
+          "bobGoWebhookSecretConfigured": "Secret saved — paste only to replace",
+          "bobGoWebhookSecretHint": "Live shipment updates use webhooks when this is set. Without it, orders catch up within about 10 minutes.",
+          "bobGoWebhookSubscribeFailed": "Could not register Bob Go webhooks",
+          "bobGoWebhookCatchUpHint": "Your API key is saved. Shipment status will still catch up within about 10 minutes."
         },
         "packages/new": {
           "failedToLoadItems": "Impossible de load items",
@@ -29270,6 +29691,8 @@
           "noRefundPermission": "You do not have permission to refund orders.",
           "cancelReasonPrompt": "Cancellation reason for this paid commande",
           "cancelReasonRequired": "Cancellation reason is required for paid orders.",
+          "partiallyRefundedRefundRemaining": "This order was partially refunded. Use Refund remaining to close it — cancel is not available.",
+          "refundRemainingHint": "Refund remaining",
           "failedToUpdateLine": "Impossible de mettre à jour line",
           "failedToUpdateStatus": "Impossible de mettre à jour commande statut",
           "collectRecordFailed": "Card charged, but recording collection failed. Retry recording payment with the same reference.",
@@ -29333,7 +29756,9 @@
           "statusRefunded": "remboursé",
           "paid": "payé",
           "estimatedDeliveryDate": "Estimated delivery date (facultatif)",
-          "partialWalletRefundHint": "Partial wallet refunds credit the customer's store balance only. Card and gift-card payments are not returned unless you refund the full order total."
+          "partialWalletRefundHint": "Partial wallet refunds credit the customer's store balance only. Card and gift-card payments are not returned unless you refund the full order total.",
+          "refundOnlineOnly": "This order was paid online. Store credit returns the card charge and any wallet or gift-card portion to the customer.",
+          "refundNoWallet": "This order was paid online and has no customer wallet, so it cannot be refunded in person."
         },
         "team/shifts/dialog": {
           "overrideLocation": "Override Lieu Operating Heures",
@@ -29915,7 +30340,8 @@
             "business-overview": "Business Overview",
             "performance-dashboard": "Performance Dashboard",
             "comparison": "Period Comparison",
-            "card-machine-reconciliation": "Rapprochement des machines à cartes"
+            "card-machine-reconciliation": "Rapprochement des machines à cartes",
+            "membership-sales": "Membership sales"
           }
         },
         "pages": {
@@ -29932,7 +30358,11 @@
             "recent": "Recent Non-Shows",
             "emptyTitle": "Non non-shows",
             "emptyDesc": "No no-shows in the selected period.",
-            "unknownClient": "Unknown Client"
+            "unknownClient": "Unknown Client",
+            "ledgerRecognised": "Ledger already recognised",
+            "ledgerRecognisedHint": "Fees already recorded for these missed visits, including any no-show fee — not the appointment price.",
+            "repeatOffendersHint": "The appointment price for each client is listed as booked value below.",
+            "bookedValueAmount": "{{amount}} booked value"
           },
           "clients/new": {
             "title": "New Clients",
@@ -30007,7 +30437,10 @@
             "topClients": "Top Clients by Lifetime Value",
             "visitsMonths": "{{visits}} visits • {{months}} months",
             "emptyTitle": "Non clients found",
-            "emptyDesc": "Non client data disponible."
+            "emptyDesc": "Non client data disponible.",
+            "averageBookedValue": "Average booked value",
+            "averageEarned": "Average earned",
+            "clientEarned": "Earned {{amount}}"
           },
           "payments/methods": {
             "title": "Paiement Methods",
@@ -30069,7 +30502,14 @@
             "hoursValue": "{{hours}} h",
             "breakdown": "Staff Heures Breakdown",
             "emptyTitle": "Non heures data",
-            "emptyDesc": "No hours data available for the selected period."
+            "emptyDesc": "No hours data available for the selected period.",
+            "deliveredHours": "Delivered",
+            "missedHours": "Missed (no-show)",
+            "stillOnBookHours": "Still on the book",
+            "cancelledHours": "Cancelled",
+            "completionRateLine": "Of visits that were completed or missed, {{pct}}% were completed.",
+            "staffBuckets": "Delivered {{delivered}}h · Missed {{missed}}h · Still on book {{still}}h · Cancelled {{cancelled}}h",
+            "staffCompletionRate": "{{pct}}% completed of completed or missed visits"
           },
           "sales/summary": {
             "title": "Sales Summary",
@@ -30300,7 +30740,8 @@
             "noCommission": "Non commission",
             "noTips": "Non tips",
             "cancelledCount": "({{count}} annulé)",
-            "noStaffData": "No staff performance data available for the selected period."
+            "noStaffData": "No staff performance data available for the selected period.",
+            "deliveredHours": "{{hours}}h delivered (catalogue)"
           },
           "products/inventory": {
             "title": "Inventaire",
@@ -30937,7 +31378,10 @@
             "match": "Correspondance du montant",
             "order": "Numéro de commande",
             "openBooking": "Ouvrir la réservation pour l'enregistrer",
-            "awaitingSince": "En attente depuis"
+            "awaitingSince": "En attente depuis",
+            "yocoPaymentsInWindow": "Yoco payments in range",
+            "paycloudPaymentsInWindow": "PayCloud payments in range",
+            "allMatchedLine": "No payment exceptions in this period ({{yoco}} Yoco and {{paycloud}} PayCloud payments checked)."
           }
         },
         "export": {
@@ -32183,7 +32627,8 @@
           "checkoutFailed": "Checkout échec. Veuillez réessayer.",
           "taxes": "Taxes",
           "total": "Total",
-          "planNotFound": "Offre introuvable"
+          "planNotFound": "Offre introuvable",
+          "backToSetup": "Back to setup checklist"
         },
         "stripeBillingTitle": "Billed through Stripe",
         "stripeBillingBody": "Update your card or view invoices in the secure Stripe billing portal. Use Manage billing below — the same flow as Paystack regions, but hosted by Stripe for your market.",
@@ -32264,7 +32709,9 @@
         "soundsSectionPlatform": "Sons populaires",
         "soundsSectionYours": "Vos sons",
         "soundPreviewPlay": "Lire l'aperçu",
-        "soundPreviewStop": "Arrêter l'aperçu"
+        "soundPreviewStop": "Arrêter l'aperçu",
+        "trimHandleStartA11y": "Clip start",
+        "trimHandleEndA11y": "Clip end"
       },
       "calendarMobile": {
         "timeOff": "Heure off",
@@ -32410,7 +32857,9 @@
         "storeCredit": "Store credit",
         "cash": "Cash / in person",
         "reason": "Motif",
-        "reasonPlaceholder": "Facultatif reason for audit trail"
+        "reasonPlaceholder": "Facultatif reason for audit trail",
+        "pendingCashBlockTitle": "Cash refund already pending",
+        "pendingCashBlockBody": "This booking already has {{amount}} awaiting customer confirmation. Hand that amount back in person — do not issue another cash refund until it is confirmed or closed."
       },
       "appointmentViewSheet": {
         "bookingFallback": "Réservation",
@@ -32527,7 +32976,12 @@
         "bookingInProgress": "Réservation…",
         "bookingSuccess": "Courier booked",
         "bookingFailed": "Impossible de book courier",
-        "printLabel": "Print label"
+        "printLabel": "Print label",
+        "refundOnlineOnly": "This order was paid online. Store credit returns the card charge and any wallet or gift-card portion to the customer.",
+        "refundNoWallet": "This order was paid online and has no customer wallet, so it cannot be refunded in person.",
+        "nothingLeftToCollect": "Wallet or a gift card already covers this order. Nothing is left to collect in person.",
+        "courierChargedAmount": "Bob Go charged (salon)",
+        "courierChargedWeight": "Charged weight (kg)"
       },
       "appointmentEditSheet": {
         "updated": "Réservation mis à jour",
@@ -33118,7 +33572,9 @@
         "updateStaffMember": "Mettre à jour Staff Member",
         "createStaffMember": "Créer Staff Member",
         "emailPlaceholder": "e-mail@example.com",
-        "moneyPlaceholder": "0.00"
+        "moneyPlaceholder": "0.00",
+        "removePhoto": "Remove photo",
+        "avatarUploadFailed": "Could not upload the photo. Try again."
       },
       "expressBooking": {
         "loadFailed": "Impossible de load express réservation links",
@@ -33438,7 +33894,12 @@
         "viewComments": "Voir & comments",
         "comments": "{{count}} comments",
         "likes": "{{count}} likes",
-        "views": "{{count}} views"
+        "views": "{{count}} views",
+        "statusVideoProcessing": "Processing",
+        "statusVideoFailed": "Video failed",
+        "statusHidden": "Hidden by Beautonomi",
+        "statusHiddenNote": "Moderation note: {{note}}",
+        "videoFailedDetail": "Video encoding failed. Edit the post and save to try again."
       },
       "formsPage": {
         "failedToLoad": "Impossible de load forms",
@@ -34125,6 +34586,67 @@
           "isWalkIn": "Walk-in",
           "isAtHome": "At-home service"
         }
+      },
+      "teamAddWizard": {
+        "title": "Add team member",
+        "readyTitle": "Ready to go",
+        "seatLine": "{{current}} of {{max}} seats used on your plan",
+        "limitBlocked": "Your plan does not have room for another team member. Upgrade or remove someone first.",
+        "nameEmailRequired": "Name and email are required.",
+        "invalidPhone": "Enter a valid phone number or leave the field blank.",
+        "createFailed": "Could not add team member.",
+        "linkCopied": "Invite link copied",
+        "inviteEmailed": "We emailed {{name}} an invite to join.",
+        "inviteLinkReady": "Copy the invite link and share it (WhatsApp, SMS, or in person).",
+        "copyLink": "Copy link",
+        "shareLink": "Share link",
+        "publicTitle": "Title customers see (optional)",
+        "publicTitleHint": "Shown on your booking page instead of their role, e.g. Senior stylist.",
+        "takesAppointments": "Takes appointments",
+        "takesAppointmentsHint": "Turn off for managers who only run the calendar, not the chair.",
+        "branches": "Branches",
+        "servicesOffered": "Services they perform",
+        "selectAllServices": "All services",
+        "selectBranch": "Select at least one branch",
+        "bookableSummary": "Customers can book them for {{count}} service(s), starting {{from}}.",
+        "bookableNow": "immediately",
+        "notOnPublicBooking": "They will not appear for online booking (front desk role).",
+        "hintNoCommission": "Commission was left off — you can turn it on in their profile.",
+        "hintNoTimeClock": "Time clock is off — enable it in their profile if they should clock in.",
+        "hintNoServices": "No services were linked — assign services before customers can book them online.",
+        "hintNoHoursCopied": "Working hours were not copied — set their weekly schedule in the team profile (salon hours still apply until then).",
+        "name": "Full name",
+        "email": "Email",
+        "mobile": "Mobile",
+        "photoOptional": "Add photo (optional)",
+        "photoUploadFailed": "Could not upload the photo.",
+        "paysCommission": "Pays commission",
+        "job": "Job",
+        "job_stylist": "Stylist",
+        "job_senior": "Senior stylist",
+        "job_front_desk": "Front desk",
+        "job_manager": "Manager",
+        "frontDeskHint": "Front desk can manage the calendar but will not show up for customers to book.",
+        "commissionOptional": "Commission % (optional)",
+        "servicesDefaultAll": "All bookable services are selected by default.",
+        "hoursSource": "Working hours",
+        "hoursSalon": "Same as the salon",
+        "hoursCopyFrom": "Copy {{name}}",
+        "startDateOptional": "First day customers can book online (optional)",
+        "timeClock": "Use time clock",
+        "back": "Back",
+        "next": "Next",
+        "cancel": "Cancel",
+        "done": "Done",
+        "saving": "Adding…",
+        "addAndInvite": "Add and send invite"
+      },
+      "teamReassign": {
+        "title": "Upcoming bookings",
+        "body": "{{name}} has upcoming bookings. Who should take them?",
+        "firstAvailable": "First available stylist",
+        "confirm": "Reassign and continue",
+        "cancel": "Cancel"
       }
     },
     "global": {
@@ -35704,7 +36226,14 @@
     },
     "giftCard": {
       "breadcrumb": {
-        "navLabel": "Fil d'Ariane"
+        "navLabel": "Fil d'Ariane",
+        "home": "Home",
+        "giftCards": "Gift cards",
+        "purchase": "Buy a gift card",
+        "purchaseBulk": "Buy gift cards in bulk",
+        "confirmation": "Confirmation",
+        "cancelled": "Purchase cancelled",
+        "claim": "Claim"
       },
       "purchaseSuccess": {
         "noRefTitle": "Carte cadeau purchase",
@@ -35726,6 +36255,43 @@
         "verifyFailed": "Asikwazanga ukuqinisekisa inkokhelo yekhadi lesipho. Uma ibhange lakho lidonswe imali, hlola Izinkokhelo namakhadi esipho ngomzuzu.",
         "wrongReceipt": "Le residi ayiyona eyokuthenga ikhadi lesipho. Uma ukhokhele ikhadi lesipho, hlola Izinkokhelo namakhadi esipho — amakhodi akho kungenzeka ukuthi asevele akhona."
       }
+    },
+    "checkout": {
+      "customOffer": {
+        "title": "Payer l’offre personnalisée",
+        "subtitle": "Avis totals and pay securely.",
+        "subtotal": "Sous-total",
+        "travel": "Travel",
+        "total": "Total",
+        "payNow": "Payer maintenant",
+        "cancel": "Cancel",
+        "loadFailed": "Impossible de load this offer.",
+        "paymentSuccessful": "Paiement successful.",
+        "paymentStartFailed": "Impossible de start paiement.",
+        "waitingTitle": "Paiement processing",
+        "waitingBody": "Nous confirmons votre paiement. Actualisez vos demandes personnalisées en un instant.",
+        "backToRequests": "Retour to custom requests",
+        "changesRequestedTitle": "Offre en cours de révision",
+        "changesRequestedBody": "Votre fournisseur met à jour cette offre après votre demande de modification."
+      }
+    },
+    "groupInvite": {
+      "title": "Réservation de groupe invite",
+      "body": "Vous êtes invité à rejoindre une séance de groupe.",
+      "accept": "Accepter l'invitation",
+      "notFound": "Ce lien d'invitation est invalide ou a expiré.",
+      "acceptFailed": "Impossible de accept invite.",
+      "payShare": "Payer ma part",
+      "payFailed": "Impossible de start paiement.",
+      "paymentProcessing": "Merci! Votre paiement est en cours de confirmation. Cette page sera mise à jour sous peu.",
+      "yourShare": "Votre part : {{amount}}",
+      "sharePaid": "Votre part est payée. Rendez-vous là-bas!",
+      "payShareAmount": "Payer ma part ({{amount}})",
+      "cancelSpot": "Annuler my spot",
+      "cancelConfirm": "Annuler votre place dans cette réservation de groupe ? Vos services sont supprimés et tout paiement que vous avez effectué est remboursé sur votre carte.",
+      "cancelled": "Your spot has been annulé.",
+      "cancelledRefunded": "Votre place a été annulée. {{amount}} est remboursé sur votre carte.",
+      "cancelFailed": "Impossible de annuler your spot."
     }
   },
   "errors": {

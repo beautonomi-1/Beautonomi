@@ -52,6 +52,8 @@ export interface PayCloudPaymentDialogProps {
   resumePaymentId?: string | null;
   /** When true, amount already includes checkout tip — hide terminal tip field. */
   tipIncludedInAmount?: boolean;
+  /** Till tip sent with the charge. The amount prop stays the balance, without this tip. */
+  fixedTipAmount?: number;
   /** When false (default), charge amount is fixed to `amount` — entity collect flows. */
   amountEditable?: boolean;
   onSuccess?: (payment: PaycloudPayment) => void;
@@ -96,6 +98,7 @@ export function PayCloudPaymentDialog({
   bookingLocationId,
   resumePaymentId,
   tipIncludedInAmount = false,
+  fixedTipAmount = 0,
   amountEditable = false,
   onSuccess,
 }: PayCloudPaymentDialogProps) {
@@ -322,7 +325,7 @@ export function PayCloudPaymentDialog({
       entity_type: entityType,
       entity_id: entityId,
       amount: chargeAmount,
-      tip_amount: tipAmount ? parseFloat(tipAmount) : undefined,
+      tip_amount: fixedTipAmount > 0.01 ? fixedTipAmount : tipAmount ? parseFloat(tipAmount) : undefined,
       cashback_amount: cashbackAmount ? parseFloat(cashbackAmount) : undefined,
       pay_method: payMethod,
       currency: tenantCurrency,
@@ -392,7 +395,7 @@ export function PayCloudPaymentDialog({
         entity_type: entityType,
         entity_id: entityId,
         amount: chargeAmount,
-        tip_amount: tipAmount ? parseFloat(tipAmount) : undefined,
+        tip_amount: fixedTipAmount > 0.01 ? fixedTipAmount : tipAmount ? parseFloat(tipAmount) : undefined,
         cashback_amount: cashbackAmount ? parseFloat(cashbackAmount) : undefined,
         pay_method: payMethod,
         currency: tenantCurrency,
@@ -741,7 +744,7 @@ export function PayCloudPaymentDialog({
               )}
             </div>
 
-            {tipIncludedInAmount ? (
+            {tipIncludedInAmount || fixedTipAmount > 0.01 ? (
               <p className="rounded-md border bg-gray-50 px-3 py-2 text-xs text-gray-600">
                 {t("web.provider.portal.payCloudPaymentDialog.tipIncluded")}
               </p>

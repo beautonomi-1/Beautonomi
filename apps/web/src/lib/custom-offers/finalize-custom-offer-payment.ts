@@ -39,6 +39,7 @@ import {
   sumPendingBookingLevelCatchUpNet,
 } from "@/lib/bookings/resolve-commission-base-for-booking-payment";
 import { postBookingAuditLedgerLegsIfMissing } from "@/lib/bookings/post-booking-audit-ledger-legs";
+import { holdGiftCardOnBooking } from "@/lib/gift-cards/hold-gift-card-for-booking";
 
 export interface FinalizeCustomOfferPaymentInput {
   offerId: string;
@@ -53,11 +54,11 @@ export interface FinalizeCustomOfferPaymentInput {
   paystackFeesMajor: number;
   /** Wallet contribution applied to this offer (major units, already debited if > 0). */
   walletAmountApplied: number;
-  /** Gift-card contribution applied to this offer (major units, already reserved if > 0). */
+  /** Gift-card contribution applied to this offer (major units). Collected after the booking exists. */
   giftCardAmountApplied: number;
   /** Gift card row id (populated when the offer pay route validated balance upfront). */
   giftCardId?: string | null;
-  /** Gift card code (uppercase). When set, finalize calls `reserve_gift_card_redemption`. */
+  /** Gift card code. Finalize holds this amount on the card after the booking exists. */
   giftCardCode?: string | null;
   /** Loyalty points the customer asked to redeem (already validated upstream). */
   loyaltyPointsRedeemed?: number;
@@ -633,11 +634,11 @@ export async function finalizeCustomOfferPayment(
   const paystackAmountMajor = Math.max(0, Number(input.paystackAmountMajor || 0));
   const paystackFeesMajor = Math.max(0, Number(input.paystackFeesMajor || 0));
   const walletAmountApplied = Math.max(0, Number(input.walletAmountApplied || 0));
-  const giftCardAmountApplied = Math.max(0, Number(input.giftCardAmountApplied || 0));
+  let giftCardAmountApplied = Math.max(0, Number(input.giftCardAmountApplied || 0));
   let loyaltyPointsRedeemed = Math.max(0, Number(input.loyaltyPointsRedeemed || 0));
   let loyaltyDiscountAmount = Math.max(0, Number(input.loyaltyDiscountAmount || 0));
 
-  const cashCollected = paystackAmountMajor + walletAmountApplied + giftCardAmountApplied;
+  let cashCollected = paystackAmountMajor + walletAmountApplied + giftCardAmountApplied;
   // For deposit, use the metadata total; otherwise the actual collected amount
   // (loyalty discount is reflected in pricing — not a tender — so doesn't add here).
   const bookingTotalAmount = isDepositPayment ? coTotalAmount : cashCollected;
@@ -886,6 +887,51 @@ export async function finalizeCustomOfferPayment(
     return { ok: false, reason: "booking_service_insert_failed" };
   }
 
+  // The booking RPC refuses a service-role caller (auth.uid() is null). Hold the
+  // card here, matching the balance we just read, before the offer is marked paid.
+  if (giftCardAmountApplied > 0) {
+    const held = await holdGiftCardOnBooking(adminSupabase, {
+      code: (input.giftCardCode || "").toString(),
+      amount: giftCardAmountApplied,
+      bookingId: booking.id as string,
+      currency: offer.currency || offerCurrencyFallback,
+      userId: req.customer_id ?? null,
+    });
+    const { data: captured, error: captureError } = held.ok
+      ? await (adminSupabase.rpc as typeof adminSupabase.rpc)("capture_gift_card_redemption", {
+          p_booking_id: booking.id,
+        })
+      : { data: false, error: null };
+    const giftTaken = held.ok && !captureError && captured !== false;
+    if (!giftTaken) {
+      if (held.ok) {
+        await (adminSupabase.rpc as typeof adminSupabase.rpc)("void_gift_card_redemption", {
+          p_booking_id: booking.id,
+        });
+      }
+      giftCardAmountApplied = 0;
+      cashCollected = paystackAmountMajor + walletAmountApplied;
+      const nothingElseCollected = cashCollected <= 0.01;
+      await adminSupabase
+        .from("bookings")
+        .update({
+          gift_card_amount: 0,
+          gift_card_id: null,
+          payment_status: nothingElseCollected ? "pending" : "partially_paid",
+          ...(nothingElseCollected
+            ? { status: "cancelled", cancellation_reason: "Gift card was not collected" }
+            : {}),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", booking.id);
+      if (nothingElseCollected) {
+        return { ok: false, reason: held.ok ? "gift_card_capture_failed" : "gift_card_reserve_failed" };
+      }
+    } else if (held.ok && held.giftCardId) {
+      await adminSupabase.from("bookings").update({ gift_card_id: held.giftCardId }).eq("id", booking.id);
+    }
+  }
+
   // ── 7. Update offer status + attachment ────────────────────────────────────
   await adminSupabase
     .from("custom_offers")
@@ -927,47 +973,6 @@ export async function finalizeCustomOfferPayment(
       });
     } catch (bpErr) {
       console.error("[finalizeCustomOfferPayment] booking_payments paystack insert failed:", bpErr);
-    }
-  }
-
-  // Reserve + capture gift card redemption now that the booking exists.
-  // The reserve RPC enforces balance + currency + active checks atomically and
-  // is idempotent on `(booking_id)` so a webhook retry is safe.
-  if (giftCardAmountApplied > 0) {
-    const giftCode = (input.giftCardCode || "").toString().trim().toUpperCase();
-    if (giftCode) {
-      try {
-        const { error: reserveErr } = await (adminSupabase.rpc as any)(
-          "reserve_gift_card_redemption",
-          {
-            p_code: giftCode,
-            p_amount: giftCardAmountApplied,
-            p_booking_id: booking.id,
-            p_currency: offer.currency || offerCurrencyFallback,
-          },
-        );
-        if (reserveErr) {
-          console.error(
-            "[finalizeCustomOfferPayment] gift card reserve failed (booking still confirmed):",
-            reserveErr,
-          );
-        }
-      } catch (gcReserveErr) {
-        console.error(
-          "[finalizeCustomOfferPayment] gift card reserve threw (booking still confirmed):",
-          gcReserveErr,
-        );
-      }
-    }
-    try {
-      await (adminSupabase.rpc as any)("capture_gift_card_redemption", {
-        p_booking_id: booking.id,
-      });
-    } catch (gcErr) {
-      console.error(
-        "[finalizeCustomOfferPayment] gift card capture failed (booking still confirmed):",
-        gcErr,
-      );
     }
   }
 
@@ -1279,7 +1284,9 @@ export async function finalizeCustomOfferPayment(
   });
 
   if (walletAmountApplied > 0 || giftCardAmountApplied > 0) {
-    await completeWalletGiftSyntheticPayments(adminSupabase, booking.id);
+    await completeWalletGiftSyntheticPayments(adminSupabase, booking.id, {
+      paymentLegSuffix: "",
+    });
   }
 
   // Promotion usage (idempotent) — only for rows in `promotions` (coupons use a different id space).

@@ -30,6 +30,8 @@ import { verifyCronRequest } from "@/lib/cron-auth";
 import {
   restockProductOrderLineItems,
   creditWalletForProductOrderIfNeeded,
+  refundUnpaidProductOrderCardCharges,
+  voidProductOrderGiftCardIfNeeded,
 } from "@/lib/orders/product-order-lifecycle";
 import { dispatchProductOrderStatusNotification } from "@/lib/notifications/notify-product-order-status";
 import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
@@ -49,6 +51,7 @@ type StaleOrderRow = {
   provider_id: string;
   tenant_id: string | null;
   wallet_amount: number | string | null;
+  gift_card_amount?: number | string | null;
   currency: string | null;
   order_number?: string | null;
 };
@@ -83,7 +86,7 @@ async function runJob(request: NextRequest) {
 
   const { data: stale, error } = await admin
     .from("product_orders")
-    .select("id, customer_id, provider_id, tenant_id, wallet_amount, currency, order_number")
+    .select("id, customer_id, provider_id, tenant_id, wallet_amount, gift_card_amount, currency, order_number")
     .eq("status", "pending")
     .eq("payment_status", "pending")
     .eq("payment_method", "paystack")
@@ -138,6 +141,12 @@ async function runJob(request: NextRequest) {
         order,
         "Wallet refund (online payment not completed)",
         "product_order_payment_abandoned",
+      );
+      await voidProductOrderGiftCardIfNeeded(admin, order);
+      await refundUnpaidProductOrderCardCharges(
+        admin,
+        order,
+        "Card refund (online payment not completed)",
       );
       await restockProductOrderLineItems(admin, order.id);
 

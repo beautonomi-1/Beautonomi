@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  clampExploreTrimRange,
   defaultExploreVideoTrim,
-  exploreMaxClipMs,
-  slideExploreVideoTrimStart,
+  EXPLORE_MIN_CLIP_MS,
   type ExploreVideoTrimWindow,
 } from "@/lib/explore/explore-video-trim";
 import { Button } from "@/components/ui/button";
@@ -41,15 +41,15 @@ export function ExploreVideoTrimModal({
   const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [probedMs, setProbedMs] = useState<number | null>(null);
-  const [startMs, setStartMs] = useState(0);
+  const [trim, setTrim] = useState<ExploreVideoTrimWindow>({ trim_start_ms: 0, trim_end_ms: maxClipMs });
 
   useEffect(() => {
     if (!open) {
       setProbedMs(null);
       return;
     }
-    setStartMs(0);
-  }, [open, videoUrl]);
+    setTrim({ trim_start_ms: 0, trim_end_ms: maxClipMs });
+  }, [open, videoUrl, maxClipMs]);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -76,21 +76,12 @@ export function ExploreVideoTrimModal({
         ? fullDurationMs
         : 0;
 
-  const clipMs = useMemo(
-    () => (resolvedFullMs > 0 ? exploreMaxClipMs(resolvedFullMs, maxClipMs) : maxClipMs),
-    [resolvedFullMs, maxClipMs],
-  );
-  const maxStartMs = Math.max(0, resolvedFullMs - clipMs);
+  useEffect(() => {
+    if (!open || resolvedFullMs <= 0) return;
+    setTrim(defaultExploreVideoTrim(resolvedFullMs, maxClipMs));
+  }, [open, resolvedFullMs, maxClipMs]);
 
-  const trim = useMemo(
-    () =>
-      resolvedFullMs <= 0
-        ? { trim_start_ms: 0, trim_end_ms: maxClipMs }
-        : maxStartMs <= 0
-          ? defaultExploreVideoTrim(resolvedFullMs, maxClipMs)
-          : slideExploreVideoTrimStart(startMs, resolvedFullMs, maxClipMs),
-    [startMs, resolvedFullMs, maxClipMs, maxStartMs],
-  );
+  const clipMs = trim.trim_end_ms - trim.trim_start_ms;
 
   useEffect(() => {
     const v = videoRef.current;
@@ -154,19 +145,55 @@ export function ExploreVideoTrimModal({
                 </span>
                 <span>{formatSec(trim.trim_end_ms)}</span>
               </div>
-              {maxStartMs > 0 ? (
-                <input
-                  type="range"
-                  min={0}
-                  max={maxStartMs}
-                  step={100}
-                  value={startMs}
-                  onChange={(e) => setStartMs(Number(e.target.value))}
-                  className="w-full accent-violet-600"
-                  aria-label={t("web.provider.explorePostForm.trimVideoScrubber", {
-                    defaultValue: "Choose clip start",
-                  })}
-                />
+              {resolvedFullMs > EXPLORE_MIN_CLIP_MS ? (
+                <>
+                  <input
+                    type="range"
+                    min={0}
+                    max={Math.max(0, trim.trim_end_ms - EXPLORE_MIN_CLIP_MS)}
+                    step={100}
+                    value={trim.trim_start_ms}
+                    onChange={(e) => {
+                      const start = Number(e.target.value);
+                      setTrim((prev) =>
+                        clampExploreTrimRange(
+                          { trim_start_ms: start, trim_end_ms: prev.trim_end_ms },
+                          resolvedFullMs,
+                          maxClipMs,
+                          EXPLORE_MIN_CLIP_MS,
+                          "start",
+                        ),
+                      );
+                    }}
+                    className="w-full accent-violet-600"
+                    aria-label={t("web.provider.explorePostForm.trimHandleStartA11y", {
+                      defaultValue: "Clip start",
+                    })}
+                  />
+                  <input
+                    type="range"
+                    min={trim.trim_start_ms + EXPLORE_MIN_CLIP_MS}
+                    max={resolvedFullMs}
+                    step={100}
+                    value={trim.trim_end_ms}
+                    onChange={(e) => {
+                      const end = Number(e.target.value);
+                      setTrim((prev) =>
+                        clampExploreTrimRange(
+                          { trim_start_ms: prev.trim_start_ms, trim_end_ms: end },
+                          resolvedFullMs,
+                          maxClipMs,
+                          EXPLORE_MIN_CLIP_MS,
+                          "end",
+                        ),
+                      );
+                    }}
+                    className="w-full accent-violet-600"
+                    aria-label={t("web.provider.explorePostForm.trimHandleEndA11y", {
+                      defaultValue: "Clip end",
+                    })}
+                  />
+                </>
               ) : null}
             </>
           ) : (

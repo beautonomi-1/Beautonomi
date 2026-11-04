@@ -22,6 +22,7 @@ import {
 } from "@/lib/bookings/group-booking-package-pricing";
 import { evaluateGroupCapacity, normalizeGroupCapacity } from "@/lib/bookings/group-capacity";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { sumPendingWalletGiftByBookingIds } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
 import {
   findGroupBookingIdsByParticipantContactSearch,
@@ -273,6 +274,10 @@ export async function GET(request: NextRequest) {
         childBookingsByGroupId.set(gid, bucket);
       }
 
+      const pendingWalletGiftByChild = await sumPendingWalletGiftByBookingIds(
+        admin,
+        childBookingsForRollup.map((booking: { id?: string }) => String(booking.id ?? "")),
+      );
       const participantPaymentByBookingId = new Map(
         childBookingsForRollup.map((booking: any) => {
           const paidAfterRefunds = Math.max(
@@ -295,6 +300,8 @@ export async function GET(request: NextRequest) {
             giftCardAmount: Number(booking.gift_card_amount ?? 0),
             unpaidAdditionalCharges,
             paymentStatus: booking.payment_status ?? null,
+            pendingWalletGiftAmount:
+              pendingWalletGiftByChild.get(String(booking.id ?? "")) ?? 0,
           });
           return [
             booking.id,
@@ -469,6 +476,17 @@ export async function POST(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return notFoundResponse("Provider not found");
+    }
+
+    const { assertProviderStaffGroupBookingsEnabled } = await import(
+      "@/lib/bookings/assert-provider-group-bookings-enabled"
+    );
+    if (!(await assertProviderStaffGroupBookingsEnabled(supabase, providerId))) {
+      return errorResponse(
+        "Group appointments are disabled for this business. Enable them in settings.",
+        "GROUP_BOOKINGS_DISABLED",
+        403,
+      );
     }
 
     const tenantId = await resolveTenantIdWithZaFallback(request);

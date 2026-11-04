@@ -25,6 +25,7 @@ import {
   completeWalletGiftSyntheticPayments,
 } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
+import { sumPendingWalletGiftBookingPayments } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { getEffectiveCheckoutMethods } from "@/lib/payments/provider-checkout-methods";
 import {
   clearUncollectedProviderPortalPlatformFeeIfNeeded,
@@ -118,6 +119,7 @@ export async function GET(
       }
     }
 
+    const pendingWalletGift = await sumPendingWalletGiftBookingPayments(admin, bookingId);
     const remaining = computeBookingOutstandingDisplay({
       totalAmount,
       totalPaid: Number(booking.total_paid ?? 0),
@@ -126,6 +128,7 @@ export async function GET(
       giftCardAmount: Number((booking as { gift_card_amount?: number }).gift_card_amount ?? 0),
       unpaidAdditionalCharges: 0,
       paymentStatus: booking.payment_status,
+      pendingWalletGiftAmount: pendingWalletGift,
     });
     const serviceTipBase = Math.max(
       0,
@@ -239,6 +242,7 @@ export async function POST(
     const totalRefunded = Number((booking as Record<string, unknown>).total_refunded ?? 0);
     const walletAmount = Number((booking as Record<string, unknown>).wallet_amount ?? 0);
     const giftCardAmount = Number((booking as Record<string, unknown>).gift_card_amount ?? 0);
+    const pendingWalletGift = await sumPendingWalletGiftBookingPayments(admin, bookingId);
     const remaining = computeBookingOutstandingDisplay({
       totalAmount,
       totalPaid,
@@ -247,6 +251,7 @@ export async function POST(
       giftCardAmount,
       unpaidAdditionalCharges: 0,
       paymentStatus: booking.payment_status,
+      pendingWalletGiftAmount: pendingWalletGift,
     });
 
     const requestedTip = roundMoney(Number(body.tip_amount ?? 0));
@@ -316,6 +321,7 @@ export async function POST(
         giftCardCode: giftCardCode || null,
         walletDescription: `Wallet spend (remaining balance) for booking ${bookingNumber}`,
         paymentLegSuffix,
+        deferFullSettlement: true,
       });
       if (applied.ok === false) {
         return errorResponse(applied.error, applied.code ?? "SPLIT_ERROR", 400);
@@ -327,9 +333,29 @@ export async function POST(
       if (applied.fullySettled && requestedTip <= 0) {
         try {
           if (giftCardAmountApplied > 0) {
-            await (admin.rpc as any)("capture_gift_card_redemption", { p_booking_id: bookingId });
+            const { data: captured, error: captureError } = await (admin.rpc as any)(
+              "capture_gift_card_redemption",
+              { p_booking_id: bookingId },
+            );
+            if (captureError || captured === false) {
+              await rollbackCollectibleSplitLeg(admin, {
+                bookingId,
+                customerId: user.id,
+                currency,
+                tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? null,
+                providerId,
+                walletAmountToReverse: walletAmountApplied,
+                giftCardAmountToReverse: giftCardAmountApplied,
+                paymentLegSuffix,
+                idempotencyKey: `pay_remaining_rollback:${reference}`,
+              });
+              return errorResponse(
+                captureError?.message || "Gift card could not be captured.",
+                "GIFT_CARD_INVALID",
+                400,
+              );
+            }
           }
-          await completeWalletGiftSyntheticPayments(admin, bookingId);
           await recordCollectibleSettlementLedger(admin, {
             bookingId,
             providerId,
@@ -346,6 +372,7 @@ export async function POST(
             idempotencyReference: reference,
             settlementLabel: "Remaining balance (wallet/gift)",
           });
+          await completeWalletGiftSyntheticPayments(admin, bookingId, { paymentLegSuffix });
           await syncBookingAfterPaystackSuccess(admin, bookingId, {
             paymentProvider: walletAmountApplied > 0 ? "wallet" : "gift_card",
           });
@@ -398,6 +425,19 @@ export async function POST(
       .single();
 
     if (!customer?.email) {
+      if (paymentLegSuffix && (walletAmountApplied > 0 || giftCardAmountApplied > 0)) {
+        await rollbackCollectibleSplitLeg(admin, {
+          bookingId,
+          customerId: user.id,
+          currency,
+          tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? null,
+          providerId,
+          walletAmountToReverse: walletAmountApplied,
+          giftCardAmountToReverse: giftCardAmountApplied,
+          paymentLegSuffix,
+          idempotencyKey: `pay_remaining_rollback:${reference}`,
+        });
+      }
       return errorResponse(
         "Customer email is required for payment",
         "MISSING_EMAIL",

@@ -9,7 +9,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 import type { ExplorePost } from "@/types/explore";
-import { EXPLORE_POST_SELECT_WITH_PROVIDER } from "@/lib/explore/post-select";
+import { EXPLORE_POST_MINE_SELECT_WITH_PROVIDER } from "@/lib/explore/post-select";
 import { mapExplorePostRow } from "@/lib/explore/post-mapper";
 import { enrichExplorePostsWithSoundUrls } from "@/lib/explore/sound-enrich";
 import { isExploreProviderPostsEnabled } from "@/lib/explore/explore-feature-gates";
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     if (postId) {
       const { data: row, error: oneErr } = await supabaseAdmin
         .from("explore_posts")
-        .select(EXPLORE_POST_SELECT_WITH_PROVIDER)
+        .select(EXPLORE_POST_MINE_SELECT_WITH_PROVIDER)
         .eq("id", postId)
         .eq("provider_id", providerId)
         .maybeSingle();
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
 
     const { data: rows, error, count } = await supabaseAdmin
       .from("explore_posts")
-      .select(EXPLORE_POST_SELECT_WITH_PROVIDER, { count: "exact" })
+      .select(EXPLORE_POST_MINE_SELECT_WITH_PROVIDER, { count: "exact" })
       .eq("provider_id", providerId)
       .order("published_at", { ascending: false })
       .order("id", { ascending: false })

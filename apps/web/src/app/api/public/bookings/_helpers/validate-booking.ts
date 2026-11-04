@@ -28,6 +28,8 @@ import { segmentFitsAnyShift } from "@/lib/availability/shift-fit";
 import { fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 import { calculateTravelFeeForHold } from "@/lib/travel/calculateTravelFeeForHold";
 import { normalizePersistedServiceFeePercentage } from "@/lib/platform-service-fee-settings";
+import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
+import { computeVat } from "@beautonomi/utils";
 
 function atHomeAdjustmentForOffering(
   offeringsList: Array<{
@@ -112,6 +114,10 @@ export interface ValidatedBookingData {
   /** Group booking data */
   isGroupBooking: boolean;
   groupParticipants: any[] | null;
+  /** Stable participant ids aligned with booking_services.group_participant_id */
+  groupAssignedParticipants: import("@/lib/public-booking/assign-group-service-owners").AssignedGroupParticipant[] | null;
+  groupPaymentMode: import("@/lib/bookings/group-split-payment").GroupPaymentMode;
+  groupSplit: { organizerCheckoutAmount: number; guestAmounts: number[] } | null;
 }
 
 export interface ProviderRow {
@@ -218,7 +224,7 @@ export async function validateBooking(
   let providerQuery = supabase
     .from("providers")
     .select(
-      "id, tenant_id, timezone, currency, requires_deposit, deposit_percentage, status, tax_rate_percent, tips_enabled, customer_fee_config_id, minimum_mobile_booking_amount, online_booking_enabled"
+      "id, tenant_id, timezone, currency, requires_deposit, deposit_percentage, status, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code, tips_enabled, customer_fee_config_id, minimum_mobile_booking_amount, online_booking_enabled"
     )
     .eq("id", draft.provider_id);
   if (marketTenantId) {
@@ -1419,21 +1425,24 @@ export async function validateBooking(
   const tipsEnabled = Boolean((provider as any)?.tips_enabled ?? true);
   const tipAmount = tipsEnabled ? (draft.tip_amount || 0) : 0;
 
-  // Use null/undefined check — provider explicitly setting 0% is valid and must NOT fall through
-  // to the platform default (|| 0 would treat 0% as "not set" which causes bogus 15% fallback)
-  const rawProviderTaxRate = (provider as any)?.tax_rate_percent;
-  let taxRate: number;
-  let taxIncluded = false; // whether tax is already included in prices (inclusive) vs added on top (exclusive)
-  if (rawProviderTaxRate == null) {
-    const { getPlatformDefaultTaxRateAndInclusive } = await import("@/lib/pricing/checkout-tax-defaults");
-    const defaults = await getPlatformDefaultTaxRateAndInclusive(supabaseAdmin);
-    taxRate = defaults.taxRate;
-    taxIncluded = defaults.taxIncluded;
-  } else {
-    taxRate = Math.max(0, Number(rawProviderTaxRate));
-    // Provider-level inclusive flag if set
-    taxIncluded = Boolean((provider as any)?.tax_inclusive ?? false);
+  const resolvedVat = await resolveProviderVat(supabaseAdmin, {
+    tax_rate_percent: (provider as any)?.tax_rate_percent ?? null,
+    tax_inclusive: (provider as any)?.tax_inclusive ?? null,
+    is_vat_registered: (provider as any)?.is_vat_registered ?? null,
+    vat_number: (provider as any)?.vat_number ?? null,
+    country_code: (provider as any)?.country_code ?? null,
+    tax_rate_override_percent: null,
+  });
+  if (resolvedVat.registered && resolvedVat.source === "none") {
+    return handleApiError(
+      new Error("VAT rate unavailable"),
+      "This provider is VAT registered but no country VAT rate is configured. Bookings are blocked until the rate is set.",
+      "VAT_RATE_UNAVAILABLE",
+      503,
+    );
   }
+  const taxRate = resolvedVat.ratePercent;
+  const taxIncluded = resolvedVat.inclusive;
 
   // ── Loyalty redemption (before tax & platform fee; matches checkout parity) ──
   let loyaltyDiscountAmount = 0;
@@ -1514,14 +1523,15 @@ export async function validateBooking(
 
   const baseAfterLoyalty = Math.max(0, subtotalAfterMembership - loyaltyDiscountAmount);
 
-  let taxAmount = 0;
-  if (taxRate > 0) {
-    if (taxIncluded) {
-      taxAmount = baseAfterLoyalty - baseAfterLoyalty / (1 + taxRate / 100);
-    } else {
-      taxAmount = percentOf(baseAfterLoyalty, taxRate);
-    }
-  }
+  const taxAmount =
+    taxRate > 0
+      ? computeVat({
+          baseAmount: baseAfterLoyalty,
+          ratePercent: taxRate,
+          inclusive: taxIncluded,
+          currency: (provider as any)?.currency ?? undefined,
+        }).taxAmount
+      : 0;
 
   // ── Platform Fee ─────────────────────────────────────────────────────────
   let serviceFeeAmount = 0;
@@ -1716,85 +1726,87 @@ export async function validateBooking(
   let bookingServicesData: any[];
   let totalDuration = 0;
 
+  let groupAssignedParticipants: import("@/lib/public-booking/assign-group-service-owners").AssignedGroupParticipant[] | null =
+    null;
+
   if (isGroupBooking && groupParticipants && groupParticipants.length > 0) {
     const { calculateGroupBookingDuration } = await import(
       "@/lib/bookings/group-booking-services"
     );
+    const { assignGroupServiceOwners } = await import(
+      "@/lib/public-booking/assign-group-service-owners"
+    );
 
-    const servicesMap = new Map();
+    const clientInfoName =
+      typeof (validatedDraft.client_info as { name?: string } | undefined)?.name === "string"
+        ? String((validatedDraft.client_info as { name?: string }).name)
+        : "Primary Contact";
+
+    const { participants, assignedLines } = assignGroupServiceOwners({
+      draftServices: draft.services.map((s: any) => ({
+        offering_id: s.offering_id,
+        staff_id: s.staff_id ?? null,
+      })),
+      groupParticipants: groupParticipants as any[],
+      primaryContactName: clientInfoName,
+      includesPrimary: validatedDraft.group_participants_include_primary,
+    });
+    groupAssignedParticipants = participants;
+
+    const servicesMap = new Map<string, { duration_minutes: number; buffer_minutes?: number }>();
     for (const s of draft.services) {
       const off = offeringById.get(s.offering_id);
-      const homeAdj = atHomeAdjustmentForOffering(
-        offerings || [],
-        off.id,
-        draft.location_type === "at_home"
-      );
+      if (!off) continue;
       servicesMap.set(s.offering_id, {
-        offering_id: off.id,
-        staff_id: s.staff_id || null,
         duration_minutes: Number(off.duration_minutes),
-        price: Number(off.price) + homeAdj,
-        currency,
         buffer_minutes: Number(off.buffer_minutes || 0),
       });
     }
 
-    // Primary = booker; their services are draft.services. Others are in group_participants (each with service_ids).
-    const primaryServiceIds = (draft.services || []).map((s: any) => s.offering_id);
-    const allParticipantsForDuration = [
-      { serviceIds: primaryServiceIds },
-      ...groupParticipants.map((p: any) => ({ serviceIds: p.service_ids ?? p.serviceIds ?? [] })),
-    ];
+    const allParticipantsForDuration = participants.map((p) => ({ serviceIds: p.serviceIds }));
     totalDuration = calculateGroupBookingDuration(allParticipantsForDuration, servicesMap);
 
-    // Booking services data = primary's services only (one booking row; createGroupBookingServices adds others' services)
-    let cursor = new Date(draft.selected_datetime);
-    bookingServicesData = primaryServiceIds
-      .map((serviceId: string) => {
-        const s = draft.services.find((serv: any) => serv.offering_id === serviceId);
-        if (!s) return null;
-        const off = offeringById.get(s.offering_id);
-        const homeAdj = atHomeAdjustmentForOffering(
-        offerings || [],
-        off.id,
-        draft.location_type === "at_home"
-      );
-        const start = new Date(cursor);
-        const end = new Date(start.getTime() + Number(off.duration_minutes) * 60000);
-        cursor = new Date(end.getTime() + Number(off.buffer_minutes || 0) * 60000);
-        return {
-          offering_id: off.id,
-          staff_id: s.staff_id || null,
-          duration_minutes: Number(off.duration_minutes),
-          price: Number(off.price) + homeAdj,
-          currency,
-          scheduled_start_at: start.toISOString(),
-          scheduled_end_at: end.toISOString(),
-        };
-      })
-      .filter(Boolean) as any[];
+    const staffByOfferingParticipant = new Map<string, string | null>();
+    for (const line of assignedLines) {
+      const key = `${line.group_participant_id}:${line.offering_id}`;
+      if (!staffByOfferingParticipant.has(key)) {
+        staffByOfferingParticipant.set(key, line.staff_id ?? null);
+      }
+    }
 
-    if (bookingServicesData.length === 0 && draft.services.length > 0) {
-      const s = draft.services[0];
-      const off = offeringById.get(s.offering_id);
-      const homeAdj = atHomeAdjustmentForOffering(
-        offerings || [],
-        off.id,
-        draft.location_type === "at_home"
-      );
-      const start = new Date(draft.selected_datetime);
-      const end = new Date(start.getTime() + Number(off.duration_minutes) * 60000);
-      bookingServicesData = [
-        {
+    const baseStart = new Date(draft.selected_datetime);
+    bookingServicesData = [];
+    for (const p of participants) {
+      let participantCursor = new Date(baseStart);
+      for (const serviceId of p.serviceIds) {
+        const off = offeringById.get(serviceId);
+        if (!off) continue;
+        const homeAdj = atHomeAdjustmentForOffering(
+          offerings || [],
+          off.id,
+          draft.location_type === "at_home",
+        );
+        const staffId =
+          staffByOfferingParticipant.get(`${p.id}:${serviceId}`) ??
+          draft.services.find((s: any) => s.offering_id === serviceId)?.staff_id ??
+          null;
+        const start = new Date(participantCursor);
+        const end = new Date(start.getTime() + Number(off.duration_minutes) * 60000);
+        participantCursor = new Date(
+          end.getTime() + Number(off.buffer_minutes || 0) * 60000,
+        );
+        bookingServicesData.push({
           offering_id: off.id,
-          staff_id: s.staff_id || null,
+          staff_id: staffId,
           duration_minutes: Number(off.duration_minutes),
           price: Number(off.price) + homeAdj,
           currency,
           scheduled_start_at: start.toISOString(),
           scheduled_end_at: end.toISOString(),
-        },
-      ];
+          guest_name: p.isPrimary ? null : p.name,
+          group_participant_id: p.id,
+        });
+      }
     }
   } else {
     let cursor = new Date(draft.selected_datetime);
@@ -1885,7 +1897,7 @@ export async function validateBooking(
     rate: taxRate,
     inclusive: taxIncluded,
     jurisdiction: (provider as any)?.country_code ?? null,
-    source: rawProviderTaxRate != null ? "provider_override" : "platform_default",
+    source: resolvedVat.source,
     resolved_at: new Date().toISOString(),
   };
   bookingServicesData = bookingServicesData.map((line: any) => ({
@@ -2281,6 +2293,52 @@ export async function validateBooking(
     }
   }
 
+  const {
+    normalizeGroupPaymentMode,
+    computeGroupSplitPaymentAmounts,
+    sumOfferingPrices,
+  } = await import("@/lib/bookings/group-split-payment");
+  const groupPaymentMode = normalizeGroupPaymentMode(validatedDraft.group_payment_mode);
+  let groupSplit: { organizerCheckoutAmount: number; guestAmounts: number[] } | null = null;
+  if (isGroupBooking && groupParticipants && groupParticipants.length > 0 && groupPaymentMode === "split") {
+    const { data: splitRow, error: splitFlagError } = await supabase
+      .from("providers")
+      .select("group_split_payment_enabled")
+      .eq("id", draft.provider_id)
+      .maybeSingle();
+    const splitEnabled =
+      !splitFlagError &&
+      (splitRow as { group_split_payment_enabled?: boolean | null } | null)?.group_split_payment_enabled === true;
+    if (!splitEnabled) {
+      return handleApiError(
+        new Error("Split group payment is not enabled for this provider"),
+        "This provider does not accept split group payments. Choose pay in full.",
+        "GROUP_SPLIT_DISABLED",
+        400,
+      );
+    }
+    const guestServiceTotals = (groupAssignedParticipants ?? [])
+      .filter((p) => !p.isPrimary)
+      .map((p) =>
+        sumOfferingPrices(
+          p.serviceIds,
+          offeringById as Map<string, { price?: number | null }>,
+        ),
+      );
+    groupSplit = computeGroupSplitPaymentAmounts({
+      totalAmount,
+      guestServiceTotals,
+    });
+    if (validatedDraft.payment_method === "cash") {
+      return handleApiError(
+        new Error("Split group payment requires online checkout"),
+        "Split payment is only available when paying online.",
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+  }
+
   // ── Return enriched data ─────────────────────────────────────────────────
   return {
     customerId,
@@ -2337,5 +2395,8 @@ export async function validateBooking(
 
     isGroupBooking,
     groupParticipants,
+    groupAssignedParticipants,
+    groupPaymentMode,
+    groupSplit,
   };
 }

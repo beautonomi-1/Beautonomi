@@ -75,10 +75,33 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ data: null, error: { message: "Group booking not found", code: "NOT_FOUND" } }, { status: 404 });
     }
 
+    // Split-payment share columns (migration 1034) are read separately so the detail view
+    // keeps working where that migration has not been applied.
+    const shareById = new Map<string, { amount_due: number | null; amount_paid: number; status: string | null }>();
+    {
+      const { data: shareRows, error: shareErr } = await admin
+        .from("booking_participants")
+        .select("id, amount_due, amount_paid, participant_payment_status")
+        .eq("group_booking_id", id);
+      if (!shareErr) {
+        for (const s of (shareRows ?? []) as any[]) {
+          shareById.set(String(s.id), {
+            amount_due: s.amount_due == null ? null : num(s.amount_due),
+            amount_paid: num(s.amount_paid),
+            status: s.participant_payment_status ?? null,
+          });
+        }
+      }
+    }
+
     const participantRows = participants.map((p: any) => {
       const linkedBooking = p.booking_id ? bookings.find((b: any) => b.id === p.booking_id) : null;
       const addons = Array.isArray(p.addons) ? p.addons : [];
+      const share = shareById.get(String(p.id));
       return {
+        share_amount_due: share?.amount_due ?? null,
+        share_amount_paid: share?.amount_paid ?? 0,
+        share_status: share?.amount_due != null ? share.status : null,
         id: p.id,
         booking_id: p.booking_id ?? null,
         is_current_user: p.customer_id === user.id || linkedBooking?.customer_id === user.id,

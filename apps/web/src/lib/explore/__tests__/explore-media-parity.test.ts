@@ -41,6 +41,8 @@ import { sanitizeExploreTextOverlays } from "@/lib/explore/explore-overlay-schem
 import { assertExplorePathOwnedByProvider } from "@/lib/explore/explore-upload-access";
 import { buildVideoDrawtextChain } from "@/lib/explore/explore-rendobar-overlays";
 import {
+  clampExploreTrimRange,
+  EXPLORE_MIN_CLIP_MS,
   sanitizeExploreVideoTrim,
   slideExploreVideoTrimStart,
 } from "@/lib/explore/explore-video-trim";
@@ -458,6 +460,18 @@ describe("explore media parity — E2E-critical units", () => {
       const trim = slideExploreVideoTrimStart(45_000, 120_000, 60_000);
       expect(trim.trim_start_ms).toBe(45_000);
       expect(trim.trim_end_ms).toBe(105_000);
+    });
+
+    it("clampExploreTrimRange enforces min and max clip length", () => {
+      const trimmed = clampExploreTrimRange(
+        { trim_start_ms: 0, trim_end_ms: 500 },
+        120_000,
+        60_000,
+        EXPLORE_MIN_CLIP_MS,
+        "end",
+      );
+      expect(trimmed.trim_end_ms - trimmed.trim_start_ms).toBeGreaterThanOrEqual(EXPLORE_MIN_CLIP_MS);
+      expect(trimmed.trim_end_ms - trimmed.trim_start_ms).toBeLessThanOrEqual(60_000);
     });
 
     it("maps user trim to ffmpeg -ss and -t via encode job", () => {

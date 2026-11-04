@@ -8,6 +8,7 @@ const mockResolveTenantIdWithZaFallback = vi.fn();
 const mockGetPaystackSecretKey = vi.fn();
 const mockRecordProductOrderPayment = vi.fn();
 let adminProductOrderRow: Record<string, unknown> | null = null;
+let adminCardPayments: Array<Record<string, unknown>> = [];
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
@@ -36,6 +37,7 @@ vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: vi.fn(() => ({
     from: vi.fn((table: string) => {
       if (table === "product_orders") return productOrdersQuery(adminProductOrderRow);
+      if (table === "payment_transactions") return paymentTransactionsQuery(adminCardPayments);
       if (table === "ads_budget_orders") return adsBudgetOrdersEmptyByReference();
       if (table === "provider_subscription_orders" || table === "wallet_topups") {
         return {
@@ -101,6 +103,15 @@ vi.mock("@/lib/analytics/amplitude/server", () => ({
   trackServer: vi.fn(() => Promise.resolve()),
 }));
 
+function paymentTransactionsQuery(rows: Array<Record<string, unknown>>) {
+  const chain = {
+    select: vi.fn(() => chain),
+    eq: vi.fn(() => chain),
+    filter: vi.fn(async () => ({ data: rows, error: null })),
+  };
+  return chain;
+}
+
 function productOrdersQuery(row: Record<string, unknown> | null) {
   return {
     select: vi.fn(() => ({
@@ -126,6 +137,7 @@ describe("GET /api/paystack/verify product orders", () => {
       transitionedToPaid: true,
     });
     adminProductOrderRow = null;
+    adminCardPayments = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({
@@ -292,5 +304,49 @@ describe("GET /api/paystack/verify product orders", () => {
     expect(res.status).toBe(400);
     expect(body?.error?.code).toBe("AMOUNT_MISMATCH");
     expect(mockRecordProductOrderPayment).not.toHaveBeenCalled();
+  });
+
+  it("accepts a later card charge for the amount still owed", async () => {
+    adminProductOrderRow = {
+      id: "order-1",
+      tenant_id: "tenant-za",
+      provider_id: "provider-1",
+      customer_id: "customer-1",
+      total_amount: 100,
+      wallet_amount: 0,
+      gift_card_amount: 0,
+      payment_status: "pending",
+      payment_reference: null,
+    };
+    adminCardPayments = [{ amount: 60, reference: "first-charge" }];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          data: {
+            status: "success",
+            amount: 4_000,
+            fees: 0,
+            currency: "ZAR",
+            metadata: { product_order_id: "order-1" },
+          },
+        }),
+      })),
+    );
+    mockGetSupabaseServer.mockResolvedValue({
+      from: vi.fn((table: string) => {
+        if (table !== "product_orders") throw new Error(`Unexpected table ${table}`);
+        return productOrdersQuery(adminProductOrderRow);
+      }),
+    });
+
+    const { GET } = await import("../verify/route");
+    const res = await GET(new NextRequest("http://localhost/api/paystack/verify?reference=second-charge"));
+
+    expect(res.status).toBe(200);
+    expect(mockRecordProductOrderPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ productOrderId: "order-1", reference: "second-charge", amountMajor: 40 }),
+    );
   });
 });

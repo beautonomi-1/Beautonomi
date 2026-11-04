@@ -17,6 +17,15 @@ export function isExploreVideoPathOrUrl(value: string): boolean {
   return VIDEO_EXT.test(path);
 }
 
+/** Full-screen vertical feed only for single-slide video posts. */
+export function shouldOpenExploreVideoFeed(
+  mediaUrls: string[] | null | undefined,
+  mediaMeta?: ExploreMediaSlideMeta[] | null,
+): boolean {
+  const urls = mediaUrls ?? [];
+  return urls.length === 1 && firstSlideIsVideo(urls, mediaMeta);
+}
+
 export function firstSlideIsVideo(
   mediaUrls: string[] | null | undefined,
   mediaMeta?: ExploreMediaSlideMeta[] | null,

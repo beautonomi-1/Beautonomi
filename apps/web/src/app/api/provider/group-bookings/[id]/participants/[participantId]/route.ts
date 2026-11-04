@@ -5,11 +5,13 @@ import {
   requireRoleInApi,
   getProviderIdForUser,
   successResponse,
+  errorResponse,
   notFoundResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { recalculateGroupBookingTotal } from "@/lib/bookings/recalculate-group-total";
+import { cancelGroupGuest } from "@/lib/bookings/cancelGroupGuest";
 
 function normalizeGroupBookingId(rawId: string): string {
   return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
@@ -53,14 +55,29 @@ export async function DELETE(
       return notFoundResponse("Group booking not found");
     }
 
-    const { data: part, error: pErr } = await admin
-      .from("booking_participants")
-      .select("id, booking_id, group_booking_id")
-      .eq("id", participantId)
-      .eq("group_booking_id", groupId)
-      .maybeSingle();
-
-    if (pErr || !part) {
+    // Cancel the guest's child booking or remove their tagged lines from the lead booking
+    // before the participant row goes, so staff time is freed and totals shrink.
+    const guestResult = await cancelGroupGuest(admin, {
+      participantId,
+      groupBookingId: groupId,
+      cancelledBy: user.id,
+      reason: "Removed from group booking",
+    });
+    if (guestResult.ok === false) {
+      if (guestResult.code === "PRIMARY_PARTICIPANT") {
+        return errorResponse(
+          "The primary contact cannot be removed. Cancel the booking instead.",
+          "PRIMARY_PARTICIPANT",
+          400,
+        );
+      }
+      if (guestResult.code === "BOOKING_CLOSED") {
+        return errorResponse(
+          "This group booking is already closed.",
+          "BOOKING_CLOSED",
+          409,
+        );
+      }
       return notFoundResponse("Participant not found");
     }
 
@@ -74,47 +91,16 @@ export async function DELETE(
       throw dErr;
     }
 
-    // §Final-audit 2026-04 (P2 residual): previously this endpoint only
-    // set `bookings.group_booking_id = null`, leaving the child booking
-    // row and its `booking_services` ACTIVE on the calendar. That turned
-    // every removed participant into a "phantom block" — staff was still
-    // marked busy for a person who had dropped out, and
-    // `load-constraints.ts` refused to offer that slot again.
-    //
-    // Correct behavior: cancel the child booking too, which cascades
-    // through the regular cancellation triggers (status → cancelled,
-    // `cancelled_at` stamp, availability freed by load-constraints which
-    // filters `status !== 'cancelled'`). We do NOT delete the booking —
-    // audit trail must be preserved.
-    if (part.booking_id) {
-      const { error: bookingError } = await admin
-        .from("bookings")
-        .update({
-          status: "cancelled",
-          cancelled_at: new Date().toISOString(),
-          cancellation_reason: "Removed from group booking",
-          group_booking_id: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", part.booking_id)
-        .eq("provider_id", providerId)
-        // Do not clobber an already-completed booking.
-        .not("status", "in", "(completed,no_show,cancelled)");
-      if (bookingError) {
-        throw bookingError;
-      }
-
-      try {
-        const { settleBookingFinanceById } = await import("@/lib/bookings/settle-booking-cancellation");
-        await settleBookingFinanceById(admin, part.booking_id, "provider");
-      } catch (settleErr) {
-        console.error("[group participant remove] finance settlement failed:", settleErr);
-      }
-    }
-
     await recalculateGroupBookingTotal(admin, groupId);
 
-    return successResponse({ success: true });
+    return successResponse({
+      success: true,
+      mode: guestResult.mode,
+      removed_lines: guestResult.removedLines,
+      guest_refunded: guestResult.guestRefunded,
+      wallet_credited: guestResult.walletCredited,
+      overpaid_amount: guestResult.overpaidAmount,
+    });
   } catch (error) {
     return handleApiError(error, "Failed to remove group participant");
   }

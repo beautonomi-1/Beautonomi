@@ -17,6 +17,8 @@ import {
   postBookingAuditLedgerLegsIfMissing,
   type AuditLegDescriptionStyle,
 } from "./post-booking-audit-ledger-legs";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 
 export type OnlineGatewayLedgerProvider = "paystack" | "stripe" | "flutterwave";
 
@@ -118,28 +120,51 @@ function platformFeeAlreadyPosted(existingTypes: Set<string>): boolean {
   return existingTypes.has("platform_fee") || existingTypes.has("service_fee");
 }
 
+type PaymentSourceRow = { source_payment_id?: string | null };
+
 /**
- * Whether the `payment` leg for this specific charge is already in the ledger.
- * Without a sourcePaymentId, or when any existing `payment` row predates
- * source_payment_id attribution, assume posted — re-posting money rows is worse
- * than skipping a rare backfill.
+ * Load `payment` source ids for a booking. `null` means the read failed;
+ * callers fail closed and skip rather than post a second copy of the same cash.
  */
-async function isChargeLedgerAlreadyPosted(
+async function loadPaymentSourceRows(
   supabase: SupabaseClient,
   bookingId: string,
-  sourcePaymentId: string | null | undefined,
-): Promise<boolean> {
-  if (!sourcePaymentId) return true;
+): Promise<PaymentSourceRow[] | null> {
   const { data, error } = await supabase
     .from("finance_transactions")
     .select("source_payment_id")
     .eq("booking_id", bookingId)
     .eq("transaction_type", "payment");
-  if (error || !data) return true;
-  const rows = data as Array<{ source_payment_id?: string | null }>;
-  if (rows.length === 0) return false;
+  if (error || !data) return null;
+  return data as PaymentSourceRow[];
+}
+
+/**
+ * Retry of a charge that already has a `payment_transactions` row.
+ * No source id, or a legacy payment row with no source id, cannot be told apart
+ * from this charge, so treat it as posted. A new source id against only
+ * attributed rows is a crash backfill and must still be written.
+ */
+function isRetryChargeAlreadyPosted(
+  rows: PaymentSourceRow[],
+  sourcePaymentId: string | null,
+): boolean {
+  if (!sourcePaymentId) return rows.length > 0;
   if (rows.some((row) => !row.source_payment_id)) return true;
   return rows.some((row) => String(row.source_payment_id) === sourcePaymentId);
+}
+
+/**
+ * A new charge. An existing payment row is an earlier charge, including rows
+ * written before source_payment_id existed. Skip only when this source id is
+ * already on a payment row.
+ */
+function isThisSourcePaymentAlreadyPosted(
+  rows: PaymentSourceRow[],
+  sourcePaymentId: string | null,
+): boolean {
+  if (!sourcePaymentId) return false;
+  return rows.some((row) => String(row.source_payment_id ?? "") === sourcePaymentId);
 }
 
 export async function recordBookingOnlineChargeLedger(
@@ -163,6 +188,12 @@ export async function recordBookingOnlineChargeLedger(
     tenant_id: bookingData.tenant_id,
     provider_id: bookingData.provider_id,
   });
+  const vatHeldForProviderPayout = await isFeatureEnabledServer(
+    FEATURE_FLAG_KEYS.FINANCE_PROVIDER_VAT_PAYOUT,
+    financeTenantId,
+  );
+  const taxLegMetadata = (): Record<string, unknown> | undefined =>
+    vatHeldForProviderPayout ? { vat_held_for_provider: true } : undefined;
 
   const { data: existingPaymentTxForRef } = await supabase
     .from("payment_transactions")
@@ -184,8 +215,11 @@ export async function recordBookingOnlineChargeLedger(
     // charge (pay-remaining, top-up) always finds the first charge's row. Attribute via
     // source_payment_id so a crash between the payment_transactions and finance inserts
     // is backfilled on retry instead of being silently skipped.
-    const posted = await isChargeLedgerAlreadyPosted(supabase, input.bookingId, input.sourcePaymentId);
-    if (posted) {
+    const paymentSources = await loadPaymentSourceRows(supabase, input.bookingId);
+    if (
+      paymentSources == null ||
+      isRetryChargeAlreadyPosted(paymentSources, input.sourcePaymentId ?? null)
+    ) {
       return { ok: true, skipped: true, isSecondCharge: false };
     }
   }
@@ -222,6 +256,7 @@ export async function recordBookingOnlineChargeLedger(
       tipAmount: baseTip,
       travelFee,
       platformFee: serviceFeeAmount,
+      taxAmount,
       existingTypes: commissionContext.existingBookingLevelTypes,
     }) + incrementalTip;
   const postedLegsForResidual =
@@ -304,7 +339,15 @@ export async function recordBookingOnlineChargeLedger(
   }
 
   if (!isSecondCharge) {
-    await supabase.from("finance_transactions").insert(
+    const paymentSources = await loadPaymentSourceRows(supabase, input.bookingId);
+    if (
+      paymentSources == null ||
+      isRetryChargeAlreadyPosted(paymentSources, sourcePaymentId)
+    ) {
+      return { ok: true, skipped: true, isSecondCharge: false };
+    }
+
+    const { error: paymentInsertError } = await supabase.from("finance_transactions").insert(
       withSourcePaymentId(
         {
           booking_id: input.bookingId,
@@ -323,8 +366,14 @@ export async function recordBookingOnlineChargeLedger(
         bookingCurrency,
       ),
     );
+    if (paymentInsertError) {
+      if (paymentInsertError.code === "23505") {
+        return { ok: true, skipped: true, isSecondCharge: false };
+      }
+      return { ok: false, reason: "insert_failed", error: paymentInsertError };
+    }
 
-    await supabase.from("finance_transactions").insert(
+    const { error: earningsInsertError } = await supabase.from("finance_transactions").insert(
       withSourcePaymentId(
         {
           booking_id: input.bookingId,
@@ -342,6 +391,9 @@ export async function recordBookingOnlineChargeLedger(
         bookingCurrency,
       ),
     );
+    if (earningsInsertError) {
+      return { ok: false, reason: "insert_failed", error: earningsInsertError };
+    }
 
     if (postBookingLevelFees && serviceFeeAmount > 0) {
       await supabase.from("finance_transactions").insert(
@@ -400,6 +452,7 @@ export async function recordBookingOnlineChargeLedger(
                     commission: 0,
                     net: 0,
                     description: `Tax for booking ${bookingNumber}`,
+                    metadata: taxLegMetadata(),
                     created_at: webhookNow,
                   },
                   sourcePaymentId,
@@ -450,7 +503,15 @@ export async function recordBookingOnlineChargeLedger(
       );
     }
   } else {
-    await supabase.from("finance_transactions").insert([
+    const paymentSources = await loadPaymentSourceRows(supabase, input.bookingId);
+    if (
+      paymentSources == null ||
+      isThisSourcePaymentAlreadyPosted(paymentSources, sourcePaymentId)
+    ) {
+      return { ok: true, skipped: true, isSecondCharge: true };
+    }
+
+    const { error: secondChargeInsertError } = await supabase.from("finance_transactions").insert([
       withSourcePaymentId(
         {
           booking_id: input.bookingId,
@@ -485,6 +546,12 @@ export async function recordBookingOnlineChargeLedger(
         bookingCurrency,
       ),
     ]);
+    if (secondChargeInsertError) {
+      if (secondChargeInsertError.code === "23505") {
+        return { ok: true, skipped: true, isSecondCharge: true };
+      }
+      return { ok: false, reason: "insert_failed", error: secondChargeInsertError };
+    }
 
     const { data: existingBookingLevelRows } = await supabase
       .from("finance_transactions")
@@ -551,6 +618,7 @@ export async function recordBookingOnlineChargeLedger(
             commission: 0,
             net: 0,
             description: `Tax for booking ${bookingNumber}`,
+            metadata: taxLegMetadata(),
             created_at: webhookNow,
           },
           sourcePaymentId,

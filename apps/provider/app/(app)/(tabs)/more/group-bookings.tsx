@@ -79,6 +79,7 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { tabScreenScrollBottomPadding } from "@/constants/layout";
 import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { downloadPdf } from "@/lib/pdf-file";
 import {
   PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH,
@@ -103,7 +104,9 @@ import { countryFilterIso2FromStorage, manualCardCollectOptionLabel } from "@bea
 import { normalizeProductsList } from "@/lib/unpack-provider-api";
 import {
   formatGroupPaymentStatusLabel,
+  groupCollectAmount,
   groupIsFullyPaid,
+  participantCollectAmount,
   isSingleChargeOnlineGroup,
   participantMaxRefundable,
 } from "@/lib/group-booking-detail-helpers";
@@ -1040,8 +1043,14 @@ export default function GroupBookingsScreen() {
     permissions?: Record<string, boolean>;
   }>("/api/provider/permissions", { staleTimeMs: 60_000 });
   const isOwner = permissionData?.isOwner === true;
+  const { data: groupBookingSettings } = useApi<{ enableGroupBooking?: boolean }>(
+    "/api/provider/settings/group-bookings",
+    { staleTimeMs: 60_000 },
+  );
+  const staffGroupBookingEnabled = groupBookingSettings?.enableGroupBooking !== false;
   const canCreateGroups =
     !permissionsLoading &&
+    staffGroupBookingEnabled &&
     (isOwner || permissionData?.permissions?.create_appointments === true);
   const canEditGroups = isOwner || permissionData?.permissions?.edit_appointments === true;
   const canCancelGroups =
@@ -3521,6 +3530,19 @@ export default function GroupBookingsScreen() {
     void refreshGroupDetail(selectedGroup);
   }
 
+  async function handleResendInvite(participant: Participant) {
+    if (!selectedGroup?.id || !participant?.id) return;
+    const res = await api.post(
+      `/api/provider/group-bookings/${encodeURIComponent(selectedGroup.id)}/participants/${encodeURIComponent(participant.id)}/invite`,
+      {},
+    );
+    if (res.error) {
+      Alert.alert(gb("errorTitle"), getApiErrorMessage(res.error, gb("inviteResendFailed")));
+      return;
+    }
+    Alert.alert(gb("inviteResent"));
+  }
+
   async function handleRemoveParticipant(participant: Participant) {
     if (!selectedGroup) return;
     const displayName =
@@ -3535,11 +3557,22 @@ export default function GroupBookingsScreen() {
         style: "destructive",
         onPress: async () => {
           if (!selectedGroup?.id || !participant?.id) return;
-          const { error } = await removeParticipant(
+          const { data, error } = await removeParticipant(
             `/api/provider/group-bookings/${encodeURIComponent(selectedGroup.id)}/participants/${encodeURIComponent(participant.id)}`
           );
-          if (error) Alert.alert(gb("errorTitle"), error);
-          else refresh();
+          if (error) {
+            Alert.alert(gb("errorTitle"), error);
+            return;
+          }
+          const overpaid = Number((data as { overpaid_amount?: number } | null)?.overpaid_amount ?? 0);
+          if (overpaid > 0) {
+            Alert.alert(
+              gb("removeParticipantTitle"),
+              gb("removeParticipantOverpaid", { amount: formatCurrency(overpaid) }),
+            );
+          }
+          refresh();
+          void refreshGroupDetail(selectedGroup);
         },
       },
     ]);
@@ -4133,6 +4166,51 @@ export default function GroupBookingsScreen() {
                               {gb("notSeparatelyInvoiced")}
                             </Text>
                           ) : null}
+                          {(() => {
+                            const share = p as Participant & {
+                              share_status?: string | null;
+                              share_amount_due?: number | null;
+                              share_amount_paid?: number;
+                            };
+                            if (p.is_primary_contact || !share.share_status) return null;
+                            const owed = Math.max(
+                              0,
+                              Number(share.share_amount_due ?? 0) - Number(share.share_amount_paid ?? 0),
+                            );
+                            return (
+                              <View style={twStyle("mt-1 flex-row items-center flex-wrap")}>
+                                <Text
+                                  style={twStyle(
+                                    `text-[11px] font-medium ${
+                                      share.share_status === "paid"
+                                        ? "text-emerald-700"
+                                        : share.share_status === "cancelled"
+                                          ? "text-gray-500"
+                                          : "text-amber-700"
+                                    }`,
+                                  )}
+                                >
+                                  {share.share_status === "paid"
+                                    ? gb("shareStatusPaid")
+                                    : share.share_status === "cancelled"
+                                      ? gb("shareStatusCancelled")
+                                      : gb("shareStatusPending", { amount: formatCurrency(owed) })}
+                                </Text>
+                                {share.share_status === "pending" && canCheckInOut ? (
+                                  <TouchableOpacity
+                                    onPress={() => void handleResendInvite(p)}
+                                    accessibilityRole="button"
+                                    hitSlop={8}
+                                    style={{ marginStart: 8 }}
+                                  >
+                                    <Text style={twStyle("text-[11px] font-semibold text-primary")}>
+                                      {gb("resendInvite")}
+                                    </Text>
+                                  </TouchableOpacity>
+                                ) : null}
+                              </View>
+                            );
+                          })()}
                         </View>
                         <View style={twStyle("flex-row items-center")}>
                           <View
@@ -4300,18 +4378,12 @@ export default function GroupBookingsScreen() {
                       !p.paid &&
                       p.payment_status !== "paid" &&
                       (() => {
-                        const due =
-                          Number(p.balance_due ?? 0) > 0
-                            ? Number(p.balance_due ?? 0)
-                            : Math.max(0, Number(p.price ?? 0) - Number(p.total_paid ?? 0));
+                        const due = participantCollectAmount(p);
                         return due > 0.01;
                       })() ? (
                         <TouchableOpacity
                           onPress={() => {
-                            const due =
-                              Number(p.balance_due ?? 0) > 0
-                                ? Number(p.balance_due ?? 0)
-                                : Math.max(0, Number(p.price ?? 0) - Number(p.total_paid ?? 0));
+                            const due = participantCollectAmount(p);
                             openPaycloudCollect({
                               entityType: "booking",
                               entityId: p.booking_id!,
@@ -4331,10 +4403,7 @@ export default function GroupBookingsScreen() {
                           <Text style={twStyle("text-xs font-semibold text-slate-900")}>
                             {formatPaycloudCollectLabel({
                               context: "booking",
-                              amount:
-                                Number(p.balance_due ?? 0) > 0
-                                  ? Number(p.balance_due ?? 0)
-                                  : Math.max(0, Number(p.price ?? 0) - Number(p.total_paid ?? 0)),
+                              amount: participantCollectAmount(p),
                               inFlight: paycloudInFlight,
                             })}
                           </Text>
@@ -4348,10 +4417,7 @@ export default function GroupBookingsScreen() {
                       !p.paid &&
                       p.payment_status !== "paid" &&
                       (() => {
-                        const due =
-                          Number(p.balance_due ?? 0) > 0
-                            ? Number(p.balance_due ?? 0)
-                            : Math.max(0, Number(p.price ?? 0) - Number(p.total_paid ?? 0));
+                        const due = participantCollectAmount(p);
                         return due > 0.01;
                       })() ? (
                         <View style={twStyle("mt-2")}>
@@ -4550,7 +4616,7 @@ export default function GroupBookingsScreen() {
                       </Text>
                     </TouchableOpacity>
                   ))}
-                  {paycloudEnabled && paycloudCollectEnabled ? (
+                  {paycloudEnabled && paycloudCollectEnabled && groupCollectAmount(selectedGroup) > 0.01 ? (
                     <TouchableOpacity
                       style={[
                         twStyle("mb-2 me-2 rounded-full border border-slate-300 bg-slate-50 px-3 py-1.5"),
@@ -4558,16 +4624,7 @@ export default function GroupBookingsScreen() {
                       ]}
                       disabled={groupActionLoading}
                       onPress={() => {
-                        const outstanding =
-                          Number(selectedGroup.balance_due ?? 0) > 0
-                            ? Number(selectedGroup.balance_due ?? 0)
-                            : selectedGroup.participants
-                              ? selectedGroup.participants.reduce(
-                                  (s: number, p: Participant) =>
-                                    s + Math.max(0, Number(p.balance_due ?? p.price ?? 0)),
-                                  0
-                                )
-                              : Number(selectedGroup.total_price ?? 0);
+                        const outstanding = groupCollectAmount(selectedGroup);
                         openPaycloudCollect({
                           entityType: "group_booking",
                           entityId: selectedGroup.id,
@@ -4581,16 +4638,7 @@ export default function GroupBookingsScreen() {
                         {formatPaycloudCollectLabel({
                           context: "group_booking",
                           inFlight: paycloudInFlight,
-                          amount:
-                            Number(selectedGroup.balance_due ?? 0) > 0
-                              ? Number(selectedGroup.balance_due ?? 0)
-                              : selectedGroup.participants
-                                ? selectedGroup.participants.reduce(
-                                    (s: number, p: Participant) =>
-                                      s + Math.max(0, Number(p.balance_due ?? p.price ?? 0)),
-                                    0
-                                  )
-                                : Number(selectedGroup.total_price ?? 0),
+                          amount: groupCollectAmount(selectedGroup),
                         })}
                       </Text>
                     </TouchableOpacity>
@@ -4600,7 +4648,7 @@ export default function GroupBookingsScreen() {
                     </View>
                   ) : null}
                 </View>
-                {paystackTerminalEnabled && (
+                {paystackTerminalEnabled && groupCollectAmount(selectedGroup) > 0.01 && (
                   <View style={twStyle("mt-3 border-t border-gray-100 pt-3")}>
                     <Text style={twStyle("mb-2 text-xs text-gray-500")}>
                       {gb("collectPaystack")}
@@ -4612,16 +4660,7 @@ export default function GroupBookingsScreen() {
                       ]}
                       disabled={isPreparingTerminal}
                       onPress={() => {
-                        const outstanding =
-                          Number(selectedGroup.balance_due ?? 0) > 0
-                            ? Number(selectedGroup.balance_due ?? 0)
-                            : selectedGroup.participants
-                              ? selectedGroup.participants.reduce(
-                                  (s: number, p: Participant) =>
-                                    s + Math.max(0, Number(p.balance_due ?? p.price ?? 0)),
-                                  0
-                                )
-                              : Number(selectedGroup.total_price ?? 0);
+                        const outstanding = groupCollectAmount(selectedGroup);
                         handleRequestPaystackTerminal(selectedGroup, outstanding);
                       }}
                     >

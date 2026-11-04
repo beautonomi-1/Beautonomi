@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import {
   CreditCard,
@@ -74,6 +74,8 @@ interface CheckoutData {
   scheduled_time: string;
   services: ServiceItem[];
   products?: ProductItem[];
+  /** Balance still owed on the booking. VAT, travel, and fees are already inside it. */
+  amountDue?: number;
 }
 
 interface CheckoutDialogProps {
@@ -81,6 +83,19 @@ interface CheckoutDialogProps {
   onClose: () => void;
   checkoutData: CheckoutData | null;
   bookingLocationId?: string | null;
+  /** Apply till tip and discount before the card machine captures, so the charge matches the booking. */
+  onBeforeCardCharge?: (tipAmount: number, discountAmount: number) => Promise<void>;
+  /** Undo that adjustment when the machine is closed before a capture. */
+  onRevertCardCharge?: (tipAmount: number, discountAmount: number) => Promise<void>;
+  /**
+   * Save the gift-card half of a split before the card machine charges the rest.
+   * The machine must not be asked to collect money the gift card already covers.
+   */
+  onPrepareSplitCard?: (input: {
+    discountAmount: number;
+    giftCode: string;
+    giftAmount: number;
+  }) => Promise<void>;
   onComplete: (
     paymentMethod: string,
     tipAmount: number,
@@ -93,6 +108,7 @@ interface CheckoutDialogProps {
       gift_card_code?: string;
       gift_card_amount?: number;
       payments?: Array<{ method: string; amount: number; reference?: string | null }>;
+      secondary_payment_method?: "cash" | "card";
     },
   ) => void | Promise<void>;
 }
@@ -113,6 +129,9 @@ export function CheckoutDialog({
   checkoutData,
   bookingLocationId = null,
   onComplete,
+  onBeforeCardCharge,
+  onRevertCardCharge,
+  onPrepareSplitCard,
 }: CheckoutDialogProps) {
   const { t } = useTranslation();
   const locale = useTenantLocaleTag();
@@ -133,6 +152,10 @@ export function CheckoutDialog({
   const [isProcessing, setIsProcessing] = useState(false);
   const [step, setStep] = useState<"review" | "payment" | "complete">("review");
   const [cardMachineOpen, setCardMachineOpen] = useState(false);
+  const cardBillPreparedRef = useRef(false);
+  const splitCardPreparedRef = useRef(false);
+  const cardBillCapturedRef = useRef(false);
+  const [terminalCharge, setTerminalCharge] = useState<{ amount: number; tip: number } | null>(null);
   const [giftCardCode, setGiftCardCode] = useState("");
   const [giftCardAmount, setGiftCardAmount] = useState("");
   const [splitSecondaryMethod, setSplitSecondaryMethod] = useState<"cash" | "card">("cash");
@@ -192,7 +215,9 @@ export function CheckoutDialog({
       (sum, p) => sum + p.price * p.quantity,
       0
     ) || 0;
-    const subtotal = servicesTotal + productsTotal;
+    const lineSum = servicesTotal + productsTotal;
+    const bookedBalance = Number(checkoutData.amountDue);
+    const subtotal = Number.isFinite(bookedBalance) ? Math.max(0, bookedBalance) : lineSum;
 
     let discount = 0;
     if (discountValue) {
@@ -260,6 +285,7 @@ export function CheckoutDialog({
       gift_card_code?: string;
       gift_card_amount?: number;
       payments?: Array<{ method: string; amount: number }>;
+      secondary_payment_method?: "cash" | "card";
     } = { sendReceipt };
     if (paymentMethod === "gift_card") {
       const amt = parseFloat(giftCardAmount) || calculations.total;
@@ -272,6 +298,7 @@ export function CheckoutDialog({
       const primary = parseFloat(splitPrimaryAmount);
       if (Number.isFinite(primary) && primary > 0) {
         const secondary = Math.max(0, calculations.total - primary);
+        opts.secondary_payment_method = splitSecondaryMethod;
         opts.payments = [
           { method: "gift_card", amount: primary },
           { method: splitSecondaryMethod, amount: secondary },
@@ -285,12 +312,75 @@ export function CheckoutDialog({
     return opts;
   };
 
+  const handleCardMachineOpenChange = (open: boolean) => {
+    setCardMachineOpen(open);
+    if (open || cardBillCapturedRef.current || (!cardBillPreparedRef.current && !splitCardPreparedRef.current)) return;
+    cardBillPreparedRef.current = false;
+    splitCardPreparedRef.current = false;
+    void onRevertCardCharge?.(calculations.tip, calculations.discount);
+  };
+
   const handleComplete = async () => {
     if (paymentMethod === "card") {
       if (cardMachineCollectEnabled) {
+        if ((calculations.tip > 0 || calculations.discount > 0) && onBeforeCardCharge) {
+          if (cardBillPreparedRef.current) {
+            setTerminalCharge({ amount: calculations.total, tip: calculations.tip });
+            setCardMachineOpen(true);
+            return;
+          }
+          cardBillPreparedRef.current = true;
+          setIsProcessing(true);
+          try {
+            await onBeforeCardCharge(calculations.tip, calculations.discount);
+            cardBillCapturedRef.current = false;
+          } catch (error) {
+            cardBillPreparedRef.current = false;
+            console.error("Checkout bill adjustment failed:", error);
+            return;
+          } finally {
+            setIsProcessing(false);
+          }
+        }
+        setTerminalCharge({ amount: calculations.total, tip: calculations.tip });
         setCardMachineOpen(true);
         return;
       }
+    }
+    if (
+      paymentMethod === "split" &&
+      splitSecondaryMethod === "card" &&
+      cardMachineCollectEnabled &&
+      onPrepareSplitCard
+    ) {
+      const primary = parseFloat(splitPrimaryAmount);
+      const secondary = Math.round((calculations.total - primary) * 100) / 100;
+      if (!giftCardCode.trim() || !Number.isFinite(primary) || primary <= 0 || secondary <= 0.01) {
+        return;
+      }
+      const baseAfterDiscount = Math.max(0, Math.round((calculations.total - calculations.tip) * 100) / 100);
+      const unpaidTip = Math.max(0, Math.round((calculations.tip - Math.max(0, primary - baseAfterDiscount)) * 100) / 100);
+      if (!splitCardPreparedRef.current) {
+        splitCardPreparedRef.current = true;
+        setIsProcessing(true);
+        try {
+          await onPrepareSplitCard({
+            discountAmount: calculations.discount,
+            giftCode: giftCardCode.trim().toUpperCase(),
+            giftAmount: primary,
+          });
+          cardBillCapturedRef.current = false;
+        } catch (error) {
+          splitCardPreparedRef.current = false;
+          console.error("Split gift preparation failed:", error);
+          return;
+        } finally {
+          setIsProcessing(false);
+        }
+      }
+      setTerminalCharge({ amount: secondary, tip: unpaidTip });
+      setCardMachineOpen(true);
+      return;
     }
     if (paymentMethod === "gift_card" && (!giftCardCode.trim() || !giftCardAmount.trim())) {
       return;
@@ -329,6 +419,8 @@ export function CheckoutDialog({
   };
 
   const handleCardMachineSuccess = async (info?: { provider: "yoco" | "paycloud" }) => {
+    cardBillCapturedRef.current = true;
+    cardBillPreparedRef.current = false;
     setCardMachineOpen(false);
     setIsProcessing(true);
     try {
@@ -875,10 +967,11 @@ export function CheckoutDialog({
     {checkoutData && cardMachineCollectEnabled ? (
       <CardMachineCollectDialog
         open={cardMachineOpen}
-        onOpenChange={setCardMachineOpen}
-        amount={calculations.total}
+        onOpenChange={handleCardMachineOpenChange}
+        amount={terminalCharge?.amount ?? calculations.total}
         autoStart
-        tipIncludedInAmount={calculations.tip > 0}
+        tipAmount={terminalCharge?.tip ?? calculations.tip}
+        tipIncludedInAmount={false}
         entity={{
           entityType: "booking",
           entityId: checkoutData.appointment_id,

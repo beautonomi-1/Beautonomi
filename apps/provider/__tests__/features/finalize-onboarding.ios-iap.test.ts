@@ -76,6 +76,7 @@ describe("finalizeOnboardingSuccess iOS IAP", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    api.post.mockResolvedValue({ data: {}, error: null });
     api.get.mockImplementation(async (path: string) => {
       if (path.includes("/subscription/plans")) {
         return {

@@ -186,6 +186,15 @@
         },
         "inAppBrowser": {
           "subscriptionPaymentPending": "Your payment was received and confirmation is still syncing with your bank. Return to Subscription and pull to refresh in a moment."
+        },
+        "customOfferSheet": {
+          "addPhotos": "Add inspiration photos",
+          "uploadingPhotos": "Uploading…",
+          "photosAttached": "{{count}} photo(s) attached"
+        },
+        "productOrders": {
+          "partiallyRefundedRefundRemaining": "This order was partially refunded. Mark it refunded for the remaining amount — cancel is not available.",
+          "refundRemainingHint": "Refund remaining"
         }
       }
     }
@@ -816,7 +825,10 @@
         "payWithGiftCard": "Pay {{amount}} with cartão de oferta",
         "payDeposit": "Pay Sinal {{amount}}",
         "completeBooking": "concluir marcação",
-        "payAmount": "Pagar {{amount}}"
+        "payAmount": "Pagar {{amount}}",
+        "splitPayment": "Split payment",
+        "guestSharesPaidByInvite": "Guests pay via invite link",
+        "splitPaymentHint": "You pay your own services and the booking fees now. Each guest gets a link to pay their share."
       },
       "addToWaitlist": {
         "enterName": "Por favor, enter your nome",
@@ -1384,6 +1396,60 @@
           "paidNext": "You'll enter your card on a secure payment page, then return here when checkout is complete.",
           "planNotLinkedPaystack": "This plan is not available for card checkout yet. Contact support or choose another plan."
         }
+      },
+      "pages": {
+        "ecommerce/orders": {
+          "partiallyRefundedRefundRemaining": "This order was partially refunded. Mark it refunded for the remaining amount — cancel is not available.",
+          "refundRemainingHint": "Refund remaining"
+        }
+      }
+    },
+    "checkout": {
+      "customOffer": {
+        "title": "Pay custom offer",
+        "subtitle": "Review totals and pay securely.",
+        "subtotal": "Subtotal",
+        "travel": "Travel",
+        "total": "Total",
+        "payNow": "Pay now",
+        "cancel": "Cancel",
+        "loadFailed": "Could not load this offer.",
+        "paymentSuccessful": "Payment successful.",
+        "paymentStartFailed": "Could not start payment.",
+        "waitingTitle": "Payment processing",
+        "waitingBody": "We are confirming your payment. Refresh your custom requests in a moment.",
+        "backToRequests": "Back to custom requests",
+        "changesRequestedTitle": "Offer being revised",
+        "changesRequestedBody": "Your provider is updating this offer after your change request."
+      }
+    },
+    "groupInvite": {
+      "title": "Group booking invite",
+      "body": "You are invited to join a group session.",
+      "accept": "Accept invite",
+      "notFound": "This invite link is invalid or expired.",
+      "acceptFailed": "Could not accept invite.",
+      "payShare": "Pay my share",
+      "payFailed": "Could not start payment.",
+      "paymentProcessing": "Thanks! Your payment is being confirmed. This page will update shortly.",
+      "yourShare": "Your share: {{amount}}",
+      "sharePaid": "Your share is paid. See you there!",
+      "payShareAmount": "Pay my share ({{amount}})",
+      "cancelSpot": "Cancel my spot",
+      "cancelConfirm": "Cancel your spot in this group booking? Your services are removed and any payment you made is refunded to your card.",
+      "cancelled": "Your spot has been cancelled.",
+      "cancelledRefunded": "Your spot has been cancelled. {{amount}} is being refunded to your card.",
+      "cancelFailed": "Could not cancel your spot."
+    },
+    "accountSettings": {
+      "bookings": {
+        "list": {
+          "customOffer": "Custom offer"
+        }
+      },
+      "orderDetail": {
+        "partiallyRefundedContactProvider": "This order was partially refunded. Contact the provider to refund the remaining balance.",
+        "paymentPartiallyRefunded": "Partially refunded"
       }
     }
   },
@@ -1678,6 +1744,20 @@
           "pleaseProvideSlug": "Indique um identificador do prestador.",
           "goHome": "Ir para o início",
           "messageProvider": "Mensagem"
+        },
+        "bookingReschedule": {
+          "title": "Reschedule booking",
+          "body": "Pick a new date and time. Your provider may need to confirm.",
+          "dateLabel": "Date",
+          "timeLabel": "Time",
+          "submit": "Submit request",
+          "invalidTitle": "Invalid date or time",
+          "invalidBody": "Enter a valid date (YYYY-MM-DD) and time (HH:MM).",
+          "failedTitle": "Could not reschedule",
+          "noSlots": "No times available on this day. Try another date."
+        },
+        "productOrderDetail": {
+          "partiallyRefundedContactProvider": "This order was partially refunded. Contact the provider to refund the remaining balance."
         }
       }
     }

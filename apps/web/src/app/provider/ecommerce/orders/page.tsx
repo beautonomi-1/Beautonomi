@@ -4,7 +4,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
-import { fetcher, clearFetcherCache } from "@/lib/http/fetcher";
+import { fetcher, clearFetcherCache, FetchError } from "@/lib/http/fetcher";
 import { cn } from "@/lib/utils";
 import type { YocoPayment } from "@/lib/provider-portal/types";
 import { Badge } from "@/components/ui/badge";
@@ -39,7 +39,7 @@ import {
 } from "@/lib/ecommerce/product-order-line-fulfilment";
 import {
   allowsInPersonProductOrderRefund,
-  computeInPersonCollectibleAmount,
+  displayedProductOrderAmountStillDue,
 } from "@/lib/orders/product-order-tender";
 import {
   ShoppingBag,
@@ -58,6 +58,7 @@ interface ProductOrder {
   discount_amount?: number;
   gift_card_amount?: number | null;
   wallet_amount?: number | null;
+  amount_still_due?: number | null;
   payment_method?: string | null;
   promotion_code?: string | null;
   platform_fee?: number;
@@ -81,6 +82,11 @@ interface ProductOrder {
 }
 
 type ProductOrderStatusCounts = Record<string, number>;
+
+function remainingRefundableAmount(order: { total_amount?: number | null; refunded_amount?: number | null }): number {
+  const remaining = Number(order.total_amount ?? 0) - Math.max(0, Number(order.refunded_amount ?? 0));
+  return Math.max(0, Math.round(remaining * 100) / 100);
+}
 
 function statusActions(t: (k: string) => string): Record<string, { next: string; label: string; color: string }[]> {
   return {
@@ -337,7 +343,7 @@ export default function ProviderProductOrdersPage() {
       const order = orders.find((o) => o.id === orderId) ?? prefetchedFocusOrder;
       if (!order) return;
       setRefundDialog(order);
-      setRefundAmountInput(Number(order.total_amount ?? 0).toFixed(2));
+      setRefundAmountInput(remainingRefundableAmount(order).toFixed(2));
       setRefundReasonInput("");
       // Online orders with a platform customer default to wallet credit;
       // walk-in / unlinked sales default to in-person cash.
@@ -408,8 +414,12 @@ export default function ProviderProductOrdersPage() {
       clearFetcherCache();
       fetchOrders();
       setRefundDialog(null);
-    } catch (e: any) {
-      setError(e?.message || t("web.provider.pages.ecommerce/orders.failedToUpdateStatus"));
+    } catch (e: unknown) {
+      if (e instanceof FetchError && e.code === "PARTIALLY_REFUNDED_REFUND_REMAINING") {
+        setError(t("web.provider.pages.ecommerce/orders.partiallyRefundedRefundRemaining"));
+      } else {
+        setError(e instanceof Error ? e.message : t("web.provider.pages.ecommerce/orders.failedToUpdateStatus"));
+      }
     }
     setUpdating(null);
     setTrackingDialog(null);
@@ -505,7 +515,9 @@ export default function ProviderProductOrdersPage() {
         ) : (
           <div className="divide-y">
             {displayOrders.map((o) => {
-              const actions = statusActions(t)[o.status] ?? [];
+              const actions = (statusActions(t)[o.status] ?? []).filter(
+                (a) => !(a.next === "cancelled" && o.payment_status === "partially_refunded"),
+              );
               const isFocus = Boolean(focusOrderId && o.id === focusOrderId);
               const subtotal = Number(o.subtotal ?? 0);
               const taxAmount = Number(o.tax_amount ?? 0);
@@ -520,13 +532,14 @@ export default function ProviderProductOrdersPage() {
                 o.payment_status !== "paid" &&
                 o.status !== "cancelled" &&
                 o.status !== "refunded";
-              const inPersonDue = computeInPersonCollectibleAmount(o);
+              const inPersonDue = displayedProductOrderAmountStillDue(o);
               const canCollectWithYoco = yocoEnabled && canCollectPayment && inPersonDue > 0;
               const canCollectWithPaycloud =
                 paycloudEnabled && canCollectPayment && !isAppointmentOrder && inPersonDue > 0;
               const canRefundOrder =
                 canProcessPayments &&
-                o.payment_status === "paid" &&
+                (o.payment_status === "paid" || o.payment_status === "partially_refunded") &&
+                remainingRefundableAmount(o) > 0 &&
                 o.status !== "cancelled" &&
                 o.status !== "refunded";
               return (
@@ -566,6 +579,11 @@ export default function ProviderProductOrdersPage() {
                           <Badge variant="outline">{t("web.provider.pages.ecommerce/orders.appointmentPickup")}</Badge>
                         )}
                       </div>
+                      {o.payment_status === "partially_refunded" ? (
+                        <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                          {t("web.provider.pages.ecommerce/orders.partiallyRefundedRefundRemaining")}
+                        </p>
+                      ) : null}
                       <p className="text-sm text-gray-700 break-words inline-flex items-center gap-1.5 flex-wrap">
                         <span className="font-medium">{o.customer?.full_name || o.customer_name || t("web.provider.pages.ecommerce/orders.appointmentCustomer")}</span>
                         {o.customer?.identity_verified ? (
@@ -645,7 +663,9 @@ export default function ProviderProductOrdersPage() {
                         aria-label={t("web.provider.pages.ecommerce/orders.updateStatusAria", { number: o.order_number })}
                       >
                         {STATUS_OPTIONS.filter(
-                          (status) => status !== "refunded" || canRefundOrder || o.status === "refunded",
+                          (status) =>
+                            (status !== "cancelled" || o.payment_status !== "partially_refunded") &&
+                            (status !== "refunded" || canRefundOrder || o.status === "refunded"),
                         ).map((status) => (
                           <option key={status} value={status}>
                             {ecommerceStatusLabel(t, status)}
@@ -724,7 +744,7 @@ export default function ProviderProductOrdersPage() {
             setCardMachineOpen(open);
             if (!open) setCardMachineOrder(null);
           }}
-          amount={computeInPersonCollectibleAmount(cardMachineOrder)}
+          amount={displayedProductOrderAmountStillDue(cardMachineOrder)}
           autoStart
           entity={{
             entityType: "product_order",
@@ -848,7 +868,7 @@ export default function ProviderProductOrdersPage() {
                 value={refundAmountInput}
                 onChange={(e) => setRefundAmountInput(e.target.value)}
                 min="0"
-                max={Number(refundDialog.total_amount ?? 0)}
+                max={remainingRefundableAmount(refundDialog)}
                 step="0.01"
                 placeholder="0.00"
               />
@@ -905,7 +925,7 @@ export default function ProviderProductOrdersPage() {
               </p>
               {refundMethodInput === "store_credit" && refundDialog ? (() => {
                 const amount = parseFloat(refundAmountInput);
-                const total = Number(refundDialog.total_amount ?? 0);
+                const total = remainingRefundableAmount(refundDialog);
                 if (Number.isFinite(amount) && amount > 0 && amount + 0.01 < total) {
                   return (
                     <p className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg p-2">
@@ -934,7 +954,7 @@ export default function ProviderProductOrdersPage() {
               <button
                 onClick={() => {
                   const amount = parseFloat(refundAmountInput);
-                  const total = Number(refundDialog.total_amount ?? 0);
+                  const total = remainingRefundableAmount(refundDialog);
                   if (!Number.isFinite(amount) || amount <= 0 || amount > total + 0.01) {
                     setError(t("web.provider.pages.ecommerce/orders.refundAmountRange", { amount: formatMoney(total) }));
                     return;

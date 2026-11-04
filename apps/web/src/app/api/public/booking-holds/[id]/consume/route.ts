@@ -56,6 +56,7 @@ const consumeBodySchema = z.object({
   tip_amount: z.number().min(0).optional(),
   promotion_code: z.string().optional().nullable(),
   is_group_booking: z.boolean().optional(),
+  group_payment_mode: z.enum(["organizer_pays_all", "split"]).optional(),
   group_participants: z
     .array(
       z.object({
@@ -584,6 +585,10 @@ async function handlePost(
     if (isGroupBooking === true && Array.isArray(groupParticipants) && groupParticipants.length > 0) {
       draft.is_group_booking = true;
       draft.group_participants = groupParticipants;
+      draft.group_participants_include_primary = false;
+      if (parsed.data.group_payment_mode === "split") {
+        draft.group_payment_mode = "split";
+      }
     }
     if (products && products.length > 0) {
       draft.products = products;

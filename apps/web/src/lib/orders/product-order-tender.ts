@@ -78,13 +78,20 @@ export function productOrderTenderSplit(order: ProductOrderTenderInput): {
   return { total, wallet, gift, remainder };
 }
 
+/** Wallet gets the gift only when nothing is left on the card to restore. */
+export function productOrderCancelIncludesGiftInWallet(
+  voidResult: "restored" | "missing" | "failed",
+): boolean {
+  return voidResult === "missing";
+}
+
 /**
  * Wallet credit when a *paid* order is cancelled.
  * - Provider-collected: only the wallet leg the platform already debited.
  * - Gateway / wallet / gift / unknown: everything not already returned on the
  *   card. A failed gateway refund (`onlineRefundedAmount` 0) falls back to wallet.
- * Gift card is excluded here; the caller restores it onto the card and adds it
- * back only if that void fails.
+ * Gift card is excluded here. The caller restores it onto the card and adds it
+ * only when `productOrderCancelIncludesGiftInWallet` is true.
  */
 export function computeProductOrderCancelWalletCredit(
   order: ProductOrderTenderInput,
@@ -129,4 +136,19 @@ export function computeInPersonCollectibleAmount(order: ProductOrderTenderInput)
   if (remainder > 0) return remainder;
   const hasSplit = num(order.wallet_amount) > 0 || num(order.gift_card_amount) > 0;
   return hasSplit ? 0 : total;
+}
+
+/**
+ * Amount a screen may charge. Uses the server remainder after card payments
+ * already recorded. A null value means that remainder could not be loaded, so
+ * nothing is charged.
+ */
+export function displayedProductOrderAmountStillDue(
+  order: ProductOrderTenderInput & { amount_still_due?: number | null },
+): number {
+  if (typeof order.amount_still_due === "number" && Number.isFinite(order.amount_still_due)) {
+    return Math.max(0, Math.round(order.amount_still_due * 100) / 100);
+  }
+  if (order.amount_still_due === null) return 0;
+  return computeInPersonCollectibleAmount(order);
 }

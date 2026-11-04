@@ -209,6 +209,9 @@ export interface ExploreMediaSlideMeta {
   width?: number | null;
   height?: number | null;
   duration_ms?: number | null;
+  trim_start_ms?: number | null;
+  trim_end_ms?: number | null;
+  source_duration_ms?: number | null;
   playback_path?: string | null;
   probe_job_id?: string | null;
   encode_job_id?: string | null;

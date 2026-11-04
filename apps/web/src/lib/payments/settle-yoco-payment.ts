@@ -91,6 +91,15 @@ export function resolveYocoSettleEntity(row: {
     row.entity_id ||
     (typeof meta.entity_id === "string" ? meta.entity_id : null) ||
     null;
+  const bookingId =
+    row.appointment_id ||
+    (typeof meta.appointment_id === "string" ? meta.appointment_id : null) ||
+    (typeof meta.booking_id === "string" ? meta.booking_id : null);
+
+  // The card sale is only the machine record. The captured amount is the booking's.
+  if (entityType === "sale" && bookingId) {
+    return { entityType: "booking", entityId: bookingId };
+  }
 
   if (entityType && entityId) {
     return { entityType, entityId };
@@ -111,18 +120,14 @@ export function resolveYocoSettleEntity(row: {
     return { entityType: "additional_charge", entityId: additionalChargeId };
   }
 
+  if (bookingId) return { entityType: "booking", entityId: bookingId };
+
   if (row.sale_id || typeof meta.sale_id === "string") {
     return {
       entityType: "sale",
       entityId: String(row.sale_id || meta.sale_id),
     };
   }
-
-  const bookingId =
-    row.appointment_id ||
-    (typeof meta.appointment_id === "string" ? meta.appointment_id : null) ||
-    (typeof meta.booking_id === "string" ? meta.booking_id : null);
-  if (bookingId) return { entityType: "booking", entityId: bookingId };
 
   return null;
 }

@@ -2,7 +2,9 @@ import {
   computeGroupFinancialBreakdown,
   countGroupParticipantsCheckedIn,
   formatGroupPaymentStatusLabel,
+  groupCollectAmount,
   groupIsFullyPaid,
+  participantCollectAmount,
   isGroupParticipantCheckedIn,
   isSingleChargeOnlineGroup,
   participantMaxRefundable,
@@ -19,6 +21,12 @@ describe("group-booking-detail-helpers", () => {
     expect(groupIsFullyPaid({ payment_status: "paid", balance_due: 0, is_invoiced: true })).toBe(
       true
     );
+  });
+
+  it("does not collect a share that a wallet or gift card already covers", () => {
+    expect(participantCollectAmount({ balance_due: 0, price: 100, total_paid: 0 })).toBe(0);
+    expect(participantCollectAmount({ balance_due: 40, price: 100, total_paid: 0 })).toBe(40);
+    expect(groupCollectAmount({ balance_due: 0, total_price: 200, participants: [{ price: 100 }] })).toBe(0);
   });
 
   it("participantMaxRefundable matches wallet/gift server cap", () => {

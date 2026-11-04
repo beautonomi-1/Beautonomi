@@ -1063,6 +1063,13 @@ export default function BookingDetailScreen() {
   const handleReschedule = useCallback(() => {
     if (!booking) return;
     haptic.light();
+    const lines = (booking.services ?? []) as Array<{ staff_id?: string | null }>;
+    const canRescheduleInPlace =
+      !booking.group_booking_id && lines.length > 0 && lines.every((s) => Boolean(s.staff_id));
+    if (canRescheduleInPlace) {
+      router.push({ pathname: "/(app)/booking-reschedule", params: { id: booking.id } });
+      return;
+    }
     const provider = booking.provider;
     if (provider?.slug) {
       const serviceIds = (booking.services ?? [])

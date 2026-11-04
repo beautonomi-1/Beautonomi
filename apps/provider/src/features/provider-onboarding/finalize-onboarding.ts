@@ -125,6 +125,13 @@ async function completeCheckoutAfterReturn(options: {
 
   if (result.outcome === "cancel") {
     await clearPendingOnboardingCheckout();
+    const { trackProviderCheckoutFunnelClient } = await import(
+      "@/lib/subscription/track-checkout-funnel"
+    );
+    trackProviderCheckoutFunnelClient("provider_checkout_abandoned", {
+      source: "onboarding_checkout",
+      platform: "mobile",
+    });
     Alert.alert(
       "Payment cancelled",
       "No charge was made. Complete your subscription any time from Settings.",
@@ -202,12 +209,18 @@ async function completeCheckoutAfterReturn(options: {
     return false;
   }
 
-  await pollSubscriptionProvisioned({
+  const pollResult = await pollSubscriptionProvisioned({
     orderId: orderId ?? null,
     maxAttempts: 6,
     delayMs: 1500,
   });
   await clearPendingOnboardingCheckout();
+  if (pollResult.state !== "provisioned") {
+    const { setSubscriptionActivationPending } = await import(
+      "@/lib/subscription/subscription-activation-pending"
+    );
+    await setSubscriptionActivationPending();
+  }
   router.replace(POST_ONBOARDING_ROUTE as never);
   return true;
 }
@@ -489,6 +502,14 @@ export async function finalizeOnboardingSuccess(options: {
             return;
           }
           if (appleCheckout.cancelled) {
+            const { trackProviderCheckoutFunnelClient: trackAbandon } = await import(
+              "@/lib/subscription/track-checkout-funnel"
+            );
+            trackAbandon("provider_checkout_abandoned", {
+              source: "onboarding_iap",
+              platform: "ios",
+              gateway: "apple",
+            });
             Alert.alert(
               "Payment cancelled",
               "No charge was made. Complete your subscription any time from Settings.",

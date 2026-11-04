@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { withProductOrderAmountStillDue } from "@/lib/payments/resolve-paystack-initialize-amount";
 import {
   getProviderIdForUser,
   successResponse,
@@ -98,8 +100,10 @@ export async function GET(request: NextRequest) {
       {},
     );
 
+    const ordersWithDue = await withProductOrderAmountStillDue(getSupabaseAdmin(), orders ?? []);
+
     return successResponse({
-      orders: orders ?? [],
+      orders: ordersWithDue,
       status_counts: statusCounts,
       pagination: {
         page,

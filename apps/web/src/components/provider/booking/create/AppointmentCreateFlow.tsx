@@ -245,12 +245,18 @@ export function AppointmentCreateFlow({
 
   useEffect(() => {
     let cancelled = false;
-    void providerPortalFetch("/api/provider/tax-rate")
+    void providerPortalFetch("/api/provider/settings/sales/taxes")
       .then(async (res) => {
         if (!res.ok || cancelled) return;
-        const body = (await res.json().catch(() => null)) as { data?: { taxRate?: number } } | null;
-        const pct = Number(body?.data?.taxRate ?? 0);
-        if (!cancelled) setTaxRate(pct / 100);
+        const body = (await res.json().catch(() => null)) as {
+          data?: { tax_rate_percent?: number; is_vat_registered?: boolean; tax_inclusive?: boolean };
+        } | null;
+        const data = body?.data;
+        if (!data || cancelled) return;
+        const registered = data.is_vat_registered === true;
+        const pct = Number(data.tax_rate_percent ?? 0);
+        setTaxRate(registered && Number.isFinite(pct) && pct > 0 ? pct / 100 : 0);
+        setTaxInclusive(data.tax_inclusive !== false);
       })
       .catch(() => {
         /* defaults */

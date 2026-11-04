@@ -48,6 +48,15 @@ describe("getOfferEffectiveStatus", () => {
     expect(shouldShowCustomerAcceptCta(s, false)).toBe(false);
   });
 
+  it("hides accept CTA when changes were requested", () => {
+    const s = getOfferEffectiveStatus(baseAttachment, {
+      status: "changes_requested",
+      booking_id: null,
+    });
+    expect(s.isChangesRequested).toBe(true);
+    expect(shouldShowCustomerAcceptCta(s, false)).toBe(false);
+  });
+
   it("shows resume payment CTA during payment_pending", () => {
     const s = getOfferEffectiveStatus(baseAttachment, {
       status: "payment_pending",

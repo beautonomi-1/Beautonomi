@@ -710,7 +710,9 @@ export function OnboardingWizardProvider({
     providerProfileExists && currentStep === STEPS.length
       ? "Continue to app"
       : currentStep === STEPS.length
-        ? "Create profile"
+        ? selectedPlanIsFree
+          ? "Create my business"
+          : "Create my business and continue to payment"
         : editingFromReview && currentStep < REVIEW_STEP_ID
           ? "Back to review"
           : "Continue";

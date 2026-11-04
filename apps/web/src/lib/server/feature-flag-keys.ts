@@ -231,6 +231,11 @@ export const FEATURE_FLAG_KEYS = {
   SUPPORT_AI_ASSISTANT_CUSTOMER: "support.ai_assistant.customer",
   /** Provider-facing AI support on the ticket thread (web + provider app). */
   SUPPORT_AI_ASSISTANT_PROVIDER: "support.ai_assistant.provider",
+
+  /** When on, platform-held booking/product VAT is flagged and included in payout balance (forward rows only). */
+  FINANCE_PROVIDER_VAT_PAYOUT: "finance.provider_vat_payout",
+  /** When on, show guided VAT onboarding/settings UI v2. Resolver applies regardless. */
+  TAX_PROVIDER_VAT_SETTINGS_V2: "tax.provider_vat_settings_v2",
 } as const;
 
 export type PaymentRelatedFeatureKey =

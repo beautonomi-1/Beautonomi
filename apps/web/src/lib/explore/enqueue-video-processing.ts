@@ -52,9 +52,8 @@ export async function enqueueExploreVideoProcessing(postId: string): Promise<voi
   for (let i = 0; i < mediaUrls.length; i += 1) {
     const slide = nextMeta[i] ?? { kind: "image" as const };
     if (slide.kind !== "video") continue;
-    if (slide.playback_path) continue;
-    if (slide.probe_job_id && slide.status === "probing") continue;
-    if (slide.encode_job_id && slide.status === "encoding") continue;
+    if (slide.playback_path?.trim() && slide.status === "delivered") continue;
+    if (slide.status === "probing" || slide.status === "encoding") continue;
 
     const objectPath = mediaUrls[i]!.replace(/^\//, "");
     const exists = await objectExists(objectPath);
@@ -73,8 +72,11 @@ export async function enqueueExploreVideoProcessing(postId: string): Promise<voi
       ...slide,
       kind: "video",
       probe_job_id: job.id,
+      encode_job_id: null,
       status: "probing",
       error_code: null,
+      processing_started_at: new Date().toISOString(),
+      retry_count: (slide.retry_count ?? 0) + (slide.status === "failed" ? 1 : 0),
     };
     changed = true;
   }

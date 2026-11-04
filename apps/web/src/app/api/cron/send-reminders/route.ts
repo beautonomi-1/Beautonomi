@@ -33,6 +33,10 @@ export async function GET(request: NextRequest) {
         "@/lib/bookings/staff-schedule-summaries"
       );
       const scheduleSummaries = await sendStaffScheduleSummaries();
+      const { sendGroupGuestShareReminders } = await import(
+        "@/lib/bookings/group-guest-share-reminders"
+      );
+      const groupGuestShares = await sendGroupGuestShareReminders();
 
       return successResponse({
         message: "Reminders sent successfully",
@@ -40,6 +44,7 @@ export async function GET(request: NextRequest) {
         ...rebook,
         ...staff,
         ...scheduleSummaries,
+        ...groupGuestShares,
       });
     });
   } catch (error) {

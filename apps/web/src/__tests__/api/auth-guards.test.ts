@@ -94,6 +94,12 @@ vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: vi.fn().mockReturnValue(createMockSupabaseClient()),
 }));
 
+vi.mock("@/lib/notifications/onesignal", () => ({
+  sendToUser: vi.fn().mockResolvedValue({ success: true }),
+  sendTemplateNotification: vi.fn().mockResolvedValue({ success: true }),
+  getNotificationTemplate: vi.fn().mockResolvedValue(null),
+}));
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -239,13 +245,6 @@ describe("Notification send routes – authentication", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
-
-  // Mock OneSignal calls so they don't actually fire
-  vi.mock("@/lib/notifications/onesignal", () => ({
-    sendToUser: vi.fn().mockResolvedValue({ success: true }),
-    sendTemplateNotification: vi.fn().mockResolvedValue({ success: true }),
-    getNotificationTemplate: vi.fn().mockResolvedValue(null),
-  }));
 
   it("POST /api/notifications/send-email rejects unauthenticated requests", async () => {
     rejectAuth();

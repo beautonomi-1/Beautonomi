@@ -23,6 +23,7 @@ import {
 } from "@/lib/notifications/notify-product-order-status";
 import { z } from "zod";
 import { cancelCourierShipmentForOrder } from "@/lib/orders/shipping";
+import { withProductOrderAmountStillDue } from "@/lib/payments/resolve-paystack-initialize-amount";
 
 const NOTIFY_STATUSES = new Set<ProductOrderNotifyStatus>([
   "confirmed",
@@ -64,6 +65,15 @@ const updateSchema = z.object({
 });
 
 const TERMINAL_STATUSES = new Set(["cancelled", "refunded"]);
+
+/** Paystack orders still awaiting payment cannot move into fulfilment (payment recording itself confirms them). */
+const UNPAID_ONLINE_BLOCKED_STATUSES = new Set([
+  "confirmed",
+  "processing",
+  "ready_for_collection",
+  "shipped",
+  "delivered",
+]);
 
 /**
  * GET /api/provider/product-orders/[id]
@@ -113,7 +123,8 @@ export async function GET(
       return notFoundResponse("Order not found");
     }
 
-    return successResponse({ order });
+    const [orderWithDue] = await withProductOrderAmountStillDue(getSupabaseAdmin(), [order]);
+    return successResponse({ order: orderWithDue ?? order });
   } catch (err) {
     return handleApiError(err, "Failed to fetch order");
   }
@@ -149,7 +160,7 @@ export async function PATCH(
 
     const { data: order, error: fetchErr } = await (supabase.from("product_orders") as any)
       .select(
-        "id, status, provider_id, payment_status, payment_method, payment_reference, total_amount, wallet_amount, gift_card_amount, customer_id, currency, tenant_id, order_number, fulfillment_type, tracking_number, courier_shipment_id",
+        "id, status, provider_id, payment_status, payment_method, payment_reference, total_amount, wallet_amount, gift_card_amount, customer_id, currency, tenant_id, order_number, fulfillment_type, tracking_number, courier_shipment_id, refunded_amount, refund_method, refunded_at, refund_reason",
       )
       .eq("id", id)
       .eq("provider_id", providerId)
@@ -159,19 +170,30 @@ export async function PATCH(
       return notFoundResponse("Order not found");
     }
 
+    // Resolve refund method/amount up front so we can validate before mutating.
+    const refundMethod: "cash" | "store_credit" =
+      parsed.refund_method ?? "store_credit";
+    const orderTotal = Number(order.total_amount ?? 0);
+    const alreadyRefunded = Math.max(0, Number(order.refunded_amount ?? 0));
+    const remainingRefundable = Math.max(0, Math.round((orderTotal - alreadyRefunded) * 100) / 100);
+    const refundAmount =
+      parsed.refund_amount != null ? parsed.refund_amount : remainingRefundable;
+    // A refund that leaves money on the order keeps it active: no terminal status, no restock.
+    const isPartialRefund =
+      parsed.status === "refunded" && alreadyRefunded + refundAmount < orderTotal - 0.01;
+    const cumulativeRefunded = Math.round((alreadyRefunded + refundAmount) * 100) / 100;
+    const refundKeySuffix =
+      isPartialRefund || alreadyRefunded > 0
+        ? `:${alreadyRefunded.toFixed(2)}:${refundAmount.toFixed(2)}`
+        : "";
+
     // Restock, tender refunds and ledger reversal run only on the transition into a
     // terminal status; re-sending the current terminal status must not repeat them.
     const enteringTerminal =
       (parsed.status === "cancelled" || parsed.status === "refunded") &&
-      parsed.status !== order.status;
-
-    // Resolve refund method/amount up front so we can validate before mutating.
-    const refundMethod: "cash" | "store_credit" =
-      parsed.refund_method ?? "store_credit";
-    const refundAmount =
-      parsed.refund_amount != null
-        ? parsed.refund_amount
-        : Number(order.total_amount ?? 0);
+      parsed.status !== order.status &&
+      !isPartialRefund;
+    const movingRefundMoney = parsed.status === "refunded" && (enteringTerminal || isPartialRefund);
 
     // Flexible operational status management with guardrails for destructive states.
     if (parsed.status) {
@@ -182,6 +204,16 @@ export async function PATCH(
           400,
         );
       }
+      if (
+        parsed.status === "cancelled" &&
+        order.payment_status === "partially_refunded"
+      ) {
+        return errorResponse(
+          "This order was partially refunded. Use Refund remaining to close it — cancel is not available.",
+          "PARTIALLY_REFUNDED_REFUND_REMAINING",
+          400,
+        );
+      }
       if (parsed.status === "cancelled" && order.payment_status === "paid" && !parsed.cancellation_reason?.trim()) {
         return errorResponse(
           "Please include a cancellation reason for paid orders.",
@@ -189,7 +221,23 @@ export async function PATCH(
           400,
         );
       }
-      if (parsed.status === "refunded" && order.payment_status !== "paid") {
+      if (
+        UNPAID_ONLINE_BLOCKED_STATUSES.has(parsed.status) &&
+        parsed.status !== order.status &&
+        String(order.payment_method ?? "").toLowerCase() === "paystack" &&
+        order.payment_status === "pending"
+      ) {
+        return errorResponse(
+          "This order has not been paid online yet. Wait for payment before fulfilling it, or cancel it.",
+          "PAYMENT_REQUIRED",
+          400,
+        );
+      }
+      if (
+        parsed.status === "refunded" &&
+        order.payment_status !== "paid" &&
+        order.payment_status !== "partially_refunded"
+      ) {
         return errorResponse(
           "Only paid orders can be marked as refunded.",
           "INVALID_REFUND_STATUS",
@@ -197,9 +245,9 @@ export async function PATCH(
         );
       }
       if (parsed.status === "refunded") {
-        if (refundAmount <= 0 || refundAmount > Number(order.total_amount ?? 0) + 0.01) {
+        if (refundAmount <= 0 || refundAmount > remainingRefundable + 0.01) {
           return errorResponse(
-            `Refund amount must be between 0 and ${Number(order.total_amount ?? 0).toFixed(2)}.`,
+            `Refund amount must be between 0 and ${remainingRefundable.toFixed(2)}.`,
             "INVALID_REFUND_AMOUNT",
             400,
           );
@@ -235,9 +283,10 @@ export async function PATCH(
         updatePayload.cancellation_reason = parsed.cancellation_reason ?? null;
       }
       if (parsed.status === "refunded") {
-        updatePayload.payment_status = "refunded";
+        if (isPartialRefund) delete updatePayload.status;
+        updatePayload.payment_status = isPartialRefund ? "partially_refunded" : "refunded";
         updatePayload.refund_method = refundMethod;
-        updatePayload.refunded_amount = refundAmount;
+        updatePayload.refunded_amount = cumulativeRefunded;
         updatePayload.refunded_at = new Date().toISOString();
         if (parsed.refund_reason) updatePayload.refund_reason = parsed.refund_reason;
         // §Product-refund-confirmation: in-person cash refunds to a real
@@ -260,13 +309,30 @@ export async function PATCH(
     if (parsed.estimated_delivery_date)
       updatePayload.estimated_delivery_date = parsed.estimated_delivery_date;
 
-    const { data: updated, error: updateErr } = await (supabase.from("product_orders") as any)
-      .update(updatePayload)
-      .eq("id", id)
+    let updateQuery = (supabase.from("product_orders") as any).update(updatePayload).eq("id", id);
+    if (movingRefundMoney) {
+      // Claim the refund against the amount we validated, so a concurrent or double-submitted
+      // refund cannot move money twice now that partial refunds leave the order active.
+      updateQuery = updateQuery.eq("payment_status", order.payment_status);
+      updateQuery =
+        order.refunded_amount == null
+          ? updateQuery.is("refunded_amount", null)
+          : updateQuery.eq("refunded_amount", order.refunded_amount);
+    }
+    const { data: updated, error: updateErr } = await updateQuery
       .select("*, customer:users!product_orders_customer_id_fkey(id, full_name)")
       .single();
 
-    if (updateErr) throw updateErr;
+    if (updateErr) {
+      if (movingRefundMoney && (updateErr as { code?: string }).code === "PGRST116") {
+        return errorResponse(
+          "This order was updated by another refund. Reload it and try again.",
+          "REFUND_CONFLICT",
+          409,
+        );
+      }
+      throw updateErr;
+    }
 
     // Restock (+ `stock_movements` audit rows) and cancel the courier shipment only once
     // the cancel/refund is committed: restocking is not idempotent, so running it before
@@ -300,8 +366,7 @@ export async function PATCH(
     // Store-credit refunds return the card portion to the gateway when possible,
     // then credit wallet for the remainder (gift card → card; wallet + fallback → wallet).
     if (
-      enteringTerminal &&
-      parsed.status === "refunded" &&
+      movingRefundMoney &&
       refundMethod === "store_credit" &&
       order.customer_id
     ) {
@@ -309,7 +374,7 @@ export async function PATCH(
       const tender = await splitProductOrderRefundTender(admin, order, {
         refundAmount,
         reason: parsed.refund_reason ?? "Order refunded",
-        idempotencyKey: `product_order_refund_online:${id}`,
+        idempotencyKey: `product_order_refund_online:${id}${refundKeySuffix}`,
       });
       onlineRefundedAmount = tender.onlineRefundedAmount;
       const tenderMoved = tender.tenderMoved;
@@ -329,7 +394,7 @@ export async function PATCH(
               p_reference_id: id,
               p_reference_type: "product_order_refund",
               p_tenant_id: order.tenant_id ?? null,
-              p_idempotency_key: `product_order_refund:${id}`,
+              p_idempotency_key: `product_order_refund:${id}${refundKeySuffix}`,
             })
           : { error: null };
       if (!walletError) {
@@ -352,10 +417,10 @@ export async function PATCH(
           .update({
             payment_status: order.payment_status,
             status: order.status,
-            refund_method: null,
-            refunded_amount: null,
-            refunded_at: null,
-            refund_reason: null,
+            refund_method: order.refund_method ?? null,
+            refunded_amount: order.refunded_amount ?? null,
+            refunded_at: order.refunded_at ?? null,
+            refund_reason: order.refund_reason ?? null,
           })
           .eq("id", id);
         return errorResponse(
@@ -372,9 +437,8 @@ export async function PATCH(
     // or refunding a paid order (shared with admin route).
     let cancelRefundWalletFailed = false;
     if (
-      enteringTerminal &&
-      (parsed.status === "refunded" ||
-        (parsed.status === "cancelled" && order.payment_status === "paid"))
+      movingRefundMoney ||
+      (enteringTerminal && parsed.status === "cancelled" && order.payment_status === "paid")
     ) {
       const sideEffects = await applyProductOrderCancelRefundSideEffects(
         supabase,

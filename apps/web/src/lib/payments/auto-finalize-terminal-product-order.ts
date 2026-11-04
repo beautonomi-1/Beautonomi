@@ -40,7 +40,7 @@ export async function autoFinalizeTerminalWalkInProductOrder(
   const { supabase, providerId, productOrderId } = input;
 
   const { data: order } = await (supabase.from("product_orders") as any)
-    .select("id, provider_id, order_source, payment_status, status, total_amount")
+    .select("id, provider_id, order_source, payment_status, payment_reference, status, total_amount")
     .eq("id", productOrderId)
     .eq("provider_id", providerId)
     .maybeSingle();
@@ -49,7 +49,13 @@ export async function autoFinalizeTerminalWalkInProductOrder(
   if (String(order.order_source ?? "") !== "walk_in") {
     return { finalized: false, reason: "not_walk_in" };
   }
-  if (String(order.payment_status ?? "") === "paid" || String(order.status ?? "") === "delivered") {
+  const alreadyPaidByThisCharge =
+    String(order.payment_status ?? "") === "paid" &&
+    String(order.payment_reference ?? "") === input.reference;
+  if (
+    (String(order.payment_status ?? "") === "paid" || String(order.status ?? "") === "delivered") &&
+    !alreadyPaidByThisCharge
+  ) {
     return { finalized: false, reason: "already_paid" };
   }
 
@@ -64,38 +70,58 @@ export async function autoFinalizeTerminalWalkInProductOrder(
     quantity: item.quantity,
   }));
 
-  const stockError = await validatePosProductStock(supabase as any, providerId, posItems);
-  if (stockError) {
-    return { finalized: false, reason: "stock_short" };
+  let justPaid = false;
+  if (!alreadyPaidByThisCharge) {
+    const stockError = await validatePosProductStock(supabase as any, providerId, posItems);
+    if (stockError) {
+      return { finalized: false, reason: "stock_short" };
+    }
+    const { productOrderCardAmountStillDue } = await import(
+      "@/lib/payments/resolve-paystack-initialize-amount"
+    );
+    const due = await productOrderCardAmountStillDue(supabase, productOrderId, input.reference);
+    if (due.ok === false) return { finalized: false, reason: "payment_lookup_failed" };
+    if (Math.abs(input.paidAmount - due.due) > 0.02) {
+      return { finalized: false, reason: "amount_mismatch" };
+    }
+
+    const payResult = await recordProductOrderPayment({
+      supabase: supabase as never,
+      productOrderId,
+      reference: input.reference,
+      amountMajor: input.paidAmount,
+      feesMajor: input.gatewayFee,
+      source: "paystack_virtual_terminal_allocation",
+      provider: "paystack",
+      platformHeld: true,
+    });
+    if (!payResult.ok || !payResult.transitionedToPaid) {
+      return { finalized: false, reason: payResult.ok ? "payment_not_settled" : "payment_not_recorded" };
+    }
+    justPaid = true;
   }
 
-  const payResult = await recordProductOrderPayment({
-    supabase: supabase as never,
-    productOrderId,
-    reference: input.reference,
-    amountMajor: input.paidAmount,
-    feesMajor: input.gatewayFee,
-    source: "paystack_virtual_terminal_allocation",
-    provider: "paystack",
-    platformHeld: true,
-  });
-
-  await applyPosProductStockDecrements(supabase as any, posItems);
-
-  try {
-    const { logSaleStockMovements } = await import("@/lib/products/stock-movements");
-    await logSaleStockMovements(supabase as any, {
-      providerId,
-      referenceId: productOrderId,
-      actorUserId: input.allocatedByUserId ?? undefined,
-      lines: (lineItems ?? []).map((i: any) => ({
-        productId: i.product_id,
-        productVariantId: i.product_variant_id ?? null,
-        quantity: i.quantity,
-      })),
-    });
-  } catch (logErr) {
-    console.error("[auto-finalize-terminal] stock movement log failed:", logErr);
+  const { data: existingStock } = await (supabase.from("stock_movements") as any)
+    .select("id")
+    .eq("reference_id", productOrderId)
+    .limit(1);
+  if (!existingStock?.length && String(order.status ?? "") !== "delivered") {
+    await applyPosProductStockDecrements(supabase as any, posItems);
+    try {
+      const { logSaleStockMovements } = await import("@/lib/products/stock-movements");
+      await logSaleStockMovements(supabase as any, {
+        providerId,
+        referenceId: productOrderId,
+        actorUserId: input.allocatedByUserId ?? undefined,
+        lines: (lineItems ?? []).map((i: any) => ({
+          productId: i.product_id,
+          productVariantId: i.product_variant_id ?? null,
+          quantity: i.quantity,
+        })),
+      });
+    } catch (logErr) {
+      console.error("[auto-finalize-terminal] stock movement log failed:", logErr);
+    }
   }
 
   await (supabase.from("product_orders") as any)
@@ -113,7 +139,7 @@ export async function autoFinalizeTerminalWalkInProductOrder(
       "@/lib/notifications/notify-product-order-paid"
     );
     await notifyProductOrderPaidIfTransitioned(supabase as never, productOrderId, {
-      transitionedToPaid: payResult.transitionedToPaid,
+      transitionedToPaid: justPaid,
     });
   } catch (notifyErr) {
     console.error("[auto-finalize-terminal] notify failed:", notifyErr);
@@ -123,7 +149,12 @@ export async function autoFinalizeTerminalWalkInProductOrder(
 
   // Record the allocation so the payment leaves the manual inbox with a clear
   // audit trail (mirrors the manual confirm path in the allocation route).
-  try {
+  const { data: existingAllocation } = await (supabase.from("provider_terminal_payment_allocations") as any)
+    .select("id")
+    .eq("terminal_payment_id", input.terminalPaymentId)
+    .eq("entity_id", productOrderId)
+    .limit(1);
+  if (!existingAllocation?.length) try {
     await (supabase.from("provider_terminal_payment_allocations") as any).insert({
       terminal_payment_id: input.terminalPaymentId,
       provider_id: providerId,

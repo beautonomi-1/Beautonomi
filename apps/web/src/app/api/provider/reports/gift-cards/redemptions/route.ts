@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
       toYmd,
       reportBasis,
       basis: {
-        redemptionWindow: "captured_at in range; status captured; booking at this provider with gift_card_id.",
+        redemptionWindow: "captured_at in range; status captured; booking, product order, or till sale at this provider.",
         listLimit: "Preview list capped at 20 rows (newest captures first).",
       },
       totalRedemptions,
@@ -79,6 +79,7 @@ export async function GET(request: NextRequest) {
         gift_card_code: r.gift_card_code,
         booking_id: r.booking_id,
         booking_number: r.booking_number,
+        reference_label: r.reference_label,
         scheduled_at: r.scheduled_at,
         amount: r.amount,
         currency: r.currency,

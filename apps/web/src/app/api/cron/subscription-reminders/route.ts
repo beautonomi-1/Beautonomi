@@ -200,10 +200,76 @@ async function runJob(request: NextRequest) {
       }
     }
 
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000).toISOString();
+    const { data: stalePending } = await supabase
+      .from("provider_subscriptions")
+      .select("id, provider_id, pending_upgrade_set_at")
+      .not("pending_upgrade_plan_id", "is", null)
+      .lt("pending_upgrade_set_at", thirtyDaysAgo);
+
+    for (const row of stalePending ?? []) {
+      await supabase
+        .from("provider_subscriptions")
+        .update({
+          pending_upgrade_plan_id: null,
+          pending_upgrade_billing_period: null,
+          pending_upgrade_set_at: null,
+          updated_at: now.toISOString(),
+        })
+        .eq("id", (row as { id: string }).id);
+    }
+
+    const { data: pendingUpgrades } = await supabase
+      .from("provider_subscriptions")
+      .select(
+        "id, provider_id, pending_upgrade_set_at, pending_upgrade_plan_id, plan:subscription_plans!pending_upgrade_plan_id(name)",
+      )
+      .not("pending_upgrade_plan_id", "is", null);
+
+    for (const row of pendingUpgrades ?? []) {
+      const setAt = (row as { pending_upgrade_set_at?: string | null }).pending_upgrade_set_at;
+      if (!setAt) continue;
+      const ageMs = now.getTime() - new Date(setAt).getTime();
+      const bucket =
+        ageMs >= 7 * 86400000 && ageMs < 8 * 86400000
+          ? "7d"
+          : ageMs >= 86400000 && ageMs < 2 * 86400000
+            ? "24h"
+            : null;
+      if (!bucket) continue;
+      const provider = providerMap.get((row as { provider_id: string }).provider_id);
+      if (!provider?.userId) continue;
+      const reminderKey = `pending_upgrade_${(row as { id: string }).id}_${bucket}`;
+      const { data: existingPending } = await supabase
+        .from("notifications")
+        .select("id")
+        .eq("user_id", provider.userId)
+        .contains("data", { reminder_key: reminderKey })
+        .maybeSingle();
+      if (existingPending) continue;
+      const planName =
+        (row as { plan?: { name?: string } | null }).plan?.name ?? "your selected plan";
+      try {
+        await insertNotification({
+          user_id: provider.userId,
+          type: "system",
+          title: "Finish your subscription upgrade",
+          message: `Complete checkout to activate ${planName}.`,
+          data: { reminder_key: reminderKey, subscription_id: (row as { id: string }).id },
+          action_url: "/settings/subscription",
+        });
+        sent++;
+      } catch (err) {
+        errors.push(`pending ${(row as { id: string }).id}: ${String(err)}`);
+      }
+    }
+
     return successResponse({
       message: `Subscription reminders sent`,
       sent,
       checked: subscriptions.length,
+      pending_upgrade_nudges: pendingUpgrades?.length ?? 0,
+      stale_pending_cleared: stalePending?.length ?? 0,
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error) {

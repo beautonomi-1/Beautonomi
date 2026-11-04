@@ -1,0 +1,35 @@
+-- Money-path SQL tests (run manually against staging/local after migrations 10103–10105).
+-- Requires psql + service role or superuser. Not wired to CI yet.
+
+-- ---------------------------------------------------------------------------
+-- Refund trigger (10103): tax reversal net must stay zero on tax component
+-- ---------------------------------------------------------------------------
+-- Fixture sketch:
+--   1. Insert booking with tax_amount > 0 and completed payment + tax ledger rows.
+--   2. INSERT booking_refunds (status completed) for partial amount.
+--   3. Assert EXISTS finance_transactions WHERE source_refund_id = refund.id
+--        AND refund_component = 'tax' AND COALESCE(net, 0) = 0;
+--
+-- Example assertion (replace :refund_id):
+-- SELECT COUNT(*) = 1 AS tax_refund_net_zero
+-- FROM finance_transactions
+-- WHERE source_refund_id = :refund_id
+--   AND refund_component = 'tax'
+--   AND COALESCE(net, 0) = 0;
+
+-- ---------------------------------------------------------------------------
+-- Deposit residual tax (10104): posted_legs includes tax amount
+-- ---------------------------------------------------------------------------
+-- After a deposit payment on a tax-bearing booking, expect a tax row OR residual
+-- commission_base that accounts for tax (no provider_earnings inflation).
+--
+-- SELECT b.id, b.tax_amount,
+--        EXISTS (SELECT 1 FROM finance_transactions ft WHERE ft.booking_id = b.id AND ft.transaction_type = 'tax') AS has_tax_leg
+-- FROM bookings b
+-- WHERE b.tax_amount > 0 AND b.payment_option = 'deposit';
+
+-- ---------------------------------------------------------------------------
+-- Integrity RPC smoke (10105)
+-- ---------------------------------------------------------------------------
+-- SELECT * FROM list_integrity_vat_debited_on_refunds(NULL, 5);
+-- SELECT * FROM list_booking_payments_missing_provider_earnings(NULL, 5);

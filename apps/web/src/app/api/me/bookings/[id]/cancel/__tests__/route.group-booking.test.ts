@@ -15,6 +15,7 @@ const mockGetSupabaseAdmin = vi.fn();
 const mockGetCancellationPolicy = vi.fn();
 const mockCanCancelBooking = vi.fn();
 const mockCancelGroupBooking = vi.fn();
+const mockCancelGroupBookingParticipant = vi.fn();
 const mockTryRecalculateGroupBookingTotal = vi.fn();
 const mockSyncGroupBookingStatusFromChildren = vi.fn();
 const mockSettleBookingCancellation = vi.fn();
@@ -65,6 +66,8 @@ vi.mock("@/lib/bookings/load-cancellation-outcome", () => ({
 
 vi.mock("@/lib/bookings/group-booking-cancellation", () => ({
   cancelGroupBooking: (...args: unknown[]) => mockCancelGroupBooking(...args),
+  cancelGroupBookingParticipant: (...args: unknown[]) =>
+    mockCancelGroupBookingParticipant(...args),
   getGroupBookingParticipantsForCancellation: vi.fn(async () => []),
 }));
 
@@ -140,9 +143,12 @@ function bookingRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+const PARTICIPANT_ID = "22222222-2222-4222-8222-222222222222";
+
 function buildSupabaseMocks(options: {
   booking: ReturnType<typeof bookingRow>;
   primaryGroup?: { id: string } | null;
+  groupParticipant?: { id: string } | null;
 }) {
   const serverClient = {
     from: vi.fn().mockImplementation((table: string) => {
@@ -197,6 +203,24 @@ function buildSupabaseMocks(options: {
               eq: vi.fn().mockReturnValue({
                 select: vi.fn().mockResolvedValue({
                   data: [{ ...options.booking, status: "cancelled" }],
+                  error: null,
+                }),
+              }),
+              select: vi.fn().mockResolvedValue({
+                data: [{ ...options.booking, status: "cancelled" }],
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === "booking_participants") {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                maybeSingle: vi.fn().mockResolvedValue({
+                  data: options.groupParticipant ?? null,
                   error: null,
                 }),
               }),
@@ -264,11 +288,13 @@ describe("POST /api/me/bookings/[id]/cancel — group bookings", () => {
     const { serverClient, adminClient } = buildSupabaseMocks({
       booking: bookingRow({ group_booking_id: GROUP_ID }),
       primaryGroup: null,
+      groupParticipant: { id: PARTICIPANT_ID },
     });
     mockGetSupabaseServer.mockResolvedValue(serverClient);
     mockGetSupabaseAdmin.mockReturnValue(adminClient);
     mockTryRecalculateGroupBookingTotal.mockResolvedValue(undefined);
     mockSyncGroupBookingStatusFromChildren.mockResolvedValue("confirmed");
+    mockCancelGroupBookingParticipant.mockResolvedValue(undefined);
 
     const { POST } = await import("../route");
     const res = await POST(
@@ -280,6 +306,14 @@ describe("POST /api/me/bookings/[id]/cancel — group bookings", () => {
     );
 
     expect(res.status).toBe(200);
+    expect(mockCancelGroupBookingParticipant).toHaveBeenCalledWith(
+      adminClient,
+      BOOKING_ID,
+      PARTICIPANT_ID,
+      USER_ID,
+      "Customer cancellation",
+      { bookingAlreadyCancelled: true },
+    );
     expect(mockTryRecalculateGroupBookingTotal).toHaveBeenCalledWith(adminClient, GROUP_ID);
     expect(mockSyncGroupBookingStatusFromChildren).toHaveBeenCalledWith(adminClient, GROUP_ID);
     expect(mockCancelGroupBooking).not.toHaveBeenCalled();

@@ -21,6 +21,8 @@ import {
   Trash2,
 } from "lucide-react";
 import type { ExplorePost, ExploreComment } from "@/types/explore";
+import { ProviderExplorePostStatusBadge } from "@/components/provider/ProviderExplorePostStatusBadge";
+import { providerExplorePostBadge } from "@/lib/explore/provider-explore-post-status";
 
 function isVideoUrl(url: string): boolean {
   const lower = url.toLowerCase();
@@ -238,6 +240,16 @@ export default function ProviderExploreViewPage() {
               <p className="text-sm text-gray-700 whitespace-pre-wrap mb-3">
                 {post.caption || t("web.provider.pages.explore/[id].noCaption")}
               </p>
+              {post.is_hidden && post.moderation_notes?.trim() ? (
+                <p className="text-sm text-red-800 mb-3 rounded-lg bg-red-50 border border-red-100 px-3 py-2">
+                  {t("web.provider.explorePage.statusHiddenNote", { note: post.moderation_notes.trim() })}
+                </p>
+              ) : null}
+              {providerExplorePostBadge(post) === "video_failed" ? (
+                <p className="text-sm text-orange-900 mb-3 rounded-lg bg-orange-50 border border-orange-100 px-3 py-2">
+                  {t("web.provider.explorePage.videoFailedDetail")}
+                </p>
+              ) : null}
               <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500 mb-4">
                 <span
                   className={`px-2 py-0.5 rounded ${
@@ -246,6 +258,7 @@ export default function ProviderExploreViewPage() {
                 >
                   {post.status}
                 </span>
+                <ProviderExplorePostStatusBadge post={post} />
                 <span className="flex items-center gap-1">
                   <Heart className="w-4 h-4" />
                   {t("web.provider.pages.explore/[id].likes", { count: post.like_count })}

@@ -134,6 +134,10 @@ function makeSupabase(fixture: Fixture) {
           return makeBuilder({ count: fixture.cancellationPolicyCount, data: [] });
         case "user_profiles":
           return makeBuilder({ data: fixture.userProfile });
+        case "provider_subscriptions":
+          return makeBuilder({ data: null });
+        case "pricing_plans":
+          return makeBuilder({ data: null });
         default:
           throw new Error(`Unexpected table ${table}`);
       }

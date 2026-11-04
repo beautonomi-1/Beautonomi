@@ -3,7 +3,8 @@ import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { haptic } from "@/lib/haptics";
-import { isExploreVideoPathOrUrl, resolveExploreVideoSrc } from "@/lib/explore-media";
+import { isExploreVideoPathOrUrl } from "@/lib/explore-media";
+import { deliveredExploreVideoShareUrl } from "@/lib/explore-video-playback-trim";
 import type { ExploreMediaSlideMeta } from "@/types/api";
 
 const BRAND_NAME = "Beautonomi";
@@ -55,26 +56,32 @@ export function buildExplorePostShareMessage(opts: ShareExplorePostInput): strin
   return lines.join("\n");
 }
 
-function resolveShareMediaUrl(opts: ShareExplorePostInput, index: number): string | null {
+function shareSlideIsVideo(opts: ShareExplorePostInput, index: number): boolean {
+  const slideMeta = opts.mediaMeta?.[index];
+  const mediaUrl = opts.mediaUrls?.[index];
+  return (
+    slideMeta?.kind === "video" ||
+    (slideMeta?.kind !== "image" && mediaUrl != null && isExploreVideoUrl(mediaUrl))
+  );
+}
+
+export function resolveShareMediaUrl(opts: ShareExplorePostInput, index: number): string | null {
   const mediaUrls = opts.mediaUrls ?? [];
   const slideMeta = opts.mediaMeta?.[index];
-  const isVideo =
-    slideMeta?.kind === "video" ||
-    (slideMeta?.kind !== "image" && mediaUrls[index] && isExploreVideoUrl(mediaUrls[index]!));
-  if (isVideo) {
-    return (
-      resolveExploreVideoSrc({
-        mediaUrls,
-        playbackPath: opts.playbackPath,
-        slideIndex: index,
-        mediaMeta: opts.mediaMeta,
-      }) ?? mediaUrls[index] ??
-      null
-    );
+  const mediaUrl = mediaUrls[index];
+  if (shareSlideIsVideo(opts, index)) {
+    return deliveredExploreVideoShareUrl({
+      slide: slideMeta,
+      mediaUrl,
+      slideIndex: index,
+      postPlaybackPath: opts.playbackPath,
+    });
   }
   if (index === 0 && opts.displayUrl?.trim()) return opts.displayUrl;
   if (slideMeta?.display_path?.trim()) return slideMeta.display_path;
-  return mediaUrls[index] ?? null;
+  const photoUrl = mediaUrl ?? null;
+  if (photoUrl?.startsWith("https://")) return photoUrl;
+  return null;
 }
 
 export async function copyExplorePostLink(opts: ShareExplorePostInput): Promise<void> {
@@ -105,8 +112,10 @@ export async function shareExplorePostLink(opts: ShareExplorePostInput): Promise
 
 function extensionForMediaUrl(url: string, isVideo: boolean): string {
   const path = url.toLowerCase().split("?")[0] ?? "";
-  const ext = path.split(".").pop();
-  if (ext && ext.length <= 5) return ext;
+  const last = path.split("/").pop() ?? "";
+  const ext = last.includes(".") ? last.split(".").pop() : undefined;
+  const allowed = isVideo ? ["mp4", "mov", "m4v", "webm"] : ["jpg", "jpeg", "png", "webp", "gif"];
+  if (ext && allowed.includes(ext)) return ext;
   return isVideo ? "mp4" : "jpg";
 }
 
@@ -123,11 +132,21 @@ function mimeForMedia(isVideo: boolean, ext: string): string {
   return "image/jpeg";
 }
 
+export type ShareExplorePostMediaFailureLabels = {
+  title: string;
+  body: string;
+  cancel: string;
+  shareLink: string;
+};
+
 /**
  * Share the post media file via the native share sheet (Instagram, WhatsApp, Save, etc.).
  * Falls back to link share when download fails.
  */
-export async function shareExplorePostMedia(opts: ShareExplorePostInput): Promise<void> {
+export async function shareExplorePostMedia(
+  opts: ShareExplorePostInput,
+  failureLabels?: ShareExplorePostMediaFailureLabels,
+): Promise<void> {
   const index = opts.mediaIndex ?? 0;
   const mediaUrl = resolveShareMediaUrl(opts, index);
   if (!mediaUrl || !mediaUrl.startsWith("https://")) {
@@ -135,7 +154,7 @@ export async function shareExplorePostMedia(opts: ShareExplorePostInput): Promis
     return;
   }
 
-  const isVideo = isExploreVideoUrl(mediaUrl);
+  const isVideo = shareSlideIsVideo(opts, index);
   const ext = extensionForMediaUrl(mediaUrl, isVideo);
   const mimeType = mimeForMedia(isVideo, ext);
   const cacheDir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
@@ -157,17 +176,20 @@ export async function shareExplorePostMedia(opts: ShareExplorePostInput): Promis
     await Sharing.shareAsync(downloaded.uri, {
       mimeType,
       dialogTitle: `${BRAND_NAME} — ${opts.providerName}`,
-      UTI: isVideo ? "public.movie" : "public.jpeg",
+      UTI: isVideo ? "public.movie" : ext === "png" ? "public.png" : "public.jpeg",
     });
   } catch {
-    Alert.alert(
-      "Couldn't share media",
-      "We couldn't prepare this file for sharing. Try sharing the link instead.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Share link", onPress: () => void shareExplorePostLink(opts) },
-      ],
-    );
+    const title = failureLabels?.title ?? "Couldn't share media";
+    const body =
+      failureLabels?.body ??
+      "We couldn't prepare this file for sharing. Try sharing the link instead.";
+    Alert.alert(title, body, [
+      { text: failureLabels?.cancel ?? "Cancel", style: "cancel" },
+      {
+        text: failureLabels?.shareLink ?? "Share link",
+        onPress: () => void shareExplorePostLink(opts),
+      },
+    ]);
   }
 }
 
@@ -186,30 +208,52 @@ export async function presentExplorePostShareActions(
   },
   onAction: (action: ExploreShareAction) => void | Promise<void>,
 ): Promise<void> {
+  const buttons = buildExploreShareActionButtons(opts, labels, Platform.OS);
+  Alert.alert(
+    labels.sheetTitle,
+    undefined,
+    buttons.map((b) => ({
+      text: b.text,
+      style: b.style,
+      onPress: b.action ? () => void onAction(b.action!) : undefined,
+    })),
+    { cancelable: true },
+  );
+}
+
+export type ExploreShareActionButton = {
+  text: string;
+  action?: ExploreShareAction;
+  style?: "cancel";
+};
+
+/**
+ * Android `Alert` renders at most three buttons, so the explicit Cancel is dropped
+ * there when media share is offered; the alert stays dismissible via back / outside tap.
+ */
+export function buildExploreShareActionButtons(
+  opts: ShareExplorePostInput,
+  labels: {
+    shareLink: string;
+    shareMedia: string;
+    shareMediaVideo: string;
+    copyLink: string;
+    cancel: string;
+  },
+  platform: string,
+): ExploreShareActionButton[] {
   const index = opts.mediaIndex ?? 0;
   const shareUrl = resolveShareMediaUrl(opts, index);
   const hasMedia = Boolean(shareUrl?.startsWith("https://"));
-  const slideKind = opts.mediaMeta?.[index]?.kind;
-  const isVideo =
-    hasMedia &&
-    (slideKind === "video" ||
-      (slideKind !== "image" && opts.mediaUrls?.[index] != null && isExploreVideoUrl(opts.mediaUrls[index]!)));
+  const isVideo = hasMedia && shareSlideIsVideo(opts, index);
 
-  const buttons: Array<{ text: string; onPress?: () => void; style?: "cancel" | "destructive" }> = [
-    { text: labels.shareLink, onPress: () => void onAction("link") },
-  ];
-
+  const buttons: ExploreShareActionButton[] = [{ text: labels.shareLink, action: "link" }];
   if (hasMedia) {
-    buttons.push({
-      text: isVideo ? labels.shareMediaVideo : labels.shareMedia,
-      onPress: () => void onAction("media"),
-    });
+    buttons.push({ text: isVideo ? labels.shareMediaVideo : labels.shareMedia, action: "media" });
   }
-
-  buttons.push(
-    { text: labels.copyLink, onPress: () => void onAction("copy") },
-    { text: labels.cancel, style: "cancel" },
-  );
-
-  Alert.alert(labels.sheetTitle, undefined, buttons);
+  buttons.push({ text: labels.copyLink, action: "copy" });
+  if (platform !== "android" || buttons.length < 3) {
+    buttons.push({ text: labels.cancel, style: "cancel" });
+  }
+  return buttons;
 }

@@ -42,6 +42,8 @@ export {
   getMetricRangeParams,
   type FrontDeskMetricRange,
 } from "./front-desk/metricRange";
+export { computeVat, sumLineVat, type ComputeVatInput, type ComputeVatResult } from "./vat/computeVat";
+export { formatVatLine, type FormatVatLineInput, type FormatVatLineResult } from "./vat/formatVatLine";
 export {
   addMoney,
   currencySelectLabel,

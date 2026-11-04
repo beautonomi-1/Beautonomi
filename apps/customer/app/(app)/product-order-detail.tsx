@@ -280,6 +280,7 @@ export default function ProductOrderDetailScreen() {
   const isCancelled = order.status === "cancelled" || order.status === "refunded";
   const canSelfCancel =
     !isCancelled &&
+    order.payment_status !== "partially_refunded" &&
     !order.shipped_at &&
     !order.delivered_at &&
     ["pending", "confirmed", "processing"].includes(order.status);
@@ -306,7 +307,13 @@ export default function ProductOrderDetailScreen() {
   const dueTotal = Math.max(0, Number(order.total_amount ?? 0));
   const dueGift = Math.min(dueTotal, Math.max(0, giftAmt));
   const dueWallet = Math.min(Math.max(0, walletAmt), Math.max(0, dueTotal - dueGift));
-  const onlineAmountDue = Math.round(Math.max(0, dueTotal - dueGift - dueWallet) * 100) / 100;
+  const serverDue = order.amount_still_due;
+  const onlineAmountDue =
+    typeof serverDue === "number" && Number.isFinite(serverDue)
+      ? Math.max(0, Math.round(serverDue * 100) / 100)
+      : serverDue === null
+        ? 0
+        : Math.round(Math.max(0, dueTotal - dueGift - dueWallet) * 100) / 100;
   const canPayOnline =
     order.payment_status === "pending" &&
     (order.payment_method === "paystack" || order.payment_method == null) &&
@@ -535,6 +542,22 @@ export default function ProductOrderDetailScreen() {
           ...constraint,
         }}
       >
+        {order.payment_status === "partially_refunded" ? (
+          <View
+            style={{
+              marginBottom: 12,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: "#FCD34D",
+              backgroundColor: "#FFFBEB",
+              padding: 12,
+            }}
+          >
+            <Text style={{ fontSize: 14, lineHeight: 20, color: "#92400E" }}>
+              {pod("partiallyRefundedContactProvider")}
+            </Text>
+          </View>
+        ) : null}
         {(() => {
           const prompt = getProductOrderSupportPrompt({
             status: order.status,

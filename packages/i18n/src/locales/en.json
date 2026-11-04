@@ -1189,6 +1189,8 @@
           "onHold": "− On hold",
           "onHoldWithDays": "− On hold (clears {{count}} days after each booking)",
           "pendingRequests": "− Pending / processing requests",
+          "openDisputeReserve": "− Open dispute reserve",
+          "vatHeldForProvider": "− VAT held for payout",
           "alreadyPaidOut": "− Already paid out",
           "available": "= Available to withdraw",
           "footer": "Subscription and ads are billed to your card separately and never reduce this balance."
@@ -2358,7 +2360,14 @@
           "refundReasonPlaceholder": "Why is this refund being issued?",
           "viewFullBooking": "View full booking",
           "statusNoShow": "No show",
-          "statusPendingPayment": "Pending payment"
+          "statusPendingPayment": "Pending payment",
+          "removeParticipantOverpaid": "Guest removed. The booking is now overpaid by {{amount}}. Refund the difference to the customer.",
+          "shareStatusPaid": "Share paid",
+          "shareStatusPending": "Share unpaid ({{amount}})",
+          "shareStatusCancelled": "Spot cancelled",
+          "resendInvite": "Re-send invite",
+          "inviteResent": "Invite sent",
+          "inviteResendFailed": "Could not re-send the invite."
         },
         "settingsIndex": {
           "title": "Settings",
@@ -3363,6 +3372,7 @@
           "billingIssuePaymentNotCompleted": "Payment was not completed",
           "billingIssuePaymentActionNeeded": "Payment action needed",
           "billingIssueActionNeeded": "Billing action needed",
+          "finishUpgradeTitle": "Finish upgrade to {{plan}}",
           "viewInvoicesAndPaymentMethods": "View invoices & payment methods",
           "manageBillingUpdateCard": "Manage billing / update card",
           "cancelInAppStore": "Cancel in App Store",
@@ -3910,6 +3920,8 @@
           "cancelOrderBody": "Are you sure you want to cancel this order? Stock will be restored.",
           "no": "No",
           "cancelOrderCta": "Cancel order",
+          "partiallyRefundedRefundRemaining": "This order was partially refunded. Mark it refunded for the remaining amount — cancel is not available.",
+          "refundRemainingHint": "Refund remaining",
           "refundOrderTitle": "Refund order",
           "refundOrderBodyWallet": "How was this refund returned to the customer?",
           "refundOrderBodyCash": "Confirm this order was refunded to the customer in person. No platform wallet is linked to this sale.",
@@ -4064,7 +4076,10 @@
           "trackingUrlA11y": "Tracking URL",
           "trackingUrlHelp": "Paste the carrier's tracking page so customers can tap through from their order.",
           "saving": "Saving…",
-          "confirmShipped": "Confirm shipped"
+          "confirmShipped": "Confirm shipped",
+          "refundAmountLabel": "Refund amount (up to {{max}})",
+          "refundAmountA11y": "Refund amount",
+          "refundAmountInvalid": "Enter an amount greater than 0 and no more than {{max}}."
         },
         "yocoDevices": {
           "title": "Yoco Devices",
@@ -5011,7 +5026,8 @@
             "noneAvailable": "No subscription plans available right now. Hit Submit to continue — we'll sort this after.",
             "intro": "Pick the plan that fits today. Free activates instantly — paid plans take you to a secure card payment after you submit. You can upgrade or downgrade any time from settings.",
             "yearly": "Yearly",
-            "monthly": "Monthly"
+            "monthly": "Monthly",
+            "periodAvailableOnWeb": "{{period}} billing is available on web only for this plan."
           },
           "travelFees": {
             "skipHint": "You can skip this step — we'll apply the platform standard and you can adjust it later."
@@ -5519,9 +5535,23 @@
           "uploadFailedBody": "Could not upload file.",
           "videoTooLong": "Video exceeds the maximum length for Explore ({{seconds}} seconds).",
           "trimVideoTitle": "Trim video",
-          "trimVideoHint": "Drag to choose which part of your video appears on Explore.",
+          "trimVideoHint": "Drag the handles to choose the start and end of your clip for Explore.",
           "trimClipLength": "{{seconds}}s clip",
-          "trimVideoScrubber": "Choose clip start",
+          "trimVideoScrubber": "Move clip",
+          "trimHandleStartA11y": "Clip start",
+          "trimHandleEndA11y": "Clip end",
+          "trimSelectedLength": "{{seconds}}s · max {{max}}s",
+          "trimQueueCounter": "Video {{index}} of {{total}}",
+          "trimVideoLoadFailed": "Could not load this video.",
+          "retake": "Retake",
+          "usePhoto": "Use photo",
+          "discardClip": "Discard clip",
+          "retry": "Retry",
+          "recordTooShort": "Hold the button a little longer to record.",
+          "micPermissionOpenSettings": "Open Settings",
+          "flashOn": "Flash on",
+          "flashOff": "Flash off",
+          "mediaSkippedTooLarge": "{{count}} file(s) were too large and were skipped.",
           "trimVideoConfirm": "Use clip",
           "trimVideoLoading": "Loading video…",
           "trimVideoFinishFirst": "Finish trimming your video before continuing.",
@@ -5554,6 +5584,11 @@
           "gridPostA11y": "Post: {{caption}}",
           "gridPostFallbackA11y": "Explore post",
           "draftBadge": "Draft",
+          "statusVideoProcessing": "Processing",
+          "statusVideoFailed": "Video failed",
+          "statusHidden": "Hidden by Beautonomi",
+          "statusHiddenNote": "Moderation note: {{note}}",
+          "videoFailedDetail": "Video encoding failed. Edit the post and save to try again.",
           "rewardsBanner": "Earn reward points when you post to Explore. Share your work to grow visibility and unlock rewards.",
           "createNewPostA11y": "Create new post",
           "postNow": "Post now",
@@ -8082,7 +8117,9 @@
           "enabledLocations": "Enabled Locations",
           "excludedServices": "Excluded Services",
           "excludedHint": "Services that cannot be booked as group appointments",
-          "saveSettings": "Save Settings"
+          "saveSettings": "Save Settings",
+          "splitPaymentTitle": "Allow split payment",
+          "splitPaymentHint": "Each guest pays their own share online. When off, the organizer pays for the whole group."
         },
         "noteTemplates": {
           "title": "Note Templates",
@@ -10343,6 +10380,8 @@
           "stepOpenA11y": "Open {{title}}",
           "polishProfile": "Polish your profile",
           "continueSetupA11y": "Continue setup wizard",
+          "subscriptionActivatingTitle": "Payment received, activating your plan",
+          "subscriptionActivatingBody": "This usually takes a few seconds. You can keep setting up your business while we finish.",
           "startSetupA11y": "Start full setup wizard",
           "continueSetup": "Continue setup",
           "startSetup": "Start business setup",
@@ -12223,7 +12262,10 @@
           "sendFailed": "Failed to send custom offer",
           "unavailableTitle": "Custom offers unavailable",
           "errorTitle": "Error",
-          "disabledBody": "{{message}}\n\nYour admin can enable the feature flag commerce.provider_custom_offers for this market."
+          "disabledBody": "{{message}}\n\nYour admin can enable the feature flag commerce.provider_custom_offers for this market.",
+          "addPhotos": "Add inspiration photos",
+          "uploadingPhotos": "Uploading…",
+          "photosAttached": "{{count}} photo(s) attached"
         },
         "salesSettings": {
           "title": "Sales Settings",
@@ -13654,6 +13696,8 @@
       "shareLink": "Share link",
       "sharePhoto": "Share photo",
       "shareVideo": "Share video",
+      "shareMediaFailedTitle": "Couldn't share media",
+      "shareMediaFailedBody": "We couldn't prepare this file for sharing. Try sharing the link instead.",
       "linkCopied": "Link copied",
       "showMore": "more",
       "showLess": "less",
@@ -15461,6 +15505,7 @@
           "cancelOrderCta": "Cancel order",
           "cancelOrderFailed": "Could not cancel this order.",
           "cancelOrderA11y": "Cancel order",
+          "partiallyRefundedContactProvider": "This order was partially refunded. Contact the provider to refund the remaining balance.",
           "shareReceiptA11y": "Share order receipt",
           "downloadReceiptA11y": "Download order receipt",
           "orderPdfTitle": "Order {{orderNumber}}",
@@ -16092,7 +16137,20 @@
           "timePlaceholder": "14:30",
           "cancel": "Cancel",
           "saving": "Saving…",
-          "saveNewTime": "Save new time"
+          "saveNewTime": "Save new time",
+          "shareStatusPaid": "Share paid",
+          "shareStatusPending": "Share unpaid ({{amount}})",
+          "shareStatusCancelled": "Spot cancelled",
+          "resendInvite": "Re-send invite",
+          "inviteResent": "Invite sent",
+          "inviteResendFailed": "Could not re-send the invite.",
+          "removeGuest": "Remove guest",
+          "removeGuestConfirm": "Remove {{name}} from this booking? Their services are removed and any payment is refunded.",
+          "cancelMySpot": "Cancel my spot",
+          "cancelMySpotConfirm": "Cancel your spot in this group booking? Your services are removed and any payment you made is refunded to your card.",
+          "spotCancelled": "Your spot has been cancelled.",
+          "guestRemoved": "Guest removed.",
+          "guestCancelFailed": "Could not update the group booking."
         },
         "announcements": {
           "retry": "Retry",
@@ -18054,6 +18112,17 @@
           "couldNotLoadPage": "Could not load page",
           "httpError": "HTTP {{status}}",
           "appUrlNotConfigured": "App URL is not configured."
+        },
+        "bookingReschedule": {
+          "title": "Reschedule booking",
+          "body": "Pick a new date and time. Your provider may need to confirm.",
+          "dateLabel": "Date",
+          "timeLabel": "Time",
+          "submit": "Submit request",
+          "invalidTitle": "Invalid date or time",
+          "invalidBody": "Enter a valid date (YYYY-MM-DD) and time (HH:MM).",
+          "failedTitle": "Could not reschedule",
+          "noSlots": "No times available on this day. Try another date."
         }
       }
     },
@@ -18283,7 +18352,12 @@
       "groupGuestsLimit_one": "Add up to {{count}} guest.",
       "groupGuestsLimit_other": "Add up to {{count}} guests."
     },
-    "noPaymentMethodsAvailable": "This provider is not accepting online or in-person payments right now. Contact them to complete your booking."
+    "noPaymentMethodsAvailable": "This provider is not accepting online or in-person payments right now. Contact them to complete your booking.",
+    "groupPaymentMode": "Who pays?",
+    "payForEveryone": "I'll pay for everyone",
+    "splitPayment": "Split payment",
+    "splitPaymentHint": "You pay your own services and the booking fees now. Each guest gets a link to pay their share.",
+    "guestSharesPaidByInvite": "Guests pay via invite link"
   },
   "payments": {
     "pay": "Pay",
@@ -19359,7 +19433,10 @@
         "payWithCardEnding": "Pay {{amount}} with •••• {{last4}}",
         "payDeposit": "Pay Deposit {{amount}}",
         "completeBooking": "Complete booking",
-        "payAmount": "Pay {{amount}}"
+        "payAmount": "Pay {{amount}}",
+        "splitPayment": "Split payment",
+        "guestSharesPaidByInvite": "Guests pay via invite link",
+        "splitPaymentHint": "You pay your own services and the booking fees now. Each guest gets a link to pay their share."
       },
       "addToWaitlist": {
         "enterName": "Please enter your name",
@@ -21004,7 +21081,8 @@
           "groupSession": "Group session · {{ref}}",
           "viewDetails": "View Details",
           "reschedule": "Reschedule",
-          "cancel": "Cancel"
+          "cancel": "Cancel",
+          "customOffer": "Custom offer"
         },
         "page": {
           "title": "Bookings",
@@ -21498,6 +21576,7 @@
         "backToOrders": "Back to Orders",
         "cancelling": "Cancelling…",
         "cancelOrder": "Cancel order",
+        "partiallyRefundedContactProvider": "This order was partially refunded. Contact the provider to refund the remaining balance.",
         "shareReceipt": "Share receipt",
         "downloadReceipt": "Download receipt",
         "orderNumberCopied": "Order number copied",
@@ -21579,7 +21658,8 @@
         "addressUnit": "Unit:",
         "addressAccess": "Access:",
         "addressParking": "Parking:",
-        "addressLandmarks": "Landmarks:"
+        "addressLandmarks": "Landmarks:",
+        "paymentPartiallyRefunded": "Partially refunded"
       },
       "bookingReceipt": {
         "methodWallet": "Wallet",
@@ -23716,7 +23796,13 @@
           "methodCard": "card",
           "methodYoco": "yoco",
           "methodBankTransfer": "bank transfer",
-          "methodOther": "other"
+          "methodOther": "other",
+          "shareStatusPaid": "Share paid",
+          "shareStatusPending": "Share unpaid ({{amount}})",
+          "shareStatusCancelled": "Spot cancelled",
+          "resendInvite": "Re-send invite",
+          "inviteResent": "Invite sent",
+          "inviteResendFailed": "Could not re-send the invite."
         },
         "groupFinancials": {
           "title": "Financials",
@@ -24649,6 +24735,8 @@
         "excludedCollected": "Excluded: cash / Yoco / EFT you collected directly (not held by us)",
         "onHoldClears": " (clears {{days}} days after each booking)",
         "pendingProcessingRequests": "− Pending / processing payout requests",
+        "openDisputeReserve": "− Open dispute reserve",
+        "vatHeldForPayout": "− VAT held for payout",
         "reconFooter": "Note: subscription and ads are billed to your card separately and are never deducted from this balance.",
         "serviceEarnings": "Service earnings ({{range}})",
         "serviceEarningsHint": "From provider_earnings ledger rows (bookings, products, etc.)",
@@ -24905,6 +24993,8 @@
         "stepsAria": "Onboarding steps",
         "previousStepAria": "Go to previous step",
         "submitLaunch": "Submit & launch",
+        "submitLaunchFree": "Create my business",
+        "submitLaunchPaid": "Create my business and continue to payment",
         "submitting": "Submitting…",
         "skipForNow": "Skip for now",
         "team": {
@@ -25084,6 +25174,8 @@
           "notVatBody": "No tax will be collected from customers. This is fine if you are under the threshold.",
           "payoutAccountsHint": ". Platform-held earnings cannot be withdrawn until you add a payout account.",
           "vatNumberHint": "Your 10-digit SARS VAT registration number (must start with 4)",
+          "pricesIncludeTax": "My service prices include VAT",
+          "pricesIncludeTaxDesc": "Most South African salons show VAT-inclusive prices (recommended).",
           "notVatSuitable": "No tax will be collected from customers. This is suitable for small businesses making less than R1 million per year.",
           "payoutAccountTitle": "Bank payout account (required before go-live)",
           "payoutAccountBody": "Add your bank details in the setup checklist after this wizard — under {{path}}. Platform-held earnings cannot be withdrawn until your payout account is verified.",
@@ -26265,7 +26357,9 @@
             "enableForLocationsHint": "Select which locations support group bookings in online booking",
             "excludeServices": "Exclude Services from Online Group Booking",
             "excludeServicesHint": "Select services that should not be available for group booking online. This only excludes them from group appointments, not individual bookings.",
-            "noServicesAvailable": "No services available"
+            "noServicesAvailable": "No services available",
+            "allowSplitPayment": "Allow split payment",
+            "allowSplitPaymentHint": "Each guest pays their own share online. When off, the organizer pays for the whole group."
           },
           "appointment-activity/online-booking": {
             "onlineBooking": "Online Booking",
@@ -29694,7 +29788,9 @@
           "statusDelivered": "delivered",
           "statusCancelled": "cancelled",
           "statusRefunded": "refunded",
-          "paid": "paid"
+          "paid": "paid",
+          "partiallyRefundedRefundRemaining": "This order was partially refunded. Mark it refunded for the remaining amount — cancel is not available.",
+          "refundRemainingHint": "Refund remaining"
         },
         "team/shifts/dialog": {
           "overrideLocation": "Override Location Operating Hours",
@@ -32607,6 +32703,7 @@
           "loadingPlan": "Loading plan…",
           "planUnavailable": "This plan is not available for subscription at the moment. Please contact support or choose another plan.",
           "backToPricing": "Back to pricing",
+          "backToSetup": "Back to setup checklist",
           "activateFreeTitle": "Activate your free plan",
           "completeSubscription": "Complete your subscription",
           "noPaymentNeeded": "No payment needed",
@@ -32640,9 +32737,11 @@
         "videoTooLong": "Video exceeds the maximum length for Explore.",
         "videoWillTrim": "Long videos are trimmed to the Explore maximum when processed.",
         "trimVideoTitle": "Trim video",
-        "trimVideoHint": "Drag to choose which part of your video appears on Explore.",
+        "trimVideoHint": "Drag the handles to choose the start and end of your clip for Explore.",
         "trimClipLength": "{{seconds}}s clip",
-        "trimVideoScrubber": "Choose clip start",
+        "trimVideoScrubber": "Move clip",
+        "trimHandleStartA11y": "Clip start",
+        "trimHandleEndA11y": "Clip end",
         "trimVideoConfirm": "Use clip",
         "trimVideoFinishFirst": "Finish trimming your video before continuing.",
         "trimVideoLoading": "Loading video…",
@@ -33888,7 +33987,12 @@
         "viewComments": "View & comments",
         "comments": "{{count}} comments",
         "likes": "{{count}} likes",
-        "views": "{{count}} views"
+        "views": "{{count}} views",
+        "statusVideoProcessing": "Processing",
+        "statusVideoFailed": "Video failed",
+        "statusHidden": "Hidden by Beautonomi",
+        "statusHiddenNote": "Moderation note: {{note}}",
+        "videoFailedDetail": "Video encoding failed. Edit the post and save to try again."
       },
       "formsPage": {
         "failedToLoad": "Failed to load forms",
@@ -36151,6 +36255,43 @@
       "legalAnd": "and",
       "legalPrivacy": "Privacy Policy",
       "legalAfter": "."
+    },
+    "checkout": {
+      "customOffer": {
+        "title": "Pay custom offer",
+        "subtitle": "Review totals and pay securely.",
+        "subtotal": "Subtotal",
+        "travel": "Travel",
+        "total": "Total",
+        "payNow": "Pay now",
+        "cancel": "Cancel",
+        "loadFailed": "Could not load this offer.",
+        "paymentSuccessful": "Payment successful.",
+        "paymentStartFailed": "Could not start payment.",
+        "waitingTitle": "Payment processing",
+        "waitingBody": "We are confirming your payment. Refresh your custom requests in a moment.",
+        "backToRequests": "Back to custom requests",
+        "changesRequestedTitle": "Offer being revised",
+        "changesRequestedBody": "Your provider is updating this offer after your change request."
+      }
+    },
+    "groupInvite": {
+      "title": "Group booking invite",
+      "body": "You are invited to join a group session.",
+      "accept": "Accept invite",
+      "notFound": "This invite link is invalid or expired.",
+      "acceptFailed": "Could not accept invite.",
+      "payShare": "Pay my share",
+      "payFailed": "Could not start payment.",
+      "paymentProcessing": "Thanks! Your payment is being confirmed. This page will update shortly.",
+      "yourShare": "Your share: {{amount}}",
+      "sharePaid": "Your share is paid. See you there!",
+      "payShareAmount": "Pay my share ({{amount}})",
+      "cancelSpot": "Cancel my spot",
+      "cancelConfirm": "Cancel your spot in this group booking? Your services are removed and any payment you made is refunded to your card.",
+      "cancelled": "Your spot has been cancelled.",
+      "cancelledRefunded": "Your spot has been cancelled. {{amount}} is being refunded to your card.",
+      "cancelFailed": "Could not cancel your spot."
     }
   },
   "errors": {

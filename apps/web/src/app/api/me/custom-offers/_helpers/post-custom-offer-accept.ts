@@ -43,7 +43,7 @@ async function claimCustomOfferForPaymentPending(
       updated_at: new Date().toISOString(),
     })
     .eq("id", offerId)
-    .in("status", ["pending", "changes_requested"])
+    .eq("status", "pending")
     .select("id");
   if (error) throw error;
   return Array.isArray(data) && data.length > 0;
@@ -332,6 +332,22 @@ export async function postCustomOfferAccept(
 
     if (offer.status === "withdrawn") {
       return errorResponse("This offer has been withdrawn.", "OFFER_WITHDRAWN", 400);
+    }
+
+    if (offer.status === "changes_requested") {
+      return errorResponse(
+        "The provider is updating this offer after your change request. You can accept and pay once they send a revised quote.",
+        "OFFER_CHANGES_REQUESTED",
+        409,
+      );
+    }
+
+    if (offer.status !== "pending") {
+      return errorResponse(
+        "This offer is not ready to pay. Refresh and try again.",
+        "OFFER_NOT_PAYABLE",
+        409,
+      );
     }
 
     const fullCheckoutEnabled = await isFeatureEnabledServer(

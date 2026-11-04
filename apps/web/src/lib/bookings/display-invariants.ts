@@ -38,6 +38,13 @@ export type BookingOutstandingInputs = {
   giftCardAmount: number;
   unpaidAdditionalCharges: number;
   paymentStatus?: string | null;
+  /**
+   * Wallet and gift-card `booking_payments` still `pending`. They are already
+   * taken from the customer but are not in `total_paid` until completed.
+   * A deposit already in `total_paid` must not hide them, and they must not
+   * hide that deposit.
+   */
+  pendingWalletGiftAmount?: number;
 };
 
 /**
@@ -121,6 +128,13 @@ export function warnIfReceiptTotalDriftsDevOnly(label: string, receipt: ReceiptI
   }
 }
 
+/** What is left to collect on an additional charge after wallet and gift legs already stored for it. */
+export function additionalChargeAmountStillDue(chargeAmount: number, heldWalletAndGift: number): number {
+  const charge = Math.max(0, Number(chargeAmount) || 0);
+  const held = Math.max(0, Number(heldWalletAndGift) || 0);
+  return Math.round(Math.max(0, charge - held) * 100) / 100;
+}
+
 export function computeBookingOutstandingDisplay(input: BookingOutstandingInputs): number {
   const {
     totalAmount,
@@ -149,7 +163,8 @@ export function computeBookingOutstandingDisplay(input: BookingOutstandingInputs
    */
   const effectivePaid = Math.max(0, Number(totalPaid) - Number(totalRefunded));
   const walletGiftCoverage = Math.max(0, Number(walletAmount) + Number(giftCardAmount));
-  const coverage = Math.max(effectivePaid, walletGiftCoverage);
+  const pendingWalletGift = Math.max(0, Number(input.pendingWalletGiftAmount ?? 0));
+  const coverage = Math.max(effectivePaid + pendingWalletGift, walletGiftCoverage);
   const raw = Number(totalAmount) + Number(unpaidAdditionalCharges) - coverage;
   return Math.max(0, raw);
 }

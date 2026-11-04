@@ -16,6 +16,7 @@ import { fetcher, FetchError, FetchTimeoutError, DEFAULT_FETCH_TIMEOUT_MS } from
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
+import { productEarningsExcludeVatBannerMessage } from "@/lib/finance/product-earnings-vat-cutover";
 import {
   Dialog,
   DialogContent,
@@ -95,6 +96,8 @@ interface EarningsData {
     excluded_provider_collected: number;
     already_paid_out: number;
     pending_payouts: number;
+    open_dispute_reserve?: number;
+    vat_held_for_provider?: number;
     available_balance: number;
   };
 }
@@ -1015,6 +1018,18 @@ export default function ProviderFinance() {
                 <dt>{t("web.provider.finance.pendingProcessingRequests")}</dt>
                 <dd>{fmt(earnings.payout_reconciliation.pending_payouts)}</dd>
               </div>
+              {(earnings.payout_reconciliation.open_dispute_reserve ?? 0) > 0 ? (
+                <div className="flex items-center justify-between text-gray-500">
+                  <dt>{t("web.provider.finance.openDisputeReserve")}</dt>
+                  <dd>{fmt(earnings.payout_reconciliation.open_dispute_reserve ?? 0)}</dd>
+                </div>
+              ) : null}
+              {(earnings.payout_reconciliation.vat_held_for_provider ?? 0) > 0 ? (
+                <div className="flex items-center justify-between text-gray-500">
+                  <dt>{t("web.provider.finance.vatHeldForPayout")}</dt>
+                  <dd>{fmt(earnings.payout_reconciliation.vat_held_for_provider ?? 0)}</dd>
+                </div>
+              ) : null}
               <div className="flex items-center justify-between text-gray-500">
                 <dt>{t("provider.mobile.components.payoutReconciliation.alreadyPaidOut")}</dt>
                 <dd>{fmt(earnings.payout_reconciliation.already_paid_out)}</dd>
@@ -1046,6 +1061,9 @@ export default function ProviderFinance() {
                 {fmt(earnings.product_sales_earnings_this_period ?? earnings.product_sales_earnings_total ?? 0)}
               </p>
               <p className="text-xs text-gray-500 mt-1">{t("web.provider.finance.productSalesHint")}</p>
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-md px-2 py-1.5 mt-2">
+                Product earnings exclude VAT from {productEarningsExcludeVatBannerMessage()}. Earlier figures include it; payout totals are unchanged.
+              </p>
             </div>
           )}
           {(earnings.platform_fees_deducted ?? 0) > 0 && (
@@ -1452,6 +1470,15 @@ export default function ProviderFinance() {
   );
 }
 
+function financePageLedgerDisplayAbs(t: Pick<Transaction, "transaction_type" | "amount" | "net">): number {
+  const net = Number(t.net ?? 0);
+  const amount = Number(t.amount ?? 0);
+  if ((t.transaction_type ?? "") === "tax" && net === 0 && amount !== 0) {
+    return Math.abs(amount);
+  }
+  return Math.abs(net !== 0 ? net : amount);
+}
+
 /** Ledger debit/credit sign for finance page rows (API `type` + optional `transaction_type`). */
 function financePageLedgerSign(t: Pick<Transaction, "transaction_type" | "type" | "amount" | "net">): 1 | -1 {
   const tt = t.transaction_type ?? "";
@@ -1471,8 +1498,7 @@ function financePageLedgerSign(t: Pick<Transaction, "transaction_type" | "type" 
 function providerFacingLedgerDisplay(t: Transaction): { signedPrimary: number; primaryClass: string } {
   const sign = financePageLedgerSign(t);
   const tt = t.transaction_type ?? "";
-  const basis = Number(t.net ?? t.amount ?? 0);
-  const signedPrimary = sign * Math.abs(basis);
+  const signedPrimary = sign * financePageLedgerDisplayAbs(t);
   const primaryClass =
     tt === "provider_earnings" && signedPrimary < 0
       ? "text-red-600"
@@ -1639,7 +1665,7 @@ function TransactionRow({ transaction, onClick, fmt }: { transaction: Transactio
     tt === "provider_ads_payment";
 
   const displaySign = financePageLedgerSign(transaction);
-  const displayAbs = Math.abs(Number(transaction.net ?? transaction.amount ?? 0));
+  const displayAbs = financePageLedgerDisplayAbs(transaction);
 
   const getTypeColor = () => {
     if (isLedgerFeeLike) return "text-amber-600";

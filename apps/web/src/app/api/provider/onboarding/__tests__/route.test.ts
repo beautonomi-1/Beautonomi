@@ -103,13 +103,23 @@ function makeStorageMock() {
 function makeSubscriptionCompletionMocks(options?: {
   hasActiveSubscription?: boolean;
   isPaidSubscription?: boolean;
+  /** Linked subscription_plans.is_free for pricing-plan resolution (defaults true). */
+  linkedPlanIsFree?: boolean;
   onSubscriptionInsert?: (payload: Record<string, unknown>) => void;
   linkedPlanId?: string;
 }) {
   const hasSub = options?.hasActiveSubscription ?? false;
   const isPaid = options?.isPaidSubscription ?? false;
+  const linkedPlanIsFree = options?.linkedPlanIsFree ?? true;
   const linkedPlanId = options?.linkedPlanId ?? "00000000-0000-4000-8000-000000000001";
+  const freeBaselinePlanId = "00000000-0000-4000-8000-000000000099";
   const paidPlanId = "paid-sub-plan-id";
+
+  const planRowForId = (planId: string) => ({
+    id: planId,
+    is_free: planId === freeBaselinePlanId ? true : linkedPlanIsFree,
+    is_active: true,
+  });
 
   const activeSubRow = hasSub
     ? {
@@ -130,7 +140,7 @@ function makeSubscriptionCompletionMocks(options?: {
               ? {
                   id: activeSubRow?.id ?? "sub-inserted",
                   status: "active",
-                  plan_id: activeSubRow?.plan_id ?? linkedPlanId,
+                  plan_id: activeSubRow?.plan_id ?? freeBaselinePlanId,
                 }
               : null,
             error: null,
@@ -138,7 +148,10 @@ function makeSubscriptionCompletionMocks(options?: {
         })),
         maybeSingle: vi.fn(async () => ({
           data: activeSubRow || insertedSubscription
-            ? { id: activeSubRow?.id ?? "sub-inserted", plan_id: activeSubRow?.plan_id ?? linkedPlanId }
+            ? {
+                id: activeSubRow?.id ?? "sub-inserted",
+                plan_id: activeSubRow?.plan_id ?? freeBaselinePlanId,
+              }
             : null,
           error: null,
         })),
@@ -149,48 +162,37 @@ function makeSubscriptionCompletionMocks(options?: {
       options?.onSubscriptionInsert?.(payload);
       return { error: null };
     }),
+    update: vi.fn(() => ({
+      eq: vi.fn(async () => ({ error: null })),
+    })),
   };
+
+  const subscriptionPlansEq = vi.fn((_col: string, planId: string) => ({
+    eq: vi.fn(() => ({
+      order: vi.fn(() => ({
+        limit: vi.fn(() => ({
+          maybeSingle: vi.fn(async () => ({ data: planRowForId(linkedPlanId), error: null })),
+        })),
+      })),
+      maybeSingle: vi.fn(async () => ({ data: planRowForId(planId), error: null })),
+    })),
+    order: vi.fn(() => ({
+      limit: vi.fn(() => ({
+        maybeSingle: vi.fn(async () => ({ data: planRowForId(linkedPlanId), error: null })),
+      })),
+    })),
+    limit: vi.fn(() => ({
+      maybeSingle: vi.fn(async () => ({ data: planRowForId(linkedPlanId), error: null })),
+    })),
+    maybeSingle: vi.fn(async () => ({
+      data: planRowForId(isPaid ? paidPlanId : planId),
+      error: null,
+    })),
+  }));
 
   const subscriptionPlans = {
     select: vi.fn(() => ({
-      eq: vi.fn(() => ({
-        eq: vi.fn(() => ({
-          order: vi.fn(() => ({
-            limit: vi.fn(() => ({
-              maybeSingle: vi.fn(async () => ({
-                data: { id: linkedPlanId, is_free: true, is_active: true },
-                error: null,
-              })),
-            })),
-          })),
-          maybeSingle: vi.fn(async () => ({
-            data: { id: linkedPlanId, is_free: true, is_active: true },
-            error: null,
-          })),
-        })),
-        order: vi.fn(() => ({
-          limit: vi.fn(() => ({
-            maybeSingle: vi.fn(async () => ({
-              data: { id: linkedPlanId, is_free: true, is_active: true },
-              error: null,
-            })),
-          })),
-        })),
-        limit: vi.fn(() => ({
-          maybeSingle: vi.fn(async () => ({
-            data: { id: linkedPlanId, is_free: true, is_active: true },
-            error: null,
-          })),
-        })),
-        maybeSingle: vi.fn(async () => ({
-          data: {
-            id: isPaid ? paidPlanId : linkedPlanId,
-            is_free: !isPaid,
-            is_active: true,
-          },
-          error: null,
-        })),
-      })),
+      eq: subscriptionPlansEq,
     })),
   };
 
@@ -867,6 +869,11 @@ describe("POST /api/provider/onboarding", () => {
         source: "tenant",
       });
 
+    const paidPlanCheckoutMocks = makeSubscriptionCompletionMocks({
+      linkedPlanId: "linked-sub-plan-uuid",
+      linkedPlanIsFree: false,
+    });
+
     const mockSupabaseAdmin = {
       storage: makeStorageMock(),
       from: vi.fn((table: string) => {
@@ -956,10 +963,10 @@ describe("POST /api/provider/onboarding", () => {
           return { insert: vi.fn(async () => ({ error: null })) };
         }
         if (table === "provider_subscriptions") {
-          return defaultSubscriptionMocks.providerSubscriptions;
+          return paidPlanCheckoutMocks.providerSubscriptions;
         }
         if (table === "subscription_plans") {
-          return defaultSubscriptionMocks.subscriptionPlans;
+          return paidPlanCheckoutMocks.subscriptionPlans;
         }
         if (table === "provider_staff") {
           return {
@@ -1013,7 +1020,7 @@ describe("POST /api/provider/onboarding", () => {
     expect(json?.data?.selected_plan_is_free).toBe(false);
     expect(json?.data?.requires_checkout).toBe(true);
     expect(json?.data?.checkout_path).toBe(
-      `/provider/subscription-checkout?planId=${paidPlanId}`,
+      `/provider/subscription-checkout?planId=${paidPlanId}&billing_period=monthly`,
     );
     // Metadata for clients that infer checkout from subscription_endpoint presence.
     expect(json?.data?.subscription_endpoint).toBe("/api/provider/subscription/initialize-payment");
@@ -1491,7 +1498,10 @@ describe("POST /api/provider/onboarding", () => {
       source: "tenant",
     });
 
-    const paidPendingSubMocks = makeSubscriptionCompletionMocks();
+    const paidPendingSubMocks = makeSubscriptionCompletionMocks({
+      linkedPlanId: "linked-sub-plan-uuid",
+      linkedPlanIsFree: false,
+    });
 
     const mockSupabaseAdmin = {
       storage: makeStorageMock(),

@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { computeBookingOutstandingDisplay } from "../display-invariants";
+import {
+  additionalChargeAmountStillDue,
+  computeBookingOutstandingDisplay,
+} from "../display-invariants";
 
 /**
  * §Finance-truth 2026-05: post migration 582 the booking trigger sums
@@ -137,6 +140,43 @@ describe("computeBookingOutstandingDisplay — no wallet/gift double-subtract", 
         paymentStatus: "partially_paid",
       }),
     ).toBe(200);
+  });
+
+  it("does not collect an additional charge's wallet hold a second time", () => {
+    expect(additionalChargeAmountStillDue(100, 40)).toBe(60);
+    expect(additionalChargeAmountStillDue(100, 100)).toBe(0);
+    expect(additionalChargeAmountStillDue(100, 0)).toBe(100);
+  });
+
+  it("keeps a deposit and a pending wallet hold together", () => {
+    // R165 booking, R50 deposit already in total_paid, R30 wallet reserved
+    // but still pending so it is not in total_paid. Balance due is R85.
+    expect(
+      computeBookingOutstandingDisplay({
+        totalAmount: 165,
+        totalPaid: 50,
+        totalRefunded: 0,
+        walletAmount: 30,
+        giftCardAmount: 0,
+        unpaidAdditionalCharges: 0,
+        paymentStatus: "partially_paid",
+        pendingWalletGiftAmount: 30,
+      }),
+    ).toBe(85);
+    // R100 wallet reserved against the same R50 deposit. Balance due is R15,
+    // not the R65 left after ignoring the deposit.
+    expect(
+      computeBookingOutstandingDisplay({
+        totalAmount: 165,
+        totalPaid: 50,
+        totalRefunded: 0,
+        walletAmount: 100,
+        giftCardAmount: 0,
+        unpaidAdditionalCharges: 0,
+        paymentStatus: "partially_paid",
+        pendingWalletGiftAmount: 100,
+      }),
+    ).toBe(15);
   });
 
   it("over-coverage clamps to 0 (never negative)", () => {

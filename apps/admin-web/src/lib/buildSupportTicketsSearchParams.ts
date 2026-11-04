@@ -63,6 +63,11 @@ export function supportTicketsPageSize(): number {
   return PAGE_SIZE;
 }
 
+/** API query for queue identity (Next in queue after refresh). Omits UI-only params like `selected`, `view`, `include_counts`. */
+export function supportTicketQueueQuery(f: SupportTicketsFilterState): string {
+  return buildSupportTicketsSearchParams(f);
+}
+
 /** Active queue statuses aligned with loadSupportTicketCounts open bucket. */
 export const SUPPORT_TICKET_STATUS_GROUP_ACTIVE = "active";
 

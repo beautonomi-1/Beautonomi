@@ -56,6 +56,17 @@ describe("provider booking finance helpers", () => {
         giftCardAmount: 0,
       }),
     ).toBe(200);
+    // R165 booking, R50 deposit in total_paid, R30 wallet still pending.
+    expect(
+      computeWalletGiftCoverageOutstanding({
+        totalAmount: 165,
+        totalPaid: 50,
+        totalRefunded: 0,
+        walletAmount: 30,
+        giftCardAmount: 0,
+        pendingWalletGiftAmount: 30,
+      }),
+    ).toBe(85);
   });
 
   it("includes explicit provider add-ons in server-side line subtotal", () => {

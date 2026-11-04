@@ -258,6 +258,7 @@ export function AppointmentEditSheet({
         giftCardAmount: Number(editRaw?.gift_card_amount ?? 0),
         unpaidAdditionalCharges: Number(editRaw?.unpaid_additional_charges ?? 0),
         paymentStatus: selectedAppointment.payment_status,
+        pendingWalletGiftAmount: Number(editRaw?.pending_wallet_gift_amount ?? 0),
       })
     : 0;
   const editOverpaid = editOutstanding < 0 ? Math.abs(editOutstanding) : 0;

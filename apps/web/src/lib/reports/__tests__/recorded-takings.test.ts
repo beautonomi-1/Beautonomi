@@ -338,6 +338,40 @@ describe("getRecordedTakingsForRange", () => {
     expect(r.byPaymentMethod.cash).toBe(130);
   });
 
+  it("splits a walk-in card sale into the till remainder and the wallet share", async () => {
+    const r = await getRecordedTakingsForRange(
+      mockSupabase({
+        providers: [providerRow()],
+        booking_payments: [],
+        bookings: [],
+        product_orders: [
+          {
+            id: "walk-mixed",
+            provider_id: providerId,
+            order_source: "walk_in",
+            payment_status: "paid",
+            paid_at: inRange,
+            total_amount: 100,
+            wallet_amount: 40,
+            gift_card_amount: 0,
+            payment_method: "yoco",
+            tenant_id: tenantId,
+            collection_location_id: null,
+            fulfillment_type: null,
+          },
+        ],
+        sales: [],
+        finance_transactions: [],
+      }),
+      { providerId, rangeStartIso: start, rangeEndIso: end },
+    );
+
+    expect(r.salesTotal).toBe(100);
+    expect(r.byPaymentMethod.yoco).toBe(60);
+    expect(r.byPaymentMethod.wallet).toBe(40);
+    expect(r.totalRecorded).toBe(100);
+  });
+
   it("attributes tips and cancellation fees from finance_transactions in range", async () => {
     const r = await getRecordedTakingsForRange(
       mockSupabase({
@@ -393,6 +427,14 @@ describe("getRecordedTakingsForRange", () => {
         ],
         sales: [
           { provider_id: providerId, payment_status: "completed", sale_date: inRange, total_amount: 20, payment_method: "yoco" },
+          {
+            provider_id: providerId,
+            payment_status: "completed",
+            sale_date: inRange,
+            total_amount: 100,
+            payment_method: "yoco",
+            notes: "booking_collection:b1",
+          },
         ],
         finance_transactions: [
           { provider_id: providerId, transaction_type: "tip", amount: 10, net: 10, created_at: inRange },

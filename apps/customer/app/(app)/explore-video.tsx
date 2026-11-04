@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -38,6 +38,16 @@ import {
   firstSlideIsVideo,
   resolveExploreVideoSrc,
 } from "@/lib/explore-media";
+import { APP_URL } from "@/config/public-env";
+import {
+  copyExplorePostLink,
+  presentExplorePostShareActions,
+  shareExplorePostLink,
+  shareExplorePostMedia,
+  type ExploreShareAction,
+} from "@/lib/share-explore-post";
+import { getExploreVideoPlaybackTrimWindow } from "@/lib/explore-video-playback-trim";
+import { useExploreTrimLoop } from "@/hooks/useExploreTrimLoop";
 import { trackExploreView, trackExploreWatchProgress } from "@/lib/explore-analytics";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
@@ -57,6 +67,10 @@ function ExploreSoundBed({
   muted: boolean;
 }) {
   const playerRef = useRef<ReturnType<typeof createAudioPlayer> | null>(null);
+  const activeRef = useRef(active);
+  const mutedRef = useRef(muted);
+  activeRef.current = active;
+  mutedRef.current = muted;
 
   useEffect(() => {
     let cancelled = false;
@@ -66,7 +80,8 @@ function ExploreSoundBed({
       const player = createAudioPlayer({ uri: soundUrl });
       player.loop = true;
       playerRef.current = player;
-      if (active && !muted) player.play();
+      if (activeRef.current && !mutedRef.current) player.play();
+      else player.pause();
     })();
     return () => {
       cancelled = true;
@@ -96,20 +111,31 @@ function ExploreVideoPlayer({
 }) {
   const useSoundTrack = Boolean(post.sound_url);
   const effectiveMuted = muted || useSoundTrack;
+  const slide0 = post.media_meta?.[0];
+  const trimWindow = getExploreVideoPlaybackTrimWindow({
+    slide: slide0,
+    mediaUrl: post.media_urls?.[0],
+    slideIndex: 0,
+    postPlaybackPath: post.playback_path,
+  });
+  const trimStartMs = trimWindow?.trim_start_ms ?? null;
+  const trimEndMs = trimWindow?.trim_end_ms ?? null;
   const uri =
     resolveExploreVideoSrc({
       mediaUrls: post.media_urls ?? [],
-      playbackPath: post.playback_path,
-      mediaMeta: post.media_meta,
+      playbackPath: trimWindow ? null : post.playback_path,
+      mediaMeta: trimWindow ? null : post.media_meta,
     }) ?? post.media_urls?.[0] ?? "";
   const [progress, setProgress] = useState(0);
   const [playbackTimeMs, setPlaybackTimeMs] = useState(0);
   const player = useVideoPlayer(uri, (p) => {
-    p.loop = true;
+    p.loop = trimStartMs == null;
     p.muted = effectiveMuted;
     if (!active) p.pause();
     else p.play();
   });
+
+  useExploreTrimLoop(player, trimStartMs, trimEndMs, active);
 
   useEffect(() => {
     player.muted = effectiveMuted;
@@ -126,14 +152,20 @@ function ExploreVideoPlayer({
     if (!active) return;
     const timer = setInterval(() => {
       const t = player.currentTime || 0;
+      if (trimStartMs != null && trimEndMs != null) {
+        const lenMs = trimEndMs - trimStartMs;
+        const relMs = Math.max(0, Math.floor(t * 1000) - trimStartMs);
+        setPlaybackTimeMs(relMs);
+        if (lenMs > 0) setProgress(Math.min(1, relMs / lenMs));
+        return;
+      }
       setPlaybackTimeMs(Math.floor(t * 1000));
       const duration = player.duration || 0;
       if (duration > 0) setProgress(Math.min(1, t / duration));
     }, 200);
     return () => clearInterval(timer);
-  }, [active, player]);
+  }, [active, player, trimStartMs, trimEndMs]);
 
-  const slide0 = post.media_meta?.[0];
   const drawOverlays = shouldDrawVideoTextOverlays(slide0);
   const visibleOverlays = drawOverlays
     ? filterOverlaysForPlaybackTime(slide0?.text_overlays, playbackTimeMs)
@@ -557,6 +589,65 @@ export default function ExploreVideoScreen() {
     }
   }, [activeIndex, commentInput, commentSending, patchPost, posts, replyToCommentId, t, user]);
 
+  const shareFailureLabels = useMemo(
+    () => ({
+      title: t("customer.explorePost.shareMediaFailedTitle"),
+      body: t("customer.explorePost.shareMediaFailedBody"),
+      cancel: t("common.cancel"),
+      shareLink: t("customer.explorePost.shareLink"),
+    }),
+    [t],
+  );
+
+  const buildShareInput = useCallback((post: ExplorePost) => {
+    return {
+      postId: post.id,
+      caption: post.caption,
+      providerName: post.provider?.business_name || "Beautonomi",
+      providerSlug: post.provider?.slug,
+      mediaUrls: post.media_urls,
+      displayUrl: post.display_url,
+      playbackPath: post.playback_path,
+      mediaMeta: post.media_meta,
+      webBaseUrl: APP_URL,
+      mediaIndex: 0,
+    };
+  }, []);
+
+  const handleShareAction = useCallback(
+    async (post: ExplorePost, action: ExploreShareAction) => {
+      const input = buildShareInput(post);
+      haptic.light();
+      if (action === "link") {
+        await shareExplorePostLink(input);
+      } else if (action === "media") {
+        await shareExplorePostMedia(input, shareFailureLabels);
+      } else if (action === "copy") {
+        await copyExplorePostLink(input);
+        Alert.alert(t("customer.explorePost.linkCopied"));
+      }
+    },
+    [buildShareInput, shareFailureLabels, t],
+  );
+
+  const openShareSheet = useCallback(
+    (post: ExplorePost) => {
+      void presentExplorePostShareActions(
+        buildShareInput(post),
+        {
+          sheetTitle: t("customer.explorePost.shareSheetTitle"),
+          shareLink: t("customer.explorePost.shareLink"),
+          shareMedia: t("customer.explorePost.sharePhoto"),
+          shareMediaVideo: t("customer.explorePost.shareVideo"),
+          copyLink: t("customer.explorePost.copyLink"),
+          cancel: t("common.cancel"),
+        },
+        (action) => handleShareAction(post, action),
+      );
+    },
+    [buildShareInput, handleShareAction, t],
+  );
+
   const renderItem = useCallback(
     ({ item, index }: ListRenderItemInfo<ExplorePost>) => (
       <VideoFeedItem
@@ -568,11 +659,11 @@ export default function ExploreVideoScreen() {
         onLike={toggleLike}
         onSave={toggleSave}
         onOpenComments={openComments}
-        onShare={() => Alert.alert(t("customer.explorePost.share"))}
+        onShare={() => openShareSheet(item)}
         onMorePress={showMoreOptions}
       />
     ),
-    [activeIndex, muted, openComments, screenHeight, showMoreOptions, t, toggleLike, toggleSave],
+    [activeIndex, muted, openComments, openShareSheet, screenHeight, showMoreOptions, toggleLike, toggleSave],
   );
 
   if (loading && !posts.length) {

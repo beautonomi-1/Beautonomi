@@ -487,6 +487,23 @@ export async function POST(
     // and return 5xx without ever flipping it to `completed`, so the ledger
     // trigger never fires. For `cash` (in-person) there is no wallet movement —
     // the provider hands the money back; we only record it for audit + ledger.
+    let giftCardRestored: boolean | "unknown" | undefined;
+    if (
+      refundMethod === "store_credit" &&
+      giftPaid > 0 &&
+      totalRefunded + amount + 0.01 >= totalCollectedAllSources
+    ) {
+      try {
+        const { data, error } = await (supabaseAdmin.rpc as any)("void_gift_card_redemption", {
+          p_booking_id: bookingId,
+        });
+        if (error) giftCardRestored = "unknown";
+        else giftCardRestored = data === true;
+      } catch (voidErr) {
+        console.warn("Gift card void before store-credit refund failed:", voidErr);
+        giftCardRestored = "unknown";
+      }
+    }
     const walletCreditAmount =
       refundMethod === "store_credit"
         ? walletStoreCreditAmountWhenVoidingGiftOnFullRefund({
@@ -494,6 +511,7 @@ export async function POST(
             giftCardCollected: giftPaid,
             totalRefundedBefore: totalRefunded,
             totalCollectedAllSources,
+            giftCardRestored,
           })
         : amount;
 

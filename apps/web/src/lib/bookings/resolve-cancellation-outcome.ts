@@ -288,14 +288,25 @@ export function resolveCancellationOutcome(
   };
 }
 
-export function outcomeToPreviewPayload(outcome: CancellationOutcome) {
+export type CancellationOutcomeLeadFields = {
+  guestSharesHeld?: number;
+  leadFeeRetained?: number;
+  leadWalletRefund?: number;
+};
+
+export function outcomeToPreviewPayload(
+  outcome: CancellationOutcome & CancellationOutcomeLeadFields,
+) {
+  const leadFee = outcome.leadFeeRetained ?? outcome.feeRetained;
+  const leadWallet = outcome.leadWalletRefund ?? outcome.walletRefund;
   return {
     allowed: outcome.allowed,
     reason: outcome.blockReason,
     block_code: outcome.blockCode,
     is_late_cancellation: outcome.isLate,
-    expected_cancellation_fee: outcome.feeRetained,
-    expected_wallet_refund: outcome.walletRefund,
+    expected_cancellation_fee: leadFee,
+    expected_wallet_refund: leadWallet,
+    guest_shares_refunded: outcome.guestSharesHeld ?? 0,
     in_person_refund_due: outcome.inPersonRefundDue,
     penalty_waived_reason: outcome.penaltyWaivedReason,
     platform_collected: outcome.platformCollected,
