@@ -13778,7 +13778,9 @@
       "replying": "U fhindula muhumbulo",
       "replyPlaceholder": "Nwale phindulo…",
       "shareMediaFailedTitle": "Couldn't kovhela media",
-      "shareMediaFailedBody": "Ro vha ri sa koni u lugisela faila iyi u itela u i kovhelana. Lingedzani u kovhelana link nṱhani hazwo."
+      "shareMediaFailedBody": "Ro vha ri sa koni u lugisela faila iyi u itela u i kovhelana. Lingedzani u kovhelana link nṱhani hazwo.",
+      "loadingComments": "I khou ḽoḓa...",
+      "loadMoreComments": "Ḽoḓa mbono nnzhi"
     },
     "searchScreen": {
       "title": "Ṱoḓa",
@@ -15282,7 +15284,8 @@
           "returnLabel": "Terugsend {{status}}",
           "tracking": "U teledza: {{number}}",
           "collectAt": "Dzhia kha {{name}}, {{city}}",
-          "deliverTo": "Rumela kha {{city}}"
+          "deliverTo": "Rumela kha {{city}}",
+          "paymentDueBadge": "Mbadelo i tshi tea"
         },
         "productReviews": {
           "title": "Mbuno",
@@ -21692,7 +21695,10 @@
         "addressParking": "U paka:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Oda iyi yo vhuiswa nga tshipiḓa. Kha vha kwame vhaṋetshedzi u itela u vhuisa tshelede yo salaho.",
-        "paymentPartiallyRefunded": "Partially yo vhuedzedzwa"
+        "paymentPartiallyRefunded": "Partially yo vhuedzedzwa",
+        "messageProviderFailed": "A yo kona u vula nyambedzano na muneḓi uyu.",
+        "openingMessage": "I khou vula nyambedzano…",
+        "messageProvider": "Rumela mulaedza kha muneḓi"
       },
       "bookingReceipt": {
         "methodWallet": "Sipaji",
@@ -22297,7 +22303,9 @@
         "itemCount_one": "{{count}} Tshithu · {{date}}",
         "itemCount_other": "{{count}} Zwithu · {{date}}",
         "returnStatus": "Terugsend {{status}}",
-        "tracking": "U teledza: {{number}}"
+        "tracking": "U teledza: {{number}}",
+        "finishPaymentOnDetail": "Vula odara iyi u fhedza u badela kha inthanete.",
+        "paymentDueBadge": "Mbadelo i tshi tea"
       },
       "waitlist": {
         "loadFailed": "Zwo kundelwa u ḽoḓa mutevhe wa u linda",

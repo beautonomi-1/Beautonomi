@@ -116,7 +116,7 @@ export function TicketComposer({
 
       <textarea
         ref={textareaRef}
-        className={`mb-2 w-full ${textareaMin} rounded-xl border px-3 py-2 text-sm focus:outline-none ${
+        className={`mb-2 w-full ${textareaMin} rounded-xl border px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none ${
           replyInternal
             ? "border-amber-300 bg-amber-50/70 focus:border-amber-500"
             : "border-gray-300 bg-white focus:border-gray-500"

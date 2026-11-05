@@ -13778,7 +13778,9 @@
       "replying": "Membalas komentar",
       "replyPlaceholder": "Tulis balasan…",
       "shareMediaFailedTitle": "Couldn't compartir media",
-      "shareMediaFailedBody": "Kami tidak dapat menyiapkan file ini untuk dibagikan. Coba bagikan tautannya."
+      "shareMediaFailedBody": "Kami tidak dapat menyiapkan file ini untuk dibagikan. Coba bagikan tautannya.",
+      "loadingComments": "Memuat…",
+      "loadMoreComments": "Muat komentar lainnya"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -15282,7 +15284,8 @@
           "returnLabel": "Retour {{status}}",
           "tracking": "Suivi : {{number}}",
           "collectAt": "Retrait chez {{name}}, {{city}}",
-          "deliverTo": "Livraison à {{city}}"
+          "deliverTo": "Livraison à {{city}}",
+          "paymentDueBadge": "Pembayaran jatuh tempo"
         },
         "productReviews": {
           "title": "Avis",
@@ -21692,7 +21695,10 @@
         "addressParking": "Aparcamiento:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Pesanan ini telah dikembalikan sebagian dananya. Hubungi penyedia untuk mengembalikan sisa saldo.",
-        "paymentPartiallyRefunded": "Partially reembolsado"
+        "paymentPartiallyRefunded": "Partially reembolsado",
+        "messageProviderFailed": "Tidak dapat membuka obrolan dengan penyedia ini.",
+        "openingMessage": "Membuka obrolan…",
+        "messageProvider": "Kirim pesan ke penyedia"
       },
       "bookingReceipt": {
         "methodWallet": "Portefeuille",
@@ -22297,7 +22303,9 @@
         "itemCount_one": "{{count}} item · {{date}}",
         "itemCount_other": "{{count}} Artículos · {{date}}",
         "returnStatus": "Retour {{status}}",
-        "tracking": "Suivi : {{number}}"
+        "tracking": "Suivi : {{number}}",
+        "finishPaymentOnDetail": "Buka pesanan ini untuk menyelesaikan pembayaran daring.",
+        "paymentDueBadge": "Pembayaran jatuh tempo"
       },
       "waitlist": {
         "loadFailed": "Impossible de load waitlist",

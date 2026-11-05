@@ -13778,7 +13778,9 @@
       "replying": "Risposta a un commento",
       "replyPlaceholder": "Scrivi una risposta…",
       "shareMediaFailedTitle": "Couldn't compartir media",
-      "shareMediaFailedBody": "Impossibile preparare questo file per la condivisione. Prova invece a condividere il collegamento."
+      "shareMediaFailedBody": "Impossibile preparare questo file per la condivisione. Prova invece a condividere il collegamento.",
+      "loadingComments": "Caricamento…",
+      "loadMoreComments": "Carica altri commenti"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -15282,7 +15284,8 @@
           "returnLabel": "Retour {{status}}",
           "tracking": "Suivi : {{number}}",
           "collectAt": "Retrait chez {{name}}, {{city}}",
-          "deliverTo": "Livraison à {{city}}"
+          "deliverTo": "Livraison à {{city}}",
+          "paymentDueBadge": "Pagamento dovuto"
         },
         "productReviews": {
           "title": "Avis",
@@ -21692,7 +21695,10 @@
         "addressParking": "Aparcamiento:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Questo ordine è stato parzialmente rimborsato. Contatta il fornitore per rimborsare il saldo rimanente.",
-        "paymentPartiallyRefunded": "Partially reembolsado"
+        "paymentPartiallyRefunded": "Partially reembolsado",
+        "messageProviderFailed": "Impossibile aprire una chat con questo fornitore.",
+        "openingMessage": "Apertura della chat…",
+        "messageProvider": "Invia un messaggio al fornitore"
       },
       "bookingReceipt": {
         "methodWallet": "Portefeuille",
@@ -22297,7 +22303,9 @@
         "itemCount_one": "{{count}} item · {{date}}",
         "itemCount_other": "{{count}} Artículos · {{date}}",
         "returnStatus": "Retour {{status}}",
-        "tracking": "Suivi : {{number}}"
+        "tracking": "Suivi : {{number}}",
+        "finishPaymentOnDetail": "Apri questo ordine per completare il pagamento online.",
+        "paymentDueBadge": "Pagamento dovuto"
       },
       "waitlist": {
         "loadFailed": "Impossible de load waitlist",

@@ -13778,7 +13778,9 @@
       "replying": "Réponse à un commentaire",
       "replyPlaceholder": "Écrire une réponse…",
       "shareMediaFailedTitle": "Impossible de partager des médias",
-      "shareMediaFailedBody": "Nous n'avons pas pu préparer ce fichier pour le partage. Essayez plutôt de partager le lien."
+      "shareMediaFailedBody": "Nous n'avons pas pu préparer ce fichier pour le partage. Essayez plutôt de partager le lien.",
+      "loadingComments": "Chargement…",
+      "loadMoreComments": "Charger plus de commentaires"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -15282,7 +15284,8 @@
           "returnLabel": "Retour {{status}}",
           "tracking": "Suivi : {{number}}",
           "collectAt": "Retrait chez {{name}}, {{city}}",
-          "deliverTo": "Livraison à {{city}}"
+          "deliverTo": "Livraison à {{city}}",
+          "paymentDueBadge": "Paiement dû"
         },
         "productReviews": {
           "title": "Avis",
@@ -21692,7 +21695,10 @@
         "addressParking": "Aparcamiento:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Cette commande a été partiellement remboursée. Contactez le fournisseur pour rembourser le solde restant.",
-        "paymentPartiallyRefunded": "Partiellement remboursé"
+        "paymentPartiallyRefunded": "Partiellement remboursé",
+        "messageProviderFailed": "Impossible d’ouvrir une discussion avec ce prestataire.",
+        "openingMessage": "Ouverture de la discussion…",
+        "messageProvider": "Contacter le prestataire"
       },
       "bookingReceipt": {
         "methodWallet": "Portefeuille",
@@ -22297,7 +22303,9 @@
         "itemCount_one": "{{count}} item · {{date}}",
         "itemCount_other": "{{count}} Artículos · {{date}}",
         "returnStatus": "Retour {{status}}",
-        "tracking": "Suivi : {{number}}"
+        "tracking": "Suivi : {{number}}",
+        "finishPaymentOnDetail": "Ouvrez cette commande pour terminer le paiement en ligne.",
+        "paymentDueBadge": "Paiement dû"
       },
       "waitlist": {
         "loadFailed": "Impossible de load waitlist",

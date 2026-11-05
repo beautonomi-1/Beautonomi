@@ -13778,7 +13778,9 @@
       "replying": "टिप्पणी का जवाब",
       "replyPlaceholder": "जवाब लिखें…",
       "shareMediaFailedTitle": "मीडिया साझा नहीं किया जा सका",
-      "shareMediaFailedBody": "हम इस फ़ाइल को साझा करने के लिए तैयार नहीं कर सके. इसके बजाय लिंक साझा करने का प्रयास करें."
+      "shareMediaFailedBody": "हम इस फ़ाइल को साझा करने के लिए तैयार नहीं कर सके. इसके बजाय लिंक साझा करने का प्रयास करें.",
+      "loadingComments": "लोड हो रहा है…",
+      "loadMoreComments": "और टिप्पणियाँ लोड करें"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -15282,7 +15284,8 @@
           "returnLabel": "Retour {{status}}",
           "tracking": "Suivi : {{number}}",
           "collectAt": "Retrait chez {{name}}, {{city}}",
-          "deliverTo": "Livraison à {{city}}"
+          "deliverTo": "Livraison à {{city}}",
+          "paymentDueBadge": "भुगतान बाकी है"
         },
         "productReviews": {
           "title": "Avis",
@@ -21692,7 +21695,10 @@
         "addressParking": "Aparcamiento:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "यह ऑर्डर आंशिक रूप से वापस कर दिया गया था. शेष राशि वापस करने के लिए प्रदाता से संपर्क करें।",
-        "paymentPartiallyRefunded": "आशिंक रूप से की गई धनवापसी"
+        "paymentPartiallyRefunded": "आशिंक रूप से की गई धनवापसी",
+        "messageProviderFailed": "इस प्रदाता के साथ चैट नहीं खुल सकी।",
+        "openingMessage": "चैट खुल रही है…",
+        "messageProvider": "प्रदाता को संदेश भेजें"
       },
       "bookingReceipt": {
         "methodWallet": "Portefeuille",
@@ -22297,7 +22303,9 @@
         "itemCount_one": "{{count}} item · {{date}}",
         "itemCount_other": "{{count}} Artículos · {{date}}",
         "returnStatus": "Retour {{status}}",
-        "tracking": "Suivi : {{number}}"
+        "tracking": "Suivi : {{number}}",
+        "finishPaymentOnDetail": "ऑनलाइन भुगतान पूरा करने के लिए यह ऑर्डर खोलें।",
+        "paymentDueBadge": "भुगतान बाकी है"
       },
       "waitlist": {
         "loadFailed": "Impossible de load waitlist",

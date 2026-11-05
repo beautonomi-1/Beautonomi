@@ -13778,7 +13778,9 @@
       "replying": "O araba maikutlo",
       "replyPlaceholder": "Ngola karabo…",
       "shareMediaFailedTitle": "Couldn't arolelana media",
-      "shareMediaFailedBody": "Ha rea ​​khona ho lokisa faele ena hore e ka arolelanoa. Leka ho arolelana sehokelo."
+      "shareMediaFailedBody": "Ha rea ​​khona ho lokisa faele ena hore e ka arolelanoa. Leka ho arolelana sehokelo.",
+      "loadingComments": "E a jaefa...",
+      "loadMoreComments": "Jaefa maikutlo a mang"
     },
     "searchScreen": {
       "title": "Batla",
@@ -15282,7 +15284,8 @@
           "returnLabel": "Terugsend {{status}}",
           "tracking": "Ho latela: {{number}}",
           "collectAt": "Nka ho {{name}}, {{city}}",
-          "deliverTo": "Isa ho {{city}}"
+          "deliverTo": "Isa ho {{city}}",
+          "paymentDueBadge": "Tefo e kolotwang"
         },
         "productReviews": {
           "title": "Maikutlo",
@@ -21692,7 +21695,10 @@
         "addressParking": "Ho paka:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Odara ena e khutliselitsoe hanyane. Ikopanye le mofani oa thepa hore u busetse chelete e setseng.",
-        "paymentPartiallyRefunded": "Partially e puseleditswe"
+        "paymentPartiallyRefunded": "Partially e puseleditswe",
+        "messageProviderFailed": "Ha ho a kgoneha ho bula puisano le mofani enwa.",
+        "openingMessage": "E bula puisano…",
+        "messageProvider": "Romela molaetsa ho mofani"
       },
       "bookingReceipt": {
         "methodWallet": "Sepache",
@@ -22297,7 +22303,9 @@
         "itemCount_one": "{{count}} Ntho · {{date}}",
         "itemCount_other": "{{count}} Lintho · {{date}}",
         "returnStatus": "Terugsend {{status}}",
-        "tracking": "Ho latela: {{number}}"
+        "tracking": "Ho latela: {{number}}",
+        "finishPaymentOnDetail": "Bula odara ena ho qeta ho lefa inthaneteng.",
+        "paymentDueBadge": "Tefo e kolotwang"
       },
       "waitlist": {
         "loadFailed": "E hlolehile ho jaefa lenane la ho ema",

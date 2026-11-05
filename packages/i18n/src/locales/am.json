@@ -13778,7 +13778,9 @@
       "replying": "ለአስተያየት ምላሽ",
       "replyPlaceholder": "ምላሽ ይጻፉ…",
       "shareMediaFailedTitle": "ሚዲያ ማጋራት አልተቻለም",
-      "shareMediaFailedBody": "ይህን ፋይል ለማጋራት ማዘጋጀት አልቻልንም። በምትኩ አገናኙን ለማጋራት ይሞክሩ።"
+      "shareMediaFailedBody": "ይህን ፋይል ለማጋራት ማዘጋጀት አልቻልንም። በምትኩ አገናኙን ለማጋራት ይሞክሩ።",
+      "loadingComments": "በመጫን ላይ…",
+      "loadMoreComments": "ተጨማሪ አስተያየቶችን ጫን"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -15282,7 +15284,8 @@
           "returnLabel": "Retour {{status}}",
           "tracking": "Suivi : {{number}}",
           "collectAt": "Retrait chez {{name}}, {{city}}",
-          "deliverTo": "Livraison à {{city}}"
+          "deliverTo": "Livraison à {{city}}",
+          "paymentDueBadge": "ክፍያ ይጠበቃል"
         },
         "productReviews": {
           "title": "Avis",
@@ -21692,7 +21695,10 @@
         "addressParking": "Aparcamiento:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "ይህ ትዕዛዝ በከፊል ተመላሽ ተደርጓል። ቀሪውን ቀሪ ሂሳብ ለመመለስ አቅራቢውን ያነጋግሩ።",
-        "paymentPartiallyRefunded": "በከፊል ተመላሽ ተደርጓል"
+        "paymentPartiallyRefunded": "በከፊል ተመላሽ ተደርጓል",
+        "messageProviderFailed": "ከዚህ አቅራቢ ጋር ውይይት መክፈት አልተቻለም።",
+        "openingMessage": "ውይይት በመክፈት ላይ…",
+        "messageProvider": "ለአቅራቢ መልዕክት ላክ"
       },
       "bookingReceipt": {
         "methodWallet": "Portefeuille",
@@ -22297,7 +22303,9 @@
         "itemCount_one": "{{count}} item · {{date}}",
         "itemCount_other": "{{count}} Artículos · {{date}}",
         "returnStatus": "Retour {{status}}",
-        "tracking": "Suivi : {{number}}"
+        "tracking": "Suivi : {{number}}",
+        "finishPaymentOnDetail": "ኦንላይን ክፍያውን ለመጨረስ ይህን ትዕዛዝ ይክፈቱ።",
+        "paymentDueBadge": "ክፍያ ይጠበቃል"
       },
       "waitlist": {
         "loadFailed": "Impossible de load waitlist",

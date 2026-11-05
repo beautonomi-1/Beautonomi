@@ -837,7 +837,9 @@ export function SupportTicketDetailView({
     failedPublicSend: hasFailedPublicEmailSend(threadMessages),
   });
   const showOriginal = shouldShowOriginalRequest(str(ticket.description), threadMessages, customerUserId);
-  const originalRequestText = showOriginal ? str(ticket.description).trim() : null;
+  // Always show the ticket description when there are no messages/notes yet, so support has context.
+  const originalRequestText =
+    threadItems.length === 0 ? str(ticket.description).trim() || null : showOriginal ? str(ticket.description).trim() : null;
 
   const contextRecords = contextRecordsQ.data?.length
     ? contextRecordsQ.data

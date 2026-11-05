@@ -13778,7 +13778,9 @@
       "replying": "Uphendvula umbono",
       "replyPlaceholder": "Bhala impendvulo…",
       "shareMediaFailedTitle": "Couldn't yabelana media",
-      "shareMediaFailedBody": "Asikwatanga kulungiselela lelifayela kutsi sabelane ngalo. Yetama kwabelana ngesixhumanisi esikhundleni saloko."
+      "shareMediaFailedBody": "Asikwatanga kulungiselela lelifayela kutsi sabelane ngalo. Yetama kwabelana ngesixhumanisi esikhundleni saloko.",
+      "loadingComments": "Iyalayisha...",
+      "loadMoreComments": "Layisha leminye imibono"
     },
     "searchScreen": {
       "title": "Sesha",
@@ -15282,7 +15284,8 @@
           "returnLabel": "Buyisa {{status}}",
           "tracking": "Kulandzela: {{number}}",
           "collectAt": "Tsatfwa e-{{name}}, {{city}}",
-          "deliverTo": "Letha e-{{city}}"
+          "deliverTo": "Letha e-{{city}}",
+          "paymentDueBadge": "Inkokhelo lesele"
         },
         "productReviews": {
           "title": "Tibuyekezo",
@@ -21692,7 +21695,10 @@
         "addressParking": "Kupaka:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Le oda labuyiselwa kancane. Tihlanganise nemhlinzeki kute ubuyisele imali lesele.",
-        "paymentPartiallyRefunded": "Partially imali ibuyisiwe"
+        "paymentPartiallyRefunded": "Partially imali ibuyisiwe",
+        "messageProviderFailed": "Ayikwazi kuvula ingcoco nalo mniketi.",
+        "openingMessage": "Iyavula ingcoco…",
+        "messageProvider": "Tfumela umlayeto kumniketi"
       },
       "bookingReceipt": {
         "methodWallet": "Sikhwama",
@@ -22297,7 +22303,9 @@
         "itemCount_one": "{{count}} Sinto · {{date}}",
         "itemCount_other": "{{count}} Tintfo · {{date}}",
         "returnStatus": "Buyisa {{status}}",
-        "tracking": "Kulandzela: {{number}}"
+        "tracking": "Kulandzela: {{number}}",
+        "finishPaymentOnDetail": "Vula le-oda kute ucebe kukhokha ku-inthanethi.",
+        "paymentDueBadge": "Inkokhelo lesele"
       },
       "waitlist": {
         "loadFailed": "Kwehlulekile ku-layisha luhlu lwekulindza",

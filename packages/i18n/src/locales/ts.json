@@ -13778,7 +13778,9 @@
       "replying": "U hlamula nhlamulo",
       "replyPlaceholder": "Tsala nhlamulo…",
       "shareMediaFailedTitle": "Couldn't avelana media",
-      "shareMediaFailedBody": "A hi swi kotanga ku lunghiselela fayili leyi leswaku yi ta avelana. Ringeta ku avelana xihlanganisi ematshan’wini ya sweswo."
+      "shareMediaFailedBody": "A hi swi kotanga ku lunghiselela fayili leyi leswaku yi ta avelana. Ringeta ku avelana xihlanganisi ematshan’wini ya sweswo.",
+      "loadingComments": "Yi loyida...",
+      "loadMoreComments": "Loyida swin'wana swivonelo"
     },
     "searchScreen": {
       "title": "Lavisisa",
@@ -15282,7 +15284,8 @@
           "returnLabel": "Terugsend {{status}}",
           "tracking": "Ku landzelela: {{number}}",
           "collectAt": "Teka eka {{name}}, {{city}}",
-          "deliverTo": "Rhumerisa eka {{city}}"
+          "deliverTo": "Rhumerisa eka {{city}}",
+          "paymentDueBadge": "Xihakelo lexi faneleke"
         },
         "productReviews": {
           "title": "Swihlawulekisi",
@@ -21692,7 +21695,10 @@
         "addressParking": "Ku paka:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Odara leyi yi tlheriseriwile hi xiphemu. Tihlanganisi na muphakeri ku tlherisela mali leyi saleke.",
-        "paymentPartiallyRefunded": "Partially yi tlheriseriwile"
+        "paymentPartiallyRefunded": "Partially yi tlheriseriwile",
+        "messageProviderFailed": "A yi swi kotanga ku pfula mbulavulo na mupfuneti lowu.",
+        "openingMessage": "Yi pfule mbulavulo…",
+        "messageProvider": "Rhumela hungu eka mupfuneti"
       },
       "bookingReceipt": {
         "methodWallet": "Xikhwama",
@@ -22297,7 +22303,9 @@
         "itemCount_one": "{{count}} Xilo · {{date}}",
         "itemCount_other": "{{count}} Swilo · {{date}}",
         "returnStatus": "Terugsend {{status}}",
-        "tracking": "Ku landzelela: {{number}}"
+        "tracking": "Ku landzelela: {{number}}",
+        "finishPaymentOnDetail": "Pfula odara leyi ku heta ku hakela eka inthanete.",
+        "paymentDueBadge": "Xihakelo lexi faneleke"
       },
       "waitlist": {
         "loadFailed": "Swi tsandzile ku loyida nxaxamelo wo yima",

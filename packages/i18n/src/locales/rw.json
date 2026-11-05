@@ -13778,7 +13778,9 @@
       "replying": "Usuhiza icyo umuntu yavuze",
       "replyPlaceholder": "Andika igisubizo…",
       "shareMediaFailedTitle": "Ntushobora gusangira itangazamakuru",
-      "shareMediaFailedBody": "Ntabwo twashoboraga gutegura iyi dosiye kugirango dusangire. Gerageza gusangira aho."
+      "shareMediaFailedBody": "Ntabwo twashoboraga gutegura iyi dosiye kugirango dusangire. Gerageza gusangira aho.",
+      "loadingComments": "Birimo gutangira…",
+      "loadMoreComments": "Fungura ibisobanuro byinshi"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -15282,7 +15284,8 @@
           "returnLabel": "Retour {{status}}",
           "tracking": "Suivi : {{number}}",
           "collectAt": "Retrait chez {{name}}, {{city}}",
-          "deliverTo": "Livraison à {{city}}"
+          "deliverTo": "Livraison à {{city}}",
+          "paymentDueBadge": "Ubwishyu buracyakenewe"
         },
         "productReviews": {
           "title": "Avis",
@@ -21692,7 +21695,10 @@
         "addressParking": "Aparcamiento:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Iri teka ryasubijwe igice. Menyesha utanga kugirango usubize amafaranga asigaye.",
-        "paymentPartiallyRefunded": "Gusubizwa igice"
+        "paymentPartiallyRefunded": "Gusubizwa igice",
+        "messageProviderFailed": "Ntibishoboye gufungura ikiganiro n’uyu mutanga serivisi.",
+        "openingMessage": "Irafungura ikiganiro…",
+        "messageProvider": "Ohereza ubutumwa ku mutanga serivisi"
       },
       "bookingReceipt": {
         "methodWallet": "Portefeuille",
@@ -22297,7 +22303,9 @@
         "itemCount_one": "{{count}} item · {{date}}",
         "itemCount_other": "{{count}} Artículos · {{date}}",
         "returnStatus": "Retour {{status}}",
-        "tracking": "Suivi : {{number}}"
+        "tracking": "Suivi : {{number}}",
+        "finishPaymentOnDetail": "Fungura iyi komande kugira ngo urangize kwishyura kuri interineti.",
+        "paymentDueBadge": "Ubwishyu buracyakenewe"
       },
       "waitlist": {
         "loadFailed": "Impossible de load waitlist",

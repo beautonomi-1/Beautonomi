@@ -13778,7 +13778,9 @@
       "replying": "O fetola tshwaelo",
       "replyPlaceholder": "Ngwala phetolo…",
       "shareMediaFailedTitle": "Couldn't abelana media",
-      "shareMediaFailedBody": "Re be re sa kgone go lokišetša faele ye gore e abelane. Leka go abelana kgokagano go e na le moo."
+      "shareMediaFailedBody": "Re be re sa kgone go lokišetša faele ye gore e abelane. Leka go abelana kgokagano go e na le moo.",
+      "loadingComments": "E a laiša...",
+      "loadMoreComments": "Laiša ditlhagišo tše dingwe"
     },
     "searchScreen": {
       "title": "Nyaka",
@@ -15282,7 +15284,8 @@
           "returnLabel": "Terugsend {{status}}",
           "tracking": "Go latela: {{number}}",
           "collectAt": "Tšea go {{name}}, {{city}}",
-          "deliverTo": "Romela go {{city}}"
+          "deliverTo": "Romela go {{city}}",
+          "paymentDueBadge": "Tefo e kolotwago"
         },
         "productReviews": {
           "title": "Ditshekatsheko",
@@ -21692,7 +21695,10 @@
         "addressParking": "Go paka:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Taelo ye e ile ya bušetšwa ka karolo. Ikgokaganye le moabi go bušetša tšhelete ye e šetšego.",
-        "paymentPartiallyRefunded": "Partially e pusetšwe"
+        "paymentPartiallyRefunded": "Partially e pusetšwe",
+        "messageProviderFailed": "Ga se e kgone go bula poledišano le mophakeri yo.",
+        "openingMessage": "E bula poledišano…",
+        "messageProvider": "Romela molaetsa go mophakeri"
       },
       "bookingReceipt": {
         "methodWallet": "Sepatši",
@@ -22297,7 +22303,9 @@
         "itemCount_one": "{{count}} Selô · {{date}}",
         "itemCount_other": "{{count}} Dilo · {{date}}",
         "returnStatus": "Terugsend {{status}}",
-        "tracking": "Go latela: {{number}}"
+        "tracking": "Go latela: {{number}}",
+        "finishPaymentOnDetail": "Bula odara ye go fetša go lefa inthaneteng.",
+        "paymentDueBadge": "Tefo e kolotwago"
       },
       "waitlist": {
         "loadFailed": "E paletšwe go laiša lenaneo la go leta",

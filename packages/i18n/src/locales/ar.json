@@ -13778,7 +13778,9 @@
       "replying": "الرد على تعليق",
       "replyPlaceholder": "اكتب رداً…",
       "shareMediaFailedTitle": "تعذرت مشاركة الوسائط",
-      "shareMediaFailedBody": "لم نتمكن من إعداد هذا الملف للمشاركة. حاول مشاركة الرابط بدلاً من ذلك."
+      "shareMediaFailedBody": "لم نتمكن من إعداد هذا الملف للمشاركة. حاول مشاركة الرابط بدلاً من ذلك.",
+      "loadingComments": "جاري التحميل…",
+      "loadMoreComments": "تحميل المزيد من التعليقات"
     },
     "searchScreen": {
       "title": "بحث",
@@ -15282,7 +15284,8 @@
           "returnLabel": "الإرجاع {{status}}",
           "tracking": "التتبع: {{number}}",
           "collectAt": "الاستلام من {{name}}، {{city}}",
-          "deliverTo": "التوصيل إلى {{city}}"
+          "deliverTo": "التوصيل إلى {{city}}",
+          "paymentDueBadge": "الدفع مستحق"
         },
         "productReviews": {
           "title": "التقييمات",
@@ -21692,7 +21695,10 @@
         "addressParking": "Aparcamiento:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "تم رد أموال هذا الطلب جزئيًا. اتصل بالمزود لاسترداد الرصيد المتبقي.",
-        "paymentPartiallyRefunded": "تم ردها جزئيا"
+        "paymentPartiallyRefunded": "تم ردها جزئيا",
+        "messageProviderFailed": "تعذر فتح محادثة مع مزود الخدمة هذا.",
+        "openingMessage": "جارٍ فتح المحادثة…",
+        "messageProvider": "مراسلة مزود الخدمة"
       },
       "bookingReceipt": {
         "methodWallet": "المحفظة",
@@ -22297,7 +22303,9 @@
         "itemCount_one": "{{count}} item · {{date}}",
         "itemCount_other": "{{count}} Artículos · {{date}}",
         "returnStatus": "الإرجاع {{status}}",
-        "tracking": "التتبع: {{number}}"
+        "tracking": "التتبع: {{number}}",
+        "finishPaymentOnDetail": "افتح هذا الطلب لإكمال الدفع عبر الإنترنت.",
+        "paymentDueBadge": "الدفع مستحق"
       },
       "waitlist": {
         "loadFailed": "تعذر load waitlist",

@@ -13778,7 +13778,9 @@
       "replying": "Unajibu maoni",
       "replyPlaceholder": "Andika jibu…",
       "shareMediaFailedTitle": "Haikuweza kushiriki maudhui",
-      "shareMediaFailedBody": "Hatukuweza kuandaa faili hii kwa ajili ya kushirikiwa. Jaribu kushiriki kiungo badala yake."
+      "shareMediaFailedBody": "Hatukuweza kuandaa faili hii kwa ajili ya kushirikiwa. Jaribu kushiriki kiungo badala yake.",
+      "loadingComments": "Inapakia…",
+      "loadMoreComments": "Pakia maoni zaidi"
     },
     "searchScreen": {
       "title": "Tafuta",
@@ -15282,7 +15284,8 @@
           "returnLabel": "Marejesho {{status}}",
           "tracking": "Ufuatiliaji: {{number}}",
           "collectAt": "Retrait chez {{name}}, {{city}}",
-          "deliverTo": "Livraison à {{city}}"
+          "deliverTo": "Livraison à {{city}}",
+          "paymentDueBadge": "Malipo yanadaiwa"
         },
         "productReviews": {
           "title": "Tathmini",
@@ -21692,7 +21695,10 @@
         "addressParking": "Aparcamiento:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Agizo hili lilirejeshwa kwa kiasi. Wasiliana na mtoa huduma ili kurejesha salio lililosalia.",
-        "paymentPartiallyRefunded": "Imerejeshwa kwa kiasi"
+        "paymentPartiallyRefunded": "Imerejeshwa kwa kiasi",
+        "messageProviderFailed": "Haikuweza kufungua mazungumzo na mtoa huduma huyu.",
+        "openingMessage": "Inafungua mazungumzo…",
+        "messageProvider": "Tuma ujumbe kwa mtoa huduma"
       },
       "bookingReceipt": {
         "methodWallet": "Pochi",
@@ -22297,7 +22303,9 @@
         "itemCount_one": "{{count}} item · {{date}}",
         "itemCount_other": "{{count}} Artículos · {{date}}",
         "returnStatus": "Marejesho {{status}}",
-        "tracking": "Ufuatiliaji: {{number}}"
+        "tracking": "Ufuatiliaji: {{number}}",
+        "finishPaymentOnDetail": "Fungua oda hii ili kumaliza malipo mtandaoni.",
+        "paymentDueBadge": "Malipo yanadaiwa"
       },
       "waitlist": {
         "loadFailed": "Imeshindwa load waitlist",

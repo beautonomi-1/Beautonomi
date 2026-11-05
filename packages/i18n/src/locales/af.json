@@ -13778,7 +13778,9 @@
       "userFallback": "Gebruiker",
       "postByProvider": "Plasing by {{name}}",
       "shareMediaFailedTitle": "Couldn't deel media",
-      "shareMediaFailedBody": "Ons kon nie hierdie lêer voorberei vir deling nie. Probeer eerder die skakel deel."
+      "shareMediaFailedBody": "Ons kon nie hierdie lêer voorberei vir deling nie. Probeer eerder die skakel deel.",
+      "loadingComments": "Laai tans...",
+      "loadMoreComments": "Laai meer opmerkings"
     },
     "exploreVideo": {
       "mute": "Stil",
@@ -15286,7 +15288,8 @@
           "returnLabel": "Terugsend {{status}}",
           "tracking": "Nasporing: {{number}}",
           "collectAt": "Haal af by {{name}}, {{city}}",
-          "deliverTo": "Lewer na {{city}}"
+          "deliverTo": "Lewer na {{city}}",
+          "paymentDueBadge": "Betaling verskuldig"
         },
         "productReviews": {
           "title": "Resensies",
@@ -21692,7 +21695,10 @@
         "addressParking": "Parkering:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Hierdie bestelling is gedeeltelik terugbetaal. Kontak die verskaffer om die oorblywende balans terug te betaal.",
-        "paymentPartiallyRefunded": "Partially terugbetaal"
+        "paymentPartiallyRefunded": "Partially terugbetaal",
+        "messageProviderFailed": "Kon nie ’n klets met hierdie diensverskaffer oopmaak nie.",
+        "openingMessage": "Maak klets oop…",
+        "messageProvider": "Stuur boodskap aan diensverskaffer"
       },
       "bookingReceipt": {
         "methodWallet": "Beursie",
@@ -22297,7 +22303,9 @@
         "itemCount_one": "{{count}} Item · {{date}}",
         "itemCount_other": "{{count}} Items · {{date}}",
         "returnStatus": "Terugsend {{status}}",
-        "tracking": "Nasporing: {{number}}"
+        "tracking": "Nasporing: {{number}}",
+        "finishPaymentOnDetail": "Maak hierdie bestelling oop om aanlyn klaar te betaal.",
+        "paymentDueBadge": "Betaling verskuldig"
       },
       "waitlist": {
         "loadFailed": "Kon nie laai waglys nie",

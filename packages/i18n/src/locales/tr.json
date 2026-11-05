@@ -13778,7 +13778,9 @@
       "replying": "Bir yoruma yanıt",
       "replyPlaceholder": "Bir yanıt yazın…",
       "shareMediaFailedTitle": "Couldn't compartir media",
-      "shareMediaFailedBody": "Bu dosyayı paylaşıma hazırlayamadık. Bunun yerine bağlantıyı paylaşmayı deneyin."
+      "shareMediaFailedBody": "Bu dosyayı paylaşıma hazırlayamadık. Bunun yerine bağlantıyı paylaşmayı deneyin.",
+      "loadingComments": "Yükleniyor…",
+      "loadMoreComments": "Daha fazla yorum yükle"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -15282,7 +15284,8 @@
           "returnLabel": "Retour {{status}}",
           "tracking": "Suivi : {{number}}",
           "collectAt": "Retrait chez {{name}}, {{city}}",
-          "deliverTo": "Livraison à {{city}}"
+          "deliverTo": "Livraison à {{city}}",
+          "paymentDueBadge": "Ödeme bekleniyor"
         },
         "productReviews": {
           "title": "Avis",
@@ -21692,7 +21695,10 @@
         "addressParking": "Aparcamiento:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Bu siparişin kısmen iadesi yapıldı. Kalan bakiyeyi iade etmek için sağlayıcıyla iletişime geçin.",
-        "paymentPartiallyRefunded": "Partially reembolsado"
+        "paymentPartiallyRefunded": "Partially reembolsado",
+        "messageProviderFailed": "Bu sağlayıcıyla sohbet açılamadı.",
+        "openingMessage": "Sohbet açılıyor…",
+        "messageProvider": "Sağlayıcıya mesaj gönder"
       },
       "bookingReceipt": {
         "methodWallet": "Portefeuille",
@@ -22297,7 +22303,9 @@
         "itemCount_one": "{{count}} item · {{date}}",
         "itemCount_other": "{{count}} Artículos · {{date}}",
         "returnStatus": "Retour {{status}}",
-        "tracking": "Suivi : {{number}}"
+        "tracking": "Suivi : {{number}}",
+        "finishPaymentOnDetail": "Çevrimiçi ödemeyi tamamlamak için bu siparişi açın.",
+        "paymentDueBadge": "Ödeme bekleniyor"
       },
       "waitlist": {
         "loadFailed": "Impossible de load waitlist",

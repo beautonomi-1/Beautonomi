@@ -13778,7 +13778,9 @@
       "replying": "Reageren op een opmerking",
       "replyPlaceholder": "Schrijf een reactie…",
       "shareMediaFailedTitle": "Couldn't compartir media",
-      "shareMediaFailedBody": "We kunnen dit bestand niet voorbereiden voor delen. Probeer in plaats daarvan de link te delen."
+      "shareMediaFailedBody": "We kunnen dit bestand niet voorbereiden voor delen. Probeer in plaats daarvan de link te delen.",
+      "loadingComments": "Laden…",
+      "loadMoreComments": "Meer reacties laden"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -15282,7 +15284,8 @@
           "returnLabel": "Retour {{status}}",
           "tracking": "Suivi : {{number}}",
           "collectAt": "Retrait chez {{name}}, {{city}}",
-          "deliverTo": "Livraison à {{city}}"
+          "deliverTo": "Livraison à {{city}}",
+          "paymentDueBadge": "Betaling verschuldigd"
         },
         "productReviews": {
           "title": "Avis",
@@ -21692,7 +21695,10 @@
         "addressParking": "Aparcamiento:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Deze bestelling is gedeeltelijk terugbetaald. Neem contact op met de aanbieder om het resterende saldo terug te betalen.",
-        "paymentPartiallyRefunded": "Partially reembolsado"
+        "paymentPartiallyRefunded": "Partially reembolsado",
+        "messageProviderFailed": "Kon geen chat openen met deze aanbieder.",
+        "openingMessage": "Chat openen…",
+        "messageProvider": "Bericht aan aanbieder"
       },
       "bookingReceipt": {
         "methodWallet": "Portefeuille",
@@ -22297,7 +22303,9 @@
         "itemCount_one": "{{count}} item · {{date}}",
         "itemCount_other": "{{count}} Artículos · {{date}}",
         "returnStatus": "Retour {{status}}",
-        "tracking": "Suivi : {{number}}"
+        "tracking": "Suivi : {{number}}",
+        "finishPaymentOnDetail": "Open deze bestelling om de betaling online af te ronden.",
+        "paymentDueBadge": "Betaling verschuldigd"
       },
       "waitlist": {
         "loadFailed": "Impossible de load waitlist",

@@ -13778,7 +13778,9 @@
       "replying": "Uphendula uluvo",
       "replyPlaceholder": "Bhala impendulo…",
       "shareMediaFailedTitle": "Couldn't yabelana media",
-      "shareMediaFailedBody": "Asikwazanga ukulungiselela le fayile ukuze kwabelwane ngayo. Zama ukwabelana ngekhonkco endaweni yoko."
+      "shareMediaFailedBody": "Asikwazanga ukulungiselela le fayile ukuze kwabelwane ngayo. Zama ukwabelana ngekhonkco endaweni yoko.",
+      "loadingComments": "Iyalayisha...",
+      "loadMoreComments": "Layisha ezinye izimvo"
     },
     "searchScreen": {
       "title": "Khangela",
@@ -15282,7 +15284,8 @@
           "returnLabel": "Buyisa {{status}}",
           "tracking": "Ukulandelela: {{number}}",
           "collectAt": "Thatha kwi-{{name}}, {{city}}",
-          "deliverTo": "Thumela ku-{{city}}"
+          "deliverTo": "Thumela ku-{{city}}",
+          "paymentDueBadge": "Intlawulo ifunekayo"
         },
         "productReviews": {
           "title": "Izimvo",
@@ -21692,7 +21695,10 @@
         "addressParking": "Ukupaka:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Lo myalelo uye wabuyiswa ngokuyinxenye. Qhagamshelana nomboneleli ukuze ubuyisele imali eseleyo.",
-        "paymentPartiallyRefunded": "Partially kubuyiselwe imali"
+        "paymentPartiallyRefunded": "Partially kubuyiselwe imali",
+        "messageProviderFailed": "Ayikwazanga ukuvula incoko nalo mboneleli.",
+        "openingMessage": "Iyavula incoko…",
+        "messageProvider": "Thumela umyalezo kumboneleli"
       },
       "bookingReceipt": {
         "methodWallet": "Isipaji",
@@ -22297,7 +22303,9 @@
         "itemCount_one": "{{count}} Into · {{date}}",
         "itemCount_other": "{{count}} Izinto · {{date}}",
         "returnStatus": "Buyisa {{status}}",
-        "tracking": "Ukulandelela: {{number}}"
+        "tracking": "Ukulandelela: {{number}}",
+        "finishPaymentOnDetail": "Vula le odolo ukuze ugqibe ukuhlawula kwi-intanethi.",
+        "paymentDueBadge": "Intlawulo ifunekayo"
       },
       "waitlist": {
         "loadFailed": "Kusilele uku-ulayisha uluhlu lokulinda",

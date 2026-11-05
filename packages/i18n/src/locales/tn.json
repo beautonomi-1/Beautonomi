@@ -13778,7 +13778,9 @@
       "replying": "O fetola tshwaelo",
       "replyPlaceholder": "Kwala phetolo…",
       "shareMediaFailedTitle": "Couldn't abelana media",
-      "shareMediaFailedBody": "Ga re a kgona go baakanyetsa faele eno gore re e abelanwe. Leka go abelana kgokagano boemong jwa seo."
+      "shareMediaFailedBody": "Ga re a kgona go baakanyetsa faele eno gore re e abelanwe. Leka go abelana kgokagano boemong jwa seo.",
+      "loadingComments": "E a laiša...",
+      "loadMoreComments": "Laiša ditlhaloso tse dingwe"
     },
     "searchScreen": {
       "title": "Batla",
@@ -15282,7 +15284,8 @@
           "returnLabel": "Terugsend {{status}}",
           "tracking": "Go latela: {{number}}",
           "collectAt": "Tseela go {{name}}, {{city}}",
-          "deliverTo": "Romela go {{city}}"
+          "deliverTo": "Romela go {{city}}",
+          "paymentDueBadge": "Tefo e kolotwang"
         },
         "productReviews": {
           "title": "Ditshekatsheko",
@@ -21692,7 +21695,10 @@
         "addressParking": "Go paka:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Otara eno e ne ya busediwa madi ka bontlhabongwe. Ikgolaganye le motlamedi go busetsa madi a a setseng.",
-        "paymentPartiallyRefunded": "Partially e buseditswe"
+        "paymentPartiallyRefunded": "Partially e buseditswe",
+        "messageProviderFailed": "Ga e a kgona go bula puisano le mophatlhalatsi yo.",
+        "openingMessage": "E bula puisano…",
+        "messageProvider": "Romela molaetsa go mophatlhalatsi"
       },
       "bookingReceipt": {
         "methodWallet": "Sepatši",
@@ -22297,7 +22303,9 @@
         "itemCount_one": "{{count}} Selo · {{date}}",
         "itemCount_other": "{{count}} Dilo · {{date}}",
         "returnStatus": "Terugsend {{status}}",
-        "tracking": "Go latela: {{number}}"
+        "tracking": "Go latela: {{number}}",
+        "finishPaymentOnDetail": "Bula odara eno go fetsa go duela mo inthaneteng.",
+        "paymentDueBadge": "Tefo e kolotwang"
       },
       "waitlist": {
         "loadFailed": "E reteletswe go laiša lenaneo la go leta",

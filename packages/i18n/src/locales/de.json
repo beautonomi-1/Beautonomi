@@ -13778,7 +13778,9 @@
       "replying": "Antwort auf einen Kommentar",
       "replyPlaceholder": "Antwort schreiben…",
       "shareMediaFailedTitle": "Couldn't compartir media",
-      "shareMediaFailedBody": "Wir konnten diese Datei nicht zum Teilen vorbereiten. Versuchen Sie stattdessen, den Link zu teilen."
+      "shareMediaFailedBody": "Wir konnten diese Datei nicht zum Teilen vorbereiten. Versuchen Sie stattdessen, den Link zu teilen.",
+      "loadingComments": "Wird geladen…",
+      "loadMoreComments": "Weitere Kommentare laden"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -15282,7 +15284,8 @@
           "returnLabel": "Retour {{status}}",
           "tracking": "Suivi : {{number}}",
           "collectAt": "Retrait chez {{name}}, {{city}}",
-          "deliverTo": "Livraison à {{city}}"
+          "deliverTo": "Livraison à {{city}}",
+          "paymentDueBadge": "Zahlung fällig"
         },
         "productReviews": {
           "title": "Avis",
@@ -21692,7 +21695,10 @@
         "addressParking": "Aparcamiento:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Diese Bestellung wurde teilweise erstattet. Kontaktieren Sie den Anbieter, um den Restbetrag zurückzuerstatten.",
-        "paymentPartiallyRefunded": "Partially reembolsado"
+        "paymentPartiallyRefunded": "Partially reembolsado",
+        "messageProviderFailed": "Der Chat mit diesem Anbieter konnte nicht geöffnet werden.",
+        "openingMessage": "Chat wird geöffnet…",
+        "messageProvider": "Anbieter benachrichtigen"
       },
       "bookingReceipt": {
         "methodWallet": "Portefeuille",
@@ -22297,7 +22303,9 @@
         "itemCount_one": "{{count}} item · {{date}}",
         "itemCount_other": "{{count}} Artículos · {{date}}",
         "returnStatus": "Retour {{status}}",
-        "tracking": "Suivi : {{number}}"
+        "tracking": "Suivi : {{number}}",
+        "finishPaymentOnDetail": "Öffnen Sie diese Bestellung, um die Zahlung online abzuschließen.",
+        "paymentDueBadge": "Zahlung fällig"
       },
       "waitlist": {
         "loadFailed": "Impossible de load waitlist",

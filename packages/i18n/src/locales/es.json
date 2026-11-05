@@ -13778,7 +13778,9 @@
       "replying": "Respondiendo a un comentario",
       "replyPlaceholder": "Escribe una respuesta…",
       "shareMediaFailedTitle": "Couldn't compartir media",
-      "shareMediaFailedBody": "No pudimos preparar este archivo para compartirlo. Intente compartir el enlace en su lugar."
+      "shareMediaFailedBody": "No pudimos preparar este archivo para compartirlo. Intente compartir el enlace en su lugar.",
+      "loadingComments": "Cargando…",
+      "loadMoreComments": "Cargar más comentarios"
     },
     "searchScreen": {
       "title": "Buscar",
@@ -15282,7 +15284,8 @@
           "returnLabel": "Retour {{status}}",
           "tracking": "Seguimiento: {{number}}",
           "collectAt": "Retrait chez {{name}}, {{city}}",
-          "deliverTo": "Livraison à {{city}}"
+          "deliverTo": "Livraison à {{city}}",
+          "paymentDueBadge": "Pago pendiente"
         },
         "productReviews": {
           "title": "Reseñas",
@@ -21692,7 +21695,10 @@
         "addressParking": "Aparcamiento:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Este pedido fue reembolsado parcialmente. Comuníquese con el proveedor para reembolsar el saldo restante.",
-        "paymentPartiallyRefunded": "Partially reembolsado"
+        "paymentPartiallyRefunded": "Partially reembolsado",
+        "messageProviderFailed": "No se pudo abrir un chat con este profesional.",
+        "openingMessage": "Abriendo el chat…",
+        "messageProvider": "Enviar mensaje al profesional"
       },
       "bookingReceipt": {
         "methodWallet": "Monedero",
@@ -22297,7 +22303,9 @@
         "itemCount_one": "{{count}} Artículo · {{date}}",
         "itemCount_other": "{{count}} Artículos · {{date}}",
         "returnStatus": "Retour {{status}}",
-        "tracking": "Seguimiento: {{number}}"
+        "tracking": "Seguimiento: {{number}}",
+        "finishPaymentOnDetail": "Abre este pedido para terminar el pago en línea.",
+        "paymentDueBadge": "Pago pendiente"
       },
       "waitlist": {
         "loadFailed": "No se pudo cargar lista de espera",
