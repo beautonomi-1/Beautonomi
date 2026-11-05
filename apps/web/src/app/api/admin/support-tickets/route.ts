@@ -18,6 +18,7 @@ import {
   resolveSupportAgentTicketTenantIds,
 } from "@/lib/support/support-agent-tenant-scope";
 import { enrichTicketsWithLatestEmailDeliveryStatus } from "@/lib/support/enrich-support-ticket-list";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 function sanitizeIlikeTerm(raw: string) {
   // Strip PostgREST/or filter metacharacters so q cannot break `.or(...)`.
@@ -429,10 +430,15 @@ export async function POST(request: NextRequest) {
       clientContextType: support_context_type ?? null,
     });
 
+    // Ensure the ticket is created under the effective tenant scope so it appears in the
+    // scoped queue view (superadmin tenant picker injects `scope=tenant&tenant_id=<uuid>`).
+    const tenantId = await resolveAdminApiTenantId(request);
+
     const { data, error } = await supabase
       .from("support_tickets")
       .insert({
         user_id: user.id,
+        tenant_id: tenantId,
         provider_id: provider_id || null,
         subject,
         description,

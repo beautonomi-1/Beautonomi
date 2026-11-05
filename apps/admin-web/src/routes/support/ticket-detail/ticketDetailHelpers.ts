@@ -355,8 +355,12 @@ export function isWideTicketLayout(containerWidth: number): boolean {
  */
 export const TICKET_CONVERSATION_PANE_DESKTOP = "flex h-full min-h-0 flex-col";
 
-/** Direct child of the pane so 40% resolves against the pane height, not content height. */
-export const TICKET_COMPOSER_SLOT_DESKTOP = "flex max-h-[40%] min-h-0 shrink-0 flex-col overflow-visible";
+/**
+ * Composer area: scrolls as a whole (so textarea never disappears) and is capped to 40% of the pane.
+ * This avoids nested scroll traps that made agents unable to see what they type.
+ */
+export const TICKET_COMPOSER_SLOT_DESKTOP =
+  "admin-scrollbar max-h-[40%] min-h-[10rem] shrink-0 overflow-y-auto border-t border-gray-100 pt-2";
 
 /** Mobile-only Conversation / Details tabs. Desktop always shows the thread, at any container width. */
 export function shouldShowTicketTabs(input: { isDesktop: boolean; containerWidth: number }): boolean {

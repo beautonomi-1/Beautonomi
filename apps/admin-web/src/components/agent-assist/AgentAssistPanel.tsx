@@ -23,6 +23,7 @@ export function AgentAssistPanel({
   hideWhenEmpty = false,
   collapsible = false,
   inlineInThread = false,
+  onInsertDraft,
 }: {
   targetType: string;
   targetId: string;
@@ -37,6 +38,8 @@ export function AgentAssistPanel({
   collapsible?: boolean;
   /** Inside ticket thread scrollport; expanded body capped to ~40% of thread. */
   inlineInThread?: boolean;
+  /** When provided, show an 'Insert into reply' action on draft-like suggestions. */
+  onInsertDraft?: (text: string) => void;
 }) {
   const [searchParams] = useSearchParams();
   const assistId = searchParams.get("assist");
@@ -114,6 +117,7 @@ export function AgentAssistPanel({
                 shadowMode={shadowMode}
                 highlightId={assistId}
                 onUpdated={() => void q.refetch()}
+                onInsertDraft={onInsertDraft}
               />
             ))}
             {decided.map((action) => (
@@ -143,6 +147,7 @@ export function AgentAssistPanel({
           shadowMode={shadowMode}
           highlightId={assistId}
           onUpdated={() => void q.refetch()}
+          onInsertDraft={onInsertDraft}
         />
       ))}
       {decided.map((action) => (

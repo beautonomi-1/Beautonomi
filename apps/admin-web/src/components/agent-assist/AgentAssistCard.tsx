@@ -56,6 +56,7 @@ export function AgentAssistCard({
   highlightId,
   onUpdated,
   compact,
+  onInsertDraft,
 }: {
   action: AgentActionRow;
   entityLabel?: string;
@@ -63,6 +64,7 @@ export function AgentAssistCard({
   highlightId?: string | null;
   onUpdated?: () => void;
   compact?: boolean;
+  onInsertDraft?: (text: string) => void;
 }) {
   const pres = getAgentAssistPresentation(action.action_type);
   const statusUi = humanStatusLabel(action.status, shadowMode);
@@ -84,6 +86,7 @@ export function AgentAssistCard({
   const isHighlighted = highlightId === action.id;
   const canAct = PENDING_AGENT_STATUSES.has(action.status);
   const canExecute = action.status === "approved" && !shadowMode;
+  const canInsert = Boolean(onInsertDraft) && (pres.editableField === "draftReply" || pres.editableField === "messageBody");
 
   const handleApproveFlow = async () => {
     const override = edited ? buildPayloadOverride(action, draft) : undefined;
@@ -191,6 +194,16 @@ export function AgentAssistCard({
 
       {(canAct || canExecute) && (
         <div className="mt-4 flex flex-wrap gap-2">
+          {canInsert ? (
+            <button
+              type="button"
+              className="inline-flex min-h-11 touch-manipulation items-center justify-center rounded-xl border border-gray-300 bg-white px-4 text-sm font-medium text-gray-900"
+              disabled={busy}
+              onClick={() => onInsertDraft?.(draft)}
+            >
+              Insert into reply
+            </button>
+          ) : null}
           {canAct ? (
             <>
               <button

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { BookOpen, ChevronDown, FileText, Paperclip, Send, X } from "lucide-react";
 import { ADMIN_SECTION_SUPPORT } from "@beautonomi/admin-access";
 import { DomainCopilotDock } from "@/components/agent-assist/DomainCopilotDock";
@@ -55,10 +55,12 @@ export function TicketComposer({
   const isMobilePage = layout === "page-mobile";
   const isCompactDesktop = layout === "page" || layout === "panel";
   const textareaMin = isMobilePage
-    ? "min-h-[4.5rem] max-h-32"
-    : isCompactDesktop
-      ? "min-h-[2.75rem] max-h-32"
-      : "min-h-[4.5rem] max-h-32";
+    ? "min-h-[4.5rem]"
+    : layout === "page"
+      ? "min-h-[5.5rem]"
+      : isCompactDesktop
+        ? "min-h-[4.5rem]"
+        : "min-h-[4.5rem]";
   const [dragActive, setDragActive] = useState(false);
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [articlesOpen, setArticlesOpen] = useState(false);
@@ -92,6 +94,16 @@ export function TicketComposer({
 
   const hasContent = reply.trim().length > 0 || replyAttachments.length > 0;
   const disabled = !hasContent || sendPending || patchPending;
+
+  useLayoutEffect(() => {
+    if (!isCompactDesktop) return;
+    const el = textareaRef?.current;
+    if (!el) return;
+    // Auto-grow so agents can always see what they're typing.
+    el.style.height = "auto";
+    const next = Math.min(el.scrollHeight, 220); // cap ~14rem
+    el.style.height = `${Math.max(next, 72)}px`;
+  }, [reply, textareaRef, isCompactDesktop]);
 
   const draftBlock = (
     <>
@@ -170,9 +182,7 @@ export function TicketComposer({
 
   return (
     <div
-      className={`z-10 flex min-h-0 flex-col overflow-visible border-t border-gray-200 bg-white pb-1 pt-3 ${
-        isCompactDesktop ? "w-full flex-1" : "shrink-0"
-      } ${
+      className={`z-10 flex flex-col overflow-visible bg-white pb-1 pt-2 ${
         isMobilePage ? "sticky bottom-0 pe-16 pb-[max(0.25rem,env(safe-area-inset-bottom))] shadow-[0_-4px_12px_rgb(0_0_0/0.06)] sm:pe-20" : ""
       }`}
       onDragOver={(e) => {

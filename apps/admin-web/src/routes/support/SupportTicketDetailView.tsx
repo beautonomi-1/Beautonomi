@@ -883,6 +883,10 @@ export function SupportTicketDetailView({
         hideWhenEmpty
         collapsible
         inlineInThread
+        onInsertDraft={(text) => {
+          setReply((prev) => (prev.trim() ? `${prev.trim()}\n\n${text}` : text));
+          requestAnimationFrame(() => composerTextareaRef.current?.focus());
+        }}
         emptyTitle="No AI draft for this ticket"
         emptyDescription="When Support Triage drafts a reply, it will appear here for your approval."
       />
@@ -1116,25 +1120,25 @@ export function SupportTicketDetailView({
           />
           <div className={desktopConversationPane ? TICKET_COMPOSER_SLOT_DESKTOP : undefined}>
             <TicketComposer
-            ticket={ticket}
-            ticketId={id}
-            reply={reply}
-            setReply={setReply}
-            replyInternal={replyInternal}
-            setReplyInternal={setReplyInternal}
-            replyAttachments={replyAttachments}
-            setReplyAttachments={setReplyAttachments}
-            replyAudience={replyAudience}
-            onInsertArticle={insertArticleLink}
-            onSend={handleSendReply}
-            sendPending={sendMessage.isPending}
-            patchPending={patchTicket.isPending}
-            uploading={uploading}
-            uploadErr={uploadErr}
-            onPickFiles={onPickFiles}
-            fileRef={fileRef}
-            layout={isPanel ? "panel" : isDesktop ? "page" : "page-mobile"}
-            textareaRef={composerTextareaRef}
+              ticket={ticket}
+              ticketId={id}
+              reply={reply}
+              setReply={setReply}
+              replyInternal={replyInternal}
+              setReplyInternal={setReplyInternal}
+              replyAttachments={replyAttachments}
+              setReplyAttachments={setReplyAttachments}
+              replyAudience={replyAudience}
+              onInsertArticle={insertArticleLink}
+              onSend={handleSendReply}
+              sendPending={sendMessage.isPending}
+              patchPending={patchTicket.isPending}
+              uploading={uploading}
+              uploadErr={uploadErr}
+              onPickFiles={onPickFiles}
+              fileRef={fileRef}
+              layout={isPanel ? "panel" : isDesktop ? "page" : "page-mobile"}
+              textareaRef={composerTextareaRef}
             />
           </div>
         </section>
