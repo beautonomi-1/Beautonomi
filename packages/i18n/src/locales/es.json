@@ -2351,13 +2351,50 @@
           "viewFullBooking": "Ver lleno reserva",
           "statusNoShow": "No show",
           "statusPendingPayment": "Pending payment",
-          "removeParticipantOverpaid": "Guest removed. The booking is now overpaid by {{amount}}. Refund the difference to the customer.",
+          "removeParticipantOverpaid": "Invitado eliminado. {{amount}} se pagó en persona y no puede ir al monedero. Devuélvalo en efectivo o en el datáfono con Reembolso en el menú Más.",
           "shareStatusPaid": "Share paid",
           "shareStatusPending": "Share unpaid ({{amount}})",
           "shareStatusCancelled": "Spot cancelled",
           "resendInvite": "Re-send invite",
           "inviteResent": "Invite sent",
-          "inviteResendFailed": "Could not re-send the invite."
+          "inviteResendFailed": "Could not re-send the invite.",
+          "slotUnavailableTitle": "Horario no disponible",
+          "noStaffForSlot": "Ningún miembro del equipo está libre para este servicio a esta hora. Elige otra hora o una persona concreta.",
+          "pickAnotherTime": "Elegir otra hora",
+          "invalidStaffTitle": "Miembro del equipo no disponible",
+          "anyAvailableStaff": "Cualquiera disponible",
+          "loadingTeam": "Cargando el equipo…",
+          "staffRetryInline": "No se pudo cargar el equipo. Toca para reintentar",
+          "moreActionsTitle": "Más",
+          "moreActionsA11y": "Más acciones",
+          "openTerminalBannerBody": "Un cobro de {{amount}} en el datáfono sigue abierto para este grupo.",
+          "resumeOpenCharge": "Reanudar",
+          "cancelOpenCharge": "Cancelar el cobro",
+          "cancelOpenChargeTitle": "¿Cancelar el cobro abierto?",
+          "cancelOpenChargeBody": "Esto cancela el cobro en curso en el datáfono para que puedas registrar el pago de otra forma.",
+          "cancelOpenChargeFailed": "No se pudo cancelar el cobro abierto.",
+          "openChargeCancelled": "Cobro del datáfono cancelado.",
+          "entityInFlightTitle": "Cobro abierto en el datáfono",
+          "cancelOpenChargeAndRecord": "Cancelar el cobro abierto y registrar",
+          "terminalInFlightTitle": "Cobro del datáfono abierto",
+          "fullyRefundedTitle": "Reembolsado por completo",
+          "participantRefundedChip": "Reembolsado",
+          "groupNotStartedTitle": "Empieza primero el grupo",
+          "groupNotStartedBody": "La entrada y la salida están disponibles cuando la reserva de grupo ya ha empezado.",
+          "unpaidCompleteNotAllowed": "Solo la persona titular o una persona responsable puede completar si queda un saldo.",
+          "unpaidCompleteReasonTitle": "Completar con saldo impagado",
+          "unpaidCompleteReasonRequired": "Escribe un motivo para completar si queda un saldo.",
+          "unpaidCompleteReasonLabel": "Motivo (obligatorio)",
+          "unpaidCompleteReasonPlaceholder": "p. ej. La clienta pagará por transferencia mañana",
+          "refundCapsTitle": "Límites de reembolso",
+          "refundCapsOnline": "Monedero / en línea: hasta {{amount}}",
+          "refundCapsCash": "Efectivo: hasta {{amount}}",
+          "refundCapsTerminal": "Datáfono: hasta {{amount}}",
+          "refundConfirmSummaryTitle": "¿Confirmar el reembolso?",
+          "refundConfirmSummaryBody": "Reembolsa {{amount}} por {{method}}.\n\nMotivo: {{reason}}",
+          "refundWalletCapExceeded": "Ese importe supera el límite de reembolso al monedero de esta reserva.",
+          "refundMethodOriginal": "Datáfono",
+          "refundOptionsLoadFailed": "No se pudieron cargar los límites de reembolso. Los importes pueden estar desactualizados."
         },
         "settingsIndex": {
           "title": "Settings",
@@ -3183,13 +3220,25 @@
           "awaitingYocoRefundReason": "Reserva cancelada: reembolso a la tarjeta",
           "refundOriginalHint": "El dinero regresa a la tarjeta del cliente a través del cajero automático o del banco. No se saca nada de su cajón de dinero.",
           "refundCashHint": "Devuelva el dinero al cliente en persona. Grabado para sus libros; no se emite ningún crédito de billetera. El saldo de la reserva se actualiza después de que esto se realice correctamente.",
-          "refundWalletHint": "Utilizar cuando el cliente no está presente o el pago se realizó en línea. El reembolso se acredita en su billetera.",
+          "refundWalletHint": "Solo el dinero pagado en línea puede volver al monedero. El reembolso se acredita en su monedero.",
           "refundOriginalMachineHint": "El dinero regresa a la tarjeta del cliente a través del cajero automático en el que se pagó.",
           "cancelWalletNote": "El cliente recibirá un reembolso completo en su billetera Beautonomi por los montos ya pagados. Su política de cancelación no se aplica a las cancelaciones que usted inicie.",
           "cancelRefundTo": "Reembolsar el importe pagado a",
           "yocoRefundRecordCta": "Reembolsado en la máquina: registrar el reembolso",
           "pendingCashRefundTitle": "{{amount}} to return in person",
-          "pendingCashRefundBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending — hand back the amount shown and wait for confirmation (or the 48-hour window to close)."
+          "pendingCashRefundBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending — hand back the amount shown and wait for confirmation (or the 48-hour window to close).",
+          "noIssueRefundsPermission": "No tienes permiso para emitir reembolsos. Pídeselo a la persona titular o a una responsable.",
+          "refundMethodCapBody": "Este método de reembolso permite hasta {{amount}}. Elige otro método para el resto.",
+          "refundCapsBreakdown": "Pagado en persona {{inPerson}} · En línea {{online}} · Ya reembolsado {{refunded}}",
+          "refundMaxForMethod": "Máximo para este método",
+          "confirmRefundTitle": "Confirmar el reembolso",
+          "confirmRefundBody": "Reembolsa {{amount}} como {{method}}. Esto no se puede deshacer.",
+          "completeBlockedTerminalTitle": "Cobro del datáfono abierto",
+          "completeBlockedFullyRefundedTitle": "Reserva reembolsada por completo",
+          "unpaidCompleteReasonTitle": "Completar con saldo impagado",
+          "unpaidCompleteReasonLabel": "Motivo (obligatorio)",
+          "unpaidCompleteReasonPlaceholder": "p. ej. La clienta pagará por transferencia mañana",
+          "unpaidCompleteNotAllowed": "Solo la persona titular o una responsable puede completar una reserva con saldo pendiente. Cobra primero o pide ayuda a una responsable."
         },
         "operatingHoursSettings": {
           "title": "Operating Hours",
@@ -5366,7 +5415,12 @@
           "staffFilteredByService": "Showing team members assigned to this service.",
           "addressOutsideArea": "This address is outside your service area.",
           "addressValidateFailed": "Could not validate this address. Check your connection and try again.",
-          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}"
+          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}",
+          "anyAvailableStaff": "Cualquiera disponible",
+          "assignAnyStaffA11y": "Asignar un miembro disponible",
+          "loadingTeam": "Cargando el equipo…",
+          "staffRetryInline": "No se pudo cargar el equipo. Toca para reintentar",
+          "staffRosterLoading": "Cargando tu equipo antes de asignar al personal"
         },
         "expressBooking": {
           "invalidJson": "JSON. no válido.",
@@ -6628,7 +6682,10 @@
           "withdraw": "Withdraw",
           "withdrawFailed": "No se pudo withdraw the offer.",
           "withdrawOffer": "Withdraw offer",
-          "emDash": "—"
+          "emDash": "—",
+          "loadingTeam": "Cargando el equipo…",
+          "noStaffPreference": "Sin preferencia",
+          "staffRetryInline": "No se pudo cargar el equipo. Toca para reintentar"
         },
         "bookingLink": {
           "title": "reserva enlace",
@@ -8219,7 +8276,10 @@
           "submitRating": "enviar valoración",
           "thanks": "Thanks!",
           "freshCaption": "Fresh {{name}}",
-          "shareBookingLink": "Share booking link"
+          "shareBookingLink": "Share booking link",
+          "continueDraftBody": "Ya empezaste una publicación para esta reserva. Sigue donde lo dejaste o valora al cliente.",
+          "continueDraftCta": "Continuar borrador",
+          "continueDraftTitle": "Termina tu borrador de Explore"
         },
         "advancedPricing": {
           "title": "Avanzado precios",
@@ -10314,7 +10374,8 @@
           "permManageMarketing": "Manage marketing",
           "calendarScopeLabel": "Calendar visibility",
           "calendarScopeOwn": "Own appointments",
-          "calendarScopeAll": "All team calendars"
+          "calendarScopeAll": "All team calendars",
+          "permIssueRefunds": "Emitir reembolsos"
         },
         "onboardingHub": {
           "title": "Configurar",
@@ -11226,7 +11287,8 @@
           "calendarScopeOwn": "Own appointments only",
           "calendarScopeAll": "All team calendars",
           "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-          "manageMarketing": "Manage marketing"
+          "manageMarketing": "Manage marketing",
+          "issueRefunds": "Emitir reembolsos"
         },
         "announcements": {
           "loadFailed": "No se pudo cargar announcements",
@@ -12226,7 +12288,10 @@
           "disabledBody": "{{message}}\n\nYour admin can enable the feature flag commerce.provider_custom_offers for this market.",
           "addPhotos": "Add inspiration photos",
           "uploadingPhotos": "Uploading…",
-          "photosAttached": "{{count}} photo(s) attached"
+          "photosAttached": "{{count}} photo(s) attached",
+          "loadingTeam": "Cargando el equipo…",
+          "noStaffPreference": "Sin preferencia",
+          "staffRetryInline": "No se pudo cargar el equipo. Toca para reintentar"
         },
         "salesSettings": {
           "title": "Ventas ajustes",
@@ -23821,7 +23886,8 @@
           "bookingChanged": "This reserva cambiard, recargar",
           "statusUpdateFailed": "No se pudo actualizar reserva estado",
           "bulkCompleted": "Bulk {{action}} completado for {{count}} reserva(s)",
-          "bulkFailed": "No se pudo {{action}} reservas"
+          "bulkFailed": "No se pudo {{action}} reservas",
+          "bulkPartialFailed": "Se omitieron {{count}} reserva(s) en {{action}}"
         },
         "liveSync": {
           "label": "En vivo · actualizard {{relative}}",
@@ -28640,7 +28706,7 @@
             "createSales": "Crear Ventas",
             "createSalesDesc": "Crear nuevo sales",
             "processPayments": "Process pagos",
-            "processPaymentsDesc": "Process pagos and reembolsos",
+            "processPaymentsDesc": "Registrar pagos y cobrar con el datáfono",
             "viewReports": "Ver informes",
             "viewReportsDesc": "Ver Negocio informes",
             "viewServices": "Ver Servicios",
@@ -28691,7 +28757,9 @@
             "viewOwnEarnings": "View own earnings",
             "viewOwnEarningsDesc": "See tips, commission, and personal earnings",
             "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them."
+            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them.",
+            "issueRefunds": "Emitir reembolsos",
+            "issueRefundsDesc": "Reembolsar a clientes (monedero, efectivo o datáfono)"
           },
           "team/roles": {
             "roles": "Rols",
@@ -28753,7 +28821,8 @@
               "manage_marketing": "Manage marketing",
               "manage_payroll": "Manage payroll",
               "manage_finance": "Platform billing",
-              "view_own_earnings": "View own earnings"
+              "view_own_earnings": "View own earnings",
+              "issue_refunds": "Emitir reembolsos"
             },
             "catEngagement": "Engagement",
             "permissionCount": "permiso Count"
@@ -33175,7 +33244,9 @@
         "confirmLateCancelBody": "This will cancel {{name}}'s appointment as a late cancellation. A cancellation fee may apply according to your policy.",
         "cancel": "Cancelar",
         "confirmNoShow": "Mark No-mostrar",
-        "confirmLateCancel": "Late cancelar"
+        "confirmLateCancel": "Late cancelar",
+        "completeSkipped_one": "{{count}} cita no se completó (saldo pendiente, reembolsada o datáfono abierto)",
+        "completeSkipped_other": "{{count}} citas no se completaron (saldo pendiente, reembolsadas o datáfono abierto)"
       },
       "moreHub": {
         "requiresEditSettings": "Requires editar ajustes permiso",

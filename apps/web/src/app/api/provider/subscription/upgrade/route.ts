@@ -257,7 +257,7 @@ export async function POST(request: NextRequest) {
 
     const { data: userEmailRow } = await supabase
       .from("users")
-      .select("email, first_name, last_name, phone")
+      .select("email, full_name, phone")
       .eq("id", user.id)
       .single();
 
@@ -272,8 +272,8 @@ export async function POST(request: NextRequest) {
       try {
         const customerResponse = await createCustomer({
           email,
-          first_name: userEmailRow?.first_name || undefined,
-          last_name: userEmailRow?.last_name || undefined,
+          first_name: String(userEmailRow?.full_name ?? "").trim().split(/\s+/)[0] || undefined,
+          last_name: String(userEmailRow?.full_name ?? "").trim().split(/\s+/).slice(1).join(" ") || undefined,
           phone: userEmailRow?.phone || undefined,
         }, { tenantId });
         customerCode = customerResponse.data?.customer_code || email;

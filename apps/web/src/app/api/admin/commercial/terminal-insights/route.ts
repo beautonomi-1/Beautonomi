@@ -54,7 +54,7 @@ async function computeInsightCounts(
       providers!inner(
         id,
         tenant_id,
-        provider_subscriptions(plan_id, status, subscription_plans(features))
+        provider_subscriptions(plan_id, status, subscription_plans!provider_subscriptions_plan_id_fkey(features))
       )
       `,
     )
@@ -167,7 +167,7 @@ export async function GET(request: NextRequest) {
           slug,
           status,
           tenant_id,
-          provider_subscriptions(plan_id, status, subscription_plans(name, slug, features)),
+          provider_subscriptions(plan_id, status, subscription_plans!provider_subscriptions_plan_id_fkey(name, slug, features)),
           terminal_upsell_leads(
             id,
             status,

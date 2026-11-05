@@ -52,8 +52,9 @@ describe("resolveActiveNavHref", () => {
 describe("rankNavMatches", () => {
   it("ranks title prefix before substring and shows the parent hub", () => {
     const matches = rankNavMatches("refund", NAV_GROUPS);
-    expect(matches[0]?.href).toBe("/admin/refunds");
-    expect(matches[0]?.group).toBe("Finance");
+    expect(matches.slice(0, 2).map((m) => m.href)).toEqual(["/admin/refund-anomalies", "/admin/refunds"]);
+    expect(matches[1]?.group).toBe("Finance");
+    expect(rankNavMatches("refunds", NAV_GROUPS)[0]?.href).toBe("/admin/refunds");
     expect(rankNavMatches("lead inbox", NAV_GROUPS)[0]?.group).toBe("Provider Ops › Provider Ops Dashboard");
   });
 

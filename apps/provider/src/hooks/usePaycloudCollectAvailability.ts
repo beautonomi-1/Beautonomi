@@ -15,11 +15,13 @@ export interface PaycloudCollectAvailability {
   warnings: PayCloudReadinessWarning[];
   primaryBlocker: PayCloudReadinessBlocker | null;
   loading: boolean;
+  /** Refetch terminal readiness (e.g. in-flight lock) after a card machine sheet closes. */
+  reload: () => Promise<void>;
 }
 
 export function usePaycloudCollectAvailability(): PaycloudCollectAvailability {
   const paycloudEnabled = usePaycloudFeatureEnabled();
-  const { settings, loading } = usePayCloudSettings();
+  const { settings, loading, reload } = usePayCloudSettings();
 
   return useMemo(() => {
     const blockers = settings?.blockers ?? [];
@@ -38,8 +40,9 @@ export function usePaycloudCollectAvailability(): PaycloudCollectAvailability {
       warnings,
       primaryBlocker,
       loading,
+      reload,
     };
-  }, [paycloudEnabled, settings, loading]);
+  }, [paycloudEnabled, settings, loading, reload]);
 }
 
 /** Deposit-aware charge amount for a booking (mirrors Yoco terminal sizing). */

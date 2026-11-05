@@ -15,6 +15,7 @@ import Link from "next/link";
 import { formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
 import { fetcher , FetchError } from "@/lib/http/fetcher";
 import { format } from "date-fns";
+import { toast } from "sonner";
 import { ReportSkeleton } from "../components/ReportSkeleton";
 import { EmptyReportState } from "../components/EmptyReportState";
 import type { EndOfDayResponse } from "@/app/api/provider/reports/end-of-day/route";
@@ -129,9 +130,17 @@ export default function EndOfDayReportPage() {
     }
     setCloseOutLoading(true);
     try {
-      await fetcher.post("/api/provider/bookings/close-out/bulk-complete", {
+      const bulk = await fetcher.post<{
+        data?: { results?: Array<{ id: string; ok: boolean; error?: string }> };
+      }>("/api/provider/bookings/close-out/bulk-complete", {
         booking_ids: eligible.map((b) => b.id),
       });
+      const skipped = (bulk?.data?.results ?? []).filter((r) => !r.ok);
+      if (skipped.length > 0) {
+        toast.warning(t("web.provider.waitingRoomPanel.completeSkipped", { count: skipped.length }), {
+          description: skipped.map((r) => r.error).filter(Boolean).slice(0, 3).join(" · "),
+        });
+      }
       const params = new URLSearchParams();
       appendLocation(params);
       const qs = params.toString();

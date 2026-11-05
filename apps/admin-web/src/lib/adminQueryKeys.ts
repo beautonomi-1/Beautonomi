@@ -199,6 +199,7 @@ export const adminQueryKeys = {
       providerId?: string;
     }) => [...adminQueryKeys.finance.all(), "transactions", filters] as const,
     periodLocks: () => [...adminQueryKeys.finance.all(), "period-locks"] as const,
+    refundAnomalies: () => [...adminQueryKeys.finance.all(), "refund-anomalies"] as const,
     trialBalance: (range: string) => [...adminQueryKeys.finance.all(), "trial-balance", range] as const,
     walletReconciliation: () => [...adminQueryKeys.finance.all(), "wallet-reconciliation"] as const,
   },

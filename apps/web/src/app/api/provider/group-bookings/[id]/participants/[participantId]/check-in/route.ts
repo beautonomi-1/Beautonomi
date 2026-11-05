@@ -36,7 +36,7 @@ export async function POST(
 
     const { data: group, error: groupError } = await admin
       .from("group_bookings")
-      .select("id, provider_id")
+      .select("id, provider_id, status")
       .eq("id", id)
       .maybeSingle();
 
@@ -45,6 +45,19 @@ export async function POST(
     }
     if (!group) {
       return notFoundResponse("Group booking not found");
+    }
+    const groupStatus = String((group as { status?: string }).status ?? "").toLowerCase();
+    if (
+      groupStatus === "booked" ||
+      groupStatus === "confirmed" ||
+      groupStatus === "waiting" ||
+      groupStatus === "pending"
+    ) {
+      return errorResponse(
+        "Start the group session before checking in participants.",
+        "GROUP_NOT_STARTED",
+        400,
+      );
     }
     if (
       user.role !== "superadmin" &&

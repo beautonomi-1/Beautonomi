@@ -31,17 +31,38 @@ export async function GET(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
-    const { data, error } = await supabase
-      .from("time_off_types")
-      .select("*")
-      .eq("provider_id", providerId)
-      .order("name", { ascending: true });
+    const { data: staffRows, error: staffErr } = await supabase
+      .from("provider_staff")
+      .select("id")
+      .eq("provider_id", providerId);
+    if (staffErr) throw staffErr;
 
-    if (error) {
-      throw error;
-    }
+    const staffIds = (staffRows ?? []).map((s: { id: string }) => s.id);
+    if (staffIds.length === 0) return successResponse([]);
 
-    return successResponse(data || []);
+    const { data: timeOffRows, error } = await supabase
+      .from("staff_time_off")
+      .select("type")
+      .in("staff_id", staffIds);
+    if (error) throw error;
+
+    const names = [
+      ...new Set(
+        (timeOffRows ?? [])
+          .map((r: { type?: string | null }) => String(r.type ?? "").trim())
+          .filter(Boolean),
+      ),
+    ].sort((a, b) => a.localeCompare(b));
+
+    return successResponse(
+      names.map((name) => ({
+        id: name,
+        name,
+        description: null,
+        is_paid: false,
+        is_active: true,
+      })),
+    );
   } catch (error) {
     return handleApiError(error, "Failed to load time off types");
   }
@@ -73,23 +94,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data, error } = await supabase
-      .from("time_off_types")
-      .insert({
-        provider_id: providerId,
-        name: validationResult.data.name,
-        description: validationResult.data.description || null,
-        is_paid: validationResult.data.is_paid ?? false,
-        is_active: validationResult.data.is_active ?? true,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      throw error;
-    }
-
-    return successResponse(data);
+    return errorResponse(
+      "Time-off types are labels on staff time-off records and cannot be created as a catalog.",
+      "NOT_SUPPORTED",
+      409,
+    );
   } catch (error) {
     return handleApiError(error, "Failed to create time off type");
   }

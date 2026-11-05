@@ -2351,13 +2351,50 @@
           "viewFullBooking": "View full booking",
           "statusNoShow": "No show",
           "statusPendingPayment": "Pending payment",
-          "removeParticipantOverpaid": "Guest removed. The booking is now overpaid by {{amount}}. Refund the difference to the customer.",
+          "removeParticipantOverpaid": "Misafir çıkarıldı. {{amount}} şahsen ödendi ve cüzdana gidemez. Nakit veya kart cihazında İade ile Diğer menüsünden iade edin.",
           "shareStatusPaid": "Share paid",
           "shareStatusPending": "Share unpaid ({{amount}})",
           "shareStatusCancelled": "Spot cancelled",
           "resendInvite": "Re-send invite",
           "inviteResent": "Invite sent",
-          "inviteResendFailed": "Could not re-send the invite."
+          "inviteResendFailed": "Could not re-send the invite.",
+          "slotUnavailableTitle": "Saat uygun değil",
+          "noStaffForSlot": "Bu saatte bu hizmet için boş ekip üyesi yok. Başka bir saat veya belirli bir kişi seç.",
+          "pickAnotherTime": "Başka bir saat seç",
+          "invalidStaffTitle": "Ekip üyesi uygun değil",
+          "anyAvailableStaff": "Müsait olan herhangi biri",
+          "loadingTeam": "Ekip yükleniyor…",
+          "staffRetryInline": "Ekip yüklenemedi. Yeniden denemek için dokun",
+          "moreActionsTitle": "Diğer",
+          "moreActionsA11y": "Diğer işlemler",
+          "openTerminalBannerBody": "Bu grup için {{amount}} tutarındaki kart cihazı tahsilatı hâlâ açık.",
+          "resumeOpenCharge": "Sürdür",
+          "cancelOpenCharge": "Tahsilatı iptal et",
+          "cancelOpenChargeTitle": "Açık tahsilat iptal edilsin mi?",
+          "cancelOpenChargeBody": "Bu, devam eden kart cihazı tahsilatını iptal eder; ödemeyi başka bir yolla kaydedebilirsin.",
+          "cancelOpenChargeFailed": "Açık tahsilat iptal edilemedi.",
+          "openChargeCancelled": "Kart cihazı tahsilatı iptal edildi.",
+          "entityInFlightTitle": "Açık kart cihazı tahsilatı",
+          "cancelOpenChargeAndRecord": "Açık tahsilatı iptal et ve kaydet",
+          "terminalInFlightTitle": "Kart cihazı tahsilatı açık",
+          "fullyRefundedTitle": "Tamamen iade edildi",
+          "participantRefundedChip": "İade edildi",
+          "groupNotStartedTitle": "Önce grubu başlat",
+          "groupNotStartedBody": "Grup rezervasyonu başladıktan sonra giriş ve çıkış yapılabilir.",
+          "unpaidCompleteNotAllowed": "Açık bakiye varken yalnızca sahip veya yönetici tamamlayabilir.",
+          "unpaidCompleteReasonTitle": "Ödenmemiş bakiyeyle tamamla",
+          "unpaidCompleteReasonRequired": "Açık bakiye varken tamamlamak için bir gerekçe yaz.",
+          "unpaidCompleteReasonLabel": "Gerekçe (zorunlu)",
+          "unpaidCompleteReasonPlaceholder": "ör. Müşteri yarın EFT ile ödeyecek",
+          "refundCapsTitle": "İade sınırları",
+          "refundCapsOnline": "Cüzdan / çevrimiçi: en fazla {{amount}}",
+          "refundCapsCash": "Nakit: en fazla {{amount}}",
+          "refundCapsTerminal": "Kart cihazı: en fazla {{amount}}",
+          "refundConfirmSummaryTitle": "İade onaylansın mı?",
+          "refundConfirmSummaryBody": "{{amount}} tutarını {{method}} ile iade et.\n\nGerekçe: {{reason}}",
+          "refundWalletCapExceeded": "Bu tutar, bu rezervasyonun cüzdan iade sınırını aşıyor.",
+          "refundMethodOriginal": "Kart cihazı",
+          "refundOptionsLoadFailed": "İade sınırları yüklenemedi. Tutarlar güncel olmayabilir."
         },
         "settingsIndex": {
           "title": "Settings",
@@ -3183,13 +3220,25 @@
           "awaitingYocoRefundReason": "Rezervasyon iptal edildi - karta geri ödeme yapıldı",
           "refundOriginalHint": "Para, kart makinesi veya banka aracılığıyla müşterinin kartına iade edilir. Kasanızdan hiçbir şey alınmıyor.",
           "refundCashHint": "Parayı müşteriye bizzat geri verin. Kitaplarınız için kaydedildi; cüzdan kredisi verilmez. Bu başarılı olduktan sonra rezervasyon bakiyesi güncellenir.",
-          "refundWalletHint": "Müşteri mevcut olmadığında veya ödeme çevrimiçi olarak yapıldığında kullanın. Geri ödeme cüzdanlarına aktarılır.",
+          "refundWalletHint": "Yalnızca çevrimiçi ödenen para cüzdana geri dönebilir. İade onların cüzdanına yatırılır.",
           "refundOriginalMachineHint": "Para, ödemenin yapıldığı kart makinesi aracılığıyla müşterinin kartına geri döner.",
           "cancelWalletNote": "Müşteri, halihazırda ödenmiş tutarların tamamını Beautonomi cüzdanına geri alacaktır. Başlattığınız iptallerde iptal politikanız geçerli değildir.",
           "cancelRefundTo": "Ödenen tutarın iade yeri",
           "yocoRefundRecordCta": "Cihazda iade edildi — iadeyi kaydet",
           "pendingCashRefundTitle": "{{amount}} to return in person",
-          "pendingCashRefundBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending — hand back the amount shown and wait for confirmation (or the 48-hour window to close)."
+          "pendingCashRefundBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending — hand back the amount shown and wait for confirmation (or the 48-hour window to close).",
+          "noIssueRefundsPermission": "İade verme iznin yok. Sahibe veya yöneticiye sor.",
+          "refundMethodCapBody": "Bu iade yöntemi en fazla {{amount}} izin verir. Kalan için başka bir yöntem seç.",
+          "refundCapsBreakdown": "Yüz yüze ödenen {{inPerson}} · Çevrimiçi {{online}} · Zaten iade {{refunded}}",
+          "refundMaxForMethod": "Bu yöntem için üst sınır",
+          "confirmRefundTitle": "İadeyi onayla",
+          "confirmRefundBody": "{{amount}} tutarını {{method}} olarak iade et. Bu geri alınamaz.",
+          "completeBlockedTerminalTitle": "Kart cihazı tahsilatı açık",
+          "completeBlockedFullyRefundedTitle": "Rezervasyon tamamen iade edildi",
+          "unpaidCompleteReasonTitle": "Ödenmemiş bakiyeyle tamamla",
+          "unpaidCompleteReasonLabel": "Gerekçe (zorunlu)",
+          "unpaidCompleteReasonPlaceholder": "ör. Müşteri yarın EFT ile ödeyecek",
+          "unpaidCompleteNotAllowed": "Açık bakiyeli bir rezervasyonu yalnızca sahip veya yönetici tamamlayabilir. Önce tahsil et veya bir yöneticiye sor."
         },
         "operatingHoursSettings": {
           "title": "Operating Hours",
@@ -5366,7 +5415,12 @@
           "staffFilteredByService": "Showing team members assigned to this service.",
           "addressOutsideArea": "This address is outside your service area.",
           "addressValidateFailed": "Could not validate this address. Check your connection and try again.",
-          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}"
+          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}",
+          "anyAvailableStaff": "Uygun olan herhangi biri",
+          "assignAnyStaffA11y": "Uygun bir ekip üyesini ata",
+          "loadingTeam": "Ekip yükleniyor…",
+          "staffRetryInline": "Ekip yüklenemedi. Yeniden denemek için dokunun",
+          "staffRosterLoading": "Personel atanmadan önce ekibiniz yükleniyor"
         },
         "expressBooking": {
           "invalidJson": "Invalid JSON.",
@@ -6628,7 +6682,10 @@
           "withdraw": "Withdraw",
           "withdrawFailed": "Could not withdraw the offer.",
           "withdrawOffer": "Withdraw offer",
-          "emDash": "—"
+          "emDash": "—",
+          "loadingTeam": "Ekip yükleniyor…",
+          "noStaffPreference": "Tercih yok",
+          "staffRetryInline": "Ekip yüklenemedi. Yeniden denemek için dokunun"
         },
         "bookingLink": {
           "title": "Booking Link",
@@ -8219,7 +8276,10 @@
           "submitRating": "Submit rating",
           "thanks": "Thanks!",
           "freshCaption": "Fresh {{name}}",
-          "shareBookingLink": "Share booking link"
+          "shareBookingLink": "Share booking link",
+          "continueDraftBody": "Bu rezervasyon için bir gönderiye çoktan başladınız. Kaldığınız yerden sürdürün veya müşteriyi puanlayın.",
+          "continueDraftCta": "Taslağa devam et",
+          "continueDraftTitle": "Explore taslağını bitirin"
         },
         "advancedPricing": {
           "title": "Advanced pricing",
@@ -10314,7 +10374,8 @@
           "permManageMarketing": "Manage marketing",
           "calendarScopeLabel": "Calendar visibility",
           "calendarScopeOwn": "Own appointments",
-          "calendarScopeAll": "All team calendars"
+          "calendarScopeAll": "All team calendars",
+          "permIssueRefunds": "İade yap"
         },
         "onboardingHub": {
           "title": "Set up",
@@ -11226,7 +11287,8 @@
           "calendarScopeOwn": "Own appointments only",
           "calendarScopeAll": "All team calendars",
           "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-          "manageMarketing": "Manage marketing"
+          "manageMarketing": "Manage marketing",
+          "issueRefunds": "İade yap"
         },
         "announcements": {
           "loadFailed": "Could not load announcements",
@@ -12226,7 +12288,10 @@
           "disabledBody": "{{message}}\n\nYour admin can enable the feature flag commerce.provider_custom_offers for this market.",
           "addPhotos": "Add inspiration photos",
           "uploadingPhotos": "Uploading…",
-          "photosAttached": "{{count}} photo(s) attached"
+          "photosAttached": "{{count}} photo(s) attached",
+          "loadingTeam": "Ekip yükleniyor…",
+          "noStaffPreference": "Tercih yok",
+          "staffRetryInline": "Ekip yüklenemedi. Yeniden denemek için dokunun"
         },
         "salesSettings": {
           "title": "Sales Settings",
@@ -23821,7 +23886,8 @@
           "bookingChanged": "This booking changed, reload",
           "statusUpdateFailed": "Failed to update booking status",
           "bulkCompleted": "Bulk {{action}} completed for {{count}} booking(s)",
-          "bulkFailed": "Failed to {{action}} bookings"
+          "bulkFailed": "Failed to {{action}} bookings",
+          "bulkPartialFailed": "{{action}} için {{count}} rezervasyon atlandı"
         },
         "liveSync": {
           "label": "Live · updated {{relative}}",
@@ -28640,7 +28706,7 @@
             "createSales": "Create Sales",
             "createSalesDesc": "Create new sales",
             "processPayments": "Process Payments",
-            "processPaymentsDesc": "Process payments and refunds",
+            "processPaymentsDesc": "Ödemeleri kaydet ve kart cihazından tahsil et",
             "viewReports": "View Reports",
             "viewReportsDesc": "View business reports",
             "viewServices": "View Services",
@@ -28691,7 +28757,9 @@
             "viewOwnEarnings": "View own earnings",
             "viewOwnEarningsDesc": "See tips, commission, and personal earnings",
             "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them."
+            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them.",
+            "issueRefunds": "İade yap",
+            "issueRefundsDesc": "Müşterilere iade (cüzdan, nakit veya kart cihazı)"
           },
           "team/roles": {
             "roles": "Roles",
@@ -28753,7 +28821,8 @@
               "manage_marketing": "Manage marketing",
               "manage_payroll": "Manage payroll",
               "manage_finance": "Platform billing",
-              "view_own_earnings": "View own earnings"
+              "view_own_earnings": "View own earnings",
+              "issue_refunds": "İade yap"
             },
             "catEngagement": "Engagement",
             "permissionCount": "Permission Count"
@@ -33175,7 +33244,9 @@
         "confirmLateCancelBody": "This will cancel {{name}}'s appointment as a late cancellation. A cancellation fee may apply according to your policy.",
         "cancel": "Cancel",
         "confirmNoShow": "Mark No-Show",
-        "confirmLateCancel": "Late Cancel"
+        "confirmLateCancel": "Late Cancel",
+        "completeSkipped_one": "{{count}} randevu tamamlanmadı (açık bakiye, iade veya kart cihazı açık)",
+        "completeSkipped_other": "{{count}} randevu tamamlanmadı (açık bakiye, iade veya kart cihazı açık)"
       },
       "moreHub": {
         "requiresEditSettings": "Requires Edit settings permission",

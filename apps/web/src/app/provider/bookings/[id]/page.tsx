@@ -8,6 +8,16 @@ import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { isStandardVatRatePercent, normalizeTaxRatePercent } from "@/lib/tax/tax-rate-display";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { VerifiedBadge } from "@/components/ui/verified-badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -76,6 +86,10 @@ import {
 } from "@beautonomi/utils";
 import CustomerRatingButton from "@/components/reviews/customer-rating-button";
 import { PostCompletionSheet } from "@/components/provider/booking/PostCompletionSheet";
+import {
+  BookingCompleteConfirmDialog,
+  type BookingCompleteConfirmReason,
+} from "@/components/provider/booking/view/BookingCompleteConfirmDialog";
 import { EtaPicker } from "@/components/provider/booking/EtaPicker";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import dynamic from "next/dynamic";
@@ -155,11 +169,16 @@ export default function ProviderBookingDetail() {
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const paymentLinkEnabled = useFeatureFlag("payment_link");
   const manualCardEnabled = useFeatureFlag("payment_manual_card");
-  const { hasPermission, isOwner } = usePermissions();
+  const { hasPermission, isOwner, isManager } = usePermissions();
+  const [completeBlock, setCompleteBlock] = useState<{
+    reason: BookingCompleteConfirmReason;
+    message: string;
+  } | null>(null);
   const canEditAppointments = isOwner || hasPermission("edit_appointments");
   const canCancelAppointments =
     isOwner || hasPermission("cancel_appointments") || canEditAppointments;
   const canProcessPayments = isOwner || hasPermission("process_payments");
+  const canIssueRefunds = isOwner || hasPermission("issue_refunds");
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -225,6 +244,16 @@ export default function ProviderBookingDetail() {
   const [refundMethod, setRefundMethod] = useState<"cash" | "store_credit" | "original">("store_credit");
   const [isRefunding, setIsRefunding] = useState(false);
   const [yocoRefundPendingRecord, setYocoRefundPendingRecord] = useState(false);
+  const [refundCaps, setRefundCaps] = useState<{
+    maxRefundable: number;
+    onlineCap: number;
+    cashCap: number;
+    terminalCap: number;
+    hasCustomerAccount: boolean;
+    suggestedMethod: "store_credit" | "cash" | "original";
+  } | null>(null);
+  const [refundOptionsLoading, setRefundOptionsLoading] = useState(false);
+  const [refundConfirmOpen, setRefundConfirmOpen] = useState(false);
 
   // Yoco (parity with provider app: pending sale → terminal → sale PATCH + mark-paid)
   const [cardMachineOpen, setCardMachineOpen] = useState(false);
@@ -440,7 +469,10 @@ export default function ProviderBookingDetail() {
       });
   }, [booking?.provider_form_responses]);
 
-  const handleStatusChange = async (newStatus: string) => {
+  const handleStatusChange = async (
+    newStatus: string,
+    completeBody: { allow_unpaid?: boolean; unpaid_reason?: string } = {},
+  ) => {
     if (!booking) return;
 
     try {
@@ -456,7 +488,11 @@ export default function ProviderBookingDetail() {
       }
 
       if (newStatus === "completed") {
-        const res = await fetcher.post<{ booking: ProviderBookingDetail }>(`/api/provider/bookings/${bookingId}/complete-service`, {});
+        const res = await fetcher.post<{ booking: ProviderBookingDetail }>(
+          `/api/provider/bookings/${bookingId}/complete-service`,
+          completeBody,
+        );
+        setCompleteBlock(null);
         setBooking({ ...booking, status: "completed" as Booking["status"], ...res.booking });
         toast.success(t("web.provider.bookings.detail.toast.serviceCompleted"));
         loadBooking();
@@ -493,7 +529,23 @@ export default function ProviderBookingDetail() {
       toast.success(t("web.provider.bookings.detail.toast.statusUpdated"));
       loadBooking();
     } catch (error) {
-      if (error instanceof FetchError && error.status === 409) {
+      const completionCode =
+        newStatus === "completed" && error instanceof FetchError ? error.code : undefined;
+      if (completionCode === "BALANCE_DUE" && !completeBody.allow_unpaid) {
+        setCompleteBlock({
+          reason: "outstanding",
+          message: t("web.provider.bookings.statusActions.outstandingCompleteHint"),
+        });
+      } else if (completionCode === "FULLY_REFUNDED") {
+        setCompleteBlock({ reason: "refunded", message: (error as FetchError).message });
+      } else if (
+        completionCode === "TERMINAL_IN_FLIGHT" ||
+        completionCode === "BALANCE_DUE" ||
+        completionCode === "BALANCE_DUE_REASON_REQUIRED" ||
+        completionCode === "FORBIDDEN"
+      ) {
+        toast.error((error as FetchError).message);
+      } else if (error instanceof FetchError && error.status === 409) {
         setConflictError(t("web.provider.bookings.detail.toast.bookingChanged"));
         toast.error(t("web.provider.bookings.detail.toast.bookingChanged"));
       } else {
@@ -837,11 +889,43 @@ export default function ProviderBookingDetail() {
     }
   };
 
+  useEffect(() => {
+    if (!showRefund || !bookingId || !canIssueRefunds) return;
+    let cancelled = false;
+    setRefundOptionsLoading(true);
+    void (async () => {
+      try {
+        const res = await fetcher.get<{
+          data?: {
+            caps?: {
+              maxRefundable: number;
+              onlineCap: number;
+              cashCap: number;
+              terminalCap: number;
+              hasCustomerAccount: boolean;
+              suggestedMethod: "store_credit" | "cash" | "original";
+            };
+          };
+        }>(`/api/provider/bookings/${bookingId}/refund-options`);
+        if (cancelled) return;
+        const caps = res?.data?.caps;
+        if (caps) {
+          setRefundCaps(caps);
+          setRefundMethod(caps.suggestedMethod);
+        }
+      } catch {
+        if (!cancelled) setRefundCaps(null);
+      } finally {
+        if (!cancelled) setRefundOptionsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showRefund, bookingId, canIssueRefunds]);
+
   const handleRefund = async (options?: { recordOnly?: boolean }) => {
     if (!booking) return;
-    const tp = booking.total_paid ?? 0;
-    const tr = booking.total_refunded ?? 0;
-    const maxRefundable = Math.max(0, tp - tr);
     const amount = parseFloat(refundAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
       toast.error(t("web.provider.bookings.detail.toast.enterValidAmount"));
@@ -877,13 +961,19 @@ export default function ProviderBookingDetail() {
         );
       }
       setYocoRefundPendingRecord(false);
+      setRefundConfirmOpen(false);
       setShowRefund(false);
       setRefundAmount("");
       setRefundReason("");
+      setRefundCaps(null);
       loadBooking();
     } catch (err) {
       if (err instanceof FetchError && err.code === "YOCO_REFUND_ON_MACHINE") {
         setYocoRefundPendingRecord(true);
+        return;
+      }
+      if (err instanceof FetchError && err.code === "WALLET_REFUND_CAP_EXCEEDED") {
+        toast.error(t("provider.mobile.screens.groupBookings.refundWalletCapExceeded"));
         return;
       }
       toast.error(err instanceof FetchError ? err.message : t("web.provider.bookings.detail.toast.refundFailed"));
@@ -1625,7 +1715,8 @@ export default function ProviderBookingDetail() {
     depositRequired: (b as unknown as Record<string, unknown>).deposit_required as boolean | null | undefined,
   });
   const netPaidAfterRefunds = totalPaid - totalRefunded;
-  const maxRefundable = Math.max(0, netPaidAfterRefunds);
+  const fallbackMaxRefundable = Math.max(0, netPaidAfterRefunds);
+  const maxRefundable = refundCaps?.maxRefundable ?? fallbackMaxRefundable;
   const canMarkPaid =
     canProcessPayments &&
     outstanding > 0 &&
@@ -1633,8 +1724,12 @@ export default function ProviderBookingDetail() {
   const markPaidPrimary =
     outstanding > 0 &&
     (b.current_stage === "service_completed" || bookingLifecycleStatus === "completed");
-  const canRefund =
-    canProcessPayments && totalPaid > 0 && totalRefunded < totalPaid;
+  const canRefund = canIssueRefunds && fallbackMaxRefundable > 0.01;
+  const refundShowWalletMethod =
+    (refundCaps?.onlineCap ?? 0) > 0.01 && refundCaps?.hasCustomerAccount === true;
+  const refundShowOriginalMethod =
+    (refundCaps?.terminalCap ?? 0) > 0.01 && (yocoEnabled || paycloudEnabled);
+  const refundShowCashMethod = (refundCaps?.cashCap ?? maxRefundable) > 0.01 || !refundCaps;
   const awaitingMachineRefunds =
     (b as unknown as { awaiting_machine_refunds?: Array<{ id: string; amount: number }> })
       .awaiting_machine_refunds ?? [];
@@ -3036,13 +3131,9 @@ export default function ProviderBookingDetail() {
             <Button
               variant="outline"
               onClick={() => {
-                setRefundAmount(maxRefundable.toFixed(2));
+                setRefundAmount("");
                 setRefundReason("");
-                // Smart default: online bookings refund to wallet; provider/
-                // walk-in bookings (and any without a platform customer) refund
-                // in person (cash). No wallet exists for an unlinked customer.
-                const isOnline = (booking as any)?.booking_source === "online";
-                setRefundMethod(isOnline && booking?.customer_id ? "store_credit" : "cash");
+                setRefundCaps(null);
                 setYocoRefundPendingRecord(false);
                 setShowRefund(true);
               }}
@@ -3582,9 +3673,16 @@ export default function ProviderBookingDetail() {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
               <h3 className="text-lg font-semibold">{t("web.provider.bookings.detail.paymentActions.issueRefund")}</h3>
-              <p className="text-sm text-gray-600">
-                {t("web.provider.bookings.detail.refund.netPaidMaxRefund", { net: formatMoney(netPaidAfterRefunds), max: formatMoney(maxRefundable) })}
-              </p>
+              {refundOptionsLoading ? (
+                <p className="text-sm text-gray-500">{t("web.provider.bookings.detail.refund.processing")}</p>
+              ) : null}
+              {refundCaps && maxRefundable <= 0.01 ? (
+                <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.refund.netPaidMaxRefund", { net: formatMoney(netPaidAfterRefunds), max: formatMoney(0) })}</p>
+              ) : (
+                <p className="text-sm text-gray-600">
+                  {t("web.provider.bookings.detail.refund.netPaidMaxRefund", { net: formatMoney(netPaidAfterRefunds), max: formatMoney(maxRefundable) })}
+                </p>
+              )}
               <div>
                 <label className="text-sm font-medium mb-1 block">{t("web.provider.bookings.detail.dialogs.refundAmount")}</label>
                 <Input
@@ -3609,51 +3707,39 @@ export default function ProviderBookingDetail() {
               </div>
               <div>
                 <label className="text-sm font-medium mb-1 block">{t("web.provider.bookings.detail.dialogs.refundMethod")}</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setRefundMethod("cash")}
-                    className={`min-h-[44px] rounded-md border px-3 text-sm font-medium transition ${
-                      refundMethod === "cash"
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                    }`}
-                  >
-                    {t("web.provider.bookings.detail.refund.inPersonCash")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!booking?.customer_id) {
-                        toast.error(t("web.provider.bookings.detail.refund.noWallet"));
-                        return;
-                      }
-                      setRefundMethod("store_credit");
-                    }}
-                    disabled={!booking?.customer_id}
-                    className={`min-h-[44px] rounded-md border px-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                      refundMethod === "store_credit"
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                    }`}
-                  >
-                    {t("web.provider.bookings.detail.dialogs.walletCredit")}
-                  </button>
-                  {yocoEnabled || paycloudEnabled ? (
-                    <button
+                <div className="flex flex-wrap gap-2">
+                  {refundShowOriginalMethod ? (
+                    <Button
                       type="button"
+                      size="sm"
+                      variant={refundMethod === "original" ? "default" : "outline"}
                       onClick={() => {
                         setYocoRefundPendingRecord(false);
                         setRefundMethod("original");
                       }}
-                      className={`col-span-2 min-h-[44px] rounded-md border px-3 text-sm font-medium transition ${
-                        refundMethod === "original"
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                      }`}
                     >
                       {t("web.provider.bookings.detail.refund.backToCard")}
-                    </button>
+                    </Button>
+                  ) : null}
+                  {refundShowWalletMethod ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={refundMethod === "store_credit" ? "default" : "outline"}
+                      onClick={() => setRefundMethod("store_credit")}
+                    >
+                      {t("web.provider.bookings.detail.dialogs.walletCredit")}
+                    </Button>
+                  ) : null}
+                  {refundShowCashMethod ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={refundMethod === "cash" ? "default" : "outline"}
+                      onClick={() => setRefundMethod("cash")}
+                    >
+                      {t("web.provider.bookings.detail.refund.inPersonCash")}
+                    </Button>
                   ) : null}
                 </div>
                 <p className="mt-1.5 text-xs text-gray-500">
@@ -3683,7 +3769,23 @@ export default function ProviderBookingDetail() {
                 </div>
               ) : null}
               <div className="flex gap-3">
-                <Button variant="destructive" onClick={() => void handleRefund()} disabled={isRefunding} className="flex-1">
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    const amount = parseFloat(refundAmount);
+                    if (!Number.isFinite(amount) || amount <= 0) {
+                      toast.error(t("web.provider.bookings.detail.toast.enterValidAmount"));
+                      return;
+                    }
+                    if (!refundReason.trim()) {
+                      toast.error(t("web.provider.bookings.detail.toast.enterRefundReason"));
+                      return;
+                    }
+                    setRefundConfirmOpen(true);
+                  }}
+                  disabled={isRefunding || maxRefundable <= 0.01}
+                  className="flex-1"
+                >
                   {isRefunding ? t("web.provider.bookings.detail.dialogs.processingRefund") : t("web.provider.bookings.detail.dialogs.confirmRefund")}
                 </Button>
                 <Button
@@ -3691,6 +3793,7 @@ export default function ProviderBookingDetail() {
                   onClick={() => {
                     setShowRefund(false);
                     setRefundReason("");
+                    setRefundCaps(null);
                   }}
                   className="flex-1"
                 >
@@ -3700,6 +3803,64 @@ export default function ProviderBookingDetail() {
             </div>
           </div>
         )}
+
+        <AlertDialog open={refundConfirmOpen} onOpenChange={setRefundConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t("provider.mobile.screens.groupBookings.refundConfirmSummaryTitle")}</AlertDialogTitle>
+              <AlertDialogDescription className="whitespace-pre-line">
+                {t("provider.mobile.screens.groupBookings.refundConfirmSummaryBody", {
+                  amount: formatMoney(parseFloat(refundAmount) || 0),
+                  method:
+                    refundMethod === "original"
+                      ? t("web.provider.bookings.detail.refund.backToCard")
+                      : refundMethod === "cash"
+                        ? t("web.provider.bookings.detail.refund.inPersonCash")
+                        : t("web.provider.bookings.detail.dialogs.walletCredit"),
+                  reason: refundReason.trim(),
+                })}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{t("web.provider.common.cancel")}</AlertDialogCancel>
+              <AlertDialogAction disabled={isRefunding} onClick={() => void handleRefund()}>
+                {t("provider.mobile.screens.groupBookings.refundConfirm")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {completeBlock ? (
+          <BookingCompleteConfirmDialog
+            open
+            onOpenChange={(open) => {
+              if (!open) setCompleteBlock(null);
+            }}
+            reason={completeBlock.reason}
+            message={completeBlock.message}
+            canCompleteWithBalance={isOwner || isManager}
+            busy={isUpdating}
+            onCollectPayment={
+              completeBlock.reason === "outstanding"
+                ? () => {
+                    setCompleteBlock(null);
+                    setShowMarkPaid(true);
+                  }
+                : undefined
+            }
+            onCancelBooking={
+              completeBlock.reason === "refunded"
+                ? () => {
+                    setCompleteBlock(null);
+                    setShowCancelDialog(true);
+                  }
+                : undefined
+            }
+            onCompleteAnyway={(unpaidReason) =>
+              void handleStatusChange("completed", { allow_unpaid: true, unpaid_reason: unpaidReason })
+            }
+          />
+        ) : null}
 
         {booking && bookingId ? (
           <PostCompletionSheet

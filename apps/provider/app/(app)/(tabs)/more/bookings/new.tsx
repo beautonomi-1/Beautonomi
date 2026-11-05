@@ -44,7 +44,11 @@ import { twStyle } from "@/lib/twStyle";
 import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
 import {
+  ANY_STAFF_ID,
   buildSingleBookingCreateReadiness,
+  isAnyStaffId,
+  isStaffChoiceMade,
+  staffIdsForAvailabilityQuery,
   validateProviderBookingCreateDetailed,
   type ProviderBookingCreateValidationField,
   aggregateOfferingResources,
@@ -473,7 +477,14 @@ export default function NewBookingScreen() {
   const teamUrl = selectedLocationId
     ? `/api/provider/team?location_id=${encodeURIComponent(selectedLocationId)}`
     : "/api/provider/team";
-  const { data: staffList, error: staffError, refresh: refreshStaffList } = useApi<StaffMember[]>(teamUrl);
+  const {
+    data: staffList,
+    loading: staffListLoading,
+    error: staffError,
+    refresh: refreshStaffList,
+  } = useApi<StaffMember[]>(teamUrl);
+  /** In flight or failed with no list. Must not be treated as "no staff at this salon". */
+  const staffRosterUnresolved = (staffListLoading && !staffList) || (!!staffError && !staffList);
   const {
     data: createPermissionData,
     loading: createPermissionsLoading,
@@ -568,6 +579,8 @@ export default function NewBookingScreen() {
   const [customServiceDuration, setCustomServiceDuration] = useState("60");
   const [staffPickerService, setStaffPickerService] = useState<string | null>(null);
   const [staffPickerFilteredHint, setStaffPickerFilteredHint] = useState(false);
+  /** Service selected before the team roster arrived — open Assign staff once it does. */
+  const pendingStaffPromptRef = useRef<string | null>(null);
   const [addOnPickerService, setAddOnPickerService] = useState<string | null>(null);
   const [selectedServiceCategory, setSelectedServiceCategory] = useState("all");
   const [selectedProductCategory, setSelectedProductCategory] = useState("all");
@@ -762,6 +775,7 @@ export default function NewBookingScreen() {
         isRecurring,
         recurrenceOccurrences,
         staffListLength: staffList?.length ?? 0,
+        staffRosterUnresolved,
         selectedServices,
         activeProviderForms,
         providerFormResponses,
@@ -783,6 +797,7 @@ export default function NewBookingScreen() {
       isRecurring,
       recurrenceOccurrences,
       staffList?.length,
+      staffRosterUnresolved,
       activeProviderForms,
       providerFormResponses,
       locationType,
@@ -1300,7 +1315,9 @@ export default function NewBookingScreen() {
         subtotal += svcPrice;
         servicesSubtotal += svcPrice;
         totalMinutes += svcMinutes;
-        const staffName = staffList?.find((s) => s.id === sel.staffId)?.name;
+        const staffName = isAnyStaffId(sel.staffId)
+          ? nb("anyAvailableStaff")
+          : staffList?.find((s) => s.id === sel.staffId)?.name;
         items.push({
           name: sel.customName ?? nb("customServiceFallback"),
           price: svcPrice,
@@ -1316,7 +1333,9 @@ export default function NewBookingScreen() {
       subtotal += svcPrice;
       servicesSubtotal += svcPrice;
       totalMinutes += svcMinutes;
-      const staffName = staffList?.find((s) => s.id === sel.staffId)?.name;
+      const staffName = isAnyStaffId(sel.staffId)
+        ? nb("anyAvailableStaff")
+        : staffList?.find((s) => s.id === sel.staffId)?.name;
       items.push({ name: svc.title, price: svcPrice, duration: svcMinutes, staffName });
       sel.addOnIds.forEach((aoId) => {
         const ao = svc.add_ons?.find((a) => a.id === aoId);
@@ -1452,7 +1471,7 @@ export default function NewBookingScreen() {
   const slotParams = useMemo(() => {
     const d = selectedDate ? format(selectedDate, "yyyy-MM-dd") : "";
     const dur = summary.totalMinutes || 60;
-    const staffIds = selectedServices.map((s) => s.staffId).filter((id): id is string => !!id);
+    const staffIds = staffIdsForAvailabilityQuery(selectedServices.map((s) => s.staffId));
     const serviceIds = [...new Set(selectedServices.filter((s) => !s.isCustom).map((s) => s.serviceId).filter(Boolean))];
     const mode = locationType === "at_home" ? "mobile" : "salon";
     const travelBuffer = locationType === "at_home" ? atHomeTravelBufferMinutes : 0;
@@ -1592,6 +1611,86 @@ export default function NewBookingScreen() {
     [staffEligibleForService, staffList?.length],
   );
 
+  // Calendar staff column (`staff_id`) or a one-person roster is pre-filled.
+  // Anything else must ask. A one-person roster is applied by the effect below.
+  const preselectedStaffId =
+    typeof params.staff_id === "string" && params.staff_id.length > 0
+      ? params.staff_id
+      : undefined;
+  const defaultStaffForNewLines =
+    preselectedStaffId ?? (staffList?.length === 1 ? staffList[0]?.id : undefined);
+
+  /**
+   * Open Assign staff for a newly selected service. If the roster is still
+   * loading, remember the service and open as soon as the list arrives —
+   * selecting during that window used to skip the sheet entirely.
+   */
+  const requestStaffPicker = useCallback(
+    (serviceId: string, auto: boolean) => {
+      if (auto && preselectedStaffId) return;
+      if (!staffList || staffRosterUnresolved) {
+        pendingStaffPromptRef.current = serviceId;
+        return;
+      }
+      if (staffList.length === 0) return;
+      if (auto && (staffList.length <= 1 || defaultStaffForNewLines)) return;
+      openStaffPickerForService(serviceId);
+    },
+    [
+      defaultStaffForNewLines,
+      openStaffPickerForService,
+      preselectedStaffId,
+      staffList,
+      staffRosterUnresolved,
+    ],
+  );
+
+  const staffLabelForLine = useCallback(
+    (staffId: string | undefined) => {
+      if (staffRosterUnresolved) {
+        return staffError && !staffList ? nb("staffRetryInline") : nb("loadingTeam");
+      }
+      if (isAnyStaffId(staffId)) return nb("anyAvailableStaff");
+      return staffList?.find((s) => s.id === staffId)?.name ?? nb("chooseStaffRequired");
+    },
+    [nb, staffError, staffList, staffRosterUnresolved],
+  );
+
+  const onStaffLinePress = useCallback(
+    (serviceId: string) => {
+      if (staffError && !staffList) {
+        void refreshStaffList();
+        return;
+      }
+      requestStaffPicker(serviceId, false);
+    },
+    [refreshStaffList, requestStaffPicker, staffError, staffList],
+  );
+
+  const staffPickerEligibleCount = useMemo(() => {
+    const list = staffPickerService ? staffEligibleForService(staffPickerService) : staffList ?? [];
+    return list.length;
+  }, [staffEligibleForService, staffList, staffPickerService]);
+
+  useEffect(() => {
+    if (staffRosterUnresolved || !staffList) return;
+    const serviceId = pendingStaffPromptRef.current;
+    if (!serviceId) return;
+    pendingStaffPromptRef.current = null;
+    if (preselectedStaffId || staffList.length <= 1) return;
+    const line = selectedServices.find(
+      (s) => s.serviceId === serviceId && !isStaffChoiceMade(s.staffId),
+    );
+    if (!line) return;
+    openStaffPickerForService(serviceId);
+  }, [
+    openStaffPickerForService,
+    preselectedStaffId,
+    selectedServices,
+    staffList,
+    staffRosterUnresolved,
+  ]);
+
   const isExistingClient = clientMode === "search" && selectedClient != null;
   const showReferralBlock = !isExistingClient || showReferralExpanded;
 
@@ -1629,19 +1728,6 @@ export default function NewBookingScreen() {
     }
     setCollapsedServiceCategoryGroups(next);
   }, [services, nb]);
-
-  // §Provider-launch (audit 2026-04): when the user entered this screen
-  // from a specific staff column or a filtered location on the calendar,
-  // we receive `staff_id` / `location_id` query params. Pre-seed each
-  // newly-added service with that staff so the provider doesn't have to
-  // re-pick it per line. Location is handled further down via the
-  // existing `selectedLocationId` flow.
-  const preselectedStaffId =
-    typeof params.staff_id === "string" && params.staff_id.length > 0
-      ? params.staff_id
-      : undefined;
-  const defaultStaffForNewLines =
-    preselectedStaffId ?? (staffList?.length === 1 ? staffList[0]?.id : undefined);
 
   // When the engine returns concrete slots, keep the selected time inside that set
   // so check-availability and create payloads match blocks/staff hours.
@@ -1689,18 +1775,15 @@ export default function NewBookingScreen() {
 
   // --- Helpers ---
   function toggleService(serviceId: string) {
-    const multiStaff = (staffList?.length ?? 0) > 1;
-    let shouldOpenStaffPicker = false;
+    let added = false;
     setSelectedServices((prev) => {
       const exists = prev.find((s) => s.serviceId === serviceId);
       if (exists) return prev.filter((s) => s.serviceId !== serviceId);
+      added = true;
       const staffId = defaultStaffForNewLines;
-      shouldOpenStaffPicker = multiStaff && !staffId && !preselectedStaffId;
       return [...prev, { serviceId, addOnIds: [], ...(staffId ? { staffId } : {}) }];
     });
-    if (shouldOpenStaffPicker) {
-      queueMicrotask(() => openStaffPickerForService(serviceId));
-    }
+    if (added) requestStaffPicker(serviceId, true);
   }
 
   function addCustomServiceLine() {
@@ -1732,10 +1815,7 @@ export default function NewBookingScreen() {
     setCustomServicePrice("");
     setCustomServiceDuration("60");
     setShowCustomService(false);
-    const multiStaff = (staffList?.length ?? 0) > 1;
-    if (multiStaff && !defaultStaffForNewLines && !preselectedStaffId) {
-      queueMicrotask(() => openStaffPickerForService(serviceId));
-    }
+    requestStaffPicker(serviceId, true);
   }
 
   function removeCustomService(serviceId: string) {
@@ -1833,6 +1913,8 @@ export default function NewBookingScreen() {
     setSelectedProducts(nextProducts);
     setSelectedPackageId(pkg.id);
     setShowPackagePicker(false);
+    const firstUnassigned = nextServices.find((s) => !isStaffChoiceMade(s.staffId));
+    if (firstUnassigned) requestStaffPicker(firstUnassigned.serviceId, true);
     if (skippedServiceNames.length > 0) {
       Alert.alert(
         nb("someServicesSkippedTitle"),
@@ -1927,9 +2009,7 @@ export default function NewBookingScreen() {
 
     try {
       const scheduledAt = buildScheduledAtWithTz(selectedDate, selectedTime, schedulingTimezone);
-      const staffIds = selectedServices
-        .map((s) => s.staffId)
-        .filter((id): id is string => !!id);
+      const staffIds = staffIdsForAvailabilityQuery(selectedServices.map((s) => s.staffId));
 
       const params = new URLSearchParams({
         scheduled_at: scheduledAt,
@@ -2195,7 +2275,11 @@ export default function NewBookingScreen() {
         const recurringBody: Record<string, unknown> = {
           customer_id: selectedClient.customer_id,
           service_id: recurringServicePayloads[0]?.service_id,
-          staff_id: recurringServicePayloads[0]?.staff_id,
+          // Series-level staff_id is a UUID column; "any" stays per line in metadata.services
+          // and is resolved for each occurrence.
+          staff_id: isAnyStaffId(recurringServicePayloads[0]?.staff_id)
+            ? undefined
+            : recurringServicePayloads[0]?.staff_id,
           location_id: locationType === "at_salon" ? selectedLocationId : null,
           recurrence_rule: recurrenceParts.join(";"),
           start_date: format(selectedDate, "yyyy-MM-dd"),
@@ -2307,7 +2391,8 @@ export default function NewBookingScreen() {
         errorCode === "CONFLICT" ||
         errorCode === "CALENDAR_BLOCK" ||
         errorCode === "RESOURCE_CONFLICT" ||
-        errorCode === "SLOT_NOT_AVAILABLE"
+        errorCode === "SLOT_NOT_AVAILABLE" ||
+        errorCode === "NO_STAFF_AVAILABLE"
       ) {
         setConflictWarning(error);
         Alert.alert(nb("slotUnavailableTitle"), error, [
@@ -2421,6 +2506,21 @@ export default function NewBookingScreen() {
         clientMode === "search" && selectedClient
           ? selectedClient.full_name
           : `${newClientFirst.trim()} ${newClientLast.trim()}`.trim();
+      const responseServices =
+        responseData && typeof responseData === "object" && "services" in responseData
+          ? (responseData as { services?: unknown }).services
+          : undefined;
+      const assignedStaffIds = (
+        Array.isArray(responseServices) && responseServices.length > 0
+          ? responseServices.map((s) => {
+              const row = (s ?? {}) as { staff_id?: unknown; staffId?: unknown };
+              return String(row.staff_id ?? row.staffId ?? "");
+            })
+          : selectedServices.map((s) => s.staffId ?? "")
+      ).filter((id) => id && !isAnyStaffId(id));
+      const staffNames = assignedStaffIds
+        .map((id) => staffList?.find((s) => s.id === id)?.name ?? "")
+        .filter(Boolean);
       setShowConfirmation(false);
       setCreatedBookingSuccess({
         bookingId: newBookingId,
@@ -2433,6 +2533,7 @@ export default function NewBookingScreen() {
         warnings,
         isWalkIn,
         sendNotification,
+        staffNames,
       });
     }
   }
@@ -2943,19 +3044,23 @@ export default function NewBookingScreen() {
                             </TouchableOpacity>
                           </View>
                         </View>
-                        {(staffList?.length ?? 0) > 0 ? (
+                        {staffRosterUnresolved || (staffList?.length ?? 0) > 0 ? (
                           <TouchableOpacity
                             style={twStyle("mt-2 flex-row items-center rounded-lg border border-amber-200 bg-white px-3 py-2.5")}
-                            onPress={() => openStaffPickerForService(sel.serviceId)}
+                            onPress={() => onStaffLinePress(sel.serviceId)}
                             accessibilityLabel={
-                              sel.staffId
-                                ? nb("assignStaffForA11y", { name: sel.customName ?? "" })
-                                : nb("chooseStaffRequired")
+                              staffRosterUnresolved
+                                ? staffError && !staffList
+                                  ? nb("staffRetryInline")
+                                  : nb("loadingTeam")
+                                : sel.staffId
+                                  ? nb("assignStaffForA11y", { name: sel.customName ?? "" })
+                                  : nb("chooseStaffRequired")
                             }
                           >
                             <Ionicons name="person-outline" size={14} color="#6b7280" />
                             <Text style={twStyle("ms-1 flex-1 text-xs text-gray-600")}>
-                              {staffList?.find((s) => s.id === sel.staffId)?.name ?? nb("chooseStaffRequired")}
+                              {staffLabelForLine(sel.staffId)}
                             </Text>
                             <Ionicons name="chevron-down" size={14} color="#9ca3af" />
                           </TouchableOpacity>
@@ -3061,7 +3166,6 @@ export default function NewBookingScreen() {
                     const renderServiceRow = (service: Service, indent?: boolean) => {
                       const sel = selectedServices.find((s) => s.serviceId === service.id);
                       const isSelected = !!sel;
-                      const staffName = staffList?.find((s) => s.id === sel?.staffId)?.name;
                       const displayName = service.variant_name
                         ? `${service.title} · ${service.variant_name}`
                         : service.title;
@@ -3094,19 +3198,25 @@ export default function NewBookingScreen() {
                               </View>
                             </View>
                           </TouchableOpacity>
-                          {isSelected && (staffList?.length ?? 0) > 0 ? (
+                          {isSelected && (staffRosterUnresolved || (staffList?.length ?? 0) > 0) ? (
                             <View style={[twStyle("mt-1 mb-1"), indent ? { marginStart: 24 } : { marginStart: 12 }]}>
                               <TouchableOpacity
                                 style={twStyle("flex-row items-center rounded-lg border border-gray-200 bg-white px-3 py-2.5")}
-                                onPress={() => openStaffPickerForService(service.id)}
+                                onPress={() => onStaffLinePress(service.id)}
                                 accessibilityLabel={
-                                  sel?.staffId
-                                    ? nb("assignStaffForA11y", { name: displayName })
-                                    : nb("chooseStaffRequired")
+                                  staffRosterUnresolved
+                                    ? staffError && !staffList
+                                      ? nb("staffRetryInline")
+                                      : nb("loadingTeam")
+                                    : sel?.staffId
+                                      ? nb("assignStaffForA11y", { name: displayName })
+                                      : nb("chooseStaffRequired")
                                 }
                               >
                                 <Ionicons name="person-outline" size={14} color="#6b7280" />
-                                <Text style={twStyle("ms-1 flex-1 text-xs text-gray-600")}>{staffName ?? nb("chooseStaffRequired")}</Text>
+                                <Text style={twStyle("ms-1 flex-1 text-xs text-gray-600")}>
+                                  {staffLabelForLine(sel?.staffId)}
+                                </Text>
                                 <Ionicons name="chevron-down" size={14} color="#9ca3af" />
                               </TouchableOpacity>
                             </View>
@@ -4300,10 +4410,25 @@ export default function NewBookingScreen() {
             <Text style={twStyle("mb-3 text-xs text-gray-500")}>{nb("staffFilteredByService")}</Text>
           ) : null}
           <View>
+            {staffPickerEligibleCount >= 2 ? (
+              <TouchableOpacity
+                style={twStyle("flex-row items-center rounded-xl border border-primary/30 bg-primary/5 p-3")}
+                onPress={() => setStaffForService(staffPickerService!, ANY_STAFF_ID)}
+                accessibilityLabel={nb("assignAnyStaffA11y")}
+              >
+                <Ionicons name="people-outline" size={22} color={Colors.primary} />
+                <View style={twStyle("ms-3 flex-1")}>
+                  <Text style={twStyle("text-sm font-medium text-gray-900")}>{nb("anyAvailableStaff")}</Text>
+                </View>
+              </TouchableOpacity>
+            ) : null}
             {(staffPickerService ? staffEligibleForService(staffPickerService) : staffList ?? []).map((s, idx) => (
               <TouchableOpacity
                 key={s.id}
-                style={[twStyle("flex-row items-center rounded-xl border border-gray-100 bg-white p-3"), idx > 0 ? { marginTop: 8 } : undefined]}
+                style={[
+                  twStyle("flex-row items-center rounded-xl border border-gray-100 bg-white p-3"),
+                  idx > 0 || staffPickerEligibleCount >= 2 ? { marginTop: 8 } : undefined,
+                ]}
                 onPress={() => setStaffForService(staffPickerService!, s.id)}
                 accessibilityLabel={nb("assignNamedA11y", { name: s.name })}
               >

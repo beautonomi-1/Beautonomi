@@ -415,7 +415,7 @@ export async function queryProviderSalesHistory(
         db
           .from("bookings")
           .select(
-            "id, booking_number, customer_id, guest_name, total_amount, location_id, location_type, booking_source, custom_offer_id, is_group_booking, group_booking_id, created_at, updated_at",
+            "id, booking_number, customer_id, total_amount, location_id, location_type, booking_source, custom_offer_id, is_group_booking, group_booking_id, created_at, updated_at",
           )
           .eq("provider_id", providerId)
           .in("id", slice),
@@ -445,7 +445,7 @@ export async function queryProviderSalesHistory(
         const agg = bookingAggs.get(row.id);
         if (!agg) continue;
         const customerName =
-          (row.customer_id && customerMap.get(row.customer_id)) || row.guest_name || null;
+          (row.customer_id && customerMap.get(row.customer_id)) || null;
         const ref = row.booking_number || row.id;
         if (
           q &&
@@ -673,7 +673,7 @@ async function materializeSalesHistoryRows(args: {
       db
         .from("bookings")
         .select(
-          "id, booking_number, customer_id, guest_name, total_amount, currency, payment_status, location_id, custom_offer_id, is_group_booking, group_booking_id, created_at, updated_at",
+          "id, booking_number, customer_id, total_amount, currency, payment_status, location_id, custom_offer_id, is_group_booking, group_booking_id, created_at, updated_at",
         )
         .eq("provider_id", providerId)
         .in("id", slice),
@@ -701,7 +701,7 @@ async function materializeSalesHistoryRows(args: {
       db
         .from("sales")
         .select(
-          "id, sale_number, ref_number, sale_date, total_amount, subtotal, tax_amount, payment_status, customer_id, location_id, currency",
+          "id, sale_number, ref_number, sale_date, total_amount, subtotal, tax_amount, payment_status, customer_id, location_id",
         )
         .eq("provider_id", providerId)
         .in("id", slice),
@@ -729,7 +729,7 @@ async function materializeSalesHistoryRows(args: {
       const agg = bookingAggs.get(entry.id);
       if (!row || !agg) continue;
       const customerName =
-        (row.customer_id && customerMap.get(row.customer_id)) || row.guest_name || null;
+        (row.customer_id && customerMap.get(row.customer_id)) || null;
       const ref = row.booking_number || row.id;
       rows.push({
         id: row.id,

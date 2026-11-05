@@ -141,17 +141,20 @@ export type ProviderTeamNotificationRow = {
 export type NotifyProviderTeamOptions = {
   /** When true, also send a push to each team member's provider app devices. */
   push?: boolean;
+  /** Owner plus staff with role `manager` or `is_admin`. */
+  managersOnly?: boolean;
 };
 
 async function resolveFilteredTeamUserIds(
   providerId: string,
   payload: ProviderTeamNotificationRow,
+  managersOnly = false,
 ): Promise<string[]> {
   const admin = getSupabaseAdmin();
   const { data: ownerRow } = await admin.from("providers").select("user_id").eq("id", providerId).maybeSingle();
   const { data: staffRows } = await admin
     .from("provider_staff")
-    .select("user_id, notification_settings")
+    .select("user_id, notification_settings, role, is_admin")
     .eq("provider_id", providerId)
     .eq("is_active", true)
     .not("user_id", "is", null);
@@ -162,6 +165,10 @@ async function resolveFilteredTeamUserIds(
   for (const row of staffRows ?? []) {
     const uid = (row as { user_id?: string | null }).user_id;
     if (!uid) continue;
+    if (managersOnly) {
+      const r = row as { role?: string | null; is_admin?: boolean | null };
+      if (!r.is_admin && String(r.role ?? "").toLowerCase() !== "manager") continue;
+    }
     const settings = effectiveStaffNotificationSettings(
       row as {
         notification_settings?: unknown;
@@ -184,7 +191,7 @@ export async function notifyProviderTeamUsers(
   payload: ProviderTeamNotificationRow,
   options?: NotifyProviderTeamOptions,
 ): Promise<void> {
-  const userIds = await resolveFilteredTeamUserIds(providerId, payload);
+  const userIds = await resolveFilteredTeamUserIds(providerId, payload, options?.managersOnly);
   if (userIds.length === 0) return;
 
   await insertNotifications(

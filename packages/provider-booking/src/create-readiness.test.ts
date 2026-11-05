@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ANY_STAFF_ID } from "./staff-assignment";
 import { buildGroupBookingCreateReadiness, buildSingleBookingCreateReadiness } from "./create-readiness";
 
 const validatePhone = (phone: string) => (phone.startsWith("+") ? null : "Phone must be E.164");
@@ -33,13 +34,27 @@ describe("buildGroupBookingCreateReadiness", () => {
     expect(s.percent).toBeLessThan(100);
   });
 
+  it("accepts any for group staff", () => {
+    const s = buildGroupBookingCreateReadiness({
+      ...base,
+      staffId: ANY_STAFF_ID,
+      staffListLength: 2,
+    });
+    expect(s.percent).toBe(100);
+  });
+
   it("counts missing service and staff", () => {
-    const s = buildGroupBookingCreateReadiness({ ...base, serviceId: "", staffId: "" });
+    const s = buildGroupBookingCreateReadiness({
+      ...base,
+      serviceId: "svc-1",
+      staffId: "",
+      staffListLength: 2,
+    });
     expect(s.percent).toBeLessThan(100);
     expect(s.nextItem?.sectionKey).toBeDefined();
     const ids = s.items.filter((i) => !i.done).map((i) => i.id);
-    expect(ids).toContain("group_service");
     expect(ids).toContain("group_staff");
+    expect(ids).not.toContain("group_service");
   });
 });
 
@@ -70,6 +85,28 @@ describe("buildSingleBookingCreateReadiness", () => {
 
   it("is complete for minimal valid salon booking", () => {
     const s = buildSingleBookingCreateReadiness(base);
+    expect(s.percent).toBe(100);
+  });
+
+  it("keeps staff incomplete while the team roster has not loaded", () => {
+    const s = buildSingleBookingCreateReadiness({
+      ...base,
+      staffListLength: 0,
+      allServicesHaveStaff: false,
+      staffRosterUnresolved: true,
+    });
+    expect(s.percent).toBeLessThan(100);
+    expect(s.items.some((i) => i.id === "booking_staff" && !i.done)).toBe(true);
+  });
+
+  it("does not require staff when the roster loaded empty", () => {
+    const s = buildSingleBookingCreateReadiness({
+      ...base,
+      staffListLength: 0,
+      allServicesHaveStaff: true,
+      staffRosterUnresolved: false,
+    });
+    expect(s.items.some((i) => i.id === "booking_staff")).toBe(false);
     expect(s.percent).toBe(100);
   });
 

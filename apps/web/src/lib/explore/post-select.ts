@@ -10,6 +10,6 @@ export const EXPLORE_POST_SELECT_WITH_PROVIDER = `
 
 /** Provider mine list — includes moderation fields not exposed on public feed. */
 export const EXPLORE_POST_MINE_SELECT_WITH_PROVIDER = `
-  ${EXPLORE_POST_COLUMNS}, is_hidden, moderation_notes,
+  ${EXPLORE_POST_COLUMNS}, is_hidden, moderation_notes, source_booking_id,
   providers:provider_id(business_name, slug, avatar_url)
 `;

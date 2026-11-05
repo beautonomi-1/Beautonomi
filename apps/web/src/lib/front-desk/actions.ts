@@ -65,10 +65,13 @@ export async function startService(bookingId: string): Promise<boolean> {
   }
 }
 
-/** Mark ready to pay (complete service first if needed). Uses POST complete-service. */
+/**
+ * Mark ready to pay: stage `service_completed` while status stays in_progress.
+ * complete-service is not used here because it rejects bookings with a balance due.
+ */
 export async function markReadyToPay(bookingId: string): Promise<boolean> {
   try {
-    await fetcher.post(`/api/provider/bookings/${bookingId}/complete-service`, {});
+    await fetcher.patch(`/api/provider/bookings/${bookingId}`, { current_stage: "service_completed" });
     toast.success("Marked ready to pay");
     return true;
   } catch (err) {
@@ -79,11 +82,16 @@ export async function markReadyToPay(bookingId: string): Promise<boolean> {
 }
 
 /** Complete booking (service + payment settled). Uses PATCH or complete-service. */
-export async function completeBooking(bookingId: string, version?: number): Promise<boolean> {
+export async function completeBooking(
+  bookingId: string,
+  version?: number,
+  unpaidReason?: string,
+): Promise<boolean> {
   try {
     await fetcher.patch(`/api/provider/bookings/${bookingId}`, {
       status: "completed",
       version,
+      ...(unpaidReason ? { allow_unpaid: true, unpaid_reason: unpaidReason } : {}),
     });
     toast.success("Booking completed");
     return true;

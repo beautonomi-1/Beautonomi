@@ -39,7 +39,7 @@ async function runJob(request: NextRequest) {
   while (true) {
     const { data: subs, error } = await supabase
       .from("provider_subscriptions")
-      .select("provider_id, subscription_plans(features)")
+      .select("provider_id, subscription_plans!provider_subscriptions_plan_id_fkey(features)")
       .eq("status", "active")
       .order("provider_id", { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);

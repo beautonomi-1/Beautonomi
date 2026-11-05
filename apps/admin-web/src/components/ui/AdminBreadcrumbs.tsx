@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router";
 import { ChevronRight } from "lucide-react";
-import { breadcrumbsForPath } from "@/lib/breadcrumbMap";
+import { applyBreadcrumbSuffix, breadcrumbsForPath } from "@/lib/breadcrumbMap";
 import { useAdminBreadcrumbContext } from "@/providers/AdminBreadcrumbProvider";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 
@@ -13,9 +13,12 @@ import { adminSpaTo } from "@/lib/adminSpaPath";
  */
 export function AdminBreadcrumbs() {
   const { pathname } = useLocation();
-  const { leafLabel, parentHref } = useAdminBreadcrumbContext();
+  const { leafLabel, parentHref, suffix } = useAdminBreadcrumbContext();
 
-  const crumbs = breadcrumbsForPath(pathname, leafLabel, parentHref);
+  const crumbs = applyBreadcrumbSuffix(
+    breadcrumbsForPath(pathname, leafLabel, parentHref),
+    suffix,
+  );
 
   // Only render when there are 2+ crumbs (leaf + at least one parent)
   if (crumbs.length < 2) return null;

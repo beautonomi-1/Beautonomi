@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
     if (date && startTime && endTime) {
       const { data: dayBookings } = await supabase
         .from("booking_services")
-        .select("staff_id, start_time, end_time, booking:bookings!inner(status, scheduled_at)")
+        .select("staff_id, scheduled_start_at, scheduled_end_at, booking:bookings!inner(status, scheduled_at)")
         .eq("booking.provider_id", providerId)
         .in("booking.status", ["confirmed", "checked_in", "in_progress"]);
 

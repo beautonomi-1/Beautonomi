@@ -106,7 +106,11 @@ function serviceToFormState(service: Service): ServiceFormState {
 
 export default function ServiceFormScreen() {
   const { t } = useTranslation();
-  const sf = (key: string, opts?: Record<string, unknown>) => t(`provider.mobile.screens.serviceForm.${key}`, opts) as string;
+  const sf = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.serviceForm.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { id: serviceId } = useLocalSearchParams<{ id?: string }>();
   const isEdit = !!serviceId;
@@ -183,6 +187,7 @@ export default function ServiceFormScreen() {
   const [formValidationError, setFormValidationError] = useState<string | null>(null);
   const [advancedPricingOpen, setAdvancedPricingOpen] = useState(false);
   const hydratedServiceIdRef = useRef<string | null>(null);
+  const hydratedResourcesForIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (service) {
@@ -193,16 +198,22 @@ export default function ServiceFormScreen() {
       }
     } else if (!serviceId) {
       hydratedServiceIdRef.current = null;
+      hydratedResourcesForIdRef.current = null;
       setForm(DEFAULT_SERVICE_FORM_STATE());
       setOfferingResources([]);
     }
   }, [service, serviceId]);
 
   useEffect(() => {
-    if (serviceResources?.resources) {
-      setOfferingResources(serviceResources.resources);
+    if (!serviceId) {
+      hydratedResourcesForIdRef.current = null;
+      return;
     }
-  }, [serviceResources]);
+    if (!serviceResources?.resources) return;
+    if (hydratedResourcesForIdRef.current === serviceId) return;
+    hydratedResourcesForIdRef.current = serviceId;
+    setOfferingResources(serviceResources.resources);
+  }, [serviceId, serviceResources]);
 
   const handleCreateCategory = useCallback(
     async (name: string) => {

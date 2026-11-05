@@ -2351,13 +2351,50 @@
           "viewFullBooking": "View full booking",
           "statusNoShow": "No show",
           "statusPendingPayment": "Pending payment",
-          "removeParticipantOverpaid": "Guest removed. The booking is now overpaid by {{amount}}. Refund the difference to the customer.",
+          "removeParticipantOverpaid": "Umushyitsi yakuweho. {{amount}} yishyuwe ku muntu kandi ntishobora kujya mu kofi. Subiza mu mafaranga cyangwa kuri mashini ya karita ukoresheje Gusubiza muri menyu y'Ibindi.",
           "shareStatusPaid": "Share paid",
           "shareStatusPending": "Share unpaid ({{amount}})",
           "shareStatusCancelled": "Spot cancelled",
           "resendInvite": "Re-send invite",
           "inviteResent": "Invite sent",
-          "inviteResendFailed": "Could not re-send the invite."
+          "inviteResendFailed": "Could not re-send the invite.",
+          "slotUnavailableTitle": "Igihe ntikiboneka",
+          "noStaffForSlot": "Nta munyamuryango w'itsinda uboneka kuri serivisi iyi muri iki gihe. Hitamo ikindi gihe cyangwa umuntu uhari.",
+          "pickAnotherTime": "Hitamo ikindi gihe",
+          "invalidStaffTitle": "Umunyamuryango w'itsinda ntiboneka",
+          "anyAvailableStaff": "Uwo ari we wese uboneka",
+          "loadingTeam": "Itsinda ririmo gutangira…",
+          "staffRetryInline": "Itsinda ntirishoboye gutangira. Kanda wongere ugerageze",
+          "moreActionsTitle": "Ibindi",
+          "moreActionsA11y": "Ibikorwa bindi",
+          "openTerminalBannerBody": "Kwishyura {{amount}} ku mashini y'ikarita biracyafunguye kuri iri tsinda.",
+          "resumeOpenCharge": "Komeza",
+          "cancelOpenCharge": "Hagarika kwishyura",
+          "cancelOpenChargeTitle": "Hagarika kwishyura gufunguye?",
+          "cancelOpenChargeBody": "Ibi bihagarika kwishyura kuri mashini y'ikarita birimo gukorwa kugira ngo wandike ubwishyu mu bundi buryo.",
+          "cancelOpenChargeFailed": "Kwishyura gufunguye ntikuhagaze.",
+          "openChargeCancelled": "Kwishyura kuri mashini y'ikarita byahagaritswe.",
+          "entityInFlightTitle": "Kwishyura gufunguye kuri mashini",
+          "cancelOpenChargeAndRecord": "Hagarika kwishyura gufunguye ukandike",
+          "terminalInFlightTitle": "Kwishyura kuri mashini gufunguye",
+          "fullyRefundedTitle": "Byasubijwe byose",
+          "participantRefundedChip": "Byasubijwe",
+          "groupNotStartedTitle": "Banza utangire itsinda",
+          "groupNotStartedBody": "Kwinjira no gusohoka biboneka nyuma yo gutangira ubukwe bw'itsinda.",
+          "unpaidCompleteNotAllowed": "Nyir'ubucuruzi cyangwa umuyobozi wenyine ashobora kurangiza hagifite igiteranyo gisigaye.",
+          "unpaidCompleteReasonTitle": "Rangiza ufite igiteranyo kitasanzwe",
+          "unpaidCompleteReasonRequired": "Andika impamvu yo kurangiza hagifite igiteranyo gisigaye.",
+          "unpaidCompleteReasonLabel": "Impamvu (itegerejwe)",
+          "unpaidCompleteReasonPlaceholder": "urug. Umukiriya azishyura ejo hakoreshejwe EFT",
+          "refundCapsTitle": "Imipaka yo gusubiza",
+          "refundCapsOnline": "Ikofi / kumurongo: kugeza kuri {{amount}}",
+          "refundCapsCash": "Amafaranga mu ntoki: kugeza kuri {{amount}}",
+          "refundCapsTerminal": "Mashini y'ikarita: kugeza kuri {{amount}}",
+          "refundConfirmSummaryTitle": "Emeza gusubiza?",
+          "refundConfirmSummaryBody": "Subiza {{amount}} ukoresheje {{method}}.\n\nImpamvu: {{reason}}",
+          "refundWalletCapExceeded": "Iyo mibare irenze umupaka wo gusubiza mu kofi kuri ubu bukwe.",
+          "refundMethodOriginal": "Mashini y'ikarita",
+          "refundOptionsLoadFailed": "Imipaka yo gusubiza ntizashoboye gutangira. Imibare ishobora kuba itagishya."
         },
         "settingsIndex": {
           "title": "Settings",
@@ -3183,13 +3220,25 @@
           "awaitingYocoRefundReason": "Kwiyandikisha byahagaritswe - gusubiza ikarita",
           "refundOriginalHint": "Amafaranga asubira mukarita yabakiriya binyuze mumashini yikarita cyangwa banki. Ntakintu nakimwe cyakuwe mubikurura amafaranga.",
           "refundCashHint": "Subiza amafaranga umukiriya wenyine. Byanditswe mu bitabo byawe; nta nguzanyo yo mu gikapo itangwa. Kuringaniza kuringaniza ivugurura nyuma yibi bigerwaho.",
-          "refundWalletHint": "Koresha mugihe umukiriya adahari cyangwa ubwishyu bwakorewe kumurongo. Gusubizwa bishyirwa mu gikapu cyabo.",
+          "refundWalletHint": "Amafaranga yishyuwe kuri interineti gusa ni yo ashobora gusubira mu kofi. Ibisubizwa bishyirwa mu kofi yabo.",
           "refundOriginalMachineHint": "Amafaranga asubira mu ikarita yabakiriya binyuze mumashini yikarita yishyuwe.",
           "cancelWalletNote": "Umukiriya azahabwa amafaranga yuzuye kumufuka wabo Beautonomi kumafaranga yamaze kwishyurwa. Politiki yo gusesa ntabwo ikoreshwa muburyo bwo gusiba utangiye.",
           "cancelRefundTo": "Subiza amafaranga yishyuwe kuri",
           "yocoRefundRecordCta": "Yasubijwe kumashini - andika amafaranga yasubijwe",
           "pendingCashRefundTitle": "{{amount}} to return in person",
-          "pendingCashRefundBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending — hand back the amount shown and wait for confirmation (or the 48-hour window to close)."
+          "pendingCashRefundBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending — hand back the amount shown and wait for confirmation (or the 48-hour window to close).",
+          "noIssueRefundsPermission": "Nta burenganzira ufite bwo gutanga gusubiza. Baza nyir'ubucuruzi cyangwa umuyobozi.",
+          "refundMethodCapBody": "Ubu buryo bwo gusubiza bwemera kugeza kuri {{amount}}. Hitamo ubundi buryo ku gisigaye.",
+          "refundCapsBreakdown": "Yishyuwe imbonankubone {{inPerson}} · Kumurongo {{online}} · Byasubijwe {{refunded}}",
+          "refundMaxForMethod": "Ntarengwa y'ubu buryo",
+          "confirmRefundTitle": "Emeza gusubiza",
+          "confirmRefundBody": "Subiza {{amount}} nk'{{method}}. Ibi ntibishobora gusubizwa inyuma.",
+          "completeBlockedTerminalTitle": "Kwishyura kuri mashini gufunguye",
+          "completeBlockedFullyRefundedTitle": "Ubukwe bwasubijwe bwose",
+          "unpaidCompleteReasonTitle": "Rangiza ufite igiteranyo kitasanzwe",
+          "unpaidCompleteReasonLabel": "Impamvu (itegerejwe)",
+          "unpaidCompleteReasonPlaceholder": "urug. Umukiriya azishyura ejo hakoreshejwe EFT",
+          "unpaidCompleteNotAllowed": "Nyir'ubucuruzi cyangwa umuyobozi wenyine ashobora kurangiza ubukwe bufite igiteranyo gisigaye. Banza ushyiremo ubwishyu cyangwa ubaze umuyobozi."
         },
         "operatingHoursSettings": {
           "title": "Operating Hours",
@@ -5366,7 +5415,12 @@
           "staffFilteredByService": "Showing team members assigned to this service.",
           "addressOutsideArea": "This address is outside your service area.",
           "addressValidateFailed": "Could not validate this address. Check your connection and try again.",
-          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}"
+          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}",
+          "anyAvailableStaff": "Uwo ari we wese uboneka",
+          "assignAnyStaffA11y": "Shyiraho umunyamuryango uboneka",
+          "loadingTeam": "Itsinda ririmo gutangira…",
+          "staffRetryInline": "Itsinda ntirishobora gutangira. Kanda wongere ugerageze",
+          "staffRosterLoading": "Itsinda ryawe ririmo gutangira mbere yo gushyiraho abakozi"
         },
         "expressBooking": {
           "invalidJson": "Invalid JSON.",
@@ -6628,7 +6682,10 @@
           "withdraw": "Withdraw",
           "withdrawFailed": "Could not withdraw the offer.",
           "withdrawOffer": "Withdraw offer",
-          "emDash": "—"
+          "emDash": "—",
+          "loadingTeam": "Itsinda ririmo gutangira…",
+          "noStaffPreference": "Nta guhitamo",
+          "staffRetryInline": "Itsinda ntirishobora gutangira. Kanda wongere ugerageze"
         },
         "bookingLink": {
           "title": "Booking Link",
@@ -8219,7 +8276,10 @@
           "submitRating": "Submit rating",
           "thanks": "Thanks!",
           "freshCaption": "Fresh {{name}}",
-          "shareBookingLink": "Share booking link"
+          "shareBookingLink": "Share booking link",
+          "continueDraftBody": "Warangije gutangira inyandiko y'iyi gahunda. Komeza aho wahagarariye cyangwa usuzume umukiriya.",
+          "continueDraftCta": "Komeza inyandiko",
+          "continueDraftTitle": "Rangiza inyandiko ya Explore"
         },
         "advancedPricing": {
           "title": "Advanced pricing",
@@ -10314,7 +10374,8 @@
           "permManageMarketing": "Manage marketing",
           "calendarScopeLabel": "Calendar visibility",
           "calendarScopeOwn": "Own appointments",
-          "calendarScopeAll": "All team calendars"
+          "calendarScopeAll": "All team calendars",
+          "permIssueRefunds": "Tanga ibisubizwa"
         },
         "onboardingHub": {
           "title": "Set up",
@@ -11226,7 +11287,8 @@
           "calendarScopeOwn": "Own appointments only",
           "calendarScopeAll": "All team calendars",
           "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-          "manageMarketing": "Manage marketing"
+          "manageMarketing": "Manage marketing",
+          "issueRefunds": "Tanga ibisubizwa"
         },
         "announcements": {
           "loadFailed": "Could not load announcements",
@@ -12226,7 +12288,10 @@
           "disabledBody": "{{message}}\n\nYour admin can enable the feature flag commerce.provider_custom_offers for this market.",
           "addPhotos": "Add inspiration photos",
           "uploadingPhotos": "Uploading…",
-          "photosAttached": "{{count}} photo(s) attached"
+          "photosAttached": "{{count}} photo(s) attached",
+          "loadingTeam": "Itsinda ririmo gutangira…",
+          "noStaffPreference": "Nta guhitamo",
+          "staffRetryInline": "Itsinda ntirishobora gutangira. Kanda wongere ugerageze"
         },
         "salesSettings": {
           "title": "Sales Settings",
@@ -23821,7 +23886,8 @@
           "bookingChanged": "This booking changed, reload",
           "statusUpdateFailed": "Failed to update booking status",
           "bulkCompleted": "Bulk {{action}} completed for {{count}} booking(s)",
-          "bulkFailed": "Failed to {{action}} bookings"
+          "bulkFailed": "Failed to {{action}} bookings",
+          "bulkPartialFailed": "Ubukwe {{count}} bwasimbuwe kuri {{action}}"
         },
         "liveSync": {
           "label": "Live · updated {{relative}}",
@@ -28640,7 +28706,7 @@
             "createSales": "Create Sales",
             "createSalesDesc": "Create new sales",
             "processPayments": "Process Payments",
-            "processPaymentsDesc": "Process payments and refunds",
+            "processPaymentsDesc": "Andika ubwishyu kandi wakire ubwishyu bwa mashini ya karita",
             "viewReports": "View Reports",
             "viewReportsDesc": "View business reports",
             "viewServices": "View Services",
@@ -28691,7 +28757,9 @@
             "viewOwnEarnings": "View own earnings",
             "viewOwnEarningsDesc": "See tips, commission, and personal earnings",
             "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them."
+            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them.",
+            "issueRefunds": "Tanga ibisubizwa",
+            "issueRefundsDesc": "Subiza abakiriya (ikofi, amafaranga cyangwa mashini ya karita)"
           },
           "team/roles": {
             "roles": "Roles",
@@ -28753,7 +28821,8 @@
               "manage_marketing": "Manage marketing",
               "manage_payroll": "Manage payroll",
               "manage_finance": "Platform billing",
-              "view_own_earnings": "View own earnings"
+              "view_own_earnings": "View own earnings",
+              "issue_refunds": "Tanga ibisubizwa"
             },
             "catEngagement": "Engagement",
             "permissionCount": "Permission Count"
@@ -33175,7 +33244,9 @@
         "confirmLateCancelBody": "This will cancel {{name}}'s appointment as a late cancellation. A cancellation fee may apply according to your policy.",
         "cancel": "Cancel",
         "confirmNoShow": "Mark No-Show",
-        "confirmLateCancel": "Late Cancel"
+        "confirmLateCancel": "Late Cancel",
+        "completeSkipped_one": "Gahunda {{count}} ntiyarangiye (igiteranyo gisigaye, byasubijwe cyangwa mashini ifunguye)",
+        "completeSkipped_other": "Gahunda {{count}} ntizarangiye (igiteranyo gisigaye, byasubijwe cyangwa mashini ifunguye)"
       },
       "moreHub": {
         "requiresEditSettings": "Requires Edit settings permission",

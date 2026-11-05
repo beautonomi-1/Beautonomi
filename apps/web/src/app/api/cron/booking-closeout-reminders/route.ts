@@ -121,7 +121,6 @@ export async function GET(request: NextRequest) {
           status,
           location_type,
           current_stage,
-          staff_id,
           booking_services(scheduled_end_at, duration_minutes, staff_id, offerings(duration_minutes))
         `,
         )

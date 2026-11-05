@@ -9,6 +9,10 @@ function escapeDrawtext(s: string): string {
     .replace(/%/g, "\\%");
 }
 
+export function exploreVideoDrawtextFontPx(fontSizeNorm: number): number {
+  return Math.max(16, Math.round(1080 * fontSizeNorm));
+}
+
 /** Whole-clip overlays only (no timed drawtext chain in v1). Returns null if disabled or empty. */
 export async function buildVideoDrawtextChain(
   overlays: ExploreTextOverlay[] | null | undefined,
@@ -23,7 +27,7 @@ export async function buildVideoDrawtextChain(
   for (const layer of whole.slice(0, 8)) {
     const text = escapeDrawtext(layer.text.trim().slice(0, 80));
     if (!text) continue;
-    const fs = Math.max(16, Math.round(1080 * layer.font_size));
+    const fs = exploreVideoDrawtextFontPx(layer.font_size);
     const xExpr = `w*${layer.x.toFixed(4)}-text_w/2`;
     const yExpr = `h*${layer.y.toFixed(4)}-text_h/2`;
     const color = layer.color.replace("#", "0x");

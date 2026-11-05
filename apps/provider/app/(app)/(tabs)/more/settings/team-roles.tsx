@@ -71,6 +71,7 @@ const PERMISSION_GROUPS = [
       { key: "view_sales", labelKey: "permViewSales", icon: "receipt-outline" },
       { key: "create_sales", labelKey: "permCreateSales", icon: "add-circle-outline" },
       { key: "process_payments", labelKey: "permProcessPayments", icon: "card-outline" },
+      { key: "issue_refunds", labelKey: "permIssueRefunds", icon: "cash-outline" },
       { key: "manage_finance", labelKey: "permManageFinance", icon: "wallet-outline" },
       { key: "manage_payroll", labelKey: "permManagePayroll", icon: "cash-outline" },
       { key: "view_own_earnings", labelKey: "permViewOwnEarnings", icon: "trending-up-outline" },

@@ -3,7 +3,7 @@
  * GET /api/provider/staff/[id]/permissions
  * PATCH /api/provider/staff/[id]/permissions
  */
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { View, Text, Switch, ScrollView, Alert, TouchableOpacity } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -53,6 +53,7 @@ const PERMISSION_CATEGORIES: {
       { id: "view_sales", labelKey: "viewSales" },
       { id: "create_sales", labelKey: "createSales" },
       { id: "process_payments", labelKey: "processPayments" },
+      { id: "issue_refunds", labelKey: "issueRefunds" },
       { id: "view_reports", labelKey: "viewReports" },
       { id: "manage_finance", labelKey: "manageFinance" },
       { id: "manage_payroll", labelKey: "managePayroll" },
@@ -119,8 +120,11 @@ const ALL_PERMISSION_IDS = PERMISSION_CATEGORIES.flatMap((c) =>
 
 export default function StaffPermissionEditScreen() {
   const { t } = useTranslation();
-  const pe = (key: string, opts?: Record<string, unknown>) =>
-    t(`provider.mobile.screens.staffPermissionsEdit.${key}`, opts) as string;
+  const pe = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.staffPermissionsEdit.${key}`, opts) as string,
+    [t],
+  );
   const { id } = useLocalSearchParams<{ id: string }>();
   const [local, setLocal] = useState<Record<string, boolean>>({});
   const [calendarScope, setCalendarScope] = useState<"own" | "all">("own");
@@ -154,21 +158,27 @@ export default function StaffPermissionEditScreen() {
     () => Object.fromEntries(ALL_PERMISSION_IDS.map((k) => [k, false])),
     []
   );
+  const hydratedStaffIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (data?.permissions && typeof data.permissions === "object") {
-      const raw = data.permissions as Record<string, boolean | string>;
-      setCalendarScope(raw.calendar_scope === "all" ? "all" : "own");
-      const booleans = { ...defaultPermissions };
-      for (const [k, v] of Object.entries(raw)) {
-        if (k === "calendar_scope") continue;
-        if (typeof v === "boolean") booleans[k] = v;
-      }
-      setLocal(booleans);
-      setAttachedRoleId(data.role_id ?? null);
-      setAttachedRoleName(data.role_name ?? null);
+    hydratedStaffIdRef.current = null;
+  }, [id]);
+
+  useEffect(() => {
+    if (!id || !data?.permissions || typeof data.permissions !== "object") return;
+    if (hydratedStaffIdRef.current === id) return;
+    hydratedStaffIdRef.current = id;
+    const raw = data.permissions as Record<string, boolean | string>;
+    setCalendarScope(raw.calendar_scope === "all" ? "all" : "own");
+    const booleans = { ...defaultPermissions };
+    for (const [k, v] of Object.entries(raw)) {
+      if (k === "calendar_scope") continue;
+      if (typeof v === "boolean") booleans[k] = v;
     }
-  }, [data, defaultPermissions]);
+    setLocal(booleans);
+    setAttachedRoleId(data.role_id ?? null);
+    setAttachedRoleName(data.role_name ?? null);
+  }, [data, defaultPermissions, id]);
 
   const handleSave = useCallback(async () => {
     if (!id) return;

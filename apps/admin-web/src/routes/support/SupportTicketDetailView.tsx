@@ -32,7 +32,7 @@ import {
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
-import { useAdminBreadcrumbLeaf } from "@/providers/AdminBreadcrumbProvider";
+import { useAdminBreadcrumbLeaf, useAdminBreadcrumbSuffix } from "@/providers/AdminBreadcrumbProvider";
 import { publicLearnUrl, type KbArticleResult, type KbAudience } from "@/lib/learning";
 import type { UserRole } from "@beautonomi/types";
 import { AgentAssistPanel } from "@/components/agent-assist/AgentAssistPanel";
@@ -175,6 +175,22 @@ export function SupportTicketDetailView({
       : str(detailQ.data?.ticket?.ticket_number) || str(detailQ.data?.ticket?.subject) || undefined,
   );
   useAdminBreadcrumbParentHref(isPanel ? undefined : supportTicketsQueueHref());
+
+  const panelBreadcrumbSuffix = useMemo(() => {
+    if (!isPanel || !detailQ.data?.ticket) return undefined;
+    const n = new URLSearchParams(searchParams);
+    n.delete("selected");
+    const qs = n.toString();
+    const previousHref = qs ? `${location.pathname}?${qs}` : location.pathname;
+    const currentHref = location.search ? `${location.pathname}${location.search}` : location.pathname;
+    return {
+      label: str(detailQ.data.ticket.ticket_number),
+      previousHref,
+      currentHref,
+    };
+  }, [isPanel, detailQ.data?.ticket, searchParams, location.pathname, location.search]);
+
+  useAdminBreadcrumbSuffix(panelBreadcrumbSuffix);
 
   const ticketTenantId = detailQ.data?.ticket?.tenant_id ?? null;
 
@@ -808,9 +824,7 @@ export function SupportTicketDetailView({
 
   const conversationGridRows =
     isPanel || (isDesktop && !isPanel)
-      ? isPanel
-        ? "grid-rows-[minmax(12rem,1fr)_auto]"
-        : "grid-rows-[minmax(24rem,1fr)_auto]"
+      ? "grid-rows-[minmax(0,1fr)_auto]"
       : "grid-rows-[auto_auto]";
 
   const fullPageState = effectiveQueueTicketIds?.length
@@ -827,7 +841,7 @@ export function SupportTicketDetailView({
       className={
         isPanel
           ? "flex h-full min-h-0 flex-col gap-3 overflow-hidden p-4"
-          : `flex min-h-0 flex-col gap-3 ${lockPageHeight ? "overflow-y-auto" : ""}`
+          : `flex min-h-0 flex-col gap-3 ${lockPageHeight && heightPx != null ? "overflow-hidden" : ""}`
       }
     >
       <TicketDetailHeader
@@ -993,7 +1007,7 @@ export function SupportTicketDetailView({
           role="tabpanel"
           aria-labelledby="ticket-tab-details"
           hidden={!showDetails}
-          className={showDetails ? "admin-scrollbar min-h-0 overflow-y-auto" : "hidden"}
+          className={showDetails ? "admin-scrollbar min-h-0 min-w-0 overflow-y-auto" : "hidden"}
         >
         <TicketSidebar
           ticket={ticket}

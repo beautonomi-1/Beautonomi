@@ -2351,13 +2351,50 @@
           "viewFullBooking": "Vhona yo ḓala u buka",
           "statusNoShow": "No sumbedza",
           "statusPendingPayment": "yo linda mbadedzo",
-          "removeParticipantOverpaid": "Muendi bvisad. The u buka is zwazwino overyo badelwa by {{amount}}. mbuyiso the difference to the mushumi.",
+          "removeParticipantOverpaid": "Mueni o bviswa. {{amount}} yo badelwa nga muthu nahone a i yi kha tshikwama. Humisani nga tshelede kana kha mutshini wa khadi ni u shumisa Mbuyiselo kha menyu ya Zwinwe.",
           "shareStatusPaid": "kovhela yo badelwa",
           "shareStatusPending": "kovhela a yo ngo badelwa ({{amount}})",
           "shareStatusCancelled": "Spot yo khanselwa",
           "resendInvite": "Re-ruma khuḓedzo",
           "inviteResent": "khuḓedzo Yo rumelwa",
-          "inviteResendFailed": "A zwo koni u re-ruma the khuḓedzo."
+          "inviteResendFailed": "A zwo koni u re-ruma the khuḓedzo.",
+          "slotUnavailableTitle": "Tshifhinga a tshi wanala",
+          "noStaffForSlot": "A hu na mira ya tshigwada i re na nungo kha tshumelo iyi nga tshifhinga hetshi. Nanga tshifhinga tshinwe kana mira yo tiwa.",
+          "pickAnotherTime": "Nanga tshifhinga tshinwe",
+          "invalidStaffTitle": "Mira ya tshigwada a i wanala",
+          "anyAvailableStaff": "Nnyi na nnyi a wanala",
+          "loadingTeam": "Laha tshigwada…",
+          "staffRetryInline": "A zwi koni u laha tshigwada. Panda u lingedza hafhu",
+          "moreActionsTitle": "Zwinwe",
+          "moreActionsA11y": "Mishumo minwe",
+          "openTerminalBannerBody": "Mbadelo ya mutshini wa khadi ya {{amount}} i kha di vulea kha tshigwada hetshi.",
+          "resumeOpenCharge": "Bvelani phanda",
+          "cancelOpenCharge": "Fhelisani mbadelo",
+          "cancelOpenChargeTitle": "Fhelisani mbadelo yo vuleaho?",
+          "cancelOpenChargeBody": "Izwi zwi fhelisa mbadelo ya mutshini wa khadi i re kha u bvela phanda uri u nwale mbadelo nga nḓila iṅwe.",
+          "cancelOpenChargeFailed": "A zwi koni u fhelisa mbadelo yo vuleaho.",
+          "openChargeCancelled": "Mbadelo ya mutshini wa khadi yo fheliswa.",
+          "entityInFlightTitle": "Mbadelo ya mutshini wa khadi yo vuleaho",
+          "cancelOpenChargeAndRecord": "Fhelisani mbadelo yo vuleaho ni u nwala",
+          "terminalInFlightTitle": "Mbadelo ya mutshini wa khadi yo vulea",
+          "fullyRefundedTitle": "Yo humisela zwothe",
+          "participantRefundedChip": "Yo humiselwa",
+          "groupNotStartedTitle": "Thomani tshigwada u thoma",
+          "groupNotStartedBody": "U dzhena na u bva zwi wanala musi u vhekanya ha tshigwada ho no thoma.",
+          "unpaidCompleteNotAllowed": "Mulanguli kana mune fhedzi a nga fhedza musi hu tshee na tshelede yo salaho.",
+          "unpaidCompleteReasonTitle": "Fhedzani hu tshee na tshelede",
+          "unpaidCompleteReasonRequired": "Dzhenisani ndivho ya u fhedza musi hu tshee na tshelede.",
+          "unpaidCompleteReasonLabel": "Ndivho (i tea)",
+          "unpaidCompleteReasonPlaceholder": "tsumbo. Murengi u do badela matshelo nga EFT",
+          "refundCapsTitle": "Mikano ya u humisela",
+          "refundCapsOnline": "Tshikwama / inthanethe: u swika kha {{amount}}",
+          "refundCapsCash": "Tshelede ya tshanḓa: u swika kha {{amount}}",
+          "refundCapsTerminal": "Mutshini wa khadi: u swika kha {{amount}}",
+          "refundConfirmSummaryTitle": "Khwaṱhisedzani u humisela?",
+          "refundConfirmSummaryBody": "Humiselani {{amount}} nga {{method}}.\n\nNdivho: {{reason}}",
+          "refundWalletCapExceeded": "Nomboro iyo i fhira mukano wa u humisela tshikwamani kha u vhekanya uhu.",
+          "refundMethodOriginal": "Mutshini wa khadi",
+          "refundOptionsLoadFailed": "A zwi koni u laha mikano ya u humisela. Nomboro dzi nga vha dzo fhira tshifhinga."
         },
         "settingsIndex": {
           "title": "Nzudzanyo",
@@ -3183,13 +3220,25 @@
           "awaitingYocoRefundReason": "U buka zwo khanselwa — tshelede i vhuyedzedzwa kha garaṱa",
           "refundOriginalHint": "Tshelede i vhuyelela kha garaṱa ya khasiṱama nga mutshini wa garaṱa kana bannga. Ahuna tshine tsha dzhiiwa kha cash drawer yanu.",
           "refundCashHint": "U vhuisa tshelede kha khasiṱama nga vhuṋe. Zwo rekhodiwaho kha bugu dzaṋu; a hu na tshikolodo tsha tshipatshi tshine tsha bviswa. Balansi ya u buka i a khwiniswa nga murahu ha musi zwenezwi zwo bvelela.",
-          "refundWalletHint": "U shumisa musi khasiṱama a siho kana mbadelo yo itwa nga inthanethe. U vhuiswa ha tshelede zwi dzheniswa kha tshipatshi tshavho.",
+          "refundWalletHint": "Ndi tshelede yo badelwa kha inthanete i yo tevhela kha tshikwama. Mbuyiselo i dzheniswa kha tshikwama tshavho.",
           "refundOriginalMachineHint": "Tshelede i vhuyelela kha garaṱa ya khasiṱama nga mutshini wa garaṱa we ya badelwa ngawo.",
           "cancelWalletNote": "Murengi u ḓo vhuyedzedzwa masheleni oṱhe kha tshipatshi tshawe tsha Beautonomi tsha masheleni o no badelwaho. Mbekanyamaitele yaṋu ya u khansela a i shumi kha u khansela he na thoma.",
           "cancelRefundTo": "U vhuisa tshelede yo badelwaho kha .",
           "yocoRefundRecordCta": "U vhuiswa ha tshelede kha mutshini — rekhodani tshelede yo vhuiswaho .",
           "pendingCashRefundTitle": "{{amount}} to return nga u ḓiima",
-          "pendingCashRefundBody": "Murengi u tea u khwaṱhisedza uri o wana tshelede iyi kha app. Kha vha rekhode iṅwe mbuelo ya tshelede musi hezwi zwi tshi kha ḓi lindela — vhuisani tshelede yo sumbedzwaho nahone ni lindele u khwaṱhisedzwa (kana fasiṱere ḽa awara dza 48 ḽi tshi vala)."
+          "pendingCashRefundBody": "Murengi u tea u khwaṱhisedza uri o wana tshelede iyi kha app. Kha vha rekhode iṅwe mbuelo ya tshelede musi hezwi zwi tshi kha ḓi lindela — vhuisani tshelede yo sumbedzwaho nahone ni lindele u khwaṱhisedzwa (kana fasiṱere ḽa awara dza 48 ḽi tshi vala).",
+          "noIssueRefundsPermission": "A ni na thendelo ya u bvisa u humisela. Vhudzisani mulanguli kana mune.",
+          "refundMethodCapBody": "Nḓila iyi ya u humisela i tendela u swika kha {{amount}}. Nangani nḓila iṅwe ya zwo salaho.",
+          "refundCapsBreakdown": "Yo badelwa nga muthu {{inPerson}} · Inthanetheni {{online}} · Yo no humiselwa {{refunded}}",
+          "refundMaxForMethod": "Vhukuma ha nḓila iyi",
+          "confirmRefundTitle": "Khwaṱhisedzani u humisela",
+          "confirmRefundBody": "Humiselani {{amount}} sa {{method}}. Izwi a zwi nga humiselwi murahu.",
+          "completeBlockedTerminalTitle": "Mbadelo ya mutshini wa khadi yo vulea",
+          "completeBlockedFullyRefundedTitle": "U vhekanya ho humiselwa zwothe",
+          "unpaidCompleteReasonTitle": "Fhedzani hu tshee na tshelede",
+          "unpaidCompleteReasonLabel": "Ndivho (i tea)",
+          "unpaidCompleteReasonPlaceholder": "tsumbo. Murengi u do badela matshelo nga EFT",
+          "unpaidCompleteNotAllowed": "Mulanguli kana mune fhedzi a nga fhedza u vhekanya musi hu tshee na tshelede. Kuvhanganyani mbadelo u thoma kana vha vhudzise mulanguli."
         },
         "operatingHoursSettings": {
           "title": "Opelinga uwara",
@@ -5366,7 +5415,12 @@
           "staffFilteredByService": "U sumbedza miri vha tshigwada vho ṋewa tshumelo iyi.",
           "addressOutsideArea": "Adresi iyi i hanu ha tshifhinga tsha u shumisa tshavha.",
           "addressValidateFailed": "A zwi kone u khwaṱhisedza adrese iyi. Sedzani vhukwamani ha vhone ni lingedze hafhu.",
-          "tipPercentWithAmountA11y": "{{percent}}% thiphu, {{amount}}"
+          "tipPercentWithAmountA11y": "{{percent}}% thiphu, {{amount}}",
+          "anyAvailableStaff": "Munwe o no wanala",
+          "assignAnyStaffA11y": "Neani muraḓo o no wanala",
+          "loadingTeam": "Tshigwada tshi khou longelwa…",
+          "staffRetryInline": "Tshigwada a tshi athu u longelwa. Nyatshani u lingedza hafhu",
+          "staffRosterLoading": "Tshigwada tshanu tshi khou longelwa vhashumi vha sa athu u newa"
         },
         "expressBooking": {
           "invalidJson": "JSON. i siho yone.",
@@ -6628,7 +6682,10 @@
           "withdraw": "Bvisa",
           "withdrawFailed": "A zwo koni u withdraw the offer.",
           "withdrawOffer": "Bvisa Nyiko",
-          "emDash": "—"
+          "emDash": "—",
+          "loadingTeam": "Tshigwada tshi khou longelwa…",
+          "noStaffPreference": "A hu na tshiṱo",
+          "staffRetryInline": "Tshigwada a tshi athu u longelwa. Nyatshani u lingedza hafhu"
         },
         "bookingLink": {
           "title": "u buka thumanyo",
@@ -8219,7 +8276,10 @@
           "submitRating": "ruma linga",
           "thanks": "Ndo livhuwa!",
           "freshCaption": "{{name}} ntswa",
-          "shareBookingLink": "Kovhelani tshikweletshi tsha u bhuka"
+          "shareBookingLink": "Kovhelani tshikweletshi tsha u bhuka",
+          "continueDraftBody": "No no thoma u posa ha vhekanyo hoyu. Bvelani phanḓa hune na fhunga, kana kalamani murengi.",
+          "continueDraftCta": "Bvelani phanḓa nga tshisolo",
+          "continueDraftTitle": "Fhedzisani tshisolo tshanu tsha Explore"
         },
         "advancedPricing": {
           "title": "Zwo bvelelaho mitengo",
@@ -10314,7 +10374,8 @@
           "permManageMarketing": "Langulula Marketing",
           "calendarScopeLabel": "khalendara visibility",
           "calendarScopeOwn": "Own ndingo",
-          "calendarScopeAll": "All tshigwada khalendaras"
+          "calendarScopeAll": "All tshigwada khalendaras",
+          "permIssueRefunds": "Neani mbuyiselo"
         },
         "onboardingHub": {
           "title": "Vhea",
@@ -11226,7 +11287,8 @@
           "calendarScopeOwn": "Own ndingo only",
           "calendarScopeAll": "All tshigwada khalendaras",
           "fullAccessMemberHint": "Vhane na vhashumi vha re na u swikelela ha ndaulo vha na pfanelo dzoṱhe tshifhinga tshoṱhe. Zwikhiya zwavho zwi vhalwa fhedzi fhano.",
-          "manageMarketing": "Langulula Marketing"
+          "manageMarketing": "Langulula Marketing",
+          "issueRefunds": "Neani mbuyiselo"
         },
         "announcements": {
           "loadFailed": "A zwo koni u ḽoḓa announcements",
@@ -12226,7 +12288,10 @@
           "disabledBody": "{{message}}\n\nYour admin can ṋetshedza the feature flag commerce.muneḓi_zwo itelwa_offers for this market.",
           "addPhotos": "Engedza inspiration zwifanyiso",
           "uploadingPhotos": "i khou ḽoḓa…",
-          "photosAttached": "{{count}} tshifanyiso(s) attached"
+          "photosAttached": "{{count}} tshifanyiso(s) attached",
+          "loadingTeam": "Tshigwada tshi khou longelwa…",
+          "noStaffPreference": "A hu na tshiṱo",
+          "staffRetryInline": "Tshigwada a tshi athu u longelwa. Nyatshani u lingedza hafhu"
         },
         "salesSettings": {
           "title": "Thengisos nzudzanyo",
@@ -23821,7 +23886,8 @@
           "bookingChanged": "This u buka shandukisad, reḽoḓa",
           "statusUpdateFailed": "Zwo kundelwa u khwinisa u buka mutevhe",
           "bulkCompleted": "Bulk {{action}} yo fhela for {{count}} u buka(s)",
-          "bulkFailed": "Zwo kundelwa u {{action}} u buka"
+          "bulkFailed": "Zwo kundelwa u {{action}} u buka",
+          "bulkPartialFailed": "U vhekanya ha {{count}} ho pfukwa kha {{action}}"
         },
         "liveSync": {
           "label": "Ya vhukuma · khwinisad {{relative}}",
@@ -28640,7 +28706,7 @@
             "createSales": "Vumba Thengisos",
             "createSalesDesc": "Vumba ntswa sales",
             "processPayments": "Process mbadedzo",
-            "processPaymentsDesc": "Process mbadedzo and mbuyisos",
+            "processPaymentsDesc": "Nwale mbadelo ni u dzhie mbadelo dza mutshini wa khadi",
             "viewReports": "Vhona mibiko",
             "viewReportsDesc": "Vhona Bindu mibiko",
             "viewServices": "Vhona Tshumelo",
@@ -28691,7 +28757,9 @@
             "viewOwnEarnings": "View own earnings",
             "viewOwnEarningsDesc": "See tips, commission, and personal earnings",
             "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them."
+            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them.",
+            "issueRefunds": "Neani mbuyiselo",
+            "issueRefundsDesc": "Humisela vharengi (tshikwama, tshelede kana mutshini wa khadi)"
           },
           "team/roles": {
             "roles": "Vhushumos",
@@ -28753,7 +28821,8 @@
               "manage_marketing": "Manage marketing",
               "manage_payroll": "Manage payroll",
               "manage_finance": "Platform billing",
-              "view_own_earnings": "View own earnings"
+              "view_own_earnings": "View own earnings",
+              "issue_refunds": "Neani mbuyiselo"
             },
             "catEngagement": "Engagement",
             "permissionCount": "thendelo Count"
@@ -33175,7 +33244,9 @@
         "confirmLateCancelBody": "This will cancel {{name}}'s appointment as a late cancellation. A cancellation fee may apply according to your policy.",
         "cancel": "Khansela",
         "confirmNoShow": "Mark No-sumbedza",
-        "confirmLateCancel": "Late khansela"
+        "confirmLateCancel": "Late khansela",
+        "completeSkipped_one": "U vhekanya ha {{count}} a hu athu u fhela (tshelede yo sala, yo humiselwa kana mutshini wa khadi wo vulea)",
+        "completeSkipped_other": "U vhekanya ha {{count}} a hu athu u fhela (tshelede yo sala, ho humiselwa kana mutshini wa khadi wo vulea)"
       },
       "moreHub": {
         "requiresEditSettings": "Requires lulamisisa nzudzanyo thendelo",

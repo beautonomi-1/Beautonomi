@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { after, NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -40,6 +40,8 @@ import {
   encodeExplorePostsCursor,
 } from "@/lib/explore/explore-feed-cursor";
 import { burnExplorePhotoOverlaysForPublish } from "@/lib/explore/explore-photo-burn";
+import { explorePostPublishedAtForWrite } from "@/lib/explore/explore-post-published-at";
+import { explorePostSourceBookingIdForInsert } from "@/lib/explore/explore-post-source-booking";
 export const maxDuration = 60;
 
 const supabaseUrl = () => process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -1038,7 +1040,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Optional booking context (e.g. "post your work" prompt on completion).
-    // Used only for gallery attribution below — not persisted on explore_posts.
     let bookingId: string | null = null;
     if (bodyBookingId != null && bodyBookingId !== "") {
       if (typeof bodyBookingId !== "string") {
@@ -1055,7 +1056,7 @@ export async function POST(request: NextRequest) {
       bookingId = bookingRow.id;
     }
 
-    const publishedAt = status === "published" ? new Date().toISOString() : null;
+    const publishedAt = explorePostPublishedAtForWrite(status, new Date().toISOString());
 
     const soundCatalogEnabled = await isExploreSoundCatalogEnabled(null);
     const hasVideoMedia = firstSlideIsVideo(media_urls, mediaMetaForRow);
@@ -1089,6 +1090,7 @@ export async function POST(request: NextRequest) {
         duration_ms: denorm.duration_ms,
         playback_path: denorm.playback_path,
         sound_id: soundIdForRow,
+        source_booking_id: explorePostSourceBookingIdForInsert(bookingId),
       })
       .select(EXPLORE_POST_SELECT_WITH_PROVIDER)
       .single();
@@ -1099,12 +1101,20 @@ export async function POST(request: NextRequest) {
 
     const postStatus = (post as any).status;
     if (postStatus === "published") {
-      await runExplorePublishSideEffects({
-        postId: (post as { id: string }).id,
-        providerId,
-        alsoAddToGallery: alsoAddToGallery === true,
-        isFirstPublish: true,
-      });
+      const postId = (post as { id: string }).id;
+      const addToGallery = alsoAddToGallery === true;
+      // Rendobar enqueue was blocking the 201 (about 21s on a video publish).
+      // The row is already saved; processing continues after the response.
+      after(() =>
+        runExplorePublishSideEffects({
+          postId,
+          providerId,
+          alsoAddToGallery: addToGallery,
+          isFirstPublish: true,
+        }).catch((err) => {
+          console.warn("[explore] publish side effects", err);
+        }),
+      );
     }
 
     let createdOffering: { id: string; name: string; price?: number; duration_minutes?: number } | null = null;

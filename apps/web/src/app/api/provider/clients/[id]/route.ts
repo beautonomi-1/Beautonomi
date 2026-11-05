@@ -456,7 +456,6 @@ export async function GET(
           created_at,
           status,
           total_amount,
-          total_paid,
           payment_status
         `)
         .eq("provider_id", providerId)
@@ -472,7 +471,7 @@ export async function GET(
             date: order.created_at,
             description: `Product order ${order.order_number || order.id}`,
             amount: order.total_amount || 0,
-            total_paid: order.total_paid || 0,
+            total_paid: order.payment_status === "paid" ? order.total_amount || 0 : 0,
             payment_status: order.payment_status,
             status: order.status,
             team_member_name: null,

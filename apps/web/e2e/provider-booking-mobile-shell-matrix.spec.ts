@@ -99,11 +99,39 @@ test.describe("provider booking mobile shell matrix", () => {
       test.skip(true, "No completable booking in seed data");
     }
     await completeBtn.click();
+    const dialog = page.getByTestId("booking-complete-confirm-dialog");
     await expect(
-      page
-        .getByTestId("booking-complete-confirm-dialog")
-        .or(page.getByRole("button", { name: /complete anyway/i })),
+      dialog.or(page.getByRole("button", { name: /complete anyway/i })),
     ).toBeVisible({ timeout: 10_000 });
+    const reason = page.getByTestId("booking-complete-unpaid-reason");
+    if (await reason.isVisible().catch(() => false)) {
+      const anyway = page.getByTestId("booking-complete-anyway");
+      await expect(anyway).toBeDisabled();
+      await reason.fill("no");
+      await expect(anyway).toBeDisabled();
+      await reason.fill("Customer pays by EFT tomorrow");
+      await expect(anyway).toBeEnabled();
+    }
+  });
+
+  test("group participant refund is behind the more menu", async ({ page }) => {
+    await page.goto("/provider/group-bookings");
+    await expect(page.getByRole("heading", { name: /group bookings/i })).toBeVisible({
+      timeout: 20_000,
+    });
+    const row = page.locator("[data-group-booking-row]").first();
+    if (!(await row.count())) {
+      test.skip(true, "No group bookings in seed data");
+    }
+    await row.click();
+    await expect(page.getByTestId("group-booking-view-sheet")).toBeVisible({ timeout: 10_000 });
+    const more = page.getByTestId("group-participant-more").first();
+    if (!(await more.isVisible().catch(() => false))) {
+      test.skip(true, "No refundable participant (owner/manager with a paid booking)");
+    }
+    await expect(page.getByTestId("group-participant-refund")).toHaveCount(0);
+    await more.click();
+    await expect(page.getByTestId("group-participant-refund")).toBeVisible({ timeout: 5_000 });
   });
 
   test("deposit terminal amount shown in collect section", async ({ page }) => {

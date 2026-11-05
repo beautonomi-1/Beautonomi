@@ -13,6 +13,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
+const evaluateGroupCompletionMock = vi.hoisted(() =>
+  vi.fn(async () => ({ allowed: true, blockers: [] as unknown[], balanceDue: 0 })),
+);
+vi.mock("@/lib/bookings/completion-guards", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/bookings/completion-guards")>()),
+  evaluateGroupCompletion: evaluateGroupCompletionMock,
+}));
+
 // --------------------------------------------------------------------------
 // Shared mocks (must be hoisted before any import that uses them)
 // --------------------------------------------------------------------------
@@ -314,7 +322,19 @@ describe("POST check-out", () => {
     expect(res.status).toBe(404);
   });
 
-  it("marks the group completed when the last active participant checks out and another is cancelled", async () => {
+  it.each([
+    { blocked: false, label: "marks the group completed when the last active participant checks out and another is cancelled" },
+    { blocked: true, label: "does not auto-complete the group when the last check-out is blocked by a balance due" },
+  ])("$label", async ({ blocked }) => {
+    evaluateGroupCompletionMock.mockResolvedValueOnce(
+      blocked
+        ? {
+            allowed: false,
+            blockers: [{ code: "BALANCE_DUE", message: "Outstanding balance", amount: 50 }],
+            balanceDue: 50,
+          }
+        : { allowed: true, blockers: [], balanceDue: 0 },
+    );
     const checkedIn = {
       id: PARTICIPANT_ID,
       booking_id: BOOKING_ID,
@@ -401,6 +421,12 @@ describe("POST check-out", () => {
 
     const res = await POST_checkOut(makeRequest(), makeParams());
     expect(res.status).toBe(200);
-    expect(groupCompletedUpdates.some((u) => u.status === "completed")).toBe(true);
+    const body = await res.json();
+    expect(groupCompletedUpdates.some((u) => u.status === "completed")).toBe(!blocked);
+    if (blocked) {
+      expect(body.data.group_completion_blocked).toBeTruthy();
+    } else {
+      expect(body.data.group_completion_blocked).toBeNull();
+    }
   });
 });

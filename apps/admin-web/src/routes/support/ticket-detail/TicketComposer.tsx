@@ -51,6 +51,7 @@ export function TicketComposer({
   layout = "panel",
 }: TicketComposerProps) {
   const isMobilePage = layout === "page-mobile";
+  const capDraftScroll = !isMobilePage;
   const textareaMin =
     layout === "page" ? "min-h-[5.5rem] max-h-40" : "min-h-[4.5rem] max-h-32";
   const [dragActive, setDragActive] = useState(false);
@@ -87,56 +88,14 @@ export function TicketComposer({
   const hasContent = reply.trim().length > 0 || replyAttachments.length > 0;
   const disabled = !hasContent || sendPending || patchPending;
 
-  return (
-    <div
-      className={`z-10 shrink-0 border-t border-gray-200 bg-white pb-1 pe-16 pt-3 sm:pe-20 ${
-        isMobilePage ? "sticky bottom-0 pb-[max(0.25rem,env(safe-area-inset-bottom))] shadow-[0_-4px_12px_rgb(0_0_0/0.06)]" : ""
-      }`}
-      onDragOver={(e) => {
-        e.preventDefault();
-        setDragActive(true);
-      }}
-      onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragActive(false);
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        setDragActive(false);
-        void onPickFiles(e.dataTransfer.files);
-      }}
-    >
+  const draftBlock = (
+    <>
       {replyInternal ? (
         <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
           <p className="font-medium">Team note mode</p>
           <p className="mt-0.5 text-amber-800">Only staff can see this note.</p>
         </div>
       ) : null}
-
-      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1 text-sm">
-          <button
-            type="button"
-            className={`rounded-lg px-3 py-2 font-medium transition-colors ${
-              !replyInternal ? "bg-gray-900 text-white shadow-sm" : "text-gray-700 hover:bg-white"
-            }`}
-            onClick={() => setReplyInternal(false)}
-          >
-            Reply to customer
-          </button>
-          <button
-            type="button"
-            className={`rounded-lg px-3 py-2 font-medium transition-colors ${
-              replyInternal ? "bg-amber-500 text-amber-950 shadow-sm" : "text-gray-700 hover:bg-white"
-            }`}
-            onClick={() => setReplyInternal(true)}
-          >
-            Internal note
-          </button>
-        </div>
-        <p className={`text-xs ${replyInternal ? "text-amber-700" : "text-gray-500"}`}>
-          {replyInternal ? "Staff only." : "Visible to the customer."}
-        </p>
-      </div>
 
       <textarea
         className={`mb-2 w-full ${textareaMin} rounded-xl border px-3 py-2 text-sm focus:outline-none ${
@@ -165,6 +124,93 @@ export function TicketComposer({
         }}
         placeholder={replyInternal ? "Add context for teammates…" : "Type a clear reply to the customer…"}
       />
+
+      {(dragActive || replyAttachments.length > 0) && (
+        <div
+          className={`mb-2 rounded-xl border border-dashed p-3 transition-colors ${
+            dragActive ? "border-blue-400 bg-blue-50" : "border-gray-300 bg-gray-50/80"
+          }`}
+        >
+          {replyAttachments.length === 0 ? (
+            <p className="text-xs text-gray-600">Drop files here or use the paperclip.</p>
+          ) : (
+            <ul className="admin-scrollbar grid max-h-32 gap-2 overflow-y-auto sm:grid-cols-2">
+              {replyAttachments.map((a) => (
+                <li key={a.url} className="overflow-hidden rounded-xl border border-gray-200 bg-white text-xs shadow-sm">
+                  {isImageAttachment(a) ? (
+                    <img src={a.url} alt={a.name || "Attachment preview"} className="h-20 w-full object-cover" loading="lazy" />
+                  ) : null}
+                  <div className="flex items-center gap-2 px-3 py-2">
+                    <FileText className="h-4 w-4 shrink-0 text-gray-500" />
+                    <span className="min-w-0 flex-1 truncate text-gray-700">{a.name || "file"}</span>
+                    {a.size != null ? <span className="shrink-0 text-gray-500">{formatFileSize(a.size)}</span> : null}
+                    <button
+                      type="button"
+                      className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-red-600"
+                      aria-label={`Remove ${a.name || "attachment"}`}
+                      onClick={() => setReplyAttachments((prev) => prev.filter((x) => x.url !== a.url))}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  return (
+    <div
+      className={`z-10 shrink-0 border-t border-gray-200 bg-white pb-1 pt-3 ${
+        isMobilePage ? "sticky bottom-0 pe-16 pb-[max(0.25rem,env(safe-area-inset-bottom))] shadow-[0_-4px_12px_rgb(0_0_0/0.06)] sm:pe-20" : ""
+      }`}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragActive(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragActive(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragActive(false);
+        void onPickFiles(e.dataTransfer.files);
+      }}
+    >
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1 text-sm">
+          <button
+            type="button"
+            className={`rounded-lg px-3 py-2 font-medium transition-colors ${
+              !replyInternal ? "bg-gray-900 text-white shadow-sm" : "text-gray-700 hover:bg-white"
+            }`}
+            onClick={() => setReplyInternal(false)}
+          >
+            Reply to customer
+          </button>
+          <button
+            type="button"
+            className={`rounded-lg px-3 py-2 font-medium transition-colors ${
+              replyInternal ? "bg-amber-500 text-amber-950 shadow-sm" : "text-gray-700 hover:bg-white"
+            }`}
+            onClick={() => setReplyInternal(true)}
+          >
+            Internal note
+          </button>
+        </div>
+        <p className={`text-xs ${replyInternal ? "text-amber-700" : "text-gray-500"}`}>
+          {replyInternal ? "Staff only." : "Visible to the customer."}
+        </p>
+      </div>
+
+      {capDraftScroll ? (
+        <div className="admin-scrollbar mb-2 max-h-64 overflow-y-auto">{draftBlock}</div>
+      ) : (
+        draftBlock
+      )}
 
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <button
@@ -241,41 +287,6 @@ export function TicketComposer({
         disabled={uploading}
         onChange={(e) => void onPickFiles(e.target.files)}
       />
-
-      {(dragActive || replyAttachments.length > 0) && (
-        <div
-          className={`mb-2 rounded-xl border border-dashed p-3 transition-colors ${
-            dragActive ? "border-blue-400 bg-blue-50" : "border-gray-300 bg-gray-50/80"
-          }`}
-        >
-          {replyAttachments.length === 0 ? (
-            <p className="text-xs text-gray-600">Drop files here or use the paperclip.</p>
-          ) : (
-            <ul className="admin-scrollbar grid max-h-32 gap-2 overflow-y-auto sm:grid-cols-2">
-              {replyAttachments.map((a) => (
-                <li key={a.url} className="overflow-hidden rounded-xl border border-gray-200 bg-white text-xs shadow-sm">
-                  {isImageAttachment(a) ? (
-                    <img src={a.url} alt={a.name || "Attachment preview"} className="h-20 w-full object-cover" loading="lazy" />
-                  ) : null}
-                  <div className="flex items-center gap-2 px-3 py-2">
-                    <FileText className="h-4 w-4 shrink-0 text-gray-500" />
-                    <span className="min-w-0 flex-1 truncate text-gray-700">{a.name || "file"}</span>
-                    {a.size != null ? <span className="shrink-0 text-gray-500">{formatFileSize(a.size)}</span> : null}
-                    <button
-                      type="button"
-                      className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-red-600"
-                      aria-label={`Remove ${a.name || "attachment"}`}
-                      onClick={() => setReplyAttachments((prev) => prev.filter((x) => x.url !== a.url))}
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
 
       {uploadErr ? <p className="mb-2 text-sm text-red-600">{uploadErr}</p> : null}
 

@@ -159,8 +159,11 @@ const defaultForm = {
 
 export default function ProductFormScreen() {
   const { t } = useTranslation();
-  const pf = (key: string, opts?: Record<string, unknown>) =>
-    t(`provider.mobile.screens.productForm.${key}`, opts) as string;
+  const pf = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.productForm.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
   const productId = params.id;
@@ -208,6 +211,8 @@ export default function ProductFormScreen() {
   const [loadedWithVariants, setLoadedWithVariants] = useState(false);
   const formRef = useRef(form);
   formRef.current = form;
+  /** Hydrate once per product so background refetches (app focus / reconnect) don't wipe unsaved edits. */
+  const hydratedProductIdRef = useRef<string | null>(null);
 
   const handleCreateBrand = useCallback(async () => {
     const name = newBrandName.trim();
@@ -272,6 +277,8 @@ export default function ProductFormScreen() {
 
   useEffect(() => {
     if (product) {
+      if (hydratedProductIdRef.current === product.id) return;
+      hydratedProductIdRef.current = product.id;
       const hasV = Boolean(product.has_variants && (product.variants?.length ?? 0) > 0);
       setLoadedWithVariants(hasV);
       const optTypes = product.variant_option_types ?? [];
@@ -333,6 +340,8 @@ export default function ProductFormScreen() {
           : [],
       });
     } else if (!productId) {
+      if (hydratedProductIdRef.current === "new") return;
+      hydratedProductIdRef.current = "new";
       setLoadedWithVariants(false);
       setForm({ ...defaultForm });
     }

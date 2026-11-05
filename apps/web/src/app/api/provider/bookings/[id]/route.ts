@@ -769,6 +769,13 @@ export async function GET(
       );
       transformedBooking.pending_cash_refunds =
         await fetchPendingCashRefundsForBooking(supabaseAdmin, id);
+      const { findOpenTerminalPayments } = await import("@/lib/payments/open-terminal-payments");
+      (transformedBooking as unknown as Record<string, unknown>).open_terminal_payments =
+        await findOpenTerminalPayments(supabaseAdmin, {
+          providerId,
+          bookingIds: [id],
+          groupBookingId: bookingData.group_booking_id || null,
+        });
     }
 
     return successResponse(transformedBooking);
@@ -1299,7 +1306,7 @@ export async function PATCH(
     ) {
       const { data: providerTaxRow } = await supabaseAdminPatch
         .from("providers")
-        .select("tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code")
+        .select("tenant_id, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number")
         .eq("id", providerId)
         .maybeSingle();
       const resolvedVat = await resolveProviderVat(supabaseAdminPatch, {
@@ -1307,7 +1314,7 @@ export async function PATCH(
         tax_inclusive: providerTaxRow?.tax_inclusive ?? null,
         is_vat_registered: providerTaxRow?.is_vat_registered ?? null,
         vat_number: providerTaxRow?.vat_number ?? null,
-        country_code: providerTaxRow?.country_code ?? null,
+        tenant_id: providerTaxRow?.tenant_id ?? null,
         tax_rate_override_percent: null,
       });
       if (resolvedVat.registered && resolvedVat.source === "none") {
@@ -1477,6 +1484,48 @@ export async function PATCH(
         updateData.completed_at = new Date().toISOString();
       } else if (dbStatus === "cancelled") {
         updateData.cancelled_at = new Date().toISOString();
+      }
+    }
+
+    if (dbStatus === "completed" && (currentBooking as BookingRow).status !== "completed") {
+      const allowUnpaid = body?.allow_unpaid === true || body?.allow_unpaid === "true";
+      const unpaidReason = typeof body?.unpaid_reason === "string" ? body.unpaid_reason.trim() : "";
+      if (allowUnpaid && !unpaidReason) {
+        return errorResponse(
+          "A reason is required to complete with an outstanding balance.",
+          "BALANCE_DUE_REASON_REQUIRED",
+          400,
+        );
+      }
+      const { isProviderOwnerOrManager } = await import("@/lib/auth/permissions");
+      if (allowUnpaid && !(await isProviderOwnerOrManager(user.id, request))) {
+        return errorResponse(
+          "Only the owner or a manager can complete with an outstanding balance.",
+          "FORBIDDEN",
+          403,
+        );
+      }
+      const { evaluateSingleBookingCompletion } = await import("@/lib/bookings/completion-guards");
+      const completionCheck = await evaluateSingleBookingCompletion(supabaseAdminPatch, {
+        providerId,
+        booking: currentBooking as Parameters<typeof evaluateSingleBookingCompletion>[1]["booking"],
+        allowUnpaid,
+      });
+      if (!completionCheck.allowed) {
+        const primary = completionCheck.blockers[0]!;
+        return errorResponse(primary.message, primary.code, 409, {
+          blockers: completionCheck.blockers,
+          amount: primary.amount,
+          balance_due: completionCheck.balanceDue,
+        });
+      }
+      if (allowUnpaid && completionCheck.balanceDue > 0.01) {
+        await supabaseAdminPatch.from("booking_events").insert({
+          booking_id: id,
+          event_type: "completed_with_balance",
+          event_data: { reason: unpaidReason, balance_due: completionCheck.balanceDue },
+          created_by: user.id,
+        });
       }
     }
 

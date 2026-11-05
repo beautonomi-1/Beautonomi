@@ -9,18 +9,20 @@ interface UsePermissionsResult {
   permissions: StaffPermissions | null;
   isLoading: boolean;
   isOwner: boolean;
+  /** Owner, or staff with role manager / is_admin (server: isProviderOwnerOrManager). */
+  isManager: boolean;
   hasPermission: (permission: keyof StaffPermissions) => boolean;
   hasAnyPermission: (permissions: (keyof StaffPermissions)[]) => boolean;
   hasAllPermissions: (permissions: (keyof StaffPermissions)[]) => boolean;
 }
 
 // Cache permissions to survive tab switches and temporary role loss
-const permissionsCache = new Map<string, { permissions: StaffPermissions; isOwner: boolean; timestamp: number }>();
+const permissionsCache = new Map<string, { permissions: StaffPermissions; isOwner: boolean; isManager?: boolean; timestamp: number }>();
 const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
 const STORAGE_KEY = 'beautonomi_permissions_cache';
 const pendingPermissionsRequests = new Map<
   string,
-  Promise<{ permissions: StaffPermissions; isOwner: boolean }>
+  Promise<{ permissions: StaffPermissions; isOwner: boolean; isManager: boolean }>
 >();
 
 // Load from localStorage on module load
@@ -33,6 +35,7 @@ if (typeof window !== 'undefined') {
         permissionsCache.set(parsed.userId, {
           permissions: parsed.permissions,
           isOwner: parsed.isOwner,
+          isManager: parsed.isManager === true,
           timestamp: parsed.timestamp,
         });
       }
@@ -47,6 +50,7 @@ export function usePermissions(): UsePermissionsResult {
   const [permissions, setPermissions] = useState<StaffPermissions | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isOwner, setIsOwner] = useState(false);
+  const [isManager, setIsManager] = useState(false);
   const lastUserIdRef = useRef<string | null>(null);
   const lastRoleRef = useRef<string | null>(null);
 
@@ -61,6 +65,7 @@ export function usePermissions(): UsePermissionsResult {
             // Keep cached permissions temporarily
             setPermissions(cached.permissions);
             setIsOwner(cached.isOwner);
+            setIsManager(cached.isOwner || cached.isManager === true);
             setIsLoading(false);
             return;
           }
@@ -82,6 +87,7 @@ export function usePermissions(): UsePermissionsResult {
           if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
             setPermissions(cached.permissions);
             setIsOwner(cached.isOwner);
+            setIsManager(cached.isOwner || cached.isManager === true);
             setIsLoading(false);
             // Don't update refs - wait for role to come back
             return;
@@ -104,6 +110,7 @@ export function usePermissions(): UsePermissionsResult {
         const ownerCacheData = {
           permissions: {} as StaffPermissions,
           isOwner: true,
+          isManager: true,
           timestamp: Date.now(),
         };
         permissionsCache.set(user.id, ownerCacheData);
@@ -119,6 +126,7 @@ export function usePermissions(): UsePermissionsResult {
         }
         setPermissions(ownerCacheData.permissions);
         setIsOwner(true);
+        setIsManager(true);
         setIsLoading(false);
         return;
       }
@@ -134,6 +142,7 @@ export function usePermissions(): UsePermissionsResult {
               cached = {
                 permissions: parsed.permissions,
                 isOwner: parsed.isOwner,
+                isManager: parsed.isManager === true,
                 timestamp: parsed.timestamp,
               };
               // Restore to memory cache
@@ -148,6 +157,7 @@ export function usePermissions(): UsePermissionsResult {
       if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
         setPermissions(cached.permissions);
         setIsOwner(cached.isOwner);
+        setIsManager(cached.isOwner || cached.isManager === true);
         setIsLoading(false);
       }
 
@@ -160,12 +170,14 @@ export function usePermissions(): UsePermissionsResult {
             const response = await fetcher.get<{
               data: {
                 isOwner: boolean;
+                isManager?: boolean;
                 permissions: StaffPermissions;
               };
             }>("/api/provider/permissions");
             return {
               permissions: response.data.permissions,
               isOwner: response.data.isOwner,
+              isManager: response.data.isOwner || response.data.isManager === true,
             };
           })();
           pendingPermissionsRequests.set(requestKey, pending);
@@ -177,6 +189,7 @@ export function usePermissions(): UsePermissionsResult {
         const cacheData = {
           permissions: fetched.permissions,
           isOwner: fetched.isOwner,
+          isManager: fetched.isManager,
           timestamp: Date.now(),
         };
         permissionsCache.set(user.id, cacheData);
@@ -195,6 +208,7 @@ export function usePermissions(): UsePermissionsResult {
 
         setPermissions(fetched.permissions);
         setIsOwner(fetched.isOwner);
+        setIsManager(fetched.isManager);
       } catch (error) {
         console.error("Failed to load permissions:", error);
         // On error, try to use cached permissions if available
@@ -202,9 +216,11 @@ export function usePermissions(): UsePermissionsResult {
         if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
           setPermissions(cached.permissions);
           setIsOwner(cached.isOwner);
+          setIsManager(cached.isOwner || cached.isManager === true);
         } else {
           setPermissions(null);
           setIsOwner(false);
+          setIsManager(false);
         }
       } finally {
         pendingPermissionsRequests.delete(user.id);
@@ -251,6 +267,7 @@ export function usePermissions(): UsePermissionsResult {
     permissions,
     isLoading,
     isOwner,
+    isManager,
     hasPermission,
     hasAnyPermission,
     hasAllPermissions,

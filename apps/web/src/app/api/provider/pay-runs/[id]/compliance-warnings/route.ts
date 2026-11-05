@@ -13,6 +13,7 @@ import {
   checkTipsPolicy,
 } from "@/lib/payroll/compliance-guards";
 import { loadStaffPayrollMetaBatch } from "@/lib/payroll/resolve-staff-payroll-meta";
+import { getProviderPayrollCountry } from "@/lib/payroll/provider-payroll-context";
 import { payrollDisabledMessage } from "@/lib/payroll/payroll-access";
 import { requireManagePayroll } from "@/lib/payroll/require-manage-payroll";
 
@@ -54,12 +55,7 @@ export async function GET(
       .select("staff_id, gross_pay, hourly_amount")
       .eq("pay_run_id", id);
 
-    const { data: providerRow } = await admin
-      .from("providers")
-      .select("country_code")
-      .eq("id", providerId)
-      .maybeSingle();
-    const country = (providerRow as { country_code?: string | null })?.country_code?.toUpperCase() ?? null;
+    const country = await getProviderPayrollCountry(admin, providerId);
 
     const staffIds = (items ?? []).map((i: { staff_id: string }) => i.staff_id);
     const meta = await loadStaffPayrollMetaBatch(admin, providerId, staffIds, payDate, country);

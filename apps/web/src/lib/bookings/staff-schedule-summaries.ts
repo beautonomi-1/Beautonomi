@@ -154,7 +154,6 @@ async function sendSummaryForRange(
       `
       id,
       scheduled_at,
-      staff_id,
       booking_services ( staff_id, offering:offerings!inner ( title ) )
     `,
     )

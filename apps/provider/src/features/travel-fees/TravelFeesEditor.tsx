@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { View, Text, TextInput, Switch, TouchableOpacity } from "react-native";
 import { KeyboardDoneAccessory } from "@/features/provider-onboarding/KeyboardDoneAccessory";
 import { Ionicons } from "@expo/vector-icons";
@@ -123,16 +123,19 @@ export function TravelFeesEditor({
   onFieldFocus,
 }: TravelFeesEditorProps) {
   const { t } = useTranslation();
-  const tf = (key: string, opts?: Record<string, unknown>) =>
-    t(`provider.mobile.screens.travelFeesEditor.${key}`, {
-      defaultValue:
-        key === "perKmA11y"
-          ? "Per km travel pricing"
-          : key === "tieredA11y"
-            ? "Tiered distance pricing"
-            : undefined,
-      ...(opts ?? {}),
-    }) as string;
+  const tf = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.travelFeesEditor.${key}`, {
+        defaultValue:
+          key === "perKmA11y"
+            ? "Per km travel pricing"
+            : key === "tieredA11y"
+              ? "Tiered distance pricing"
+              : undefined,
+        ...(opts ?? {}),
+      }) as string,
+    [t],
+  );
   const [previewKm, setPreviewKm] = useState("10");
   const freeKmRef = useRef<TextInput>(null);
   const rateRef = useRef<TextInput>(null);
@@ -482,8 +485,11 @@ function TierEditor({
   onFieldFocus?: (inputRef: RefObject<TextInput | null>) => void;
 }) {
   const { t } = useTranslation();
-  const tf = (key: string, opts?: Record<string, unknown>) =>
-    t(`provider.mobile.screens.travelFeesEditor.${key}`, opts) as string;
+  const tf = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.travelFeesEditor.${key}`, opts) as string,
+    [t],
+  );
   const tierKmRefs = useRef<Map<number, TextInput | null>>(new Map());
   const tierFeeRefs = useRef<Map<number, TextInput | null>>(new Map());
 

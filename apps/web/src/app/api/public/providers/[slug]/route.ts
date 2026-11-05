@@ -94,12 +94,13 @@ export async function GET(
       id, slug, business_name, business_type, description,
       rating_average, review_count, thumbnail_url, avatar_url,
       gallery, is_featured, is_verified, currency,
-      years_in_business, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code, tips_enabled, tip_presets, timezone, website,
+      years_in_business, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, tips_enabled, tip_presets, timezone, website,
       social_media_links, accepts_custom_requests,
       response_rate, response_time_hours, languages_spoken,
       offers_mobile_services, minimum_mobile_booking_amount,
+      requires_deposit, deposit_percentage, no_show_fee_enabled, no_show_fee_amount,
       status, deleted_at,
-      user_id, users(include_in_search_engines)
+      user_id, users!providers_user_id_fkey(include_in_search_engines)
     `;
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(decodedSlug);
 
@@ -383,7 +384,7 @@ export async function GET(
       tax_inclusive: (providerData as { tax_inclusive?: boolean | null }).tax_inclusive ?? null,
       is_vat_registered: (providerData as { is_vat_registered?: boolean | null }).is_vat_registered ?? null,
       vat_number: (providerData as { vat_number?: string | null }).vat_number ?? null,
-      country_code: (providerData as { country_code?: string | null }).country_code ?? null,
+      tenant_id: tenantId,
       tax_rate_override_percent: null,
     });
     const taxRatePercent = resolvedVat.ratePercent;

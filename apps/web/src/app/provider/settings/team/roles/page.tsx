@@ -49,6 +49,7 @@ const permissionCategories = [
   { id: "view_sales", category: "sales" },
   { id: "create_sales", category: "sales" },
   { id: "process_payments", category: "sales" },
+  { id: "issue_refunds", category: "sales" },
   { id: "view_reports", category: "sales" },
   { id: "manage_finance", category: "sales" },
   { id: "manage_payroll", category: "sales" },

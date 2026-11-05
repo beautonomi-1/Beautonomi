@@ -149,7 +149,7 @@ export function PromotionsContent() {
     }
   }, [refresh]);
 
-  const buildPayload = (forCreate = true) => {
+  const buildPayload = useCallback((forCreate = true) => {
     const payload: Record<string, unknown> = {
       description: description.trim() || undefined,
       public_on_profile: publicOnProfile,
@@ -182,7 +182,20 @@ export function PromotionsContent() {
       payload.is_active = promoIsActive;
     }
     return payload;
-  };
+  }, [
+    description,
+    publicOnProfile,
+    startDate,
+    oncePerCustomer,
+    noEndDate,
+    endDate,
+    usageLimit,
+    minPurchase,
+    maxDiscount,
+    promoType,
+    locationId,
+    promoIsActive,
+  ]);
 
   const handleCreate = useCallback(async () => {
     const trimmedCode = code.trim().toUpperCase();
@@ -222,7 +235,18 @@ export function PromotionsContent() {
     setCreateOpen(false);
     resetForm();
     refresh();
-  }, [code, value, description, promoType, publicOnProfile, createPromo, refresh, startDate, endDate, noEndDate, usageLimit, oncePerCustomer]);
+  }, [
+    code,
+    value,
+    promoType,
+    createPromo,
+    refresh,
+    startDate,
+    endDate,
+    noEndDate,
+    pr,
+    buildPayload,
+  ]);
 
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const toggleActive = useCallback(
@@ -237,7 +261,7 @@ export function PromotionsContent() {
         setTogglingId(null);
       }
     },
-    [patchPromo, refresh, togglingId],
+    [patchPromo, refresh, togglingId, pr],
   );
 
   const handleDelete = useCallback(
@@ -277,7 +301,7 @@ export function PromotionsContent() {
         setTogglingId(null);
       }
     },
-    [patchPromo, refresh, togglingId],
+    [patchPromo, refresh, togglingId, pr],
   );
 
   const openDetail = (p: Promotion) => {

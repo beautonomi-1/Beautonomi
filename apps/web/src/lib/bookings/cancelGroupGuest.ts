@@ -15,6 +15,8 @@ export type CancelGroupGuestResult =
       walletCredited: number;
       /** Still paid on the lead booking beyond its repriced total after automatic refunds. */
       overpaidAmount: number;
+      /** In-person portion the provider must return at the desk (not wallet). */
+      in_person_refund_due?: number;
     }
   | {
       ok: false;
@@ -191,6 +193,15 @@ export async function cancelGroupGuest(
 
   let walletCredited = 0;
   if (leadOverpaid > 0.009) {
+    const { computeRefundCaps } = await import("@/lib/bookings/booking-refund-limits");
+    const { data: leadPayRow } = await admin
+      .from("bookings")
+      .select("total_paid, total_refunded, wallet_amount, gift_card_amount, customer_id, tenant_id")
+      .eq("id", leadBookingId)
+      .maybeSingle();
+    const caps = await computeRefundCaps(admin, leadBookingId, leadPayRow ?? undefined);
+    const walletTarget = round2(Math.min(leadOverpaid, caps.onlineCap));
+
     const { processBookingRefund } = await import("@/lib/bookings/refund-processing");
     const policy: CancellationPolicy = {
       id: "group_guest_removed",
@@ -205,12 +216,16 @@ export async function cancelGroupGuest(
       fee_amount: 0,
       fee_type: "fixed",
     };
-    const credit = await processBookingRefund(leadBookingId, leadOverpaid, currency, policy, {
-      isLateCancellation: false,
-      maxWalletCredit: leadOverpaid,
-    });
-    if (credit.success) walletCredited = round2(Number(credit.amount ?? 0));
+    if (walletTarget > 0.009) {
+      const credit = await processBookingRefund(leadBookingId, walletTarget, currency, policy, {
+        isLateCancellation: false,
+        maxWalletCredit: walletTarget,
+      });
+      if (credit.success) walletCredited = round2(Number(credit.amount ?? 0));
+    }
   }
+
+  const inPersonRefundDue = round2(Math.max(0, leadOverpaid - walletCredited));
 
   await notifyRemoved();
   return {
@@ -220,7 +235,8 @@ export async function cancelGroupGuest(
     removedLines,
     guestRefunded: guestOutcome.refunded,
     walletCredited,
-    overpaidAmount: round2(Math.max(0, leadOverpaid - walletCredited)),
+    overpaidAmount: inPersonRefundDue,
+    in_person_refund_due: inPersonRefundDue,
   };
 }
 

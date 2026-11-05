@@ -33,7 +33,7 @@ export const BREADCRUMB_MAP: Record<string, BreadcrumbRoute> = {
   "knowledge-base/[id]": { label: "Article", parentHref: "/admin/knowledge-base" },
 
   // Operations
-  "support-tickets": { label: "Support Tickets", parentHref: null },
+  "support-tickets": { label: "Support Tickets", parentHref: "/admin/dashboard" },
   "support-tickets/ai-drafts": { label: "AI drafts", parentHref: "/admin/support-tickets" },
   "support-tickets/[id]": { label: "Ticket", parentHref: "/admin/support-tickets" },
   "finance/ai-queue": { label: "Finance AI queue", parentHref: "/admin/finance" },
@@ -94,6 +94,7 @@ export const BREADCRUMB_MAP: Record<string, BreadcrumbRoute> = {
   "settings/platform-fees": { label: "Platform Fees", parentHref: "/admin/settings" },
   taxes: { label: "Taxes", parentHref: null },
   "period-locks": { label: "Period Locks", parentHref: null },
+  "refund-anomalies": { label: "Refund Anomalies", parentHref: null },
   "wallet-reconciliation": { label: "Wallet Reconciliation", parentHref: null },
   "reconciliation-exceptions": { label: "Reconciliation Exceptions", parentHref: null },
   "ledger-repair": { label: "Ledger Repair", parentHref: null },
@@ -248,8 +249,9 @@ const DYNAMIC_SEGMENT_RE =
 const STATIC_BREADCRUMB_SEGMENTS = new Set(["region-online-gateway", "country-launch-checklist"]);
 
 export function normalisePath(path: string): string {
+  const pathOnly = path.split("#")[0]?.split("?")[0] ?? path;
   return (
-    path
+    pathOnly
       // Strip the /admin/ prefix whether the router provides a full absolute
       // path (/admin/bookings/…) or a basename-relative path (/bookings/…).
       // React Router with `basename="/admin"` returns the latter from
@@ -319,4 +321,24 @@ export function breadcrumbsForPath(
   });
 
   return crumbs;
+}
+
+/** Extra leaf for split-pane contexts (e.g. support queue with ?selected=). */
+export type BreadcrumbSuffix = {
+  label: string;
+  /** Queue href without the selection param. */
+  previousHref: string;
+  /** Full href for the current selection (pathname + search). */
+  currentHref: string;
+};
+
+/** Rewrites the queue crumb link and appends the open item as the current page. */
+export function applyBreadcrumbSuffix(crumbs: Crumb[], suffix: BreadcrumbSuffix | undefined): Crumb[] {
+  if (!suffix?.label.trim() || crumbs.length < 2) return crumbs;
+  const queueCrumb = crumbs[crumbs.length - 1];
+  return [
+    ...crumbs.slice(0, -1),
+    { label: queueCrumb.label, href: suffix.previousHref },
+    { label: suffix.label, href: suffix.currentHref },
+  ];
 }

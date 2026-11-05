@@ -2351,13 +2351,50 @@
           "viewFullBooking": "View full booking",
           "statusNoShow": "No show",
           "statusPendingPayment": "Pending payment",
-          "removeParticipantOverpaid": "Guest removed. The booking is now overpaid by {{amount}}. Refund the difference to the customer.",
+          "removeParticipantOverpaid": "እንግዳ ተወግዷል። {{amount}} በአካል ተከፍሏል እና ወደ ዋሌት መግባት አይችልም። በጥሬ ገንዘብ ወይም በካርድ ማሽን ከተጨማሪ ምናሌ ይመልሱ።",
           "shareStatusPaid": "Share paid",
           "shareStatusPending": "Share unpaid ({{amount}})",
           "shareStatusCancelled": "Spot cancelled",
           "resendInvite": "Re-send invite",
           "inviteResent": "Invite sent",
-          "inviteResendFailed": "Could not re-send the invite."
+          "inviteResendFailed": "Could not re-send the invite.",
+          "slotUnavailableTitle": "ሰዓቱ አይገኝም",
+          "noStaffForSlot": "በዚህ ሰዓት ለዚህ አገልግሎት ነፃ የቡድን አባል የለም። ሌላ ሰዓት ወይም የተወሰነ ሰው ይምረጡ።",
+          "pickAnotherTime": "ሌላ ሰዓት ይምረጡ",
+          "invalidStaffTitle": "የቡድን አባል አይገኝም",
+          "anyAvailableStaff": "የሚገኝ ማንኛውም",
+          "loadingTeam": "ቡድኑ እየተጫነ ነው…",
+          "staffRetryInline": "ቡድኑን መጫን አልተቻለም። እንደገና ለመሞከር ይንኩ",
+          "moreActionsTitle": "ተጨማሪ",
+          "moreActionsA11y": "ተጨማሪ እርምጃዎች",
+          "openTerminalBannerBody": "ለዚህ ቡድን የ{{amount}} የካርድ ማሽን ክፍያ አሁንም ክፍት ነው።",
+          "resumeOpenCharge": "ቀጥል",
+          "cancelOpenCharge": "ክፍያውን ሰርዝ",
+          "cancelOpenChargeTitle": "ክፍት ክፍያ ይሰረዝ?",
+          "cancelOpenChargeBody": "ይህ በካርድ ማሽን ላይ እየተካሄደ ያለውን ክፍያ ይሰርዛል፤ ክፍያውን በሌላ መንገድ መመዝገብ ትችላለህ።",
+          "cancelOpenChargeFailed": "ክፍት ክፍያውን መሰረዝ አልተቻለም።",
+          "openChargeCancelled": "የካርድ ማሽን ክፍያ ተሰርዟል።",
+          "entityInFlightTitle": "ክፍት የካርድ ማሽን ክፍያ",
+          "cancelOpenChargeAndRecord": "ክፍት ክፍያውን ሰርዝ እና መዝግብ",
+          "terminalInFlightTitle": "የካርድ ማሽን ክፍያ ክፍት ነው",
+          "fullyRefundedTitle": "ሙሉ በሙሉ ተመልሷል",
+          "participantRefundedChip": "ተመልሷል",
+          "groupNotStartedTitle": "መጀመሪያ ቡድኑን ጀምር",
+          "groupNotStartedBody": "የቡድን ቀጠሮ ከተጀመረ በኋላ መግቢያ እና መውጫ ይገኛሉ።",
+          "unpaidCompleteNotAllowed": "ቀሪ ክፍያ ሲኖር ባለቤት ወይም አስተዳዳሪ ብቻ ማጠናቀቅ ይችላል።",
+          "unpaidCompleteReasonTitle": "ባልተከፈለ ቀሪ ያጠናቅቁ",
+          "unpaidCompleteReasonRequired": "ቀሪ ክፍያ ሲኖር ለማጠናቀቅ ምክንያት ያስገቡ።",
+          "unpaidCompleteReasonLabel": "ምክንያት (ግዴታ)",
+          "unpaidCompleteReasonPlaceholder": "ምሳሌ፦ ደንበኛው ነገ በEFT ይከፍላል",
+          "refundCapsTitle": "የተመላሽ ገደቦች",
+          "refundCapsOnline": "ዋሌት / መስመር ላይ፦ እስከ {{amount}}",
+          "refundCapsCash": "ጥሬ ገንዘብ፦ እስከ {{amount}}",
+          "refundCapsTerminal": "የካርድ ማሽን፦ እስከ {{amount}}",
+          "refundConfirmSummaryTitle": "ተመላሽ ይረጋገጥ?",
+          "refundConfirmSummaryBody": "{{amount}} በ{{method}} ይመልሱ።\n\nምክንያት፦ {{reason}}",
+          "refundWalletCapExceeded": "ይህ መጠን ለዚህ ቀጠሮ የዋሌት ተመላሽ ገደብ ይበልጣል።",
+          "refundMethodOriginal": "የካርድ ማሽን",
+          "refundOptionsLoadFailed": "የተመላሽ ገደቦችን መጫን አልተቻለም። መጠኖቹ ያረጁ ሊሆኑ ይችላሉ።"
         },
         "settingsIndex": {
           "title": "Settings",
@@ -3177,7 +3214,7 @@
           "awaitingYocoRefundReason": "ቦታ ማስያዝ ተሰርዟል - ገንዘቡን ወደ ካርድ ይመልሱ",
           "refundOriginalHint": "ገንዘቡ በካርድ ማሽን ወይም በባንክ በኩል ወደ ደንበኛው ካርድ ይመለሳል. ከገንዘብ መሣቢያዎ ምንም ነገር አይወሰድም።",
           "refundCashHint": "ገንዘቡን በአካል ለደንበኛው መልሰው ይስጡት። ለመጽሃፍቶችዎ የተቀዳ; የኪስ ቦርሳ ክሬዲት አይሰጥም። ይህ ከተሳካ በኋላ የቦታ ማስያዣ ሒሳብ ይዘምናል።",
-          "refundWalletHint": "ደንበኛው በማይኖርበት ጊዜ ወይም ክፍያው በመስመር ላይ ሲከፈል ይጠቀሙ። ተመላሽ ገንዘቡ የሚከፈለው በኪስ ቦርሳቸው ነው።",
+          "refundWalletHint": "በመስመር ላይ የተከፈለ ገንዘብ ብቻ ወደ ዋሌት መመለስ ይችላል። ተመላሹ ወደ ዋሌታቸው ይገባል።",
           "refundOriginalMachineHint": "ገንዘቡ በተከፈለበት የካርድ ማሽን በኩል ወደ ደንበኛው ካርድ ይመለሳል.",
           "cancelRefundWalletHint": "ደንበኛው ወደ Beautonomi ቦርሳቸው ሙሉ ተመላሽ ይቀበላል። የእርስዎ የስረዛ መመሪያ እርስዎ የጀመሯቸውን ስረዛዎች አይመለከትም።",
           "cancelWalletNote": "ደንበኛው ቀድሞውኑ ለተከፈለው መጠን ወደ Beautonomi ቦርሳቸው ሙሉ ተመላሽ ይደርሳቸዋል። የእርስዎ የስረዛ መመሪያ እርስዎ የጀመሯቸውን ስረዛዎች አይመለከትም።",
@@ -3189,7 +3226,19 @@
           "yocoRefundOnMachineBody": "የYoco ተመላሽ ገንዘቦች ከBeautonomi ሊጀመሩ አይችሉም። መጀመሪያ {{amount}} በYoco መተግበሪያ ወይም በማሽኑ ላይ ተመላሽ ያድርጉ፣ ከዚያ የቦታ ማስያዣው ቀሪ ሂሳብ እና ሪፖርቶች ትክክል ሆነው እንዲቆዩ እዚህ ይመዝግቡት።",
           "awaitingYocoRefundTitle": "{{amount}} በYoco ማሽን ላይ ገና ተመላሽ መደረግ አለበት",
           "pendingCashRefundTitle": "{{amount}} to return in person",
-          "pendingCashRefundBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending — hand back the amount shown and wait for confirmation (or the 48-hour window to close)."
+          "pendingCashRefundBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending — hand back the amount shown and wait for confirmation (or the 48-hour window to close).",
+          "noIssueRefundsPermission": "ተመላሽ ለመስጠት ፈቃድ የለህም። ባለቤቱን ወይም አስተዳዳሪውን ጠይቅ።",
+          "refundMethodCapBody": "ይህ የተመላሽ መንገድ እስከ {{amount}} ይፈቅዳል። ለቀሪው ሌላ መንገድ ይምረጡ።",
+          "refundCapsBreakdown": "በአካል የተከፈለ {{inPerson}} · መስመር ላይ {{online}} · አስቀድሞ የተመለሰ {{refunded}}",
+          "refundMaxForMethod": "ለዚህ መንገድ ከፍተኛ",
+          "confirmRefundTitle": "ተመላሽ አረጋግጥ",
+          "confirmRefundBody": "{{amount}} እንደ {{method}} ይመልሱ። ይህ ሊመለስ አይችልም።",
+          "completeBlockedTerminalTitle": "የካርድ ማሽን ክፍያ ክፍት ነው",
+          "completeBlockedFullyRefundedTitle": "ቀጠሮው ሙሉ በሙሉ ተመልሷል",
+          "unpaidCompleteReasonTitle": "ባልተከፈለ ቀሪ ያጠናቅቁ",
+          "unpaidCompleteReasonLabel": "ምክንያት (ግዴታ)",
+          "unpaidCompleteReasonPlaceholder": "ምሳሌ፦ ደንበኛው ነገ በEFT ይከፍላል",
+          "unpaidCompleteNotAllowed": "ቀሪ ክፍያ ያለውን ቀጠሮ ባለቤት ወይም አስተዳዳሪ ብቻ ማጠናቀቅ ይችላል። መጀመሪያ ክፍያ ይሰብስቡ ወይም አስተዳዳሪ ይጠይቁ።"
         },
         "operatingHoursSettings": {
           "title": "Operating Hours",
@@ -5366,7 +5415,12 @@
           "staffFilteredByService": "Showing team members assigned to this service.",
           "addressOutsideArea": "This address is outside your service area.",
           "addressValidateFailed": "Could not validate this address. Check your connection and try again.",
-          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}"
+          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}",
+          "anyAvailableStaff": "ማንኛውም የሚገኝ",
+          "assignAnyStaffA11y": "የሚገኝ የቡድን አባል መድብ",
+          "loadingTeam": "ቡድኑ እየተጫነ ነው…",
+          "staffRetryInline": "ቡድኑ ሊጫን አልቻለም። እንደገና ለመሞከር ይንኩ",
+          "staffRosterLoading": "ሰራተኞች ከመመደባቸው በፊት ቡድንዎ እየተጫነ ነው"
         },
         "expressBooking": {
           "invalidJson": "Invalid JSON.",
@@ -6628,7 +6682,10 @@
           "withdraw": "Withdraw",
           "withdrawFailed": "Could not withdraw the offer.",
           "withdrawOffer": "Withdraw offer",
-          "emDash": "—"
+          "emDash": "—",
+          "loadingTeam": "ቡድኑ እየተጫነ ነው…",
+          "noStaffPreference": "ምርጫ የለም",
+          "staffRetryInline": "ቡድኑ ሊጫን አልቻለም። እንደገና ለመሞከር ይንኩ"
         },
         "bookingLink": {
           "title": "Booking Link",
@@ -8219,7 +8276,10 @@
           "submitRating": "Submit rating",
           "thanks": "Thanks!",
           "freshCaption": "Fresh {{name}}",
-          "shareBookingLink": "Share booking link"
+          "shareBookingLink": "Share booking link",
+          "continueDraftBody": "ለዚህ ቀጠሮ ጽሑፍ ጀምረዋል። ካቆሙበት ይቀጥሉ ወይም ደንበኛውን ይመዝኑ።",
+          "continueDraftCta": "ረቂቁን ቀጥል",
+          "continueDraftTitle": "የExplore ረቂቅዎን ጨርሱ"
         },
         "advancedPricing": {
           "title": "Advanced pricing",
@@ -10314,7 +10374,8 @@
           "permManageMarketing": "Manage marketing",
           "calendarScopeLabel": "Calendar visibility",
           "calendarScopeOwn": "Own appointments",
-          "calendarScopeAll": "All team calendars"
+          "calendarScopeAll": "All team calendars",
+          "permIssueRefunds": "ተመላሽ ገንዘብ ያውጡ"
         },
         "onboardingHub": {
           "title": "Set up",
@@ -11226,7 +11287,8 @@
           "calendarScopeOwn": "Own appointments only",
           "calendarScopeAll": "All team calendars",
           "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-          "manageMarketing": "Manage marketing"
+          "manageMarketing": "Manage marketing",
+          "issueRefunds": "ተመላሽ ገንዘብ ያውጡ"
         },
         "announcements": {
           "loadFailed": "Could not load announcements",
@@ -12226,7 +12288,10 @@
           "disabledBody": "{{message}}\n\nYour admin can enable the feature flag commerce.provider_custom_offers for this market.",
           "addPhotos": "Add inspiration photos",
           "uploadingPhotos": "Uploading…",
-          "photosAttached": "{{count}} photo(s) attached"
+          "photosAttached": "{{count}} photo(s) attached",
+          "loadingTeam": "ቡድኑ እየተጫነ ነው…",
+          "noStaffPreference": "ምርጫ የለም",
+          "staffRetryInline": "ቡድኑ ሊጫን አልቻለም። እንደገና ለመሞከር ይንኩ"
         },
         "salesSettings": {
           "title": "Sales Settings",
@@ -23821,7 +23886,8 @@
           "bookingChanged": "This booking changed, reload",
           "statusUpdateFailed": "Failed to update booking status",
           "bulkCompleted": "Bulk {{action}} completed for {{count}} booking(s)",
-          "bulkFailed": "Failed to {{action}} bookings"
+          "bulkFailed": "Failed to {{action}} bookings",
+          "bulkPartialFailed": "ለ{{action}} {{count}} ቀጠሮ(ዎች) ተዘለሉ"
         },
         "liveSync": {
           "label": "Live · updated {{relative}}",
@@ -28640,7 +28706,7 @@
             "createSales": "Create Sales",
             "createSalesDesc": "Create new sales",
             "processPayments": "Process Payments",
-            "processPaymentsDesc": "Process payments and refunds",
+            "processPaymentsDesc": "ክፍያዎችን ይመዝግቡ እና በካርድ ማሽን ይቀበሉ",
             "viewReports": "View Reports",
             "viewReportsDesc": "View business reports",
             "viewServices": "View Services",
@@ -28691,7 +28757,9 @@
             "viewOwnEarnings": "View own earnings",
             "viewOwnEarningsDesc": "See tips, commission, and personal earnings",
             "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them."
+            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them.",
+            "issueRefunds": "ተመላሽ ገንዘብ ያውጡ",
+            "issueRefundsDesc": "ለደንበኞች ተመላሽ (ዋሌት፣ ጥሬ ገንዘብ ወይም የካርድ ማሽን)"
           },
           "team/roles": {
             "roles": "Roles",
@@ -28753,7 +28821,8 @@
               "manage_marketing": "Manage marketing",
               "manage_payroll": "Manage payroll",
               "manage_finance": "Platform billing",
-              "view_own_earnings": "View own earnings"
+              "view_own_earnings": "View own earnings",
+              "issue_refunds": "ተመላሽ ገንዘብ ያውጡ"
             },
             "catEngagement": "Engagement",
             "permissionCount": "Permission Count"
@@ -33175,7 +33244,9 @@
         "confirmLateCancelBody": "This will cancel {{name}}'s appointment as a late cancellation. A cancellation fee may apply according to your policy.",
         "cancel": "Cancel",
         "confirmNoShow": "Mark No-Show",
-        "confirmLateCancel": "Late Cancel"
+        "confirmLateCancel": "Late Cancel",
+        "completeSkipped_one": "{{count}} ቀጠሮ አልተጠናቀቀም (ቀሪ ክፍያ፣ ተመልሷል ወይም የካርድ ማሽን ክፍት)",
+        "completeSkipped_other": "{{count}} ቀጠሮዎች አልተጠናቀቁም (ቀሪ ክፍያ፣ ተመልሰዋል ወይም የካርድ ማሽን ክፍት)"
       },
       "moreHub": {
         "requiresEditSettings": "Requires Edit settings permission",

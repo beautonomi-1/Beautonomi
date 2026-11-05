@@ -10,6 +10,7 @@ import {
   Loader2,
   Play,
   Users,
+  MoreHorizontal,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -38,6 +39,12 @@ import {
 } from "../ui";
 import { openViewMode } from "@/stores/appointment-sidebar-store";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -48,6 +55,16 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useTranslation } from "@beautonomi/i18n";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { manualCardCollectOptionLabel } from "@beautonomi/utils";
+
+function participantMaxRefundable(p: GroupBookingParticipant): number {
+  const totalPaid = Number(p.total_paid ?? 0);
+  const totalRefunded = Number(p.total_refunded ?? 0);
+  const walletGift = Number(p.wallet_gift_coverage ?? 0);
+  return Math.max(0, Math.max(totalPaid, walletGift) - totalRefunded);
+}
 
 const CardMachineCollectDialog = dynamic(
   () =>
@@ -57,7 +74,7 @@ const CardMachineCollectDialog = dynamic(
   { ssr: false },
 );
 
-type RecordPaymentMethod = "cash" | "card" | "bank_transfer" | "other" | "yoco";
+type RecordPaymentMethod = "cash" | "card" | "bank_transfer" | "other";
 
 interface GroupBookingViewSheetProps {
   open: boolean;
@@ -76,12 +93,17 @@ export function GroupBookingViewSheet({
 }: GroupBookingViewSheetProps) {
   const { t } = useTranslation();
   const gv = "web.provider.bookings.groupView";
-  const { hasPermission, isOwner } = usePermissions();
+  const gb = (key: string, opts?: Record<string, unknown>) =>
+    String(t(`provider.mobile.screens.groupBookings.${key}`, opts as never));
+  const { hasPermission, isOwner, isManager } = usePermissions();
   const { format: formatMoney } = useProviderMoneyFormat();
   const paystackEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
+  const manualCardEnabled = useFeatureFlag("payment_manual_card");
   const canEdit = isOwner || hasPermission("edit_appointments");
   const canCancel = isOwner || hasPermission("cancel_appointments") || canEdit;
   const canProcessPayments = isOwner || hasPermission("process_payments");
+  const canIssueRefunds = isOwner || hasPermission("issue_refunds");
+  const canCompleteWithUnpaid = isOwner || isManager;
 
   const [booking, setBooking] = useState<GroupBooking | null>(null);
   const [loading, setLoading] = useState(false);
@@ -91,6 +113,17 @@ export function GroupBookingViewSheet({
   const [cancelOpen, setCancelOpen] = useState(false);
   const [recordPaymentConfirm, setRecordPaymentConfirm] = useState<{
     method: RecordPaymentMethod;
+  } | null>(null);
+  const [recordPaymentReference, setRecordPaymentReference] = useState("");
+  const [entityInFlightRetry, setEntityInFlightRetry] = useState<{
+    method: RecordPaymentMethod;
+  } | null>(null);
+  const [unpaidCompleteOpen, setUnpaidCompleteOpen] = useState(false);
+  const [unpaidCompleteReason, setUnpaidCompleteReason] = useState("");
+  const [completeOutstandingPrompt, setCompleteOutstandingPrompt] = useState(false);
+  const [completionBlocker, setCompletionBlocker] = useState<{
+    code: string;
+    message: string;
   } | null>(null);
   const [participantRefund, setParticipantRefund] = useState<{
     bookingId: string;
@@ -124,26 +157,77 @@ export function GroupBookingViewSheet({
   const started = booking?.status === "started";
   const hasLinkedBookings = participants.some((p) => p.booking_id);
   const travelFee = Number((booking as { travel_fee?: number } | null)?.travel_fee ?? 0);
+  const openTerminalPayments = booking?.open_terminal_payments ?? [];
+  const entityInFlight = openTerminalPayments.length > 0;
+  const firstOpenTerminal = openTerminalPayments[0];
+
+  const alertCompletionBlocker = (blocker: { code?: string; message?: string }) => {
+    const code = blocker.code ?? "";
+    const message = blocker.message ?? t(`${gv}.updateFailed`);
+    if (code === "TERMINAL_IN_FLIGHT") {
+      toast.error(message, { description: gb("terminalInFlightTitle") });
+      return;
+    }
+    if (code === "FULLY_REFUNDED") {
+      setCompletionBlocker({ code, message });
+      return;
+    }
+    if (code === "BALANCE_DUE") {
+      if (!canCompleteWithUnpaid) {
+        toast.error(gb("unpaidCompleteNotAllowed"));
+        return;
+      }
+      setUnpaidCompleteOpen(true);
+      return;
+    }
+    toast.error(message);
+  };
+
+  const postCompleteService = async (body: Record<string, unknown> = {}) => {
+    if (!booking) return;
+    const id = normalizeGroupBookingId(booking.id);
+    setBusy(true);
+    try {
+      await fetcher.post(`/api/provider/group-bookings/${id}?action=complete_service`, body);
+      toast.success(t(`${gv}.markedAs`, { status: t(`${gv}.statusCompleted`) }));
+      await load();
+      onRefresh?.();
+    } catch (err) {
+      if (err instanceof FetchError && err.status === 409) {
+        alertCompletionBlocker({ code: err.code, message: err.message });
+      } else {
+        toast.error(err instanceof Error ? err.message : t(`${gv}.updateFailed`));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCompleteClick = () => {
+    if (!booking) return;
+    if (outstanding > 0.01) {
+      setCompleteOutstandingPrompt(true);
+      return;
+    }
+    void postCompleteService();
+  };
 
   const handleStatus = async (status: string) => {
     if (!booking) return;
+    if (status === "completed") {
+      handleCompleteClick();
+      return;
+    }
     const id = normalizeGroupBookingId(booking.id);
     setBusy(true);
     try {
       if (status === "started") {
         await fetcher.post(`/api/provider/group-bookings/${id}?action=start_service`);
-      } else if (status === "completed") {
-        await fetcher.post(`/api/provider/group-bookings/${id}?action=complete_service`);
       } else {
         await fetcher.patch(`/api/provider/group-bookings/${id}`, { status });
       }
       toast.success(t(`${gv}.markedAs`, {
-        status:
-          status === "started"
-            ? t(`${gv}.statusStarted`)
-            : status === "completed"
-              ? t(`${gv}.statusCompleted`)
-              : status,
+        status: status === "started" ? t(`${gv}.statusStarted`) : status,
       }));
       await load();
       onRefresh?.();
@@ -168,8 +252,13 @@ export function GroupBookingViewSheet({
   const handleCheckOut = async (participantId: string) => {
     if (!booking) return;
     try {
-      await providerApi.checkOutGroupParticipant(normalizeGroupBookingId(booking.id), participantId);
+      const result = await providerApi.checkOutGroupParticipant(
+        normalizeGroupBookingId(booking.id),
+        participantId,
+      );
       toast.success(t(`${gv}.checkedOut`));
+      const blocker = result?.group_completion_blocked?.[0];
+      if (blocker) alertCompletionBlocker(blocker);
       await load();
     } catch {
       toast.error(t(`${gv}.checkOutFailed`));
@@ -189,18 +278,57 @@ export function GroupBookingViewSheet({
     }
   };
 
-  const handleRecordPayment = async (method: RecordPaymentMethod) => {
+  const handleRecordPayment = async (
+    method: RecordPaymentMethod,
+    options?: { cancelOpenTerminal?: boolean; reference?: string },
+  ) => {
     if (!booking) return;
+    const reference = (options?.reference ?? recordPaymentReference).trim();
+    if (method === "card" && !reference) {
+      toast.error(t(`${gv}.cardReferenceRequired`));
+      return;
+    }
     try {
       await fetcher.post(
         `/api/provider/group-bookings/${normalizeGroupBookingId(booking.id)}?action=mark_paid`,
-        { payment_method: method },
+        {
+          payment_method: method,
+          ...(reference ? { reference } : {}),
+          ...(options?.cancelOpenTerminal ? { cancel_open_terminal: true } : {}),
+        },
       );
       toast.success(t(`${gv}.paymentRecorded`));
+      setRecordPaymentConfirm(null);
+      setRecordPaymentReference("");
+      setEntityInFlightRetry(null);
       await load();
       onRefresh?.();
     } catch (err) {
+      if (
+        err instanceof FetchError &&
+        (err.code === "ENTITY_IN_FLIGHT" || /ENTITY_IN_FLIGHT/i.test(err.message))
+      ) {
+        setRecordPaymentConfirm(null);
+        setEntityInFlightRetry({ method });
+        return;
+      }
       toast.error(err instanceof Error ? err.message : t(`${gv}.paymentFailed`));
+    }
+  };
+
+  const handleCancelOpenTerminalPayment = async () => {
+    if (!booking || !firstOpenTerminal) return;
+    const path =
+      firstOpenTerminal.provider === "yoco"
+        ? `/api/provider/yoco/payments/${encodeURIComponent(firstOpenTerminal.id)}/abandon`
+        : `/api/provider/paycloud/payments/${encodeURIComponent(firstOpenTerminal.id)}/close`;
+    try {
+      await fetcher.post(path, {});
+      toast.success(gb("openChargeCancelled"));
+      await load();
+      onRefresh?.();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : gb("cancelOpenChargeFailed"));
     }
   };
 
@@ -272,7 +400,7 @@ export function GroupBookingViewSheet({
                 </BookingActionButton>
               ) : null}
               {canEdit && started && !isFinal ? (
-                <BookingActionButton size="sm" fullWidth={false} disabled={busy} onClick={() => void handleStatus("completed")}>
+                <BookingActionButton size="sm" fullWidth={false} disabled={busy} onClick={() => void handleCompleteClick()}>
                   <CheckCircle className="me-1 h-4 w-4" />
                   {t(`${gv}.complete`)}
                 </BookingActionButton>
@@ -328,27 +456,58 @@ export function GroupBookingViewSheet({
                   </p>
                 ) : (
                   <div className="flex flex-col gap-2">
+                    {entityInFlight && firstOpenTerminal ? (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                        <p>
+                          {gb("openTerminalBannerBody", {
+                            amount: formatMoney(firstOpenTerminal.amount),
+                          })}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <BookingActionButton
+                            size="sm"
+                            fullWidth={false}
+                            onClick={() => setCardMachineOpen(true)}
+                          >
+                            {gb("resumeOpenCharge")}
+                          </BookingActionButton>
+                          <BookingActionButton
+                            size="sm"
+                            fullWidth={false}
+                            variant="outline"
+                            onClick={() => void handleCancelOpenTerminalPayment()}
+                          >
+                            {gb("cancelOpenCharge")}
+                          </BookingActionButton>
+                        </div>
+                      </div>
+                    ) : null}
                     <PaycloudCollectButton
-                      amount={outstanding}
+                      amount={firstOpenTerminal?.amount ?? outstanding}
                       currency={booking.currency ?? "ZAR"}
                       context="group_booking"
+                      entityInFlight={entityInFlight}
                       onClick={() => setCardMachineOpen(true)}
                       className="w-full justify-center min-h-[44px]"
                       size="default"
                     />
                     {(
                       [
-                        ["cash", t(`${gv}.markPaidCash`)],
-                        ["card", t(`${gv}.markPaidCard`)],
-                        ["yoco", t(`${gv}.yoco`)],
-                        ["bank_transfer", t(`${gv}.bankTransfer`)],
-                        ["other", t(`${gv}.other`)],
-                      ] as const
+                        ["cash", t(`${gv}.markPaidCash`)] as [RecordPaymentMethod, string],
+                        ...(manualCardEnabled
+                          ? ([["card", manualCardCollectOptionLabel()]] as [RecordPaymentMethod, string][])
+                          : []),
+                        ["bank_transfer", t(`${gv}.bankTransfer`)] as [RecordPaymentMethod, string],
+                        ["other", t(`${gv}.other`)] as [RecordPaymentMethod, string],
+                      ]
                     ).map(([method, label]) => (
                       <BookingActionButton
                         key={method}
                         variant="outline"
-                        onClick={() => setRecordPaymentConfirm({ method })}
+                        onClick={() => {
+                          setRecordPaymentReference("");
+                          setRecordPaymentConfirm({ method });
+                        }}
                       >
                         {label}
                       </BookingActionButton>
@@ -434,12 +593,12 @@ export function GroupBookingViewSheet({
                             {t(`${gv}.resendInvite`)}
                           </button>
                         ) : null}
-                        {canEdit && !isFinal && !inactiveChild && !p.checked_in ? (
+                        {canEdit && started && !inactiveChild && !p.checked_in ? (
                           <button type="button" className="text-xs font-semibold underline" onClick={() => void handleCheckIn(p.id)}>
                             {t(`${gv}.checkIn`)}
                           </button>
                         ) : null}
-                        {canEdit && !isFinal && !inactiveChild && p.checked_in && !p.checked_out ? (
+                        {canEdit && started && !inactiveChild && p.checked_in && !p.checked_out ? (
                           <button type="button" className="text-xs font-semibold underline" onClick={() => void handleCheckOut(p.id)}>
                             {t(`${gv}.checkOut`)}
                           </button>
@@ -466,21 +625,35 @@ export function GroupBookingViewSheet({
                             >
                               {t(`${gv}.openBooking`)}
                             </button>
-                            {canProcessPayments ? (
-                              <button
-                                type="button"
-                                className="text-xs font-semibold underline text-amber-800"
-                                onClick={() =>
-                                  setParticipantRefund({
-                                    bookingId: p.booking_id!,
-                                    name: p.client_name ?? t(`${gv}.participant`),
-                                    maxAmount:
-                                      Number((p as { total_paid?: number }).total_paid ?? 0) || undefined,
-                                  })
-                                }
-                              >
-                                {t(`${gv}.refund`)}
-                              </button>
+                            {canIssueRefunds && participantMaxRefundable(p) > 0.01 ? (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button
+                                    type="button"
+                                    data-testid="group-participant-more"
+                                    className="inline-flex items-center gap-1 text-xs font-semibold text-gray-700"
+                                    aria-label={t("provider.mobile.screens.groupBookings.moreActionsA11y")}
+                                  >
+                                    <MoreHorizontal className="h-3.5 w-3.5" />
+                                    {t("provider.mobile.screens.groupBookings.moreActionsTitle")}
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    data-testid="group-participant-refund"
+                                    className="text-amber-900"
+                                    onClick={() =>
+                                      setParticipantRefund({
+                                        bookingId: p.booking_id!,
+                                        name: p.client_name ?? t(`${gv}.participant`),
+                                        maxAmount: participantMaxRefundable(p),
+                                      })
+                                    }
+                                  >
+                                    {t(`${gv}.refund`)}
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             ) : null}
                           </>
                         ) : null}
@@ -558,7 +731,6 @@ export function GroupBookingViewSheet({
                     method: ({
                       cash: t(`${gv}.methodCash`),
                       card: t(`${gv}.methodCard`),
-                      yoco: t(`${gv}.methodYoco`),
                       bank_transfer: t(`${gv}.methodBankTransfer`),
                       other: t(`${gv}.methodOther`),
                     } as Record<string, string>)[recordPaymentConfirm?.method ?? ""] ??
@@ -569,7 +741,6 @@ export function GroupBookingViewSheet({
                     method: ({
                       cash: t(`${gv}.methodCash`),
                       card: t(`${gv}.methodCard`),
-                      yoco: t(`${gv}.methodYoco`),
                       bank_transfer: t(`${gv}.methodBankTransfer`),
                       other: t(`${gv}.methodOther`),
                     } as Record<string, string>)[recordPaymentConfirm?.method ?? ""] ??
@@ -577,17 +748,132 @@ export function GroupBookingViewSheet({
                   })}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {recordPaymentConfirm?.method === "card" ? (
+            <div className="py-2">
+              <label className="text-sm font-medium mb-1 block" htmlFor="group-record-ref">
+                {t("web.provider.bookings.detail.dialogs.enterReference")}
+              </label>
+              <Input
+                id="group-record-ref"
+                value={recordPaymentReference}
+                onChange={(e) => setRecordPaymentReference(e.target.value)}
+                className="rounded-xl min-h-[44px]"
+                placeholder={t("web.provider.bookings.detail.dialogs.enterReference")}
+              />
+            </div>
+          ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel>{t(`${gv}.cancel`)}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (recordPaymentConfirm) {
                   void handleRecordPayment(recordPaymentConfirm.method);
-                  setRecordPaymentConfirm(null);
                 }
               }}
             >
               {t(`${gv}.recordPayment`)}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!entityInFlightRetry} onOpenChange={(next) => !next && setEntityInFlightRetry(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{gb("entityInFlightTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {gb("cancelOpenChargeAndRecord")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{gb("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (entityInFlightRetry) {
+                  void handleRecordPayment(entityInFlightRetry.method, { cancelOpenTerminal: true });
+                }
+              }}
+            >
+              {gb("cancelOpenChargeAndRecord")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={completeOutstandingPrompt} onOpenChange={setCompleteOutstandingPrompt}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{gb("outstandingBalanceTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {gb("outstandingBalanceBody", { amount: formatMoney(outstanding) })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{gb("cancel")}</AlertDialogCancel>
+            {canCompleteWithUnpaid ? (
+              <AlertDialogAction
+                onClick={() => {
+                  setCompleteOutstandingPrompt(false);
+                  setUnpaidCompleteOpen(true);
+                }}
+              >
+                {gb("completeAnyway")}
+              </AlertDialogAction>
+            ) : null}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={unpaidCompleteOpen} onOpenChange={setUnpaidCompleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{gb("unpaidCompleteReasonTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{gb("unpaidCompleteReasonRequired")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <Textarea
+            value={unpaidCompleteReason}
+            onChange={(e) => setUnpaidCompleteReason(e.target.value)}
+            rows={3}
+            className="rounded-xl"
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel>{gb("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const trimmed = unpaidCompleteReason.trim();
+                if (!trimmed) {
+                  toast.error(gb("unpaidCompleteReasonRequired"));
+                  return;
+                }
+                setUnpaidCompleteOpen(false);
+                setUnpaidCompleteReason("");
+                void postCompleteService({ allow_unpaid: true, unpaid_reason: trimmed });
+              }}
+            >
+              {gb("completeAnyway")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={completionBlocker?.code === "FULLY_REFUNDED"}
+        onOpenChange={(next) => !next && setCompletionBlocker(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{gb("fullyRefundedTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{completionBlocker?.message}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{gb("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setCompletionBlocker(null);
+                setCancelOpen(true);
+              }}
+            >
+              {gb("cancelBooking")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

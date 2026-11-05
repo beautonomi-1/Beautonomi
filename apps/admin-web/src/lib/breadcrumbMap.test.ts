@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { BREADCRUMB_MAP, normalisePath, breadcrumbsForPath } from "./breadcrumbMap";
+import {
+  BREADCRUMB_MAP,
+  applyBreadcrumbSuffix,
+  breadcrumbsForPath,
+  normalisePath,
+} from "./breadcrumbMap";
 
 const UUID = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
 
@@ -25,6 +30,11 @@ describe("normalisePath", () => {
   it("handles trailing slashes and empty segments", () => {
     expect(normalisePath("/admin/bookings/")).toBe("bookings");
     expect(normalisePath("//bookings//")).toBe("bookings");
+  });
+
+  it("strips query and hash before matching", () => {
+    expect(normalisePath("/support-tickets?view=table&status=open")).toBe("support-tickets");
+    expect(normalisePath(`/support-tickets/${UUID}#message-1`)).toBe("support-tickets/[id]");
   });
 });
 
@@ -88,6 +98,35 @@ describe("breadcrumbsForPath", () => {
       "Platform Advanced",
       "Region online gateway",
     ]);
+  });
+
+  it("support queue trails from Dashboard", () => {
+    expect(breadcrumbsForPath("/support-tickets").map((c) => c.label)).toEqual([
+      "Dashboard",
+      "Support Tickets",
+    ]);
+  });
+
+  it("support ticket detail resolves parent href with query string", () => {
+    const parent = "/support-tickets?view=table&status=open";
+    const crumbs = breadcrumbsForPath(`/support-tickets/${UUID}`, "1042", parent);
+    expect(crumbs.map((c) => c.label)).toEqual(["Dashboard", "Support Tickets", "1042"]);
+    expect(crumbs[1].href).toBe(parent);
+    expect(crumbs[1].href).toContain("view=table");
+  });
+});
+
+describe("applyBreadcrumbSuffix", () => {
+  it("appends the selected ticket and rewrites the queue href", () => {
+    const base = breadcrumbsForPath("/support-tickets");
+    const next = applyBreadcrumbSuffix(base, {
+      label: "T-1042",
+      previousHref: "/support-tickets?status=open",
+      currentHref: "/support-tickets?status=open&selected=abc",
+    });
+    expect(next.map((c) => c.label)).toEqual(["Dashboard", "Support Tickets", "T-1042"]);
+    expect(next[1].href).toBe("/support-tickets?status=open");
+    expect(next[2].href).toBe("/support-tickets?status=open&selected=abc");
   });
 });
 

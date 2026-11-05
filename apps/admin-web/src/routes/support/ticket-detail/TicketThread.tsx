@@ -36,9 +36,7 @@ export function TicketThread({
   const scrollClass =
     scrollMode === "page-mobile"
       ? "min-h-0 flex-none px-1 py-3"
-      : scrollMode === "page"
-        ? "admin-scrollbar min-h-0 flex-1 overflow-y-auto px-1 py-3"
-        : "admin-scrollbar min-h-0 flex-1 overflow-y-auto px-1 py-3";
+      : "admin-scrollbar h-full min-h-0 overflow-y-auto px-1 py-3";
 
   return (
     <div ref={threadRef} className={scrollClass}>

@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
       const { data: page, error } = await db
         .from("finance_transactions")
         .select(
-          "id, created_at, transaction_type, amount, net, fees, commission, currency, status, booking_id, product_order_id, source_payment_id, description",
+          "id, created_at, transaction_type, amount, net, fees, commission, currency, booking_id, product_order_id, source_payment_id, description",
         )
         .eq("provider_id", providerId)
         .gte("created_at", startIso)

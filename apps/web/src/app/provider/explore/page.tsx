@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Loader2, Plus, Pencil, Trash2, Image as ImageIcon, ExternalLink, Eye, Heart, MessageCircle, Gift } from "lucide-react";
 import type { ExplorePost } from "@/types/explore";
+import { ExplorePostThumb } from "@/components/explore/ExplorePostThumb";
 import { ProviderExplorePostStatusBadge } from "@/components/provider/ProviderExplorePostStatusBadge";
 
 export default function ProviderExplorePage() {
@@ -137,29 +138,13 @@ export default function ProviderExplorePage() {
                   key={post.id}
                   className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm hover:shadow-md transition-shadow"
                 >
-                  <div className="aspect-square bg-gray-100">
+                  <div className="relative aspect-square bg-gray-100">
                     {post.display_url || post.media_urls?.length ? (
-                      (() => {
-                        const preview = post.display_url ?? post.media_urls?.[0];
-                        const isVideo = Boolean(
-                          post.playback_path ||
-                            post.media_meta?.[0]?.kind === "video" ||
-                            preview?.match(/\.(mp4|webm|mov|m4v)(\?|$)/i),
-                        );
-                        return isVideo ? (
-                          <img
-                            src={preview ?? ""}
-                            alt=""
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <img
-                            src={preview ?? ""}
-                            alt=""
-                            className="w-full h-full object-cover"
-                          />
-                        );
-                      })()
+                      <ExplorePostThumb
+                        post={post}
+                        alt=""
+                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                      />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <ImageIcon className="w-12 h-12 text-gray-300" />

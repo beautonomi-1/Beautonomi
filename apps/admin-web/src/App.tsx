@@ -152,6 +152,7 @@ export default function App() {
           <Route path="billing" element={<P.BillingPage />} />
           <Route path="taxes" element={<P.TaxesPage />} />
           <Route path="period-locks" element={<P.PeriodLocksPage />} />
+          <Route path="refund-anomalies" element={<P.RefundAnomaliesPage />} />
           <Route path="trial-balance" element={<P.TrialBalancePage />} />
           <Route path="provider-subscriptions" element={<P.ProviderSubscriptionsPage />} />
           <Route path="subscription-revenue" element={<P.SubscriptionMetricsPage />} />

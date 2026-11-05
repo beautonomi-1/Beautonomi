@@ -91,8 +91,11 @@ function statusColor(status: string): string {
 
 export default function SupportTicketDetailScreen() {
   const { t } = useTranslation();
-  const st = (key: string, opts?: Record<string, unknown>) =>
-    t(`provider.mobile.screens.supportTicketDetail.${key}`, opts) as string;
+  const st = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.supportTicketDetail.${key}`, opts) as string,
+    [t],
+  );
   const statusLabel = (status: string) => {
     const map: Record<string, string> = {
       open: "statusOpen",
@@ -144,6 +147,7 @@ export default function SupportTicketDetailScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const assistantStreamingRef = useRef(false);
   const initialAssistantStreamRef = useRef(false);
+  const csatHydratedTicketIdRef = useRef<string | null>(null);
 
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -172,9 +176,12 @@ export default function SupportTicketDetailScreen() {
       const payload = res.data as { ticket?: Ticket; messages?: Message[] } | null | undefined;
       const t = payload?.ticket ?? null;
       setTicket(t);
-      setCsatScore(t?.csat_score ?? null);
-      setCsatComment(t?.csat_comment ?? "");
-      setCsatExpanded(typeof t?.csat_score !== "number");
+      if (t && csatHydratedTicketIdRef.current !== t.id) {
+        csatHydratedTicketIdRef.current = t.id;
+        setCsatScore(t.csat_score ?? null);
+        setCsatComment(t.csat_comment ?? "");
+        setCsatExpanded(typeof t.csat_score !== "number");
+      }
       setMessages(Array.isArray(payload?.messages) ? payload!.messages! : []);
       void api.post(`${SUPPORT_TICKETS_API_PREFIX}/${id}/seen`, {}).catch(() => {});
       if (t) trackSupportTicketDetailView(t.id, t.ticket_number);

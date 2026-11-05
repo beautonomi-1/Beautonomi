@@ -1,4 +1,4 @@
-import type { ProviderBookingCreateValidationInput } from "@beautonomi/provider-booking";
+import { isStaffChoiceMade, type ProviderBookingCreateValidationInput } from "@beautonomi/provider-booking";
 
 type Args = {
   clientMode: "search" | "new";
@@ -14,6 +14,8 @@ type Args = {
   isRecurring: boolean;
   recurrenceOccurrences: string;
   staffListLength: number;
+  /** True while the team roster has not loaded (or failed with no list). */
+  staffRosterUnresolved?: boolean;
   selectedServices: { staffId?: string }[];
   activeProviderForms: ProviderBookingCreateValidationInput["intakeForms"];
   providerFormResponses: ProviderBookingCreateValidationInput["intakeResponses"];
@@ -42,10 +44,12 @@ export function buildNewBookingValidationInput(args: Args): ProviderBookingCreat
     recurringHasSavedClient: Boolean(args.selectedClient?.customer_id),
     recurringOccurrences: args.recurrenceOccurrences,
     staffListLength: args.staffListLength,
+    staffRosterUnresolved: args.staffRosterUnresolved === true,
     allServicesHaveStaff:
-      args.staffListLength === 0 ||
-      args.selectedServicesLength === 0 ||
-      !args.selectedServices.some((s) => !s.staffId),
+      args.staffRosterUnresolved !== true &&
+      (args.staffListLength === 0 ||
+        args.selectedServicesLength === 0 ||
+        !args.selectedServices.some((s) => !isStaffChoiceMade(s.staffId))),
     intakeForms: args.activeProviderForms,
     intakeResponses: args.providerFormResponses,
     locationType: loc,

@@ -172,7 +172,7 @@ export async function computeProductOrderTotals(
   const { data: providerRow } = await supabase
     .from("providers")
     .select(
-      "customer_fee_config_id, currency, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code",
+      "tenant_id, customer_fee_config_id, currency, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number",
     )
     .eq("id", input.providerId)
     .maybeSingle();

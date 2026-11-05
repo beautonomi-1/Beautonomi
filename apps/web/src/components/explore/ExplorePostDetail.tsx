@@ -10,7 +10,12 @@ import LoginModal from "@/components/global/login-modal";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import type { ExplorePost, ExploreComment } from "@/types/explore";
-import { firstSlideIsVideo, resolveExploreVideoSrc } from "@/lib/explore/video-media";
+import {
+  firstSlideIsVideo,
+  resolveExplorePosterUrl,
+  resolveExploreVideoSrc,
+} from "@/lib/explore/video-media";
+import { ExplorePostThumb } from "@/components/explore/ExplorePostThumb";
 import { getExploreVideoPlaybackTrimWindow } from "@/lib/explore/explore-video-playback-trim";
 import {
   filterOverlaysForPlaybackTime,
@@ -414,7 +419,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
       void v.play().catch(() => undefined);
     },
   };
-  const primaryPoster = post.display_url ?? photoSlides[mediaIndex] ?? post.media_urls?.[0];
+  const primaryPoster = resolveExplorePosterUrl(post);
   const firstRelated = relatedPosts[0];
   const moreRelated = relatedPosts.slice(1, 13);
   const caption = post.caption ?? "";
@@ -809,24 +814,14 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                   className="block group"
                 >
                   <div className="relative aspect-[4/5] w-full rounded-xl overflow-hidden bg-gray-100">
-                    {p.media_urls?.[0] &&
-                      (isVideoUrl(p.media_urls[0]) || p.media_meta?.[0]?.kind === "video" ? (
-                        <Image
-                          src={p.display_url ?? p.media_urls[0]}
-                          alt={p.caption || "Post"}
-                          fill
-                          className="object-cover group-hover:scale-105 transition-transform"
-                          sizes="50vw"
-                        />
-                      ) : (
-                        <Image
-                          src={p.media_urls[0]}
-                          alt={p.caption || "Post"}
-                          fill
-                          className="object-cover group-hover:scale-105 transition-transform"
-                          sizes="50vw"
-                        />
-                      ))}
+                    {p.media_urls?.[0] && (
+                      <ExplorePostThumb
+                        post={p}
+                        alt={p.caption || "Post"}
+                        className="object-cover group-hover:scale-105 transition-transform"
+                        sizes="50vw"
+                      />
+                    )}
                   </div>
                   {p.caption && (
                     <p className="mt-1.5 text-sm text-gray-700 line-clamp-2 flex items-center justify-between gap-2">
@@ -1067,17 +1062,12 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                   <div>
                     <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">{t(`${pd}.moreLikeThis`)}</h2>
                     <Link href={`/explore/${firstRelated.id}`} className="block relative aspect-[4/5] max-h-64 w-full rounded-xl overflow-hidden bg-gray-100 group">
-                      {isVideoUrl(firstRelated.media_urls[0]) ? (
-                        <Image
-                          src={firstRelated.display_url ?? firstRelated.media_urls[0]}
-                          alt={firstRelated.caption || t(`${pd}.altRelated`)}
-                          fill
-                          className="object-cover group-hover:scale-105 transition-transform duration-300"
-                          sizes="400px"
-                        />
-                      ) : (
-                        <Image src={firstRelated.media_urls[0]} alt={firstRelated.caption || t(`${pd}.altRelated`)} fill className="object-cover group-hover:scale-105 transition-transform duration-300" sizes="400px" />
-                      )}
+                      <ExplorePostThumb
+                        post={firstRelated}
+                        alt={firstRelated.caption || t(`${pd}.altRelated`)}
+                        className="object-cover group-hover:scale-105 transition-transform duration-300"
+                        sizes="400px"
+                      />
                     </Link>
                   </div>
                 )}
@@ -1091,24 +1081,14 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                 {moreRelated.map((p) => (
                   <Link key={p.id} href={`/explore/${p.id}`} className="block break-inside-avoid mb-4 group">
                     <div className="relative aspect-[4/5] w-full rounded-xl overflow-hidden bg-gray-100">
-                      {p.media_urls?.[0] &&
-                        (isVideoUrl(p.media_urls[0]) || p.media_meta?.[0]?.kind === "video" ? (
-                          <Image
-                            src={p.display_url ?? p.media_urls[0]}
-                            alt={p.caption || "Post"}
-                            fill
-                            className="object-cover group-hover:scale-105 transition-transform duration-300"
-                            sizes="25vw"
-                          />
-                        ) : (
-                          <Image
-                            src={p.media_urls[0]}
-                            alt={p.caption || "Post"}
-                            fill
-                            className="object-cover group-hover:scale-105 transition-transform duration-300"
-                            sizes="25vw"
-                          />
-                        ))}
+                      {p.media_urls?.[0] && (
+                        <ExplorePostThumb
+                          post={p}
+                          alt={p.caption || "Post"}
+                          className="object-cover group-hover:scale-105 transition-transform duration-300"
+                          sizes="25vw"
+                        />
+                      )}
                     </div>
                     {p.caption && <p className="mt-2 text-sm text-gray-700 line-clamp-2">{p.caption}</p>}
                   </Link>

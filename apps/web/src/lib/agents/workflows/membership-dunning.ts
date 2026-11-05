@@ -37,7 +37,7 @@ export async function runMembershipDunningSweepForTenant(params: {
   const { data: memberships } = await supabase
     .from("user_memberships")
     .select(
-      "id, user_id, provider_id, status, renewal_failure_count, past_due_since, provider:providers!inner(tenant_id, business_name), plan:membership_plans(name)",
+      "id, user_id, provider_id, status, renewal_failure_count, past_due_since, provider:providers!inner(tenant_id, business_name), plan:membership_plans!user_memberships_plan_id_fkey(name)",
     )
     .eq("status", "past_due")
     .eq("provider.tenant_id", params.tenantId)

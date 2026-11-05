@@ -2351,13 +2351,50 @@
           "viewFullBooking": "View full booking",
           "statusNoShow": "No show",
           "statusPendingPayment": "Pending payment",
-          "removeParticipantOverpaid": "Guest removed. The booking is now overpaid by {{amount}}. Refund the difference to the customer.",
+          "removeParticipantOverpaid": "अतिथि हटा दिया गया. {{amount}} व्यक्तिगत रूप से चुकाया गया और वॉलेट में नहीं जा सकता. नकद या कार्ड मशीन पर और मेनू से वापस करें.",
           "shareStatusPaid": "Share paid",
           "shareStatusPending": "Share unpaid ({{amount}})",
           "shareStatusCancelled": "Spot cancelled",
           "resendInvite": "Re-send invite",
           "inviteResent": "Invite sent",
-          "inviteResendFailed": "Could not re-send the invite."
+          "inviteResendFailed": "Could not re-send the invite.",
+          "slotUnavailableTitle": "समय उपलब्ध नहीं",
+          "noStaffForSlot": "इस समय इस सेवा के लिए टीम का कोई सदस्य खाली नहीं है। दूसरा समय चुनें या किसी खास सदस्य को चुनें।",
+          "pickAnotherTime": "दूसरा समय चुनें",
+          "invalidStaffTitle": "टीम सदस्य उपलब्ध नहीं",
+          "anyAvailableStaff": "कोई भी उपलब्ध",
+          "loadingTeam": "टीम लोड हो रही है…",
+          "staffRetryInline": "टीम लोड नहीं हो सकी। फिर कोशिश करने के लिए टैप करें",
+          "moreActionsTitle": "और",
+          "moreActionsA11y": "और कार्रवाइयाँ",
+          "openTerminalBannerBody": "इस समूह के लिए {{amount}} का कार्ड मशीन शुल्क अभी खुला है।",
+          "resumeOpenCharge": "जारी रखें",
+          "cancelOpenCharge": "शुल्क रद्द करें",
+          "cancelOpenChargeTitle": "खुला शुल्क रद्द करें?",
+          "cancelOpenChargeBody": "इससे कार्ड मशीन पर चल रहा शुल्क रद्द हो जाता है, ताकि आप भुगतान दूसरे तरीके से दर्ज कर सकें।",
+          "cancelOpenChargeFailed": "खुला शुल्क रद्द नहीं हो सका।",
+          "openChargeCancelled": "कार्ड मशीन शुल्क रद्द हो गया।",
+          "entityInFlightTitle": "खुला कार्ड मशीन शुल्क",
+          "cancelOpenChargeAndRecord": "खुला शुल्क रद्द करें और दर्ज करें",
+          "terminalInFlightTitle": "कार्ड मशीन शुल्क खुला है",
+          "fullyRefundedTitle": "पूरा रिफंड",
+          "participantRefundedChip": "रिफंड",
+          "groupNotStartedTitle": "पहले समूह शुरू करें",
+          "groupNotStartedBody": "ग्रुप बुकिंग शुरू होने के बाद ही चेक-इन और चेक-आउट उपलब्ध हैं।",
+          "unpaidCompleteNotAllowed": "बकाया शेष रहते केवल मालिक या प्रबंधक ही पूरा कर सकता है।",
+          "unpaidCompleteReasonTitle": "अवैतनिक शेष के साथ पूरा करें",
+          "unpaidCompleteReasonRequired": "बकाया शेष के साथ पूरा करने का कारण लिखें।",
+          "unpaidCompleteReasonLabel": "कारण (ज़रूरी)",
+          "unpaidCompleteReasonPlaceholder": "उदा. ग्राहक कल EFT से भुगतान करेगा",
+          "refundCapsTitle": "रिफंड सीमाएँ",
+          "refundCapsOnline": "वॉलेट / ऑनलाइन: अधिकतम {{amount}}",
+          "refundCapsCash": "नकद: अधिकतम {{amount}}",
+          "refundCapsTerminal": "कार्ड मशीन: अधिकतम {{amount}}",
+          "refundConfirmSummaryTitle": "रिफंड की पुष्टि करें?",
+          "refundConfirmSummaryBody": "{{method}} से {{amount}} रिफंड करें।\n\nकारण: {{reason}}",
+          "refundWalletCapExceeded": "यह राशि इस बुकिंग की वॉलेट रिफंड सीमा से ज़्यादा है।",
+          "refundMethodOriginal": "कार्ड मशीन",
+          "refundOptionsLoadFailed": "रिफंड सीमाएँ लोड नहीं हो सकीं। राशियाँ पुरानी हो सकती हैं।"
         },
         "settingsIndex": {
           "title": "Settings",
@@ -3182,14 +3219,26 @@
           "awaitingYocoRefundReason": "बुकिंग रद्द - कार्ड पर वापस धनवापसी करें",
           "refundOriginalHint": "कार्ड मशीन या बैंक के माध्यम से पैसा ग्राहक के कार्ड में वापस आ जाता है। आपके नकद दराज से कुछ भी नहीं लिया गया है।",
           "refundCashHint": "ग्राहक को पैसे व्यक्तिगत रूप से वापस सौंपें। आपकी पुस्तकों के लिए रिकॉर्ड किया गया; कोई वॉलेट क्रेडिट जारी नहीं किया जाता है. इसके सफल होने के बाद बुकिंग बैलेंस अपडेट हो जाता है।",
-          "refundWalletHint": "इसका उपयोग तब करें जब ग्राहक मौजूद न हो या भुगतान ऑनलाइन किया गया हो। रिफंड उनके वॉलेट में जमा किया जाता है।",
+          "refundWalletHint": "केवल ऑनलाइन चुकाया गया पैसा वॉलेट में वापस जा सकता है. वापसी उनके वॉलेट में जमा होती है.",
           "refundOriginalMachineHint": "जिस कार्ड मशीन से भुगतान किया गया था, उसके माध्यम से पैसा ग्राहक के कार्ड में वापस आ जाता है।",
           "cancelRefundTo": "भुगतान की गई राशि वापस करें",
           "yocoRefundRecordCta": "मशीन पर धनवापसी - धनवापसी रिकॉर्ड करें",
           "cancelRefundWalletHint": "क्लाइंट को उनके Beautonomi वॉलेट में पूरा रिफ़ंड मिलता है। आपकी रद्दीकरण नीति आपके द्वारा किए गए रद्दीकरण पर लागू नहीं होती।",
           "cancelWalletNote": "क्लाइंट को पहले से भुगतान की गई राशि का पूरा रिफ़ंड उनके Beautonomi वॉलेट में मिलेगा। आपकी रद्दीकरण नीति आपके द्वारा किए गए रद्दीकरण पर लागू नहीं होती।",
           "pendingCashRefundTitle": "{{amount}} to return in person",
-          "pendingCashRefundBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending — hand back the amount shown and wait for confirmation (or the 48-hour window to close)."
+          "pendingCashRefundBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending — hand back the amount shown and wait for confirmation (or the 48-hour window to close).",
+          "noIssueRefundsPermission": "आपको रिफंड जारी करने की अनुमति नहीं है। मालिक या प्रबंधक से पूछें।",
+          "refundMethodCapBody": "यह रिफंड तरीका अधिकतम {{amount}} तक है। बाकी के लिए दूसरा तरीका चुनें।",
+          "refundCapsBreakdown": "व्यक्तिगत भुगतान {{inPerson}} · ऑनलाइन {{online}} · पहले से रिफंड {{refunded}}",
+          "refundMaxForMethod": "इस तरीके की अधिकतम सीमा",
+          "confirmRefundTitle": "रिफंड की पुष्टि करें",
+          "confirmRefundBody": "{{amount}} को {{method}} के रूप में रिफंड करें। इसे वापस नहीं लिया जा सकता।",
+          "completeBlockedTerminalTitle": "कार्ड मशीन शुल्क खुला है",
+          "completeBlockedFullyRefundedTitle": "बुकिंग पूरी तरह रिफंड हो गई",
+          "unpaidCompleteReasonTitle": "अवैतनिक शेष के साथ पूरा करें",
+          "unpaidCompleteReasonLabel": "कारण (ज़रूरी)",
+          "unpaidCompleteReasonPlaceholder": "उदा. ग्राहक कल EFT से भुगतान करेगा",
+          "unpaidCompleteNotAllowed": "बकाया शेष वाली बुकिंग केवल मालिक या प्रबंधक ही पूरा कर सकता है। पहले भुगतान लें या प्रबंधक से पूछें।"
         },
         "operatingHoursSettings": {
           "title": "Operating Hours",
@@ -5366,7 +5415,12 @@
           "staffFilteredByService": "Showing team members assigned to this service.",
           "addressOutsideArea": "This address is outside your service area.",
           "addressValidateFailed": "Could not validate this address. Check your connection and try again.",
-          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}"
+          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}",
+          "anyAvailableStaff": "कोई भी उपलब्ध",
+          "assignAnyStaffA11y": "कोई भी उपलब्ध सदस्य चुनें",
+          "loadingTeam": "टीम लोड हो रही है…",
+          "staffRetryInline": "टीम लोड नहीं हो सकी. फिर कोशिश के लिए टैप करें",
+          "staffRosterLoading": "कर्मचारी चुनने से पहले आपकी टीम लोड हो रही है"
         },
         "expressBooking": {
           "invalidJson": "Invalid JSON.",
@@ -6628,7 +6682,10 @@
           "withdraw": "Withdraw",
           "withdrawFailed": "Could not withdraw the offer.",
           "withdrawOffer": "Withdraw offer",
-          "emDash": "—"
+          "emDash": "—",
+          "loadingTeam": "टीम लोड हो रही है…",
+          "noStaffPreference": "कोई पसंद नहीं",
+          "staffRetryInline": "टीम लोड नहीं हो सकी. फिर कोशिश के लिए टैप करें"
         },
         "bookingLink": {
           "title": "Booking Link",
@@ -8219,7 +8276,10 @@
           "submitRating": "Submit rating",
           "thanks": "Thanks!",
           "freshCaption": "Fresh {{name}}",
-          "shareBookingLink": "Share booking link"
+          "shareBookingLink": "Share booking link",
+          "continueDraftBody": "आप इस बुकिंग के लिए पोस्ट शुरू कर चुके हैं. जहाँ छोड़ा था वहाँ से जारी रखें या ग्राहक को रेट करें.",
+          "continueDraftCta": "ड्राफ़्ट जारी रखें",
+          "continueDraftTitle": "अपना Explore ड्राफ़्ट पूरा करें"
         },
         "advancedPricing": {
           "title": "Advanced pricing",
@@ -10314,7 +10374,8 @@
           "permManageMarketing": "Manage marketing",
           "calendarScopeLabel": "Calendar visibility",
           "calendarScopeOwn": "Own appointments",
-          "calendarScopeAll": "All team calendars"
+          "calendarScopeAll": "All team calendars",
+          "permIssueRefunds": "वापसी जारी करें"
         },
         "onboardingHub": {
           "title": "Set up",
@@ -11226,7 +11287,8 @@
           "calendarScopeOwn": "Own appointments only",
           "calendarScopeAll": "All team calendars",
           "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-          "manageMarketing": "Manage marketing"
+          "manageMarketing": "Manage marketing",
+          "issueRefunds": "वापसी जारी करें"
         },
         "announcements": {
           "loadFailed": "Could not load announcements",
@@ -12226,7 +12288,10 @@
           "disabledBody": "{{message}}\n\nYour admin can enable the feature flag commerce.provider_custom_offers for this market.",
           "addPhotos": "Add inspiration photos",
           "uploadingPhotos": "Uploading…",
-          "photosAttached": "{{count}} photo(s) attached"
+          "photosAttached": "{{count}} photo(s) attached",
+          "loadingTeam": "टीम लोड हो रही है…",
+          "noStaffPreference": "कोई पसंद नहीं",
+          "staffRetryInline": "टीम लोड नहीं हो सकी. फिर कोशिश के लिए टैप करें"
         },
         "salesSettings": {
           "title": "Sales Settings",
@@ -23821,7 +23886,8 @@
           "bookingChanged": "This booking changed, reload",
           "statusUpdateFailed": "Failed to update booking status",
           "bulkCompleted": "Bulk {{action}} completed for {{count}} booking(s)",
-          "bulkFailed": "Failed to {{action}} bookings"
+          "bulkFailed": "Failed to {{action}} bookings",
+          "bulkPartialFailed": "{{action}} के लिए {{count}} बुकिंग छोड़ी गई"
         },
         "liveSync": {
           "label": "Live · updated {{relative}}",
@@ -28640,7 +28706,7 @@
             "createSales": "Create Sales",
             "createSalesDesc": "Create new sales",
             "processPayments": "Process Payments",
-            "processPaymentsDesc": "Process payments and refunds",
+            "processPaymentsDesc": "भुगतान दर्ज करें और कार्ड मशीन से भुगतान लें",
             "viewReports": "View Reports",
             "viewReportsDesc": "View business reports",
             "viewServices": "View Services",
@@ -28691,7 +28757,9 @@
             "viewOwnEarnings": "View own earnings",
             "viewOwnEarningsDesc": "See tips, commission, and personal earnings",
             "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them."
+            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them.",
+            "issueRefunds": "वापसी जारी करें",
+            "issueRefundsDesc": "ग्राहकों को वापसी दें (वॉलेट, नकद या कार्ड मशीन)"
           },
           "team/roles": {
             "roles": "Roles",
@@ -28753,7 +28821,8 @@
               "manage_marketing": "Manage marketing",
               "manage_payroll": "Manage payroll",
               "manage_finance": "Platform billing",
-              "view_own_earnings": "View own earnings"
+              "view_own_earnings": "View own earnings",
+              "issue_refunds": "वापसी जारी करें"
             },
             "catEngagement": "Engagement",
             "permissionCount": "Permission Count"
@@ -33175,7 +33244,9 @@
         "confirmLateCancelBody": "This will cancel {{name}}'s appointment as a late cancellation. A cancellation fee may apply according to your policy.",
         "cancel": "Cancel",
         "confirmNoShow": "Mark No-Show",
-        "confirmLateCancel": "Late Cancel"
+        "confirmLateCancel": "Late Cancel",
+        "completeSkipped_one": "{{count}} अपॉइंटमेंट पूरा नहीं हुआ (बकाया, रिफंड या कार्ड मशीन खुली)",
+        "completeSkipped_other": "{{count}} अपॉइंटमेंट पूरे नहीं हुए (बकाया, रिफंड या कार्ड मशीन खुली)"
       },
       "moreHub": {
         "requiresEditSettings": "Requires Edit settings permission",

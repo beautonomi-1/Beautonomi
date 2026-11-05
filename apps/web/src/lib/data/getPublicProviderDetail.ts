@@ -378,7 +378,8 @@ const PROVIDER_SELECT = `
   offers_mobile_services,
   social_media_links,
   response_rate, response_time_hours, languages_spoken,
-  user_id, users(include_in_search_engines)
+  requires_deposit, deposit_percentage, no_show_fee_enabled, no_show_fee_amount,
+  user_id, users!providers_user_id_fkey(include_in_search_engines)
 `;
 
 export type PublicProviderBookingSeedLocation = {

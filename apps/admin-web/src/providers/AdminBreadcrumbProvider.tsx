@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import type { BreadcrumbSuffix } from "@/lib/breadcrumbMap";
 
 interface AdminBreadcrumbContextValue {
   /** Current leaf-label override (set by detail pages once they resolve entity names). */
@@ -7,6 +8,9 @@ interface AdminBreadcrumbContextValue {
   /** Override parent crumb href (e.g. filtered support queue). */
   parentHref: string | undefined;
   setParentHref: (href: string | undefined) => void;
+  /** Append a crumb without replacing the queue label (split-pane selection). */
+  suffix: BreadcrumbSuffix | undefined;
+  setSuffix: (suffix: BreadcrumbSuffix | undefined) => void;
 }
 
 const AdminBreadcrumbContext = createContext<AdminBreadcrumbContextValue>({
@@ -14,15 +18,21 @@ const AdminBreadcrumbContext = createContext<AdminBreadcrumbContextValue>({
   setLeafLabel: () => {},
   parentHref: undefined,
   setParentHref: () => {},
+  suffix: undefined,
+  setSuffix: () => {},
 });
 
 export function AdminBreadcrumbProvider({ children }: { children: ReactNode }) {
   const [leafLabel, setLeafLabelRaw] = useState<string | undefined>(undefined);
   const [parentHref, setParentHrefRaw] = useState<string | undefined>(undefined);
+  const [suffix, setSuffixRaw] = useState<BreadcrumbSuffix | undefined>(undefined);
   const setLeafLabel = useCallback((label: string | undefined) => setLeafLabelRaw(label), []);
   const setParentHref = useCallback((href: string | undefined) => setParentHrefRaw(href), []);
+  const setSuffix = useCallback((next: BreadcrumbSuffix | undefined) => setSuffixRaw(next), []);
   return (
-    <AdminBreadcrumbContext.Provider value={{ leafLabel, setLeafLabel, parentHref, setParentHref }}>
+    <AdminBreadcrumbContext.Provider
+      value={{ leafLabel, setLeafLabel, parentHref, setParentHref, suffix, setSuffix }}
+    >
       {children}
     </AdminBreadcrumbContext.Provider>
   );
@@ -76,4 +86,13 @@ export function useAdminBreadcrumbParentHref(href: string | undefined) {
     setParentHref(href);
     return () => setParentHref(undefined);
   }, [href, setParentHref]);
+}
+
+/** Split-pane selection crumb (cleared on unmount). */
+export function useAdminBreadcrumbSuffix(suffix: BreadcrumbSuffix | undefined) {
+  const { setSuffix } = useAdminBreadcrumbContext();
+  useEffect(() => {
+    setSuffix(suffix);
+    return () => setSuffix(undefined);
+  }, [suffix, setSuffix]);
 }

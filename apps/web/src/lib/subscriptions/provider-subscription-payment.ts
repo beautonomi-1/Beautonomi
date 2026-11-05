@@ -524,7 +524,7 @@ export async function recordProviderSubscriptionPayment(params: {
     .update({
       billing_period_start: termStart,
       billing_period_end: termEnd,
-      last_payment_at: nowIso,
+      last_payment_date: nowIso,
       updated_at: nowIso,
     })
     .eq("provider_id", providerId);

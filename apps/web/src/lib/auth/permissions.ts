@@ -24,6 +24,8 @@ export interface StaffPermissions {
   view_sales?: boolean;
   create_sales?: boolean;
   process_payments?: boolean;
+  /** Issue refunds to customers (wallet, cash, card machine). */
+  issue_refunds?: boolean;
   view_reports?: boolean;
   manage_finance?: boolean;
   manage_marketing?: boolean;
@@ -220,6 +222,7 @@ export function getAllPermissions(): StaffPermissions {
     view_sales: true,
     create_sales: true,
     process_payments: true,
+    issue_refunds: true,
     view_reports: true,
     manage_finance: true,
     manage_marketing: true,
@@ -255,6 +258,7 @@ const LEGACY_PERMISSION_ALIASES: Record<keyof StaffPermissions, string[]> = {
   view_sales: ["process_sales", "view_finances"],
   create_sales: ["process_sales"],
   process_payments: ["process_sales", "view_finances"],
+  issue_refunds: [],
   view_reports: ["view_finances"],
   manage_finance: ["view_finances", "edit_settings"],
   manage_marketing: [],
@@ -351,6 +355,25 @@ export async function isProviderOwner(
     .maybeSingle();
 
   return !!provider;
+}
+
+/** Owner (linked provider account) or staff row with role manager. */
+export async function isProviderOwnerOrManager(
+  userId: string,
+  request?: PermissionRequestContext,
+): Promise<boolean> {
+  if (await isProviderOwner(userId, request)) return true;
+  const supabase = await getSupabaseServer(request);
+  const { data: staff } = await supabase
+    .from("provider_staff")
+    .select("role, is_admin")
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
+  if (!staff) return false;
+  if (staff.is_admin) return true;
+  return String(staff.role ?? "").toLowerCase() === "manager";
 }
 
 /**

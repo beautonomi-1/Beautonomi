@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -20,6 +21,7 @@ import {
   AdminTh,
 } from "@/components/admin/AdminDataTable";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 type RuleSet = {
   id: string;
@@ -38,7 +40,9 @@ type GoldenTestResult = { name: string; passed: boolean; failures: string[] };
 type VerifyResponse = { verified: boolean; goldenTests: GoldenTestResult[] };
 
 type PayrollHealth = {
+  payroll_v2_flag?: { key: string; present: boolean; enabled: boolean };
   payroll_v2_providers: number;
+  payroll_v2_providers_off?: number;
   staff_manual_statutory: number;
   rules_past_effective_to: Array<{ jurisdiction_code: string; rule_type: string; effective_to: string }>;
 };
@@ -113,7 +117,23 @@ export function PayrollRulesPage() {
       />
 
       {healthQ.data ? (
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-4">
+          <AdminMetricCard
+            label="Payroll v2 flag"
+            value={
+              !healthQ.data.payroll_v2_flag?.present
+                ? "Missing"
+                : healthQ.data.payroll_v2_flag.enabled
+                  ? "On"
+                  : "Off"
+            }
+            hint="Settings → Feature flags (payroll.v2)"
+            footer={
+              <Link to={adminSpaTo("/admin/settings/feature-flags")} className="underline">
+                Open feature flags
+              </Link>
+            }
+          />
           <AdminMetricCard label="Providers on payroll v2" value={healthQ.data.payroll_v2_providers} />
           <AdminMetricCard label="Staff on manual statutory" value={healthQ.data.staff_manual_statutory} />
           <AdminMetricCard

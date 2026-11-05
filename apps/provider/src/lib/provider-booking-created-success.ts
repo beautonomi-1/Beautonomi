@@ -10,6 +10,8 @@ export type ProviderBookingCreatedSuccessInput = {
   warnings?: string[];
   isWalkIn?: boolean;
   sendNotification?: boolean;
+  /** Names of staff the server assigned (after resolving "Any available"). */
+  staffNames?: string[];
 };
 
 function isPaymentUnsettled(paymentStatus?: string | null): boolean {
@@ -84,6 +86,10 @@ export function buildProviderBookingCreatedSuccessModel(
   const summaryLines: string[] = [clientLabel];
   if (input.date?.trim()) summaryLines.push(input.date.trim());
   if (input.time?.trim()) summaryLines.push(input.time.trim());
+  const staffNames = [
+    ...new Set((input.staffNames ?? []).map((n) => n.trim()).filter(Boolean)),
+  ];
+  if (staffNames.length > 0) summaryLines.push(`With ${staffNames.join(", ")}`);
   if (input.bookingNumber?.trim()) summaryLines.push(`Ref ${input.bookingNumber.trim()}`);
 
   if (pendingPayment) {

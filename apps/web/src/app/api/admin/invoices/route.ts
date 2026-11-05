@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
         `
         *,
         providers!inner(id, business_name, billing_email, billing_phone, tenant_id),
-        payments:provider_invoice_payments(id, amount, status, payment_reference, payment_date, payment_method)
+        payments:provider_invoice_payments(id, amount, status, payment_reference, payment_date, payment_method_id)
       `,
         { count: "exact" }
       )

@@ -285,13 +285,11 @@ export async function createBookingRecord(
       .eq("id", bookingId);
   }
 
-  // Set guest_name from client_info so booking appears correctly in provider calendar
   const clientInfo = validatedDraft.client_info as { firstName?: string; lastName?: string } | undefined;
   if (clientInfo && (clientInfo.firstName || clientInfo.lastName)) {
     const guestName = [clientInfo.firstName, clientInfo.lastName].filter(Boolean).join(" ").trim();
     if (guestName) {
-      await adminSupabase.from("bookings").update({ guest_name: guestName }).eq("id", bookingId);
-      (booking as any).guest_name = guestName;
+      (booking as { guest_name?: string }).guest_name = guestName;
     }
   }
 

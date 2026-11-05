@@ -32,14 +32,11 @@ export async function ensurePackageEntitlementsFromProductOrder(
     const qty = Math.max(1, Number(line.quantity) || 1);
     const { data: spiRows } = await admin
       .from("service_package_items")
-      .select("package_id, product_variant_id")
+      .select("package_id")
       .eq("product_id", line.product_id)
       .limit(50);
 
-    const matchingRows = (spiRows || []).filter((row: { product_variant_id?: string | null }) => {
-      const packageVariantId = row.product_variant_id ?? null;
-      return !packageVariantId || packageVariantId === (line.product_variant_id ?? null);
-    });
+    const matchingRows = spiRows || [];
     if (!matchingRows.length) continue;
 
     const packageIds = [...new Set(matchingRows.map((r: { package_id: string }) => r.package_id))];

@@ -2196,11 +2196,10 @@ async function handleCustomOfferFailed(
   try {
     const { data: offerRow } = await admin
       .from("custom_offers")
-      .select("id, tenant_id, provider_id, currency, request:custom_requests(customer_id)")
+      .select("id, provider_id, currency, request:custom_requests(customer_id)")
       .eq("id", offerId)
       .maybeSingle();
     const offer = offerRow as {
-      tenant_id?: string | null;
       provider_id?: string | null;
       currency?: string | null;
       request?: { customer_id?: string | null } | null;
@@ -2227,7 +2226,7 @@ async function handleCustomOfferFailed(
         : { data: null };
       if (!existingRefund) {
         const walletTenantId = await resolveTenantIdForFinanceLedger(admin, {
-          tenant_id: offer?.tenant_id ?? null,
+          tenant_id: null,
           provider_id: offer?.provider_id ?? null,
         });
         await admin.rpc("wallet_credit_admin", {

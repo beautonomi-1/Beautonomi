@@ -327,6 +327,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
           { title: "Finance AI queue", href: "/admin/finance/ai-queue", icon: Bot, section: ADMIN_SECTION_FINANCE },
           { title: "Payouts", href: "/admin/payouts", icon: Wallet, section: ADMIN_SECTION_FINANCE },
           { title: "Refunds", href: "/admin/refunds", icon: RotateCcw, section: ADMIN_SECTION_FINANCE },
+          { title: "Refund Anomalies", href: "/admin/refund-anomalies", icon: RotateCcw, section: ADMIN_SECTION_FINANCE },
           { title: "Fee Management", href: "/admin/fees", icon: CreditCard, section: ADMIN_SECTION_FINANCE },
           { title: "Taxes", href: "/admin/taxes", icon: Receipt, section: ADMIN_SECTION_FINANCE },
           { title: "Period Locks", href: "/admin/period-locks", icon: Lock, section: ADMIN_SECTION_FINANCE },

@@ -10,6 +10,8 @@ import {
 import { getTeamRosterDetailLevel, redactStaffRowForViewer } from "@/lib/auth/provider-team-roster-access";
 import { resolveStaffLocationScope } from "@/lib/provider/staff-location-scope";
 
+export const maxDuration = 30;
+
 /**
  * GET /api/provider/team
  * Alias for /api/provider/staff — returns team members for the current provider.

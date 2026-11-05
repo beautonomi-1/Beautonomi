@@ -323,7 +323,7 @@ export async function getRecordedTakingsForRange(
       let productOrderQuery = supabaseAdmin
         .from("product_orders")
         .select(
-          "id, total_amount, wallet_amount, gift_card_amount, payment_method, payment_provider, fulfillment_type, collection_location_id",
+          "id, total_amount, wallet_amount, gift_card_amount, payment_method, fulfillment_type, collection_location_id",
         )
         .eq("provider_id", providerId)
         .eq("order_source", "walk_in")

@@ -13,6 +13,7 @@ import { EXPLORE_POST_MINE_SELECT_WITH_PROVIDER } from "@/lib/explore/post-selec
 import { mapExplorePostRow } from "@/lib/explore/post-mapper";
 import { enrichExplorePostsWithSoundUrls } from "@/lib/explore/sound-enrich";
 import { isExploreProviderPostsEnabled } from "@/lib/explore/explore-feature-gates";
+import { pickLinkedExplorePostForBooking } from "@/lib/explore/explore-post-source-booking";
 
 /**
  * GET /api/explore/posts/mine
@@ -36,6 +37,19 @@ export async function GET(request: NextRequest) {
 
     const supabaseAdmin = await getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
+    const bookingIdParam = searchParams.get("booking_id")?.trim();
+    if (bookingIdParam) {
+      const { data: rows, error: linkErr } = await supabaseAdmin
+        .from("explore_posts")
+        .select("id, status, created_at")
+        .eq("provider_id", providerId)
+        .eq("source_booking_id", bookingIdParam)
+        .limit(20);
+      if (linkErr) return handleApiError(linkErr, "Failed to fetch post");
+      const linked = pickLinkedExplorePostForBooking(rows ?? []);
+      return successResponse(linked);
+    }
+
     const postId = searchParams.get("id")?.trim();
     if (postId) {
       const { data: row, error: oneErr } = await supabaseAdmin
@@ -66,7 +80,7 @@ export async function GET(request: NextRequest) {
       .from("explore_posts")
       .select(EXPLORE_POST_MINE_SELECT_WITH_PROVIDER, { count: "exact" })
       .eq("provider_id", providerId)
-      .order("published_at", { ascending: false })
+      .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .range(offset, offset + limit - 1);
 

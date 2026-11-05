@@ -50,7 +50,7 @@ export function BookingStatusActions({
   const { t } = useTranslation();
   const router = useRouter();
   const { format: formatMoney } = useProviderMoneyFormat();
-  const { hasPermission, isOwner } = usePermissions();
+  const { hasPermission, isOwner, isManager } = usePermissions();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -96,17 +96,31 @@ export function BookingStatusActions({
     return canEdit;
   };
 
-  const postCompleteService = useCallback(async () => {
+  const postCompleteService = useCallback(async (
+    body: { allow_unpaid?: boolean; unpaid_reason?: string } = {},
+  ) => {
     setBusy("complete_service");
     setError(null);
     try {
-      await fetcher.post(`/api/provider/bookings/${appointment.id}/complete-service`, {});
+      await fetcher.post(`/api/provider/bookings/${appointment.id}/complete-service`, body);
       toast.success(t("web.provider.bookings.statusActions.serviceCompleted"));
       setCompleteConfirmOpen(false);
       onCompleted?.();
       onUpdated?.();
     } catch (err) {
       const fetchErr = err instanceof FetchError ? err : null;
+      if (fetchErr?.code === "BALANCE_DUE" && !body.allow_unpaid) {
+        setCompleteConfirmReason("outstanding");
+        setCompleteConfirmMessage(t("web.provider.bookings.statusActions.outstandingCompleteHint"));
+        setCompleteConfirmOpen(true);
+        return;
+      }
+      if (fetchErr?.code === "FULLY_REFUNDED") {
+        setCompleteConfirmReason("refunded");
+        setCompleteConfirmMessage(fetchErr.message);
+        setCompleteConfirmOpen(true);
+        return;
+      }
       const msg = mapProviderBookingActionError(
         err instanceof Error ? err.message : t("web.provider.bookings.statusActions.completeFailed"),
         fetchErr?.code,
@@ -477,7 +491,12 @@ export function BookingStatusActions({
               }
             : undefined
         }
-        onCompleteAnyway={() => void postCompleteService()}
+        canCompleteWithBalance={isOwner || isManager}
+        onCompleteAnyway={(unpaidReason) =>
+          void postCompleteService(
+            unpaidReason ? { allow_unpaid: true, unpaid_reason: unpaidReason } : {},
+          )
+        }
         onCancelBooking={
           completeConfirmReason === "refunded"
             ? () => {

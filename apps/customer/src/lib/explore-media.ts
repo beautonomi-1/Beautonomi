@@ -54,11 +54,19 @@ export function resolveExploreVideoSrc(params: {
   return toPublicMediaUrl(original);
 }
 
-export function explorePostGridImageUrl(post: ExplorePost): string {
-  if (post.display_url?.trim()) return post.display_url;
-  const meta0 = post.media_meta?.[0];
-  if (meta0?.display_path?.trim()) return toPublicMediaUrl(meta0.display_path);
-  return post.media_urls?.[0] ?? "";
+/** Still image for grid tiles; "" when the post only has video (expo-image can't decode it). */
+export function explorePostGridImageUrl(
+  post: Pick<ExplorePost, "display_url" | "media_urls" | "media_meta">,
+): string {
+  const candidates = [
+    post.display_url,
+    post.media_meta?.[0]?.display_path ? toPublicMediaUrl(post.media_meta[0].display_path) : null,
+    firstSlideIsVideo(post.media_urls, post.media_meta) ? null : post.media_urls?.[0],
+  ];
+  for (const candidate of candidates) {
+    if (candidate?.trim() && !isExploreVideoPathOrUrl(candidate)) return candidate;
+  }
+  return "";
 }
 
 export function clampExploreAspectRatio(width?: number | null, height?: number | null): number {

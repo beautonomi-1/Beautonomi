@@ -10,6 +10,8 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
+export const maxDuration = 30;
+
 /**
  * GET /api/provider/bookings/available-slots?date=YYYY-MM-DD&duration_minutes=60&staff_ids=id1,id2&location_id=...
  *

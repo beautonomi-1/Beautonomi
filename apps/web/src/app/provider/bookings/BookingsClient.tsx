@@ -43,6 +43,10 @@ import { SyncIndicator } from "@/components/provider/SyncIndicator";
 import { BookingConflictAlert } from "@/components/provider/BookingConflictAlert";
 import { BulkBookingActions } from "@/components/provider/BulkBookingActions";
 import { PostCompletionSheet } from "@/components/provider/booking/PostCompletionSheet";
+import {
+  BookingCompleteConfirmDialog,
+  type BookingCompleteConfirmReason,
+} from "@/components/provider/booking/view/BookingCompleteConfirmDialog";
 import { EtaPicker } from "@/components/provider/booking/EtaPicker";
 import {
   Dialog,
@@ -128,7 +132,13 @@ export function BookingsClient({
   const { selectedLocationId, provider } = useProviderPortal();
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
-  const { hasPermission, isOwner } = usePermissions();
+  const { hasPermission, isOwner, isManager } = usePermissions();
+  const [completeBlock, setCompleteBlock] = useState<{
+    bookingId: string;
+    reason: BookingCompleteConfirmReason;
+    message: string;
+  } | null>(null);
+  const [completeBlockBusy, setCompleteBlockBusy] = useState(false);
   const canCreateAppointments = isOwner || hasPermission("create_appointments");
   const canEditAppointments = isOwner || hasPermission("edit_appointments");
   const canCancelAppointments =
@@ -357,13 +367,46 @@ export function BookingsClient({
   }, [refreshBackground]);
 
   // ─── Status actions ────────────────────────────────────────────────────────
-  const handleStatusChange = async (bookingId: string, newStatus: string, version?: number) => {
+  /** Returns true when the error was a completion blocker and has been surfaced. */
+  const handleCompletionBlocker = (bookingId: string, err: unknown, overriding: boolean): boolean => {
+    if (!(err instanceof FetchError)) return false;
+    if (err.code === "BALANCE_DUE" && !overriding) {
+      setCompleteBlock({
+        bookingId,
+        reason: "outstanding",
+        message: t("web.provider.bookings.statusActions.outstandingCompleteHint"),
+      });
+      return true;
+    }
+    if (err.code === "FULLY_REFUNDED") {
+      setCompleteBlock({ bookingId, reason: "refunded", message: err.message });
+      return true;
+    }
+    if (
+      err.code === "TERMINAL_IN_FLIGHT" ||
+      err.code === "BALANCE_DUE" ||
+      err.code === "BALANCE_DUE_REASON_REQUIRED" ||
+      err.code === "FORBIDDEN"
+    ) {
+      toast.error(err.message);
+      return true;
+    }
+    return false;
+  };
+
+  const handleStatusChange = async (
+    bookingId: string,
+    newStatus: string,
+    version?: number,
+    completeBody: { allow_unpaid?: boolean; unpaid_reason?: string } = {},
+  ) => {
     const booking = bookings.find((b) => b.id === bookingId);
     try {
       setConflictError(null);
 
       if (newStatus === "completed") {
-        await fetcher.post(`/api/provider/bookings/${bookingId}/complete-service`, {});
+        await fetcher.post(`/api/provider/bookings/${bookingId}/complete-service`, completeBody);
+        setCompleteBlock(null);
         toast.success(t("web.provider.bookings.toast.serviceCompleted"));
         loadBookings();
         if (booking) {
@@ -414,6 +457,9 @@ export function BookingsClient({
       toast.success(t("web.provider.bookings.toast.statusUpdated"));
       loadBookings();
     } catch (err) {
+      if (newStatus === "completed" && handleCompletionBlocker(bookingId, err, completeBody.allow_unpaid === true)) {
+        return;
+      }
       if (err instanceof FetchError && err.status === 409) {
         setConflictError(t("web.provider.bookings.toast.bookingChanged"));
         toast.error(t("web.provider.bookings.toast.bookingChanged"));
@@ -426,8 +472,19 @@ export function BookingsClient({
   const handleBulkAction = async (action: string, bookingIds: string[]) => {
     try {
       setConflictError(null);
-      await fetcher.post(`/api/provider/bookings/bulk`, { action, booking_ids: bookingIds });
-      toast.success(t("web.provider.bookings.toast.bulkCompleted", { action, count: bookingIds.length }));
+      const res = await fetcher.post<{
+        data?: { success_count?: number; results?: { failed?: Array<{ id: string; reason: string }> } };
+      }>(`/api/provider/bookings/bulk`, { action, booking_ids: bookingIds });
+      const successCount = res?.data?.success_count ?? bookingIds.length;
+      const failed = res?.data?.results?.failed ?? [];
+      if (successCount > 0) {
+        toast.success(t("web.provider.bookings.toast.bulkCompleted", { action, count: successCount }));
+      }
+      if (failed.length > 0) {
+        toast.warning(t("web.provider.bookings.toast.bulkPartialFailed", { action, count: failed.length }), {
+          description: failed.map((f) => f.reason).slice(0, 3).join(" · "),
+        });
+      }
       setSelectedBookings(new Set());
       loadBookings();
     } catch (err) {
@@ -1519,6 +1576,30 @@ export function BookingsClient({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {completeBlock ? (
+          <BookingCompleteConfirmDialog
+            open
+            onOpenChange={(open) => {
+              if (!open) setCompleteBlock(null);
+            }}
+            reason={completeBlock.reason}
+            message={completeBlock.message}
+            canCompleteWithBalance={isOwner || isManager}
+            busy={completeBlockBusy}
+            onCompleteAnyway={async (unpaidReason) => {
+              setCompleteBlockBusy(true);
+              try {
+                await handleStatusChange(completeBlock.bookingId, "completed", undefined, {
+                  allow_unpaid: true,
+                  unpaid_reason: unpaidReason,
+                });
+              } finally {
+                setCompleteBlockBusy(false);
+              }
+            }}
+          />
+        ) : null}
 
         {pendingCompletion ? (
           <PostCompletionSheet

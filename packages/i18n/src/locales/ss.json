@@ -2351,13 +2351,50 @@
           "viewFullBooking": "Buka kugcwele kubhuka",
           "statusNoShow": "No khombisa",
           "statusPendingPayment": "kulindzile inkokhelo",
-          "removeParticipantOverpaid": "Sivakashi susad. The kubhuka is nyalo overkukhokhelwe by {{amount}}. imali lebuye the difference to the likhasimende.",
+          "removeParticipantOverpaid": "Sivakashi sisusiwe. {{amount}} ikhokhelwe ngesandla futsi ayikwati kuya esikhwameni. Buyisela ngemali nobe emshinini wekhadi usebentisa Kubuyisela kumenyu letsi Lokunye.",
           "shareStatusPaid": "yabelana kukhokhelwe",
           "shareStatusPending": "yabelana akukhokhelwe ({{amount}})",
           "shareStatusCancelled": "Spot kukhanselwe",
           "resendInvite": "Re-tfumela simemo",
           "inviteResent": "simemo Kutfunyelwe",
-          "inviteResendFailed": "Ayikhonanga ku-re-tfumela the simemo."
+          "inviteResendFailed": "Ayikhonanga ku-re-tfumela the simemo.",
+          "slotUnavailableTitle": "Sikhatsi asitfolakali",
+          "noStaffForSlot": "Kute lilunga lelicembu lelikhululekile kutisebenti le ngalesikhatsi. Khetsa sikhatsi lesinye nobe lilunga lelitsite.",
+          "pickAnotherTime": "Khetsa sikhatsi lesinye",
+          "invalidStaffTitle": "Lilunga lelicembu alitfolakali",
+          "anyAvailableStaff": "Nobe ngubani lotfolakalako",
+          "loadingTeam": "Layisha licembu…",
+          "staffRetryInline": "Ayikwati kulayisha licembu. Cindzetela kulinga futsi",
+          "moreActionsTitle": "Lokunye",
+          "moreActionsA11y": "Tento letinye",
+          "openTerminalBannerBody": "Inkokhelo yemshini wekhadi lengu-{{amount}} isavulekile kulelicembu.",
+          "resumeOpenCharge": "Chubeka",
+          "cancelOpenCharge": "Khansela inkokhelo",
+          "cancelOpenChargeTitle": "Khansela inkokhelo levulekile?",
+          "cancelOpenChargeBody": "Loku kukhansela inkokhelo yemshini wekhadi lechubekako kutsi ubhale inkokhelo ngenye indlela.",
+          "cancelOpenChargeFailed": "Ayikwati kukhansela inkokhelo levulekile.",
+          "openChargeCancelled": "Inkokhelo yemshini wekhadi ikhanseliwe.",
+          "entityInFlightTitle": "Inkokhelo yemshini wekhadi levulekile",
+          "cancelOpenChargeAndRecord": "Khansela inkokhelo levulekile bese ubhala",
+          "terminalInFlightTitle": "Inkokhelo yemshini wekhadi ivulekile",
+          "fullyRefundedTitle": "Kubuyiswe konkhe",
+          "participantRefundedChip": "Kubuyisiwe",
+          "groupNotStartedTitle": "Cala licembu kucala",
+          "groupNotStartedBody": "Kungena nekuphuma kutfolakala uma kucala kwebhuka lelicembu.",
+          "unpaidCompleteNotAllowed": "Umnikati nobe umcondzisi kuphela langacedza kusekhona imali lesalele.",
+          "unpaidCompleteReasonTitle": "Cedza kusekhona imali",
+          "unpaidCompleteReasonRequired": "Faka sizatfu sekucedza kusekhona imali.",
+          "unpaidCompleteReasonLabel": "Sizatfu (siyadzingeka)",
+          "unpaidCompleteReasonPlaceholder": "sib. Umtsengi utawukhokha kusasa nge-EFT",
+          "refundCapsTitle": "Imingcele yekubuyisa",
+          "refundCapsOnline": "Sikhwama / ku-inthanethi: kufika ku-{{amount}}",
+          "refundCapsCash": "Imali yesandla: kufika ku-{{amount}}",
+          "refundCapsTerminal": "Umshini wekhadi: kufika ku-{{amount}}",
+          "refundConfirmSummaryTitle": "Cinisekisa kubuyisa?",
+          "refundConfirmSummaryBody": "Buyisela {{amount}} nge-{{method}}.\n\nSizatfu: {{reason}}",
+          "refundWalletCapExceeded": "Lenani lidlula umkhawulo wekubuyisela esikhwameni kulebhukisho.",
+          "refundMethodOriginal": "Umshini wekhadi",
+          "refundOptionsLoadFailed": "Ayikwati kulayisha imingcele yekubuyisa. Tinhlobo tingase tiphelelwe sikhatsi."
         },
         "settingsIndex": {
           "title": "Tilungiselelo",
@@ -3183,13 +3220,25 @@
           "awaitingYocoRefundReason": "Kubhuka kukhanseliwe — kubuyiselwa imali ekhadini",
           "refundOriginalHint": "Lemali ibuyela ekhadini lekhasimende ngekusebentisa umshini welikhadi nobe ebhange. Kute lokutsatfwako e-cash drawer yakho.",
           "refundCashHint": "Niketa imali emuva ekhasimendeni mathupha. Kubhalwe phansi kutsi kubhalwe tincwadzi takho; kute sikweleti sesikhwama semali lesikhishwako. Ibhalansi yekubhuka iyabuyeketwa ngemuva kwaloku kuphumelela.",
-          "refundWalletHint": "Sebentisa nangabe likhasimende lingekho nobe inkhokhelo yentiwe ku-inthanethi. Imali lebuyiselwako ifakwa esikhwameni sabo semali.",
+          "refundWalletHint": "Imali lekhokhelwe ku-inthanethi kuphela lengabuyela esikhwameni. Imbuyiselo ifakwa esikhwameni sabo.",
           "refundOriginalMachineHint": "Lemali ibuyela ekhadini lekhasimende ngemshini welikhadi lebeyikhokhelwe ngawo.",
           "cancelWalletNote": "Iklayenti itawubuyiselwa imali lephelele esikhwameni sayo se-Beautonomi semali leseyivele ikhokhelwe. Inchubomgomo yakho yekukhansela ayisebenti ekukhanseleni lokucalako.",
           "cancelRefundTo": "Buyisela imali lekhokhelwe ku .",
           "yocoRefundRecordCta": "Ibuyiselwe emshinini — bhala imali lebuyiselwe .",
           "pendingCashRefundTitle": "{{amount}} to return ebusweni",
-          "pendingCashRefundBody": "Ikhasimende kumele licinisekise kutsi litfole lemali lebuyiselwako ku-app. Ungabhali lenye imali lebuyiselwako ngesikhatsi loku kusalindzelwe — buyisela imali lekhonjisiwe bese ulindza kucinisekiswa (noma lifasitelo lemahora lange-48 kutsi livale)."
+          "pendingCashRefundBody": "Ikhasimende kumele licinisekise kutsi litfole lemali lebuyiselwako ku-app. Ungabhali lenye imali lebuyiselwako ngesikhatsi loku kusalindzelwe — buyisela imali lekhonjisiwe bese ulindza kucinisekiswa (noma lifasitelo lemahora lange-48 kutsi livale).",
+          "noIssueRefundsPermission": "Awunayo imvume yekukhipha kubuyiselwa. Cela umnikati nobe umcondzisi.",
+          "refundMethodCapBody": "Indlela le yekubuyisa ivumela kufika ku-{{amount}}. Khetsa lenye indlela yekusele.",
+          "refundCapsBreakdown": "Ikhokhwe mathupha {{inPerson}} · Ku-inthanethi {{online}} · Seyibuyisiwe {{refunded}}",
+          "refundMaxForMethod": "Bukhulu balendlela le",
+          "confirmRefundTitle": "Cinisekisa kubuyisa",
+          "confirmRefundBody": "Buyisela {{amount}} njenge-{{method}}. Loku akukwati kuhlehliswa.",
+          "completeBlockedTerminalTitle": "Inkokhelo yemshini wekhadi ivulekile",
+          "completeBlockedFullyRefundedTitle": "Kubhuka kubuyiswe konkhe",
+          "unpaidCompleteReasonTitle": "Cedza kusekhona imali",
+          "unpaidCompleteReasonLabel": "Sizatfu (siyadzingeka)",
+          "unpaidCompleteReasonPlaceholder": "sib. Umtsengi utawukhokha kusasa nge-EFT",
+          "unpaidCompleteNotAllowed": "Umnikati nobe umcondzisi kuphela langacedza kubhuka kusekhona imali. Butsela inkokhelo kucala nobe ucele umcondzisi."
         },
         "operatingHoursSettings": {
           "title": "Opesilinganiso emahora",
@@ -5366,7 +5415,12 @@
           "staffFilteredByService": "Kuboniswa emalunga elitimba laniketwe lensita.",
           "addressOutsideArea": "Leli likheli likule ngaphandle kwendawo yakho yesevisi.",
           "addressValidateFailed": "Ayikwazanga ukuqinisekisa leli kheli. Hlola ukuxhumeka kwakho bese uzama futsi.",
-          "tipPercentWithAmountA11y": "{{percent}}% ithiphu, {{amount}}"
+          "tipPercentWithAmountA11y": "{{percent}}% ithiphu, {{amount}}",
+          "anyAvailableStaff": "Noma ngubani lotfolakalako",
+          "assignAnyStaffA11y": "Niketa lilungu lelicembu lelitfolakalako",
+          "loadingTeam": "Licembu liyalayisha…",
+          "staffRetryInline": "Licembu alilayishwanga. Cindzetela kute ulinge futsi",
+          "staffRosterLoading": "Licembu lakho liyalayisha ngembi kwekutsi basebenti babelwe"
         },
         "expressBooking": {
           "invalidJson": "JSON. lengavumelekile.",
@@ -6628,7 +6682,10 @@
           "withdraw": "Khipha",
           "withdrawFailed": "Ayikhonanga ku-withdraw the offer.",
           "withdrawOffer": "Khipha Siphakamiso",
-          "emDash": "—"
+          "emDash": "—",
+          "loadingTeam": "Licembu liyalayisha…",
+          "noStaffPreference": "Kute kutikhetsa",
+          "staffRetryInline": "Licembu alilayishwanga. Cindzetela kute ulinge futsi"
         },
         "bookingLink": {
           "title": "kubhuka sichumanisi",
@@ -8219,7 +8276,10 @@
           "submitRating": "tfumela silinganiso",
           "thanks": "Ngiyabonga!",
           "freshCaption": "{{name}} lensha",
-          "shareBookingLink": "Abelana ngesihlanganisi sekubhuka"
+          "shareBookingLink": "Abelana ngesihlanganisi sekubhuka",
+          "continueDraftBody": "Usuvele ucale lokuthunyelwe kwale bhukhi. Chubeka lapho ugcine khona, nobe ukalele likhasimende.",
+          "continueDraftCta": "Chubeka ngesidvwebo",
+          "continueDraftTitle": "Cedza sidvwebo sakho se-Explore"
         },
         "advancedPricing": {
           "title": "Lokuchubekile emanani",
@@ -10314,7 +10374,8 @@
           "permManageMarketing": "Phatsa TITSaholic",
           "calendarScopeLabel": "likhalenda visibility",
           "calendarScopeOwn": "Own tikhatsi",
-          "calendarScopeAll": "All litimba likhalendas"
+          "calendarScopeAll": "All litimba likhalendas",
+          "permIssueRefunds": "Khipha tibuyiselo"
         },
         "onboardingHub": {
           "title": "Setha",
@@ -11226,7 +11287,8 @@
           "calendarScopeOwn": "Own tikhatsi only",
           "calendarScopeAll": "All litimba likhalendas",
           "fullAccessMemberHint": "Banikati nebantfu labanemvume yekuphatsa bahlala banawo onkhe emalungelo. Tinkinobho tabo tifundvwa kuphela lapha.",
-          "manageMarketing": "Phatsa TITSaholic"
+          "manageMarketing": "Phatsa TITSaholic",
+          "issueRefunds": "Khipha tibuyiselo"
         },
         "announcements": {
           "loadFailed": "Ayikhonanga ku-layisha announcements",
@@ -12226,7 +12288,10 @@
           "disabledBody": "{{message}}\n\nYour admin can vula the feature flag commerce.umniketi_lwekhefiso_offers for this market.",
           "addPhotos": "Ngeta inspiration titfombe",
           "uploadingPhotos": "iyalayisha…",
-          "photosAttached": "{{count}} sitfombe(s) attached"
+          "photosAttached": "{{count}} sitfombe(s) attached",
+          "loadingTeam": "Licembu liyalayisha…",
+          "noStaffPreference": "Kute kutikhetsa",
+          "staffRetryInline": "Licembu alilayishwanga. Cindzetela kute ulinge futsi"
         },
         "salesSettings": {
           "title": "Kudayisas tilungiselelo",
@@ -23821,7 +23886,8 @@
           "bookingChanged": "This kubhuka guculad, relayisha",
           "statusUpdateFailed": "Kwehlulekile ku-buyekisa kubhuka simo",
           "bulkCompleted": "Bulk {{action}} kuphelile for {{count}} kubhuka(s)",
-          "bulkFailed": "Kwehlulekile ku-{{action}} kubhuka"
+          "bulkFailed": "Kwehlulekile ku-{{action}} kubhuka",
+          "bulkPartialFailed": "Kubhuka lokungu-{{count}} kudlulwe ku-{{action}}"
         },
         "liveSync": {
           "label": "Bukhoma · buyekisad {{relative}}",
@@ -28640,7 +28706,7 @@
             "createSales": "Yakha Kudayisas",
             "createSalesDesc": "Yakha lokusha sales",
             "processPayments": "Process tinkhokhelo",
-            "processPaymentsDesc": "Process tinkhokhelo and imali lebuyes",
+            "processPaymentsDesc": "Bhala tinkhokhelo bese utfola tinkhokhelo temshini wekhadi",
             "viewReports": "Buka imibiko",
             "viewReportsDesc": "Buka Libhizinisi imibiko",
             "viewServices": "Buka Tinsita",
@@ -28691,7 +28757,9 @@
             "viewOwnEarnings": "View own earnings",
             "viewOwnEarningsDesc": "See tips, commission, and personal earnings",
             "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them."
+            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them.",
+            "issueRefunds": "Khipha tibuyiselo",
+            "issueRefundsDesc": "Buyisela emakhasimende (sikhwama, imali nobe umshini wekhadi)"
           },
           "team/roles": {
             "roles": "Indzimas",
@@ -28753,7 +28821,8 @@
               "manage_marketing": "Manage marketing",
               "manage_payroll": "Manage payroll",
               "manage_finance": "Platform billing",
-              "view_own_earnings": "View own earnings"
+              "view_own_earnings": "View own earnings",
+              "issue_refunds": "Khipha tibuyiselo"
             },
             "catEngagement": "Engagement",
             "permissionCount": "sivumelwano Count"
@@ -33175,7 +33244,9 @@
         "confirmLateCancelBody": "This will cancel {{name}}'s appointment as a late cancellation. A cancellation fee may apply according to your policy.",
         "cancel": "Khansela",
         "confirmNoShow": "Mark No-khombisa",
-        "confirmLateCancel": "Late khansela"
+        "confirmLateCancel": "Late khansela",
+        "completeSkipped_one": "Kucokwa lokungu-{{count}} akucedzwanga (imali isele, kubuyisiwe nobe umshini wekhadi uvulekile)",
+        "completeSkipped_other": "Kucokwa lokungu-{{count}} akucedzwanga (imali isele, kubuyisiwe nobe umshini wekhadi uvulekile)"
       },
       "moreHub": {
         "requiresEditSettings": "Requires hlela tilungiselelo sivumelwano",

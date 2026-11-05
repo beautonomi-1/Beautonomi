@@ -22,5 +22,6 @@ export * from "./create-readiness";
 export * from "./collect-group-booking-create-errors";
 export * from "./running-behind-eligibility";
 export * from "./catalog-list-layout";
+export * from "./staff-assignment";
 export * from "./aggregate-offering-resources";
 export * from "./resolve-product-line-unit-price";

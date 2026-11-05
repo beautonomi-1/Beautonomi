@@ -50,6 +50,7 @@ import { formatCurrency } from "@/lib/format";
 import { ArrivalQrScannerModal } from "@/components/ArrivalQrScannerModal";
 import * as Haptics from "expo-haptics";
 import { api } from "@/lib/api-client";
+import { CompleteWithBalanceSheet } from "@/components/bookings/CompleteWithBalanceSheet";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 import {
@@ -95,7 +96,15 @@ import {
 } from "@/lib/provider-booking-action-policy";
 import { getBookingNextStepCard } from "@/lib/provider-booking-next-step-card";
 import { BookingEditSheet } from "@/components/bookings/BookingEditSheet";
-import { PostCompletionSheet, POST_COMPLETION_STORAGE_PREFIX } from "@/components/bookings/PostCompletionSheet";
+import {
+  PostCompletionSheet,
+  POST_COMPLETION_STORAGE_PREFIX,
+  type PostCompletionStep,
+} from "@/components/bookings/PostCompletionSheet";
+import {
+  decideBookingPostCompletionSheet,
+  type LinkedExplorePostSummary,
+} from "@/lib/booking-post-completion-sheet";
 import { LoveTheAppSheet } from "@/components/LoveTheAppSheet";
 import { useStoreReviewAfterRating } from "@/hooks/useStoreReviewAfterRating";
 import { EtaPicker } from "@/components/bookings/EtaPicker";
@@ -410,14 +419,25 @@ function isTerminalProductOrderStatus(status?: string | null): boolean {
 
 type ProviderPermissionsResponse = {
   isOwner?: boolean;
+  isManager?: boolean;
   permissions?: {
     edit_appointments?: boolean;
     cancel_appointments?: boolean;
     create_sales?: boolean;
     process_payments?: boolean;
+    issue_refunds?: boolean;
     rate_clients?: boolean;
     view_client_ratings?: boolean;
   };
+};
+
+type RefundCapsResponse = {
+  maxRefundable: number;
+  onlineCap: number;
+  cashCap: number;
+  terminalCap: number;
+  hasCustomerAccount: boolean;
+  suggestedMethod: "store_credit" | "cash" | "original";
 };
 
 type BookingResourceRow = {
@@ -690,7 +710,7 @@ export default function BookingDetailScreen() {
 
   const router = useRouter();
   const { afterRatingSubmitted, sheetProps: storeReviewSheetProps } = useStoreReviewAfterRating("client_rating");
-  const { id, focusPayment, collectYoco, collectPaystack, collectPaycloud, return_group_id, openReschedule, openCancel, highlightConfirm, step, action } =
+  const { id, focusPayment, collectYoco, collectPaystack, collectPaycloud, return_group_id, openReschedule, openCancel, highlightConfirm, step, action, posted } =
     useLocalSearchParams<{
     id: string;
     focusPayment?: string;
@@ -703,6 +723,7 @@ export default function BookingDetailScreen() {
     highlightConfirm?: string;
     step?: string;
     action?: string;
+    posted?: string;
   }>();
   const [etaMinutes, setEtaMinutes] = useState<number | null>(15);
   const [updateEtaMinutes, setUpdateEtaMinutes] = useState<number | null>(15);
@@ -723,6 +744,8 @@ export default function BookingDetailScreen() {
   const canCancelAppointments =
     isOwner || permissions?.cancel_appointments === true || canEditAppointments;
   const canProcessPayments = isOwner || permissions?.process_payments === true;
+  const canIssueRefunds = isOwner || permissions?.issue_refunds === true;
+  const canCompleteWithUnpaid = isOwner || permissionData?.isManager === true;
   const canCreateSales = isOwner || permissions?.create_sales === true;
   const canRateClients = isOwner || permissions?.rate_clients === true;
   const canViewClientRatings =
@@ -1094,8 +1117,13 @@ export default function BookingDetailScreen() {
   const [showRefund, setShowRefund] = useState(false);
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
-  const [refundMethod, setRefundMethod] = useState<"cash" | "store_credit" | "original">("store_credit");
+  const [refundMethod, setRefundMethod] = useState<"cash" | "store_credit" | "original">("cash");
   const [refunding, setRefunding] = useState(false);
+  const [refundCaps, setRefundCaps] = useState<RefundCapsResponse | null>(null);
+  const [refundCapsLoading, setRefundCapsLoading] = useState(false);
+  const [unpaidCompleteOpen, setUnpaidCompleteOpen] = useState(false);
+  const [unpaidCompleteBody, setUnpaidCompleteBody] = useState("");
+  const [unpaidCompleteSubmitting, setUnpaidCompleteSubmitting] = useState(false);
   const [paymentExcellenceDismissed, setPaymentExcellenceDismissed] = useState(false);
 
   // Pay with Yoco (pending POS sale → terminal with sale_id → finalize sale + mark booking paid)
@@ -1479,6 +1507,16 @@ export default function BookingDetailScreen() {
   /** Whether this booking already has a row in provider_client_ratings (null = not loaded yet). */
   const [hasProviderClientRating, setHasProviderClientRating] = useState<boolean | null>(null);
   const [providerClientRatingValue, setProviderClientRatingValue] = useState<number | null>(null);
+  const [linkedExplorePost, setLinkedExplorePost] = useState<LinkedExplorePostSummary>(null);
+  const [linkedPostSettled, setLinkedPostSettled] = useState(false);
+  const [linkedPostLookupFailed, setLinkedPostLookupFailed] = useState(false);
+  const [completionModalSeen, setCompletionModalSeen] = useState(true);
+  const [postedJustNow, setPostedJustNow] = useState(false);
+  const [completionSheetStep, setCompletionSheetStep] = useState<PostCompletionStep>("choose");
+  const [completionDraftPostId, setCompletionDraftPostId] = useState<string | null>(null);
+  const [completionHideAddPhoto, setCompletionHideAddPhoto] = useState(false);
+  const completionSheetOpenRef = useRef(false);
+  completionSheetOpenRef.current = showProviderCompletionModal;
 
   const isAtHomeFromData =
     data?.location_type === "at_home" ||
@@ -1689,28 +1727,97 @@ export default function BookingDetailScreen() {
     };
   }, [bookingIdStr, data, canViewClientRatings]);
 
-  // Show provider post-completion modal once per booking when opening a completed booking.
-  // `step=rate` is the Explore-publish return path — reopen even if already dismissed.
+  const fetchLinkedExplorePost = useCallback(() => {
+    if (!bookingIdStr) return;
+    setLinkedPostSettled(false);
+    void api
+      .get<LinkedExplorePostSummary>(`/api/explore/posts/mine?booking_id=${encodeURIComponent(bookingIdStr)}`)
+      .then((res) => {
+        if (res.error) {
+          setLinkedPostLookupFailed(true);
+          setLinkedExplorePost(null);
+        } else {
+          setLinkedPostLookupFailed(false);
+          const body = res.data;
+          if (body && typeof body === "object" && "id" in body && "status" in body) {
+            setLinkedExplorePost(body as LinkedExplorePostSummary);
+          } else {
+            setLinkedExplorePost(null);
+          }
+        }
+      })
+      .catch(() => {
+        setLinkedPostLookupFailed(true);
+        setLinkedExplorePost(null);
+      })
+      .finally(() => setLinkedPostSettled(true));
+  }, [bookingIdStr]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!bookingIdStr) return;
+      void AsyncStorage.getItem(PROVIDER_COMPLETION_MODAL_STORAGE_KEY + bookingIdStr)
+        .then((seen) => setCompletionModalSeen(!!seen))
+        .catch(() => setCompletionModalSeen(false));
+      fetchLinkedExplorePost();
+    }, [bookingIdStr, fetchLinkedExplorePost]),
+  );
+
   useEffect(() => {
-    if (!bookingIdStr || !data || data.status !== "completed") return;
-    if (step === "rate") {
-      setShowProviderCompletionModal(true);
+    if (posted !== "1" && posted !== "true") return;
+    setPostedJustNow(true);
+    router.setParams({ posted: undefined } as never);
+  }, [posted, router]);
+
+  useEffect(() => {
+    if (!bookingIdStr || !data || data.status !== "completed") {
+      setShowProviderCompletionModal(false);
       return;
     }
-    let mounted = true;
-    AsyncStorage.getItem(PROVIDER_COMPLETION_MODAL_STORAGE_KEY + bookingIdStr)
-      .then((seen) => {
-        if (mounted && !seen) setShowProviderCompletionModal(true);
-      })
-      .catch(() => {});
-    return () => {
-      mounted = false;
-    };
-  }, [bookingIdStr, data, step]);
+    const ratingSettled = hasProviderClientRating !== null;
+    if (!ratingSettled || !linkedPostSettled) return;
+    // Rating submit and refresh re-run this effect; the open sheet owns its own steps until dismissed.
+    if (completionSheetOpenRef.current) {
+      if (postedJustNow) setPostedJustNow(false);
+      return;
+    }
+
+    const decision = decideBookingPostCompletionSheet({
+      bookingCompleted: true,
+      modalAlreadySeen: completionModalSeen,
+      postedJustNow,
+      ratingLookupSettled: ratingSettled,
+      linkedPostLookupSettled: linkedPostSettled,
+      hasExistingRating: hasProviderClientRating === true,
+      linkedPost: linkedExplorePost,
+      linkedPostLookupFailed,
+    });
+
+    if (!decision.open) {
+      if (postedJustNow) setPostedJustNow(false);
+      return;
+    }
+
+    setCompletionSheetStep(decision.initialStep);
+    setCompletionDraftPostId(decision.initialStep === "continue_draft" ? decision.draftPostId : null);
+    setCompletionHideAddPhoto(decision.hideAddPhoto);
+    setShowProviderCompletionModal(true);
+    if (postedJustNow) setPostedJustNow(false);
+  }, [
+    bookingIdStr,
+    data,
+    hasProviderClientRating,
+    linkedPostSettled,
+    linkedExplorePost,
+    linkedPostLookupFailed,
+    completionModalSeen,
+    postedJustNow,
+  ]);
 
   const dismissProviderCompletionModal = (markSeen: boolean) => {
     setShowProviderCompletionModal(false);
     if (markSeen && bookingIdStr) {
+      setCompletionModalSeen(true);
       AsyncStorage.setItem(PROVIDER_COMPLETION_MODAL_STORAGE_KEY + bookingIdStr, "1").catch(() => {});
     }
   };
@@ -2054,7 +2161,7 @@ export default function BookingDetailScreen() {
   const canMarkPaid = canCollectPayment;
   const requiresRecollectConfirm = (b.payment_status ?? "").toLowerCase() === "refunded";
 
-  const canRefund = canProcessPayments && totalPaid > 0 && totalRefunded < totalPaid;
+  const canRefund = canIssueRefunds && totalPaid > 0 && totalRefunded < totalPaid;
   const maxRefundable = Math.max(0, netPaidAfterRefunds);
   const awaitingMachineRefunds =
     (b as { awaiting_machine_refunds?: Array<{ id: string; amount: number }> }).awaiting_machine_refunds ?? [];
@@ -2386,6 +2493,53 @@ export default function BookingDetailScreen() {
    * (`PROVIDER_BOOKING_STATUS_TRANSITIONS`). Targets are DB statuses; PATCH payload
    * uses provider-facing status strings via `dbTargetToPatchStatusField`.
    */
+  const openCompleteWithBalance = (serverBalance?: number) => {
+    if (!canCompleteWithUnpaid) {
+      Alert.alert(bk("permissionTitle"), bk("unpaidCompleteNotAllowed"), [
+        { text: bk("capturePaymentCta"), onPress: () => setShowMarkPaid(true) },
+        { text: bk("dismissCta"), style: "cancel" },
+      ]);
+      return;
+    }
+    const cur = b.currency ?? getTenantDefaultCurrency();
+    const amount = serverBalance ?? outstanding;
+    setUnpaidCompleteBody(bk("outstandingBalanceBody", { currency: cur, amount: amount.toFixed(2) }));
+    setUnpaidCompleteOpen(true);
+  };
+
+  const submitCompleteService = async (body: { allow_unpaid?: boolean; unpaid_reason?: string }) => {
+    if (!id) return false;
+    markOptimisticStatus("completed");
+    const res = await postMutation(`/api/provider/bookings/${id}/complete-service`, body);
+    setOptimisticBookingStatus(null);
+    if (!res.error) {
+      await refresh();
+      return true;
+    }
+    const details = (res as { errorDetails?: { amount?: number; balance_due?: number } }).errorDetails;
+    if (res.errorCode === "BALANCE_DUE" && !body.allow_unpaid) {
+      openCompleteWithBalance(Number(details?.balance_due ?? details?.amount ?? outstanding));
+    } else if (res.errorCode === "FULLY_REFUNDED") {
+      Alert.alert(bk("completeBlockedFullyRefundedTitle"), res.error, [
+        { text: bk("cancelBookingCta"), onPress: () => void applyDbStatusTransition("cancelled") },
+        { text: bk("dismissCta"), style: "cancel" },
+      ]);
+    } else if (res.errorCode === "TERMINAL_IN_FLIGHT") {
+      Alert.alert(bk("completeBlockedTerminalTitle"), res.error);
+    } else {
+      Alert.alert(bk("statusNotChanged"), mapProviderBookingActionError(res.error, res.errorCode));
+    }
+    await refresh();
+    return false;
+  };
+
+  const confirmCompleteWithBalance = async (reason: string) => {
+    setUnpaidCompleteSubmitting(true);
+    const ok = await submitCompleteService({ allow_unpaid: true, unpaid_reason: reason });
+    setUnpaidCompleteSubmitting(false);
+    if (ok) setUnpaidCompleteOpen(false);
+  };
+
   const applyDbStatusTransition = async (dbTarget: string) => {
     if (!id) return;
     if (dbTarget === "cancelled" ? !canCancelAppointments : !canEditAppointments) {
@@ -2435,20 +2589,11 @@ export default function BookingDetailScreen() {
               text: bk("completeAnywayCta"),
               style: "default",
               onPress: () => {
-                void (async () => {
-                  markOptimisticStatus(dbTarget);
-                  const { error: err, errorCode } = await postMutation(
-                    `/api/provider/bookings/${id}/complete-service`,
-                    {},
-                  );
-                  if (err) {
-                    setOptimisticBookingStatus(null);
-                    Alert.alert(bk("statusNotChanged"), mapProviderBookingActionError(err, errorCode));
-                    return;
-                  }
-                  setOptimisticBookingStatus(null);
-                  await refresh();
-                })();
+                if (outstanding > 0.01) {
+                  openCompleteWithBalance();
+                  return;
+                }
+                void submitCompleteService({});
               },
             },
             { text: bk("cancelCta"), style: "cancel" },
@@ -2473,22 +2618,7 @@ export default function BookingDetailScreen() {
             {
               text: bk("completeAnywayCta"),
               style: "default",
-              onPress: () => {
-                void (async () => {
-                  markOptimisticStatus(dbTarget);
-                  const { error: err, errorCode } = await postMutation(
-                    `/api/provider/bookings/${id}/complete-service`,
-                    {},
-                  );
-                  if (err) {
-                    setOptimisticBookingStatus(null);
-                    Alert.alert(bk("statusNotChanged"), mapProviderBookingActionError(err, errorCode));
-                    return;
-                  }
-                  setOptimisticBookingStatus(null);
-                  await refresh();
-                })();
-              },
+              onPress: () => openCompleteWithBalance(),
             },
             { text: bk("cancelCta"), style: "cancel" },
           ],
@@ -2496,15 +2626,7 @@ export default function BookingDetailScreen() {
         return;
       }
 
-      markOptimisticStatus(dbTarget);
-      const { error: err, errorCode } = await postMutation(`/api/provider/bookings/${id}/complete-service`, {});
-      if (err) {
-        setOptimisticBookingStatus(null);
-        Alert.alert(bk("statusNotChanged"), mapProviderBookingActionError(err, errorCode));
-        return;
-      }
-      setOptimisticBookingStatus(null);
-      await refresh();
+      await submitCompleteService({});
       // The useEffect will automatically show the completion modal if it hasn't been seen yet.
       return;
     }
@@ -2771,9 +2893,30 @@ export default function BookingDetailScreen() {
     await Promise.all([refresh(), refreshCharges()]);
   };
 
+  const openRefundSheet = async (opts?: { keepMethod?: boolean }) => {
+    if (!id) return;
+    setRefundCaps(null);
+    setShowRefund(true);
+    setRefundCapsLoading(true);
+    const res = await api.get<{ caps?: RefundCapsResponse }>(
+      `/api/provider/bookings/${id}/refund-options`,
+    );
+    setRefundCapsLoading(false);
+    const caps = res.data?.caps ?? null;
+    setRefundCaps(caps);
+    if (caps && !opts?.keepMethod) setRefundMethod(caps.suggestedMethod);
+  };
+
+  const refundCapForMethod = (method: "cash" | "store_credit" | "original"): number | null => {
+    if (!refundCaps) return null;
+    if (method === "store_credit") return refundCaps.onlineCap;
+    if (method === "original") return refundCaps.terminalCap;
+    return refundCaps.cashCap;
+  };
+
   const handleRefund = async () => {
-    if (!canProcessPayments) {
-      Alert.alert(bk("permissionTitle"), bk("noProcessPaymentsPermission"));
+    if (!canIssueRefunds) {
+      Alert.alert(bk("permissionTitle"), bk("noIssueRefundsPermission"));
       return;
     }
     const amount = parseFloat(refundAmount);
@@ -2788,12 +2931,41 @@ export default function BookingDetailScreen() {
       );
       return;
     }
+    const methodCap = refundCapForMethod(refundMethod);
+    if (methodCap != null && amount > methodCap + 0.01) {
+      Alert.alert(
+        bk("refundTooLargeTitle"),
+        bk("refundMethodCapBody", { amount: formatCurrency(methodCap, b.currency ?? getTenantDefaultCurrency()) }),
+      );
+      return;
+    }
     const reason = refundReason.trim();
     if (!reason) {
       Alert.alert(bk("reasonRequiredTitle"), bk("reasonRequiredRefund"));
       return;
     }
     if (!id) return;
+    const methodLabel =
+      refundMethod === "original"
+        ? bk("refundBackToCard")
+        : refundMethod === "cash"
+          ? bk("refundInPersonCash")
+          : bk("refundWalletCredit");
+    const confirmed = await new Promise<boolean>((resolve) => {
+      Alert.alert(
+        bk("confirmRefundTitle"),
+        bk("confirmRefundBody", {
+          amount: formatCurrency(amount, b.currency ?? getTenantDefaultCurrency()),
+          method: methodLabel,
+        }),
+        [
+          { text: t("common.cancel"), style: "cancel", onPress: () => resolve(false) },
+          { text: bk("confirmRefund"), style: "destructive", onPress: () => resolve(true) },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) },
+      );
+    });
+    if (!confirmed) return;
     setRefunding(true);
     const res = await postMutation(`/api/provider/bookings/${id}/refund`, { amount, reason, refund_method: refundMethod });
     setRefunding(false);
@@ -4666,7 +4838,7 @@ export default function BookingDetailScreen() {
                   })}
                 </Text>
                 <Text style={twStyle("text-xs text-amber-900 mt-1 leading-5")}>{bk("awaitingYocoRefundBody")}</Text>
-                {canProcessPayments && (
+                {canIssueRefunds && (
                   <TouchableOpacity
                     onPress={() => {
                       setRefundAmount(awaitingMachineRefunds[0].amount.toFixed(2));
@@ -4675,7 +4847,7 @@ export default function BookingDetailScreen() {
                           bk("awaitingYocoRefundReason"),
                       );
                       setRefundMethod("original");
-                      setShowRefund(true);
+                      void openRefundSheet({ keepMethod: true });
                     }}
                     style={twStyle("mt-2 self-start rounded-lg bg-amber-600 py-2 px-3")}
                     accessibilityRole="button"
@@ -4769,14 +4941,8 @@ export default function BookingDetailScreen() {
               {canRefund && (
                 <TouchableOpacity
                   onPress={() => {
-                    setRefundAmount(maxRefundable.toFixed(2));
-                    // Provider-taken bookings (walk-in / provider-created) are
-                    // usually paid in person, so default to a cash refund;
-                    // online bookings default to wallet credit.
-                    setRefundMethod(
-                      b.booking_source === "online" ? "store_credit" : "cash"
-                    );
-                    setShowRefund(true);
+                    setRefundAmount("");
+                    void openRefundSheet();
                   }}
                   style={twStyle("rounded-xl border border-red-300 py-2.5 px-4")}
                 >
@@ -5425,6 +5591,21 @@ export default function BookingDetailScreen() {
         </View>
       </BottomSheet>
 
+      <CompleteWithBalanceSheet
+        visible={unpaidCompleteOpen}
+        submitting={unpaidCompleteSubmitting}
+        labels={{
+          title: bk("unpaidCompleteReasonTitle"),
+          body: unpaidCompleteBody,
+          reasonLabel: bk("unpaidCompleteReasonLabel"),
+          reasonPlaceholder: bk("unpaidCompleteReasonPlaceholder"),
+          confirm: bk("completeAnywayCta"),
+          cancel: bk("cancelCta"),
+        }}
+        onCancel={() => setUnpaidCompleteOpen(false)}
+        onConfirm={(reason) => void confirmCompleteWithBalance(reason)}
+      />
+
       {/* Refund modal */}
       <BottomSheet visible={showRefund} onClose={() => { setShowRefund(false); setRefundReason(""); }} title={bk("issueRefundTitle")}>
         <View>
@@ -5445,7 +5626,34 @@ export default function BookingDetailScreen() {
           <Text style={twStyle("text-xs text-gray-500 mb-2")}>
             Maximum refund now: {b.currency ?? getTenantDefaultCurrency()} {maxRefundable.toFixed(2)}. Refunds increase what the client may still owe on this booking.
           </Text>
-          <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>{bk("refundAmountLabel")}</Text>
+          {refundCapsLoading ? (
+            <ActivityIndicator style={{ marginBottom: 8 }} />
+          ) : refundCaps ? (
+            <View style={twStyle("mb-3 rounded-lg bg-gray-50 p-3")}>
+              <Text style={twStyle("text-xs text-gray-600")}>
+                {bk("refundCapsBreakdown", {
+                  inPerson: formatCurrency(refundCaps.cashCap, b.currency ?? getTenantDefaultCurrency()),
+                  online: formatCurrency(refundCaps.onlineCap, b.currency ?? getTenantDefaultCurrency()),
+                  refunded: formatCurrency(totalRefunded, b.currency ?? getTenantDefaultCurrency()),
+                })}
+              </Text>
+            </View>
+          ) : null}
+          <View style={twStyle("flex-row items-center justify-between mb-2")}>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>{bk("refundAmountLabel")}</Text>
+            {refundCapForMethod(refundMethod) != null ? (
+              <TouchableOpacity
+                onPress={() =>
+                  setRefundAmount(
+                    Math.min(maxRefundable, refundCapForMethod(refundMethod) ?? 0).toFixed(2),
+                  )
+                }
+                accessibilityRole="button"
+              >
+                <Text style={twStyle("text-xs font-semibold text-indigo-600")}>{bk("refundMaxForMethod")}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
           <TextInput
             style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900 mb-4")}
             placeholder={bk("amountPlaceholder")}
@@ -5467,11 +5675,16 @@ export default function BookingDetailScreen() {
           <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>{bk("refundMethod")}</Text>
           <View style={twStyle("flex-row flex-wrap rounded-xl border border-gray-200 bg-gray-50 p-1 mb-2 gap-1")}>
             {([
-              ...(paycloudCollectEnabled || paycloudEnabled || yocoEnabled
+              ...((paycloudCollectEnabled || paycloudEnabled || yocoEnabled) &&
+              (refundCaps ? refundCaps.terminalCap > 0.009 : refundMethod === "original")
                 ? [{ key: "original" as const, label: bk("refundBackToCard") }]
                 : []),
-              { key: "cash" as const, label: bk("refundInPersonCash") },
-              { key: "store_credit" as const, label: bk("refundWalletCredit") },
+              ...(!refundCaps || refundCaps.cashCap > 0.009
+                ? [{ key: "cash" as const, label: bk("refundInPersonCash") }]
+                : []),
+              ...(refundCaps && refundCaps.onlineCap > 0.009 && refundCaps.hasCustomerAccount
+                ? [{ key: "store_credit" as const, label: bk("refundWalletCredit") }]
+                : []),
             ]).map((opt) => {
               const active = refundMethod === opt.key;
               return (
@@ -5625,6 +5838,7 @@ export default function BookingDetailScreen() {
         onClose={() => {
           setShowCardMachinePayment(false);
           setCardMachineInitialProvider(undefined);
+          void refreshBookingDetail();
         }}
         amount={
           paycloudEntityType === "additional_charge"
@@ -5721,11 +5935,16 @@ export default function BookingDetailScreen() {
             : null
         }
         clientDisplayName={b?.customers?.full_name ?? null}
-        initialStep={step === "rate" ? "rate" : "choose"}
+        initialStep={completionSheetStep}
+        hideAddPhoto={completionHideAddPhoto}
+        draftPostId={completionDraftPostId}
         onDismiss={(markSeen) => dismissProviderCompletionModal(markSeen)}
         onRated={() => {
           setHasProviderClientRating(true);
           if (typeof refresh === "function") refresh();
+        }}
+        onContinueDraft={(postId) => {
+          router.push(`/(app)/(tabs)/more/explore-posts?openPostId=${encodeURIComponent(postId)}` as never);
         }}
       />
 
@@ -6093,7 +6312,7 @@ export default function BookingDetailScreen() {
                       Alert.alert(
                         bk("yocoRefundOnMachineTitle"),
                         bk("yocoRefundOnMachineBody", { amount: formatCurrency(due.amount, b.currency ?? getTenantDefaultCurrency()) }),
-                        [{ text: bk("continue"), onPress: () => setShowRefund(true) }],
+                        [{ text: bk("continue"), onPress: () => void openRefundSheet({ keepMethod: true }) }],
                       );
                     } else {
                       Alert.alert(bk("sentToCardMachineTitle"), bk("sentToCardMachineDefault"));

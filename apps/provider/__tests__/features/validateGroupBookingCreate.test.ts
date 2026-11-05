@@ -24,8 +24,21 @@ describe("validateGroupBookingCreateStep", () => {
     expect(validateGroupBookingCreateStep({ ...base, serviceId: "" })).toMatch(/service/i);
   });
 
-  it("requires staff id", () => {
-    expect(validateGroupBookingCreateStep({ ...base, staffId: "" })).toMatch(/team member/i);
+  it("requires staff id when team has members", () => {
+    expect(
+      validateGroupBookingCreateStep({ ...base, staffId: "", staffListLength: 2 }),
+    ).toMatch(/team member/i);
+  });
+
+  it("does not require staff when roster loaded empty", () => {
+    expect(
+      validateGroupBookingCreateStep({
+        ...base,
+        staffId: "",
+        staffListLength: 0,
+        staffRosterUnresolved: false,
+      }),
+    ).toBeNull();
   });
 
   it("requires at-home address and coordinates", () => {
@@ -92,7 +105,9 @@ describe("validateGroupBookingCreateStepDetailed", () => {
   });
 
   it("maps missing staff to staffId field", () => {
-    expect(validateGroupBookingCreateStepDetailed({ ...base, staffId: "" })).toEqual({
+    expect(
+      validateGroupBookingCreateStepDetailed({ ...base, staffId: "", staffListLength: 2 }),
+    ).toEqual({
       field: "staffId",
       message: expect.stringMatching(/team member/i),
     });

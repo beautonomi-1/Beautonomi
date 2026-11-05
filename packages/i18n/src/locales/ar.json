@@ -2351,13 +2351,50 @@
           "viewFullBooking": "عرض full حجز",
           "statusNoShow": "لا show",
           "statusPendingPayment": "قيد الانتظار دفع",
-          "removeParticipantOverpaid": "تمت إزالة الضيف. تم الآن دفع قيمة الحجز الزائد بمقدار {{amount}}. إعادة الفرق للعميل.",
+          "removeParticipantOverpaid": "أُزيل الضيف. دُفع {{amount}} شخصيًا ولا يمكن إرجاعه إلى المحفظة. أعده نقدًا أو عبر جهاز البطاقة من قائمة المزيد.",
           "shareStatusPaid": "حصة مدفوعة",
           "shareStatusPending": "حصة غير مسددة ({{amount}})",
           "shareStatusCancelled": "Spot ملغى",
           "resendInvite": "إعادة إرسال الدعوة",
           "inviteResent": "تم إرسال الدعوة",
-          "inviteResendFailed": "تعذر re-send the invite."
+          "inviteResendFailed": "تعذر re-send the invite.",
+          "slotUnavailableTitle": "الوقت غير متاح",
+          "noStaffForSlot": "لا يوجد أحد من الفريق متفرغ لهذه الخدمة في هذا الوقت. اختر وقتًا آخر أو شخصًا محددًا.",
+          "pickAnotherTime": "اختر وقتًا آخر",
+          "invalidStaffTitle": "عضو الفريق غير متاح",
+          "anyAvailableStaff": "أي شخص متاح",
+          "loadingTeam": "جارٍ تحميل الفريق…",
+          "staffRetryInline": "تعذر تحميل الفريق. اضغط لإعادة المحاولة",
+          "moreActionsTitle": "المزيد",
+          "moreActionsA11y": "المزيد من الإجراءات",
+          "openTerminalBannerBody": "تحصيل بقيمة {{amount}} على جهاز البطاقة ما زال مفتوحًا لهذه المجموعة.",
+          "resumeOpenCharge": "استئناف",
+          "cancelOpenCharge": "إلغاء التحصيل",
+          "cancelOpenChargeTitle": "إلغاء التحصيل المفتوح؟",
+          "cancelOpenChargeBody": "يلغي هذا التحصيل الجاري على جهاز البطاقة حتى تسجّل الدفع بطريقة أخرى.",
+          "cancelOpenChargeFailed": "تعذر إلغاء التحصيل المفتوح.",
+          "openChargeCancelled": "تم إلغاء تحصيل جهاز البطاقة.",
+          "entityInFlightTitle": "تحصيل جهاز البطاقة المفتوح",
+          "cancelOpenChargeAndRecord": "ألغِ التحصيل المفتوح وسجّل",
+          "terminalInFlightTitle": "تحصيل جهاز البطاقة مفتوح",
+          "fullyRefundedTitle": "مُسترد بالكامل",
+          "participantRefundedChip": "مُسترد",
+          "groupNotStartedTitle": "ابدأ المجموعة أولًا",
+          "groupNotStartedBody": "تسجيل الحضور والمغادرة متاح بعد بدء حجز المجموعة.",
+          "unpaidCompleteNotAllowed": "المالك أو المدير فقط يمكنه الإنهاء مع وجود رصيد مستحق.",
+          "unpaidCompleteReasonTitle": "الإنهاء مع رصيد غير مدفوع",
+          "unpaidCompleteReasonRequired": "أدخل سببًا للإنهاء مع وجود رصيد مستحق.",
+          "unpaidCompleteReasonLabel": "السبب (مطلوب)",
+          "unpaidCompleteReasonPlaceholder": "مثال: سيدفع العميل بتحويل غدًا",
+          "refundCapsTitle": "حدود الاسترداد",
+          "refundCapsOnline": "المحفظة / عبر الإنترنت: حتى {{amount}}",
+          "refundCapsCash": "نقدًا: حتى {{amount}}",
+          "refundCapsTerminal": "جهاز البطاقة: حتى {{amount}}",
+          "refundConfirmSummaryTitle": "تأكيد الاسترداد؟",
+          "refundConfirmSummaryBody": "استرد {{amount}} عبر {{method}}.\n\nالسبب: {{reason}}",
+          "refundWalletCapExceeded": "هذا المبلغ يتجاوز حد استرداد المحفظة لهذا الحجز.",
+          "refundMethodOriginal": "جهاز البطاقة",
+          "refundOptionsLoadFailed": "تعذر تحميل حدود الاسترداد. قد تكون المبالغ قديمة."
         },
         "settingsIndex": {
           "title": "الإعدادات",
@@ -3179,7 +3216,7 @@
           "awaitingYocoRefundReason": "تم إلغاء الحجز – رد المبلغ مرة أخرى إلى البطاقة",
           "refundOriginalHint": "يتم إرجاع الأموال إلى بطاقة العميل من خلال ماكينة البطاقة أو البنك. لا يتم أخذ أي شيء من درج النقود الخاص بك.",
           "refundCashHint": "قم بتسليم الأموال إلى العميل شخصيًا. مسجلة لكتبك. لم يتم إصدار رصيد المحفظة. يتم تحديث رصيد الحجز بعد نجاح ذلك.",
-          "refundWalletHint": "يُستخدم عندما لا يكون العميل موجودًا أو يتم الدفع عبر الإنترنت. يتم إضافة المبلغ المسترد إلى محفظتهم.",
+          "refundWalletHint": "فقط الأموال المدفوعة عبر الإنترنت يمكن أن تعود إلى المحفظة. يُضاف المبلغ المسترد إلى محفظتهم.",
           "refundOriginalMachineHint": "يتم إرجاع الأموال إلى بطاقة العميل من خلال ماكينة البطاقة التي تم الدفع عليها.",
           "cancelRefundWalletHint": "يتلقى العميل كامل المبلغ إلى محفظة Beautonomi الخاصة به. لا تنطبق سياسة الإلغاء الخاصة بك على عمليات الإلغاء التي تبدأها.",
           "yocoRefundOnMachineTitle": "استرداد الأموال على جهاز Yoco الخاص بك",
@@ -3189,7 +3226,19 @@
           "yocoRefundRecordCta": "تم استرداد المبلغ على الجهاز — قم بتسجيل المبلغ المسترد",
           "cancelRefundCardHint": "تعود مدفوعات جهاز البطاقات إلى بطاقة العميل (تلقائيًا لأجهزة Beautonomi؛ أما مع Yoco فتسترد المبلغ على الجهاز ثم تسجّله). تُضاف المدفوعات عبر الإنترنت إلى محفظته.",
           "pendingCashRefundTitle": "{{amount}} يُعاد يدويًا",
-          "pendingCashRefundBody": "يجب على العميل تأكيد استلامه هذا المبلغ المسترد في التطبيق. لا تقم بتسجيل استرداد نقدي آخر أثناء انتظار ذلك - قم بإعادة المبلغ الموضح وانتظر التأكيد (أو إغلاق نافذة الـ 48 ساعة)."
+          "pendingCashRefundBody": "يجب على العميل تأكيد استلامه هذا المبلغ المسترد في التطبيق. لا تقم بتسجيل استرداد نقدي آخر أثناء انتظار ذلك - قم بإعادة المبلغ الموضح وانتظر التأكيد (أو إغلاق نافذة الـ 48 ساعة).",
+          "noIssueRefundsPermission": "ليست لديك صلاحية إصدار المبالغ المستردة. اطلب من المالك أو المدير.",
+          "refundMethodCapBody": "طريقة الاسترداد هذه تسمح حتى {{amount}}. اختر طريقة أخرى للباقي.",
+          "refundCapsBreakdown": "مدفوع حضوريًا {{inPerson}} · عبر الإنترنت {{online}} · مُسترد سابقًا {{refunded}}",
+          "refundMaxForMethod": "الحد الأقصى لهذه الطريقة",
+          "confirmRefundTitle": "تأكيد الاسترداد",
+          "confirmRefundBody": "استرد {{amount}} كـ {{method}}. لا يمكن التراجع عن هذا.",
+          "completeBlockedTerminalTitle": "تحصيل جهاز البطاقة مفتوح",
+          "completeBlockedFullyRefundedTitle": "الحجز مُسترد بالكامل",
+          "unpaidCompleteReasonTitle": "الإنهاء مع رصيد غير مدفوع",
+          "unpaidCompleteReasonLabel": "السبب (مطلوب)",
+          "unpaidCompleteReasonPlaceholder": "مثال: سيدفع العميل بتحويل غدًا",
+          "unpaidCompleteNotAllowed": "المالك أو المدير فقط يمكنه إنهاء حجز عليه رصيد مستحق. حصّل الدفع أولًا أو اطلب من مدير."
         },
         "operatingHoursSettings": {
           "title": "Operating ساعات",
@@ -5366,7 +5415,12 @@
           "staffFilteredByService": "عرض أعضاء الفريق المعيّنين لهذه الخدمة.",
           "addressOutsideArea": "هذا العنوان خارج منطقة خدمتك.",
           "addressValidateFailed": "تعذّر التحقق من هذا العنوان. تحقق من اتصالك وحاول مرة أخرى.",
-          "tipPercentWithAmountA11y": "إكرامية {{percent}}٪، {{amount}}"
+          "tipPercentWithAmountA11y": "إكرامية {{percent}}٪، {{amount}}",
+          "anyAvailableStaff": "أي شخص متاح",
+          "assignAnyStaffA11y": "عيّن أي عضو متاح في الفريق",
+          "loadingTeam": "جارٍ تحميل الفريق…",
+          "staffRetryInline": "تعذر تحميل الفريق. اضغط لإعادة المحاولة",
+          "staffRosterLoading": "يتم تحميل فريقك قبل تعيين الموظفين"
         },
         "expressBooking": {
           "invalidJson": "JSON غير صالح.",
@@ -6628,7 +6682,10 @@
           "withdraw": "سحب",
           "withdrawFailed": "تعذر withdraw the offer.",
           "withdrawOffer": "سحب العرض",
-          "emDash": "—"
+          "emDash": "—",
+          "loadingTeam": "جارٍ تحميل الفريق…",
+          "noStaffPreference": "بدون تفضيل",
+          "staffRetryInline": "تعذر تحميل الفريق. اضغط لإعادة المحاولة"
         },
         "bookingLink": {
           "title": "حجز Link",
@@ -8219,7 +8276,10 @@
           "submitRating": "إرسال rating",
           "thanks": "شكرًا!",
           "freshCaption": "{{name}} جديد",
-          "shareBookingLink": "مشاركة رابط الحجز"
+          "shareBookingLink": "مشاركة رابط الحجز",
+          "continueDraftBody": "لقد بدأت منشورًا لهذا الحجز. أكمل من حيث توقفت، أو قيّم العميل.",
+          "continueDraftCta": "متابعة المسودة",
+          "continueDraftTitle": "أكمل مسودة Explore"
         },
         "advancedPricing": {
           "title": "متقدم pricing",
@@ -10314,7 +10374,8 @@
           "permManageMarketing": "إدارة marketing",
           "calendarScopeLabel": "ظهور التقويم",
           "calendarScopeOwn": "Own مواعيد",
-          "calendarScopeAll": "كل تقاويم الفريق"
+          "calendarScopeAll": "كل تقاويم الفريق",
+          "permIssueRefunds": "إصدار المبالغ المستردة"
         },
         "onboardingHub": {
           "title": "إعداد",
@@ -11226,7 +11287,8 @@
           "calendarScopeOwn": "Own مواعيد only",
           "calendarScopeAll": "كل تقاويم الفريق",
           "fullAccessMemberHint": "المالكون والموظفون ذوو صلاحية الإدارة لديهم دائمًا كل الصلاحيات. مفاتيحهم هنا للقراءة فقط.",
-          "manageMarketing": "إدارة marketing"
+          "manageMarketing": "إدارة marketing",
+          "issueRefunds": "إصدار المبالغ المستردة"
         },
         "announcements": {
           "loadFailed": "تعذر load announcements",
@@ -12226,7 +12288,10 @@
           "disabledBody": "{{message}}\n\nYour admin can enable the feature flag commerce.provider_custom_offers for this market.",
           "addPhotos": "إضافة inspiration photos",
           "uploadingPhotos": "Uploading…",
-          "photosAttached": "{{count}} صورة مرفقة"
+          "photosAttached": "{{count}} صورة مرفقة",
+          "loadingTeam": "جارٍ تحميل الفريق…",
+          "noStaffPreference": "بدون تفضيل",
+          "staffRetryInline": "تعذر تحميل الفريق. اضغط لإعادة المحاولة"
         },
         "salesSettings": {
           "title": "Sales إعدادات",
@@ -23821,7 +23886,8 @@
           "bookingChanged": "This حجز changed, reload",
           "statusUpdateFailed": "تعذر تحديث حجز حالة",
           "bulkCompleted": "Bulk {{action}} إكمالd for {{count}} حجز(s)",
-          "bulkFailed": "تعذر {{action}} حجوزات"
+          "bulkFailed": "تعذر {{action}} حجوزات",
+          "bulkPartialFailed": "تم تخطي {{count}} حجزًا في {{action}}"
         },
         "liveSync": {
           "label": "Live · محدّث {{relative}}",
@@ -28640,7 +28706,7 @@
             "createSales": "إنشاء Sales",
             "createSalesDesc": "إنشاء new sales",
             "processPayments": "Process مدفوعات",
-            "processPaymentsDesc": "Process مدفوعات and refunds",
+            "processPaymentsDesc": "تسجيل المدفوعات وتحصيل مدفوعات جهاز البطاقة",
             "viewReports": "عرض التقارير",
             "viewReportsDesc": "عرض business reports",
             "viewServices": "عرض الخدمات",
@@ -28691,7 +28757,9 @@
             "viewOwnEarnings": "View own earnings",
             "viewOwnEarningsDesc": "See tips, commission, and personal earnings",
             "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them."
+            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them.",
+            "issueRefunds": "إصدار المبالغ المستردة",
+            "issueRefundsDesc": "رد أموال العملاء (محفظة أو نقد أو جهاز بطاقة)"
           },
           "team/roles": {
             "roles": "الأدوار",
@@ -28753,7 +28821,8 @@
               "manage_marketing": "Manage marketing",
               "manage_payroll": "Manage payroll",
               "manage_finance": "Platform billing",
-              "view_own_earnings": "View own earnings"
+              "view_own_earnings": "View own earnings",
+              "issue_refunds": "إصدار المبالغ المستردة"
             },
             "catEngagement": "التفاعل",
             "permissionCount": "Permission Count"
@@ -33175,7 +33244,9 @@
         "confirmLateCancelBody": "This will cancel {{name}}'s appointment as a late cancellation. A cancellation fee may apply according to your policy.",
         "cancel": "إلغاء",
         "confirmNoShow": "Mark لا-Show",
-        "confirmLateCancel": "Late إلغاء"
+        "confirmLateCancel": "Late إلغاء",
+        "completeSkipped_one": "لم يُنهَ {{count}} موعد (رصيد مستحق أو مُسترد أو جهاز البطاقة مفتوح)",
+        "completeSkipped_other": "لم تُنهَ {{count}} مواعيد (رصيد مستحق أو مُستردة أو جهاز البطاقة مفتوح)"
       },
       "moreHub": {
         "requiresEditSettings": "Requires تعديل إعدادات permission",

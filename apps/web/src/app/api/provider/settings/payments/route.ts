@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
     const { data: provider, error: providerError } = await supabase
       .from("providers")
       .select(
-        "tenant_id, currency, tax_rate_percent, is_vat_registered, vat_number, country_code, requires_deposit, deposit_percentage, no_show_fee_enabled, no_show_fee_amount, accept_cash, accept_card, accept_online, accept_paystack_terminal, accept_paycloud, tax_inclusive, tips_enabled, tip_presets, receipt_auto_send, tips_distribution"
+        "tenant_id, currency, tax_rate_percent, is_vat_registered, vat_number, requires_deposit, deposit_percentage, no_show_fee_enabled, no_show_fee_amount, accept_cash, accept_card, accept_online, accept_paystack_terminal, accept_paycloud, tax_inclusive, tips_enabled, tip_presets, receipt_auto_send, tips_distribution"
       )
       .eq("id", providerId)
       .single();
@@ -125,7 +125,7 @@ export async function GET(request: NextRequest) {
       tax_inclusive: provider.tax_inclusive ?? null,
       is_vat_registered: provider.is_vat_registered ?? null,
       vat_number: provider.vat_number ?? null,
-      country_code: provider.country_code ?? null,
+      tenant_id: effectiveTenantId,
       tax_rate_override_percent: null,
     });
 

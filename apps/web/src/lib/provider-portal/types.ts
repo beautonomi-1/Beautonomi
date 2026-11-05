@@ -829,6 +829,13 @@ export interface GroupBooking {
   address_place_name?: string;
   travel_fee?: number;
   products?: unknown[];
+  balance_due?: number;
+  open_terminal_payments?: Array<{
+    id: string;
+    provider: "paycloud" | "yoco";
+    amount: number;
+    currency?: string | null;
+  }>;
 }
 
 export interface GroupBookingParticipant {
@@ -850,6 +857,9 @@ export interface GroupBookingParticipant {
   checked_out: boolean;
   checked_out_time?: string;
   booking_status?: string | null;
+  total_paid?: number | null;
+  total_refunded?: number | null;
+  wallet_gift_coverage?: number | null;
 }
 
 /**

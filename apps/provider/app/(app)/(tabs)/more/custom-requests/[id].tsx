@@ -158,10 +158,17 @@ export default function CustomRequestDetailScreen() {
         : "/api/provider/team",
     [selectedLocationId],
   );
-  const { data: teamData } = useApi<{ id: string; name: string }[]>(teamUrl, {
+  const {
+    data: teamData,
+    loading: teamListLoading,
+    error: teamError,
+    refresh: refreshTeamList,
+  } = useApi<{ id: string; name: string }[]>(teamUrl, {
     enabled: !!request,
   });
   const locations = locationsData ?? [];
+  const staffRosterUnresolved =
+    (teamListLoading && !teamData) || (!!teamError && !teamData);
   const staffList = Array.isArray(teamData) ? teamData : [];
 
   const [price, setPrice] = useState("");
@@ -754,28 +761,55 @@ export default function CustomRequestDetailScreen() {
               </>
             )}
 
-            {staffList.length > 0 && (
+            {staffRosterUnresolved || staffList.length > 0 ? (
               <>
                 <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{cr("assignedStaffOptional")}</Text>
                 <View style={twStyle("mb-3 flex-row flex-wrap")}>
-                  {staffList.map((s) => (
+                  {staffRosterUnresolved ? (
                     <TouchableOpacity
-                      key={s.id}
-                      onPress={() => setStaffId(staffId === s.id ? null : s.id)}
-                      style={[twStyle(`rounded-xl border px-3 py-2 ${
-                        staffId === s.id ? "border-primary bg-primary/10" : "border-gray-200 bg-gray-50"
-                      }`), { marginEnd: 8, marginBottom: 8 }]}
+                      onPress={() => {
+                        if (teamError && !teamData) void refreshTeamList();
+                      }}
+                      style={[twStyle("rounded-xl border border-amber-200 bg-amber-50 px-3 py-2"), { marginEnd: 8, marginBottom: 8 }]}
                     >
-                      <Text
-                        style={twStyle(`text-sm ${staffId === s.id ? "font-medium text-primary" : "text-gray-600"}`)}
-                      >
-                        {s.name}
+                      <Text style={twStyle("text-sm text-amber-900")}>
+                        {teamError && !teamData ? cr("staffRetryInline") : cr("loadingTeam")}
                       </Text>
                     </TouchableOpacity>
-                  ))}
+                  ) : (
+                    <>
+                      <TouchableOpacity
+                        onPress={() => setStaffId(null)}
+                        style={[twStyle(`rounded-xl border px-3 py-2 ${
+                          staffId === null ? "border-primary bg-primary/10" : "border-gray-200 bg-gray-50"
+                        }`), { marginEnd: 8, marginBottom: 8 }]}
+                      >
+                        <Text
+                          style={twStyle(`text-sm ${staffId === null ? "font-medium text-primary" : "text-gray-600"}`)}
+                        >
+                          {cr("noStaffPreference")}
+                        </Text>
+                      </TouchableOpacity>
+                      {staffList.map((s) => (
+                        <TouchableOpacity
+                          key={s.id}
+                          onPress={() => setStaffId(s.id)}
+                          style={[twStyle(`rounded-xl border px-3 py-2 ${
+                            staffId === s.id ? "border-primary bg-primary/10" : "border-gray-200 bg-gray-50"
+                          }`), { marginEnd: 8, marginBottom: 8 }]}
+                        >
+                          <Text
+                            style={twStyle(`text-sm ${staffId === s.id ? "font-medium text-primary" : "text-gray-600"}`)}
+                          >
+                            {s.name}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </>
+                  )}
                 </View>
               </>
-            )}
+            ) : null}
 
             <Text style={twStyle("mb-1 text-sm font-semibold text-gray-700")}>{cr("proposedDateTime")}</Text>
             <Text style={twStyle("mb-2 text-xs text-gray-500")}>

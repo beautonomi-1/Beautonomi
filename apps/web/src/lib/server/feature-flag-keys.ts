@@ -236,6 +236,12 @@ export const FEATURE_FLAG_KEYS = {
   FINANCE_PROVIDER_VAT_PAYOUT: "finance.provider_vat_payout",
   /** When on, show guided VAT onboarding/settings UI v2. Resolver applies regardless. */
   TAX_PROVIDER_VAT_SETTINGS_V2: "tax.provider_vat_settings_v2",
+
+  /**
+   * Platform switch for statutory payroll (PAYE/UIF). Per-provider
+   * `provider_settings.payroll_v2_enabled` must also be true.
+   */
+  PAYROLL_V2: "payroll.v2",
 } as const;
 
 export type PaymentRelatedFeatureKey =

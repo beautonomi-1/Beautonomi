@@ -48,7 +48,7 @@ async function runJob(request: NextRequest) {
         provider_id,
         plan_id,
         next_billing_at,
-        plan:membership_plans(name, price_monthly, currency)
+        plan:membership_plans!user_memberships_plan_id_fkey(name, price_monthly, currency)
       `)
       .eq("auto_renew", true)
       .eq("status", "active")

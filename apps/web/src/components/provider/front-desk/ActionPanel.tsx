@@ -35,6 +35,8 @@ import {
 } from "@/lib/front-desk/actions";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { fetcher } from "@/lib/http/fetcher";
+import { usePermissions } from "@/hooks/usePermissions";
+import { BookingCompleteConfirmDialog } from "@/components/provider/booking/view/BookingCompleteConfirmDialog";
 
 const BADGE_PILLS: Record<string, string> = {
   late: "bg-red-50/90 text-red-900/90",
@@ -131,6 +133,20 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
       opts?.afterComplete?.();
     }
   };
+
+  const { isOwner, isManager } = usePermissions();
+  const [unpaidCompleteOpen, setUnpaidCompleteOpen] = React.useState(false);
+  const [unpaidCompleteBusy, setUnpaidCompleteBusy] = React.useState(false);
+  const runComplete = (unpaidReason?: string) =>
+    runAction(() => completeBooking(booking.id, (booking as any).version, unpaidReason), {
+      afterComplete: () =>
+        onCompleteRequestRating?.({
+          bookingId: booking.id,
+          customerName: booking.customer_name || t("web.provider.common.customer"),
+          locationId: (booking as any).location_id ?? null,
+          locationName: (booking as any).location_name ?? null,
+        }),
+    });
 
   React.useEffect(() => {
     if (!cancelConfirmOpen) return;
@@ -318,17 +334,13 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
                   variant="outline"
                   size="sm"
                   className="w-full rounded-2xl border-[#0F172A]/12 hover:bg-[#0F172A]/[0.04] text-[#0F172A]"
-                  onClick={() =>
-                    runAction(() => completeBooking(booking.id, (booking as any).version), {
-                      afterComplete: () =>
-                        onCompleteRequestRating?.({
-                          bookingId: booking.id,
-                          customerName: booking.customer_name || t("web.provider.common.customer"),
-                          locationId: (booking as any).location_id ?? null,
-                          locationName: (booking as any).location_name ?? null,
-                        }),
-                    })
-                  }
+                  onClick={() => {
+                    if (outstandingBalance > 0) {
+                      setUnpaidCompleteOpen(true);
+                      return;
+                    }
+                    void runComplete();
+                  }}
                 >
                   {outstandingBalance > 0 ? t("web.provider.frontDesk.completeWithoutPayment") : t("web.provider.frontDesk.markCompleted")}
                 </Button>
@@ -397,6 +409,24 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <BookingCompleteConfirmDialog
+        open={unpaidCompleteOpen}
+        onOpenChange={setUnpaidCompleteOpen}
+        reason="outstanding"
+        message={t("web.provider.frontDesk.completeWithoutPaymentHint")}
+        canCompleteWithBalance={isOwner || isManager}
+        busy={unpaidCompleteBusy}
+        onCompleteAnyway={async (unpaidReason) => {
+          setUnpaidCompleteBusy(true);
+          try {
+            await runComplete(unpaidReason);
+            setUnpaidCompleteOpen(false);
+          } finally {
+            setUnpaidCompleteBusy(false);
+          }
+        }}
+      />
     </div>
   );
 }

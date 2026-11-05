@@ -38,6 +38,8 @@ function makeAdmin(state: {
   group: Row | null;
   booking: Row;
   lines: Row[];
+  payments?: Row[];
+  refunds?: Row[];
 }) {
   const updates: Array<{ table: string; patch: Row }> = [];
   const deletes: Array<{ table: string; filters: Row }> = [];
@@ -53,6 +55,7 @@ function makeAdmin(state: {
           filters[col] = val;
           return chain;
         },
+        in: () => chain,
         update: (p: Row) => {
           op = "update";
           patch = p;
@@ -82,6 +85,14 @@ function makeAdmin(state: {
             );
             state.lines = state.lines.filter((l) => !removed.includes(l));
             resolve({ data: removed, error: null });
+            return;
+          }
+          if (table === "booking_payments") {
+            resolve({ data: state.payments ?? [], error: null });
+            return;
+          }
+          if (table === "booking_refunds") {
+            resolve({ data: state.refunds ?? [], error: null });
             return;
           }
           resolve({ data: null, error: null });
@@ -150,7 +161,7 @@ describe("cancelGroupGuest", () => {
     expect(deletes).toHaveLength(0);
   });
 
-  const taggedState = () => ({
+  const taggedState = (paidVia: "online" | "cash" = "online") => ({
     participant: { id: "p3", booking_id: null, group_booking_id: "g1", is_primary_contact: false },
     group: { primary_contact_booking_id: "lead-1" },
     booking: {
@@ -161,11 +172,31 @@ describe("cancelGroupGuest", () => {
       total_amount: 300,
       total_paid: 300,
       total_refunded: 0,
+      customer_id: "cust-1",
     } as Row,
     lines: [
       { id: "l1", booking_id: "lead-1", group_participant_id: "p1", price: 200 },
       { id: "l2", booking_id: "lead-1", group_participant_id: "p3", price: 100 },
     ],
+    payments: [
+      paidVia === "online"
+        ? { id: "pay-1", amount: 300, payment_method: "card", payment_provider: "paystack", status: "completed" }
+        : { id: "pay-1", amount: 300, payment_method: "cash", payment_provider: "cash", status: "completed" },
+    ] as Row[],
+  });
+
+  it("organizer paid in cash: no wallet credit, the overpayment is due in person", async () => {
+    const { admin, state } = makeAdmin(taggedState("cash"));
+    const res = await cancelGroupGuest(admin, { participantId: "p3", groupBookingId: "g1", cancelledBy: "u1" });
+    expect(res).toMatchObject({
+      ok: true,
+      mode: "booking_lines",
+      walletCredited: 0,
+      overpaidAmount: 100,
+      in_person_refund_due: 100,
+    });
+    expect(walletRefund).not.toHaveBeenCalled();
+    expect(state.lines.map((l) => l.id)).toEqual(["l1"]);
   });
 
   it("organizer paid for the guest: removes lines and credits the organizer's wallet", async () => {
@@ -179,6 +210,7 @@ describe("cancelGroupGuest", () => {
       guestRefunded: 0,
       walletCredited: 100,
       overpaidAmount: 0,
+      in_person_refund_due: 0,
     });
     expect(state.lines.map((l) => l.id)).toEqual(["l1"]);
     expect(state.booking.total_amount).toBe(200);

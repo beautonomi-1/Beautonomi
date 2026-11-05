@@ -50,6 +50,8 @@ interface BottomSheetProps {
   showHandle?: boolean;
   /** Optional ref for the sheet's main vertical ScrollView (section jump / scroll reset). */
   contentScrollRef?: RefObject<ScrollView | null>;
+  /** Disable while a nested gesture (e.g. caption drag) owns the touch. */
+  scrollEnabled?: boolean;
 }
 
 const GestureRoot = GestureHandlerRootView as ComponentType<
@@ -67,6 +69,7 @@ export function BottomSheet({
   snapHeight = "auto",
   showHandle = true,
   contentScrollRef,
+  scrollEnabled = true,
 }: BottomSheetProps) {
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
@@ -217,6 +220,7 @@ export function BottomSheet({
                   backgroundColor: "#ffffff",
                 }}
                 nestedScrollEnabled
+                scrollEnabled={scrollEnabled}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="interactive"
                 showsVerticalScrollIndicator={false}

@@ -31,7 +31,7 @@ import {
   trackStoreReviewEvent,
 } from "@/lib/store-review-prompt";
 
-export type PostCompletionStep = "idle" | "choose" | "photo" | "rate" | "done";
+export type PostCompletionStep = "idle" | "choose" | "photo" | "rate" | "done" | "continue_draft";
 
 type PostCompletionSheetProps = {
   visible: boolean;
@@ -44,10 +44,13 @@ type PostCompletionSheetProps = {
   showShareBookingLink?: boolean;
   providerPublicBookUrl?: string | null;
   clientDisplayName?: string | null;
-  /** When returning from Explore (`step=rate`), open on the rating step. */
   initialStep?: PostCompletionStep;
+  /** Hide "Add a photo" when this booking already has a published Explore post. */
+  hideAddPhoto?: boolean;
+  draftPostId?: string | null;
   onDismiss: (markSeen: boolean) => void;
   onRated: () => void;
+  onContinueDraft?: (postId: string) => void;
 };
 
 const STORAGE_PREFIX = "provider_booking_completion_modal_seen_";
@@ -63,8 +66,11 @@ export function PostCompletionSheet({
   providerPublicBookUrl,
   clientDisplayName,
   initialStep = "choose",
+  hideAddPhoto = false,
+  draftPostId,
   onDismiss,
   onRated,
+  onContinueDraft,
 }: PostCompletionSheetProps) {
   const router = useRouter();
   const { t } = useTranslation();
@@ -83,12 +89,23 @@ export function PostCompletionSheet({
   const seenRef = useRef(false);
   const submittedStarsRef = useRef(0);
 
+  const wasVisibleRef = useRef(false);
   useEffect(() => {
-    if (visible) {
-      setStep(initialStep === "rate" && !hasExistingRating ? "rate" : "choose");
+    const opened = visible && !wasVisibleRef.current;
+    wasVisibleRef.current = visible;
+    if (opened) {
+      if (initialStep === "continue_draft" && draftPostId) {
+        setStep("continue_draft");
+      } else if (initialStep === "rate" && !hasExistingRating) {
+        setStep("rate");
+      } else if (hideAddPhoto && !hasExistingRating) {
+        setStep("rate");
+      } else {
+        setStep("choose");
+      }
       setRateError(null);
     }
-  }, [visible, hasExistingRating, initialStep]);
+  }, [visible, hasExistingRating, initialStep, hideAddPhoto, draftPostId]);
 
   const markSeen = useCallback(() => {
     seenRef.current = true;
@@ -105,7 +122,6 @@ export function PostCompletionSheet({
       ...(primaryOfferingId ? { offeringId: primaryOfferingId } : {}),
       bookingId,
       returnTo: "booking",
-      step: "rate",
     }).toString();
     router.push(`/(app)/(tabs)/more/explore-posts?${qs}` as never);
   };
@@ -195,12 +211,14 @@ export function PostCompletionSheet({
                   {pc("pointsEarned", { count: providerPointsEarned })}
                 </Text>
               ) : null}
-              <TouchableOpacity
-                onPress={() => setStep("photo")}
-                style={{ backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 14, alignItems: "center", marginBottom: 10 }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "700" }}>{pc("addPhoto")}</Text>
-              </TouchableOpacity>
+              {!hideAddPhoto ? (
+                <TouchableOpacity
+                  onPress={() => setStep("photo")}
+                  style={{ backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 14, alignItems: "center", marginBottom: 10 }}
+                >
+                  <Text style={{ color: "#fff", fontWeight: "700" }}>{pc("addPhoto")}</Text>
+                </TouchableOpacity>
+              ) : null}
               {!hasExistingRating ? (
                 <TouchableOpacity
                   onPress={() => setStep("rate")}
@@ -289,8 +307,45 @@ export function PostCompletionSheet({
                   <Text style={{ color: "#fff", fontWeight: "700" }}>{pc("submitRating")}</Text>
                 )}
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setStep("choose")} style={{ paddingVertical: 12, alignItems: "center" }}>
-                <Text style={{ color: Colors.gray[500] }}>{t("common.back") as string}</Text>
+              {draftPostId ? (
+                <TouchableOpacity onPress={() => setStep("continue_draft")} style={{ paddingVertical: 12, alignItems: "center" }}>
+                  <Text style={{ color: Colors.gray[500] }}>{t("common.back") as string}</Text>
+                </TouchableOpacity>
+              ) : hideAddPhoto ? (
+                <TouchableOpacity onPress={markSeen} style={{ paddingVertical: 12, alignItems: "center" }}>
+                  <Text style={{ color: Colors.gray[500] }}>{pc("doneForNow")}</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity onPress={() => setStep("choose")} style={{ paddingVertical: 12, alignItems: "center" }}>
+                  <Text style={{ color: Colors.gray[500] }}>{t("common.back") as string}</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          ) : null}
+
+          {step === "continue_draft" && draftPostId ? (
+            <>
+              <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: 12 }}>{pc("continueDraftTitle")}</Text>
+              <Text style={{ color: Colors.gray[600], marginBottom: 16 }}>{pc("continueDraftBody")}</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  markSeen();
+                  onContinueDraft?.(draftPostId);
+                }}
+                style={{ backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 14, alignItems: "center", marginBottom: 10 }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "700" }}>{pc("continueDraftCta")}</Text>
+              </TouchableOpacity>
+              {!hasExistingRating ? (
+                <TouchableOpacity
+                  onPress={() => setStep("rate")}
+                  style={{ borderWidth: 1.5, borderColor: Colors.primary, paddingVertical: 13, borderRadius: 12, alignItems: "center", marginBottom: 10 }}
+                >
+                  <Text style={{ color: Colors.primary, fontWeight: "600" }}>{pc("rateClient")}</Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity onPress={markSeen} style={{ paddingVertical: 12, alignItems: "center" }}>
+                <Text style={{ color: Colors.gray[500] }}>{pc("doneForNow")}</Text>
               </TouchableOpacity>
             </>
           ) : null}

@@ -2351,13 +2351,50 @@
           "viewFullBooking": "Sheba e tletse buking",
           "statusNoShow": "No bontša",
           "statusPendingPayment": "e emetse tefo",
-          "removeParticipantOverpaid": "Moeti tlosad. The buking is hona joale overe lefuoe by {{amount}}. puseletso the difference to the moreki.",
+          "removeParticipantOverpaid": "Moeti o tlositswe. {{amount}} e lefilwe ka seqo mme e ke ke ea ea mokotleng. Busetsa ka chelete kapa mochining oa karete o sebelisa Pusetso lenaneng la Tse ling.",
           "shareStatusPaid": "arolelana e lefuoe",
           "shareStatusPending": "arolelana ha e a lefuoa ({{amount}})",
           "shareStatusCancelled": "Spot e hlakotsoe",
           "resendInvite": "Re-romela memo",
           "inviteResent": "memo E rometsoe",
-          "inviteResendFailed": "Ha e a khona ho re-romela the memo."
+          "inviteResendFailed": "Ha e a khona ho re-romela the memo.",
+          "slotUnavailableTitle": "Nako ha e fumanehe",
+          "noStaffForSlot": "Ha ho setho sa sehlopha se lokolohileng bakeng sa tšebeletso ena ka nako ena. Khetha nako e nngwe kapa setho se itseng.",
+          "pickAnotherTime": "Khetha nako e nngwe",
+          "invalidStaffTitle": "Setho sa sehlopha ha se fumanehe",
+          "anyAvailableStaff": "E mong le e mong ea fumanehang",
+          "loadingTeam": "Kenya sehlopha…",
+          "staffRetryInline": "Ha e kgone ho kenya sehlopha. Tlanya ho leka hape",
+          "moreActionsTitle": "Tse ling",
+          "moreActionsA11y": "Liketso tse ling",
+          "openTerminalBannerBody": "Tefiso ea mochini oa karete ea {{amount}} e ntse e bulehile sehlopheng sena.",
+          "resumeOpenCharge": "Tswela pele",
+          "cancelOpenCharge": "Hlakola tefiso",
+          "cancelOpenChargeTitle": "Hlakola tefiso e bulehileng?",
+          "cancelOpenChargeBody": "Sena se hlakola tefiso ea mochini oa karete e ntseng e tsoela pele hore o ngole tefo ka tsela e nngwe.",
+          "cancelOpenChargeFailed": "Ha e kgone ho hlakola tefiso e bulehileng.",
+          "openChargeCancelled": "Tefiso ea mochini oa karete e hlakotsoe.",
+          "entityInFlightTitle": "Tefiso ea mochini oa karete e bulehileng",
+          "cancelOpenChargeAndRecord": "Hlakola tefiso e bulehileng o be o ngola",
+          "terminalInFlightTitle": "Tefiso ea mochini oa karete e bulehile",
+          "fullyRefundedTitle": "E buselitsoe ka botlalo",
+          "participantRefundedChip": "E buselitsoe",
+          "groupNotStartedTitle": "Qala sehlopha pele",
+          "groupNotStartedBody": "Ho kena le ho tsoa ho fumaneha ha ho qala ho boloka sehlopha.",
+          "unpaidCompleteNotAllowed": "Mong'a kapa molaodi feela a ka qeta ha ho sa le chelete e setseng.",
+          "unpaidCompleteReasonTitle": "Qeta ho sa le chelete",
+          "unpaidCompleteReasonRequired": "Kenya lebaka la ho qeta ha ho sa le chelete.",
+          "unpaidCompleteReasonLabel": "Lebaka (lea hlokahala)",
+          "unpaidCompleteReasonPlaceholder": "mohl. Moreki o tla lefa hosane ka EFT",
+          "refundCapsTitle": "Meeli ea pusetso",
+          "refundCapsOnline": "Sepache / inthaneteng: ho fihla ho {{amount}}",
+          "refundCapsCash": "Chelete ka letsoho: ho fihla ho {{amount}}",
+          "refundCapsTerminal": "Mochini oa karete: ho fihla ho {{amount}}",
+          "refundConfirmSummaryTitle": "Netefatsa pusetso?",
+          "refundConfirmSummaryBody": "Busetsa {{amount}} ka {{method}}.\n\nLebaka: {{reason}}",
+          "refundWalletCapExceeded": "Palo eo e feta moeli oa pusetso ea sepache bakeng sa peeletso ena.",
+          "refundMethodOriginal": "Mochini oa karete",
+          "refundOptionsLoadFailed": "Ha e kgone ho kenya meeli ea pusetso. Lipalo li ka ba li siiloe ke nako."
         },
         "settingsIndex": {
           "title": "Litlhophiso",
@@ -3183,13 +3220,25 @@
           "awaitingYocoRefundReason": "Booking hlakotsoe — puseletso khutlela kareteng",
           "refundOriginalHint": "Chelete e khutlela kareteng ea moreki ka mochini oa karete kapa banka. Ha ho letho le nkiloeng ka laeng ea hau ea chelete.",
           "refundCashHint": "Busetsa chelete ho moreki ka seqo. E rekotiloeng bakeng sa libuka tsa hau; ha ho na mokitlane oa sepache o fanoang. Chelete ea peeletso e ea ntlafatsoa ka mor'a hore sena se atlehe.",
-          "refundWalletHint": "Sebelisa ha moreki a le sieo kapa tefo e entsoe inthaneteng. Puseletso e kenngoa sepacheng sa bona.",
+          "refundWalletHint": "Ke chelete feela e lefilweng inthaneteng e ka kgutlelang mokotleng. Pusetso e kenngwa mokotleng wa bona.",
           "refundOriginalMachineHint": "Chelete e khutlela kareteng ea moreki ka mochini oa karete eo e lefelletsoeng ho eona.",
           "cancelWalletNote": "Moreki o tla fumana pusetso e felletseng sepacheng sa Beautonomi sa lichelete tse seng li lefshoe. Leano la hau la ho hlakoloa ha le sebetse ho hlakoloeng hoo o ho qalileng.",
           "cancelRefundTo": "Khutlisa chelete e lefiloeng ho",
           "yocoRefundRecordCta": "Refunded ka mochine — rekota puseletso",
           "pendingCashRefundTitle": "{{amount}} to return ka mahlo",
-          "pendingCashRefundBody": "Moreki o tlameha ho netefatsa hore o fumane puseletso ena ho app. Se ke oa rekota puseletso e 'ngoe ea chelete ha sena se ntse se emetse - khutlisetsa chelete e bontšitsoeng ebe u emela netefatso (kapa fensetere ea lihora tse 48 ho koaloa)."
+          "pendingCashRefundBody": "Moreki o tlameha ho netefatsa hore o fumane puseletso ena ho app. Se ke oa rekota puseletso e 'ngoe ea chelete ha sena se ntse se emetse - khutlisetsa chelete e bontšitsoeng ebe u emela netefatso (kapa fensetere ea lihora tse 48 ho koaloa).",
+          "noIssueRefundsPermission": "Ha o na tumello ea ho fana ka dipusetso. Botsa mong'a kapa molaodi.",
+          "refundMethodCapBody": "Mokhoa ona oa pusetso o lumella ho fihla ho {{amount}}. Khetha mokhoa o mong bakeng sa tse setseng.",
+          "refundCapsBreakdown": "E lefiloe ka seqo {{inPerson}} · Inthaneteng {{online}} · E se e buselitsoe {{refunded}}",
+          "refundMaxForMethod": "Boholo bakeng sa mokhoa ona",
+          "confirmRefundTitle": "Netefatsa pusetso",
+          "confirmRefundBody": "Busetsa {{amount}} e le {{method}}. Sena se ke ke sa hlakoloa.",
+          "completeBlockedTerminalTitle": "Tefiso ea mochini oa karete e bulehile",
+          "completeBlockedFullyRefundedTitle": "Peeletso e buselitsoe ka botlalo",
+          "unpaidCompleteReasonTitle": "Qeta ho sa le chelete",
+          "unpaidCompleteReasonLabel": "Lebaka (lea hlokahala)",
+          "unpaidCompleteReasonPlaceholder": "mohl. Moreki o tla lefa hosane ka EFT",
+          "unpaidCompleteNotAllowed": "Mong'a kapa molaodi feela a ka qeta peeletso ha ho sa le chelete. Bokella tefo pele kapa o botse molaodi."
         },
         "operatingHoursSettings": {
           "title": "Opetekanyo lihora",
@@ -5366,7 +5415,12 @@
           "staffFilteredByService": "Ho bontšoa litho tsa sehlopha tse abetsoeng tšebeletso ena.",
           "addressOutsideArea": "Aterese ena e kantle ho sebaka sa hau sa tshebeletso.",
           "addressValidateFailed": "Ha re khone ho netefatsa aterese ena. Sheba khokahanyo ea hau u leke hape.",
-          "tipPercentWithAmountA11y": "{{percent}}% thiphu, {{amount}}"
+          "tipPercentWithAmountA11y": "{{percent}}% thiphu, {{amount}}",
+          "anyAvailableStaff": "Efe kapa efe e fumanehang",
+          "assignAnyStaffA11y": "Abela setho sefe kapa sefe se fumanehang",
+          "loadingTeam": "Sehlopha se a laela…",
+          "staffRetryInline": "Sehlopha ha se a laela. Tobetsa ho leka hape",
+          "staffRosterLoading": "Sehlopha sa hao se a laela pele basebetsi ba abelwa"
         },
         "expressBooking": {
           "invalidJson": "JSON. e fosahetseng.",
@@ -6628,7 +6682,10 @@
           "withdraw": "Hlakola",
           "withdrawFailed": "Ha e a khona ho withdraw the offer.",
           "withdrawOffer": "Hlakola Tlhahiso",
-          "emDash": "—"
+          "emDash": "—",
+          "loadingTeam": "Sehlopha se a laela…",
+          "noStaffPreference": "Ha ho khetho",
+          "staffRetryInline": "Sehlopha ha se a laela. Tobetsa ho leka hape"
         },
         "bookingLink": {
           "title": "buking sehokelo",
@@ -8219,7 +8276,10 @@
           "submitRating": "romela tekanyo",
           "thanks": "Ke a leboha!",
           "freshCaption": "{{name}} e ncha",
-          "shareBookingLink": "Arolelana lehokelo la pehelo"
+          "shareBookingLink": "Arolelana lehokelo la pehelo",
+          "continueDraftBody": "O se o qadile poso bakeng sa peeletso ena. Tswela pele moo o emeng teng, kapa lekanya moreki.",
+          "continueDraftCta": "Tswela pele ka moralo",
+          "continueDraftTitle": "Qetella moralo wa hao wa Explore"
         },
         "advancedPricing": {
           "title": "E tsoetseng pele litheko",
@@ -10314,7 +10374,8 @@
           "permManageMarketing": "Laola Marketing",
           "calendarScopeLabel": "khalendara visibility",
           "calendarScopeOwn": "Own likopano",
-          "calendarScopeAll": "All sehlopha khalendaras"
+          "calendarScopeAll": "All sehlopha khalendaras",
+          "permIssueRefunds": "Fana ka dipusetso"
         },
         "onboardingHub": {
           "title": "Beha",
@@ -11226,7 +11287,8 @@
           "calendarScopeOwn": "Own likopano only",
           "calendarScopeAll": "All sehlopha khalendaras",
           "fullAccessMemberHint": "Beng le basebetsi ba nang le phihlelo ya tsamaiso ba na le ditokelo tsohle kamehla. Dikonopo tsa bona di balwa feela mona.",
-          "manageMarketing": "Laola Marketing"
+          "manageMarketing": "Laola Marketing",
+          "issueRefunds": "Fana ka dipusetso"
         },
         "announcements": {
           "loadFailed": "Ha e a khona ho jaefa announcements",
@@ -12226,7 +12288,10 @@
           "disabledBody": "{{message}}\n\nYour admin can bula the feature flag commerce.mofani_ea khethehileng_offers for this market.",
           "addPhotos": "Kenya inspiration lifoto",
           "uploadingPhotos": "e a jara…",
-          "photosAttached": "{{count}} foto(s) attached"
+          "photosAttached": "{{count}} foto(s) attached",
+          "loadingTeam": "Sehlopha se a laela…",
+          "noStaffPreference": "Ha ho khetho",
+          "staffRetryInline": "Sehlopha ha se a laela. Tobetsa ho leka hape"
         },
         "salesSettings": {
           "title": "Thekisos litlhophiso",
@@ -23821,7 +23886,8 @@
           "bookingChanged": "This buking fetolad, rejaefa",
           "statusUpdateFailed": "E hlolehile ho ntlafatsa buking boemo",
           "bulkCompleted": "Bulk {{action}} e felile for {{count}} buking(s)",
-          "bulkFailed": "E hlolehile ho {{action}} dibuking"
+          "bulkFailed": "E hlolehile ho {{action}} dibuking",
+          "bulkPartialFailed": "Dipeeletso tse {{count}} di tlolilwe bakeng sa {{action}}"
         },
         "liveSync": {
           "label": "Ea nnete · ntlafatsad {{relative}}",
@@ -28640,7 +28706,7 @@
             "createSales": "Theha Thekisos",
             "createSalesDesc": "Theha e ncha sales",
             "processPayments": "Process ditefo",
-            "processPaymentsDesc": "Process ditefo and puseletsos",
+            "processPaymentsDesc": "Ngola ditefo ebe o nka ditefo tsa mochini oa karete",
             "viewReports": "Sheba litlaleho",
             "viewReportsDesc": "Sheba Khoebo litlaleho",
             "viewServices": "Sheba Litšebeletso",
@@ -28691,7 +28757,9 @@
             "viewOwnEarnings": "View own earnings",
             "viewOwnEarningsDesc": "See tips, commission, and personal earnings",
             "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them."
+            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them.",
+            "issueRefunds": "Fana ka dipusetso",
+            "issueRefundsDesc": "Busetsa bareki (mokotla, chelete kapa mochini oa karete)"
           },
           "team/roles": {
             "roles": "Karolos",
@@ -28753,7 +28821,8 @@
               "manage_marketing": "Manage marketing",
               "manage_payroll": "Manage payroll",
               "manage_finance": "Platform billing",
-              "view_own_earnings": "View own earnings"
+              "view_own_earnings": "View own earnings",
+              "issue_refunds": "Fana ka dipusetso"
             },
             "catEngagement": "Engagement",
             "permissionCount": "tumello Count"
@@ -33175,7 +33244,9 @@
         "confirmLateCancelBody": "This will cancel {{name}}'s appointment as a late cancellation. A cancellation fee may apply according to your policy.",
         "cancel": "Hlakola",
         "confirmNoShow": "Mark No-bontša",
-        "confirmLateCancel": "Late hlakola"
+        "confirmLateCancel": "Late hlakola",
+        "completeSkipped_one": "Kemiso e {{count}} ha ea ka ea qetwa (chelete e setseng, e buselitsoe kapa mochini oa karete o bulehile)",
+        "completeSkipped_other": "Dikemiso tse {{count}} ha lia ka tsa qetwa (chelete e setseng, di buselitsoe kapa mochini oa karete o bulehile)"
       },
       "moreHub": {
         "requiresEditSettings": "Requires lokisa litlhophiso tumello",

@@ -186,10 +186,16 @@ const LINK_ITEMS: {
 
 export default function TeamMemberDetailScreen() {
   const { t } = useTranslation();
-  const tm = (key: string, opts?: Record<string, unknown>) =>
-    t(`provider.mobile.screens.teamMember.${key}`, opts) as string;
-  const tl = (key: string, opts?: Record<string, unknown>) =>
-    t(`provider.mobile.screens.teamList.${key}`, opts) as string;
+  const tm = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.teamMember.${key}`, opts) as string,
+    [t],
+  );
+  const tl = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.teamList.${key}`, opts) as string,
+    [t],
+  );
   const { id, edit: editParam } = useLocalSearchParams<{ id: string; edit?: string }>();
   const router = useRouter();
   const editIntentDone = useRef(false);

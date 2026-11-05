@@ -21,11 +21,14 @@ export function formatPaycloudCollectLabel(params: {
   context: PaycloudCollectContext;
   amount: number;
   currency?: string;
+  /** Open terminal charge on this entity (not global terminal busy state). */
+  entityInFlight?: boolean;
+  /** @deprecated Prefer `entityInFlight`. */
   inFlight?: boolean;
   depositAmount?: number | null;
   fullOutstanding?: number | null;
 }): string {
-  if (params.inFlight) {
+  if (params.entityInFlight ?? params.inFlight) {
     return "Payment in progress — tap to resume";
   }
 

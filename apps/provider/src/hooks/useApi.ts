@@ -43,6 +43,18 @@ function isTransientFetchErrorCode(code: string | null | undefined): boolean {
   return code === "CANCELLED" || code === "TIMEOUT" || code === "NETWORK_ERROR";
 }
 
+/** Idempotent GETs on booking create surfaces — one automatic retry after TIMEOUT. */
+function shouldRetryTimeoutOnce(path: string): boolean {
+  const prefixes = [
+    "/api/provider/team",
+    "/api/provider/services",
+    "/api/provider/packages",
+    "/api/provider/group-bookings",
+    "/api/provider/bookings/available-slots",
+  ];
+  return prefixes.some((p) => path.startsWith(p));
+}
+
 /**
  * `CANCELLED` is only ever emitted by our own `abortInFlightRequests()` when the app
  * backgrounds, and `AuthProvider` guarantees a `beautonomi:app:focus` refetch on resume.
@@ -181,7 +193,15 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
       const requestPromise =
         inflight ??
         (async () => {
-          const result = await api.get<T>(path, timeoutMs > 0 ? { timeout: timeoutMs } : undefined);
+          const timeoutOpt = timeoutMs > 0 ? { timeout: timeoutMs } : undefined;
+          let result = await api.get<T>(path, timeoutOpt);
+          if (
+            result.error &&
+            (result.error as ApiError).code === "TIMEOUT" &&
+            shouldRetryTimeoutOnce(path)
+          ) {
+            result = await api.get<T>(path, timeoutOpt);
+          }
           if (result.error) {
             const e = result.error as ApiError;
             return {

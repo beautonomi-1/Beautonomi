@@ -25,6 +25,8 @@ export interface PaycloudCollectButtonProps {
   size?: ButtonSize;
   showIcon?: boolean;
   inFlight?: boolean;
+  /** Entity-scoped open terminal charge (group booking, etc.). */
+  entityInFlight?: boolean;
   depositAmount?: number | null;
   fullOutstanding?: number | null;
 }
@@ -39,6 +41,7 @@ export function PaycloudCollectButton({
   size = "sm",
   showIcon = true,
   inFlight,
+  entityInFlight,
   depositAmount,
   fullOutstanding,
 }: PaycloudCollectButtonProps) {
@@ -56,12 +59,14 @@ export function PaycloudCollectButton({
     );
   }
 
-  const hasInFlight = inFlight ?? (terminals?.inFlight ?? 0) > 0;
+  const hasEntityInFlight = entityInFlight === true;
+  const hasInFlight = hasEntityInFlight || inFlight === true || (terminals?.inFlight ?? 0) > 0;
   const label = formatPaycloudCollectLabel({
     context,
     amount,
     currency,
-    inFlight: hasInFlight,
+    entityInFlight: hasEntityInFlight,
+    inFlight: inFlight === true || (!hasEntityInFlight && (terminals?.inFlight ?? 0) > 0),
     depositAmount,
     fullOutstanding,
   });

@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
       return renderError("Yoco payments are disabled for your market.", returnTo, 403);
     }
     const { data: integration } = await (admin.from("provider_yoco_integrations") as any)
-      .select("environment, tenant_id")
+      .select("environment")
       .eq("provider_id", providerId)
       .maybeSingle();
 
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Tenant resolution falls back to whatever the host resolves to.
-    tenantId = integrationRow?.tenant_id ?? (await resolveTenantIdWithZaFallback(request)) ?? null;
+    tenantId = (await resolveTenantIdWithZaFallback(request)) ?? null;
 
     // §Yoco-OAuth 2026-05: gate the OAuth flow behind the rollout flag. When
     // disabled (default), refuse to mint a state row so accidental clicks

@@ -58,6 +58,11 @@ export function buildGroupBookingCreateReadiness(
     (p) => p.name.length > 0 || p.phone.length > 0 || p.email.length > 0,
   );
 
+  const staffListLength = input.staffListLength ?? 0;
+  const needsGroupStaff =
+    Boolean(input.serviceId) &&
+    (input.staffRosterUnresolved === true || staffListLength > 0);
+
   const items: CreateReadinessItem[] = [
     {
       id: "group_date",
@@ -87,14 +92,17 @@ export function buildGroupBookingCreateReadiness(
       required: true,
       sectionKey: "serviceId",
     },
-    {
+  ];
+
+  if (needsGroupStaff) {
+    items.push({
       id: "group_staff",
       field: "staffId",
       done: !errorFields.has("staffId"),
       required: true,
       sectionKey: "staffId",
-    },
-  ];
+    });
+  }
 
   if (input.locationType === "at_home") {
     items.push({
@@ -140,7 +148,8 @@ export function buildSingleBookingCreateReadiness(
     !required || !errorSections.has(key);
 
   const needsStaff =
-    input.staffListLength > 0 && input.serviceCount > 0;
+    input.serviceCount > 0 &&
+    (input.staffRosterUnresolved === true || input.staffListLength > 0);
   const needsLocation = input.locationType === "at_home";
   const needsRecurring = input.isRecurring;
   const needsIntake = input.intakeForms.some((f) =>

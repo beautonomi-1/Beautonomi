@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     if (error) throw error;
 
     const eligible = (bookings ?? []).filter((b) => isBulkCompleteEligibleStatus(String(b.status)));
-    const results: Array<{ id: string; ok: boolean; error?: string }> = [];
+    const results: Array<{ id: string; ok: boolean; error?: string; code?: string }> = [];
 
     for (const booking of eligible) {
       const completeUrl = new URL(
@@ -57,10 +57,23 @@ export async function POST(request: NextRequest) {
           authorization: request.headers.get("authorization") ?? "",
         },
       });
+      let errorText: string | undefined;
+      let errorCode: string | undefined;
+      if (!res.ok) {
+        const raw = await res.text();
+        try {
+          const parsed = JSON.parse(raw) as { error?: { message?: string; code?: string } };
+          errorText = parsed.error?.message ?? raw;
+          errorCode = parsed.error?.code;
+        } catch {
+          errorText = raw;
+        }
+      }
       results.push({
         id: booking.id as string,
         ok: res.ok,
-        error: res.ok ? undefined : await res.text(),
+        error: errorText,
+        ...(errorCode ? { code: errorCode } : {}),
       });
     }
 

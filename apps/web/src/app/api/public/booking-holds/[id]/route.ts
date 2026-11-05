@@ -128,7 +128,7 @@ async function handleGet(
       supabase
         .from("providers")
         .select(
-          "tips_enabled, tip_presets, currency, no_show_fee_enabled, no_show_fee_amount, requires_deposit, deposit_percentage, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code, customer_fee_config_id, accept_online, accept_cash",
+          "tips_enabled, tip_presets, currency, no_show_fee_enabled, no_show_fee_amount, requires_deposit, deposit_percentage, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, customer_fee_config_id, accept_online, accept_cash",
         )
         .eq("id", hold.provider_id)
         .eq("tenant_id", tenantId)
@@ -196,7 +196,7 @@ async function handleGet(
       tax_inclusive: (providerRow as { tax_inclusive?: boolean | null } | null)?.tax_inclusive ?? null,
       is_vat_registered: (providerRow as { is_vat_registered?: boolean | null } | null)?.is_vat_registered ?? null,
       vat_number: (providerRow as { vat_number?: string | null } | null)?.vat_number ?? null,
-      country_code: (providerRow as { country_code?: string | null } | null)?.country_code ?? null,
+      tenant_id: tenantId,
       tax_rate_override_percent: null,
     });
     const providerTaxRate = resolvedVat.ratePercent;

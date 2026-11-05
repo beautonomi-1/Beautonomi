@@ -4,6 +4,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
+vi.mock("@/lib/payments/open-terminal-payments", () => ({
+  findOpenTerminalPayments: vi.fn(async () => []),
+  cancelOpenTerminalPaymentsForEntity: vi.fn(async () => ({ cancelled: [], errors: [] })),
+}));
+
 const GROUP_ID = "33333333-3333-4333-8333-333333333333";
 const PROVIDER_ID = "44444444-4444-4444-8444-444444444444";
 const PARTICIPANT_ID = "55555555-5555-4555-8555-555555555555";

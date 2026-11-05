@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
     }> => {
       const { data: bookingRows, error: bookingsError } = await supabaseAdmin
         .from("bookings")
-        .select("id, provider_id, scheduled_at, duration_minutes, ref_number, booking_number")
+        .select("id, provider_id, scheduled_at, ref_number, booking_number")
         .eq("provider_id", providerId);
 
       if (bookingsError) {
@@ -197,7 +197,6 @@ export async function GET(request: NextRequest) {
           id,
           provider_id,
           scheduled_at,
-          duration_minutes,
           ref_number,
           booking_number
         )

@@ -1163,6 +1163,10 @@ export function SupportTicketsPage() {
           : "space-y-6 px-2 sm:px-0"
       }
     >
+      <div className="shrink-0">
+        <SupportTicketsCompactHeader description={pageDescription} actions={headerActions} />
+      </div>
+
       <div
         className={
           useQueueWorkspace
@@ -1170,8 +1174,6 @@ export function SupportTicketsPage() {
             : "contents"
         }
       >
-      <SupportTicketsCompactHeader description={pageDescription} actions={headerActions} />
-
       {staleZohoInbound ? (
         <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
           Zoho Mail inbound sync is stale (&gt;15 min). Check Integrations → Zoho Mail or the sync cron.
@@ -1485,6 +1487,7 @@ export function SupportTicketsPage() {
       ) : (
         <div className={useQueueWorkspace ? "flex min-h-0 flex-1 flex-col gap-3 overflow-hidden" : undefined}>
           {isCardsView ? (
+            <div className={useQueueWorkspace ? "shrink-0" : undefined}>
             <SupportTicketsBulkBar
               selectedCount={selectedIds.length}
               bulkAssignee={bulkAssignee}
@@ -1496,10 +1499,16 @@ export function SupportTicketsPage() {
               onAssign={() => bulkMut.mutate({ ticket_ids: selectedIds, assigned_to: bulkAssignee })}
               onUpdateStatus={() => bulkMut.mutate({ ticket_ids: selectedIds, status: bulkStatus })}
             />
+            </div>
           ) : null}
 
           {isCardsView ? (
-            <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
+            <div
+              className={cn(
+                "flex flex-wrap items-center gap-3 text-sm text-gray-600",
+                useQueueWorkspace && "shrink-0",
+              )}
+            >
               <label className="inline-flex min-h-11 items-center gap-2">
                 <input
                   type="checkbox"
@@ -1518,13 +1527,13 @@ export function SupportTicketsPage() {
             <div
               ref={inboxRef}
               tabIndex={0}
-              className="grid min-h-0 flex-1 grid-cols-[minmax(280px,360px)_minmax(0,1fr)] gap-4 overflow-hidden"
+              className="grid min-h-0 flex-1 grid-cols-[minmax(280px,360px)_minmax(0,1fr)] grid-rows-[minmax(0,1fr)] gap-4 overflow-hidden"
               aria-label="Support ticket inbox"
             >
               <div
                 id="support-ticket-inbox-list"
                 ref={listScrollRef}
-                className="flex min-h-0 flex-col overflow-hidden"
+                className="flex h-full min-h-0 flex-col overflow-hidden"
               >
               <AdminVirtualList
                 items={tickets}

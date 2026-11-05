@@ -73,6 +73,7 @@ type BookingFetchRow = {
   booking_source?: string | null;
   location_id?: string | null;
   location_type?: string | null;
+  users?: { full_name?: string } | { full_name?: string }[] | null;
   customers?: { full_name?: string } | null;
 };
 
@@ -86,7 +87,9 @@ type BookingEventFetchRow = {
 };
 
 export function bookingClientName(row: BookingFetchRow): string {
-  return row.customers?.full_name?.trim() || "Walk-in";
+  const users = row.users;
+  const user = Array.isArray(users) ? users[0] : users;
+  return user?.full_name?.trim() || row.customers?.full_name?.trim() || "Walk-in";
 }
 
 export function bookingRefLabel(row: BookingFetchRow): string {
@@ -413,7 +416,7 @@ export async function buildProviderActivityFeed(
   const since = new Date(dateRangeBoundsUtc(fromYmd, todayYmd, tz).fromIso);
 
   const bookingSelect =
-    "id, status, created_at, completed_at, cancelled_at, updated_at, booking_number, booking_source, location_id, location_type, customers(full_name)";
+    "id, status, created_at, completed_at, cancelled_at, updated_at, booking_number, booking_source, location_id, location_type, users!bookings_customer_id_fkey(full_name)";
 
   let createdBookingsQuery = supabaseAdmin
     .from("bookings")
@@ -494,7 +497,7 @@ export async function buildProviderActivityFeed(
 
   const newClientsQuery = supabaseAdmin
     .from("provider_clients")
-    .select("id, created_at, relationship_source, created_by_user_id, customer_id, users(full_name)")
+    .select("id, created_at, relationship_source, created_by_user_id, customer_id, users!provider_clients_customer_id_fkey(full_name)")
     .eq("provider_id", providerId)
     .in("relationship_source", [...PROVIDER_ACTIVITY_FEED_NEW_CLIENT_SOURCES])
     .gte("created_at", since.toISOString())
@@ -582,7 +585,7 @@ export async function buildProviderActivityFeed(
 
   const { data: reviewRows } = await supabaseAdmin
     .from("reviews")
-    .select("id, rating, comment, created_at, customers(full_name)")
+    .select("id, rating, comment, created_at, users!reviews_customer_id_fkey(full_name)")
     .eq("provider_id", providerId)
     .gte("created_at", since.toISOString())
     .order("created_at", { ascending: false })
@@ -715,7 +718,7 @@ export async function buildProviderActivityFeed(
 
   (reviewRows || []).forEach((r: Record<string, unknown>) => {
     const clientName =
-      (r.customers as { full_name?: string } | null)?.full_name || "Client";
+      (Array.isArray(r.users) ? (r.users as Array<{ full_name?: string }>)[0]?.full_name : (r.users as { full_name?: string } | null)?.full_name) || "Client";
     activities.push({
       id: `review-${String(r.id ?? "")}`,
       type: "new_review",

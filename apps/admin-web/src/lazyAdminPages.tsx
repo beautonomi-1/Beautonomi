@@ -67,6 +67,9 @@ export const BillingPage = lazy(() =>
 export const TaxesPage = lazy(() =>
   import("@/routes/finance/TaxesPage").then((m) => ({ default: m.TaxesPage }))
 );
+export const RefundAnomaliesPage = lazy(() =>
+  import("@/routes/finance/RefundAnomaliesPage").then((m) => ({ default: m.RefundAnomaliesPage }))
+);
 export const PeriodLocksPage = lazy(() =>
   import("@/routes/finance/PeriodLocksPage").then((m) => ({ default: m.PeriodLocksPage }))
 );

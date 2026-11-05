@@ -98,7 +98,7 @@ export function AgentAssistPanel({
           {expanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
         </button>
         {expanded ? (
-          <div className="admin-scrollbar mt-2 max-h-[50%] space-y-4 overflow-y-auto pr-1">
+          <div className="admin-scrollbar mt-2 max-h-40 space-y-4 overflow-y-auto pr-1">
             {pending.map((action) => (
               <AgentAssistCard
                 key={action.id}
