@@ -8,13 +8,12 @@ import {
   ActivityIndicator,
   useWindowDimensions,
 } from "react-native";
-import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
 import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import type { ExplorePost } from "@/types/api";
-import { explorePostGridImageUrl } from "@/lib/explore-media";
+import { ExplorePostGridMedia } from "@/components/explore/ExplorePostGridMedia";
 import { useTranslation } from "@beautonomi/i18n";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
@@ -151,11 +150,11 @@ export default function ExploreCollectionScreen() {
       ) : (
         <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
           {collection.posts.map((post, index) => {
-            const img = explorePostGridImageUrl(post);
             const aspect =
               post.media_width && post.media_height && post.media_height > 0
                 ? Math.min(1.5, Math.max(0.6, post.media_width / post.media_height))
                 : 4 / 5;
+            const tileHeight = tileWidth / aspect;
             return (
               <TouchableOpacity
                 key={post.id}
@@ -169,12 +168,7 @@ export default function ExploreCollectionScreen() {
                 }}
               >
                 <View style={{ borderRadius: 12, overflow: "hidden", backgroundColor: Colors.gray[100] }}>
-                  <Image
-                    source={{ uri: img || "https://placehold.co/400x500/f5f5f5/999?text=Beauty" }}
-                    style={{ width: "100%", aspectRatio: aspect }}
-                    contentFit="cover"
-                    cachePolicy="memory-disk"
-                  />
+                  <ExplorePostGridMedia post={post} width={tileWidth} height={tileHeight} />
                   {post.caption ? (
                     <Text
                       style={{ fontSize: 12, color: Colors.gray[700], padding: 8, lineHeight: 16 }}

@@ -107,9 +107,16 @@ export async function bookShippingForOrder(
       customer_id,
       fulfillment_type,
       status,
+      payment_status,
+      payment_method,
+      order_source,
       tracking_number,
       shipping_booking_status,
       delivery_instructions,
+      customer_name,
+      customer_email,
+      customer_phone,
+      delivery_address_snapshot,
       customer:users!product_orders_customer_id_fkey (
         full_name,
         email,
@@ -132,6 +139,17 @@ export async function bookShippingForOrder(
 
   if (error || !order) {
     return { ok: false, error: error?.message ?? "order_not_found" };
+  }
+  const { isUnpaidOnlinePaystackHold } = await import("@beautonomi/utils");
+  if (
+    isUnpaidOnlinePaystackHold({
+      order_source: (order as { order_source?: string | null }).order_source,
+      payment_method: (order as { payment_method?: string | null }).payment_method,
+      payment_status: (order as { payment_status?: string | null }).payment_status,
+      status: (order as { status?: string | null }).status,
+    })
+  ) {
+    return { ok: false, error: "awaiting_online_payment" };
   }
   const existingBookingStatus = (order as { shipping_booking_status?: string | null }).shipping_booking_status;
   if (existingBookingStatus === "submitting" || existingBookingStatus === "booked") {
@@ -215,16 +233,27 @@ export async function bookShippingForOrder(
   ]);
 
   const customer = unwrapRow((order as { customer?: unknown }).customer);
+  const orderRow = order as {
+    customer_name?: string | null;
+    customer_email?: string | null;
+    customer_phone?: string | null;
+    delivery_address_snapshot?: unknown;
+    delivery_address?: unknown;
+  };
+  const destSource = destinationAddressSource(
+    orderRow.delivery_address,
+    orderRow.delivery_address_snapshot,
+  );
   const origin = toShippingAddress(originLocation, provider?.business_name ?? "", {
     phone: str(originLocation?.phone) ?? str(provider?.phone) ?? undefined,
     email: str(provider?.email) ?? undefined,
   });
   const destination = toShippingAddress(
-    (order as { delivery_address?: unknown })?.delivery_address,
-    str(customer?.full_name) ?? "Customer",
+    destSource,
+    str(customer?.full_name) ?? str(orderRow.customer_name) ?? "Customer",
     {
-      phone: str(customer?.phone) ?? undefined,
-      email: str(customer?.email) ?? undefined,
+      phone: str(customer?.phone) ?? str(orderRow.customer_phone) ?? undefined,
+      email: str(customer?.email) ?? str(orderRow.customer_email) ?? undefined,
     },
   );
 
@@ -659,6 +688,20 @@ function defaultParcel() {
     heightCm: 5,
     description: "Parcel",
   };
+}
+
+/** Use the saved checkout address when the joined address row is missing or has no street. */
+export function destinationAddressSource(
+  embedded: unknown,
+  snapshot: unknown,
+): Record<string, unknown> | null {
+  const embeddedRow = unwrapRow(embedded);
+  const snapshotRow = unwrapRow(snapshot);
+  const embeddedLine = embeddedRow
+    ? str(embeddedRow.address_line1 ?? embeddedRow.line1 ?? embeddedRow.street ?? embeddedRow.address1)
+    : null;
+  if (embeddedLine) return embeddedRow;
+  return snapshotRow;
 }
 
 function unwrapRow(raw: unknown): Record<string, unknown> | null {

@@ -69,11 +69,10 @@ export default function Index() {
   const [wrongPortal, setWrongPortal] = useState<string | null>(null);
   /**
    * §Release-audit 2026-04: remember whether the portal resolved to
-   * `provider_onboarding` (draft / pending_approval / suspended providers).
-   * Web routes those users to `/provider/get-started`; mobile now matches by
-   * forcing the onboarding hub instead of dashboard, even when a provider
-   * profile row already exists. Previously a provider in `pending_approval`
-   * landed on the dashboard which masked the "waiting for approval" state.
+   * `provider_onboarding` (draft / suspended providers). Web routes those
+   * users to `/provider/get-started`; mobile matches by forcing the onboarding
+   * hub instead of dashboard, even when a provider profile row already exists.
+   * `pending_approval` resolves to the `provider` portal (dashboard banner).
    */
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [setupIncomplete, setSetupIncomplete] = useState<boolean | null>(null);

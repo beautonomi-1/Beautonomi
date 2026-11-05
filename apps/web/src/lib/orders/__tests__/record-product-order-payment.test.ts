@@ -95,16 +95,22 @@ function makeQuery(table: string, state: { rows: Record<string, Row[]>; inserts:
     })),
     update(payload: Row) {
       state.updates[table] = [...(state.updates[table] ?? []), payload];
-      const updateFilters: Array<{ key: string; value: unknown }> = [];
+      const updateFilters: Array<{ key: string; value: unknown; op: "eq" | "neq" }> = [];
       const updateChain = {
         eq: vi.fn((key: string, value: unknown) => {
-          updateFilters.push({ key, value });
+          updateFilters.push({ key, value, op: "eq" });
+          return updateChain;
+        }),
+        neq: vi.fn((key: string, value: unknown) => {
+          updateFilters.push({ key, value, op: "neq" });
           return updateChain;
         }),
         select: vi.fn(async () => {
           const rows = state.rows[table] ?? [];
           const matched = rows.filter((row) =>
-            updateFilters.every((filter) => row[filter.key] === filter.value),
+            updateFilters.every((filter) =>
+              filter.op === "neq" ? row[filter.key] !== filter.value : row[filter.key] === filter.value,
+            ),
           );
           return {
             data: matched.length > 0 ? [{ id: matched[0].id }] : [],
@@ -339,16 +345,22 @@ describe("recordProductOrderPayment", () => {
           })),
           update(payload: Row) {
             state.updates[table] = [...(state.updates[table] ?? []), payload];
-            const updateFilters: Array<{ key: string; value: unknown }> = [];
+            const updateFilters: Array<{ key: string; value: unknown; op: "eq" | "neq" }> = [];
             const updateChain = {
               eq: vi.fn((key: string, value: unknown) => {
-                updateFilters.push({ key, value });
+                updateFilters.push({ key, value, op: "eq" });
+                return updateChain;
+              }),
+              neq: vi.fn((key: string, value: unknown) => {
+                updateFilters.push({ key, value, op: "neq" });
                 return updateChain;
               }),
               select: vi.fn(async () => {
                 const rows = state.rows[table] ?? [];
                 const matched = rows.filter((row) =>
-                  updateFilters.every((filter) => row[filter.key] === filter.value),
+                  updateFilters.every((filter) =>
+                    filter.op === "neq" ? row[filter.key] !== filter.value : row[filter.key] === filter.value,
+                  ),
                 );
                 return {
                   data: matched.length > 0 ? [{ id: matched[0].id }] : [],
@@ -469,6 +481,26 @@ describe("recordProductOrderPayment", () => {
       reference: "paystack-late-success",
       amountMajor: 100,
       source: "paystack_webhook",
+      provider: "paystack",
+    });
+
+    expect(result).toEqual({ ok: false, duplicate: false, transitionedToPaid: false });
+    expect(state.inserts.payment_transactions).toBeUndefined();
+  });
+
+  it("rejects self-cancelled orders even when payment_status is still pending", async () => {
+    const { supabase, state } = mockSupabase({
+      product_orders: [{ ...orderRow, payment_status: "pending", status: "cancelled" }],
+      payment_transactions: [],
+      finance_transactions: [],
+    });
+
+    const result = await recordProductOrderPayment({
+      supabase,
+      productOrderId: "order-1",
+      reference: "paystack-after-cancel",
+      amountMajor: 100,
+      source: "paystack_verify",
       provider: "paystack",
     });
 

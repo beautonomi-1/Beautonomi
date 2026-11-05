@@ -540,6 +540,8 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(new URL('/', request.url));
     };
 
+    let roleLookupTimedOut = false;
+
     // Helper function to get user role with timeout
     const getUserRole = async (userId: string): Promise<string | null> => {
       try {
@@ -564,6 +566,7 @@ export async function proxy(request: NextRequest) {
 
         if (result === null) {
           console.warn("getUserRole timed out after 3 seconds");
+          roleLookupTimedOut = true;
           return null;
         }
 
@@ -657,6 +660,11 @@ export async function proxy(request: NextRequest) {
         const userRole = await getUserRole(user.id);
 
         if (!userRole) {
+          // Slow DB must not bounce signed-in providers home mid-setup; provider/layout.tsx
+          // RoleGuard + ProviderPortalGate still enforce role client-side, APIs server-side.
+          if (roleLookupTimedOut) {
+            return finalizePageResponse(request, response);
+          }
           return redirectToHome();
         }
 

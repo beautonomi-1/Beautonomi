@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-preferred-home-tenant-from-host";
@@ -44,11 +44,28 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (!existing?.customer_onboarding_completed_at) {
-      const { error } = await supabase
+      const { data: updated, error } = await supabase
         .from("users")
         .update({ customer_onboarding_completed_at: new Date().toISOString() })
-        .eq("id", user.id);
+        .eq("id", user.id)
+        .is("customer_onboarding_completed_at", null)
+        .select("id");
       if (error) throw error;
+
+      // Conditional update makes concurrent completions send the welcome exactly once.
+      if (updated && updated.length > 0) {
+        const userId = user.id;
+        after(async () => {
+          try {
+            const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+            await sendTemplateNotification("welcome_message", [userId], {}, ["push", "email"], {
+              appType: "customer",
+            });
+          } catch (notifErr) {
+            console.warn("[onboarding/complete] welcome notification failed:", notifErr);
+          }
+        });
+      }
     }
 
     return successResponse({ completed: true });

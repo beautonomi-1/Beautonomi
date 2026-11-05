@@ -5,6 +5,10 @@ import {
   detailsTabNeedsAttention,
   hasFailedPublicEmailSend,
   isWideTicketLayout,
+  shouldShowDetailsInGrid,
+  shouldShowTicketTabs,
+  TICKET_COMPOSER_SLOT_DESKTOP,
+  TICKET_CONVERSATION_PANE_DESKTOP,
   listAttentionBanners,
   nextQueueButtonLabel,
   nextTicketIdInQueue,
@@ -13,6 +17,29 @@ import {
   shouldShowOriginalRequest,
   unwrapAdminBookingPayload,
 } from "@/routes/support/ticket-detail/ticketDetailHelpers";
+
+describe("shouldShowTicketTabs", () => {
+  it("shows tabs only on mobile, at any container width", () => {
+    expect(shouldShowTicketTabs({ isDesktop: true, containerWidth: 340 })).toBe(false);
+    expect(shouldShowTicketTabs({ isDesktop: true, containerWidth: 1200 })).toBe(false);
+    expect(shouldShowTicketTabs({ isDesktop: false, containerWidth: 390 })).toBe(true);
+  });
+});
+
+describe("shouldShowDetailsInGrid", () => {
+  it("shows details rail at 760px and wider", () => {
+    expect(shouldShowDetailsInGrid(true, 340)).toBe(false);
+    expect(shouldShowDetailsInGrid(true, 760)).toBe(true);
+  });
+});
+
+describe("desktop conversation pane", () => {
+  it("lets the thread fill leftover height and caps the composer against the pane", () => {
+    expect(TICKET_CONVERSATION_PANE_DESKTOP).toContain("flex-col");
+    expect(TICKET_CONVERSATION_PANE_DESKTOP).not.toContain("16rem");
+    expect(TICKET_COMPOSER_SLOT_DESKTOP).toContain("max-h-[40%]");
+  });
+});
 
 describe("isWideTicketLayout", () => {
   it("uses tabs below 760px (e.g. inbox panel at a 1024px viewport is ~340px)", () => {

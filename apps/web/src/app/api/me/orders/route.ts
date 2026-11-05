@@ -34,6 +34,8 @@ import {
   computeProductOrderTotals,
 } from "@/lib/orders/compute-product-order-totals";
 import { stripCustomerProductOrderList } from "@/lib/orders/customer-order-response";
+import { withProductOrderAmountStillDue } from "@/lib/payments/resolve-paystack-initialize-amount";
+import { getSupabaseAdmin as getAdminForOrdersList } from "@/lib/supabase/admin";
 import {
   plannedProductOrderGiftAmount,
   reserveProductOrderGiftCard,
@@ -130,8 +132,21 @@ export async function GET(request: NextRequest) {
     const { data: orders, error, count } = await query;
     if (error) throw error;
 
+    const ordersWithDue = await withProductOrderAmountStillDue(
+      getAdminForOrdersList(),
+      (orders ?? []) as Array<
+        {
+          id: string;
+          payment_status?: string | null;
+          total_amount?: number | string | null;
+          wallet_amount?: number | string | null;
+          gift_card_amount?: number | string | null;
+        } & Record<string, unknown>
+      >,
+    );
+
     return successResponse({
-      orders: stripCustomerProductOrderList((orders ?? []) as Record<string, unknown>[]),
+      orders: stripCustomerProductOrderList(ordersWithDue as Record<string, unknown>[]),
       pagination: {
         page,
         limit,
@@ -415,6 +430,30 @@ export async function POST(request: NextRequest) {
     }) as any;
     const orderNum = `BO-${seqData ?? Date.now()}`;
 
+    const { data: buyerProfile } = await (supabase.from("users") as any)
+      .select("full_name, email, phone")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    let deliveryAddressSnapshot: Record<string, unknown> | null = null;
+    if (parsed.delivery_address_id) {
+      const { data: addrRow } = await (supabase.from("user_addresses") as any)
+        .select(
+          "label, address_line1, address_line2, city, state, postal_code, country, latitude, longitude, apartment_unit, building_name, floor_number, parking_instructions, location_landmarks",
+        )
+        .eq("id", parsed.delivery_address_id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (addrRow) {
+        const { buildDeliveryAddressSnapshot } = await import(
+          "@/lib/orders/product-order-customer-snapshot"
+        );
+        deliveryAddressSnapshot = buildDeliveryAddressSnapshot(addrRow as Record<string, unknown>);
+      }
+    }
+
+    const buyer = buyerProfile as { full_name?: string | null; email?: string | null; phone?: string | null } | null;
+
     // Create order (wallet_amount and payment_status when paid by wallet)
     const { data: order, error: orderErr } = await (supabase.from("product_orders") as any)
       .insert({
@@ -422,6 +461,10 @@ export async function POST(request: NextRequest) {
         order_number: orderNum,
         customer_id: user.id,
         provider_id: parsed.provider_id,
+        customer_name: buyer?.full_name?.trim() || null,
+        customer_email: buyer?.email?.trim() || null,
+        customer_phone: buyer?.phone?.trim() || null,
+        delivery_address_snapshot: deliveryAddressSnapshot,
         fulfillment_type: parsed.fulfillment_type,
         delivery_address_id: parsed.delivery_address_id ?? null,
         delivery_instructions: parsed.delivery_instructions ?? null,
@@ -654,6 +697,39 @@ export async function POST(request: NextRequest) {
             itemCount: orderItems.length,
             paymentMethod,
           });
+          try {
+            const { ensureProviderClientForPlacedProductOrder } = await import(
+              "@/lib/provider/ensure-provider-client-for-placed-product-order"
+            );
+            await ensureProviderClientForPlacedProductOrder(adminSupabase, {
+              providerId: parsed.provider_id,
+              customerId: user.id,
+              productOrderId: order.id,
+            });
+          } catch (clientErr) {
+            console.warn("[me/orders] provider client link failed (COD kept):", clientErr);
+          }
+        } else if (isPaystackCheckoutPending) {
+          try {
+            const { dispatchTemplateNotification } = await import(
+              "@/lib/notifications/dispatch-template-notification"
+            );
+            const { getTenantMoneyFormatter } = await import("@/lib/money/tenant-intl-format");
+            const { format: formatOrderTotal } = await getTenantMoneyFormatter(orderTenantId);
+            await dispatchTemplateNotification(
+              "product_order_payment_pending",
+              [user.id],
+              {
+                order_number: orderNum,
+                order_id: order.id,
+                total_amount: formatOrderTotal(totalAmount),
+              },
+              ["push", "email"],
+              { appType: "customer", tenantId: orderTenantId },
+            );
+          } catch (pendingNotifyErr) {
+            console.warn("[me/orders] payment pending notify failed:", pendingNotifyErr);
+          }
         }
       } catch (notifyErr) {
         console.error("[me/orders] post-create notify failed (order kept):", notifyErr);

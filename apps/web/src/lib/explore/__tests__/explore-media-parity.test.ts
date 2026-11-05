@@ -139,6 +139,31 @@ describe("explore media parity — E2E-critical units", () => {
       }
     });
 
+    it("stores a public cover URL as the provider storage path", () => {
+      const cover = `https://x.supabase.co/storage/v1/object/public/explore-posts/explore/${PROVIDER}/cover.jpg`;
+      const playback = `https://x.supabase.co/storage/v1/object/public/explore-posts/explore/${PROVIDER}/play.mp4`;
+      const r = validateProviderMediaPaths(PROVIDER, [`explore/${PROVIDER}/clip.mp4`], [
+        {
+          kind: "video",
+          display_path: cover,
+          playback_path: playback,
+          status: "encoding",
+          pending_gallery_append: true,
+          retry_count: 1,
+          text_overlays: [{ text: "Hi", x: 0.5, y: 0.2, font_size: 0.05, color: "#ffffff" }],
+        },
+      ]);
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.mediaMeta[0]?.display_path).toBe(`explore/${PROVIDER}/cover.jpg`);
+        expect(r.mediaMeta[0]?.playback_path).toBe(`explore/${PROVIDER}/play.mp4`);
+        expect(r.mediaMeta[0]?.status).toBe("encoding");
+        expect(r.mediaMeta[0]?.pending_gallery_append).toBe(true);
+        expect(r.mediaMeta[0]?.retry_count).toBe(1);
+        expect(r.mediaMeta[0]?.text_overlays?.[0]?.text).toBe("Hi");
+      }
+    });
+
     it("persists user trim window on video slides", () => {
       const r = validateProviderMediaPaths(PROVIDER, [`explore/${PROVIDER}/clip.mp4`], [
         {

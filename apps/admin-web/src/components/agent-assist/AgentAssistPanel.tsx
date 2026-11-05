@@ -22,6 +22,7 @@ export function AgentAssistPanel({
   emptyDescription = "When an agent drafts something for review, it will appear here.",
   hideWhenEmpty = false,
   collapsible = false,
+  inlineInThread = false,
 }: {
   targetType: string;
   targetId: string;
@@ -34,6 +35,8 @@ export function AgentAssistPanel({
   hideWhenEmpty?: boolean;
   /** Collapse to a one-line bar until expanded (support ticket detail). */
   collapsible?: boolean;
+  /** Inside ticket thread scrollport; expanded body capped to ~40% of thread. */
+  inlineInThread?: boolean;
 }) {
   const [searchParams] = useSearchParams();
   const assistId = searchParams.get("assist");
@@ -83,7 +86,7 @@ export function AgentAssistPanel({
         : `Recent AI decisions (${decided.length})`;
 
     return (
-      <div className="shrink-0" role="region" aria-label="AI suggestions">
+      <div className={inlineInThread ? undefined : "shrink-0"} role="region" aria-label="AI suggestions">
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
@@ -98,7 +101,11 @@ export function AgentAssistPanel({
           {expanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
         </button>
         {expanded ? (
-          <div className="admin-scrollbar mt-2 max-h-40 space-y-4 overflow-y-auto pr-1">
+          <div
+            className={`admin-scrollbar mt-2 space-y-4 overflow-y-auto pr-1 ${
+              inlineInThread ? "max-h-[min(12rem,40vh)]" : "max-h-40"
+            }`}
+          >
             {pending.map((action) => (
               <AgentAssistCard
                 key={action.id}

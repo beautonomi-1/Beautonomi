@@ -8,7 +8,7 @@ import { NativeAppCheckoutBounce } from "@/components/payments/NativeAppCheckout
 
 function ShopCancelledInner() {
   const sp = useSearchParams();
-  const orderId = sp.get("order_id") ?? "";
+  const orderId = sp.get("product_order_id") ?? sp.get("order_id") ?? "";
   const orderNumber = sp.get("order_number") ?? "";
 
   return (
@@ -35,7 +35,7 @@ function ShopCancelledInner() {
         <div className="flex flex-col gap-3">
           {orderId && (
             <Link
-              href={`/account-settings/orders`}
+              href={`/account-settings/orders/${encodeURIComponent(orderId)}`}
               className="inline-flex items-center justify-center gap-2 w-full px-6 py-3 bg-pink-600 text-white rounded-xl font-medium hover:bg-pink-700 transition-colors"
             >
               <RotateCcw className="w-4 h-4" />

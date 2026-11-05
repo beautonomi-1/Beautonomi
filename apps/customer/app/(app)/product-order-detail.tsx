@@ -34,7 +34,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useProductOrders, type ProductOrder } from "@/features/shop/useProductOrders";
 import { getTenantLocaleTag } from "@/lib/locale";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { formatMoney, getProductOrderSupportPrompt } from "@beautonomi/utils";
+import { formatMoney, getProductOrderSupportPrompt, isUnpaidOnlinePaystackHold } from "@beautonomi/utils";
 import * as Clipboard from "expo-clipboard";
 import { useAuth } from "@/providers/AuthProvider";
 import { useTranslation } from "@beautonomi/i18n";
@@ -315,9 +315,30 @@ export default function ProductOrderDetailScreen() {
         ? 0
         : Math.round(Math.max(0, dueTotal - dueGift - dueWallet) * 100) / 100;
   const canPayOnline =
+    order.status === "pending" &&
     order.payment_status === "pending" &&
     (order.payment_method === "paystack" || order.payment_method == null) &&
     onlineAmountDue > 0;
+  const canMessageProvider =
+    Boolean(order.provider?.id) &&
+    !isCancelled &&
+    !isUnpaidOnlinePaystackHold(order);
+
+  const handleMessageProvider = async () => {
+    if (!order.provider?.id || !canMessageProvider) return;
+    try {
+      const res = await api.post<{ id: string }>("/api/me/conversations/create", {
+        provider_id: order.provider.id,
+      });
+      if (res.error || !res.data?.id) {
+        Alert.alert(pod("messageFailedTitle"), pod("messageFailedBody"));
+        return;
+      }
+      router.push({ pathname: "/(app)/chat", params: { id: res.data.id } } as never);
+    } catch {
+      Alert.alert(pod("messageFailedTitle"), pod("messageFailedBody"));
+    }
+  };
 
   const handlePayOnline = async () => {
     if (!canPayOnline || paying) return;
@@ -1155,20 +1176,43 @@ export default function ProductOrderDetailScreen() {
 
         {/* Provider */}
         {order.provider && (
-          <TouchableOpacity
-            onPress={() => router.push({ pathname: "/(app)/partner-profile", params: { slug: order.provider.slug } } as never)}
-            style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12, flexDirection: "row", alignItems: "center" }}
-            activeOpacity={0.7}
-          >
-            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginEnd: 12 }}>
-              <Text style={{ fontSize: 14, fontWeight: "700", color: "#6B7280" }}>{(order.provider.business_name ?? "P").charAt(0).toUpperCase()}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 12, color: "#9CA3AF" }}>{pod("soldBy")}</Text>
-              <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{order.provider.business_name}</Text>
-            </View>
-            <DirectionalIcon name="chevron-forward" size={16} color="#9CA3AF" />
-          </TouchableOpacity>
+          <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
+            <TouchableOpacity
+              onPress={() => router.push({ pathname: "/(app)/partner-profile", params: { slug: order.provider.slug } } as never)}
+              style={{ flexDirection: "row", alignItems: "center" }}
+              activeOpacity={0.7}
+            >
+              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginEnd: 12 }}>
+                <Text style={{ fontSize: 14, fontWeight: "700", color: "#6B7280" }}>{(order.provider.business_name ?? "P").charAt(0).toUpperCase()}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 12, color: "#9CA3AF" }}>{pod("soldBy")}</Text>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{order.provider.business_name}</Text>
+              </View>
+              <DirectionalIcon name="chevron-forward" size={16} color="#9CA3AF" />
+            </TouchableOpacity>
+            {canMessageProvider ? (
+              <TouchableOpacity
+                onPress={() => void handleMessageProvider()}
+                style={{
+                  marginTop: 12,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderWidth: 1,
+                  borderColor: "#E5E7EB",
+                  borderRadius: 12,
+                  paddingVertical: 12,
+                }}
+                accessibilityRole="button"
+              >
+                <Ionicons name="chatbubble-outline" size={18} color={PRIMARY} />
+                <Text style={{ marginStart: 8, fontSize: 14, fontWeight: "600", color: PRIMARY }}>
+                  {pod("messageProvider")}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
         )}
 
         {/* Return request action: only when delivered/ready_for_collection and within return window */}

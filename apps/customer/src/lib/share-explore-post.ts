@@ -207,6 +207,7 @@ export async function presentExplorePostShareActions(
     cancel: string;
   },
   onAction: (action: ExploreShareAction) => void | Promise<void>,
+  onDismiss?: () => void,
 ): Promise<void> {
   const buttons = buildExploreShareActionButtons(opts, labels, Platform.OS);
   Alert.alert(
@@ -215,9 +216,12 @@ export async function presentExplorePostShareActions(
     buttons.map((b) => ({
       text: b.text,
       style: b.style,
-      onPress: b.action ? () => void onAction(b.action!) : undefined,
+      onPress: () => {
+        onDismiss?.();
+        if (b.action) void onAction(b.action);
+      },
     })),
-    { cancelable: true },
+    { cancelable: true, onDismiss },
   );
 }
 

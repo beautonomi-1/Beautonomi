@@ -213,7 +213,7 @@ export async function GET(request: NextRequest) {
       if (productOrderId) {
         const { data: poBefore } = await (admin.from("product_orders") as any)
           .select(
-            "tenant_id, provider_id, customer_id, total_amount, wallet_amount, gift_card_amount, payment_status, payment_reference, currency",
+            "tenant_id, provider_id, customer_id, total_amount, wallet_amount, gift_card_amount, payment_status, payment_reference, currency, status",
           )
           .eq("id", productOrderId)
           .maybeSingle();
@@ -245,6 +245,7 @@ export async function GET(request: NextRequest) {
           payment_status?: string | null;
           payment_reference?: string | null;
           currency?: string | null;
+          status?: string | null;
         };
 
         if (user?.id && poBeforeRow.customer_id !== user.id) {
@@ -255,7 +256,7 @@ export async function GET(request: NextRequest) {
           );
         }
 
-        const paymentStatus = String(poBeforeRow.payment_status ?? "");
+        const paymentStatus = String(poBeforeRow.payment_status ?? "").toLowerCase();
         const existingReference = poBeforeRow.payment_reference ?? null;
         if (paymentStatus !== "pending" && existingReference !== reference) {
           return errorResponse(
@@ -267,6 +268,40 @@ export async function GET(request: NextRequest) {
 
         const poCurrency = String(poBeforeRow.currency || "ZAR").toUpperCase();
         const amountMajor = convertFromSmallestUnit(Number(data.data.amount || 0), poCurrency);
+        const fulfillmentStatus = String(poBeforeRow.status ?? "").toLowerCase();
+        if (
+          fulfillmentStatus === "cancelled" ||
+          fulfillmentStatus === "refunded" ||
+          paymentStatus === "failed"
+        ) {
+          try {
+            const { refundProductOrderUnpayableCharge } = await import(
+              "@/lib/payments/refund-product-order-unpayable-charge"
+            );
+            await refundProductOrderUnpayableCharge(admin, {
+              productOrderId,
+              reference,
+              amountMajor,
+              currency: poCurrency,
+              tenantId: poBeforeRow.tenant_id ?? null,
+              reason: "Paystack verify on closed product order",
+            });
+          } catch (refundErr) {
+            console.error("[paystack/verify] unpayable product order refund failed", refundErr);
+          }
+          return errorResponse(
+            "This order does not require online payment.",
+            "ORDER_NOT_PAYABLE",
+            400,
+          );
+        }
+        if (fulfillmentStatus !== "pending" && paymentStatus !== "paid") {
+          return errorResponse(
+            "This order does not require online payment.",
+            "ORDER_NOT_PAYABLE",
+            400,
+          );
+        }
         const { loadSuccessfulProductOrderCardCharges, priorProductOrderCardPayments, productOrderPaystackChargeIsAllowed } =
           await import("@/lib/payments/resolve-paystack-initialize-amount");
         const recordedCharges = await loadSuccessfulProductOrderCardCharges(admin, productOrderId);

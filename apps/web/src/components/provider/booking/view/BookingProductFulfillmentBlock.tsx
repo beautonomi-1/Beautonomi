@@ -23,10 +23,10 @@ export function BookingProductFulfillmentBlock({ bookingId }: BookingProductFulf
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetcher.get<{ data?: Array<{ id: string; status?: string }> }>(
-          `/api/provider/product-orders?booking_id=${encodeURIComponent(bookingId)}&limit=1`,
-        );
-        const row = res?.data?.[0];
+        const res = await fetcher.get<{
+          data?: { orders?: Array<{ id: string; status?: string }> };
+        }>(`/api/provider/product-orders?booking_id=${encodeURIComponent(bookingId)}&limit=1`);
+        const row = res?.data?.orders?.[0];
         if (!cancelled && row?.id) {
           setOrderId(row.id);
           setStatus(row.status ?? null);

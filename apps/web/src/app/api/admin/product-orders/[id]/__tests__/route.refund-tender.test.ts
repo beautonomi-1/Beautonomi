@@ -251,6 +251,23 @@ describe("PATCH /api/admin/product-orders/[id] refund tender split", () => {
     expect((await res.json()).error?.code).toBe("REFUND_PENDING");
   });
 
+  it("refuses to confirm an unpaid online Paystack hold", async () => {
+    const server = await setup(
+      makeOrder({
+        status: "pending",
+        payment_status: "pending",
+        payment_method: "paystack",
+        order_source: "online",
+      }),
+    );
+
+    const res = await patch({ status: "confirmed" });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error?.code).toBe("PAYMENT_REQUIRED");
+    expect(server.updates).toHaveLength(0);
+  });
+
   it("cancel (no refund) still restocks and cancels the shipment", async () => {
     const { restockProductOrderLineItems } = await import("@/lib/orders/product-order-lifecycle");
     const { cancelCourierShipmentForOrder } = await import("@/lib/orders/shipping");

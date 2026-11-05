@@ -19,6 +19,7 @@ type ExpoVideoPreviewProps = {
   playbackTrim?: ExplorePlaybackTrimWindow | null;
   /** Fired ~5×/s while playing (for timed on-media text overlays). */
   onPlaybackTimeUpdate?: (timeMs: number) => void;
+  onPlayingChange?: (playing: boolean) => void;
 };
 
 export function ExpoVideoPreview({
@@ -31,6 +32,7 @@ export function ExpoVideoPreview({
   muted = false,
   playbackTrim = null,
   onPlaybackTimeUpdate,
+  onPlayingChange,
 }: ExpoVideoPreviewProps) {
   const trimStartMs = playbackTrim?.trim_start_ms ?? null;
   const trimEndMs = playbackTrim?.trim_end_ms ?? null;
@@ -47,6 +49,12 @@ export function ExpoVideoPreview({
   });
 
   useExploreTrimLoop(player, trimStartMs, trimEndMs, !paused);
+
+  useEffect(() => {
+    if (!onPlayingChange) return;
+    const sub = player.addListener("playingChange", ({ isPlaying }) => onPlayingChange(isPlaying));
+    return () => sub.remove();
+  }, [onPlayingChange, player]);
 
   useEffect(() => {
     player.muted = muted;

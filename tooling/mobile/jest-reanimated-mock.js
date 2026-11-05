@@ -3,7 +3,9 @@
  * Jest stub for react-native-reanimated 4 + worklets (SDK 57).
  * Must run from jest `setupFiles` (before test modules load).
  */
-jest.mock("react-native-worklets", () => ({}));
+jest.mock("react-native-worklets", () => ({
+  scheduleOnRN: (fn, ...args) => fn?.(...args),
+}));
 
 jest.mock("react-native-reanimated", () => {
   const RN = require("react-native");

@@ -159,7 +159,7 @@ describe("GET /auth/callback", () => {
     expect(res.headers.get("location")).toBe("https://app.example.com/onboarding");
   });
 
-  it("redirects to login with missing_code when no code and no token_hash", async () => {
+  it("hands off to the client fragment handler when no code and no token_hash", async () => {
     mockGetSupabaseServer.mockResolvedValue({ auth: {} });
 
     const { GET } = await import("../route");
@@ -167,7 +167,24 @@ describe("GET /auth/callback", () => {
     const res = await GET(req);
 
     expect(res.status).toBe(307);
-    expect(res.headers.get("location")).toContain("/login?error=missing_code");
+    expect(res.headers.get("location")).toBe("https://app.example.com/auth/callback/complete");
+  });
+
+  it("forwards only a safe next path to the client fragment handler", async () => {
+    mockGetSupabaseServer.mockResolvedValue({ auth: {} });
+
+    const { GET } = await import("../route");
+    const safe = await GET(
+      new NextRequest("https://app.example.com/auth/callback?next=%2Fprovider%2Fget-started"),
+    );
+    expect(safe.headers.get("location")).toBe(
+      "https://app.example.com/auth/callback/complete?next=%2Fprovider%2Fget-started",
+    );
+
+    const unsafe = await GET(
+      new NextRequest("https://app.example.com/auth/callback?next=%2F%2Fevil.com"),
+    );
+    expect(unsafe.headers.get("location")).toBe("https://app.example.com/auth/callback/complete");
   });
 
   it("preserves query params on allowed OAuth next paths", async () => {

@@ -141,7 +141,12 @@ export async function GET(request: NextRequest) {
   }
 
   if (!code) {
-    return authErrorRedirect(requestUrl, "missing_code");
+    // Implicit-flow links (native apps' resetPasswordForEmail) carry tokens in the URL fragment,
+    // which never reaches the server; browsers keep the fragment across this redirect.
+    const completeUrl = new URL("/auth/callback/complete", requestUrl.origin);
+    const next = safeReturnPath(requestUrl.searchParams.get("next"), requestUrl.origin);
+    if (next) completeUrl.searchParams.set("next", next);
+    return NextResponse.redirect(completeUrl);
   }
 
   // Exchange code for session

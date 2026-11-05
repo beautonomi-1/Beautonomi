@@ -13,6 +13,9 @@ function makePlayer(status: string) {
     play: jest.fn(() => {
       player.playing = true;
     }),
+    pause: jest.fn(() => {
+      player.playing = false;
+    }),
     addListener: jest.fn((_event: string, cb: Listener) => {
       listeners.add(cb);
       return { remove: () => listeners.delete(cb) };
@@ -67,6 +70,46 @@ describe("useExploreTrimLoop", () => {
     player.currentTime = 3.2;
     rerender({ s: 2000, e: 5000 });
     expect(player.currentTime).toBe(3.2);
+  });
+
+  it("fires onTrimEnd once at the trim end instead of looping", () => {
+    const player = makePlayer("readyToPlay");
+    const onTrimEnd = jest.fn();
+    renderHook(() =>
+      useExploreTrimLoop(player as unknown as VideoPlayer, 2000, 5000, true, { onTrimEnd }),
+    );
+    player.currentTime = 2.5;
+    act(() => {
+      jest.advanceTimersByTime(150);
+    });
+    expect(onTrimEnd).not.toHaveBeenCalled();
+    player.currentTime = 4.99;
+    act(() => {
+      jest.advanceTimersByTime(150);
+    });
+    expect(onTrimEnd).toHaveBeenCalledTimes(1);
+    expect(player.pause).toHaveBeenCalled();
+    expect(player.currentTime).toBe(4.99);
+    act(() => {
+      jest.advanceTimersByTime(500);
+    });
+    expect(onTrimEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it("pauses at the trim end before the clip has played inside, without looping", () => {
+    const player = makePlayer("readyToPlay");
+    const onTrimEnd = jest.fn();
+    renderHook(() =>
+      useExploreTrimLoop(player as unknown as VideoPlayer, 2000, 5000, true, { onTrimEnd }),
+    );
+    player.currentTime = 4.99;
+    act(() => {
+      jest.advanceTimersByTime(150);
+    });
+    expect(onTrimEnd).not.toHaveBeenCalled();
+    expect(player.pause).toHaveBeenCalled();
+    expect(player.currentTime).toBe(4.99);
+    expect(player.play).not.toHaveBeenCalled();
   });
 
   it("does nothing without a trim window", () => {

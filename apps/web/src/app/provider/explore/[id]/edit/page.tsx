@@ -70,13 +70,20 @@ export default function ProviderExploreEditPage() {
     );
   }
 
-  // media_urls from API are full URLs; ExplorePostForm expects paths for edit
+  // media_urls from API are full URLs; ExplorePostForm expects storage paths for edit
+  const toStoragePath = (url: string) => {
+    const match = url.match(/\/explore-posts\/(.+)$/);
+    return match ? match[1] : url;
+  };
   const postForForm: ExplorePost = {
     ...post,
-    media_urls: (post.media_urls ?? []).map((url) => {
-      const match = url.match(/\/explore-posts\/(.+)$/);
-      return match ? match[1] : url;
-    }),
+    media_urls: (post.media_urls ?? []).map(toStoragePath),
+    playback_path: post.playback_path ? toStoragePath(post.playback_path) : post.playback_path,
+    media_meta: post.media_meta?.map((slide) => ({
+      ...slide,
+      display_path: slide.display_path ? toStoragePath(slide.display_path) : slide.display_path,
+      playback_path: slide.playback_path ? toStoragePath(slide.playback_path) : slide.playback_path,
+    })),
   };
 
   return (

@@ -17,7 +17,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useProductOrders, type ProductOrder } from "@/features/shop/useProductOrders";
 import { getTenantLocaleTag } from "@/lib/locale";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { formatMoney } from "@beautonomi/utils";
+import { formatMoney, isUnpaidOnlinePaystackHold } from "@beautonomi/utils";
 import { horizontalFlatListPerf, verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { useTranslation } from "@beautonomi/i18n";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
@@ -79,6 +79,8 @@ function OrderCard({ order, onPress }: { order: ProductOrder; onPress: () => voi
   const firstImage = order.items?.[0]?.product_image_url;
   const itemCount = order.items?.reduce((s, i) => s + i.quantity, 0) ?? 0;
   const date = formatDateSafe(order.created_at);
+  const paymentDue =
+    isUnpaidOnlinePaystackHold(order) && Number(order.amount_still_due ?? 0) > 0;
 
   return (
     <TouchableOpacity
@@ -116,7 +118,23 @@ function OrderCard({ order, onPress }: { order: ProductOrder; onPress: () => voi
             <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }}>
               {order.order_number}
             </Text>
-            <StatusBadge status={order.status} />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              {paymentDue ? (
+                <View
+                  style={{
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    borderRadius: 20,
+                    backgroundColor: "#FEF3C7",
+                  }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: "#B45309" }}>
+                    {t("customer.mobile.screens.productOrders.paymentDueBadge")}
+                  </Text>
+                </View>
+              ) : null}
+              <StatusBadge status={order.status} />
+            </View>
           </View>
           <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 2 }}>
             {order.provider?.business_name}

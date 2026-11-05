@@ -41,6 +41,12 @@ import {
   allowsInPersonProductOrderRefund,
   displayedProductOrderAmountStillDue,
 } from "@/lib/orders/product-order-tender";
+import { isUnpaidOnlinePaystackHold } from "@beautonomi/utils";
+import {
+  productOrderDisplayCustomerEmail,
+  productOrderDisplayCustomerName,
+  productOrderDisplayCustomerPhone,
+} from "@/lib/orders/product-order-customer-snapshot";
 import {
   ShoppingBag,
   ChevronLeft,
@@ -68,9 +74,17 @@ interface ProductOrder {
   order_source?: string | null;
   booking_id?: string | null;
   customer_name?: string | null;
+  customer_email?: string | null;
+  customer_phone?: string | null;
   tracking_number: string | null;
   created_at: string;
-  customer?: { id: string; full_name: string; email: string; identity_verified?: boolean | null } | null;
+  customer?: {
+    id: string;
+    full_name: string;
+    email: string;
+    phone?: string | null;
+    identity_verified?: boolean | null;
+  } | null;
   items: {
     id: string;
     product_name: string;
@@ -179,6 +193,7 @@ export default function ProviderProductOrdersPage() {
   const [orders, setOrders] = useState<ProductOrder[]>([]);
   const [prefetchedFocusOrder, setPrefetchedFocusOrder] = useState<ProductOrder | null>(null);
   const [loading, setLoading] = useState(true);
+  const [queueFilter, setQueueFilter] = useState<"fulfillment" | "awaiting_payment">("fulfillment");
   const [statusFilter, setStatusFilter] = useState("");
   const [statusCounts, setStatusCounts] = useState<ProductOrderStatusCounts>({});
   const [totalOrderCount, setTotalOrderCount] = useState(0);
@@ -209,7 +224,11 @@ export default function ProviderProductOrdersPage() {
     try {
       const params = new URLSearchParams();
       params.set("page", String(page));
-      if (statusFilter) params.set("status", statusFilter);
+      if (queueFilter === "awaiting_payment") {
+        params.set("queue", "awaiting_payment");
+      } else if (statusFilter) {
+        params.set("status", statusFilter);
+      }
 
       const res = await fetcher.get<{
         data: {
@@ -229,7 +248,7 @@ export default function ProviderProductOrdersPage() {
       setError(t("web.provider.pages.ecommerce/orders.failedToLoad"));
     }
     setLoading(false);
-  }, [page, statusFilter]);
+  }, [page, statusFilter, queueFilter, t]);
 
   useEffect(() => {
     const id = setTimeout(() => fetchOrders(), 0);
@@ -295,6 +314,15 @@ export default function ProviderProductOrdersPage() {
       cancelled = true;
     };
   }, [focusOrderId]);
+
+  useEffect(() => {
+    if (!prefetchedFocusOrder) return;
+    if (isUnpaidOnlinePaystackHold(prefetchedFocusOrder)) {
+      setQueueFilter("awaiting_payment");
+      setStatusFilter("");
+      setPage(1);
+    }
+  }, [prefetchedFocusOrder]);
 
   useEffect(() => {
     if (!mobileBookingShell || !focusOrderId) return;
@@ -466,6 +494,46 @@ export default function ProviderProductOrdersPage() {
         </div>
       )}
 
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          type="button"
+          onClick={() => {
+            setQueueFilter("fulfillment");
+            setPage(1);
+          }}
+          className={cn(
+            "rounded-full px-4 py-2 text-sm font-semibold transition-colors",
+            queueFilter === "fulfillment"
+              ? "bg-gray-900 text-white"
+              : "bg-gray-100 text-gray-700 hover:bg-gray-200",
+          )}
+        >
+          {t("web.provider.pages.ecommerce/orders.queueFulfillment")}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setQueueFilter("awaiting_payment");
+            setStatusFilter("");
+            setPage(1);
+          }}
+          className={cn(
+            "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-colors",
+            queueFilter === "awaiting_payment"
+              ? "bg-amber-600 text-white"
+              : "bg-amber-50 text-amber-900 ring-1 ring-amber-200 hover:bg-amber-100",
+          )}
+        >
+          {t("web.provider.pages.ecommerce/orders.queueAwaitingPayment")}
+          <span className="min-w-5 rounded-full bg-white/20 px-1.5 py-0.5 text-[11px] font-bold">
+            {Number(statusCounts.awaiting_payment ?? 0) > 99
+              ? "99+"
+              : Number(statusCounts.awaiting_payment ?? 0)}
+          </span>
+        </button>
+      </div>
+
+      {queueFilter === "fulfillment" ? (
       <div className="flex items-center gap-3 flex-wrap">
         {statusFilterTabs(t).map(
           ({ value, label }) => {
@@ -503,6 +571,9 @@ export default function ProviderProductOrdersPage() {
           },
         )}
       </div>
+      ) : (
+        <p className="text-sm text-amber-900/90">{t("web.provider.pages.ecommerce/orders.awaitingPaymentHint")}</p>
+      )}
 
       <div className="bg-white rounded-xl border overflow-hidden">
         {loading ? (
@@ -527,11 +598,18 @@ export default function ProviderProductOrdersPage() {
               const totalAmount = Number(o.total_amount ?? 0);
               const providerEarnings = Math.max(0, totalAmount - platformFee);
               const isAppointmentOrder = o.order_source === "appointment";
+              const isHold = isUnpaidOnlinePaystackHold(o);
               const canCollectPayment =
                 canProcessPayments &&
+                !isHold &&
                 o.payment_status !== "paid" &&
                 o.status !== "cancelled" &&
                 o.status !== "refunded";
+              const displayCustomerName =
+                productOrderDisplayCustomerName(o) ||
+                t("web.provider.pages.ecommerce/orders.appointmentCustomer");
+              const displayCustomerEmail = productOrderDisplayCustomerEmail(o);
+              const displayCustomerPhone = productOrderDisplayCustomerPhone(o);
               const inPersonDue = displayedProductOrderAmountStillDue(o);
               const canCollectWithYoco = yocoEnabled && canCollectPayment && inPersonDue > 0;
               const canCollectWithPaycloud =
@@ -584,12 +662,22 @@ export default function ProviderProductOrdersPage() {
                           {t("web.provider.pages.ecommerce/orders.partiallyRefundedRefundRemaining")}
                         </p>
                       ) : null}
+                      {isHold ? (
+                        <p className="mb-2 text-xs text-amber-800 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                          {t("web.provider.pages.ecommerce/orders.awaitingPaymentRowHint")}
+                        </p>
+                      ) : null}
                       <p className="text-sm text-gray-700 break-words inline-flex items-center gap-1.5 flex-wrap">
-                        <span className="font-medium">{o.customer?.full_name || o.customer_name || t("web.provider.pages.ecommerce/orders.appointmentCustomer")}</span>
+                        <span className="font-medium">{displayCustomerName}</span>
                         {o.customer?.identity_verified ? (
                           <VerifiedBadge verified iconOnly />
                         ) : null}
-                        {o.customer?.email && <span className="text-gray-400">({o.customer.email})</span>}
+                        {displayCustomerEmail ? (
+                          <span className="text-gray-400">({displayCustomerEmail})</span>
+                        ) : null}
+                        {displayCustomerPhone ? (
+                          <span className="text-gray-500">{displayCustomerPhone}</span>
+                        ) : null}
                       </p>
                       <div className="mt-2 space-y-1">
                         {o.items?.map((item) => {
@@ -610,7 +698,7 @@ export default function ProviderProductOrdersPage() {
                             <span className="text-gray-400">{formatMoney(Number(item.total_price))}</span>
                             <select
                               value={from}
-                              disabled={lineLocked || from === "delivered" || from === "cancelled"}
+                              disabled={isHold || lineLocked || from === "delivered" || from === "cancelled"}
                               onChange={(e) => void handleLineFulfilment(o.id, item.id, e.target.value)}
                               aria-label={t("web.provider.pages.ecommerce/orders.fulfilmentFor", { name: item.product_name })}
                               className="ms-auto rounded border border-gray-200 bg-white px-1.5 py-0.5 text-xs text-gray-700 disabled:opacity-50"
@@ -655,6 +743,7 @@ export default function ProviderProductOrdersPage() {
                           ? t("web.provider.pages.ecommerce/orders.appointmentPickupTitle")
                           : o.fulfillment_type === "delivery" ? t("web.provider.pages.ecommerce/orders.deliveryLabel") : t("web.provider.pages.ecommerce/orders.collection")}
                       </p>
+                      {!isHold ? (
                       <select
                         value={o.status}
                         onChange={(e) => handleStatusUpdate(o.id, e.target.value)}
@@ -672,6 +761,7 @@ export default function ProviderProductOrdersPage() {
                           </option>
                         ))}
                       </select>
+                      ) : null}
                       <div className="flex flex-wrap gap-2 mt-3 justify-start sm:justify-end">
                         <ShareReceiptButton
                           kind="provider-order"
@@ -687,8 +777,8 @@ export default function ProviderProductOrdersPage() {
                         >
                           {t("web.provider.pages.ecommerce/orders.downloadReceipt")}
                         </a>
-                        {actions.length > 0 &&
-                          actions.map((a) => (
+                        {(isHold ? actions.filter((a) => a.next === "cancelled") : actions).length > 0 &&
+                          (isHold ? actions.filter((a) => a.next === "cancelled") : actions).map((a) => (
                             <button
                               key={a.next}
                               onClick={() => handleStatusUpdate(o.id, a.next)}

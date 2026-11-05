@@ -626,19 +626,59 @@ export async function POST(request: NextRequest) {
           provider: "paystack",
         });
         if (!payRecord.ok) {
-          productOrderFulfillmentFailed = true;
           console.error(
             "[charge-saved-card] product order payment not recorded (order may be non-payable)",
             { productOrderId: productOrderIdFromMeta, reference: chargeData.reference },
           );
+          const { data: poRow } = await supabaseAdmin
+            .from("product_orders")
+            .select("tenant_id, currency, status, payment_status")
+            .eq("id", productOrderIdFromMeta)
+            .maybeSingle();
+          const closedStatus = String(
+            (poRow as { status?: string | null } | null)?.status ?? "",
+          ).toLowerCase();
+          const closedPayment = String(
+            (poRow as { payment_status?: string | null } | null)?.payment_status ?? "",
+          ).toLowerCase();
+          const orderClosed =
+            closedPayment === "failed" ||
+            closedStatus === "cancelled" ||
+            closedStatus === "refunded";
+          if (orderClosed && chargeData.reference) {
+            try {
+              const { refundProductOrderUnpayableCharge } = await import(
+                "@/lib/payments/refund-product-order-unpayable-charge"
+              );
+              await refundProductOrderUnpayableCharge(supabaseAdmin, {
+                productOrderId: productOrderIdFromMeta,
+                reference: String(chargeData.reference),
+                amountMajor: amountMajorForOrder,
+                currency: String(
+                  (poRow as { currency?: string | null } | null)?.currency || chargeCurrency,
+                ).toUpperCase(),
+                tenantId: (poRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+                reason: "Saved card charge after product order was closed",
+              });
+            } catch (refundErr) {
+              console.error("[charge-saved-card] closed product order refund failed", refundErr);
+            }
+            const closedMessage = "This order does not require online payment.";
+            if (idempotencyKey) {
+              await rememberIdempotentResponse(idempotencyEndpoint, idempotencyKey, {
+                status: 400,
+                body: {
+                  data: null,
+                  error: { message: closedMessage, code: "ORDER_NOT_PAYABLE" },
+                },
+              });
+            }
+            return errorResponse(closedMessage, "ORDER_NOT_PAYABLE", 400);
+          }
+          productOrderFulfillmentFailed = true;
           const { slackNotifyProductOrderPaymentNotRecorded } = await import(
             "@/lib/integrations/slack/ops-triggers"
           );
-          const { data: poRow } = await supabaseAdmin
-            .from("product_orders")
-            .select("tenant_id, currency")
-            .eq("id", productOrderIdFromMeta)
-            .maybeSingle();
           slackNotifyProductOrderPaymentNotRecorded({
             tenantId: (poRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
             productOrderId: productOrderIdFromMeta,

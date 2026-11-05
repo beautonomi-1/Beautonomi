@@ -95,7 +95,11 @@ export function GlobalFloatingCopilot() {
           <Bot className="h-6 w-6" />
         </button>
       ) : (
-        <div className="fixed bottom-6 end-6 z-40 flex w-[min(100vw-2rem,24rem)] flex-col rounded-xl border border-gray-200 bg-white shadow-xl">
+        <div
+          className={`fixed end-6 z-40 flex w-[min(100vw-2rem,24rem)] flex-col rounded-xl border border-gray-200 bg-white shadow-xl ${
+            liftAboveComposer ? (isDesktop ? "bottom-28" : "bottom-[max(5.5rem,env(safe-area-inset-bottom))]") : "bottom-6"
+          }`}
+        >
           <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
             <span className="text-sm font-semibold text-gray-900">Copilot</span>
             <button type="button" aria-label="Close Copilot" onClick={() => setOpen(false)}>

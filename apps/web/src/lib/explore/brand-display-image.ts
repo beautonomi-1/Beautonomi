@@ -4,10 +4,16 @@ import type { ExploreTextOverlay } from "@/lib/explore/media-types";
 const DISPLAY_MAX = 1200;
 const JPEG_QUALITY = 80;
 
+export type ProcessExploreDisplayJpegOptions = {
+  /** Skip the bottom "Beautonomi · provider" bar (video encode posters). */
+  skipProviderMark?: boolean;
+};
+
 export async function processExploreDisplayJpeg(
   input: Buffer,
   providerName?: string | null,
   textOverlays?: ExploreTextOverlay[] | null,
+  options?: ProcessExploreDisplayJpegOptions,
 ): Promise<{ buffer: Buffer; width: number; height: number }> {
   sharp.cache(false);
   const base = sharp(input, { failOn: "none" }).rotate();
@@ -38,14 +44,16 @@ export async function processExploreDisplayJpeg(
     ? `Beautonomi · ${providerName.trim().slice(0, 40)}`
     : "Beautonomi";
 
-  try {
-    const svg = `<svg width="${outW}" height="40">
+  if (!options?.skipProviderMark) {
+    try {
+      const svg = `<svg width="${outW}" height="40">
       <rect x="8" y="8" width="${Math.max(0, outW - 16)}" height="28" rx="6" fill="rgba(0,0,0,0.45)"/>
       <text x="16" y="28" font-family="Arial,sans-serif" font-size="14" fill="white">${escapeXml(markText)}</text>
     </svg>`;
-    composites.push({ input: Buffer.from(svg), left: 0, top: Math.max(0, outH - 40) });
-  } catch {
-    // watermark optional
+      composites.push({ input: Buffer.from(svg), left: 0, top: Math.max(0, outH - 40) });
+    } catch {
+      // watermark optional
+    }
   }
 
   let pipeline = resized;

@@ -64,7 +64,14 @@ export type MediaFlowAction =
       batch: LibraryBatchSlot[];
       firstVideo: PickedAsset | null;
     }
-  | { type: "TRIM_CONFIRM"; trim: ExploreVideoTrimWindow; sourceDurationMs: number }
+  | {
+      type: "TRIM_CONFIRM";
+      trim: ExploreVideoTrimWindow;
+      sourceDurationMs: number;
+      posterUri?: string;
+      posterWidth?: number;
+      posterHeight?: number;
+    }
   | { type: "TRIM_CANCEL" }
   | { type: "TRIM_HIDDEN" }
   | { type: "RETRIM"; target: MediaFlowTarget; index: number; asset: PickedAsset }
@@ -90,13 +97,21 @@ function mapCaptureToAsset(c: CameraCapturePayload): PickedAsset {
   };
 }
 
-function trimmedAsset(base: PickedAsset, trim: ExploreVideoTrimWindow, sourceDurationMs: number): PickedAsset {
+function trimmedAsset(
+  base: PickedAsset,
+  trim: ExploreVideoTrimWindow,
+  sourceDurationMs: number,
+  poster?: { uri?: string; width?: number; height?: number },
+): PickedAsset {
   return {
     ...base,
     source_duration_ms: sourceDurationMs,
     trim_start_ms: trim.trim_start_ms,
     trim_end_ms: trim.trim_end_ms,
     duration_ms: trimWindowDurationMs(trim),
+    ...(poster?.uri
+      ? { poster_uri: poster.uri, poster_width: poster.width, poster_height: poster.height }
+      : {}),
   };
 }
 
@@ -268,7 +283,11 @@ export function exploreMediaFlowReducer(
 
     case "TRIM_CONFIRM": {
       if (state.step !== "trim") return { state, commits: [] };
-      const trimmed = trimmedAsset(state.current, action.trim, action.sourceDurationMs);
+      const trimmed = trimmedAsset(state.current, action.trim, action.sourceDurationMs, {
+        uri: action.posterUri,
+        width: action.posterWidth,
+        height: action.posterHeight,
+      });
       let result: MediaFlowReducerResult;
       if (state.source === "retrim" && state.editIndex != null) {
         result = {

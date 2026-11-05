@@ -34,6 +34,12 @@ import {
   allowsInPersonProductOrderRefund,
   displayedProductOrderAmountStillDue,
 } from "@/lib/orders/product-order-tender";
+import { isUnpaidOnlinePaystackHold } from "@beautonomi/utils";
+import {
+  productOrderDisplayCustomerEmail,
+  productOrderDisplayCustomerName,
+  productOrderDisplayCustomerPhone,
+} from "@/lib/orders/product-order-customer-snapshot";
 import {
   isValidLineTransition,
   LINE_FULFILMENT_STATUSES,
@@ -123,6 +129,7 @@ export function ProductOrderViewSheet({
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
   const [refundMethod, setRefundMethod] = useState<"cash" | "store_credit">("cash");
+  const [isMessaging, setIsMessaging] = useState(false);
 
   const load = useCallback(async () => {
     if (!orderId) return;
@@ -268,6 +275,28 @@ export function ProductOrderViewSheet({
     }
   };
 
+  const handleMessageCustomer = async () => {
+    const customerId = order?.customer?.id;
+    if (!customerId || isMessaging) return;
+    setIsMessaging(true);
+    try {
+      const data = await fetcher.post<{ data?: { id: string } }>(
+        "/api/provider/conversations/create",
+        { customer_id: customerId },
+      );
+      const convId = data?.data?.id;
+      if (convId) {
+        window.location.assign(`/provider/messaging?conversationId=${convId}`);
+      } else {
+        toast.error(t("web.provider.productOrderViewSheet.messageFailed"));
+        setIsMessaging(false);
+      }
+    } catch {
+      toast.error(t("web.provider.productOrderViewSheet.messageFailed"));
+      setIsMessaging(false);
+    }
+  };
+
   const handleCardMachineSuccess = async () => {
     if (!order) return;
     clearFetcherCache();
@@ -278,15 +307,22 @@ export function ProductOrderViewSheet({
   };
 
   const isAppointmentOrder = order?.order_source === "appointment";
+  const isHold = order ? isUnpaidOnlinePaystackHold(order) : false;
   const inPersonDue = order ? displayedProductOrderAmountStillDue(order) : 0;
   const refundInPerson = order ? allowsInPersonProductOrderRefund(order) : false;
   const refundCanWallet = Boolean(order?.customer?.id);
   const canCollect =
     canProcessPayments &&
     order &&
+    !isHold &&
     order.payment_status !== "paid" &&
     order.status !== "cancelled" &&
     order.status !== "refunded";
+  const canMessageCustomer =
+    Boolean(order?.customer?.id) &&
+    !isHold &&
+    order?.status !== "cancelled" &&
+    order?.status !== "refunded";
   const canCollectCardMachine =
     (yocoEnabled || paycloudEnabled) && canCollect && !isAppointmentOrder && inPersonDue > 0;
   const canRefund =
@@ -341,10 +377,36 @@ export function ProductOrderViewSheet({
               </BookingSectionLabel>
               <BookingSummaryRow
                 label={t("web.provider.productOrderViewSheet.name")}
-                value={order.customer?.full_name || order.customer_name || t("web.provider.productOrderViewSheet.walkInCustomer")}
+                value={
+                  productOrderDisplayCustomerName(order) ||
+                  t("web.provider.productOrderViewSheet.walkInCustomer")
+                }
               />
-              {order.customer?.email ? (
-                <BookingSummaryRow label={t("web.provider.productOrderViewSheet.email")} value={order.customer.email} />
+              {productOrderDisplayCustomerEmail(order) ? (
+                <BookingSummaryRow
+                  label={t("web.provider.productOrderViewSheet.email")}
+                  value={productOrderDisplayCustomerEmail(order)}
+                />
+              ) : null}
+              {productOrderDisplayCustomerPhone(order) ? (
+                <BookingSummaryRow
+                  label={t("web.provider.productOrderViewSheet.phone")}
+                  value={productOrderDisplayCustomerPhone(order)}
+                />
+              ) : null}
+              {canMessageCustomer ? (
+                <BookingActionButton
+                  className="mt-3"
+                  size="sm"
+                  fullWidth
+                  variant="outline"
+                  disabled={isMessaging}
+                  onClick={() => void handleMessageCustomer()}
+                >
+                  {isMessaging
+                    ? t("web.provider.productOrderViewSheet.openingMessage")
+                    : t("web.provider.productOrderViewSheet.messageCustomer")}
+                </BookingActionButton>
               ) : null}
             </BookingSectionCard>
 
@@ -549,6 +611,22 @@ export function ProductOrderViewSheet({
               </BookingSectionCard>
             ) : null}
 
+            {isHold ? (
+              <BookingSectionCard className="border-amber-200 bg-amber-50">
+                <p className="text-sm text-amber-950">
+                  {t("web.provider.productOrderViewSheet.awaitingPaymentHint")}
+                </p>
+                <BookingActionButton
+                  className="mt-3"
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => void handleStatusChange("cancelled")}
+                >
+                  {t("web.provider.productOrderViewSheet.actionCancel")}
+                </BookingActionButton>
+              </BookingSectionCard>
+            ) : (
             <BookingSectionCard>
               <BookingSectionLabel className="mb-2">{t("web.provider.productOrderViewSheet.status")}</BookingSectionLabel>
               <select
@@ -603,6 +681,7 @@ export function ProductOrderViewSheet({
                 </a>
               </div>
             </BookingSectionCard>
+            )}
           </div>
         ) : null}
       </BookingBottomSheet>

@@ -1,4 +1,4 @@
-import { Fragment, type RefObject } from "react";
+import { Fragment, type ReactNode, type RefObject } from "react";
 import { Copy, FileText } from "lucide-react";
 import { LinkifiedMessageText } from "@/lib/linkifyMessage";
 import { adminToast } from "@/lib/adminToast";
@@ -22,6 +22,8 @@ type TicketThreadProps = {
   originalRequestText: string | null;
   ticketCreatedAt?: string;
   scrollMode?: "panel" | "page" | "page-mobile";
+  /** Rendered at the top of the scrollport (SLA, email, AI on desktop). */
+  threadTop?: ReactNode;
 };
 
 export function TicketThread({
@@ -32,14 +34,16 @@ export function TicketThread({
   originalRequestText,
   ticketCreatedAt,
   scrollMode = "panel",
+  threadTop,
 }: TicketThreadProps) {
   const scrollClass =
     scrollMode === "page-mobile"
       ? "min-h-0 flex-none px-1 py-3"
-      : "admin-scrollbar h-full min-h-0 overflow-y-auto px-1 py-3";
+      : "admin-scrollbar min-h-0 flex-1 overflow-y-auto px-1 py-3";
 
   return (
     <div ref={threadRef} className={scrollClass}>
+      {threadTop ? <div className="mb-3 space-y-2">{threadTop}</div> : null}
       {originalRequestText ? (
         <div className="mb-3 flex w-full justify-start">
           <div className="max-w-[min(100%,42rem)] rounded-xl border border-gray-200 bg-gray-50/90 p-3 shadow-sm">

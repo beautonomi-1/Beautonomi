@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { View, Text, type LayoutChangeEvent } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import { twStyle } from "@/lib/twStyle";
 import {
   EXPLORE_OVERLAY_CENTER_MAX,
@@ -116,7 +117,7 @@ function OverlayLayer({
     .minDistance(2)
     .hitSlop(12)
     .onBegin(() => {
-      runOnJS(onGestureActive)(true);
+      scheduleOnRN(onGestureActive, true);
     })
     .onStart(() => {
       startX.value = cx.value;
@@ -127,16 +128,16 @@ function OverlayLayer({
       cy.value = clampY(startY.value + e.translationY / stageH, font.value);
     })
     .onEnd(() => {
-      runOnJS(commit)(cx.value, cy.value, font.value);
+      scheduleOnRN(commit, cx.value, cy.value, font.value);
     })
     .onFinalize(() => {
-      runOnJS(onGestureActive)(false);
+      scheduleOnRN(onGestureActive, false);
     });
 
   const pinch = Gesture.Pinch()
     .hitSlop(24)
     .onBegin(() => {
-      runOnJS(onGestureActive)(true);
+      scheduleOnRN(onGestureActive, true);
     })
     .onStart(() => {
       startFont.value = font.value;
@@ -146,14 +147,14 @@ function OverlayLayer({
       cy.value = clampY(cy.value, font.value);
     })
     .onEnd(() => {
-      runOnJS(commit)(cx.value, cy.value, font.value);
+      scheduleOnRN(commit, cx.value, cy.value, font.value);
     })
     .onFinalize(() => {
-      runOnJS(onGestureActive)(false);
+      scheduleOnRN(onGestureActive, false);
     });
 
   const tap = Gesture.Tap().onEnd(() => {
-    runOnJS(onSelect)(index);
+    scheduleOnRN(onSelect, index);
   });
 
   const gesture = Gesture.Exclusive(Gesture.Simultaneous(pan, pinch), tap);

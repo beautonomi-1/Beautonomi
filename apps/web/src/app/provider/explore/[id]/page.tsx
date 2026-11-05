@@ -21,6 +21,7 @@ import {
   Trash2,
 } from "lucide-react";
 import type { ExplorePost, ExploreComment } from "@/types/explore";
+import { appendExploreCommentPage, nextOffsetAfterEmptyCommentPage, placeExploreComment, removedExploreCommentCount } from "@/lib/explore/explore-reel-feed";
 import { ProviderExplorePostStatusBadge } from "@/components/provider/ProviderExplorePostStatusBadge";
 import { providerExplorePostBadge } from "@/lib/explore/provider-explore-post-status";
 import { firstSlideIsVideo, resolveExplorePosterUrl } from "@/lib/explore/video-media";
@@ -76,17 +77,32 @@ export default function ProviderExploreViewPage() {
       if (!id) return;
       try {
         if (offset === 0) setCommentsLoading(true);
-        const res = await fetcher.get<{
-          data: { data: ExploreComment[]; next_offset?: number; has_more: boolean };
-        }>(`/api/explore/posts/${id}/comments?limit=20&offset=${offset}`);
-        const payload = (res as { data?: { data: ExploreComment[]; next_offset?: number; has_more: boolean } })
-          ?.data;
-        const list = Array.isArray(payload?.data) ? payload.data : [];
-        const nextOffset = payload?.next_offset;
-        const hasMore = payload?.has_more ?? !!nextOffset;
-        setComments((prev) => (append ? [...prev, ...list] : list));
-        setCommentsOffset(offset + list.length);
-        setHasMoreComments(hasMore);
+        let cursor = offset;
+        let pageAppend = append;
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          const res = await fetcher.get<{
+            data: { data: ExploreComment[]; next_offset?: number; has_more: boolean };
+          }>(`/api/explore/posts/${id}/comments?limit=20&offset=${cursor}`, { staleTimeMs: 0 });
+          const payload = (res as { data?: { data: ExploreComment[]; next_offset?: number; has_more: boolean } })
+            ?.data;
+          const list = Array.isArray(payload?.data) ? payload.data : [];
+          const nextOffset = payload?.next_offset;
+          const hasMore = payload?.has_more ?? !!nextOffset;
+          const skipTo = nextOffsetAfterEmptyCommentPage({
+            offset: cursor,
+            visibleCount: list.length,
+            hasMore,
+            nextOffset,
+          });
+          if (skipTo == null || attempt === 4) {
+            setComments((prev) => (pageAppend ? appendExploreCommentPage(prev, list) : list));
+            setCommentsOffset(typeof nextOffset === "number" ? nextOffset : cursor + list.length);
+            setHasMoreComments(hasMore);
+            break;
+          }
+          cursor = skipTo;
+          pageAppend = true;
+        }
       } catch {
         if (offset === 0) setComments([]);
       } finally {
@@ -125,10 +141,14 @@ export default function ProviderExploreViewPage() {
     if (!text || !id) return;
     setCommentSubmitting(true);
     try {
-      await fetcher.post(`/api/explore/posts/${id}/comments`, { body: text });
+      const res = await fetcher.post<{ data?: ExploreComment }>(`/api/explore/posts/${id}/comments`, { body: text });
+      const created = res?.data;
+      if (!created?.id) throw new Error("comment_missing");
       setCommentInput("");
       setCommentCount((c) => c + 1);
-      await fetchComments(0, false);
+      setComments((prev) =>
+        placeExploreComment(prev, { ...created, body: created.body ?? text, replies: created.replies ?? [] }),
+      );
     } catch {
       toast.error(t("web.provider.pages.explore/[id].couldNotPost"));
     } finally {
@@ -139,8 +159,16 @@ export default function ProviderExploreViewPage() {
   const deleteComment = async (commentId: string) => {
     try {
       await fetcher.delete(`/api/explore/posts/${id}/comments/${commentId}`);
-      setCommentCount((c) => Math.max(0, c - 1));
-      setComments((prev) => prev.filter((c) => c.id !== commentId));
+      const removed = removedExploreCommentCount(comments, commentId);
+      setCommentCount((c) => Math.max(0, c - removed));
+      setComments((prev) =>
+        prev
+          .filter((c) => c.id !== commentId)
+          .map((c) => ({
+            ...c,
+            replies: (c.replies ?? []).filter((r) => r.id !== commentId),
+          })),
+      );
     } catch {
       toast.error(t("web.provider.pages.explore/[id].couldNotDelete"));
     }
@@ -345,7 +373,7 @@ export default function ProviderExploreViewPage() {
                   ))}
                 </ul>
               )}
-              {hasMoreComments && comments.length > 0 && (
+              {hasMoreComments && (
                 <button
                   type="button"
                   onClick={loadMoreComments}

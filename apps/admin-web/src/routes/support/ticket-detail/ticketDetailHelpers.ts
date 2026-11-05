@@ -348,6 +348,25 @@ export function isWideTicketLayout(containerWidth: number): boolean {
   return containerWidth >= TICKET_DETAIL_WIDE_MIN_PX;
 }
 
+/**
+ * Desktop conversation pane is a column with a definite height.
+ * The thread is a flex-1 scrollport (not height:100%, which does not resolve here).
+ * A hard 16rem row minimum overflowed the locked viewport and clipped the composer.
+ */
+export const TICKET_CONVERSATION_PANE_DESKTOP = "flex h-full min-h-0 flex-col";
+
+/** Direct child of the pane so 40% resolves against the pane height, not content height. */
+export const TICKET_COMPOSER_SLOT_DESKTOP = "flex max-h-[40%] min-h-0 shrink-0 flex-col overflow-visible";
+
+/** Mobile-only Conversation / Details tabs. Desktop always shows the thread, at any container width. */
+export function shouldShowTicketTabs(input: { isDesktop: boolean; containerWidth: number }): boolean {
+  return !input.isDesktop && input.containerWidth >= 0;
+}
+
+export function shouldShowDetailsInGrid(isDesktop: boolean, containerWidth: number): boolean {
+  return isWideTicketLayout(containerWidth);
+}
+
 const THREAD_NEAR_BOTTOM_PX = 120;
 
 /** Jump to the newest message on ticket open, or on new messages only when the agent is already near the bottom. */

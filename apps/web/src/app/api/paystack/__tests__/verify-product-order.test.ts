@@ -164,6 +164,7 @@ describe("GET /api/paystack/verify product orders", () => {
       total_amount: 100,
       wallet_amount: 0,
       payment_status: "pending",
+      status: "pending",
       payment_reference: null,
     };
     mockGetSupabaseServer.mockResolvedValue({
@@ -177,6 +178,7 @@ describe("GET /api/paystack/verify product orders", () => {
           total_amount: 100,
           wallet_amount: 0,
           payment_status: "pending",
+      status: "pending",
           payment_reference: null,
         });
       }),
@@ -201,6 +203,7 @@ describe("GET /api/paystack/verify product orders", () => {
       total_amount: 100,
       wallet_amount: 0,
       payment_status: "pending",
+      status: "pending",
       payment_reference: null,
       order_number: "PO-001",
     };
@@ -215,6 +218,7 @@ describe("GET /api/paystack/verify product orders", () => {
           total_amount: 100,
           wallet_amount: 0,
           payment_status: "pending",
+      status: "pending",
           payment_reference: null,
           order_number: "PO-001",
         });
@@ -249,6 +253,7 @@ describe("GET /api/paystack/verify product orders", () => {
       total_amount: 100,
       wallet_amount: 20,
       payment_status: "paid",
+      status: "confirmed",
       payment_reference: "ref-1",
       order_number: "PO-001",
     };
@@ -279,6 +284,7 @@ describe("GET /api/paystack/verify product orders", () => {
       total_amount: 120,
       wallet_amount: 0,
       payment_status: "pending",
+      status: "pending",
       payment_reference: null,
     };
     mockGetSupabaseServer.mockResolvedValue({
@@ -292,6 +298,7 @@ describe("GET /api/paystack/verify product orders", () => {
           total_amount: 120,
           wallet_amount: 0,
           payment_status: "pending",
+      status: "pending",
           payment_reference: null,
         });
       }),
@@ -316,6 +323,7 @@ describe("GET /api/paystack/verify product orders", () => {
       wallet_amount: 0,
       gift_card_amount: 0,
       payment_status: "pending",
+      status: "pending",
       payment_reference: null,
     };
     adminCardPayments = [{ amount: 60, reference: "first-charge" }];

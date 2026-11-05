@@ -35,6 +35,7 @@ import {
   allowsInPersonProductRefund,
   productOrderInPersonDue,
 } from "@/lib/product-order-in-person";
+import { isUnpaidOnlinePaystackHold } from "@beautonomi/utils";
 
 type TranslateFn = (key: string, opts?: Record<string, unknown>) => string;
 
@@ -177,6 +178,7 @@ interface Order {
   items?: OrderItem[];
   customer?: { id?: string | null; full_name?: string | null; email?: string | null; phone?: string | null; identity_verified?: boolean | null } | null;
   customer_name?: string | null;
+  customer_email?: string | null;
   customer_phone?: string | null;
   delivery_address?: OrderAddress | OrderAddress[] | null;
   collection_location?: OrderCollectionLocation | OrderCollectionLocation[] | null;
@@ -411,6 +413,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
   const currency = getTenantDefaultCurrency();
 
   const [refreshing, setRefreshing] = useState(false);
+  const [queueFilter, setQueueFilter] = useState<"fulfillment" | "awaiting_payment">("fulfillment");
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -457,7 +460,13 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
     permissionData?.permissions?.process_payments === true;
 
   const pageSize = 50;
-  const url = `/api/provider/product-orders?limit=${pageSize}&page=${page}${statusFilter ? `&status=${statusFilter}` : ""}`;
+  const url = `/api/provider/product-orders?limit=${pageSize}&page=${page}${
+    queueFilter === "awaiting_payment"
+      ? "&queue=awaiting_payment"
+      : statusFilter
+        ? `&status=${statusFilter}`
+        : ""
+  }`;
   const { data, loading, error, refresh, silentRefresh } = useApi<OrdersListResponse>(url, {
     revalidateOnFocus: true,
   });
@@ -477,7 +486,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
 
   useEffect(() => {
     setPage(1);
-  }, [statusFilter]);
+  }, [statusFilter, queueFilter]);
 
   const allOrders = useMemo(() => data?.orders ?? [], [data?.orders]);
   const pagination = data?.pagination;
@@ -785,7 +794,54 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         )}
       </View>
 
+      <View style={twStyle("mb-2 flex-row gap-2 px-4")}>
+        <TouchableOpacity
+          onPress={() => {
+            setQueueFilter("fulfillment");
+            setStatusFilter("");
+          }}
+          style={[
+            twStyle("rounded-full px-4 py-2"),
+            queueFilter === "fulfillment" ? { backgroundColor: "#111827" } : { backgroundColor: "#f3f4f6" },
+          ]}
+        >
+          <Text style={twStyle(`text-xs font-semibold ${queueFilter === "fulfillment" ? "text-white" : "text-gray-700"}`)}>
+            {po("queueFulfillment")}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => {
+            setQueueFilter("awaiting_payment");
+            setStatusFilter("");
+          }}
+          style={[
+            twStyle("flex-row items-center rounded-full px-4 py-2"),
+            queueFilter === "awaiting_payment"
+              ? { backgroundColor: "#d97706" }
+              : { backgroundColor: "#fffbeb", borderWidth: 1, borderColor: "#fcd34d" },
+          ]}
+        >
+          <Text
+            style={twStyle(
+              `text-xs font-semibold ${queueFilter === "awaiting_payment" ? "text-white" : "text-amber-900"}`,
+            )}
+          >
+            {po("queueAwaitingPayment")}
+          </Text>
+          <Text
+            style={twStyle(
+              `ms-2 text-[10px] font-bold ${queueFilter === "awaiting_payment" ? "text-white/90" : "text-amber-800"}`,
+            )}
+          >
+            {Number(statusCounts.awaiting_payment ?? 0) > 99
+              ? po("countCapped")
+              : Number(statusCounts.awaiting_payment ?? 0)}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       {/* ── Status filter chips ── */}
+      {queueFilter === "fulfillment" ? (
       <View style={twStyle("mb-2")}>
         <ScrollView
           horizontal
@@ -842,6 +898,9 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
           })}
         </ScrollView>
       </View>
+      ) : (
+        <Text style={twStyle("mb-2 px-4 text-xs text-amber-900")}>{po("awaitingPaymentHint")}</Text>
+      )}
 
       {/* ── Order list ── */}
       <ScrollView
@@ -890,8 +949,13 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                       </View>
                     </View>
                     <Text style={twStyle("mt-0.5 text-sm text-gray-600")} numberOfLines={1}>
-                      {order.customer?.full_name ?? order.customer_name ?? (order.order_source === "walk_in" ? po("walkIn") : po("customerFallback"))}{" "}
+                      {order.customer_name?.trim() ||
+                        order.customer?.full_name ||
+                        (order.order_source === "walk_in" ? po("walkIn") : po("customerFallback"))}{" "}
                       · {formatCurrency(Number(order.total_amount), currency)}
+                    </Text>
+                    <Text style={twStyle("text-xs text-gray-400")}>
+                      {new Date(order.created_at).toLocaleString()}
                     </Text>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2, flexWrap: "wrap" }}>
                       {order.customer?.identity_verified && (
@@ -1102,8 +1166,15 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                 </View>
               ) : null}
 
+              {isUnpaidOnlinePaystackHold(activeOrder) ? (
+                <View style={twStyle("mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3")}>
+                  <Text style={twStyle("text-sm text-amber-950")}>{po("awaitingPaymentRowHint")}</Text>
+                </View>
+              ) : null}
+
               {/* Customer info */}
               {(activeOrder.customer?.email ||
+                activeOrder.customer_email?.trim() ||
                 activeOrder.customer?.phone ||
                 activeOrder.customer?.full_name?.trim() ||
                 activeOrder.customer_name?.trim() ||
@@ -1128,9 +1199,41 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                       {(activeOrder.customer?.phone ?? activeOrder.customer_phone ?? "").trim()}
                     </Text>
                   ) : null}
-                  {activeOrder.customer?.email && (
-                    <Text style={twStyle("text-sm text-gray-700")}>{activeOrder.customer.email}</Text>
-                  )}
+                  {(activeOrder.customer?.email?.trim() || activeOrder.customer_email?.trim()) ? (
+                    <Text style={twStyle("text-sm text-gray-700")}>
+                      {(activeOrder.customer?.email ?? activeOrder.customer_email ?? "").trim()}
+                    </Text>
+                  ) : null}
+                  {activeOrder.customer?.id &&
+                  !isUnpaidOnlinePaystackHold(activeOrder) &&
+                  activeOrder.status !== "cancelled" &&
+                  activeOrder.status !== "refunded" ? (
+                    <TouchableOpacity
+                      onPress={async () => {
+                        try {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          const result = await api.post<{ id: string }>(
+                            "/api/provider/conversations/create",
+                            { customer_id: activeOrder.customer!.id },
+                          );
+                          if (result.error || !result.data?.id) {
+                            Alert.alert(po("messageTitle"), po("messageFailedBody"));
+                            return;
+                          }
+                          setViewOrder(null);
+                          setOrderDetail(null);
+                          router.push(`/(app)/(tabs)/chats/${result.data.id}` as never);
+                        } catch {
+                          Alert.alert(po("messageTitle"), po("messageFailedBody"));
+                        }
+                      }}
+                      style={twStyle("mt-3 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white px-3 py-2")}
+                      accessibilityRole="button"
+                    >
+                      <Ionicons name="chatbubble-outline" size={16} color="#374151" />
+                      <Text style={twStyle("ms-2 text-sm font-semibold text-gray-800")}>{po("messageCustomer")}</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               )}
 
@@ -1404,7 +1507,8 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                     </TouchableOpacity>
                   ) : null}
                 </View>
-              ) : (activeOrder.payment_status ?? "").toLowerCase() === "pending" &&
+              ) : !isUnpaidOnlinePaystackHold(activeOrder) &&
+                (activeOrder.payment_status ?? "").toLowerCase() === "pending" &&
                 activeOrder.status !== "cancelled" &&
                 activeOrder.status !== "refunded" &&
                 canProcessPayments &&
@@ -1493,7 +1597,11 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                   activeOrder.order_source,
                   activeOrder.payment_status,
                 ).filter(
-                  (st) => st !== "refunded" || (isRefundablePaymentStatus(activeOrder.payment_status) && remainingRefundable(activeOrder) > 0),
+                  (st) =>
+                    (st !== "refunded" ||
+                      (isRefundablePaymentStatus(activeOrder.payment_status) &&
+                        remainingRefundable(activeOrder) > 0)) &&
+                    (!isUnpaidOnlinePaystackHold(activeOrder) || st === "cancelled"),
                 );
                 if (!primary && destructive.length === 0) return null;
                 const primaryLabel =

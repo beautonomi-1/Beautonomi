@@ -12,6 +12,7 @@ import {
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import { productOrderCardAmountStillDue } from "@/lib/payments/resolve-paystack-initialize-amount";
+import { isUnpaidOnlinePaystackHold } from "@beautonomi/utils";
 
 const markCollectedSchema = z.object({
   payment_method: z.enum(["cash", "card_on_delivery", "yoco", "paycloud", "paystack_terminal"]),
@@ -54,6 +55,20 @@ export async function POST(
     }
     if (["cancelled", "refunded"].includes(String(order.status ?? ""))) {
       return errorResponse("Cannot collect payment for a cancelled or refunded order.", "INVALID_STATUS", 400);
+    }
+    if (
+      isUnpaidOnlinePaystackHold({
+        order_source: order.order_source,
+        payment_method: order.payment_method,
+        payment_status: order.payment_status,
+        status: order.status,
+      })
+    ) {
+      return errorResponse(
+        "This order is awaiting online payment from the customer. Cancel it if they will pay in person, then record a walk-in sale.",
+        "ONLINE_PAYMENT_PENDING",
+        400,
+      );
     }
 
     const explicitReference = body.reference?.trim() || null;
