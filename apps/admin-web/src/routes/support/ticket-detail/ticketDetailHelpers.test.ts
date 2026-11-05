@@ -14,7 +14,9 @@ import {
   nextTicketIdInQueue,
   resolveQueueNav,
   shouldAutoScrollThread,
+  messageTrailRole,
   shouldShowOriginalRequest,
+  statusPillClass,
   unwrapAdminBookingPayload,
 } from "@/routes/support/ticket-detail/ticketDetailHelpers";
 
@@ -211,6 +213,29 @@ describe("hasFailedPublicEmailSend", () => {
     expect(
       hasFailedPublicEmailSend([{ is_internal: false, email_delivery_status: "failed" }]),
     ).toBe(true);
+  });
+});
+
+describe("messageTrailRole", () => {
+  it("follows author_kind, then the ticket owner, and keeps internal notes separate", () => {
+    expect(messageTrailRole({ author_kind: "customer", user_id: "staff" }, "owner")).toBe("customer");
+    expect(messageTrailRole({ user_id: "owner" }, "owner")).toBe("customer");
+    expect(messageTrailRole({ user_id: "staff" }, "owner")).toBe("staff");
+    expect(messageTrailRole({ author_kind: "assistant", user_id: "staff" }, "owner")).toBe("assistant");
+    expect(messageTrailRole({ is_internal: true, author_kind: "customer" }, "owner")).toBe("internal");
+    expect(messageTrailRole({ is_auto_reply: true, user_id: "staff" }, "owner")).toBe("auto");
+  });
+});
+
+describe("statusPillClass", () => {
+  it("uses a different color for each queue status", () => {
+    const classes = ["open", "in_progress", "waiting_customer", "resolved", "closed"].map(statusPillClass);
+    expect(new Set(classes).size).toBe(classes.length);
+    expect(statusPillClass("open")).toContain("sky");
+    expect(statusPillClass("in_progress")).toContain("amber");
+    expect(statusPillClass("waiting_customer")).toContain("violet");
+    expect(statusPillClass("resolved")).toContain("emerald");
+    expect(statusPillClass("closed")).toContain("gray");
   });
 });
 

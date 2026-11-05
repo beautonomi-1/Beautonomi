@@ -14,6 +14,7 @@ import {
   PRIORITIES,
   formatDateTime,
   isSlaBreached,
+  statusPillClass,
   str,
   type TicketRow,
 } from "@/routes/support/ticket-detail/ticketDetailHelpers";
@@ -144,7 +145,7 @@ export function TicketSidebar({
           <div>
             <label className="text-xs font-medium text-gray-600">Status</label>
             <select
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              className={`mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium capitalize ${statusPillClass(str(ticket.status))}`}
               value={str(ticket.status)}
               disabled={patchPending}
               onChange={(e) => onPatch({ status: e.target.value })}

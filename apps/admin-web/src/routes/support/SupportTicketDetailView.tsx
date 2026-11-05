@@ -1051,7 +1051,9 @@ export function SupportTicketDetailView({
           role="tablist"
           aria-label="Ticket workspace"
           className={`flex shrink-0 gap-1 rounded-xl bg-gray-100 p-1 text-sm font-medium ${
-            !isPanel && !isDesktop ? "sticky top-0 z-20 bg-gray-100/95 backdrop-blur-sm" : ""
+            !isPanel && !isDesktop
+              ? "sticky top-[var(--admin-header-height,3.5rem)] z-20 bg-gray-100/95 backdrop-blur-sm"
+              : ""
           }`}
         >
           {(
@@ -1085,8 +1087,14 @@ export function SupportTicketDetailView({
       ) : null}
 
       <div
-        className={`grid min-h-0 flex-1 gap-4 overflow-hidden grid-rows-[minmax(0,1fr)] ${
-          isWide ? "grid-cols-[minmax(0,1fr)_20rem]" : ""
+        className={`grid gap-4 ${
+          desktopConversationPane
+            ? `min-h-0 flex-1 overflow-hidden grid-rows-[minmax(0,1fr)] ${
+                isWide ? "grid-cols-[minmax(0,1fr)_20rem]" : ""
+              }`
+            : isWide
+              ? "grid-cols-[minmax(0,1fr)_20rem]"
+              : ""
         }`}
       >
         <section
@@ -1094,7 +1102,9 @@ export function SupportTicketDetailView({
           role="tabpanel"
           aria-labelledby={showTicketTabs ? "ticket-tab-conversation" : undefined}
           hidden={!showConversation}
-          className={`${showConversation ? conversationPaneLayout : "hidden"} min-h-0 min-w-0 flex-1 overflow-hidden rounded-2xl border border-gray-200 bg-white p-3 shadow-sm ring-1 ring-gray-950/[0.03]`}
+          className={`${showConversation ? conversationPaneLayout : "hidden"} min-w-0 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm ring-1 ring-gray-950/[0.03] ${
+            desktopConversationPane ? "min-h-0 flex-1 overflow-hidden" : ""
+          }`}
         >
           <div className={desktopConversationPane ? "flex min-h-0 flex-1 flex-col overflow-hidden" : undefined}>
           <TicketThread
@@ -1150,7 +1160,13 @@ export function SupportTicketDetailView({
           role="tabpanel"
           aria-labelledby={showTicketTabs ? "ticket-tab-details" : undefined}
           hidden={!showDetails}
-          className={showDetails ? "admin-scrollbar h-full min-h-0 min-w-0 overflow-y-auto" : "hidden"}
+          className={
+            showDetails
+              ? desktopConversationPane
+                ? "admin-scrollbar h-full min-h-0 min-w-0 overflow-y-auto"
+                : "min-w-0"
+              : "hidden"
+          }
         >
         {ticketSidebarNode}
         </div>

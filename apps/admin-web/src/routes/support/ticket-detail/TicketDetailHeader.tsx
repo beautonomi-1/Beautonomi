@@ -5,6 +5,7 @@ import { adminToast } from "@/lib/adminToast";
 import {
   formatStatusLabel,
   priorityPillClass,
+  statusPillClass,
   str,
   type AttentionBanner,
   type QueueNavButtonLabel,
@@ -150,7 +151,7 @@ export function TicketDetailHeader({
       <span className={`rounded-full px-2 py-0.5 text-xs capitalize ${priorityPillClass(priority)}`}>
         {priority}
       </span>
-      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs capitalize text-gray-800">
+      <span className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${statusPillClass(status)}`}>
         {formatStatusLabel(status)}
       </span>
       <span className="text-gray-500">

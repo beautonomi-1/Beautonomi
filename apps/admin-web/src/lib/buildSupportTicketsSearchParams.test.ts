@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildSupportTicketsSearchParams,
+  listSupportTicketActiveFilters,
   matchSupportTicketSavedView,
   mergeSupportTicketSavedViewIntoSearchParams,
   supportTicketQueueQuery,
@@ -244,5 +245,46 @@ describe("matchSupportTicketSavedView", () => {
         sort: "updated_desc",
       }),
     ).toBe("channel_email");
+  });
+});
+
+describe("listSupportTicketActiveFilters", () => {
+  it("lists every filter the queue request applies, and hides status when a status group wins", () => {
+    const chips = listSupportTicketActiveFilters({
+      ...defaults,
+      q: "payout",
+      status: "open",
+      statusGroup: "active",
+      slaState: "breached",
+      slaOverdue: true,
+      sort: "sla_asc",
+      channel: "email",
+      handlingMode: "assistant",
+    });
+    expect(chips.map((chip) => chip.label)).toEqual([
+      "Search: payout",
+      "Active queue",
+      "Sort: SLA due (soonest)",
+      "SLA breached",
+      "SLA overdue",
+      "Channel: email",
+      "AI handling",
+    ]);
+    expect(new Set(chips.map((chip) => chip.id)).size).toBe(chips.length);
+  });
+
+  it("shows a single status when no status group is set", () => {
+    expect(
+      listSupportTicketActiveFilters({ ...defaults, status: "waiting_customer" }).map((chip) => chip.label),
+    ).toEqual(["Status: waiting customer"]);
+  });
+
+  it("sends human handling without also sending assistant", () => {
+    const qs = buildSupportTicketsSearchParams({ ...defaults, handlingMode: "human" });
+    const p = new URLSearchParams(qs);
+    expect(p.get("handling_mode")).toBe("human");
+    expect(listSupportTicketActiveFilters({ ...defaults, handlingMode: "human" }).map((c) => c.id)).toEqual([
+      "handling_mode",
+    ]);
   });
 });

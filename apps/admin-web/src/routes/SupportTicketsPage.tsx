@@ -44,6 +44,7 @@ import {
 } from "@/lib/supportTicketCategories";
 import {
   buildSupportTicketsSearchParams,
+  listSupportTicketActiveFilters,
   matchSupportTicketSavedView,
   mergeSupportTicketSavedViewIntoSearchParams,
   supportTicketQueueQuery,
@@ -66,7 +67,7 @@ import { AdminMetricCard } from "@/components/ui/AdminMetricCard";
 import { Filter, LayoutGrid, LayoutList } from "lucide-react";
 import { useIsDesktop } from "@/hooks/useIsDesktop";
 import { SupportTicketDetailView } from "@/routes/support/SupportTicketDetailView";
-import { relativeTime } from "@/routes/support/ticket-detail/ticketDetailHelpers";
+import { priorityPillClass, relativeTime, statusPillClass } from "@/routes/support/ticket-detail/ticketDetailHelpers";
 import { cn } from "@/lib/cn";
 import { AdminVirtualList } from "@/components/admin/AdminVirtualList";
 
@@ -203,13 +204,6 @@ function isSlaBreached(ticket: SupportTicket): boolean {
   return new Date(ticket.sla_resolution_due_at).getTime() < Date.now();
 }
 
-function priorityPillClass(p: string): string {
-  if (p === "urgent") return "bg-red-100 text-red-900";
-  if (p === "high") return "bg-orange-100 text-orange-900";
-  if (p === "low") return "bg-slate-100 text-slate-800";
-  return "bg-gray-100 text-gray-900";
-}
-
 function ticketAgeDays(createdAt: string): number {
   const ms = Date.now() - new Date(createdAt).getTime();
   return Math.max(0, Math.floor(ms / 86400000));
@@ -331,7 +325,7 @@ function SupportTicketCardChipRow({ ticket }: { ticket: SupportTicket }) {
       <SupportTicketCardChip title="Priority" className={cn("capitalize", priorityPillClass(ticket.priority))}>
         {ticket.priority}
       </SupportTicketCardChip>
-      <SupportTicketCardChip title="Status" className="bg-gray-100 capitalize text-gray-800">
+      <SupportTicketCardChip title="Status" className={cn("capitalize", statusPillClass(ticket.status))}>
         {ticket.status.replace(/_/g, " ")}
       </SupportTicketCardChip>
       <AttentionBadge ticket={ticket} />
@@ -494,6 +488,11 @@ function SupportTicketCard({
         </SupportTicketCardChip>,
       );
     }
+    const statusChip = (
+      <SupportTicketCardChip key="status" title="Status" className={cn("capitalize", statusPillClass(ticket.status))}>
+        {ticket.status.replace(/_/g, " ")}
+      </SupportTicketCardChip>
+    );
 
     return (
       <div
@@ -550,7 +549,7 @@ function SupportTicketCard({
             {ticket.description?.trim() ? (
               <p className="mt-0.5 line-clamp-1 text-xs text-gray-500">{ticket.description.trim()}</p>
             ) : null}
-            {chips.length > 0 ? <div className="mt-1 flex flex-wrap gap-1">{chips.slice(0, 3)}</div> : null}
+            <div className="mt-1 flex flex-wrap gap-1">{[statusChip, ...chips].slice(0, 3)}</div>
           </Link>
         </div>
       </div>
@@ -750,7 +749,8 @@ export function SupportTicketsPage() {
   const needsResponseFilter = searchParams.get("needs_response") === "1";
   const slaStateFilter = searchParams.get("sla_state") ?? "";
   const firstResponseOverdueFilter = searchParams.get("first_response_overdue") === "1";
-  const aiHandlingFilter = searchParams.get("handling_mode") === "assistant";
+  const handlingModeFilter = searchParams.get("handling_mode") ?? "";
+  const aiHandlingFilter = handlingModeFilter === "assistant";
   const viewFilter = searchParams.get("view");
   const selectedId = searchParams.get("selected");
   const statusGroupFilter = searchParams.get("status_group") ?? "";
@@ -824,9 +824,11 @@ export function SupportTicketsPage() {
             status_group: "",
             category_group: "",
             channel: "all",
+            handling_mode: "",
           };
           if (value === defaults[key]) n.delete(key);
           else n.set(key, value);
+          if (key === "status_group" && value) n.delete("status");
           if (key === "status" && value !== "all") n.delete("status_group");
           if (key === "category_group" && value !== "") n.delete("category");
           if (key === "category" && value !== "all") n.delete("category_group");
@@ -898,6 +900,7 @@ export function SupportTicketsPage() {
       categoryGroup: categoryGroupFilter,
       channel: channelFilter,
       aiHandling: aiHandlingFilter,
+      handlingMode: handlingModeFilter,
     }),
     [
       pageIndex,
@@ -916,6 +919,7 @@ export function SupportTicketsPage() {
       categoryGroupFilter,
       channelFilter,
       aiHandlingFilter,
+      handlingModeFilter,
     ],
   );
 
@@ -1249,38 +1253,24 @@ export function SupportTicketsPage() {
     );
   }
 
-  const hasFilters =
-    qFromUrl ||
-    statusFilter !== "all" ||
-    priorityFilter !== "all" ||
-    categoryFilter !== "all" ||
-    assignFilter !== "all" ||
-    sortFilter !== "smart" ||
-    slaOverdueFilter ||
-    needsResponseFilter ||
-    !!slaStateFilter ||
-    firstResponseOverdueFilter ||
-    !!categoryGroupFilter ||
-    channelFilter !== "all" ||
-    !!statusGroupFilter ||
-    aiHandlingFilter;
+  const categoryGroupLabel =
+    SUPPORT_TICKET_CATEGORY_GROUPS_RICH.find(
+      (group) =>
+        group.id === categoryGroupFilter ||
+        group.label.toLowerCase() === categoryGroupFilter.toLowerCase(),
+    )?.label ?? categoryGroupFilter.replace(/_/g, " ");
+  const activeFilterChips = listSupportTicketActiveFilters(supportTicketFilterState, {
+    category: categoryFilter !== "all" ? labelForSupportTicketCategory(categoryFilter) : undefined,
+    categoryGroup: categoryGroupFilter ? categoryGroupLabel : undefined,
+  });
+  const hasFilters = activeFilterChips.length > 0;
+  const activeFilterCount = activeFilterChips.length;
 
-  const activeFilterCount = [
-    qFromUrl,
-    statusFilter !== "all",
-    priorityFilter !== "all",
-    categoryFilter !== "all",
-    assignFilter !== "all",
-    sortFilter !== "smart",
-    slaOverdueFilter,
-    needsResponseFilter,
-    !!slaStateFilter,
-    firstResponseOverdueFilter,
-    !!categoryGroupFilter,
-    channelFilter !== "all",
-    !!statusGroupFilter,
-    aiHandlingFilter,
-  ].filter(Boolean).length;
+  const filterControlClass = (active: boolean) =>
+    cn(
+      "min-h-11 rounded-lg border px-3 py-2 text-base sm:text-sm",
+      active ? "border-primary bg-primary/5 font-medium text-primary" : "border-gray-300 bg-white text-gray-800",
+    );
 
   const queueShellStyle =
     useQueueWorkspace && queueShellHeightPx != null
@@ -1511,6 +1501,28 @@ export function SupportTicketsPage() {
 
       <AdminPanel className={filtersOpen ? "block" : "hidden"}>
         <div className="flex flex-col gap-4">
+          {activeFilterChips.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2" aria-label="Selected filters">
+              <span className="text-xs font-medium text-gray-500">Selected</span>
+              {activeFilterChips.map((chip) => (
+                <span
+                  key={chip.id}
+                  className="rounded-full border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary"
+                >
+                  {chip.label}
+                </span>
+              ))}
+              <button
+                type="button"
+                className="text-xs font-medium text-gray-600 underline-offset-2 hover:underline"
+                onClick={clearAllFilters}
+              >
+                Clear all
+              </button>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-500">No filters selected. The queue is showing every ticket.</p>
+          )}
           {useQueueWorkspace ? (
             <div className="flex flex-wrap gap-2">
               {SUPPORT_TICKET_CATEGORY_GROUPS_RICH.map((group) => {
@@ -1536,7 +1548,7 @@ export function SupportTicketsPage() {
               })}
             </div>
           ) : null}
-          <div className="flex flex-col gap-3 lg:flex-row">
+          <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap">
             {useQueueWorkspace ? null : (
             <input
               type="search"
@@ -1547,9 +1559,20 @@ export function SupportTicketsPage() {
             />
             )}
             <select
-              value={statusFilter}
+              value={statusGroupFilter}
+              onChange={(e) => setFilter("status_group", e.target.value)}
+              aria-label="Status group"
+              className={filterControlClass(Boolean(statusGroupFilter))}
+            >
+              <option value="">All status groups</option>
+              <option value="active">Active queue</option>
+              <option value="resolved_closed">Resolved / closed</option>
+            </select>
+            <select
+              value={statusGroupFilter ? "all" : statusFilter}
               onChange={(e) => setFilter("status", e.target.value)}
-              className="min-h-11 rounded-lg border border-gray-300 px-3 py-2 text-base sm:text-sm lg:w-44"
+              aria-label="Status"
+              className={filterControlClass(!statusGroupFilter && statusFilter !== "all")}
             >
               <option value="all">All statuses</option>
               <option value="open">Open</option>
@@ -1561,7 +1584,8 @@ export function SupportTicketsPage() {
             <select
               value={priorityFilter}
               onChange={(e) => setFilter("priority", e.target.value)}
-              className="min-h-11 rounded-lg border border-gray-300 px-3 py-2 text-base sm:text-sm lg:w-44"
+              aria-label="Priority"
+              className={filterControlClass(priorityFilter !== "all")}
             >
               <option value="all">All priorities</option>
               <option value="urgent">Urgent</option>
@@ -1570,11 +1594,12 @@ export function SupportTicketsPage() {
               <option value="low">Low</option>
             </select>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <select
               value={categoryFilter}
               onChange={(e) => setFilter("category", e.target.value)}
-              className="min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-base sm:max-w-md sm:text-sm"
+              aria-label="Category"
+              className={cn(filterControlClass(categoryFilter !== "all"), "w-full sm:max-w-md")}
             >
               <option value="all">All categories</option>
               {SUPPORT_TICKET_CATEGORY_GROUPS.map((group) => (
@@ -1590,7 +1615,8 @@ export function SupportTicketsPage() {
             <select
               value={assignFilter}
               onChange={(e) => setFilter("assign", e.target.value)}
-              className="min-h-11 rounded-lg border border-gray-300 px-3 py-2 text-base sm:w-52 sm:text-sm"
+              aria-label="Assignee"
+              className={filterControlClass(assignFilter !== "all")}
             >
               <option value="all">All tickets</option>
               <option value="unassigned">Unassigned</option>
@@ -1601,7 +1627,8 @@ export function SupportTicketsPage() {
             <select
               value={sortFilter}
               onChange={(e) => setFilter("sort", e.target.value)}
-              className="min-h-11 rounded-lg border border-gray-300 px-3 py-2 text-base sm:w-56 sm:text-sm"
+              aria-label="Sort"
+              className={cn(filterControlClass(sortFilter !== "smart"), "sm:w-56")}
             >
               <option value="smart">Sort: Smart (attention first)</option>
               <option value="updated_desc">Sort: Last updated</option>
@@ -1612,13 +1639,36 @@ export function SupportTicketsPage() {
             <select
               value={attentionFilter}
               onChange={(e) => setAttentionFilter(e.target.value)}
-              className="min-h-11 rounded-lg border border-gray-300 px-3 py-2 text-base sm:w-56 sm:text-sm"
+              aria-label="Attention"
+              className={filterControlClass(Boolean(attentionFilter))}
             >
               <option value="">All attention states</option>
               <option value="needs_response">Needs response</option>
               <option value="first_response_overdue">First reply overdue</option>
               <option value="sla_at_risk">Due within 6h</option>
               <option value="sla_breached">SLA breached</option>
+            </select>
+            <select
+              value={channelFilter}
+              onChange={(e) => setFilter("channel", e.target.value)}
+              aria-label="Channel"
+              className={filterControlClass(channelFilter !== "all")}
+            >
+              <option value="all">All channels</option>
+              <option value="email">Email</option>
+              <option value="app">App</option>
+            </select>
+            <select
+              value={handlingModeFilter === "assistant" || handlingModeFilter === "human" ? handlingModeFilter : "all"}
+              onChange={(e) =>
+                setFilter("handling_mode", e.target.value === "all" ? "" : e.target.value)
+              }
+              aria-label="Handling"
+              className={filterControlClass(handlingModeFilter === "assistant" || handlingModeFilter === "human")}
+            >
+              <option value="all">All handling</option>
+              <option value="assistant">AI handling</option>
+              <option value="human">Human handling</option>
             </select>
           </div>
         </div>
@@ -1966,7 +2016,9 @@ export function SupportTicketsPage() {
                     </span>
                   </AdminTd>
                   <AdminTd>
-                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs">{ticket.status.replace(/_/g, " ")}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${statusPillClass(ticket.status)}`}>
+                      {ticket.status.replace(/_/g, " ")}
+                    </span>
                   </AdminTd>
                   <AdminTd className="whitespace-nowrap text-sm">
                     {ticket.sla_resolution_due_at ? (

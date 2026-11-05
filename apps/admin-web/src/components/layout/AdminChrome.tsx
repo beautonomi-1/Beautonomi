@@ -10,7 +10,7 @@ import {
 } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Menu, LogOut, Search, PanelLeftClose, PanelLeftOpen, CornerDownLeft } from "lucide-react";
+import { Menu, X, LogOut, Search, PanelLeftClose, PanelLeftOpen, CornerDownLeft } from "lucide-react";
 import { ADMIN_SECTION_SUPPORT, ADMIN_SECTION_USERS_TRUST } from "@beautonomi/admin-access";
 import { AdminApiError } from "@beautonomi/admin-api-client";
 import {
@@ -465,10 +465,45 @@ export function AdminChrome() {
     return () => window.clearTimeout(t);
   }, [navFlash]);
 
+  const headerRef = useRef<HTMLElement>(null);
+  const closeMenuRef = useRef<HTMLButtonElement>(null);
+  const [navDocked, setNavDocked] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(min-width: 768px)").matches : true,
+  );
+  const drawerCollapsed = sidebarCollapsed && navDocked;
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const onChange = () => setNavDocked(mq.matches);
+    onChange();
+    if (typeof mq.addEventListener === "function") mq.addEventListener("change", onChange);
+    else (mq as unknown as { addListener: (fn: () => void) => void }).addListener(onChange);
+    return () => {
+      if (typeof mq.removeEventListener === "function") mq.removeEventListener("change", onChange);
+      else (mq as unknown as { removeListener: (fn: () => void) => void }).removeListener(onChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const publish = () => {
+      document.documentElement.style.setProperty("--admin-header-height", `${el.offsetHeight}px`);
+    };
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      document.documentElement.style.removeProperty("--admin-header-height");
+    };
+  }, []);
+
   useEffect(() => {
     if (!sidebarOpen) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    if (window.matchMedia("(max-width: 767px)").matches) closeMenuRef.current?.focus();
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") setSidebarOpen(false);
     };
@@ -482,6 +517,7 @@ export function AdminChrome() {
   return (
     <div className="flex min-h-screen bg-gray-50">
       <aside
+        id="admin-nav-drawer"
         role={sidebarOpen ? "dialog" : undefined}
         aria-modal={sidebarOpen ? true : undefined}
         aria-label={sidebarOpen ? "Navigation menu" : undefined}
@@ -496,10 +532,10 @@ export function AdminChrome() {
         <div
           className={cn(
             "flex h-14 shrink-0 items-center border-b border-gray-100 font-semibold text-gray-900",
-            sidebarCollapsed ? "justify-center px-2" : "justify-between px-4",
+            drawerCollapsed ? "justify-center px-2" : "justify-between px-4",
           )}
         >
-          {sidebarCollapsed ? (
+          {drawerCollapsed ? (
             <span className="text-primary text-lg">B</span>
           ) : (
             <div className="flex items-center">
@@ -507,6 +543,15 @@ export function AdminChrome() {
               <span className="ml-1 text-gray-700">Admin</span>
             </div>
           )}
+          <button
+            ref={closeMenuRef}
+            type="button"
+            onClick={() => setSidebarOpen(false)}
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 md:hidden"
+            aria-label="Close menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
           <button
             type="button"
             onClick={toggleCollapsed}
@@ -521,13 +566,13 @@ export function AdminChrome() {
           ref={navScrollRef}
           className={cn(
             "admin-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain text-sm",
-            sidebarCollapsed ? "p-1.5" : "p-3",
+            drawerCollapsed ? "p-1.5" : "p-3",
           )}
         >
           <AdminNavSidebar
             groups={filteredNav}
             navCounts={navCounts}
-            sidebarCollapsed={sidebarCollapsed}
+            sidebarCollapsed={drawerCollapsed}
             activeHref={activeNavHref}
             flashHref={navFlash?.href ?? null}
             onNavigate={() => {
@@ -548,12 +593,17 @@ export function AdminChrome() {
       ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col md:pl-0">
-        <header className="sticky top-0 z-20 flex min-h-14 flex-wrap items-center gap-2 border-b border-gray-200 bg-white/95 px-3 py-2 backdrop-blur-sm md:min-h-14 md:flex-nowrap md:gap-3 md:px-4 md:py-0">
+        <header
+          ref={headerRef}
+          className="sticky top-0 z-20 flex min-h-14 flex-wrap items-center gap-2 border-b border-gray-200 bg-white/95 px-3 py-2 backdrop-blur-sm md:min-h-14 md:flex-nowrap md:gap-3 md:px-4 md:py-0"
+        >
           <button
             type="button"
             className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl p-2 text-gray-600 hover:bg-gray-100 touch-manipulation md:hidden"
             onClick={() => setSidebarOpen(true)}
             aria-label="Open menu"
+            aria-expanded={sidebarOpen}
+            aria-controls="admin-nav-drawer"
           >
             <Menu className="h-5 w-5" />
           </button>

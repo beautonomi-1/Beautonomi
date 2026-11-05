@@ -32,6 +32,8 @@ export interface SupportTicketsFilterState {
   tenantId?: string;
   /** Segment: AI assistant handling (handling_mode=assistant) */
   aiHandling?: boolean;
+  /** Raw handling_mode from the queue URL. assistant and human are sent to the API. */
+  handlingMode?: string;
 }
 
 /** Build query string for GET /api/admin/support-tickets (matches Next list page). */
@@ -55,8 +57,84 @@ export function buildSupportTicketsSearchParams(f: SupportTicketsFilterState): s
   if (f.categoryGroup) params.set("category_group", f.categoryGroup);
   if (f.channel && f.channel !== "all") params.set("channel", f.channel);
   if (f.tenantId) params.set("tenant_id", f.tenantId);
-  if (f.aiHandling) params.set("handling_mode", "assistant");
+  const handlingMode =
+    f.handlingMode === "assistant" || f.handlingMode === "human"
+      ? f.handlingMode
+      : f.aiHandling
+        ? "assistant"
+        : "";
+  if (handlingMode) params.set("handling_mode", handlingMode);
   return params.toString();
+}
+
+export type SupportTicketFilterChip = { id: string; label: string };
+
+const SUPPORT_TICKET_SORT_LABELS: Record<string, string> = {
+  updated_desc: "Last updated",
+  created_desc: "Newest",
+  sla_asc: "SLA due (soonest)",
+  priority_asc: "Priority",
+};
+
+/**
+ * Filters that change the queue, in the same order the panel shows them.
+ * A status group wins over a single status, matching buildSupportTicketsSearchParams.
+ */
+export function listSupportTicketActiveFilters(
+  f: Pick<
+    SupportTicketsFilterState,
+    | "q"
+    | "status"
+    | "statusGroup"
+    | "priority"
+    | "category"
+    | "assign"
+    | "sort"
+    | "slaOverdue"
+    | "needsResponse"
+    | "slaState"
+    | "firstResponseOverdue"
+    | "channel"
+    | "handlingMode"
+    | "aiHandling"
+  > & { categoryGroup?: string },
+  labels?: { category?: string; categoryGroup?: string },
+): SupportTicketFilterChip[] {
+  const chips: SupportTicketFilterChip[] = [];
+  const q = f.q.trim();
+  if (q) chips.push({ id: "q", label: `Search: ${q}` });
+  if (f.statusGroup === "active") chips.push({ id: "status_group", label: "Active queue" });
+  else if (f.statusGroup === "resolved_closed") chips.push({ id: "status_group", label: "Resolved / closed" });
+  else if (f.statusGroup) chips.push({ id: "status_group", label: `Status group: ${f.statusGroup}` });
+  else if (f.status !== "all") chips.push({ id: "status", label: `Status: ${f.status.replace(/_/g, " ")}` });
+  if (f.priority !== "all") chips.push({ id: "priority", label: `Priority: ${f.priority}` });
+  if (f.category !== "all") {
+    chips.push({ id: "category", label: `Category: ${labels?.category || f.category}` });
+  }
+  if (f.categoryGroup) {
+    chips.push({ id: "category_group", label: `Group: ${labels?.categoryGroup || f.categoryGroup}` });
+  }
+  if (f.assign === "mine") chips.push({ id: "assign", label: "Assignee: me" });
+  else if (f.assign !== "all") chips.push({ id: "assign", label: `Assignee: ${f.assign}` });
+  if (f.sort && f.sort !== "smart") {
+    chips.push({ id: "sort", label: `Sort: ${SUPPORT_TICKET_SORT_LABELS[f.sort] ?? f.sort.replace(/_/g, " ")}` });
+  }
+  if (f.needsResponse) chips.push({ id: "needs_response", label: "Needs response" });
+  if (f.firstResponseOverdue) chips.push({ id: "first_response_overdue", label: "First reply overdue" });
+  if (f.slaState === "at_risk") chips.push({ id: "sla_state", label: "Due within 6h" });
+  else if (f.slaState === "breached") chips.push({ id: "sla_state", label: "SLA breached" });
+  else if (f.slaState) chips.push({ id: "sla_state", label: `SLA: ${f.slaState}` });
+  if (f.slaOverdue) chips.push({ id: "sla_overdue", label: "SLA overdue" });
+  if (f.channel && f.channel !== "all") chips.push({ id: "channel", label: `Channel: ${f.channel}` });
+  const handling =
+    f.handlingMode === "assistant" || f.handlingMode === "human"
+      ? f.handlingMode
+      : f.aiHandling
+        ? "assistant"
+        : "";
+  if (handling === "assistant") chips.push({ id: "handling_mode", label: "AI handling" });
+  else if (handling === "human") chips.push({ id: "handling_mode", label: "Human handling" });
+  return chips;
 }
 
 export function supportTicketsPageSize(): number {

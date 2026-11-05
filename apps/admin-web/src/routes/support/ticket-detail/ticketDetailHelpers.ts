@@ -109,6 +109,17 @@ export function priorityPillClass(p: string): string {
   return "bg-gray-100 text-gray-900";
 }
 
+/** Distinct status colors so open, waiting, and resolved tickets are scannable. */
+export function statusPillClass(status: string): string {
+  const s = status.trim().toLowerCase();
+  if (s === "open") return "bg-sky-100 text-sky-950";
+  if (s === "in_progress") return "bg-amber-100 text-amber-950";
+  if (s === "waiting_customer") return "bg-violet-100 text-violet-950";
+  if (s === "resolved") return "bg-emerald-100 text-emerald-950";
+  if (s === "closed") return "bg-gray-200 text-gray-700";
+  return "bg-gray-100 text-gray-800";
+}
+
 export function attachmentsFromRow(raw: unknown): AttachmentItem[] {
   if (!Array.isArray(raw)) return [];
   const out: AttachmentItem[] = [];
@@ -406,6 +417,20 @@ export function deliveryStatusBadge(status: string | null | undefined): Delivery
   return null;
 }
 
+export type MessageTrailRole = "customer" | "staff" | "assistant" | "internal" | "auto";
+
+/** Who a thread row is, using author_kind when the message recorded it. */
+export function messageTrailRole(message: MessageRow, customerUserId: string | null): MessageTrailRole {
+  if (message.is_internal) return "internal";
+  const kind = str(message.author_kind).toLowerCase();
+  if (kind === "assistant") return "assistant";
+  if (message.is_auto_reply) return "auto";
+  if (kind === "customer") return "customer";
+  const uid = message.user_id == null ? null : str(message.user_id);
+  if (customerUserId !== null && uid === customerUserId) return "customer";
+  return "staff";
+}
+
 /** Show ticket description as "Original request" when it is not duplicated in the first customer message. */
 export function shouldShowOriginalRequest(
   description: string,
@@ -414,12 +439,7 @@ export function shouldShowOriginalRequest(
 ): boolean {
   const desc = description.trim();
   if (!desc) return false;
-  const firstCustomer = messages.find((m) => {
-    if (m.is_internal) return false;
-    const uid = m.user_id == null ? null : str(m.user_id);
-    const isAssistant = str(m.author_kind) === "assistant";
-    return !isAssistant && customerUserId !== null && uid === customerUserId;
-  });
+  const firstCustomer = messages.find((m) => messageTrailRole(m, customerUserId) === "customer");
   if (!firstCustomer) return true;
   const firstBody = str(firstCustomer.message).trim();
   if (!firstBody) return true;
