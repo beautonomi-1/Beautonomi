@@ -7,66 +7,21 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-/** Annual PAYE on cumulative taxable income (YTD + current period). */
-export function estimateZaPayeCumulative(
-  ytdTaxable: number,
-  periodTaxable: number,
-  brackets: Array<{ upTo: number | null; rate: number; base: number }>,
-  rebates: { primary: number; secondary?: number; tertiary?: number },
-  ageYears?: number,
-): number {
-  const annual = ytdTaxable + periodTaxable;
-  const sorted = [...brackets].sort((a, b) => {
-    const au = a.upTo ?? Number.POSITIVE_INFINITY;
-    const bu = b.upTo ?? Number.POSITIVE_INFINITY;
-    return au - bu;
-  });
-
-  let tax = 0;
-  let prevCap = 0;
-  for (const b of sorted) {
-    const cap = b.upTo ?? Number.POSITIVE_INFINITY;
-    if (annual <= cap) {
-      tax = b.base + ((annual - prevCap) * b.rate) / 100;
-      break;
-    }
-    if (b.upTo != null) prevCap = b.upTo;
-  }
-
-  let rebate = rebates.primary;
-  if (ageYears != null && ageYears >= 75) rebate = rebates.tertiary ?? rebate;
-  else if (ageYears != null && ageYears >= 65) rebate = rebates.secondary ?? rebate;
-
-  const annualTax = Math.max(0, tax - rebate);
-
-  const ytdAnnualTax = estimateAnnualTaxOnIncome(ytdTaxable, sorted);
-  let ytdRebate = rebates.primary;
-  if (ageYears != null && ageYears >= 75) ytdRebate = rebates.tertiary ?? ytdRebate;
-  else if (ageYears != null && ageYears >= 65) ytdRebate = rebates.secondary ?? ytdRebate;
-  const ytdTaxPaid = Math.max(0, ytdAnnualTax - ytdRebate);
-
-  return round2(Math.max(0, annualTax - ytdTaxPaid));
+/** ZA year of assessment runs 1 March – end of February. */
+export function zaTaxYearBounds(payDate: string): { start: string; end: string } {
+  const year = Number(payDate.slice(0, 4));
+  const month = Number(payDate.slice(5, 7));
+  const startYear = month >= 3 ? year : year - 1;
+  const endYear = startYear + 1;
+  const leap = (endYear % 4 === 0 && endYear % 100 !== 0) || endYear % 400 === 0;
+  return { start: `${startYear}-03-01`, end: `${endYear}-02-${leap ? "29" : "28"}` };
 }
 
-function estimateAnnualTaxOnIncome(
-  annual: number,
-  sorted: Array<{ upTo: number | null; rate: number; base: number }>,
-): number {
-  if (annual <= 0) return 0;
-  let tax = 0;
-  let prevCap = 0;
-  for (const b of sorted) {
-    const cap = b.upTo ?? Number.POSITIVE_INFINITY;
-    if (annual <= cap) {
-      tax = b.base + ((annual - prevCap) * b.rate) / 100;
-      break;
-    }
-    if (b.upTo != null) prevCap = b.upTo;
-  }
-  return tax;
-}
-
-/** Annualised PAYE estimate using SARS-style bracket bases (base = tax on income below this band). */
+/**
+ * SARS periodic (tables) method: annual equivalent = period remuneration × periods per year,
+ * tax on that less the age rebate (rebate values are cumulative, e.g. secondary = primary + secondary),
+ * divided back over the periods. Bracket `base` is the tax on income up to the previous band's cap.
+ */
 export function estimateZaPaye(
   periodTaxable: number,
   payPeriodsPerYear: number,
@@ -139,16 +94,17 @@ export function calculateZaStatutory(
 
   const it = ruleData.incomeTax;
   if (it?.brackets?.length) {
-    const taxableForPaye = Math.max(0, ctx.periodGross - uif);
+    // Employee UIF is not an allowable deduction for PAYE (only retirement-fund contributions / donations are).
+    const taxableForPaye = Math.max(0, ctx.periodGross);
     lines.push({
       code: "taxable_income",
       kind: "deduction",
       amount: taxableForPaye,
       description: "Taxable income (period)",
     });
-    const paye = estimateZaPayeCumulative(
-      ctx.ytdTaxable,
+    const paye = estimateZaPaye(
       taxableForPaye,
+      periodsPerYear,
       it.brackets,
       it.rebates,
       ctx.ageYears,

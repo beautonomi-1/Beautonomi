@@ -63,6 +63,62 @@ describe("resolveProviderVat", () => {
   });
 });
 
+describe("resolveProviderVat country from tenant", () => {
+  function supabaseWithTenantAndRates(regionCode: string | null, ratesByCountry: Record<string, number>) {
+    const queried: string[] = [];
+    const tableQuery = (table: string) => {
+      const filters: Record<string, unknown> = {};
+      const q: Record<string, unknown> = {};
+      const chain = () => q;
+      Object.assign(q, {
+        select: chain,
+        lte: chain,
+        or: chain,
+        order: chain,
+        limit: chain,
+        eq: (col: string, val: unknown) => {
+          filters[col] = val;
+          return q;
+        },
+        maybeSingle: async () => {
+          if (table === "tenants") return { data: { region_code: regionCode }, error: null };
+          const cc = filters.country_code as string | undefined;
+          if (cc) {
+            queried.push(cc);
+            return { data: cc in ratesByCountry ? { rate: ratesByCountry[cc] } : null, error: null };
+          }
+          return { data: null, error: null };
+        },
+      });
+      return q;
+    };
+    return { supabase: { from: tableQuery } as never, queried };
+  }
+
+  it("uses the tenant region as the provider country when the row has none", async () => {
+    const { supabase, queried } = supabaseWithTenantAndRates("za", { ZA: 15 });
+    const r = await resolveProviderVat(supabase, {
+      is_vat_registered: true,
+      tenant_id: "tenant-1",
+      tax_rate_override_percent: null,
+    });
+    expect(queried).toEqual(["ZA"]);
+    expect(r).toMatchObject({ registered: true, ratePercent: 15, source: "country_default", countryCode: "ZA" });
+  });
+
+  it("prefers an explicit country over the tenant", async () => {
+    const { supabase, queried } = supabaseWithTenantAndRates("ZA", { KE: 16 });
+    const r = await resolveProviderVat(supabase, {
+      is_vat_registered: true,
+      country_code: "ke",
+      tenant_id: "tenant-1",
+    });
+    expect(queried).toEqual(["KE"]);
+    expect(r.ratePercent).toBe(16);
+    expect(r.countryCode).toBe("KE");
+  });
+});
+
 describe("lineVatRatePercent", () => {
   it("returns 0 for zero_or_exempt lines", () => {
     expect(

@@ -35,13 +35,13 @@ export async function applyProviderTaxSettingsPatch(
     if (body.is_vat_registered === true) {
       const { data: providerRow } = await supabase
         .from("providers")
-        .select("country_code, tax_inclusive, vat_number")
+        .select("tenant_id, tax_inclusive, vat_number")
         .eq("id", providerId)
         .maybeSingle();
       const { resolveProviderVat } = await import("@/lib/tax/resolve-provider-vat");
       const resolved = await resolveProviderVat(supabase, {
         is_vat_registered: true,
-        country_code: (providerRow as { country_code?: string | null } | null)?.country_code ?? null,
+        tenant_id: (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
         tax_inclusive: body.tax_inclusive ?? (providerRow as { tax_inclusive?: boolean | null } | null)?.tax_inclusive ?? true,
         vat_number: body.vat_number ?? (providerRow as { vat_number?: string | null } | null)?.vat_number ?? null,
         tax_rate_percent: null,

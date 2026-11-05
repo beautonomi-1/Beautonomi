@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
             service_type
           )
         ),
-        users (
+        users!bookings_customer_id_fkey (
           full_name,
           email
         )

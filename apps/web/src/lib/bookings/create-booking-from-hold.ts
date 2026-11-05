@@ -69,7 +69,7 @@ export async function createBookingFromHold(
   // Load provider for tax/fee defaults
   const { data: provider, error: provErr } = await supabase
     .from("providers")
-    .select("id, currency, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code, customer_fee_config_id, tips_enabled")
+    .select("id, tenant_id, currency, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, customer_fee_config_id, tips_enabled")
     .eq("id", hold.provider_id)
     .single();
 

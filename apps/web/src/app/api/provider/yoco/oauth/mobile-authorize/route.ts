@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
 
     const admin = getSupabaseAdmin();
     const { data: integration } = await (admin.from("provider_yoco_integrations") as any)
-      .select("environment, tenant_id")
+      .select("environment")
       .eq("provider_id", providerId)
       .maybeSingle();
     const integrationRow = integration as {
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
         : integrationRow?.environment === "sandbox" || integrationRow?.environment === "live"
           ? integrationRow.environment
           : getDefaultYocoEnvironment();
-    const tenantId = integrationRow?.tenant_id ?? (await resolveTenantIdWithZaFallback(request)) ?? null;
+    const tenantId = (await resolveTenantIdWithZaFallback(request)) ?? null;
     const returnTo = sanitizeReturnTo(body.return_to);
 
     const oauthEnabled = await isFeatureEnabledServer(FEATURE_FLAG_KEYS.YOCO_OAUTH_V2, tenantId);

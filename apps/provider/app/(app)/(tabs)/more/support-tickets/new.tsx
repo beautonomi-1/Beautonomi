@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { View, Text, TextInput, ScrollView, Alert, Platform, TouchableOpacity } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -52,9 +52,13 @@ export default function NewSupportTicketScreen() {
   const [prefillLocked, setPrefillLocked] = useState(false);
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium");
   const [submitting, setSubmitting] = useState(false);
+  const hydratedPrefillKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const preset = typeof params.category === "string" ? params.category.trim() : "";
+    const prefillKey = `${preset}|${typeof params.booking_id === "string" ? params.booking_id : ""}|${typeof params.booking_number === "string" ? params.booking_number : ""}`;
+    if (hydratedPrefillKeyRef.current === prefillKey) return;
+    hydratedPrefillKeyRef.current = prefillKey;
     if (preset && isSelectableForAudience(preset, "provider")) {
       setCategory(preset);
       const derived = supportTicketPresetFromCategory(preset);

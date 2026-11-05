@@ -28,6 +28,7 @@ import {
 } from "@/lib/bookings/settle-additional-charge-without-paystack";
 import { rollbackCollectibleSplitLeg } from "@/lib/bookings/rollback-collectible-split-leg";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { notifyTerminalCaptureOnAlreadyPaidBooking } from "@/lib/payments/terminal-capture-on-paid-notify";
 
 /** Provider-collected card-machine rails that share settle/reverse semantics. */
 export type CardMachinePaymentProvider = "paycloud" | "yoco";
@@ -455,6 +456,7 @@ async function settleBookingPayment(
   const chargeRows = unpaidChargeRows(booking as { additional_charges?: AdditionalChargeRow[] });
 
   if (baseRemaining <= 0 && chargeRows.length === 0) {
+    await notifyTerminalCaptureOnAlreadyPaidBooking(supabase, input, providerPaymentId, bookingId);
     return { settled: true, reason: "already_paid", bookingId };
   }
 
@@ -631,6 +633,21 @@ async function settleGroupBookingPayment(
   }
 
   if (!rows.length && !addonSettlements.length) {
+    const { data: priorLegs } = await supabase
+      .from("booking_payments")
+      .select("id")
+      .eq("payment_provider", input.paymentProvider)
+      .like("payment_provider_id", `${providerPaymentId}:%`)
+      .limit(1);
+    if ((priorLegs ?? []).length > 0) {
+      return { settled: true, reason: "already_settled" };
+    }
+    await notifyTerminalCaptureOnAlreadyPaidBooking(
+      supabase,
+      input,
+      providerPaymentId,
+      tipTargetBooking?.id ?? null,
+    );
     return { settled: true, reason: "group_already_paid" };
   }
 
@@ -665,7 +682,7 @@ async function settleGroupBookingPayment(
   const totalBaseAllocated = Math.round((baseBudget - remainingBudget) * 100) / 100;
   const baseFullyCovered =
     totalBaseOwed <= 0.01 || totalBaseAllocated + 0.01 >= totalBaseOwed;
-  if (tipTargetBooking && baseFullyCovered) {
+  if (tipTargetBooking && baseFullyCovered && totalBaseOwed > 0.01) {
     await settleExtrasAfterBase(supabase, input, {
       bookingId: tipTargetBooking.id,
       tenantId: tipTargetBooking.tenant_id,

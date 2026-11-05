@@ -1568,15 +1568,8 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     const clientIdForRating = apt.client_id?.trim() || "";
     const clientNameForRating = apt.client_name?.trim() || t("web.provider.calendarPage.clientFallback");
 
-    const serviceStarted =
-      apt.status === "started" ||
-      (apt as { db_status?: string }).db_status === "in_progress";
-
     try {
-      if (!serviceStarted) {
-        await providerApi.completeService(apt.id);
-      }
-
+      // Record payment before completing: complete-service rejects an outstanding balance.
       const skipSaleRecord =
         options?.paycloudSettled === true ||
         options?.yocoSettled === true ||
@@ -1624,9 +1617,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         }
       }
 
-      if (serviceStarted) {
-        await providerApi.completeService(apt.id);
-      }
+      await providerApi.completeService(apt.id);
       if (notes && notes !== apt.notes) {
         await providerApi.updateAppointment(apt.id, { notes }).catch(() => {});
       }

@@ -13,6 +13,8 @@ import {
   computeInPersonRefundableCap,
   fetchBookingPaymentsForRefundCap,
   fetchCompletedInPersonRefundsTotal,
+  computeRefundCaps,
+  deriveRefundMethodFromCaps,
 } from "@/lib/bookings/booking-refund-limits";
 import { walletStoreCreditAmountWhenVoidingGiftOnFullRefund } from "@/lib/bookings/settle-booking-cancellation";
 import {
@@ -43,7 +45,7 @@ export async function POST(
 ) {
   try {
     // Check permission to process payments (refunds)
-    const permissionCheck = await requirePermission('process_payments', request);
+    const permissionCheck = await requirePermission('issue_refunds', request);
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }
@@ -85,7 +87,7 @@ export async function POST(
     // `cash` records the refund for audit/ledger WITHOUT a wallet credit.
     const rawMethod =
       typeof body?.refund_method === "string" ? body.refund_method.trim().toLowerCase() : "";
-    let refundMethod: "store_credit" | "cash" | "original";
+    let refundMethod: "store_credit" | "cash" | "original" | null = null;
     if (rawMethod === "cash" || rawMethod === "in_person" || rawMethod === "in-person") {
       refundMethod = "cash";
     } else if (
@@ -95,9 +97,9 @@ export async function POST(
       rawMethod === "paycloud"
     ) {
       refundMethod = "original";
-    } else if (rawMethod === "" || rawMethod === "store_credit" || rawMethod === "wallet") {
+    } else if (rawMethod === "store_credit" || rawMethod === "wallet") {
       refundMethod = "store_credit";
-    } else {
+    } else if (rawMethod !== "") {
       return errorResponse(
         "refund_method must be 'store_credit', 'cash', or 'original' (card machine reversal)",
         "VALIDATION_ERROR",
@@ -216,6 +218,34 @@ export async function POST(
       bookingId,
       (booking as { tenant_id?: string | null }).tenant_id,
     );
+
+    const refundCaps = await computeRefundCaps(supabaseAdmin, bookingId, {
+      customer_id: booking.customer_id,
+      total_paid: totalPaid,
+      total_refunded: totalRefunded,
+      wallet_amount: walletPaid,
+      gift_card_amount: giftPaid,
+      tenant_id: (booking as { tenant_id?: string | null }).tenant_id,
+    });
+    if (refundMethod == null) {
+      const derived = deriveRefundMethodFromCaps(amount, refundCaps);
+      if (!derived) {
+        return errorResponse(
+          "Select a refund method (wallet credit, cash, or card machine).",
+          "REFUND_METHOD_REQUIRED",
+          400,
+        );
+      }
+      refundMethod = derived;
+    }
+    if (refundMethod === "store_credit" && amount > refundCaps.onlineCap + 0.01) {
+      return errorResponse(
+        `Wallet refunds are limited to ${formatMoney(refundCaps.onlineCap)} paid online on this booking. Refund in-person amounts as cash or on the card machine.`,
+        "WALLET_REFUND_CAP_EXCEEDED",
+        400,
+      );
+    }
+
     const recordOnly =
       body?.record_only === true ||
       body?.record_only === "true" ||
@@ -682,6 +712,28 @@ export async function POST(
         },
         created_by: user.id,
       });
+      await supabaseAdmin.from("booking_events").insert({
+        booking_id: bookingId,
+        event_type: "refund_issued_by_staff",
+        event_data: {
+          refund_id: refundId,
+          amount,
+          reason,
+          refund_method: refundMethod,
+          caps: refundCaps,
+          actor_user_id: user.id,
+        },
+        created_by: user.id,
+      });
+      const { notifyProviderTeamUsers } = await import("@/lib/notifications/notify-provider-team");
+      const staffRefundBookingRef =
+        booking.ref_number || booking.booking_number || bookingId.slice(0, 8).toUpperCase();
+      await notifyProviderTeamUsers(providerId, {
+        type: "staff_refund_issued",
+        title: "Refund issued",
+        message: `A ${formatMoney(amount)} ${refundMethod.replace("_", " ")} refund was issued for booking ${staffRefundBookingRef}.`,
+        data: { booking_id: bookingId, refund_id: refundId, amount, refund_method: refundMethod },
+      }, { managersOnly: true, push: true });
     } catch (eventErr) {
       console.warn("Failed to create refund booking event:", eventErr);
     }

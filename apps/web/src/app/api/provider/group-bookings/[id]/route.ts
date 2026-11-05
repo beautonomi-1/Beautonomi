@@ -39,6 +39,12 @@ import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
 import { evaluateGroupCapacity, normalizeGroupCapacity } from "@/lib/bookings/group-capacity";
 import { cancelGroupBooking } from "@/lib/bookings/group-booking-cancellation";
 import { syncGroupBookingStatusFromChildren } from "@/lib/bookings/group-booking";
+import { findOpenTerminalPayments, cancelOpenTerminalPaymentsForEntity } from "@/lib/payments/open-terminal-payments";
+import {
+  childBookingEligibleForCompletionComplete,
+  evaluateGroupCompletion,
+} from "@/lib/bookings/completion-guards";
+import { isProviderOwnerOrManager } from "@/lib/auth/permissions";
 
 function normalizeGroupBookingId(rawId: string): string {
   return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
@@ -300,6 +306,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const scheduledAtRaw = (groupBooking as any).scheduled_at as string | null | undefined;
     const scheduledAt = scheduledAtRaw ? new Date(scheduledAtRaw) : null;
 
+    const childIds = groupChildBookings
+      .map((b: { id?: string }) => String(b.id ?? ""))
+      .filter(Boolean);
+    const openTerminalPayments = await findOpenTerminalPayments(admin, {
+      providerId,
+      groupBookingId: id,
+      bookingIds: childIds,
+    });
+
     const groupPayload = groupBooking as unknown as Record<string, unknown>;
     return successResponse({
       ...groupPayload,
@@ -313,6 +328,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       scheduled_date: scheduledAt ? scheduledAt.toISOString().split("T")[0] : "",
       scheduled_time: scheduledAt ? scheduledAt.toTimeString().slice(0, 5) : "",
       team_member_id: (groupBooking as any).staff_id ?? null,
+      open_terminal_payments: openTerminalPayments,
       ...groupPayment,
     });
   } catch (error) {
@@ -864,25 +880,83 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     if (action === "complete_service") {
-      // Include all non-terminal statuses so providers who skip individual
-      // check-ins (or call complete_service before start_service) don't leave
-      // child bookings stranded in confirmed/checked_in/in_progress forever.
-      const { error: bookingsError } = await admin
+      const allowUnpaid = body.allow_unpaid === true || body.allow_unpaid === "true";
+      const unpaidReason =
+        typeof body.unpaid_reason === "string" ? body.unpaid_reason.trim() : "";
+      if (allowUnpaid && !unpaidReason) {
+        return errorResponse(
+          "A reason is required to complete with an outstanding balance.",
+          "BALANCE_DUE_REASON_REQUIRED",
+          400,
+        );
+      }
+      if (allowUnpaid) {
+        const canOverride = await isProviderOwnerOrManager(user.id, request);
+        if (!canOverride) {
+          return errorResponse(
+            "Only the owner or a manager can complete with an outstanding balance.",
+            "FORBIDDEN",
+            403,
+          );
+        }
+      }
+
+      const completionCheck = await evaluateGroupCompletion(admin, {
+        providerId,
+        groupId: id,
+        allowUnpaid,
+      });
+      if (!completionCheck.allowed) {
+        const primary = completionCheck.blockers[0]!;
+        return errorResponse(primary.message, primary.code, 409, {
+          blockers: completionCheck.blockers,
+          balance_due: completionCheck.balanceDue,
+        });
+      }
+
+      const { data: childRows } = await admin
         .from("bookings")
-        .update({
-          status: "completed",
-          current_stage: "service_completed",
-          completed_at: now,
-          updated_at: now,
-        })
+        .select("id, status, payment_status, total_amount, total_paid, total_refunded")
         .eq("group_booking_id", id)
-        .eq("provider_id", providerId)
-        .in("status", ["in_progress", "confirmed", "waiting", "checked_in"]);
+        .eq("provider_id", providerId);
+
+      const eligibleIds = (childRows ?? [])
+        .filter((row) => childBookingEligibleForCompletionComplete(row as never))
+        .map((row) => row.id);
+
+      const { error: bookingsError } =
+        eligibleIds.length > 0
+          ? await admin
+              .from("bookings")
+              .update({
+                status: "completed",
+                current_stage: "service_completed",
+                completed_at: now,
+                updated_at: now,
+              })
+              .in("id", eligibleIds)
+              .eq("provider_id", providerId)
+              .in("status", ["in_progress", "confirmed", "waiting", "checked_in"])
+          : { error: null };
       if (bookingsError) {
         console.warn(
           "[provider group complete_service] child booking update failed (continuing):",
           bookingsError
         );
+      }
+      if (allowUnpaid && unpaidReason && completionCheck.balanceDue > 0.01) {
+        for (const bid of eligibleIds) {
+          await admin.from("booking_events").insert({
+            booking_id: bid,
+            event_type: "completed_with_balance",
+            event_data: {
+              reason: unpaidReason,
+              group_booking_id: id,
+              group_balance_due: completionCheck.balanceDue,
+            },
+            created_by: user.id,
+          });
+        }
       }
       const { data, error } = await admin
         .from("group_bookings")
@@ -922,6 +996,24 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       });
       if (manualCardGate) return manualCardGate;
 
+      const paymentReference =
+        typeof body.reference === "string" ? body.reference.trim() : "";
+      const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() ?? "";
+      if (paymentMethod === "yoco" && !paymentReference && !idempotencyKey) {
+        return errorResponse(
+          "A payment reference or Idempotency-Key is required when recording Yoco payments.",
+          "VALIDATION_ERROR",
+          400,
+        );
+      }
+      if (paymentMethod === "card" && !paymentReference && !idempotencyKey) {
+        return errorResponse(
+          "A payment reference is required when recording manual card payments.",
+          "VALIDATION_ERROR",
+          400,
+        );
+      }
+
       const tenantId = await resolveTenantIdWithZaFallback(request);
       const childBookingsSelect =
         "id, tenant_id, location_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status, additional_charges(amount,status)";
@@ -932,6 +1024,38 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         .eq("provider_id", providerId)
         .not("status", "in", "(cancelled,no_show)");
       if (bookingsError) throw bookingsError;
+
+      const childBookingIds = (bookings ?? []).map((b: { id?: string }) => String(b.id ?? ""));
+      // A Yoco finalize records the very charge that may still be pending until the webhook lands.
+      const isYocoFinalize = paymentMethod === "yoco" || body.payment_provider === "yoco";
+      const openTerminal = (
+        await findOpenTerminalPayments(admin, {
+          providerId,
+          groupBookingId: id,
+          bookingIds: childBookingIds,
+        })
+      ).filter((p) => !(isYocoFinalize && p.provider === "yoco"));
+      if (openTerminal.length > 0) {
+        const cancelOpen =
+          body.cancel_open_terminal === true || body.cancel_open_terminal === "true";
+        if (!cancelOpen) {
+          return errorResponse(
+            "A card machine charge is still open for this group. Cancel it or confirm cancel_open_terminal.",
+            "ENTITY_IN_FLIGHT",
+            409,
+            { open_terminal_payments: openTerminal },
+          );
+        }
+        const cancelResult = await cancelOpenTerminalPaymentsForEntity(admin, providerId, openTerminal);
+        if (cancelResult.errors.length > 0) {
+          return errorResponse(
+            "Could not cancel the open card machine charge. Check the machine before recording payment.",
+            "ENTITY_IN_FLIGHT",
+            409,
+            { open_terminal_payments: openTerminal, cancel_errors: cancelResult.errors },
+          );
+        }
+      }
 
       // §Group-booking self-heal 2026-05: a group with ZERO child bookings but
       // roster-only participants (booking_participants w/ booking_id null — web

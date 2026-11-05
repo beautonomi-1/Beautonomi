@@ -1,3 +1,4 @@
+import { isStaffChoiceMade } from "./staff-assignment";
 import type {
   GroupBookingCreateValidationError,
   GroupBookingCreateValidationField,
@@ -33,8 +34,17 @@ export function collectGroupBookingCreateValidationErrors(
       "serviceId",
     );
   }
-  if (!input.staffId) {
-    push("Select a team member to schedule this group booking correctly.", "staffId");
+  const staffListLength = input.staffListLength ?? 0;
+  const rosterUnresolved = input.staffRosterUnresolved === true;
+  const staffRequired =
+    Boolean(input.serviceId) && (rosterUnresolved || staffListLength > 0);
+  if (staffRequired && !isStaffChoiceMade(input.staffId)) {
+    push(
+      rosterUnresolved
+        ? "Loading your team before staff can be assigned."
+        : "Select a team member to schedule this group booking correctly.",
+      "staffId",
+    );
   }
   if (input.locationType === "at_home") {
     if (!input.addressLine1.trim()) {

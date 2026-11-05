@@ -2351,13 +2351,50 @@
           "viewFullBooking": "Sien vol bespreking",
           "statusNoShow": "No wys",
           "statusPendingPayment": "hangende betaling",
-          "removeParticipantOverpaid": "Gas verwyderd. The bespreking is nou overbetaal by {{amount}}. terugbetaling the difference to the kliënt.",
+          "removeParticipantOverpaid": "Gas verwyder. {{amount}} is persoonlik betaal en kan nie na die beursie gaan nie. Betaal dit terug in kontant of op die kaartmasjien met Terugbetaling in die Meer-kieslys.",
           "shareStatusPaid": "deel betaal",
           "shareStatusPending": "deel onbetaal ({{amount}})",
           "shareStatusCancelled": "Spot gekanselleer",
           "resendInvite": "Re-stuur uitnodiging",
           "inviteResent": "uitnodiging Gestuur",
-          "inviteResendFailed": "Kon nie re-stuur the uitnodiging nie."
+          "inviteResendFailed": "Kon nie re-stuur the uitnodiging nie.",
+          "slotUnavailableTitle": "Plek nie beskikbaar nie",
+          "noStaffForSlot": "Geen spanlid is vry vir hierdie diens op hierdie tyd nie. Kies 'n ander tyd of 'n spesifieke spanlid.",
+          "pickAnotherTime": "Kies 'n ander tyd",
+          "invalidStaffTitle": "Spanlid nie beskikbaar nie",
+          "anyAvailableStaff": "Enige beskikbare",
+          "loadingTeam": "Laai span…",
+          "staffRetryInline": "Kon nie die span laai nie. Tik om weer te probeer",
+          "moreActionsTitle": "Meer",
+          "moreActionsA11y": "Meer handelinge",
+          "openTerminalBannerBody": "'n Kaartmasjienheffing van {{amount}} is nog oop vir hierdie groep.",
+          "resumeOpenCharge": "Hervat",
+          "cancelOpenCharge": "Kanselleer heffing",
+          "cancelOpenChargeTitle": "Oop heffing kanselleer?",
+          "cancelOpenChargeBody": "Dit kanselleer die lopende kaartmasjienheffing sodat jy betaling op 'n ander manier kan aanteken.",
+          "cancelOpenChargeFailed": "Kon nie die oop heffing kanselleer nie.",
+          "openChargeCancelled": "Kaartmasjienheffing gekanselleer.",
+          "entityInFlightTitle": "Oop kaartmasjienheffing",
+          "cancelOpenChargeAndRecord": "Kanselleer oop heffing en teken aan",
+          "terminalInFlightTitle": "Kaartmasjienheffing oop",
+          "fullyRefundedTitle": "Volledig terugbetaal",
+          "participantRefundedChip": "Terugbetaal",
+          "groupNotStartedTitle": "Begin eers die groep",
+          "groupNotStartedBody": "Inteken en uitteken is beskikbaar sodra die groepbespreking begin het.",
+          "unpaidCompleteNotAllowed": "Net die eienaar of 'n bestuurder kan voltooi terwyl daar nog 'n uitstaande bedrag is.",
+          "unpaidCompleteReasonTitle": "Voltooi met onbetaalde saldo",
+          "unpaidCompleteReasonRequired": "Gee 'n rede om te voltooi terwyl daar nog 'n bedrag uitstaan.",
+          "unpaidCompleteReasonLabel": "Rede (verpligtend)",
+          "unpaidCompleteReasonPlaceholder": "bv. Klant betaal môre per EFT",
+          "refundCapsTitle": "Terugbetalingsperke",
+          "refundCapsOnline": "Beursie / aanlyn: tot {{amount}}",
+          "refundCapsCash": "Kontant: tot {{amount}}",
+          "refundCapsTerminal": "Kaartmasjien: tot {{amount}}",
+          "refundConfirmSummaryTitle": "Terugbetaling bevestig?",
+          "refundConfirmSummaryBody": "Betaal {{amount}} terug via {{method}}.\n\nRede: {{reason}}",
+          "refundWalletCapExceeded": "Daardie bedrag oorskry die beursie-terugbetalingsperk vir hierdie bespreking.",
+          "refundMethodOriginal": "Kaartmasjien",
+          "refundOptionsLoadFailed": "Kon nie terugbetalingsperke laai nie. Bedrae kan verouderd wees."
         },
         "settingsIndex": {
           "title": "Instellings",
@@ -3183,13 +3220,25 @@
           "awaitingYocoRefundReason": "Bespreking gekanselleer — terugbetaal na kaart",
           "refundOriginalHint": "Die geld keer terug na die kliënt se kaart deur die kaartmasjien of bank. Niks word uit jou kontantlaai geneem nie.",
           "refundCashHint": "Gee die geld persoonlik aan die kliënt terug. Opgeneem vir jou boeke; geen beursiekrediet word uitgereik nie. Die besprekingsaldo word opgedateer nadat dit geslaag is.",
-          "refundWalletHint": "Gebruik wanneer die kliënt nie teenwoordig is nie of die betaling aanlyn gemaak is. Die terugbetaling word teen hul beursie gekrediteer.",
+          "refundWalletHint": "Slegs geld wat aanlyn betaal is, kan teruggaan na die beursie. Die terugbetaling word teen hul beursie gekrediteer.",
           "refundOriginalMachineHint": "Die geld keer terug na die kliënt se kaart deur die kaartmasjien waarop dit betaal is.",
           "cancelWalletNote": "Die kliënt sal 'n volle terugbetaling aan hul Beautonomi-beursie ontvang vir bedrae wat reeds betaal is. Jou kansellasiebeleid is nie van toepassing op kansellasies wat jy inisieer nie.",
           "cancelRefundTo": "Betaal die betaalde bedrag terug na",
           "yocoRefundRecordCta": "Op die masjien terugbetaal — teken die terugbetaling aan",
           "pendingCashRefundTitle": "{{amount}} to return persoonlik",
-          "pendingCashRefundBody": "Die kliënt moet bevestig dat hulle hierdie terugbetaling in die toepassing ontvang het. Moenie nog 'n kontantterugbetaling aanteken terwyl dit hangende is nie - gee die bedrag wat gewys word terug en wag vir bevestiging (of die 48-uur-venster om toe te maak)."
+          "pendingCashRefundBody": "Die kliënt moet bevestig dat hulle hierdie terugbetaling in die toepassing ontvang het. Moenie nog 'n kontantterugbetaling aanteken terwyl dit hangende is nie - gee die bedrag wat gewys word terug en wag vir bevestiging (of die 48-uur-venster om toe te maak).",
+          "noIssueRefundsPermission": "Jy mag nie terugbetalings uitreik nie. Vra die eienaar of 'n bestuurder.",
+          "refundMethodCapBody": "Hierdie terugbetalingsmetode laat tot {{amount}} toe. Kies 'n ander metode vir die res.",
+          "refundCapsBreakdown": "Persoonlik betaal {{inPerson}} · Aanlyn {{online}} · Reeds terugbetaal {{refunded}}",
+          "refundMaxForMethod": "Maks vir hierdie metode",
+          "confirmRefundTitle": "Bevestig terugbetaling",
+          "confirmRefundBody": "Betaal {{amount}} terug as {{method}}. Dit kan nie ongedaan gemaak word nie.",
+          "completeBlockedTerminalTitle": "Kaartmasjienheffing oop",
+          "completeBlockedFullyRefundedTitle": "Bespreking volledig terugbetaal",
+          "unpaidCompleteReasonTitle": "Voltooi met onbetaalde saldo",
+          "unpaidCompleteReasonLabel": "Rede (verpligtend)",
+          "unpaidCompleteReasonPlaceholder": "bv. Klant betaal môre per EFT",
+          "unpaidCompleteNotAllowed": "Net die eienaar of 'n bestuurder kan 'n bespreking voltooi terwyl daar nog 'n bedrag uitstaan. Vorder eers betaling of vra 'n bestuurder."
         },
         "operatingHoursSettings": {
           "title": "Opegradering ure",
@@ -5366,7 +5415,12 @@
           "staffFilteredByService": "Wys spanlede wat aan hierdie diens toegeken is.",
           "addressOutsideArea": "Hierdie adres is buite jou diensgebied.",
           "addressValidateFailed": "Kon nie hierdie adres bevestig nie. Gaan jou verbinding na en probeer weer.",
-          "tipPercentWithAmountA11y": "{{percent}}% fooitjie, {{amount}}"
+          "tipPercentWithAmountA11y": "{{percent}}% fooitjie, {{amount}}",
+          "anyAvailableStaff": "Enige beskikbare",
+          "assignAnyStaffA11y": "Wys enige beskikbare spanlid toe",
+          "loadingTeam": "Span laai…",
+          "staffRetryInline": "Kon nie die span laai nie. Tik om weer te probeer",
+          "staffRosterLoading": "Jou span laai voordat personeel toegewys kan word"
         },
         "expressBooking": {
           "invalidJson": "Ongeldige JSON.",
@@ -6628,7 +6682,10 @@
           "withdraw": "Onttrek",
           "withdrawFailed": "Kon nie withdraw the offer nie.",
           "withdrawOffer": "Onttrek Aanbod",
-          "emDash": "—"
+          "emDash": "—",
+          "loadingTeam": "Span laai…",
+          "noStaffPreference": "Geen voorkeur",
+          "staffRetryInline": "Kon nie die span laai nie. Tik om weer te probeer"
         },
         "bookingLink": {
           "title": "bespreking skakel",
@@ -8219,7 +8276,10 @@
           "submitRating": "dien in gradering",
           "thanks": "Dankie!",
           "freshCaption": "Vars {{name}}",
-          "shareBookingLink": "Deel besprekingskakel"
+          "shareBookingLink": "Deel besprekingskakel",
+          "continueDraftBody": "Jy het reeds 'n plasing vir hierdie bespreking begin. Gaan voort waar jy opgehou het, of gradeer jou kliënt.",
+          "continueDraftCta": "Gaan voort met konsep",
+          "continueDraftTitle": "Voltooi jou Explore-konsep"
         },
         "advancedPricing": {
           "title": "Gevorderd pryse",
@@ -10314,7 +10374,8 @@
           "permManageMarketing": "Bestuur Bemarking",
           "calendarScopeLabel": "kalender visibility",
           "calendarScopeOwn": "Own afsprake",
-          "calendarScopeAll": "All span kalenders"
+          "calendarScopeAll": "All span kalenders",
+          "permIssueRefunds": "Reik terugbetalings uit"
         },
         "onboardingHub": {
           "title": "Stel in",
@@ -11226,7 +11287,8 @@
           "calendarScopeOwn": "Own afsprake only",
           "calendarScopeAll": "All span kalenders",
           "fullAccessMemberHint": "Eienaars en personeel met bestuurdertoegang het altyd volle regte. Hul skakelaars kan hier net gelees word.",
-          "manageMarketing": "Bestuur Bemarking"
+          "manageMarketing": "Bestuur Bemarking",
+          "issueRefunds": "Reik terugbetalings uit"
         },
         "announcements": {
           "loadFailed": "Kon nie laai announcements nie",
@@ -12226,7 +12288,10 @@
           "disabledBody": "{{message}}\n\nJou administrateur kan die funksie vlag trade.provider_custom_offers vir hierdie mark aktiveer.",
           "addPhotos": "Voeg inspiration foto's by",
           "uploadingPhotos": "laai tans op…",
-          "photosAttached": "{{count}} foto(s) attached"
+          "photosAttached": "{{count}} foto(s) attached",
+          "loadingTeam": "Span laai…",
+          "noStaffPreference": "Geen voorkeur",
+          "staffRetryInline": "Kon nie die span laai nie. Tik om weer te probeer"
         },
         "salesSettings": {
           "title": "Verkoops instellings",
@@ -23821,7 +23886,8 @@
           "bookingChanged": "This bespreking veranderd, relaai",
           "statusUpdateFailed": "Kon nie dateer op bespreking status nie",
           "bulkCompleted": "Bulk {{action}} voltooi for {{count}} bespreking(s)",
-          "bulkFailed": "Kon nie {{action}} besprekings nie"
+          "bulkFailed": "Kon nie {{action}} besprekings nie",
+          "bulkPartialFailed": "{{count}} bespreking(s) is oorgeslaan vir {{action}}"
         },
         "liveSync": {
           "label": "Regstreeks · dateer opd {{relative}}",
@@ -28640,7 +28706,7 @@
             "createSales": "Skep Verkoops",
             "createSalesDesc": "Skep nuwe sales",
             "processPayments": "Process betalings",
-            "processPaymentsDesc": "Process betalings and terugbetalings",
+            "processPaymentsDesc": "Teken betalings aan en neem kaartmasjienbetalings",
             "viewReports": "Sien verslae",
             "viewReportsDesc": "Sien Besigheid verslae",
             "viewServices": "Sien Dienste",
@@ -28691,7 +28757,9 @@
             "viewOwnEarnings": "View own earnings",
             "viewOwnEarningsDesc": "See tips, commission, and personal earnings",
             "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them."
+            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them.",
+            "issueRefunds": "Reik terugbetalings uit",
+            "issueRefundsDesc": "Betaal kliënte terug (beursie, kontant of kaartmasjien)"
           },
           "team/roles": {
             "roles": "Rols",
@@ -28753,7 +28821,8 @@
               "manage_marketing": "Manage marketing",
               "manage_payroll": "Manage payroll",
               "manage_finance": "Platform billing",
-              "view_own_earnings": "View own earnings"
+              "view_own_earnings": "View own earnings",
+              "issue_refunds": "Reik terugbetalings uit"
             },
             "catEngagement": "Engagement",
             "permissionCount": "toestemming Count"
@@ -33175,7 +33244,9 @@
         "confirmLateCancelBody": "This will cancel {{name}}'s appointment as a late cancellation. A cancellation fee may apply according to your policy.",
         "cancel": "Kanselleer",
         "confirmNoShow": "Mark No-wys",
-        "confirmLateCancel": "Late kanselleer"
+        "confirmLateCancel": "Late kanselleer",
+        "completeSkipped_one": "{{count}} afspraak is nie voltooi nie (saldo verskuldig, terugbetaal of kaartmasjien oop)",
+        "completeSkipped_other": "{{count}} afsprake is nie voltooi nie (saldo verskuldig, terugbetaal of kaartmasjien oop)"
       },
       "moreHub": {
         "requiresEditSettings": "Requires wysig instellings toestemming",

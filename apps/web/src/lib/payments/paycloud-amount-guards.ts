@@ -9,6 +9,7 @@ import {
   sumSaleGiftCardPaid,
   sumSuccessfulSaleCardTakenBySaleIds,
 } from "@/lib/gift-cards/sale-gift-card";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 export async function computeExpectedAmountForEntity(
   supabase: SupabaseClient,
@@ -106,7 +107,7 @@ export async function computeExpectedAmountForEntity(
     case "sale": {
       const { data: sale } = await supabase
         .from("sales")
-        .select("total_amount, currency, payment_status")
+        .select("total_amount, payment_status")
         .eq("id", entityId)
         .eq("provider_id", providerId)
         .maybeSingle();
@@ -116,7 +117,7 @@ export async function computeExpectedAmountForEntity(
         (await sumSuccessfulSaleCardTakenBySaleIds(supabase, [entityId])).get(entityId) ?? 0;
       return {
         amount: saleCardAmountStillDue(Number(sale.total_amount ?? 0), giftPaid, cardTaken),
-        currency: sale.currency ?? "ZAR",
+        currency: LAST_RESORT_CURRENCY,
       };
     }
     case "product_order": {

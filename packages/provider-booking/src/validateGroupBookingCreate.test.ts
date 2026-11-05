@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ANY_STAFF_ID } from "./staff-assignment";
 import { collectGroupBookingCreateValidationErrors } from "./collect-group-booking-create-errors";
 import {
   validateGroupBookingCreateStep,
@@ -46,10 +47,54 @@ describe("collectGroupBookingCreateValidationErrors", () => {
     validatePhone,
   };
 
-  it("returns multiple errors", () => {
-    const errs = collectGroupBookingCreateValidationErrors(base);
-    expect(errs.length).toBeGreaterThan(1);
+  it("returns service and staff errors when both missing", () => {
+    const errs = collectGroupBookingCreateValidationErrors({
+      ...base,
+      serviceId: "svc-1",
+      staffId: "",
+      staffListLength: 3,
+    });
+    expect(errs.some((e) => e.field === "staffId")).toBe(true);
+  });
+
+  it("returns service error when service missing", () => {
+    const errs = collectGroupBookingCreateValidationErrors({
+      ...base,
+      staffListLength: 3,
+    });
     expect(errs.some((e) => e.field === "serviceId")).toBe(true);
+    expect(errs.some((e) => e.field === "staffId")).toBe(false);
+  });
+
+  it("accepts any staff when team has members", () => {
+    const errs = collectGroupBookingCreateValidationErrors({
+      ...base,
+      serviceId: "svc-1",
+      staffId: ANY_STAFF_ID,
+      staffListLength: 3,
+    });
+    expect(errs.some((e) => e.field === "staffId")).toBe(false);
+  });
+
+  it("does not require staff when roster loaded empty", () => {
+    const errs = collectGroupBookingCreateValidationErrors({
+      ...base,
+      serviceId: "svc-1",
+      staffId: "",
+      staffListLength: 0,
+      staffRosterUnresolved: false,
+    });
+    expect(errs.some((e) => e.field === "staffId")).toBe(false);
+  });
+
+  it("requires staff while roster unresolved", () => {
+    const errs = collectGroupBookingCreateValidationErrors({
+      ...base,
+      serviceId: "svc-1",
+      staffId: "",
+      staffListLength: 0,
+      staffRosterUnresolved: true,
+    });
     expect(errs.some((e) => e.field === "staffId")).toBe(true);
   });
 });

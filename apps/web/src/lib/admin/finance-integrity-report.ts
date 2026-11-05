@@ -82,11 +82,11 @@ async function queryCompletedRefundsWithoutLedger(
 ): Promise<AuditRow[]> {
   let q = supabase
     .from("booking_refunds")
-    .select("id, booking_id, amount, status, created_at, tenant_id")
+    .select("id, booking_id, amount, status, created_at, bookings!inner(tenant_id)")
     .eq("status", "completed")
     .order("created_at", { ascending: false })
     .limit(limit);
-  if (tenantId) q = q.eq("tenant_id", tenantId);
+  if (tenantId) q = q.eq("bookings.tenant_id", tenantId);
 
   const { data: refunds, error } = await q;
   if (error || !refunds?.length) return [];

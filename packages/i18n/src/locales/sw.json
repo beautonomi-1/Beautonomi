@@ -2351,13 +2351,50 @@
           "viewFullBooking": "Angalia full uhifadhi",
           "statusNoShow": "No show",
           "statusPendingPayment": "Pending payment",
-          "removeParticipantOverpaid": "Guest removed. The booking is now overpaid by {{amount}}. Refund the difference to the customer.",
+          "removeParticipantOverpaid": "Mgeni ameondolewa. {{amount}} ililipwa ana kwa ana na haiwezi kwenda kwenye mkoba. Rejesha kwa taslimu au mashine ya kadi kupitia Rejesha kwenye menyu ya Zaidi.",
           "shareStatusPaid": "Share paid",
           "shareStatusPending": "Share unpaid ({{amount}})",
           "shareStatusCancelled": "Spot cancelled",
           "resendInvite": "Re-send invite",
           "inviteResent": "Invite sent",
-          "inviteResendFailed": "Could not re-send the invite."
+          "inviteResendFailed": "Could not re-send the invite.",
+          "slotUnavailableTitle": "Muda haupatikani",
+          "noStaffForSlot": "Hakuna mwanachama wa timu aliye huru kwa huduma hii kwa wakati huu. Chagua wakati mwingine au mtu maalum.",
+          "pickAnotherTime": "Chagua wakati mwingine",
+          "invalidStaffTitle": "Mwanachama wa timu hapatikani",
+          "anyAvailableStaff": "Yeyote aliyepatikana",
+          "loadingTeam": "Inapakia timu…",
+          "staffRetryInline": "Imeshindwa kupakia timu. Gusa ujaribu tena",
+          "moreActionsTitle": "Zaidi",
+          "moreActionsA11y": "Vitendo zaidi",
+          "openTerminalBannerBody": "Tozo la mashine ya kadi la {{amount}} bado liko wazi kwa kundi hili.",
+          "resumeOpenCharge": "Endelea",
+          "cancelOpenCharge": "Ghairi tozo",
+          "cancelOpenChargeTitle": "Ghairi tozo lililo wazi?",
+          "cancelOpenChargeBody": "Hii inaghairi tozo linaloendelea kwenye mashine ya kadi ili uweze kurekodi malipo kwa njia nyingine.",
+          "cancelOpenChargeFailed": "Imeshindwa kughairi tozo lililo wazi.",
+          "openChargeCancelled": "Tozo la mashine ya kadi limeghairiwa.",
+          "entityInFlightTitle": "Tozo wazi la mashine ya kadi",
+          "cancelOpenChargeAndRecord": "Ghairi tozo lililo wazi na urekodi",
+          "terminalInFlightTitle": "Tozo la mashine ya kadi liko wazi",
+          "fullyRefundedTitle": "Imerejeshwa yote",
+          "participantRefundedChip": "Imerejeshwa",
+          "groupNotStartedTitle": "Anza kundi kwanza",
+          "groupNotStartedBody": "Kuingia na kutoka kunapatikana baada ya uhifadhi wa kundi kuanza.",
+          "unpaidCompleteNotAllowed": "Mmiliki au meneja pekee anaweza kumaliza ikiwa bado kuna salio.",
+          "unpaidCompleteReasonTitle": "Maliza na salio lisilolipwa",
+          "unpaidCompleteReasonRequired": "Weka sababu ya kumaliza ikiwa bado kuna salio.",
+          "unpaidCompleteReasonLabel": "Sababu (inahitajika)",
+          "unpaidCompleteReasonPlaceholder": "mf. Mteja atalipa kwa uhamisho kesho",
+          "refundCapsTitle": "Vikomo vya kurejesha",
+          "refundCapsOnline": "Pochi / mtandaoni: hadi {{amount}}",
+          "refundCapsCash": "Taslimu: hadi {{amount}}",
+          "refundCapsTerminal": "Mashine ya kadi: hadi {{amount}}",
+          "refundConfirmSummaryTitle": "Thibitisha kurejesha?",
+          "refundConfirmSummaryBody": "Rejesha {{amount}} kupitia {{method}}.\n\nSababu: {{reason}}",
+          "refundWalletCapExceeded": "Kiasi hicho kinazidi kikomo cha kurejesha kwenye pochi kwa uhifadhi huu.",
+          "refundMethodOriginal": "Mashine ya kadi",
+          "refundOptionsLoadFailed": "Imeshindwa kupakia vikomo vya kurejesha. Kiasi kinaweza kuwa kimepitwa na wakati."
         },
         "settingsIndex": {
           "title": "Mipangilio",
@@ -3183,13 +3220,25 @@
           "awaitingYocoRefundReason": "Uhifadhi umeghairiwa - kurejesha pesa kwa kadi",
           "refundOriginalHint": "Pesa inarudi kwa kadi ya mteja kupitia mashine ya kadi au benki. Hakuna kinachochukuliwa kutoka kwa droo yako ya pesa.",
           "refundCashHint": "Mrudishie mteja pesa ana kwa ana. Imerekodiwa kwa vitabu vyako; hakuna mkopo wa pochi hutolewa. Salio la kuhifadhi husasishwa baada ya hili kufaulu.",
-          "refundWalletHint": "Tumia wakati mteja hayupo au malipo yalifanywa mtandaoni. Pesa zilizorejeshwa huwekwa kwenye mkoba wao.",
+          "refundWalletHint": "Pesa iliyolipwa mtandaoni pekee ndiyo inayoweza kurudi kwenye mkoba. Rejesho linawekwa kwenye mkoba wao.",
           "refundOriginalMachineHint": "Pesa hurejeshwa kwa kadi ya mteja kupitia mashine ya kadi ambayo alilipia.",
           "cancelWalletNote": "Mteja atarejeshewa pesa kamili kwenye pochi yake ya Beautonomi kwa kiasi ambacho tayari kimelipwa. Sera yako ya kughairi haitumiki kwa ughairi unaoanzisha.",
           "cancelRefundTo": "Rejesha kiasi kilicholipwa kwa",
           "yocoRefundRecordCta": "Imerejeshwa kwenye mashine - rekodi urejeshaji pesa",
           "pendingCashRefundTitle": "{{amount}} to return in person",
-          "pendingCashRefundBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending — hand back the amount shown and wait for confirmation (or the 48-hour window to close)."
+          "pendingCashRefundBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending — hand back the amount shown and wait for confirmation (or the 48-hour window to close).",
+          "noIssueRefundsPermission": "Huna ruhusa ya kutoa marejesho. Muulize mmiliki au meneja.",
+          "refundMethodCapBody": "Njia hii ya kurejesha inaruhusu hadi {{amount}}. Chagua njia nyingine kwa kilichobaki.",
+          "refundCapsBreakdown": "Imelipwa ana kwa ana {{inPerson}} · Mtandaoni {{online}} · Tayari imerejeshwa {{refunded}}",
+          "refundMaxForMethod": "Kiwango cha juu cha njia hii",
+          "confirmRefundTitle": "Thibitisha kurejesha",
+          "confirmRefundBody": "Rejesha {{amount}} kama {{method}}. Hili haliwezi kutenduliwa.",
+          "completeBlockedTerminalTitle": "Tozo la mashine ya kadi liko wazi",
+          "completeBlockedFullyRefundedTitle": "Uhifadhi umerejeshwa wote",
+          "unpaidCompleteReasonTitle": "Maliza na salio lisilolipwa",
+          "unpaidCompleteReasonLabel": "Sababu (inahitajika)",
+          "unpaidCompleteReasonPlaceholder": "mf. Mteja atalipa kwa uhamisho kesho",
+          "unpaidCompleteNotAllowed": "Mmiliki au meneja pekee anaweza kumaliza uhifadhi ulio na salio. Kusanya malipo kwanza au muulize meneja."
         },
         "operatingHoursSettings": {
           "title": "Operating Saa",
@@ -5366,7 +5415,12 @@
           "staffFilteredByService": "Showing team members assigned to this service.",
           "addressOutsideArea": "This address is outside your service area.",
           "addressValidateFailed": "Could not validate this address. Check your connection and try again.",
-          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}"
+          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}",
+          "anyAvailableStaff": "Yeyote anayepatikana",
+          "assignAnyStaffA11y": "Kabidhi mwanachama yeyote anayepatikana",
+          "loadingTeam": "Inapakia timu…",
+          "staffRetryInline": "Imeshindwa kupakia timu. Gusa ujaribu tena",
+          "staffRosterLoading": "Inapakia timu yako kabla ya kuwagawia wafanyakazi"
         },
         "expressBooking": {
           "invalidJson": "JSON si sahihi.",
@@ -6628,7 +6682,10 @@
           "withdraw": "Toa",
           "withdrawFailed": "Imeshindwa withdraw the offer.",
           "withdrawOffer": "Ondoa ofa",
-          "emDash": "—"
+          "emDash": "—",
+          "loadingTeam": "Inapakia timu…",
+          "noStaffPreference": "Hakuna upendeleo",
+          "staffRetryInline": "Imeshindwa kupakia timu. Gusa ujaribu tena"
         },
         "bookingLink": {
           "title": "Uhifadhi Link",
@@ -8219,7 +8276,10 @@
           "submitRating": "Wasilisha rating",
           "thanks": "Thanks!",
           "freshCaption": "Fresh {{name}}",
-          "shareBookingLink": "Share booking link"
+          "shareBookingLink": "Share booking link",
+          "continueDraftBody": "Umeshajaza chapisho la uhifadhi huu. Endelea ulipoishia au kadiria mteja.",
+          "continueDraftCta": "Endelea na rasimu",
+          "continueDraftTitle": "Maliza rasimu yako ya Explore"
         },
         "advancedPricing": {
           "title": "Advanced pricing",
@@ -10314,7 +10374,8 @@
           "permManageMarketing": "Manage marketing",
           "calendarScopeLabel": "Calendar visibility",
           "calendarScopeOwn": "Own appointments",
-          "calendarScopeAll": "All team calendars"
+          "calendarScopeAll": "All team calendars",
+          "permIssueRefunds": "Toa marejesho"
         },
         "onboardingHub": {
           "title": "Sanidi",
@@ -11226,7 +11287,8 @@
           "calendarScopeOwn": "Own appointments only",
           "calendarScopeAll": "All team calendars",
           "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-          "manageMarketing": "Manage marketing"
+          "manageMarketing": "Manage marketing",
+          "issueRefunds": "Toa marejesho"
         },
         "announcements": {
           "loadFailed": "Imeshindwa load announcements",
@@ -12226,7 +12288,10 @@
           "disabledBody": "{{message}}\n\nYour admin can enable the feature flag commerce.provider_custom_offers for this market.",
           "addPhotos": "Add inspiration photos",
           "uploadingPhotos": "Uploading…",
-          "photosAttached": "{{count}} photo(s) attached"
+          "photosAttached": "{{count}} photo(s) attached",
+          "loadingTeam": "Inapakia timu…",
+          "noStaffPreference": "Hakuna upendeleo",
+          "staffRetryInline": "Imeshindwa kupakia timu. Gusa ujaribu tena"
         },
         "salesSettings": {
           "title": "Sales Mipangilio",
@@ -23821,7 +23886,8 @@
           "bookingChanged": "This uhifadhi changed, reload",
           "statusUpdateFailed": "Imeshindwa sasisha uhifadhi hali",
           "bulkCompleted": "Bulk {{action}} kamilishad for {{count}} uhifadhi(s)",
-          "bulkFailed": "Imeshindwa {{action}} uhifadhi"
+          "bulkFailed": "Imeshindwa {{action}} uhifadhi",
+          "bulkPartialFailed": "Uhifadhi {{count}} umerukwa kwa {{action}}"
         },
         "liveSync": {
           "label": "Live · imesasishwa {{relative}}",
@@ -28640,7 +28706,7 @@
             "createSales": "Unda Sales",
             "createSalesDesc": "Unda new sales",
             "processPayments": "Process Malipo",
-            "processPaymentsDesc": "Process malipo and refunds",
+            "processPaymentsDesc": "Rekodi malipo na pokea malipo ya mashine ya kadi",
             "viewReports": "Angalia Ripoti",
             "viewReportsDesc": "Angalia business reports",
             "viewServices": "Angalia Huduma",
@@ -28691,7 +28757,9 @@
             "viewOwnEarnings": "View own earnings",
             "viewOwnEarningsDesc": "See tips, commission, and personal earnings",
             "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them."
+            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them.",
+            "issueRefunds": "Toa marejesho",
+            "issueRefundsDesc": "Rejesha wateja (mkoba, taslimu au mashine ya kadi)"
           },
           "team/roles": {
             "roles": "Majukumu",
@@ -28753,7 +28821,8 @@
               "manage_marketing": "Manage marketing",
               "manage_payroll": "Manage payroll",
               "manage_finance": "Platform billing",
-              "view_own_earnings": "View own earnings"
+              "view_own_earnings": "View own earnings",
+              "issue_refunds": "Toa marejesho"
             },
             "catEngagement": "Ushiriki",
             "permissionCount": "Permission Count"
@@ -33175,7 +33244,9 @@
         "confirmLateCancelBody": "This will cancel {{name}}'s appointment as a late cancellation. A cancellation fee may apply according to your policy.",
         "cancel": "Ghairi",
         "confirmNoShow": "Mark Hapana-Show",
-        "confirmLateCancel": "Late Ghairi"
+        "confirmLateCancel": "Late Ghairi",
+        "completeSkipped_one": "Miadi {{count}} haikukamilika (salio, imerejeshwa au mashine ya kadi iko wazi)",
+        "completeSkipped_other": "Miadi {{count}} haikukamilika (salio, imerejeshwa au mashine ya kadi iko wazi)"
       },
       "moreHub": {
         "requiresEditSettings": "Requires Hariri mipangilio permission",

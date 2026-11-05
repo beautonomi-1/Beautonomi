@@ -20,6 +20,27 @@ export function firstSlideIsVideo(
   return first ? isExploreVideoPathOrUrl(first) : false;
 }
 
+/**
+ * Still image for a post (cover / poster). Never returns a video file — those
+ * break `next/image` (400) and `<img>`. Null when the post only has video.
+ */
+export function resolveExplorePosterUrl(post: {
+  display_url?: string | null;
+  media_urls?: string[] | null;
+  media_meta?: ExploreMediaSlideMeta[] | null;
+}): string | null {
+  const videoFirst = firstSlideIsVideo(post.media_urls, post.media_meta);
+  const candidates = [
+    post.display_url,
+    post.media_meta?.[0]?.display_path,
+    videoFirst ? null : post.media_urls?.[0],
+  ];
+  for (const candidate of candidates) {
+    if (candidate?.trim() && !isExploreVideoPathOrUrl(candidate)) return candidate;
+  }
+  return null;
+}
+
 export function resolveExploreVideoSrc(params: {
   mediaUrls: string[];
   playbackPath?: string | null;

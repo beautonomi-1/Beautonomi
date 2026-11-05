@@ -521,6 +521,7 @@ export async function POST(request: NextRequest) {
       tax_inclusive: tax_inclusive ?? true,
       vat_number: is_vat_registered === true ? (vat_number ?? null) : null,
       country_code: addressCountryCode,
+      tenant_id: tenantId,
       tax_rate_percent: null,
       tax_rate_override_percent: null,
     });
@@ -561,7 +562,6 @@ export async function POST(request: NextRequest) {
         website: website || null,
         tax_rate_percent: onboardingTaxRatePercent,
         tax_inclusive: is_vat_registered === true ? (tax_inclusive ?? true) : false,
-        country_code: addressCountryCode,
         tips_enabled: tips_enabled !== false,
         requires_deposit: depositFields.requires_deposit,
         deposit_percentage: depositFields.deposit_percentage,

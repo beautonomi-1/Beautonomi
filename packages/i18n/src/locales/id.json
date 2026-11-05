@@ -2351,13 +2351,50 @@
           "viewFullBooking": "View full booking",
           "statusNoShow": "No show",
           "statusPendingPayment": "Pending payment",
-          "removeParticipantOverpaid": "Guest removed. The booking is now overpaid by {{amount}}. Refund the difference to the customer.",
+          "removeParticipantOverpaid": "Tamu dihapus. {{amount}} dibayar langsung dan tidak bisa masuk ke dompet. Kembalikan tunai atau di mesin kartu lewat Pengembalian pada menu Lainnya.",
           "shareStatusPaid": "Share paid",
           "shareStatusPending": "Share unpaid ({{amount}})",
           "shareStatusCancelled": "Spot cancelled",
           "resendInvite": "Re-send invite",
           "inviteResent": "Invite sent",
-          "inviteResendFailed": "Could not re-send the invite."
+          "inviteResendFailed": "Could not re-send the invite.",
+          "slotUnavailableTitle": "Waktu tidak tersedia",
+          "noStaffForSlot": "Tidak ada anggota tim yang kosong untuk layanan ini pada jam ini. Pilih jam lain atau orang tertentu.",
+          "pickAnotherTime": "Pilih jam lain",
+          "invalidStaffTitle": "Anggota tim tidak tersedia",
+          "anyAvailableStaff": "Siapa saja yang tersedia",
+          "loadingTeam": "Memuat tim…",
+          "staffRetryInline": "Tim gagal dimuat. Ketuk untuk mencoba lagi",
+          "moreActionsTitle": "Lainnya",
+          "moreActionsA11y": "Tindakan lain",
+          "openTerminalBannerBody": "Tagihan mesin kartu sebesar {{amount}} masih terbuka untuk grup ini.",
+          "resumeOpenCharge": "Lanjutkan",
+          "cancelOpenCharge": "Batalkan tagihan",
+          "cancelOpenChargeTitle": "Batalkan tagihan yang terbuka?",
+          "cancelOpenChargeBody": "Ini membatalkan tagihan mesin kartu yang sedang berjalan agar pembayaran bisa dicatat dengan cara lain.",
+          "cancelOpenChargeFailed": "Tagihan yang terbuka gagal dibatalkan.",
+          "openChargeCancelled": "Tagihan mesin kartu dibatalkan.",
+          "entityInFlightTitle": "Tagihan mesin kartu yang terbuka",
+          "cancelOpenChargeAndRecord": "Batalkan tagihan terbuka dan catat",
+          "terminalInFlightTitle": "Tagihan mesin kartu terbuka",
+          "fullyRefundedTitle": "Dikembalikan penuh",
+          "participantRefundedChip": "Dikembalikan",
+          "groupNotStartedTitle": "Mulai grup dulu",
+          "groupNotStartedBody": "Check-in dan check-out tersedia setelah pemesanan grup dimulai.",
+          "unpaidCompleteNotAllowed": "Hanya pemilik atau manajer yang bisa menyelesaikan jika masih ada sisa tagihan.",
+          "unpaidCompleteReasonTitle": "Selesaikan dengan sisa tagihan",
+          "unpaidCompleteReasonRequired": "Masukkan alasan untuk menyelesaikan jika masih ada sisa tagihan.",
+          "unpaidCompleteReasonLabel": "Alasan (wajib)",
+          "unpaidCompleteReasonPlaceholder": "mis. Pelanggan membayar lewat transfer besok",
+          "refundCapsTitle": "Batas pengembalian",
+          "refundCapsOnline": "Dompet / daring: hingga {{amount}}",
+          "refundCapsCash": "Tunai: hingga {{amount}}",
+          "refundCapsTerminal": "Mesin kartu: hingga {{amount}}",
+          "refundConfirmSummaryTitle": "Konfirmasi pengembalian?",
+          "refundConfirmSummaryBody": "Kembalikan {{amount}} lewat {{method}}.\n\nAlasan: {{reason}}",
+          "refundWalletCapExceeded": "Jumlah itu melebihi batas pengembalian dompet untuk pemesanan ini.",
+          "refundMethodOriginal": "Mesin kartu",
+          "refundOptionsLoadFailed": "Batas pengembalian gagal dimuat. Jumlahnya mungkin sudah usang."
         },
         "settingsIndex": {
           "title": "Settings",
@@ -3181,7 +3218,7 @@
           "awaitingYocoRefundReason": "Booking cancelled — refund back to card",
           "refundOriginalHint": "Uang dikembalikan ke kartu pelanggan melalui mesin kartu atau bank. Nothing is taken from your cash drawer.",
           "refundCashHint": "Hand the money back to the customer in person. Direkam untuk buku Anda; no wallet credit is issued. The booking balance updates after this succeeds.",
-          "refundWalletHint": "Gunakan saat pelanggan tidak hadir atau pembayaran dilakukan secara online. The refund is credited to their wallet.",
+          "refundWalletHint": "Hanya uang yang dibayar daring yang bisa kembali ke dompet. Pengembalian dikreditkan ke dompet mereka.",
           "refundOriginalMachineHint": "Uang dikembalikan ke kartu pelanggan melalui mesin kartu tempat pembayaran dilakukan.",
           "yocoRefundRecordedBody": "Pengembalian dana Yoco telah dicatat pada pemesanan ini.",
           "cancelRefundWalletHint": "Klien menerima pengembalian dana penuh ke dompet Beautonomi mereka. Kebijakan pembatalan Anda tidak berlaku untuk pembatalan yang Anda lakukan.",
@@ -3189,7 +3226,19 @@
           "cancelRefundTo": "Kembalikan jumlah yang dibayarkan ke",
           "yocoRefundRecordCta": "Dikembalikan dananya di mesin — catat pengembalian dananya",
           "pendingCashRefundTitle": "{{amount}} to return in person",
-          "pendingCashRefundBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending — hand back the amount shown and wait for confirmation (or the 48-hour window to close)."
+          "pendingCashRefundBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending — hand back the amount shown and wait for confirmation (or the 48-hour window to close).",
+          "noIssueRefundsPermission": "Kamu tidak punya izin menerbitkan pengembalian. Minta pemilik atau manajer.",
+          "refundMethodCapBody": "Metode pengembalian ini mengizinkan hingga {{amount}}. Pilih metode lain untuk sisanya.",
+          "refundCapsBreakdown": "Dibayar langsung {{inPerson}} · Daring {{online}} · Sudah dikembalikan {{refunded}}",
+          "refundMaxForMethod": "Maksimum untuk metode ini",
+          "confirmRefundTitle": "Konfirmasi pengembalian",
+          "confirmRefundBody": "Kembalikan {{amount}} sebagai {{method}}. Ini tidak bisa dibatalkan.",
+          "completeBlockedTerminalTitle": "Tagihan mesin kartu terbuka",
+          "completeBlockedFullyRefundedTitle": "Pemesanan dikembalikan penuh",
+          "unpaidCompleteReasonTitle": "Selesaikan dengan sisa tagihan",
+          "unpaidCompleteReasonLabel": "Alasan (wajib)",
+          "unpaidCompleteReasonPlaceholder": "mis. Pelanggan membayar lewat transfer besok",
+          "unpaidCompleteNotAllowed": "Hanya pemilik atau manajer yang bisa menyelesaikan pemesanan yang masih ada sisanya. Tagih dulu atau minta manajer."
         },
         "operatingHoursSettings": {
           "title": "Operating Hours",
@@ -5366,7 +5415,12 @@
           "staffFilteredByService": "Showing team members assigned to this service.",
           "addressOutsideArea": "This address is outside your service area.",
           "addressValidateFailed": "Could not validate this address. Check your connection and try again.",
-          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}"
+          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}",
+          "anyAvailableStaff": "Siapa saja yang tersedia",
+          "assignAnyStaffA11y": "Tetapkan anggota yang tersedia",
+          "loadingTeam": "Memuat tim…",
+          "staffRetryInline": "Tim gagal dimuat. Ketuk untuk mencoba lagi",
+          "staffRosterLoading": "Memuat tim Anda sebelum staf ditugaskan"
         },
         "expressBooking": {
           "invalidJson": "Invalid JSON.",
@@ -6628,7 +6682,10 @@
           "withdraw": "Withdraw",
           "withdrawFailed": "Could not withdraw the offer.",
           "withdrawOffer": "Withdraw offer",
-          "emDash": "—"
+          "emDash": "—",
+          "loadingTeam": "Memuat tim…",
+          "noStaffPreference": "Tidak ada preferensi",
+          "staffRetryInline": "Tim gagal dimuat. Ketuk untuk mencoba lagi"
         },
         "bookingLink": {
           "title": "Booking Link",
@@ -8219,7 +8276,10 @@
           "submitRating": "Submit rating",
           "thanks": "Thanks!",
           "freshCaption": "Fresh {{name}}",
-          "shareBookingLink": "Share booking link"
+          "shareBookingLink": "Share booking link",
+          "continueDraftBody": "Anda sudah memulai unggahan untuk pemesanan ini. Lanjutkan dari tadi atau nilai klien.",
+          "continueDraftCta": "Lanjutkan draf",
+          "continueDraftTitle": "Selesaikan draf Explore Anda"
         },
         "advancedPricing": {
           "title": "Advanced pricing",
@@ -10314,7 +10374,8 @@
           "permManageMarketing": "Manage marketing",
           "calendarScopeLabel": "Calendar visibility",
           "calendarScopeOwn": "Own appointments",
-          "calendarScopeAll": "All team calendars"
+          "calendarScopeAll": "All team calendars",
+          "permIssueRefunds": "Terbitkan pengembalian"
         },
         "onboardingHub": {
           "title": "Set up",
@@ -11226,7 +11287,8 @@
           "calendarScopeOwn": "Own appointments only",
           "calendarScopeAll": "All team calendars",
           "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-          "manageMarketing": "Manage marketing"
+          "manageMarketing": "Manage marketing",
+          "issueRefunds": "Terbitkan pengembalian"
         },
         "announcements": {
           "loadFailed": "Could not load announcements",
@@ -12226,7 +12288,10 @@
           "disabledBody": "{{message}}\n\nYour admin can enable the feature flag commerce.provider_custom_offers for this market.",
           "addPhotos": "Add inspiration photos",
           "uploadingPhotos": "Uploading…",
-          "photosAttached": "{{count}} photo(s) attached"
+          "photosAttached": "{{count}} photo(s) attached",
+          "loadingTeam": "Memuat tim…",
+          "noStaffPreference": "Tidak ada preferensi",
+          "staffRetryInline": "Tim gagal dimuat. Ketuk untuk mencoba lagi"
         },
         "salesSettings": {
           "title": "Sales Settings",
@@ -23821,7 +23886,8 @@
           "bookingChanged": "This booking changed, reload",
           "statusUpdateFailed": "Failed to update booking status",
           "bulkCompleted": "Bulk {{action}} completed for {{count}} booking(s)",
-          "bulkFailed": "Failed to {{action}} bookings"
+          "bulkFailed": "Failed to {{action}} bookings",
+          "bulkPartialFailed": "{{count}} pemesanan dilewati untuk {{action}}"
         },
         "liveSync": {
           "label": "Live · updated {{relative}}",
@@ -28640,7 +28706,7 @@
             "createSales": "Create Sales",
             "createSalesDesc": "Create new sales",
             "processPayments": "Process Payments",
-            "processPaymentsDesc": "Process payments and refunds",
+            "processPaymentsDesc": "Catat pembayaran dan terima pembayaran mesin kartu",
             "viewReports": "View Reports",
             "viewReportsDesc": "View business reports",
             "viewServices": "View Services",
@@ -28691,7 +28757,9 @@
             "viewOwnEarnings": "View own earnings",
             "viewOwnEarningsDesc": "See tips, commission, and personal earnings",
             "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them."
+            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them.",
+            "issueRefunds": "Terbitkan pengembalian",
+            "issueRefundsDesc": "Kembalikan ke pelanggan (dompet, tunai, atau mesin kartu)"
           },
           "team/roles": {
             "roles": "Roles",
@@ -28753,7 +28821,8 @@
               "manage_marketing": "Manage marketing",
               "manage_payroll": "Manage payroll",
               "manage_finance": "Platform billing",
-              "view_own_earnings": "View own earnings"
+              "view_own_earnings": "View own earnings",
+              "issue_refunds": "Terbitkan pengembalian"
             },
             "catEngagement": "Engagement",
             "permissionCount": "Permission Count"
@@ -33175,7 +33244,9 @@
         "confirmLateCancelBody": "This will cancel {{name}}'s appointment as a late cancellation. A cancellation fee may apply according to your policy.",
         "cancel": "Cancel",
         "confirmNoShow": "Mark No-Show",
-        "confirmLateCancel": "Late Cancel"
+        "confirmLateCancel": "Late Cancel",
+        "completeSkipped_one": "{{count}} janji tidak diselesaikan (sisa tagihan, dikembalikan, atau mesin kartu terbuka)",
+        "completeSkipped_other": "{{count}} janji tidak diselesaikan (sisa tagihan, dikembalikan, atau mesin kartu terbuka)"
       },
       "moreHub": {
         "requiresEditSettings": "Requires Edit settings permission",

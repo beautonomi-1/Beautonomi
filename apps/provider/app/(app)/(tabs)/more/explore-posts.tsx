@@ -50,6 +50,8 @@ import {
   type PickedAsset,
   isVideoAsset,
 } from "@/lib/explore-picked-asset";
+import { exploreFrameForAsset, exploreFrameFromMediaMetaRow } from "@/lib/explore-frame-dimensions";
+import { computeExploreOverlayStageSize } from "@/lib/explore-overlay-preview";
 import type { ExploreUploadCaps } from "@/lib/explore-picked-asset";
 import {
   ExploreSoundPicker,
@@ -120,6 +122,51 @@ type MinePostsResponse = ExplorePost[] | {
   pagination?: { has_more?: boolean };
   total?: number;
 };
+
+function prependMinePost(
+  current: MinePostsResponse | null | undefined,
+  post: ExplorePost,
+): MinePostsResponse {
+  const without = (list: ExplorePost[]) => [post, ...list.filter((row) => row.id !== post.id)];
+  if (Array.isArray(current)) return without(current);
+  if (current && Array.isArray(current.posts)) {
+    const already = current.posts.some((row) => row.id === post.id);
+    return {
+      ...current,
+      posts: without(current.posts),
+      total: typeof current.total === "number" ? current.total + (already ? 0 : 1) : current.total,
+    };
+  }
+  if (current && Array.isArray(current.data)) {
+    return { ...current, data: without(current.data) };
+  }
+  return { posts: [post], total: 1 };
+}
+
+function withAssetTrim(asset: PickedAsset, slot: UploadSlotResult): UploadSlotResult {
+  if (slot.kind !== "video" && !isVideoAsset(asset)) return slot;
+  const sourceDurationMs =
+    asset.source_duration_ms != null && asset.source_duration_ms > 0
+      ? asset.source_duration_ms
+      : slot.source_duration_ms;
+  const segmentMs =
+    asset.duration_ms != null && asset.duration_ms > 0
+      ? asset.duration_ms
+      : asset.trim_start_ms != null && asset.trim_end_ms != null
+        ? trimWindowDurationMs({
+            trim_start_ms: asset.trim_start_ms,
+            trim_end_ms: asset.trim_end_ms,
+          })
+        : slot.duration_ms ?? sourceDurationMs;
+  return {
+    ...slot,
+    kind: "video",
+    duration_ms: segmentMs,
+    source_duration_ms: sourceDurationMs,
+    trim_start_ms: asset.trim_start_ms ?? slot.trim_start_ms ?? 0,
+    trim_end_ms: asset.trim_end_ms ?? slot.trim_end_ms ?? segmentMs,
+  };
+}
 
 type ProviderPermissionsResponse = {
   permissions?: {
@@ -306,13 +353,45 @@ function overlayFromDraft(text: string): SlideTextOverlay | null {
   return { text: trimmed, x: 0.5, y: 0.5, font_size: 0.06, color: "#FFFFFF", align: "center" };
 }
 
+/**
+ * Typing into the caption field: with no active layer the first characters create one at the
+ * frame center; with an active layer the text replaces that layer's text. Blank layers stay in
+ * state (position kept while the field is cleared) and are dropped before save.
+ */
+function applyOverlayDraftText(
+  prev: Record<number, SlideTextOverlay[]>,
+  slideIndex: number,
+  activeLayerIndex: number,
+  text: string,
+): { next: Record<number, SlideTextOverlay[]>; activeLayerIndex: number } {
+  const trimmed = text.trim().slice(0, 80);
+  const cur = prev[slideIndex] ?? [];
+  if (activeLayerIndex >= 0 && activeLayerIndex < cur.length) {
+    return {
+      next: { ...prev, [slideIndex]: cur.map((l, i) => (i === activeLayerIndex ? { ...l, text: trimmed } : l)) },
+      activeLayerIndex,
+    };
+  }
+  const layer = overlayFromDraft(trimmed);
+  if (!layer || cur.length >= MAX_TEXT_OVERLAYS_PER_SLIDE) return { next: prev, activeLayerIndex: -1 };
+  return { next: { ...prev, [slideIndex]: [...cur, layer] }, activeLayerIndex: cur.length };
+}
+
+function visibleOverlayCount(layers: SlideTextOverlay[] | undefined): number {
+  return (layers ?? []).filter((l) => l.text.trim().length > 0).length;
+}
+
 function applySlideOverlaysToMediaMeta<T extends Record<string, unknown>>(
   base: T[],
   overlaysByIndex: Record<number, SlideTextOverlay[]>,
 ): Array<T & { text_overlays?: SlideTextOverlay[] }> {
   return base.map((m, i) => {
-    const layers = overlaysByIndex[i];
-    return layers?.length ? { ...m, text_overlays: layers } : m;
+    // Server rejects every layer on a slide if one has empty text.
+    const layers = overlaysByIndex[i]?.filter((l) => l.text.trim().length > 0);
+    if (layers?.length) return { ...m, text_overlays: layers };
+    // PATCH merges slide meta onto the stored row; an explicit [] is what clears old captions.
+    if ("text_overlays" in m) return { ...m, text_overlays: [] };
+    return m;
   });
 }
 
@@ -386,37 +465,58 @@ function LibraryClipRing({
 }
 
 /** Local file preview for create/edit strips — uses expo-video for video, expo-image for photos. */
-function LocalMediaPreview({ asset, size }: { asset: PickedAsset; size: number }) {
+function LocalMediaPreview({
+  asset,
+  size = 80,
+  width,
+  height,
+  composerStage,
+  onDecodedPhotoSize,
+}: {
+  asset: PickedAsset;
+  size?: number;
+  width?: number;
+  height?: number;
+  composerStage?: boolean;
+  onDecodedPhotoSize?: (size: { width: number; height: number }) => void;
+}) {
   const { t } = useTranslation();
   const [imageFailed, setImageFailed] = useState(false);
+  const w = width ?? size;
+  const h = height ?? size;
   const video = isVideoAsset(asset);
+  const contentFit = composerStage ? "contain" : "cover";
   if (video) {
     return (
-      <View style={{ width: size, height: size, backgroundColor: "#111" }}>
+      <View style={{ width: w, height: h, backgroundColor: "#111" }}>
         <ExpoVideoPreview
           uri={asset.uri}
           style={StyleSheet.absoluteFill}
-          contentFit="cover"
+          contentFit={contentFit}
           paused
           muted
           startAtMs={asset.trim_start_ms}
         />
-        <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <View
-            style={[
-              StyleSheet.absoluteFill,
-              { alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.25)" },
-            ]}
-          >
-            <Ionicons name="play-circle" size={Math.round(size * 0.42)} color="rgba(255,255,255,0.95)" />
-          </View>
-        </View>
-        <LibraryClipRing
-          size={size}
-          trimStartMs={asset.trim_start_ms}
-          trimEndMs={asset.trim_end_ms}
-          sourceMs={asset.source_duration_ms}
-        />
+        {!composerStage ? (
+          <>
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+              <View
+                style={[
+                  StyleSheet.absoluteFill,
+                  { alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.25)" },
+                ]}
+              >
+                <Ionicons name="play-circle" size={Math.round(Math.min(w, h) * 0.42)} color="rgba(255,255,255,0.95)" />
+              </View>
+            </View>
+            <LibraryClipRing
+              size={Math.min(w, h)}
+              trimStartMs={asset.trim_start_ms}
+              trimEndMs={asset.trim_end_ms}
+              sourceMs={asset.source_duration_ms}
+            />
+          </>
+        ) : null}
       </View>
     );
   }
@@ -424,26 +524,33 @@ function LocalMediaPreview({ asset, size }: { asset: PickedAsset; size: number }
     return (
       <View
         style={{
-          width: size,
-          height: size,
+          width: w,
+          height: h,
           backgroundColor: "#e5e7eb",
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        <Ionicons name="image-outline" size={Math.round(size * 0.35)} color="#9ca3af" />
+        <Ionicons name="image-outline" size={Math.round(Math.min(w, h) * 0.35)} color="#9ca3af" />
       </View>
     );
   }
   return (
     <Image
       source={{ uri: asset.uri }}
-      style={{ width: size, height: size, backgroundColor: "#f3f4f6" } as ExpoImageStyle}
-      contentFit="cover"
+      style={{ width: w, height: h, backgroundColor: composerStage ? "#111" : "#f3f4f6" } as ExpoImageStyle}
+      contentFit={contentFit}
       transition={200}
       recyclingKey={asset.uri}
       accessibilityLabel={t("provider.mobile.screens.explorePosts.selectedPhotoPreviewA11y")}
       onError={() => setImageFailed(true)}
+      onLoad={(e) => {
+        const sw = e.source.width;
+        const sh = e.source.height;
+        if (composerStage && sw > 0 && sh > 0) {
+          onDecodedPhotoSize?.({ width: sw, height: sh });
+        }
+      }}
     />
   );
 }
@@ -527,6 +634,8 @@ export default function ExplorePostsScreen() {
   const exploreGridColumns = isTablet ? 4 : 3;
   const exploreGridCellSize =
     (windowWidth - screenPadding * 2 - exploreGridGap * (exploreGridColumns - 1)) / exploreGridColumns;
+  const overlayStageMaxWidth = Math.min(windowWidth - 56, 360);
+  const overlayStageMaxHeight = 480;
   const params = useLocalSearchParams<{
     create?: string;
     offeringId?: string;
@@ -535,6 +644,7 @@ export default function ExplorePostsScreen() {
     bookingId?: string;
     returnTo?: string;
     step?: string;
+    openPostId?: string;
   }>();
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -560,8 +670,18 @@ export default function ExplorePostsScreen() {
   const [editOverlaySlideIndex, setEditOverlaySlideIndex] = useState(0);
   const [editOverlayDraft, setEditOverlayDraft] = useState("");
   const [editSlideOverlays, setEditSlideOverlays] = useState<Record<number, SlideTextOverlay[]>>({});
+  const [photoDecodedByUri, setPhotoDecodedByUri] = useState<Record<string, { width: number; height: number }>>({});
+  const [editPhotoDecodedByUri, setEditPhotoDecodedByUri] = useState<
+    Record<string, { width: number; height: number }>
+  >({});
+  const [overlayCaptionScrollLock, setOverlayCaptionScrollLock] = useState(false);
+  const [editOverlayCaptionScrollLock, setEditOverlayCaptionScrollLock] = useState(false);
+  /** -1: next typing creates a new caption layer. */
+  const [overlayActiveLayerIndex, setOverlayActiveLayerIndex] = useState(-1);
+  const [editOverlayActiveLayerIndex, setEditOverlayActiveLayerIndex] = useState(-1);
 
   const [categories, setCategories] = useState<GlobalCategory[]>([]);
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
   const [offerings, setOfferings] = useState<{ id: string; title: string }[]>([]);
   const [viewPost, setViewPost] = useState<ExplorePost | null>(null);
   const [viewDetailMediaIndex, setViewDetailMediaIndex] = useState(0);
@@ -581,6 +701,7 @@ export default function ExplorePostsScreen() {
   const [uploadCaps, setUploadCaps] = useState<ExploreUploadCaps>({});
   const [videoUploadEnabled, setVideoUploadEnabled] = useState(true);
   const screenMountedRef = useRef(true);
+  const uploadedByUriRef = useRef(new Map<string, UploadSlotResult>());
   const [extraPosts, setExtraPosts] = useState<ExplorePost[]>([]);
   const [loadingMorePosts, setLoadingMorePosts] = useState(false);
   const [reportTarget, setReportTarget] = useState<{
@@ -611,7 +732,9 @@ export default function ExplorePostsScreen() {
   const { user } = useAuth();
   const { confirmBlockUser, isBlocked } = useUserBlocks();
 
-  const { data, loading, error, refresh } = useApi<MinePostsResponse>("/api/explore/posts/mine?limit=100&offset=0");
+  const { data, loading, error, refresh, mutate, silentRefresh } = useApi<MinePostsResponse>(
+    "/api/explore/posts/mine?limit=100&offset=0",
+  );
   const { data: permissionData } = useApi<ProviderPermissionsResponse>("/api/provider/permissions");
   const { settings: safetySettings } = useSafetySettings();
   const ugcCreate = useSocialCapability("ugc_create");
@@ -787,7 +910,7 @@ export default function ExplorePostsScreen() {
           ? (body as { data: GlobalCategory[] }).data
           : [];
       setCategories(list);
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setCategoriesLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -845,7 +968,18 @@ export default function ExplorePostsScreen() {
     setEditSlideOverlays(overlaysFromPostMeta(viewPost.media_meta as unknown[] | undefined));
     setEditOverlayDraft("");
     setEditOverlaySlideIndex(0);
+    setEditOverlayActiveLayerIndex(-1);
   }, [editMode, viewPost?.id, viewPost?.media_meta]);
+
+  useEffect(() => {
+    setOverlayActiveLayerIndex(-1);
+    setOverlayDraft("");
+  }, [overlaySlideIndex]);
+
+  useEffect(() => {
+    setEditOverlayActiveLayerIndex(-1);
+    setEditOverlayDraft("");
+  }, [editOverlaySlideIndex]);
 
   const openView = useCallback((post: ExplorePost) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -864,6 +998,43 @@ export default function ExplorePostsScreen() {
     setEditLocalAssets([]);
     setEditSoundId((post as ExplorePost & { sound_id?: string | null }).sound_id ?? null);
   }, [categories]);
+
+  const enterEditMode = useCallback(
+    (post: ExplorePost) => {
+      setEditCaption(post.caption ?? "");
+      const cat = post.primary_category_id
+        ? categories.find((c) => c.id === post.primary_category_id)
+        : null;
+      setEditPrimaryCategorySlug(cat?.slug ?? null);
+      setEditTagInput(Array.isArray(post.tags) && post.tags.length ? post.tags.join(", ") : "");
+      setEditOfferingId(post.offering_id ?? null);
+      setEditRemoteUrls([...(post.media_urls ?? [])]);
+      setEditRemoteMeta(
+        Array.isArray(post.media_meta)
+          ? (post.media_meta as Record<string, unknown>[]).map((row) => ({ ...row }))
+          : [],
+      );
+      setEditLocalAssets([]);
+      setEditMode(true);
+    },
+    [categories],
+  );
+
+  const handledOpenPostIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const postId = params.openPostId?.trim();
+    if (!postId || !canCreateExplorePosts || !categoriesLoaded) return;
+    if (handledOpenPostIdRef.current === postId) return;
+    handledOpenPostIdRef.current = postId;
+    router.setParams({ openPostId: undefined } as never);
+    void api
+      .get<ExplorePost>(`/api/explore/posts/mine?id=${encodeURIComponent(postId)}`)
+      .then((res) => {
+        if (!screenMountedRef.current || res.error || !res.data) return;
+        openView(res.data);
+        enterEditMode(res.data);
+      });
+  }, [params.openPostId, canCreateExplorePosts, categoriesLoaded, openView, enterEditMode, router]);
 
   const handleDelete = useCallback(
     (post: ExplorePost) => {
@@ -948,6 +1119,14 @@ export default function ExplorePostsScreen() {
     return false;
   }, [editRemoteUrls, editLocalAssets]);
 
+  const resolveExploreUpload = useCallback(async (asset: PickedAsset, index: number) => {
+    const cached = uploadedByUriRef.current.get(asset.uri);
+    if (cached?.path && !cached.error) return withAssetTrim(asset, cached);
+    const res = await uploadExploreMediaAsset(asset, index);
+    if (res.path && !res.error) uploadedByUriRef.current.set(asset.uri, res);
+    return res;
+  }, []);
+
   const handleSaveEdit = useCallback(async (publish: boolean) => {
     if (!viewPost) return;
     if (blockExploreUgcAction(ep("noPermissionManage"))) return;
@@ -971,7 +1150,7 @@ export default function ExplorePostsScreen() {
       const uploadSlots: UploadSlotResult[] = [];
       for (let i = 0; i < editLocalAssets.length; i++) {
         const asset = editLocalAssets[i];
-        const res = await uploadExploreMediaAsset(asset, i);
+        const res = await resolveExploreUpload(asset, i);
         if (res.error || !res.path) {
           Alert.alert(ep("uploadFailedTitle"), res.error ?? ep("uploadFailedBody"));
           return;
@@ -1032,7 +1211,8 @@ export default function ExplorePostsScreen() {
       if (updated) setViewPost(updated);
       setEditMode(false);
       setEditLocalAssets([]);
-      refresh();
+      for (const asset of editLocalAssets) uploadedByUriRef.current.delete(asset.uri);
+      silentRefresh();
     } finally {
       setEditUploading(false);
       setEditSubmittingMode(null);
@@ -1051,7 +1231,8 @@ export default function ExplorePostsScreen() {
     editSoundId,
     mediaFlow.isBusy,
     updatePost,
-    refresh,
+    silentRefresh,
+    resolveExploreUpload,
     blockExploreUgcAction,
     alsoAddToGallery,
     ep,
@@ -1104,7 +1285,11 @@ export default function ExplorePostsScreen() {
   const removeEditLocal = useCallback(
     (index: number) => {
       const removedSlideIndex = editRemoteUrls.length + index;
-      setEditLocalAssets((prev) => prev.filter((_, i) => i !== index));
+      setEditLocalAssets((prev) => {
+        const removed = prev[index];
+        if (removed) uploadedByUriRef.current.delete(removed.uri);
+        return prev.filter((_, i) => i !== index);
+      });
       setEditSlideOverlays((prev) => reindexSlideOverlaysAfterRemove(prev, removedSlideIndex));
       setEditOverlaySlideIndex((prev) =>
         prev > removedSlideIndex ? prev - 1 : prev === removedSlideIndex ? Math.max(0, prev - 1) : prev,
@@ -1126,6 +1311,9 @@ export default function ExplorePostsScreen() {
     setOverlayDraft("");
     setSlideOverlays({});
     setOverlaySlideIndex(0);
+    setOverlayActiveLayerIndex(-1);
+    setOverlayCaptionScrollLock(false);
+    uploadedByUriRef.current.clear();
     mediaFlow.resetFlow();
   }, [mediaFlow]);
 
@@ -1165,7 +1353,11 @@ export default function ExplorePostsScreen() {
   }, [mediaFlow]);
 
   const removeAsset = useCallback((index: number) => {
-    setSelectedAssets((prev) => prev.filter((_, i) => i !== index));
+    setSelectedAssets((prev) => {
+      const removed = prev[index];
+      if (removed) uploadedByUriRef.current.delete(removed.uri);
+      return prev.filter((_, i) => i !== index);
+    });
     setSlideOverlays((prev) => reindexSlideOverlaysAfterRemove(prev, index));
     setOverlaySlideIndex((prev) => (prev > index ? prev - 1 : prev === index ? Math.max(0, prev - 1) : prev));
   }, []);
@@ -1187,7 +1379,7 @@ export default function ExplorePostsScreen() {
     try {
       for (let i = 0; i < selectedAssets.length; i++) {
         const asset = selectedAssets[i];
-        const res = await uploadExploreMediaAsset(asset, i);
+        const res = await resolveExploreUpload(asset, i);
         if (res.error || !res.path) {
           Alert.alert(
             ep("uploadFailedTitle"),
@@ -1209,7 +1401,7 @@ export default function ExplorePostsScreen() {
         0,
         20,
       );
-      const { error: createErr } = await createPost("/api/explore/posts", {
+      const { data: created, error: createErr } = await createPost("/api/explore/posts", {
         caption: caption.trim() || null,
         media_urls: paths,
         media_meta,
@@ -1231,13 +1423,15 @@ export default function ExplorePostsScreen() {
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (created) mutate(prependMinePost(data, created));
       resetCreateForm();
       setCreateOpen(false);
-      refresh();
       const returnBookingId = params.bookingId || preseedBookingId;
-      if (publish && params.returnTo === "booking" && returnBookingId) {
+      const leavingForBooking = Boolean(publish && params.returnTo === "booking" && returnBookingId);
+      if (!leavingForBooking) silentRefresh();
+      if (leavingForBooking && returnBookingId) {
         router.replace(
-          `/(app)/(tabs)/more/bookings/${returnBookingId}?step=rate` as never,
+          `/(app)/(tabs)/more/bookings/${returnBookingId}?posted=1` as never,
         );
         return;
       }
@@ -1249,7 +1443,7 @@ export default function ExplorePostsScreen() {
         e instanceof Error ? e.message : ep("somethingWentWrong"),
       );
     }
-  }, [blockExploreUgcAction, mediaFlow.isBusy, selectedAssets, caption, primaryCategorySlug, offeringId, alsoAddToGallery, hasVideoInSelection, soundId, preseedBookingId, params.bookingId, params.returnTo, tagInput, slideOverlays, createPost, refresh, resetCreateForm, router, ep]);
+  }, [blockExploreUgcAction, mediaFlow.isBusy, selectedAssets, caption, primaryCategorySlug, offeringId, alsoAddToGallery, hasVideoFirstForSound, soundId, preseedBookingId, params.bookingId, params.returnTo, tagInput, slideOverlays, createPost, data, mutate, silentRefresh, resolveExploreUpload, resetCreateForm, router, ep]);
 
   const openCreateIfAllowed = useCallback(() => {
     if (blockExploreUgcAction(ep("noPermissionCreate"))) return;
@@ -1551,6 +1745,7 @@ export default function ExplorePostsScreen() {
         onModalHide={onPostDraftSheetHidden}
         title={ep("newPostTitle")}
         subtitle={ep("newPostSubtitle")}
+        scrollEnabled={!overlayCaptionScrollLock}
       >
         <View style={twStyle("mb-4 flex-row gap-2")}>
           <TouchableOpacity
@@ -1592,7 +1787,7 @@ export default function ExplorePostsScreen() {
                 )}
               >
                 <LocalMediaPreview asset={asset} size={80} />
-                {(slideOverlays[i]?.length ?? 0) > 0 ? (
+                {visibleOverlayCount(slideOverlays[i]) > 0 ? (
                   <View style={twStyle("absolute bottom-1 left-1 rounded bg-violet-600 px-1")}>
                     <Text style={twStyle("text-[10px] font-medium text-white")}>Aa</Text>
                   </View>
@@ -1627,37 +1822,72 @@ export default function ExplorePostsScreen() {
                 placeholder={ep("onMediaTextPlaceholder")}
                 placeholderTextColor="#9ca3af"
                 value={overlayDraft}
-                onChangeText={setOverlayDraft}
+                onChangeText={(text) => {
+                  setOverlayDraft(text);
+                  const idx = Math.min(overlaySlideIndex, selectedAssets.length - 1);
+                  if (idx < 0) return;
+                  const res = applyOverlayDraftText(slideOverlays, idx, overlayActiveLayerIndex, text);
+                  setSlideOverlays(res.next);
+                  setOverlayActiveLayerIndex(res.activeLayerIndex);
+                }}
               />
               <TouchableOpacity
                 onPress={() => {
-                  const layer = overlayFromDraft(overlayDraft);
-                  if (!layer) return;
-                  const idx = Math.min(overlaySlideIndex, selectedAssets.length - 1);
-                  setSlideOverlays((prev) => {
-                    const cur = prev[idx] ?? [];
-                    if (cur.length >= MAX_TEXT_OVERLAYS_PER_SLIDE) return prev;
-                    return { ...prev, [idx]: [...cur, layer] };
-                  });
+                  setOverlayActiveLayerIndex(-1);
                   setOverlayDraft("");
                 }}
-                style={twStyle("rounded-lg bg-violet-600 px-4 py-3")}
+                disabled={overlayActiveLayerIndex < 0}
+                style={twStyle(`rounded-lg bg-violet-600 px-4 py-3 ${overlayActiveLayerIndex < 0 ? "opacity-50" : ""}`)}
               >
                 <Text style={twStyle("text-sm font-medium text-white")}>{ep("addTextLayer")}</Text>
               </TouchableOpacity>
             </View>
-            {(slideOverlays[overlaySlideIndex]?.length ?? 0) > 0 && selectedAssets[overlaySlideIndex] ? (
-              <ExploreSlideOverlayComposer
-                dragHint={ep("onMediaTextDragHint")}
-                preview={
-                  <LocalMediaPreview asset={selectedAssets[overlaySlideIndex]!} size={280} />
-                }
-                overlays={slideOverlays[overlaySlideIndex] ?? []}
-                onChangeOverlays={(layers) =>
-                  setSlideOverlays((prev) => ({ ...prev, [overlaySlideIndex]: layers }))
-                }
-              />
-            ) : null}
+            {visibleOverlayCount(slideOverlays[overlaySlideIndex]) > 0 && selectedAssets[overlaySlideIndex]
+              ? (() => {
+                  const asset = selectedAssets[overlaySlideIndex]!;
+                  const decoded = photoDecodedByUri[asset.uri];
+                  const frame = exploreFrameForAsset(asset, decoded);
+                  const stage = computeExploreOverlayStageSize(
+                    frame.frameWidth,
+                    frame.frameHeight,
+                    overlayStageMaxWidth,
+                    overlayStageMaxHeight,
+                  );
+                  return (
+                    <ExploreSlideOverlayComposer
+                      key={`${overlaySlideIndex}-${asset.uri}`}
+                      dragHint={ep("onMediaTextDragHint")}
+                      frameWidth={frame.frameWidth}
+                      frameHeight={frame.frameHeight}
+                      frameReady={frame.known}
+                      mediaKind={frame.mediaKind}
+                      stageMaxWidth={overlayStageMaxWidth}
+                      stageMaxHeight={overlayStageMaxHeight}
+                      onGestureActive={setOverlayCaptionScrollLock}
+                      activeLayerIndex={overlayActiveLayerIndex}
+                      onSelectLayer={(layerIndex) => {
+                        setOverlayActiveLayerIndex(layerIndex);
+                        setOverlayDraft(slideOverlays[overlaySlideIndex]?.[layerIndex]?.text ?? "");
+                      }}
+                      preview={
+                        <LocalMediaPreview
+                          asset={asset}
+                          width={stage.width}
+                          height={stage.height}
+                          composerStage
+                          onDecodedPhotoSize={(size) =>
+                            setPhotoDecodedByUri((prev) => ({ ...prev, [asset.uri]: size }))
+                          }
+                        />
+                      }
+                      overlays={slideOverlays[overlaySlideIndex] ?? []}
+                      onChangeOverlays={(layers) =>
+                        setSlideOverlays((prev) => ({ ...prev, [overlaySlideIndex]: layers }))
+                      }
+                    />
+                  );
+                })()
+              : null}
           </View>
         ) : null}
         {diversityTip ? (
@@ -1808,6 +2038,7 @@ export default function ExplorePostsScreen() {
           visible={!!viewPost && (mediaFlow.state.step === "idle" || !editMode)}
           onClose={() => !updating && !editUploading && setViewPost(null)}
           onModalHide={onPostDraftSheetHidden}
+          scrollEnabled={!editOverlayCaptionScrollLock}
           title={editMode ? ep("editPostTitle") : ep("postTitle")}
           snapHeight="full"
           subtitle={
@@ -1892,7 +2123,7 @@ export default function ExplorePostsScreen() {
                           contentFit="cover"
                         />
                       )}
-                      {(editSlideOverlays[i]?.length ?? 0) > 0 ? (
+                      {visibleOverlayCount(editSlideOverlays[i]) > 0 ? (
                         <View style={twStyle("absolute bottom-1 left-1 rounded bg-violet-600 px-1")}>
                           <Text style={twStyle("text-[10px] font-medium text-white")}>Aa</Text>
                         </View>
@@ -1919,7 +2150,7 @@ export default function ExplorePostsScreen() {
                         )}
                       >
                         <LocalMediaPreview asset={asset} size={80} />
-                        {(editSlideOverlays[slideIdx]?.length ?? 0) > 0 ? (
+                        {visibleOverlayCount(editSlideOverlays[slideIdx]) > 0 ? (
                           <View style={twStyle("absolute bottom-1 left-1 rounded bg-violet-600 px-1")}>
                             <Text style={twStyle("text-[10px] font-medium text-white")}>Aa</Text>
                           </View>
@@ -1956,22 +2187,25 @@ export default function ExplorePostsScreen() {
                       placeholder={ep("onMediaTextPlaceholder")}
                       placeholderTextColor="#9ca3af"
                       value={editOverlayDraft}
-                      onChangeText={setEditOverlayDraft}
+                      onChangeText={(text) => {
+                        setEditOverlayDraft(text);
+                        const total = editRemoteUrls.length + editLocalAssets.length;
+                        const idx = Math.min(editOverlaySlideIndex, total - 1);
+                        if (idx < 0) return;
+                        const res = applyOverlayDraftText(editSlideOverlays, idx, editOverlayActiveLayerIndex, text);
+                        setEditSlideOverlays(res.next);
+                        setEditOverlayActiveLayerIndex(res.activeLayerIndex);
+                      }}
                     />
                     <TouchableOpacity
                       onPress={() => {
-                        const layer = overlayFromDraft(editOverlayDraft);
-                        if (!layer) return;
-                        const total = editRemoteUrls.length + editLocalAssets.length;
-                        const idx = Math.min(editOverlaySlideIndex, total - 1);
-                        setEditSlideOverlays((prev) => {
-                          const cur = prev[idx] ?? [];
-                          if (cur.length >= MAX_TEXT_OVERLAYS_PER_SLIDE) return prev;
-                          return { ...prev, [idx]: [...cur, layer] };
-                        });
+                        setEditOverlayActiveLayerIndex(-1);
                         setEditOverlayDraft("");
                       }}
-                      style={twStyle("rounded-lg bg-violet-600 px-4 py-3")}
+                      disabled={editOverlayActiveLayerIndex < 0}
+                      style={twStyle(
+                        `rounded-lg bg-violet-600 px-4 py-3 ${editOverlayActiveLayerIndex < 0 ? "opacity-50" : ""}`,
+                      )}
                     >
                       <Text style={twStyle("text-sm font-medium text-white")}>{ep("addTextLayer")}</Text>
                     </TouchableOpacity>
@@ -1982,30 +2216,87 @@ export default function ExplorePostsScreen() {
                       editRemoteUrls.length + editLocalAssets.length - 1,
                     );
                     const layers = editSlideOverlays[idx] ?? [];
-                    if (!layers.length) return null;
-                    const preview =
-                      idx < editRemoteUrls.length ? (
-                        isVideoUrl(editRemoteUrls[idx]!) ? (
-                          <View style={{ width: 280, height: 280 }}>
-                            <ExploreFeedMediaThumb uri={editRemoteUrls[idx]!} height={280} />
-                          </View>
-                        ) : (
-                          <Image
-                            source={{ uri: editRemoteUrls[idx]! }}
-                            style={{ width: 280, height: 280 } as ExpoImageStyle}
-                            contentFit="cover"
+                    if (visibleOverlayCount(layers) === 0) return null;
+                    const metaRow = (editRemoteMeta[idx] ?? {}) as {
+                      kind?: string;
+                      width?: number | null;
+                      height?: number | null;
+                    };
+                    const isRemote = idx < editRemoteUrls.length;
+                    const url = isRemote ? editRemoteUrls[idx]! : null;
+                    const localAsset = !isRemote ? editLocalAssets[idx - editRemoteUrls.length] : null;
+                    const isVideo = isRemote
+                      ? metaRow.kind === "video" || isVideoUrl(url!)
+                      : localAsset
+                        ? isVideoAsset(localAsset)
+                        : false;
+                    const decodedKey = localAsset?.uri ?? url ?? "";
+                    const decoded = !isVideo ? editPhotoDecodedByUri[decodedKey] : undefined;
+                    const frame = localAsset
+                      ? exploreFrameForAsset(localAsset, decoded)
+                      : exploreFrameFromMediaMetaRow(metaRow, isVideo, decoded);
+                    const stage = computeExploreOverlayStageSize(
+                      frame.frameWidth,
+                      frame.frameHeight,
+                      overlayStageMaxWidth,
+                      overlayStageMaxHeight,
+                    );
+                    const preview = isRemote ? (
+                      isVideo ? (
+                        <View style={{ width: stage.width, height: stage.height, backgroundColor: "#111" }}>
+                          <ExpoVideoPreview
+                            uri={url!}
+                            style={StyleSheet.absoluteFill}
+                            contentFit="contain"
+                            paused
+                            muted
                           />
-                        )
-                      ) : editLocalAssets[idx - editRemoteUrls.length] ? (
-                        <LocalMediaPreview
-                          asset={editLocalAssets[idx - editRemoteUrls.length]!}
-                          size={280}
+                        </View>
+                      ) : (
+                        <Image
+                          source={{ uri: url! }}
+                          style={{ width: stage.width, height: stage.height, backgroundColor: "#111" } as ExpoImageStyle}
+                          contentFit="contain"
+                          onLoad={(e) => {
+                            const sw = e.source.width;
+                            const sh = e.source.height;
+                            if (sw > 0 && sh > 0) {
+                              setEditPhotoDecodedByUri((prev) => ({
+                                ...prev,
+                                [url!]: { width: sw, height: sh },
+                              }));
+                            }
+                          }}
                         />
-                      ) : null;
+                      )
+                    ) : localAsset ? (
+                      <LocalMediaPreview
+                        asset={localAsset}
+                        width={stage.width}
+                        height={stage.height}
+                        composerStage
+                        onDecodedPhotoSize={(size) =>
+                          setEditPhotoDecodedByUri((prev) => ({ ...prev, [localAsset.uri]: size }))
+                        }
+                      />
+                    ) : null;
                     if (!preview) return null;
                     return (
                       <ExploreSlideOverlayComposer
+                        key={`${idx}-${decodedKey}`}
                         dragHint={ep("onMediaTextDragHint")}
+                        frameWidth={frame.frameWidth}
+                        frameHeight={frame.frameHeight}
+                        frameReady={frame.known}
+                        mediaKind={frame.mediaKind}
+                        stageMaxWidth={overlayStageMaxWidth}
+                        stageMaxHeight={overlayStageMaxHeight}
+                        onGestureActive={setEditOverlayCaptionScrollLock}
+                        activeLayerIndex={editOverlayActiveLayerIndex}
+                        onSelectLayer={(layerIndex) => {
+                          setEditOverlayActiveLayerIndex(layerIndex);
+                          setEditOverlayDraft(layers[layerIndex]?.text ?? "");
+                        }}
                         preview={preview}
                         overlays={layers}
                         onChangeOverlays={(next) =>
@@ -2360,27 +2651,7 @@ export default function ExplorePostsScreen() {
               {canCreateExplorePosts ? (
                 <View style={twStyle("mb-4 flex-row gap-2")}>
                   <TouchableOpacity
-                    onPress={() => {
-                      setEditCaption(viewPost.caption ?? "");
-                      const cat = viewPost.primary_category_id
-                        ? categories.find((c) => c.id === viewPost.primary_category_id)
-                        : null;
-                      setEditPrimaryCategorySlug(cat?.slug ?? null);
-                      setEditTagInput(
-                        Array.isArray(viewPost.tags) && viewPost.tags.length
-                          ? viewPost.tags.join(", ")
-                          : "",
-                      );
-                      setEditOfferingId(viewPost.offering_id ?? null);
-                      setEditRemoteUrls([...(viewPost.media_urls ?? [])]);
-                      setEditRemoteMeta(
-                        Array.isArray(viewPost.media_meta)
-                          ? (viewPost.media_meta as Record<string, unknown>[]).map((row) => ({ ...row }))
-                          : [],
-                      );
-                      setEditLocalAssets([]);
-                      setEditMode(true);
-                    }}
+                    onPress={() => enterEditMode(viewPost)}
                     style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-3")}
                   >
                     <Ionicons name="pencil-outline" size={18} color="#6366f1" />

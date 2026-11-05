@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
         scheduled_plan_id,
         scheduled_change_at,
         metadata,
-        plan:membership_plans(id, name, description, price_monthly, currency, discount_percent, is_active),
+        plan:membership_plans!user_memberships_plan_id_fkey(id, name, description, price_monthly, currency, discount_percent, is_active),
         provider:providers(id, business_name, slug, tenant_id)
       `
       )

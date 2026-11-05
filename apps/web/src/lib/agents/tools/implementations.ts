@@ -58,9 +58,9 @@ export async function readPayoutSummary(principal: AgentPrincipal, payoutId: str
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("payouts")
-    .select("id, amount, currency, status, provider_id, tenant_id")
+    .select("id, amount, currency, status, provider_id, providers!inner(tenant_id)")
     .eq("id", payoutId)
-    .eq("tenant_id", principal.tenantId)
+    .eq("providers.tenant_id", principal.tenantId)
     .maybeSingle();
   if (error) throw error;
   if (!data) throw new Error("payout_not_found");
@@ -96,16 +96,18 @@ export async function readRefundSummary(principal: AgentPrincipal, refundId: str
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("booking_refunds")
-    .select("id, amount, currency, status, booking_id, bookings!inner(tenant_id)")
+    .select("id, amount, status, booking_id, bookings!inner(tenant_id, currency)")
     .eq("id", refundId)
     .eq("bookings.tenant_id", principal.tenantId)
     .maybeSingle();
   if (error) throw error;
   if (!data) throw new Error("refund_not_found");
+  const bookingRel = (data as { bookings?: { currency?: string } | Array<{ currency?: string }> }).bookings;
+  const booking = Array.isArray(bookingRel) ? bookingRel[0] : bookingRel;
   return {
     id: data.id,
     amount: Number(data.amount),
-    currency: data.currency,
+    currency: booking?.currency ?? null,
     status: data.status,
     bookingId: (data as { booking_id?: string | null }).booking_id ?? null,
   };

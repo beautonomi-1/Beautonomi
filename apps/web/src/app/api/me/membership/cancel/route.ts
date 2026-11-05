@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       const { data: activeSalon, error: salonFindError } = await (supabase
         .from("user_memberships") as any)
         .select(
-          "id, user_id, status, expires_at, provider:providers(id, tenant_id, user_id, business_name), plan:membership_plans(id, name)"
+          "id, user_id, status, expires_at, provider:providers(id, tenant_id, user_id, business_name), plan:membership_plans!user_memberships_plan_id_fkey(id, name)"
         )
         .eq("id", providerMembershipId)
         .eq("user_id", user.id)

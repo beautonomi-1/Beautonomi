@@ -1,6 +1,11 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
-import { getAllPermissions, getStaffPermissions, isProviderOwner } from "@/lib/auth/permissions";
+import {
+  getAllPermissions,
+  getStaffPermissions,
+  isProviderOwner,
+  isProviderOwnerOrManager,
+} from "@/lib/auth/permissions";
 
 /**
  * GET /api/provider/permissions
@@ -17,15 +22,18 @@ export async function GET(request: NextRequest) {
     if (isOwner) {
       return successResponse({
         isOwner: true,
+        isManager: true,
         permissions: getAllPermissions(),
       });
     }
 
     // Get staff permissions
     const permissions = await getStaffPermissions(user.id, undefined, request);
-    
+    const isManager = await isProviderOwnerOrManager(user.id, request);
+
     return successResponse({
       isOwner: false,
+      isManager,
       permissions
     });
   } catch (error) {

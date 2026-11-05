@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     const { data: bookings, error: bErr } = await admin
       .from("bookings")
       .select(
-        "id, customer_id, provider_id, scheduled_at, booking_number, customer_name, customer_email, customer_phone, service_id, service_name, group_booking_id, package_id"
+        "id, customer_id, provider_id, scheduled_at, booking_number, group_booking_id, package_id, users!bookings_customer_id_fkey(full_name, email, phone)"
       )
       .in("id", booking_ids)
       .eq("provider_id", providerId);
@@ -116,9 +116,16 @@ export async function POST(request: NextRequest) {
         const { error: pErr } = await admin.from("booking_participants").insert({
           booking_id: b.id,
           group_booking_id: group.id,
-          participant_name: b.customer_name || `Guest ${i + 1}`,
-          participant_email: b.customer_email,
-          participant_phone: b.customer_phone,
+          participant_name:
+            (Array.isArray((b as { users?: { full_name?: string } | { full_name?: string }[] }).users)
+              ? (b as { users: Array<{ full_name?: string }> }).users[0]?.full_name
+              : (b as { users?: { full_name?: string } }).users?.full_name) || `Guest ${i + 1}`,
+          participant_email: Array.isArray((b as { users?: { email?: string } | { email?: string }[] }).users)
+            ? (b as { users: Array<{ email?: string }> }).users[0]?.email
+            : (b as { users?: { email?: string } }).users?.email,
+          participant_phone: Array.isArray((b as { users?: { phone?: string } | { phone?: string }[] }).users)
+            ? (b as { users: Array<{ phone?: string }> }).users[0]?.phone
+            : (b as { users?: { phone?: string } }).users?.phone,
           is_primary_contact: i === 0,
         });
         if (pErr) throw pErr;

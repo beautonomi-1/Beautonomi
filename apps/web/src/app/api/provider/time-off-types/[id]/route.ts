@@ -47,44 +47,11 @@ export async function PATCH(
       );
     }
 
-    // Verify time off type belongs to provider
-    const { data: existing } = await supabase
-      .from("time_off_types")
-      .select("id")
-      .eq("id", id)
-      .eq("provider_id", providerId)
-      .single();
-
-    if (!existing) {
-      return notFoundResponse("Time off type not found");
-    }
-
-    const updateData: any = {};
-    if (validationResult.data.name !== undefined) {
-      updateData.name = validationResult.data.name;
-    }
-    if (validationResult.data.description !== undefined) {
-      updateData.description = validationResult.data.description || null;
-    }
-    if (validationResult.data.is_paid !== undefined) {
-      updateData.is_paid = validationResult.data.is_paid;
-    }
-    if (validationResult.data.is_active !== undefined) {
-      updateData.is_active = validationResult.data.is_active;
-    }
-
-    const { data, error } = await supabase
-      .from("time_off_types")
-      .update(updateData)
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (error) {
-      throw error;
-    }
-
-    return successResponse(data);
+    return errorResponse(
+      "Time-off types are labels on staff time-off records and cannot be edited as a catalog.",
+      "NOT_SUPPORTED",
+      409,
+    );
   } catch (error) {
     return handleApiError(error, "Failed to update time off type");
   }
@@ -108,25 +75,11 @@ export async function DELETE(
       return notFoundResponse("Provider not found");
     }
 
-    // Verify time off type belongs to provider
-    const { data: existing } = await supabase
-      .from("time_off_types")
-      .select("id")
-      .eq("id", id)
-      .eq("provider_id", providerId)
-      .single();
-
-    if (!existing) {
-      return notFoundResponse("Time off type not found");
-    }
-
-    const { error } = await supabase.from("time_off_types").delete().eq("id", id);
-
-    if (error) {
-      throw error;
-    }
-
-    return successResponse({ success: true });
+    return errorResponse(
+      "Time-off types are labels on staff time-off records and cannot be deleted as a catalog.",
+      "NOT_SUPPORTED",
+      409,
+    );
   } catch (error) {
     return handleApiError(error, "Failed to delete time off type");
   }

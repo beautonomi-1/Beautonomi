@@ -31,6 +31,7 @@ import {
 } from "@/lib/share-explore-post";
 import {
   buildExploreSlides,
+  explorePostGridImageUrl,
   firstSlideIsVideo,
   resolveExploreVideoSrc,
   shouldOpenExploreVideoFeed,
@@ -956,7 +957,7 @@ export default function ExplorePostScreen() {
                 </Text>
                 <View style={{ flexDirection: "row", flexWrap: "wrap", marginHorizontal: -6 }}>
                   {relatedPosts.slice(0, 6).map((p) => {
-                    const img = p.display_url ?? p.media_urls?.[0];
+                    const img = explorePostGridImageUrl(p);
                     return (
                       <TouchableOpacity
                         key={p.id}

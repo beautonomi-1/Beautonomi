@@ -96,9 +96,7 @@ export function CustomOfferSheet({
     return globalCategories.filter((c) => (c.name ?? "").toLowerCase().includes(q));
   }, [globalCategories, categoryQuery]);
   const { data: locationsData } = useApi<{ id: string; name: string }[]>("/api/provider/locations", { enabled: visible });
-  const { data: teamData } = useApi<{ id: string; name: string }[]>("/api/provider/team", { enabled: visible });
   const locations = useMemo(() => locationsData ?? [], [locationsData]);
-  const staffList = Array.isArray(teamData) ? teamData : [];
 
   const [serviceName, setServiceName] = useState("");
   const [serviceCategoryId, setServiceCategoryId] = useState<string | null>(null);
@@ -111,6 +109,22 @@ export function CustomOfferSheet({
   const [uploadingImages, setUploadingImages] = useState(false);
   const [locationType, setLocationType] = useState<"at_salon" | "at_home">("at_salon");
   const [locationId, setLocationId] = useState<string | null>(null);
+  const teamUrl = useMemo(
+    () =>
+      locationId
+        ? `/api/provider/team?location_id=${encodeURIComponent(locationId)}`
+        : "/api/provider/team",
+    [locationId],
+  );
+  const {
+    data: teamData,
+    loading: teamListLoading,
+    error: teamError,
+    refresh: refreshTeamList,
+  } = useApi<{ id: string; name: string }[]>(teamUrl, { enabled: visible });
+  const staffRosterUnresolved =
+    (teamListLoading && !teamData) || (!!teamError && !teamData);
+  const staffList = Array.isArray(teamData) ? teamData : [];
   const [staffId, setStaffId] = useState<string | null>(null);
   const [scheduledAt, setScheduledAt] = useState<Date>(() => {
     const d = new Date();
@@ -620,26 +634,51 @@ export function CustomOfferSheet({
           </>
         )}
 
-        {staffList.length > 0 && (
+        {staffRosterUnresolved || staffList.length > 0 ? (
           <>
             <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{co("assignedStaffOptional")}</Text>
             <View style={twStyle("mb-3 flex-row flex-wrap")}>
-              {staffList.map((s) => (
+              {staffRosterUnresolved ? (
                 <TouchableOpacity
-                  key={s.id}
-                  onPress={() => setStaffId(staffId === s.id ? null : s.id)}
-                  style={[twStyle(`rounded-xl border px-3 py-2 ${
-                    staffId === s.id ? "border-primary bg-primary/10" : "border-gray-200 bg-gray-50"
-                  }`), { marginEnd: 8, marginBottom: 8 }]}
+                  onPress={() => {
+                    if (teamError && !teamData) void refreshTeamList();
+                  }}
+                  style={[twStyle("rounded-xl border border-amber-200 bg-amber-50 px-3 py-2"), { marginEnd: 8, marginBottom: 8 }]}
                 >
-                  <Text style={twStyle(`text-sm ${staffId === s.id ? "text-primary font-medium" : "text-gray-600"}`)}>
-                    {s.name}
+                  <Text style={twStyle("text-sm text-amber-900")}>
+                    {teamError && !teamData ? co("staffRetryInline") : co("loadingTeam")}
                   </Text>
                 </TouchableOpacity>
-              ))}
+              ) : (
+                <>
+                  <TouchableOpacity
+                    onPress={() => setStaffId(null)}
+                    style={[twStyle(`rounded-xl border px-3 py-2 ${
+                      staffId === null ? "border-primary bg-primary/10" : "border-gray-200 bg-gray-50"
+                    }`), { marginEnd: 8, marginBottom: 8 }]}
+                  >
+                    <Text style={twStyle(`text-sm ${staffId === null ? "text-primary font-medium" : "text-gray-600"}`)}>
+                      {co("noStaffPreference")}
+                    </Text>
+                  </TouchableOpacity>
+                  {staffList.map((s) => (
+                    <TouchableOpacity
+                      key={s.id}
+                      onPress={() => setStaffId(s.id)}
+                      style={[twStyle(`rounded-xl border px-3 py-2 ${
+                        staffId === s.id ? "border-primary bg-primary/10" : "border-gray-200 bg-gray-50"
+                      }`), { marginEnd: 8, marginBottom: 8 }]}
+                    >
+                      <Text style={twStyle(`text-sm ${staffId === s.id ? "text-primary font-medium" : "text-gray-600"}`)}>
+                        {s.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </>
+              )}
             </View>
           </>
-        )}
+        ) : null}
 
         <Text style={twStyle("mb-1 text-sm font-semibold text-gray-700")}>{co("appointmentSlot")}</Text>
         <Text style={twStyle("mb-2 text-xs text-gray-500")}>

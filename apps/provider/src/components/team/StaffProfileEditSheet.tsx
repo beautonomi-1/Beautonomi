@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -91,12 +91,21 @@ export function StaffProfileEditSheet({
   onSaved,
 }: Props) {
   const { t } = useTranslation();
-  const tm = (key: string, opts?: Record<string, unknown>) =>
-    t(`provider.mobile.screens.teamMember.${key}`, opts) as string;
-  const wl = (key: string, opts?: Record<string, unknown>) =>
-    t(`web.provider.teamAddWizard.${key}`, opts) as string;
-  const tl = (key: string, opts?: Record<string, unknown>) =>
-    t(`provider.mobile.screens.teamList.${key}`, opts) as string;
+  const tm = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.teamMember.${key}`, opts) as string,
+    [t],
+  );
+  const wl = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`web.provider.teamAddWizard.${key}`, opts) as string,
+    [t],
+  );
+  const tl = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.teamList.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { execute: patchStaff, loading: savingStaff } = useApiMutation("patch");
   const { execute: patchSettings, loading: savingSettings } = useApiMutation("patch");
@@ -119,6 +128,8 @@ export function StaffProfileEditSheet({
   const [productRate, setProductRate] = useState<number | null>(null);
 
   const saving = savingStaff || savingSettings;
+  const memberRef = useRef(member);
+  memberRef.current = member;
 
   const roleOptions = useMemo(() => {
     if (isBusinessOwnerRow && isOwnerViewer) return ROLES;
@@ -131,12 +142,15 @@ export function StaffProfileEditSheet({
       setSettingsLoaded(false);
       return;
     }
-    setName(member.name);
-    setPhone(member.phone ?? "");
-    setAvatarUrl(member.avatar_url ?? null);
-    setRole(member.role);
+    const current = memberRef.current;
+    setName(current.name);
+    setPhone(current.phone ?? "");
+    setAvatarUrl(current.avatar_url ?? null);
+    setRole(current.role);
+    let cancelled = false;
     void (async () => {
-      const res = await api.get<SettingsPayload>(`/api/provider/staff/${member.id}/settings`);
+      const res = await api.get<SettingsPayload>(`/api/provider/staff/${current.id}/settings`);
+      if (cancelled) return;
       const s = res.data;
       if (s) {
         setPublicTitle(s.public_title ?? "");
@@ -154,12 +168,15 @@ export function StaffProfileEditSheet({
         const enabled = s.commission_enabled === true;
         setCommissionEnabled(enabled);
         const thumb =
-          svc != null ? svc : s.commission_rate != null ? s.commission_rate : member.commission_rate ?? 0;
+          svc != null ? svc : s.commission_rate != null ? s.commission_rate : current.commission_rate ?? 0;
         setCommissionPercent(Math.round(Number(thumb) || 0));
       }
       setSettingsLoaded(true);
     })();
-  }, [visible, member]);
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, member.id]);
 
   const applyJob = useCallback(
     (job: StaffJob) => {
@@ -283,6 +300,9 @@ export function StaffProfileEditSheet({
       time_clock_enabled: timeClock,
       time_clock_pin: timeClockPin.trim(),
     };
+    if (canManagePayroll) {
+      settingsPayload.commission_enabled = commissionEnabled;
+    }
 
     const { error: settingsErr } = await patchSettings(
       `/api/provider/staff/${member.id}/settings`,

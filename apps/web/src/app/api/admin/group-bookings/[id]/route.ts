@@ -221,7 +221,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     if (action === "complete_service") {
-      await admin.from("bookings").update({ status: "completed", completed_at: now, updated_at: now }).eq("group_booking_id", id).not("status", "in", "(cancelled,no_show,completed)");
+      await admin
+        .from("bookings")
+        .update({ status: "completed", completed_at: now, updated_at: now })
+        .eq("group_booking_id", id)
+        .not("status", "in", "(cancelled,no_show,completed,refunded)")
+        .or("payment_status.is.null,payment_status.neq.refunded");
       const { data, error } = await admin.from("group_bookings").update({ status: "completed", updated_at: now }).eq("id", id).select().single();
       if (error) throw error;
       return successResponse({ group_booking: data });

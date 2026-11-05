@@ -38,18 +38,17 @@ export async function enrichProviderLedgerRowsForUi(
       const slice = bookingIds.slice(i, i + 200);
       const { data: bookings } = await db
         .from("bookings")
-        .select("id, booking_number, customer_id, guest_name")
+        .select("id, booking_number, customer_id")
         .eq("provider_id", providerId)
         .in("id", slice);
       for (const b of (bookings ?? []) as Array<{
         id: string;
         booking_number?: string | null;
         customer_id?: string | null;
-        guest_name?: string | null;
       }>) {
         if (b.booking_number) bookingNumberMap.set(b.id, b.booking_number);
         bookingCustomerIdMap.set(b.id, b.customer_id ?? null);
-        bookingGuestNameMap.set(b.id, b.guest_name ?? null);
+        bookingGuestNameMap.set(b.id, null);
         if (b.customer_id) customerIds.add(b.customer_id);
       }
     }

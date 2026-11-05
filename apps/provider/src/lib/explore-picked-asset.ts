@@ -6,6 +6,8 @@ export type PickedAsset = {
   fileName?: string;
   isVideo?: boolean;
   fileSize?: number;
+  width?: number;
+  height?: number;
   source_duration_ms?: number;
   duration_ms?: number;
   trim_start_ms?: number;
@@ -39,6 +41,8 @@ export function mapPickerAsset(a: {
   fileName?: string | null;
   duration?: number | null;
   fileSize?: number;
+  width?: number;
+  height?: number;
 }): PickedAsset {
   const isVideo = a.type === "video" || a.type === "pairedVideo" || (a.mimeType?.startsWith("video/") ?? false);
   const durationMs =
@@ -52,6 +56,8 @@ export function mapPickerAsset(a: {
     isVideo,
     fileSize: typeof a.fileSize === "number" ? a.fileSize : undefined,
     ...(durationMs != null ? { source_duration_ms: durationMs } : {}),
+    ...(typeof a.width === "number" && a.width > 0 ? { width: a.width } : {}),
+    ...(typeof a.height === "number" && a.height > 0 ? { height: a.height } : {}),
   };
 }
 
@@ -61,6 +67,8 @@ export function mapCameraCaptureToAsset(c: {
   fileName: string;
   isVideo: boolean;
   source_duration_ms?: number;
+  width?: number;
+  height?: number;
 }): PickedAsset {
   return {
     uri: c.uri,
@@ -68,6 +76,8 @@ export function mapCameraCaptureToAsset(c: {
     fileName: c.fileName,
     isVideo: c.isVideo,
     ...(c.source_duration_ms != null ? { source_duration_ms: c.source_duration_ms } : {}),
+    ...(typeof c.width === "number" && c.width > 0 ? { width: c.width } : {}),
+    ...(typeof c.height === "number" && c.height > 0 ? { height: c.height } : {}),
   };
 }
 

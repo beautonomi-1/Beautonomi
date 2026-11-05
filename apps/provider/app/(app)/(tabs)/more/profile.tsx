@@ -123,6 +123,10 @@ export default function ProfileScreen() {
   const [savedEmailForDisplay, setSavedEmailForDisplay] = useState("");
   const initialProfileRef = useRef<{ email: string; phone: string }>({ email: "", phone: "" });
   const canUseQuietRefresh = useRef(false);
+  const phoneStepRef = useRef(phoneStep);
+  phoneStepRef.current = phoneStep;
+  const emailStepRef = useRef(emailStep);
+  emailStepRef.current = emailStep;
   const { pickWithOptions } = useImagePicker();
 
   const tenantCountryFallback = useCallback(
@@ -256,6 +260,7 @@ export default function ProfileScreen() {
 
   const load = useCallback(async () => {
     const quiet = canUseQuietRefresh.current;
+    if (quiet && (phoneStepRef.current || emailStepRef.current)) return;
     if (!quiet) {
       setLoading(true);
       setError(null);

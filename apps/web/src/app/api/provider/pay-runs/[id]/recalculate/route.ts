@@ -10,6 +10,7 @@ import { calculatePayRun, type PayPeriodType } from "@/lib/payroll/pay-run-engin
 import { payrollDisabledMessage } from "@/lib/payroll/payroll-access";
 import { requireManagePayroll } from "@/lib/payroll/require-manage-payroll";
 import { payRunItemToInsertRow } from "@/lib/payroll/pay-run-item-rows";
+import { resolvePayrollV2Enabled } from "@/lib/payroll/payroll-v2-gate";
 import { computeNetPay } from "@/lib/payroll/net-pay";
 
 /**
@@ -46,13 +47,7 @@ export async function POST(
       return handleApiError(new Error("Only draft pay runs can be recalculated"), "INVALID_STATE", 400);
     }
 
-    const { data: payrollSettings } = await supabaseAdmin
-      .from("provider_settings")
-      .select("payroll_v2_enabled")
-      .eq("provider_id", providerId)
-      .maybeSingle();
-    const payrollV2 =
-      (payrollSettings as { payroll_v2_enabled?: boolean } | null)?.payroll_v2_enabled === true;
+    const payrollV2 = await resolvePayrollV2Enabled(supabaseAdmin, providerId);
 
     const { data: existingItems } = await supabaseAdmin
       .from("provider_pay_run_items")

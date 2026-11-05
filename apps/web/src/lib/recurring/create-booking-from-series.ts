@@ -164,7 +164,7 @@ export async function createBookingFromRecurringSeries(
 
   const { data: providerRow } = await admin
     .from("providers")
-    .select("tenant_id, currency, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code, customer_fee_config_id, timezone")
+    .select("tenant_id, currency, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, customer_fee_config_id, timezone")
     .eq("id", row.provider_id)
     .maybeSingle();
 
@@ -273,6 +273,8 @@ export async function createBookingFromRecurringSeries(
 
   let cursor = new Date(scheduledAtLocal);
   const pBookingServices: Record<string, unknown>[] = [];
+  const anyStaffLocationType =
+    (row as { location_type?: string | null }).location_type === "at_home" ? "at_home" : "at_salon";
   for (const line of lines) {
     const o = offeringMap.get(line.offering_id) as {
       duration_minutes?: number;
@@ -286,7 +288,27 @@ export async function createBookingFromRecurringSeries(
     const cur = o.currency || currency;
     const start = new Date(cursor);
     const end = new Date(cursor.getTime() + duration * 60 * 1000);
-    const staffId = line.staff_id ?? row.staff_id ?? null;
+    let staffId = line.staff_id ?? row.staff_id ?? null;
+    if (staffId === "any") {
+      const { resolveProviderAnyStaffToken } = await import(
+        "@/lib/provider-booking/resolve-provider-any-staff-on-create"
+      );
+      const picked = await resolveProviderAnyStaffToken({
+        supabaseAdmin: admin,
+        providerId: row.provider_id,
+        locationId: row.location_id,
+        providerTimeZone: providerTz,
+        scheduledAt: start.toISOString(),
+        durationMinutes: duration,
+        offeringId: line.offering_id,
+        locationType: anyStaffLocationType,
+        rawStaffId: "any",
+      });
+      if (picked.ok === false) {
+        return { error: picked.code === "NO_STAFF_AVAILABLE" ? "no_staff_available" : "invalid_staff" };
+      }
+      staffId = picked.staffId;
+    }
     pBookingServices.push({
       offering_id: line.offering_id,
       staff_id: staffId,

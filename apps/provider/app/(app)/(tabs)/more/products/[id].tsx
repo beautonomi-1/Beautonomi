@@ -1,5 +1,5 @@
-import { useCallback, useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity, Alert, RefreshControl } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { View, Text, ScrollView, TouchableOpacity, Alert, RefreshControl, DeviceEventEmitter } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,7 +17,10 @@ import { Colors } from "@/constants/colors";
 import type { ProductItem, StockMovement } from "@/features/products/types";
 import { StockAdjustSheet } from "@/features/products/StockAdjustSheet";
 import { variantLabel } from "@/features/products/cartItem";
-import { emitProviderProductsCatalogChanged } from "@/lib/provider-products-catalog-events";
+import {
+  PROVIDER_PRODUCTS_CATALOG_CHANGED,
+  emitProviderProductsCatalogChanged,
+} from "@/lib/provider-products-catalog-events";
 
 const MOVEMENT_KEYS: Record<string, string> = {
   sale: "movementSale",
@@ -60,6 +63,11 @@ export default function ProductDetailScreen() {
     refresh();
     refreshMovements();
   }, [refresh, refreshMovements]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(PROVIDER_PRODUCTS_CATALOG_CHANGED, onRefresh);
+    return () => sub.remove();
+  }, [onRefresh]);
 
   const handleDelete = () => {
     if (!product) return;

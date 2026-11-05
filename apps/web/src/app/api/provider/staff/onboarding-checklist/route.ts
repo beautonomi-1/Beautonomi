@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
         .eq("staff_id", staffId),
       supabaseAdmin
         .from("staff_services")
-        .select("id", { count: "exact", head: true })
+        .select("staff_id", { count: "exact", head: true })
         .eq("staff_id", staffId),
       supabaseAdmin
         .from("staff_schedules")

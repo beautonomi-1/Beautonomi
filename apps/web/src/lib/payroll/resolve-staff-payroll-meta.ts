@@ -10,7 +10,6 @@ export type StaffPayrollMeta = {
 
 type StaffRow = {
   id: string;
-  jurisdiction_code?: string | null;
   statutory_mode?: string | null;
   primary_work_location_id?: string | null;
   primary_work_location?: { jurisdiction_code?: string | null } | null;
@@ -66,12 +65,16 @@ export async function loadStaffPayrollMetaBatch(
   const out = new Map<string, StaffPayrollMeta>();
   if (!staffIds.length) return out;
 
-  const { data: staffRows } = await admin
+  // Jurisdiction lives on provider_locations (938); provider_staff has no jurisdiction_code column.
+  const { data: staffRows, error: staffErr } = await admin
     .from("provider_staff")
     .select(
-      "id, jurisdiction_code, statutory_mode, primary_work_location_id, primary_work_location:provider_locations!primary_work_location_id(jurisdiction_code)",
+      "id, statutory_mode, primary_work_location_id, primary_work_location:provider_locations!primary_work_location_id(jurisdiction_code)",
     )
     .in("id", staffIds);
+  if (staffErr) {
+    console.warn("[payroll] loadStaffPayrollMetaBatch staff:", staffErr.message);
+  }
 
   const { data: planRows } = await admin
     .from("staff_pay_plans")
@@ -94,8 +97,7 @@ export async function loadStaffPayrollMetaBatch(
     const loc = s.primary_work_location as { jurisdiction_code?: string | null } | null | undefined;
     const locJurisdiction = loc?.jurisdiction_code ?? null;
     const jurisdictionCode =
-      (s.jurisdiction_code?.trim() || locJurisdiction?.trim() || providerCountryFallback?.trim() || null) ??
-      null;
+      locJurisdiction?.trim().toUpperCase() || providerCountryFallback?.trim().toUpperCase() || null;
 
     const statutoryRaw = (s.statutory_mode ?? "auto") as StaffPayrollMeta["statutoryMode"];
     const statutoryMode =

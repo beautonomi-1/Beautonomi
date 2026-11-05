@@ -274,10 +274,22 @@ export function WaitingRoomPanel({
     }
     setCloseOutLoading(true);
     try {
-      await fetcher.post("/api/provider/bookings/close-out/bulk-complete", {
+      const res = await fetcher.post<{
+        data?: { completed?: number; results?: Array<{ id: string; ok: boolean; error?: string }> };
+      }>("/api/provider/bookings/close-out/bulk-complete", {
         booking_ids: eligible.map((b) => b.id),
       });
-      toast.success(t("web.provider.waitingRoomPanel.completedAppointments", { count: eligible.length }));
+      const completedCount = res?.data?.completed ?? 0;
+      const skipped = (res?.data?.results ?? []).filter((r) => !r.ok);
+      if (completedCount > 0) {
+        toast.success(t("web.provider.waitingRoomPanel.completedAppointments", { count: completedCount }));
+      }
+      if (skipped.length > 0) {
+        toast.warning(
+          t("web.provider.waitingRoomPanel.completeSkipped", { count: skipped.length }),
+          { description: skipped.map((r) => r.error).filter(Boolean).slice(0, 3).join(" · ") },
+        );
+      }
       onRefresh();
       await loadCloseOutQueue();
     } catch {

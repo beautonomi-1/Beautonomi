@@ -5,6 +5,10 @@ export type GroupBookingCreateValidationInput = {
   duration: string;
   serviceId: string;
   staffId: string;
+  /** Active team members at the selected location (0 = no staff picker). */
+  staffListLength?: number;
+  /** Team roster still loading or failed without a cached list. */
+  staffRosterUnresolved?: boolean;
   locationType: "at_salon" | "at_home";
   addressLine1: string;
   addressLatitude: number | null;

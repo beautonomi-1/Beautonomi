@@ -143,6 +143,28 @@ export async function POST(request: NextRequest) {
             }
           }
         } else {
+          if (newStatus === "completed") {
+            const { data: fullRow } = await supabaseAdmin
+              .from("bookings")
+              .select(
+                "id, status, payment_status, group_booking_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, additional_charges(amount, status)",
+              )
+              .eq("id", booking.id)
+              .maybeSingle();
+            const { evaluateSingleBookingCompletion } = await import("@/lib/bookings/completion-guards");
+            const completionCheck = fullRow
+              ? await evaluateSingleBookingCompletion(supabaseAdmin, {
+                  providerId,
+                  booking: fullRow as Parameters<typeof evaluateSingleBookingCompletion>[1]["booking"],
+                })
+              : null;
+            if (completionCheck && !completionCheck.allowed) {
+              const primary = completionCheck.blockers[0]!;
+              results.failed.push({ id: booking.id, reason: `${primary.code}: ${primary.message}` });
+              continue;
+            }
+          }
+
           const updateData: Record<string, unknown> = {
             status: newStatus,
             updated_at: new Date().toISOString(),

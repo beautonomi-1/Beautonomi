@@ -19,6 +19,8 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
 import { notifyReviewReminder } from "@/lib/notifications";
 import { insertNotification } from "@/lib/notifications/insert-notification";
+import { evaluateSingleBookingCompletion } from "@/lib/bookings/completion-guards";
+import { isProviderOwnerOrManager } from "@/lib/auth/permissions";
 
 /**
  * POST /api/provider/bookings/[id]/complete-service
@@ -116,9 +118,52 @@ export async function POST(
     if (String(bookingData.payment_status ?? "").toLowerCase() === "refunded") {
       return errorResponse(
         "This booking was fully refunded. Cancel the booking instead of marking it completed.",
-        "PAYMENT_REFUNDED",
+        "FULLY_REFUNDED",
+        409,
+      );
+    }
+
+    const body = await request.json().catch(() => ({} as Record<string, unknown>));
+    const allowUnpaid = body.allow_unpaid === true || body.allow_unpaid === "true";
+    const unpaidReason =
+      typeof body.unpaid_reason === "string" ? body.unpaid_reason.trim() : "";
+    if (allowUnpaid && !unpaidReason) {
+      return errorResponse(
+        "A reason is required to complete with an outstanding balance.",
+        "BALANCE_DUE_REASON_REQUIRED",
         400,
       );
+    }
+    if (allowUnpaid && !(await isProviderOwnerOrManager(user.id, request))) {
+      return errorResponse(
+        "Only the owner or a manager can complete with an outstanding balance.",
+        "FORBIDDEN",
+        403,
+      );
+    }
+
+    const admin = getSupabaseAdmin();
+    const completionCheck = await evaluateSingleBookingCompletion(admin, {
+      providerId,
+      booking: bookingData,
+      allowUnpaid,
+    });
+    if (!completionCheck.allowed) {
+      const primary = completionCheck.blockers[0]!;
+      return errorResponse(primary.message, primary.code, 409, {
+        blockers: completionCheck.blockers,
+        amount: primary.amount,
+        balance_due: completionCheck.balanceDue,
+      });
+    }
+    const balanceDue = completionCheck.balanceDue;
+    if (allowUnpaid && balanceDue > 0.01) {
+      await admin.from("booking_events").insert({
+        booking_id: id,
+        event_type: "completed_with_balance",
+        event_data: { reason: unpaidReason, balance_due: balanceDue },
+        created_by: user.id,
+      });
     }
 
     // Create booking event

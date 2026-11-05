@@ -300,7 +300,7 @@ export async function POST(request: NextRequest) {
 
     const { data: providerRow, error: provTenantErr } = await supabase
       .from("providers")
-      .select("tenant_id, currency, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code")
+      .select("tenant_id, currency, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number")
       .eq("id", providerId)
       .maybeSingle();
     if (provTenantErr) throw provTenantErr;
@@ -387,7 +387,6 @@ export async function POST(request: NextRequest) {
       tax_inclusive?: boolean | null;
       is_vat_registered?: boolean | null;
       vat_number?: string | null;
-      country_code?: string | null;
     } | null;
     const resolvedVat = await resolveProviderVat(getSupabaseAdmin(), {
       tax_rate_percent:
@@ -395,7 +394,7 @@ export async function POST(request: NextRequest) {
       tax_inclusive: providerVatRow?.tax_inclusive ?? null,
       is_vat_registered: providerVatRow?.is_vat_registered ?? null,
       vat_number: providerVatRow?.vat_number ?? null,
-      country_code: providerVatRow?.country_code ?? null,
+      tenant_id: orderTenantId,
       tax_rate_override_percent: null,
     });
     if (resolvedVat.registered && resolvedVat.source === "none") {

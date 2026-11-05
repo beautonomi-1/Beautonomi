@@ -6,12 +6,14 @@ const {
   checkBookingSnapshotSegmentConflictsMock,
   resolveStaffLocationScopeMock,
   listPubliclyBookableStaffIdsForLocationMock,
+  listActiveServiceProviderStaffIdsForLocationMock,
 } = vi.hoisted(() => ({
   loadEffectiveStaffShiftsMock: vi.fn(),
   isProviderCalendarWindowBlockedMock: vi.fn(),
   checkBookingSnapshotSegmentConflictsMock: vi.fn(),
   resolveStaffLocationScopeMock: vi.fn(),
   listPubliclyBookableStaffIdsForLocationMock: vi.fn(),
+  listActiveServiceProviderStaffIdsForLocationMock: vi.fn(),
 }));
 
 vi.mock("@/lib/availability/load-constraints", () => ({
@@ -32,6 +34,8 @@ vi.mock("@/lib/provider/staff-location-scope", async (importOriginal) => {
     ...actual,
     resolveStaffLocationScope: resolveStaffLocationScopeMock,
     listPubliclyBookableStaffIdsForLocation: listPubliclyBookableStaffIdsForLocationMock,
+    listActiveServiceProviderStaffIdsForLocation:
+      listActiveServiceProviderStaffIdsForLocationMock,
   };
 });
 
@@ -65,6 +69,41 @@ describe("pickFirstStaffForNullStaffLines", () => {
     checkBookingSnapshotSegmentConflictsMock.mockResolvedValue({ hasConflict: false });
     resolveStaffLocationScopeMock.mockResolvedValue({ staffIds: null, mode: "all" });
     listPubliclyBookableStaffIdsForLocationMock.mockResolvedValue(["staff-a", "staff-b"]);
+    listActiveServiceProviderStaffIdsForLocationMock.mockResolvedValue(["staff-provider-only"]);
+  });
+
+  it("uses provider pool when staffPool is provider", async () => {
+    loadEffectiveStaffShiftsMock.mockResolvedValue({
+      workHoursEnabledEffective: true,
+      staffShifts: [
+        {
+          id: "shift-p",
+          staff_id: "staff-provider-only",
+          date: "2026-06-15",
+          start_time: "09:00:00",
+          end_time: "17:00:00",
+          is_recurring: false,
+        },
+      ],
+    });
+    const result = await pickFirstStaffForNullStaffLines({
+      supabaseAdmin: makeSupabaseStaffList([]) as never,
+      providerId: "prov-1",
+      locationId: "loc-1",
+      bookingServicesData: [
+        {
+          offering_id: "off-1",
+          staff_id: null,
+          scheduled_start_at: "2026-06-15T10:00:00.000Z",
+          scheduled_end_at: "2026-06-15T11:00:00.000Z",
+        },
+      ],
+      offeringBufferMinutesById: new Map(),
+      providerTimeZone: "Africa/Johannesburg",
+      staffPool: "provider",
+    });
+    expect(listActiveServiceProviderStaffIdsForLocationMock).toHaveBeenCalled();
+    expect(result).toEqual({ ok: true, staffId: "staff-provider-only" });
   });
 
   it("does not assign an any-staff candidate whose working hours do not cover the green slot", async () => {

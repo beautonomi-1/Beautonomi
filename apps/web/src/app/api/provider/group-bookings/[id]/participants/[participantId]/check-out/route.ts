@@ -10,6 +10,7 @@ import {
   userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { evaluateGroupCompletion } from "@/lib/bookings/completion-guards";
 
 function normalizeGroupBookingId(rawId: string): string {
   return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
@@ -192,20 +193,38 @@ export async function POST(
         },
       ).length;
 
+      let groupCompletionBlocked: unknown = null;
       if (remainingActive === 0) {
-      const { error: statusError } = await admin
-        .from("group_bookings")
-        .update({ status: "completed", updated_at: now })
-        .eq("id", id)
-        .eq("provider_id", group.provider_id)
-        .not("status", "in", "(cancelled)");
-      if (statusError) {
-        console.warn(
-          "[provider group check-out] group status update failed (continuing):",
-          statusError
-        );
+        const completionCheck = await evaluateGroupCompletion(admin, {
+          providerId: group.provider_id,
+          groupId: id,
+          allowUnpaid: false,
+        });
+        if (completionCheck.allowed) {
+          const { error: statusError } = await admin
+            .from("group_bookings")
+            .update({ status: "completed", updated_at: now })
+            .eq("id", id)
+            .eq("provider_id", group.provider_id)
+            .not("status", "in", "(cancelled)");
+          if (statusError) {
+            console.warn(
+              "[provider group check-out] group status update failed (continuing):",
+              statusError,
+            );
+          }
+        } else {
+          groupCompletionBlocked = completionCheck.blockers;
+        }
       }
-      }
+
+      return successResponse({
+        success: true,
+        message: "Participant checked out successfully",
+        checked_out_at: participant.checked_out_at,
+        participant,
+        group_completion_blocked: groupCompletionBlocked,
+      });
     }
 
     return successResponse({
@@ -213,6 +232,7 @@ export async function POST(
       message: "Participant checked out successfully",
       checked_out_at: participant.checked_out_at,
       participant,
+      group_completion_blocked: null,
     });
   } catch (error) {
     return handleApiError(error, "Failed to check out participant");

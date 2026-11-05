@@ -44,19 +44,19 @@ async function ensurePaymentTransactionInTenant(
 ): Promise<NextResponse | null> {
   const { data: tx } = await supabase
     .from("payment_transactions")
-    .select("booking_id, provider_id")
+    .select("booking_id, provider")
     .eq("id", paymentTransactionId)
     .maybeSingle();
   if (!tx) {
     return notFoundResponse("Payment transaction not found");
   }
-  const row = tx as { booking_id?: string | null; provider_id?: string | null };
+  const row = tx as { booking_id?: string | null; provider?: string | null };
   if (row.booking_id) {
     const r = await fetchBookingInAdminTenant(supabase, row.booking_id, tenantId, "id");
     return "error" in r ? r.error : null;
   }
-  if (row.provider_id) {
-    const r = await fetchProviderInAdminTenant(supabase, row.provider_id, tenantId, "id");
+  if (row.provider) {
+    const r = await fetchProviderInAdminTenant(supabase, row.provider, tenantId, "id");
     return "error" in r ? r.error : null;
   }
   return notFoundResponse("Payment transaction not found");

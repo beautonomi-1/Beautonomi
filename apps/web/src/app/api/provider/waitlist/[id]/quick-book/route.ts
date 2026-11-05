@@ -163,9 +163,8 @@ export async function POST(
         scheduled_at: bookingDatetime.toISOString(),
         location_type: 'at_salon', // Default, could be configurable
         status: 'confirmed',
-        price: servicePrice,
+        total_amount: servicePrice,
         currency: lastResortCurrency,
-        guest_name: entry.customer_name,
       })
       .select()
       .single();
@@ -187,6 +186,7 @@ export async function POST(
           duration_minutes: serviceDuration,
           price: servicePrice,
           currency: lastResortCurrency,
+          guest_name: entry.customer_name,
         });
 
       if (serviceError) {

@@ -2351,13 +2351,50 @@
           "viewFullBooking": "Jonga kugcwele ukubhukisha",
           "statusNoShow": "No bonisa",
           "statusPendingPayment": "kulindile intlawulo",
-          "removeParticipantOverpaid": "Undwendwe susad. The ukubhukisha is ngoku overkuhlawulwe by {{amount}}. imbuyiselo the difference to the umthengi.",
+          "removeParticipantOverpaid": "Undwendwe lususwe. {{amount}} ihlawulwe ngokobuqu kwaye ayinakuya kwisipaji. Buyisela ngemali okanye kumatshini wekhadi usebenzisa Ukubuyisela kwimenyu ethi Okungakumbi.",
           "shareStatusPaid": "yabelana kuhlawulwe",
           "shareStatusPending": "yabelana akuhlawulwa ({{amount}})",
           "shareStatusCancelled": "Spot kurhoxisiwe",
           "resendInvite": "Re-thumela isimemo",
           "inviteResent": "isimemo Kuthunyelwe",
-          "inviteResendFailed": "Ayikwazanga uku-re-thumela the isimemo."
+          "inviteResendFailed": "Ayikwazanga uku-re-thumela the isimemo.",
+          "slotUnavailableTitle": "Ixesha alifumaneki",
+          "noStaffForSlot": "Akukho lungu leqela likhululekileyo kule nkonzo ngeli xesha. Khetha elinye ixesha okanye ilungu elithile.",
+          "pickAnotherTime": "Khetha elinye ixesha",
+          "invalidStaffTitle": "Ilungu leqela alifumaneki",
+          "anyAvailableStaff": "Nabani na ofumanekayo",
+          "loadingTeam": "Layisha iqela…",
+          "staffRetryInline": "Ayikwazanga ukulayisha iqela. Cofa ukuze uzame kwakhona",
+          "moreActionsTitle": "Okungakumbi",
+          "moreActionsA11y": "Izenzo ezingakumbi",
+          "openTerminalBannerBody": "Intlawulo yomatshini wekhadi eyi-{{amount}} isavulekile kweli qela.",
+          "resumeOpenCharge": "Qhubeka",
+          "cancelOpenCharge": "Rhoxisa intlawulo",
+          "cancelOpenChargeTitle": "Rhoxisa intlawulo evulekileyo?",
+          "cancelOpenChargeBody": "Oku kurhoxisa intlawulo yomatshini wekhadi eqhubekayo ukuze ubhale intlawulo ngenye indlela.",
+          "cancelOpenChargeFailed": "Ayikwazanga ukurhoxisa intlawulo evulekileyo.",
+          "openChargeCancelled": "Intlawulo yomatshini wekhadi irhoxisiwe.",
+          "entityInFlightTitle": "Intlawulo yomatshini wekhadi evulekileyo",
+          "cancelOpenChargeAndRecord": "Rhoxisa intlawulo evulekileyo uze ubhale",
+          "terminalInFlightTitle": "Intlawulo yomatshini wekhadi ivulekile",
+          "fullyRefundedTitle": "Ibuyiswe ngokupheleleyo",
+          "participantRefundedChip": "Ibuyisiwe",
+          "groupNotStartedTitle": "Qala iqela kuqala",
+          "groupNotStartedBody": "Ukungena nokuphuma kufumaneka xa ukubhukisha kweqela sekuqalile.",
+          "unpaidCompleteNotAllowed": "Umnikazi okanye umphathi kuphela onokuqukumbela kusekho imali esele.",
+          "unpaidCompleteReasonTitle": "Gqibezela kusekho imali",
+          "unpaidCompleteReasonRequired": "Faka isizathu sokuqukumbela kusekho imali.",
+          "unpaidCompleteReasonLabel": "Isizathu (siyafuneka)",
+          "unpaidCompleteReasonPlaceholder": "umz. Umthengi uza kuhlawula ngomso nge-EFT",
+          "refundCapsTitle": "Imida yokubuyisa",
+          "refundCapsOnline": "Isipaji / kwi-intanethi: ukuya kuthi ga ku-{{amount}}",
+          "refundCapsCash": "Imali esandleni: ukuya ku-{{amount}}",
+          "refundCapsTerminal": "Umatshini wekhadi: ukuya ku-{{amount}}",
+          "refundConfirmSummaryTitle": "Qinisekisa ukubuyisa?",
+          "refundConfirmSummaryBody": "Buyisela {{amount}} nge-{{method}}.\n\nIsizathu: {{reason}}",
+          "refundWalletCapExceeded": "Elo xabiso lidlula umda wokubuyisela esipajini kolu bhukisho.",
+          "refundMethodOriginal": "Umatshini wekhadi",
+          "refundOptionsLoadFailed": "Ayikwazanga ukulayisha imida yokubuyisa. Amanani anokuba aphelelwe lixesha."
         },
         "settingsIndex": {
           "title": "Iisetingi",
@@ -3183,13 +3220,25 @@
           "awaitingYocoRefundReason": "Ukubhukisha kurhoxisiwe — buyisela imali kwikhadi",
           "refundOriginalHint": "Imali ibuyela kwikhadi lomthengi ngomatshini wekhadi okanye ibhanki. Akukho nto ithathwa kwidrowa yakho yemali.",
           "refundCashHint": "Buyisela imali kumthengi ngokwakho. Zirekhodelwe iincwadi zakho; akukho khredithi yekhredithi ekhutshwayo. Ibhalansi yokubhukisha iyahlaziywa emva kokuba oku kuphumelele.",
-          "refundWalletHint": "Sebenzisa xa umthengi engekho okanye intlawulo yenziwe kwi-intanethi. Imbuyekezo ifakwa kwi-wallet yabo.",
+          "refundWalletHint": "Kuphela imali ehlawulwe kwi-intanethi enokubuyela kwisipaji. Imbuyiselo ifakwa kwisipaji sabo.",
           "refundOriginalMachineHint": "Imali ibuyela kwikhadi lomthengi ngomatshini wekhadi ebihlawulwe kuwo.",
           "cancelWalletNote": "Umxhasi uya kufumana imbuyiselo epheleleyo kwisipaji sakhe Beautonomi kwizixa esele zihlawulwe. Ipolisi yakho yokurhoxisa ayisebenzi ekurhoxisweni okuqalileyo.",
           "cancelRefundTo": "Buyisela imali ehlawulweyo",
           "yocoRefundRecordCta": "Ibuyiselwe kumatshini - bhala imbuyekezo",
           "pendingCashRefundTitle": "{{amount}} to return ubuso ngobuso",
-          "pendingCashRefundBody": "Umthengi kufuneka aqinisekise ukuba uyifumene le mbuyekezo kwi-app. Musa ukurekhoda enye imbuyiselo yemali ngelixa oku kusalindile — buyisela imali ebonisiweyo kwaye ulinde isiqinisekiso (okanye ifestile yeeyure ezingama-48 ivale)."
+          "pendingCashRefundBody": "Umthengi kufuneka aqinisekise ukuba uyifumene le mbuyekezo kwi-app. Musa ukurekhoda enye imbuyiselo yemali ngelixa oku kusalindile — buyisela imali ebonisiweyo kwaye ulinde isiqinisekiso (okanye ifestile yeeyure ezingama-48 ivale).",
+          "noIssueRefundsPermission": "Awunayo imvume yokukhupha ukubuyiselwa. Cela umnikazi okanye umphathi.",
+          "refundMethodCapBody": "Le ndlela yokubuyisa ivumela ukuya ku-{{amount}}. Khetha enye indlela kokuseleyo.",
+          "refundCapsBreakdown": "Ihlawulwe ngokoqobo {{inPerson}} · Kwi-intanethi {{online}} · Sele ibuyisiwe {{refunded}}",
+          "refundMaxForMethod": "Okuphezulu kwale ndlela",
+          "confirmRefundTitle": "Qinisekisa ukubuyisa",
+          "confirmRefundBody": "Buyisela {{amount}} njenge-{{method}}. Oku akunakubuyiselwa umva.",
+          "completeBlockedTerminalTitle": "Intlawulo yomatshini wekhadi ivulekile",
+          "completeBlockedFullyRefundedTitle": "Ukubhukisha kubuyiswe konke",
+          "unpaidCompleteReasonTitle": "Gqibezela kusekho imali",
+          "unpaidCompleteReasonLabel": "Isizathu (siyafuneka)",
+          "unpaidCompleteReasonPlaceholder": "umz. Umthengi uza kuhlawula ngomso nge-EFT",
+          "unpaidCompleteNotAllowed": "Umnikazi okanye umphathi kuphela onokuqukumbela ukubhukisha kusekho imali. Qokelela intlawulo kuqala okanye ucele umphathi."
         },
         "operatingHoursSettings": {
           "title": "Opeinqanaba iiyure",
@@ -5366,7 +5415,12 @@
           "staffFilteredByService": "Kuboniswa amalungu eqela anikwe le nkonzo.",
           "addressOutsideArea": "Le dilesi likangaphandle kwindawo yenkonzo yakho.",
           "addressValidateFailed": "Ayikwazanga ukuqinisekisa le dilesi. Jonga uqhagamshelo lwakho uzame kwakhona.",
-          "tipPercentWithAmountA11y": "{{percent}}% ithiphu, {{amount}}"
+          "tipPercentWithAmountA11y": "{{percent}}% ithiphu, {{amount}}",
+          "anyAvailableStaff": "Nawuphi na ofumanekayo",
+          "assignAnyStaffA11y": "Nika naliphi na ilungu elifumanekayo",
+          "loadingTeam": "Iqela liyalayisha…",
+          "staffRetryInline": "Iqela alilayishwanga. Cofa ukuze uzame kwakhona",
+          "staffRosterLoading": "Iqela lakho liyalayisha phambi kokuba abasebenzi babelwe"
         },
         "expressBooking": {
           "invalidJson": "JSON. engasebenziyo.",
@@ -6628,7 +6682,10 @@
           "withdraw": "Rhoxisa",
           "withdrawFailed": "Ayikwazanga uku-withdraw the offer.",
           "withdrawOffer": "Rhoxisa Unikelo",
-          "emDash": "—"
+          "emDash": "—",
+          "loadingTeam": "Iqela liyalayisha…",
+          "noStaffPreference": "Akukho khetho",
+          "staffRetryInline": "Iqela alilayishwanga. Cofa ukuze uzame kwakhona"
         },
         "bookingLink": {
           "title": "ukubhukisha ikhonkco",
@@ -8219,7 +8276,10 @@
           "submitRating": "ngenisa inqanaba",
           "thanks": "Enkosi!",
           "freshCaption": "{{name}} entsha",
-          "shareBookingLink": "Yabelana ngekhonkco yokubhukisha"
+          "shareBookingLink": "Yabelana ngekhonkco yokubhukisha",
+          "continueDraftBody": "Sele uqalile ukuthumela kwesi bhukisho. Qhubeka apho uyeke khona, okanye ukalele umthengi.",
+          "continueDraftCta": "Qhubeka noyilo",
+          "continueDraftTitle": "Gqibezela uyilo lwakho lwe-Explore"
         },
         "advancedPricing": {
           "title": "Okuphambili amaxabiso",
@@ -10314,7 +10374,8 @@
           "permManageMarketing": "Lawula Urhwebo",
           "calendarScopeLabel": "ikhalenda visibility",
           "calendarScopeOwn": "Own amadinga",
-          "calendarScopeAll": "All iqela ikhalendas"
+          "calendarScopeAll": "All iqela ikhalendas",
+          "permIssueRefunds": "Khupha iimbuyiselo"
         },
         "onboardingHub": {
           "title": "Seta",
@@ -11226,7 +11287,8 @@
           "calendarScopeOwn": "Own amadinga only",
           "calendarScopeAll": "All iqela ikhalendas",
           "fullAccessMemberHint": "Abanini nabasebenzi abanokufikelela kolawulo bahlala benawo onke amalungelo. Amaqhosha abo afundeka kuphela apha.",
-          "manageMarketing": "Lawula Urhwebo"
+          "manageMarketing": "Lawula Urhwebo",
+          "issueRefunds": "Khupha iimbuyiselo"
         },
         "announcements": {
           "loadFailed": "Ayikwazanga uku-ulayisha announcements",
@@ -12226,7 +12288,10 @@
           "disabledBody": "{{message}}\n\nUmlawuli wakho wezohambo unokuyenza iflegi yentengiso.provider_custom_offers yale marike.",
           "addPhotos": "Yongeza inspiration iifoto",
           "uploadingPhotos": "iyalayisha…",
-          "photosAttached": "{{count}} ifoto(s) attached"
+          "photosAttached": "{{count}} ifoto(s) attached",
+          "loadingTeam": "Iqela liyalayisha…",
+          "noStaffPreference": "Akukho khetho",
+          "staffRetryInline": "Iqela alilayishwanga. Cofa ukuze uzame kwakhona"
         },
         "salesSettings": {
           "title": "Intengisos iisetingi",
@@ -23821,7 +23886,8 @@
           "bookingChanged": "This ukubhukisha tshintshad, reulayisha",
           "statusUpdateFailed": "Kusilele uku-hlaziya ukubhukisha imo",
           "bulkCompleted": "Bulk {{action}} kugqityiwe for {{count}} ukubhukisha(s)",
-          "bulkFailed": "Kusilele uku-{{action}} iibhukisho"
+          "bulkFailed": "Kusilele uku-{{action}} iibhukisho",
+          "bulkPartialFailed": "Ukubhukisha okungu-{{count}} kudlulwe ku-{{action}}"
         },
         "liveSync": {
           "label": "Bukhoma · hlaziyad {{relative}}",
@@ -28640,7 +28706,7 @@
             "createSales": "Yila Intengisos",
             "createSalesDesc": "Yila okutsha sales",
             "processPayments": "Process iintlawulo",
-            "processPaymentsDesc": "Process iintlawulo and imbuyiselos",
+            "processPaymentsDesc": "Bhala iintlawulo uze uthathe iintlawulo zomatshini wekhadi",
             "viewReports": "Jonga iingxelo",
             "viewReportsDesc": "Jonga Ishishini iingxelo",
             "viewServices": "Jonga Iinkonzo",
@@ -28691,7 +28757,9 @@
             "viewOwnEarnings": "View own earnings",
             "viewOwnEarningsDesc": "See tips, commission, and personal earnings",
             "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them."
+            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them.",
+            "issueRefunds": "Khupha iimbuyiselo",
+            "issueRefundsDesc": "Buyisela abathengi (isipaji, imali okanye umatshini wekhadi)"
           },
           "team/roles": {
             "roles": "Indimas",
@@ -28753,7 +28821,8 @@
               "manage_marketing": "Manage marketing",
               "manage_payroll": "Manage payroll",
               "manage_finance": "Platform billing",
-              "view_own_earnings": "View own earnings"
+              "view_own_earnings": "View own earnings",
+              "issue_refunds": "Khupha iimbuyiselo"
             },
             "catEngagement": "Engagement",
             "permissionCount": "imvume Count"
@@ -33175,7 +33244,9 @@
         "confirmLateCancelBody": "This will cancel {{name}}'s appointment as a late cancellation. A cancellation fee may apply according to your policy.",
         "cancel": "Rhoxisa",
         "confirmNoShow": "Mark No-bonisa",
-        "confirmLateCancel": "Late rhoxisa"
+        "confirmLateCancel": "Late rhoxisa",
+        "completeSkipped_one": "Ukumiselwa okungu-{{count}} akuqukunjelwanga (imali isele, ibuyisiwe okanye umatshini wekhadi uvulekile)",
+        "completeSkipped_other": "Ukumiselwa okungu-{{count}} akuqukunjelwanga (imali isele, ibuyisiwe okanye umatshini wekhadi uvulekile)"
       },
       "moreHub": {
         "requiresEditSettings": "Requires hlela iisetingi imvume",

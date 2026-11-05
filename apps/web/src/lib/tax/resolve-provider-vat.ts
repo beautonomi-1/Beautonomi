@@ -9,6 +9,8 @@ export type ResolvedProviderVat = {
   inclusive: boolean;
   vatNumber: string | null;
   source: "override" | "provider" | "country_default" | "none";
+  /** ISO2 country the rate was resolved for (tenant market when the provider has none). */
+  countryCode?: string | null;
 };
 
 export type ProviderVatRow = {
@@ -16,7 +18,10 @@ export type ProviderVatRow = {
   tax_inclusive?: boolean | null;
   is_vat_registered?: boolean | null;
   vat_number?: string | null;
+  /** Not a `providers` column — never add it to a providers select. */
   country_code?: string | null;
+  /** Market country falls back to `tenants.region_code` (ISO2). */
+  tenant_id?: string | null;
   tax_rate_override_percent?: number | null;
 };
 
@@ -25,6 +30,23 @@ const DEFAULT_INCLUSIVE = true;
 function normalizeCountryCode(code: string | null | undefined): string | null {
   const c = (code ?? "").trim().toUpperCase();
   return c.length >= 2 ? c.slice(0, 2) : null;
+}
+
+async function fetchTenantCountryCode(
+  supabase: SupabaseClient,
+  tenantId: string | null | undefined,
+): Promise<string | null> {
+  if (!tenantId) return null;
+  try {
+    const { data } = await supabase
+      .from("tenants")
+      .select("region_code")
+      .eq("id", tenantId)
+      .maybeSingle();
+    return normalizeCountryCode((data as { region_code?: string | null } | null)?.region_code);
+  } catch {
+    return null;
+  }
 }
 
 async function fetchPlatformDefaultVatRateFromPlatformSettings(
@@ -117,6 +139,10 @@ export async function resolveProviderVat(
     };
   }
 
+  const countryCode =
+    normalizeCountryCode(provider.country_code) ??
+    (await fetchTenantCountryCode(supabase, provider.tenant_id));
+
   const override = provider.tax_rate_override_percent;
   if (override != null && Number.isFinite(Number(override))) {
     return {
@@ -125,13 +151,11 @@ export async function resolveProviderVat(
       inclusive,
       vatNumber,
       source: "override",
+      countryCode,
     };
   }
 
-  const countryRate = await fetchCountryStandardVatRate(
-    supabase,
-    provider.country_code ?? null,
-  );
+  const countryRate = await fetchCountryStandardVatRate(supabase, countryCode);
   if (countryRate != null) {
     return {
       registered: true,
@@ -139,6 +163,7 @@ export async function resolveProviderVat(
       inclusive,
       vatNumber,
       source: "country_default",
+      countryCode,
     };
   }
 
@@ -150,6 +175,7 @@ export async function resolveProviderVat(
       inclusive,
       vatNumber,
       source: "provider",
+      countryCode,
     };
   }
 
@@ -159,6 +185,7 @@ export async function resolveProviderVat(
     inclusive,
     vatNumber,
     source: "none",
+    countryCode,
   };
 }
 

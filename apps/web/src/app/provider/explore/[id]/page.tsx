@@ -23,11 +23,7 @@ import {
 import type { ExplorePost, ExploreComment } from "@/types/explore";
 import { ProviderExplorePostStatusBadge } from "@/components/provider/ProviderExplorePostStatusBadge";
 import { providerExplorePostBadge } from "@/lib/explore/provider-explore-post-status";
-
-function isVideoUrl(url: string): boolean {
-  const lower = url.toLowerCase();
-  return lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mov");
-}
+import { firstSlideIsVideo, resolveExplorePosterUrl } from "@/lib/explore/video-media";
 
 function formatCommentTime(iso: string, t: (key: string, options?: { count: number }) => string): string {
   const d = new Date(iso);
@@ -214,9 +210,10 @@ export default function ProviderExploreViewPage() {
           <div className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm">
             <div className="aspect-square max-h-[60vh] bg-gray-100 relative">
               {primaryMedia ? (
-                isVideoUrl(primaryMedia) ? (
+                firstSlideIsVideo(post.media_urls, post.media_meta) ? (
                   <video
                     src={primaryMedia}
+                    poster={resolveExplorePosterUrl(post) ?? undefined}
                     controls
                     playsInline
                     className="w-full h-full object-contain"

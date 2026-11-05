@@ -224,7 +224,7 @@ export async function validateBooking(
   let providerQuery = supabase
     .from("providers")
     .select(
-      "id, tenant_id, timezone, currency, requires_deposit, deposit_percentage, status, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code, tips_enabled, customer_fee_config_id, minimum_mobile_booking_amount, online_booking_enabled"
+      "id, tenant_id, timezone, currency, requires_deposit, deposit_percentage, status, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, tips_enabled, customer_fee_config_id, minimum_mobile_booking_amount, online_booking_enabled"
     )
     .eq("id", draft.provider_id);
   if (marketTenantId) {
@@ -1271,7 +1271,7 @@ export async function validateBooking(
     // service_package_items quantities. Prevents applying a catalog package discount to arbitrary services.
     const { data: pkgItems, error: pkgItemsError } = await supabase
       .from("service_package_items")
-      .select("offering_id, product_id, product_variant_id, quantity")
+      .select("offering_id, product_id, quantity")
       .eq("package_id", draft.package_id);
 
     if (pkgItemsError) {
@@ -1430,7 +1430,7 @@ export async function validateBooking(
     tax_inclusive: (provider as any)?.tax_inclusive ?? null,
     is_vat_registered: (provider as any)?.is_vat_registered ?? null,
     vat_number: (provider as any)?.vat_number ?? null,
-    country_code: (provider as any)?.country_code ?? null,
+    tenant_id: (provider as any)?.tenant_id ?? null,
     tax_rate_override_percent: null,
   });
   if (resolvedVat.registered && resolvedVat.source === "none") {
@@ -1896,7 +1896,7 @@ export async function validateBooking(
     code: "RESOLVED",
     rate: taxRate,
     inclusive: taxIncluded,
-    jurisdiction: (provider as any)?.country_code ?? null,
+    jurisdiction: resolvedVat.countryCode ?? null,
     source: resolvedVat.source,
     resolved_at: new Date().toISOString(),
   };

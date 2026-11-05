@@ -2351,13 +2351,50 @@
           "viewFullBooking": "View full booking",
           "statusNoShow": "No show",
           "statusPendingPayment": "Pending payment",
-          "removeParticipantOverpaid": "Guest removed. The booking is now overpaid by {{amount}}. Refund the difference to the customer.",
+          "removeParticipantOverpaid": "Gast verwijderd. {{amount}} is persoonlijk betaald en kan niet naar de portemonnee. Betaal het terug contant of op de terminal via Terugbetaling in het menu Meer.",
           "shareStatusPaid": "Share paid",
           "shareStatusPending": "Share unpaid ({{amount}})",
           "shareStatusCancelled": "Spot cancelled",
           "resendInvite": "Re-send invite",
           "inviteResent": "Invite sent",
-          "inviteResendFailed": "Could not re-send the invite."
+          "inviteResendFailed": "Could not re-send the invite.",
+          "slotUnavailableTitle": "Tijd niet beschikbaar",
+          "noStaffForSlot": "Geen teamlid is vrij voor deze dienst op dit tijdstip. Kies een ander tijdstip of een specifieke persoon.",
+          "pickAnotherTime": "Kies een ander tijdstip",
+          "invalidStaffTitle": "Teamlid niet beschikbaar",
+          "anyAvailableStaff": "Iedereen die vrij is",
+          "loadingTeam": "Team laden…",
+          "staffRetryInline": "Team laden mislukt. Tik om opnieuw te proberen",
+          "moreActionsTitle": "Meer",
+          "moreActionsA11y": "Meer acties",
+          "openTerminalBannerBody": "Een terminalbetaling van {{amount}} staat nog open voor deze groep.",
+          "resumeOpenCharge": "Hervatten",
+          "cancelOpenCharge": "Betaling annuleren",
+          "cancelOpenChargeTitle": "Open betaling annuleren?",
+          "cancelOpenChargeBody": "Dit annuleert de lopende terminalbetaling zodat je de betaling op een andere manier kunt vastleggen.",
+          "cancelOpenChargeFailed": "De open betaling kon niet worden geannuleerd.",
+          "openChargeCancelled": "Terminalbetaling geannuleerd.",
+          "entityInFlightTitle": "Open terminalbetaling",
+          "cancelOpenChargeAndRecord": "Open betaling annuleren en vastleggen",
+          "terminalInFlightTitle": "Terminalbetaling open",
+          "fullyRefundedTitle": "Volledig terugbetaald",
+          "participantRefundedChip": "Terugbetaald",
+          "groupNotStartedTitle": "Start eerst de groep",
+          "groupNotStartedBody": "In- en uitchecken kan zodra de groepsboeking is gestart.",
+          "unpaidCompleteNotAllowed": "Alleen de eigenaar of een leidinggevende kan afronden zolang er een openstaand bedrag is.",
+          "unpaidCompleteReasonTitle": "Afronden met openstaand bedrag",
+          "unpaidCompleteReasonRequired": "Geef een reden om af te ronden zolang er een bedrag openstaat.",
+          "unpaidCompleteReasonLabel": "Reden (verplicht)",
+          "unpaidCompleteReasonPlaceholder": "bijv. Klant betaalt morgen via overschrijving",
+          "refundCapsTitle": "Terugbetaalgrenzen",
+          "refundCapsOnline": "Portemonnee / online: tot {{amount}}",
+          "refundCapsCash": "Contant: tot {{amount}}",
+          "refundCapsTerminal": "Terminal: tot {{amount}}",
+          "refundConfirmSummaryTitle": "Terugbetaling bevestigen?",
+          "refundConfirmSummaryBody": "Betaal {{amount}} terug via {{method}}.\n\nReden: {{reason}}",
+          "refundWalletCapExceeded": "Dat bedrag ligt boven de portemonnee-terugbetaalgrens voor deze boeking.",
+          "refundMethodOriginal": "Betaalterminal",
+          "refundOptionsLoadFailed": "Terugbetaalgrenzen laden mislukt. Bedragen kunnen verouderd zijn."
         },
         "settingsIndex": {
           "title": "Settings",
@@ -3183,13 +3220,25 @@
           "awaitingYocoRefundReason": "Boeking geannuleerd - terugbetaling terug naar kaart",
           "refundOriginalHint": "Het geld komt via de kaartautomaat of bank terug op de kaart van de klant. Er wordt niets uit uw kassalade gehaald.",
           "refundCashHint": "Geef het geld persoonlijk terug aan de klant. Opgenomen voor uw boeken; er wordt geen portefeuilletegoed uitgegeven. Het boekingssaldo wordt bijgewerkt nadat dit is gelukt.",
-          "refundWalletHint": "Gebruik wanneer de klant niet aanwezig is of de betaling online is gedaan. De terugbetaling wordt bijgeschreven op hun portemonnee.",
+          "refundWalletHint": "Alleen geld dat via internet is betaald kan terug naar de portemonnee. De terugbetaling wordt op hun portemonnee bijgeschreven.",
           "refundOriginalMachineHint": "Het geld keert terug naar de kaart van de klant via de kaartautomaat waarop het is betaald.",
           "cancelWalletNote": "De klant ontvangt een volledige terugbetaling in zijn portemonnee van Beautonomi voor reeds betaalde bedragen. Uw annuleringsbeleid is niet van toepassing op annuleringen die u initieert.",
           "cancelRefundTo": "Het betaalde bedrag terugstorten op",
           "yocoRefundRecordCta": "Terugbetaald op het apparaat — terugbetaling vastleggen",
           "pendingCashRefundTitle": "{{amount}} to return in person",
-          "pendingCashRefundBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending — hand back the amount shown and wait for confirmation (or the 48-hour window to close)."
+          "pendingCashRefundBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending — hand back the amount shown and wait for confirmation (or the 48-hour window to close).",
+          "noIssueRefundsPermission": "Je mag geen terugbetalingen uitgeven. Vraag het de eigenaar of een leidinggevende.",
+          "refundMethodCapBody": "Deze terugbetaalwijze staat tot {{amount}} toe. Kies een andere wijze voor de rest.",
+          "refundCapsBreakdown": "Ter plaatse betaald {{inPerson}} · Online {{online}} · Al terugbetaald {{refunded}}",
+          "refundMaxForMethod": "Maximum voor deze wijze",
+          "confirmRefundTitle": "Terugbetaling bevestigen",
+          "confirmRefundBody": "Betaal {{amount}} terug als {{method}}. Dit kan niet ongedaan worden gemaakt.",
+          "completeBlockedTerminalTitle": "Terminalbetaling open",
+          "completeBlockedFullyRefundedTitle": "Boeking volledig terugbetaald",
+          "unpaidCompleteReasonTitle": "Afronden met openstaand bedrag",
+          "unpaidCompleteReasonLabel": "Reden (verplicht)",
+          "unpaidCompleteReasonPlaceholder": "bijv. Klant betaalt morgen via overschrijving",
+          "unpaidCompleteNotAllowed": "Alleen de eigenaar of een leidinggevende kan een boeking met een openstaand bedrag afronden. Incasseer eerst of vraag een leidinggevende."
         },
         "operatingHoursSettings": {
           "title": "Operating Hours",
@@ -5366,7 +5415,12 @@
           "staffFilteredByService": "Showing team members assigned to this service.",
           "addressOutsideArea": "This address is outside your service area.",
           "addressValidateFailed": "Could not validate this address. Check your connection and try again.",
-          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}"
+          "tipPercentWithAmountA11y": "{{percent}}% tip, {{amount}}",
+          "anyAvailableStaff": "Iedereen beschikbaar",
+          "assignAnyStaffA11y": "Wijs een beschikbaar lid toe",
+          "loadingTeam": "Team laden…",
+          "staffRetryInline": "Team laden mislukt. Tik om opnieuw te proberen",
+          "staffRosterLoading": "Je team laden voordat personeel kan worden toegewezen"
         },
         "expressBooking": {
           "invalidJson": "Invalid JSON.",
@@ -6628,7 +6682,10 @@
           "withdraw": "Withdraw",
           "withdrawFailed": "Could not withdraw the offer.",
           "withdrawOffer": "Withdraw offer",
-          "emDash": "—"
+          "emDash": "—",
+          "loadingTeam": "Team laden…",
+          "noStaffPreference": "Geen voorkeur",
+          "staffRetryInline": "Team laden mislukt. Tik om opnieuw te proberen"
         },
         "bookingLink": {
           "title": "Booking Link",
@@ -8219,7 +8276,10 @@
           "submitRating": "Submit rating",
           "thanks": "Thanks!",
           "freshCaption": "Fresh {{name}}",
-          "shareBookingLink": "Share booking link"
+          "shareBookingLink": "Share booking link",
+          "continueDraftBody": "Je bent al begonnen aan een bericht voor deze boeking. Ga verder waar je was, of beoordeel de klant.",
+          "continueDraftCta": "Concept voortzetten",
+          "continueDraftTitle": "Maak je Explore-concept af"
         },
         "advancedPricing": {
           "title": "Advanced pricing",
@@ -10314,7 +10374,8 @@
           "permManageMarketing": "Manage marketing",
           "calendarScopeLabel": "Calendar visibility",
           "calendarScopeOwn": "Own appointments",
-          "calendarScopeAll": "All team calendars"
+          "calendarScopeAll": "All team calendars",
+          "permIssueRefunds": "Terugbetalingen doen"
         },
         "onboardingHub": {
           "title": "Set up",
@@ -11226,7 +11287,8 @@
           "calendarScopeOwn": "Own appointments only",
           "calendarScopeAll": "All team calendars",
           "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-          "manageMarketing": "Manage marketing"
+          "manageMarketing": "Manage marketing",
+          "issueRefunds": "Terugbetalingen doen"
         },
         "announcements": {
           "loadFailed": "Could not load announcements",
@@ -12226,7 +12288,10 @@
           "disabledBody": "{{message}}\n\nYour admin can enable the feature flag commerce.provider_custom_offers for this market.",
           "addPhotos": "Add inspiration photos",
           "uploadingPhotos": "Uploading…",
-          "photosAttached": "{{count}} photo(s) attached"
+          "photosAttached": "{{count}} photo(s) attached",
+          "loadingTeam": "Team laden…",
+          "noStaffPreference": "Geen voorkeur",
+          "staffRetryInline": "Team laden mislukt. Tik om opnieuw te proberen"
         },
         "salesSettings": {
           "title": "Sales Settings",
@@ -23821,7 +23886,8 @@
           "bookingChanged": "This booking changed, reload",
           "statusUpdateFailed": "Failed to update booking status",
           "bulkCompleted": "Bulk {{action}} completed for {{count}} booking(s)",
-          "bulkFailed": "Failed to {{action}} bookings"
+          "bulkFailed": "Failed to {{action}} bookings",
+          "bulkPartialFailed": "{{count}} boeking(en) overgeslagen bij {{action}}"
         },
         "liveSync": {
           "label": "Live · updated {{relative}}",
@@ -28640,7 +28706,7 @@
             "createSales": "Create Sales",
             "createSalesDesc": "Create new sales",
             "processPayments": "Process Payments",
-            "processPaymentsDesc": "Process payments and refunds",
+            "processPaymentsDesc": "Betalingen vastleggen en terminalbetalingen aannemen",
             "viewReports": "View Reports",
             "viewReportsDesc": "View business reports",
             "viewServices": "View Services",
@@ -28691,7 +28757,9 @@
             "viewOwnEarnings": "View own earnings",
             "viewOwnEarningsDesc": "See tips, commission, and personal earnings",
             "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them."
+            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them.",
+            "issueRefunds": "Terugbetalingen doen",
+            "issueRefundsDesc": "Klanten terugbetalen (portemonnee, contant of terminal)"
           },
           "team/roles": {
             "roles": "Roles",
@@ -28753,7 +28821,8 @@
               "manage_marketing": "Manage marketing",
               "manage_payroll": "Manage payroll",
               "manage_finance": "Platform billing",
-              "view_own_earnings": "View own earnings"
+              "view_own_earnings": "View own earnings",
+              "issue_refunds": "Terugbetalingen doen"
             },
             "catEngagement": "Engagement",
             "permissionCount": "Permission Count"
@@ -33175,7 +33244,9 @@
         "confirmLateCancelBody": "This will cancel {{name}}'s appointment as a late cancellation. A cancellation fee may apply according to your policy.",
         "cancel": "Cancel",
         "confirmNoShow": "Mark No-Show",
-        "confirmLateCancel": "Late Cancel"
+        "confirmLateCancel": "Late Cancel",
+        "completeSkipped_one": "{{count}} afspraak niet afgerond (openstaand bedrag, terugbetaald of terminal open)",
+        "completeSkipped_other": "{{count}} afspraken niet afgerond (openstaand bedrag, terugbetaald of terminal open)"
       },
       "moreHub": {
         "requiresEditSettings": "Requires Edit settings permission",

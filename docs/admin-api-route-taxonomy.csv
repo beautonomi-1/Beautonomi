@@ -230,6 +230,7 @@ path,class,note
 /api/admin/finance/ledger-repair,U,"scoped"
 /api/admin/finance/period-locks/[id],T,"uses resolveAdminApiTenantId"
 /api/admin/finance/period-locks,U,"scoped"
+/api/admin/finance/refund-anomalies,U,"needs tenant review"
 /api/admin/finance/summary,T,"uses resolveAdminApiTenantId"
 /api/admin/finance/transactions,T,"uses resolveAdminApiTenantId"
 /api/admin/finance/trial-balance,T,"uses resolveAdminApiTenantId"

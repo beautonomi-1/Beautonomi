@@ -51,7 +51,9 @@ import {
   type GroupBookingCreateValidationField,
 } from "@/features/group-bookings/validateGroupBookingCreate";
 import {
+  ANY_STAFF_ID,
   aggregateOfferingResources,
+  isAnyStaffId,
   shouldUseCategoryPicker,
 } from "@beautonomi/provider-booking";
 import { BookingCreateReadinessStrip } from "@/components/bookings/BookingCreateReadinessStrip";
@@ -68,6 +70,7 @@ import {
   ParticipantRefundSheet,
   type ParticipantRefundTarget,
 } from "@/features/group-bookings/ParticipantRefundSheet";
+import { CompleteWithBalanceSheet } from "@/components/bookings/CompleteWithBalanceSheet";
 import { useProvider } from "@/providers/ProviderContext";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { CardMachineCollectSheet } from "@/components/payments/CardMachineCollectSheet";
@@ -213,6 +216,12 @@ interface GroupBooking {
   is_invoiced?: boolean | null;
   products?: GroupProductLine[];
   bookings?: GroupChildBooking[];
+  open_terminal_payments?: Array<{
+    id: string;
+    provider: "paycloud" | "yoco";
+    amount: number;
+    currency?: string | null;
+  }>;
 }
 
 type GroupProductLine = {
@@ -711,6 +720,9 @@ type CreateParticipantRowProps = {
   servicesForPicking: ServiceRow[];
   serviceChipLabels: Map<string, string>;
   teamMembers: TeamRow[];
+  teamRosterUnresolved: boolean;
+  teamLoadFailed: boolean;
+  onRetryTeam: () => void;
   footer: "add" | "cap" | null;
   cap: number;
   gb: (key: string, opts?: Record<string, unknown>) => string;
@@ -732,6 +744,9 @@ const CreateParticipantRow = memo(function CreateParticipantRow({
   servicesForPicking,
   serviceChipLabels,
   teamMembers,
+  teamRosterUnresolved,
+  teamLoadFailed,
+  onRetryTeam,
   footer,
   cap,
   gb,
@@ -936,23 +951,45 @@ const CreateParticipantRow = memo(function CreateParticipantRow({
           </View>
         )}
       </View>
-      {teamMembers.length > 0 ? (
+      {teamRosterUnresolved || teamMembers.length > 0 ? (
         <View style={twStyle("mt-3")}>
           <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>{gb("staffOptional")}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <SelectChip
-              label={gb("groupDefault")}
-              selected={!participant.staffId}
-              onPress={() => onUpdate(id, { staffId: "" })}
-            />
-            {teamMembers.map((m) => (
-              <SelectChip
-                key={`${id}-staff-${m.id}`}
-                label={m.name ?? gb("staffFallback")}
-                selected={participant.staffId === m.id}
-                onPress={() => onUpdate(id, { staffId: m.id })}
-              />
-            ))}
+            {teamRosterUnresolved ? (
+              <TouchableOpacity
+                onPress={() => {
+                  if (teamLoadFailed) onRetryTeam();
+                }}
+                style={twStyle("me-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-2")}
+              >
+                <Text style={twStyle("text-xs font-medium text-amber-900")}>
+                  {teamLoadFailed ? gb("staffRetryInline") : gb("loadingTeam")}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <>
+                <SelectChip
+                  label={gb("groupDefault")}
+                  selected={!participant.staffId}
+                  onPress={() => onUpdate(id, { staffId: "" })}
+                />
+                {teamMembers.length >= 2 ? (
+                  <SelectChip
+                    label={gb("anyAvailableStaff")}
+                    selected={participant.staffId === ANY_STAFF_ID}
+                    onPress={() => onUpdate(id, { staffId: ANY_STAFF_ID })}
+                  />
+                ) : null}
+                {teamMembers.map((m) => (
+                  <SelectChip
+                    key={`${id}-staff-${m.id}`}
+                    label={m.name ?? gb("staffFallback")}
+                    selected={participant.staffId === m.id}
+                    onPress={() => onUpdate(id, { staffId: m.id })}
+                  />
+                ))}
+              </>
+            )}
           </ScrollView>
         </View>
       ) : null}
@@ -1029,9 +1066,9 @@ export default function GroupBookingsScreen() {
   const {
     paycloudEnabled,
     collectEnabled: paycloudCollectEnabled,
-    inFlight: paycloudInFlight,
     primaryBlocker: paycloudPrimaryBlocker,
     loading: paycloudLoading,
+    reload: refreshPaycloudAvailability,
   } = usePaycloudCollectAvailability();
   const providerTz = provider?.timezone ?? null;
   const locations = provider?.locations ?? [];
@@ -1040,6 +1077,7 @@ export default function GroupBookingsScreen() {
     loading: permissionsLoading,
   } = useApi<{
     isOwner?: boolean;
+    isManager?: boolean;
     permissions?: Record<string, boolean>;
   }>("/api/provider/permissions", { staleTimeMs: 60_000 });
   const isOwner = permissionData?.isOwner === true;
@@ -1059,6 +1097,9 @@ export default function GroupBookingsScreen() {
     canEditGroups;
   const canProcessPayments =
     isOwner || permissionData?.permissions?.process_payments === true;
+  const canIssueRefunds =
+    isOwner || permissionData?.permissions?.issue_refunds === true;
+  const canCompleteWithUnpaid = isOwner || permissionData?.isManager === true;
 
   const { data: servicesRaw, refresh: refreshServices } = useApi<ServiceRow[]>(
     "/api/provider/services?include_variants=true&include_offering_resources=true&include_addons=true"
@@ -1069,7 +1110,14 @@ export default function GroupBookingsScreen() {
   const teamUrl = selectedLocationId
     ? `/api/provider/team?location_id=${encodeURIComponent(selectedLocationId)}`
     : "/api/provider/team";
-  const { data: teamRaw } = useApi<TeamRow[]>(teamUrl);
+  const {
+    data: teamRaw,
+    loading: teamListLoading,
+    error: teamError,
+    refresh: refreshTeamList,
+  } = useApi<TeamRow[]>(teamUrl);
+  const teamRosterUnresolved =
+    (teamListLoading && !teamRaw) || (!!teamError && !teamRaw);
   // §Provider-audit 2026-04 (packages round 3 — mobile parity): fetch the
   // provider's catalog packages so the create sheet can attach a
   // `package_id` to a group booking (parity with `GroupBookingDialog` on
@@ -1179,6 +1227,11 @@ export default function GroupBookingsScreen() {
   const [filter, setFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<GroupBooking | null>(null);
+  const [unpaidCompleteTarget, setUnpaidCompleteTarget] = useState<{
+    group: GroupBooking;
+    body: string;
+  } | null>(null);
+  const [unpaidCompleteSubmitting, setUnpaidCompleteSubmitting] = useState(false);
   selectedGroupRef.current = selectedGroup;
   const [showAddParticipant, setShowAddParticipant] = useState(false);
   const [participantForm, setParticipantForm] = useState<ParticipantFormRow>(
@@ -1334,6 +1387,10 @@ export default function GroupBookingsScreen() {
     mutate: mutateGroupList,
   } = useApi<GroupBookingsResponse>(
     `/api/provider/group-bookings?limit=${GROUP_PAGE_LIMIT}&page=1${statusParam}`
+  );
+  const { data: groupStatsPayload } = useApi<{ stats: GroupBookingsAggregateStats }>(
+    "/api/provider/group-bookings/stats",
+    { staleTimeMs: 60_000 },
   );
   const { execute: updateGroup, loading: updatingGroup } = useApiMutation("patch");
   const { execute: createGroup, loading: creatingGroup } = useApiMutation<{
@@ -1517,6 +1574,8 @@ export default function GroupBookingsScreen() {
         duration: createForm.duration,
         serviceId: createForm.serviceId,
         staffId: createForm.staffId,
+        staffListLength: teamMembers.length,
+        staffRosterUnresolved: teamRosterUnresolved,
         locationType: createForm.locationType,
         addressLine1: createForm.addressLine1,
         addressLatitude: createForm.addressLatitude,
@@ -1538,6 +1597,8 @@ export default function GroupBookingsScreen() {
       createForm.duration,
       createForm.serviceId,
       createForm.staffId,
+      teamMembers.length,
+      teamRosterUnresolved,
       createForm.locationType,
       createForm.addressLine1,
       createForm.addressLatitude,
@@ -1551,7 +1612,10 @@ export default function GroupBookingsScreen() {
     return {
       date: createSlotParams.date,
       duration_minutes: createSlotParams.duration,
-      staff_ids: createSlotParams.staffId || undefined,
+      staff_ids:
+        createSlotParams.staffId && !isAnyStaffId(createSlotParams.staffId)
+          ? createSlotParams.staffId
+          : undefined,
       location_id: createForm.locationType === "at_salon" && createSlotParams.locationId ? createSlotParams.locationId : undefined,
       service_ids: createSlotParams.serviceIds.length > 0 ? createSlotParams.serviceIds.join(",") : undefined,
       mode: createForm.locationType === "at_home" ? "mobile" : "salon",
@@ -1575,7 +1639,10 @@ export default function GroupBookingsScreen() {
     return {
       date: editSlotParams.date,
       duration_minutes: editSlotParams.duration,
-      staff_ids: editSlotParams.staffId || undefined,
+      staff_ids:
+        editSlotParams.staffId && !isAnyStaffId(editSlotParams.staffId)
+          ? editSlotParams.staffId
+          : undefined,
       location_id: editingGroupContext?.locationType !== "at_home" && editSlotParams.locationId ? editSlotParams.locationId : undefined,
       service_ids: editSlotParams.serviceIds.length > 0 ? editSlotParams.serviceIds.join(",") : undefined,
       mode: editingGroupContext?.locationType === "at_home" ? "mobile" : "salon",
@@ -1828,7 +1895,7 @@ export default function GroupBookingsScreen() {
       mode: args.locationType === "at_home" ? "mobile" : "salon",
       travel_buffer: args.locationType === "at_home" ? "30" : "0",
     });
-    if (args.staffId) params.set("staff_ids", args.staffId);
+    if (args.staffId && !isAnyStaffId(args.staffId)) params.set("staff_ids", args.staffId);
     if (args.locationType !== "at_home" && args.locationId)
       params.set("location_id", args.locationId);
     if (args.serviceId) params.set("offering_ids", args.serviceId);
@@ -1866,7 +1933,7 @@ export default function GroupBookingsScreen() {
     const activeStatuses = new Set(["pending", "confirmed", "booked", "started"]);
     const upcoming = groups.filter((g) => activeStatuses.has(g.status)).length;
     const totalParticipants = groups.reduce((s, g) => s + resolveGroupParticipantCount(g), 0);
-    const apiStats = groupData?.stats;
+    const apiStats = groupStatsPayload?.stats;
     const bookedGross =
       apiStats?.participant_booked_gross ??
       groups
@@ -1880,7 +1947,7 @@ export default function GroupBookingsScreen() {
       bookedGross,
       recognizedEarnings,
     };
-  }, [groups, groupData]);
+  }, [groups, groupData?.total, groupStatsPayload?.stats]);
 
   async function handleCancel(group: GroupBooking) {
     if (!canCancelGroups) {
@@ -1922,6 +1989,74 @@ export default function GroupBookingsScreen() {
     ]);
   }
 
+  function alertGroupCompletionBlocker(
+    blocker: { code?: string | null; message?: string } | null | undefined,
+    group: GroupBooking,
+  ) {
+    const code = blocker?.code ?? null;
+    const message = blocker?.message ?? gb("errorTitle");
+    if (code === "TERMINAL_IN_FLIGHT") {
+      Alert.alert(gb("terminalInFlightTitle"), message);
+      return;
+    }
+    if (code === "FULLY_REFUNDED") {
+      Alert.alert(gb("fullyRefundedTitle"), message, [
+        {
+          text: gb("cancelBooking"),
+          style: "destructive",
+          onPress: () => {
+            void handleCancel(group);
+          },
+        },
+        { text: gb("cancel"), style: "cancel" },
+      ]);
+      return;
+    }
+    if (code === "BALANCE_DUE") {
+      promptCompleteGroupWithUnpaidReason(group, message);
+      return;
+    }
+    Alert.alert(gb("errorTitle"), message);
+  }
+
+  function promptCompleteGroupWithUnpaidReason(group: GroupBooking, introMessage?: string) {
+    if (!canCompleteWithUnpaid) {
+      Alert.alert(gb("permissionRequired"), gb("unpaidCompleteNotAllowed"));
+      return;
+    }
+    const body =
+      introMessage ??
+      gb("outstandingBalanceBody", { amount: formatCurrency(Number(group.balance_due ?? 0)) });
+    setUnpaidCompleteTarget({ group, body });
+  }
+
+  async function submitCompleteGroupWithUnpaid(reason: string) {
+    const target = unpaidCompleteTarget;
+    if (!target) return;
+    if (!reason.trim()) {
+      Alert.alert(gb("errorTitle"), gb("unpaidCompleteReasonRequired"));
+      return;
+    }
+    setUnpaidCompleteSubmitting(true);
+    const { error, errorCode } = await postGroupAction(
+      `/api/provider/group-bookings/${encodeURIComponent(target.group.id)}?action=complete_service`,
+      { allow_unpaid: true, unpaid_reason: reason.trim() },
+    );
+    setUnpaidCompleteSubmitting(false);
+    setUnpaidCompleteTarget(null);
+    if (error) {
+      if (errorCode !== "BALANCE_DUE") {
+        alertGroupCompletionBlocker({ code: errorCode, message: error }, target.group);
+      } else {
+        Alert.alert(gb("errorTitle"), error);
+      }
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setSelectedGroup(null);
+    refresh();
+  }
+
   async function handleStatusChange(group: GroupBooking, newStatus: string) {
     if (!group.id) {
       Alert.alert(gb("errorTitle"), gb("noIdYet"));
@@ -1954,34 +2089,16 @@ export default function GroupBookingsScreen() {
       return;
     }
 
-    // Gate on unpaid balance before completing a group session.
     if (newStatus === "completed" && !groupIsFullyPaid(group) && Number(group.balance_due ?? 0) > 0) {
       Alert.alert(
         gb("outstandingBalanceTitle"),
         gb("outstandingBalanceBody", { amount: formatCurrency(Number(group.balance_due)) }),
         [
-          {
-            text: gb("recordPayment"),
-            // Keep the detail sheet open so the provider can use the payment buttons.
-          },
+          { text: gb("recordPayment") },
           {
             text: gb("completeAnyway"),
             style: "default",
-            onPress: () => {
-              void (async () => {
-                const { error } = await postGroupAction(
-                  `/api/provider/group-bookings/${encodeURIComponent(group.id)}?action=complete_service`,
-                  {},
-                );
-                if (error) {
-                  Alert.alert(gb("errorTitle"), error);
-                  return;
-                }
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                setSelectedGroup(null);
-                refresh();
-              })();
-            },
+            onPress: () => promptCompleteGroupWithUnpaidReason(group),
           },
           { text: gb("cancel"), style: "cancel" },
         ],
@@ -1989,12 +2106,16 @@ export default function GroupBookingsScreen() {
       return;
     }
 
-    const { error } = await postGroupAction(
+    const { error, errorCode } = await postGroupAction(
       `/api/provider/group-bookings/${encodeURIComponent(group.id)}?action=${action}`,
-      {}
+      {},
     );
     if (error) {
-      Alert.alert(gb("errorTitle"), error);
+      if (newStatus === "completed") {
+        alertGroupCompletionBlocker({ code: errorCode, message: error }, group);
+      } else {
+        Alert.alert(gb("errorTitle"), error);
+      }
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -2019,12 +2140,41 @@ export default function GroupBookingsScreen() {
     applyGroupPatch(group.id, (current) => patchGroupMarkPaid(current, now) as GroupBooking);
     setPaymentRecordedNotice(null);
 
-    const { error } = await postGroupAction(
+    const markPaidBody = { payment_method: paymentMethod };
+    let { error, errorCode } = await postGroupAction(
       `/api/provider/group-bookings/${encodeURIComponent(group.id)}?action=mark_paid`,
-      {
-        payment_method: paymentMethod,
-      }
+      markPaidBody,
     );
+    if (
+      error &&
+      (errorCode === "ENTITY_IN_FLIGHT" || /ENTITY_IN_FLIGHT/i.test(error))
+    ) {
+      Alert.alert(gb("entityInFlightTitle"), error, [
+        { text: gb("cancel"), style: "cancel", onPress: () => rollbackGroupPatch() },
+        {
+          text: gb("cancelOpenChargeAndRecord"),
+          onPress: () => {
+            void (async () => {
+              const retry = await postGroupAction(
+                `/api/provider/group-bookings/${encodeURIComponent(group.id)}?action=mark_paid`,
+                { ...markPaidBody, cancel_open_terminal: true },
+              );
+              if (retry.error) {
+                rollbackGroupPatch();
+                Alert.alert(gb("paymentNotRecorded"), retry.error);
+                return;
+              }
+              previousGroupRef.current = null;
+              void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              setPaymentRecordedNotice(gb("paymentRecordedNotice"));
+              await openGroupDetail(group);
+              await refresh();
+            })();
+          },
+        },
+      ]);
+      return;
+    }
     if (error) {
       rollbackGroupPatch();
       const isNotInvoiced = /not.*invoiced|no.*invoice/i.test(error);
@@ -2304,6 +2454,8 @@ export default function GroupBookingsScreen() {
       duration: createForm.duration,
       serviceId: createForm.serviceId,
       staffId: createForm.staffId,
+      staffListLength: teamMembers.length,
+      staffRosterUnresolved: teamRosterUnresolved,
       locationType: createForm.locationType,
       addressLine1: createForm.addressLine1,
       addressLatitude: createForm.addressLatitude,
@@ -2777,6 +2929,7 @@ export default function GroupBookingsScreen() {
         notes: p.notes.trim(),
         customerId: p.customerId,
         staffId: p.staffId?.trim() || createForm.staffId || "",
+        rowStaffId: p.staffId?.trim() || "",
       }))
       .filter((p) => p.name.length > 0 || p.phone.length > 0 || p.email.length > 0);
 
@@ -2868,7 +3021,12 @@ export default function GroupBookingsScreen() {
           email: p.email || undefined,
           customer_id: p.customerId || undefined,
           service_id: p.serviceId || createForm.serviceId,
-          staff_id: p.staffId || createForm.staffId || undefined,
+          // Group "any" is resolved once server-side; participants on the group default must
+          // inherit that pick, so only an explicit per-row choice is sent.
+          staff_id:
+            p.rowStaffId ||
+            (isAnyStaffId(createForm.staffId) ? undefined : createForm.staffId) ||
+            undefined,
           service_name: line.service ? sl(line.service) : undefined,
           price: line.price,
           duration_minutes: line.durationMinutes,
@@ -2887,11 +3045,38 @@ export default function GroupBookingsScreen() {
       payload.payment_method = "payment_link";
     }
 
-    const { data: createdGroup, error } = await createGroup(
-      "/api/provider/group-bookings",
-      payload
-    );
+    const {
+      data: createdGroup,
+      error,
+      errorCode: createErrorCode,
+    } = await createGroup("/api/provider/group-bookings", payload);
     if (error) {
+      const slotConflict =
+        createErrorCode === "NO_STAFF_AVAILABLE" ||
+        createErrorCode === "SLOT_NOT_AVAILABLE" ||
+        createErrorCode === "CONFLICT";
+      if (slotConflict || createErrorCode === "INVALID_STAFF") {
+        const field: GroupBookingCreateValidationField = slotConflict ? "time" : "staffId";
+        const message =
+          createErrorCode === "NO_STAFF_AVAILABLE" ? gb("noStaffForSlot") : error;
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert(
+          slotConflict ? gb("slotUnavailableTitle") : gb("invalidStaffTitle"),
+          message,
+          [
+            {
+              text: slotConflict ? gb("pickAnotherTime") : gb("ok"),
+              onPress: () => {
+                setCreateStep("form");
+                setCreateReviewError(message);
+                setCreateFieldError(field);
+                scrollToCreateField(field);
+              },
+            },
+          ],
+        );
+        return;
+      }
       Alert.alert(gb("errorTitle"), error);
       return;
     }
@@ -3426,13 +3611,17 @@ export default function GroupBookingsScreen() {
     );
     setPendingParticipantId(participant.id);
 
-    const { error } = await checkInParticipant(
+    const { error, errorCode } = await checkInParticipant(
       `/api/provider/group-bookings/${encodeURIComponent(selectedGroup.id)}/participants/${encodeURIComponent(participant.id)}/check-in`,
       {}
     );
     setPendingParticipantId(null);
     if (error) {
       rollbackGroupPatch();
+      if (errorCode === "GROUP_NOT_STARTED") {
+        Alert.alert(gb("groupNotStartedTitle"), gb("groupNotStartedBody"));
+        return;
+      }
       Alert.alert(gb("checkInFailed"), error);
       return;
     }
@@ -3456,7 +3645,7 @@ export default function GroupBookingsScreen() {
     );
     setPendingParticipantId(participant.id);
 
-    const { error } = await checkOutParticipant(
+    const { error, data } = await checkOutParticipant(
       `/api/provider/group-bookings/${encodeURIComponent(selectedGroup.id)}/participants/${encodeURIComponent(participant.id)}/check-out`,
       {}
     );
@@ -3468,7 +3657,93 @@ export default function GroupBookingsScreen() {
     }
     previousGroupRef.current = null;
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const payload =
+      data && typeof data === "object" ? (data as Record<string, unknown>) : null;
+    const blocked = payload?.group_completion_blocked;
+    if (Array.isArray(blocked) && blocked.length > 0) {
+      const primary = blocked[0] as { code?: string; message?: string };
+      alertGroupCompletionBlocker(primary, selectedGroup);
+    }
     await refresh();
+  }
+
+  async function handleCancelOpenTerminalPayment(
+    payment: NonNullable<GroupBooking["open_terminal_payments"]>[number],
+    group: GroupBooking,
+  ) {
+    Alert.alert(gb("cancelOpenChargeTitle"), gb("cancelOpenChargeBody"), [
+      { text: gb("cancel"), style: "cancel" },
+      {
+        text: gb("cancelOpenCharge"),
+        style: "destructive",
+        onPress: () => {
+          void (async () => {
+            const path =
+              payment.provider === "yoco"
+                ? `/api/provider/yoco/payments/${encodeURIComponent(payment.id)}/abandon`
+                : `/api/provider/paycloud/payments/${encodeURIComponent(payment.id)}/close`;
+            const res = await api.post(path, {});
+            if (res.error) {
+              Alert.alert(gb("errorTitle"), getApiErrorMessage(res.error, gb("cancelOpenChargeFailed")));
+              return;
+            }
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            await openGroupDetail(group);
+            await refresh();
+          })();
+        },
+      },
+    ]);
+  }
+
+  function openGroupDetailMoreMenu() {
+    if (!selectedGroup) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const group = selectedGroup;
+    const refundableParticipants = (group.participants ?? []).filter(
+      (participant) =>
+        !!participant.booking_id &&
+        participantMaxRefundable({
+          total_paid: participant.total_paid,
+          total_refunded: participant.total_refunded,
+          wallet_gift_coverage: participant.wallet_gift_coverage,
+        }) > 0,
+    );
+    const showEdit =
+      canEditGroups && group.status !== "completed" && group.status !== "cancelled";
+    const showCancel =
+      canCancelGroups && group.status !== "completed" && group.status !== "cancelled";
+
+    const buttons: {
+      text: string;
+      style?: "cancel" | "destructive" | "default";
+      onPress?: () => void;
+    }[] = [];
+    if (showEdit) {
+      buttons.push({ text: gb("edit"), onPress: () => openEdit(group) });
+    }
+    buttons.push({ text: gb("downloadReceipt"), onPress: () => void openGroupReceipt(group) });
+    if (canIssueRefunds && refundableParticipants.length > 0) {
+      buttons.push({
+        text: gb("refundAParticipant"),
+        onPress: () => {
+          if (refundableParticipants.length === 1) {
+            openParticipantRefund(refundableParticipants[0]!);
+            return;
+          }
+          Alert.alert(gb("refundParticipantTitle"), gb("refundUseRowButton"));
+        },
+      });
+    }
+    if (showCancel) {
+      buttons.push({
+        text: gb("cancelBooking"),
+        style: "destructive",
+        onPress: () => void handleCancel(group),
+      });
+    }
+    buttons.push({ text: gb("cancel"), style: "cancel" });
+    Alert.alert(gb("moreActionsTitle"), undefined, buttons);
   }
 
   async function openGroupReceipt(group: GroupBooking) {
@@ -3739,22 +4014,33 @@ export default function GroupBookingsScreen() {
               </View>
             ) : null}
             <View style={twStyle("mb-3 flex-row items-center justify-between")}>
-              <Text style={twStyle("text-sm text-gray-500")}>
+              <Text style={[twStyle("flex-1 text-sm text-gray-500"), { marginEnd: 8 }]}>
                 {gb("scheduledDateTime", {
                   date: formatDate(selectedGroup.scheduled_date),
                   time: selectedGroup.scheduled_time?.substring(0, 5),
                 })}
               </Text>
-              <View
-                style={twStyle(`rounded-full px-3 py-1 ${statusStyle(selectedGroup.status).bg}`)}
-              >
-                <Text
-                  style={twStyle(
-                    `text-xs font-medium ${statusStyle(selectedGroup.status).text}`
-                  )}
+              <View style={twStyle("flex-row items-center")}>
+                <View
+                  style={twStyle(`rounded-full px-3 py-1 ${statusStyle(selectedGroup.status).bg}`)}
                 >
-                  {groupStatusLabel(selectedGroup.status, gb)}
-                </Text>
+                  <Text
+                    style={twStyle(
+                      `text-xs font-medium ${statusStyle(selectedGroup.status).text}`
+                    )}
+                  >
+                    {groupStatusLabel(selectedGroup.status, gb)}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={openGroupDetailMoreMenu}
+                  hitSlop={12}
+                  style={twStyle("ms-2 p-1")}
+                  accessibilityRole="button"
+                  accessibilityLabel={gb("moreActionsA11y")}
+                >
+                  <Ionicons name="ellipsis-horizontal" size={22} color="#4b5563" />
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -4123,17 +4409,29 @@ export default function GroupBookingsScreen() {
                   const isCheckedIn = checkedIn && !checkedOut;
                   const isCheckedOut = checkedOut;
                   const canCheckInOut =
-                    selectedGroup.status !== "completed" && selectedGroup.status !== "cancelled";
-                  const inactiveChild = isInactiveParticipantBooking(p.booking_status ?? p.status);
+                    selectedGroup.status === "started" || selectedGroup.status === "in_progress";
+                  const participantRefunded =
+                    String(p.payment_status ?? "").toLowerCase() === "refunded";
+                  const inactiveChild =
+                    isInactiveParticipantBooking(p.booking_status ?? p.status) || participantRefunded;
                   const canCheckInOutParticipant = canCheckInOut && !inactiveChild;
                   return (
                     <View key={p.id} style={twStyle("mb-1.5 rounded-lg bg-gray-50 p-3")}>
                       <View style={twStyle("flex-row items-center")}>
                         <Avatar name={displayName} size="sm" />
                         <View style={twStyle("ms-2 flex-1")}>
-                          <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                            {displayName}
-                          </Text>
+                          <View style={twStyle("flex-row items-center flex-wrap")}>
+                            <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                              {displayName}
+                            </Text>
+                            {participantRefunded ? (
+                              <View style={twStyle("ms-2 rounded-full bg-gray-200 px-2 py-0.5")}>
+                                <Text style={twStyle("text-[10px] font-semibold text-gray-700")}>
+                                  {gb("participantRefundedChip")}
+                                </Text>
+                              </View>
+                            ) : null}
+                          </View>
                           {p.service_name ? (
                             <Text style={twStyle("text-xs text-gray-500")}>{p.service_name}</Text>
                           ) : null}
@@ -4404,7 +4702,6 @@ export default function GroupBookingsScreen() {
                             {formatPaycloudCollectLabel({
                               context: "booking",
                               amount: participantCollectAmount(p),
-                              inFlight: paycloudInFlight,
                             })}
                           </Text>
                         </TouchableOpacity>
@@ -4428,7 +4725,8 @@ export default function GroupBookingsScreen() {
                           />
                         </View>
                       ) : null}
-                      {p.booking_id &&
+                      {canIssueRefunds &&
+                      p.booking_id &&
                       participantMaxRefundable({
                         total_paid: p.total_paid,
                         total_refunded: p.total_refunded,
@@ -4461,90 +4759,14 @@ export default function GroupBookingsScreen() {
               )}
             </View>
 
-            {/*
-              §Provider-launch (audit 2026-04): refunds happen on
-              individual participant bookings (there's no group-level
-              refund endpoint). The mobile list previously had no
-              entrypoint at all, so providers had to switch to the web
-              portal.  This routes them to the filtered bookings list
-              where the existing per-booking refund action lives.
-            */}
-            {selectedGroup.status !== "cancelled" && (selectedGroup.participants ?? []).some(
-              (participant) =>
-                !!participant.booking_id &&
-                participantMaxRefundable({
-                  total_paid: participant.total_paid,
-                  total_refunded: participant.total_refunded,
-                  wallet_gift_coverage: participant.wallet_gift_coverage,
-                }) > 0
-            ) ? (
-              <TouchableOpacity
-                style={twStyle(
-                  "mb-3 flex-row items-center justify-center rounded-lg bg-amber-50 py-2.5"
-                )}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  const refundableParticipants = (selectedGroup.participants ?? []).filter(
-                    (participant) =>
-                      !!participant.booking_id &&
-                      participantMaxRefundable({
-                        total_paid: participant.total_paid,
-                        total_refunded: participant.total_refunded,
-                        wallet_gift_coverage: participant.wallet_gift_coverage,
-                      }) > 0
-                  );
-                  if (refundableParticipants.length === 1) {
-                    openParticipantRefund(refundableParticipants[0]);
-                    return;
-                  }
-                  Alert.alert(
-                    gb("refundParticipantTitle"),
-                    gb("refundUseRowButton")
-                  );
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={gb("refundAParticipant")}
-              >
-                <Ionicons name="cash-outline" size={16} color="#b45309" />
-                <Text style={[twStyle("text-sm font-medium text-amber-700"), { marginStart: 6 }]}>
-                  {gb("refundAParticipant")}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-
-            <TouchableOpacity
-              style={twStyle(
-                "mb-3 flex-row items-center justify-center rounded-lg bg-indigo-50 py-2.5"
-              )}
-              onPress={() => openGroupReceipt(selectedGroup)}
-              accessibilityRole="button"
-              accessibilityLabel={gb("downloadReceiptA11y")}
-            >
-              <Ionicons name="download-outline" size={16} color="#4f46e5" />
-              <Text style={[twStyle("text-sm font-medium text-indigo-700"), { marginStart: 6 }]}>
-                {gb("downloadReceipt")}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Actions */}
+            {/* Actions — Start / Complete only; edit, receipt, refund, cancel live in More menu */}
             {selectedGroup.status !== "completed" && selectedGroup.status !== "cancelled" && (
-              <View style={[twStyle("flex-row"), { opacity: groupActionLoading ? 0.5 : 1 }]}>
-                <TouchableOpacity
-                  style={[
-                    twStyle("flex-1 items-center rounded-lg bg-indigo-50 py-2.5"),
-                    { marginEnd: 8 },
-                  ]}
-                  disabled={groupActionLoading}
-                  onPress={() => openEdit(selectedGroup)}
-                >
-                  <Text style={twStyle("text-sm font-medium text-indigo-700")}>{gb("edit")}</Text>
-                </TouchableOpacity>
-                {(selectedGroup.status === "confirmed" || selectedGroup.status === "booked" || selectedGroup.status === "waiting") && (
+              <View style={[twStyle("mb-3 flex-row"), { opacity: groupActionLoading ? 0.5 : 1 }]}>
+                {(selectedGroup.status === "confirmed" ||
+                  selectedGroup.status === "booked" ||
+                  selectedGroup.status === "waiting") && (
                   <TouchableOpacity
-                    style={[
-                      twStyle("flex-1 items-center rounded-lg bg-green-50 py-2.5"),
-                      { marginEnd: 8 },
-                    ]}
+                    style={twStyle("flex-1 items-center rounded-lg bg-green-50 py-2.5")}
                     disabled={groupActionLoading}
                     onPress={() => handleStatusChange(selectedGroup, "started")}
                   >
@@ -4553,26 +4775,13 @@ export default function GroupBookingsScreen() {
                 )}
                 {(selectedGroup.status === "started" || selectedGroup.status === "in_progress") && (
                   <TouchableOpacity
-                    style={[
-                      twStyle("flex-1 items-center rounded-lg bg-green-50 py-2.5"),
-                      { marginEnd: 8 },
-                    ]}
+                    style={twStyle("flex-1 items-center rounded-lg bg-green-50 py-2.5")}
                     disabled={groupActionLoading}
                     onPress={() => handleStatusChange(selectedGroup, "completed")}
                   >
                     <Text style={twStyle("text-sm font-medium text-green-700")}>{gb("complete")}</Text>
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity
-                  style={[
-                    twStyle("flex-1 items-center rounded-lg bg-red-50 py-2.5"),
-                    { marginEnd: 8 },
-                  ]}
-                  disabled={groupActionLoading}
-                  onPress={() => handleCancel(selectedGroup)}
-                >
-                  <Text style={twStyle("text-sm font-medium text-red-700")}>{gb("cancel")}</Text>
-                </TouchableOpacity>
               </View>
             )}
             {paymentRecordedNotice ? (
@@ -4584,16 +4793,58 @@ export default function GroupBookingsScreen() {
             {/* Record payment — only when there is outstanding balance */}
             {(() => {
               const isFullyPaid = groupIsFullyPaid(selectedGroup);
+              const openTerminalPayments = selectedGroup.open_terminal_payments ?? [];
+              const entityInFlight = openTerminalPayments.length > 0;
+              const firstOpenTerminal = openTerminalPayments[0];
               return canProcessPayments && !isFullyPaid && selectedGroup.status !== "cancelled" ? (
               <View style={twStyle("mt-2")}>
+                {entityInFlight && firstOpenTerminal ? (
+                  <View style={twStyle("mb-2 rounded-lg border border-amber-200 bg-amber-50 p-3")}>
+                    <Text style={twStyle("text-xs text-amber-900")}>
+                      {gb("openTerminalBannerBody", {
+                        amount: formatCurrency(
+                          firstOpenTerminal.amount,
+                          firstOpenTerminal.currency ?? undefined,
+                        ),
+                      })}
+                    </Text>
+                    <View style={twStyle("mt-2 flex-row")}>
+                      <TouchableOpacity
+                        style={twStyle("me-2 flex-1 items-center rounded-md bg-amber-100 py-2")}
+                        onPress={() => {
+                          openPaycloudCollect({
+                            entityType: "group_booking",
+                            entityId: selectedGroup.id,
+                            amount: firstOpenTerminal.amount,
+                            groupBookingId: selectedGroup.id,
+                            locationId: selectedGroup.location_id ?? null,
+                          });
+                        }}
+                      >
+                        <Text style={twStyle("text-xs font-semibold text-amber-900")}>
+                          {gb("resumeOpenCharge")}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={twStyle("flex-1 items-center rounded-md border border-amber-300 bg-white py-2")}
+                        onPress={() =>
+                          void handleCancelOpenTerminalPayment(firstOpenTerminal, selectedGroup)
+                        }
+                      >
+                        <Text style={twStyle("text-xs font-semibold text-amber-900")}>
+                          {gb("cancelOpenCharge")}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : null}
                 <View style={twStyle("mb-2 flex-row items-center rounded-lg bg-amber-50 p-2")}>
                   <Ionicons name="alert-circle-outline" size={14} color="#b45309" style={{ marginEnd: 6 }} />
                   <Text style={twStyle("text-xs text-amber-700 flex-1")}>{gb("paymentOutstanding")}</Text>
                 </View>
                 <Text style={twStyle("mb-2 text-xs font-medium text-gray-500")}>{gb("recordPaymentCta")}</Text>
                 <View style={twStyle("flex-row flex-wrap")}>
-                  {(["cash", "card", "yoco", "bank_transfer"] as const)
-                    .filter((method) => method !== "yoco" || yocoEnabled)
+                  {(["cash", "card", "bank_transfer"] as const)
                     .filter((method) => method !== "card" || manualCardEnabled)
                     .map((method) => (
                     <TouchableOpacity
@@ -4608,11 +4859,9 @@ export default function GroupBookingsScreen() {
                       <Text style={twStyle("text-xs font-medium text-gray-700")}>
                         {method === "bank_transfer"
                           ? gb("bankTransfer")
-                          : method === "yoco"
-                            ? gb("yoco")
-                            : method === "card"
-                              ? manualCardCollectOptionLabel()
-                              : gb("cash")}
+                          : method === "card"
+                            ? manualCardCollectOptionLabel()
+                            : gb("cash")}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -4637,7 +4886,7 @@ export default function GroupBookingsScreen() {
                       <Text style={twStyle("text-xs font-medium text-slate-900")}>
                         {formatPaycloudCollectLabel({
                           context: "group_booking",
-                          inFlight: paycloudInFlight,
+                          entityInFlight,
                           amount: groupCollectAmount(selectedGroup),
                         })}
                       </Text>
@@ -5681,31 +5930,54 @@ export default function GroupBookingsScreen() {
             </View>
           ) : null}
 
-          {teamMembers.length > 0 ? (
+          {teamRosterUnresolved || teamMembers.length > 0 ? (
             <View
               style={twStyle("mb-3")}
               onLayout={(e) => registerSection("staffId", e.nativeEvent.layout.y)}
             >
               <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
-                {gb("staff")} <Text style={twStyle("text-red-600")}>*</Text>
+                {gb("staff")}{" "}
+                {teamMembers.length > 0 || teamRosterUnresolved ? (
+                  <Text style={twStyle("text-red-600")}>*</Text>
+                ) : null}
               </Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <SelectChip
-                  label={gb("none")}
-                  selected={!createForm.staffId}
-                  onPress={() => setCreateForm((p) => ({ ...p, staffId: "" }))}
-                />
-                {teamMembers.map((m) => (
-                  <SelectChip
-                    key={m.id}
-                    label={m.name?.trim() || gb("teamMember")}
-                    selected={createForm.staffId === m.id}
+                {teamRosterUnresolved ? (
+                  <TouchableOpacity
                     onPress={() => {
-                      clearCreateFieldError("staffId");
-                      setCreateForm((p) => ({ ...p, staffId: m.id }));
+                      if (teamError && !teamRaw) void refreshTeamList();
                     }}
-                  />
-                ))}
+                    style={twStyle("me-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-2")}
+                  >
+                    <Text style={twStyle("text-xs font-medium text-amber-900")}>
+                      {teamError && !teamRaw ? gb("staffRetryInline") : gb("loadingTeam")}
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <>
+                    {teamMembers.length >= 2 ? (
+                      <SelectChip
+                        label={gb("anyAvailableStaff")}
+                        selected={createForm.staffId === ANY_STAFF_ID}
+                        onPress={() => {
+                          clearCreateFieldError("staffId");
+                          setCreateForm((p) => ({ ...p, staffId: ANY_STAFF_ID }));
+                        }}
+                      />
+                    ) : null}
+                    {teamMembers.map((m) => (
+                      <SelectChip
+                        key={m.id}
+                        label={m.name?.trim() || gb("teamMember")}
+                        selected={createForm.staffId === m.id}
+                        onPress={() => {
+                          clearCreateFieldError("staffId");
+                          setCreateForm((p) => ({ ...p, staffId: m.id }));
+                        }}
+                      />
+                    ))}
+                  </>
+                )}
               </ScrollView>
               {createFieldError === "staffId" ? (
                 <Text style={twStyle("mt-2 text-xs font-medium text-red-600")}>
@@ -5980,6 +6252,11 @@ export default function GroupBookingsScreen() {
                   servicesForPicking={servicesForPicking}
                   serviceChipLabels={serviceChipLabels}
                   teamMembers={teamMembers}
+                  teamRosterUnresolved={teamRosterUnresolved}
+                  teamLoadFailed={!!teamError && !teamRaw}
+                  onRetryTeam={() => {
+                    void refreshTeamList();
+                  }}
                   footer={idx === lastIndex ? (filledRows >= cap ? "cap" : "add") : null}
                   cap={idx === lastIndex ? cap : 0}
                   gb={gb}
@@ -6651,6 +6928,21 @@ export default function GroupBookingsScreen() {
         onSuccess={handleParticipantRefundSuccess}
       />
 
+      <CompleteWithBalanceSheet
+        visible={!!unpaidCompleteTarget}
+        submitting={unpaidCompleteSubmitting}
+        labels={{
+          title: gb("unpaidCompleteReasonTitle"),
+          body: unpaidCompleteTarget?.body ?? "",
+          reasonLabel: gb("unpaidCompleteReasonLabel"),
+          reasonPlaceholder: gb("unpaidCompleteReasonPlaceholder"),
+          confirm: gb("completeAnyway"),
+          cancel: gb("cancel"),
+        }}
+        onCancel={() => setUnpaidCompleteTarget(null)}
+        onConfirm={(reason) => void submitCompleteGroupWithUnpaid(reason)}
+      />
+
       {cardMachineCollect ? (
         <CardMachineCollectSheet
           visible={showCardMachineCollect && !showCreate && !showEdit}
@@ -6661,7 +6953,11 @@ export default function GroupBookingsScreen() {
             pendingOpenGroupAfterCardMachineRef.current = null;
             if (pendingGroupId) {
               router.setParams({ open_group_id: pendingGroupId } as never);
+            } else if (selectedGroup) {
+              void openGroupDetail(selectedGroup);
             }
+            void refresh();
+            void refreshPaycloudAvailability();
           }}
           amount={cardMachineCollect.amount}
           currency={getTenantDefaultCurrency()}

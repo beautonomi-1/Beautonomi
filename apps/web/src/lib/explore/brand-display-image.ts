@@ -65,7 +65,7 @@ export async function processExploreDisplayJpeg(
   };
 }
 
-function buildTextOverlaySvg(layer: ExploreTextOverlay, width: number, height: number): string | null {
+export function buildTextOverlaySvg(layer: ExploreTextOverlay, width: number, height: number): string | null {
   const text = layer.text.trim().slice(0, 80);
   if (!text) return null;
   const fontPx = Math.round(Math.max(12, Math.min(width * layer.font_size, 72)));

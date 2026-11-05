@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
           id,
           user_id,
           tenant_id,
-          provider_subscriptions(plan_id, status, subscription_plans(features))
+          provider_subscriptions(plan_id, status, subscription_plans!provider_subscriptions_plan_id_fkey(features))
         )
         `,
       )

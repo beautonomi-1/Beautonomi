@@ -91,11 +91,9 @@ export async function GET(
           package_id,
           offering_id,
           product_id,
-          product_variant_id,
           quantity,
           offerings:offering_id(id, title, duration_minutes),
-          products:product_id(id, name, retail_price, sku, brand),
-          product_variants:product_variant_id(id, option_values, retail_price, sku)
+          products:product_id(id, name, retail_price, sku, brand)
         `)
         .in("package_id", packageIds);
 

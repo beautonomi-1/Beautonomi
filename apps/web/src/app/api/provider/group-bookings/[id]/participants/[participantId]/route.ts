@@ -55,6 +55,22 @@ export async function DELETE(
       return notFoundResponse("Group booking not found");
     }
 
+    // Removing a guest from a paid group moves money (wallet credit / card refund).
+    const { data: paidChildren } = await admin
+      .from("bookings")
+      .select("id, total_paid, total_refunded")
+      .eq("group_booking_id", groupId)
+      .eq("provider_id", providerId);
+    const groupHasNetPayments = (paidChildren ?? []).some(
+      (b) => Number(b.total_paid ?? 0) - Number(b.total_refunded ?? 0) > 0.01,
+    );
+    if (groupHasNetPayments) {
+      const refundCheck = await requirePermission("issue_refunds", request);
+      if (!refundCheck.authorized) {
+        return refundCheck.response!;
+      }
+    }
+
     // Cancel the guest's child booking or remove their tagged lines from the lead booking
     // before the participant row goes, so staff time is freed and totals shrink.
     const guestResult = await cancelGroupGuest(admin, {
@@ -100,6 +116,7 @@ export async function DELETE(
       guest_refunded: guestResult.guestRefunded,
       wallet_credited: guestResult.walletCredited,
       overpaid_amount: guestResult.overpaidAmount,
+      in_person_refund_due: guestResult.in_person_refund_due ?? 0,
     });
   } catch (error) {
     return handleApiError(error, "Failed to remove group participant");

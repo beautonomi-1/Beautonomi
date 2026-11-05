@@ -6,6 +6,7 @@ import {
 import type { PayRunItem, PayPeriodType } from "./pay-run-engine";
 import { computeNetPay } from "./net-pay";
 import { periodsPerYearFromPeriodType } from "./periods-per-year";
+import { zaTaxYearBounds } from "./jurisdictions/packs/za";
 
 function ageFromDob(dob: string | null | undefined, payDate: string): number | undefined {
   if (!dob) return undefined;
@@ -22,28 +23,26 @@ async function loadYtdTaxableByStaff(
   admin: SupabaseClient,
   providerId: string,
   staffIds: string[],
-  periodStart: string,
+  payDate: string,
   taxYearStart: string,
 ): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   if (!staffIds.length) return out;
-
-  const windowStart = periodStart > taxYearStart ? taxYearStart : periodStart;
 
   const { data: runs } = await admin
     .from("provider_pay_runs")
     .select("id, pay_period_start, pay_period_end")
     .eq("provider_id", providerId)
     .in("status", ["approved", "paid"])
-    .gte("pay_period_end", windowStart)
-    .lt("pay_period_end", periodStart);
+    .gte("pay_period_end", taxYearStart)
+    .lt("pay_period_end", payDate);
 
   const runIds = (runs ?? []).map((r: { id: string }) => r.id);
   if (!runIds.length) return out;
 
   const { data: rows } = await admin
     .from("provider_pay_run_items")
-    .select("staff_id, taxable_income, gross_pay, uif_contribution")
+    .select("staff_id, taxable_income, gross_pay")
     .in("pay_run_id", runIds)
     .in("staff_id", staffIds);
 
@@ -52,11 +51,7 @@ async function loadYtdTaxableByStaff(
     const taxable =
       (row as { taxable_income?: number | null }).taxable_income != null
         ? Number((row as { taxable_income?: number }).taxable_income)
-        : Math.max(
-            0,
-            Number((row as { gross_pay?: number }).gross_pay ?? 0) -
-              Number((row as { uif_contribution?: number }).uif_contribution ?? 0),
-          );
+        : Math.max(0, Number((row as { gross_pay?: number }).gross_pay ?? 0));
     out.set(sid, (out.get(sid) ?? 0) + taxable);
   }
   return out;
@@ -86,13 +81,13 @@ export async function applyStatutoryToPayRunItems(
   }
 
   const staffIds = items.map((i) => i.staffId);
-  const taxYearStart = `${payDate.slice(0, 4)}-03-01`;
+  const taxYear = zaTaxYearBounds(payDate);
   const ytdByStaff = await loadYtdTaxableByStaff(
     admin,
     providerId,
     staffIds,
     payDate,
-    taxYearStart,
+    taxYear.start,
   );
 
   const userIds = [...staffMeta.values()]
@@ -114,7 +109,8 @@ export async function applyStatutoryToPayRunItems(
     if (!meta?.jurisdictionCode || meta.statutoryMode === "none") return item;
 
     const rules = rulesByJurisdiction.get(meta.jurisdictionCode) ?? [];
-    const ageYears = meta.userId ? ageFromDob(dobByUser.get(meta.userId), payDate) : undefined;
+    // Age rebates apply by age on the last day of the year of assessment.
+    const ageYears = meta.userId ? ageFromDob(dobByUser.get(meta.userId), taxYear.end) : undefined;
     const ytdTaxable = ytdByStaff.get(item.staffId) ?? 0;
 
     const statutory = resolveJurisdictionStatutory(
@@ -144,7 +140,7 @@ export async function applyStatutoryToPayRunItems(
       if (line.code === "taxable_income") taxableIncome = line.amount;
     }
     if (taxableIncome == null) {
-      taxableIncome = Math.max(0, item.grossPay - uif);
+      taxableIncome = Math.max(0, item.grossPay);
     }
 
     const net = computeNetPay({

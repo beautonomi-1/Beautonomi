@@ -309,9 +309,12 @@ export async function PATCH(
         : [];
     }
     if (body.status !== undefined) {
-      updates.status = body.status === "published" ? "published" : "draft";
-      if (body.status === "published") {
+      const nextStatus = body.status === "published" ? "published" : "draft";
+      updates.status = nextStatus;
+      if (nextStatus === "published" && existing.status !== "published") {
         updates.published_at = new Date().toISOString();
+      } else if (nextStatus === "draft") {
+        updates.published_at = null;
       }
     }
 

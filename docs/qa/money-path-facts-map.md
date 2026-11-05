@@ -120,3 +120,22 @@ Constraints: migrations `10102`–`10106` not assumed applied; `finance.provider
 See [money-path-regression-guardrails.md](./money-path-regression-guardrails.md).
 
 Golden suite: `apps/web/src/lib/money-flow/__tests__/money-path-golden-invariants.test.ts`.
+
+## 7. Provider refund / completion error codes (2026-11)
+
+| Code | Meaning |
+| --- | --- |
+| `WALLET_REFUND_CAP_EXCEEDED` | Wallet refund exceeds online-paid portion |
+| `REFUND_METHOD_REQUIRED` | Ambiguous amount across rails; client must send `refund_method` |
+| `ENTITY_IN_FLIGHT` | Open PayCloud/Yoco charge; cancel or `cancel_open_terminal` on mark_paid |
+| `BALANCE_DUE` | Completion blocked until paid or owner/manager `allow_unpaid` + reason |
+| `BALANCE_DUE_REASON_REQUIRED` | `allow_unpaid` without `unpaid_reason` |
+| `FULLY_REFUNDED` | Complete blocked; cancel session instead |
+| `TERMINAL_IN_FLIGHT` | Complete blocked while card machine charge open |
+| `GROUP_NOT_STARTED` | Check-in before group `start_service` |
+| `PAYMENT_ALREADY_SUCCESSFUL` | Yoco abandon refused: gateway reports the charge succeeded |
+| `FORBIDDEN` (refunds) | Staff without `issue_refunds`; owner bypasses |
+
+Completion guards (`evaluateSingleBookingCompletion` / `evaluateGroupCompletion` in `lib/bookings/completion-guards.ts`) apply to `complete-service`, `PATCH bookings/[id]` with `status=completed`, `bookings/bulk` `complete` (blocked rows go to `failed`), `close-out/bulk-complete` (per-row `code`), and group `complete_service`. Overrides write a `completed_with_balance` booking event.
+
+Detection: admin `GET /api/admin/finance/refund-anomalies` (admin-web **Refund Anomalies**). Historical sizing: [sql/group-booking-money-safety-historical-audit.sql](./sql/group-booking-money-safety-historical-audit.sql) (read only).

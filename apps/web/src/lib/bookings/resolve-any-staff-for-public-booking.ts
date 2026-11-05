@@ -53,6 +53,8 @@ export async function pickFirstStaffForNullStaffLines(args: {
    * team member was free.
    */
   preferredStaffIds?: string[] | null;
+  /** `provider` = in-house roster (wider than public online bookable). Default `public`. */
+  staffPool?: "public" | "provider";
 }): Promise<PickAnyStaffResult> {
   const {
     supabaseAdmin,
@@ -63,6 +65,7 @@ export async function pickFirstStaffForNullStaffLines(args: {
     providerTimeZone,
     travelBufferMinutes = 0,
     preferredStaffIds,
+    staffPool = "public",
   } = args;
   const providerTz = providerTimeZone || DEFAULT_BOOKING_DISPLAY_TIMEZONE;
   const minutesFromInstantInZone = (instant: Date): number => {
@@ -88,15 +91,23 @@ export async function pickFirstStaffForNullStaffLines(args: {
   };
   const OVERNIGHT_CUTOFF_MIN = 8 * 60;
 
-  const { listPubliclyBookableStaffIdsForLocation } = await import(
-    "@/lib/provider/staff-location-scope"
-  );
-  let activeIds = await listPubliclyBookableStaffIdsForLocation(
-    supabaseAdmin,
-    providerId,
-    locationId,
-    providerTz,
-  );
+  const {
+    listPubliclyBookableStaffIdsForLocation,
+    listActiveServiceProviderStaffIdsForLocation,
+  } = await import("@/lib/provider/staff-location-scope");
+  let activeIds =
+    staffPool === "provider"
+      ? await listActiveServiceProviderStaffIdsForLocation(
+          supabaseAdmin,
+          providerId,
+          locationId,
+        )
+      : await listPubliclyBookableStaffIdsForLocation(
+          supabaseAdmin,
+          providerId,
+          locationId,
+          providerTz,
+        );
   const offeringIds = [
     ...new Set(bookingServicesData.map((line) => line.offering_id).filter(Boolean)),
   ];

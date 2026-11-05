@@ -13,8 +13,10 @@ import { Avatar } from "@/components/ui/Avatar";
 export function useStaffAvatarUpload() {
   const { pickWithOptions } = useImagePicker();
   const { t } = useTranslation();
-  const pf = (key: string) =>
-    t(`provider.mobile.components.staffPhotoField.${key}`) as string;
+  const pf = useCallback(
+    (key: string) => t(`provider.mobile.components.staffPhotoField.${key}`) as string,
+    [t],
+  );
 
   return useCallback(async (): Promise<string | null> => {
     const picked = await pickWithOptions({
@@ -59,8 +61,10 @@ export function StaffPhotoField({
   size = "lg",
 }: Props) {
   const { t } = useTranslation();
-  const pf = (key: string) =>
-    t(`provider.mobile.components.staffPhotoField.${key}`) as string;
+  const pf = useCallback(
+    (key: string) => t(`provider.mobile.components.staffPhotoField.${key}`) as string,
+    [t],
+  );
   const uploadAvatar = useStaffAvatarUpload();
   const [uploading, setUploading] = useState(false);
 

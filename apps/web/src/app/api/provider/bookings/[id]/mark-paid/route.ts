@@ -235,7 +235,7 @@ export async function POST(
     // Verify booking exists and belongs to provider
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, status, tenant_id, total_amount, discount_amount, total_refunded, payment_status, payment_reference, provider_id, customer_id, booking_number, ref_number, total_paid, wallet_amount, gift_card_amount, tip_amount, travel_fee, tax_amount, service_fee_amount, platform_fee_amount, platform_fee_percentage, service_fee_percentage, platform_fee_paid_by, service_fee_paid_by, deposit_amount, booking_source, location_id, location_type, currency, additional_charges(id, amount, status, description, currency)")
+      .select("id, status, group_booking_id, tenant_id, total_amount, discount_amount, total_refunded, payment_status, payment_reference, provider_id, customer_id, booking_number, ref_number, total_paid, wallet_amount, gift_card_amount, tip_amount, travel_fee, tax_amount, service_fee_amount, platform_fee_amount, platform_fee_percentage, service_fee_percentage, platform_fee_paid_by, service_fee_paid_by, deposit_amount, booking_source, location_id, location_type, currency, additional_charges(id, amount, status, description, currency)")
       .eq("id", bookingId)
       .eq("provider_id", providerId)
       .single();
@@ -257,6 +257,39 @@ export async function POST(
       (booking as { tenant_id?: string | null }).tenant_id,
     );
     if (bookingMarketMismatch) return bookingMarketMismatch;
+
+    const { findOpenTerminalPayments, cancelOpenTerminalPaymentsForEntity } = await import(
+      "@/lib/payments/open-terminal-payments"
+    );
+    // A Yoco finalize records the very charge that may still be pending until the webhook lands.
+    const openTerminal = (
+      await findOpenTerminalPayments(supabaseAdmin, {
+        providerId,
+        bookingIds: [bookingId],
+        groupBookingId: (booking as { group_booking_id?: string | null }).group_booking_id,
+      })
+    ).filter((p) => !(payment_provider === "yoco" && p.provider === "yoco"));
+    if (openTerminal.length > 0) {
+      const cancelOpen =
+        body.cancel_open_terminal === true || body.cancel_open_terminal === "true";
+      if (!cancelOpen) {
+        return errorResponse(
+          "A card machine charge is still open for this booking. Cancel it or send cancel_open_terminal.",
+          "ENTITY_IN_FLIGHT",
+          409,
+          { open_terminal_payments: openTerminal },
+        );
+      }
+      const cancelResult = await cancelOpenTerminalPaymentsForEntity(supabaseAdmin, providerId, openTerminal);
+      if (cancelResult.errors.length > 0) {
+        return errorResponse(
+          "Could not cancel the open card machine charge. Check the machine before recording payment.",
+          "ENTITY_IN_FLIGHT",
+          409,
+          { open_terminal_payments: openTerminal, cancel_errors: cancelResult.errors },
+        );
+      }
+    }
 
     const bookingStatus = (booking as { status?: string }).status ?? "";
     if (["cancelled", "refunded", "no_show"].includes(bookingStatus)) {

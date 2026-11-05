@@ -130,7 +130,7 @@ async function runJob(request: NextRequest) {
         renewal_failure_count,
         past_due_since,
         billing_period,
-        plan:membership_plans(id, name, price_monthly, currency, is_active),
+        plan:membership_plans!user_memberships_plan_id_fkey(id, name, price_monthly, currency, is_active),
         provider:providers(id, tenant_id)
       `)
       .eq("auto_renew", true)

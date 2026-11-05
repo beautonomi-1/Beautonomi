@@ -14,6 +14,7 @@ import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import type { ExplorePost } from "@/types/api";
+import { explorePostGridImageUrl } from "@/lib/explore-media";
 import { useTranslation } from "@beautonomi/i18n";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
@@ -150,7 +151,7 @@ export default function ExploreCollectionScreen() {
       ) : (
         <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
           {collection.posts.map((post, index) => {
-            const img = post.display_url ?? post.media_urls?.[0];
+            const img = explorePostGridImageUrl(post);
             const aspect =
               post.media_width && post.media_height && post.media_height > 0
                 ? Math.min(1.5, Math.max(0.6, post.media_width / post.media_height))

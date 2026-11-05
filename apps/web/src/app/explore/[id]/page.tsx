@@ -5,7 +5,11 @@ import { hreflangForPath } from "@/lib/seo/metadata-hreflang";
 import { getServerT } from "@/lib/i18n/server";
 import { resolveRequestLanguage } from "@/lib/locale/resolve-request-language";
 import ExplorePostPageClient from "./ExplorePostPageClient";
-import { firstSlideIsVideo, resolveExploreVideoSrc } from "@/lib/explore/video-media";
+import {
+  firstSlideIsVideo,
+  resolveExplorePosterUrl,
+  resolveExploreVideoSrc,
+} from "@/lib/explore/video-media";
 
 export const revalidate = 300;
 
@@ -39,15 +43,12 @@ export async function generateMetadata({
   const description = `${captionSnippet} — Discover on Beautonomi Explore.`;
   const pageUrl = `${origin}${canonical}`;
   const videoFirst = firstSlideIsVideo(post.media_urls, post.media_meta);
-  const ogImageUrl = post.display_url ?? post.media_urls?.[0];
+  const ogImageUrl = resolveExplorePosterUrl(post);
   const ogWidth = post.media_width ?? 1200;
   const ogHeight = post.media_height ?? 1500;
-  const ogImages =
-    ogImageUrl && !videoFirst
-      ? [{ url: ogImageUrl, width: ogWidth, height: ogHeight, alt: post.caption || `${providerName} on Beautonomi` }]
-      : ogImageUrl
-        ? [{ url: ogImageUrl, width: ogWidth, height: ogHeight, alt: post.caption || `${providerName} on Beautonomi` }]
-        : undefined;
+  const ogImages = ogImageUrl
+    ? [{ url: ogImageUrl, width: ogWidth, height: ogHeight, alt: post.caption || `${providerName} on Beautonomi` }]
+    : undefined;
   const ogVideoUrl = videoFirst
     ? resolveExploreVideoSrc({
         mediaUrls: post.media_urls ?? [],

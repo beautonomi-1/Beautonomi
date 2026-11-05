@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Heart, Bookmark, MessageCircle, Play } from "lucide-react";
 import { firstSlideIsVideo } from "@/lib/explore/video-media";
+import { ExplorePostThumb } from "@/components/explore/ExplorePostThumb";
 import { useAuth } from "@/providers/AuthProvider";
 import LoginModal from "@/components/global/login-modal";
 import { fetcher } from "@/lib/http/fetcher";
@@ -145,7 +145,7 @@ export function ExplorePostCard({
     }
   };
 
-  const primaryImage = post.display_url ?? post.media_urls?.[0];
+  const hasMedia = Boolean(post.display_url || post.media_urls?.length);
   const isVideo = firstSlideIsVideo(post.media_urls, post.media_meta);
   const aspectStyle =
     post.media_width && post.media_height && post.media_height > 0
@@ -159,14 +159,12 @@ export function ExplorePostCard({
       className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 group cursor-pointer"
     >
       <Link href={postDetailUrl} className="block">
-        {primaryImage && (
+        {hasMedia && (
           <div className="relative w-full bg-gray-100 overflow-hidden">
             <div className="relative w-full bg-gray-100" style={aspectStyle}>
-              <Image
-                src={primaryImage}
+              <ExplorePostThumb
+                post={post}
                 alt={post.caption || "Post"}
-                fill
-                className="object-cover"
                 sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
                 priority={priority}
               />

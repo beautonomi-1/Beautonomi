@@ -304,7 +304,12 @@ export interface ProviderApi {
   addParticipantToGroupBooking(groupBookingId: string, participant: Partial<GroupBookingParticipant>): Promise<GroupBookingParticipant>;
   removeParticipantFromGroupBooking(groupBookingId: string, participantId: string): Promise<void>;
   checkInGroupParticipant(groupBookingId: string, participantId: string): Promise<void>;
-  checkOutGroupParticipant(groupBookingId: string, participantId: string): Promise<void>;
+  checkOutGroupParticipant(
+    groupBookingId: string,
+    participantId: string,
+  ): Promise<{
+    group_completion_blocked?: Array<{ code: string; message: string; amount?: number }> | null;
+  }>;
   convertAppointmentsToGroupBooking(appointmentIds: string[]): Promise<GroupBooking>;
 
   // Time Blocks
@@ -4307,14 +4312,20 @@ export class ProviderApiClient implements ProviderApi {
     );
   }
 
-  async checkOutGroupParticipant(groupBookingId: string, participantId: string): Promise<void> {
+  async checkOutGroupParticipant(
+    groupBookingId: string,
+    participantId: string,
+  ): Promise<{
+    group_completion_blocked?: Array<{ code: string; message: string; amount?: number }> | null;
+  }> {
     const { fetcher } = await import("@/lib/http/fetcher");
     const normalizedId = groupBookingId.startsWith("group:")
       ? groupBookingId.slice("group:".length)
       : groupBookingId;
-    await fetcher.post(
+    const res = (await fetcher.post(
       `/api/provider/group-bookings/${normalizedId}/participants/${participantId}/check-out`
-    );
+    )) as { data?: { group_completion_blocked?: Array<{ code: string; message: string; amount?: number }> | null } };
+    return { group_completion_blocked: res?.data?.group_completion_blocked ?? null };
   }
 
   async convertAppointmentsToGroupBooking(appointmentIds: string[]): Promise<GroupBooking> {

@@ -92,26 +92,12 @@ export async function assertCalendarScopeAllowsBooking(
 
   if (!staffId) return forbidden();
 
-  const { data, error } = await admin
+  const { data } = await admin
     .from("bookings")
-    .select("id, staff_id, booking_services(staff_id)")
+    .select("id, booking_services(staff_id)")
     .eq("id", bookingId)
     .eq("provider_id", providerId)
     .maybeSingle();
-
-  if (error) {
-    // bookings.staff_id may not exist on older schemas — retry without it.
-    const { data: fallback } = await admin
-      .from("bookings")
-      .select("id, booking_services(staff_id)")
-      .eq("id", bookingId)
-      .eq("provider_id", providerId)
-      .maybeSingle();
-    if (!fallback) return { allowed: true, scope, staffId }; // let the route 404
-    return bookingIncludesStaff(fallback as ScopedBookingLike, staffId)
-      ? { allowed: true, scope, staffId }
-      : forbidden();
-  }
 
   if (!data) return { allowed: true, scope, staffId }; // route will 404
   return bookingIncludesStaff(data as ScopedBookingLike, staffId) ? { allowed: true, scope, staffId } : forbidden();

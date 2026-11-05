@@ -42,7 +42,7 @@ export async function POST(
     const { data: row, error: fetchErr } = await (admin as any)
       .from("user_memberships")
       .select(
-        "id, provider_id, user_id, status, cancelled_at, plan:membership_plans(id, name), provider:providers(id, business_name, slug)",
+        "id, provider_id, user_id, status, cancelled_at, plan:membership_plans!user_memberships_plan_id_fkey(id, name), provider:providers(id, business_name, slug)",
       )
       .eq("id", id)
       .maybeSingle();

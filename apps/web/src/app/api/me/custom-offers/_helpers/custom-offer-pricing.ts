@@ -76,7 +76,7 @@ export async function computeCustomOfferPricing(
   // Load provider for tax, tips, fee config, tenant (scoped payouts)
   const { data: provider } = await supabase
     .from("providers")
-    .select("tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code, tips_enabled, customer_fee_config_id, tenant_id")
+    .select("tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, tips_enabled, customer_fee_config_id, tenant_id")
     .eq("id", providerId)
     .single();
 
@@ -192,7 +192,7 @@ export async function computeCustomOfferPricing(
     tax_inclusive: (provider as { tax_inclusive?: boolean | null } | null)?.tax_inclusive ?? null,
     is_vat_registered: (provider as { is_vat_registered?: boolean | null } | null)?.is_vat_registered ?? null,
     vat_number: (provider as { vat_number?: string | null } | null)?.vat_number ?? null,
-    country_code: (provider as { country_code?: string | null } | null)?.country_code ?? null,
+    tenant_id: (provider as { tenant_id?: string | null } | null)?.tenant_id ?? null,
     tax_rate_override_percent: null,
   });
   if (resolvedVat.registered && resolvedVat.source === "none") {

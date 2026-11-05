@@ -82,7 +82,7 @@ export async function resolveMembershipDiscount(params: {
     // Salon membership (per-provider): take the most recent qualifying row.
     const { data: membership } = await params.supabase
       .from("user_memberships")
-      .select("status, expires_at, past_due_since, plan:membership_plans(id, provider_id, discount_percent, is_active, name)")
+      .select("status, expires_at, past_due_since, plan:membership_plans!user_memberships_plan_id_fkey(id, provider_id, discount_percent, is_active, name)")
       .eq("user_id", params.customerId)
       .eq("provider_id", params.providerId)
       .maybeSingle();

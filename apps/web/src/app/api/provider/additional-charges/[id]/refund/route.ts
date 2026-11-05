@@ -5,6 +5,8 @@ import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { initiatePaycloudRefund } from "@/lib/payments/initiate-paycloud-refund";
 import { getPaycloudNotifyUrl } from "@/lib/payments/paycloud-credentials";
+import { computeRefundCaps } from "@/lib/bookings/booking-refund-limits";
+import { isPlatformCollected } from "@/lib/bookings/payment-collected-classifier";
 
 /**
  * POST /api/provider/additional-charges/[id]/refund
@@ -15,7 +17,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const permissionCheck = await requirePermission("process_payments", request);
+    const permissionCheck = await requirePermission("issue_refunds", request);
     if (!permissionCheck.authorized) return permissionCheck.response!;
 
     const { id: chargeId } = await params;
@@ -34,7 +36,16 @@ export async function POST(
         ? "original"
         : rawMethod === "cash"
           ? "cash"
-          : "store_credit";
+          : rawMethod === "store_credit" || rawMethod === "wallet"
+            ? "store_credit"
+            : null;
+    if (!refundMethod) {
+      return errorResponse(
+        "refund_method must be 'store_credit', 'cash', or 'original' (card machine reversal)",
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
 
     if (!Number.isFinite(amount) || amount <= 0) {
       return errorResponse("Refund amount must be greater than 0", "VALIDATION_ERROR", 400);
@@ -136,6 +147,42 @@ export async function POST(
 
     if (!booking) return notFoundResponse("Booking not found");
 
+    let chargeOnlineCap: number | null = null;
+    if (refundMethod === "store_credit") {
+      const bookingCaps = await computeRefundCaps(supabaseAdmin, bookingId, {
+        customer_id: booking.customer_id,
+        total_paid: booking.total_paid,
+        total_refunded: booking.total_refunded,
+        wallet_amount: booking.wallet_amount,
+        gift_card_amount: booking.gift_card_amount,
+        tenant_id: booking.tenant_id,
+      });
+      const { data: chargePayments } = await supabaseAdmin
+        .from("booking_payments")
+        .select("amount, payment_method, payment_provider, payment_provider_id, payment_provider_data, status")
+        .eq("booking_id", bookingId)
+        .in("status", ["completed", "partially_refunded"]);
+      const linked = (chargePayments ?? []).filter((p) => {
+        const data = (p.payment_provider_data ?? {}) as { additional_charge_id?: string };
+        return (
+          data.additional_charge_id === chargeId ||
+          String(p.payment_provider_id ?? "").endsWith(`:additional:${chargeId}`)
+        );
+      });
+      const linkedOnline = linked
+        .filter((p) => isPlatformCollected(p))
+        .reduce((s, p) => s + Number(p.amount ?? 0), 0);
+      chargeOnlineCap =
+        linked.length > 0 ? Math.min(linkedOnline, bookingCaps.onlineCap) : bookingCaps.onlineCap;
+      if (amount > chargeOnlineCap + 0.01) {
+        return errorResponse(
+          `Wallet refunds for this charge are limited to ${chargeOnlineCap.toFixed(2)} paid online. Refund in-person amounts as cash or on the card machine.`,
+          "WALLET_REFUND_CAP_EXCEEDED",
+          400,
+        );
+      }
+    }
+
     const { data: refund, error: refundError } = await supabaseAdmin
       .from("booking_refunds")
       .insert({
@@ -202,6 +249,37 @@ export async function POST(
         .from("additional_charges")
         .update({ status: "refunded", updated_at: new Date().toISOString() })
         .eq("id", chargeId);
+    }
+
+    try {
+      await supabaseAdmin.from("booking_events").insert({
+        booking_id: bookingId,
+        event_type: "refund_issued_by_staff",
+        event_data: {
+          refund_id: refund.id,
+          additional_charge_id: chargeId,
+          amount,
+          reason,
+          refund_method: refundMethod,
+          charge_online_cap: chargeOnlineCap,
+          actor_user_id: permissionCheck.user.id,
+        },
+        created_by: permissionCheck.user.id,
+      });
+      const { notifyProviderTeamUsers } = await import("@/lib/notifications/notify-provider-team");
+      const ref = booking.ref_number || booking.booking_number || bookingId.slice(0, 8).toUpperCase();
+      await notifyProviderTeamUsers(
+        providerId,
+        {
+          type: "staff_refund_issued",
+          title: "Refund issued",
+          message: `A ${amount.toFixed(2)} ${refundMethod.replace("_", " ")} refund was issued on an extra charge for booking ${ref}.`,
+          data: { booking_id: bookingId, refund_id: refund.id, amount, refund_method: refundMethod },
+        },
+        { managersOnly: true, push: true },
+      );
+    } catch (auditErr) {
+      console.warn("Failed to record charge refund audit:", auditErr);
     }
 
     return successResponse({

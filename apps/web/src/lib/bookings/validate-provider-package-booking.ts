@@ -91,7 +91,7 @@ export async function validateProviderCatalogPackageMatch(params: {
 
   const { data: pkgItems, error: pkgItemsError } = await supabaseAdmin
     .from("service_package_items")
-    .select("offering_id, product_id, product_variant_id, quantity")
+    .select("offering_id, product_id, quantity")
     .eq("package_id", packageId);
 
   if (pkgItemsError) {

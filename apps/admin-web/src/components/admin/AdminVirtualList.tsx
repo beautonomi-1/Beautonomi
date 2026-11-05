@@ -22,7 +22,7 @@ export type AdminVirtualListProps<T> = {
   activeIndex?: number | null;
 };
 
-const fillScrollClass = "admin-scrollbar min-h-0 flex-1 overflow-y-auto pr-1";
+const fillScrollClass = "admin-scrollbar h-full min-h-0 flex-1 overflow-y-auto pr-1";
 
 /**
  * Virtual scroll list for long admin queues (support cards, booking cards, etc.).
@@ -89,7 +89,11 @@ export function AdminVirtualList<T>({
   return (
     <div
       ref={parentRef}
-      className={cn("admin-scrollbar overflow-y-auto pr-1", fill && "min-h-0 flex-1", className)}
+      className={cn(
+        "admin-scrollbar overflow-y-auto pr-1",
+        fill && "h-full min-h-0 flex-1",
+        className,
+      )}
       style={fill ? undefined : { maxHeight }}
       aria-label={ariaLabel}
     >

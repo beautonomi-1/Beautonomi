@@ -3,10 +3,11 @@ import { calculateStaffCommission } from "./commission-calculator";
 import { getTipsByStaff } from "./tips-helper";
 import { sumStaffEarningsLines } from "./staff-earnings-from-lines";
 import { resolvePayPeriodBounds, toPayPeriodDateString } from "./period-bounds";
-import { getProviderPayrollTimezone } from "./provider-payroll-context";
+import { getProviderPayrollCountry, getProviderPayrollTimezone } from "./provider-payroll-context";
 import { assembleStaffPayRunGross } from "./assemble-staff-pay-run-gross";
 import { applyStatutoryToPayRunItems } from "./apply-statutory";
 import { loadStaffPayrollMetaBatch } from "./resolve-staff-payroll-meta";
+import { resolvePayrollV2Enabled } from "./payroll-v2-gate";
 
 export interface PayRunItem {
   staffId: string;
@@ -147,21 +148,12 @@ export async function calculatePayRun(
     periodTo,
   );
 
-  const [{ data: payrollSettings }, { data: providerRow }] = await Promise.all([
-    supabaseAdmin
-      .from("provider_settings")
-      .select("payroll_v2_enabled")
-      .eq("provider_id", providerId)
-      .maybeSingle(),
-    supabaseAdmin.from("providers").select("country_code").eq("id", providerId).maybeSingle(),
+  const [payrollV2Resolved, providerCountry] = await Promise.all([
+    resolvePayrollV2Enabled(supabaseAdmin, providerId),
+    getProviderPayrollCountry(supabaseAdmin, providerId),
   ]);
   const payrollV2 =
-    options?.forcePayrollV2 !== undefined
-      ? options.forcePayrollV2
-      : (payrollSettings as { payroll_v2_enabled?: boolean } | null)?.payroll_v2_enabled === true;
-  const providerCountry =
-    (providerRow as { country_code?: string | null } | null)?.country_code?.trim().toUpperCase() ||
-    null;
+    options?.forcePayrollV2 !== undefined ? options.forcePayrollV2 : payrollV2Resolved;
 
   const eligibleIds = eligibleStaff.map((s: { id: string }) => s.id);
   const [payrollMetaByStaff, carryForwardByStaff] = await Promise.all([

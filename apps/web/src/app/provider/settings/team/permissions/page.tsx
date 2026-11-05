@@ -36,6 +36,7 @@ const permissionMeta = [
   { id: "view_sales", nameKey: "viewSales", descKey: "viewSalesDesc", category: "sales", icon: <DollarSign className="w-4 h-4" /> },
   { id: "create_sales", nameKey: "createSales", descKey: "createSalesDesc", category: "sales", icon: <DollarSign className="w-4 h-4" /> },
   { id: "process_payments", nameKey: "processPayments", descKey: "processPaymentsDesc", category: "sales", icon: <DollarSign className="w-4 h-4" /> },
+  { id: "issue_refunds", nameKey: "issueRefunds", descKey: "issueRefundsDesc", category: "sales", icon: <DollarSign className="w-4 h-4" /> },
   { id: "view_reports", nameKey: "viewReports", descKey: "viewReportsDesc", category: "sales", icon: <FileText className="w-4 h-4" /> },
   { id: "manage_finance", nameKey: "manageFinance", descKey: "manageFinanceDesc", category: "sales", icon: <DollarSign className="w-4 h-4" /> },
   { id: "manage_payroll", nameKey: "managePayroll", descKey: "managePayrollDesc", category: "sales", icon: <DollarSign className="w-4 h-4" /> },

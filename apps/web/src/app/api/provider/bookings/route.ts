@@ -684,7 +684,7 @@ async function handleGetProviderBookings(request: NextRequest) {
             supabaseAdmin
               .from("bookings")
               .select(
-                "id, group_booking_id, staff_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, tip_amount, status, booking_services(staff_id), additional_charges(amount,status)"
+                "id, group_booking_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, tip_amount, status, booking_services(staff_id), additional_charges(amount,status)"
               )
               .eq("provider_id", providerId)
               .in("group_booking_id", slice),
@@ -1202,7 +1202,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
 
     const { data: providerTaxRow } = await supabaseAdmin
       .from("providers")
-      .select("tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code")
+      .select("tenant_id, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number")
       .eq("id", providerId)
       .maybeSingle();
     const resolvedVat = await resolveProviderVat(supabaseAdmin, {
@@ -1210,7 +1210,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
       tax_inclusive: providerTaxRow?.tax_inclusive ?? null,
       is_vat_registered: providerTaxRow?.is_vat_registered ?? null,
       vat_number: providerTaxRow?.vat_number ?? null,
-      country_code: providerTaxRow?.country_code ?? null,
+      tenant_id: providerTaxRow?.tenant_id ?? null,
       tax_rate_override_percent: null,
     });
     if (resolvedVat.registered && resolvedVat.source === "none") {
@@ -1632,6 +1632,28 @@ async function handleCreateProviderBooking(request: NextRequest) {
       return errorResponse("Customer ID is required.", "MISSING_CUSTOMER_ID", 422);
     }
 
+    {
+      const { resolveProviderAnyStaffOnBookingBody } = await import(
+        "@/lib/provider-booking/resolve-provider-any-staff-on-create"
+      );
+      const anyStaff = await resolveProviderAnyStaffOnBookingBody({
+        supabaseAdmin,
+        providerId,
+        locationId,
+        providerTimeZone: providerTimezone,
+        scheduledAt: bookingData.scheduled_at,
+        locationType: bookingLocationType,
+        body,
+      });
+      if (anyStaff.ok === false) {
+        return errorResponse(
+          anyStaff.message,
+          anyStaff.code,
+          anyStaff.code === "INVALID_STAFF" ? 400 : 409,
+        );
+      }
+    }
+
     // Resolve staff and time range for conflict check / RPC path
     const staffId =
       body.services?.[0]?.staffId ||
@@ -1722,7 +1744,10 @@ async function handleCreateProviderBooking(request: NextRequest) {
               ...new Set(
                 (body.services as { staffId?: string; staff_id?: string }[])
                   .map((s) => s.staffId || s.staff_id)
-                  .filter((x): x is string => !!x)
+                  .filter(
+                    (x): x is string =>
+                      !!x && x !== "any",
+                  )
               ),
             ]
           : staffId

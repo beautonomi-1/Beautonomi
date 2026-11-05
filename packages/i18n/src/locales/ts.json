@@ -2351,13 +2351,50 @@
           "viewFullBooking": "Vona yi tele ku buka",
           "statusNoShow": "No kombisa",
           "statusPendingPayment": "yi yimile xihakelo",
-          "removeParticipantOverpaid": "Muendzi susad. The ku buka is sweswi overyi hakeleriwile by {{amount}}. nxavo the difference to the muxavi.",
+          "removeParticipantOverpaid": "Muendzi u susiwile. {{amount}} yi hakeriwile hi voko naswona yi nge yi yi eka xikhwama. Tlherisela hi mali kumbe ka muchini wa khadi u tirhisa Ku tlherisa eka nongonoko wa Swin'wana.",
           "shareStatusPaid": "avelana yi hakeleriwile",
           "shareStatusPending": "avelana a yi hakeleriwanga ({{amount}})",
           "shareStatusCancelled": "Spot yi khanseriwile",
           "resendInvite": "Re-rhumela xirhambo",
           "inviteResent": "xirhambo Yi rhumeriwile",
-          "inviteResendFailed": "A swi koteki ku re-rhumela the xirhambo."
+          "inviteResendFailed": "A swi koteki ku re-rhumela the xirhambo.",
+          "slotUnavailableTitle": "Nkarhi a wu kumeki",
+          "noStaffForSlot": "A ku na xirho xa ntlawa lexi ntshunxekeke eka vukorhokeri lebyi hi nkarhi lowu. Hlawula nkarhi wun'wana kumbe xirho xo karhi.",
+          "pickAnotherTime": "Hlawula nkarhi wun'wana",
+          "invalidStaffTitle": "Xirho xa ntlawa a xi kumeki",
+          "anyAvailableStaff": "N'wini na n'wini la kumekaka",
+          "loadingTeam": "Laha ntlawa…",
+          "staffRetryInline": "A swi koteki ku laha ntlawa. Tshikelela ku ringeta nakambe",
+          "moreActionsTitle": "Swin'wana",
+          "moreActionsA11y": "Mintirho yin'wana",
+          "openTerminalBannerBody": "Hakelo ya muchini wa khadi ya {{amount}} yi ha ri pfulekile eka ntlawa lowu.",
+          "resumeOpenCharge": "Yana emahlweni",
+          "cancelOpenCharge": "Khansela hakelo",
+          "cancelOpenChargeTitle": "Khansela hakelo leyi pfulekeke?",
+          "cancelOpenChargeBody": "Leswi xi khansela hakelo ya muchini wa khadi leyi yaka emahlweni leswaku u nga tsala hakelo hi ndlela yin'wana.",
+          "cancelOpenChargeFailed": "A swi koteki ku khansela hakelo leyi pfulekeke.",
+          "openChargeCancelled": "Hakelo ya muchini wa khadi yi khanseriwile.",
+          "entityInFlightTitle": "Hakelo ya muchini wa khadi leyi pfulekeke",
+          "cancelOpenChargeAndRecord": "Khansela hakelo leyi pfulekeke u nga tsala",
+          "terminalInFlightTitle": "Hakelo ya muchini wa khadi yi pfulekile",
+          "fullyRefundedTitle": "Yi tlheriseriwile hinkwayo",
+          "participantRefundedChip": "Yi tlheriseriwile",
+          "groupNotStartedTitle": "Sungula ntlawa ku sungula",
+          "groupNotStartedBody": "Ku nghena ni ku huma swi kumeka loko ku bhuka ka ntlawa se ku sungurile.",
+          "unpaidCompleteNotAllowed": "N'wini kumbe mulawuri ntsena a nga heta loko ku ha ri na mali leyi saleke.",
+          "unpaidCompleteReasonTitle": "Heta ku ha ri na mali",
+          "unpaidCompleteReasonRequired": "Nghenisa xivangelo xo heta loko ku ha ri na mali.",
+          "unpaidCompleteReasonLabel": "Xivangelo (xi laveka)",
+          "unpaidCompleteReasonPlaceholder": "xik. Muxavi u ta hakela mundzuku hi EFT",
+          "refundCapsTitle": "Mimaka yo tlherisela",
+          "refundCapsOnline": "Xikhwama / inthanetini: ku fikela eka {{amount}}",
+          "refundCapsCash": "Mali ya voko: ku fikela eka {{amount}}",
+          "refundCapsTerminal": "Muchini wa khadi: ku fikela eka {{amount}}",
+          "refundConfirmSummaryTitle": "Tiyisisa ku tlherisela?",
+          "refundConfirmSummaryBody": "Tlherisela {{amount}} hi {{method}}.\n\nXivangelo: {{reason}}",
+          "refundWalletCapExceeded": "Ntsengo lowu wu tlula nkhawu wo tlherisela exikhwameni eka ku bhuka loku.",
+          "refundMethodOriginal": "Muchini wa khadi",
+          "refundOptionsLoadFailed": "A swi koteki ku laha mimaka yo tlherisela. Tinhlayo ti nga va ti hundzeriwile hi nkarhi."
         },
         "settingsIndex": {
           "title": "Swilunghiselelo",
@@ -3183,13 +3220,25 @@
           "awaitingYocoRefundReason": "Ku bukuta ku khanseliwile — ku tlherisela mali endzhaku eka khadi",
           "refundOriginalHint": "Mali yi tlhelela eka khadi ra muxavi hi ku tirhisa muchini wa khadi kumbe bangi. Ku hava nchumu lowu tekiwaka eka drowara ya wena ya mali.",
           "refundCashHint": "Nyikela mali leyi eka muxavi hi xiviri. Yi rhekhodiwe tibuku ta n’wina; ku hava xikweleti xa xipachi lexi humesiwaka. Balance ya booking yi pfuxetiwa endzhaku ka loko leswi swi humelerile.",
-          "refundWalletHint": "Tirhisa loko muxavi a nga ri kona kumbe hakelo yi endliwile eka inthanete. Ku tlheriseriwa mali ku nghenisiwa eka xipachi xa vona.",
+          "refundWalletHint": "I mali ntsena leyi hakeriweke eka inthanete leyi nga tlhelela eka xikhwama. Ku tlherisa ku nghenisiwa eka xikhwama xa vona.",
           "refundOriginalMachineHint": "Mali yi tlhelela eka khadi ra muxavi hi ku tirhisa muchini wa khadi lowu yi hakeriweke eka wona.",
           "cancelWalletNote": "Khalayente yi ta kuma ku tlheriseriwa mali hinkwayo eka xipachi xa yona xa Beautonomi eka mali leyi se yi hakeriweke. Pholisi ya wena yo khansela a yi tirhi eka ku khansela loku u ku sungulaka.",
           "cancelRefundTo": "Vuyisa mali leyi hakeriweke eka",
           "yocoRefundRecordCta": "Ku tlheriseriwa mali eka muchini — rhekhoda ku tlheriseriwa mali",
           "pendingCashRefundTitle": "{{amount}} to return hi xikandza",
-          "pendingCashRefundBody": "Khasimende yi fanele ku tiyisisa leswaku yi amukerile ku tlheriseriwa mali leyi eka app. U nga rhekhodi ku tlheriseriwa kun’wana ka mali loko leswi swi yimerile — tlherisela mali leyi kombisiweke ivi u yimela ku tiyisisiwa (kumbe fasitere ra tiawara ta 48 ku pfala)."
+          "pendingCashRefundBody": "Khasimende yi fanele ku tiyisisa leswaku yi amukerile ku tlheriseriwa mali leyi eka app. U nga rhekhodi ku tlheriseriwa kun’wana ka mali loko leswi swi yimerile — tlherisela mali leyi kombisiweke ivi u yimela ku tiyisisiwa (kumbe fasitere ra tiawara ta 48 ku pfala).",
+          "noIssueRefundsPermission": "A wu na mpfumelelo wo humesa vuyiseri. Vutisa n'wini kumbe mulawuri.",
+          "refundMethodCapBody": "Ndlela leyi yo tlherisela yi pfumela ku fikela eka {{amount}}. Hlawula ndlela yin'wana ya leswi saleke.",
+          "refundCapsBreakdown": "Yi hakeriwile hi voko {{inPerson}} · Inthanetini {{online}} · Se yi tlheriseriwile {{refunded}}",
+          "refundMaxForMethod": "Ku kulu ka ndlela leyi",
+          "confirmRefundTitle": "Tiyisisa ku tlherisela",
+          "confirmRefundBody": "Tlherisela {{amount}} tani hi {{method}}. Leswi a swi nga tlheriseriwi endzhaku.",
+          "completeBlockedTerminalTitle": "Hakelo ya muchini wa khadi yi pfulekile",
+          "completeBlockedFullyRefundedTitle": "Ku bhuka ku tlheriseriwile hinkwako",
+          "unpaidCompleteReasonTitle": "Heta ku ha ri na mali",
+          "unpaidCompleteReasonLabel": "Xivangelo (xi laveka)",
+          "unpaidCompleteReasonPlaceholder": "xik. Muxavi u ta hakela mundzuku hi EFT",
+          "unpaidCompleteNotAllowed": "N'wini kumbe mulawuri ntsena a nga heta ku bhuka loko ku ha ri na mali. Hlengeleta hakelo ku sungula kumbe u vutisa mulawuri."
         },
         "operatingHoursSettings": {
           "title": "Opempimo tiawara",
@@ -5366,7 +5415,12 @@
           "staffFilteredByService": "Ku kombisa swirho swa ntlawa leswi nyikiweke vukorhokeri lebyi.",
           "addressOutsideArea": "Adirese leyi i e handle ka ndhawu ya vukorhokeri bya wena.",
           "addressValidateFailed": "A swi kotekanga ku tiyisisa adirese leyi. Languta vuxokoxoko bya wena u ringeta nakambe.",
-          "tipPercentWithAmountA11y": "{{percent}}% thiphu, {{amount}}"
+          "tipPercentWithAmountA11y": "{{percent}}% thiphu, {{amount}}",
+          "anyAvailableStaff": "N'wana la kumekaka",
+          "assignAnyStaffA11y": "Nyika n'wana wa ntlawa la kumekaka",
+          "loadingTeam": "Ntlawa ya layicha…",
+          "staffRetryInline": "Ntlawa a yi layichanga. Tshikelela ku ringeta nakambe",
+          "staffRosterLoading": "Ntlawa ya wena ya layicha ku nga si va tirhi va nyikiwa"
         },
         "expressBooking": {
           "invalidJson": "JSON. yo nga tirhiki.",
@@ -6628,7 +6682,10 @@
           "withdraw": "Susa",
           "withdrawFailed": "A swi koteki ku withdraw the offer.",
           "withdrawOffer": "Susa Nyiko",
-          "emDash": "—"
+          "emDash": "—",
+          "loadingTeam": "Ntlawa ya layicha…",
+          "noStaffPreference": "Ku hava ku hlawula",
+          "staffRetryInline": "Ntlawa a yi layichanga. Tshikelela ku ringeta nakambe"
         },
         "bookingLink": {
           "title": "ku buka xihlanganisi",
@@ -8219,7 +8276,10 @@
           "submitRating": "rhumela mpimo",
           "thanks": "Inkomu!",
           "freshCaption": "{{name}} leyintshwa",
-          "shareBookingLink": "Avelana xihlanganisi xa ku bhuka"
+          "shareBookingLink": "Avelana xihlanganisi xa ku bhuka",
+          "continueDraftBody": "U se u sungurile xitiviso xa ku veka lexi. Yana emahlweni laha u yimeke kona, kumbe kala muxavi.",
+          "continueDraftCta": "Yana emahlweni hi xikomba",
+          "continueDraftTitle": "Hetisa xikomba xa wena xa Explore"
         },
         "advancedPricing": {
           "title": "Xa le henhla mintengo",
@@ -10314,7 +10374,8 @@
           "permManageMarketing": "Lawula Makete",
           "calendarScopeLabel": "khalendara visibility",
           "calendarScopeOwn": "Own minkarhi",
-          "calendarScopeAll": "All ntlawa khalendaras"
+          "calendarScopeAll": "All ntlawa khalendaras",
+          "permIssueRefunds": "Humesa swi tlheriso"
         },
         "onboardingHub": {
           "title": "Veka",
@@ -11226,7 +11287,8 @@
           "calendarScopeOwn": "Own minkarhi only",
           "calendarScopeAll": "All ntlawa khalendaras",
           "fullAccessMemberHint": "Vativi na vatirhi lava nga na mfikelelo wa vulawuri va tshama va ri na mpfumelelo hinkwawo. Swikhiya swa vona swi hlayiwa ntsena laha.",
-          "manageMarketing": "Lawula Makete"
+          "manageMarketing": "Lawula Makete",
+          "issueRefunds": "Humesa swi tlheriso"
         },
         "announcements": {
           "loadFailed": "A swi koteki ku loyida announcements",
@@ -12226,7 +12288,10 @@
           "disabledBody": "{{message}}\n\nYour admin can pfula the feature flag commerce.mupfuneti_xo tiendlela_offers for this market.",
           "addPhotos": "Engetela inspiration swifaniso",
           "uploadingPhotos": "yi khandziyisa…",
-          "photosAttached": "{{count}} xifaniso(s) attached"
+          "photosAttached": "{{count}} xifaniso(s) attached",
+          "loadingTeam": "Ntlawa ya layicha…",
+          "noStaffPreference": "Ku hava ku hlawula",
+          "staffRetryInline": "Ntlawa a yi layichanga. Tshikelela ku ringeta nakambe"
         },
         "salesSettings": {
           "title": "Xavisos swilunghiselelo",
@@ -23821,7 +23886,8 @@
           "bookingChanged": "This ku buka cincad, reloyida",
           "statusUpdateFailed": "Swi tsandzile ku pfuxa ku buka xiyimo",
           "bulkCompleted": "Bulk {{action}} yi herile for {{count}} ku buka(s)",
-          "bulkFailed": "Swi tsandzile ku {{action}} ku buka"
+          "bulkFailed": "Swi tsandzile ku {{action}} ku buka",
+          "bulkPartialFailed": "Ku bhuka ka {{count}} ku tluleriwile eka {{action}}"
         },
         "liveSync": {
           "label": "Ya ntiyiso · pfuxad {{relative}}",
@@ -28640,7 +28706,7 @@
             "createSales": "Tumbuluxa Xavisos",
             "createSalesDesc": "Tumbuluxa lexintshwa sales",
             "processPayments": "Process swihakelo",
-            "processPaymentsDesc": "Process swihakelo and nxavos",
+            "processPaymentsDesc": "Tsala tinyiko u teka tinyiko ta muchini wa khadi",
             "viewReports": "Vona swiviko",
             "viewReportsDesc": "Vona Bindzu swiviko",
             "viewServices": "Vona Vukorhokeri",
@@ -28691,7 +28757,9 @@
             "viewOwnEarnings": "View own earnings",
             "viewOwnEarningsDesc": "See tips, commission, and personal earnings",
             "fullAccessMemberHint": "Owners and staff with admin access always have full permissions. Their toggles are read-only here.",
-            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them."
+            "readOnlySubtitle": "You can view permissions here. Only owners or users with Manage team can change them.",
+            "issueRefunds": "Humesa swi tlheriso",
+            "issueRefundsDesc": "Tlherisela vaxavi (xikhwama, mali kumbe muchini wa khadi)"
           },
           "team/roles": {
             "roles": "Xiyimos",
@@ -28753,7 +28821,8 @@
               "manage_marketing": "Manage marketing",
               "manage_payroll": "Manage payroll",
               "manage_finance": "Platform billing",
-              "view_own_earnings": "View own earnings"
+              "view_own_earnings": "View own earnings",
+              "issue_refunds": "Humesa swi tlheriso"
             },
             "catEngagement": "Engagement",
             "permissionCount": "mptumelelo Count"
@@ -33175,7 +33244,9 @@
         "confirmLateCancelBody": "This will cancel {{name}}'s appointment as a late cancellation. A cancellation fee may apply according to your policy.",
         "cancel": "Khansela",
         "confirmNoShow": "Mark No-kombisa",
-        "confirmLateCancel": "Late khansela"
+        "confirmLateCancel": "Late khansela",
+        "completeSkipped_one": "Ku veka ka {{count}} a ku hetanga (mali yi sale, yi tlheriseriwile kumbe muchini wa khadi wu pfulekile)",
+        "completeSkipped_other": "Ku veka ka {{count}} a ku hetanga (mali yi sale, swi tlheriseriwile kumbe muchini wa khadi wu pfulekile)"
       },
       "moreHub": {
         "requiresEditSettings": "Requires hlela swilunghiselelo mptumelelo",

@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 
     const { data: providerRow } = await supabase
       .from("providers")
-      .select("tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, country_code")
+      .select("tenant_id, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number")
       .eq("id", providerId)
       .maybeSingle();
     const resolved = await resolveProviderVat(supabase, {

@@ -61,7 +61,7 @@ export async function POST(
     // Verify booking exists and belongs to provider
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, provider_id, location_id, location_type, status, current_stage, staff_id, address_latitude, address_longitude, eta_source, estimated_arrival, provider_eta_minutes")
+      .select("id, provider_id, location_id, location_type, status, current_stage, address_latitude, address_longitude, eta_source, estimated_arrival, provider_eta_minutes")
       .eq("id", bookingId)
       .eq("provider_id", providerId)
       .single();
@@ -92,13 +92,21 @@ export async function POST(
       return badRequestResponse("Location tracking can only be updated during journey or after arrival");
     }
 
+    const { data: assignedStaff } = await supabase
+      .from("booking_services")
+      .select("staff_id")
+      .eq("booking_id", bookingId)
+      .not("staff_id", "is", null)
+      .limit(1)
+      .maybeSingle();
+
     // Insert location update
     const { data: locationUpdate, error: insertError } = await supabase
       .from("provider_location_updates")
       .insert({
         booking_id: bookingId,
         provider_id: providerId,
-        staff_id: booking.staff_id || null,
+        staff_id: (assignedStaff as { staff_id?: string | null } | null)?.staff_id || null,
         latitude: data.latitude,
         longitude: data.longitude,
         accuracy: data.accuracy || null,

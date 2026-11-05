@@ -88,6 +88,25 @@ describe("buildProviderBookingCreatedSuccessModel", () => {
     expect(model.title).toBe("Walk-in booked");
     expect(model.bannerTone).toBe("green");
   });
+
+  it("lists server-assigned staff once each, before the ref line", () => {
+    const model = buildProviderBookingCreatedSuccessModel({
+      status: "booked",
+      clientName: "Sam",
+      bookingNumber: "BK-9",
+      staffNames: ["Lerato", " Lerato ", "Thabo", ""],
+    });
+    expect(model.summaryLines).toEqual(["Sam", "With Lerato, Thabo", "Ref BK-9"]);
+  });
+
+  it("omits the staff line when no names are known", () => {
+    const model = buildProviderBookingCreatedSuccessModel({
+      status: "booked",
+      clientName: "Sam",
+      staffNames: [],
+    });
+    expect(model.summaryLines.some((l) => l.startsWith("With "))).toBe(false);
+  });
 });
 
 describe("buildConfirmedAfterInlineConfirmModel", () => {

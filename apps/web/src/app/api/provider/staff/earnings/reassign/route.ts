@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
 
     const { data: booking } = await admin
       .from("bookings")
-      .select("id, provider_id, scheduled_start, booking_number")
+      .select("id, provider_id, scheduled_at, booking_number")
       .eq("id", input.booking_id)
       .eq("provider_id", providerId)
       .maybeSingle();
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (result.created > 0) {
-      const when = booking.scheduled_start ? new Date(booking.scheduled_start as string).toLocaleDateString("en-ZA") : "";
+      const when = booking.scheduled_at ? new Date(booking.scheduled_at as string).toLocaleDateString("en-ZA") : "";
       void notifyStaffUser(toStaffId, "staff_booking_reassigned", {
         title: "Appointment reassigned",
         message: `Booking ${booking.booking_number ?? ""}${when ? ` on ${when}` : ""} and its earnings were reassigned to you.`,

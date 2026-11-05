@@ -75,7 +75,7 @@ export function GlobalFloatingCopilot() {
   const onSupportQueue =
     pathNorm === "/support-tickets" && Boolean(searchParams.get("selected"));
   const onSupportTicketPage = /^\/support-tickets\/[^/]+/.test(pathNorm);
-  const liftAboveComposer = !isDesktop && (onSupportQueue || onSupportTicketPage);
+  const liftAboveComposer = onSupportQueue || onSupportTicketPage;
 
   return (
     <>
@@ -84,7 +84,11 @@ export function GlobalFloatingCopilot() {
           type="button"
           aria-label="Open Copilot"
           className={`fixed end-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-lg hover:bg-primary/90 ${
-            liftAboveComposer ? "bottom-[max(5.5rem,env(safe-area-inset-bottom))]" : "bottom-6"
+            liftAboveComposer
+              ? isDesktop
+                ? "bottom-28"
+                : "bottom-[max(5.5rem,env(safe-area-inset-bottom))]"
+              : "bottom-6"
           }`}
           onClick={() => setOpen(true)}
         >

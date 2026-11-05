@@ -264,44 +264,49 @@ export async function computeProviderBookingSlotGrid(
       if (resourceIds.length > 0) {
         const { checkResourceAvailability } = await import("@/lib/resources/assignment");
         const resourceReasonByTime = new Map<string, string>();
+        const slotChecks = await Promise.all(
+          publicSlots.map(async (slot) => {
+            const startAt = new Date(slot.start);
+            const endAt = new Date(slot.end);
+            const check = await checkResourceAvailability(
+              supabase,
+              resourceIds,
+              startAt,
+              endAt,
+              excludeBookingId,
+              excludeGroupBookingId,
+            );
+            return { slot, check };
+          }),
+        );
         const filtered: AvailabilitySlot[] = [];
-        for (const slot of publicSlots) {
-          const startAt = new Date(slot.start);
-          const endAt = new Date(slot.end);
-          const check = await checkResourceAvailability(
-            supabase,
-            resourceIds,
-            startAt,
-            endAt,
-            excludeBookingId,
-            excludeGroupBookingId,
-          );
+        for (const { slot, check } of slotChecks) {
           if (check.available) {
             filtered.push(slot);
-          } else {
-            const timeKey = labelFromPublicSlot(slot, providerTimeZone);
-            let detail = check.conflicts.map((c) => `${c.resource_id}: ${c.reason}`).join("; ");
-            try {
-              const { data: resourceRows } = await supabase
-                .from("resources")
-                .select("id, name")
-                .in(
-                  "id",
-                  check.conflicts.map((c) => c.resource_id),
-                );
-              const nameById = new Map<string, string>();
-              for (const row of resourceRows || []) {
-                if (row?.id) nameById.set(row.id, row.name || "Resource");
-              }
-              detail = check.conflicts
-                .map((c) => `${nameById.get(c.resource_id) || "Resource"}: ${c.reason}`)
-                .join("; ");
-            } catch {
-              /* keep id-based detail from check.conflicts */
-            }
-            resourceReasonByTime.set(timeKey, detail);
-            filtered.push({ ...slot, is_available: false });
+            continue;
           }
+          const timeKey = labelFromPublicSlot(slot, providerTimeZone);
+          let detail = check.conflicts.map((c) => `${c.resource_id}: ${c.reason}`).join("; ");
+          try {
+            const { data: resourceRows } = await supabase
+              .from("resources")
+              .select("id, name")
+              .in(
+                "id",
+                check.conflicts.map((c) => c.resource_id),
+              );
+            const nameById = new Map<string, string>();
+            for (const row of resourceRows || []) {
+              if (row?.id) nameById.set(row.id, row.name || "Resource");
+            }
+            detail = check.conflicts
+              .map((c) => `${nameById.get(c.resource_id) || "Resource"}: ${c.reason}`)
+              .join("; ");
+          } catch {
+            /* keep id-based detail from check.conflicts */
+          }
+          resourceReasonByTime.set(timeKey, detail);
+          filtered.push({ ...slot, is_available: false });
         }
         publicSlots = filtered;
 

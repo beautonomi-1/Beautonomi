@@ -47,6 +47,12 @@ export type ProviderBookingCreateValidationInput = {
   recurringHasSavedClient: boolean;
   recurringOccurrences: string;
   staffListLength: number;
+  /**
+   * Team roster request has not settled (in flight, or failed with no list).
+   * Staff stays required so a slow `/api/provider/team` cannot be treated as
+   * "this salon has nobody" and skip assignment.
+   */
+  staffRosterUnresolved?: boolean;
   /** Each selected service line must have staff when staffListLength > 0 */
   allServicesHaveStaff: boolean;
   intakeForms: ProviderIntakeForm[];
@@ -113,8 +119,17 @@ export function collectProviderBookingCreateValidationErrors(
     }
   }
 
-  if (input.staffListLength > 0 && input.serviceCount > 0 && !input.allServicesHaveStaff) {
-    push("Assign staff to each service", "staff", "assignStaffEach");
+  const staffRequired =
+    input.serviceCount > 0 &&
+    (input.staffRosterUnresolved === true || input.staffListLength > 0);
+  if (staffRequired && !input.allServicesHaveStaff) {
+    push(
+      input.staffRosterUnresolved
+        ? "Loading your team before staff can be assigned"
+        : "Assign staff to each service",
+      "staff",
+      input.staffRosterUnresolved ? "staffRosterLoading" : "assignStaffEach",
+    );
   }
 
   for (const form of input.intakeForms) {

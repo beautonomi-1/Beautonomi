@@ -40,84 +40,10 @@ import { sendBookingPaymentLink } from "@/lib/bookings/send-booking-payment-link
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { computeGroupPaymentRollupFields } from "@/lib/bookings/group-booking-payment-rollup";
-import {
-  RECOGNIZED_REVENUE_TYPES,
-  recognizedRevenue,
-  type ProviderRevenueLedgerRow,
-} from "@/lib/reports/provider-revenue-semantics";
-import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
-import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
-import { chunkIds, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
+import { computeCompletedGroupBookingStats } from "@/lib/bookings/group-booking-completed-stats";
+import { fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 
-async function computeCompletedGroupBookingStats(
-  admin: ReturnType<typeof getSupabaseAdmin>,
-  providerId: string,
-): Promise<{
-  completed_count: number;
-  session_booked_gross: number;
-  participant_booked_gross: number;
-  recognized_earnings: number;
-}> {
-  const { data: completedRows, error } = await admin
-    .from("group_bookings")
-    .select("id, total_price, booking_participants(booking_id)")
-    .eq("provider_id", providerId)
-    .eq("status", "completed");
-  if (error) throw error;
-
-  const rows = completedRows ?? [];
-  let sessionBookedGross = 0;
-  const bookingIds = new Set<string>();
-  for (const row of rows) {
-    sessionBookedGross += Number((row as { total_price?: number | null }).total_price ?? 0);
-    const participants = (row as { booking_participants?: { booking_id?: string | null }[] })
-      .booking_participants;
-    for (const p of participants ?? []) {
-      if (typeof p.booking_id === "string" && p.booking_id.trim()) {
-        bookingIds.add(p.booking_id.trim());
-      }
-    }
-  }
-
-  const uniqueBookingIds = [...bookingIds];
-  let participantBookedGross = 0;
-  if (uniqueBookingIds.length > 0) {
-    const bookingRows = await fetchInIdChunks<{ total_amount?: number | null }>(uniqueBookingIds, (slice) =>
-      admin.from("bookings").select("id, total_amount").in("id", slice),
-    );
-    participantBookedGross = bookingRows.reduce(
-      (sum, b) => sum + Number(b.total_amount ?? 0),
-      0,
-    );
-  }
-
-  let recognizedEarnings = 0;
-  if (uniqueBookingIds.length > 0) {
-    const ledgerRows: ProviderRevenueLedgerRow[] = [];
-    for (const slice of chunkIds(uniqueBookingIds, 150)) {
-      const ledgerQuery = admin
-        .from("finance_transactions")
-        .select("transaction_type, amount, net, booking_id")
-        .eq("provider_id", providerId)
-        .in("booking_id", slice)
-        .in("transaction_type", [...RECOGNIZED_REVENUE_TYPES])
-        .order("created_at", { ascending: true });
-      const page = await fetchAllLedgerPages<ProviderRevenueLedgerRow>(
-        ledgerQuery as Parameters<typeof fetchAllLedgerPages>[0],
-        MAX_FINANCE_TRANSACTIONS,
-      );
-      ledgerRows.push(...page);
-    }
-    recognizedEarnings = recognizedRevenue(ledgerRows);
-  }
-
-  return {
-    completed_count: rows.length,
-    session_booked_gross: sessionBookedGross,
-    participant_booked_gross: participantBookedGross,
-    recognized_earnings: recognizedEarnings,
-  };
-}
+export const maxDuration = 30;
 
 async function generateGroupBookingRef(admin: ReturnType<typeof getSupabaseAdmin>) {
   const { data, error } = await admin.rpc("generate_group_booking_ref");
@@ -152,6 +78,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search")?.trim();
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "20");
+    const includeStats = searchParams.get("include_stats") === "1";
     const offset = (page - 1) * limit;
 
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -214,7 +141,9 @@ export async function GET(request: NextRequest) {
 
       const [listResult, statsResult] = await Promise.all([
         query,
-        page === 1 ? computeCompletedGroupBookingStats(admin, providerId) : Promise.resolve(null),
+        page === 1 && includeStats
+          ? computeCompletedGroupBookingStats(admin, providerId)
+          : Promise.resolve(null),
       ]);
       const { data, error, count } = listResult;
       if (statsResult) {
@@ -578,6 +507,37 @@ export async function POST(request: NextRequest) {
       packageDiscount: groupPackagePricing.packageDiscount,
     });
 
+    let resolvedGroupStaffId: string | null =
+      staff_id != null && String(staff_id).trim() !== "" ? String(staff_id).trim() : null;
+    {
+      const { resolveProviderAnyStaffToken } = await import(
+        "@/lib/provider-booking/resolve-provider-any-staff-on-create"
+      );
+      const providerTimezone =
+        resolvedGroupStaffId === "any"
+          ? (await getProviderReportContext(admin, providerId)).timezone
+          : null;
+      const staffResolved = await resolveProviderAnyStaffToken({
+        supabaseAdmin: admin,
+        providerId,
+        locationId: location_type === "at_home" ? null : location_id ? String(location_id) : null,
+        providerTimeZone: providerTimezone,
+        scheduledAt: scheduled_at,
+        durationMinutes: effectiveDuration,
+        offeringId: service_id ? String(service_id) : null,
+        locationType: location_type === "at_home" ? "at_home" : "at_salon",
+        rawStaffId: resolvedGroupStaffId,
+      });
+      if (staffResolved.ok === false) {
+        return errorResponse(
+          staffResolved.message,
+          staffResolved.code,
+          staffResolved.code === "INVALID_STAFF" ? 400 : 409,
+        );
+      }
+      resolvedGroupStaffId = staffResolved.staffId;
+    }
+
     if (!allowOverride) {
       const holdEnd = addMinutes(
         scheduledAtDate,
@@ -594,7 +554,7 @@ export async function POST(request: NextRequest) {
         scheduledAtDate,
         holdEnd,
         {
-          dbStaffId: staff_id ? String(staff_id) : null,
+          dbStaffId: resolvedGroupStaffId,
           ...(excludeHoldId ? { excludeHoldId } : {}),
         }
       );
@@ -610,7 +570,7 @@ export async function POST(request: NextRequest) {
         providerId,
         scheduledAt: scheduledAtDate,
         durationMinutes: effectiveDuration,
-        staffIdsCsv: staff_id ? String(staff_id) : null,
+        staffIdsCsv: resolvedGroupStaffId,
         locationId: location_type === "at_home" ? null : location_id ? String(location_id) : null,
         excludeBookingId: undefined,
         mode: location_type === "at_home" ? "mobile" : "salon",
@@ -638,7 +598,7 @@ export async function POST(request: NextRequest) {
         title: title || "Group Session",
         scheduled_at,
         service_id: service_id || null,
-        staff_id: staff_id || null,
+        staff_id: resolvedGroupStaffId,
         location_id: location_type === "at_home" ? null : location_id || null,
         location_type: location_type === "at_home" ? "at_home" : "at_salon",
         address_line1: location_type === "at_home" ? address_line1 || null : null,
@@ -705,7 +665,7 @@ export async function POST(request: NextRequest) {
         groupBookingId: groupBooking.id,
         groupRef: refNumber,
         scheduledAt: scheduled_at,
-        staffId: staff_id ? String(staff_id) : null,
+        staffId: resolvedGroupStaffId,
         locationId: location_type === "at_home" ? null : location_id ? String(location_id) : null,
         locationType: (location_type === "at_home" ? "at_home" : "at_salon") as
           | "at_home"
@@ -782,10 +742,41 @@ export async function POST(request: NextRequest) {
         }
 
         const carriesTravelFee = wantsTravelFee && idx === primaryIdxResolved;
-        const participantStaffId =
+        let participantStaffRaw =
           (typeof p.staff_id === "string" && p.staff_id.trim()) ||
           (typeof p.staffId === "string" && p.staffId.trim()) ||
-          sessionContext.staffId;
+          sessionContext.staffId ||
+          null;
+        if (participantStaffRaw === "any") {
+          const { resolveProviderAnyStaffToken } = await import(
+            "@/lib/provider-booking/resolve-provider-any-staff-on-create"
+          );
+          const { timezone: providerTimezone } = await getProviderReportContext(admin, providerId);
+          const pDuration =
+            typeof p.duration_minutes === "number"
+              ? p.duration_minutes
+              : duration_minutes || 60;
+          const pStaff = await resolveProviderAnyStaffToken({
+            supabaseAdmin: admin,
+            providerId,
+            locationId: sessionContext.locationId,
+            providerTimeZone: providerTimezone,
+            scheduledAt: scheduled_at,
+            durationMinutes: pDuration,
+            offeringId: String(svcId),
+            locationType: sessionContext.locationType,
+            rawStaffId: participantStaffRaw,
+          });
+          if (pStaff.ok === false) {
+            if (newlyCreatedBookingIds.length > 0) {
+              await admin.from("bookings").delete().in("id", newlyCreatedBookingIds);
+            }
+            await admin.from("group_bookings").delete().eq("id", groupBooking.id);
+            return errorResponse(pStaff.message, pStaff.code, pStaff.code === "INVALID_STAFF" ? 400 : 409);
+          }
+          participantStaffRaw = pStaff.staffId;
+        }
+        const participantStaffId = participantStaffRaw;
         const created = await createGroupParticipantChildBooking(admin, sessionContext, {
           customerId,
           serviceId: String(svcId),

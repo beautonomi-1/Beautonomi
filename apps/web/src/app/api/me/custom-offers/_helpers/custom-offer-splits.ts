@@ -81,7 +81,7 @@ export async function computeCustomOfferSplits(
     if (!config) {
       const { data: legacy } = await supabase
         .from("loyalty_rules")
-        .select("redemption_rate, min_redemption_points, max_redemption_percentage")
+        .select("redemption_rate")
         .eq("is_active", true)
         .order("effective_from", { ascending: false })
         .limit(1)
@@ -157,7 +157,7 @@ export async function computeCustomOfferSplits(
   const giftCode = (input.giftCardCode || "").toString().trim().toUpperCase();
   if (giftCode) {
     const { data: gcRow } = await (supabase.from("gift_cards") as any)
-      .select("id, code, balance, currency, status, expires_at, is_active")
+      .select("id, code, balance, currency, expires_at, is_active")
       .eq("code", giftCode)
       .maybeSingle();
     if (!gcRow) {
@@ -171,7 +171,7 @@ export async function computeCustomOfferSplits(
       expires_at?: string | null;
       is_active?: boolean | null;
     };
-    if (gc.is_active === false || (gc.status && gc.status !== "active")) {
+    if (gc.is_active === false) {
       return { ok: false, error: "Gift card is no longer active.", code: "GIFT_CARD_INACTIVE" };
     }
     if (gc.expires_at && new Date(gc.expires_at).getTime() < Date.now()) {

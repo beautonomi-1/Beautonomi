@@ -11,6 +11,7 @@ import { calculatePayRun } from "@/lib/payroll/pay-run-engine";
 import { payrollDisabledMessage } from "@/lib/payroll/payroll-access";
 import { requireManagePayroll } from "@/lib/payroll/require-manage-payroll";
 import type { PayPeriodType } from "@/lib/payroll/pay-run-engine";
+import { resolvePayrollV2Enabled } from "@/lib/payroll/payroll-v2-gate";
 
 /**
  * GET /api/provider/pay-runs/[id]/compare
@@ -50,12 +51,7 @@ export async function GET(
     const start = payRun.pay_period_start as string;
     const end = payRun.pay_period_end as string;
 
-    const { data: settings } = await admin
-      .from("provider_settings")
-      .select("payroll_v2_enabled")
-      .eq("provider_id", providerId)
-      .maybeSingle();
-    const v2On = (settings as { payroll_v2_enabled?: boolean } | null)?.payroll_v2_enabled === true;
+    const v2On = await resolvePayrollV2Enabled(admin, providerId);
 
     const withV2 = await calculatePayRun(admin, providerId, start, end, periodType, {
       forcePayrollV2: true,
