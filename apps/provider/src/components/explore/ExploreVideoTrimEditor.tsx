@@ -10,7 +10,8 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
-import Animated, { useSharedValue, runOnJS } from "react-native-reanimated";
+import Animated, { useSharedValue } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { useEventListener } from "expo";
 import { Image } from "expo-image";
@@ -20,15 +21,20 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { useAfterHide } from "@/hooks/useAfterHide";
 import { twStyle } from "@/lib/twStyle";
 import { useTranslation } from "@beautonomi/i18n";
+import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import {
   clampExploreTrimRange,
   defaultExploreVideoTrim,
   EXPLORE_MIN_CLIP_MS,
   type ExploreVideoTrimWindow,
 } from "@/lib/explore-video-trim";
+import { exploreThumbnailFileUri } from "@/lib/explore-video-poster";
 
 export type ExploreVideoTrimResult = ExploreVideoTrimWindow & {
   source_duration_ms: number;
+  poster_uri?: string;
+  poster_width?: number;
+  poster_height?: number;
 };
 
 type Props = {
@@ -243,36 +249,36 @@ export function ExploreVideoTrimEditor({
 
   const panStart = Gesture.Pan()
     .onBegin(() => {
-      runOnJS(syncGestureBaseFromTrim)();
-      runOnJS(setScrubbing)(true);
+      scheduleOnRN(syncGestureBaseFromTrim);
+      scheduleOnRN(setScrubbing, true);
     })
     .onUpdate((ev) => {
       const delta = ev.translationX / trackWidth;
       const next = Math.min(gestureBaseEnd.value - 0.05, Math.max(0, gestureBaseStart.value + delta));
-      runOnJS(updateFromRatios)(next, gestureBaseEnd.value, "start");
+      scheduleOnRN(updateFromRatios, next, gestureBaseEnd.value, "start");
     })
     .onFinalize(() => {
-      runOnJS(setScrubbing)(false);
+      scheduleOnRN(setScrubbing, false);
     });
 
   const panEnd = Gesture.Pan()
     .onBegin(() => {
-      runOnJS(syncGestureBaseFromTrim)();
-      runOnJS(setScrubbing)(true);
+      scheduleOnRN(syncGestureBaseFromTrim);
+      scheduleOnRN(setScrubbing, true);
     })
     .onUpdate((ev) => {
       const delta = ev.translationX / trackWidth;
       const next = Math.min(1, Math.max(gestureBaseStart.value + 0.05, gestureBaseEnd.value + delta));
-      runOnJS(updateFromRatios)(gestureBaseStart.value, next, "end");
+      scheduleOnRN(updateFromRatios, gestureBaseStart.value, next, "end");
     })
     .onFinalize(() => {
-      runOnJS(setScrubbing)(false);
+      scheduleOnRN(setScrubbing, false);
     });
 
   const panWindow = Gesture.Pan()
     .onBegin(() => {
-      runOnJS(syncGestureBaseFromTrim)();
-      runOnJS(setScrubbing)(true);
+      scheduleOnRN(syncGestureBaseFromTrim);
+      scheduleOnRN(setScrubbing, true);
     })
     .onUpdate((ev) => {
       const len = gestureBaseEnd.value - gestureBaseStart.value;
@@ -287,17 +293,58 @@ export function ExploreVideoTrimEditor({
         e = 1;
         s = 1 - len;
       }
-      runOnJS(updateFromRatios)(s, e, "window");
+      scheduleOnRN(updateFromRatios, s, e, "window");
     })
     .onFinalize(() => {
-      runOnJS(setScrubbing)(false);
+      scheduleOnRN(setScrubbing, false);
     });
 
   const handleConfirm = () => {
     if (!ready || closingRef.current) return;
     closingRef.current = true;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    onConfirm({ ...trim, source_duration_ms: resolvedFullMs });
+    void (async () => {
+      let posterUri: string | undefined;
+      let posterWidth: number | undefined;
+      let posterHeight: number | undefined;
+      try {
+        await Promise.race([
+          (async () => {
+            const thumbs = await player.generateThumbnailsAsync(trim.trim_start_ms / 1000, {
+              maxWidth: 1080,
+            });
+            const thumb = thumbs[0];
+            const direct = exploreThumbnailFileUri(thumb);
+            if (direct) {
+              posterUri = direct;
+              posterWidth = thumb?.width;
+              posterHeight = thumb?.height;
+              return;
+            }
+            if (!thumb) return;
+            const rendered = await ImageManipulator.manipulate(thumb).renderAsync();
+            const saved = await rendered.saveAsync({ compress: 0.85, format: SaveFormat.JPEG });
+            if (saved.uri) {
+              posterUri = saved.uri;
+              posterWidth = saved.width;
+              posterHeight = saved.height;
+            }
+          })(),
+          new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error("poster_timeout")), 4000);
+          }),
+        ]);
+      } catch {
+        posterUri = undefined;
+      }
+      onConfirm({
+        ...trim,
+        source_duration_ms: resolvedFullMs,
+        ...(posterUri
+          ? { poster_uri: posterUri, poster_width: posterWidth, poster_height: posterHeight }
+          : {}),
+      });
+    })();
   };
 
   const handleCancel = () => {

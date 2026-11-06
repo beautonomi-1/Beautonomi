@@ -27,6 +27,15 @@ const DEFAULTS = {
     /** Part L: when 2FA is enabled, superadmin + admin_finance must complete MFA (AAL2). */
     required_for_admins: true,
     required_roles: [...DEFAULT_MFA_REQUIRED_ADMIN_ROLES] as string[],
+    enforce_all_from: null as string | null,
+  },
+  provider_protection: {
+    step_up: "off" as const,
+    device_verification: "off" as const,
+    step_up_window_seconds: 600,
+    trusted_device_days: 180,
+    limited_trust_hours: 24,
+    rollout_started_at: null as string | null,
   },
   /** IPs / CIDRs allowed to reach /admin and /api/admin. Empty = no restriction. Enforced in proxy.ts. */
   admin_ip_allowlist: [] as string[],
@@ -69,6 +78,10 @@ export async function GET(request: NextRequest) {
     const merged = {
       password_policy: { ...DEFAULTS.password_policy, ...(security.password_policy as object) },
       two_factor: { ...DEFAULTS.two_factor, ...(security.two_factor as object) },
+      provider_protection: {
+        ...DEFAULTS.provider_protection,
+        ...(security.provider_protection as object),
+      },
       rate_limiting: { ...DEFAULTS.rate_limiting, ...(security.rate_limiting as object) },
       data_retention: { ...DEFAULTS.data_retention, ...(security.data_retention as object) },
       admin_ip_allowlist: Array.isArray(security.admin_ip_allowlist)
@@ -142,6 +155,25 @@ export async function PATCH(req: NextRequest) {
         return errorResponse("two_factor.required_roles must be an array of role names", "VALIDATION_ERROR", 400);
       }
     }
+    if (body.two_factor?.enforce_all_from !== undefined && body.two_factor.enforce_all_from !== null) {
+      const d = String(body.two_factor.enforce_all_from).trim();
+      if (d && Number.isNaN(Date.parse(d))) {
+        return errorResponse("two_factor.enforce_all_from must be an ISO date or null", "VALIDATION_ERROR", 400);
+      }
+      body.two_factor.enforce_all_from = d || null;
+    }
+    if (body.provider_protection !== undefined) {
+      const pp = body.provider_protection as Record<string, unknown>;
+      for (const field of ["step_up", "device_verification"] as const) {
+        if (pp[field] !== undefined && !["off", "monitor", "enforce"].includes(String(pp[field]))) {
+          return errorResponse(
+            `provider_protection.${field} must be off, monitor, or enforce`,
+            "VALIDATION_ERROR",
+            400,
+          );
+        }
+      }
+    }
 
     const { data: row, error: fetchError } = await supabase
       .from("platform_settings")
@@ -171,10 +203,23 @@ export async function PATCH(req: NextRequest) {
     }
 
     const currentSecurity = (currentSettings.security as Record<string, any>) ?? {};
+    if (body.provider_protection !== undefined) {
+      const pp = body.provider_protection as Record<string, unknown>;
+      const existingStamp = (currentSecurity.provider_protection as Record<string, unknown> | undefined)
+        ?.rollout_started_at;
+      const stamp =
+        typeof existingStamp === "string" && existingStamp
+          ? existingStamp
+          : pp.device_verification && pp.device_verification !== "off"
+            ? new Date().toISOString()
+            : null;
+      pp.rollout_started_at = stamp;
+    }
     const updatedSecurity = {
       ...currentSecurity,
       password_policy: body.password_policy ?? currentSecurity.password_policy,
       two_factor: body.two_factor ?? currentSecurity.two_factor,
+      provider_protection: body.provider_protection ?? currentSecurity.provider_protection,
       rate_limiting: body.rate_limiting ?? currentSecurity.rate_limiting,
       data_retention: body.data_retention ?? currentSecurity.data_retention,
       admin_ip_allowlist: body.admin_ip_allowlist ?? currentSecurity.admin_ip_allowlist,

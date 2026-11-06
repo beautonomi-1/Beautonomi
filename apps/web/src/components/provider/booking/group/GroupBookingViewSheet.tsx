@@ -21,11 +21,13 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import {
+  canResendGuestPayLink,
   computeGroupOutstandingBalance,
   normalizeGroupBookingId,
 } from "@/lib/provider-booking/group-booking-utils";
 import { paycloudTipIncludedInChargeAmount } from "@/lib/payments/paycloud-booking-charge";
 import { GroupBookingFinancialsSection } from "./GroupBookingFinancialsSection";
+import { GroupSessionSteps } from "./GroupSessionSteps";
 import { PaycloudCollectButton } from "@/components/provider-portal/PaycloudCollectButton";
 import { ParticipantRefundSheet } from "../scenario/ParticipantRefundSheet";
 import { GroupPaystackTerminalSheet } from "./GroupPaystackTerminalSheet";
@@ -157,6 +159,10 @@ export function GroupBookingViewSheet({
   const started = booking?.status === "started";
   const hasLinkedBookings = participants.some((p) => p.booking_id);
   const travelFee = Number((booking as { travel_fee?: number } | null)?.travel_fee ?? 0);
+  const refundableParticipants = participants
+    .filter((p) => p.booking_id && participantMaxRefundable(p) > 0.01)
+    .map((p) => ({ participant: p, amount: participantMaxRefundable(p) }));
+  const refundableTotal = refundableParticipants.reduce((s, r) => s + r.amount, 0);
   const openTerminalPayments = booking?.open_terminal_payments ?? [];
   const entityInFlight = openTerminalPayments.length > 0;
   const firstOpenTerminal = openTerminalPayments[0];
@@ -244,6 +250,7 @@ export function GroupBookingViewSheet({
       await providerApi.checkInGroupParticipant(normalizeGroupBookingId(booking.id), participantId);
       toast.success(t(`${gv}.checkedIn`));
       await load();
+      onRefresh?.();
     } catch {
       toast.error(t(`${gv}.checkInFailed`));
     }
@@ -274,8 +281,16 @@ export function GroupBookingViewSheet({
       );
       toast.success(t(`${gv}.inviteResent`));
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : t(`${gv}.inviteResendFailed`));
+      if (err instanceof FetchError && err.code === "TOO_SOON") {
+        toast.error(t(`${gv}.inviteResendTooSoon`));
+      } else {
+        toast.error(err instanceof FetchError ? err.message : t(`${gv}.inviteResendFailed`));
+      }
     }
+  };
+
+  const scrollToCollect = () => {
+    document.getElementById("group-collect-payment")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const handleRecordPayment = async (
@@ -417,6 +432,21 @@ export function GroupBookingViewSheet({
               ) : null}
             </div>
 
+            {booking.status ? (
+              <GroupSessionSteps
+                status={booking.status}
+                participants={participants}
+                outstanding={outstanding}
+                busy={busy}
+                canEdit={canEdit}
+                canProcessPayments={canProcessPayments && hasLinkedBookings}
+                onStart={() => void handleStatus("started")}
+                onCollect={scrollToCollect}
+                onComplete={() => void handleCompleteClick()}
+                onReceipt={() => void handleReceipt()}
+              />
+            ) : null}
+
             <BookingSectionCard>
               <BookingSectionLabel className="mb-2 flex items-center gap-1.5">
                 <Calendar className="h-4 w-4" />
@@ -447,8 +477,40 @@ export function GroupBookingViewSheet({
               />
             ) : null}
 
+            {canIssueRefunds && refundableParticipants.length > 0 ? (
+              <BookingSectionCard data-testid="group-refund-preview">
+                <BookingSectionLabel className="mb-1">{t(`${gv}.refundPreviewTitle`)}</BookingSectionLabel>
+                <p className="mb-2 text-xs text-gray-500">
+                  {t(`${gv}.refundPreviewBody`, { amount: formatMoney(refundableTotal) })}
+                </p>
+                <ul className="space-y-2 text-sm">
+                  {refundableParticipants.map(({ participant: p, amount }) => (
+                    <li key={p.id} className="flex items-center justify-between gap-2">
+                      <span className="min-w-0 truncate">{p.client_name ?? t(`${gv}.guest`)}</span>
+                      <span className="flex shrink-0 items-center gap-3">
+                        <span className="font-medium">{formatMoney(amount)}</span>
+                        <button
+                          type="button"
+                          className="text-xs font-semibold underline"
+                          onClick={() =>
+                            setParticipantRefund({
+                              bookingId: p.booking_id!,
+                              name: p.client_name ?? t(`${gv}.participant`),
+                              maxAmount: amount,
+                            })
+                          }
+                        >
+                          {t(`${gv}.refund`)}
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </BookingSectionCard>
+            ) : null}
+
             {canProcessPayments && !isFinal && outstanding > 0 ? (
-              <BookingSectionCard>
+              <BookingSectionCard id="group-collect-payment">
                 <BookingSectionLabel className="mb-2">{t(`${gv}.collectPayment`)}</BookingSectionLabel>
                 {!hasLinkedBookings ? (
                   <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3">
@@ -581,19 +643,16 @@ export function GroupBookingViewSheet({
                         ) : null}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2">
-                        {canEdit &&
-                        !isFinal &&
-                        !p.is_primary_contact &&
-                        (p as { share_status?: string | null }).share_status === "pending" ? (
+                        {canEdit && !isFinal && canResendGuestPayLink(p) ? (
                           <button
                             type="button"
                             className="text-xs font-semibold underline"
                             onClick={() => void handleResendInvite(p.id)}
                           >
-                            {t(`${gv}.resendInvite`)}
+                            {t(`${gv}.resendPayLink`)}
                           </button>
                         ) : null}
-                        {canEdit && started && !inactiveChild && !p.checked_in ? (
+                        {canEdit && (started || canStart) && !isFinal && !inactiveChild && !p.checked_in ? (
                           <button type="button" className="text-xs font-semibold underline" onClick={() => void handleCheckIn(p.id)}>
                             {t(`${gv}.checkIn`)}
                           </button>

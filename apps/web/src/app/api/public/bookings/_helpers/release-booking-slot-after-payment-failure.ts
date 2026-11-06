@@ -18,10 +18,31 @@ export async function releaseBookingSlotAfterPaymentFailure(
 ): Promise<void> {
   const { data: row, error: fetchErr } = await adminSupabase
     .from("bookings")
-    .select("id, wallet_amount, gift_card_amount, currency, tenant_id, provider_id")
+    .select("id, wallet_amount, gift_card_amount, currency, tenant_id, provider_id, customer_package_entitlement_id")
     .eq("id", bookingId)
     .eq("customer_id", customerId)
     .maybeSingle();
+
+  const entitlementId = (row as { customer_package_entitlement_id?: string | null } | null)
+    ?.customer_package_entitlement_id;
+  if (entitlementId) {
+    try {
+      const { data: claimed } = await adminSupabase
+        .from("bookings")
+        .update({ customer_package_entitlement_id: null })
+        .eq("id", bookingId)
+        .eq("customer_package_entitlement_id", entitlementId)
+        .select("id");
+      if (claimed?.length) {
+        await adminSupabase.rpc("restore_customer_package_entitlement", {
+          p_entitlement_id: entitlementId,
+          p_customer_id: customerId,
+        });
+      }
+    } catch (e) {
+      console.warn("[releaseBookingSlotAfterPaymentFailure] restore package session", bookingId, e);
+    }
+  }
 
   if (fetchErr || !row) {
     console.error(
@@ -151,6 +172,7 @@ export async function releaseBookingSlotAfterPaymentFailure(
       wallet_amount: 0,
       gift_card_id: null,
       gift_card_amount: 0,
+      customer_package_entitlement_id: null,
     })
     .eq("id", bookingId)
     .eq("customer_id", customerId);

@@ -31,13 +31,14 @@ import {
 } from "@/lib/share-explore-post";
 import {
   buildExploreSlides,
-  explorePostGridImageUrl,
   firstSlideIsVideo,
   resolveExploreVideoSrc,
   shouldOpenExploreVideoFeed,
 } from "@/lib/explore-media";
 import { getExploreVideoPlaybackTrimWindow } from "@/lib/explore-video-playback-trim";
 import { ExplorePhotoZoomModal } from "@/components/explore/ExplorePhotoZoomModal";
+import { ExplorePostGridMedia } from "@/components/explore/ExplorePostGridMedia";
+import { ExploreVideoReelSideLogo } from "@/components/explore/ExploreVideoReelBrand";
 import { ExploreTextOverlayLayer } from "@/components/explore/ExploreTextOverlayLayer";
 import {
   filterOverlaysForPlaybackTime,
@@ -85,6 +86,7 @@ export default function ExplorePostScreen() {
   const [saving, setSaving] = useState(false);
   const [mediaIndex, setMediaIndex] = useState(0);
   const [videoPlaybackMs, setVideoPlaybackMs] = useState(0);
+  const [videoPlaying, setVideoPlaying] = useState(false);
   const [reportTarget, setReportTarget] = useState<{ type: ContentReportTargetType; id: string; title?: string } | null>(null);
 
   const explorePostReturnTo = id
@@ -560,6 +562,7 @@ export default function ExplorePostScreen() {
                         onPlaybackTimeUpdate={
                           mediaIndex === index ? setVideoPlaybackMs : undefined
                         }
+                        onPlayingChange={mediaIndex === index ? setVideoPlaying : undefined}
                       />
                       {shouldDrawVideoTextOverlays(post.media_meta?.[index]) ? (
                         <ExploreTextOverlayLayer
@@ -568,6 +571,11 @@ export default function ExplorePostScreen() {
                             mediaIndex === index ? videoPlaybackMs : 0,
                           )}
                         />
+                      ) : null}
+                      {mediaIndex === index ? (
+                        <View style={{ position: "absolute", right: 12, bottom: 72, zIndex: 4 }}>
+                          <ExploreVideoReelSideLogo spinning={mediaIndex === index && videoPlaying} />
+                        </View>
                       ) : null}
                     </View>
                   ) : (
@@ -957,7 +965,8 @@ export default function ExplorePostScreen() {
                 </Text>
                 <View style={{ flexDirection: "row", flexWrap: "wrap", marginHorizontal: -6 }}>
                   {relatedPosts.slice(0, 6).map((p) => {
-                    const img = explorePostGridImageUrl(p);
+                    const relW = (screenWidth - contentPadding * 2 - 12) / 2;
+                    const relH = relW / (4 / 5);
                     return (
                       <TouchableOpacity
                         key={p.id}
@@ -966,7 +975,7 @@ export default function ExplorePostScreen() {
                           router.push({ pathname: "/(app)/explore-post", params: { id: p.id } });
                         }}
                         style={{
-                          width: (screenWidth - contentPadding * 2 - 12) / 2,
+                          width: relW,
                           marginHorizontal: 6,
                           marginBottom: 12,
                         }}
@@ -976,12 +985,7 @@ export default function ExplorePostScreen() {
                         accessibilityRole="button"
                       >
                         <View style={{ borderRadius: 12, overflow: "hidden", backgroundColor: "#F3F4F6" }}>
-                          <Image
-                            source={{ uri: img || "https://placehold.co/400x500/f5f5f5/999?text=Beauty" }}
-                            style={{ width: "100%", aspectRatio: 4 / 5 }}
-                            contentFit="cover"
-                            cachePolicy="memory-disk"
-                          />
+                          <ExplorePostGridMedia post={p} width={relW} height={relH} />
                           {p.caption ? (
                             <Text
                               style={{ fontSize: 12, color: "#374151", padding: 8, lineHeight: 16 }}

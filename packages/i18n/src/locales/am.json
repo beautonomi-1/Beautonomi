@@ -13778,7 +13778,9 @@
       "replying": "ለአስተያየት ምላሽ",
       "replyPlaceholder": "ምላሽ ይጻፉ…",
       "shareMediaFailedTitle": "ሚዲያ ማጋራት አልተቻለም",
-      "shareMediaFailedBody": "ይህን ፋይል ለማጋራት ማዘጋጀት አልቻልንም። በምትኩ አገናኙን ለማጋራት ይሞክሩ።"
+      "shareMediaFailedBody": "ይህን ፋይል ለማጋራት ማዘጋጀት አልቻልንም። በምትኩ አገናኙን ለማጋራት ይሞክሩ።",
+      "loadingComments": "በመጫን ላይ…",
+      "loadMoreComments": "ተጨማሪ አስተያየቶችን ጫን"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -15010,7 +15012,20 @@
           "emailInputA11y": "E-mail input",
           "sendResetLink": "Envoyer le lien de réinitialisation",
           "sendResetLinkA11y": "Envoyer le lien de réinitialisation",
-          "backToLoginA11y": "Retour to login"
+          "backToLoginA11y": "Retour to login",
+          "codeA11y": "የይለፍ ቃል ዳግም ማስጀመሪያ ኮድ",
+          "invalidCodeTitle": "ኮዱ አልተቀበለም",
+          "invalidCodeBody": "ከመልዕክቱ የደረሰውን ባለ {{digits}} አሃዝ ኮድ ያስገቡ።",
+          "resend": "መልዕክቱን እንደገና ላክ",
+          "resendA11y": "የዳግም ማስጀመሪያ መልዕክት እንደገና ላክ",
+          "signedInIntro": "ወደ ሂሳቡ መልዕክት ኮድ እና የዳግም ማስጀመሪያ አገናኝ እንልካለን።",
+          "back": "Retour",
+          "stepCode": "1. ባለ {{digits}} አሃዝ ኮድ ያስገቡ",
+          "stepPassword": "2. አዲስ የይለፍ ቃል ይምረጡ",
+          "codeVerified": "ኮዱ ተረጋግጧል",
+          "submit": "Réinitialiser le mot de passe",
+          "submittingA11y": "የይለፍ ቃል በመቀየር ላይ",
+          "linkAlternative": "አገናኙን ይመርጣሉ? አዲሱን የይለፍ ቃል በመቃኛ ለማስቀመጥ ከመልዕክቱ ይክፈቱት።"
         },
         "authSafetyAndAge": {
           "linkLabel": "Sécurité et contrôles parentaux",
@@ -15282,7 +15297,8 @@
           "returnLabel": "Retour {{status}}",
           "tracking": "Suivi : {{number}}",
           "collectAt": "Retrait chez {{name}}, {{city}}",
-          "deliverTo": "Livraison à {{city}}"
+          "deliverTo": "Livraison à {{city}}",
+          "paymentDueBadge": "ክፍያ ይጠበቃል"
         },
         "productReviews": {
           "title": "Avis",
@@ -16088,7 +16104,14 @@
           "lifecyclePartialRefundDescription": "Un remboursement partiel a été enregistré pour cette réservation.",
           "lifecycleRefundedDescription": "Le paiement de cette réservation a été remboursé.",
           "lifecyclePaymentFailedDescription": "Le paiement n’a pas abouti. Réessayez ou contactez l’assistance avec ce numéro de réservation.",
-          "lifecyclePaymentNotConfirmedDescription": "Paiement has not been confirmé yet."
+          "lifecyclePaymentNotConfirmedDescription": "Paiement has not been confirmé yet.",
+          "refundProcessingTitle": "ተመላሽ በሂደት ላይ ነው",
+          "refundProcessingBody": "ይህ ቀጠሮ ተሰርዟል። ተመላሽ ገንዘብዎን እያጠናቀቅን ነው እና በቅርቡ በቦርሳዎ ይታያል። ምንም ማድረግ አያስፈልግዎትም።",
+          "rescheduleInProgressTitle": "ጊዜ መቀየር በሂደት ላይ ነው",
+          "rescheduleInProgressBody": "ይህ ቀጠሮ ወደ ሌላ ሰዓት እየተዛወረ ነው። አዲሱን ክፍያ ይጨርሱ እና የከፈሉት መጠን በራሱ ይተላለፋል። ያንን ክፍያ ከለቀቁ፣ ጊዜው ሲያበቃ ቀጠሮው እንደገና ሊሰረዝ ይችላል፣ በ30 ደቂቃ አካባቢ።",
+          "cancelGroupPreviewTitle": "ይህ ሙሉ የቡድን ክፍለ ጊዜ {{ref}}ን ይሰርዛል፣ {{count}} እንግዶችን ጨምሮ።",
+          "cancelGroupPreviewOtherBookings": "በዚህ ቡድን ውስጥ ያሉ ሌሎች ቀጠሮዎችዎ: {{currency}} {{refund}} ወደ ቦርሳዎ ይመለሳል፣ {{currency}} {{fee}} የስረዛ ክፍያ።",
+          "cancelGroupPreviewGuestShares": "የእንግዶች የራሳቸው ድርሻ ክፍያዎች ({{currency}} {{amount}}) ወደ ከፈሉበት ካርዶች ሙሉ በሙሉ ይመለሳሉ።"
         },
         "groupBookingDetail": {
           "back": "Retour",
@@ -16167,7 +16190,11 @@
           "cancelMySpotConfirm": "በዚህ ቡድን ማስያዝ ውስጥ ያለዎትን ቦታ ይሰርዙ? አገልግሎቶችዎ ተወግደዋል እና ማንኛውም የከፈሉት ክፍያ ወደ ካርድዎ ተመላሽ ይደረጋል።",
           "spotCancelled": "Your spot has been annulé.",
           "guestRemoved": "እንግዳ ተወግዷል።",
-          "guestCancelFailed": "Impossible de mettre à jour the réservation de groupe."
+          "guestCancelFailed": "Impossible de mettre à jour the réservation de groupe.",
+          "resendPayLink": "የክፍያ አገናኝ እንደገና ላክ",
+          "cancelGroupSession": "የቡድን ክፍለ ጊዜ ሰርዝ",
+          "cancelGroupSessionHint": "ከማረጋገጥዎ በፊት የሙሉ ቡድኑን ተመላሽ የሚያዩበትን ቀጠሮዎን ይከፍታል።",
+          "askOrganizerToReschedule": "ይህ ክፍለ ጊዜ ሌላ ሰዓት የሚያስፈልገው ከሆነ አዘጋጁን ይጠይቁ።"
         },
         "announcements": {
           "retry": "Réessayer",
@@ -16571,21 +16598,21 @@
           "saveErrorBeauty": "Préférences beauté : {{message}}",
           "saveFailedGeneric": "échec",
           "profileQuestionsSection": "Profil questions",
-          "profileQuestionsHint": "Answer at least 3 to complete your profile. ({{answered}}/3 done)",
+          "profileQuestionsHint": "መገለጫዎን ለማጠናቀቅ ቢያንስ 3 ይመልሱ። ({{answered}}/3 ተጠናቋል)",
           "interestsSection": "Centres d’intérêt",
           "interestsSubtitle": "Ajouter things you're into (select or type)",
           "interestsPlaceholder": "ex. Cheveux, ongles, soins…",
           "interestsA11y": "Vos centres d’intérêt",
           "beautySection": "Préférences beauté",
-          "beautySubtitle": "Help prestataires personalise your experience",
+          "beautySubtitle": "አቅራቢዎች ተሞክሮዎን እንዲያበጁ ያግዙ",
           "hairType": "Type de cheveux",
           "skinType": "Type de peau",
           "thingsToAvoid": "À éviter",
-          "thingsToAvoidPlaceholder": "Sélectionner or type (e.g. fragrances, sulfates)",
+          "thingsToAvoidPlaceholder": "ይምረጡ ወይም ይጻፉ (ለምሳሌ ሽቶዎች፣ ሰልፌቶች)",
           "thingsToAvoidA11y": "À éviter",
           "appointmentStyle": "Rendez-vous style",
           "productPreferences": "Produit preferences",
-          "productPreferencesPlaceholder": "Sélectionner or type (e.g. Vegan, Cruelty-free)",
+          "productPreferencesPlaceholder": "ይምረጡ ወይም ይጻፉ (ለምሳሌ ቬጋን፣ ጭካኔ የሌለው)",
           "productPreferencesA11y": "Produit preferences",
           "allergies": "Allergies et sensibilités",
           "allergiesPlaceholder": "ex. Nickel, latex…",
@@ -16629,7 +16656,7 @@
           "skinMature": "Mature",
           "avoidStrongFragrances": "Parfums forts",
           "avoidAlcohol": "Alcohol-based produits",
-          "avoidSulfates": "Sulfates",
+          "avoidSulfates": "Salfati",
           "avoidParabens": "Parabènes",
           "avoidEssentialOils": "Huiles essentielles",
           "avoidLatex": "Latex",
@@ -16640,7 +16667,7 @@
           "styleRelaxed": "Détendu et sans précipitation",
           "styleSocial": "Sociable et bavard",
           "styleQuiet": "Calme et minimal",
-          "styleFlexible": "Flexible",
+          "styleFlexible": "Rahisi",
           "prefVegan": "Végane",
           "prefCrueltyFree": "Sans cruauté",
           "prefNaturalOrganic": "Naturel / bio",
@@ -16667,7 +16694,7 @@
           "interestCooking": "Cuisine",
           "allergyFragrance": "Parfum",
           "allergyParabens": "Parabènes",
-          "allergySulfates": "Sulfates",
+          "allergySulfates": "Salfati",
           "allergyAlcohol": "Alcool",
           "allergyDyes": "Colorations",
           "allergyFormaldehyde": "Formaldéhyde",
@@ -18140,6 +18167,9 @@
           "invalidBody": "የሚሰራ ቀን (YYYY-MM-DD) እና ሰዓት (HH:MM) ያስገቡ።",
           "failedTitle": "Impossible de reschedule",
           "noSlots": "በዚህ ቀን ምንም ጊዜ የለም። ሌላ ቀን ይሞክሩ።"
+        },
+        "resetPassword": {
+          "policyMix": "የይለፍ ቃልዎ የሂሳብ ህጎችን የሚያሟላ የፊደላትና የቁጥሮች ድብልቅ ይፈልጋል።"
         }
       }
     },
@@ -18169,7 +18199,7 @@
       "accountNameLabel": "Account holder nom",
       "save": "Enregistrer bank account",
       "screenTitle": "Comptes bancaires",
-      "selectBank": "Select your bank"
+      "selectBank": "ባንክዎን ይምረጡ"
     },
     "walletBankRefund": {
       "notEnabled": "Les remboursements bancaires ne sont pas disponibles sur votre marché pour le moment.",
@@ -18422,7 +18452,11 @@
     "payForEveryone": "ለሁሉም ሰው እከፍላለሁ።",
     "splitPayment": "Split paiement",
     "splitPaymentHint": "አሁን የራስዎን አገልግሎቶች እና የቦታ ማስያዣ ክፍያዎችን ይከፍላሉ. እያንዳንዱ እንግዳ የድርሻቸውን ለመክፈል አገናኝ ያገኛል።",
-    "guestSharesPaidByInvite": "እንግዶች በግብዣ አገናኝ በኩል ይከፍላሉ።"
+    "guestSharesPaidByInvite": "እንግዶች በግብዣ አገናኝ በኩል ይከፍላሉ።",
+    "rescheduleReplacesPreviousBody": "የዚህ ቀጠሮ ክፍያ ሲጠናቀቅ የመጀመሪያ ቀጠሮዎ በራሱ እና ያለክፍያ ይሰረዛል። ቀድሞ የከፈሉት እዚህ ይተገበራል፣ የቀረውም በቦርሳዎ ይቆያል።",
+    "rescheduleCreditNote": "ለመጀመሪያው ቀጠሮ በመስመር ላይ የከፈሉት ማንኛውም መጠን እዚህ ይተገበራል። ልዩነቱን ብቻ ይከፍላሉ።",
+    "rescheduleCreditApplied": "በመጀመሪያው ቀጠሮ ተከፍሏል",
+    "rescheduleCreditSurplus": "የቀረው {{amount}} በቦርሳዎ እንደ ክሬዲት ይቆያል።"
   },
   "payments": {
     "pay": "Pay",
@@ -19469,7 +19503,11 @@
         "pickNextAvailable": "Find suivant disponible heure",
         "splitPayment": "Split paiement",
         "guestSharesPaidByInvite": "እንግዶች በግብዣ አገናኝ በኩል ይከፍላሉ።",
-        "splitPaymentHint": "አሁን የራስዎን አገልግሎቶች እና የቦታ ማስያዣ ክፍያዎችን ይከፍላሉ. እያንዳንዱ እንግዳ የድርሻቸውን ለመክፈል አገናኝ ያገኛል።"
+        "splitPaymentHint": "አሁን የራስዎን አገልግሎቶች እና የቦታ ማስያዣ ክፍያዎችን ይከፍላሉ. እያንዳንዱ እንግዳ የድርሻቸውን ለመክፈል አገናኝ ያገኛል።",
+        "rescheduleCreditPaid": "የመጀመሪያ ክፍያዎ ይህን ቀጠሮ ይሸፍናል።",
+        "rescheduleCreditIntro": "ለመጀመሪያው ቀጠሮ በመስመር ላይ የከፈሉት ማንኛውም መጠን እዚህ ይተገበራል። ልዩነቱን ብቻ ይከፍላሉ።",
+        "rescheduleCreditApplied": "በመጀመሪያው ቀጠሮ ተከፍሏል",
+        "rescheduleCreditSurplus": "የቀረው {{amount}} በቦርሳዎ እንደ ክሬዲት ይቆያል።"
       },
       "addToWaitlist": {
         "enterName": "Veuillez saisir your nom",
@@ -21125,7 +21163,13 @@
           "cancelled": "Annulé",
           "cantFind": "Can't find your reservation aquí?",
           "visitHelpCenter": "Visit the Centre d’aide"
-        }
+        },
+        "cancelledRefundProcessing": "ቀጠሮው ተሰርዟል። ተመላሽ ገንዘብዎ በሂደት ላይ ነው እና በቅርቡ ይደርሳል።",
+        "refundProcessingTitle": "ተመላሽ በሂደት ላይ ነው",
+        "refundProcessingBody": "ይህ ቀጠሮ ተሰርዟል። ተመላሽ ገንዘብዎን እያጠናቀቅን ነው እና በቅርቡ በቦርሳዎ ይታያል። ምንም ማድረግ አያስፈልግዎትም።",
+        "cancelGroupPreviewTitle": "ይህ ሙሉ የቡድን ክፍለ ጊዜ {{ref}}ን ይሰርዛል፣ {{count}} እንግዶችን ጨምሮ።",
+        "cancelGroupPreviewOtherBookings": "በዚህ ቡድን ውስጥ ያሉ ሌሎች ቀጠሮዎችዎ: {{currency}} {{refund}} ወደ ቦርሳዎ ይመለሳል፣ {{currency}} {{fee}} የስረዛ ክፍያ።",
+        "cancelGroupPreviewGuestShares": "የእንግዶች የራሳቸው ድርሻ ክፍያዎች ({{currency}} {{amount}}) ወደ ከፈሉበት ካርዶች ሙሉ በሙሉ ይመለሳሉ።"
       },
       "payAdditionalCharge": {
         "notFound": "Additional charge introuvable",
@@ -21372,7 +21416,13 @@
           "subtitle": "Elegir a strong contraseña for your cuenta.",
           "atLeastChars": "Au moins {{min}} caractères",
           "strength": "Robustesse : {{label}}",
-          "confirmPlaceholder": "Re-enter your mot de passe"
+          "confirmPlaceholder": "Re-enter your mot de passe",
+          "passwordsMatch": "የይለፍ ቃሎች ይዛመዳሉ",
+          "showPassword": "Show mot de passe",
+          "hidePassword": "Hide mot de passe",
+          "policyHintLettersDigits": "ፊደላትን እና ቁጥሮችን ያካትቱ",
+          "policyHintMixed": "አቢይ እና ንዑስ ፊደላት እና አንድ ቁጥር ያካትቱ።",
+          "strengthTip": "ረዘም ያለ፣ ከቁጥሮች እና ምልክቶች ጋር፣ ይበረታል"
         }
       },
       "membership": {
@@ -21692,7 +21742,10 @@
         "addressParking": "Aparcamiento:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "ይህ ትዕዛዝ በከፊል ተመላሽ ተደርጓል። ቀሪውን ቀሪ ሂሳብ ለመመለስ አቅራቢውን ያነጋግሩ።",
-        "paymentPartiallyRefunded": "በከፊል ተመላሽ ተደርጓል"
+        "paymentPartiallyRefunded": "በከፊል ተመላሽ ተደርጓል",
+        "messageProviderFailed": "ከዚህ አቅራቢ ጋር ውይይት መክፈት አልተቻለም።",
+        "openingMessage": "ውይይት በመክፈት ላይ…",
+        "messageProvider": "ለአቅራቢ መልዕክት ላክ"
       },
       "bookingReceipt": {
         "methodWallet": "Portefeuille",
@@ -22297,7 +22350,9 @@
         "itemCount_one": "{{count}} item · {{date}}",
         "itemCount_other": "{{count}} Artículos · {{date}}",
         "returnStatus": "Retour {{status}}",
-        "tracking": "Suivi : {{number}}"
+        "tracking": "Suivi : {{number}}",
+        "finishPaymentOnDetail": "ኦንላይን ክፍያውን ለመጨረስ ይህን ትዕዛዝ ይክፈቱ።",
+        "paymentDueBadge": "ክፍያ ይጠበቃል"
       },
       "waitlist": {
         "loadFailed": "Impossible de load waitlist",
@@ -22316,6 +22371,49 @@
         "statusContacted": "Contacté",
         "statusBooked": "Réservé",
         "statusCancelled": "Annulé"
+      },
+      "safety": {
+        "emergencyNumber": "የአደጋ ጊዜ ቁጥር: 112",
+        "managed": "የሚተዳደር",
+        "deviceAuthWebNote": "Beautonomi መተግበሪያን በሚቀጥለው ጊዜ ሲከፍቱ ይተገበራል።",
+        "updated": "ቅንብሩ ተዘምኗል",
+        "updateFailed": "Impossible de mettre à jour setting. Veuillez réessayer.",
+        "loadFailed": "የደህንነት ቅንብሮችን መጫን አልተቻለም።",
+        "retry": "Retry",
+        "reportValidation": "ስለሚያሳውቁት ሰው ቢያንስ 2 ቁምፊ እና ስለተከሰተው ቢያንስ 10 ቁምፊ ያስገቡ።",
+        "unblocked": "የተጠቃሚው እገዳ ተነስቷል",
+        "unblockFailed": "የዚህን ተጠቃሚ እገዳ ማንሳት አልተቻለም።",
+        "blockedLoadFailed": "የታገዱ ተጠቃሚዎችን መጫን አልተቻለም።",
+        "blockedOn": "በ{{date}} ታግዷል",
+        "currentBand": "የአሁኑ ደረጃ: {{band}}",
+        "noResults": "ከፍለጋው ጋር የሚዛመድ የታገደ ተጠቃሚ የለም።",
+        "profileCompletionCta": "Terminer profil",
+        "bankRefundCta": "የባንክ ተመላሽ ጠይቅ",
+        "bankRefundOpenCta": "የባንክ ተመላሽ ጥያቄዎን ይመልከቱ",
+        "bankRefundHistory": "የጥያቄ ታሪክ",
+        "bankRefundNote": "ለፋይናንስ ቡድኑ ማስታወሻ (አማራጭ)",
+        "bankRefundMin": "ዝቅተኛ መጠን: {{amount}}",
+        "bankRefundMax": "በጥያቄ ከፍተኛው: {{amount}}",
+        "bankRefundSla": "የጸደቁ ተመላሾች ብዙ ጊዜ በ{{days}} የስራ ቀናት ውስጥ ይከፈላሉ።",
+        "bankRefundNoAccounts": "የባንክ ተመላሽ ከመጠየቅዎ በፊት የባንክ ሂሳብ ያክሉ።",
+        "bankRefundStatus": "Status",
+        "bankRefundAmount": "Amount",
+        "bankRefundDate": "ተጠይቋል",
+        "bankRefundReceive": "ይቀበላሉ",
+        "bankRefundCancelled": "Request annulé",
+        "bankAccountsManage": "የባንክ ሂሳቦችን ያስተዳድሩ",
+        "bankAccountsMax": "እስከ 3 የባንክ ሂሳቦች ማስቀመጥ ይችላሉ።",
+        "bankAccountSaved": "የባንክ ሂሳብ ተቀምጧል",
+        "bankAccountRemoved": "የባንክ ሂሳብ ተወግዷል",
+        "bankAccountPrimary": "ዋናው ሂሳብ ተዘምኗል",
+        "cancel": "Annuler"
+      },
+      "profileDetailsPage": {
+        "aboutSection": "ስለ እርስዎ",
+        "aboutHint": "ሲያስይዙ አቅራቢዎች የሚያዩት አጭር መግለጫ።",
+        "aboutPlaceholder": "ስለራስዎ ለአቅራቢዎች ትንሽ ይንገሩ",
+        "noChanges": "የሚቀመጥ ለውጥ የለም",
+        "clearChoice": "Effacer"
       }
     },
     "auth": {
@@ -36362,7 +36460,9 @@
       "cancelConfirm": "በዚህ ቡድን ማስያዝ ውስጥ ያለዎትን ቦታ ይሰርዙ? አገልግሎቶችዎ ተወግደዋል እና ማንኛውም የከፈሉት ክፍያ ወደ ካርድዎ ተመላሽ ይደረጋል።",
       "cancelled": "Your spot has been annulé.",
       "cancelledRefunded": "ቦታዎ ተሰርዟል። {{amount}} ወደ ካርድዎ ተመላሽ እየተደረገ ነው።",
-      "cancelFailed": "Impossible de annuler your spot."
+      "cancelFailed": "Impossible de annuler your spot.",
+      "sessionCancelled": "ይህ የቡድን ክፍለ ጊዜ ተሰርዟል።",
+      "sessionCancelledPaid": "ይህ የቡድን ክፍለ ጊዜ ተሰርዟል። ለድርሻዎ የከፈሉት ማንኛውም መጠን ወደ ተጠቀሙበት ካርድ ሙሉ በሙሉ ይመለሳል።"
     }
   },
   "errors": {

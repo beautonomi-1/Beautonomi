@@ -3,6 +3,7 @@ import EmailVerificationBanner from "@/components/global/email-verification-bann
 import AccountHubGrid from "./components/account-hub-grid";
 import AccountSettingsRedirectClient from "./account-settings-redirect-client";
 import AccountHomeUpcomingPreview from "./components/account-home-upcoming-preview";
+import ProfileCompletionBanner from "./components/profile-completion-banner";
 import { getServerT } from "@/lib/i18n/server";
 import { resolveRequestLanguage } from "@/lib/locale/resolve-request-language";
 
@@ -24,6 +25,8 @@ export default async function AccountSettingsPage() {
       </div>
 
       <AccountHomeUpcomingPreview />
+
+      <ProfileCompletionBanner />
 
       <div className="mt-6 md:mt-8" id="account-management">
         <AccountHubGrid />

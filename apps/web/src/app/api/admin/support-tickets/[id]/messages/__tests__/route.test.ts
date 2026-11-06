@@ -31,6 +31,7 @@ describe("POST /api/admin/support-tickets/[id]/messages", () => {
 
   it("records public staff replies as the latest staff message", async () => {
     const updatePayloads: Record<string, unknown>[] = [];
+    const insertPayloads: Record<string, unknown>[] = [];
     const supabase = {
       from: vi.fn((table: string) => {
         if (table === "user_tenant_roles") {
@@ -72,14 +73,17 @@ describe("POST /api/admin/support-tickets/[id]/messages", () => {
         }
         if (table === "support_ticket_messages") {
           return {
-            insert: vi.fn(() => ({
+            insert: vi.fn((payload: Record<string, unknown>) => {
+              insertPayloads.push(payload);
+              return {
               select: vi.fn(() => ({
                 single: vi.fn(async () => ({
                   data: { id: "message-1", message: "We fixed it", created_at: "2026-05-11T10:00:00.000Z" },
                   error: null,
                 })),
               })),
-            })),
+              };
+            }),
           };
         }
         throw new Error(`Unexpected table ${table}`);
@@ -95,6 +99,7 @@ describe("POST /api/admin/support-tickets/[id]/messages", () => {
     const res = await POST(req, { params: Promise.resolve({ id: "ticket-1" }) });
 
     expect(res.status).toBe(200);
+    expect(insertPayloads[0]).toMatchObject({ user_id: "staff-1", author_kind: "staff", is_internal: false });
     expect(updatePayloads[0]).toMatchObject({
       last_message_at: "2026-05-11T10:00:00.000Z",
       last_message_from: "staff",

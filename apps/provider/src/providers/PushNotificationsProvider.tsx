@@ -159,6 +159,28 @@ function handleNotificationRoute(data: Record<string, unknown>) {
   }
 }
 
+function SecurityDeviceApprovalPushHandler() {
+  const { show } = useInAppBanner();
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener("beautonomi:push:device_approval_request", () => {
+      show({
+        icon: "shield-checkmark-outline",
+        title: "Approve a new sign-in",
+        message: "Tap to review this device approval request.",
+        tone: "info",
+        durationMs: 8000,
+        onPress: () => {
+          router.push("/(app)/(tabs)/more/settings-login-and-security" as never);
+        },
+      });
+    });
+    return () => sub.remove();
+  }, [show]);
+
+  return null;
+}
+
 function PushPermissionMonitor() {
   const { show } = useInAppBanner();
   const nudgeShownRef = useRef(false);
@@ -453,6 +475,9 @@ function usePushRegistration() {
               event.getNotification().display();
               emitNotificationBadgeRefresh();
               const tKey = String(data?.template_key ?? data?.type ?? "");
+              if (tKey === "security_device_approval_request") {
+                DeviceEventEmitter.emit("beautonomi:push:device_approval_request");
+              }
               if (
                 PROVIDER_BOOKING_TEMPLATE_KEYS.has(tKey) ||
                 tKey === "new_booking" ||
@@ -658,6 +683,7 @@ export function PushNotificationsProvider({
   return (
     <>
       <PushPermissionMonitor />
+      <SecurityDeviceApprovalPushHandler />
       {children}
     </>
   );

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { PROVIDER_SECTION_DEFAULTS } from "@/lib/notifications/notification-preferences-defaults";
+import { isSecurityNotificationTemplateKey } from "@/lib/notifications/security-notification-copy";
 
 export type NotificationChannelName = "push" | "email" | "sms" | "whatsapp";
 
@@ -22,6 +23,7 @@ function mergeSection(
 
 export function providerTemplateKeyToPreferenceSection(templateKey: string): string {
   const key = templateKey.toLowerCase();
+  if (isSecurityNotificationTemplateKey(key)) return "account_security";
   if (key.includes("cancel")) return "booking_cancellations";
   if (key.includes("reminder")) return "booking_reminders";
   if (
@@ -61,6 +63,7 @@ export function channelAllowedForProviderUser(
   templateKey: string,
   channel: NotificationChannelName,
 ): boolean {
+  if (isSecurityNotificationTemplateKey(templateKey)) return true;
   const section = providerTemplateKeyToPreferenceSection(templateKey);
   const sec = mergeSection(prefs, section);
 
@@ -84,7 +87,7 @@ export function isAnyProviderPushSectionEnabled(
   prefs: Record<string, unknown> | null | undefined,
 ): boolean {
   return Object.keys(PROVIDER_SECTION_DEFAULTS).some(
-    (section) => mergeSection(prefs, section).push !== false,
+    (section) => section !== "account_security" && mergeSection(prefs, section).push !== false,
   );
 }
 

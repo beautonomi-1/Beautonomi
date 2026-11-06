@@ -15,11 +15,19 @@ Constraints: migrations `10102`–`10106` not assumed applied; `finance.provider
 | Card machine | `apps/web/src/lib/payments/settle-card-machine-payment.ts` | `booking_payments`, `record-collectible-settlement-ledger.ts` |
 | Additional charges | `apps/web/src/app/api/me/bookings/[id]/additional-charges/[chargeId]/pay/route.ts` | per-charge ledger legs |
 | Reconcile cron | `apps/web/src/lib/bookings/reconcile-online-charge-ledger.ts` | backfill missing `finance_transactions` |
+| Checkout reschedule | `apps/web/src/lib/bookings/reschedule-carry-over.ts` | the new booking is charged `total − credit` (credit = old online collected, gift reservations excluded). After payment succeeds `finalizeRescheduleCarryOver` cancels the old booking fee-free, waits for its cancellation credit to complete, debits `min(credit, completed credit)` from the wallet (`reschedule_carry_over:<id>`), writes a wallet `booking_payments` leg plus ledger, and stamps `reschedule_carry_over_finalized_at` |
+| Cancel settlement retry | `apps/web/src/app/api/cron/settle-pending-cancellations/route.ts` | retries bookings with `cancellation_settlement_error`, subtracts prior completed cancellation credits, stamps `cancellation_settled_at` only after the credit completes, alerts Slack after 3 attempts; also retries unfinalized reschedule carry-overs older than 10 minutes |
+| Cancel preview | `apps/web/src/app/api/me/bookings/[id]/cancel-preview/route.ts` | returns the same lead-only wallet refund and fee the cancel route settles (`leadWalletRefund` / `leadFeeRetained`; split-pay guest shares go back to guests' cards in full and are reported as `guest_shares_refunded`). For a group's lead booking it adds `group` with the other active bookings the organizer owns, each previewed with the outcome `cancelGroupBooking` settles them with. Returns `RESCHEDULE_IN_PROGRESS` while a replacement checkout is open (the cancel route returns 409 with the same code) |
+| Guest cancellation notice | `apps/web/src/lib/bookings/group-booking-notifications.ts` → `notifyGroupGuestsWithoutAccountsOfCancellation` | customer group cancel and provider group cancel; guests without an account get email and/or Twilio SMS (tenant sender number), phone-only guests included |
+| Payout ledger retry | `apps/web/src/app/api/cron/reconcile-payout-ledger/route.ts` | Stripe only (Paystack/Flutterwave complete via webhook); payouts with `transfer_code` stuck in `processing` for 10+ minutes get their ledger row and move to `completed` |
+| Membership refund | `apps/web/src/lib/memberships/reverse-membership-payment.ts` | idempotent per refund reference, capped per leg cumulatively; the order is marked `refunded` only when fully reversed. Only the `membership_provider_earnings` refund is a provider deduction; `membership_sale` is excluded in `NON_PROVIDER_REFUND_COMPONENTS` and in the `provider_finance_summary` RPC (migration 10125) |
+| Custom offer recovery | `apps/web/src/app/api/admin/custom-offers/[id]/recover/route.ts` | admin Refund Anomalies page; retry and refund both re-read the gateway charge (`load-verified-custom-offer-charge.ts`). Refund returns card and wallet legs, then withdraws the offer |
 
 ### Bookings — display
 
 | Surface | Path |
 | --- | --- |
+| Reschedule checkout summary | web `step-payment.tsx` and mobile `book-checkout.tsx` read `GET /api/me/bookings/[id]/reschedule-credit` and show the credit line; amount due = `max(0, due − min(credit, due))`, matching `processPayment` |
 | Outstanding (web/mobile collect) | `apps/web/src/lib/bookings/display-invariants.ts` → `computeBookingOutstandingDisplay` |
 | Receipt JSON/PDF | `apps/web/src/lib/receipts/build-booking-receipt.ts` |
 
@@ -132,7 +140,6 @@ Golden suite: `apps/web/src/lib/money-flow/__tests__/money-path-golden-invariant
 | `BALANCE_DUE_REASON_REQUIRED` | `allow_unpaid` without `unpaid_reason` |
 | `FULLY_REFUNDED` | Complete blocked; cancel session instead |
 | `TERMINAL_IN_FLIGHT` | Complete blocked while card machine charge open |
-| `GROUP_NOT_STARTED` | Check-in before group `start_service` |
 | `PAYMENT_ALREADY_SUCCESSFUL` | Yoco abandon refused: gateway reports the charge succeeded |
 | `FORBIDDEN` (refunds) | Staff without `issue_refunds`; owner bypasses |
 

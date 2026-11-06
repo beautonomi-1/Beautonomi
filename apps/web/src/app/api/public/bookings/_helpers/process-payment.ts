@@ -87,6 +87,8 @@ export interface ProcessPaymentInput {
   booking: PublicBookingPaymentRow;
   /** Request Host → tenant; must align with `booking.tenant_id` for payment routing. */
   request: Request;
+  /** Platform-held credit from a checkout reschedule. Reduces the charge; applied after payment. */
+  rescheduleCredit?: number;
 }
 
 // ─── Main function ────────────────────────────────────────────────────────────
@@ -169,6 +171,22 @@ export async function processPayment(
     } else {
       amountToCollect = organizerBase;
     }
+  }
+
+  const isReschedule = Boolean(validatedDraft.reschedule_booking_id);
+  // Only the part of the credit this checkout uses is moved onto the new
+  // booking; any surplus stays in the customer's wallet.
+  const rescheduleCreditApplied = isReschedule
+    ? Math.round(
+        Math.min(Math.max(0, Number(input.rescheduleCredit ?? 0)), Math.max(0, amountToCollect)) * 100,
+      ) / 100
+    : 0;
+  if (isReschedule) {
+    amountToCollect = Math.max(0, amountToCollect - rescheduleCreditApplied);
+    await supabaseAdmin
+      .from("bookings")
+      .update({ reschedule_credit_pending: rescheduleCreditApplied })
+      .eq("id", booking.id);
   }
 
   // Persist deposit context on the booking row so receipts, invoices, and
@@ -420,21 +438,29 @@ export async function processPayment(
       initialStatus: "pending",
     });
 
-    await insertNoGatewayLedger(supabase, {
-      booking,
-      draft,
-      v,
-      giftCardAmountApplied,
-      giftCardCode,
-      walletAmountApplied,
-      marketTenantId: flagTenantId,
-      isDeposit: isDepositPayment,
-    });
+    // A booking paid only by reschedule credit gets its ledger from the credit
+    // leg in finalizeRescheduleCarryOver; posting a zero-tender row here would
+    // book the full total before that money moves.
+    const creditOnly =
+      rescheduleCreditApplied > 0 && walletAmountApplied + giftCardAmountApplied <= 0;
+    if (!creditOnly) {
+      await insertNoGatewayLedger(supabase, {
+        booking,
+        draft,
+        v,
+        giftCardAmountApplied,
+        giftCardCode,
+        walletAmountApplied,
+        marketTenantId: flagTenantId,
+        isDeposit: isDepositPayment,
+      });
+    }
 
     await (supabaseAdmin.from("bookings") as any)
       .update({
         payment_status: effectivePaymentStatus,
-        payment_provider: walletAmountApplied > 0 ? "wallet" : "gift_card",
+        payment_provider:
+          walletAmountApplied > 0 || rescheduleCreditApplied > 0 ? "wallet" : "gift_card",
         payment_date: new Date().toISOString(),
         status: shouldAutoConfirmStatus ? "confirmed" : "pending",
       })
@@ -472,6 +498,10 @@ export async function processPayment(
     }
 
     invalidateProviderBookingsReadCache(draft.provider_id);
+
+    if (isReschedule) {
+      await finalizeRescheduleForCommittedBooking(supabaseAdmin, booking.id);
+    }
 
     return {
       paymentUrl: null,
@@ -1093,6 +1123,12 @@ export async function processPayment(
         console.error("[recurring] insert after cash booking:", sub.message);
       }
     }
+
+    // Pay-at-venue: the replacement is committed now, so the original is
+    // released and the credit reduces what the provider collects in person.
+    if (isReschedule) {
+      await finalizeRescheduleForCommittedBooking(supabaseAdmin, booking.id);
+    }
   }
 
   invalidateProviderBookingsReadCache(draft.provider_id);
@@ -1107,6 +1143,22 @@ export async function processPayment(
 }
 
 // ─── Private helpers ──────────────────────────────────────────────────────────
+
+/** Failures are retried by the settle-pending-cancellations cron. */
+async function finalizeRescheduleForCommittedBooking(
+  admin: SupabaseClient,
+  bookingId: string,
+): Promise<void> {
+  try {
+    const { finalizeRescheduleCarryOver } = await import("@/lib/bookings/reschedule-carry-over");
+    const result = await finalizeRescheduleCarryOver(admin, bookingId);
+    if (!result.ok) {
+      console.error("[process-payment] reschedule carry-over not finalized", bookingId, result.reason);
+    }
+  } catch (err) {
+    console.error("[process-payment] reschedule carry-over threw", bookingId, err);
+  }
+}
 
 /**
  * Insert payment_transactions + finance_transactions when no external gateway

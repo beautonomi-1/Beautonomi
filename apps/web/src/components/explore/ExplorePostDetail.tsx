@@ -16,12 +16,15 @@ import {
   resolveExploreVideoSrc,
 } from "@/lib/explore/video-media";
 import { ExplorePostThumb } from "@/components/explore/ExplorePostThumb";
+import { ExploreSingleVideoReelView } from "@/components/explore/ExploreSingleVideoReelView";
+import { ExploreVideoSideLogo } from "@/components/explore/ExploreVideoSideLogo";
 import { getExploreVideoPlaybackTrimWindow } from "@/lib/explore/explore-video-playback-trim";
 import {
   filterOverlaysForPlaybackTime,
   shouldDrawVideoTextOverlays,
 } from "@/lib/explore/explore-overlay-playback";
 import { ExploreTextOverlayLayer } from "@/components/explore/ExploreTextOverlayLayer";
+import { appendExploreCommentPage, nextOffsetAfterEmptyCommentPage, placeExploreComment, removedExploreCommentCount } from "@/lib/explore/explore-reel-feed";
 import { useTranslation, type TFunction } from "@beautonomi/i18n";
 
 /** Renders comment body with @username segments highlighted */
@@ -110,22 +113,40 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
   const [captionExpanded, setCaptionExpanded] = useState(false);
   const [mediaIndex, setMediaIndex] = useState(0);
   const [videoTimeMs, setVideoTimeMs] = useState(0);
+  const [detailVideoPlaying, setDetailVideoPlaying] = useState(false);
+  const [shareOverride, setShareOverride] = useState<ExplorePost | null>(null);
   const viewTrackedRef = useRef(false);
   const commentsFetchedRef = useRef(false);
 
   const fetchComments = useCallback(async (offset = 0, append = false) => {
     try {
       if (offset === 0) setCommentsLoading(true);
-      const res = await fetcher.get<{ data: { data: ExploreComment[]; next_offset?: number; has_more: boolean } }>(
-        `/api/explore/posts/${post.id}/comments?limit=20&offset=${offset}`
-      );
-      const payload = (res as { data?: { data: ExploreComment[]; next_offset?: number; has_more: boolean } })?.data;
-      const list = Array.isArray(payload?.data) ? payload.data : [];
-      const nextOffset = payload?.next_offset;
-      const hasMore = payload?.has_more ?? !!nextOffset;
-      setComments((prev) => (append ? [...prev, ...list] : list));
-      setCommentsOffset(offset + list.length);
-      setHasMoreComments(hasMore);
+      let cursor = offset;
+      let pageAppend = append;
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const res = await fetcher.get<{ data: { data: ExploreComment[]; next_offset?: number; has_more: boolean } }>(
+          `/api/explore/posts/${post.id}/comments?limit=20&offset=${cursor}`,
+          { staleTimeMs: 0 },
+        );
+        const payload = (res as { data?: { data: ExploreComment[]; next_offset?: number; has_more: boolean } })?.data;
+        const list = Array.isArray(payload?.data) ? payload.data : [];
+        const nextOffset = payload?.next_offset;
+        const hasMore = payload?.has_more ?? !!nextOffset;
+        const skipTo = nextOffsetAfterEmptyCommentPage({
+          offset: cursor,
+          visibleCount: list.length,
+          hasMore,
+          nextOffset,
+        });
+        if (skipTo == null || attempt === 4) {
+          setComments((prev) => (pageAppend ? appendExploreCommentPage(prev, list) : list));
+          setCommentsOffset(typeof nextOffset === "number" ? nextOffset : cursor + list.length);
+          setHasMoreComments(hasMore);
+          break;
+        }
+        cursor = skipTo;
+        pageAppend = true;
+      }
     } catch {
       if (offset === 0) setComments([]);
     } finally {
@@ -157,14 +178,18 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
     if (!text || !user) return;
     setCommentSubmitting(true);
     try {
-      await fetcher.post(`/api/explore/posts/${post.id}/comments`, {
+      const res = await fetcher.post<{ data?: ExploreComment }>(`/api/explore/posts/${post.id}/comments`, {
         body: text,
         ...(replyToCommentId ? { parent_id: replyToCommentId } : {}),
       });
+      const created = res?.data;
+      if (!created?.id) throw new Error("comment_missing");
       setCommentInput("");
       setReplyToCommentId(null);
       setCommentCount((c) => c + 1);
-      await fetchComments(0, false);
+      setComments((prev) =>
+        placeExploreComment(prev, { ...created, body: created.body ?? text, replies: created.replies ?? [] }),
+      );
     } catch {
       toast.error(t(`${pd}.commentFailed`));
     } finally {
@@ -206,7 +231,8 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
   const deleteComment = async (commentId: string) => {
     try {
       await fetcher.delete(`/api/explore/posts/${post.id}/comments/${commentId}`);
-      setCommentCount((c) => Math.max(0, c - 1));
+      const removed = removedExploreCommentCount(comments, commentId);
+      setCommentCount((c) => Math.max(0, c - removed));
       setComments((prev) =>
         prev
           .filter((c) => c.id !== commentId)
@@ -244,6 +270,10 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
   useEffect(() => {
     if (!showZoomModal) setLightboxZoom(1);
   }, [showZoomModal]);
+
+  useEffect(() => {
+    if (!showShareModal) setShareOverride(null);
+  }, [showShareModal]);
 
   const handleLike = async () => {
     if (!user) {
@@ -297,11 +327,17 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
     }
   };
 
-  const shareUrl = typeof window !== "undefined" ? window.location.href : "";
-  const providerName = post.provider?.business_name || "Beautonomi";
-  const shareTitle = post.caption?.trim()
+  const shareSubject = shareOverride ?? post;
+  const shareUrl =
+    shareOverride && typeof window !== "undefined"
+      ? `${window.location.origin}/explore/${shareOverride.id}`
+      : typeof window !== "undefined"
+        ? window.location.href
+        : "";
+  const providerName = shareSubject.provider?.business_name || "Beautonomi";
+  const shareTitle = shareSubject.caption?.trim()
     ? t(`${pd}.shareTitleWithCaption`, {
-        caption: `${post.caption.trim().slice(0, 100)}${post.caption.length > 100 ? "…" : ""}`,
+        caption: `${shareSubject.caption.trim().slice(0, 100)}${shareSubject.caption.length > 100 ? "…" : ""}`,
         name: providerName,
       })
     : t(`${pd}.shareTitleDefault`, { name: providerName });
@@ -430,7 +466,29 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
     if (!videoFirst && primaryMedia) setShowZoomModal(true);
   }, [videoFirst, primaryMedia]);
 
+  const isSingleVideoReel = videoFirst && (post.media_urls?.length ?? 0) === 1;
+
+  const reelLayout = isSingleVideoReel ? (
+    <div className="flex h-dvh items-stretch justify-center bg-black lg:items-center lg:bg-gray-100 lg:py-4">
+      <div className="h-full w-full max-w-md lg:h-[calc(100dvh-2rem)] lg:max-w-lg">
+      <ExploreSingleVideoReelView
+        post={post}
+        shareOpen={showShareModal}
+        reportOpen={reportDialog != null}
+        onRequireLogin={() => setIsLoginModalOpen(true)}
+        onShare={(active) => {
+          setShareOverride(active);
+          setShowShareModal(true);
+        }}
+        onReport={(targetType, targetId, title) => openContentReport(targetType, targetId, title)}
+      />
+      </div>
+    </div>
+  ) : null;
+
   return (
+    <>
+    {reelLayout ?? (
     <div className="min-h-screen bg-white">
       {/* Mobile: Pinterest-style stacked layout */}
       <div className="lg:hidden">
@@ -447,9 +505,12 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                     controls
                     playsInline
                     className="w-full h-full object-cover"
+                    onPlay={() => setDetailVideoPlaying(true)}
+                    onPause={() => setDetailVideoPlaying(false)}
                     {...videoTrimHandlers}
                   />
                   <ExploreTextOverlayLayer overlays={videoOverlayLayers} />
+                  <ExploreVideoSideLogo spinning={detailVideoPlaying} floating />
                 </>
               ) : (
                 <button
@@ -738,7 +799,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                   ))}
                 </ul>
               )}
-              {hasMoreComments && comments.length > 0 && (
+              {hasMoreComments && (
                 <button
                   type="button"
                   onClick={loadMoreComments}
@@ -852,9 +913,12 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                           controls
                           playsInline
                           className="w-full h-full object-cover"
+                          onPlay={() => setDetailVideoPlaying(true)}
+                          onPause={() => setDetailVideoPlaying(false)}
                           {...videoTrimHandlers}
                         />
                         <ExploreTextOverlayLayer overlays={videoOverlayLayers} />
+                        <ExploreVideoSideLogo spinning={detailVideoPlaying} floating />
                       </>
                     ) : (
                       <button
@@ -1028,7 +1092,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                       ))}
                     </ul>
                   )}
-                  {hasMoreComments && comments.length > 0 && (
+                  {hasMoreComments && (
                     <button type="button" onClick={loadMoreComments} disabled={commentsLoading} className="text-sm text-[#FF0077] hover:underline mb-3">
                       {commentsLoading ? t(`${pd}.loading`) : t(`${pd}.loadMoreComments`)}
                     </button>
@@ -1098,6 +1162,8 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
           )}
         </div>
       </div>
+    </div>
+    )}
 
       {/* Zoom lightbox */}
       {showZoomModal && primaryMedia && !videoFirst && (
@@ -1257,6 +1323,6 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
         setOpen={setIsLoginModalOpen}
         initialMode="login"
       />
-    </div>
+    </>
   );
 }

@@ -13778,7 +13778,9 @@
       "replying": "Usuhiza icyo umuntu yavuze",
       "replyPlaceholder": "Andika igisubizo…",
       "shareMediaFailedTitle": "Ntushobora gusangira itangazamakuru",
-      "shareMediaFailedBody": "Ntabwo twashoboraga gutegura iyi dosiye kugirango dusangire. Gerageza gusangira aho."
+      "shareMediaFailedBody": "Ntabwo twashoboraga gutegura iyi dosiye kugirango dusangire. Gerageza gusangira aho.",
+      "loadingComments": "Birimo gutangira…",
+      "loadMoreComments": "Fungura ibisobanuro byinshi"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -15010,7 +15012,20 @@
           "emailInputA11y": "E-mail input",
           "sendResetLink": "Envoyer le lien de réinitialisation",
           "sendResetLinkA11y": "Envoyer le lien de réinitialisation",
-          "backToLoginA11y": "Retour to login"
+          "backToLoginA11y": "Retour to login",
+          "codeA11y": "Kode yo gusubiza ijambobanga",
+          "invalidCodeTitle": "Kode ntiyemewe",
+          "invalidCodeBody": "Injiza kode y'imibare {{digits}} ivuye kuri imeri.",
+          "resend": "Ongera wohereze imeri",
+          "resendA11y": "Ongera wohereze imeri yo gusubiza",
+          "signedInIntro": "Tuzohereza kode n'urubuga rwo gusubiza kuri imeri y'akonti.",
+          "back": "Retour",
+          "stepCode": "1. Injiza kode y'imibare {{digits}}",
+          "stepPassword": "2. Hitamo ijambobanga rishya",
+          "codeVerified": "Kode yemejwe",
+          "submit": "Réinitialiser le mot de passe",
+          "submittingA11y": "Gusubiza ijambobanga",
+          "linkAlternative": "Uhitamo urubuga? Rufungure ukuye kuri imeri kugira ngo ushyire ijambobanga rishya muri mushakisha."
         },
         "authSafetyAndAge": {
           "linkLabel": "Sécurité et contrôles parentaux",
@@ -15282,7 +15297,8 @@
           "returnLabel": "Retour {{status}}",
           "tracking": "Suivi : {{number}}",
           "collectAt": "Retrait chez {{name}}, {{city}}",
-          "deliverTo": "Livraison à {{city}}"
+          "deliverTo": "Livraison à {{city}}",
+          "paymentDueBadge": "Ubwishyu buracyakenewe"
         },
         "productReviews": {
           "title": "Avis",
@@ -16088,7 +16104,14 @@
           "lifecyclePartialRefundDescription": "Un remboursement partiel a été enregistré pour cette réservation.",
           "lifecycleRefundedDescription": "Le paiement de cette réservation a été remboursé.",
           "lifecyclePaymentFailedDescription": "Le paiement n’a pas abouti. Réessayez ou contactez l’assistance avec ce numéro de réservation.",
-          "lifecyclePaymentNotConfirmedDescription": "Paiement has not been confirmé yet."
+          "lifecyclePaymentNotConfirmedDescription": "Paiement has not been confirmé yet.",
+          "refundProcessingTitle": "Gusubiza birakomeje",
+          "refundProcessingBody": "Iyi gahunda yahagaritswe. Turarangiza gusubiza amafaranga yawe kandi azagaragara vuba mu gisabo cyawe. Nta kintu ugomba gukora.",
+          "rescheduleInProgressTitle": "Gusubiramo gahunda birakomeje",
+          "rescheduleInProgressBody": "Iyi gahunda irimurirwa ku isaha indi. Rangiza kwishyura gushya kandi amafaranga washyuye yimurwa ubwabyo. Niba wasize iryo kwishyura, gahunda ishobora guhagarikwa nanone iyo igihe kirangiye, mu minota nka 30.",
+          "cancelGroupPreviewTitle": "Ibi bihagarika ikiganiro cyose cy'itsinda {{ref}}, harimo abashyitsi {{count}}.",
+          "cancelGroupPreviewOtherBookings": "Izindi gahunda zawe muri iri tsinda: {{currency}} {{refund}} zisubira mu gisabo cyawe, {{currency}} {{fee}} amafaranga yo guhagarika.",
+          "cancelGroupPreviewGuestShares": "Ibyishyu by'igice cy'abashyitsi ({{currency}} {{amount}}) bisubizwa byose ku makarita bashyuyeho."
         },
         "groupBookingDetail": {
           "back": "Retour",
@@ -16167,7 +16190,11 @@
           "cancelMySpotConfirm": "Hagarika umwanya wawe muri iri tsinda? Serivisi zawe zavanyweho kandi ubwishyu bwose wakoze busubizwa ikarita yawe.",
           "spotCancelled": "Your spot has been annulé.",
           "guestRemoved": "Umushyitsi yakuweho.",
-          "guestCancelFailed": "Impossible de mettre à jour the réservation de groupe."
+          "guestCancelFailed": "Impossible de mettre à jour the réservation de groupe.",
+          "resendPayLink": "Ongera wohereze urubuga rwo kwishyura",
+          "cancelGroupSession": "Hagarika ikiganiro cy'itsinda",
+          "cancelGroupSessionHint": "Ifungura gahunda yawe, aho ubona gusubizwa kw'itsinda ryose utarasoza.",
+          "askOrganizerToReschedule": "Baza umutegura niba iki kiganiro gikeneye isaha indi."
         },
         "announcements": {
           "retry": "Réessayer",
@@ -16571,21 +16598,21 @@
           "saveErrorBeauty": "Préférences beauté : {{message}}",
           "saveFailedGeneric": "échec",
           "profileQuestionsSection": "Profil questions",
-          "profileQuestionsHint": "Answer at least 3 to complete your profile. ({{answered}}/3 done)",
+          "profileQuestionsHint": "Subiza byibuze 3 kugira ngo urangize umwirondoro. ({{answered}}/3 byarangiye)",
           "interestsSection": "Centres d’intérêt",
           "interestsSubtitle": "Ajouter things you're into (select or type)",
           "interestsPlaceholder": "ex. Cheveux, ongles, soins…",
           "interestsA11y": "Vos centres d’intérêt",
           "beautySection": "Préférences beauté",
-          "beautySubtitle": "Help prestataires personalise your experience",
+          "beautySubtitle": "Fasha abatanga serivisi guhuza uburambe bwawe",
           "hairType": "Type de cheveux",
           "skinType": "Type de peau",
           "thingsToAvoid": "À éviter",
-          "thingsToAvoidPlaceholder": "Sélectionner or type (e.g. fragrances, sulfates)",
+          "thingsToAvoidPlaceholder": "Hitamo cyangwa wandike (urugero: impumuro, sulfati)",
           "thingsToAvoidA11y": "À éviter",
           "appointmentStyle": "Rendez-vous style",
           "productPreferences": "Produit preferences",
-          "productPreferencesPlaceholder": "Sélectionner or type (e.g. Vegan, Cruelty-free)",
+          "productPreferencesPlaceholder": "Hitamo cyangwa wandike (urugero: vegan, nta bunyamaswa)",
           "productPreferencesA11y": "Produit preferences",
           "allergies": "Allergies et sensibilités",
           "allergiesPlaceholder": "ex. Nickel, latex…",
@@ -16629,7 +16656,7 @@
           "skinMature": "Mature",
           "avoidStrongFragrances": "Parfums forts",
           "avoidAlcohol": "Alcohol-based produits",
-          "avoidSulfates": "Sulfates",
+          "avoidSulfates": "Salfati",
           "avoidParabens": "Parabènes",
           "avoidEssentialOils": "Huiles essentielles",
           "avoidLatex": "Latex",
@@ -16640,7 +16667,7 @@
           "styleRelaxed": "Détendu et sans précipitation",
           "styleSocial": "Sociable et bavard",
           "styleQuiet": "Calme et minimal",
-          "styleFlexible": "Flexible",
+          "styleFlexible": "Rahisi",
           "prefVegan": "Végane",
           "prefCrueltyFree": "Sans cruauté",
           "prefNaturalOrganic": "Naturel / bio",
@@ -16667,7 +16694,7 @@
           "interestCooking": "Cuisine",
           "allergyFragrance": "Parfum",
           "allergyParabens": "Parabènes",
-          "allergySulfates": "Sulfates",
+          "allergySulfates": "Salfati",
           "allergyAlcohol": "Alcool",
           "allergyDyes": "Colorations",
           "allergyFormaldehyde": "Formaldéhyde",
@@ -18140,6 +18167,9 @@
           "invalidBody": "Injira itariki yemewe (YYYY-MM-DD) nigihe (HH:MM).",
           "failedTitle": "Impossible de reschedule",
           "noSlots": "Nta bihe biboneka kuri uyumunsi. Gerageza indi tariki."
+        },
+        "resetPassword": {
+          "policyMix": "Ijambobanga ryawe rikeneye uruvange rw'inyuguti n'imibare ihuye n'amategeko y'akonti."
         }
       }
     },
@@ -18169,7 +18199,7 @@
       "accountNameLabel": "Account holder nom",
       "save": "Enregistrer bank account",
       "screenTitle": "Comptes bancaires",
-      "selectBank": "Select your bank"
+      "selectBank": "Hitamo banki yawe"
     },
     "walletBankRefund": {
       "notEnabled": "Les remboursements bancaires ne sont pas disponibles sur votre marché pour le moment.",
@@ -18422,7 +18452,11 @@
     "payForEveryone": "Nzishyura abantu bose",
     "splitPayment": "Split paiement",
     "splitPaymentHint": "Wishyura serivisi zawe hamwe n'amafaranga yo gutumaho ubu. Buri mushyitsi abona umurongo wo kwishyura umugabane wabo.",
-    "guestSharesPaidByInvite": "Abashyitsi bishyura bakoresheje ubutumire"
+    "guestSharesPaidByInvite": "Abashyitsi bishyura bakoresheje ubutumire",
+    "rescheduleReplacesPreviousBody": "Igihe cy'umubonano wawe wa mbere gihagarikwa ubwacyo, ubuntu, kwishyura kwa iyi gahunda nibimara. Ibyo washyuye bimaze gukoreshwa hano, ibisigaye biguma mu gisabo cyawe.",
+    "rescheduleCreditNote": "Umubare wose washyuye kuri interineti ku gahunda ya mbere ukoreshwa hano. Wishyura itandukaniro gusa.",
+    "rescheduleCreditApplied": "Byishyuwe ku gahunda ya mbere",
+    "rescheduleCreditSurplus": "Ibisigaye {{amount}} biguma mu gisabo cyawe nk'inguzanyo."
   },
   "payments": {
     "pay": "Pay",
@@ -19469,7 +19503,11 @@
         "pickNextAvailable": "Find suivant disponible heure",
         "splitPayment": "Split paiement",
         "guestSharesPaidByInvite": "Abashyitsi bishyura bakoresheje ubutumire",
-        "splitPaymentHint": "Wishyura serivisi zawe hamwe n'amafaranga yo gutumaho ubu. Buri mushyitsi abona umurongo wo kwishyura umugabane wabo."
+        "splitPaymentHint": "Wishyura serivisi zawe hamwe n'amafaranga yo gutumaho ubu. Buri mushyitsi abona umurongo wo kwishyura umugabane wabo.",
+        "rescheduleCreditPaid": "Kwishyura kwawe kwa mbere gukwira iyi gahunda.",
+        "rescheduleCreditIntro": "Umubare wose washyuye kuri interineti ku gahunda ya mbere ukoreshwa hano. Wishyura itandukaniro gusa.",
+        "rescheduleCreditApplied": "Byishyuwe ku gahunda ya mbere",
+        "rescheduleCreditSurplus": "Ibisigaye {{amount}} biguma mu gisabo cyawe nk'inguzanyo."
       },
       "addToWaitlist": {
         "enterName": "Veuillez saisir your nom",
@@ -21125,7 +21163,13 @@
           "cancelled": "Annulé",
           "cantFind": "Can't find your reservation aquí?",
           "visitHelpCenter": "Visit the Centre d’aide"
-        }
+        },
+        "cancelledRefundProcessing": "Gahunda yahagaritswe. Gusubiza amafaranga yawe birakomeje kandi bizagera vuba.",
+        "refundProcessingTitle": "Gusubiza birakomeje",
+        "refundProcessingBody": "Iyi gahunda yahagaritswe. Turarangiza gusubiza amafaranga yawe kandi azagaragara vuba mu gisabo cyawe. Nta kintu ugomba gukora.",
+        "cancelGroupPreviewTitle": "Ibi bihagarika ikiganiro cyose cy'itsinda {{ref}}, harimo abashyitsi {{count}}.",
+        "cancelGroupPreviewOtherBookings": "Izindi gahunda zawe muri iri tsinda: {{currency}} {{refund}} zisubira mu gisabo cyawe, {{currency}} {{fee}} amafaranga yo guhagarika.",
+        "cancelGroupPreviewGuestShares": "Ibyishyu by'igice cy'abashyitsi ({{currency}} {{amount}}) bisubizwa byose ku makarita bashyuyeho."
       },
       "payAdditionalCharge": {
         "notFound": "Additional charge introuvable",
@@ -21372,7 +21416,13 @@
           "subtitle": "Elegir a strong contraseña for your cuenta.",
           "atLeastChars": "Au moins {{min}} caractères",
           "strength": "Robustesse : {{label}}",
-          "confirmPlaceholder": "Re-enter your mot de passe"
+          "confirmPlaceholder": "Re-enter your mot de passe",
+          "passwordsMatch": "Amagambo y'ibanga ahuye",
+          "showPassword": "Show mot de passe",
+          "hidePassword": "Hide mot de passe",
+          "policyHintLettersDigits": "Shyiramo inyuguti n'imibare",
+          "policyHintMixed": "Shyiramo inyuguti nkuru, nto n'umubare.",
+          "strengthTip": "rirerire, hamwe n'imibare n'ibimenyetso, rirakomeye"
         }
       },
       "membership": {
@@ -21692,7 +21742,10 @@
         "addressParking": "Aparcamiento:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Iri teka ryasubijwe igice. Menyesha utanga kugirango usubize amafaranga asigaye.",
-        "paymentPartiallyRefunded": "Gusubizwa igice"
+        "paymentPartiallyRefunded": "Gusubizwa igice",
+        "messageProviderFailed": "Ntibishoboye gufungura ikiganiro n’uyu mutanga serivisi.",
+        "openingMessage": "Irafungura ikiganiro…",
+        "messageProvider": "Ohereza ubutumwa ku mutanga serivisi"
       },
       "bookingReceipt": {
         "methodWallet": "Portefeuille",
@@ -22297,7 +22350,9 @@
         "itemCount_one": "{{count}} item · {{date}}",
         "itemCount_other": "{{count}} Artículos · {{date}}",
         "returnStatus": "Retour {{status}}",
-        "tracking": "Suivi : {{number}}"
+        "tracking": "Suivi : {{number}}",
+        "finishPaymentOnDetail": "Fungura iyi komande kugira ngo urangize kwishyura kuri interineti.",
+        "paymentDueBadge": "Ubwishyu buracyakenewe"
       },
       "waitlist": {
         "loadFailed": "Impossible de load waitlist",
@@ -22316,6 +22371,49 @@
         "statusContacted": "Contacté",
         "statusBooked": "Réservé",
         "statusCancelled": "Annulé"
+      },
+      "safety": {
+        "emergencyNumber": "Nomero y'ubutabazi: 112",
+        "managed": "Bicungwa",
+        "deviceAuthWebNote": "Bizatangira ubutaha uzakifungura porogaramu ya Beautonomi.",
+        "updated": "Igenamiterere ryavuguruwe",
+        "updateFailed": "Impossible de mettre à jour setting. Veuillez réessayer.",
+        "loadFailed": "Igenamiterere ry'umutekano ntiryabashije gupakira.",
+        "retry": "Retry",
+        "reportValidation": "Injiza byibuze inyuguti 2 z'umuntu urega nibura inyuguti 10 ku byabaye.",
+        "unblocked": "Ukoresha yavanwe ku ruhagarara",
+        "unblockFailed": "Ntibishobotse gukuraho uruhagarara rw'uyu ukoresha.",
+        "blockedLoadFailed": "Abakoresha bahagaritswe ntibabashije gupakirwa.",
+        "blockedOn": "Yahagaritswe {{date}}",
+        "currentBand": "Urwego rw'ubu: {{band}}",
+        "noResults": "Nta mukoresha wahagaritswe uhuye n'ishakisha ryawe.",
+        "profileCompletionCta": "Terminer profil",
+        "bankRefundCta": "Saba gusubizwa amafaranga kuri banki",
+        "bankRefundOpenCta": "Reba icyifuzo cyo gusubizwa kuri banki",
+        "bankRefundHistory": "Amateka y'ibyifuzo",
+        "bankRefundNote": "Icyitonderwa ku itsinda ry'imari (bitari ngombwa)",
+        "bankRefundMin": "Umubare muto: {{amount}}",
+        "bankRefundMax": "Ntarengwa ku cyifuzo: {{amount}}",
+        "bankRefundSla": "Amafaranga yemerewe gusubizwa asubizwa muri minsi {{days}} y'akazi.",
+        "bankRefundNoAccounts": "Ongeraho konti ya banki mbere yo gusaba gusubizwa kuri banki.",
+        "bankRefundStatus": "Status",
+        "bankRefundAmount": "Amount",
+        "bankRefundDate": "Cyasabwe",
+        "bankRefundReceive": "Wakirira",
+        "bankRefundCancelled": "Request annulé",
+        "bankAccountsManage": "Cunga konti za banki",
+        "bankAccountsMax": "Ushobora kubika konti za banki zigera kuri 3.",
+        "bankAccountSaved": "Konti ya banki yabitswe",
+        "bankAccountRemoved": "Konti ya banki yakuweho",
+        "bankAccountPrimary": "Konti nkuru yavuguruwe",
+        "cancel": "Annuler"
+      },
+      "profileDetailsPage": {
+        "aboutSection": "Ibyerekeye wowe",
+        "aboutHint": "Incamake ngufi abatanga serivisi babona igihe uteganya.",
+        "aboutPlaceholder": "Bwira abatanga serivisi bike kuri wowe",
+        "noChanges": "Nta mpinduka zo kubika",
+        "clearChoice": "Effacer"
       }
     },
     "auth": {
@@ -36362,7 +36460,9 @@
       "cancelConfirm": "Hagarika umwanya wawe muri iri tsinda? Serivisi zawe zavanyweho kandi ubwishyu bwose wakoze busubizwa ikarita yawe.",
       "cancelled": "Your spot has been annulé.",
       "cancelledRefunded": "Ikibanza cyawe cyahagaritswe. {{amount}} isubizwa ikarita yawe.",
-      "cancelFailed": "Impossible de annuler your spot."
+      "cancelFailed": "Impossible de annuler your spot.",
+      "sessionCancelled": "Iki kiganiro cy'itsinda cyahagaritswe.",
+      "sessionCancelledPaid": "Iki kiganiro cy'itsinda cyahagaritswe. Umubare wose washyuye ku gice cyawe usubizwa wose ku ikarita wakoresheje."
     }
   },
   "errors": {

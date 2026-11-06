@@ -3,7 +3,7 @@
 import { ShoppingBag } from "lucide-react";
 import { useTranslation } from "@beautonomi/i18n";
 import type { GroupBooking, GroupBookingParticipant } from "@/lib/provider-portal/types";
-import { computeGroupFinancials } from "@/lib/provider-booking/group-booking-utils";
+import { computeGroupFinancials, participantShareOwed } from "@/lib/provider-booking/group-booking-utils";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { BookingSectionCard, BookingSectionLabel, BookingSummaryRow } from "../ui";
 
@@ -162,6 +162,53 @@ export function GroupBookingFinancialsSection({
           />
         ) : null}
       </BookingSectionCard>
+
+      {participants.length > 0 ? (
+        <BookingSectionCard>
+          <BookingSectionLabel className="mb-2">{t("web.provider.bookings.groupFinancials.guests")}</BookingSectionLabel>
+          <ul className="divide-y divide-gray-100 text-sm" data-testid="group-guest-payments">
+            {participants.map((participant) => {
+              const paid = Number(participant.total_paid ?? 0);
+              const refunded = Number(participant.total_refunded ?? 0);
+              const balanceDue = Math.max(0, Number(participant.balance_due ?? 0));
+              const inactive = ["cancelled", "no_show"].includes(
+                String(participant.booking_status ?? "").toLowerCase(),
+              );
+              const shareStatus = String(participant.share_status ?? "").toLowerCase();
+              const shareOwed = participantShareOwed(participant);
+              return (
+                <li key={participant.id} className="py-2 first:pt-0 last:pb-0">
+                  <div className="flex justify-between gap-2">
+                    <span className="min-w-0 truncate font-medium">{participant.client_name}</span>
+                    <span className={`shrink-0 font-medium ${!inactive && balanceDue > 0.01 ? "text-amber-800" : "text-green-700"}`}>
+                      {inactive
+                        ? t("web.provider.bookings.groupFinancials.guestInactive")
+                        : balanceDue > 0.01
+                          ? t("web.provider.bookings.groupFinancials.guestBalanceDue", { amount: formatMoney(balanceDue) })
+                          : t("web.provider.bookings.groupFinancials.guestSettled")}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    {t("web.provider.bookings.groupFinancials.guestPaid", { amount: formatMoney(paid) })}
+                    {refunded > 0.009
+                      ? ` · ${t("web.provider.bookings.groupFinancials.guestRefunded", { amount: formatMoney(refunded) })}`
+                      : ""}
+                    {participant.share_amount_due != null && !participant.is_primary_contact
+                      ? ` · ${
+                          shareStatus === "paid"
+                            ? t("web.provider.bookings.groupFinancials.shareSettled")
+                            : shareStatus === "cancelled" || shareStatus === "waived"
+                              ? t("web.provider.bookings.groupFinancials.shareClosed")
+                              : t("web.provider.bookings.groupFinancials.shareOwed", { amount: formatMoney(shareOwed) })
+                        }`
+                      : ""}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        </BookingSectionCard>
+      ) : null}
 
       {financials.groupProducts.length > 0 ? (
         <BookingSectionCard>

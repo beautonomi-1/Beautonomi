@@ -400,12 +400,13 @@ export async function processSuccessfulPayment(
         .select("total_amount, wallet_amount, gift_card_amount, payment_reference, tenant_id, currency, payment_status, status")
         .eq("id", productOrderId)
         .maybeSingle();
-      if (poBeforeRow) {
-        const ps = String((poBeforeRow as { payment_status?: string }).payment_status ?? "").toLowerCase();
-        const st = String((poBeforeRow as { status?: string }).status ?? "").toLowerCase();
-        // charge.failed can atomically cancel a pending order. A late charge.success for the same
-        // reference must not strand money on a cancelled order — refund it and stop.
-        if (ps && ps !== "pending" && (ps === "failed" || st === "cancelled")) {
+      const ps = String((poBeforeRow as { payment_status?: string } | null)?.payment_status ?? "").toLowerCase();
+      const st = String((poBeforeRow as { status?: string } | null)?.status ?? "").toLowerCase();
+      const orderClosed =
+        ps === "failed" || st === "cancelled" || st === "refunded";
+      if (poBeforeRow && orderClosed && ps !== "pending") {
+        // Expire, charge.failed, and paid-order cancel set payment off pending.
+        // A late charge.success for that reference must not strand money.
           const currencyCode = String((poBeforeRow as { currency?: string | null }).currency || paystackCurrency || "ZAR").toUpperCase();
           try {
             const { refundGatewayCharge } = await import("@/lib/payments/refund-gateway-charge");
@@ -444,7 +445,64 @@ export async function processSuccessfulPayment(
             });
             throw e;
           }
+      }
+      if (poBeforeRow && orderClosed && ps === "pending") {
+        // Customer or provider cancel leaves payment_status pending. Recorded card
+        // legs were already released. Refund only a charge that was never stored.
+        const { data: existingCharge, error: existingChargeError } = await (
+          supabase.from("payment_transactions") as any
+        )
+          .select("id")
+          .eq("provider", paymentProvider)
+          .eq("reference", String(reference))
+          .limit(1);
+        if (existingChargeError) {
+          console.error("[charge-success] closed product order charge lookup failed", existingChargeError);
+          const { slackNotifyProductOrderPaymentNotRecorded } = await import(
+            "@/lib/integrations/slack/ops-triggers"
+          );
+          slackNotifyProductOrderPaymentNotRecorded({
+            tenantId: (poBeforeRow as { tenant_id?: string | null }).tenant_id ?? null,
+            productOrderId,
+            reference: String(reference),
+            source: "paystack_webhook:closed_pending_lookup_failed",
+            amountMajor,
+            currency: (poBeforeRow as { currency?: string | null }).currency ?? null,
+          });
+          return;
         }
+        if ((existingCharge?.length ?? 0) === 0) {
+          const currencyCode = String(
+            (poBeforeRow as { currency?: string | null }).currency || paystackCurrency || "ZAR",
+          ).toUpperCase();
+          try {
+            const { refundGatewayCharge } = await import("@/lib/payments/refund-gateway-charge");
+            await refundGatewayCharge({
+              reference: String(reference),
+              amountMajor,
+              currency: currencyCode,
+              tenantId: (poBeforeRow as { tenant_id?: string | null }).tenant_id ?? null,
+              reason: "Late Paystack charge.success after product order was cancelled",
+              idempotencyKey: `product_order_late_success_refund:${productOrderId}:${reference}`,
+              fallbackProvider: "paystack",
+            });
+            const { slackNotifyProductOrderPaymentNotRecorded } = await import(
+              "@/lib/integrations/slack/ops-triggers"
+            );
+            slackNotifyProductOrderPaymentNotRecorded({
+              tenantId: (poBeforeRow as { tenant_id?: string | null }).tenant_id ?? null,
+              productOrderId,
+              reference: String(reference),
+              source: "paystack_webhook:closed_pending_refund",
+              amountMajor,
+              currency: (poBeforeRow as { currency?: string | null }).currency ?? null,
+            });
+          } catch (e) {
+            console.error("[charge-success] closed pending product order refund failed", e);
+            throw e;
+          }
+        }
+        return;
       }
       if (poBeforeRow) {
         const { loadSuccessfulProductOrderCardCharges, priorProductOrderCardPayments, productOrderPaystackChargeIsAllowed } =
@@ -464,6 +522,40 @@ export async function processSuccessfulPayment(
             referenceAlreadyRecorded: priorCharges.referenceAlreadyRecorded,
           });
         if (!chargeAllowed) {
+          const psPaid = ps === "paid";
+          if (psPaid || ps === "failed" || st === "cancelled") {
+            const currencyCode = String(
+              (poBeforeRow as { currency?: string | null }).currency || paystackCurrency || "ZAR",
+            ).toUpperCase();
+            try {
+              const { refundGatewayCharge } = await import("@/lib/payments/refund-gateway-charge");
+              await refundGatewayCharge({
+                reference: String(reference),
+                amountMajor,
+                currency: currencyCode,
+                tenantId: (poBeforeRow as { tenant_id?: string | null }).tenant_id ?? null,
+                reason: psPaid
+                  ? "Duplicate Paystack charge.success on already-paid product order"
+                  : "Late Paystack charge.success after product order was closed",
+                idempotencyKey: `product_order_late_success_refund:${productOrderId}:${reference}`,
+                fallbackProvider: "paystack",
+              });
+              const { slackNotifyProductOrderPaymentNotRecorded } = await import(
+                "@/lib/integrations/slack/ops-triggers"
+              );
+              slackNotifyProductOrderPaymentNotRecorded({
+                tenantId: (poBeforeRow as { tenant_id?: string | null }).tenant_id ?? null,
+                productOrderId,
+                reference: String(reference),
+                source: psPaid ? "paystack_webhook:duplicate_paid_refund" : "paystack_webhook:amount_mismatch_refund",
+                amountMajor,
+                currency: (poBeforeRow as { currency?: string | null }).currency ?? null,
+              });
+              return;
+            } catch (e) {
+              console.error("[charge-success] product order surplus charge refund failed", e);
+            }
+          }
           console.error("[charge-success] product order amount mismatch", {
             productOrderId,
             amountMajor,
@@ -497,16 +589,53 @@ export async function processSuccessfulPayment(
           productOrderId,
           reference,
         });
+        const { data: afterRow } = await (supabase.from("product_orders") as any)
+          .select("payment_status, status, tenant_id, currency")
+          .eq("id", productOrderId)
+          .maybeSingle();
+        const afterPs = String(afterRow?.payment_status ?? "").toLowerCase();
+        const afterSt = String(afterRow?.status ?? "").toLowerCase();
+        const closedAfter =
+          afterPs === "failed" || afterSt === "cancelled" || afterSt === "refunded";
+        if (afterRow && closedAfter) {
+          const { data: existingCharge, error: existingChargeError } = await (
+            supabase.from("payment_transactions") as any
+          )
+            .select("id")
+            .eq("provider", paymentProvider)
+            .eq("reference", String(reference))
+            .limit(1);
+          if (!existingChargeError && (existingCharge?.length ?? 0) === 0) {
+            const currencyCode = String(
+              afterRow.currency || paystackCurrency || "ZAR",
+            ).toUpperCase();
+            try {
+              const { refundGatewayCharge } = await import("@/lib/payments/refund-gateway-charge");
+              await refundGatewayCharge({
+                reference: String(reference),
+                amountMajor,
+                currency: currencyCode,
+                tenantId: afterRow.tenant_id ?? null,
+                reason: "Late Paystack charge.success after product order was closed",
+                idempotencyKey: `product_order_late_success_refund:${productOrderId}:${reference}`,
+                fallbackProvider: "paystack",
+              });
+            } catch (refundErr) {
+              console.error("[charge-success] closed product order refund after record failed", refundErr);
+              throw refundErr;
+            }
+          }
+        }
         const { slackNotifyProductOrderPaymentNotRecorded } = await import(
           "@/lib/integrations/slack/ops-triggers"
         );
         slackNotifyProductOrderPaymentNotRecorded({
-          tenantId: poBeforeRow?.tenant_id ?? null,
+          tenantId: poBeforeRow?.tenant_id ?? afterRow?.tenant_id ?? null,
           productOrderId,
           reference: String(reference),
           source: "paystack_webhook",
           amountMajor,
-          currency: poBeforeRow?.currency ?? null,
+          currency: poBeforeRow?.currency ?? afterRow?.currency ?? null,
         });
         return;
       }
@@ -1427,7 +1556,9 @@ async function handleProductOrderChargeFailed(data: PaystackChargeData, supabase
   const productOrderId = String(metadata.product_order_id);
 
   const { data: order } = await (supabase.from("product_orders") as any)
-    .select("id, customer_id, provider_id, tenant_id, wallet_amount, gift_card_amount, currency, payment_status, status, order_number")
+    .select(
+      "id, customer_id, provider_id, tenant_id, wallet_amount, gift_card_amount, currency, payment_status, status, order_number, order_source, payment_method, payment_attempt_note",
+    )
     .eq("id", productOrderId)
     .maybeSingle();
 
@@ -1441,9 +1572,76 @@ async function handleProductOrderChargeFailed(data: PaystackChargeData, supabase
     gift_card_amount?: number | string | null;
     currency?: string | null;
     payment_status?: string;
+    status?: string;
+    order_source?: string | null;
+    payment_method?: string | null;
+    payment_attempt_note?: string | null;
+    order_number?: string | null;
   };
 
   if (o.payment_status !== "pending") return;
+
+  const { isUnpaidOnlinePaystackHold } = await import("@beautonomi/utils");
+  const failureMessage =
+    String(data.message ?? data.gateway_response ?? "Card payment failed").trim() || "Card payment failed";
+  const attemptNote = `${reference}: ${failureMessage}`;
+
+  if (
+    isUnpaidOnlinePaystackHold({
+      order_source: o.order_source,
+      payment_method: o.payment_method,
+      payment_status: o.payment_status,
+      status: o.status,
+    })
+  ) {
+    const priorNote = String(o.payment_attempt_note ?? "").trim();
+    if (priorNote.startsWith(`${reference}:`)) return;
+
+    const { data: noted } = await (supabase.from("product_orders") as any)
+      .update({
+        payment_attempt_note: attemptNote,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", o.id)
+      .eq("payment_status", "pending")
+      .eq("status", "pending")
+      .select("id");
+
+    if ((noted?.length ?? 0) === 0) return;
+
+    emitPaystackPaymentFailedSlack(data, { orderId: o.id });
+
+    try {
+      const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+      const { insertNotification } = await import("@/lib/notifications/insert-notification");
+      await sendTemplateNotification(
+        "product_order_payment_failed",
+        [o.customer_id],
+        {
+          amount: String(amountInCurrency),
+          order_number: String(o.order_number ?? o.id.slice(0, 8)),
+          order_id: String(o.id),
+          failure_reason: failureMessage,
+        },
+        ["push", "email"],
+        { appType: "customer", tenantId: o.tenant_id ?? null, skipInApp: true },
+      );
+      await insertNotification({
+        user_id: o.customer_id,
+        type: "product_order_update",
+        title: "Order Payment Failed",
+        message: "Your card payment did not go through. You can still pay from My Orders.",
+        data: {
+          type: "product_order_update",
+          product_order_id: o.id,
+        },
+        action_url: `/account-settings/orders/${o.id}`,
+      });
+    } catch (notifError) {
+      console.error("Error sending product-order payment failed notification:", notifError);
+    }
+    return;
+  }
 
   // Atomically claim failure only while still pending — avoids racing a late
   // verify/webhook that just marked the order paid.
@@ -1498,7 +1696,7 @@ async function handleProductOrderChargeFailed(data: PaystackChargeData, supabase
         type: "product_order_update",
         product_order_id: o.id,
       },
-      action_url: "/product-orders",
+      action_url: `/account-settings/orders/${o.id}`,
     });
   } catch (notifError) {
     console.error("Error sending product-order payment failed notification:", notifError);

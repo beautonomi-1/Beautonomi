@@ -249,8 +249,36 @@ async function uploadExploreMediaAsset(asset: PickedAsset, index: number): Promi
       const ok = await putLocalUriToSignedUrl(asset.uri, slotRes.data.signed_url, safeType);
       if (!ok) return { kind: "video", error: "Video upload failed" };
     }
+    let display_path: string | undefined;
+    let width: number | undefined;
+    let height: number | undefined;
+    if (asset.poster_uri) {
+      const posterSize = await localUriSizeBytes(asset.poster_uri);
+      if (posterSize && posterSize > 0) {
+        const posterSlot = await api.fetch<{ path: string; signed_url?: string | null }>(
+          "/api/explore/upload",
+          {
+            method: "POST",
+            body: { kind: "image", size_bytes: posterSize, mime_type: "image/jpeg" },
+          },
+        );
+        if (!posterSlot.error && posterSlot.data?.path) {
+          const posterOk = posterSlot.data.signed_url
+            ? await putLocalUriToSignedUrl(asset.poster_uri, posterSlot.data.signed_url, "image/jpeg")
+            : true;
+          if (posterOk) {
+            display_path = posterSlot.data.path;
+            width = asset.poster_width;
+            height = asset.poster_height;
+          }
+        }
+      }
+    }
     return {
       path: slotRes.data.path,
+      display_path,
+      width,
+      height,
       kind: "video",
       duration_ms: segmentMs,
       source_duration_ms: sourceDurationMs,
@@ -2787,6 +2815,9 @@ export default function ExplorePostsScreen() {
               type: "TRIM_CONFIRM",
               trim: { trim_start_ms: result.trim_start_ms, trim_end_ms: result.trim_end_ms },
               sourceDurationMs: result.source_duration_ms,
+              posterUri: result.poster_uri,
+              posterWidth: result.poster_width,
+              posterHeight: result.poster_height,
             })
           }
           onCancel={() => mediaFlow.dispatch({ type: "TRIM_CANCEL" })}

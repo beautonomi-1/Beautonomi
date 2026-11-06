@@ -32,7 +32,7 @@ function passwordUpdateErrorResponse(message: string) {
 
 export async function PUT(request: NextRequest) {
   try {
-    await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
+    const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
     const {
       data: { user: authUser },
@@ -43,6 +43,13 @@ export async function PUT(request: NextRequest) {
 
     const body = await request.json() as PasswordRequestBody;
     const mode = body.mode === "set" ? "set" : "change";
+    if (
+      mode === "change" &&
+      (user.role === "provider_owner" || user.role === "provider_staff")
+    ) {
+      const { requireStepUp } = await import("@/lib/auth/provider-security");
+      await requireStepUp(request, user.id, String(user.role), { action: "password_change" });
+    }
     const currentPassword = typeof body.currentPassword === "string" ? body.currentPassword : "";
     const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
     const nonce = typeof body.nonce === "string" ? body.nonce.trim() : "";

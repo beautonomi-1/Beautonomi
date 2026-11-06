@@ -82,12 +82,28 @@ export async function POST(request: NextRequest) {
       updates.phone = authUser.phone;
     }
 
+    const { data: before } = await supabase.from("users").select("phone").eq("id", user.id).maybeSingle();
+    const previousPhone = String((before as { phone?: string | null } | null)?.phone ?? "").trim();
+
     const { error: updateError } = await supabase
       .from("users")
       .update(updates)
       .eq("id", user.id);
 
     if (updateError) throw updateError;
+
+    const nextPhone = String(updates.phone ?? "").trim();
+    if (previousPhone && nextPhone && previousPhone !== nextPhone) {
+      const { sendSecurityAlert } = await import("@/lib/notifications/security-notifications");
+      const isProvider = user.role === "provider_owner" || user.role === "provider_staff";
+      await sendSecurityAlert({
+        key: "security_phone_changed",
+        userId: user.id,
+        appType: isProvider ? "provider" : "customer",
+        eventId: `phone_changed:${user.id}:${nextPhone}`,
+        variables: { new_phone_mask: `•••• ${nextPhone.slice(-4)}` },
+      });
+    }
 
     return successResponse({ verified: true, phone: updates.phone ?? null });
   } catch (error) {

@@ -220,6 +220,12 @@ export async function POST(
         throw transferErr;
       }
 
+      await supabase
+        .from("payouts")
+        .update({ transfer_code: transfer.id, updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .eq("status", "processing");
+
       const { recordPayoutLedger } = await import("@/lib/provider/record-payout-ledger");
       try {
         await recordPayoutLedger(supabase, {
@@ -343,6 +349,12 @@ export async function POST(
           .eq("payout_provider", "flutterwave");
         throw transferErr;
       }
+
+      await supabase
+        .from("payouts")
+        .update({ transfer_code: transfer.id, updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .eq("status", "processing");
 
       const completed = transfer.status.toLowerCase() === "successful";
       if (completed) {

@@ -32,6 +32,9 @@ interface PlatformSettings {
     minimum_payout_amount: number;
     /** Earnings become available for payout after this many days (0 = immediate). */
     payout_hold_days?: number;
+    new_account_cooling_off_hours?: number;
+    cooling_off_first_account?: boolean;
+    cooling_off_admin_added?: boolean;
     platform_service_fee_type: "percentage" | "fixed";
     platform_service_fee_percentage: number;
     platform_service_fee_fixed: number;
@@ -233,6 +236,9 @@ function getDefaultPlatformSettings(): PlatformSettings {
         payout_schedule: "weekly",
         minimum_payout_amount: 100,
         payout_hold_days: 0,
+        new_account_cooling_off_hours: 48,
+        cooling_off_first_account: false,
+        cooling_off_admin_added: true,
         platform_service_fee_type: "fixed",
         platform_service_fee_percentage: 0,
         platform_service_fee_fixed: 0,

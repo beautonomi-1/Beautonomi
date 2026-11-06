@@ -19,6 +19,12 @@ export const CUSTOMER_PRIMARY_ROUTES = [
   "/account-settings/wishlists/recently-viewed",
   "/account-settings/loyalty",
   "/account-settings/reviews",
+  "/account-settings/safety",
+  "/account-settings/safety/report-user",
+  "/account-settings/age-assurance",
+  "/account-settings/content-and-safety",
+  "/account-settings/blocked-users",
+  "/account-settings/profile-details",
 ] as const;
 
 export type CustomerPrimaryRoute = (typeof CUSTOMER_PRIMARY_ROUTES)[number];
@@ -39,4 +45,5 @@ export const ACCOUNT_QUICK_LINKS: { href: string; label: string }[] = [
   { href: "/account-settings/wishlists", label: "Wishlists" },
   { href: "/account-settings/loyalty", label: "Loyalty" },
   { href: "/account-settings/reviews", label: "Reviews" },
+  { href: "/account-settings/safety", label: "Safety" },
 ];

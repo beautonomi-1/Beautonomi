@@ -57,6 +57,8 @@ type BookingDetail = Booking & {
   customer_running_late_minutes?: number | null;
   provider_late_ack_at?: string | null;
   current_stage?: string | null;
+  cancellation_settled_at?: string | null;
+  cancellation_settlement_error?: string | null;
 };
 import { toast } from "sonner";
 import OrderDetailsDynamic from "@/app/checkout/components/order-details-dynamic";
@@ -83,6 +85,15 @@ function formatPercent(value?: number | null): string {
   return Number.isInteger(display) ? String(display) : display.toFixed(1);
 }
 
+type CancelPreviewGroup = {
+  ref_number: string | null;
+  guest_count: number;
+  other_bookings_cancelled: number;
+  other_bookings_wallet_refund: number;
+  other_bookings_cancellation_fee: number;
+  other_bookings_in_person_refund_due: number;
+};
+
 export default function BookingDetailPage() {
   const { t } = useTranslation();
   const params = useParams();
@@ -106,6 +117,8 @@ export default function BookingDetailPage() {
     penalty_waived_reason?: string;
     is_late_cancellation?: boolean;
     refund_capped_by_paid_amount?: boolean;
+    guest_shares_refunded?: number;
+    group?: CancelPreviewGroup | null;
   } | null>(null);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [showPayRemainingCheckout, setShowPayRemainingCheckout] = useState(false);
@@ -303,16 +316,24 @@ export default function BookingDetailPage() {
     try {
       setIsCancelling(true);
       const response = await fetcher.post<{
-        data: { booking: BookingDetail };
+        data: { booking: BookingDetail; refund_status?: "settled" | "pending" | "none" };
         error: null;
       }>(`/api/me/bookings/${bookingId}/cancel`, {
         reason: "Customer request",
         version: booking.version,
       });
 
-      setBooking(response.data.booking);
+      setBooking(
+        response.data.refund_status === "pending"
+          ? { ...response.data.booking, cancellation_settled_at: null, cancellation_settlement_error: "pending" }
+          : response.data.booking,
+      );
       setCancelPreviewOpen(false);
-      toast.success(t("web.accountSettings.bookings.cancelledSuccess"));
+      if (response.data.refund_status === "pending") {
+        toast.info(t("web.accountSettings.bookings.cancelledRefundProcessing"));
+      } else {
+        toast.success(t("web.accountSettings.bookings.cancelledSuccess"));
+      }
     } catch (err) {
       if (err instanceof FetchError && err.status === 409) {
         toast.error(t("web.accountSettings.bookings.conflictRefresh"));
@@ -348,6 +369,8 @@ export default function BookingDetailPage() {
           penalty_waived_reason?: string;
           is_late_cancellation?: boolean;
           refund_capped_by_paid_amount?: boolean;
+          guest_shares_refunded?: number;
+          group?: CancelPreviewGroup | null;
         };
         error: null;
       }>(`/api/me/bookings/${bookingId}/cancel-preview`, { cache: "no-store", staleTimeMs: 0 });
@@ -447,6 +470,10 @@ export default function BookingDetailPage() {
     (booking.outstanding_balance ?? 0) > 0 &&
     (booking.payment_status === "pending" || booking.payment_status === "partially_paid");
   const providerName = booking.provider?.business_name ?? t("web.accountSettings.bookings.yourProvider");
+  const refundProcessing =
+    booking.status === "cancelled" &&
+    !booking.cancellation_settled_at &&
+    Boolean(booking.cancellation_settlement_error);
   const expiredPendingReason = String(booking.cancellation_reason ?? "");
   const isExpiredPending =
     booking.status === "cancelled" &&
@@ -687,6 +714,13 @@ export default function BookingDetailPage() {
           </span>
         </div>
       </div>
+
+      {refundProcessing ? (
+        <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <p className="font-semibold text-amber-900">{t("web.accountSettings.bookings.refundProcessingTitle")}</p>
+          <p className="text-sm text-amber-800 mt-1">{t("web.accountSettings.bookings.refundProcessingBody")}</p>
+        </div>
+      ) : null}
 
       {isExpiredPending && booking.provider?.slug ? (
         <div className="mb-6 rounded-2xl border border-gray-200 bg-gray-50 p-4">
@@ -1365,6 +1399,45 @@ export default function BookingDetailPage() {
                       </p>
                     ) : null}
                     {waived ? <p className="text-emerald-800">{waived}</p> : null}
+                    {cancelPreview.group ? (
+                      <div
+                        className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900 space-y-1"
+                        data-testid="cancel-preview-group"
+                      >
+                        <p className="font-medium">
+                          {t("web.accountSettings.bookings.cancelGroupPreviewTitle", {
+                            ref: cancelPreview.group.ref_number ?? "",
+                            count: cancelPreview.group.guest_count,
+                          })}
+                        </p>
+                        {cancelPreview.group.other_bookings_wallet_refund > 0.009 ||
+                        cancelPreview.group.other_bookings_cancellation_fee > 0.009 ? (
+                          <p>
+                            {t("web.accountSettings.bookings.cancelGroupPreviewOtherBookings", {
+                              currency: cur,
+                              refund: cancelPreview.group.other_bookings_wallet_refund.toFixed(2),
+                              fee: cancelPreview.group.other_bookings_cancellation_fee.toFixed(2),
+                            })}
+                          </p>
+                        ) : null}
+                        {cancelPreview.group.other_bookings_in_person_refund_due > 0.009 ? (
+                          <p>
+                            {t("customer.mobile.screens.bookingDetail.cancelPreviewInPersonRefund", {
+                              currency: cur,
+                              amount: cancelPreview.group.other_bookings_in_person_refund_due.toFixed(2),
+                            })}
+                          </p>
+                        ) : null}
+                        {Number(cancelPreview.guest_shares_refunded ?? 0) > 0.009 ? (
+                          <p>
+                            {t("web.accountSettings.bookings.cancelGroupPreviewGuestShares", {
+                              currency: cur,
+                              amount: Number(cancelPreview.guest_shares_refunded).toFixed(2),
+                            })}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </>
                 );
               })()}

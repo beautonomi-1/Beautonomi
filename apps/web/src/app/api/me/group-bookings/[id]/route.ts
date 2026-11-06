@@ -190,6 +190,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         is_invoiced: paymentRollup.is_invoiced,
         paid_by: paidBy,
         is_primary_payer: isPrimaryPayer,
+        lead_booking_id: isPrimaryPayer ? ((group as any).primary_contact_booking_id ?? null) : null,
         notes: (group as any).notes ?? null,
       },
     });

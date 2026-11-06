@@ -13,6 +13,8 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["provider_owner"], request);
+    const { requireStepUp } = await import("@/lib/auth/provider-security");
+    await requireStepUp(request, user.id, String(user.role), { action: "stripe_connect" });
     const supabaseUser = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabaseUser, { request });
     if (!providerId) {

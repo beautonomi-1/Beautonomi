@@ -9,9 +9,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockVerifyOtp = vi.fn();
+const mockResetPasswordForEmail = vi.fn();
 const mockGetSupabaseClient = vi.fn(() => ({
   auth: {
     verifyOtp: mockVerifyOtp,
+    resetPasswordForEmail: mockResetPasswordForEmail,
   },
 }));
 
@@ -69,5 +71,61 @@ describe("verifySignupEmailOtp", () => {
     await expect(
       verifySignupEmailOtp("user@example.com", "000000"),
     ).rejects.toThrow("Invalid or expired token");
+  });
+});
+
+describe("resetPassword", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("tags the callback redirect as recovery so a PKCE code lands on the reset page", async () => {
+    mockResetPasswordForEmail.mockResolvedValue({ data: {}, error: null });
+    const { resetPassword } = await import("../auth");
+
+    await resetPassword("user@example.com");
+
+    expect(mockResetPasswordForEmail).toHaveBeenCalledWith("user@example.com", {
+      redirectTo: `${window.location.origin}/auth/callback?type=recovery`,
+    });
+  });
+
+  it("carries next through the callback so the link path returns where the code path does", async () => {
+    mockResetPasswordForEmail.mockResolvedValue({ data: {}, error: null });
+    const { resetPassword } = await import("../auth");
+
+    await resetPassword("user@example.com", "/account-settings/login-and-security");
+
+    expect(mockResetPasswordForEmail).toHaveBeenCalledWith("user@example.com", {
+      redirectTo: `${window.location.origin}/auth/callback?type=recovery&next=%2Faccount-settings%2Flogin-and-security`,
+    });
+  });
+});
+
+describe("verifyPasswordRecoveryOtp", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("verifies the emailed code with type 'recovery'", async () => {
+    mockVerifyOtp.mockResolvedValue({ data: { session: { access_token: "abc" } }, error: null });
+    const { verifyPasswordRecoveryOtp } = await import("../auth");
+
+    await verifyPasswordRecoveryOtp("  user@example.com ", "691 960");
+
+    expect(mockVerifyOtp).toHaveBeenCalledWith({
+      email: "user@example.com",
+      token: "691960",
+      type: "recovery",
+    });
+  });
+
+  it("throws when the code is rejected", async () => {
+    mockVerifyOtp.mockResolvedValue({ data: null, error: { message: "Token has expired or is invalid" } });
+    const { verifyPasswordRecoveryOtp } = await import("../auth");
+
+    await expect(verifyPasswordRecoveryOtp("user@example.com", "000000")).rejects.toThrow(
+      "Token has expired or is invalid",
+    );
   });
 });

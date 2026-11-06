@@ -17,7 +17,8 @@
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@beautonomi/auth-security": ["../../packages/auth-security/src/index.ts"]
     }
   },
   "include": ["src"],

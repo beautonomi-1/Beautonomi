@@ -44,6 +44,7 @@ import {
 } from "@/lib/supportTicketCategories";
 import {
   buildSupportTicketsSearchParams,
+  listSupportTicketActiveFilters,
   matchSupportTicketSavedView,
   mergeSupportTicketSavedViewIntoSearchParams,
   supportTicketQueueQuery,
@@ -66,6 +67,7 @@ import { AdminMetricCard } from "@/components/ui/AdminMetricCard";
 import { Filter, LayoutGrid, LayoutList } from "lucide-react";
 import { useIsDesktop } from "@/hooks/useIsDesktop";
 import { SupportTicketDetailView } from "@/routes/support/SupportTicketDetailView";
+import { priorityPillClass, relativeTime, statusPillClass } from "@/routes/support/ticket-detail/ticketDetailHelpers";
 import { cn } from "@/lib/cn";
 import { AdminVirtualList } from "@/components/admin/AdminVirtualList";
 
@@ -202,13 +204,6 @@ function isSlaBreached(ticket: SupportTicket): boolean {
   return new Date(ticket.sla_resolution_due_at).getTime() < Date.now();
 }
 
-function priorityPillClass(p: string): string {
-  if (p === "urgent") return "bg-red-100 text-red-900";
-  if (p === "high") return "bg-orange-100 text-orange-900";
-  if (p === "low") return "bg-slate-100 text-slate-800";
-  return "bg-gray-100 text-gray-900";
-}
-
 function ticketAgeDays(createdAt: string): number {
   const ms = Date.now() - new Date(createdAt).getTime();
   return Math.max(0, Math.floor(ms / 86400000));
@@ -330,7 +325,7 @@ function SupportTicketCardChipRow({ ticket }: { ticket: SupportTicket }) {
       <SupportTicketCardChip title="Priority" className={cn("capitalize", priorityPillClass(ticket.priority))}>
         {ticket.priority}
       </SupportTicketCardChip>
-      <SupportTicketCardChip title="Status" className="bg-gray-100 capitalize text-gray-800">
+      <SupportTicketCardChip title="Status" className={cn("capitalize", statusPillClass(ticket.status))}>
         {ticket.status.replace(/_/g, " ")}
       </SupportTicketCardChip>
       <AttentionBadge ticket={ticket} />
@@ -381,17 +376,56 @@ function SupportTicketCardChipRow({ ticket }: { ticket: SupportTicket }) {
 function SupportTicketsCompactHeader({
   description,
   actions,
+  compactDescription = false,
 }: {
   description: string;
   actions: React.ReactNode;
+  compactDescription?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-3 border-b border-gray-100 pb-3 sm:flex-row sm:items-start sm:justify-between">
+    <div className="flex flex-col gap-2 border-b border-gray-100 pb-2 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <h1 className="text-xl font-semibold tracking-tight text-gray-900">Support tickets</h1>
-        <p className="mt-1 max-w-3xl text-sm leading-snug text-gray-600">{description}</p>
+        {description ? (
+          <p
+            className={`mt-0.5 text-gray-600 ${compactDescription ? "text-xs text-gray-500" : "max-w-3xl text-sm leading-snug"}`}
+            title={compactDescription ? description : undefined}
+          >
+            {compactDescription ? "Inbox · ↑↓ select · Enter full page · R reply" : description}
+          </p>
+        ) : null}
       </div>
       <div className="flex w-full flex-shrink-0 flex-wrap gap-2 sm:w-auto sm:justify-end">{actions}</div>
+    </div>
+  );
+}
+
+function SupportTicketsQueueCountStrip({
+  counts,
+  onSegment,
+}: {
+  counts: { open: number; unassigned: number; breaching_sla: number; awaiting_reply: number };
+  onSegment: (segment: "open" | "unassigned" | "breaching" | "awaiting") => void;
+}) {
+  const items = [
+    { key: "open" as const, label: "Open", value: counts.open },
+    { key: "unassigned" as const, label: "Unassigned", value: counts.unassigned },
+    { key: "breaching" as const, label: "SLA", value: counts.breaching_sla },
+    { key: "awaiting" as const, label: "Awaiting", value: counts.awaiting_reply },
+  ];
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {items.map((item) => (
+        <button
+          key={item.key}
+          type="button"
+          onClick={() => onSegment(item.key)}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 shadow-sm hover:bg-gray-50"
+        >
+          <span className="text-gray-500">{item.label}</span>
+          <span className="tabular-nums text-gray-900">{item.value.toLocaleString()}</span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -422,6 +456,105 @@ function SupportTicketCard({
   const assigneeLabel = ticket.assigned_user
     ? ticket.assigned_user.full_name || ticket.assigned_user.email
     : "Unassigned";
+  const timeLabel = relativeTime(ticket.last_message_at || ticket.updated_at);
+
+  if (isDesktopInbox) {
+    const chips: ReactNode[] = [];
+    if (ticket.needs_agent_response || ticket.attention_state === "awaiting_agent") {
+      chips.push(
+        <SupportTicketCardChip key="needs" title="Needs response" className="bg-violet-100 font-semibold text-violet-900">
+          Needs reply
+        </SupportTicketCardChip>,
+      );
+    }
+    if (ticket.sla_state === "breached" || isSlaBreached(ticket)) {
+      chips.push(
+        <SupportTicketCardChip key="sla" title="SLA" className="bg-red-100 font-semibold text-red-800">
+          SLA
+        </SupportTicketCardChip>,
+      );
+    }
+    if (hasDraft) {
+      chips.push(
+        <SupportTicketCardChip key="draft" title="Draft" className="bg-sky-100 font-semibold text-sky-900">
+          Draft
+        </SupportTicketCardChip>,
+      );
+    }
+    if (ticket.latest_public_email_delivery_status === "failed") {
+      chips.push(
+        <SupportTicketCardChip key="email" title="Email" className="bg-rose-100 font-semibold text-rose-800">
+          Send failed
+        </SupportTicketCardChip>,
+      );
+    }
+    const statusChip = (
+      <SupportTicketCardChip key="status" title="Status" className={cn("capitalize", statusPillClass(ticket.status))}>
+        {ticket.status.replace(/_/g, " ")}
+      </SupportTicketCardChip>
+    );
+
+    return (
+      <div
+        data-ticket-id={ticket.id}
+        className={cn(
+          "rounded-xl border bg-white shadow-sm transition-all",
+          isSelected
+            ? "border-primary bg-primary/5 ring-2 ring-primary/25"
+            : "border-gray-200 ring-1 ring-gray-950/[0.03] hover:border-gray-300 hover:bg-gray-50",
+          ticket.agent_unread && !isSelected && "ring-1 ring-primary/30",
+        )}
+      >
+        <div className="flex gap-2 px-3 py-2">
+          {selectable ? (
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4 shrink-0"
+              checked={isChecked}
+              onChange={() => onToggleCheck?.()}
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Select ${ticket.ticket_number}`}
+            />
+          ) : null}
+          <Link
+            to={ticketDetailHref}
+            onClick={(e) => {
+              e.preventDefault();
+              onSelectDesktop();
+            }}
+            aria-current={isSelected ? "true" : undefined}
+            className="min-w-0 flex-1"
+          >
+            <div className="flex items-center gap-2">
+              {ticket.agent_unread ? (
+                <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-primary" aria-label="Unread" />
+              ) : null}
+              <p
+                className={cn(
+                  "min-w-0 flex-1 truncate text-sm text-gray-900",
+                  ticket.agent_unread ? "font-bold" : "font-semibold",
+                )}
+              >
+                {ticket.subject}
+              </p>
+              <span className="shrink-0 text-[11px] text-gray-500">{timeLabel}</span>
+            </div>
+            <p className="mt-0.5 truncate text-xs text-gray-600">
+              {customerLabel}
+              <span className="text-gray-400"> · </span>
+              {assigneeLabel}
+              <span className="text-gray-400"> · </span>
+              <span className="font-mono text-gray-500">{ticket.ticket_number}</span>
+            </p>
+            {ticket.description?.trim() ? (
+              <p className="mt-0.5 line-clamp-1 text-xs text-gray-500">{ticket.description.trim()}</p>
+            ) : null}
+            <div className="mt-1 flex flex-wrap gap-1">{[statusChip, ...chips].slice(0, 3)}</div>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -616,7 +749,8 @@ export function SupportTicketsPage() {
   const needsResponseFilter = searchParams.get("needs_response") === "1";
   const slaStateFilter = searchParams.get("sla_state") ?? "";
   const firstResponseOverdueFilter = searchParams.get("first_response_overdue") === "1";
-  const aiHandlingFilter = searchParams.get("handling_mode") === "assistant";
+  const handlingModeFilter = searchParams.get("handling_mode") ?? "";
+  const aiHandlingFilter = handlingModeFilter === "assistant";
   const viewFilter = searchParams.get("view");
   const selectedId = searchParams.get("selected");
   const statusGroupFilter = searchParams.get("status_group") ?? "";
@@ -690,9 +824,11 @@ export function SupportTicketsPage() {
             status_group: "",
             category_group: "",
             channel: "all",
+            handling_mode: "",
           };
           if (value === defaults[key]) n.delete(key);
           else n.set(key, value);
+          if (key === "status_group" && value) n.delete("status");
           if (key === "status" && value !== "all") n.delete("status_group");
           if (key === "category_group" && value !== "") n.delete("category");
           if (key === "category" && value !== "all") n.delete("category_group");
@@ -764,6 +900,7 @@ export function SupportTicketsPage() {
       categoryGroup: categoryGroupFilter,
       channel: channelFilter,
       aiHandling: aiHandlingFilter,
+      handlingMode: handlingModeFilter,
     }),
     [
       pageIndex,
@@ -782,6 +919,7 @@ export function SupportTicketsPage() {
       categoryGroupFilter,
       channelFilter,
       aiHandlingFilter,
+      handlingModeFilter,
     ],
   );
 
@@ -1115,38 +1253,24 @@ export function SupportTicketsPage() {
     );
   }
 
-  const hasFilters =
-    qFromUrl ||
-    statusFilter !== "all" ||
-    priorityFilter !== "all" ||
-    categoryFilter !== "all" ||
-    assignFilter !== "all" ||
-    sortFilter !== "smart" ||
-    slaOverdueFilter ||
-    needsResponseFilter ||
-    !!slaStateFilter ||
-    firstResponseOverdueFilter ||
-    !!categoryGroupFilter ||
-    channelFilter !== "all" ||
-    !!statusGroupFilter ||
-    aiHandlingFilter;
+  const categoryGroupLabel =
+    SUPPORT_TICKET_CATEGORY_GROUPS_RICH.find(
+      (group) =>
+        group.id === categoryGroupFilter ||
+        group.label.toLowerCase() === categoryGroupFilter.toLowerCase(),
+    )?.label ?? categoryGroupFilter.replace(/_/g, " ");
+  const activeFilterChips = listSupportTicketActiveFilters(supportTicketFilterState, {
+    category: categoryFilter !== "all" ? labelForSupportTicketCategory(categoryFilter) : undefined,
+    categoryGroup: categoryGroupFilter ? categoryGroupLabel : undefined,
+  });
+  const hasFilters = activeFilterChips.length > 0;
+  const activeFilterCount = activeFilterChips.length;
 
-  const activeFilterCount = [
-    qFromUrl,
-    statusFilter !== "all",
-    priorityFilter !== "all",
-    categoryFilter !== "all",
-    assignFilter !== "all",
-    sortFilter !== "smart",
-    slaOverdueFilter,
-    needsResponseFilter,
-    !!slaStateFilter,
-    firstResponseOverdueFilter,
-    !!categoryGroupFilter,
-    channelFilter !== "all",
-    !!statusGroupFilter,
-    aiHandlingFilter,
-  ].filter(Boolean).length;
+  const filterControlClass = (active: boolean) =>
+    cn(
+      "min-h-11 rounded-lg border px-3 py-2 text-base sm:text-sm",
+      active ? "border-primary bg-primary/5 font-medium text-primary" : "border-gray-300 bg-white text-gray-800",
+    );
 
   const queueShellStyle =
     useQueueWorkspace && queueShellHeightPx != null
@@ -1164,16 +1288,14 @@ export function SupportTicketsPage() {
       }
     >
       <div className="shrink-0">
-        <SupportTicketsCompactHeader description={pageDescription} actions={headerActions} />
+        <SupportTicketsCompactHeader
+          description={pageDescription}
+          actions={headerActions}
+          compactDescription={useQueueWorkspace}
+        />
       </div>
 
-      <div
-        className={
-          useQueueWorkspace
-            ? "admin-scrollbar max-h-[40%] shrink-0 space-y-3 overflow-y-auto pr-1"
-            : "contents"
-        }
-      >
+      <div className={useQueueWorkspace ? "shrink-0 space-y-2" : "contents"}>
       {staleZohoInbound ? (
         <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
           Zoho Mail inbound sync is stale (&gt;15 min). Check Integrations → Zoho Mail or the sync cron.
@@ -1181,36 +1303,40 @@ export function SupportTicketsPage() {
       ) : null}
 
       {counts ? (
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-          <AdminMetricCard
-            label="Open tickets"
-            value={counts.open.toLocaleString()}
-            variant="slate"
-            className="!p-3 shadow-sm [&_p:nth-of-type(2)]:!text-xl"
-            onClick={() => applyCountSegment("open")}
-          />
-          <AdminMetricCard
-            label="Unassigned"
-            value={counts.unassigned.toLocaleString()}
-            variant="amber"
-            className="!p-3 shadow-sm [&_p:nth-of-type(2)]:!text-xl"
-            onClick={() => applyCountSegment("unassigned")}
-          />
-          <AdminMetricCard
-            label="Breaching SLA"
-            value={counts.breaching_sla.toLocaleString()}
-            variant="rose"
-            className="!p-3 shadow-sm [&_p:nth-of-type(2)]:!text-xl"
-            onClick={() => applyCountSegment("breaching")}
-          />
-          <AdminMetricCard
-            label="Awaiting reply"
-            value={counts.awaiting_reply.toLocaleString()}
-            variant="violet"
-            className="!p-3 shadow-sm [&_p:nth-of-type(2)]:!text-xl"
-            onClick={() => applyCountSegment("awaiting")}
-          />
-        </div>
+        useQueueWorkspace ? (
+          <SupportTicketsQueueCountStrip counts={counts} onSegment={applyCountSegment} />
+        ) : (
+          <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+            <AdminMetricCard
+              label="Open tickets"
+              value={counts.open.toLocaleString()}
+              variant="slate"
+              className="!p-3 shadow-sm [&_p:nth-of-type(2)]:!text-xl"
+              onClick={() => applyCountSegment("open")}
+            />
+            <AdminMetricCard
+              label="Unassigned"
+              value={counts.unassigned.toLocaleString()}
+              variant="amber"
+              className="!p-3 shadow-sm [&_p:nth-of-type(2)]:!text-xl"
+              onClick={() => applyCountSegment("unassigned")}
+            />
+            <AdminMetricCard
+              label="Breaching SLA"
+              value={counts.breaching_sla.toLocaleString()}
+              variant="rose"
+              className="!p-3 shadow-sm [&_p:nth-of-type(2)]:!text-xl"
+              onClick={() => applyCountSegment("breaching")}
+            />
+            <AdminMetricCard
+              label="Awaiting reply"
+              value={counts.awaiting_reply.toLocaleString()}
+              variant="violet"
+              className="!p-3 shadow-sm [&_p:nth-of-type(2)]:!text-xl"
+              onClick={() => applyCountSegment("awaiting")}
+            />
+          </div>
+        )
       ) : null}
 
       <AdminModal open={showCreate} title="Create support ticket" onClose={() => setShowCreate(false)} footer={null}>
@@ -1298,30 +1424,33 @@ export function SupportTicketsPage() {
           onSelect={applySavedView}
           className="shrink-0 pb-0"
         />
-        {SUPPORT_TICKET_CATEGORY_GROUPS_RICH.map((group) => {
-          const active =
-            categoryGroupFilter === group.id ||
-            categoryGroupFilter.toLowerCase() === group.label.toLowerCase();
-          return (
-            <button
-              key={group.id}
-              type="button"
-              title={group.description}
-              onClick={() => setFilter("category_group", active ? "" : group.id)}
-              className={cn(
-                "shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium",
-                active
-                  ? "border-primary bg-primary/5 text-primary"
-                  : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50",
-              )}
-            >
-              {group.label}
-            </button>
-          );
-        })}
+        {!useQueueWorkspace
+          ? SUPPORT_TICKET_CATEGORY_GROUPS_RICH.map((group) => {
+              const active =
+                categoryGroupFilter === group.id ||
+                categoryGroupFilter.toLowerCase() === group.label.toLowerCase();
+              return (
+                <button
+                  key={group.id}
+                  type="button"
+                  title={group.description}
+                  onClick={() => setFilter("category_group", active ? "" : group.id)}
+                  className={cn(
+                    "shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium",
+                    active
+                      ? "border-primary bg-primary/5 text-primary"
+                      : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50",
+                  )}
+                >
+                  {group.label}
+                </button>
+              );
+            })
+          : null}
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => setFiltersOpen((v) => !v)}
@@ -1335,6 +1464,17 @@ export function SupportTicketsPage() {
             </span>
           ) : null}
         </button>
+        {useQueueWorkspace ? (
+          <input
+            type="search"
+            placeholder="Search tickets…"
+            value={qDraft}
+            onChange={(e) => setQDraft(e.target.value)}
+            className="min-h-11 min-w-[12rem] flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+            aria-label="Search tickets"
+          />
+        ) : null}
+        </div>
         <div className="ml-auto inline-flex rounded-xl border border-gray-300 bg-white">
           <button
             type="button"
@@ -1361,7 +1501,55 @@ export function SupportTicketsPage() {
 
       <AdminPanel className={filtersOpen ? "block" : "hidden"}>
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-3 lg:flex-row">
+          {activeFilterChips.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2" aria-label="Selected filters">
+              <span className="text-xs font-medium text-gray-500">Selected</span>
+              {activeFilterChips.map((chip) => (
+                <span
+                  key={chip.id}
+                  className="rounded-full border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary"
+                >
+                  {chip.label}
+                </span>
+              ))}
+              <button
+                type="button"
+                className="text-xs font-medium text-gray-600 underline-offset-2 hover:underline"
+                onClick={clearAllFilters}
+              >
+                Clear all
+              </button>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-500">No filters selected. The queue is showing every ticket.</p>
+          )}
+          {useQueueWorkspace ? (
+            <div className="flex flex-wrap gap-2">
+              {SUPPORT_TICKET_CATEGORY_GROUPS_RICH.map((group) => {
+                const active =
+                  categoryGroupFilter === group.id ||
+                  categoryGroupFilter.toLowerCase() === group.label.toLowerCase();
+                return (
+                  <button
+                    key={group.id}
+                    type="button"
+                    title={group.description}
+                    onClick={() => setFilter("category_group", active ? "" : group.id)}
+                    className={cn(
+                      "shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium",
+                      active
+                        ? "border-primary bg-primary/5 text-primary"
+                        : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50",
+                    )}
+                  >
+                    {group.label}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+          <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap">
+            {useQueueWorkspace ? null : (
             <input
               type="search"
               placeholder="Search ticket #, booking no., subject, or description…"
@@ -1369,10 +1557,22 @@ export function SupportTicketsPage() {
               onChange={(e) => setQDraft(e.target.value)}
               className="min-h-11 w-full flex-1 rounded-lg border border-gray-300 px-3 py-2 text-base sm:text-sm"
             />
+            )}
             <select
-              value={statusFilter}
+              value={statusGroupFilter}
+              onChange={(e) => setFilter("status_group", e.target.value)}
+              aria-label="Status group"
+              className={filterControlClass(Boolean(statusGroupFilter))}
+            >
+              <option value="">All status groups</option>
+              <option value="active">Active queue</option>
+              <option value="resolved_closed">Resolved / closed</option>
+            </select>
+            <select
+              value={statusGroupFilter ? "all" : statusFilter}
               onChange={(e) => setFilter("status", e.target.value)}
-              className="min-h-11 rounded-lg border border-gray-300 px-3 py-2 text-base sm:text-sm lg:w-44"
+              aria-label="Status"
+              className={filterControlClass(!statusGroupFilter && statusFilter !== "all")}
             >
               <option value="all">All statuses</option>
               <option value="open">Open</option>
@@ -1384,7 +1584,8 @@ export function SupportTicketsPage() {
             <select
               value={priorityFilter}
               onChange={(e) => setFilter("priority", e.target.value)}
-              className="min-h-11 rounded-lg border border-gray-300 px-3 py-2 text-base sm:text-sm lg:w-44"
+              aria-label="Priority"
+              className={filterControlClass(priorityFilter !== "all")}
             >
               <option value="all">All priorities</option>
               <option value="urgent">Urgent</option>
@@ -1393,11 +1594,12 @@ export function SupportTicketsPage() {
               <option value="low">Low</option>
             </select>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <select
               value={categoryFilter}
               onChange={(e) => setFilter("category", e.target.value)}
-              className="min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-base sm:max-w-md sm:text-sm"
+              aria-label="Category"
+              className={cn(filterControlClass(categoryFilter !== "all"), "w-full sm:max-w-md")}
             >
               <option value="all">All categories</option>
               {SUPPORT_TICKET_CATEGORY_GROUPS.map((group) => (
@@ -1413,7 +1615,8 @@ export function SupportTicketsPage() {
             <select
               value={assignFilter}
               onChange={(e) => setFilter("assign", e.target.value)}
-              className="min-h-11 rounded-lg border border-gray-300 px-3 py-2 text-base sm:w-52 sm:text-sm"
+              aria-label="Assignee"
+              className={filterControlClass(assignFilter !== "all")}
             >
               <option value="all">All tickets</option>
               <option value="unassigned">Unassigned</option>
@@ -1424,7 +1627,8 @@ export function SupportTicketsPage() {
             <select
               value={sortFilter}
               onChange={(e) => setFilter("sort", e.target.value)}
-              className="min-h-11 rounded-lg border border-gray-300 px-3 py-2 text-base sm:w-56 sm:text-sm"
+              aria-label="Sort"
+              className={cn(filterControlClass(sortFilter !== "smart"), "sm:w-56")}
             >
               <option value="smart">Sort: Smart (attention first)</option>
               <option value="updated_desc">Sort: Last updated</option>
@@ -1435,13 +1639,36 @@ export function SupportTicketsPage() {
             <select
               value={attentionFilter}
               onChange={(e) => setAttentionFilter(e.target.value)}
-              className="min-h-11 rounded-lg border border-gray-300 px-3 py-2 text-base sm:w-56 sm:text-sm"
+              aria-label="Attention"
+              className={filterControlClass(Boolean(attentionFilter))}
             >
               <option value="">All attention states</option>
               <option value="needs_response">Needs response</option>
               <option value="first_response_overdue">First reply overdue</option>
               <option value="sla_at_risk">Due within 6h</option>
               <option value="sla_breached">SLA breached</option>
+            </select>
+            <select
+              value={channelFilter}
+              onChange={(e) => setFilter("channel", e.target.value)}
+              aria-label="Channel"
+              className={filterControlClass(channelFilter !== "all")}
+            >
+              <option value="all">All channels</option>
+              <option value="email">Email</option>
+              <option value="app">App</option>
+            </select>
+            <select
+              value={handlingModeFilter === "assistant" || handlingModeFilter === "human" ? handlingModeFilter : "all"}
+              onChange={(e) =>
+                setFilter("handling_mode", e.target.value === "all" ? "" : e.target.value)
+              }
+              aria-label="Handling"
+              className={filterControlClass(handlingModeFilter === "assistant" || handlingModeFilter === "human")}
+            >
+              <option value="all">All handling</option>
+              <option value="assistant">AI handling</option>
+              <option value="human">Human handling</option>
             </select>
           </div>
         </div>
@@ -1486,8 +1713,8 @@ export function SupportTicketsPage() {
         )
       ) : (
         <div className={useQueueWorkspace ? "flex min-h-0 flex-1 flex-col gap-3 overflow-hidden" : undefined}>
-          {isCardsView ? (
-            <div className={useQueueWorkspace ? "shrink-0" : undefined}>
+          {isCardsView && !useQueueWorkspace ? (
+            <div>
             <SupportTicketsBulkBar
               selectedCount={selectedIds.length}
               bulkAssignee={bulkAssignee}
@@ -1502,13 +1729,8 @@ export function SupportTicketsPage() {
             </div>
           ) : null}
 
-          {isCardsView ? (
-            <div
-              className={cn(
-                "flex flex-wrap items-center gap-3 text-sm text-gray-600",
-                useQueueWorkspace && "shrink-0",
-              )}
-            >
+          {isCardsView && !useQueueWorkspace ? (
+            <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
               <label className="inline-flex min-h-11 items-center gap-2">
                 <input
                   type="checkbox"
@@ -1535,9 +1757,33 @@ export function SupportTicketsPage() {
                 ref={listScrollRef}
                 className="flex h-full min-h-0 flex-col overflow-hidden"
               >
+              <div className="shrink-0">
+                <SupportTicketsBulkBar
+                  selectedCount={selectedIds.length}
+                  bulkAssignee={bulkAssignee}
+                  setBulkAssignee={setBulkAssignee}
+                  bulkStatus={bulkStatus}
+                  setBulkStatus={setBulkStatus}
+                  assignees={assignees?.assignees ?? []}
+                  bulkMutPending={bulkMut.isPending}
+                  onAssign={() => bulkMut.mutate({ ticket_ids: selectedIds, assigned_to: bulkAssignee })}
+                  onUpdateStatus={() => bulkMut.mutate({ ticket_ids: selectedIds, status: bulkStatus })}
+                />
+              </div>
+              <label className="inline-flex min-h-9 shrink-0 items-center gap-2 px-1 text-xs text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={tickets.length > 0 && selectedIds.length === tickets.length}
+                  onChange={(e) =>
+                    setSelectedIds(e.target.checked ? tickets.map((t) => t.id) : [])
+                  }
+                  aria-label="Select all tickets on page"
+                />
+                Select all on page
+              </label>
               <AdminVirtualList
                 items={tickets}
-                estimateSize={152}
+                estimateSize={96}
                 threshold={12}
                 fill
                 activeIndex={selectedTicketIndex}
@@ -1562,6 +1808,31 @@ export function SupportTicketsPage() {
                   />
                 )}
               />
+              <div className="flex shrink-0 flex-col items-center justify-between gap-2 border-t border-gray-100 px-1 py-2 text-xs text-gray-600 sm:flex-row">
+                <p>
+                  Showing {rangeStart}–{rangeEnd} of {total}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2 py-1 disabled:opacity-40"
+                    disabled={page <= 1}
+                    onClick={() => setPage(page - 1)}
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                    Prev
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2 py-1 disabled:opacity-40"
+                    disabled={offset + tickets.length >= total}
+                    onClick={() => setPage(page + 1)}
+                  >
+                    Next
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
               </div>
               <div
                 id="support-ticket-inbox-panel"
@@ -1745,7 +2016,9 @@ export function SupportTicketsPage() {
                     </span>
                   </AdminTd>
                   <AdminTd>
-                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs">{ticket.status.replace(/_/g, " ")}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${statusPillClass(ticket.status)}`}>
+                      {ticket.status.replace(/_/g, " ")}
+                    </span>
                   </AdminTd>
                   <AdminTd className="whitespace-nowrap text-sm">
                     {ticket.sla_resolution_due_at ? (
@@ -1802,36 +2075,33 @@ export function SupportTicketsPage() {
             </AdminTableBody>
           </AdminDataTable>
 
-          <div
-            className={cn(
-              "flex flex-col items-center justify-between gap-3 text-sm text-gray-600 sm:flex-row",
-              useQueueWorkspace && "shrink-0",
-            )}
-          >
-            <p>
-              Showing {rangeStart}–{rangeEnd} of {total}
-            </p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-2 disabled:opacity-40"
-                disabled={page <= 1}
-                onClick={() => setPage(page - 1)}
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Previous
-              </button>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-2 disabled:opacity-40"
-                disabled={offset + tickets.length >= total}
-                onClick={() => setPage(page + 1)}
-              >
-                Next
-                <ChevronRight className="h-4 w-4" />
-              </button>
+          {!useQueueWorkspace ? (
+            <div className="flex flex-col items-center justify-between gap-3 text-sm text-gray-600 sm:flex-row">
+              <p>
+                Showing {rangeStart}–{rangeEnd} of {total}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-2 disabled:opacity-40"
+                  disabled={page <= 1}
+                  onClick={() => setPage(page - 1)}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-2 disabled:opacity-40"
+                  disabled={offset + tickets.length >= total}
+                  onClick={() => setPage(page + 1)}
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
       )}
     </div>

@@ -16,7 +16,7 @@ import {
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { ShareReceiptButton } from "@/components/receipts/ShareReceiptButton";
 import { copyTextToClipboard } from "@/lib/browser/clipboard";
-import { getProductOrderSupportPrompt, supportTicketQuery } from "@beautonomi/utils";
+import { getProductOrderSupportPrompt, isUnpaidOnlinePaystackHold, supportTicketQuery } from "@beautonomi/utils";
 import { displayedProductOrderAmountStillDue } from "@/lib/orders/product-order-tender";
 import { useTranslation, type TFunction } from "@beautonomi/i18n";
 import { PickupStoreCard } from "@/components/shop/PickupStoreCard";
@@ -228,6 +228,7 @@ export default function OrderDetailPage() {
   >([]);
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
+  const [messagingProvider, setMessagingProvider] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -343,9 +344,14 @@ export default function OrderDetailPage() {
   const platformFee = Number(order.platform_fee ?? 0);
   const onlineAmountDue = displayedProductOrderAmountStillDue(order);
   const canPayOnline =
+    order.status === "pending" &&
     order.payment_status === "pending" &&
     (order.payment_method === "paystack" || order.payment_method == null) &&
     onlineAmountDue > 0;
+  const canMessageProvider =
+    Boolean(order.provider?.id) &&
+    !isCancelled &&
+    !isUnpaidOnlinePaystackHold(order);
   const canSelfCancel =
     !isCancelled &&
     order.payment_status !== "partially_refunded" &&
@@ -379,6 +385,26 @@ export default function OrderDetailPage() {
       setErrorMsg(e instanceof FetchError ? e.message : t("web.accountSettings.orderDetail.cancelFailed"));
     } finally {
       setCancelling(false);
+    }
+  };
+
+  const handleMessageProvider = async () => {
+    if (!canMessageProvider || !order.provider?.id || messagingProvider) return;
+    setMessagingProvider(true);
+    try {
+      const res = await fetcher.post<{ data?: { id: string } }>("/api/me/conversations/create", {
+        provider_id: order.provider.id,
+      });
+      const convId = res?.data?.id;
+      if (convId) {
+        router.push(`/account-settings/messages?provider=${encodeURIComponent(order.provider.id)}`);
+      } else {
+        toast.error(t("web.accountSettings.orderDetail.messageProviderFailed"));
+      }
+    } catch (e) {
+      toast.error(e instanceof FetchError ? e.message : t("web.accountSettings.orderDetail.messageProviderFailed"));
+    } finally {
+      setMessagingProvider(false);
     }
   };
 
@@ -896,6 +922,18 @@ export default function OrderDetailPage() {
               )}
               <span className="font-medium">{order.provider.business_name}</span>
             </Link>
+            {canMessageProvider ? (
+              <button
+                type="button"
+                onClick={() => void handleMessageProvider()}
+                disabled={messagingProvider}
+                className="mt-4 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-900 transition hover:bg-gray-50 disabled:opacity-50"
+              >
+                {messagingProvider
+                  ? t("web.accountSettings.orderDetail.openingMessage")
+                  : t("web.accountSettings.orderDetail.messageProvider")}
+              </button>
+            ) : null}
           </div>
         )}
 

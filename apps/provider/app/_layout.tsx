@@ -30,6 +30,8 @@ import { configureNativePushNotifications } from "@/lib/push-notifications-setup
 import { ImageCropperProvider } from "@/components/image-crop";
 import { KeyboardRootProvider } from "@/providers/KeyboardRootProvider";
 import { i18n, I18nextProvider, useTranslation } from "@beautonomi/i18n";
+import { SessionSecurityGate } from "@/components/security/SessionSecurityGate";
+import { SecurityChallengeHost } from "@/components/security/SecurityChallengeHost";
 
 // Initialize Sentry and Singular before anything renders; catch so a failure doesn't crash the app
 try {
@@ -104,6 +106,8 @@ function ThemedApp() {
       <ForceUpdateGate>
         <InAppBannerProvider>
         <PushNotificationsProvider>
+          <SessionSecurityGate>
+          <SecurityChallengeHost />
           <ScreenshotDeepLinkBootstrap />
           <Stack
             screenOptions={{
@@ -116,6 +120,7 @@ function ThemedApp() {
             <Stack.Screen name="(auth)" />
             <Stack.Screen name="(app)" />
           </Stack>
+          </SessionSecurityGate>
         </PushNotificationsProvider>
         </InAppBannerProvider>
       </ForceUpdateGate>

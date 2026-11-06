@@ -25,6 +25,12 @@ import {
   activeProviderIdHeadersForPath,
   clearActiveProviderApiHintMemory,
 } from "@/lib/active-provider-api-hint";
+import {
+  dispatchSecurityChallenge,
+  type SecurityChallengeCode,
+  type SecurityChallengeDetails,
+} from "@beautonomi/auth-security";
+import { getDeviceKeyHeaderValue } from "@/lib/security/device-key";
 
 /** Resolve API base URL with strict production safeguards. Never throws — callers expect sync resolution inside apiFetch try/catch. */
 export function getApiBaseUrl(): string {
@@ -166,6 +172,19 @@ const baseApi = createApiClient({
     ...getShopMarketHeaderSync(),
     ...activeProviderIdHeadersForPath(ctx.path),
   }),
+  onSecurityChallenge: async (challenge) => {
+    const ok = await dispatchSecurityChallenge({
+      code: challenge.code as SecurityChallengeCode,
+      message: challenge.message,
+      details: challenge.details as SecurityChallengeDetails | undefined,
+    });
+    return ok;
+  },
+  getAsyncHeaders: async (): Promise<Record<string, string>> => {
+    const key = await getDeviceKeyHeaderValue();
+    if (!key) return {};
+    return { "X-Device-Key": key };
+  },
 });
 
 if (__DEV__) {

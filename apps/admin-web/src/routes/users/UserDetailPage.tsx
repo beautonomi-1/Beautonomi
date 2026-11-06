@@ -99,6 +99,14 @@ type UserBookingRow = {
   created_at?: string;
 };
 
+type UserSecuritySummary = {
+  has_verified_totp?: boolean;
+  totp_factor_count?: number;
+  trusted_device_count?: number;
+  mfa_factors?: Array<{ id: string; factor_type: string; status: string }>;
+  recent_events?: Array<{ id: string; event_type: string; created_at: string }>;
+};
+
 type WalletTxRow = {
   id: string;
   type?: string;
@@ -311,6 +319,15 @@ export function UserDetailPage() {
     queryFn: () =>
       adminApi.getJson<WalletTxResponse>(`/api/admin/users/${encodeURIComponent(id)}/wallet-transactions`, {
         timeoutMs: 60_000,
+      }),
+    enabled: allowed && !!id,
+  });
+
+  const securityQ = useQuery({
+    queryKey: [...adminQueryKeys.userDetail(id), "security"],
+    queryFn: () =>
+      adminApi.getJson<UserSecuritySummary>(`/api/admin/users/${encodeURIComponent(id)}/security`, {
+        timeoutMs: 30_000,
       }),
     enabled: allowed && !!id,
   });
@@ -1182,6 +1199,104 @@ export function UserDetailPage() {
               ))}
             </AdminTableBody>
           </AdminDataTable>
+        )}
+      </AdminPanel>
+
+      <AdminPanel>
+        <h2 className="text-lg font-semibold text-gray-900">Account security</h2>
+        {securityQ.isLoading ? (
+          <p className="mt-2 text-sm text-gray-500">Loading security summary…</p>
+        ) : securityQ.error ? (
+          <p className="mt-2 text-sm text-red-600">{securityQ.error.message}</p>
+        ) : (
+          <div className="mt-3 space-y-3 text-sm text-gray-700">
+            <div className="flex flex-wrap gap-4">
+              <span>
+                2FA:{" "}
+                <strong>{securityQ.data?.has_verified_totp ? "Enrolled" : "Not enrolled"}</strong>
+                {typeof securityQ.data?.totp_factor_count === "number"
+                  ? ` (${securityQ.data.totp_factor_count} factor(s))`
+                  : null}
+              </span>
+              <span>
+                Trusted devices: <strong>{securityQ.data?.trusted_device_count ?? 0}</strong>
+              </span>
+            </div>
+            {(securityQ.data?.recent_events ?? []).length > 0 && (
+              <ul className="list-disc pl-5 text-xs text-gray-600">
+                {(securityQ.data?.recent_events ?? []).slice(0, 3).map((ev) => (
+                  <li key={ev.id}>
+                    {ev.event_type}{" "}
+                    {ev.created_at ? new Date(ev.created_at).toLocaleString() : ""}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex flex-wrap gap-2 pt-1">
+              {bootstrap?.isSuperadmin === true && securityQ.data?.has_verified_totp ? (
+                <button
+                  type="button"
+                  className={adminToolbarButtonClass(false)}
+                  onClick={() => {
+                    void requestConfirm({
+                      title: "Reset two-step verification",
+                      consequence:
+                        "Removes the user's authenticator app and recovery codes, signs them out on every device, and emails them. Only do this after verifying their identity.",
+                      confirmLabel: "Reset 2FA",
+                      variant: "danger",
+                      reasonField: {
+                        label: "How was the user's identity verified?",
+                        placeholder: "e.g. Video call + ID check, ticket #1234",
+                        required: true,
+                      },
+                      onConfirm: async ({ reason }) => {
+                        try {
+                          await adminApi.postJson(
+                            `/api/admin/users/${encodeURIComponent(id)}/security/reset-mfa`,
+                            { reason },
+                          );
+                          adminToast.success("Two-step verification reset. The user was signed out and notified.");
+                          void securityQ.refetch();
+                        } catch (e) {
+                          adminToast.error(e instanceof Error ? e.message : "Couldn't reset two-step verification");
+                        }
+                      },
+                    });
+                  }}
+                >
+                  Reset 2FA
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className={adminToolbarButtonClass(false)}
+                onClick={() => {
+                  void requestConfirm({
+                    title: "Sign out everywhere",
+                    consequence:
+                      "Ends every session and forgets all trusted devices for this user. Already-issued access tokens expire within the hour.",
+                    confirmLabel: "Sign out everywhere",
+                    variant: "danger",
+                    reasonField: { label: "Reason", required: true },
+                    onConfirm: async ({ reason }) => {
+                      try {
+                        await adminApi.postJson(
+                          `/api/admin/users/${encodeURIComponent(id)}/security/sign-out-all`,
+                          { reason },
+                        );
+                        adminToast.success("User signed out on all devices and notified.");
+                        void securityQ.refetch();
+                      } catch (e) {
+                        adminToast.error(e instanceof Error ? e.message : "Couldn't sign the user out");
+                      }
+                    },
+                  });
+                }}
+              >
+                Sign out everywhere
+              </button>
+            </div>
+          </div>
         )}
       </AdminPanel>
 

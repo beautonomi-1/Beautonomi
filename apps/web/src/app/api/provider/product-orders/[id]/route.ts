@@ -221,11 +221,16 @@ export async function PATCH(
           400,
         );
       }
+      const { isUnpaidOnlinePaystackHold } = await import("@beautonomi/utils");
       if (
         UNPAID_ONLINE_BLOCKED_STATUSES.has(parsed.status) &&
         parsed.status !== order.status &&
-        String(order.payment_method ?? "").toLowerCase() === "paystack" &&
-        order.payment_status === "pending"
+        isUnpaidOnlinePaystackHold({
+          order_source: order.order_source,
+          payment_method: order.payment_method,
+          payment_status: order.payment_status,
+          status: order.status,
+        })
       ) {
         return errorResponse(
           "This order has not been paid online yet. Wait for payment before fulfilling it, or cancel it.",

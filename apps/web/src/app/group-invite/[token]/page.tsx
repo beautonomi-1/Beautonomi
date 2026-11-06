@@ -149,6 +149,9 @@ function GroupInviteInner() {
         timeStyle: "short",
       })
     : null;
+  const sessionStatus = String(invite.booking?.status ?? "").toLowerCase();
+  const sessionCancelled = sessionStatus === "cancelled";
+  const sessionClosed = sessionCancelled || sessionStatus === "completed" || sessionStatus === "no_show";
   const shareCancelled = invite.share_status === "cancelled" || invite.status === "cancelled";
   const sharePaid = invite.amount_due > 0 && invite.amount_remaining <= 0;
 
@@ -172,13 +175,19 @@ function GroupInviteInner() {
 
       {notice ? <p className="text-sm text-gray-700">{notice}</p> : null}
 
-      {shareCancelled ? (
+      {sessionCancelled ? (
+        <p className="text-sm font-medium text-gray-700">
+          {invite.amount_paid > 0
+            ? t("web.groupInvite.sessionCancelledPaid")
+            : t("web.groupInvite.sessionCancelled")}
+        </p>
+      ) : shareCancelled ? (
         <p className="text-sm font-medium text-gray-700">{t("web.groupInvite.cancelled")}</p>
       ) : sharePaid ? (
         <p className="text-sm font-medium text-green-700">{t("web.groupInvite.sharePaid")}</p>
       ) : null}
 
-      {invite.status === "pending" && !shareCancelled ? (
+      {invite.status === "pending" && !shareCancelled && !sessionClosed ? (
         <Button disabled={busy} onClick={() => void accept()}>
           {t("web.groupInvite.accept")}
         </Button>

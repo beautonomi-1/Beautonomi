@@ -162,15 +162,29 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get provider's transfer recipient
-    const { data: payoutAccount, error: accountError } = await (supabase
-      .from("provider_payout_accounts") as any)
-      .select("*")
-      .eq("provider_id", provider_id)
-      .eq("active", true)
-      .single();
+    // Get provider's transfer recipient (skips accounts still in the new-account security hold)
+    const { resolveActivePayoutAccount, providerPayoutBlockedByCoolingOff } = await import(
+      "@/lib/admin/validate-provider-payout-readiness"
+    );
+    const payoutAccount = (await resolveActivePayoutAccount(supabase, provider_id)) as
+      | (Record<string, any> & { recipient_code: string; currency?: string | null })
+      | null;
 
-    if (accountError || !payoutAccount) {
+    if (!payoutAccount) {
+      const hold = await providerPayoutBlockedByCoolingOff(supabase, provider_id);
+      if (hold.blocked) {
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: "The provider's payout account is in its new-account security hold.",
+              code: "PAYOUT_ACCOUNT_COOLING_OFF",
+              details: { available_at: hold.until },
+            },
+          },
+          { status: 409 },
+        );
+      }
       return NextResponse.json(
         {
           data: null,

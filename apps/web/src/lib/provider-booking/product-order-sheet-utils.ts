@@ -28,6 +28,8 @@ export interface ProductOrderSheetOrder {
   order_source?: string | null;
   booking_id?: string | null;
   customer_name?: string | null;
+  customer_email?: string | null;
+  customer_phone?: string | null;
   tracking_number: string | null;
   carrier?: string | null;
   tracking_url?: string | null;
@@ -41,6 +43,7 @@ export interface ProductOrderSheetOrder {
     id: string;
     full_name: string;
     email: string;
+    phone?: string | null;
     identity_verified?: boolean | null;
   } | null;
   items: ProductOrderSheetItem[];

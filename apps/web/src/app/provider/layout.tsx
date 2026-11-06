@@ -9,6 +9,7 @@ import RoleGuard from "@/components/auth/RoleGuard";
 import type { UsersRoleFromDb } from "@/lib/auth/role";
 import { ProviderPortalGate } from "./ProviderPortalGate";
 import { ProviderPortalConfigBundle } from "@/components/provider/ProviderPortalConfigBundle";
+import { ProviderSecurityGate } from "@/components/provider/ProviderSecurityGate";
 import { useRouteTracking } from "@/lib/analytics/amplitude/route-tracker";
 
 /** Web provider setup funnel (onboarding wizard, get-started, subscription during checkout). */
@@ -35,6 +36,8 @@ export default function ProviderLayout({ children }: { children: React.ReactNode
   const isAdsPaymentReturn =
     pathname === "/provider/settings/ads/payment-return" ||
     (pathname?.startsWith("/provider/settings/ads/payment-return/") ?? false);
+  const isVerifyPage =
+    pathname === "/provider/verify" || (pathname?.startsWith("/provider/verify/") ?? false);
   const isGetStartedPage =
     pathname === "/provider/get-started" ||
     (pathname?.startsWith("/provider/get-started/") ?? false);
@@ -51,7 +54,8 @@ export default function ProviderLayout({ children }: { children: React.ReactNode
     isEmbedPage ||
     isSignupPage ||
     isSubscriptionCheckout ||
-    isAdsPaymentReturn
+    isAdsPaymentReturn ||
+    isVerifyPage
   ) {
     return <>{children}</>;
   }
@@ -78,9 +82,11 @@ export default function ProviderLayout({ children }: { children: React.ReactNode
         <ProviderPortalGate>
           <RouteTracker />
           <ProviderPortalProvider>
-            <ProviderSidebarProvider>
-              <ProviderShell>{children}</ProviderShell>
-            </ProviderSidebarProvider>
+            <ProviderSecurityGate>
+              <ProviderSidebarProvider>
+                <ProviderShell>{children}</ProviderShell>
+              </ProviderSidebarProvider>
+            </ProviderSecurityGate>
           </ProviderPortalProvider>
         </ProviderPortalGate>
       </ProviderPortalConfigBundle>

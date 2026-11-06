@@ -20,6 +20,7 @@ type InvitePayload = {
   booking?: {
     booking_number?: string | null;
     scheduled_at?: string | null;
+    status?: string | null;
     provider_name?: string | null;
   } | null;
   can_pay?: boolean;
@@ -144,6 +145,9 @@ export default function GroupInviteScreen() {
 
   const amountDue = Number(invite.amount_due ?? 0);
   const remaining = Number(invite.amount_remaining ?? 0);
+  const sessionStatus = String(invite.booking?.status ?? "").toLowerCase();
+  const sessionCancelled = sessionStatus === "cancelled";
+  const sessionClosed = sessionCancelled || sessionStatus === "completed" || sessionStatus === "no_show";
   const shareCancelled = invite.share_status === "cancelled" || invite.status === "cancelled";
   const sharePaid = amountDue > 0 && remaining <= 0;
   const when = invite.booking?.scheduled_at
@@ -203,13 +207,17 @@ export default function GroupInviteScreen() {
           </View>
         ) : null}
 
-        {shareCancelled ? (
+        {sessionCancelled ? (
+          <Text style={{ fontWeight: "600", color: "#374151", marginTop: 8 }}>
+            {Number(invite.amount_paid ?? 0) > 0 ? gi("sessionCancelledPaid") : gi("sessionCancelled")}
+          </Text>
+        ) : shareCancelled ? (
           <Text style={{ fontWeight: "600", color: "#374151", marginTop: 8 }}>{gi("cancelled")}</Text>
         ) : sharePaid ? (
           <Text style={{ fontWeight: "600", color: "#15803d", marginTop: 8 }}>{gi("sharePaid")}</Text>
         ) : null}
 
-        {invite.status === "pending" && !shareCancelled ? primaryButton(gi("accept"), () => void accept()) : null}
+        {invite.status === "pending" && !shareCancelled && !sessionClosed ? primaryButton(gi("accept"), () => void accept()) : null}
         {invite.can_pay
           ? primaryButton(
               gi("payShareAmount", { amount: formatMoney(remaining, invite.currency, i18n.language) }),

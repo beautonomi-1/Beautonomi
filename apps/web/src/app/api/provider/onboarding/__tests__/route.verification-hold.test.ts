@@ -67,6 +67,11 @@ vi.mock("@/lib/provider-ops/apply-provider-signup-case-hooks", () => ({
   applyProviderSignupCaseHooks: vi.fn().mockResolvedValue(undefined),
 }));
 
+const mockSendTemplateNotification = vi.fn();
+vi.mock("@/lib/notifications/onesignal", () => ({
+  sendTemplateNotification: (...args: unknown[]) => mockSendTemplateNotification(...args),
+}));
+
 const SUPABASE_TEST_ORIGIN = "https://proj.supabase.co";
 const onboardingProfileImages = {
   thumbnail_url: `${SUPABASE_TEST_ORIGIN}/storage/v1/object/public/product-images/thumb.jpg`,
@@ -300,5 +305,19 @@ describe("POST /api/provider/onboarding verification hold", () => {
     expect(json.data.provider.onboarding_state).toBe("ready_for_activation");
     expect(String(json.data.message)).toContain("Verify your identity");
     expect(mockMarkLifecycle).not.toHaveBeenCalled();
+    expect(mockSendTemplateNotification).toHaveBeenCalledWith(
+      "provider_onboarding_welcome",
+      ["user-1"],
+      {},
+      ["push", "email"],
+      { appType: "provider" },
+    );
+    expect(mockSendTemplateNotification).not.toHaveBeenCalledWith(
+      "provider_approved",
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
   }, 120_000);
 });

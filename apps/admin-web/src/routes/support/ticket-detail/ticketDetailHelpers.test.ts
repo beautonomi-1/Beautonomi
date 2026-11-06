@@ -5,14 +5,43 @@ import {
   detailsTabNeedsAttention,
   hasFailedPublicEmailSend,
   isWideTicketLayout,
+  shouldShowDetailsInGrid,
+  shouldShowTicketTabs,
+  TICKET_COMPOSER_SLOT_DESKTOP,
+  TICKET_CONVERSATION_PANE_DESKTOP,
   listAttentionBanners,
   nextQueueButtonLabel,
   nextTicketIdInQueue,
   resolveQueueNav,
   shouldAutoScrollThread,
+  messageTrailRole,
   shouldShowOriginalRequest,
+  statusPillClass,
   unwrapAdminBookingPayload,
 } from "@/routes/support/ticket-detail/ticketDetailHelpers";
+
+describe("shouldShowTicketTabs", () => {
+  it("shows tabs only on mobile, at any container width", () => {
+    expect(shouldShowTicketTabs({ isDesktop: true, containerWidth: 340 })).toBe(false);
+    expect(shouldShowTicketTabs({ isDesktop: true, containerWidth: 1200 })).toBe(false);
+    expect(shouldShowTicketTabs({ isDesktop: false, containerWidth: 390 })).toBe(true);
+  });
+});
+
+describe("shouldShowDetailsInGrid", () => {
+  it("shows details rail at 760px and wider", () => {
+    expect(shouldShowDetailsInGrid(true, 340)).toBe(false);
+    expect(shouldShowDetailsInGrid(true, 760)).toBe(true);
+  });
+});
+
+describe("desktop conversation pane", () => {
+  it("lets the thread fill leftover height and caps the composer against the pane", () => {
+    expect(TICKET_CONVERSATION_PANE_DESKTOP).toContain("flex-col");
+    expect(TICKET_CONVERSATION_PANE_DESKTOP).not.toContain("16rem");
+    expect(TICKET_COMPOSER_SLOT_DESKTOP).toContain("max-h-[40%]");
+  });
+});
 
 describe("isWideTicketLayout", () => {
   it("uses tabs below 760px (e.g. inbox panel at a 1024px viewport is ~340px)", () => {
@@ -184,6 +213,30 @@ describe("hasFailedPublicEmailSend", () => {
     expect(
       hasFailedPublicEmailSend([{ is_internal: false, email_delivery_status: "failed" }]),
     ).toBe(true);
+  });
+});
+
+describe("messageTrailRole", () => {
+  it("follows author_kind, then the ticket owner, and keeps internal notes separate", () => {
+    expect(messageTrailRole({ author_kind: "customer", user_id: "staff" }, "owner")).toBe("customer");
+    expect(messageTrailRole({ user_id: "owner" }, "owner")).toBe("customer");
+    expect(messageTrailRole({ user_id: "staff" }, "owner")).toBe("staff");
+    expect(messageTrailRole({ author_kind: "staff", user_id: "owner" }, "owner")).toBe("staff");
+    expect(messageTrailRole({ author_kind: "assistant", user_id: "staff" }, "owner")).toBe("assistant");
+    expect(messageTrailRole({ is_internal: true, author_kind: "customer" }, "owner")).toBe("internal");
+    expect(messageTrailRole({ is_auto_reply: true, user_id: "staff" }, "owner")).toBe("auto");
+  });
+});
+
+describe("statusPillClass", () => {
+  it("uses a different color for each queue status", () => {
+    const classes = ["open", "in_progress", "waiting_customer", "resolved", "closed"].map(statusPillClass);
+    expect(new Set(classes).size).toBe(classes.length);
+    expect(statusPillClass("open")).toContain("sky");
+    expect(statusPillClass("in_progress")).toContain("amber");
+    expect(statusPillClass("waiting_customer")).toContain("violet");
+    expect(statusPillClass("resolved")).toContain("emerald");
+    expect(statusPillClass("closed")).toContain("gray");
   });
 });
 

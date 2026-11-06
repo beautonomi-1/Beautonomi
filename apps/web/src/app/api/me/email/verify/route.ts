@@ -96,12 +96,27 @@ export async function POST(request: NextRequest) {
       email: confirmedEmail,
     };
 
+    const { data: before } = await supabase.from("users").select("email").eq("id", user.id).maybeSingle();
+    const previousEmail = String((before as { email?: string | null } | null)?.email ?? "").trim().toLowerCase();
+
     const { error: updateError } = await supabase
       .from("users")
       .update(updates)
       .eq("id", user.id);
 
     if (updateError) throw updateError;
+
+    if (previousEmail && isMailableEmail(previousEmail) && previousEmail !== confirmedEmail.toLowerCase()) {
+      const { sendSecurityAlert, maskEmail } = await import("@/lib/notifications/security-notifications");
+      const isProvider = user.role === "provider_owner" || user.role === "provider_staff";
+      await sendSecurityAlert({
+        key: "security_email_change_requested",
+        userId: user.id,
+        appType: isProvider ? "provider" : "customer",
+        eventId: `email_changed:${user.id}:${confirmedEmail.toLowerCase()}`,
+        variables: { new_email_mask: maskEmail(confirmedEmail) },
+      });
+    }
 
     return successResponse({ verified: true, email: confirmedEmail });
   } catch (error) {

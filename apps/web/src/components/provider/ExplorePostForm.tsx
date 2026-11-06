@@ -21,6 +21,8 @@ import {
   type ExploreVideoTrimResult,
 } from "@/components/explore/ExploreVideoTrimModal";
 import { trimWindowDurationMs } from "@/lib/explore/explore-video-trim";
+import { captureVideoFrameJpeg } from "@/lib/explore/capture-video-frame-jpeg";
+import { uploadExploreVideoPosterJpeg } from "@/lib/explore/upload-video-poster-jpeg";
 import { firstSlideIsVideo } from "@/lib/explore/video-media";
 import { useTranslation } from "@beautonomi/i18n";
 import {
@@ -607,12 +609,27 @@ export function ExplorePostForm({
           });
           if (!put.ok) throw new Error("video_upload_failed");
         }
+        let posterFields: Pick<ExploreMediaSlideMeta, "display_path" | "width" | "height"> = {};
+        try {
+          const frame = await captureVideoFrameJpeg(file, trim.trim_start_ms);
+          const uploaded = await uploadExploreVideoPosterJpeg(fetcher, frame.blob, frame.width, frame.height);
+          if (uploaded) {
+            posterFields = {
+              display_path: uploaded.display_path,
+              width: uploaded.width,
+              height: uploaded.height,
+            };
+          }
+        } catch {
+          // grid uses black tile until encode poster
+        }
         const slideMeta: ExploreMediaSlideMeta = {
           kind: "video",
           duration_ms: segmentMs,
           source_duration_ms: sourceDuration,
           trim_start_ms: trim.trim_start_ms,
           trim_end_ms: trim.trim_end_ms,
+          ...posterFields,
         };
         if (path) {
           setMediaPaths((p) => [...p, path!]);

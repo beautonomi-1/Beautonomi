@@ -960,6 +960,7 @@ export default function BookCheckoutScreen() {
   const [removingCardId, setRemovingCardId] = useState<string | null>(null);
   const [useWallet, setUseWallet] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
+  const [rescheduleCredit, setRescheduleCredit] = useState(0);
   const [giftCardCode, setGiftCardCode] = useState("");
   const [giftCardValidating, setGiftCardValidating] = useState(false);
   const [giftCardValid, setGiftCardValid] = useState<{ balance: number; currency: string } | null>(
@@ -1372,6 +1373,28 @@ export default function BookCheckoutScreen() {
       })
       .catch(() => setBookingCustomDefinitions([]));
   }, [hold]);
+
+  useEffect(() => {
+    const rid = pickRouteParam(routeRescheduleBookingId as string | string[] | undefined);
+    if (!user || !rid) {
+      setRescheduleCredit(0);
+      return;
+    }
+    let cancelled = false;
+    api
+      .get<{ credit?: number; data?: { credit?: number } }>(`/api/me/bookings/${rid}/reschedule-credit`)
+      .then((res) => {
+        if (cancelled) return;
+        const raw = res.data as { credit?: number; data?: { credit?: number } } | null;
+        setRescheduleCredit(Math.max(0, Number(raw?.data?.credit ?? raw?.credit ?? 0) || 0));
+      })
+      .catch(() => {
+        if (!cancelled) setRescheduleCredit(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, routeRescheduleBookingId]);
 
   const refreshWalletBalance = useCallback(async () => {
     if (!user) return;
@@ -2069,8 +2092,17 @@ export default function BookCheckoutScreen() {
     depositAmountComputed > 0
   );
   const depositAmount = depositAmountComputed;
-  const checkoutAmountDueByPolicy =
+  const checkoutAmountDueBeforeCredit =
     paymentOption === "deposit" && hasDeposit ? depositAmount : checkoutBaseTotal;
+  // Matches processPayment: the reschedule credit comes off the amount due now
+  // before gift card and wallet; anything above it stays in the wallet.
+  const rescheduleCreditApplied =
+    Math.round(Math.min(rescheduleCredit, Math.max(0, checkoutAmountDueBeforeCredit)) * 100) / 100;
+  const rescheduleCreditLeftInWallet = Math.max(
+    0,
+    Math.round((rescheduleCredit - rescheduleCreditApplied) * 100) / 100,
+  );
+  const checkoutAmountDueByPolicy = Math.max(0, checkoutAmountDueBeforeCredit - rescheduleCreditApplied);
   const giftCardAppliedToCheckout =
     (paymentMethod === "giftcard" || paymentMethod === "card") && giftCardValid
       ? Math.min(Number(giftCardValid.balance || 0), checkoutAmountDueByPolicy)
@@ -2457,73 +2489,14 @@ export default function BookCheckoutScreen() {
           return;
         }
         if (previousBookingId) {
-          Alert.alert(t("checkout.rescheduledTitle"), t("checkout.rescheduleCancelPreviousBody"), [
+          // The server cancels the original booking fee-free once this payment
+          // succeeds and moves what was paid onto this booking. Cancelling it here
+          // would refund it twice, so the customer is only told what happens.
+          Alert.alert(t("checkout.rescheduledTitle"), t("checkout.rescheduleReplacesPreviousBody"), [
             {
-              text: t("checkout.keepBothAppointments"),
-              style: "cancel",
+              text: t("common.ok"),
               onPress: () =>
                 router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } }),
-            },
-            {
-              text: t("checkout.cancelPreviousAppointment"),
-              style: "destructive",
-              onPress: async () => {
-                try {
-                  const preview = await api.get<{
-                    allowed?: boolean;
-                    reason?: string;
-                    expected_wallet_refund?: number;
-                    expected_cancellation_fee?: number;
-                    currency?: string;
-                  }>(`/api/me/bookings/${previousBookingId}/cancel-preview`);
-                  if (preview.data && preview.data.allowed === false) {
-                    Alert.alert(
-                      t("checkout.noteTitle"),
-                      preview.data.reason ?? t("checkout.cancelPreviousBookingNote"),
-                    );
-                    router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
-                    return;
-                  }
-                  const fee = Number(preview.data?.expected_cancellation_fee ?? 0);
-                  const refund = Number(preview.data?.expected_wallet_refund ?? 0);
-                  const cur = preview.data?.currency ?? currency;
-                  const confirmBody =
-                    fee > 0
-                      ? t("checkout.cancelPreviousWithFeeBody", {
-                          fee: formatCurrency(fee, cur),
-                          refund: formatCurrency(refund, cur),
-                        })
-                      : t("checkout.cancelPreviousFullRefundBody", {
-                          refund: formatCurrency(refund, cur),
-                        });
-                  Alert.alert(t("checkout.cancelPreviousAppointment"), confirmBody, [
-                    { text: t("common.cancel"), style: "cancel" },
-                    {
-                      text: t("checkout.confirmCancelPrevious"),
-                      style: "destructive",
-                      onPress: async () => {
-                        try {
-                          const res = await api.post(`/api/me/bookings/${previousBookingId}/cancel`, {
-                            reason: "Reschedule - previous appointment replaced",
-                          });
-                          if (res.error) {
-                            Alert.alert(t("checkout.noteTitle"), t("checkout.cancelPreviousBookingNote"));
-                          } else {
-                            haptic.success();
-                          }
-                        } catch {
-                          Alert.alert(t("checkout.noteTitle"), t("checkout.cancelPreviousBookingNote"));
-                        }
-                        router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
-                      },
-                    },
-                  ]);
-                  return;
-                } catch {
-                  Alert.alert(t("checkout.noteTitle"), t("checkout.cancelPreviousBookingNote"));
-                }
-                router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
-              },
             },
           ]);
         } else {
@@ -4486,6 +4459,15 @@ export default function BookCheckoutScreen() {
               </View>
             )}
 
+            {routeRescheduleBookingId ? (
+              <Text style={{ fontSize: 13, color: "#374151", marginBottom: 12 }}>
+                {t(
+                  "checkout.rescheduleCreditNote",
+                  "Any amount you already paid online for the original booking is applied here. You only pay the difference.",
+                )}
+              </Text>
+            ) : null}
+
             {/* ═══ Payment summary (always show line items + running totals) ═══ */}
             <View
               style={{
@@ -4756,6 +4738,25 @@ export default function BookCheckoutScreen() {
                 </Text>
               )}
 
+              {rescheduleCreditApplied > 0 ? (
+                <View style={{ marginTop: 8 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                    <Text style={{ fontSize: 13, color: "#059669" }}>
+                      {t("checkout.rescheduleCreditApplied")}
+                    </Text>
+                    <Text style={{ fontSize: 13, color: "#059669", fontWeight: "600" }}>
+                      -{formatCurrency(rescheduleCreditApplied, currency)}
+                    </Text>
+                  </View>
+                  {rescheduleCreditLeftInWallet > 0 ? (
+                    <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 4 }}>
+                      {t("checkout.rescheduleCreditSurplus", {
+                        amount: formatCurrency(rescheduleCreditLeftInWallet, currency),
+                      })}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
               {/* Split tender breakdown (gift card + wallet + card remainder) */}
               {paymentMethod === "card" &&
                 (giftCardAppliedToCheckout > 0 || walletAppliedToCheckout > 0) &&

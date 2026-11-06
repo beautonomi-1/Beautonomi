@@ -284,6 +284,10 @@ interface UsersRow {
   role: string | null;
   is_active: boolean | null;
   tenant_id: UUID | null;
+  email_verified: boolean | null;
+  phone_verified: boolean | null;
+  referred_by: UUID | null;
+  customer_onboarding_completed_at: Timestamp | null;
   created_at: Timestamp;
   updated_at: Timestamp;
 }
@@ -346,6 +350,13 @@ interface ProductOrdersRow {
   fulfillment_type: string | null;
   total_amount: number;
   currency: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  customer_email: string | null;
+  delivery_address_snapshot: Json | null;
+  payment_attempt_note: string | null;
+  order_source: string | null;
+  payment_method: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;
 }

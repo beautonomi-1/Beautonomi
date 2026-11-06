@@ -106,6 +106,17 @@ export function applyProviderNotificationRoute(router: ExpoRouter, data: Record<
           ? String(data.deep_link).trim()
           : "";
 
+    if (templateKey.startsWith("security_")) {
+      if (templateKey.includes("payout")) {
+        router.push("/(app)/(tabs)/more/settings/payout-accounts" as never);
+      } else if (templateKey.includes("team")) {
+        router.push("/(app)/(tabs)/more/team" as never);
+      } else {
+        router.push("/(app)/(tabs)/more/settings-login-and-security" as never);
+      }
+      return true;
+    }
+
     if (isProviderCloseOutNotification(templateKey, actionUrl) || typeLc === "provider_closeout_reminder") {
       router.push(PROVIDER_CLOSEOUT_BOOKINGS_ROUTE as never);
       return true;

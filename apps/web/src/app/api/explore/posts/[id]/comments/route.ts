@@ -88,10 +88,7 @@ export async function GET(
       }
     }
 
-    const { data: rows, error } = await supabaseAdmin
-      .from("explore_comments")
-      .select(
-        `
+    const commentSelect = `
         id,
         post_id,
         user_id,
@@ -101,16 +98,7 @@ export async function GET(
         created_at,
         updated_at,
         users:user_id(id, full_name, avatar_url)
-      `
-      )
-      .eq("post_id", postId)
-      .eq("is_hidden", false)
-      .order("created_at", { ascending: true })
-      .order("id", { ascending: true })
-      .range(offset, offset + limit - 1);
-
-    if (error) return handleApiError(error, "Failed to fetch comments");
-
+      `;
     type CommentRow = {
       id: string;
       post_id: string;
@@ -119,11 +107,11 @@ export async function GET(
       mentioned_user_ids?: string[];
       created_at?: string;
       updated_at?: string;
+      parent_id?: string | null;
       users?: { id: string; full_name?: string | null; avatar_url?: string | null } | { id: string; full_name?: string | null; avatar_url?: string | null }[];
     };
-    type CommentRowExt = CommentRow & { parent_id?: string | null };
-    const flat: ExploreComment[] = (rows ?? []).map((r: unknown) => {
-      const row = r as CommentRowExt;
+    const mapComment = (r: unknown): ExploreComment => {
+      const row = r as CommentRow;
       const u = Array.isArray(row.users) ? row.users[0] : row.users;
       return {
         id: row.id,
@@ -136,18 +124,43 @@ export async function GET(
         created_at: row.created_at ?? "",
         updated_at: row.updated_at ?? "",
       };
-    });
-    const topLevel = flat.filter((c) => !c.parent_id);
+    };
+
+    const { data: parentRows, error } = await supabaseAdmin
+      .from("explore_comments")
+      .select(commentSelect)
+      .eq("post_id", postId)
+      .eq("is_hidden", false)
+      .is("parent_id", null)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(offset, offset + limit - 1);
+
+    if (error) return handleApiError(error, "Failed to fetch comments");
+
+    const parents = (parentRows ?? []).map(mapComment);
     const repliesByParent = new Map<string, ExploreComment[]>();
-    for (const c of flat) {
-      if (!c.parent_id) continue;
-      const list = repliesByParent.get(c.parent_id) ?? [];
-      list.push(c);
-      repliesByParent.set(c.parent_id, list);
+    if (parents.length > 0) {
+      const { data: replyRows, error: replyError } = await supabaseAdmin
+        .from("explore_comments")
+        .select(commentSelect)
+        .eq("post_id", postId)
+        .eq("is_hidden", false)
+        .in("parent_id", parents.map((parent) => parent.id))
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true });
+      if (replyError) return handleApiError(replyError, "Failed to fetch comments");
+      for (const row of replyRows ?? []) {
+        const reply = mapComment(row);
+        if (!reply.parent_id) continue;
+        const list = repliesByParent.get(reply.parent_id) ?? [];
+        list.push(reply);
+        repliesByParent.set(reply.parent_id, list);
+      }
     }
-    const comments = topLevel.map((c) => ({
-      ...c,
-      replies: repliesByParent.get(c.id) ?? [],
+    const comments = parents.map((parent) => ({
+      ...parent,
+      replies: repliesByParent.get(parent.id) ?? [],
     }));
 
     let visibleComments = comments;
@@ -157,15 +170,21 @@ export async function GET(
         getMutedUserIds(viewer.id, supabaseAdmin),
       ]);
       const hiddenAuthorIds = new Set([...blockedIds, ...mutedIds]);
-      visibleComments = filterBlockedCommentAuthors(comments, hiddenAuthorIds);
+      visibleComments = filterBlockedCommentAuthors(comments, hiddenAuthorIds).map((comment) => ({
+        ...comment,
+        replies: (comment.replies ?? []).filter(
+          (reply) => !reply.user_id || !hiddenAuthorIds.has(reply.user_id),
+        ),
+      }));
     }
 
-    const next_offset = visibleComments.length === limit ? offset + limit : undefined;
+    const hasMore = parents.length === limit;
+    const nextOffset = hasMore ? offset + parents.length : undefined;
 
     return successResponse({
       data: visibleComments,
-      next_offset: next_offset ?? undefined,
-      has_more: !!next_offset,
+      next_offset: nextOffset,
+      has_more: hasMore,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch comments");

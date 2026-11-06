@@ -6,8 +6,16 @@ import {
 } from "@/lib/explore/explore-video-trim";
 import { DEFAULT_MAX_DURATION_MS } from "@/lib/explore/explore-feature-gates";
 import { isExploreVideoPathOrUrl } from "@/lib/explore/video-media";
+import { toStoragePath } from "@/lib/explore/media-urls";
 
 const MAX_SLIDES = 5;
+
+/** API responses use public URLs. Writes must store the explore-posts path. */
+function asStoragePath(value: string | null | undefined): string | null {
+  if (!value?.trim()) return null;
+  const path = toStoragePath(value.trim()).split("?")[0]?.replace(/^\//, "") ?? "";
+  return path || null;
+}
 
 export function inferSlideKind(path: string, explicit?: string): "image" | "video" {
   if (explicit === "video" || explicit === "image") return explicit;
@@ -77,11 +85,13 @@ export function validateProviderMediaPaths(
     const url = mediaUrls[i]!;
     const incoming = mediaMeta?.[i];
     const kind = inferSlideKind(url, incoming?.kind);
-    if (incoming?.display_path) {
-      const dp = incoming.display_path.split("?")[0]?.replace(/^\//, "") ?? "";
-      if (!dp.startsWith(prefix)) {
-        return { ok: false, message: "Display path must belong to this provider" };
-      }
+    const displayPath = asStoragePath(incoming?.display_path);
+    const playbackPath = asStoragePath(incoming?.playback_path);
+    if (displayPath && !displayPath.startsWith(prefix)) {
+      return { ok: false, message: "Display path must belong to this provider" };
+    }
+    if (playbackPath && !playbackPath.startsWith(prefix)) {
+      return { ok: false, message: "Playback path must belong to this provider" };
     }
     const text_overlays = sanitizeExploreTextOverlays(incoming?.text_overlays);
     const sourceDur =
@@ -96,7 +106,7 @@ export function validateProviderMediaPaths(
         : incoming?.duration_ms ?? null;
     meta.push({
       kind,
-      display_path: incoming?.display_path ?? (kind === "image" ? url : incoming?.display_path ?? null),
+      display_path: displayPath ?? (kind === "image" ? url : null),
       width: incoming?.width ?? null,
       height: incoming?.height ?? null,
       duration_ms,
@@ -107,11 +117,14 @@ export function validateProviderMediaPaths(
             source_duration_ms: Math.round(Number(sourceDur)),
           }
         : {}),
-      playback_path: incoming?.playback_path ?? null,
+      playback_path: playbackPath,
       probe_job_id: incoming?.probe_job_id ?? null,
       encode_job_id: incoming?.encode_job_id ?? null,
       status: incoming?.status ?? null,
       error_code: incoming?.error_code ?? null,
+      retry_count: incoming?.retry_count ?? null,
+      processing_started_at: incoming?.processing_started_at ?? null,
+      ...(incoming?.pending_gallery_append ? { pending_gallery_append: true } : {}),
       ...(text_overlays?.length ? { text_overlays } : {}),
     });
   }

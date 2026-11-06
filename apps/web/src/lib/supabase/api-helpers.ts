@@ -35,11 +35,10 @@ export interface ApiError {
 export const ADMIN_MFA_REQUIRED_CODE = "MFA_REQUIRED";
 export const ADMIN_SESSION_EXPIRED_CODE = "SESSION_EXPIRED";
 
-/**
- * Roles that must satisfy MFA when `two_factor.required_for_admins` is on and no
- * explicit `required_roles` list is stored. Superadmin + finance by default (Part L).
- */
-export const DEFAULT_MFA_REQUIRED_ADMIN_ROLES = ["superadmin", "admin_finance"] as const;
+/** Fallback when DB has no `required_roles` key. Empty array in DB means all admin roles. */
+export const DEFAULT_MFA_REQUIRED_ADMIN_ROLES: readonly string[] = ALL_ADMIN_ROLES;
+/** During `enforce_all_from` grace, only these roles are MFA-enforced when required_roles is []. */
+export const LEGACY_MFA_GRACE_ADMIN_ROLES = ["superadmin", "admin_finance"] as const;
 /** Default admin session TTL (minutes) when `security.admin_session_max_age` is unset. 0 = disabled. */
 export const DEFAULT_ADMIN_SESSION_MAX_AGE_MINUTES = 720;
 
@@ -48,6 +47,7 @@ type AdminTwoFactorPolicy = {
   required_for_admins: boolean;
   /** Empty list = every admin role. */
   required_roles: string[];
+  enforce_all_from?: string | null;
 };
 
 type AdminSecurityPolicy = {
@@ -180,11 +180,16 @@ export function handleApiError(
     const maybeStatus = (error as { status?: unknown }).status;
     if (typeof maybeStatus === "number" && maybeStatus >= 400 && maybeStatus < 500) {
       const code = (error as { code?: string }).code ?? "AUTH_ERROR";
+      const explicitDetails = (error as { details?: unknown }).details;
       return errorResponse(
         error.message || defaultMessage,
         code,
         maybeStatus,
-        process.env.NODE_ENV === "development" ? error.stack : undefined
+        explicitDetails !== undefined
+          ? explicitDetails
+          : process.env.NODE_ENV === "development"
+            ? error.stack
+            : undefined
       );
     }
 
@@ -339,12 +344,20 @@ async function getAdminSecurityPolicy(): Promise<AdminSecurityPolicy> {
   const security = (settings.security as Record<string, unknown> | undefined) ?? {};
   const twoFactor =
     (security.two_factor as
-      | { enabled?: unknown; required_for_admins?: unknown; required_roles?: unknown }
+      | {
+          enabled?: unknown;
+          required_for_admins?: unknown;
+          required_roles?: unknown;
+          enforce_all_from?: unknown;
+        }
       | undefined) ?? {};
 
   const requiredRoles = Array.isArray(twoFactor.required_roles)
     ? (twoFactor.required_roles as unknown[]).filter((r): r is string => typeof r === "string")
     : [...DEFAULT_MFA_REQUIRED_ADMIN_ROLES];
+
+  const enforceAllFrom =
+    typeof twoFactor.enforce_all_from === "string" ? twoFactor.enforce_all_from : null;
 
   const rawMaxAge = security.admin_session_max_age;
   const maxAge =
@@ -358,6 +371,7 @@ async function getAdminSecurityPolicy(): Promise<AdminSecurityPolicy> {
       // Default flipped to true (Part L): when 2FA is enabled, superadmin + admin_finance must use it.
       required_for_admins: twoFactor.required_for_admins !== false,
       required_roles: requiredRoles,
+      enforce_all_from: enforceAllFrom,
     },
     admin_session_max_age_minutes: maxAge,
   };
@@ -374,7 +388,7 @@ function adminSessionExpiredError(message = "Admin session expired. Sign in agai
   });
 }
 
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
+export function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
     const part = token.split(".")[1];
     if (!part) return null;
@@ -405,7 +419,7 @@ export function resolveSessionAuthTimeSeconds(token: string | null | undefined):
   return typeof payload.iat === "number" ? payload.iat : null;
 }
 
-async function resolveRequestAccessToken(request: NextRequest | Request): Promise<string | null> {
+export async function resolveRequestAccessToken(request: NextRequest | Request): Promise<string | null> {
   const authHeader = request.headers.get("authorization");
   if (authHeader?.startsWith("Bearer ")) return authHeader.slice(7);
   try {
@@ -559,8 +573,19 @@ export async function requireAdminMfaIfRequired(
   if (userRole && !(ALL_ADMIN_ROLES as readonly string[]).includes(String(userRole))) return;
 
   const policy = policyOverride ?? (await getAdminTwoFactorPolicy());
-  const roleInScope =
-    policy.required_roles.length === 0 || !userRole || policy.required_roles.includes(String(userRole));
+  const roleInScope = (() => {
+    if (!userRole) return true;
+    if (policy.required_roles.length > 0) {
+      return policy.required_roles.includes(String(userRole));
+    }
+    if (policy.enforce_all_from) {
+      const graceEnd = new Date(policy.enforce_all_from);
+      if (!Number.isNaN(graceEnd.getTime()) && graceEnd > new Date()) {
+        return (LEGACY_MFA_GRACE_ADMIN_ROLES as readonly string[]).includes(String(userRole));
+      }
+    }
+    return true;
+  })();
   const mfaRequired = policy.enabled && policy.required_for_admins && roleInScope;
   if (!mfaRequired) return;
 
@@ -600,6 +625,10 @@ export async function requireRoleInApi(
         if (isAdminApiRequest(request) && rolesIncludeAdmin(roles)) {
           await enforceAdminSessionPolicies(request, cached.user?.role);
         }
+        if (cached.user?.id && cached.user.role) {
+          const { requireProviderSessionSecurity } = await import("@/lib/auth/provider-security");
+          await requireProviderSessionSecurity(request, cached.user.id, String(cached.user.role));
+        }
         return cached;
       }
     }
@@ -609,6 +638,10 @@ export async function requireRoleInApi(
   if (isAdminApiRequest(request) && rolesIncludeAdmin(roles)) {
     await assertAdminUserActive(result.user.id);
     await enforceAdminSessionPolicies(request, result.user?.role);
+  }
+  if (request && result.user?.id && result.user.role) {
+    const { requireProviderSessionSecurity } = await import("@/lib/auth/provider-security");
+    await requireProviderSessionSecurity(request, result.user.id, String(result.user.role));
   }
   if (request) REQUIRE_ROLE_CACHE.set(request, result);
   return result;

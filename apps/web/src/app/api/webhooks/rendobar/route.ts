@@ -10,6 +10,7 @@ import {
 } from "@/lib/explore/enqueue-video-processing";
 import { resolveVideoEncodeTrim } from "@/lib/explore/resolve-video-encode-trim";
 import { processExploreDisplayJpeg } from "@/lib/explore/brand-display-image";
+import { patchExploreSlideCover } from "@/lib/explore/patch-explore-slide-cover";
 import { denormalizeFirstSlideFromMeta } from "@/lib/explore/media-meta";
 import { deferredVideoPublishRewards } from "@/lib/explore/publish-side-effects";
 import { enqueueExplorePostSafetyScan } from "@/lib/safety/explore-post-safety-scan";
@@ -257,34 +258,43 @@ export async function POST(request: NextRequest) {
             const res = await fetch(poster.url!);
             if (!res.ok) return;
             const buf = Buffer.from(await res.arrayBuffer());
-            const { data: prov } = await supabase
-              .from("providers")
-              .select("business_name")
-              .eq("id", post.provider_id)
-              .maybeSingle();
-            const { buffer, width, height } = await processExploreDisplayJpeg(buf, prov?.business_name);
+            const { buffer, width, height } = await processExploreDisplayJpeg(buf, null, null, {
+              skipProviderMark: true,
+            });
             const displayPath = `explore/${post.provider_id}/display-${Date.now()}.jpg`;
             await supabase.storage.from("explore-posts").upload(displayPath, buffer, {
               contentType: "image/jpeg",
               cacheControl: "31536000",
               upsert: false,
             });
-            const freshMeta = [...meta];
-            freshMeta[slideIndex] = {
-              ...freshMeta[slideIndex]!,
+
+            const { data: freshRow, error: readErr } = await supabase
+              .from("explore_posts")
+              .select("media_urls, media_meta, display_path, media_width, media_height, playback_path")
+              .eq("id", postId)
+              .maybeSingle();
+            if (readErr || !freshRow) return;
+
+            const freshUrls = (freshRow.media_urls as string[] | null) ?? mediaUrls;
+            const readMeta = (freshRow.media_meta as ExploreMediaSlideMeta[] | null) ?? meta;
+            const freshMeta = patchExploreSlideCover(readMeta, slideIndex, {
               display_path: displayPath,
               width,
               height,
-              status: "delivered",
-            };
-            const denorm = denormalizeFirstSlideFromMeta(mediaUrls, freshMeta);
+            });
+            if (!freshMeta) return;
+            const denorm = denormalizeFirstSlideFromMeta(freshUrls, freshMeta);
             await supabase
               .from("explore_posts")
               .update({
                 media_meta: freshMeta,
-                display_path: denorm.display_path,
-                media_width: denorm.media_width,
-                media_height: denorm.media_height,
+                ...(slideIndex === 0
+                  ? {
+                      display_path: denorm.display_path,
+                      media_width: denorm.media_width,
+                      media_height: denorm.media_height,
+                    }
+                  : {}),
               })
               .eq("id", postId);
 
@@ -294,10 +304,7 @@ export async function POST(request: NextRequest) {
                 ...freshMeta[slideIndex]!,
                 pending_gallery_append: false,
               };
-              await supabase
-                .from("explore_posts")
-                .update({ media_meta: freshMeta })
-                .eq("id", postId);
+              await supabase.from("explore_posts").update({ media_meta: freshMeta }).eq("id", postId);
             }
             await deferredVideoPublishRewards({
               postId,

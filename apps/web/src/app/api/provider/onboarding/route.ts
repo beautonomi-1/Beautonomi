@@ -1479,6 +1479,19 @@ export async function POST(request: NextRequest) {
       } catch (notifErr) {
         console.warn("[onboarding] auto-approve notification failed:", notifErr);
       }
+    } else {
+      try {
+        const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+        await sendTemplateNotification(
+          "provider_onboarding_welcome",
+          [user.id],
+          {},
+          ["push", "email"],
+          { appType: "provider" },
+        );
+      } catch (notifErr) {
+        console.warn("[onboarding] welcome notification failed:", notifErr);
+      }
     }
 
     // Owner-first persist: staff who just created their own salon become

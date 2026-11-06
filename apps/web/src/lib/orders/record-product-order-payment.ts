@@ -189,6 +189,11 @@ async function recordProductOrderPaymentInner(
     throw orderErr || new Error("Product order not found");
   }
 
+  const fulfillmentStatus = String((order as any).status ?? "").toLowerCase();
+  if (fulfillmentStatus === "cancelled" || fulfillmentStatus === "refunded") {
+    return { ok: false, duplicate: false, transitionedToPaid: false };
+  }
+
   const orderNumber = String((order as any).order_number ?? productOrderId);
   const providerId = (order as any).provider_id ?? null;
   let wasAlreadyPaid = String((order as any).payment_status ?? "") === "paid";
@@ -334,6 +339,8 @@ async function recordProductOrderPaymentInner(
       })
       .eq("id", productOrderId)
       .eq("payment_status", "pending")
+      .neq("status", "cancelled")
+      .neq("status", "refunded")
       .select("id");
     if (orderUpdateError) throw orderUpdateError;
     if ((updatedRows?.length ?? 0) === 0) {
@@ -456,6 +463,21 @@ async function recordProductOrderPaymentInner(
         e,
         { productOrderId },
       );
+    }
+
+    if (transitionedToPaid && (order as any).customer_id && providerId) {
+      try {
+        const { ensureProviderClientForPlacedProductOrder } = await import(
+          "@/lib/provider/ensure-provider-client-for-placed-product-order"
+        );
+        await ensureProviderClientForPlacedProductOrder(supabase, {
+          providerId,
+          customerId: String((order as any).customer_id),
+          productOrderId,
+        });
+      } catch (e) {
+        logger.error("recordProductOrderPayment.ensureProviderClient.failed", e, { productOrderId });
+      }
     }
 
     try {

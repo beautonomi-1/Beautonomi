@@ -275,6 +275,11 @@ export {
   type SupportTicketPrefill,
 } from "./booking/bookingSupportContext";
 export {
+  isProductOrderFulfillmentQueueRow,
+  isUnpaidOnlinePaystackHold,
+  type ProductOrderHoldFields,
+} from "./orders/product-order-hold";
+export {
   SUPPORT_TICKET_ALL_ITEMS,
   SUPPORT_CONTEXT_TYPE_OPTIONS,
   SUPPORT_TICKET_CATEGORY_GROUPS,

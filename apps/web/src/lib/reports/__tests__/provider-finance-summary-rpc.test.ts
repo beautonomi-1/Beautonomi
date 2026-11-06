@@ -10,7 +10,7 @@ import {
 
 const MIGRATION_PATH = path.join(
   process.cwd(),
-  "../../supabase/migrations/868_commerce_memberships_gift_cards.sql",
+  "../../supabase/migrations/10125_provider_finance_summary_membership_sale_refund.sql",
 );
 
 function readMigrationSql(): string {

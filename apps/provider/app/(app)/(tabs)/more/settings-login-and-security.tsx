@@ -609,6 +609,35 @@ export default function SettingsLoginAndSecurityScreen() {
               </View>
               <DirectionalIcon name="chevron-forward" size={18} color={Colors.gray[400]} />
             </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/(tabs)/more/settings-two-step" as never)}
+              style={{
+                marginTop: 10,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: Colors.gray[200],
+                backgroundColor: Colors.white,
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                flexDirection: "row",
+                alignItems: "center",
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={t("provider.mobile.screens.security.twoStepTitle") as string}
+            >
+              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginEnd: 12 }}>
+                <Ionicons name="shield-checkmark-outline" size={18} color={Colors.gray[600]} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: "500", color: Colors.gray[900] }}>
+                  {t("provider.mobile.screens.security.twoStepTitle") as string}
+                </Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 1 }}>
+                  {t("provider.mobile.screens.security.twoStepRowDesc") as string}
+                </Text>
+              </View>
+              <DirectionalIcon name="chevron-forward" size={18} color={Colors.gray[400]} />
+            </TouchableOpacity>
           </View>
 
           {/* ── Active sessions ── */}

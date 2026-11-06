@@ -32,7 +32,7 @@ describe("applyNonBookingRefundFromTransaction — membership orders", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockResolveTenantIdForFinanceLedger.mockResolvedValue("tenant-1");
-    mockReverseMembershipPayment.mockResolvedValue(undefined);
+    mockReverseMembershipPayment.mockResolvedValue({ fullyReversed: true });
   });
 
   function buildSupabase(orderRow: Record<string, unknown> | null) {
@@ -103,8 +103,42 @@ describe("applyNonBookingRefundFromTransaction — membership orders", () => {
     expect(membershipUpdates[0]).toMatchObject({ status: "refunded" });
     expect((membershipUpdates[0] as { refunded_at?: string }).refunded_at).toBeTruthy();
     expect(mockReverseMembershipPayment).toHaveBeenCalledWith(
-      expect.objectContaining({ membershipOrderId: "mo-1" }),
+      expect.objectContaining({ membershipOrderId: "mo-1", refundAmountMajor: 199 }),
     );
+  });
+
+  it("passes a partial refund amount through to the membership reversal", async () => {
+    mockReverseMembershipPayment.mockResolvedValue({ fullyReversed: false });
+    const { client, membershipUpdates } = buildSupabase({
+      id: "mo-partial",
+      provider_id: "prov-1",
+      tenant_id: "tenant-1",
+      user_id: "user-1",
+      amount: 200,
+      status: "paid",
+    });
+
+    const { applyNonBookingRefundFromTransaction } = await import(
+      "../apply-non-booking-refund-from-transaction"
+    );
+
+    await applyNonBookingRefundFromTransaction({
+      supabase: client as never,
+      reference: "ref-partial",
+      refundReference: "re_partial",
+      refundAmountMajor: 80,
+      reason: "partial membership refund",
+      txn: {
+        booking_id: null,
+        amount: 200,
+        metadata: { kind: "membership_order", membership_order_id: "mo-partial" },
+      },
+    });
+
+    expect(mockReverseMembershipPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ membershipOrderId: "mo-partial", refundAmountMajor: 80 }),
+    );
+    expect(membershipUpdates).toHaveLength(0);
   });
 
   it("refunds membership_renewal metadata kind", async () => {

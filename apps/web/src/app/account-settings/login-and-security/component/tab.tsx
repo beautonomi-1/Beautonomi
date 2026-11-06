@@ -5,6 +5,11 @@ import { Shield, AlertTriangle, ExternalLink, Mail, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { buildForgotPasswordHref } from "@/lib/auth/forgot-password-href";
+import { getNewPasswordIssue } from "@/lib/auth/password-strength";
+import { NewPasswordFields } from "@/components/auth/NewPasswordFields";
+import { TrustedDevicesCard, TwoStepCard } from "@/components/auth/security/ProviderSecurityCards";
 import Breadcrumb from "../../components/breadcrumb";
 import BackButton from "../../components/back-button";
 import { useAuth } from "@/providers/AuthProvider";
@@ -67,10 +72,12 @@ const LoginAccount = ({
   initial,
   accountHomeHref = "/account-settings",
   accountHomeLabel,
+  showProviderSecurity = false,
 }: {
   initial: LoginAndSecurityInitial | null;
   accountHomeHref?: string;
   accountHomeLabel?: string;
+  showProviderSecurity?: boolean;
 }) => {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -84,6 +91,8 @@ const LoginAccount = ({
     nonce: "",
   });
   const [isRequestingPasswordNonce, setIsRequestingPasswordNonce] = useState(false);
+  const [isSendingResetEmail, setIsSendingResetEmail] = useState(false);
+  const router = useRouter();
   const [authSecurity, setAuthSecurity] = useState<AuthSecurityState | null>(
     () => initial?.profile?.auth_security ?? null,
   );
@@ -246,6 +255,10 @@ const LoginAccount = ({
   const hasPassword = authSecurity?.has_password === true;
   const isSettingFirstPassword = authSecurity?.has_password === false;
   const minimumPasswordLength = authSecurity?.policy.minimum_password_length ?? 8;
+  const passwordPolicy = {
+    minimum_password_length: minimumPasswordLength,
+    password_requirements: authSecurity?.policy.password_requirements ?? "none",
+  } as const;
   const canVerifyWithCode = Boolean(
     authSecurity?.has_mailable_email || authSecurity?.has_phone,
   );
@@ -267,12 +280,16 @@ const LoginAccount = ({
       return;
     }
 
-    if (passwordData.newPassword.length < minimumPasswordLength) {
+    const passwordIssue = getNewPasswordIssue(passwordData.newPassword, passwordData.confirmPassword, passwordPolicy);
+    if (passwordIssue === "minLength") {
       toast.error(t("web.accountSettings.loginAndSecurity.passwordMinLength", { min: minimumPasswordLength }));
       return;
     }
-
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
+    if (passwordIssue === "policy") {
+      toast.error(t("web.accountSettings.loginAndSecurity.resetPassword.policyMix"));
+      return;
+    }
+    if (passwordIssue === "mismatch") {
       toast.error(t("web.accountSettings.loginAndSecurity.passwordsMismatch"));
       return;
     }
@@ -302,15 +319,26 @@ const LoginAccount = ({
   };
 
   const handleForgotPassword = async () => {
+    if (isSendingResetEmail) return;
     if (!user?.email || authSecurity?.email_is_placeholder) {
       toast.error(t("web.accountSettings.loginAndSecurity.emailNotFound"));
       return;
     }
+    setIsSendingResetEmail(true);
+    const settingsPath = "/account-settings/login-and-security";
     try {
-      await resetPassword(user.email);
+      await resetPassword(user.email, settingsPath);
       toast.success(t("web.accountSettings.loginAndSecurity.resetEmailSent"));
+      router.push(
+        buildForgotPasswordHref({
+          email: user.email,
+          next: settingsPath,
+          codeSent: true,
+        }),
+      );
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : t("web.accountSettings.loginAndSecurity.resetEmailFailed"));
+      setIsSendingResetEmail(false);
     }
   };
 
@@ -630,44 +658,23 @@ const LoginAccount = ({
                           <button
                             type="button"
                             onClick={handleForgotPassword}
-                            className="text-primary hover:text-primary-hover underline text-sm font-medium mt-2 transition-colors"
+                            disabled={isSendingResetEmail}
+                            aria-busy={isSendingResetEmail}
+                            className="text-primary hover:text-primary-hover underline text-sm font-medium mt-2 transition-colors disabled:opacity-50"
                           >
                             {t("web.accountSettings.loginAndSecurity.forgotPassword")}
                           </button>
                         </div>
                       )}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          {t("web.accountSettings.loginAndSecurity.newPassword")}
-                        </label>
-                        <Input
-                          type="password"
-                          value={passwordData.newPassword}
-                          onChange={(e) =>
-                            setPasswordData({ ...passwordData, newPassword: e.target.value })
-                          }
-                          className="w-full backdrop-blur-sm bg-white/60 border-white/40"
-                          required
-                          minLength={minimumPasswordLength}
-                          placeholder={t("web.accountSettings.loginAndSecurity.newPasswordPlaceholder", { min: minimumPasswordLength })}
-                        />
-                        <p className="text-xs text-gray-500 mt-1">{t("web.accountSettings.loginAndSecurity.mustBeMinLength", { min: minimumPasswordLength })}</p>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          {t("web.accountSettings.loginAndSecurity.confirmPassword")}
-                        </label>
-                        <Input
-                          type="password"
-                          value={passwordData.confirmPassword}
-                          onChange={(e) =>
-                            setPasswordData({ ...passwordData, confirmPassword: e.target.value })
-                          }
-                          className="w-full backdrop-blur-sm bg-white/60 border-white/40"
-                          required
-                          placeholder={t("web.accountSettings.loginAndSecurity.confirmPasswordPlaceholder")}
-                        />
-                      </div>
+                      <NewPasswordFields
+                        idPrefix="settings"
+                        password={passwordData.newPassword}
+                        onPasswordChange={(v) => setPasswordData((prev) => ({ ...prev, newPassword: v }))}
+                        confirm={passwordData.confirmPassword}
+                        onConfirmChange={(v) => setPasswordData((prev) => ({ ...prev, confirmPassword: v }))}
+                        policy={passwordPolicy}
+                        disabled={isUpdatingPassword}
+                      />
                       <div className="flex justify-start">
                         <button
                           type="submit"
@@ -708,6 +715,13 @@ const LoginAccount = ({
                   {profileEmail || t("web.accountSettings.loginAndSecurity.notSet")}
                 </p>
               </div>
+
+              {showProviderSecurity ? (
+                <>
+                  <TwoStepCard />
+                  <TrustedDevicesCard />
+                </>
+              ) : null}
 
               {/* Phone Section */}
               <div

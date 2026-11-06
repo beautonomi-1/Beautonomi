@@ -13778,7 +13778,9 @@
       "replying": "Uphendvula umbono",
       "replyPlaceholder": "Bhala impendvulo…",
       "shareMediaFailedTitle": "Couldn't yabelana media",
-      "shareMediaFailedBody": "Asikwatanga kulungiselela lelifayela kutsi sabelane ngalo. Yetama kwabelana ngesixhumanisi esikhundleni saloko."
+      "shareMediaFailedBody": "Asikwatanga kulungiselela lelifayela kutsi sabelane ngalo. Yetama kwabelana ngesixhumanisi esikhundleni saloko.",
+      "loadingComments": "Iyalayisha...",
+      "loadMoreComments": "Layisha leminye imibono"
     },
     "searchScreen": {
       "title": "Sesha",
@@ -15010,7 +15012,20 @@
           "emailInputA11y": "i-imeyili input",
           "sendResetLink": "Tfumela Setha kabusha sichumanisi",
           "sendResetLinkA11y": "Tfumela Setha kabusha sichumanisi",
-          "backToLoginA11y": "Buyela ekungeneni"
+          "backToLoginA11y": "Buyela ekungeneni",
+          "codeA11y": "liphaswedi Setha kabusha ikhodi",
+          "invalidCodeTitle": "ikhodi not accepted",
+          "invalidCodeBody": "Faka the {{digits}}-digit ikhodi from the i-imeyili.",
+          "resend": "Retfumela i-imeyili",
+          "resendA11y": "Retfumela the Setha kabusha i-imeyili",
+          "signedInIntro": "We'll tfumela a ikhodi and a Setha kabusha sichumanisi to your li-akhawunti i-imeyili.",
+          "back": "Emuva",
+          "stepCode": "1. Enter the {{digits}}-digit ikhodi",
+          "stepPassword": "2. khetsa a lokusha liphaswedi",
+          "codeVerified": "ikhodi kucinisekisiwe",
+          "submit": "Setha kabusha liphaswedi",
+          "submittingA11y": "Setha kabushating liphaswedi",
+          "linkAlternative": "Khetsa sixhumanisi? Sivule kusuka ku-imeyili ukuze usethe iphasiwedi lensha kusiphequluli."
         },
         "authSafetyAndAge": {
           "linkLabel": "kuphepha & parental controls",
@@ -15282,7 +15297,8 @@
           "returnLabel": "Buyisa {{status}}",
           "tracking": "Kulandzela: {{number}}",
           "collectAt": "Tsatfwa e-{{name}}, {{city}}",
-          "deliverTo": "Letha e-{{city}}"
+          "deliverTo": "Letha e-{{city}}",
+          "paymentDueBadge": "Inkokhelo lesele"
         },
         "productReviews": {
           "title": "Tibuyekezo",
@@ -16088,7 +16104,14 @@
           "lifecyclePartialRefundDescription": "Kubhalwe kubuyiselwa kwengenye kuleli bhukingi.",
           "lifecycleRefundedDescription": "This kubhuka inkokhelo has been imali ibuyisiwe.",
           "lifecyclePaymentFailedDescription": "Inkokhelo ayiphumelelanga. Zama futsi, noma uxhumane nosekelo ngenombolo yaleli bhukingi.",
-          "lifecyclePaymentNotConfirmedDescription": "inkokhelo has not been cinisekisaed yet."
+          "lifecyclePaymentNotConfirmedDescription": "inkokhelo has not been cinisekisaed yet.",
+          "refundProcessingTitle": "Imbuyiselo iyachubeka",
+          "refundProcessingBody": "Lebhuku likhanseliwe. Siqedzela imbuyiselo yakho futsi itawuvela masinyane esikhwameni sakho. Awudzingi kwenta lutfo.",
+          "rescheduleInProgressTitle": "Kushintja sikhatsi kuyachubeka",
+          "rescheduleInProgressBody": "Lebhuku liyiswa esikhatsini lesisha. Cedzela indzawo lensha yekukhokha bese imali leseyikhokhile idluliselwa ngekwenteka. Uma ushiye leyondzawo, lebhuku lingakhanselwa futsi uma siphelelwa, phakatsi nemizuzu lengaba ngu-30.",
+          "cancelGroupPreviewTitle": "Loku kukhansela lonkhe liseshini lelicembu {{ref}}, kufaka tivakashi letingu-{{count}}.",
+          "cancelGroupPreviewOtherBookings": "Letinye tibhuku takho kulelicembu: {{currency}} {{refund}} ibuyela esikhwameni sakho, {{currency}} {{fee}} inkokhelo yekukhansela.",
+          "cancelGroupPreviewGuestShares": "Tinkhokhelo tengxenye yetivakashi ({{currency}} {{amount}}) tibuyiselwa ngakuphelele emakhadini labakhokhe ngawo."
         },
         "groupBookingDetail": {
           "back": "Emuva",
@@ -16167,7 +16190,11 @@
           "cancelMySpotConfirm": "Khansela indzawo yakho kulelicembu? Tinsita takho tiyasuswa futsi noma nguyiphi inkhokhelo loyentile ibuyiselwa ekhadini lakho.",
           "spotCancelled": "spot has been kukhanselwe. yakho.",
           "guestRemoved": "Sivakashi susad.",
-          "guestCancelFailed": "Ayikhonanga ku-buyekisa the kubhuka kwelitimba."
+          "guestCancelFailed": "Ayikhonanga ku-buyekisa the kubhuka kwelitimba.",
+          "resendPayLink": "Tfumela kabusha sixhumanisi sekukhokha",
+          "cancelGroupSession": "Khansela liseshini lelicembu",
+          "cancelGroupSessionHint": "Ivula ibhuku lakho, lapho ubona khona imbuyiselo yelicembu lonkhe ungakacinisekisi.",
+          "askOrganizerToReschedule": "Cela umhleli kutsi lelisesshini lidzinga yini sikhatsi lesisha."
         },
         "announcements": {
           "retry": "Zama futsi",
@@ -16625,17 +16652,17 @@
           "skinOily": "Okunamafutha",
           "skinDry": "Komile",
           "skinCombination": "Inhlanganisela",
-          "skinSensitive": "Sensitive",
+          "skinSensitive": "sensitief",
           "skinMature": "Lokukhule",
           "avoidStrongFragrances": "Emphumela lamandla",
           "avoidAlcohol": "Alcohol-based imikhicito",
-          "avoidSulfates": "Sulfates",
+          "avoidSulfates": "Sulfate",
           "avoidParabens": "Parabens",
           "avoidEssentialOils": "Eskutfunyelweial oils",
           "avoidLatex": "Latex",
           "avoidNickel": "Nickel",
           "avoidDyes": "Imibala",
-          "avoidFormaldehyde": "Formaldehyde",
+          "avoidFormaldehyde": "Formaldehied",
           "styleQuickEfficient": "Okusheshayo nokusebenta",
           "styleRelaxed": "Okuphumule nokungasheshi",
           "styleSocial": "Okuxhumana nokukhuluma",
@@ -16667,10 +16694,10 @@
           "interestCooking": "Ukupheka",
           "allergyFragrance": "TITSaholic",
           "allergyParabens": "Parabens",
-          "allergySulfates": "Sulfates",
+          "allergySulfates": "Sulfate",
           "allergyAlcohol": "Utshwala",
           "allergyDyes": "Imibala",
-          "allergyFormaldehyde": "Formaldehyde",
+          "allergyFormaldehyde": "Formaldehied",
           "allergyLatex": "Latex",
           "allergyNickel": "Nickel"
         },
@@ -18140,6 +18167,9 @@
           "invalidBody": "Faka a kuvumelekile lilanga (YYYY-MM-DD) and sikhatsi (HH:MM).",
           "failedTitle": "Ayikhonanga ku-resheduli",
           "noSlots": "No sikhatsis iyatfolakala on this lilanga. Try anlokunye lilanga."
+        },
+        "resetPassword": {
+          "policyMix": "Iphasiwedi yakho idzinga inhlanganisela yetinhlamvu netinombolo letihlangabetana nemitsetfo ye-akhawunti."
         }
       }
     },
@@ -18169,7 +18199,7 @@
       "accountNameLabel": "li-akhawunti holder ligama",
       "save": "Gcina li-akhawunti yebhange",
       "screenTitle": "Li-akhawunti yebhanges",
-      "selectBank": "Select your bank"
+      "selectBank": "Khetsa your Libhange"
     },
     "walletBankRefund": {
       "addBank": "Ngeta a li-akhawunti yebhange",
@@ -18422,7 +18452,11 @@
     "payForEveryone": "I'll khokha for everyone",
     "splitPayment": "Split inkokhelo",
     "splitPaymentHint": "Uyatikhokhela tinsita takho kanye nemali yekubhuka nyalo. Sivakashi ngasinye sitfola sixhumanisi sekukhokha sabelo saso.",
-    "guestSharesPaidByInvite": "Sivakashis khokha via simemo sichumanisi"
+    "guestSharesPaidByInvite": "Sivakashis khokha via simemo sichumanisi",
+    "rescheduleReplacesPreviousBody": "Sikhatsi sakho sekucala sikhanselwa ngekwenteka, mahhala, uma inkokhelo yalebhuku iphela. Lokukhokhile kusetjentiswa lapha, futsi lokusele kuhlala esikhwameni sakho.",
+    "rescheduleCreditNote": "Imali lenkhulu losewuyikhokhe nge-inthanethi ngebhuku lekucala isetjentiswa lapha. Ukhokha umehluko kuphela.",
+    "rescheduleCreditApplied": "Ikhokhwe ebhukwini lakho lekucala",
+    "rescheduleCreditSurplus": "Lokusele lokungu-{{amount}} kuhlala esikhwameni sakho njengesikweleti."
   },
   "payments": {
     "pay": "Khokha",
@@ -19469,7 +19503,11 @@
         "pickNextAvailable": "Find lokulandzelako iyatfolakala sikhatsi",
         "splitPayment": "Split inkokhelo",
         "guestSharesPaidByInvite": "Sivakashis khokha via simemo sichumanisi",
-        "splitPaymentHint": "Uyatikhokhela tinsita takho kanye nemali yekubhuka nyalo. Sivakashi ngasinye sitfola sixhumanisi sekukhokha sabelo saso."
+        "splitPaymentHint": "Uyatikhokhela tinsita takho kanye nemali yekubhuka nyalo. Sivakashi ngasinye sitfola sixhumanisi sekukhokha sabelo saso.",
+        "rescheduleCreditPaid": "Inkokhelo yakho yekucala ihlanganisa lebhuku.",
+        "rescheduleCreditIntro": "Imali lenkhulu losewuyikhokhe nge-inthanethi ngebhuku lekucala isetjentiswa lapha. Ukhokha umehluko kuphela.",
+        "rescheduleCreditApplied": "Ikhokhwe ebhukwini lakho lekucala",
+        "rescheduleCreditSurplus": "Lokusele lokungu-{{amount}} kuhlala esikhwameni sakho njengesikweleti."
       },
       "addToWaitlist": {
         "enterName": "Sicela enter your ligama",
@@ -21125,7 +21163,13 @@
           "cancelled": "Kukhanselwe",
           "cantFind": "Can't find your reservation lapha?",
           "visitHelpCenter": "Visit the lusito Center"
-        }
+        },
+        "cancelledRefundProcessing": "Ibhuku likhanseliwe. Imbuyiselo yakho iyachubeka futsi itawufika masinyane.",
+        "refundProcessingTitle": "Imbuyiselo iyachubeka",
+        "refundProcessingBody": "Lebhuku likhanseliwe. Siqedzela imbuyiselo yakho futsi itawuvela masinyane esikhwameni sakho. Awudzingi kwenta lutfo.",
+        "cancelGroupPreviewTitle": "Loku kukhansela lonkhe liseshini lelicembu {{ref}}, kufaka tivakashi letingu-{{count}}.",
+        "cancelGroupPreviewOtherBookings": "Letinye tibhuku takho kulelicembu: {{currency}} {{refund}} ibuyela esikhwameni sakho, {{currency}} {{fee}} inkokhelo yekukhansela.",
+        "cancelGroupPreviewGuestShares": "Tinkhokhelo tengxenye yetivakashi ({{currency}} {{amount}}) tibuyiselwa ngakuphelele emakhadini labakhokhe ngawo."
       },
       "payAdditionalCharge": {
         "notFound": "Additional khokhisa akutfolakali",
@@ -21372,7 +21416,13 @@
           "subtitle": "Khetsa a strong liphaswedi for your li-akhawunti.",
           "atLeastChars": "Okungenani tinhlamvu leti-{{min}}",
           "strength": "Sterkte: {{label}}",
-          "confirmPlaceholder": "Re-enter your liphaswedi"
+          "confirmPlaceholder": "Re-enter your liphaswedi",
+          "passwordsMatch": "Liphaswedis match",
+          "showPassword": "Khombisa liphaswedi",
+          "hidePassword": "fihla liphaswedi",
+          "policyHintLettersDigits": "Include letters and inombolos",
+          "policyHintMixed": "Faka tinhhlamvu letinkulu, letincane kanye nenombolo.",
+          "strengthTip": "kudze, ngetinombolo netimpawu, kucinile"
         }
       },
       "membership": {
@@ -21692,7 +21742,10 @@
         "addressParking": "Kupaka:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Le oda labuyiselwa kancane. Tihlanganise nemhlinzeki kute ubuyisele imali lesele.",
-        "paymentPartiallyRefunded": "Partially imali ibuyisiwe"
+        "paymentPartiallyRefunded": "Partially imali ibuyisiwe",
+        "messageProviderFailed": "Ayikwazi kuvula ingcoco nalo mniketi.",
+        "openingMessage": "Iyavula ingcoco…",
+        "messageProvider": "Tfumela umlayeto kumniketi"
       },
       "bookingReceipt": {
         "methodWallet": "Sikhwama",
@@ -22297,7 +22350,9 @@
         "itemCount_one": "{{count}} Sinto · {{date}}",
         "itemCount_other": "{{count}} Tintfo · {{date}}",
         "returnStatus": "Buyisa {{status}}",
-        "tracking": "Kulandzela: {{number}}"
+        "tracking": "Kulandzela: {{number}}",
+        "finishPaymentOnDetail": "Vula le-oda kute ucebe kukhokha ku-inthanethi.",
+        "paymentDueBadge": "Inkokhelo lesele"
       },
       "waitlist": {
         "loadFailed": "Kwehlulekile ku-layisha luhlu lwekulindza",
@@ -22316,6 +22371,49 @@
         "statusContacted": "Tintsanaed",
         "statusBooked": "Kubhukiwe",
         "statusCancelled": "Kukhanselwe"
+      },
+      "safety": {
+        "emergencyNumber": "Emergency inombolo: 112",
+        "managed": "Managed",
+        "deviceAuthWebNote": "Applies the lokulandzelako sikhatsi you vula the Beautonomi Liselula app.",
+        "updated": "Setting buyekisad",
+        "updateFailed": "Ayikhonanga ku-buyekisa setting. sicela uzame futsi.",
+        "loadFailed": "Ayikhonanga ku-layisha your kuphepha tilungiselelo.",
+        "retry": "Zama futsi",
+        "reportValidation": "Faka lokungenani tinhhlamvu leti-2 talomuntfu lombikako nalokungenani leti-10 ngalokwentekile.",
+        "unblocked": "Umsebentisi unblocked",
+        "unblockFailed": "Ayikhonanga ku-unblock this Umsebentisi.",
+        "blockedLoadFailed": "Ayikhonanga ku-layisha blocked users.",
+        "blockedOn": "Uvinjelwe {{date}}",
+        "currentBand": "kwanyalo band: {{band}}",
+        "noResults": "Kute bantfu labavinjiwe labafanana nekusesha kwakho.",
+        "profileCompletionCta": "cedza liphrofayili",
+        "bankRefundCta": "sicelo a Libhange imali lebuye",
+        "bankRefundOpenCta": "Buka your Libhange imali lebuye sicelo",
+        "bankRefundHistory": "sicelo Umlandvo",
+        "bankRefundNote": "Note for our finance litimba (lokukhetsako)",
+        "bankRefundMin": "Minimum linani: {{amount}}",
+        "bankRefundMax": "Maximum per sicelo: {{amount}}",
+        "bankRefundSla": "Timali letibuyiselwako letivunyelwe tivamise kukhokhwa tingakaphasi emalanga emsebenti langu-{{days}}.",
+        "bankRefundNoAccounts": "Ngeta a li-akhawunti yebhange before siceloing a Libhange imali lebuye.",
+        "bankRefundStatus": "Simo",
+        "bankRefundAmount": "linani",
+        "bankRefundDate": "Kuceliwe",
+        "bankRefundReceive": "Utfola",
+        "bankRefundCancelled": "sicelo kukhanselwe",
+        "bankAccountsManage": "Phatsa li-akhawunti yebhanges",
+        "bankAccountsMax": "You can gcina up to 3 li-akhawunti yebhanges.",
+        "bankAccountSaved": "Libhange Li-akhawunti ligciniwe",
+        "bankAccountRemoved": "li-akhawunti yebhange susad",
+        "bankAccountPrimary": "lekucala li-akhawunti buyekisad",
+        "cancel": "Khansela"
+      },
+      "profileDetailsPage": {
+        "aboutSection": "Ngekwe you",
+        "aboutHint": "A short bio baniketi see when you bhuka.",
+        "aboutPlaceholder": "Tjela baniketeli kancane ngawe",
+        "noChanges": "No guculas to gcina",
+        "clearChoice": "Sula"
       }
     },
     "auth": {
@@ -36362,7 +36460,9 @@
       "cancelConfirm": "Khansela indzawo yakho kulelicembu? Tinsita takho tiyasuswa futsi noma nguyiphi inkhokhelo loyentile ibuyiselwa ekhadini lakho.",
       "cancelled": "spot has been kukhanselwe. yakho.",
       "cancelledRefunded": "Indzawo yakho seyikhanseliwe. {{amount}} iyabuyiselwa ekhadini lakho.",
-      "cancelFailed": "Ayikhonanga ku-khansela your spot."
+      "cancelFailed": "Ayikhonanga ku-khansela your spot.",
+      "sessionCancelled": "Leliseshini lelicembu likhanseliwe.",
+      "sessionCancelledPaid": "Leliseshini lelicembu likhanseliwe. Imali lenkhulu loyikhokhele ingxenye yakho ibuyiselwa ngakuphelele ekhadini lowakhokha ngalo."
     }
   },
   "errors": {

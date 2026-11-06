@@ -9,6 +9,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { requireRoleInApi, unauthorizedResponse } from '@/lib/supabase/api-helpers';
 import { hasPermission, isProviderOwner } from './permissions';
+import { permissionCheckFromError } from '@/lib/auth/require-permission-security';
 
 export type PermissionCheckResult =
   | { authorized: true; user: { id: string; role?: string }; response?: never }
@@ -71,11 +72,8 @@ export async function requirePermission(
     }
 
     return { authorized: true, user };
-  } catch {
-    return {
-      authorized: false,
-      response: unauthorizedResponse('Authentication required'),
-    };
+  } catch (err) {
+    return permissionCheckFromError(err);
   }
 }
 
@@ -137,11 +135,8 @@ export async function requireAnyPermission(
       ),
       user,
     };
-  } catch {
-    return {
-      authorized: false,
-      response: unauthorizedResponse('Authentication required'),
-    };
+  } catch (err) {
+    return permissionCheckFromError(err);
   }
 }
 
@@ -203,11 +198,8 @@ export async function requireAllPermissions(
     }
 
     return { authorized: true, user };
-  } catch {
-    return {
-      authorized: false,
-      response: unauthorizedResponse('Authentication required'),
-    };
+  } catch (err) {
+    return permissionCheckFromError(err);
   }
 }
 

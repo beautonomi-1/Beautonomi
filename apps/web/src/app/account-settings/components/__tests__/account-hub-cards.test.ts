@@ -20,6 +20,21 @@ describe("ACCOUNT_HUB_CARDS", () => {
     expect(actions.map((a) => a.link).sort()).toEqual(["#about-us", "#share-app"].sort());
   });
 
+  it("includes mobile trust & safety, profile details, and help destinations", () => {
+    const links = ACCOUNT_HUB_CARDS.map((c) => c.link);
+    expect(links).toEqual(
+      expect.arrayContaining([
+        "/account-settings/safety",
+        "/account-settings/age-assurance",
+        "/account-settings/content-and-safety",
+        "/account-settings/blocked-users",
+        "/account-settings/profile-details",
+        "/help",
+      ]),
+    );
+    expect(links).not.toContain("/become-a-partner");
+  });
+
   it("uses unique hrefs for standard navigation cards (no duplicate routes)", () => {
     const navHrefs = ACCOUNT_HUB_CARDS.filter((c) => !c.isAction).map((c) => c.link);
     const set = new Set(navHrefs);

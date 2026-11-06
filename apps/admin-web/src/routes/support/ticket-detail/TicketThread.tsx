@@ -1,4 +1,4 @@
-import { Fragment, type RefObject } from "react";
+import { Fragment, type ReactNode, type RefObject } from "react";
 import { Copy, FileText } from "lucide-react";
 import { LinkifiedMessageText } from "@/lib/linkifyMessage";
 import { adminToast } from "@/lib/adminToast";
@@ -9,6 +9,7 @@ import {
   formatFileSize,
   isImageAttachment,
   messageDayLabel,
+  messageTrailRole,
   relativeTime,
   str,
   type ThreadItem,
@@ -22,6 +23,8 @@ type TicketThreadProps = {
   originalRequestText: string | null;
   ticketCreatedAt?: string;
   scrollMode?: "panel" | "page" | "page-mobile";
+  /** Rendered at the top of the scrollport (SLA, email, AI on desktop). */
+  threadTop?: ReactNode;
 };
 
 export function TicketThread({
@@ -32,19 +35,21 @@ export function TicketThread({
   originalRequestText,
   ticketCreatedAt,
   scrollMode = "panel",
+  threadTop,
 }: TicketThreadProps) {
   const scrollClass =
     scrollMode === "page-mobile"
       ? "min-h-0 flex-none px-1 py-3"
-      : "admin-scrollbar h-full min-h-0 overflow-y-auto px-1 py-3";
+      : "admin-scrollbar min-h-0 flex-1 overflow-y-auto px-1 py-3";
 
   return (
     <div ref={threadRef} className={scrollClass}>
+      {threadTop ? <div className="mb-3 space-y-2">{threadTop}</div> : null}
       {originalRequestText ? (
         <div className="mb-3 flex w-full justify-start">
-          <div className="max-w-[min(100%,42rem)] rounded-xl border border-gray-200 bg-gray-50/90 p-3 shadow-sm">
+          <div className="max-w-[min(100%,42rem)] rounded-xl border border-emerald-300 bg-emerald-50 p-3 shadow-sm">
             <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-              <span className="font-medium text-gray-700">Original request</span>
+              <span className="rounded-full bg-emerald-200 px-2 py-0.5 font-semibold text-emerald-950">Original request</span>
               {ticketCreatedAt ? (
                 <>
                   <span>·</span>
@@ -79,9 +84,9 @@ export function TicketThread({
                     </li>
                   ) : null}
                   <li id={`note-${item.id}`} className="group flex w-full justify-end">
-                    <div className="relative max-w-[min(100%,42rem)] rounded-xl border border-amber-300 bg-amber-50/90 px-4 py-3 shadow-sm">
+                    <div className="relative max-w-[min(100%,42rem)] rounded-xl border border-amber-300 bg-amber-100 px-4 py-3 shadow-sm">
                       <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                        <span className="font-medium text-amber-950">Team note</span>
+                        <span className="rounded-full bg-amber-200 px-2 py-0.5 font-semibold text-amber-950">Team note</span>
                         <span>·</span>
                         <span>{n.user?.full_name || n.user?.email || "Staff"}</span>
                         <span>·</span>
@@ -100,28 +105,40 @@ export function TicketThread({
             }
 
             const m = item.row;
-            const internal = Boolean(m.is_internal);
-            const uid = m.user_id == null ? null : str(m.user_id);
-            const isAssistant = !internal && str(m.author_kind) === "assistant";
-            const fromCustomer = !internal && !isAssistant && customerUserId !== null && uid === customerUserId;
-            const fromStaff = !internal && !fromCustomer && !isAssistant;
-            const bubble = internal
-              ? "border-amber-200 bg-amber-50/90"
-              : isAssistant
-                ? "border-violet-200 bg-violet-50/90"
-                : fromStaff
-                  ? "border-blue-200 bg-blue-50/90"
-                  : "border-gray-200 bg-gray-50/90";
+            const role = messageTrailRole(m, customerUserId);
+            const internal = role === "internal";
+            const alignEnd = role === "staff" || role === "internal" || role === "auto";
+            const bubble =
+              role === "internal"
+                ? "border-amber-300 bg-amber-100"
+                : role === "assistant"
+                  ? "border-violet-300 bg-violet-100"
+                  : role === "staff"
+                    ? "border-blue-300 bg-blue-100"
+                    : role === "auto"
+                      ? "border-slate-300 bg-slate-100"
+                      : "border-emerald-300 bg-emerald-50";
+            const rolePill =
+              role === "internal"
+                ? "bg-amber-200 text-amber-950"
+                : role === "assistant"
+                  ? "bg-violet-200 text-violet-950"
+                  : role === "staff"
+                    ? "bg-blue-200 text-blue-950"
+                    : role === "auto"
+                      ? "bg-slate-200 text-slate-900"
+                      : "bg-emerald-200 text-emerald-950";
             const atts = attachmentsFromRow(m.attachments);
-            const roleLabel = m.is_auto_reply
-              ? "Automatic acknowledgement"
-              : internal
-                ? "Internal note"
-                : isAssistant
-                  ? "Assistant"
-                  : fromCustomer
-                    ? "Customer"
-                    : "Support";
+            const roleLabel =
+              role === "auto"
+                ? "Automatic acknowledgement"
+                : role === "internal"
+                  ? "Internal note"
+                  : role === "assistant"
+                    ? "Assistant"
+                    : role === "customer"
+                      ? "Customer"
+                      : "Support";
             const messageId = str(m.id);
             const deliveryBadge = !internal ? deliveryStatusBadge(m.email_delivery_status) : null;
             const createdAt = m.created_at ? String(m.created_at) : undefined;
@@ -137,11 +154,11 @@ export function TicketThread({
                 ) : null}
                 <li
                   id={`message-${messageId}`}
-                  className={`group flex w-full ${fromStaff || internal ? "justify-end" : "justify-start"}`}
+                  className={`group flex w-full ${alignEnd ? "justify-end" : "justify-start"}`}
                 >
                   <div className={`relative max-w-[min(100%,42rem)] rounded-xl border px-4 py-3 shadow-sm ${bubble}`}>
                     <div className="flex flex-wrap items-center gap-2 pe-8 text-xs text-gray-500">
-                      <span className="font-medium text-gray-700">{roleLabel}</span>
+                      <span className={`rounded-full px-2 py-0.5 font-semibold ${rolePill}`}>{roleLabel}</span>
                       <span>·</span>
                       <span>{m.user?.full_name || m.user?.email || "User"}</span>
                       <span>·</span>

@@ -13,6 +13,10 @@ export interface ProductOrder {
   status: string;
   fulfillment_type: string;
   total_amount: number;
+  payment_status?: string | null;
+  payment_method?: string | null;
+  order_source?: string | null;
+  amount_still_due?: number | null;
   created_at: string;
   tracking_number: string | null;
   items: OrderItem[];

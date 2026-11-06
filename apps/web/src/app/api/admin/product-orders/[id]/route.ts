@@ -140,6 +140,7 @@ export async function PATCH(
         wallet_amount,
         gift_card_amount,
         payment_method,
+        order_source,
         payment_reference,
         currency,
         collection_location_id,
@@ -183,6 +184,32 @@ export async function PATCH(
       return errorResponse(
         `Cannot change a ${orderRow.status} order.`,
         "INVALID_TRANSITION",
+        400,
+      );
+    }
+
+    const { isUnpaidOnlinePaystackHold } = await import("@beautonomi/utils");
+    const adminFulfillmentStatuses = new Set([
+      "confirmed",
+      "processing",
+      "ready_for_collection",
+      "shipped",
+      "delivered",
+    ]);
+    if (
+      parsed.status &&
+      adminFulfillmentStatuses.has(parsed.status) &&
+      parsed.status !== orderRow.status &&
+      isUnpaidOnlinePaystackHold({
+        order_source: (order as { order_source?: string | null }).order_source,
+        payment_method: (order as { payment_method?: string | null }).payment_method,
+        payment_status: orderRow.payment_status,
+        status: orderRow.status,
+      })
+    ) {
+      return errorResponse(
+        "This order has not been paid online yet. Wait for payment before fulfilling it, or cancel it.",
+        "PAYMENT_REQUIRED",
         400,
       );
     }

@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { providerTemplateKeyToPreferenceSection } from "@/lib/notifications/provider-notification-channels";
+import { isSecurityNotificationTemplateKey } from "@/lib/notifications/security-notification-copy";
 
 export type ProviderDigestMode = "daily" | "weekly";
 
@@ -17,6 +18,8 @@ export function shouldDeferProviderPushToDigest(
   prefs: Record<string, unknown> | null | undefined,
   templateKey: string,
 ): boolean {
+  if (isSecurityNotificationTemplateKey(templateKey)) return false;
+
   const mode = prefs?.digest_mode;
   if (mode !== "daily" && mode !== "weekly") return false;
 

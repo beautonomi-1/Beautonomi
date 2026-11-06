@@ -11,14 +11,17 @@ export async function customerHasPromotionUsage(
   supabase: SupabaseClient,
   promotionId: string,
   customerId: string,
+  excludeBookingId?: string | null,
 ): Promise<boolean> {
   if (!promotionId || !customerId) return false;
   try {
-    const { count, error } = await supabase
+    let query = supabase
       .from("promotion_usage")
       .select("id", { count: "exact", head: true })
       .eq("promotion_id", promotionId)
       .eq("user_id", customerId);
+    if (excludeBookingId) query = query.neq("booking_id", excludeBookingId);
+    const { count, error } = await query;
     if (error) {
       console.error("[customerHasPromotionUsage]", error.message);
       return false;

@@ -1,6 +1,6 @@
 {
   "name": "provider",
-  "version": "1.0.110",
+  "version": "1.0.111",
   "main": "index.ts",
   "scripts": {
     "dev": "node ../../tooling/expo-dev/port-safe-expo-dev.js 8082 8084",
@@ -29,6 +29,7 @@
     "@babel/plugin-transform-react-jsx": "^7.28.6",
     "@beautonomi/analytics": "workspace:*",
     "@beautonomi/api": "workspace:*",
+    "@beautonomi/auth-security": "workspace:*",
     "@beautonomi/expo-sms-user-consent": "workspace:*",
     "@beautonomi/i18n": "workspace:*",
     "@beautonomi/paycloud-same-terminal": "workspace:*",

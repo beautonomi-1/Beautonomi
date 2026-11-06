@@ -15,8 +15,17 @@ import {
   readCsrfTokenFromCookie,
   setInMemoryCsrfToken,
 } from "@/lib/http/csrf-fetch-guard";
+import { dispatchSecurityChallenge } from "@beautonomi/auth-security";
+import { getStoredDeviceKey } from "@/lib/auth/device-key";
 
 export { setInMemoryCsrfToken };
+export { registerSecurityChallengeHandler } from "@beautonomi/auth-security";
+
+const SECURITY_CHALLENGE_RETRY_CODES = new Set([
+  "STEP_UP_REQUIRED",
+  "PROVIDER_MFA_REQUIRED",
+  "DEVICE_VERIFICATION_REQUIRED",
+]);
 
 /**
  * Salon iframes often cannot store SameSite=Lax auth cookies (Safari ITP /
@@ -325,6 +334,7 @@ export async function fetchJson<T = unknown>(
   options: FetchOptions = {},
   csrfRetried = false,
   htmlRoutingRetried = false,
+  securityRetried = false,
 ): Promise<T> {
   const {
     method = 'GET',
@@ -360,6 +370,11 @@ export async function fetchJson<T = unknown>(
     }
 
     await attachBrowserAccessToken(requestHeaders as Record<string, string>);
+
+    const deviceKey = getStoredDeviceKey();
+    if (deviceKey && !(requestHeaders as Record<string, string>)["X-Device-Key"]) {
+      (requestHeaders as Record<string, string>)["X-Device-Key"] = deviceKey;
+    }
 
     // Prepare body
     let requestBody: BodyInit | undefined;
@@ -494,7 +509,24 @@ export async function fetchJson<T = unknown>(
       ) {
         setInMemoryCsrfToken(null);
         await ensureCsrfToken();
-        return fetchJson<T>(url, options, true, htmlRoutingRetried);
+        return fetchJson<T>(url, options, true, htmlRoutingRetried, securityRetried);
+      }
+
+      if (
+        !securityRetried &&
+        response.status === 403 &&
+        typeof errorData.code === "string" &&
+        SECURITY_CHALLENGE_RETRY_CODES.has(errorData.code) &&
+        typeof window !== "undefined"
+      ) {
+        const ok = await dispatchSecurityChallenge({
+          code: errorData.code as import("@beautonomi/auth-security").SecurityChallengeCode,
+          message: errorData.message ?? "Verification required.",
+          details: errorData.details as import("@beautonomi/auth-security").SecurityChallengeDetails | undefined,
+        });
+        if (ok) {
+          return fetchJson<T>(url, options, csrfRetried, htmlRoutingRetried, true);
+        }
       }
 
       // Turbopack first-hit: dynamic /api/.../[id] often returns the HTML 404
@@ -507,7 +539,7 @@ export async function fetchJson<T = unknown>(
         (errorData.code === "NOT_FOUND_HTML" || errorData.code === "HTML_ERROR_RESPONSE")
       ) {
         await new Promise((resolve) => setTimeout(resolve, 450));
-        return fetchJson<T>(url, options, csrfRetried, true);
+        return fetchJson<T>(url, options, csrfRetried, true, securityRetried);
       }
 
       throw new FetchError(

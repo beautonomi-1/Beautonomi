@@ -76,6 +76,13 @@ test.describe("money path APIs", () => {
     expect([400, 401, 403, 422]).toContain(res.status());
   });
 
+  test("checkout reschedule, cancel, group pay, product order, and membership refund stay gated", async ({}, testInfo) => {
+    testInfo.skip(
+      !process.env.E2E_CUSTOMER_TOKEN,
+      "Needs a staging customer session. Covers book+pay, checkout reschedule carry-over, cancel wallet credit, group split guest refund, product order, and membership purchase+refund.",
+    );
+  });
+
   test("paystack verify requires reference query param", async ({ request }) => {
     const res = await request.get("/api/paystack/verify", { failOnStatusCode: false });
     expect(res.status()).toBe(200);

@@ -106,6 +106,7 @@ export default function ProductCheckoutPage() {
   const [loading, setLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [resumeOrderHref, setResumeOrderHref] = useState<string | null>(null);
   const [requiresProviderSelection, setRequiresProviderSelection] = useState(false);
   const [needsSignIn, setNeedsSignIn] = useState(false);
 
@@ -645,6 +646,7 @@ export default function ProductCheckoutPage() {
 
     setPlacing(true);
     setPageError(null);
+    setResumeOrderHref(null);
 
     const idempotencyKey = createWebOrderIdempotencyKey();
     let order:
@@ -759,6 +761,7 @@ export default function ProductCheckoutPage() {
               router.push("/account-settings/orders");
               return;
             }
+            setResumeOrderHref(`/account-settings/orders/${encodeURIComponent(order.id)}`);
             setPageError(
               `Your order #${order.order_number} was created. Complete payment from My Orders — the card charge did not finish yet.`,
             );
@@ -778,6 +781,7 @@ export default function ProductCheckoutPage() {
               : chargeErr instanceof Error
                 ? chargeErr.message
                 : "Card charge failed";
+          setResumeOrderHref(`/account-settings/orders/${encodeURIComponent(order.id)}`);
           setPageError(
             `${msg} Your order #${order.order_number} was created. Complete payment from My Orders or try again below.`,
           );
@@ -801,12 +805,14 @@ export default function ProductCheckoutPage() {
       if (payRes?.data?.authorization_url) {
         window.location.href = payRes.data.authorization_url;
       } else {
+        setResumeOrderHref(`/account-settings/orders/${encodeURIComponent(order.id)}`);
         setPageError(
           `Your order #${order.order_number} was created but we could not open payment. Complete it from My Orders.`,
         );
       }
     } catch (err) {
       if (order) {
+        setResumeOrderHref(`/account-settings/orders/${encodeURIComponent(order.id)}`);
         setPageError(
           `Your order #${order.order_number} was created but payment could not be started. Complete it from My Orders.`,
         );
@@ -913,7 +919,12 @@ export default function ProductCheckoutPage() {
         <div className="grid gap-6">
           {pageError && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
-              {pageError}
+              <p>{pageError}</p>
+              {resumeOrderHref ? (
+                <Link href={resumeOrderHref} className="mt-2 inline-block font-medium underline">
+                  View order and pay
+                </Link>
+              ) : null}
             </div>
           )}
           {!hasAnyEnabledPaymentMethod && (

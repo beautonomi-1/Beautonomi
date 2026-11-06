@@ -200,6 +200,18 @@ function buildHappyPathSupabase(opts?: { failItemsInsert?: boolean }) {
           })),
         };
       }
+      if (table === "users") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(async () => ({
+                data: { full_name: "Buyer", email: "buyer@example.com", phone: null },
+                error: null,
+              })),
+            })),
+          })),
+        };
+      }
       throw new Error(`Unexpected table ${table}`);
     }),
   };

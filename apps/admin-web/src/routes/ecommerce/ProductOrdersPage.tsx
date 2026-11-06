@@ -61,7 +61,7 @@ const STATUS_OPTS = [
   "refunded",
 ] as const;
 
-const PAYMENT_OPTS = ["", "pending", "paid", "failed", "refunded"] as const;
+const PAYMENT_OPTS = ["", "pending", "paid", "failed", "refunded", "partially_refunded"] as const;
 
 function str(v: unknown): string {
   return v == null ? "" : String(v);

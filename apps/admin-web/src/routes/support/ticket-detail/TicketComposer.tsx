@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { BookOpen, ChevronDown, FileText, Paperclip, Send, X } from "lucide-react";
 import { ADMIN_SECTION_SUPPORT } from "@beautonomi/admin-access";
 import { DomainCopilotDock } from "@/components/agent-assist/DomainCopilotDock";
+import { AnchoredPopover } from "@/components/ui/AnchoredPopover";
 import { LearningArticlePicker } from "@/components/learning/LearningArticlePicker";
 import type { KbArticleResult, KbAudience } from "@/lib/learning";
 import { SUPPORT_TICKET_CANNED_RESPONSES } from "@/lib/supportTicketCannedResponses";
@@ -28,6 +29,7 @@ type TicketComposerProps = {
   onPickFiles: (files: FileList | null) => void;
   fileRef: RefObject<HTMLInputElement | null>;
   layout?: "panel" | "page" | "page-mobile";
+  textareaRef?: RefObject<HTMLTextAreaElement | null>;
 };
 
 export function TicketComposer({
@@ -49,44 +51,35 @@ export function TicketComposer({
   onPickFiles,
   fileRef,
   layout = "panel",
+  textareaRef,
 }: TicketComposerProps) {
   const isMobilePage = layout === "page-mobile";
-  const capDraftScroll = !isMobilePage;
-  const textareaMin =
-    layout === "page" ? "min-h-[5.5rem] max-h-40" : "min-h-[4.5rem] max-h-32";
+  const isCompactDesktop = layout === "page" || layout === "panel";
+  const textareaMin = isMobilePage
+    ? "min-h-[4.5rem]"
+    : layout === "page"
+      ? "min-h-[5.5rem]"
+      : isCompactDesktop
+        ? "min-h-[4.5rem]"
+        : "min-h-[4.5rem]";
   const [dragActive, setDragActive] = useState(false);
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [articlesOpen, setArticlesOpen] = useState(false);
   const sendMenuRef = useRef<HTMLDivElement>(null);
   const articlesRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!articlesOpen) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (!articlesRef.current?.contains(e.target as Node)) setArticlesOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [articlesOpen]);
-
-  useEffect(() => {
-    if (!sendMenuOpen) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (!sendMenuRef.current?.contains(e.target as Node)) setSendMenuOpen(false);
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSendMenuOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [sendMenuOpen]);
-
   const hasContent = reply.trim().length > 0 || replyAttachments.length > 0;
   const disabled = !hasContent || sendPending || patchPending;
+
+  useLayoutEffect(() => {
+    if (!isCompactDesktop) return;
+    const el = textareaRef?.current;
+    if (!el) return;
+    // Auto-grow so agents can always see what they're typing.
+    el.style.height = "auto";
+    const next = Math.min(el.scrollHeight, 220); // cap ~14rem
+    el.style.height = `${Math.max(next, 72)}px`;
+  }, [reply, textareaRef, isCompactDesktop]);
 
   const draftBlock = (
     <>
@@ -98,7 +91,8 @@ export function TicketComposer({
       ) : null}
 
       <textarea
-        className={`mb-2 w-full ${textareaMin} rounded-xl border px-3 py-2 text-sm focus:outline-none ${
+        ref={textareaRef}
+        className={`mb-2 w-full ${textareaMin} rounded-xl border px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none ${
           replyInternal
             ? "border-amber-300 bg-amber-50/70 focus:border-amber-500"
             : "border-gray-300 bg-white focus:border-gray-500"
@@ -164,7 +158,7 @@ export function TicketComposer({
 
   return (
     <div
-      className={`z-10 shrink-0 border-t border-gray-200 bg-white pb-1 pt-3 ${
+      className={`z-10 flex flex-col overflow-visible bg-white pb-1 pt-2 ${
         isMobilePage ? "sticky bottom-0 pe-16 pb-[max(0.25rem,env(safe-area-inset-bottom))] shadow-[0_-4px_12px_rgb(0_0_0/0.06)] sm:pe-20" : ""
       }`}
       onDragOver={(e) => {
@@ -180,11 +174,13 @@ export function TicketComposer({
         void onPickFiles(e.dataTransfer.files);
       }}
     >
-      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1 text-sm">
+      <div
+        className={`mb-2 flex shrink-0 gap-2 ${isCompactDesktop ? "flex-row flex-wrap items-center justify-between" : "flex-col sm:flex-row sm:items-center sm:justify-between"}`}
+      >
+        <div className="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-0.5 text-xs sm:text-sm">
           <button
             type="button"
-            className={`rounded-lg px-3 py-2 font-medium transition-colors ${
+            className={`rounded-lg px-2.5 py-1.5 font-medium transition-colors sm:px-3 sm:py-2 ${
               !replyInternal ? "bg-gray-900 text-white shadow-sm" : "text-gray-700 hover:bg-white"
             }`}
             onClick={() => setReplyInternal(false)}
@@ -193,7 +189,7 @@ export function TicketComposer({
           </button>
           <button
             type="button"
-            className={`rounded-lg px-3 py-2 font-medium transition-colors ${
+            className={`rounded-lg px-2.5 py-1.5 font-medium transition-colors sm:px-3 sm:py-2 ${
               replyInternal ? "bg-amber-500 text-amber-950 shadow-sm" : "text-gray-700 hover:bg-white"
             }`}
             onClick={() => setReplyInternal(true)}
@@ -206,13 +202,9 @@ export function TicketComposer({
         </p>
       </div>
 
-      {capDraftScroll ? (
-        <div className="admin-scrollbar mb-2 max-h-64 overflow-y-auto">{draftBlock}</div>
-      ) : (
-        draftBlock
-      )}
+      <div className={isCompactDesktop ? "min-h-0 flex-1 overflow-y-auto" : undefined}>{draftBlock}</div>
 
-      <div className="mb-2 flex flex-wrap items-center gap-2">
+      <div className="mb-2 flex shrink-0 flex-wrap items-center gap-2">
         <button
           type="button"
           className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-800 hover:bg-gray-50 disabled:opacity-40"
@@ -252,20 +244,26 @@ export function TicketComposer({
             <BookOpen className="h-3.5 w-3.5 text-purple-600" aria-hidden />
             Help articles
           </button>
-          {articlesOpen ? (
-            <div className="absolute bottom-full left-0 z-20 mb-1 max-h-64 w-[min(100vw-2rem,20rem)] overflow-y-auto rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
-              <LearningArticlePicker
-                audience={replyAudience}
-                includeInternal={replyInternal}
-                onInsert={(article) => {
-                  onInsertArticle(article);
-                  setArticlesOpen(false);
-                }}
-                initialQuery={str(ticket.subject)}
-                placeholder="Search guides…"
-              />
-            </div>
-          ) : null}
+          <AnchoredPopover
+            open={articlesOpen}
+            anchorRef={articlesRef}
+            onClose={() => setArticlesOpen(false)}
+            width={360}
+            maxHeight={440}
+            className="p-2"
+            ariaLabel="Help articles"
+          >
+            <LearningArticlePicker
+              audience={replyAudience}
+              includeInternal={replyInternal}
+              onInsert={(article) => {
+                onInsertArticle(article);
+                setArticlesOpen(false);
+              }}
+              initialQuery={str(ticket.subject)}
+              placeholder="Search guides…"
+            />
+          </AnchoredPopover>
         </div>
         <DomainCopilotDock
           section={ADMIN_SECTION_SUPPORT}
@@ -290,7 +288,7 @@ export function TicketComposer({
 
       {uploadErr ? <p className="mb-2 text-sm text-red-600">{uploadErr}</p> : null}
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
         {replyInternal ? (
           <button
             type="button"
@@ -323,11 +321,16 @@ export function TicketComposer({
             >
               <ChevronDown className="h-4 w-4" />
             </button>
-            {sendMenuOpen ? (
-              <div
-                className="absolute bottom-full left-0 z-20 mb-1 min-w-[14rem] rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
-                role="menu"
-              >
+            <AnchoredPopover
+              open={sendMenuOpen}
+              anchorRef={sendMenuRef}
+              onClose={() => setSendMenuOpen(false)}
+              width={240}
+              maxHeight={160}
+              className="py-1"
+              role="menu"
+              ariaLabel="More send options"
+            >
                 <button
                   type="button"
                   role="menuitem"
@@ -350,8 +353,7 @@ export function TicketComposer({
                 >
                   Send and wait for customer
                 </button>
-              </div>
-            ) : null}
+            </AnchoredPopover>
           </div>
         )}
         <p className="text-xs text-gray-500">Cmd/Ctrl+Enter to send · Esc to clear draft</p>

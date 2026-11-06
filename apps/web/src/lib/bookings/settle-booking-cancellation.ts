@@ -359,6 +359,56 @@ async function clawBackEarnedLoyalty(
 
 type GiftCardVoidOutcome = "restored" | "spent" | "unknown";
 
+async function markCancellationSettlementState(
+  admin: SupabaseClient,
+  bookingId: string,
+  error: string | null,
+): Promise<void> {
+  const { error: updateErr } = await admin
+    .from("bookings")
+    .update(
+      error
+        ? { cancellation_settlement_error: error.slice(0, 500) }
+        : { cancellation_settled_at: new Date().toISOString(), cancellation_settlement_error: null },
+    )
+    .eq("id", bookingId);
+  if (updateErr) {
+    console.error("[settleBookingCancellation] settlement state update failed:", updateErr);
+  }
+}
+
+async function fetchPriorCancellationRefundsTotal(
+  admin: SupabaseClient,
+  bookingId: string,
+): Promise<number> {
+  const { data, error } = await admin
+    .from("booking_refunds")
+    .select("amount, refund_method, status, reason")
+    .eq("booking_id", bookingId)
+    .in("status", ["pending", "completed"]);
+  if (error) throw new Error(`Could not load prior cancellation refunds: ${error.message}`);
+  const rows = (data ?? []) as Array<{
+    amount?: number | string | null;
+    refund_method?: string | null;
+    status?: string | null;
+    reason?: string | null;
+  }>;
+  return roundCurrency2(
+    rows
+      .filter((row) => {
+        const reason = String(row.reason ?? "");
+        const leadCredit =
+          row.refund_method === "store_credit" &&
+          row.status === "completed" &&
+          reason.startsWith("Cancellation refund");
+        const guestShare =
+          row.refund_method === "original" && reason.endsWith("cancelled — guest share returned");
+        return leadCredit || guestShare;
+      })
+      .reduce((sum, row) => sum + Math.max(0, Number(row.amount ?? 0)), 0),
+  );
+}
+
 async function maybeVoidGiftCardRedemption(
   admin: SupabaseClient,
   bookingId: string,
@@ -431,6 +481,20 @@ export async function settleBookingCancellation(
   // Split-payment groups: guest shares recorded on this booking go back to each guest's
   // card in full and are excluded from the lead customer's credit; any fee is borne by
   // the lead customer's own funds.
+  // A retried settlement must not refund the policy amount again: lead wallet
+  // credits and guest card refunds from an earlier attempt count against it.
+  // Read before this attempt writes any refund rows.
+  let priorCancellationCredits: number;
+  try {
+    priorCancellationCredits = await fetchPriorCancellationRefundsTotal(admin, bookingId);
+  } catch (err) {
+    await markCancellationSettlementState(
+      admin,
+      bookingId,
+      err instanceof Error ? err.message : "prior_refund_lookup_failed",
+    );
+    throw err;
+  }
   const guestSharesHeld = await refundSplitGroupGuestSharesForCancellation(admin, params);
   const effectiveCollected = roundCurrency2(
     Math.max(
@@ -439,7 +503,7 @@ export async function settleBookingCancellation(
     ),
   );
   const leadPolicyRefundAmount = roundCurrency2(
-    Math.max(0, policyRefundAmount - guestSharesHeld),
+    Math.max(0, policyRefundAmount - guestSharesHeld - priorCancellationCredits),
   );
 
   // On a full refund we also void the gift-card redemption (restoring balance
@@ -658,6 +722,16 @@ export async function settleBookingCancellation(
   } catch (cashErr) {
     console.error("[settleBookingCancellation] cash obligation failed:", cashErr);
   }
+
+  // A failed wallet credit leaves a failed store_credit refund row that the
+  // auto wallet credit cron (or finance staff) replays; the settle-pending
+  // cancellations cron stamps the booking once that row completes.
+  const refundPending = walletCreditTarget > 0.009 && refundResult.success === false;
+  await markCancellationSettlementState(
+    admin,
+    bookingId,
+    refundPending ? refundResult.error || "Cancellation refund could not be credited" : null,
+  );
 
   return {
     cancellationFeeApplied,

@@ -28,7 +28,7 @@ export default function ExplorePostPageClient() {
       setShow404(false);
     });
     fetcher
-      .get<ExplorePost>(`/api/explore/posts/${id}`)
+      .get<ExplorePost>(`/api/explore/posts/${id}`, { staleTimeMs: 0 })
       .then((postRes) => {
         if (cancelled) return;
         const p = (postRes as any)?.data ?? postRes;

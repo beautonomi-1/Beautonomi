@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { fetcher } from "@/lib/http/fetcher";
 import BackButton from "@/components/ui/back-button";
 import Breadcrumb from "@/components/ui/breadcrumb";
@@ -37,7 +38,7 @@ export default function WalletPage({
     Array<{ id: string; code: string; balance: number; currency: string }>
   >([]);
   const [claimingCode, setClaimingCode] = useState<string | null>(null);
-  const [bankRefundHelp, setBankRefundHelp] = useState<string | null>(null);
+  const [bankRefundHelp, setBankRefundHelp] = useState<{ text: string | null; cta: string } | null>(null);
 
   const load = async () => {
     try {
@@ -115,14 +116,18 @@ export default function WalletPage({
         const settings = res.data?.settings;
         const open = res.data?.open_request;
         if (open?.request_number) {
-          setBankRefundHelp(
-            `Your bank refund request ${open.request_number} is ${open.status === "approved" ? "approved and awaiting transfer" : "being reviewed"}. The amount is on hold in your wallet.`,
-          );
+          setBankRefundHelp({
+            text: `Your bank refund request ${open.request_number} is ${open.status === "approved" ? "approved and awaiting transfer" : "being reviewed"}. The amount is on hold in your wallet.`,
+            cta: t("web.accountSettings.safety.bankRefundOpenCta"),
+          });
         } else if (settings?.enabled && Number(res.data?.eligible_amount ?? 0) > 0) {
-          setBankRefundHelp(
-            settings.help_text?.trim() ||
-              "Bank refund of an eligible card payment is available on request from the Wallet screen in the Beautonomi app.",
-          );
+          const help = settings.help_text?.trim() || "";
+          const appOnly =
+            "Bank refund of an eligible card payment is available on request from the Wallet screen in the Beautonomi app.";
+          setBankRefundHelp({
+            text: help && help !== appOnly ? help : null,
+            cta: t("web.accountSettings.safety.bankRefundCta"),
+          });
         }
       } catch {
         setBankRefundHelp(null);
@@ -219,7 +224,13 @@ export default function WalletPage({
               <div className="space-y-6">
                 {bankRefundHelp ? (
                   <div className="rounded-xl border border-blue-100 bg-blue-50/80 px-4 py-3 text-sm text-blue-950">
-                    {bankRefundHelp}
+                    {bankRefundHelp.text ? <p>{bankRefundHelp.text}</p> : null}
+                    <Link
+                      href="/account-settings/wallet/bank-refund"
+                      className="mt-1 inline-flex min-h-11 items-center font-semibold text-blue-700 underline"
+                    >
+                      {bankRefundHelp.cta}
+                    </Link>
                   </div>
                 ) : null}
                 {/* Available Balance Card */}
@@ -235,6 +246,12 @@ export default function WalletPage({
                   <div className="text-4xl md:text-5xl font-bold text-gray-900 mt-2">
                     {wallet ? format(Number(wallet.balance || 0)) : "—"}
                   </div>
+                  <Link
+                    href="/account-settings/bank-accounts"
+                    className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-[#FF0077] underline"
+                  >
+                    {t("web.accountSettings.safety.bankAccountsManage")}
+                  </Link>
                 </div>
 
                 {/* Pending gift cards — sent to this account's email, not yet redeemed */}

@@ -106,7 +106,7 @@ export async function resolveProductOrderPaystackAmount(
 ): Promise<ResolvePaystackAmountResult> {
   const { data: po, error } = await (supabase.from("product_orders") as any)
     .select(
-      "id, customer_id, payment_status, payment_method, total_amount, wallet_amount, gift_card_amount, currency",
+      "id, customer_id, payment_status, payment_method, status, total_amount, wallet_amount, gift_card_amount, currency",
     )
     .eq("id", productOrderId)
     .maybeSingle();
@@ -116,6 +116,15 @@ export async function resolveProductOrderPaystackAmount(
   }
   if (po.customer_id !== userId) {
     return { ok: false, status: 403, code: "FORBIDDEN", message: "You do not have permission to pay for this order" };
+  }
+  const orderStatus = String((po as { status?: string | null }).status ?? "").toLowerCase();
+  if (orderStatus !== "pending") {
+    return {
+      ok: false,
+      status: 400,
+      code: "ORDER_NOT_PAYABLE",
+      message: "This order does not require online payment",
+    };
   }
   if (po.payment_status !== "pending") {
     return {

@@ -12,6 +12,10 @@ export type PickedAsset = {
   duration_ms?: number;
   trim_start_ms?: number;
   trim_end_ms?: number;
+  /** Trim-start JPEG file URI. Uploaded as display_path without photo finalize. */
+  poster_uri?: string;
+  poster_width?: number;
+  poster_height?: number;
 };
 
 export type ExploreUploadCaps = {

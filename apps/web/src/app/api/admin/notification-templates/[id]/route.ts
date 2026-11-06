@@ -1,10 +1,78 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
-import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { isSecurityNotificationTemplateKey } from "@/lib/notifications/security-notification-copy";
+
+function isProtectedSecurityTemplateKey(key: string | null | undefined): boolean {
+  return typeof key === "string" && isSecurityNotificationTemplateKey(key);
+}
+
+const SECURITY_REQUIRED_PLACEHOLDERS: Record<string, { field: "body" | "email_body"; token: string }[]> = {
+  security_device_verification_code: [
+    { field: "email_body", token: "{{code}}" },
+  ],
+  security_step_up_code: [
+    { field: "email_body", token: "{{code}}" },
+  ],
+};
+
+const SECURITY_EMAIL_REQUIRED_KEYS = new Set([
+  "security_device_verification_code",
+  "security_step_up_code",
+  "security_new_device_signin",
+  "security_payout_account_added",
+  "security_password_changed",
+  "security_mfa_disabled",
+]);
+
+function validateSecurityTemplatePatch(
+  key: string,
+  body: Record<string, unknown>,
+): { message: string; code: string; status: number } | null {
+  for (const rule of SECURITY_REQUIRED_PLACEHOLDERS[key] ?? []) {
+    const next = body[rule.field];
+    if (typeof next === "string" && !next.includes(rule.token)) {
+      return {
+        message: `This security template must keep the ${rule.token} placeholder in ${rule.field}.`,
+        code: "MISSING_REQUIRED_VARIABLE",
+        status: 422,
+      };
+    }
+  }
+  if (SECURITY_EMAIL_REQUIRED_KEYS.has(key) && body.channels !== undefined) {
+    const raw = Array.isArray(body.channels)
+      ? body.channels
+      : typeof body.channels === "string"
+        ? body.channels.split(",").map((s) => s.trim())
+        : [];
+    if (!raw.includes("email")) {
+      return {
+        message: "The email channel can't be removed from this security template.",
+        code: "PROTECTED_TEMPLATE",
+        status: 409,
+      };
+    }
+  }
+  return null;
+}
+
+async function loadTemplateKey(
+  supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
+  tenantId: string,
+  id: string,
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("notification_templates")
+    .select("key")
+    .eq("id", id)
+    .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
+    .maybeSingle();
+  return (data as { key?: string } | null)?.key ?? null;
+}
 
 /**
  * GET /api/admin/notification-templates/[id]
@@ -59,6 +127,21 @@ export async function PATCH(
     const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
     const body = await request.json();
+
+    const existingKey = await loadTemplateKey(supabase, tenantId, id);
+    if (isProtectedSecurityTemplateKey(existingKey)) {
+      if (body.enabled === false) {
+        return errorResponse(
+          "Security notification templates cannot be disabled",
+          "PROTECTED_TEMPLATE",
+          409,
+        );
+      }
+      const protectionError = validateSecurityTemplatePatch(existingKey as string, body);
+      if (protectionError) {
+        return errorResponse(protectionError.message, protectionError.code, protectionError.status);
+      }
+    }
 
     const updateData: Record<string, unknown> = {};
     if (body.title !== undefined) updateData.title = body.title;
@@ -152,6 +235,15 @@ export async function DELETE(
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
+
+    const existingKey = await loadTemplateKey(supabase, tenantId, id);
+    if (isProtectedSecurityTemplateKey(existingKey)) {
+      return errorResponse(
+        "Security notification templates cannot be deleted",
+        "PROTECTED_TEMPLATE",
+        403,
+      );
+    }
 
     const { error } = await supabase
       .from("notification_templates")

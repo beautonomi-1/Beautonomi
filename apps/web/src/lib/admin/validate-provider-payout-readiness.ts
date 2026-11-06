@@ -61,28 +61,65 @@ export async function resolveActivePayoutAccount(
   if (requestedAccountId) {
     const { data } = await supabase
       .from("provider_payout_accounts")
-      .select("id, recipient_code, currency, bank_code, account_name, metadata")
+      .select("id, recipient_code, currency, bank_code, account_name, metadata, cooling_off_until")
       .eq("id", requestedAccountId)
       .eq("provider_id", providerId)
       .eq("active", true)
       .is("deleted_at", null)
       .maybeSingle();
 
-    return data?.recipient_code ? (data as AdminPayoutAccount) : null;
+    if (data?.recipient_code) {
+      const { isAccountInCoolingOff } = await import("@/lib/auth/payout-cooling-off");
+      if (isAccountInCoolingOff((data as { cooling_off_until?: string | null }).cooling_off_until)) {
+        return null;
+      }
+      return data as AdminPayoutAccount;
+    }
+    return null;
   }
 
-  const { data } = await supabase
+  const { data: rows } = await supabase
     .from("provider_payout_accounts")
-    .select("id, recipient_code, currency, bank_code, account_name, metadata")
+    .select("id, recipient_code, currency, bank_code, account_name, metadata, cooling_off_until")
     .eq("provider_id", providerId)
     .eq("active", true)
     .is("deleted_at", null)
     .order("is_primary", { ascending: false })
     .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(10);
 
-  return data?.recipient_code ? (data as AdminPayoutAccount) : null;
+  // Prefer the primary; if it's still in its security hold, fall back to the next cleared account.
+  const { isAccountInCoolingOff } = await import("@/lib/auth/payout-cooling-off");
+  const eligible = (rows ?? []).find(
+    (r) =>
+      Boolean((r as { recipient_code?: string | null }).recipient_code) &&
+      !isAccountInCoolingOff((r as { cooling_off_until?: string | null }).cooling_off_until),
+  );
+  return eligible ? (eligible as AdminPayoutAccount) : null;
+}
+
+/** True when the provider's only usable payout accounts are inside the new-account security hold. */
+export async function providerPayoutBlockedByCoolingOff(
+  supabase: SupabaseClient,
+  providerId: string,
+): Promise<{ blocked: boolean; until: string | null }> {
+  const { data: rows } = await supabase
+    .from("provider_payout_accounts")
+    .select("recipient_code, cooling_off_until")
+    .eq("provider_id", providerId)
+    .eq("active", true)
+    .is("deleted_at", null);
+  const { isAccountInCoolingOff } = await import("@/lib/auth/payout-cooling-off");
+  const usable = (rows ?? []).filter((r) => Boolean((r as { recipient_code?: string | null }).recipient_code));
+  const cooling = usable.filter((r) =>
+    isAccountInCoolingOff((r as { cooling_off_until?: string | null }).cooling_off_until),
+  );
+  if (usable.length === 0 || cooling.length < usable.length) return { blocked: false, until: null };
+  const until = cooling
+    .map((r) => (r as { cooling_off_until?: string | null }).cooling_off_until ?? null)
+    .filter((v): v is string => Boolean(v))
+    .sort()[0] ?? null;
+  return { blocked: true, until };
 }
 
 export async function validateAdminPayoutReadiness(params: {

@@ -13778,7 +13778,9 @@
       "userFallback": "Gebruiker",
       "postByProvider": "Plasing by {{name}}",
       "shareMediaFailedTitle": "Couldn't deel media",
-      "shareMediaFailedBody": "Ons kon nie hierdie lêer voorberei vir deling nie. Probeer eerder die skakel deel."
+      "shareMediaFailedBody": "Ons kon nie hierdie lêer voorberei vir deling nie. Probeer eerder die skakel deel.",
+      "loadingComments": "Laai tans...",
+      "loadMoreComments": "Laai meer opmerkings"
     },
     "exploreVideo": {
       "mute": "Stil",
@@ -15014,7 +15016,20 @@
           "emailInputA11y": "e-pos input",
           "sendResetLink": "Stuur Stel terug skakel",
           "sendResetLinkA11y": "Stuur Stel terug skakel",
-          "backToLoginA11y": "Terug na aanmelding"
+          "backToLoginA11y": "Terug na aanmelding",
+          "codeA11y": "wagwoord Stel terug kode",
+          "invalidCodeTitle": "kode not accepted",
+          "invalidCodeBody": "Voer the {{digits}}-digit kode from the e-pos. in.",
+          "resend": "Restuur e-pos",
+          "resendA11y": "Restuur the Stel terug e-pos",
+          "signedInIntro": "We'll stuur a kode and a Stel terug skakel to your rekening e-pos.",
+          "back": "Terug",
+          "stepCode": "1. Enter the {{digits}}-digit kode",
+          "stepPassword": "2. kies a nuwe wagwoord",
+          "codeVerified": "kode geverifieer",
+          "submit": "Stel wagwoord terug",
+          "submittingA11y": "Stel terugting wagwoord",
+          "linkAlternative": "Verkies jy die skakel? Maak dit oop vanuit die e-pos om jou nuwe wagwoord in die blaaier te stel."
         },
         "authSafetyAndAge": {
           "linkLabel": "veiligheid & parental controls",
@@ -15286,7 +15301,8 @@
           "returnLabel": "Terugsend {{status}}",
           "tracking": "Nasporing: {{number}}",
           "collectAt": "Haal af by {{name}}, {{city}}",
-          "deliverTo": "Lewer na {{city}}"
+          "deliverTo": "Lewer na {{city}}",
+          "paymentDueBadge": "Betaling verskuldig"
         },
         "productReviews": {
           "title": "Resensies",
@@ -16092,7 +16108,14 @@
           "lifecyclePartialRefundDescription": "’n Gedeeltelike terugbetaling is vir hierdie bespreking aangeteken.",
           "lifecycleRefundedDescription": "This bespreking betaling has been terugbetaal.",
           "lifecyclePaymentFailedDescription": "Die betaling het nie deurgegaan nie. Probeer weer of kontak ondersteuning met hierdie besprekingsnommer.",
-          "lifecyclePaymentNotConfirmedDescription": "betaling has not been bevestiged yet."
+          "lifecyclePaymentNotConfirmedDescription": "betaling has not been bevestiged yet.",
+          "refundProcessingTitle": "Terugbetaling word verwerk",
+          "refundProcessingBody": "Hierdie bespreking is gekanselleer. Ons maak jou terugbetaling klaar en dit verskyn binnekort in jou beursie. Jy hoef niks te doen nie.",
+          "rescheduleInProgressTitle": "Verskuiwing is aan die gang",
+          "rescheduleInProgressBody": "Hierdie bespreking word na 'n ander tyd geskuif. Voltooi die nuwe betaalpunt en die bedrag wat jy betaal het skuif outomaties oor. As jy daardie betaalpunt verlaat het, kan hierdie bespreking weer gekanselleer word sodra dit verval, binne omtrent 30 minute.",
+          "cancelGroupPreviewTitle": "Dit kanselleer die hele groepsessie {{ref}}, insluitend {{count}} gas(te).",
+          "cancelGroupPreviewOtherBookings": "Jou ander besprekings in hierdie groep: {{currency}} {{refund}} terug na jou beursie, {{currency}} {{fee}} kansellasieheffing.",
+          "cancelGroupPreviewGuestShares": "Gaste se eie aandeelbetalings ({{currency}} {{amount}}) word volledig terugbetaal na die kaarte waarmee hulle betaal het."
         },
         "groupBookingDetail": {
           "back": "Terug",
@@ -16171,7 +16194,11 @@
           "cancelMySpotConfirm": "Kanselleer jou plek in hierdie groepbespreking? Jou dienste word verwyder en enige betaling wat jy gemaak het, word op jou kaart terugbetaal.",
           "spotCancelled": "Jou spot has been gekanselleer.",
           "guestRemoved": "Gas verwyderd.",
-          "guestCancelFailed": "Kon nie dateer op the groepbespreking nie."
+          "guestCancelFailed": "Kon nie dateer op the groepbespreking nie.",
+          "resendPayLink": "Stuur betaalskakel weer",
+          "cancelGroupSession": "Kanselleer die groepsessie",
+          "cancelGroupSessionHint": "Maak jou bespreking oop, waar jy die terugbetaling vir die hele groep sien voordat jy bevestig.",
+          "askOrganizerToReschedule": "Vra die organiseerder of hierdie sessie 'n ander tyd nodig het."
         },
         "announcements": {
           "retry": "Probeer weer",
@@ -18144,6 +18171,9 @@
           "invalidBody": "Voer a geldig datum (YYYY-MM-DD) and tyd (HH:MM). in.",
           "failedTitle": "Kon nie reskedule nie",
           "noSlots": "No tyds beskikbaar on this dag. Try anander datum."
+        },
+        "resetPassword": {
+          "policyMix": "Jou wagwoord benodig 'n mengsel van letters en syfers wat by die rekeningreëls pas."
         }
       }
     },
@@ -18169,7 +18199,7 @@
       "save": "Stoor bankrekening",
       "screenTitle": "Bankrekenings",
       "bankLabel": "Bank",
-      "selectBank": "Select your bank"
+      "selectBank": "Kies your Bank"
     },
     "walletBankRefund": {
       "addBank": "Voeg a bankrekening by",
@@ -18422,7 +18452,11 @@
     "payForEveryone": "I'll betaal for everyone",
     "splitPayment": "Split betaling",
     "splitPaymentHint": "Jy betaal nou jou eie dienste en die besprekingsfooie. Elke gas kry 'n skakel om hul deel te betaal.",
-    "guestSharesPaidByInvite": "Gass betaal via uitnodiging skakel"
+    "guestSharesPaidByInvite": "Gass betaal via uitnodiging skakel",
+    "rescheduleReplacesPreviousBody": "Jou oorspronklike afspraak word outomaties gekanselleer, sonder koste, sodra hierdie bespreking se betaling klaar is. Wat jy reeds betaal het word hier toegepas, en wat oorbly bly in jou beursie.",
+    "rescheduleCreditNote": "Enige bedrag wat jy reeds aanlyn vir die oorspronklike bespreking betaal het word hier toegepas. Jy betaal net die verskil.",
+    "rescheduleCreditApplied": "Betaal op jou oorspronklike bespreking",
+    "rescheduleCreditSurplus": "Die oorblywende {{amount}} bly in jou beursie as krediet."
   },
   "payments": {
     "pay": "Betaal",
@@ -19469,7 +19503,11 @@
         "pickNextAvailable": "Find volgende beskikbaar tyd",
         "splitPayment": "Split betaling",
         "guestSharesPaidByInvite": "Gass betaal via uitnodiging skakel",
-        "splitPaymentHint": "Jy betaal nou jou eie dienste en die besprekingsfooie. Elke gas kry 'n skakel om hul deel te betaal."
+        "splitPaymentHint": "Jy betaal nou jou eie dienste en die besprekingsfooie. Elke gas kry 'n skakel om hul deel te betaal.",
+        "rescheduleCreditPaid": "Jou oorspronklike betaling dek hierdie bespreking.",
+        "rescheduleCreditIntro": "Enige bedrag wat jy reeds aanlyn vir die oorspronklike bespreking betaal het word hier toegepas. Jy betaal net die verskil.",
+        "rescheduleCreditApplied": "Betaal op jou oorspronklike bespreking",
+        "rescheduleCreditSurplus": "Die oorblywende {{amount}} bly in jou beursie as krediet."
       },
       "addToWaitlist": {
         "enterName": "Enter your naam asseblief",
@@ -21125,7 +21163,13 @@
           "cancelled": "Gekanselleer",
           "cantFind": "Can't find your reservation hier?",
           "visitHelpCenter": "Visit the hulp Center"
-        }
+        },
+        "cancelledRefundProcessing": "Bespreking gekanselleer. Jou terugbetaling word verwerk en kom binnekort.",
+        "refundProcessingTitle": "Terugbetaling word verwerk",
+        "refundProcessingBody": "Hierdie bespreking is gekanselleer. Ons maak jou terugbetaling klaar en dit verskyn binnekort in jou beursie. Jy hoef niks te doen nie.",
+        "cancelGroupPreviewTitle": "Dit kanselleer die hele groepsessie {{ref}}, insluitend {{count}} gas(te).",
+        "cancelGroupPreviewOtherBookings": "Jou ander besprekings in hierdie groep: {{currency}} {{refund}} terug na jou beursie, {{currency}} {{fee}} kansellasieheffing.",
+        "cancelGroupPreviewGuestShares": "Gaste se eie aandeelbetalings ({{currency}} {{amount}}) word volledig terugbetaal na die kaarte waarmee hulle betaal het."
       },
       "payAdditionalCharge": {
         "notFound": "Additional hef nie gevind nie",
@@ -21372,7 +21416,13 @@
           "subtitle": "Kies a strong wagwoord for your rekening.",
           "atLeastChars": "Ten minste {{min}} karakters",
           "strength": "Sterkte: {{label}}",
-          "confirmPlaceholder": "Re-enter your wagwoord"
+          "confirmPlaceholder": "Re-enter your wagwoord",
+          "passwordsMatch": "Wagwoords match",
+          "showPassword": "Wys wagwoord",
+          "hidePassword": "versteek wagwoord",
+          "policyHintLettersDigits": "Include letters and nommers",
+          "policyHintMixed": "Sluit hoofletters, kleinletters en 'n syfer in.",
+          "strengthTip": "langer, met syfers en simbole, is sterker"
         }
       },
       "membership": {
@@ -21692,7 +21742,10 @@
         "addressParking": "Parkering:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Hierdie bestelling is gedeeltelik terugbetaal. Kontak die verskaffer om die oorblywende balans terug te betaal.",
-        "paymentPartiallyRefunded": "Partially terugbetaal"
+        "paymentPartiallyRefunded": "Partially terugbetaal",
+        "messageProviderFailed": "Kon nie ’n klets met hierdie diensverskaffer oopmaak nie.",
+        "openingMessage": "Maak klets oop…",
+        "messageProvider": "Stuur boodskap aan diensverskaffer"
       },
       "bookingReceipt": {
         "methodWallet": "Beursie",
@@ -22297,7 +22350,9 @@
         "itemCount_one": "{{count}} Item · {{date}}",
         "itemCount_other": "{{count}} Items · {{date}}",
         "returnStatus": "Terugsend {{status}}",
-        "tracking": "Nasporing: {{number}}"
+        "tracking": "Nasporing: {{number}}",
+        "finishPaymentOnDetail": "Maak hierdie bestelling oop om aanlyn klaar te betaal.",
+        "paymentDueBadge": "Betaling verskuldig"
       },
       "waitlist": {
         "loadFailed": "Kon nie laai waglys nie",
@@ -22316,6 +22371,49 @@
         "statusContacted": "Kontaked",
         "statusBooked": "Bespreek",
         "statusCancelled": "Gekanselleer"
+      },
+      "safety": {
+        "emergencyNumber": "Emergency nommer: 112",
+        "managed": "Managed",
+        "deviceAuthWebNote": "Dit geld die volgende keer as jy die Beautonomi-toepassing oopmaak.",
+        "updated": "Setting dateer opd",
+        "updateFailed": "Kon nie dateer op setting. probeer asseblief weer nie.",
+        "loadFailed": "Kon nie laai your veiligheid instellings nie.",
+        "retry": "Probeer weer",
+        "reportValidation": "Tik minstens 2 karakters vir wie jy aanmeld en minstens 10 karakters oor wat gebeur het.",
+        "unblocked": "Gebruiker unblocked",
+        "unblockFailed": "Kon nie unblock this Gebruiker nie.",
+        "blockedLoadFailed": "Kon nie laai blocked users nie.",
+        "blockedOn": "Geblok {{date}}",
+        "currentBand": "huidig band: {{band}}",
+        "noResults": "Geen geblokte gebruikers pas by jou soektog nie.",
+        "profileCompletionCta": "voltooi profiel",
+        "bankRefundCta": "versoek a Bank terugbetaling",
+        "bankRefundOpenCta": "Sien your Bank terugbetaling versoek",
+        "bankRefundHistory": "versoek Geskiedenis",
+        "bankRefundNote": "Note for our finance span (opsioneel)",
+        "bankRefundMin": "Minimum bedrag: {{amount}}",
+        "bankRefundMax": "Maximum per versoek: {{amount}}",
+        "bankRefundSla": "Goedgekeurde terugbetalings word gewoonlik binne {{days}} werksdae betaal.",
+        "bankRefundNoAccounts": "Voeg 'n bankrekening by voordat jy 'n bankterugbetaling vra.",
+        "bankRefundStatus": "Status",
+        "bankRefundAmount": "bedrag",
+        "bankRefundDate": "Aangevra",
+        "bankRefundReceive": "Jy ontvang",
+        "bankRefundCancelled": "versoek gekanselleer",
+        "bankAccountsManage": "Bestuur bankrekenings",
+        "bankAccountsMax": "You can stoor up to 3 bankrekenings.",
+        "bankAccountSaved": "Bank Rekening gestoor",
+        "bankAccountRemoved": "bankrekening verwyderd",
+        "bankAccountPrimary": "primêr rekening dateer opd",
+        "cancel": "Kanselleer"
+      },
+      "profileDetailsPage": {
+        "aboutSection": "Meer oor you",
+        "aboutHint": "A short bio diensverskaffers see when you bespreek.",
+        "aboutPlaceholder": "Vertel verskaffers 'n bietjie van jouself",
+        "noChanges": "No veranders to stoor",
+        "clearChoice": "Vee uit"
       }
     },
     "auth": {
@@ -36362,7 +36460,9 @@
       "cancelConfirm": "Kanselleer jou plek in hierdie groepbespreking? Jou dienste word verwyder en enige betaling wat jy gemaak het, word op jou kaart terugbetaal.",
       "cancelled": "Jou spot has been gekanselleer.",
       "cancelledRefunded": "Jou plek is gekanselleer. {{amount}} word na jou kaart terugbetaal.",
-      "cancelFailed": "Kon nie kanselleer your spot nie."
+      "cancelFailed": "Kon nie kanselleer your spot nie.",
+      "sessionCancelled": "Hierdie groepsessie is gekanselleer.",
+      "sessionCancelledPaid": "Hierdie groepsessie is gekanselleer. Enige bedrag wat jy vir jou aandeel betaal het word volledig terugbetaal na die kaart waarmee jy betaal het."
     }
   },
   "errors": {

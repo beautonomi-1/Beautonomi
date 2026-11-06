@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { CUSTOMER_SECTION_DEFAULTS } from "@/lib/notifications/notification-preferences-defaults";
+import { isSecurityNotificationTemplateKey } from "@/lib/notifications/security-notification-copy";
 
 export type NotificationChannelName = "push" | "email" | "sms" | "whatsapp";
 
@@ -80,6 +81,7 @@ function isRemindersSectionTemplate(key: string): boolean {
  */
 export function templateKeyToPreferenceSection(templateKey: string): string {
   const key = templateKey.toLowerCase();
+  if (isSecurityNotificationTemplateKey(key)) return "account_activity";
   if (
     key === "customer_new_message" ||
     key === "provider_new_message" ||
@@ -192,6 +194,7 @@ export function channelAllowedForCustomerUser(
   templateKey: string,
   channel: NotificationChannelName,
 ): boolean {
+  if (isSecurityNotificationTemplateKey(templateKey)) return true;
   const section = templateKeyToPreferenceSection(templateKey);
 
   if (prefs?.booking_reminders === false && section === "reminders") {

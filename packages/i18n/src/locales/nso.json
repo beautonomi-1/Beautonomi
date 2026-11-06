@@ -13778,7 +13778,9 @@
       "replying": "O fetola tshwaelo",
       "replyPlaceholder": "Ngwala phetolo…",
       "shareMediaFailedTitle": "Couldn't abelana media",
-      "shareMediaFailedBody": "Re be re sa kgone go lokišetša faele ye gore e abelane. Leka go abelana kgokagano go e na le moo."
+      "shareMediaFailedBody": "Re be re sa kgone go lokišetša faele ye gore e abelane. Leka go abelana kgokagano go e na le moo.",
+      "loadingComments": "E a laiša...",
+      "loadMoreComments": "Laiša ditlhagišo tše dingwe"
     },
     "searchScreen": {
       "title": "Nyaka",
@@ -15010,7 +15012,20 @@
           "emailInputA11y": "imeile input",
           "sendResetLink": "Romela Bea leswa kgokagano",
           "sendResetLinkA11y": "Romela Bea leswa kgokagano",
-          "backToLoginA11y": "Boela go tsena"
+          "backToLoginA11y": "Boela go tsena",
+          "codeA11y": "phasewete Bea leswa khoutu",
+          "invalidCodeTitle": "khoutu not accepted",
+          "invalidCodeBody": "Tsenya the {{digits}}-digit khoutu from the imeile.",
+          "resend": "Reromela imeile",
+          "resendA11y": "Reromela the Bea leswa imeile",
+          "signedInIntro": "We'll romela a khoutu and a Bea leswa kgokagano to your akhauute imeile.",
+          "back": "Morago",
+          "stepCode": "1. Enter the {{digits}}-digit khoutu",
+          "stepPassword": "2. kgetha a ye mpsha phasewete",
+          "codeVerified": "khoutu e netefaditšwe",
+          "submit": "Bea phasewete leswa",
+          "submittingA11y": "Bea leswating phasewete",
+          "linkAlternative": "Kgetha kgokagano? E bule go tšwa go imeile gore o bee phasewete e mpsha sebatling."
         },
         "authSafetyAndAge": {
           "linkLabel": "tšhireletšo & parental controls",
@@ -15282,7 +15297,8 @@
           "returnLabel": "Terugsend {{status}}",
           "tracking": "Go latela: {{number}}",
           "collectAt": "Tšea go {{name}}, {{city}}",
-          "deliverTo": "Romela go {{city}}"
+          "deliverTo": "Romela go {{city}}",
+          "paymentDueBadge": "Tefo e kolotwago"
         },
         "productReviews": {
           "title": "Ditshekatsheko",
@@ -16088,7 +16104,14 @@
           "lifecyclePartialRefundDescription": "Go ngwadilwe go bušetšwa ga karolo bakeng sa peakanyo ye.",
           "lifecycleRefundedDescription": "This bukingo tefo has been e pusetšwe.",
           "lifecyclePaymentFailedDescription": "Tefo e paletšwe. Leka gape goba ikopanye le thekgo ka nomoro ya peakanyo ye.",
-          "lifecyclePaymentNotConfirmedDescription": "tefo has not been netefatšaed yet."
+          "lifecyclePaymentNotConfirmedDescription": "tefo has not been netefatšaed yet.",
+          "refundProcessingTitle": "Pusetšo e sa dirwa",
+          "refundProcessingBody": "Peakanyo ye e phumotšwe. Re fetša pusetšo ya gago gomme e tla tšwelela kgauswi ka sepacheng sa gago. Ga o hloke go dira selo.",
+          "rescheduleInProgressTitle": "Go fetola nako go sa dirwa",
+          "rescheduleInProgressBody": "Peakanyo ye e išwa go nako e mpsha. Fetša lefelo le lefsa la tefo gomme tšhelete ye o e lefilego e fetišetšwa ka go itirela. Ge o tlogile lefelo leo, peakanyo ye e ka phumolwa gape ge e fela, ka metsotso e ka bago 30.",
+          "cancelGroupPreviewTitle": "Se se phumola kopano yohle ya sehlopha {{ref}}, go akaretša baeng ba {{count}}.",
+          "cancelGroupPreviewOtherBookings": "Dipeakanyo tše dingwe tša gago sehlopheng se: {{currency}} {{refund}} boela sepacheng sa gago, {{currency}} {{fee}} tefo ya go phumola.",
+          "cancelGroupPreviewGuestShares": "Ditefo tša karolo ya baeng ({{currency}} {{amount}}) di bušetšwa ka botlalo go dikarata tšeo ba lefilego ka tšona."
         },
         "groupBookingDetail": {
           "back": "Morago",
@@ -16167,7 +16190,11 @@
           "cancelMySpotConfirm": "Khansela lefelo la gago ka go beakanya ye ya sehlopha? Ditirelo tša gago di a tlošwa gomme tefo efe goba efe yeo o e dirilego e bušetšwa karateng ya gago.",
           "spotCancelled": "spot has been e khansetšwe. ya gago.",
           "guestRemoved": "Moeng tlošad.",
-          "guestCancelFailed": "Ga e kgona go mpshafatša the bukingo ya sehlopha."
+          "guestCancelFailed": "Ga e kgona go mpshafatša the bukingo ya sehlopha.",
+          "resendPayLink": "Romela gape kgokagano ya tefo",
+          "cancelGroupSession": "Phumola kopano ya sehlopha",
+          "cancelGroupSessionHint": "E bula peakanyo ya gago, moo o bonago pusetšo ya sehlopha sohle pele o tiišetša.",
+          "askOrganizerToReschedule": "Botšiša mohlophisi ge eba kopano ye e nyaka nako e mpsha."
         },
         "announcements": {
           "retry": "Leka gape",
@@ -16576,13 +16603,13 @@
           "interestsSubtitle": "Oketsa things you're into (kgetha or Mohuta)",
           "interestsPlaceholder": "e.g. Moriri, Dinala, Skincare...",
           "interestsA11y": "interests ya gago",
-          "beautySection": "Beauty preferences",
+          "beautySection": "Dikgetho tša bokgabane",
           "beautySubtitle": "Thuša bafani go dira gore maitemogelo a gago a be a gago",
           "hairType": "Moriri Mohuta",
           "skinType": "Skin Mohuta",
-          "thingsToAvoid": "Things to avoid",
+          "thingsToAvoid": "Dilo tše di swanetšego go phewago",
           "thingsToAvoidPlaceholder": "Kgetha or Mohuta (e.g. fragrances, sulfates)",
-          "thingsToAvoidA11y": "Things to avoid",
+          "thingsToAvoidA11y": "Dilo tše di swanetšego go phewago",
           "appointmentStyle": "kopano style",
           "productPreferences": "setšweletšwa preferences",
           "productPreferencesPlaceholder": "Kgetha or Mohuta (e.g. Vegan, Cruelty-mahala)",
@@ -16593,11 +16620,11 @@
           "saveAll": "Boloka all",
           "saveAllA11y": "Boloka all profaele dintlha",
           "placeholderShort": "...",
-          "qSchool": "School / education",
-          "qWork": "Work / profession",
+          "qSchool": "Sekolo / thuto",
+          "qWork": "Mošomo / mošomo wa bokgoni",
           "qLocation": "Wmo you're based",
           "qDecadeBorn": "Selete seo o tswileng go sona",
-          "qFavoriteSong": "Favourite song",
+          "qFavoriteSong": "Koša ye o e ratago",
           "qObsessedWith": "Selo seo o se ratago kudu",
           "qFunFact": "Fun fact Mabapi you",
           "qUselessSkill": "Usetše nnyane skill you have",
@@ -16611,7 +16638,7 @@
           "decade1990s": "1990s",
           "decade2000s": "2000s",
           "decade2010s": "2010s",
-          "decadePreferNot": "Prefer not to say",
+          "decadePreferNot": "Prefer aowat to say",
           "hairStraight": "O tobileng",
           "hairWavy": "Majoe",
           "hairCurly": "Majoe",
@@ -16627,34 +16654,34 @@
           "skinCombination": "Kopanyo",
           "skinSensitive": "E kgomegago gabonolo",
           "skinMature": "E golilego",
-          "avoidStrongFragrances": "Strong fragrances",
+          "avoidStrongFragrances": "Menko e matla",
           "avoidAlcohol": "Alcohol-based ditšweletšwa",
-          "avoidSulfates": "Sulfates",
+          "avoidSulfates": "Sulfate",
           "avoidParabens": "Parabens",
           "avoidEssentialOils": "Ese rometšweial oils",
           "avoidLatex": "Latex",
           "avoidNickel": "Nickel",
           "avoidDyes": "Mebala",
-          "avoidFormaldehyde": "Formaldehyde",
-          "styleQuickEfficient": "Quick & efficient",
-          "styleRelaxed": "Relaxed & unhurried",
-          "styleSocial": "Social & chatty",
-          "styleQuiet": "Quiet & minimal",
+          "avoidFormaldehyde": "Formaldehied",
+          "styleQuickEfficient": "Ka pela le ka bokgoni",
+          "styleRelaxed": "Go iketla ntle le go potlaka",
+          "styleSocial": "Go boledišana le batho",
+          "styleQuiet": "Go homola le go ba gonyenyane",
           "styleFlexible": "E fetofetohang",
           "prefVegan": "Vegan",
           "prefCrueltyFree": "Cruelty-mahala",
-          "prefNaturalOrganic": "Natural / organic",
+          "prefNaturalOrganic": "Tša tlhago / tša manyoro",
           "prefFragranceFree": "Fragrance-mahala",
-          "prefHypoallergenic": "Hypoallergenic",
+          "prefHypoallergenic": "E sa bakego mafu a go kula",
           "prefLuxury": "Bogolo",
-          "prefBudgetFriendly": "Budget-friendly",
+          "prefBudgetFriendly": "E loketšego tšhelete e nyane",
           "prefNoPreference": "Ga go na kgetho",
           "interestHair": "Moriri",
           "interestNails": "Dinala",
           "interestSkincare": "Tlhokomelo ya letlalo",
           "interestMakeup": "Boemo",
-          "interestPedicure": "Pedicure",
-          "interestManicure": "Manicure",
+          "interestPedicure": "Tlhokomelo ya maoto",
+          "interestManicure": "Tlhokomelo ya matsogo",
           "interestFacial": "Sefahleho",
           "interestMassage": "Masa",
           "interestHairColour": "Moriri colour",
@@ -16667,10 +16694,10 @@
           "interestCooking": "Go pheha",
           "allergyFragrance": "Monkgo",
           "allergyParabens": "Parabens",
-          "allergySulfates": "Sulfates",
+          "allergySulfates": "Sulfate",
           "allergyAlcohol": "Joala",
           "allergyDyes": "Mebala",
-          "allergyFormaldehyde": "Formaldehyde",
+          "allergyFormaldehyde": "Formaldehied",
           "allergyLatex": "Latex",
           "allergyNickel": "Nickel"
         },
@@ -18140,6 +18167,9 @@
           "invalidBody": "Tsenya a e nepagetše letšatši (YYYY-MM-DD) and nako (HH:MM).",
           "failedTitle": "Ga e kgona go rekemiso",
           "noSlots": "No nakos e gona on this letšatši. Try antše dingwe letšatši."
+        },
+        "resetPassword": {
+          "policyMix": "Phasewete ya gago e nyaka motswako wa ditlhaka le dinomoro wo o dumellanago le melao ya akhaonto."
         }
       }
     },
@@ -18169,7 +18199,7 @@
       "accountNameLabel": "akhauute holder leina",
       "save": "Boloka akhauute ya panka",
       "screenTitle": "Akhauute ya pankas",
-      "selectBank": "Select your bank"
+      "selectBank": "Kgetha your Panka"
     },
     "walletBankRefund": {
       "addBank": "Oketsa a akhauute ya panka",
@@ -18422,7 +18452,11 @@
     "payForEveryone": "I'll lefa for everyone",
     "splitPayment": "Split tefo",
     "splitPaymentHint": "O lefa ditirelo tša gago le ditefelo tša go beakanya bjale. Moeng yo mongwe le yo mongwe o hwetša kgokagano ya go lefa kabelo ya bona.",
-    "guestSharesPaidByInvite": "Moengs lefa via taletšo kgokagano"
+    "guestSharesPaidByInvite": "Moengs lefa via taletšo kgokagano",
+    "rescheduleReplacesPreviousBody": "Kopano ya gago ya mathomo e phumolwa ka go itirela, mahala, ge tefo ya peakanyo ye e fetša. Seo o se lefilego se dirišwa mo, gomme se se šetšego se dula sepacheng sa gago.",
+    "rescheduleCreditNote": "Tšhelete efe goba efe ye o e lefilego ka inthanete bakeng sa peakanyo ya mathomo e dirišwa mo. O lefa phapano fela.",
+    "rescheduleCreditApplied": "E lefilwe peakanyong ya gago ya mathomo",
+    "rescheduleCreditSurplus": "Se se šetšego sa {{amount}} se dula sepacheng sa gago bjalo ka sekoloto sa go amogelwa."
   },
   "payments": {
     "pay": "Lefa",
@@ -19469,7 +19503,11 @@
         "pickNextAvailable": "Find e latelago e gona nako",
         "splitPayment": "Split tefo",
         "guestSharesPaidByInvite": "Moengs lefa via taletšo kgokagano",
-        "splitPaymentHint": "O lefa ditirelo tša gago le ditefelo tša go beakanya bjale. Moeng yo mongwe le yo mongwe o hwetša kgokagano ya go lefa kabelo ya bona."
+        "splitPaymentHint": "O lefa ditirelo tša gago le ditefelo tša go beakanya bjale. Moeng yo mongwe le yo mongwe o hwetša kgokagano ya go lefa kabelo ya bona.",
+        "rescheduleCreditPaid": "Tefo ya gago ya mathomo e akaretša peakanyo ye.",
+        "rescheduleCreditIntro": "Tšhelete efe goba efe ye o e lefilego ka inthanete bakeng sa peakanyo ya mathomo e dirišwa mo. O lefa phapano fela.",
+        "rescheduleCreditApplied": "E lefilwe peakanyong ya gago ya mathomo",
+        "rescheduleCreditSurplus": "Se se šetšego sa {{amount}} se dula sepacheng sa gago bjalo ka sekoloto sa go amogelwa."
       },
       "addToWaitlist": {
         "enterName": "Hle enter your leina",
@@ -21125,7 +21163,13 @@
           "cancelled": "E khansetšwe",
           "cantFind": "Can't find your reservation mo?",
           "visitHelpCenter": "Visit the thušo Center"
-        }
+        },
+        "cancelledRefundProcessing": "Peakanyo e phumotšwe. Pusetšo ya gago e sa dirwa gomme e tla fihla kgauswi.",
+        "refundProcessingTitle": "Pusetšo e sa dirwa",
+        "refundProcessingBody": "Peakanyo ye e phumotšwe. Re fetša pusetšo ya gago gomme e tla tšwelela kgauswi ka sepacheng sa gago. Ga o hloke go dira selo.",
+        "cancelGroupPreviewTitle": "Se se phumola kopano yohle ya sehlopha {{ref}}, go akaretša baeng ba {{count}}.",
+        "cancelGroupPreviewOtherBookings": "Dipeakanyo tše dingwe tša gago sehlopheng se: {{currency}} {{refund}} boela sepacheng sa gago, {{currency}} {{fee}} tefo ya go phumola.",
+        "cancelGroupPreviewGuestShares": "Ditefo tša karolo ya baeng ({{currency}} {{amount}}) di bušetšwa ka botlalo go dikarata tšeo ba lefilego ka tšona."
       },
       "payAdditionalCharge": {
         "notFound": "Additional lefisa ga e humanwe",
@@ -21372,7 +21416,13 @@
           "subtitle": "Kgetha a strong phasewete for your akhauute.",
           "atLeastChars": "Ka fase ga ditlhaka tše {{min}}",
           "strength": "Sterkte: {{label}}",
-          "confirmPlaceholder": "Re-enter your phasewete"
+          "confirmPlaceholder": "Re-enter your phasewete",
+          "passwordsMatch": "Phasewetes match",
+          "showPassword": "Bontšha phasewete",
+          "hidePassword": "pita phasewete",
+          "policyHintLettersDigits": "Include letters and nomoros",
+          "policyHintMixed": "Tsenya ditlhaka tše kgolo, tše nnyane le nomoro.",
+          "strengthTip": "telele, ka dinomoro le maswao, e matla"
         }
       },
       "membership": {
@@ -21692,7 +21742,10 @@
         "addressParking": "Go paka:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Taelo ye e ile ya bušetšwa ka karolo. Ikgokaganye le moabi go bušetša tšhelete ye e šetšego.",
-        "paymentPartiallyRefunded": "Partially e pusetšwe"
+        "paymentPartiallyRefunded": "Partially e pusetšwe",
+        "messageProviderFailed": "Ga se e kgone go bula poledišano le mophakeri yo.",
+        "openingMessage": "E bula poledišano…",
+        "messageProvider": "Romela molaetsa go mophakeri"
       },
       "bookingReceipt": {
         "methodWallet": "Sepatši",
@@ -22297,7 +22350,9 @@
         "itemCount_one": "{{count}} Selô · {{date}}",
         "itemCount_other": "{{count}} Dilo · {{date}}",
         "returnStatus": "Terugsend {{status}}",
-        "tracking": "Go latela: {{number}}"
+        "tracking": "Go latela: {{number}}",
+        "finishPaymentOnDetail": "Bula odara ye go fetša go lefa inthaneteng.",
+        "paymentDueBadge": "Tefo e kolotwago"
       },
       "waitlist": {
         "loadFailed": "E paletšwe go laiša lenaneo la go leta",
@@ -22316,6 +22371,49 @@
         "statusContacted": "Ikgokaganyeed",
         "statusBooked": "E bukilwe",
         "statusCancelled": "E khansetšwe"
+      },
+      "safety": {
+        "emergencyNumber": "Emergency nomoro: 112",
+        "managed": "Managed",
+        "deviceAuthWebNote": "Applies the e latelago nako you bula the Beautonomi Mofounu app.",
+        "updated": "Setting mpshafatšad",
+        "updateFailed": "Ga e kgona go mpshafatša setting. hle leka gape.",
+        "loadFailed": "Ga e kgona go laiša your tšhireletšo dipeakanyo.",
+        "retry": "Leka gape",
+        "reportValidation": "Tsenya bonnyane ditlhaka tše 2 tša motho yo o mmegago le bonnyane ditlhaka tše 10 ka seo se diregilego.",
+        "unblocked": "Modiriši unblocked",
+        "unblockFailed": "Ga e kgona go unblock this Modiriši.",
+        "blockedLoadFailed": "Ga e kgona go laiša blocked users.",
+        "blockedOn": "Thibetšwe {{date}}",
+        "currentBand": "ya gabjale band: {{band}}",
+        "noResults": "Ga go bašomiši ba thibetšwego ba dumellanago le nyako ya gago.",
+        "profileCompletionCta": "fediša profaele",
+        "bankRefundCta": "kgopelo a Panka pusetšo",
+        "bankRefundOpenCta": "Bona your Panka pusetšo kgopelo",
+        "bankRefundHistory": "kgopelo Histori",
+        "bankRefundNote": "Note for our finance sehlopha (boikgethelo)",
+        "bankRefundMin": "Minimum palo: {{amount}}",
+        "bankRefundMax": "Maximum per kgopelo: {{amount}}",
+        "bankRefundSla": "Dibušetšo tše dumetšwego gantši di lefelwa pele ga matšatši a mošomo a {{days}}.",
+        "bankRefundNoAccounts": "Oketsa a akhauute ya panka before kgopeloing a Panka pusetšo.",
+        "bankRefundStatus": "Maemo",
+        "bankRefundAmount": "palo",
+        "bankRefundDate": "Go kgopetšwe",
+        "bankRefundReceive": "O amogela",
+        "bankRefundCancelled": "kgopelo e khansetšwe",
+        "bankAccountsManage": "Laola akhauute ya pankas",
+        "bankAccountsMax": "You can boloka up to 3 akhauute ya pankas.",
+        "bankAccountSaved": "Panka Akhauute e bolokilwe",
+        "bankAccountRemoved": "akhauute ya panka tlošad",
+        "bankAccountPrimary": "ya mathomo akhauute mpshafatšad",
+        "cancel": "Khansela"
+      },
+      "profileDetailsPage": {
+        "aboutSection": "Mabapi you",
+        "aboutHint": "A short bio baphakeri see when you buka.",
+        "aboutPlaceholder": "Botša baabi ganyane ka wena",
+        "noChanges": "No fetošas to boloka",
+        "clearChoice": "Phumola"
       }
     },
     "auth": {
@@ -36362,7 +36460,9 @@
       "cancelConfirm": "Khansela lefelo la gago ka go beakanya ye ya sehlopha? Ditirelo tša gago di a tlošwa gomme tefo efe goba efe yeo o e dirilego e bušetšwa karateng ya gago.",
       "cancelled": "spot has been e khansetšwe. ya gago.",
       "cancelledRefunded": "Lefelo la gago le phumotšwe. {{amount}} e bušetšwa karateng ya gago.",
-      "cancelFailed": "Ga e kgona go khansela your spot."
+      "cancelFailed": "Ga e kgona go khansela your spot.",
+      "sessionCancelled": "Kopano ye ya sehlopha e phumotšwe.",
+      "sessionCancelledPaid": "Kopano ye ya sehlopha e phumotšwe. Tšhelete efe goba efe ye o e lefilego bakeng sa karolo ya gago e bušetšwa ka botlalo go karata yeo o lefilego ka yona."
     }
   },
   "errors": {

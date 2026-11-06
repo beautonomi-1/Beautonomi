@@ -67,7 +67,7 @@ export async function PATCH(
 
     const { data: order, error: orderErr } = await (supabase.from("product_orders") as any)
       .select(
-        "id, provider_id, customer_id, tenant_id, order_number, status, payment_status, payment_method, fulfillment_type, collection_location_id, tracking_number, carrier, partially_shipped_notified_at",
+        "id, provider_id, customer_id, tenant_id, order_number, status, payment_status, payment_method, order_source, fulfillment_type, collection_location_id, tracking_number, carrier, partially_shipped_notified_at",
       )
       .eq("id", id)
       .eq("provider_id", providerId)
@@ -78,15 +78,18 @@ export async function PATCH(
       return errorResponse(`Cannot update lines on a ${order.status} order.`, "INVALID_TRANSITION", 400);
     }
 
-    const payStatus = String((order as { payment_status?: string }).payment_status ?? "").toLowerCase();
-    const payMethod = String((order as { payment_method?: string }).payment_method ?? "").toLowerCase();
+    const { isUnpaidOnlinePaystackHold } = await import("@beautonomi/utils");
     if (
-      payMethod === "paystack" &&
-      payStatus !== "paid" &&
-      parsed.fulfilment_status !== "pending"
+      parsed.fulfilment_status !== "pending" &&
+      isUnpaidOnlinePaystackHold({
+        order_source: (order as { order_source?: string | null }).order_source,
+        payment_method: (order as { payment_method?: string | null }).payment_method,
+        payment_status: (order as { payment_status?: string | null }).payment_status,
+        status: (order as { status?: string | null }).status,
+      })
     ) {
       return errorResponse(
-        "Mark the order as paid before updating fulfilment for online card orders.",
+        "This order has not been paid online yet. Wait for payment before fulfilling it, or cancel it.",
         "PAYMENT_REQUIRED",
         400,
       );

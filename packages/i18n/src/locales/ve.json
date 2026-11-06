@@ -13778,7 +13778,9 @@
       "replying": "U fhindula muhumbulo",
       "replyPlaceholder": "Nwale phindulo…",
       "shareMediaFailedTitle": "Couldn't kovhela media",
-      "shareMediaFailedBody": "Ro vha ri sa koni u lugisela faila iyi u itela u i kovhelana. Lingedzani u kovhelana link nṱhani hazwo."
+      "shareMediaFailedBody": "Ro vha ri sa koni u lugisela faila iyi u itela u i kovhelana. Lingedzani u kovhelana link nṱhani hazwo.",
+      "loadingComments": "I khou ḽoḓa...",
+      "loadMoreComments": "Ḽoḓa mbono nnzhi"
     },
     "searchScreen": {
       "title": "Ṱoḓa",
@@ -15010,7 +15012,20 @@
           "emailInputA11y": "imeili input",
           "sendResetLink": "Ruma Vhea ntswa thumanyo",
           "sendResetLinkA11y": "Ruma Vhea ntswa thumanyo",
-          "backToLoginA11y": "Humela kha u dzhena"
+          "backToLoginA11y": "Humela kha u dzhena",
+          "codeA11y": "phasiwede Vhea ntswa khoudu",
+          "invalidCodeTitle": "khoudu not accepted",
+          "invalidCodeBody": "Ṅwališa the {{digits}}-digit khoudu from the imeili.",
+          "resend": "Reruma imeili",
+          "resendA11y": "Reruma the Vhea ntswa imeili",
+          "signedInIntro": "We'll ruma a khoudu and a Vhea ntswa thumanyo to your akhaunte imeili.",
+          "back": "Murahu",
+          "stepCode": "1. Enter the {{digits}}-digit khoudu",
+          "stepPassword": "2. nanga a ntswa phasiwede",
+          "codeVerified": "khoudu yo khwaṱhisedzwa",
+          "submit": "Vhea phasiwede ntswa",
+          "submittingA11y": "Vhea ntswating phasiwede",
+          "linkAlternative": "Nanga tshikwe? Livhule u bva kha imeiḷi uri u sete phasiwede ntswa kha burawuza."
         },
         "authSafetyAndAge": {
           "linkLabel": "vhupfele & parental controls",
@@ -15282,7 +15297,8 @@
           "returnLabel": "Terugsend {{status}}",
           "tracking": "U teledza: {{number}}",
           "collectAt": "Dzhia kha {{name}}, {{city}}",
-          "deliverTo": "Rumela kha {{city}}"
+          "deliverTo": "Rumela kha {{city}}",
+          "paymentDueBadge": "Mbadelo i tshi tea"
         },
         "productReviews": {
           "title": "Mbuno",
@@ -16088,7 +16104,14 @@
           "lifecyclePartialRefundDescription": "Ho tsalelwa u vhuyelwa ha tshifhinganyana kha u bukwa uhu.",
           "lifecycleRefundedDescription": "This u buka mbadedzo has been yo vhuedzedzwa.",
           "lifecyclePaymentFailedDescription": "Mvelelo a yo bvisa. Lingedza hafhu kana vhudzisane na thuso nga nomboro ya u bukwa heyi.",
-          "lifecyclePaymentNotConfirmedDescription": "mbadedzo has not been khwaṱhisedzaed yet."
+          "lifecyclePaymentNotConfirmedDescription": "mbadedzo has not been khwaṱhisedzaed yet.",
+          "refundProcessingTitle": "Mbuedzedzo i kha u itwa",
+          "refundProcessingBody": "Hei bugu yo khanselwa. Ri fhedza mbuedzedzo yanu nahone i do bvelela hu si kale kha tshikwama tshanu. A ni tea u ita tshithu.",
+          "rescheduleInProgressTitle": "U shandukisa tshifhinga zwi kha u itwa",
+          "rescheduleInProgressBody": "Hei bugu i ya kha tshifhinga tshiswa. Fhedzisani fhethu liswa la u badela nahone tshelede ye na i badela i pfukiselwa nga yo tou di itela. Arali no litsha fhethu helo, hei bugu i nga khanselwa hafhu musi i tshi fhela, hu sa athu fhira miminete ya 30.",
+          "cancelGroupPreviewTitle": "Izwi zwi khansela mutangano woṱhe wa tshigwada {{ref}}, hu katela vhaeni vha {{count}}.",
+          "cancelGroupPreviewOtherBookings": "Dziṅwe mbugu dzanu kha tshigwada hetshi: {{currency}} {{refund}} i humela kha tshikwama tshanu, {{currency}} {{fee}} badelo ya u khansela.",
+          "cancelGroupPreviewGuestShares": "Mbadelo dza tshipida tsha vhaeni ({{currency}} {{amount}}) dzi humiselwa zwoṱhe kha makhadi e vha badela ngao."
         },
         "groupBookingDetail": {
           "back": "Murahu",
@@ -16167,7 +16190,11 @@
           "cancelMySpotConfirm": "Kha vha khansele tshikhala tshavho kha booking ya tshigwada itshi? Tshumelo dzaṋu dzi a bviswa nahone mbadelo iṅwe na iṅwe ye na i ita i vhuyedzedzwa kha garaṱa yaṋu.",
           "spotCancelled": "spot has been yo khanselwa. yau.",
           "guestRemoved": "Muendi bvisad.",
-          "guestCancelFailed": "A zwo koni u khwinisa the u buka ha tshigwada."
+          "guestCancelFailed": "A zwo koni u khwinisa the u buka ha tshigwada.",
+          "resendPayLink": "Rumelani hafhu tshikwe tsha u badela",
+          "cancelGroupSession": "Khanselani mutangano wa tshigwada",
+          "cancelGroupSessionHint": "I vula bugu yanu, hune na vhonaho mbuedzedzo ya tshigwada tshoṱhe ni sa athu khwaṱhisedza.",
+          "askOrganizerToReschedule": "Vhudzani muhlanganisi arali mutangano hoyu u tshi toda tshifhinga tshiswa."
         },
         "announcements": {
           "retry": "Lingedza hafhu",
@@ -16576,13 +16603,13 @@
           "interestsSubtitle": "Engedza things you're into (nanga or Lushaka)",
           "interestsPlaceholder": "e.g. Mavhudzi, Nala, Skincare...",
           "interestsA11y": "interests yau",
-          "beautySection": "Beauty preferences",
+          "beautySection": "Zwikhetho zwa vhuhulu",
           "beautySubtitle": "Thusani vhafuni vha ite uri nḓila yawe i vhe ya vhone",
           "hairType": "Mavhudzi Lushaka",
           "skinType": "Skin Lushaka",
-          "thingsToAvoid": "Things to avoid",
+          "thingsToAvoid": "Zwithu zwine zwa tea u pimiwa",
           "thingsToAvoidPlaceholder": "Nanga or Lushaka (e.g. fragrances, sulfates)",
-          "thingsToAvoidA11y": "Things to avoid",
+          "thingsToAvoidA11y": "Zwithu zwine zwa tea u pimiwa",
           "appointmentStyle": "ndingo style",
           "productPreferences": "tshithu preferences",
           "productPreferencesPlaceholder": "Nanga or Lushaka (e.g. Vegan, Cruelty-mahala)",
@@ -16593,11 +16620,11 @@
           "saveAll": "Vhulunga all",
           "saveAllA11y": "Vhulunga all phurofaily zwidodombedzwa",
           "placeholderShort": "...",
-          "qSchool": "School / education",
-          "qWork": "Work / profession",
+          "qSchool": "Tshikolo / pfunzo",
+          "qWork": "Mushumo / ndowetshumo",
           "qLocation": "Whafha you're based",
           "qDecadeBorn": "Dekhade lini u vhele hone",
-          "qFavoriteSong": "Favourite song",
+          "qFavoriteSong": "Luimbo lune wa lu funa",
           "qObsessedWith": "Tshithu tshi takalelwaho nga maanda",
           "qFunFact": "Fun fact Nga ha you",
           "qUselessSkill": "Usezwiṱuku skill you have",
@@ -16611,7 +16638,7 @@
           "decade1990s": "1990s",
           "decade2000s": "2000s",
           "decade2010s": "2010s",
-          "decadePreferNot": "Prefer not to say",
+          "decadePreferNot": "Prefer hait to say",
           "hairStraight": "Lolovele",
           "hairWavy": "Magagasi",
           "hairCurly": "Magagasi",
@@ -16625,36 +16652,36 @@
           "skinOily": "E na mafuta",
           "skinDry": "Kho vhukuma",
           "skinCombination": "Umdibaniso",
-          "skinSensitive": "Sensitive",
+          "skinSensitive": "sensitief",
           "skinMature": "Xa khale",
-          "avoidStrongFragrances": "Strong fragrances",
+          "avoidStrongFragrances": "Zwivhungo zwa maanda",
           "avoidAlcohol": "Alcohol-based zwithu",
-          "avoidSulfates": "Sulfates",
+          "avoidSulfates": "Sulfate",
           "avoidParabens": "Parabens",
           "avoidEssentialOils": "Esyo rumelwaial oils",
           "avoidLatex": "Latex",
           "avoidNickel": "Nickel",
           "avoidDyes": "Mimpfala",
-          "avoidFormaldehyde": "Formaldehyde",
-          "styleQuickEfficient": "Quick & efficient",
-          "styleRelaxed": "Relaxed & unhurried",
-          "styleSocial": "Social & chatty",
-          "styleQuiet": "Quiet & minimal",
+          "avoidFormaldehyde": "Formaldehied",
+          "styleQuickEfficient": "Nga u tavhanya na u kona",
+          "styleRelaxed": "U dikedza hu si na u tavhanya",
+          "styleSocial": "U davhidzana na vhathu",
+          "styleQuiet": "U tuwa na u vha mutuku",
           "styleFlexible": "E cincaka",
           "prefVegan": "Vegan",
           "prefCrueltyFree": "Cruelty-mahala",
-          "prefNaturalOrganic": "Natural / organic",
+          "prefNaturalOrganic": "Zwa mupo / zwa manyoro",
           "prefFragranceFree": "Fragrance-mahala",
-          "prefHypoallergenic": "Hypoallergenic",
+          "prefHypoallergenic": "I sa vhangi malwadze",
           "prefLuxury": "Lexihundla",
-          "prefBudgetFriendly": "Budget-friendly",
+          "prefBudgetFriendly": "I teaho tshelede thukhu",
           "prefNoPreference": "A Ku Na Ku Rhandza",
           "interestHair": "Mavhudzi",
           "interestNails": "Nala",
           "interestSkincare": "Nḓilani ya muratu",
           "interestMakeup": "U endla",
-          "interestPedicure": "Pedicure",
-          "interestManicure": "Manicure",
+          "interestPedicure": "Thogomelo ya milenzhe",
+          "interestManicure": "Thogomelo ya zwanda",
           "interestFacial": "Xikandza",
           "interestMassage": "Masa",
           "interestHairColour": "Mavhudzi colour",
@@ -16667,10 +16694,10 @@
           "interestCooking": "U pheka",
           "allergyFragrance": "Swinyunyeteri",
           "allergyParabens": "Parabens",
-          "allergySulfates": "Sulfates",
+          "allergySulfates": "Sulfate",
           "allergyAlcohol": "Waini",
           "allergyDyes": "Mimpfala",
-          "allergyFormaldehyde": "Formaldehyde",
+          "allergyFormaldehyde": "Formaldehied",
           "allergyLatex": "Latex",
           "allergyNickel": "Nickel"
         },
@@ -18140,6 +18167,9 @@
           "invalidBody": "Ṅwališa a i tshi khwaṱhisea ḓuvha (YYYY-MM-DD) and tshifhinga (HH:MM).",
           "failedTitle": "A zwo koni u reshedulu",
           "noSlots": "No tshifhingas i hone on this ḓuvha. Try anzwiṅwe ḓuvha."
+        },
+        "resetPassword": {
+          "policyMix": "Phasiwede yau i toda mukano wa mavhala na nomboro dzi tevhelaho milayo ya akhaunthu."
         }
       }
     },
@@ -18169,7 +18199,7 @@
       "accountNameLabel": "akhaunte holder dzina",
       "save": "Vhulunga akhaunte ya banga",
       "screenTitle": "Akhaunte ya bangas",
-      "selectBank": "Select your bank"
+      "selectBank": "Nanga your Banga"
     },
     "walletBankRefund": {
       "addBank": "Engedza a akhaunte ya banga",
@@ -18422,7 +18452,11 @@
     "payForEveryone": "I'll badela for everyone",
     "splitPayment": "Split mbadedzo",
     "splitPaymentHint": "U badela tshumelo dzawe na mbadelo dza u buka zwino. Mueni munwe na munwe u wana link ya u badela share yawe.",
-    "guestSharesPaidByInvite": "Muendis badela via khuḓedzo thumanyo"
+    "guestSharesPaidByInvite": "Muendis badela via khuḓedzo thumanyo",
+    "rescheduleReplacesPreviousBody": "Tshifhinga tshanu tsha u thoma tshi khanselwa nga tsho tou di itela, mahala, musi badelo ya hei bugu i tshi fhela. Zwe na zwi badela zwi shumisiwa fhano, nahone zwe zwa sala zwi dzula kha tshikwama tshanu.",
+    "rescheduleCreditNote": "Tshelede iṅwe na iṅwe ye na i badela nga inthanethe kha bugu ya u thoma i shumisiwa fhano. Ni badela phambano fhedzi.",
+    "rescheduleCreditApplied": "Yo badelwa kha bugu yanu ya u thoma",
+    "rescheduleCreditSurplus": "Zwe zwa sala zwa {{amount}} zwi dzula kha tshikwama tshanu sa khredithi."
   },
   "payments": {
     "pay": "Badela",
@@ -19469,7 +19503,11 @@
         "pickNextAvailable": "Find zwi teaho i hone tshifhinga",
         "splitPayment": "Split mbadedzo",
         "guestSharesPaidByInvite": "Muendis badela via khuḓedzo thumanyo",
-        "splitPaymentHint": "U badela tshumelo dzawe na mbadelo dza u buka zwino. Mueni munwe na munwe u wana link ya u badela share yawe."
+        "splitPaymentHint": "U badela tshumelo dzawe na mbadelo dza u buka zwino. Mueni munwe na munwe u wana link ya u badela share yawe.",
+        "rescheduleCreditPaid": "Badelo yanu ya u thoma i katela hei bugu.",
+        "rescheduleCreditIntro": "Tshelede iṅwe na iṅwe ye na i badela nga inthanethe kha bugu ya u thoma i shumisiwa fhano. Ni badela phambano fhedzi.",
+        "rescheduleCreditApplied": "Yo badelwa kha bugu yanu ya u thoma",
+        "rescheduleCreditSurplus": "Zwe zwa sala zwa {{amount}} zwi dzula kha tshikwama tshanu sa khredithi."
       },
       "addToWaitlist": {
         "enterName": "Enter your dzina",
@@ -21125,7 +21163,13 @@
           "cancelled": "Yo khanselwa",
           "cantFind": "Can't find your reservation hafha?",
           "visitHelpCenter": "Visit the thuso Center"
-        }
+        },
+        "cancelledRefundProcessing": "Bugu yo khanselwa. Mbuedzedzo yanu i kha u itwa nahone i do swika hu si kale.",
+        "refundProcessingTitle": "Mbuedzedzo i kha u itwa",
+        "refundProcessingBody": "Hei bugu yo khanselwa. Ri fhedza mbuedzedzo yanu nahone i do bvelela hu si kale kha tshikwama tshanu. A ni tea u ita tshithu.",
+        "cancelGroupPreviewTitle": "Izwi zwi khansela mutangano woṱhe wa tshigwada {{ref}}, hu katela vhaeni vha {{count}}.",
+        "cancelGroupPreviewOtherBookings": "Dziṅwe mbugu dzanu kha tshigwada hetshi: {{currency}} {{refund}} i humela kha tshikwama tshanu, {{currency}} {{fee}} badelo ya u khansela.",
+        "cancelGroupPreviewGuestShares": "Mbadelo dza tshipida tsha vhaeni ({{currency}} {{amount}}) dzi humiselwa zwoṱhe kha makhadi e vha badela ngao."
       },
       "payAdditionalCharge": {
         "notFound": "Additional badelisa a tsho wanala",
@@ -21372,7 +21416,13 @@
           "subtitle": "Nanga a strong phasiwede for your akhaunte.",
           "atLeastChars": "U fanela u vha na mafhungo a {{min}}",
           "strength": "Sterkte: {{label}}",
-          "confirmPlaceholder": "Re-enter your phasiwede"
+          "confirmPlaceholder": "Re-enter your phasiwede",
+          "passwordsMatch": "Phasiwedes match",
+          "showPassword": "Sumbedza phasiwede",
+          "hidePassword": "dzumba phasiwede",
+          "policyHintLettersDigits": "Include letters and nombolos",
+          "policyHintMixed": "Katela mavhala mahulu, matuku na nomboro.",
+          "strengthTip": "vhulapfu, nga nomboro na zwiimiswa, zwi tshi khwa"
         }
       },
       "membership": {
@@ -21692,7 +21742,10 @@
         "addressParking": "U paka:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Oda iyi yo vhuiswa nga tshipiḓa. Kha vha kwame vhaṋetshedzi u itela u vhuisa tshelede yo salaho.",
-        "paymentPartiallyRefunded": "Partially yo vhuedzedzwa"
+        "paymentPartiallyRefunded": "Partially yo vhuedzedzwa",
+        "messageProviderFailed": "A yo kona u vula nyambedzano na muneḓi uyu.",
+        "openingMessage": "I khou vula nyambedzano…",
+        "messageProvider": "Rumela mulaedza kha muneḓi"
       },
       "bookingReceipt": {
         "methodWallet": "Sipaji",
@@ -22297,7 +22350,9 @@
         "itemCount_one": "{{count}} Tshithu · {{date}}",
         "itemCount_other": "{{count}} Zwithu · {{date}}",
         "returnStatus": "Terugsend {{status}}",
-        "tracking": "U teledza: {{number}}"
+        "tracking": "U teledza: {{number}}",
+        "finishPaymentOnDetail": "Vula odara iyi u fhedza u badela kha inthanete.",
+        "paymentDueBadge": "Mbadelo i tshi tea"
       },
       "waitlist": {
         "loadFailed": "Zwo kundelwa u ḽoḓa mutevhe wa u linda",
@@ -22316,6 +22371,49 @@
         "statusContacted": "Ikwaneed",
         "statusBooked": "Yo bukiwa",
         "statusCancelled": "Yo khanselwa"
+      },
+      "safety": {
+        "emergencyNumber": "Emergency nombolo: 112",
+        "managed": "Managed",
+        "deviceAuthWebNote": "Applies the zwi teaho tshifhinga you vula the Beautonomi Lutingo app.",
+        "updated": "Setting khwinisad",
+        "updateFailed": "A zwo koni u khwinisa setting. lingedzani hafhu.",
+        "loadFailed": "A zwo koni u ḽoḓa your vhupfele nzudzanyo.",
+        "retry": "Lingedza hafhu",
+        "reportValidation": "Dzhenisani mavhalanavho a sa fhiri 2 a muthu ane na mu bika na a sa fhiri 10 nga zwe zwi bvelelaho.",
+        "unblocked": "Mushumisi unblocked",
+        "unblockFailed": "A zwo koni u unblock this Mushumisi.",
+        "blockedLoadFailed": "A zwo koni u ḽoḓa blocked users.",
+        "blockedOn": "O valiwa {{date}}",
+        "currentBand": "zwa zwino band: {{band}}",
+        "noResults": "A hu na vhashumisi vho valiwaho vha elanaho na u toda hau.",
+        "profileCompletionCta": "fhedza phurofaily",
+        "bankRefundCta": "khumbelo a Banga mbuyiso",
+        "bankRefundOpenCta": "Vhona your Banga mbuyiso khumbelo",
+        "bankRefundHistory": "khumbelo Matakadze",
+        "bankRefundNote": "Note for our finance tshigwada (zwo khethea)",
+        "bankRefundMin": "Minimum tshivhalo: {{amount}}",
+        "bankRefundMax": "Maximum per khumbelo: {{amount}}",
+        "bankRefundSla": "Mbuedzedzo dzo tendelwaho dzi badelwa hu sa athu fhela maḓuvha a mushumo a {{days}}.",
+        "bankRefundNoAccounts": "Engedza a akhaunte ya banga before khumbeloing a Banga mbuyiso.",
+        "bankRefundStatus": "Mutevhe",
+        "bankRefundAmount": "tshivhalo",
+        "bankRefundDate": "Ho humbelwa",
+        "bankRefundReceive": "Ni wana",
+        "bankRefundCancelled": "khumbelo yo khanselwa",
+        "bankAccountsManage": "Langulula akhaunte ya bangas",
+        "bankAccountsMax": "You can vhulunga up to 3 akhaunte ya bangas.",
+        "bankAccountSaved": "Banga Akhaunte yo vhulungiwa",
+        "bankAccountRemoved": "akhaunte ya banga bvisad",
+        "bankAccountPrimary": "ṱhoho akhaunte khwinisad",
+        "cancel": "Khansela"
+      },
+      "profileDetailsPage": {
+        "aboutSection": "Nga ha you",
+        "aboutHint": "A short bio vaneḓi see when you buka.",
+        "aboutPlaceholder": "Vhudza vhaņetshedzi tshishuku nga hau",
+        "noChanges": "No shandukisas to vhulunga",
+        "clearChoice": "Thutha"
       }
     },
     "auth": {
@@ -36362,7 +36460,9 @@
       "cancelConfirm": "Kha vha khansele tshikhala tshavho kha booking ya tshigwada itshi? Tshumelo dzaṋu dzi a bviswa nahone mbadelo iṅwe na iṅwe ye na i ita i vhuyedzedzwa kha garaṱa yaṋu.",
       "cancelled": "spot has been yo khanselwa. yau.",
       "cancelledRefunded": "Spot tshavho tsho khanselwa. {{amount}} i khou vhuiswa kha garaṱa yaṋu.",
-      "cancelFailed": "A zwo koni u khansela your spot."
+      "cancelFailed": "A zwo koni u khansela your spot.",
+      "sessionCancelled": "Mutangano hoyu wa tshigwada wo khanselwa.",
+      "sessionCancelledPaid": "Mutangano hoyu wa tshigwada wo khanselwa. Tshelede iṅwe na iṅwe ye na i badela kha tshipida tshanu i humiselwa yoṱhe kha khadi ye na badela ngayo."
     }
   },
   "errors": {

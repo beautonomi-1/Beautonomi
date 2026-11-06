@@ -13778,7 +13778,9 @@
       "replying": "Unajibu maoni",
       "replyPlaceholder": "Andika jibu…",
       "shareMediaFailedTitle": "Haikuweza kushiriki maudhui",
-      "shareMediaFailedBody": "Hatukuweza kuandaa faili hii kwa ajili ya kushirikiwa. Jaribu kushiriki kiungo badala yake."
+      "shareMediaFailedBody": "Hatukuweza kuandaa faili hii kwa ajili ya kushirikiwa. Jaribu kushiriki kiungo badala yake.",
+      "loadingComments": "Inapakia…",
+      "loadMoreComments": "Pakia maoni zaidi"
     },
     "searchScreen": {
       "title": "Tafuta",
@@ -15010,7 +15012,20 @@
           "emailInputA11y": "Barua pepe input",
           "sendResetLink": "Tuma kiungo cha kuweka upya",
           "sendResetLinkA11y": "Tuma kiungo cha kuweka upya",
-          "backToLoginA11y": "Rudi to login"
+          "backToLoginA11y": "Rudi to login",
+          "codeA11y": "Nenosiri reset code",
+          "invalidCodeTitle": "Msimbo haukubaliwa",
+          "invalidCodeBody": "Weka msimbo wa tarakimu {{digits}} uliotumwa kwenye barua pepe.",
+          "resend": "Resend barua pepe",
+          "resendA11y": "Resend the reset barua pepe",
+          "signedInIntro": "Tutatuma msimbo na kiungo cha kuweka upya kwenye barua pepe ya akaunti.",
+          "back": "Rudi",
+          "stepCode": "1. Weka msimbo wa tarakimu {{digits}}",
+          "stepPassword": "2. Choose a new nenosiri",
+          "codeVerified": "Code imethibitishwa",
+          "submit": "Weka nenosiri upya",
+          "submittingA11y": "Resetting nenosiri",
+          "linkAlternative": "Unapendelea kiungo? Kifungue kutoka kwenye barua pepe ili kuweka nenosiri jipya kwenye kivinjari."
         },
         "authSafetyAndAge": {
           "linkLabel": "Usalama na vidhibiti vya wazazi",
@@ -15282,7 +15297,8 @@
           "returnLabel": "Marejesho {{status}}",
           "tracking": "Ufuatiliaji: {{number}}",
           "collectAt": "Retrait chez {{name}}, {{city}}",
-          "deliverTo": "Livraison à {{city}}"
+          "deliverTo": "Livraison à {{city}}",
+          "paymentDueBadge": "Malipo yanadaiwa"
         },
         "productReviews": {
           "title": "Tathmini",
@@ -16088,7 +16104,14 @@
           "lifecyclePartialRefundDescription": "Uhifadhi huu umerejeshewa kiasi fulani cha pesa.",
           "lifecycleRefundedDescription": "This uhifadhi malipo has been refunded.",
           "lifecyclePaymentFailedDescription": "Malipo hayakupita. Jaribu tena, au wasiliana na usaidizi kwa nambari hii ya kuhifadhi.",
-          "lifecyclePaymentNotConfirmedDescription": "Malipo has not been imethibitishwa yet."
+          "lifecyclePaymentNotConfirmedDescription": "Malipo has not been imethibitishwa yet.",
+          "refundProcessingTitle": "Marejesho yanaendelea",
+          "refundProcessingBody": "Uhifadhi huu umeghairiwa. Tunakamilisha marejesho yako na yataonekana hivi karibuni kwenye pochi yako. Huhitaji kufanya chochote.",
+          "rescheduleInProgressTitle": "Kupanga upya kunaendelea",
+          "rescheduleInProgressBody": "Uhifadhi huu unahamishwa hadi muda mwingine. Kamilisha malipo mapya na kiasi ulicholipa kinahamishwa chenyewe. Ukiacha malipo hayo, uhifadhi unaweza kughairiwa tena ukiisha, ndani ya dakika zipatazo 30.",
+          "cancelGroupPreviewTitle": "Hii inaghairi kipindi chote cha kikundi {{ref}}, pamoja na wageni {{count}}.",
+          "cancelGroupPreviewOtherBookings": "Uhifadhi wako mwingine katika kikundi hiki: {{currency}} {{refund}} hurudi kwenye pochi yako, {{currency}} {{fee}} ada ya kughairi.",
+          "cancelGroupPreviewGuestShares": "Malipo ya sehemu za wageni ({{currency}} {{amount}}) yanarudishwa yote kwenye kadi walizotumia."
         },
         "groupBookingDetail": {
           "back": "Rudi",
@@ -16167,7 +16190,11 @@
           "cancelMySpotConfirm": "Ungependa kughairi eneo lako katika uhifadhi wa kikundi hiki? Huduma zako zitaondolewa na malipo yoyote uliyofanya yanarejeshwa kwenye kadi yako.",
           "spotCancelled": "Your spot has been imeghairiwa.",
           "guestRemoved": "Mgeni ameondolewa.",
-          "guestCancelFailed": "Imeshindwa sasisha the uhifadhi wa kikundi."
+          "guestCancelFailed": "Imeshindwa sasisha the uhifadhi wa kikundi.",
+          "resendPayLink": "Tuma tena kiungo cha malipo",
+          "cancelGroupSession": "Ghairi kipindi cha kikundi",
+          "cancelGroupSessionHint": "Inafungua uhifadhi wako, ambapo unaona marejesho ya kikundi chote kabla ya kuthibitisha.",
+          "askOrganizerToReschedule": "Muulize mpangaji ikiwa kipindi hiki kinahitaji muda mwingine."
         },
         "announcements": {
           "retry": "Jaribu tena",
@@ -16571,21 +16598,21 @@
           "saveErrorBeauty": "Mapendeleo ya urembo: {{message}}",
           "saveFailedGeneric": "imeshindwa",
           "profileQuestionsSection": "Wasifu questions",
-          "profileQuestionsHint": "Answer at least 3 to kamilisha your wasifu. ({{answered}}/3 imekamilika)",
+          "profileQuestionsHint": "Jibu angalau maswali 3 ili kukamilisha wasifu. ({{answered}}/3 yamekamilika)",
           "interestsSection": "Mapendeleo",
           "interestsSubtitle": "Ongeza things you're into (select or type)",
           "interestsPlaceholder": "k.m. Nywele, kucha, ngozi...",
           "interestsA11y": "Mapendeleo yako",
           "beautySection": "Mapendeleo ya urembo",
-          "beautySubtitle": "Help watoa huduma personalise your experience",
+          "beautySubtitle": "Saidia watoa huduma kubinafsisha uzoefu wako",
           "hairType": "Aina ya nywele",
           "skinType": "Aina ya ngozi",
           "thingsToAvoid": "Mambo ya kuepuka",
-          "thingsToAvoidPlaceholder": "Chagua or type (e.g. fragrances, sulfates)",
+          "thingsToAvoidPlaceholder": "Chagua au andika (k.m. manukato, salfati)",
           "thingsToAvoidA11y": "Mambo ya kuepuka",
           "appointmentStyle": "Miadi style",
           "productPreferences": "Bidhaa preferences",
-          "productPreferencesPlaceholder": "Chagua or type (e.g. Vegan, Cruelty-free)",
+          "productPreferencesPlaceholder": "Chagua au andika (k.m. mboga, bila ukatili)",
           "productPreferencesA11y": "Bidhaa preferences",
           "allergies": "Mzio na unyeti",
           "allergiesPlaceholder": "k.m. Nikeli, lateksi...",
@@ -16635,7 +16662,7 @@
           "avoidLatex": "Lateksi",
           "avoidNickel": "Nikeli",
           "avoidDyes": "Rangi",
-          "avoidFormaldehyde": "Formaldehyde",
+          "avoidFormaldehyde": "Formaldéhyde",
           "styleQuickEfficient": "Haraka na madhubuti",
           "styleRelaxed": "Tulivu na bila haraka",
           "styleSocial": "Jamii na mazungumzo",
@@ -16653,8 +16680,8 @@
           "interestNails": "Kucha",
           "interestSkincare": "Utunzaji wa ngozi",
           "interestMakeup": "Makeup",
-          "interestPedicure": "Pedicure",
-          "interestManicure": "Manicure",
+          "interestPedicure": "Utunzaji wa miguu",
+          "interestManicure": "Utunzaji wa mikono",
           "interestFacial": "Facial",
           "interestMassage": "Massage",
           "interestHairColour": "Rangi ya nywele",
@@ -16670,7 +16697,7 @@
           "allergySulfates": "Salfati",
           "allergyAlcohol": "Pombe",
           "allergyDyes": "Rangi",
-          "allergyFormaldehyde": "Formaldehyde",
+          "allergyFormaldehyde": "Formaldéhyde",
           "allergyLatex": "Lateksi",
           "allergyNickel": "Nikeli"
         },
@@ -18140,6 +18167,9 @@
           "invalidBody": "Weka tarehe halali (YYYY-MM-DD) na saa (HH:MM).",
           "failedTitle": "Imeshindwa reschedule",
           "noSlots": "Hakuna nyakati zinazopatikana kwa siku hii. Jaribu tarehe nyingine."
+        },
+        "resetPassword": {
+          "policyMix": "Nenosiri lako linahitaji mchanganyiko wa herufi na nambari unaokidhi kanuni za akaunti."
         }
       }
     },
@@ -18169,7 +18199,7 @@
       "accountNameLabel": "Account holder jina",
       "save": "Hifadhi bank account",
       "screenTitle": "Akaunti za benki",
-      "selectBank": "Select your bank"
+      "selectBank": "Chagua your bank"
     },
     "walletBankRefund": {
       "addBank": "Ongeza a bank account",
@@ -18422,7 +18452,11 @@
     "payForEveryone": "Nitalipia kila mtu",
     "splitPayment": "Split malipo",
     "splitPaymentHint": "Unalipa huduma zako mwenyewe na ada za kuhifadhi sasa. Kila mgeni hupata kiungo cha kulipa sehemu yake.",
-    "guestSharesPaidByInvite": "Wageni hulipa kupitia kiungo cha mwaliko"
+    "guestSharesPaidByInvite": "Wageni hulipa kupitia kiungo cha mwaliko",
+    "rescheduleReplacesPreviousBody": "Miadi yako ya awali inaghairiwa yenyewe, bila ada, malipo ya uhifadhi huu yakikamilika. Ulicholipa tayari kinatumika hapa, na kilichobaki kinabaki kwenye pochi yako.",
+    "rescheduleCreditNote": "Kiasi chochote ulicholipa mtandaoni kwa uhifadhi wa awali kinatumika hapa. Unalipa tofauti pekee.",
+    "rescheduleCreditApplied": "Imelipwa kwenye uhifadhi wa awali",
+    "rescheduleCreditSurplus": "Kilichobaki {{amount}} kinabaki kwenye pochi yako kama salio."
   },
   "payments": {
     "pay": "Pay",
@@ -19469,7 +19503,11 @@
         "pickNextAvailable": "Find ifuatayo inapatikana muda",
         "splitPayment": "Split malipo",
         "guestSharesPaidByInvite": "Wageni hulipa kupitia kiungo cha mwaliko",
-        "splitPaymentHint": "Unalipa huduma zako mwenyewe na ada za kuhifadhi sasa. Kila mgeni hupata kiungo cha kulipa sehemu yake."
+        "splitPaymentHint": "Unalipa huduma zako mwenyewe na ada za kuhifadhi sasa. Kila mgeni hupata kiungo cha kulipa sehemu yake.",
+        "rescheduleCreditPaid": "Malipo yako ya awali yanatosha kwa uhifadhi huu.",
+        "rescheduleCreditIntro": "Kiasi chochote ulicholipa mtandaoni kwa uhifadhi wa awali kinatumika hapa. Unalipa tofauti pekee.",
+        "rescheduleCreditApplied": "Imelipwa kwenye uhifadhi wa awali",
+        "rescheduleCreditSurplus": "Kilichobaki {{amount}} kinabaki kwenye pochi yako kama salio."
       },
       "addToWaitlist": {
         "enterName": "Tafadhali weka your jina",
@@ -21125,7 +21163,13 @@
           "cancelled": "Imeghairiwa",
           "cantFind": "Can't find your reservation aquí?",
           "visitHelpCenter": "Visit the Kituo cha msaada"
-        }
+        },
+        "cancelledRefundProcessing": "Uhifadhi umeghairiwa. Marejesho yako yanaendelea na yatafika hivi karibuni.",
+        "refundProcessingTitle": "Marejesho yanaendelea",
+        "refundProcessingBody": "Uhifadhi huu umeghairiwa. Tunakamilisha marejesho yako na yataonekana hivi karibuni kwenye pochi yako. Huhitaji kufanya chochote.",
+        "cancelGroupPreviewTitle": "Hii inaghairi kipindi chote cha kikundi {{ref}}, pamoja na wageni {{count}}.",
+        "cancelGroupPreviewOtherBookings": "Uhifadhi wako mwingine katika kikundi hiki: {{currency}} {{refund}} hurudi kwenye pochi yako, {{currency}} {{fee}} ada ya kughairi.",
+        "cancelGroupPreviewGuestShares": "Malipo ya sehemu za wageni ({{currency}} {{amount}}) yanarudishwa yote kwenye kadi walizotumia."
       },
       "payAdditionalCharge": {
         "notFound": "Additional charge haijapatikana",
@@ -21372,7 +21416,13 @@
           "subtitle": "Elegir a strong contraseña for your cuenta.",
           "atLeastChars": "Angalau herufi {{min}}",
           "strength": "Nguvu: {{label}}",
-          "confirmPlaceholder": "Re-enter your nenosiri"
+          "confirmPlaceholder": "Re-enter your nenosiri",
+          "passwordsMatch": "Manenosiri yanalingana",
+          "showPassword": "Show nenosiri",
+          "hidePassword": "Hide nenosiri",
+          "policyHintLettersDigits": "Jumuisha herufi na nambari",
+          "policyHintMixed": "Jumuisha herufi kubwa, ndogo na nambari.",
+          "strengthTip": "ndefu zaidi, pamoja na nambari na alama, ni imara zaidi"
         }
       },
       "membership": {
@@ -21692,7 +21742,10 @@
         "addressParking": "Aparcamiento:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Agizo hili lilirejeshwa kwa kiasi. Wasiliana na mtoa huduma ili kurejesha salio lililosalia.",
-        "paymentPartiallyRefunded": "Imerejeshwa kwa kiasi"
+        "paymentPartiallyRefunded": "Imerejeshwa kwa kiasi",
+        "messageProviderFailed": "Haikuweza kufungua mazungumzo na mtoa huduma huyu.",
+        "openingMessage": "Inafungua mazungumzo…",
+        "messageProvider": "Tuma ujumbe kwa mtoa huduma"
       },
       "bookingReceipt": {
         "methodWallet": "Pochi",
@@ -22297,7 +22350,9 @@
         "itemCount_one": "{{count}} item · {{date}}",
         "itemCount_other": "{{count}} Artículos · {{date}}",
         "returnStatus": "Marejesho {{status}}",
-        "tracking": "Ufuatiliaji: {{number}}"
+        "tracking": "Ufuatiliaji: {{number}}",
+        "finishPaymentOnDetail": "Fungua oda hii ili kumaliza malipo mtandaoni.",
+        "paymentDueBadge": "Malipo yanadaiwa"
       },
       "waitlist": {
         "loadFailed": "Imeshindwa load waitlist",
@@ -22316,6 +22371,49 @@
         "statusContacted": "Imewasiliana",
         "statusBooked": "Imewekwa",
         "statusCancelled": "Imeghairiwa"
+      },
+      "safety": {
+        "emergencyNumber": "Nambari ya dharura: 112",
+        "managed": "Managed",
+        "deviceAuthWebNote": "Inatumika wakati ujao utakapofungua programu ya Beautonomi.",
+        "updated": "Setting imesasishwa",
+        "updateFailed": "Imeshindwa sasisha setting. Tafadhali jaribu tena.",
+        "loadFailed": "Imeshindwa load your safety mipangilio.",
+        "retry": "Jaribu tena",
+        "reportValidation": "Weka herufi angalau 2 za mtu unayemripoti na herufi angalau 10 kuhusu yaliyotokea.",
+        "unblocked": "Mtumiaji ameondolewa kizuizi",
+        "unblockFailed": "Imeshindwa unblock this user.",
+        "blockedLoadFailed": "Imeshindwa load blocked users.",
+        "blockedOn": "Amezuiwa {{date}}",
+        "currentBand": "Kiwango cha sasa: {{band}}",
+        "noResults": "Hapana blocked users match your tafuta.",
+        "profileCompletionCta": "Kamilisha wasifu",
+        "bankRefundCta": "Request a bank rejesho",
+        "bankRefundOpenCta": "Angalia your bank rejesho request",
+        "bankRefundHistory": "Historia ya maombi",
+        "bankRefundNote": "Note for our finance team (si lazima)",
+        "bankRefundMin": "Kiasi cha chini: {{amount}}",
+        "bankRefundMax": "Kiwango cha juu kwa ombi: {{amount}}",
+        "bankRefundSla": "Marejesho yaliyoidhinishwa hulipwa kwa kawaida ndani ya siku {{days}} za kazi.",
+        "bankRefundNoAccounts": "Ongeza akaunti ya benki kabla ya kuomba marejesho ya benki.",
+        "bankRefundStatus": "Hali",
+        "bankRefundAmount": "Kiasi",
+        "bankRefundDate": "Imeombwa",
+        "bankRefundReceive": "Unapokea",
+        "bankRefundCancelled": "Request imeghairiwa",
+        "bankAccountsManage": "Simamia bank accounts",
+        "bankAccountsMax": "Unaweza kuhifadhi hadi akaunti 3 za benki.",
+        "bankAccountSaved": "Bank account imehifadhiwa",
+        "bankAccountRemoved": "Bank account ondoad",
+        "bankAccountPrimary": "Primary account imesasishwa",
+        "cancel": "Ghairi"
+      },
+      "profileDetailsPage": {
+        "aboutSection": "Kukuhusu",
+        "aboutHint": "Wasifu mfupi watoa huduma wanaouona unapohifadhi.",
+        "aboutPlaceholder": "Tell watoa huduma a little about yourself",
+        "noChanges": "Hapana changes to hifadhi",
+        "clearChoice": "Futa"
       }
     },
     "auth": {
@@ -36362,7 +36460,9 @@
       "cancelConfirm": "Ungependa kughairi eneo lako katika uhifadhi wa kikundi hiki? Huduma zako zitaondolewa na malipo yoyote uliyofanya yanarejeshwa kwenye kadi yako.",
       "cancelled": "Your spot has been imeghairiwa.",
       "cancelledRefunded": "Eneo lako limeghairiwa. {{amount}} inarejeshwa kwa kadi yako.",
-      "cancelFailed": "Imeshindwa ghairi your spot."
+      "cancelFailed": "Imeshindwa ghairi your spot.",
+      "sessionCancelled": "Kipindi hiki cha kikundi kimeghairiwa.",
+      "sessionCancelledPaid": "Kipindi hiki cha kikundi kimeghairiwa. Kiasi chochote ulicholipa kwa sehemu yako kinarudishwa chote kwenye kadi uliyotumia."
     }
   },
   "errors": {

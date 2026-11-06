@@ -290,16 +290,40 @@ export async function verifySignupEmailOtp(email: string, token: string) {
 
 /**
  * Reset password (send reset email)
+ *
+ * The browser client uses PKCE, so the email link returns as `/auth/callback?code=…`.
+ * `type=recovery` lets the callback send that session to the reset-password page.
+ * `next` must already be a sanitized in-app path; the callback re-validates it.
  */
-export async function resetPassword(email: string) {
+export async function resetPassword(email: string, next?: string | null) {
   const supabase = getSupabaseClient();
+  const params = new URLSearchParams({ type: "recovery" });
+  if (next) params.set("next", next);
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/auth/callback`,
+    redirectTo: `${window.location.origin}/auth/callback?${params.toString()}`,
   });
 
   if (error) {
     throw new Error(error.message);
   }
+}
+
+/**
+ * Verify the numeric code from the Reset password email (`{{ .Token }}`).
+ * On success the browser holds a recovery session for `updatePassword`.
+ */
+export async function verifyPasswordRecoveryOtp(email: string, token: string) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.auth.verifyOtp({
+    email: email.trim(),
+    token: token.replace(/\D/g, ""),
+    type: "recovery",
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  return data;
 }
 
 /**

@@ -8,6 +8,7 @@ import Link from "next/link";
 import Image from "next/image";
 import type { ProductOrder } from "./order-list-types";
 import { formatCurrency } from "@/lib/utils";
+import { isUnpaidOnlinePaystackHold } from "@beautonomi/utils";
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-50 text-yellow-700",
@@ -125,6 +126,8 @@ export default function OrderHistoryPage({
                 month: "short",
                 year: "numeric",
               });
+              const paymentDue =
+                isUnpaidOnlinePaystackHold(order) && Number(order.amount_still_due ?? 0) > 0;
 
               return (
                 <Link
@@ -147,11 +150,23 @@ export default function OrderHistoryPage({
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-gray-900">{order.order_number}</span>
-                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_COLORS[order.status] ?? "bg-gray-50 text-gray-600"}`}>
-                          {STATUS_LABEL_KEYS[order.status] ? t(STATUS_LABEL_KEYS[order.status]) : order.status}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          {paymentDue ? (
+                            <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
+                              {t("web.accountSettings.orders.paymentDueBadge")}
+                            </span>
+                          ) : null}
+                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_COLORS[order.status] ?? "bg-gray-50 text-gray-600"}`}>
+                            {STATUS_LABEL_KEYS[order.status] ? t(STATUS_LABEL_KEYS[order.status]) : order.status}
+                          </span>
+                        </div>
                       </div>
                       <p className="mt-1 text-sm text-gray-500">{order.provider?.business_name}</p>
+                      {paymentDue ? (
+                        <p className="mt-1 text-xs font-medium text-amber-800">
+                          {t("web.accountSettings.orders.finishPaymentOnDetail")}
+                        </p>
+                      ) : null}
                       <div className="mt-2 flex items-center justify-between">
                         <span className="text-xs text-gray-400">
                           {t("web.accountSettings.orders.itemCount", { count: itemCount, date })}

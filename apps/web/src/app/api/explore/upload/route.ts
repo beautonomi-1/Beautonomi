@@ -147,7 +147,7 @@ async function handleSignedUploadJson(
   }
 
   let placeholder_cover_path: string | null = null;
-  if (kind === "video" && include_placeholder_cover !== false) {
+  if (kind === "video" && include_placeholder_cover === true) {
     const { data: prov } = await supabaseAdmin
       .from("providers")
       .select("business_name")

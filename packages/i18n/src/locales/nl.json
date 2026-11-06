@@ -13778,7 +13778,9 @@
       "replying": "Reageren op een opmerking",
       "replyPlaceholder": "Schrijf een reactie…",
       "shareMediaFailedTitle": "Couldn't compartir media",
-      "shareMediaFailedBody": "We kunnen dit bestand niet voorbereiden voor delen. Probeer in plaats daarvan de link te delen."
+      "shareMediaFailedBody": "We kunnen dit bestand niet voorbereiden voor delen. Probeer in plaats daarvan de link te delen.",
+      "loadingComments": "Laden…",
+      "loadMoreComments": "Meer reacties laden"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -15010,7 +15012,20 @@
           "emailInputA11y": "E-mail input",
           "sendResetLink": "Envoyer le lien de réinitialisation",
           "sendResetLinkA11y": "Envoyer le lien de réinitialisation",
-          "backToLoginA11y": "Retour to login"
+          "backToLoginA11y": "Retour to login",
+          "codeA11y": "Code om het wachtwoord te herstellen",
+          "invalidCodeTitle": "Code niet geaccepteerd",
+          "invalidCodeBody": "Vul de code van {{digits}} cijfers uit het bericht in.",
+          "resend": "Bericht opnieuw versturen",
+          "resendA11y": "Het herstelbericht opnieuw versturen",
+          "signedInIntro": "We sturen een code en een herstelkoppeling naar het bericht van de rekening.",
+          "back": "Retour",
+          "stepCode": "1. Vul de code van {{digits}} cijfers in",
+          "stepPassword": "2. Kies een nieuw wachtwoord",
+          "codeVerified": "Code bevestigd",
+          "submit": "Réinitialiser le mot de passe",
+          "submittingA11y": "Wachtwoord wordt hersteld",
+          "linkAlternative": "Liever de koppeling? Open die vanuit het bericht om het nieuwe wachtwoord in het kijkvenster te zetten."
         },
         "authSafetyAndAge": {
           "linkLabel": "Sécurité et contrôles parentaux",
@@ -15282,7 +15297,8 @@
           "returnLabel": "Retour {{status}}",
           "tracking": "Suivi : {{number}}",
           "collectAt": "Retrait chez {{name}}, {{city}}",
-          "deliverTo": "Livraison à {{city}}"
+          "deliverTo": "Livraison à {{city}}",
+          "paymentDueBadge": "Betaling verschuldigd"
         },
         "productReviews": {
           "title": "Avis",
@@ -16088,7 +16104,14 @@
           "lifecyclePartialRefundDescription": "Un remboursement partiel a été enregistré pour cette réservation.",
           "lifecycleRefundedDescription": "Le paiement de cette réservation a été remboursé.",
           "lifecyclePaymentFailedDescription": "Le paiement n’a pas abouti. Réessayez ou contactez l’assistance avec ce numéro de réservation.",
-          "lifecyclePaymentNotConfirmedDescription": "Paiement has not been confirmé yet."
+          "lifecyclePaymentNotConfirmedDescription": "Paiement has not been confirmé yet.",
+          "refundProcessingTitle": "Terugbetaling wordt verwerkt",
+          "refundProcessingBody": "Deze boeking is geannuleerd. We ronden je terugbetaling af en die verschijnt binnenkort in je portemonnee. Je hoeft niets te doen.",
+          "rescheduleInProgressTitle": "Verplaatsing is bezig",
+          "rescheduleInProgressBody": "Deze boeking gaat naar een ander tijdstip. Rond de nieuwe betaling af en het bedrag dat je al betaalde gaat vanzelf mee. Als je die betaling hebt verlaten, kan de boeking opnieuw worden geannuleerd zodra ze verloopt, binnen ongeveer 30 minuten.",
+          "cancelGroupPreviewTitle": "Dit annuleert de hele groepssessie {{ref}}, inclusief {{count}} gast(en).",
+          "cancelGroupPreviewOtherBookings": "Je andere boekingen in deze groep: {{currency}} {{refund}} terug naar je portemonnee, {{currency}} {{fee}} annuleringskosten.",
+          "cancelGroupPreviewGuestShares": "De eigen deelbetalingen van gasten ({{currency}} {{amount}}) gaan volledig terug naar de kaarten waarmee ze betaalden."
         },
         "groupBookingDetail": {
           "back": "Retour",
@@ -16167,7 +16190,11 @@
           "cancelMySpotConfirm": "Je plek in deze groepsboeking annuleren? Uw diensten worden verwijderd en elke betaling die u heeft gedaan, wordt teruggestort op uw kaart.",
           "spotCancelled": "Your spot has been annulé.",
           "guestRemoved": "Invitado quitard.",
-          "guestCancelFailed": "Impossible de mettre à jour the réservation de groupe."
+          "guestCancelFailed": "Impossible de mettre à jour the réservation de groupe.",
+          "resendPayLink": "Betaalkoppeling opnieuw sturen",
+          "cancelGroupSession": "Groepssessie annuleren",
+          "cancelGroupSessionHint": "Opent je boeking, waar je de terugbetaling voor de hele groep ziet voordat je bevestigt.",
+          "askOrganizerToReschedule": "Vraag de organisator of deze sessie een ander tijdstip nodig heeft."
         },
         "announcements": {
           "retry": "Réessayer",
@@ -16571,21 +16598,21 @@
           "saveErrorBeauty": "Préférences beauté : {{message}}",
           "saveFailedGeneric": "échec",
           "profileQuestionsSection": "Profil questions",
-          "profileQuestionsHint": "Answer at least 3 to complete your profile. ({{answered}}/3 done)",
+          "profileQuestionsHint": "Beantwoord minstens 3 om je profiel af te ronden. ({{answered}}/3 klaar)",
           "interestsSection": "Centres d’intérêt",
           "interestsSubtitle": "Ajouter things you're into (select or type)",
           "interestsPlaceholder": "ex. Cheveux, ongles, soins…",
           "interestsA11y": "Vos centres d’intérêt",
           "beautySection": "Préférences beauté",
-          "beautySubtitle": "Help prestataires personalise your experience",
+          "beautySubtitle": "Help aanbieders je ervaring persoonlijk te maken",
           "hairType": "Type de cheveux",
           "skinType": "Type de peau",
           "thingsToAvoid": "À éviter",
-          "thingsToAvoidPlaceholder": "Sélectionner or type (e.g. fragrances, sulfates)",
+          "thingsToAvoidPlaceholder": "Kies of typ (bijv. geuren, sulfaten)",
           "thingsToAvoidA11y": "À éviter",
           "appointmentStyle": "Rendez-vous style",
           "productPreferences": "Produit preferences",
-          "productPreferencesPlaceholder": "Sélectionner or type (e.g. Vegan, Cruelty-free)",
+          "productPreferencesPlaceholder": "Kies of typ (bijv. veganistisch, zonder dierproeven)",
           "productPreferencesA11y": "Produit preferences",
           "allergies": "Allergies et sensibilités",
           "allergiesPlaceholder": "ex. Nickel, latex…",
@@ -16629,7 +16656,7 @@
           "skinMature": "Mature",
           "avoidStrongFragrances": "Parfums forts",
           "avoidAlcohol": "Alcohol-based produits",
-          "avoidSulfates": "Sulfates",
+          "avoidSulfates": "Salfati",
           "avoidParabens": "Parabènes",
           "avoidEssentialOils": "Huiles essentielles",
           "avoidLatex": "Latex",
@@ -16640,7 +16667,7 @@
           "styleRelaxed": "Détendu et sans précipitation",
           "styleSocial": "Sociable et bavard",
           "styleQuiet": "Calme et minimal",
-          "styleFlexible": "Flexible",
+          "styleFlexible": "Rahisi",
           "prefVegan": "Végane",
           "prefCrueltyFree": "Sans cruauté",
           "prefNaturalOrganic": "Naturel / bio",
@@ -16667,7 +16694,7 @@
           "interestCooking": "Cuisine",
           "allergyFragrance": "Parfum",
           "allergyParabens": "Parabènes",
-          "allergySulfates": "Sulfates",
+          "allergySulfates": "Salfati",
           "allergyAlcohol": "Alcool",
           "allergyDyes": "Colorations",
           "allergyFormaldehyde": "Formaldéhyde",
@@ -18140,6 +18167,9 @@
           "invalidBody": "Introduce a válido fecha (YYYY-MM-DD) and hora (HH:MM).",
           "failedTitle": "Impossible de reschedule",
           "noSlots": "No horas disponible on this día. Try anotro fecha."
+        },
+        "resetPassword": {
+          "policyMix": "Je wachtwoord heeft een mengsel van tekens en cijfers nodig die aan de accountregels voldoen."
         }
       }
     },
@@ -18169,7 +18199,7 @@
       "accountNameLabel": "Name des Kontoinhabers",
       "save": "Bankkonto speichern",
       "screenTitle": "Bankkonten",
-      "selectBank": "Select your bank"
+      "selectBank": "Kies je bank"
     },
     "walletBankRefund": {
       "notEnabled": "Derzeit sind in Ihrem Markt keine Bankrückerstattungen möglich.",
@@ -18422,7 +18452,11 @@
     "payForEveryone": "I'll pagar for everyone",
     "splitPayment": "Split paiement",
     "splitPaymentHint": "U betaalt nu uw eigen diensten en de boekingskosten. Elke gast krijgt een link om zijn deel te betalen.",
-    "guestSharesPaidByInvite": "Invitados pagar via invitación enlace"
+    "guestSharesPaidByInvite": "Invitados pagar via invitación enlace",
+    "rescheduleReplacesPreviousBody": "Je oorspronkelijke afspraak wordt vanzelf en gratis geannuleerd zodra de betaling van deze boeking klaar is. Wat je al betaalde wordt hier verrekend, en wat overblijft blijft in je portemonnee.",
+    "rescheduleCreditNote": "Elk bedrag dat je al online voor de oorspronkelijke boeking betaalde, wordt hier verrekend. Je betaalt alleen het verschil.",
+    "rescheduleCreditApplied": "Betaald op je oorspronkelijke boeking",
+    "rescheduleCreditSurplus": "De resterende {{amount}} blijft als tegoed in je portemonnee."
   },
   "payments": {
     "pay": "Pay",
@@ -19469,7 +19503,11 @@
         "pickNextAvailable": "Find suivant disponible heure",
         "splitPayment": "Split paiement",
         "guestSharesPaidByInvite": "Invitados pagar via invitación enlace",
-        "splitPaymentHint": "U betaalt nu uw eigen diensten en de boekingskosten. Elke gast krijgt een link om zijn deel te betalen."
+        "splitPaymentHint": "U betaalt nu uw eigen diensten en de boekingskosten. Elke gast krijgt een link om zijn deel te betalen.",
+        "rescheduleCreditPaid": "Je oorspronkelijke betaling dekt deze boeking.",
+        "rescheduleCreditIntro": "Elk bedrag dat je al online voor de oorspronkelijke boeking betaalde, wordt hier verrekend. Je betaalt alleen het verschil.",
+        "rescheduleCreditApplied": "Betaald op je oorspronkelijke boeking",
+        "rescheduleCreditSurplus": "De resterende {{amount}} blijft als tegoed in je portemonnee."
       },
       "addToWaitlist": {
         "enterName": "Veuillez saisir your nom",
@@ -21125,7 +21163,13 @@
           "cancelled": "Annulé",
           "cantFind": "Can't find your reservation aquí?",
           "visitHelpCenter": "Visit the Centre d’aide"
-        }
+        },
+        "cancelledRefundProcessing": "Boeking geannuleerd. Je terugbetaling wordt verwerkt en komt binnenkort aan.",
+        "refundProcessingTitle": "Terugbetaling wordt verwerkt",
+        "refundProcessingBody": "Deze boeking is geannuleerd. We ronden je terugbetaling af en die verschijnt binnenkort in je portemonnee. Je hoeft niets te doen.",
+        "cancelGroupPreviewTitle": "Dit annuleert de hele groepssessie {{ref}}, inclusief {{count}} gast(en).",
+        "cancelGroupPreviewOtherBookings": "Je andere boekingen in deze groep: {{currency}} {{refund}} terug naar je portemonnee, {{currency}} {{fee}} annuleringskosten.",
+        "cancelGroupPreviewGuestShares": "De eigen deelbetalingen van gasten ({{currency}} {{amount}}) gaan volledig terug naar de kaarten waarmee ze betaalden."
       },
       "payAdditionalCharge": {
         "notFound": "Additional charge introuvable",
@@ -21372,7 +21416,13 @@
           "subtitle": "Elegir a strong contraseña for your cuenta.",
           "atLeastChars": "Au moins {{min}} caractères",
           "strength": "Robustesse : {{label}}",
-          "confirmPlaceholder": "Re-enter your mot de passe"
+          "confirmPlaceholder": "Re-enter your mot de passe",
+          "passwordsMatch": "Wachtwoorden komen overeen",
+          "showPassword": "Show mot de passe",
+          "hidePassword": "Hide mot de passe",
+          "policyHintLettersDigits": "Voeg letters en cijfers toe",
+          "policyHintMixed": "Neem hoofdletters, kleine letters en een cijfer op.",
+          "strengthTip": "langer, met cijfers en symbolen, is sterker"
         }
       },
       "membership": {
@@ -21692,7 +21742,10 @@
         "addressParking": "Aparcamiento:",
         "addressLandmarks": "Landmerk",
         "partiallyRefundedContactProvider": "Deze bestelling is gedeeltelijk terugbetaald. Neem contact op met de aanbieder om het resterende saldo terug te betalen.",
-        "paymentPartiallyRefunded": "Partially reembolsado"
+        "paymentPartiallyRefunded": "Partially reembolsado",
+        "messageProviderFailed": "Kon geen chat openen met deze aanbieder.",
+        "openingMessage": "Chat openen…",
+        "messageProvider": "Bericht aan aanbieder"
       },
       "bookingReceipt": {
         "methodWallet": "Portefeuille",
@@ -22297,7 +22350,9 @@
         "itemCount_one": "{{count}} item · {{date}}",
         "itemCount_other": "{{count}} Artículos · {{date}}",
         "returnStatus": "Retour {{status}}",
-        "tracking": "Suivi : {{number}}"
+        "tracking": "Suivi : {{number}}",
+        "finishPaymentOnDetail": "Open deze bestelling om de betaling online af te ronden.",
+        "paymentDueBadge": "Betaling verschuldigd"
       },
       "waitlist": {
         "loadFailed": "Impossible de load waitlist",
@@ -22316,6 +22371,49 @@
         "statusContacted": "Contacté",
         "statusBooked": "Réservé",
         "statusCancelled": "Annulé"
+      },
+      "safety": {
+        "emergencyNumber": "Alarmnummer: 112",
+        "managed": "Beheerd",
+        "deviceAuthWebNote": "Geldt de volgende keer dat je de Beautonomi-toepassing opent.",
+        "updated": "Instelling bijgewerkt",
+        "updateFailed": "Impossible de mettre à jour setting. Veuillez réessayer.",
+        "loadFailed": "Beveiligingsinstellingen konden niet geladen worden.",
+        "retry": "Retry",
+        "reportValidation": "Vul minstens 2 tekens in voor wie je meldt en minstens 10 tekens over wat er gebeurde.",
+        "unblocked": "Gebruiker gedeblokkeerd",
+        "unblockFailed": "Deze gebruiker kon niet gedeblokkeerd worden.",
+        "blockedLoadFailed": "Geblokkeerde gebruikers konden niet geladen worden.",
+        "blockedOn": "Geblokkeerd op {{date}}",
+        "currentBand": "Huidige band: {{band}}",
+        "noResults": "Geen geblokkeerde gebruikers komen overeen met je zoekopdracht.",
+        "profileCompletionCta": "Terminer profil",
+        "bankRefundCta": "Een bankterugbetaling aanvragen",
+        "bankRefundOpenCta": "Je aanvraag voor bankterugbetaling bekijken",
+        "bankRefundHistory": "Aanvraaggeschiedenis",
+        "bankRefundNote": "Notitie voor het financeteam (optioneel)",
+        "bankRefundMin": "Minimumbedrag: {{amount}}",
+        "bankRefundMax": "Maximum per aanvraag: {{amount}}",
+        "bankRefundSla": "Goedgekeurde terugbetalingen worden gewoonlijk binnen {{days}} werkdagen uitbetaald.",
+        "bankRefundNoAccounts": "Voeg een bankrekening toe voordat je een bankterugbetaling aanvraagt.",
+        "bankRefundStatus": "Status",
+        "bankRefundAmount": "Amount",
+        "bankRefundDate": "Aangevraagd",
+        "bankRefundReceive": "Jij ontvangt",
+        "bankRefundCancelled": "Request annulé",
+        "bankAccountsManage": "Bankrekeningen beheren",
+        "bankAccountsMax": "Je kunt maximaal 3 bankrekeningen opslaan.",
+        "bankAccountSaved": "Bankrekening opgeslagen",
+        "bankAccountRemoved": "Bankrekening verwijderd",
+        "bankAccountPrimary": "Hoofdrekening bijgewerkt",
+        "cancel": "Annuler"
+      },
+      "profileDetailsPage": {
+        "aboutSection": "Over jou",
+        "aboutHint": "Een korte bio die aanbieders zien wanneer je boekt.",
+        "aboutPlaceholder": "Vertel aanbieders iets over jezelf",
+        "noChanges": "Geen wijzigingen om op te slaan",
+        "clearChoice": "Effacer"
       }
     },
     "auth": {
@@ -36362,7 +36460,9 @@
       "cancelConfirm": "Je plek in deze groepsboeking annuleren? Uw diensten worden verwijderd en elke betaling die u heeft gedaan, wordt teruggestort op uw kaart.",
       "cancelled": "Your spot has been annulé.",
       "cancelledRefunded": "Je plek is geannuleerd. Er wordt {{amount}} teruggestort op uw kaart.",
-      "cancelFailed": "Impossible de annuler your spot."
+      "cancelFailed": "Impossible de annuler your spot.",
+      "sessionCancelled": "Deze groepssessie is geannuleerd.",
+      "sessionCancelledPaid": "Deze groepssessie is geannuleerd. Elk bedrag dat je voor jouw deel betaalde, gaat volledig terug naar de gebruikte kaart."
     }
   },
   "errors": {

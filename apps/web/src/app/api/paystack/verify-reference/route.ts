@@ -181,7 +181,7 @@ export async function GET(request: NextRequest) {
       const { data: poBefore, error: poError } = await productOrders
         .from("product_orders")
         .select(
-          "id, tenant_id, provider_id, customer_id, total_amount, wallet_amount, gift_card_amount, payment_status, payment_reference",
+          "id, tenant_id, provider_id, customer_id, total_amount, wallet_amount, gift_card_amount, payment_status, payment_reference, currency, status",
         )
         .eq("id", productOrderId)
         .maybeSingle();
@@ -209,7 +209,43 @@ export async function GET(request: NextRequest) {
       }
 
       const existingReference = order.payment_reference ?? null;
-      if (String(order.payment_status ?? "") !== "pending" && existingReference !== (d.reference ?? reference)) {
+      const paymentStatus = String(order.payment_status ?? "").toLowerCase();
+      if (paymentStatus !== "pending" && existingReference !== (d.reference ?? reference)) {
+        return errorResponse(
+          "This order does not require online payment.",
+          "ORDER_NOT_PAYABLE",
+          400,
+        );
+      }
+
+      const fulfillmentStatus = String((order as { status?: string | null }).status ?? "").toLowerCase();
+      if (
+        fulfillmentStatus === "cancelled" ||
+        fulfillmentStatus === "refunded" ||
+        paymentStatus === "failed"
+      ) {
+        try {
+          const { refundProductOrderUnpayableCharge } = await import(
+            "@/lib/payments/refund-product-order-unpayable-charge"
+          );
+          await refundProductOrderUnpayableCharge(admin, {
+            productOrderId,
+            reference: String(d.reference ?? reference),
+            amountMajor: amountInCurrency,
+            currency: String((order as { currency?: string | null }).currency ?? paystackCurrency).toUpperCase(),
+            tenantId: order.tenant_id ?? null,
+            reason: "Paystack verify on closed product order",
+          });
+        } catch (refundErr) {
+          console.error("[paystack/verify-reference] unpayable product order refund failed", refundErr);
+        }
+        return errorResponse(
+          "This order does not require online payment.",
+          "ORDER_NOT_PAYABLE",
+          400,
+        );
+      }
+      if (fulfillmentStatus !== "pending" && paymentStatus !== "paid") {
         return errorResponse(
           "This order does not require online payment.",
           "ORDER_NOT_PAYABLE",
@@ -257,6 +293,19 @@ export async function GET(request: NextRequest) {
         source: "paystack_verify",
         provider: "paystack",
       });
+
+      if (!payRecord.ok || payRecord.ledgerIncomplete) {
+        return successResponse({
+          verified: false,
+          paystackStatus: txStatus,
+          message: payRecord.ledgerIncomplete
+            ? "Payment received but order ledger is incomplete. Please retry or contact support."
+            : "Payment could not be applied to this order. Please retry or contact support.",
+          code: payRecord.ledgerIncomplete ? "LEDGER_INCOMPLETE" : "PAYMENT_NOT_RECORDED",
+          productOrderId,
+          type: "product_order",
+        });
+      }
 
       const { notifyProductOrderPaidIfTransitioned } = await import(
         "@/lib/notifications/notify-product-order-paid"

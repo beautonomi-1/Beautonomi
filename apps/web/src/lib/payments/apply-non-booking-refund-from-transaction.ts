@@ -166,22 +166,29 @@ export async function applyNonBookingRefundFromTransaction(
         provider_id: providerId,
       });
 
-      const refundedAt = new Date().toISOString();
-      await supabase
-        .from("membership_orders")
-        .update({ status: "refunded", refunded_at: refundedAt, updated_at: refundedAt })
-        .eq("id", String(membershipOrderId));
-
+      let fullyRefunded = !(providerId && userId);
       if (providerId && userId) {
-        await reverseMembershipPayment({
+        const reversal = await reverseMembershipPayment({
           supabase,
           membershipOrderId: String(membershipOrderId),
           providerId,
           userId,
           refundAmountMajor: refundAmountMajor,
-          reference: String(reference),
+          reference: String(params.refundReference || reference),
           tenantIdHint: refundLedgerTenantId,
+          reason,
         });
+        fullyRefunded = reversal.fullyReversed;
+      }
+
+      // membership_orders has no partially_refunded status; a partial refund
+      // leaves the order paid and is visible through the refund ledger rows.
+      if (fullyRefunded) {
+        const refundedAt = new Date().toISOString();
+        await supabase
+          .from("membership_orders")
+          .update({ status: "refunded", refunded_at: refundedAt, updated_at: refundedAt })
+          .eq("id", String(membershipOrderId));
       }
     }
   } else {

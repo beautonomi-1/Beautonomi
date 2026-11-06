@@ -52,7 +52,11 @@ import {
   listAttentionBanners,
   resolveQueueNav,
   shouldAutoScrollThread,
+  shouldShowDetailsInGrid,
   shouldShowOriginalRequest,
+  shouldShowTicketTabs,
+  TICKET_COMPOSER_SLOT_DESKTOP,
+  TICKET_CONVERSATION_PANE_DESKTOP,
   str,
   toDatetimeLocalValue,
   unwrapAdminBookingPayload,
@@ -154,10 +158,14 @@ export function SupportTicketDetailView({
   const [attachGiftCode, setAttachGiftCode] = useState("");
   const [contextAttachSearch, setContextAttachSearch] = useState("");
   const [activeTab, setActiveTab] = useState<"conversation" | "details">("conversation");
+  const [detailsDrawerOpen, setDetailsDrawerOpen] = useState(false);
   const [rootRef, rootWidth] = useElementWidth<HTMLDivElement>();
   const isWide = isWideTicketLayout(rootWidth);
-  const showConversation = isWide || activeTab === "conversation";
-  const showDetails = isWide || activeTab === "details";
+  const showTicketTabs = shouldShowTicketTabs({ isDesktop, containerWidth: rootWidth });
+  const showConversation = isDesktop || isWide || activeTab === "conversation";
+  const showDetailsInGrid = shouldShowDetailsInGrid(isDesktop, rootWidth);
+  const showDetails = showDetailsInGrid || (!isDesktop && activeTab === "details");
+  const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const detailQ = useQuery({
     queryKey: adminQueryKeys.supportTicketDetail(id),
@@ -276,8 +284,26 @@ export function SupportTicketDetailView({
     setRefundReasonPreset("");
     setRefundReasonOther("");
     setActiveTab("conversation");
+    setDetailsDrawerOpen(false);
     seenStampedRef.current = null;
   }, [id]);
+
+  useEffect(() => {
+    if (!isDesktop) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && detailsDrawerOpen) {
+        setDetailsDrawerOpen(false);
+        return;
+      }
+      if (e.key !== "r" && e.key !== "R") return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest("input, textarea, select, [contenteditable=true]")) return;
+      e.preventDefault();
+      composerTextareaRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isDesktop, detailsDrawerOpen]);
 
   const attachContextMut = useMutation({
     mutationFn: async (pick?: { kind: string; id: string }) => {
@@ -811,7 +837,9 @@ export function SupportTicketDetailView({
     failedPublicSend: hasFailedPublicEmailSend(threadMessages),
   });
   const showOriginal = shouldShowOriginalRequest(str(ticket.description), threadMessages, customerUserId);
-  const originalRequestText = showOriginal ? str(ticket.description).trim() : null;
+  // Always show the ticket description when there are no messages/notes yet, so support has context.
+  const originalRequestText =
+    threadItems.length === 0 ? str(ticket.description).trim() || null : showOriginal ? str(ticket.description).trim() : null;
 
   const contextRecords = contextRecordsQ.data?.length
     ? contextRecordsQ.data
@@ -822,14 +850,115 @@ export function SupportTicketDetailView({
   const rootStyle =
     lockPageHeight && heightPx != null ? ({ height: `${heightPx}px` } as const) : undefined;
 
-  const conversationGridRows =
-    isPanel || (isDesktop && !isPanel)
-      ? "grid-rows-[minmax(0,1fr)_auto]"
-      : "grid-rows-[auto_auto]";
+  const desktopConversationPane = isPanel || isDesktop;
+  const conversationPaneLayout = desktopConversationPane
+    ? TICKET_CONVERSATION_PANE_DESKTOP
+    : "grid grid-rows-[auto_auto]";
+
+  const emailThreadNote =
+    ticket.channel === "email" ? (
+      <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-950">
+        Email from {ticket.requester_email || ticket.user?.email || "unknown sender"} to{" "}
+        {ticket.mailbox?.address || "support mailbox"}
+        {ticket.tenant?.name ? (
+          <>
+            , {ticket.tenant.name}
+            {ticket.tenant.region_code ? ` (${ticket.tenant.region_code})` : ""}
+          </>
+        ) : null}
+        . Public replies send from {ticket.mailbox?.address || "the mailbox"}.
+        {ticket.mailbox?.outbound_enabled === false ? (
+          <span className="mt-1 block font-medium text-amber-900">Outbound email is off for this mailbox.</span>
+        ) : null}
+      </p>
+    ) : null;
+
+  const desktopThreadTop = isDesktop ? (
+    <>
+      {emailThreadNote}
+      <AgentAssistPanel
+        targetType="support_ticket"
+        targetId={id}
+        actionTypes={["support.reply", "support.assign", "support.resolve"]}
+        entityLabel={`#${str(ticket.ticket_number)}`}
+        shadowMode={shadowMode}
+        hideWhenEmpty
+        collapsible
+        inlineInThread
+        onInsertDraft={(text) => {
+          setReply((prev) => (prev.trim() ? `${prev.trim()}\n\n${text}` : text));
+          requestAnimationFrame(() => composerTextareaRef.current?.focus());
+        }}
+        emptyTitle="No AI draft for this ticket"
+        emptyDescription="When Support Triage drafts a reply, it will appear here for your approval."
+      />
+    </>
+  ) : null;
 
   const fullPageState = effectiveQueueTicketIds?.length
     ? { queueTicketIds: effectiveQueueTicketIds }
     : undefined;
+
+  const ticketSidebarNode = (
+    <TicketSidebar
+      ticket={ticket}
+      assignees={assignees}
+      assignedId={assignedId}
+      assigneeInList={Boolean(assigneeInList)}
+      tagsInput={tagsInput}
+      setTagsInput={setTagsInput}
+      slaDueInput={slaDueInput}
+      setSlaDueInput={setSlaDueInput}
+      patchPending={patchTicket.isPending}
+      assigneesLoading={assigneesQ.isLoading}
+      onPatch={(body) => void patchTicket.mutateAsync(body)}
+      onTagsBlur={() => {
+        const next = tagsInput
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const prev = ((ticket.tags as string[] | null | undefined) ?? [])
+          .map((t) => String(t))
+          .sort()
+          .join("|");
+        const n = [...next].sort().join("|");
+        if (prev !== n) void patchTicket.mutateAsync({ tags: next });
+      }}
+      onSlaBlur={() => {
+        const nextIso = datetimeLocalToIso(slaDueInput);
+        const prevIso = ticket.sla_resolution_due_at ? String(ticket.sla_resolution_due_at) : null;
+        if (nextIso === prevIso || (!nextIso && !prevIso)) return;
+        void patchTicket.mutateAsync({ sla_resolution_due_at: nextIso });
+      }}
+      viewerRole={viewerRole}
+      canProviderOps={canProviderOps}
+      canUsersTrust={canUsersTrust}
+      contextFacts={contextQ.data?.facts}
+      contextRecords={contextRecords}
+      contextAttachSearch={contextAttachSearch}
+      setContextAttachSearch={setContextAttachSearch}
+      contextRecordsFetching={contextRecordsQ.isFetching}
+      attachBookingNumber={attachBookingNumber}
+      setAttachBookingNumber={setAttachBookingNumber}
+      attachOrderNumber={attachOrderNumber}
+      setAttachOrderNumber={setAttachOrderNumber}
+      attachGiftCode={attachGiftCode}
+      setAttachGiftCode={setAttachGiftCode}
+      attachContextPending={attachContextMut.isPending}
+      onAttachPick={(pick) => attachContextMut.mutate(pick)}
+      onAttachManual={() => attachContextMut.mutate(undefined)}
+      bookingContextId={bookingContextId}
+      contextBooking={contextBooking ?? null}
+      showRefundAction={Boolean(showRefundAction)}
+      onCancelBooking={() => setShowCancelBooking(true)}
+      onRefundBooking={() => {
+        setRefundAmount(availableRefund);
+        setRefundReasonPreset("");
+        setRefundReasonOther("");
+        setShowRefundBooking(true);
+      }}
+    />
+  );
 
   return (
     <div
@@ -860,6 +989,11 @@ export function SupportTicketDetailView({
         fullPageHref={ticketDetailUrl(id)}
         fullPageState={fullPageState}
         compactActions={isPanel && !isWide}
+        useDesktopLayout={isDesktop}
+        attentionBanners={isDesktop ? attentionBanners : []}
+        showDetailsButton={isDesktop && !showDetailsInGrid}
+        detailsNeedsAttention={detailsAlert}
+        onOpenDetails={() => setDetailsDrawerOpen(true)}
         onNextInQueue={handleNextInQueue}
         onRefresh={() => void detailQ.refetch()}
         onAssignToMe={() => void patchTicket.mutateAsync({ assigned_to: myStaffUserId })}
@@ -876,57 +1010,50 @@ export function SupportTicketDetailView({
         </p>
       ) : null}
 
-      <div className="admin-scrollbar max-h-32 shrink-0 space-y-2 overflow-y-auto">
-        <TicketAttentionBanner banners={attentionBanners} />
-        {ticket.channel === "email" ? (
-          <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 text-xs text-sky-950 sm:text-sm">
-            Email from {ticket.requester_email || ticket.user?.email || "unknown sender"} to{" "}
-            {ticket.mailbox?.address || "support mailbox"}
-            {ticket.tenant?.name ? (
-              <>
-                , {ticket.tenant.name}
-                {ticket.tenant.region_code ? ` (${ticket.tenant.region_code})` : ""}
-              </>
-            ) : null}
-            . Public replies send from {ticket.mailbox?.address || "the mailbox"}.
-            {ticket.mailbox?.outbound_enabled === false ? (
-              <span className="mt-1 block font-medium text-amber-900">Outbound email is off for this mailbox.</span>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-
-      <AgentAssistPanel
-        targetType="support_ticket"
-        targetId={id}
-        actionTypes={["support.reply", "support.assign", "support.resolve"]}
-        entityLabel={`#${str(ticket.ticket_number)}`}
-        shadowMode={shadowMode}
-        hideWhenEmpty
-        collapsible
-        emptyTitle="No AI draft for this ticket"
-        emptyDescription="When Support Triage drafts a reply, it will appear here for your approval."
-      />
-
-      {patchError ? (
-        <p className="shrink-0 text-sm text-red-700" role="alert">
-          {patchError}
-        </p>
+      {!isDesktop ? (
+        <div className="admin-scrollbar max-h-32 shrink-0 space-y-2 overflow-y-auto">
+          <TicketAttentionBanner banners={attentionBanners} />
+          {ticket.channel === "email" ? (
+            <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 text-xs text-sky-950 sm:text-sm">
+              Email from {ticket.requester_email || ticket.user?.email || "unknown sender"} to{" "}
+              {ticket.mailbox?.address || "support mailbox"}
+              {ticket.tenant?.name ? (
+                <>
+                  , {ticket.tenant.name}
+                  {ticket.tenant.region_code ? ` (${ticket.tenant.region_code})` : ""}
+                </>
+              ) : null}
+              . Public replies send from {ticket.mailbox?.address || "the mailbox"}.
+              {ticket.mailbox?.outbound_enabled === false ? (
+                <span className="mt-1 block font-medium text-amber-900">Outbound email is off for this mailbox.</span>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       ) : null}
-      <AdminMutationAlert
-        errors={[
-          sendMessage.error instanceof Error ? sendMessage.error : null,
-          cancelBookingMut.error instanceof Error ? cancelBookingMut.error : null,
-          refundBookingMut.error instanceof Error ? refundBookingMut.error : null,
-        ]}
-      />
 
-      {!isWide ? (
+      {!isDesktop ? (
+        <AgentAssistPanel
+          targetType="support_ticket"
+          targetId={id}
+          actionTypes={["support.reply", "support.assign", "support.resolve"]}
+          entityLabel={`#${str(ticket.ticket_number)}`}
+          shadowMode={shadowMode}
+          hideWhenEmpty
+          collapsible
+          emptyTitle="No AI draft for this ticket"
+          emptyDescription="When Support Triage drafts a reply, it will appear here for your approval."
+        />
+      ) : null}
+
+      {!isDesktop && showTicketTabs ? (
         <div
           role="tablist"
           aria-label="Ticket workspace"
           className={`flex shrink-0 gap-1 rounded-xl bg-gray-100 p-1 text-sm font-medium ${
-            !isPanel && !isDesktop ? "sticky top-0 z-20 bg-gray-100/95 backdrop-blur-sm" : ""
+            !isPanel && !isDesktop
+              ? "sticky top-[var(--admin-header-height,3.5rem)] z-20 bg-gray-100/95 backdrop-blur-sm"
+              : ""
           }`}
         >
           {(
@@ -960,17 +1087,26 @@ export function SupportTicketDetailView({
       ) : null}
 
       <div
-        className={`grid min-h-0 flex-1 gap-4 overflow-hidden grid-rows-[minmax(0,1fr)] ${
-          isWide ? "grid-cols-[minmax(0,1fr)_20rem]" : ""
+        className={`grid gap-4 ${
+          desktopConversationPane
+            ? `min-h-0 flex-1 overflow-hidden grid-rows-[minmax(0,1fr)] ${
+                isWide ? "grid-cols-[minmax(0,1fr)_20rem]" : ""
+              }`
+            : isWide
+              ? "grid-cols-[minmax(0,1fr)_20rem]"
+              : ""
         }`}
       >
         <section
           id="ticket-conversation"
           role="tabpanel"
-          aria-labelledby="ticket-tab-conversation"
+          aria-labelledby={showTicketTabs ? "ticket-tab-conversation" : undefined}
           hidden={!showConversation}
-          className={`${showConversation ? "grid" : "hidden"} min-h-0 min-w-0 ${conversationGridRows} overflow-hidden rounded-2xl border border-gray-200 bg-white p-3 shadow-sm ring-1 ring-gray-950/[0.03]`}
+          className={`${showConversation ? conversationPaneLayout : "hidden"} min-w-0 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm ring-1 ring-gray-950/[0.03] ${
+            desktopConversationPane ? "min-h-0 flex-1 overflow-hidden" : ""
+          }`}
         >
+          <div className={desktopConversationPane ? "flex min-h-0 flex-1 flex-col overflow-hidden" : undefined}>
           <TicketThread
             threadRef={threadRef}
             threadItems={threadItems}
@@ -979,96 +1115,90 @@ export function SupportTicketDetailView({
             originalRequestText={originalRequestText}
             ticketCreatedAt={ticket.created_at ? str(ticket.created_at) : undefined}
             scrollMode={threadScrollMode}
+            threadTop={desktopThreadTop}
           />
-          <TicketComposer
-            ticket={ticket}
-            ticketId={id}
-            reply={reply}
-            setReply={setReply}
-            replyInternal={replyInternal}
-            setReplyInternal={setReplyInternal}
-            replyAttachments={replyAttachments}
-            setReplyAttachments={setReplyAttachments}
-            replyAudience={replyAudience}
-            onInsertArticle={insertArticleLink}
-            onSend={handleSendReply}
-            sendPending={sendMessage.isPending}
-            patchPending={patchTicket.isPending}
-            uploading={uploading}
-            uploadErr={uploadErr}
-            onPickFiles={onPickFiles}
-            fileRef={fileRef}
-            layout={isPanel ? "panel" : isDesktop ? "page" : "page-mobile"}
+          </div>
+          {patchError ? (
+            <p className="mb-1 shrink-0 text-sm text-red-700" role="alert">
+              {patchError}
+            </p>
+          ) : null}
+          <AdminMutationAlert
+            errors={[
+              sendMessage.error instanceof Error ? sendMessage.error : null,
+              cancelBookingMut.error instanceof Error ? cancelBookingMut.error : null,
+              refundBookingMut.error instanceof Error ? refundBookingMut.error : null,
+            ]}
           />
+          <div className={desktopConversationPane ? TICKET_COMPOSER_SLOT_DESKTOP : undefined}>
+            <TicketComposer
+              ticket={ticket}
+              ticketId={id}
+              reply={reply}
+              setReply={setReply}
+              replyInternal={replyInternal}
+              setReplyInternal={setReplyInternal}
+              replyAttachments={replyAttachments}
+              setReplyAttachments={setReplyAttachments}
+              replyAudience={replyAudience}
+              onInsertArticle={insertArticleLink}
+              onSend={handleSendReply}
+              sendPending={sendMessage.isPending}
+              patchPending={patchTicket.isPending}
+              uploading={uploading}
+              uploadErr={uploadErr}
+              onPickFiles={onPickFiles}
+              fileRef={fileRef}
+              layout={isPanel ? "panel" : isDesktop ? "page" : "page-mobile"}
+              textareaRef={composerTextareaRef}
+            />
+          </div>
         </section>
 
         <div
           id="ticket-details"
           role="tabpanel"
-          aria-labelledby="ticket-tab-details"
+          aria-labelledby={showTicketTabs ? "ticket-tab-details" : undefined}
           hidden={!showDetails}
-          className={showDetails ? "admin-scrollbar min-h-0 min-w-0 overflow-y-auto" : "hidden"}
+          className={
+            showDetails
+              ? desktopConversationPane
+                ? "admin-scrollbar h-full min-h-0 min-w-0 overflow-y-auto"
+                : "min-w-0"
+              : "hidden"
+          }
         >
-        <TicketSidebar
-          ticket={ticket}
-          assignees={assignees}
-          assignedId={assignedId}
-          assigneeInList={Boolean(assigneeInList)}
-          tagsInput={tagsInput}
-          setTagsInput={setTagsInput}
-          slaDueInput={slaDueInput}
-          setSlaDueInput={setSlaDueInput}
-          patchPending={patchTicket.isPending}
-          assigneesLoading={assigneesQ.isLoading}
-          onPatch={(body) => void patchTicket.mutateAsync(body)}
-          onTagsBlur={() => {
-            const next = tagsInput
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean);
-            const prev = ((ticket.tags as string[] | null | undefined) ?? [])
-              .map((t) => String(t))
-              .sort()
-              .join("|");
-            const n = [...next].sort().join("|");
-            if (prev !== n) void patchTicket.mutateAsync({ tags: next });
-          }}
-          onSlaBlur={() => {
-            const nextIso = datetimeLocalToIso(slaDueInput);
-            const prevIso = ticket.sla_resolution_due_at ? String(ticket.sla_resolution_due_at) : null;
-            if (nextIso === prevIso || (!nextIso && !prevIso)) return;
-            void patchTicket.mutateAsync({ sla_resolution_due_at: nextIso });
-          }}
-          viewerRole={viewerRole}
-          canProviderOps={canProviderOps}
-          canUsersTrust={canUsersTrust}
-          contextFacts={contextQ.data?.facts}
-          contextRecords={contextRecords}
-          contextAttachSearch={contextAttachSearch}
-          setContextAttachSearch={setContextAttachSearch}
-          contextRecordsFetching={contextRecordsQ.isFetching}
-          attachBookingNumber={attachBookingNumber}
-          setAttachBookingNumber={setAttachBookingNumber}
-          attachOrderNumber={attachOrderNumber}
-          setAttachOrderNumber={setAttachOrderNumber}
-          attachGiftCode={attachGiftCode}
-          setAttachGiftCode={setAttachGiftCode}
-          attachContextPending={attachContextMut.isPending}
-          onAttachPick={(pick) => attachContextMut.mutate(pick)}
-          onAttachManual={() => attachContextMut.mutate(undefined)}
-          bookingContextId={bookingContextId}
-          contextBooking={contextBooking ?? null}
-          showRefundAction={Boolean(showRefundAction)}
-          onCancelBooking={() => setShowCancelBooking(true)}
-          onRefundBooking={() => {
-            setRefundAmount(availableRefund);
-            setRefundReasonPreset("");
-            setRefundReasonOther("");
-            setShowRefundBooking(true);
-          }}
-        />
+        {ticketSidebarNode}
         </div>
       </div>
+
+      {detailsDrawerOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex justify-end bg-black/30"
+          role="presentation"
+          onClick={() => setDetailsDrawerOpen(false)}
+        >
+          <aside
+            className="admin-scrollbar flex h-full w-[min(100%,24rem)] flex-col overflow-y-auto bg-white p-4 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Details and actions"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-gray-900">Details & actions</h2>
+              <button
+                type="button"
+                className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50"
+                onClick={() => setDetailsDrawerOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            {ticketSidebarNode}
+          </aside>
+        </div>
+      ) : null}
 
       <AdminModal
         open={showCancelBooking}

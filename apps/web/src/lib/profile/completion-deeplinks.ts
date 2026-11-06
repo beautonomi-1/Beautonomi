@@ -6,37 +6,46 @@
  */
 
 const ACCOUNT = "/account-settings";
-const CREATE_PROFILE = "/profile/create-profile";
+/** Profile sections (and the `focus` reader) are mounted only on this page, not on the hub. */
+const PERSONAL_INFO = `${ACCOUNT}/personal-info`;
+const PROFILE_DETAILS = `${ACCOUNT}/profile-details`;
 
 export function getCompletionHref(itemId: string): string {
   switch (itemId) {
     case "photo":
-      return `${ACCOUNT}#photo`;
+      return `${PERSONAL_INFO}#photo`;
     case "email":
-      return `${ACCOUNT}?focus=email#personal-info-section`;
+      return `${PERSONAL_INFO}?focus=email#personal-info-section`;
     case "preferred_name":
-      return `${ACCOUNT}?focus=preferredName#personal-info-section`;
+      return `${PERSONAL_INFO}?focus=preferredName#personal-info-section`;
     case "date_of_birth":
-      return `${ACCOUNT}/personal-info#date-of-birth-section`;
+      return `${ACCOUNT}/age-assurance`;
     case "bio":
-      return `${CREATE_PROFILE}?highlight=bio`;
+      return `${PROFILE_DETAILS}#about`;
     case "identity":
-      return `${ACCOUNT}?focus=identity#personal-info-section`;
+      return `${PERSONAL_INFO}?focus=identity#personal-info-section`;
     case "phone":
-      return `${ACCOUNT}?focus=phone#personal-info-section`;
+      return `${PERSONAL_INFO}?focus=phone#personal-info-section`;
     case "address":
-      return `${ACCOUNT}?focus=address#personal-info-section`;
+      return `${PERSONAL_INFO}?focus=address#personal-info-section`;
     case "emergency_contact":
-      return `${ACCOUNT}?focus=emergencyContact#personal-info-section`;
+      return `${PERSONAL_INFO}?focus=emergencyContact#personal-info-section`;
     case "profile_questions":
-      return `${CREATE_PROFILE}?highlight=questions`;
+      return `${PROFILE_DETAILS}#profile-questions`;
     case "interests":
-      return `${CREATE_PROFILE}?highlight=interests`;
+      return `${PROFILE_DETAILS}#interests`;
     case "beauty_preferences":
-      return `${ACCOUNT}?section=beauty_preferences#beauty-preferences-section`;
+      return `${PROFILE_DETAILS}#beauty-preferences`;
     default:
       return ACCOUNT;
   }
+}
+
+/** Hub banner target: the first required checklist item that is still incomplete. */
+export function firstIncompleteRequiredItemId(
+  items: { id: string; completed: boolean; required: boolean }[] | null | undefined,
+): string | null {
+  return items?.find((item) => item.required && !item.completed)?.id ?? null;
 }
 
 /** Valid `?focus=` values for PersonalInfoCard edit modals */

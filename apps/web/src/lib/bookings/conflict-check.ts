@@ -309,7 +309,9 @@ export async function lockBookingServices(
   staffId: string,
   startAt: Date,
   endAt: Date,
-  bufferMinutes: number = 15
+  bufferMinutes: number = 15,
+  /** Booking being rescheduled: it stays active until the replacement is paid. */
+  excludeBookingId?: string | null
 ): Promise<{ hasConflict: boolean; conflictingBookings?: any[]; lockKey?: number }> {
   const effectiveEndAt = new Date(endAt.getTime() + bufferMinutes * 60000);
 
@@ -347,11 +349,15 @@ export async function lockBookingServices(
     return await checkBookingConflict(supabase, staffId, startAt, endAt, bufferMinutes);
   }
 
+  const conflictingRows = ((lockedRows ?? []) as Array<{ booking_id?: string }>).filter(
+    (row) => !excludeBookingId || row.booking_id !== excludeBookingId,
+  );
+
   // If rows were returned, there's a conflict
-  if (lockedRows && lockedRows.length > 0) {
+  if (conflictingRows.length > 0) {
     return {
       hasConflict: true,
-      conflictingBookings: lockedRows,
+      conflictingBookings: conflictingRows,
       lockKey: lockKey,
     };
   }

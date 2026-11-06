@@ -8,6 +8,7 @@ const mockGetSupabaseAdmin = vi.fn();
 const mockResolveTenantIdWithZaFallback = vi.fn();
 const mockGetPaystackSecretKey = vi.fn();
 const mockRecordProductOrderPayment = vi.fn();
+const mockRefundUnpayable = vi.fn(async () => undefined);
 let adminOrderRow: Record<string, unknown> | null = null;
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
@@ -56,6 +57,10 @@ vi.mock("@/lib/money/tenant-intl-format", () => ({
 
 vi.mock("@/lib/orders/record-product-order-payment", () => ({
   recordProductOrderPayment: (...args: unknown[]) => mockRecordProductOrderPayment(...args),
+}));
+
+vi.mock("@/lib/payments/refund-product-order-unpayable-charge", () => ({
+  refundProductOrderUnpayableCharge: (...args: unknown[]) => mockRefundUnpayable(...args),
 }));
 
 vi.mock("@/app/api/payments/webhook/_handlers/charge-success", () => ({
@@ -144,6 +149,7 @@ describe("GET /api/paystack/verify-reference product orders", () => {
       total_amount: 120,
       wallet_amount: 20,
       payment_status: "pending",
+      status: "pending",
       payment_reference: null,
       order_number: "BO-1",
     };
@@ -183,6 +189,7 @@ describe("GET /api/paystack/verify-reference product orders", () => {
       total_amount: 100,
       wallet_amount: 0,
       payment_status: "pending",
+      status: "pending",
       payment_reference: null,
     };
     mockGetSupabaseServer.mockResolvedValue(mockSupabase(row));
@@ -208,6 +215,7 @@ describe("GET /api/paystack/verify-reference product orders", () => {
       total_amount: 100,
       wallet_amount: 0,
       payment_status: "pending",
+      status: "pending",
       payment_reference: null,
       order_number: "BO-1",
     };
@@ -222,5 +230,64 @@ describe("GET /api/paystack/verify-reference product orders", () => {
     expect(res.status).toBe(200);
     expect(body?.data?.verified).toBe(true);
     expect(mockRecordProductOrderPayment).toHaveBeenCalledTimes(1);
+  });
+
+  it("refunds and does not record a self-cancelled order", async () => {
+    const orderRow = {
+      id: "order-1",
+      tenant_id: "tenant-za",
+      provider_id: "provider-1",
+      customer_id: "customer-1",
+      total_amount: 100,
+      wallet_amount: 0,
+      payment_status: "pending",
+      status: "cancelled",
+      payment_reference: null,
+      currency: "ZAR",
+    };
+    mockGetSupabaseServer.mockResolvedValue(mockSupabase(orderRow));
+    adminOrderRow = orderRow;
+    mockGetSupabaseAdmin.mockReturnValue(adminSupabase());
+
+    const { GET } = await import("../route");
+    const res = await GET(new NextRequest("http://localhost/api/paystack/verify-reference?reference=ref-1"));
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body?.error?.code).toBe("ORDER_NOT_PAYABLE");
+    expect(mockRecordProductOrderPayment).not.toHaveBeenCalled();
+    expect(mockRefundUnpayable).toHaveBeenCalled();
+  });
+
+  it("still verifies a repeat of an already paid order", async () => {
+    mockRecordProductOrderPayment.mockResolvedValue({
+      ok: true,
+      duplicate: true,
+      transitionedToPaid: false,
+    });
+    const orderRow = {
+      id: "order-1",
+      tenant_id: "tenant-za",
+      provider_id: "provider-1",
+      customer_id: "customer-1",
+      total_amount: 100,
+      wallet_amount: 0,
+      payment_status: "paid",
+      status: "confirmed",
+      payment_reference: "ref-1",
+      currency: "ZAR",
+    };
+    mockGetSupabaseServer.mockResolvedValue(mockSupabase(orderRow));
+    adminOrderRow = orderRow;
+    mockGetSupabaseAdmin.mockReturnValue(adminSupabase());
+
+    const { GET } = await import("../route");
+    const res = await GET(new NextRequest("http://localhost/api/paystack/verify-reference?reference=ref-1"));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body?.data?.verified).toBe(true);
+    expect(mockRecordProductOrderPayment).toHaveBeenCalledTimes(1);
+    expect(mockRefundUnpayable).not.toHaveBeenCalled();
   });
 });

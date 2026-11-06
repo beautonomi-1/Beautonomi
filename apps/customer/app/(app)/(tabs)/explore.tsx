@@ -46,11 +46,10 @@ import {
   type ExploreShareAction,
 } from "@/lib/share-explore-post";
 import {
-  explorePostGridImageUrl,
-  firstSlideIsVideo,
   getExplorePostAspect,
   shouldOpenExploreVideoFeed,
 } from "@/lib/explore-media";
+import { ExplorePostGridMedia } from "@/components/explore/ExplorePostGridMedia";
 
 const GAP = 10;
 
@@ -88,8 +87,6 @@ const PinCard = React.memo(function PinCard({
   onMore?: (post: ExplorePost) => void;
 }) {
   const { t } = useTranslation();
-  const img = explorePostGridImageUrl(post) || "https://placehold.co/400x500/f5f5f5/999?text=Beauty";
-  const isVideo = firstSlideIsVideo(post.media_urls, post.media_meta);
   const aspect = getExplorePostAspect(post);
   const imgHeight = cardWidth * aspect;
   const providerInitial = (post.provider?.business_name || "B").charAt(0).toUpperCase();
@@ -173,31 +170,7 @@ const PinCard = React.memo(function PinCard({
         >
           {/* Image */}
           <View style={{ width: cardWidth, height: imgHeight }}>
-            <Image
-              source={{ uri: img }}
-              style={{ width: cardWidth, height: imgHeight }}
-              contentFit="cover"
-              cachePolicy="memory-disk"
-              transition={200}
-            />
-
-            {isVideo ? (
-              <View
-                style={{
-                  position: "absolute",
-                  top: 8,
-                  left: 8,
-                  width: 28,
-                  height: 28,
-                  borderRadius: 14,
-                  backgroundColor: "rgba(0,0,0,0.45)",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Ionicons name="play" size={14} color="#fff" />
-              </View>
-            ) : null}
+            <ExplorePostGridMedia post={post} width={cardWidth} height={imgHeight} />
 
             {/* Double-tap heart animation */}
             <Animated.View
@@ -898,6 +871,9 @@ export default function ExploreScreen() {
       videoParams.lat = String(f.lat);
       videoParams.lng = String(f.lng);
     }
+    if (f.category && f.category !== "all") videoParams.feedCategory = f.category;
+    if (f.search?.trim()) videoParams.feedSearch = f.search.trim();
+    if (f.tags?.length) videoParams.feedTags = f.tags.join(",");
     if (shouldOpenExploreVideoFeed(post.media_urls, post.media_meta)) {
       router.push({ pathname: "/(app)/explore-video", params: videoParams });
       return;

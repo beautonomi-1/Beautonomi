@@ -5,6 +5,12 @@
 
 import type { ApiResponse } from "@beautonomi/types";
 
+export type SecurityChallengePayload = {
+  code: string;
+  message: string;
+  details?: unknown;
+};
+
 export interface RequestOptions extends Omit<RequestInit, "body"> {
   body?: Record<string, unknown> | FormData | object;
   baseUrl?: string;
@@ -12,6 +18,23 @@ export interface RequestOptions extends Omit<RequestInit, "body"> {
   getAccessToken?: () => Promise<string | null>;
   /** Request timeout in ms (default: 30000) */
   timeout?: number;
+  /** When set, 403 security challenges may prompt UI and retry once. */
+  onSecurityChallenge?: (challenge: SecurityChallengePayload) => Promise<boolean>;
+}
+
+const SECURITY_CHALLENGE_RETRY_CODES = new Set([
+  "STEP_UP_REQUIRED",
+  "PROVIDER_MFA_REQUIRED",
+  "DEVICE_VERIFICATION_REQUIRED",
+]);
+
+function isRetriableSecurityChallenge(error: {
+  status?: number;
+  code?: string;
+} | null): boolean {
+  if (!error || error.status !== 403) return false;
+  const code = error.code;
+  return typeof code === "string" && SECURITY_CHALLENGE_RETRY_CODES.has(code);
 }
 
 /** Per-request options for GET/POST/PUT/PATCH/DELETE (includes `timeout` — not in `RequestInit`). */
@@ -343,6 +366,10 @@ export interface ApiClientConfig {
    * `path` is the request path (e.g. `/api/provider/profile`).
    */
   getDefaultHeaders?: (ctx: { path: string; method: string }) => Record<string, string>;
+  /** Optional UI hook for 403 STEP_UP / MFA / device verification; enables one retry. */
+  onSecurityChallenge?: (challenge: SecurityChallengePayload) => Promise<boolean>;
+  /** Merged on each request after sync default headers (e.g. X-Device-Key). */
+  getAsyncHeaders?: () => Promise<Record<string, string>>;
 }
 
 /**
@@ -350,25 +377,53 @@ export interface ApiClientConfig {
  * Use in Expo apps to call apps/web APIs with Bearer token.
  */
 export function createApiClient(config: ApiClientConfig) {
-  const { baseUrl, getBaseUrl, getAccessToken, headers: defaultHeaders, getDefaultHeaders } = config;
+  const {
+    baseUrl,
+    getBaseUrl,
+    getAccessToken,
+    headers: defaultHeaders,
+    getDefaultHeaders,
+    onSecurityChallenge: configOnSecurityChallenge,
+    getAsyncHeaders,
+  } = config;
 
-  const request = <T>(
+  const request = async <T>(
     path: string,
-    options: Omit<RequestOptions, "baseUrl" | "getAccessToken"> = {}
-  ) => {
+    options: Omit<RequestOptions, "baseUrl" | "getAccessToken"> = {},
+    securityRetried = false,
+  ): Promise<ApiResponse<T>> => {
     const method = String(options.method ?? "GET").toUpperCase();
     const dynamic = getDefaultHeaders?.({ path, method }) ?? {};
+    const asyncHeaders = (await getAsyncHeaders?.()) ?? {};
     const resolvedBase = getBaseUrl ? getBaseUrl() : baseUrl;
-    return apiFetch<T>(path, {
+    const onSecurityChallenge = options.onSecurityChallenge ?? configOnSecurityChallenge;
+    const res = await apiFetch<T>(path, {
       ...options,
       baseUrl: resolvedBase,
       getAccessToken,
       headers: {
         ...defaultHeaders,
         ...dynamic,
+        ...asyncHeaders,
         ...(options.headers as Record<string, string>),
       },
     });
+    if (
+      !securityRetried &&
+      onSecurityChallenge &&
+      res.error &&
+      isRetriableSecurityChallenge(res.error)
+    ) {
+      const ok = await onSecurityChallenge({
+        code: res.error.code ?? "",
+        message: res.error.message,
+        details: res.error.details,
+      });
+      if (ok) {
+        return request(path, options, true);
+      }
+    }
+    return res;
   };
 
   return {

@@ -990,8 +990,12 @@ export default function ProductCheckoutScreen() {
         pc("orderCreatedPayFailedBody", { orderNumber: String(order.order_number) }),
         [
           {
-            text: pc("viewOrdersCta"),
-            onPress: () => router.replace("/(app)/product-orders" as any),
+            text: pc("viewOrderCta", undefined, "View order"),
+            onPress: () =>
+              router.replace({
+                pathname: "/(app)/product-order-detail",
+                params: { id: order.id },
+              } as never),
           },
         ]
       );
@@ -1008,6 +1012,20 @@ export default function ProductCheckoutScreen() {
     } else {
       if (!paystackReturnPath) {
         setProcessingPayment(false);
+        Alert.alert(
+          pc("orderCreatedPayFailedTitle"),
+          pc("orderCreatedPayFailedBody", { orderNumber: String(order.order_number) }),
+          [
+            {
+              text: pc("viewOrderCta", undefined, "View order"),
+              onPress: () =>
+                router.replace({
+                  pathname: "/(app)/product-order-detail",
+                  params: { id: order.id },
+                } as never),
+            },
+          ],
+        );
         return;
       }
       // Important: close the blocking overlay before opening Paystack WebView.
@@ -1051,8 +1069,12 @@ export default function ProductCheckoutScreen() {
           ),
           [
             {
-              text: pc("viewOrdersCta"),
-              onPress: () => router.replace("/(app)/product-orders" as any),
+              text: pc("viewOrderCta", undefined, "View order"),
+              onPress: () =>
+                router.replace({
+                  pathname: "/(app)/product-order-detail",
+                  params: { id: order.id },
+                } as never),
             },
             { text: pc("notNow", undefined, "Not now"), style: "cancel" },
           ],
@@ -1077,8 +1099,12 @@ export default function ProductCheckoutScreen() {
             ),
             [
               {
-                text: pc("viewOrdersCta"),
-                onPress: () => router.replace("/(app)/product-orders" as any),
+                text: pc("viewOrderCta", undefined, "View order"),
+                onPress: () =>
+                  router.replace({
+                    pathname: "/(app)/product-order-detail",
+                    params: { id: order.id },
+                  } as never),
               },
               { text: pc("notNow", undefined, "Not now"), style: "cancel" },
             ],
@@ -1095,6 +1121,17 @@ export default function ProductCheckoutScreen() {
               { orderNumber: String(order.order_number) },
               `No card charge was completed. Order #${order.order_number} is still pending — complete payment from My Orders.`,
             ),
+            [
+              {
+                text: pc("viewOrderCta", undefined, "View order"),
+                onPress: () =>
+                  router.replace({
+                    pathname: "/(app)/product-order-detail",
+                    params: { id: order.id },
+                  } as never),
+              },
+              { text: pc("notNow", undefined, "Not now"), style: "cancel" },
+            ],
           );
           return;
         }

@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Dialog,
   DialogContent,
@@ -63,6 +63,10 @@ import {
 } from "@/lib/supabase/auth-sms-otp";
 import type { UserRole } from "@/types/beautonomi";
 import { resolvePostLoginPathnameFromRole } from "@/lib/auth/post-login-return-path";
+import {
+  buildForgotPasswordHref,
+  resolveForgotPasswordNextFromModal,
+} from "@/lib/auth/forgot-password-href";
 import { getSocialAuthConfig } from "@/lib/social-auth-config";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { DEFAULT_PUBLIC_AUTH } from "@/lib/config/auth-policy-public";
@@ -102,6 +106,7 @@ export default function LoginModal({
 }: LoginModalProps) {
   const { t } = useTranslation();
   const router = useRouter();
+  const pathname = usePathname();
   const { refreshUser, role: contextRole, user } = useAuth();
   const { track, isReady } = useAmplitude();
   const { bundle: configBundle } = useConfigBundle();
@@ -224,6 +229,17 @@ export default function LoginModal({
   const hasSocialAuth = socialAuth.google || socialAuth.apple;
   const showAltAfterPhone =
     hasSocialAuth || authPolicy.email_provider_enabled || !authPolicy.phone_provider_enabled;
+
+  const forgotPasswordHref = useMemo(() => {
+    const search =
+      open && typeof window !== "undefined" ? window.location.search : "";
+    const next = resolveForgotPasswordNextFromModal({
+      redirectUrl,
+      pathname: pathname ?? "/",
+      search,
+    });
+    return buildForgotPasswordHref({ email, next });
+  }, [open, redirectUrl, pathname, email]);
 
   useEffect(() => {
     if (authPolicy.phone_provider_enabled) return;
@@ -1695,7 +1711,16 @@ export default function LoginModal({
                   {/* Show password field immediately in login mode (when not signup and not email OTP flow) */}
                   {!isSignup && !emailOtpMode && !emailOtpSent && (
                     <div className="mb-5">
-                      <Label className={labelClass}>{t("auth.password")}</Label>
+                      <div className="flex items-center justify-between mb-2">
+                        <Label className={`${labelClass} mb-0`}>{t("auth.password")}</Label>
+                        <Link
+                          href={forgotPasswordHref}
+                          onClick={() => setOpen(false)}
+                          className="text-xs font-semibold text-primary hover:underline touch-manipulation"
+                        >
+                          {t("auth.forgotPassword")}
+                        </Link>
+                      </div>
                       <div className="relative">
                         <Input
                           type={showPassword ? "text" : "password"}
@@ -1730,18 +1755,6 @@ export default function LoginModal({
                           )}
                         </button>
                       </div>
-                    </div>
-                  )}
-                  {!isSignup && !emailOtpMode && !emailOtpSent && (
-                    <div className="mb-5 text-center">
-                      <Link
-                        href="/forgot-password"
-                        onClick={() => setOpen(false)}
-                        className="text-[15px] text-gray-500 hover:text-primary font-medium py-2 inline-block touch-manipulation"
-                      >
-                        {t("web.global.loginModal.forgotPasswordReset")}{" "}
-                        <span className="text-primary font-semibold">{t("web.global.loginModal.resetIt")}</span>
-                      </Link>
                     </div>
                   )}
                   {!isSignup &&
@@ -1908,7 +1921,18 @@ export default function LoginModal({
               {showPasswordField && (
                 <>
                   <div className="mb-5">
-                    <Label className={labelClass}>{t("auth.password")}</Label>
+                    <div className="flex items-center justify-between mb-2">
+                      <Label className={`${labelClass} mb-0`}>{t("auth.password")}</Label>
+                      {!isSignup ? (
+                        <Link
+                          href={forgotPasswordHref}
+                          onClick={() => setOpen(false)}
+                          className="text-xs font-semibold text-primary hover:underline touch-manipulation"
+                        >
+                          {t("auth.forgotPassword")}
+                        </Link>
+                      ) : null}
+                    </div>
                     <div className="relative">
                       <Input
                         type={showPassword ? "text" : "password"}
@@ -2039,15 +2063,6 @@ export default function LoginModal({
                     )}
                   </Button>
                   <div className="text-center space-y-1">
-                    {!isSignup && (
-                      <Link
-                        href="/forgot-password"
-                        onClick={() => setOpen(false)}
-                        className="block w-full py-3 text-[15px] text-primary hover:underline font-medium touch-manipulation"
-                      >
-                        {t("web.global.loginModal.forgotPasswordReset")}
-                      </Link>
-                    )}
                     <button
                       onClick={() => {
                         setShowPasswordField(false);
