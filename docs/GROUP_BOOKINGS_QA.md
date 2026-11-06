@@ -70,7 +70,7 @@ This document is the test plan for group bookings across all surfaces.
 ```
 confirmed
    │
-   ├─ first check-in ──────────────────────────────┐
+   ├─ first check-in (also starts the group) ──────┐
    │                                               │
    ├─ start_service action                         ▼
    │                                           started

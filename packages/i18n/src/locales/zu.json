@@ -15016,7 +15016,20 @@
           "emailInputA11y": "i-imeyili input",
           "sendResetLink": "Thumela Setha kabusha isixhumanisi",
           "sendResetLinkA11y": "Thumela Setha kabusha isixhumanisi",
-          "backToLoginA11y": "Buyela ekungeneni"
+          "backToLoginA11y": "Buyela ekungeneni",
+          "codeA11y": "iphasiwedi Setha kabusha ikhodi",
+          "invalidCodeTitle": "ikhodi not accepted",
+          "invalidCodeBody": "Faka the {{digits}}-digit ikhodi from the i-imeyili.",
+          "resend": "Rethumela i-imeyili",
+          "resendA11y": "Rethumela the Setha kabusha i-imeyili",
+          "signedInIntro": "We'll thumela a ikhodi and a Setha kabusha isixhumanisi to your i-akhawunti i-imeyili.",
+          "back": "Emuva",
+          "stepCode": "1. Enter the {{digits}}-digit ikhodi",
+          "stepPassword": "2. khetha a okusha iphasiwedi",
+          "codeVerified": "ikhodi kuqinisekisiwe",
+          "submit": "Setha kabusha iphasiwedi",
+          "submittingA11y": "Setha kabushating iphasiwedi",
+          "linkAlternative": "Ukhetha isixhumanisi? Suvule kusuka ku-imeyili ukuze usethe iphasiwedi entsha kusiphequluli."
         },
         "authSafetyAndAge": {
           "linkLabel": "ukuphepha & parental controls",
@@ -16095,7 +16108,14 @@
           "lifecyclePartialRefundDescription": "Kubhalwe ukubuyiselwa kwezingxenye kwaleli bhukingi.",
           "lifecycleRefundedDescription": "This ukubhuka inkokhelo has been imali ibuyiselwe.",
           "lifecyclePaymentFailedDescription": "Inkokhelo ayiphumelelanga. Zama futhi, noma uxhumane nosekelo ngenombolo yaleli bhukingi.",
-          "lifecyclePaymentNotConfirmedDescription": "inkokhelo has not been qinisekisaed yet."
+          "lifecyclePaymentNotConfirmedDescription": "inkokhelo has not been qinisekisaed yet.",
+          "refundProcessingTitle": "Imbuyiselo iyaqhubeka",
+          "refundProcessingBody": "Le bhukisho likhanseliwe. Siqedela imbuyiselo yakho futhi izovela maduze esikhwameni sakho. Awudingi ukwenza lutho.",
+          "rescheduleInProgressTitle": "Ukuhlelwa kabusha kuyaqhubeka",
+          "rescheduleInProgressBody": "Le bhukisho liyiswe esikhathini esisha. Qedela indawo entsha yokukhokha bese inani oselikhokhile lidluliselwa ngokuzenzakalelayo. Uma ushiye leyo ndawo, le bhukisho lingakhanselwa futhi uma siphelelwa yisikhathi, phakathi nemizuzu engaba ngu-30.",
+          "cancelGroupPreviewTitle": "Lokhu kukhansela yonke iseshini yeqembu {{ref}}, kuhlanganisa izivakashi ezingu-{{count}}.",
+          "cancelGroupPreviewOtherBookings": "Ezinye izibhukisho zakho kuleli qembu: {{currency}} {{refund}} buyela esikhwameni sakho, {{currency}} {{fee}} inkokhelo yokukhansela.",
+          "cancelGroupPreviewGuestShares": "Izinkokhelo zengxenye yezivakashi ({{currency}} {{amount}}) zibuyiselwa ngokuphelele emakhadini abakhokhe ngawo."
         },
         "groupBookingDetail": {
           "back": "Emuva",
@@ -16174,7 +16194,11 @@
           "cancelMySpotConfirm": "Khansela indawo yakho kulokhu kubhukha kweqembu? Amasevisi akho ayasuswa futhi noma iyiphi inkokhelo oyenzile ibuyiselwa ekhadini lakho.",
           "spotCancelled": "spot has been kukhanseliwe. yakho.",
           "guestRemoved": "Isivakashi susad.",
-          "guestCancelFailed": "Ayikwazanga uku-buyekeza the ukubhuka kweqembu."
+          "guestCancelFailed": "Ayikwazanga uku-buyekeza the ukubhuka kweqembu.",
+          "resendPayLink": "Thumela kabusha isixhumanisi sokukhokha",
+          "cancelGroupSession": "Khansela iseshini yeqembu",
+          "cancelGroupSessionHint": "Ivula ibhukisho lakho, lapho ubona khona imbuyiselo yeqembu lonke ngaphambi kokuthi uqinisekise.",
+          "askOrganizerToReschedule": "Cela umhleli ukuthi le seshini idinga yini isikhathi esisha."
         },
         "announcements": {
           "retry": "Zama futhi",
@@ -18147,6 +18171,9 @@
           "invalidBody": "Faka a kuvumelekile usuku (YYYY-MM-DD) and isikhathi (HH:MM).",
           "failedTitle": "Ayikwazanga uku-reisheduli",
           "noSlots": "No isikhathis iyatholakala on this usuku. Try anokunye usuku."
+        },
+        "resetPassword": {
+          "policyMix": "Iphasiwedi yakho idinga inhlanganisela yezinhlamvu nezinombolo ezihlangabezana nemithetho ye-akhawunti."
         }
       }
     },
@@ -18172,7 +18199,7 @@
       "accountNameLabel": "i-akhawunti holder igama",
       "save": "Londoloza i-akhawunti yasebhange",
       "screenTitle": "I-akhawunti yasebhanges",
-      "selectBank": "Select your bank"
+      "selectBank": "Khetha your Ibhange"
     },
     "walletBankRefund": {
       "addBank": "Engeza a i-akhawunti yasebhange",
@@ -18425,7 +18452,11 @@
     "payForEveryone": "I'll khokha for everyone",
     "splitPayment": "Split inkokhelo",
     "splitPaymentHint": "Ukhokha amasevisi akho kanye nezindleko zokubhukha manje. Isivakashi ngasinye sithola isixhumanisi sokukhokha isabelo saso.",
-    "guestSharesPaidByInvite": "Isivakashis khokha via isimemo isixhumanisi"
+    "guestSharesPaidByInvite": "Isivakashis khokha via isimemo isixhumanisi",
+    "rescheduleReplacesPreviousBody": "Isikhathi sakho sokuqala sikhanselwa ngokuzenzakalelayo, mahhala, uma inkokhelo yale bhukisho iqeda. Okukhokhile seku setshenziswa lapha, futhi okusele kuhlala esikhwameni sakho.",
+    "rescheduleCreditNote": "Noma yiliphi inani oselikhokhe ku-inthanethi ngebhuko lokuqala lisetshenziswa lapha. Ukhokha umehluko kuphela.",
+    "rescheduleCreditApplied": "Kukhokhwe ebhukweni lakho lokuqala",
+    "rescheduleCreditSurplus": "Okusele okungu-{{amount}} kuhlala esikhwameni sakho njengesikweletu."
   },
   "payments": {
     "pay": "Khokha",
@@ -19472,7 +19503,11 @@
         "pickNextAvailable": "Find okulandelayo iyatholakala isikhathi",
         "splitPayment": "Split inkokhelo",
         "guestSharesPaidByInvite": "Isivakashis khokha via isimemo isixhumanisi",
-        "splitPaymentHint": "Ukhokha amasevisi akho kanye nezindleko zokubhukha manje. Isivakashi ngasinye sithola isixhumanisi sokukhokha isabelo saso."
+        "splitPaymentHint": "Ukhokha amasevisi akho kanye nezindleko zokubhukha manje. Isivakashi ngasinye sithola isixhumanisi sokukhokha isabelo saso.",
+        "rescheduleCreditPaid": "Inkokhelo yakho yokuqala ihlanganisa le bhukisho.",
+        "rescheduleCreditIntro": "Noma yiliphi inani oselikhokhe ku-inthanethi ngebhuko lokuqala lisetshenziswa lapha. Ukhokha umehluko kuphela.",
+        "rescheduleCreditApplied": "Kukhokhwe ebhukweni lakho lokuqala",
+        "rescheduleCreditSurplus": "Okusele okungu-{{amount}} kuhlala esikhwameni sakho njengesikweletu."
       },
       "addToWaitlist": {
         "enterName": "Sicela enter your igama",
@@ -21128,7 +21163,13 @@
           "cancelled": "Kukhanseliwe",
           "cantFind": "Can't find your reservation lapha?",
           "visitHelpCenter": "Visit the usizo Center"
-        }
+        },
+        "cancelledRefundProcessing": "Ibhukisho likhanseliwe. Imbuyiselo yakho iyaqhubeka futhi izofika maduze.",
+        "refundProcessingTitle": "Imbuyiselo iyaqhubeka",
+        "refundProcessingBody": "Le bhukisho likhanseliwe. Siqedela imbuyiselo yakho futhi izovela maduze esikhwameni sakho. Awudingi ukwenza lutho.",
+        "cancelGroupPreviewTitle": "Lokhu kukhansela yonke iseshini yeqembu {{ref}}, kuhlanganisa izivakashi ezingu-{{count}}.",
+        "cancelGroupPreviewOtherBookings": "Ezinye izibhukisho zakho kuleli qembu: {{currency}} {{refund}} buyela esikhwameni sakho, {{currency}} {{fee}} inkokhelo yokukhansela.",
+        "cancelGroupPreviewGuestShares": "Izinkokhelo zengxenye yezivakashi ({{currency}} {{amount}}) zibuyiselwa ngokuphelele emakhadini abakhokhe ngawo."
       },
       "payAdditionalCharge": {
         "notFound": "Additional khokhisa akutholakali",
@@ -21375,7 +21416,13 @@
           "subtitle": "Khetha a strong iphasiwedi for your i-akhawunti.",
           "atLeastChars": "Okungenani izinhlamvu eziyi-{{min}}",
           "strength": "Sterkte: {{label}}",
-          "confirmPlaceholder": "Re-enter your iphasiwedi"
+          "confirmPlaceholder": "Re-enter your iphasiwedi",
+          "passwordsMatch": "Iphasiwedis match",
+          "showPassword": "Bonisa iphasiwedi",
+          "hidePassword": "fihla iphasiwedi",
+          "policyHintLettersDigits": "Include letters and inombolos",
+          "policyHintMixed": "Faka izinhlamvu ezinkulu, ezincane kanye nenombolo.",
+          "strengthTip": "kude, ngezinombolo nezimpawu, kuqinile"
         }
       },
       "membership": {
@@ -22324,6 +22371,49 @@
         "statusContacted": "Xhumanaed",
         "statusBooked": "Kubhukiwe",
         "statusCancelled": "Kukhanseliwe"
+      },
+      "safety": {
+        "emergencyNumber": "Emergency inombolo: 112",
+        "managed": "Managed",
+        "deviceAuthWebNote": "Applies the okulandelayo isikhathi you vula the Beautonomi Iselula app.",
+        "updated": "Setting buyekezad",
+        "updateFailed": "Ayikwazanga uku-buyekeza setting. sicela uzame futhi.",
+        "loadFailed": "Ayikwazanga uku-ulayisha your ukuphepha izilungiselelo.",
+        "retry": "Zama futhi",
+        "reportValidation": "Faka okungenani izinhlamvu ezingu-2 zomuntu ombikayo nokungenani izinhlamvu ezingu-10 ngokwenzekile.",
+        "unblocked": "Umsebenzisi unblocked",
+        "unblockFailed": "Ayikwazanga uku-unblock this Umsebenzisi.",
+        "blockedLoadFailed": "Ayikwazanga uku-ulayisha blocked users.",
+        "blockedOn": "Uvinjiwe {{date}}",
+        "currentBand": "okwamanje band: {{band}}",
+        "noResults": "Awekho abasebenzisi abavinjiwe abafana nokusesha kwakho.",
+        "profileCompletionCta": "qeda iphrofayela",
+        "bankRefundCta": "isicelo a Ibhange imali ebuyisiwe",
+        "bankRefundOpenCta": "Buka your Ibhange imali ebuyisiwe isicelo",
+        "bankRefundHistory": "isicelo Umlando",
+        "bankRefundNote": "Note for our finance ithimba (okukhethekayo)",
+        "bankRefundMin": "Minimum inani: {{amount}}",
+        "bankRefundMax": "Maximum per isicelo: {{amount}}",
+        "bankRefundSla": "Izimali ezibuyisiwe ezivunyelwe zivame ukukhokhwa zingakapheli izinsuku zokusebenza ezingu-{{days}}.",
+        "bankRefundNoAccounts": "Engeza a i-akhawunti yasebhange before isiceloing a Ibhange imali ebuyisiwe.",
+        "bankRefundStatus": "Isimo",
+        "bankRefundAmount": "inani",
+        "bankRefundDate": "Kuceliwe",
+        "bankRefundReceive": "Uthola",
+        "bankRefundCancelled": "isicelo kukhanseliwe",
+        "bankAccountsManage": "Phatha i-akhawunti yasebhanges",
+        "bankAccountsMax": "You can gcina up to 3 i-akhawunti yasebhanges.",
+        "bankAccountSaved": "Ibhange I-akhawunti ilondoloziwe",
+        "bankAccountRemoved": "i-akhawunti yasebhange susad",
+        "bankAccountPrimary": "okuyinhloko i-akhawunti buyekezad",
+        "cancel": "Khansela"
+      },
+      "profileDetailsPage": {
+        "aboutSection": "Mayelana you",
+        "aboutHint": "A short bio abahlinzeki see when you bhuka.",
+        "aboutPlaceholder": "Tshela abahlinzeki kancane ngawe",
+        "noChanges": "No shintshas to gcina",
+        "clearChoice": "Sula"
       }
     },
     "auth": {
@@ -36370,7 +36460,9 @@
       "cancelConfirm": "Khansela indawo yakho kulokhu kubhukha kweqembu? Amasevisi akho ayasuswa futhi noma iyiphi inkokhelo oyenzile ibuyiselwa ekhadini lakho.",
       "cancelled": "spot has been kukhanseliwe. yakho.",
       "cancelledRefunded": "Indawo yakho ikhanseliwe. {{amount}} ibuyiselwa ekhadini lakho.",
-      "cancelFailed": "Ayikwazanga uku-khansela your spot."
+      "cancelFailed": "Ayikwazanga uku-khansela your spot.",
+      "sessionCancelled": "Le seshini yeqembu ikhanseliwe.",
+      "sessionCancelledPaid": "Le seshini yeqembu ikhanseliwe. Noma yiliphi inani olikhokhele ingxenye yakho libuyiselwa ngokuphelele ekhadini owakhokha ngalo."
     }
   },
   "errors": {

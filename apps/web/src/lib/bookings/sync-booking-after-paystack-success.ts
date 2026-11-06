@@ -182,5 +182,14 @@ export async function syncBookingAfterPaystackSuccess(
     }
   }
 
+  if (hasRecordedPayment) {
+    try {
+      const { finalizeRescheduleCarryOver } = await import("@/lib/bookings/reschedule-carry-over");
+      await finalizeRescheduleCarryOver(admin, bookingId);
+    } catch (carryErr) {
+      console.error("[syncBookingAfterPaystackSuccess] reschedule carry-over failed", bookingId, carryErr);
+    }
+  }
+
   return { ok: true };
 }

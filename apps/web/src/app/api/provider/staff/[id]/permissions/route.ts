@@ -122,6 +122,8 @@ export async function PATCH(
       ["provider_owner", "provider_staff", "superadmin"],
       request
     );
+    const { requireStepUp } = await import("@/lib/auth/provider-security");
+    await requireStepUp(request, user.id, String(user.role), { action: "team_change" });
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = staffPermissionsPatchSchema.parse(await request.json());
@@ -268,6 +270,25 @@ export async function PATCH(
       },
       providerId ?? undefined,
     );
+
+    if (providerId) {
+      const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+      const { data: prov } = await getSupabaseAdmin()
+        .from("providers")
+        .select("user_id")
+        .eq("id", providerId)
+        .maybeSingle();
+      const ownerId = (prov as { user_id?: string | null } | null)?.user_id;
+      if (ownerId) {
+        const { sendSecurityAlert } = await import("@/lib/notifications/security-notifications");
+        await sendSecurityAlert({
+          key: "security_team_access_changed",
+          userId: ownerId,
+          eventId: `team_permissions:${id}:${Math.floor(Date.now() / 60_000)}`,
+          variables: { change_summary: "a team member's permissions were changed." },
+        });
+      }
+    }
 
     return successResponse({ permissions: resolved, role_id: data?.role_id ?? null });
   } catch (error) {

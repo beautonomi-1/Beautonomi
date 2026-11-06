@@ -15012,7 +15012,20 @@
           "emailInputA11y": "E-mail input",
           "sendResetLink": "Envoyer le lien de réinitialisation",
           "sendResetLinkA11y": "Envoyer le lien de réinitialisation",
-          "backToLoginA11y": "Retour to login"
+          "backToLoginA11y": "Retour to login",
+          "codeA11y": "Codice di reimpostazione della parola d'ordine",
+          "invalidCodeTitle": "Codice non accettato",
+          "invalidCodeBody": "Inserisci il codice di {{digits}} cifre arrivato nel messaggio.",
+          "resend": "Invia di nuovo il messaggio",
+          "resendA11y": "Invia di nuovo il messaggio di reimpostazione",
+          "signedInIntro": "Invieremo un codice e un collegamento di reimpostazione al messaggio dell'utenza.",
+          "back": "Retour",
+          "stepCode": "1. Inserisci il codice di {{digits}} cifre",
+          "stepPassword": "2. Scegli una nuova parola d'ordine",
+          "codeVerified": "Codice verificato",
+          "submit": "Réinitialiser le mot de passe",
+          "submittingA11y": "Reimpostazione della parola d'ordine",
+          "linkAlternative": "Preferisci il collegamento? Aprilo dal messaggio per impostare la nuova parola d'ordine nel navigatore."
         },
         "authSafetyAndAge": {
           "linkLabel": "Sécurité et contrôles parentaux",
@@ -16091,7 +16104,14 @@
           "lifecyclePartialRefundDescription": "Un remboursement partiel a été enregistré pour cette réservation.",
           "lifecycleRefundedDescription": "This reserva pago has been reembolsado.",
           "lifecyclePaymentFailedDescription": "Le paiement n’a pas abouti. Réessayez ou contactez l’assistance avec ce numéro de réservation.",
-          "lifecyclePaymentNotConfirmedDescription": "pago has not been confirmared yet."
+          "lifecyclePaymentNotConfirmedDescription": "pago has not been confirmared yet.",
+          "refundProcessingTitle": "Rimborso in elaborazione",
+          "refundProcessingBody": "Questa prenotazione è annullata. Stiamo concludendo il rimborso e comparirà presto nel portafoglio. Non devi fare nulla.",
+          "rescheduleInProgressTitle": "Spostamento in corso",
+          "rescheduleInProgressBody": "Questa prenotazione passa a un altro orario. Completa il nuovo pagamento e la somma già versata si sposta da sola. Se hai lasciato quel pagamento, la prenotazione può essere annullata di nuovo allo scadere, entro circa 30 minuti.",
+          "cancelGroupPreviewTitle": "Questo annulla l'intera sessione di gruppo {{ref}}, compresi {{count}} ospite/i.",
+          "cancelGroupPreviewOtherBookings": "Le altre prenotazioni in questo gruppo: {{currency}} {{refund}} tornano nel portafoglio, {{currency}} {{fee}} di penale di annullamento.",
+          "cancelGroupPreviewGuestShares": "I pagamenti della quota degli ospiti ({{currency}} {{amount}}) sono rimborsati per intero sulle carte usate."
         },
         "groupBookingDetail": {
           "back": "Retour",
@@ -16170,7 +16190,11 @@
           "cancelMySpotConfirm": "Cancella il tuo posto in questa prenotazione di gruppo? I tuoi servizi verranno rimossi e qualsiasi pagamento effettuato verrà rimborsato sulla tua carta.",
           "spotCancelled": "Tu spot has been cancelado.",
           "guestRemoved": "Invitado quitard.",
-          "guestCancelFailed": "No se pudo actualizar the reserva grupal."
+          "guestCancelFailed": "No se pudo actualizar the reserva grupal.",
+          "resendPayLink": "Invia di nuovo il collegamento di pagamento",
+          "cancelGroupSession": "Annulla la sessione di gruppo",
+          "cancelGroupSessionHint": "Apre la tua prenotazione, dove vedi il rimborso di tutto il gruppo prima di confermare.",
+          "askOrganizerToReschedule": "Chiedi a chi organizza se questa sessione serve un altro orario."
         },
         "announcements": {
           "retry": "Réessayer",
@@ -16574,21 +16598,21 @@
           "saveErrorBeauty": "Préférences beauté : {{message}}",
           "saveFailedGeneric": "échec",
           "profileQuestionsSection": "Profil questions",
-          "profileQuestionsHint": "Answer at least 3 to complete your profile. ({{answered}}/3 done)",
+          "profileQuestionsHint": "Rispondi ad almeno 3 per completare il profilo. ({{answered}}/3 fatte)",
           "interestsSection": "Centres d’intérêt",
           "interestsSubtitle": "Ajouter things you're into (select or type)",
           "interestsPlaceholder": "ex. Cheveux, ongles, soins…",
           "interestsA11y": "Vos centres d’intérêt",
           "beautySection": "Préférences beauté",
-          "beautySubtitle": "Help prestataires personalise your experience",
+          "beautySubtitle": "Aiuta i professionisti a personalizzare la tua esperienza",
           "hairType": "Type de cheveux",
           "skinType": "Type de peau",
           "thingsToAvoid": "À éviter",
-          "thingsToAvoidPlaceholder": "Sélectionner or type (e.g. fragrances, sulfates)",
+          "thingsToAvoidPlaceholder": "Seleziona o scrivi (es. fragranze, solfati)",
           "thingsToAvoidA11y": "À éviter",
           "appointmentStyle": "Rendez-vous style",
           "productPreferences": "Produit preferences",
-          "productPreferencesPlaceholder": "Sélectionner or type (e.g. Vegan, Cruelty-free)",
+          "productPreferencesPlaceholder": "Seleziona o scrivi (es. vegano, senza crudeltà)",
           "productPreferencesA11y": "Produit preferences",
           "allergies": "Allergies et sensibilités",
           "allergiesPlaceholder": "ex. Nickel, latex…",
@@ -16632,7 +16656,7 @@
           "skinMature": "Mature",
           "avoidStrongFragrances": "Parfums forts",
           "avoidAlcohol": "Alcohol-based produits",
-          "avoidSulfates": "Sulfates",
+          "avoidSulfates": "Salfati",
           "avoidParabens": "Parabènes",
           "avoidEssentialOils": "Huiles essentielles",
           "avoidLatex": "Latex",
@@ -16643,7 +16667,7 @@
           "styleRelaxed": "Détendu et sans précipitation",
           "styleSocial": "Sociable et bavard",
           "styleQuiet": "Calme et minimal",
-          "styleFlexible": "Flexible",
+          "styleFlexible": "Rahisi",
           "prefVegan": "Végane",
           "prefCrueltyFree": "Sans cruauté",
           "prefNaturalOrganic": "Naturel / bio",
@@ -16670,7 +16694,7 @@
           "interestCooking": "Cuisine",
           "allergyFragrance": "Parfum",
           "allergyParabens": "Parabènes",
-          "allergySulfates": "Sulfates",
+          "allergySulfates": "Salfati",
           "allergyAlcohol": "Alcool",
           "allergyDyes": "Colorations",
           "allergyFormaldehyde": "Formaldéhyde",
@@ -18143,6 +18167,9 @@
           "invalidBody": "Introduce a válido fecha (YYYY-MM-DD) and hora (HH:MM).",
           "failedTitle": "No se pudo rehorario",
           "noSlots": "No horas disponible on this día. Try anotro fecha."
+        },
+        "resetPassword": {
+          "policyMix": "La parola d'ordine deve unire lettere e cifre che rispettano le regole dell'utenza."
         }
       }
     },
@@ -18172,7 +18199,7 @@
       "accountNameLabel": "cuenta holder nombre",
       "save": "Guardar cuenta bancaria",
       "screenTitle": "Cuenta bancarias",
-      "selectBank": "Select your bank"
+      "selectBank": "Seleziona la tua banca"
     },
     "walletBankRefund": {
       "notEnabled": "Los reembolsos bancarios no están disponibles en su mercado en este momento.",
@@ -18425,7 +18452,11 @@
     "payForEveryone": "I'll pagar for everyone",
     "splitPayment": "Split pago",
     "splitPaymentHint": "Paghi adesso i tuoi servizi e le spese di prenotazione. Ogni ospite riceve un collegamento per pagare la propria quota.",
-    "guestSharesPaidByInvite": "Invitados pagar via invitación enlace"
+    "guestSharesPaidByInvite": "Invitados pagar via invitación enlace",
+    "rescheduleReplacesPreviousBody": "L'appuntamento originale viene annullato da solo, senza costi, quando il pagamento di questa prenotazione finisce. Quanto hai già versato si applica qui, e il resto resta nel portafoglio.",
+    "rescheduleCreditNote": "Qualsiasi somma già versata online per la prenotazione originale si applica qui. Paghi solo la differenza.",
+    "rescheduleCreditApplied": "Versato sulla prenotazione originale",
+    "rescheduleCreditSurplus": "Il resto {{amount}} resta nel portafoglio come credito."
   },
   "payments": {
     "pay": "Pay",
@@ -19472,7 +19503,11 @@
         "pickNextAvailable": "Find suivant disponible heure",
         "splitPayment": "Split pago",
         "guestSharesPaidByInvite": "Invitados pagar via invitación enlace",
-        "splitPaymentHint": "Paghi adesso i tuoi servizi e le spese di prenotazione. Ogni ospite riceve un collegamento per pagare la propria quota."
+        "splitPaymentHint": "Paghi adesso i tuoi servizi e le spese di prenotazione. Ogni ospite riceve un collegamento per pagare la propria quota.",
+        "rescheduleCreditPaid": "Il pagamento originale copre questa prenotazione.",
+        "rescheduleCreditIntro": "Qualsiasi somma già versata online per la prenotazione originale si applica qui. Paghi solo la differenza.",
+        "rescheduleCreditApplied": "Versato sulla prenotazione originale",
+        "rescheduleCreditSurplus": "Il resto {{amount}} resta nel portafoglio come credito."
       },
       "addToWaitlist": {
         "enterName": "Veuillez saisir your nom",
@@ -21128,7 +21163,13 @@
           "cancelled": "Annulé",
           "cantFind": "Can't find your reservation aquí?",
           "visitHelpCenter": "Visit the Centre d’aide"
-        }
+        },
+        "cancelledRefundProcessing": "Prenotazione annullata. Il rimborso è in elaborazione e arriverà presto.",
+        "refundProcessingTitle": "Rimborso in elaborazione",
+        "refundProcessingBody": "Questa prenotazione è annullata. Stiamo concludendo il rimborso e comparirà presto nel portafoglio. Non devi fare nulla.",
+        "cancelGroupPreviewTitle": "Questo annulla l'intera sessione di gruppo {{ref}}, compresi {{count}} ospite/i.",
+        "cancelGroupPreviewOtherBookings": "Le altre prenotazioni in questo gruppo: {{currency}} {{refund}} tornano nel portafoglio, {{currency}} {{fee}} di penale di annullamento.",
+        "cancelGroupPreviewGuestShares": "I pagamenti della quota degli ospiti ({{currency}} {{amount}}) sono rimborsati per intero sulle carte usate."
       },
       "payAdditionalCharge": {
         "notFound": "Additional charge introuvable",
@@ -21375,7 +21416,13 @@
           "subtitle": "Elegir a strong contraseña for your cuenta.",
           "atLeastChars": "Au moins {{min}} caractères",
           "strength": "Robustesse : {{label}}",
-          "confirmPlaceholder": "Re-enter your mot de passe"
+          "confirmPlaceholder": "Re-enter your mot de passe",
+          "passwordsMatch": "Le parole d'ordine coincidono",
+          "showPassword": "Show mot de passe",
+          "hidePassword": "Hide mot de passe",
+          "policyHintLettersDigits": "Includi lettere e numeri",
+          "policyHintMixed": "Includi maiuscole, minuscole e un numero.",
+          "strengthTip": "più lunga, con numeri e simboli, è più robusta"
         }
       },
       "membership": {
@@ -22324,6 +22371,49 @@
         "statusContacted": "Contacté",
         "statusBooked": "Réservé",
         "statusCancelled": "Annulé"
+      },
+      "safety": {
+        "emergencyNumber": "Numero di emergenza: 112",
+        "managed": "Gestito",
+        "deviceAuthWebNote": "Vale la prossima volta che apri l'applicazione Beautonomi.",
+        "updated": "Impostazione aggiornata",
+        "updateFailed": "Impossible de mettre à jour setting. Veuillez réessayer.",
+        "loadFailed": "Impossibile caricare le impostazioni di sicurezza.",
+        "retry": "Retry",
+        "reportValidation": "Inserisci almeno 2 caratteri su chi segnali e almeno 10 caratteri su quanto è accaduto.",
+        "unblocked": "Utente sbloccato",
+        "unblockFailed": "Impossibile sbloccare questo utente.",
+        "blockedLoadFailed": "Impossibile caricare gli utenti bloccati.",
+        "blockedOn": "Bloccato il {{date}}",
+        "currentBand": "Fascia attuale: {{band}}",
+        "noResults": "Nessun utente bloccato corrisponde alla ricerca.",
+        "profileCompletionCta": "completar perfil",
+        "bankRefundCta": "Richiedi un rimborso bancario",
+        "bankRefundOpenCta": "Vedi la richiesta di rimborso bancario",
+        "bankRefundHistory": "Cronologia delle richieste",
+        "bankRefundNote": "Nota per il team finanziario (facoltativa)",
+        "bankRefundMin": "Importo minimo: {{amount}}",
+        "bankRefundMax": "Massimo per richiesta: {{amount}}",
+        "bankRefundSla": "I rimborsi approvati sono di solito pagati entro {{days}} giorni lavorativi.",
+        "bankRefundNoAccounts": "Aggiungi un conto bancario prima di richiedere un rimborso bancario.",
+        "bankRefundStatus": "Status",
+        "bankRefundAmount": "Amount",
+        "bankRefundDate": "Richiesto",
+        "bankRefundReceive": "Ricevi",
+        "bankRefundCancelled": "Request annulé",
+        "bankAccountsManage": "Gestisci i conti bancari",
+        "bankAccountsMax": "Puoi salvare fino a 3 conti bancari.",
+        "bankAccountSaved": "Conto bancario salvato",
+        "bankAccountRemoved": "Conto bancario rimosso",
+        "bankAccountPrimary": "Conto principale aggiornato",
+        "cancel": "Annuler"
+      },
+      "profileDetailsPage": {
+        "aboutSection": "Su di te",
+        "aboutHint": "Una breve bio che i professionisti vedono quando prenoti.",
+        "aboutPlaceholder": "Racconta un po' di te ai professionisti",
+        "noChanges": "Nessuna modifica da salvare",
+        "clearChoice": "Effacer"
       }
     },
     "auth": {
@@ -36370,7 +36460,9 @@
       "cancelConfirm": "Cancella il tuo posto in questa prenotazione di gruppo? I tuoi servizi verranno rimossi e qualsiasi pagamento effettuato verrà rimborsato sulla tua carta.",
       "cancelled": "Tu spot has been cancelado.",
       "cancelledRefunded": "Il tuo posto è stato cancellato. {{amount}} viene rimborsato sulla tua carta.",
-      "cancelFailed": "No se pudo cancelar your spot."
+      "cancelFailed": "No se pudo cancelar your spot.",
+      "sessionCancelled": "Questa sessione di gruppo è stata annullata.",
+      "sessionCancelledPaid": "Questa sessione di gruppo è stata annullata. Qualsiasi somma versata per la tua quota è rimborsata per intero sulla carta usata."
     }
   },
   "errors": {

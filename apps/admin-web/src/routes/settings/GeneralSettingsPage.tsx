@@ -65,6 +65,12 @@ type FeaturesForm = {
   auto_approve_providers: boolean;
 };
 
+type PayoutCoolingOffForm = {
+  new_account_cooling_off_hours: number;
+  cooling_off_first_account: boolean;
+  cooling_off_admin_added: boolean;
+};
+
 type VerificationForm = {
   otp_enabled: boolean;
   qr_code_enabled: boolean;
@@ -221,6 +227,11 @@ export function GeneralSettingsPage() {
   const [features, setFeatures] = useState<FeaturesForm>({
     auto_approve_providers: false,
   });
+  const [payoutCooling, setPayoutCooling] = useState<PayoutCoolingOffForm>({
+    new_account_cooling_off_hours: 48,
+    cooling_off_first_account: false,
+    cooling_off_admin_added: true,
+  });
   const [verification, setVerification] = useState<VerificationForm>({
     otp_enabled: true,
     qr_code_enabled: true,
@@ -297,6 +308,13 @@ export function GeneralSettingsPage() {
     });
     setFeatures({
       auto_approve_providers: f.auto_approve_providers ?? false,
+    });
+    const po = (q.data.payouts ?? {}) as Partial<PayoutCoolingOffForm>;
+    setPayoutCooling({
+      new_account_cooling_off_hours:
+        typeof po.new_account_cooling_off_hours === "number" ? po.new_account_cooling_off_hours : 48,
+      cooling_off_first_account: po.cooling_off_first_account === true,
+      cooling_off_admin_added: po.cooling_off_admin_added !== false,
     });
     const v = (q.data.verification ?? {}) as Partial<VerificationForm>;
     setVerification({
@@ -439,6 +457,10 @@ export function GeneralSettingsPage() {
           ...locSaved,
         },
         features: { ...((existing.features as Record<string, unknown>) ?? {}), ...features },
+        payouts: {
+          ...((existing.payouts as Record<string, unknown>) ?? {}),
+          ...payoutCooling,
+        },
         verification: {
           ...((existing.verification as Record<string, unknown>) ?? {}),
           ...verification,
@@ -928,6 +950,53 @@ export function GeneralSettingsPage() {
           />
           <span className="text-sm text-gray-700">Auto-approve new providers (skip manual review)</span>
         </label>
+      </AdminPanel>
+
+      <AdminPanel>
+        <h3 className="mb-4 text-sm font-semibold text-gray-900">Payout account cooling-off</h3>
+        <p className="mb-4 text-xs text-gray-600">
+          Hold new provider payout accounts before they can receive transfers. Users are notified when the hold ends.
+        </p>
+        <div className="grid max-w-md gap-4">
+          <label className="block text-sm">
+            <span className="text-gray-600">Cooling-off duration (hours)</span>
+            <input
+              type="number"
+              min={0}
+              max={168}
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              value={payoutCooling.new_account_cooling_off_hours}
+              onChange={(e) =>
+                setPayoutCooling((p) => ({
+                  ...p,
+                  new_account_cooling_off_hours: Number(e.target.value),
+                }))
+              }
+            />
+          </label>
+          <label className="flex cursor-pointer items-center gap-3">
+            <input
+              type="checkbox"
+              checked={payoutCooling.cooling_off_first_account}
+              onChange={(e) =>
+                setPayoutCooling((p) => ({ ...p, cooling_off_first_account: e.target.checked }))
+              }
+              className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+            />
+            <span className="text-sm text-gray-700">Apply cooling-off to a provider&apos;s first payout account</span>
+          </label>
+          <label className="flex cursor-pointer items-center gap-3">
+            <input
+              type="checkbox"
+              checked={payoutCooling.cooling_off_admin_added}
+              onChange={(e) =>
+                setPayoutCooling((p) => ({ ...p, cooling_off_admin_added: e.target.checked }))
+              }
+              className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+            />
+            <span className="text-sm text-gray-700">Apply cooling-off when an admin adds a payout account</span>
+          </label>
+        </div>
       </AdminPanel>
 
       <AdminPanel>

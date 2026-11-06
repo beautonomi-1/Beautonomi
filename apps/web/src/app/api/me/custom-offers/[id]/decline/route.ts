@@ -42,7 +42,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (st === "declined") {
       return successResponse({ declined: true, alreadyDeclined: true });
     }
-    if (st === "paid" || st === "accepted") {
+    if (st === "paid") {
       return errorResponse("This offer can no longer be declined.", "OFFER_NOT_DECLINABLE", 400);
     }
     if (st === "payment_pending") {

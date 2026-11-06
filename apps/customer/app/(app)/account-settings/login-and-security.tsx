@@ -23,6 +23,9 @@ import {
 } from "@/lib/supabase-sms-otp";
 import { isMailableEmail } from "@beautonomi/utils";
 import { useEmailChangeOtp } from "@/lib/auth/useEmailChangeOtp";
+import { getNewPasswordIssue } from "@/lib/auth/password-recovery";
+import type { PublicAuthPolicy } from "@/lib/config-bundle";
+import { NewPasswordFields } from "@/components/auth/NewPasswordFields";
 
 type PhoneStep = "enter_phone" | "enter_otp" | null;
 type AuthSecurityState = {
@@ -31,7 +34,7 @@ type AuthSecurityState = {
   has_phone: boolean;
   email_is_placeholder: boolean;
   password_changed_at: string | null;
-  policy: { minimum_password_length: number };
+  policy: Pick<PublicAuthPolicy, "minimum_password_length"> & Partial<Pick<PublicAuthPolicy, "password_requirements">>;
 };
 
 export default function LoginAndSecurityScreen() {
@@ -81,6 +84,10 @@ export default function LoginAndSecurityScreen() {
   const authSecurity = (profile as { auth_security?: AuthSecurityState | null } | null)?.auth_security ?? null;
   const isSettingFirstPassword = authSecurity?.has_password === false;
   const minimumPasswordLength = authSecurity?.policy?.minimum_password_length ?? 8;
+  const passwordPolicy = {
+    minimum_password_length: minimumPasswordLength,
+    password_requirements: authSecurity?.policy?.password_requirements ?? "none",
+  } as const;
   const canVerifyPasswordAction = Boolean(
     authSecurity == null ||
       authSecurity.has_password ||
@@ -129,11 +136,16 @@ export default function LoginAndSecurityScreen() {
       Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), ls("enterVerificationBeforePassword"));
       return;
     }
-    if (!password || password.length < minimumPasswordLength) {
+    const passwordIssue = getNewPasswordIssue(password, confirmPassword, passwordPolicy);
+    if (passwordIssue === "minLength") {
       Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), ls("passwordMinLengthDynamic", { min: String(minimumPasswordLength) }));
       return;
     }
-    if (password !== confirmPassword) {
+    if (passwordIssue === "policy") {
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), t("customer.mobile.screens.resetPassword.policyMix"));
+      return;
+    }
+    if (passwordIssue === "mismatch") {
       Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), ls("passwordsMismatch"));
       return;
     }
@@ -635,58 +647,27 @@ export default function LoginAndSecurityScreen() {
                     placeholderTextColor={Colors.gray[400]}
                     secureTextEntry
                   />
-                  <TouchableOpacity
-                    onPress={() => router.push("/(auth)/forgot-password")}
-                    style={{ marginTop: 8 }}
-                    accessibilityRole="link"
-                    accessibilityLabel={ls("forgotPassword")}
-                  >
-                    <Text style={{ color: Colors.primary, fontWeight: "600" }}>{ls("forgotPassword")}</Text>
-                  </TouchableOpacity>
+                  {authSecurity?.has_mailable_email !== false ? (
+                    <TouchableOpacity
+                      onPress={() => router.push("/(auth)/forgot-password")}
+                      style={{ marginTop: 8 }}
+                      accessibilityRole="link"
+                      accessibilityLabel={ls("forgotPassword")}
+                    >
+                      <Text style={{ color: Colors.primary, fontWeight: "600" }}>{ls("forgotPassword")}</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </>
               )}
               <View style={{ marginTop: 16 }}>
-                <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>
-                  {ls("newPasswordLabel")}
-                </Text>
-                <TextInput
-                  style={{
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: Colors.gray[300],
-                    backgroundColor: Colors.white,
-                    paddingHorizontal: 16,
-                    paddingVertical: 12,
-                    fontSize: 16,
-                    color: Colors.gray[900],
-                  }}
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder={ls("newPasswordPlaceholderDynamic", { min: String(minimumPasswordLength) })}
-                  placeholderTextColor={Colors.gray[400]}
-                  secureTextEntry
-                />
-              </View>
-              <View style={{ marginTop: 16 }}>
-                <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>
-                  {ls("confirmNewPasswordLabel")}
-                </Text>
-                <TextInput
-                  style={{
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: Colors.gray[300],
-                    backgroundColor: Colors.white,
-                    paddingHorizontal: 16,
-                    paddingVertical: 12,
-                    fontSize: 16,
-                    color: Colors.gray[900],
-                  }}
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  placeholder={ls("confirmPasswordPlaceholder")}
-                  placeholderTextColor={Colors.gray[400]}
-                  secureTextEntry
+                <NewPasswordFields
+                  ns="customer.mobile.screens.resetPassword"
+                  password={password}
+                  onPasswordChange={setPassword}
+                  confirm={confirmPassword}
+                  onConfirmChange={setConfirmPassword}
+                  policy={passwordPolicy}
+                  disabled={updating}
                 />
               </View>
               <TouchableOpacity

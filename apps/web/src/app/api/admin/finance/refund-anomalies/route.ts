@@ -83,6 +83,13 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
       .limit(LIMIT);
 
+    const { data: finalizeFailedOffers } = await admin
+      .from("custom_offers")
+      .select("id, status, payment_reference, updated_at, provider_id")
+      .eq("status", "finalize_failed")
+      .order("updated_at", { ascending: false })
+      .limit(LIMIT);
+
     const { data: staffRefunds } = await admin
       .from("booking_events")
       .select("id, booking_id, event_data, created_at, created_by")
@@ -95,6 +102,7 @@ export async function GET(request: NextRequest) {
       group_yoco_mark_paid_without_ref: groupYoco ?? [],
       terminal_capture_on_paid_booking: terminalOnPaid ?? [],
       refund_issued_by_staff: staffRefunds ?? [],
+      custom_offer_finalize_failed: finalizeFailedOffers ?? [],
       limit: LIMIT,
     });
   } catch (error) {

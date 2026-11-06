@@ -45,6 +45,7 @@
     "@amplitude/engagement-browser": "^1.0.9",
     "@amplitude/plugin-session-replay-browser": "^1.28.0",
     "@beautonomi/admin-access": "workspace:*",
+    "@beautonomi/auth-security": "workspace:*",
     "@beautonomi/agent-evals": "workspace:*",
     "@beautonomi/agent-model-router": "workspace:*",
     "@beautonomi/agent-policy": "workspace:*",

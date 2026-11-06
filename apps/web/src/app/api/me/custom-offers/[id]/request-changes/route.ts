@@ -48,7 +48,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (st === "changes_requested") {
       return successResponse({ changesRequested: true, alreadyRequested: true });
     }
-    if (st === "paid" || st === "accepted") {
+    if (st === "paid") {
       return errorResponse("This offer can no longer be revised.", "OFFER_NOT_REVISABLE", 400);
     }
     if (st === "payment_pending") {

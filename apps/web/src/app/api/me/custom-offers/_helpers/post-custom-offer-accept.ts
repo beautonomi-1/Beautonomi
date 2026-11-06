@@ -248,7 +248,7 @@ export async function postCustomOfferAccept(
       }
     }
 
-    if (offer.status === "paid" || offer.status === "accepted") {
+    if (offer.status === "paid") {
       return successResponse({ paymentUrl: offer.payment_url, alreadyAccepted: true });
     }
 

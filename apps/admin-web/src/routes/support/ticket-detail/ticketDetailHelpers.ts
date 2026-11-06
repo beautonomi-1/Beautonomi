@@ -426,6 +426,7 @@ export function messageTrailRole(message: MessageRow, customerUserId: string | n
   if (kind === "assistant") return "assistant";
   if (message.is_auto_reply) return "auto";
   if (kind === "customer") return "customer";
+  if (kind === "staff") return "staff";
   const uid = message.user_id == null ? null : str(message.user_id);
   if (customerUserId !== null && uid === customerUserId) return "customer";
   return "staff";

@@ -11,6 +11,7 @@ import SessionTracker from "@/components/analytics/SessionTracker";
 import MarketingAttributionCapture from "@/components/analytics/MarketingAttributionCapture";
 import DynamicBranding from "@/components/platform/DynamicBranding";
 import { ImpersonationBanner } from "@/components/auth/ImpersonationBanner";
+import { SecurityChallengeHost } from "@/components/auth/SecurityChallengeHost";
 import FaviconSpinner from "@/components/global/favicon-spinner";
 import AuthLoadingSpinner from "@/components/global/auth-loading-spinner";
 import { LocaleProvider } from "@/components/i18n/LocaleProvider";
@@ -83,6 +84,7 @@ export default function ClientAppShell({ children, osType, locale }: ClientAppSh
                 </MaintenanceGate>
               </AccountStatusGuard>
               <Toaster position="top-center" />
+              <SecurityChallengeHost />
               <DownloadBannerContainer osType={osType} />
               </GlobalPreferencesProvider>
             </AmplitudeProviderWrapper>

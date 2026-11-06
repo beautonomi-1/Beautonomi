@@ -275,7 +275,7 @@ export default function AccountProfileSections() {
 
   return (
     <div className="space-y-5 md:space-y-6">
-      <div id="profile-header">
+      <div id="profile-header" className="scroll-mt-32">
         <MemoProfileHeader
           user={user}
           onUpdate={handleUpdate}
@@ -291,7 +291,7 @@ export default function AccountProfileSections() {
         />
       )}
 
-      <div id="personal-info-section">
+      <div id="personal-info-section" className="scroll-mt-32">
         <MemoPersonalInfoCard
           user={user}
           onUpdate={handleUpdate}

@@ -15012,7 +15012,20 @@
           "emailInputA11y": "imeile input",
           "sendResetLink": "Romela Beha bocha sehokelo",
           "sendResetLinkA11y": "Romela Beha bocha sehokelo",
-          "backToLoginA11y": "Kgutlela ho kena"
+          "backToLoginA11y": "Kgutlela ho kena",
+          "codeA11y": "phasewete Beha bocha khoutu",
+          "invalidCodeTitle": "khoutu not accepted",
+          "invalidCodeBody": "Kenya the {{digits}}-digit khoutu from the imeile.",
+          "resend": "Reromela imeile",
+          "resendA11y": "Reromela the Beha bocha imeile",
+          "signedInIntro": "We'll romela a khoutu and a Beha bocha sehokelo to your akhaonto imeile.",
+          "back": "Morao",
+          "stepCode": "1. Enter the {{digits}}-digit khoutu",
+          "stepPassword": "2. khetha a e ncha phasewete",
+          "codeVerified": "khoutu e netefaditsoe",
+          "submit": "Beha phasewete bocha",
+          "submittingA11y": "Beha bochating phasewete",
+          "linkAlternative": "Kgetha kgokahano? E bule ho tswa ho imeile hore o behe phasewete e ncha sebatling."
         },
         "authSafetyAndAge": {
           "linkLabel": "tšireletso & parental controls",
@@ -16091,7 +16104,14 @@
           "lifecyclePartialRefundDescription": "Ho ngoliloe ho khutlisetsoa ha karolo bakeng sa ho buka hona.",
           "lifecycleRefundedDescription": "This buking tefo has been e puseleditswe.",
           "lifecyclePaymentFailedDescription": "Tefo ha ea atle. Leka hape kapa ikopanye le tšehetso ka nomoro ea ho buka ena.",
-          "lifecyclePaymentNotConfirmedDescription": "tefo has not been netefatsaed yet."
+          "lifecyclePaymentNotConfirmedDescription": "tefo has not been netefatsaed yet.",
+          "refundProcessingTitle": "Pusetso e ntse e etswa",
+          "refundProcessingBody": "Tlhophiso ena e hlakotswe. Re phethela pusetso ya hao mme e tla hlaha haufinyane ka sepacheng sa hao. Ha o hloke ho etsa letho.",
+          "rescheduleInProgressTitle": "Ho fetoha ha nako ho ntse ho etswa",
+          "rescheduleInProgressBody": "Tlhophiso ena e iswa nakong e ncha. Qeta sebaka se secha sa tefo mme chelete eo o e lefileng e fetisetswa ka boiketsetso. Ha o tlohile sebaka seo, tlhophiso ena e ka hlakolwa hape ha e fela, ka metsotso e ka bang 30.",
+          "cancelGroupPreviewTitle": "Sena se hlakola kopano yohle ya sehlopha {{ref}}, ho kenyeletsa baeti ba {{count}}.",
+          "cancelGroupPreviewOtherBookings": "Ditlhophiso tse ding tsa hao sehlopheng sena: {{currency}} {{refund}} kgutlela sepacheng sa hao, {{currency}} {{fee}} tefo ya ho hlakola.",
+          "cancelGroupPreviewGuestShares": "Ditefo tsa karolo ya baeti ({{currency}} {{amount}}) di kgutliswa ka botlalo ho dikarete tseo ba lefileng ka tsona."
         },
         "groupBookingDetail": {
           "back": "Morao",
@@ -16170,7 +16190,11 @@
           "cancelMySpotConfirm": "Hlakola sebaka sa hau sehlopheng sena sa peeletso? Litšebeletso tsa hau li tlositsoe 'me tefo efe kapa efe eo u e entseng e khutlisetsoa kareteng ea hau.",
           "spotCancelled": "spot has been e hlakotsoe. ya hau.",
           "guestRemoved": "Moeti tlosad.",
-          "guestCancelFailed": "Ha e a khona ho ntlafatsa the buking ya sehlopha."
+          "guestCancelFailed": "Ha e a khona ho ntlafatsa the buking ya sehlopha.",
+          "resendPayLink": "Romella hape kgokahano ya tefo",
+          "cancelGroupSession": "Hlakola kopano ya sehlopha",
+          "cancelGroupSessionHint": "E bula tlhophiso ya hao, moo o bonang pusetso ya sehlopha sohle pele o netefatsa.",
+          "askOrganizerToReschedule": "Botsa mohlophisi hore na kopano ena e hloka nako e ncha."
         },
         "announcements": {
           "retry": "Leka hape",
@@ -16638,7 +16662,7 @@
           "avoidLatex": "Latex",
           "avoidNickel": "Nickel",
           "avoidDyes": "Mebala",
-          "avoidFormaldehyde": "Formaldehyde",
+          "avoidFormaldehyde": "Formaldehied",
           "styleQuickEfficient": "Ka potlako le ka bokgabane",
           "styleRelaxed": "E phutholohile & e sa potlaka",
           "styleSocial": "Metsoalle le meqoqo",
@@ -16648,16 +16672,16 @@
           "prefCrueltyFree": "Cruelty-mahala",
           "prefNaturalOrganic": "Tlhaho / manyolo",
           "prefFragranceFree": "Fragrance-mahala",
-          "prefHypoallergenic": "Hypoallergenic",
+          "prefHypoallergenic": "E sa bakeng mafu a ho kula",
           "prefLuxury": "Boholo",
-          "prefBudgetFriendly": "Budget-friendly",
+          "prefBudgetFriendly": "E loketseng chelete e nyane",
           "prefNoPreference": "Ha ho kgetho",
           "interestHair": "Moriri",
           "interestNails": "Manala",
           "interestSkincare": "Tlhokomelo ea letlalo",
           "interestMakeup": "Boemo",
-          "interestPedicure": "Pedicure",
-          "interestManicure": "Manicure",
+          "interestPedicure": "Tlhokomelo ya maoto",
+          "interestManicure": "Tlhokomelo ya matsoho",
           "interestFacial": "Sefahleho",
           "interestMassage": "Masa",
           "interestHairColour": "Moriri colour",
@@ -16673,7 +16697,7 @@
           "allergySulfates": "Li-sulfate",
           "allergyAlcohol": "Joala",
           "allergyDyes": "Mebala",
-          "allergyFormaldehyde": "Formaldehyde",
+          "allergyFormaldehyde": "Formaldehied",
           "allergyLatex": "Latex",
           "allergyNickel": "Nickel"
         },
@@ -18143,6 +18167,9 @@
           "invalidBody": "Kenya a e nepahetse letsatsi (YYYY-MM-DD) and nako (HH:MM).",
           "failedTitle": "Ha e a khona ho rekemiso",
           "noSlots": "No nakos e teng on this letsatsi. Try antse ding letsatsi."
+        },
+        "resetPassword": {
+          "policyMix": "Phasewete ya hao e hloka motswako wa ditlhaku le dinomoro o dumellanang le melao ya akhaonto."
         }
       }
     },
@@ -18172,7 +18199,7 @@
       "accountNameLabel": "akhaonto holder lebitso",
       "save": "Boloka akhaonto ea banka",
       "screenTitle": "Akhaonto ea bankas",
-      "selectBank": "Select your bank"
+      "selectBank": "Khetha your Banka"
     },
     "walletBankRefund": {
       "addBank": "Kenya a akhaonto ea banka",
@@ -18425,7 +18452,11 @@
     "payForEveryone": "I'll lefa for everyone",
     "splitPayment": "Split tefo",
     "splitPaymentHint": "U lefa litšebeletso tsa hau le litefiso tsa ho behela hona joale. Moeti e mong le e mong o fumana sehokelo sa ho lefa karolo ea hae.",
-    "guestSharesPaidByInvite": "Moetis lefa via memo sehokelo"
+    "guestSharesPaidByInvite": "Moetis lefa via memo sehokelo",
+    "rescheduleReplacesPreviousBody": "Kopano ya hao ya pele e hlakolwa ka boiketsetso, mahala, ha tefo ya tlhophiso ena e phethela. Seo o se lefileng se sebediswa mona, mme se setseng se sala sepacheng sa hao.",
+    "rescheduleCreditNote": "Chelete efe kapa efe eo o e lefileng ka inthanete bakeng sa tlhophiso ya pele e sebediswa mona. O lefa phapang feela.",
+    "rescheduleCreditApplied": "E lefuwe tlhophisong ya hao ya pele",
+    "rescheduleCreditSurplus": "Se setseng sa {{amount}} se sala sepacheng sa hao e le mokitlane."
   },
   "payments": {
     "pay": "Lefa",
@@ -19472,7 +19503,11 @@
         "pickNextAvailable": "Find e latelang e teng nako",
         "splitPayment": "Split tefo",
         "guestSharesPaidByInvite": "Moetis lefa via memo sehokelo",
-        "splitPaymentHint": "U lefa litšebeletso tsa hau le litefiso tsa ho behela hona joale. Moeti e mong le e mong o fumana sehokelo sa ho lefa karolo ea hae."
+        "splitPaymentHint": "U lefa litšebeletso tsa hau le litefiso tsa ho behela hona joale. Moeti e mong le e mong o fumana sehokelo sa ho lefa karolo ea hae.",
+        "rescheduleCreditPaid": "Tefo ya hao ya pele e koahela tlhophiso ena.",
+        "rescheduleCreditIntro": "Chelete efe kapa efe eo o e lefileng ka inthanete bakeng sa tlhophiso ya pele e sebediswa mona. O lefa phapang feela.",
+        "rescheduleCreditApplied": "E lefuwe tlhophisong ya hao ya pele",
+        "rescheduleCreditSurplus": "Se setseng sa {{amount}} se sala sepacheng sa hao e le mokitlane."
       },
       "addToWaitlist": {
         "enterName": "Ka kopo enter your lebitso",
@@ -21128,7 +21163,13 @@
           "cancelled": "E hlakotsoe",
           "cantFind": "Can't find your reservation mona?",
           "visitHelpCenter": "Visit the thuso Center"
-        }
+        },
+        "cancelledRefundProcessing": "Tlhophiso e hlakotswe. Pusetso ya hao e ntse e etswa mme e tla fihla haufinyane.",
+        "refundProcessingTitle": "Pusetso e ntse e etswa",
+        "refundProcessingBody": "Tlhophiso ena e hlakotswe. Re phethela pusetso ya hao mme e tla hlaha haufinyane ka sepacheng sa hao. Ha o hloke ho etsa letho.",
+        "cancelGroupPreviewTitle": "Sena se hlakola kopano yohle ya sehlopha {{ref}}, ho kenyeletsa baeti ba {{count}}.",
+        "cancelGroupPreviewOtherBookings": "Ditlhophiso tse ding tsa hao sehlopheng sena: {{currency}} {{refund}} kgutlela sepacheng sa hao, {{currency}} {{fee}} tefo ya ho hlakola.",
+        "cancelGroupPreviewGuestShares": "Ditefo tsa karolo ya baeti ({{currency}} {{amount}}) di kgutliswa ka botlalo ho dikarete tseo ba lefileng ka tsona."
       },
       "payAdditionalCharge": {
         "notFound": "Additional lefisa ha e fumanehe",
@@ -21375,7 +21416,13 @@
           "subtitle": "Khetha a strong phasewete for your akhaonto.",
           "atLeastChars": "Bonyane litlhaku tse {{min}}",
           "strength": "Sterkte: {{label}}",
-          "confirmPlaceholder": "Re-enter your phasewete"
+          "confirmPlaceholder": "Re-enter your phasewete",
+          "passwordsMatch": "Phasewetes match",
+          "showPassword": "Bontša phasewete",
+          "hidePassword": "pata phasewete",
+          "policyHintLettersDigits": "Include letters and nomoros",
+          "policyHintMixed": "Kenye ditlhaku tse kgolo, tse nyane le nomoro.",
+          "strengthTip": "telele, ka dinomoro le matshwao, e matla"
         }
       },
       "membership": {
@@ -22324,6 +22371,49 @@
         "statusContacted": "Ikopanyeed",
         "statusBooked": "E bukiloe",
         "statusCancelled": "E hlakotsoe"
+      },
+      "safety": {
+        "emergencyNumber": "Emergency nomoro: 112",
+        "managed": "Managed",
+        "deviceAuthWebNote": "Applies the e latelang nako you bula the Beautonomi Mohala app.",
+        "updated": "Setting ntlafatsad",
+        "updateFailed": "Ha e a khona ho ntlafatsa setting. ka kopo leka hape.",
+        "loadFailed": "Ha e a khona ho jaefa your tšireletso litlhophiso.",
+        "retry": "Leka hape",
+        "reportValidation": "Kenya bonyane ditlhaku tse 2 tsa motho eo o mo tlalehang le bonyane ditlhaku tse 10 ka se etsahetseng.",
+        "unblocked": "Mosebelisi unblocked",
+        "unblockFailed": "Ha e a khona ho unblock this Mosebelisi.",
+        "blockedLoadFailed": "Ha e a khona ho jaefa blocked users.",
+        "blockedOn": "Thibetsoe {{date}}",
+        "currentBand": "ea hona joale band: {{band}}",
+        "noResults": "Ha ho basebedisi ba thibetsweng ba dumellanang le patlo ya hao.",
+        "profileCompletionCta": "qeta profaele",
+        "bankRefundCta": "kopo a Banka puseletso",
+        "bankRefundOpenCta": "Sheba your Banka puseletso kopo",
+        "bankRefundHistory": "kopo Nalane",
+        "bankRefundNote": "Note for our finance sehlopha (boikhethelo)",
+        "bankRefundMin": "Minimum chelete: {{amount}}",
+        "bankRefundMax": "Maximum per kopo: {{amount}}",
+        "bankRefundSla": "Dituelo tse amohetsweng hangata di lefuwa pele ho matsatsi a mosebetsi a {{days}}.",
+        "bankRefundNoAccounts": "Kenya a akhaonto ea banka before kopoing a Banka puseletso.",
+        "bankRefundStatus": "Boemo",
+        "bankRefundAmount": "chelete",
+        "bankRefundDate": "Ho kopuwe",
+        "bankRefundReceive": "O fumana",
+        "bankRefundCancelled": "kopo e hlakotsoe",
+        "bankAccountsManage": "Laola akhaonto ea bankas",
+        "bankAccountsMax": "You can boloka up to 3 akhaonto ea bankas.",
+        "bankAccountSaved": "Banka Akhaonto e bolokiloe",
+        "bankAccountRemoved": "akhaonto ea banka tlosad",
+        "bankAccountPrimary": "ea mantlha akhaonto ntlafatsad",
+        "cancel": "Hlakola"
+      },
+      "profileDetailsPage": {
+        "aboutSection": "Mabapi you",
+        "aboutHint": "A short bio bafani see when you buka.",
+        "aboutPlaceholder": "Bolella bafani hanyane ka wena",
+        "noChanges": "No fetolas to boloka",
+        "clearChoice": "Hlakola"
       }
     },
     "auth": {
@@ -36370,7 +36460,9 @@
       "cancelConfirm": "Hlakola sebaka sa hau sehlopheng sena sa peeletso? Litšebeletso tsa hau li tlositsoe 'me tefo efe kapa efe eo u e entseng e khutlisetsoa kareteng ea hau.",
       "cancelled": "spot has been e hlakotsoe. ya hau.",
       "cancelledRefunded": "Sebaka sa hau se hlakotsoe. {{amount}} e buseletsoa kareteng ea hau.",
-      "cancelFailed": "Ha e a khona ho hlakola your spot."
+      "cancelFailed": "Ha e a khona ho hlakola your spot.",
+      "sessionCancelled": "Kopano ena ya sehlopha e hlakotswe.",
+      "sessionCancelledPaid": "Kopano ena ya sehlopha e hlakotswe. Chelete efe kapa efe eo o e lefileng bakeng sa karolo ya hao e kgutliswa ka botlalo ho karete eo o lefileng ka yona."
     }
   },
   "errors": {

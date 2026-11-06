@@ -53,10 +53,26 @@ export async function POST(request: NextRequest) {
         action: "user.global_sign_out",
         entity_type: "user",
         entity_id: user.id,
+        module: "auth_security",
         metadata: { initiated_via: "settings.security" },
       });
     } catch {
       // Audit failure must never break the response
+    }
+
+    try {
+      const { revokeTrustedDevicesExcept } = await import("@/lib/auth/auth-security-db");
+      const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+      const { readDeviceKeyFromRequest } = await import("@/lib/auth/trust-device");
+      const { hashDeviceKey } = await import("@/lib/auth/auth-security-db");
+      const currentKey = await readDeviceKeyFromRequest(request);
+      await revokeTrustedDevicesExcept(
+        getSupabaseAdmin(),
+        user.id,
+        currentKey ? hashDeviceKey(currentKey) : null,
+      );
+    } catch {
+      // best-effort
     }
 
     return NextResponse.json({ ok: true });

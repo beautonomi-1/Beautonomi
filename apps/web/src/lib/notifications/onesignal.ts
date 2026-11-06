@@ -1803,7 +1803,12 @@ export async function sendTemplateNotification(
     (emailSmsByUser ? emailSmsByUser.size > 0 : true);
 
   // Quiet hours: per-recipient — only suppress push for users inside their window.
-  if (channelsToSend.includes("push") && pushRecipientUserIds.length > 0) {
+  // Account-security alerts (security_*) are never held for quiet hours.
+  if (
+    channelsToSend.includes("push") &&
+    pushRecipientUserIds.length > 0 &&
+    !templateKey.trim().toLowerCase().startsWith("security_")
+  ) {
     try {
       const { isUserInQuietHours } = await import("@/lib/notifications/quiet-hours");
       const supabaseAdmin = getSupabaseAdmin();

@@ -94,6 +94,8 @@ export async function PATCH(
 ) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const { requireStepUp } = await import("@/lib/auth/provider-security");
+    await requireStepUp(request, user.id, String(user.role), { action: "payout_account" });
     const sessionSupabase = await getSupabaseServer(request);
 
     const canManageBanking =
@@ -244,6 +246,18 @@ export async function PATCH(
       }
     }
 
+    if (validationResult.data.account_name || validationResult.data.is_primary === true) {
+      const { notifyPayoutAccountChange } = await import("@/lib/auth/payout-cooling-off");
+      await notifyPayoutAccountChange({
+        providerId,
+        actorUserId: user.id,
+        kind: "changed",
+        accountId: id,
+        accountLast4: (account as { account_number_last4?: string | null }).account_number_last4,
+        bankName: (account as { bank_name?: string | null }).bank_name,
+      });
+    }
+
     return successResponse(updatedAccount);
   } catch (error) {
     return handleApiError(error, "Failed to update payout account");
@@ -265,6 +279,8 @@ export async function DELETE(
 ) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const { requireStepUp } = await import("@/lib/auth/provider-security");
+    await requireStepUp(request, user.id, String(user.role), { action: "payout_account" });
     const sessionSupabase = await getSupabaseServer(request);
 
     const canManageBanking =

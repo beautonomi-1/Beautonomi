@@ -15012,7 +15012,20 @@
           "emailInputA11y": "E-mail input",
           "sendResetLink": "Envoyer le lien de réinitialisation",
           "sendResetLinkA11y": "Envoyer le lien de réinitialisation",
-          "backToLoginA11y": "Retour to login"
+          "backToLoginA11y": "Retour to login",
+          "codeA11y": "Kode atur ulang kata sandi",
+          "invalidCodeTitle": "Kode tidak diterima",
+          "invalidCodeBody": "Masukkan kode {{digits}} angka dari surel.",
+          "resend": "Kirim ulang surel",
+          "resendA11y": "Kirim ulang surel pengaturan",
+          "signedInIntro": "Kami akan mengirim kode dan tautan pengaturan ke surel akun.",
+          "back": "Retour",
+          "stepCode": "1. Masukkan kode {{digits}} angka",
+          "stepPassword": "2. Pilih kata sandi baru",
+          "codeVerified": "Kode terverifikasi",
+          "submit": "Réinitialiser le mot de passe",
+          "submittingA11y": "Mengatur ulang kata sandi",
+          "linkAlternative": "Lebih suka tautan? Buka dari surel untuk mengatur kata sandi baru di peramban."
         },
         "authSafetyAndAge": {
           "linkLabel": "Sécurité et contrôles parentaux",
@@ -16091,7 +16104,14 @@
           "lifecyclePartialRefundDescription": "Un remboursement partiel a été enregistré pour cette réservation.",
           "lifecycleRefundedDescription": "Le paiement de cette réservation a été remboursé.",
           "lifecyclePaymentFailedDescription": "Le paiement n’a pas abouti. Réessayez ou contactez l’assistance avec ce numéro de réservation.",
-          "lifecyclePaymentNotConfirmedDescription": "Paiement has not been confirmé yet."
+          "lifecyclePaymentNotConfirmedDescription": "Paiement has not been confirmé yet.",
+          "refundProcessingTitle": "Pengembalian dana diproses",
+          "refundProcessingBody": "Pemesanan ini dibatalkan. Kami sedang menyelesaikan pengembalian dana Anda dan itu akan muncul sebentar lagi di dompet Anda. Anda tidak perlu melakukan apa pun.",
+          "rescheduleInProgressTitle": "Penjadwalan ulang berlangsung",
+          "rescheduleInProgressBody": "Pemesanan ini dipindah ke waktu lain. Selesaikan pembayaran baru dan jumlah yang sudah dibayar ikut berpindah sendiri. Jika Anda meninggalkan pembayaran itu, pemesanan dapat dibatalkan lagi setelah kedaluwarsa, dalam sekitar 30 menit.",
+          "cancelGroupPreviewTitle": "Ini membatalkan seluruh sesi kelompok {{ref}}, termasuk {{count}} tamu.",
+          "cancelGroupPreviewOtherBookings": "Pemesanan lain Anda di kelompok ini: {{currency}} {{refund}} kembali ke dompet, {{currency}} {{fee}} biaya pembatalan.",
+          "cancelGroupPreviewGuestShares": "Pembayaran bagian tamu ({{currency}} {{amount}}) dikembalikan penuh ke kartu yang mereka pakai."
         },
         "groupBookingDetail": {
           "back": "Retour",
@@ -16170,7 +16190,11 @@
           "cancelMySpotConfirm": "Batalkan tempat Anda di pemesanan grup ini? Layanan Anda dihapus dan pembayaran apa pun yang Anda lakukan akan dikembalikan ke kartu Anda.",
           "spotCancelled": "Your spot has been annulé.",
           "guestRemoved": "Invitado quitard.",
-          "guestCancelFailed": "Impossible de mettre à jour the réservation de groupe."
+          "guestCancelFailed": "Impossible de mettre à jour the réservation de groupe.",
+          "resendPayLink": "Kirim ulang tautan bayar",
+          "cancelGroupSession": "Batalkan sesi kelompok",
+          "cancelGroupSessionHint": "Membuka pemesanan Anda, tempat Anda melihat pengembalian dana seluruh kelompok sebelum mengonfirmasi.",
+          "askOrganizerToReschedule": "Tanyakan kepada penyelenggara apakah sesi ini perlu waktu lain."
         },
         "announcements": {
           "retry": "Réessayer",
@@ -16574,21 +16598,21 @@
           "saveErrorBeauty": "Préférences beauté : {{message}}",
           "saveFailedGeneric": "échec",
           "profileQuestionsSection": "Profil questions",
-          "profileQuestionsHint": "Answer at least 3 to complete your profile. ({{answered}}/3 done)",
+          "profileQuestionsHint": "Jawab minimal 3 untuk melengkapi profil. ({{answered}}/3 selesai)",
           "interestsSection": "Centres d’intérêt",
           "interestsSubtitle": "Ajouter things you're into (select or type)",
           "interestsPlaceholder": "ex. Cheveux, ongles, soins…",
           "interestsA11y": "Vos centres d’intérêt",
           "beautySection": "Préférences beauté",
-          "beautySubtitle": "Help prestataires personalise your experience",
+          "beautySubtitle": "Bantu penyedia mempersonalisasi pengalaman Anda",
           "hairType": "Type de cheveux",
           "skinType": "Type de peau",
           "thingsToAvoid": "À éviter",
-          "thingsToAvoidPlaceholder": "Sélectionner or type (e.g. fragrances, sulfates)",
+          "thingsToAvoidPlaceholder": "Pilih atau ketik (mis. aroma, sulfat)",
           "thingsToAvoidA11y": "À éviter",
           "appointmentStyle": "Rendez-vous style",
           "productPreferences": "Produit preferences",
-          "productPreferencesPlaceholder": "Sélectionner or type (e.g. Vegan, Cruelty-free)",
+          "productPreferencesPlaceholder": "Pilih atau ketik (mis. vegan, bebas kekejaman)",
           "productPreferencesA11y": "Produit preferences",
           "allergies": "Allergies et sensibilités",
           "allergiesPlaceholder": "ex. Nickel, latex…",
@@ -16632,7 +16656,7 @@
           "skinMature": "Mature",
           "avoidStrongFragrances": "Parfums forts",
           "avoidAlcohol": "Alcohol-based produits",
-          "avoidSulfates": "Sulfates",
+          "avoidSulfates": "Salfati",
           "avoidParabens": "Parabènes",
           "avoidEssentialOils": "Huiles essentielles",
           "avoidLatex": "Latex",
@@ -16643,7 +16667,7 @@
           "styleRelaxed": "Détendu et sans précipitation",
           "styleSocial": "Sociable et bavard",
           "styleQuiet": "Calme et minimal",
-          "styleFlexible": "Flexible",
+          "styleFlexible": "Rahisi",
           "prefVegan": "Végane",
           "prefCrueltyFree": "Sans cruauté",
           "prefNaturalOrganic": "Naturel / bio",
@@ -16670,7 +16694,7 @@
           "interestCooking": "Cuisine",
           "allergyFragrance": "Parfum",
           "allergyParabens": "Parabènes",
-          "allergySulfates": "Sulfates",
+          "allergySulfates": "Salfati",
           "allergyAlcohol": "Alcool",
           "allergyDyes": "Colorations",
           "allergyFormaldehyde": "Formaldéhyde",
@@ -18143,6 +18167,9 @@
           "invalidBody": "Introduce a válido fecha (YYYY-MM-DD) and hora (HH:MM).",
           "failedTitle": "Impossible de reschedule",
           "noSlots": "No horas disponible on this día. Try anotro fecha."
+        },
+        "resetPassword": {
+          "policyMix": "Kata sandi Anda perlu campuran huruf dan angka yang memenuhi aturan akun."
         }
       }
     },
@@ -18172,7 +18199,7 @@
       "save": "Simpan rekening bank",
       "screenTitle": "Rekening bank",
       "bankLabel": "Banque",
-      "selectBank": "Select your bank"
+      "selectBank": "Pilih bank Anda"
     },
     "walletBankRefund": {
       "addBank": "Tambahkan rekening bank",
@@ -18425,7 +18452,11 @@
     "payForEveryone": "I'll pagar for everyone",
     "splitPayment": "Split paiement",
     "splitPaymentHint": "Anda membayar layanan Anda sendiri dan biaya pemesanan sekarang. Setiap tamu mendapat tautan untuk membayar bagiannya.",
-    "guestSharesPaidByInvite": "Invitados pagar via invitación enlace"
+    "guestSharesPaidByInvite": "Invitados pagar via invitación enlace",
+    "rescheduleReplacesPreviousBody": "Janji asli Anda dibatalkan sendiri, tanpa biaya, saat pembayaran pemesanan ini selesai. Yang sudah Anda bayar dipakai di sini, dan sisanya tetap di dompet.",
+    "rescheduleCreditNote": "Jumlah apa pun yang sudah Anda bayar daring untuk pemesanan asli dipakai di sini. Anda hanya membayar selisihnya.",
+    "rescheduleCreditApplied": "Dibayar pada pemesanan asli",
+    "rescheduleCreditSurplus": "Sisa {{amount}} tetap di dompet Anda sebagai saldo."
   },
   "payments": {
     "pay": "Pay",
@@ -19472,7 +19503,11 @@
         "pickNextAvailable": "Find suivant disponible heure",
         "splitPayment": "Split paiement",
         "guestSharesPaidByInvite": "Invitados pagar via invitación enlace",
-        "splitPaymentHint": "Anda membayar layanan Anda sendiri dan biaya pemesanan sekarang. Setiap tamu mendapat tautan untuk membayar bagiannya."
+        "splitPaymentHint": "Anda membayar layanan Anda sendiri dan biaya pemesanan sekarang. Setiap tamu mendapat tautan untuk membayar bagiannya.",
+        "rescheduleCreditPaid": "Pembayaran asli Anda menutup pemesanan ini.",
+        "rescheduleCreditIntro": "Jumlah apa pun yang sudah Anda bayar daring untuk pemesanan asli dipakai di sini. Anda hanya membayar selisihnya.",
+        "rescheduleCreditApplied": "Dibayar pada pemesanan asli",
+        "rescheduleCreditSurplus": "Sisa {{amount}} tetap di dompet Anda sebagai saldo."
       },
       "addToWaitlist": {
         "enterName": "Veuillez saisir your nom",
@@ -21128,7 +21163,13 @@
           "cancelled": "Annulé",
           "cantFind": "Can't find your reservation aquí?",
           "visitHelpCenter": "Visit the Centre d’aide"
-        }
+        },
+        "cancelledRefundProcessing": "Pemesanan dibatalkan. Pengembalian dana Anda sedang diproses dan akan segera tiba.",
+        "refundProcessingTitle": "Pengembalian dana diproses",
+        "refundProcessingBody": "Pemesanan ini dibatalkan. Kami sedang menyelesaikan pengembalian dana Anda dan itu akan muncul sebentar lagi di dompet Anda. Anda tidak perlu melakukan apa pun.",
+        "cancelGroupPreviewTitle": "Ini membatalkan seluruh sesi kelompok {{ref}}, termasuk {{count}} tamu.",
+        "cancelGroupPreviewOtherBookings": "Pemesanan lain Anda di kelompok ini: {{currency}} {{refund}} kembali ke dompet, {{currency}} {{fee}} biaya pembatalan.",
+        "cancelGroupPreviewGuestShares": "Pembayaran bagian tamu ({{currency}} {{amount}}) dikembalikan penuh ke kartu yang mereka pakai."
       },
       "payAdditionalCharge": {
         "notFound": "Additional charge introuvable",
@@ -21375,7 +21416,13 @@
           "subtitle": "Elegir a strong contraseña for your cuenta.",
           "atLeastChars": "Au moins {{min}} caractères",
           "strength": "Robustesse : {{label}}",
-          "confirmPlaceholder": "Re-enter your mot de passe"
+          "confirmPlaceholder": "Re-enter your mot de passe",
+          "passwordsMatch": "Kata sandi cocok",
+          "showPassword": "Show mot de passe",
+          "hidePassword": "Hide mot de passe",
+          "policyHintLettersDigits": "Sertakan huruf dan angka",
+          "policyHintMixed": "Sertakan huruf besar, huruf kecil, dan satu angka.",
+          "strengthTip": "lebih panjang, dengan angka dan simbol, lebih kuat"
         }
       },
       "membership": {
@@ -22324,6 +22371,49 @@
         "statusContacted": "Contacté",
         "statusBooked": "Réservé",
         "statusCancelled": "Annulé"
+      },
+      "safety": {
+        "emergencyNumber": "Nomor darurat: 112",
+        "managed": "Dikelola",
+        "deviceAuthWebNote": "Berlaku saat Anda berikutnya membuka aplikasi Beautonomi.",
+        "updated": "Pengaturan diperbarui",
+        "updateFailed": "Impossible de mettre à jour setting. Veuillez réessayer.",
+        "loadFailed": "Pengaturan keamanan tidak dapat dimuat.",
+        "retry": "Retry",
+        "reportValidation": "Masukkan minimal 2 karakter untuk orang yang dilaporkan dan minimal 10 karakter tentang kejadiannya.",
+        "unblocked": "Pengguna dibuka blokirnya",
+        "unblockFailed": "Pengguna ini tidak dapat dibuka blokirnya.",
+        "blockedLoadFailed": "Pengguna yang diblokir tidak dapat dimuat.",
+        "blockedOn": "Diblokir {{date}}",
+        "currentBand": "Pita saat ini: {{band}}",
+        "noResults": "Tidak ada pengguna terblokir yang cocok dengan pencarian.",
+        "profileCompletionCta": "Terminer profil",
+        "bankRefundCta": "Minta pengembalian dana bank",
+        "bankRefundOpenCta": "Lihat permintaan pengembalian dana bank",
+        "bankRefundHistory": "Riwayat permintaan",
+        "bankRefundNote": "Catatan untuk tim keuangan (opsional)",
+        "bankRefundMin": "Jumlah minimum: {{amount}}",
+        "bankRefundMax": "Maksimum per permintaan: {{amount}}",
+        "bankRefundSla": "Pengembalian dana yang disetujui biasanya dibayar dalam {{days}} hari kerja.",
+        "bankRefundNoAccounts": "Tambahkan rekening bank sebelum meminta pengembalian dana bank.",
+        "bankRefundStatus": "Status",
+        "bankRefundAmount": "Amount",
+        "bankRefundDate": "Diminta",
+        "bankRefundReceive": "Anda menerima",
+        "bankRefundCancelled": "Request annulé",
+        "bankAccountsManage": "Kelola rekening bank",
+        "bankAccountsMax": "Anda dapat menyimpan hingga 3 rekening bank.",
+        "bankAccountSaved": "Rekening bank disimpan",
+        "bankAccountRemoved": "Rekening bank dihapus",
+        "bankAccountPrimary": "Akun utama diperbarui",
+        "cancel": "Annuler"
+      },
+      "profileDetailsPage": {
+        "aboutSection": "Tentang Anda",
+        "aboutHint": "Bio singkat yang dilihat penyedia saat Anda memesan.",
+        "aboutPlaceholder": "Ceritakan sedikit tentang diri Anda kepada penyedia",
+        "noChanges": "Tidak ada perubahan untuk disimpan",
+        "clearChoice": "Effacer"
       }
     },
     "auth": {
@@ -36370,7 +36460,9 @@
       "cancelConfirm": "Batalkan tempat Anda di pemesanan grup ini? Layanan Anda dihapus dan pembayaran apa pun yang Anda lakukan akan dikembalikan ke kartu Anda.",
       "cancelled": "Your spot has been annulé.",
       "cancelledRefunded": "Tempatmu dibatalkan. {{amount}} sedang dikembalikan ke kartu.",
-      "cancelFailed": "Impossible de annuler your spot."
+      "cancelFailed": "Impossible de annuler your spot.",
+      "sessionCancelled": "Sesi kelompok ini telah dibatalkan.",
+      "sessionCancelledPaid": "Sesi kelompok ini telah dibatalkan. Jumlah apa pun yang Anda bayar untuk bagian Anda dikembalikan penuh ke kartu yang dipakai."
     }
   },
   "errors": {

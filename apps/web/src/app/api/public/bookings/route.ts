@@ -19,6 +19,12 @@ import { ensureUserProfileForAuthUser } from "./_helpers/ensure-user-profile";
 import { postBookingEffects } from "./_helpers/post-booking";
 import { processPayment } from "./_helpers/process-payment";
 import { releaseBookingSlotAfterPaymentFailure } from "./_helpers/release-booking-slot-after-payment-failure";
+import {
+  borrowPackageSessionForReschedule,
+  loadRescheduleCarryOver,
+  returnBorrowedPackageSession,
+  type RescheduleCarryOver,
+} from "@/lib/bookings/reschedule-carry-over";
 import { validateBooking } from "./_helpers/validate-booking";
 import { checkBookingCreationRateLimit, incrementBookingCreation } from "@/lib/rate-limit/booking-creation";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
@@ -202,8 +208,11 @@ export async function POST(request: NextRequest) {
         }
 
         stage = "reschedule_cancel";
-        // 2.6. If rescheduling (new booking replacing an existing one), cancel the old booking first
+        // The original booking stays active until the replacement is paid.
+        // finalizeRescheduleCarryOver cancels it and moves the credit across.
         const rescheduleBookingId = validatedDraft.reschedule_booking_id ?? undefined;
+        let rescheduleCarry: Extract<RescheduleCarryOver, { ok: true }> | null = null;
+        let borrowedEntitlementId: string | null = null;
         if (rescheduleBookingId) {
           const { data: oldBooking, error: oldBookingError } = await supabaseAdmin
             .from("bookings")
@@ -266,32 +275,28 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          const { error: cancelError } = await supabaseAdmin
-            .from("bookings")
-            .update({
-              status: "cancelled",
-              cancelled_at: new Date().toISOString(),
-              cancelled_by: user.id,
-              cancellation_reason: "Rescheduled to new time",
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", rescheduleBookingId);
-
-          if (cancelError) {
-            return handleApiError(
-              new Error("Failed to cancel original booking"),
-              "Could not complete reschedule. Please try again.",
-              "CANCEL_FAILED",
-              500
-            );
+          const carry = await loadRescheduleCarryOver(supabaseAdmin, rescheduleBookingId, user.id);
+          if (carry.ok === false) {
+            return errorResponse(carry.message, carry.code, carry.code === "NOT_FOUND" ? 404 : 409);
           }
-
-          // Notify waitlist entries about the freed slot
-          try {
-            const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
-            await matchWaitlistOnCancellation(supabaseAdmin, rescheduleBookingId);
-          } catch (waitlistErr) {
-            console.error("[reschedule] waitlist matching for old booking failed:", waitlistErr);
+          rescheduleCarry = carry;
+          if (
+            carry.entitlementId &&
+            validatedDraft.customer_package_entitlement_id === carry.entitlementId
+          ) {
+            const borrowed = await borrowPackageSessionForReschedule(
+              supabaseAdmin,
+              carry.entitlementId,
+              user.id,
+            );
+            if (!borrowed) {
+              return errorResponse(
+                "We could not move your package session to the new time. Please try again.",
+                "PACKAGE_SESSION_BORROW_FAILED",
+                409,
+              );
+            }
+            borrowedEntitlementId = carry.entitlementId;
           }
         }
 
@@ -386,6 +391,9 @@ export async function POST(request: NextRequest) {
 
         // If validation returned an error Response, forward it
         if (validationResult instanceof Response) {
+          if (borrowedEntitlementId) {
+            await returnBorrowedPackageSession(supabaseAdmin, borrowedEntitlementId, user.id);
+          }
           return validationResult;
         }
 
@@ -403,10 +411,20 @@ export async function POST(request: NextRequest) {
         );
 
         if (createResult instanceof Response) {
+          if (borrowedEntitlementId) {
+            await returnBorrowedPackageSession(supabaseAdmin, borrowedEntitlementId, user.id);
+          }
           return createResult;
         }
 
         const { booking } = createResult;
+
+        if (rescheduleCarry && rescheduleBookingId) {
+          await supabaseAdmin
+            .from("bookings")
+            .update({ rescheduled_from_booking_id: rescheduleBookingId })
+            .eq("id", booking.id);
+        }
 
         invalidateProviderBookingsReadCache(booking.provider_id);
 
@@ -490,10 +508,14 @@ export async function POST(request: NextRequest) {
             v,
             booking,
             request,
+            rescheduleCredit: rescheduleCarry?.credit ?? 0,
           });
 
           if (paymentResult instanceof Response) {
             await releaseBookingSlotAfterPaymentFailure(supabaseAdmin, booking.id, user.id);
+            if (borrowedEntitlementId) {
+              await returnBorrowedPackageSession(supabaseAdmin, borrowedEntitlementId, user.id);
+            }
             bookingIdPendingRelease = "";
             return paymentResult;
           }
@@ -557,6 +579,7 @@ export async function POST(request: NextRequest) {
             wallet_amount_applied: walletAmountApplied ?? 0,
             gift_card_amount_applied: giftCardAmountApplied ?? 0,
             paystack_amount: paystackAmount ?? 0,
+            reschedule_credit: rescheduleCarry?.credit ?? 0,
             ...(recurring_subscription ? { recurring_subscription } : {}),
             // Display hints for confirmation screen — respect admin settings
             display: {
@@ -596,6 +619,9 @@ export async function POST(request: NextRequest) {
         } catch (paymentOrPostError) {
           if (bookingIdPendingRelease) {
             await releaseBookingSlotAfterPaymentFailure(supabaseAdmin, bookingIdPendingRelease, user.id);
+            if (borrowedEntitlementId) {
+              await returnBorrowedPackageSession(supabaseAdmin, borrowedEntitlementId, user.id);
+            }
           }
           throw paymentOrPostError;
         }

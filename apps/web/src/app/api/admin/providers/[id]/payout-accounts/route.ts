@@ -17,6 +17,8 @@ import { z } from "zod";
 import { loadProviderPayoutRailContext, resolvePayoutRailForTenant } from "@/lib/payments/payout-rail";
 import { resolveFlutterwaveBankAccount } from "@/lib/payments/flutterwave-banks";
 import { getEffectiveSkipPayoutAccountVerification } from "@/lib/payments/payout-account-verification-settings";
+import { resolveCoolingOffUntilForAdminAddedAccount } from "@/lib/auth/resolve-new-account-cooling-off";
+import { notifyPayoutAccountChange } from "@/lib/auth/payout-cooling-off";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PAYSTACK_RECIPIENT_TYPES = ["nuban", "basa", "ghipss", "mobile_money"] as const;
@@ -233,6 +235,7 @@ export async function POST(
           currency,
           active: true,
           is_primary: isFirstAccount,
+          cooling_off_until: await resolveCoolingOffUntilForAdminAddedAccount(),
           metadata: {
             payout_rail: "flutterwave",
             added_by_admin: user.id,
@@ -243,6 +246,14 @@ export async function POST(
         .single();
 
       if (saveError) throw saveError;
+      await notifyPayoutAccountChange({
+        providerId,
+        actorUserId: user.id,
+        includeActor: false,
+        kind: "added",
+        accountId: String(savedAccount.id),
+        accountLast4: accountNumberLast4,
+      });
       return successResponse(savedAccount);
     }
 
@@ -291,6 +302,7 @@ export async function POST(
         currency: paystackRecipient.data.currency || currency,
         active: paystackRecipient.data.active !== false,
         is_primary: isFirstAccount,
+        cooling_off_until: await resolveCoolingOffUntilForAdminAddedAccount(),
         metadata: {
           paystack_response: paystackRecipient.data,
           added_by_admin: user.id,
@@ -309,6 +321,15 @@ export async function POST(
       throw saveError;
     }
 
+    await notifyPayoutAccountChange({
+      providerId,
+      actorUserId: user.id,
+      includeActor: false,
+      kind: "added",
+      accountId: String(savedAccount.id),
+      accountLast4: accountNumberLast4,
+      bankName: details?.bank_name ?? null,
+    });
     return successResponse(savedAccount);
   } catch (error) {
     return handleApiError(error, "Failed to add payout account");

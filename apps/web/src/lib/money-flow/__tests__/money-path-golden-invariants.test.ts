@@ -7,6 +7,8 @@ import {
 } from "@/lib/orders/product-order-tender";
 import { productOrderAmountStillDue } from "@/lib/payments/resolve-paystack-initialize-amount";
 import { computeOrderReceiptFinancials } from "@/lib/receipts/build-order-receipt";
+import { classifyRescheduleCarryOver } from "@/lib/bookings/reschedule-carry-over";
+import { isPayoutRefundComponent } from "@/lib/ledger/refund-components";
 
 /**
  * Golden invariants: pure helpers that must agree on the same tender math.
@@ -75,5 +77,19 @@ describe("money-path golden invariants", () => {
     });
     expect(finances.amountPaid).toBe(60);
     expect(finances.balanceDue).toBe(40);
+  });
+
+  it("reschedule carry-over excludes a still-reserved gift card and blocks in-person money", () => {
+    const same = classifyRescheduleCarryOver({ collected: 200, reservedGiftAmount: 0, inPersonAmount: 0 });
+    expect(same.ok && same.credit).toBe(200);
+    const gift = classifyRescheduleCarryOver({ collected: 200, reservedGiftAmount: 50, inPersonAmount: 0 });
+    expect(gift.ok && gift.credit).toBe(150);
+    const cash = classifyRescheduleCarryOver({ collected: 80, reservedGiftAmount: 0, inPersonAmount: 80 });
+    expect(cash.ok).toBe(false);
+  });
+
+  it("membership sale refunds are not a second payout clawback", () => {
+    expect(isPayoutRefundComponent("membership_provider_earnings")).toBe(true);
+    expect(isPayoutRefundComponent("membership_sale")).toBe(false);
   });
 });

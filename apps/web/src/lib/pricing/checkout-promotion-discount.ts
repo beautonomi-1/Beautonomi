@@ -26,6 +26,8 @@ export interface ResolveCheckoutPromotionDiscountInput {
   locationId: string | null;
   /** When set, enforces promotions.once_per_customer at commit time */
   customerId?: string;
+  /** Ignore this booking's own redemption (checkout reschedule of a promo booking). */
+  excludeBookingId?: string | null;
 }
 
 export interface ResolveCheckoutPromotionDiscountResult {
@@ -54,6 +56,7 @@ export async function resolveCheckoutPromotionDiscount(
     locationType,
     locationId,
     customerId,
+    excludeBookingId,
   } = input;
 
   let promotionId: string | null = null;
@@ -97,8 +100,18 @@ export async function resolveCheckoutPromotionDiscount(
     const validFrom = promo.valid_from ? new Date(promo.valid_from as string) : null;
     const validUntil = promo.valid_until ? new Date(promo.valid_until as string) : null;
     const withinWindow = (!validFrom || now >= validFrom) && (!validUntil || now <= validUntil);
+    let excludedOwnUsage = 0;
+    if (excludeBookingId) {
+      const { count: ownUsage } = await supabase
+        .from("promotion_usage")
+        .select("id", { count: "exact", head: true })
+        .eq("promotion_id", String(promo.id))
+        .eq("booking_id", excludeBookingId);
+      excludedOwnUsage = Number(ownUsage ?? 0) > 0 ? 1 : 0;
+    }
+    const usageCount = Number(promo.usage_count || 0) - excludedOwnUsage;
     const underLimit =
-      promo.usage_limit == null || Number(promo.usage_count || 0) < Number(promo.usage_limit);
+      promo.usage_limit == null || Math.max(0, usageCount) < Number(promo.usage_limit);
     const meetsMin =
       !promo.min_purchase_amount || prePromoSubtotal >= Number(promo.min_purchase_amount);
     const locationOk =
@@ -109,7 +122,7 @@ export async function resolveCheckoutPromotionDiscount(
       if (
         promo.once_per_customer &&
         customerId &&
-        (await customerHasPromotionUsage(supabase, promoIdStr, customerId))
+        (await customerHasPromotionUsage(supabase, promoIdStr, customerId, excludeBookingId))
       ) {
         blockedReason = ONCE_PER_CUSTOMER_MESSAGE;
       } else {

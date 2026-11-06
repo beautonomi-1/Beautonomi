@@ -54,6 +54,13 @@ function authErrorRedirect(requestUrl: URL, message: string): NextResponse {
   return NextResponse.redirect(loginUrl);
 }
 
+function recoveryRedirect(requestUrl: URL): NextResponse {
+  const resetUrl = new URL("/account-settings/login-and-security/reset-password", requestUrl.origin);
+  const next = safeReturnPath(requestUrl.searchParams.get("next"), requestUrl.origin);
+  if (next) resetUrl.searchParams.set("next", next);
+  return NextResponse.redirect(resetUrl);
+}
+
 async function resolvePortalDefaultRoute(
   supabase: SupabaseClient,
   userId: string,
@@ -127,14 +134,12 @@ export async function GET(request: NextRequest) {
       await tryBootstrapPreferredHomeTenant(verifyData.user.id, request);
       await trySyncAuthMetadata(verifyData.user.id, verifyData.user);
     }
+    if (type === "recovery" && verifyData?.session?.access_token) {
+      const { bindImpersonationSession } = await import("@/lib/auth/impersonation-session");
+      await bindImpersonationSession(tokenHash, verifyData.session.access_token);
+    }
     if (type === "recovery") {
-      const resetUrl = new URL(
-        "/account-settings/login-and-security/reset-password",
-        requestUrl.origin,
-      );
-      const next = safeReturnPath(requestUrl.searchParams.get("next"), requestUrl.origin);
-      if (next) resetUrl.searchParams.set("next", next);
-      return NextResponse.redirect(resetUrl);
+      return recoveryRedirect(requestUrl);
     }
     const next = safeReturnPath(requestUrl.searchParams.get("next"), requestUrl.origin) || "/";
     return NextResponse.redirect(new URL(next, requestUrl.origin));
@@ -160,6 +165,10 @@ export async function GET(request: NextRequest) {
   if (data.user?.id) {
     await tryBootstrapPreferredHomeTenant(data.user.id, request);
     await trySyncAuthMetadata(data.user.id, data.user);
+  }
+
+  if (type === "recovery") {
+    return recoveryRedirect(requestUrl);
   }
 
   // Update user profile with OAuth metadata if available, and self-heal any

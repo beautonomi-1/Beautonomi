@@ -34,6 +34,7 @@ export const NON_PROVIDER_REFUND_COMPONENTS = new Set<string>([
   "wallet_payment",
   "gift_card_payment",
   "gift_card_liability_reduction",
+  "membership_sale",
   "additional_charge_payment", // online add-on commission (platform's)
   "cashback", // card-machine cash-out wash — never provider earnings
 ]);

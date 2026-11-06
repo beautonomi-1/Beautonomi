@@ -58,6 +58,7 @@ export function getProviderNotificationDefaults(): Record<string, unknown> {
     payout_updates: { email: true, sms: true, push: true, whatsapp: false },
     waitlist_notifications: { email: true, sms: false, push: true, whatsapp: false },
     system_updates: { email: true, sms: false, push: false, whatsapp: false },
+    account_security: { email: true, sms: true, push: true, whatsapp: false },
     marketing: { email: true, sms: false, push: false, whatsapp: false },
     booking_alert_sound: true,
     order_alert_sound: true,
@@ -81,6 +82,7 @@ export const PROVIDER_SECTION_DEFAULTS: Record<string, SectionChannelPrefs> = {
   payout_updates: { email: true, sms: true, push: true, whatsapp: false },
   waitlist_notifications: { email: true, sms: false, push: true, whatsapp: false },
   system_updates: { email: true, sms: false, push: false, whatsapp: false },
+  account_security: { email: true, sms: true, push: true, whatsapp: false },
   marketing: { email: true, sms: false, push: false, whatsapp: false },
 };
 

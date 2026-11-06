@@ -73,3 +73,25 @@ export function computeGroupOutstandingBalance(
     return sum + Math.max(0, price - paid);
   }, 0);
 }
+
+/** Amount a guest still owes on their own split share (0 when there is no share). */
+export function participantShareOwed(p: {
+  share_amount_due?: number | null;
+  share_amount_paid?: number | null;
+}): number {
+  if (p.share_amount_due == null) return 0;
+  return Math.max(0, Math.round((Number(p.share_amount_due) - Number(p.share_amount_paid ?? 0)) * 100) / 100);
+}
+
+/** Mirrors resendGroupGuestInvite: any open split share with money still owed. */
+export function canResendGuestPayLink(p: {
+  is_primary_contact?: boolean;
+  share_amount_due?: number | null;
+  share_amount_paid?: number | null;
+  share_status?: string | null;
+}): boolean {
+  if (p.is_primary_contact || p.share_amount_due == null) return false;
+  const status = String(p.share_status ?? "").toLowerCase();
+  if (status === "paid" || status === "cancelled" || status === "waived") return false;
+  return participantShareOwed(p) > 0.005;
+}

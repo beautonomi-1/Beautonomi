@@ -176,6 +176,9 @@ export async function POST(
       return errorResponse("Failed to extract token from link. Please check server logs for details.", "TOKEN_ERROR", 500);
     }
 
+    const { recordImpersonationLink } = await import("@/lib/auth/impersonation-session");
+    await recordImpersonationLink({ tokenHash: token, adminUserId: adminUser.id, targetUserId: id });
+
     // Store impersonation info in cookies
     const cookieStore = await cookies();
     cookieStore.set("impersonation_token", token, {

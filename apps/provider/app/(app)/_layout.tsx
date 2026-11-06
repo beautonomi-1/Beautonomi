@@ -114,6 +114,7 @@ export default function AppLayout() {
           <Stack.Screen name="announcements" options={{ headerShown: false }} />
           <Stack.Screen name="on-demand/incoming/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
+          <Stack.Screen name="security-verify" options={{ headerShown: false, gestureEnabled: false }} />
         </Stack>
         </View>
         {/* §provider-setup-seamless-ux 2026-05: one-time celebration the

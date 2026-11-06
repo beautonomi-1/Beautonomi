@@ -151,6 +151,75 @@ async function queryPaidProductOrdersMissingLedger(
   return results;
 }
 
+async function queryUnsettledCancellations(
+  supabase: SupabaseClient,
+  tenantId: string | null,
+  limit: number,
+): Promise<AuditRow[]> {
+  let q = supabase
+    .from("bookings")
+    .select(
+      "id, booking_number, total_paid, wallet_amount, gift_card_amount, cancelled_at, tenant_id, cancellation_settlement_error",
+    )
+    .in("status", ["cancelled", "no_show"])
+    .is("cancellation_settled_at", null)
+    .or("total_paid.gt.0,wallet_amount.gt.0,gift_card_amount.gt.0")
+    .order("cancelled_at", { ascending: false })
+    .limit(limit);
+  if (tenantId) q = q.eq("tenant_id", tenantId);
+  const { data, error } = await q;
+  if (error || !data) return [];
+  return data as AuditRow[];
+}
+
+async function queryProcessingPayoutsMissingLedger(
+  supabase: SupabaseClient,
+  tenantId: string | null,
+  limit: number,
+): Promise<AuditRow[]> {
+  // In-flight Paystack/Flutterwave transfers are processing by design; only a
+  // Stripe transfer (synchronous) or one stuck for a day is a real gap.
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  let q = supabase
+    .from("payouts")
+    .select("id, provider_id, transfer_code, status, net_amount, payout_provider, updated_at, providers!inner(tenant_id)")
+    .eq("status", "processing")
+    .not("transfer_code", "is", null)
+    .or(`payout_provider.eq.stripe,updated_at.lt.${dayAgo}`)
+    .limit(limit);
+  if (tenantId) q = q.eq("providers.tenant_id", tenantId);
+  const { data, error } = await q;
+  if (error || !data?.length) return [];
+  const ids = (data as Array<{ id: string }>).map((r) => r.id);
+  const { data: ledger } = await supabase
+    .from("finance_transactions")
+    .select("payout_id")
+    .eq("transaction_type", "payout")
+    .in("payout_id", ids);
+  const covered = new Set(
+    ((ledger ?? []) as Array<{ payout_id?: string }>).map((r) => String(r.payout_id)),
+  );
+  return (data as AuditRow[]).filter((r) => !covered.has(String(r.id)));
+}
+
+async function queryUnfinalizedRescheduleCredits(
+  supabase: SupabaseClient,
+  tenantId: string | null,
+  limit: number,
+): Promise<AuditRow[]> {
+  let q = supabase
+    .from("bookings")
+    .select("id, booking_number, payment_status, reschedule_credit_pending, rescheduled_from_booking_id")
+    .not("rescheduled_from_booking_id", "is", null)
+    .is("reschedule_carry_over_finalized_at", null)
+    .in("payment_status", ["paid", "partially_paid"])
+    .limit(limit);
+  if (tenantId) q = q.eq("tenant_id", tenantId);
+  const { data, error } = await q;
+  if (error || !data) return [];
+  return data as AuditRow[];
+}
+
 export async function buildFinanceIntegrityReport(
   supabase: SupabaseClient,
   tenantId: string | null,
@@ -173,6 +242,9 @@ export async function buildFinanceIntegrityReport(
     duplicateSourcePaymentRows,
     completedRefundsWithoutLedger,
     paidProductOrdersMissingLedger,
+    unsettledCancellations,
+    processingPayoutsMissingLedger,
+    unfinalizedRescheduleCredits,
   ] = await Promise.all([
     rpcRows(supabase, "list_integrity_overcharged_inclusive_bookings", tenantArg),
     rpcRows(supabase, "list_integrity_vat_debited_on_refunds", tenantArg),
@@ -188,6 +260,9 @@ export async function buildFinanceIntegrityReport(
     queryDuplicateSourcePaymentRows(supabase, limit),
     queryCompletedRefundsWithoutLedger(supabase, tenantId, limit),
     queryPaidProductOrdersMissingLedger(supabase, tenantId, limit),
+    queryUnsettledCancellations(supabase, tenantId, limit),
+    queryProcessingPayoutsMissingLedger(supabase, tenantId, limit),
+    queryUnfinalizedRescheduleCredits(supabase, tenantId, limit),
   ]);
 
   const missingLedgerLegs = [...missingOnlineLedger, ...missingProviderEarnings].slice(0, limit);
@@ -217,6 +292,9 @@ export async function buildFinanceIntegrityReport(
       duplicate_source_payment_ledger_rows: section(duplicateSourcePaymentRows),
       completed_refunds_without_ledger: section(completedRefundsWithoutLedger),
       paid_product_orders_missing_ledger: section(paidProductOrdersMissingLedger),
+      unsettled_cancellations: section(unsettledCancellations),
+      processing_payouts_missing_ledger: section(processingPayoutsMissingLedger),
+      unfinalized_reschedule_credits: section(unfinalizedRescheduleCredits),
     },
   };
 }

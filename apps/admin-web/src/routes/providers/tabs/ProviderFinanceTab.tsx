@@ -41,7 +41,14 @@ type PayoutAccountRow = Record<string, unknown> & {
   active?: boolean;
   is_primary?: boolean;
   created_at?: string;
+  cooling_off_until?: string | null;
 };
+
+function holdActiveUntil(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (value === "infinity") return value;
+  return new Date(value).getTime() > Date.now() ? value : null;
+}
 
 type TxSummaryRow = { gross: number; fees: number; commission: number; net: number; refunds: number; payouts: number };
 type TxLedgerRow = { id: string; transaction_type: string; amount: number; fees: number; commission: number; net: number; created_at?: string; booking?: { id: string; booking_number?: string } | null };
@@ -167,6 +174,19 @@ export function ProviderFinanceTab({
       adminToast.success("Subscription updated");
     },
     onError: (e: Error) => adminToast.error(`Failed to update subscription: ${e.message}`),
+  });
+
+  const releaseHold = useMutation({
+    mutationFn: ({ accountId, reason }: { accountId: string; reason: string }) =>
+      adminApi.postJson(
+        `/api/admin/providers/${encodeURIComponent(providerCanonicalId)}/payout-accounts/${encodeURIComponent(accountId)}/release-hold`,
+        { reason },
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providers.payoutAccounts(providerCanonicalId) });
+      adminToast.success("Security hold released. The owner has been notified.");
+    },
+    onError: (e: Error) => adminToast.error(`Couldn't release hold: ${e.message}`),
   });
 
   const cur = (n: number) => formatAdminCurrency(n, "ZAR");
@@ -338,6 +358,45 @@ export function ProviderFinanceTab({
                   <AdminTd>
                     {acc.active === false ? "Inactive" : "Active"}
                     {acc.is_primary ? <span className="ml-2 text-xs text-primary">primary</span> : null}
+                    {(() => {
+                      const until = holdActiveUntil(acc.cooling_off_until);
+                      if (!until) return null;
+                      return (
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                            {until === "infinity"
+                              ? "Security hold (manual)"
+                              : `Security hold until ${new Date(until).toLocaleString()}`}
+                          </span>
+                          {hasFinanceAccess && acc.id ? (
+                            <button
+                              type="button"
+                              className="text-xs font-medium text-gray-700 underline hover:text-gray-900 disabled:opacity-50"
+                              disabled={releaseHold.isPending}
+                              onClick={() =>
+                                requestConfirm({
+                                  title: "Release payout security hold",
+                                  consequence:
+                                    "Payouts can go to this account immediately. Only release after confirming the change with the business owner through a known contact method.",
+                                  confirmLabel: "Release hold",
+                                  variant: "danger",
+                                  reasonField: {
+                                    label: "How was this confirmed with the owner?",
+                                    placeholder: "e.g. Called owner on number on file at 14:05; confirmed new bank",
+                                    required: true,
+                                  },
+                                  onConfirm: async ({ reason }) => {
+                                    await releaseHold.mutateAsync({ accountId: String(acc.id), reason: reason ?? "" });
+                                  },
+                                })
+                              }
+                            >
+                              Release hold
+                            </button>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
                   </AdminTd>
                   <AdminTd className="text-xs text-gray-500">
                     {acc.created_at ? new Date(String(acc.created_at)).toLocaleDateString() : "—"}

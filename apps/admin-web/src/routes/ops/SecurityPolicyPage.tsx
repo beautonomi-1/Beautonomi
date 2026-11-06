@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ADMIN_SECTION_OPERATIONS } from "@beautonomi/admin-access";
+import { ADMIN_SECTION_OPERATIONS, ALL_ADMIN_ROLES } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
@@ -25,6 +25,16 @@ interface SecuritySettings {
   two_factor?: {
     enabled?: boolean;
     required_for_admins?: boolean;
+    required_roles?: string[];
+    enforce_all_from?: string | null;
+  };
+  provider_protection?: {
+    step_up?: "off" | "monitor" | "enforce";
+    device_verification?: "off" | "monitor" | "enforce";
+    step_up_window_seconds?: number;
+    trusted_device_days?: number;
+    limited_trust_hours?: number;
+    rollout_started_at?: string | null;
   };
   rate_limiting?: {
     enabled?: boolean;
@@ -158,6 +168,9 @@ export function SecurityPolicyPage() {
   const d = draft ?? q.data;
   const pw = d?.password_policy ?? {};
   const tf = d?.two_factor ?? {};
+  const pp = d?.provider_protection ?? {};
+  const mfaRoles = tf.required_roles ?? [];
+  const mfaEnforcesAllRoles = mfaRoles.length === 0;
   // True when the operator is turning enforcement on in this unsaved edit.
   const enforcementBeingEnabled =
     Boolean(tf.required_for_admins) && !Boolean(q.data?.two_factor?.required_for_admins);
@@ -198,6 +211,7 @@ export function SecurityPolicyPage() {
                 saveMut.mutate({
                   password_policy: draft.password_policy,
                   two_factor: draft.two_factor,
+                  provider_protection: draft.provider_protection,
                   rate_limiting: draft.rate_limiting,
                   data_retention: draft.data_retention,
                   admin_ip_allowlist: draft.admin_ip_allowlist ?? [],
@@ -301,6 +315,63 @@ export function SecurityPolicyPage() {
           />
 
           {Boolean(tf.required_for_admins) && (
+            <div className="space-y-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
+              <div className="text-xs font-medium text-gray-700">Admin roles requiring MFA</div>
+              <p className="text-xs text-gray-500">
+                Leave all unchecked to require MFA for every admin role. During the grace period, only legacy roles may
+                be enforced until <code>enforce_all_from</code> passes.
+              </p>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={mfaEnforcesAllRoles}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      update("two_factor", "required_roles", []);
+                    } else {
+                      update("two_factor", "required_roles", [...ALL_ADMIN_ROLES]);
+                    }
+                    setDirty(true);
+                  }}
+                />
+                All admin roles
+              </label>
+              {!mfaEnforcesAllRoles && (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {ALL_ADMIN_ROLES.map((role) => (
+                    <label key={role} className="flex items-center gap-2 text-xs text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={mfaRoles.includes(role)}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...new Set([...mfaRoles, role])]
+                            : mfaRoles.filter((r) => r !== role);
+                          update("two_factor", "required_roles", next);
+                        }}
+                      />
+                      {role}
+                    </label>
+                  ))}
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Enforce MFA for all roles from (ISO date, optional)
+                </label>
+                <input
+                  type="date"
+                  value={tf.enforce_all_from?.slice(0, 10) ?? ""}
+                  onChange={(e) =>
+                    update("two_factor", "enforce_all_from", e.target.value ? e.target.value : null)
+                  }
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+          )}
+
+          {Boolean(tf.required_for_admins) && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
               <div className="font-semibold">
                 {enforcementBeingEnabled ? "You are about to enforce admin 2FA" : "Admin 2FA enforcement is ON"}
@@ -321,6 +392,63 @@ export function SecurityPolicyPage() {
               </ul>
             </div>
           )}
+        </div>
+      </AdminPanel>
+
+      <AdminPanel>
+        <h2 className="mb-4 text-sm font-semibold text-gray-900">Provider session protection</h2>
+        <p className="mb-4 text-xs text-gray-500">
+          Step-up and device verification for provider API sessions. Monitor logs would-block events; enforce blocks
+          requests until the user completes verification.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Step-up for money actions</label>
+            <select
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              value={pp.step_up ?? "off"}
+              onChange={(e) => update("provider_protection", "step_up", e.target.value)}
+            >
+              <option value="off">Off</option>
+              <option value="monitor">Monitor</option>
+              <option value="enforce">Enforce</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">New device verification</label>
+            <select
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              value={pp.device_verification ?? "off"}
+              onChange={(e) => update("provider_protection", "device_verification", e.target.value)}
+            >
+              <option value="off">Off</option>
+              <option value="monitor">Monitor</option>
+              <option value="enforce">Enforce</option>
+            </select>
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-3 gap-4">
+          <NumberInput
+            label="Step-up window (seconds)"
+            value={pp.step_up_window_seconds}
+            min={60}
+            max={3600}
+            onChange={(v) => update("provider_protection", "step_up_window_seconds", v)}
+          />
+          <NumberInput
+            label="Trusted device (days)"
+            value={pp.trusted_device_days}
+            min={1}
+            max={365}
+            onChange={(v) => update("provider_protection", "trusted_device_days", v)}
+          />
+          <NumberInput
+            label="Limited trust (hours)"
+            value={pp.limited_trust_hours}
+            min={1}
+            max={168}
+            onChange={(v) => update("provider_protection", "limited_trust_hours", v)}
+          />
         </div>
       </AdminPanel>
 

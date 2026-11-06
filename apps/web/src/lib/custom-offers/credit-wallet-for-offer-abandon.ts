@@ -22,18 +22,16 @@ function isCustomOfferWalletCreditReferenceType(referenceType: string | null | u
  * Idempotent via a per-credit wallet_credit_admin key that includes the outstanding
  * amount fingerprint.
  */
-export async function creditWalletForCustomOfferAbandon(
+export async function getCustomOfferWalletOutstanding(
   supabase: SupabaseClient,
   offerId: string,
   customerId: string,
-  providerId: string | null,
-  options?: { reason?: "cancelled" | "expired" | "failed" },
-): Promise<{ credited: number }> {
+): Promise<{ outstanding: number; currency: string } | null> {
   const { data: walletRow } = await (supabase.from("user_wallets") as any)
     .select("id, currency")
     .eq("user_id", customerId)
     .maybeSingle();
-  if (!walletRow) return { credited: 0 };
+  if (!walletRow) return null;
 
   const walletId = (walletRow as { id: string }).id;
   const currency = (walletRow as { currency?: string | null }).currency || "ZAR";
@@ -60,7 +58,19 @@ export async function creditWalletForCustomOfferAbandon(
     }
   }
 
-  const outstanding = Math.round((debitTotal - creditTotal) * 100) / 100;
+  return { outstanding: Math.round((debitTotal - creditTotal) * 100) / 100, currency };
+}
+
+export async function creditWalletForCustomOfferAbandon(
+  supabase: SupabaseClient,
+  offerId: string,
+  customerId: string,
+  providerId: string | null,
+  options?: { reason?: "cancelled" | "expired" | "failed" },
+): Promise<{ credited: number }> {
+  const held = await getCustomOfferWalletOutstanding(supabase, offerId, customerId);
+  if (!held) return { credited: 0 };
+  const { outstanding, currency } = held;
   if (outstanding <= 0) return { credited: 0 };
 
   const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {

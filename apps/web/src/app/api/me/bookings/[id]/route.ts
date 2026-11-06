@@ -400,6 +400,10 @@ export async function GET(
       notes: (bookingData as Record<string, unknown>).notes ?? undefined,
       cancellation_reason: (bookingData as Record<string, unknown>).cancellation_reason ?? undefined,
       cancelled_at: (bookingData as Record<string, unknown>).cancelled_at ?? undefined,
+      cancellation_settled_at: (bookingData as Record<string, unknown>).cancellation_settled_at ?? null,
+      cancellation_settlement_error: (bookingData as Record<string, unknown>).cancellation_settlement_error
+        ? "pending"
+        : null,
       booking_source: (bookingData as Record<string, unknown>).booking_source ?? undefined,
       recurring_series_id: recurringSeriesId,
       package_id: (() => {

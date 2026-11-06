@@ -11140,7 +11140,7 @@
           "sentBody": "Hi rhumile xixunxo xo veka password nakambe eka {{email}}. Pfula xixunxo eka browser ya wena ku veka password yintshwa.",
           "backToLoginA11y": "Tlhelela eka ku nghena",
           "backToLogin": "Tlhelela eka ku nghena",
-          "intro": "Nghenisa adirese ya email ya account ya wena hi ta ku rhumela link yo reset password ya wena.",
+          "intro": "Nghenisa adirese ya imeyili ya akhawunti ya wena hi ta ku rhumela khodi ni hlanganiso yo cinca phasiwedi ya wena.",
           "emailLabel": "imeyili",
           "emailPlaceholder": "wena@example.com",
           "emailA11y": "Adirese ya imeyili",
@@ -15012,7 +15012,20 @@
           "emailInputA11y": "imeyili input",
           "sendResetLink": "Rhumela Veka leswi xihlanganisi",
           "sendResetLinkA11y": "Rhumela Veka leswi xihlanganisi",
-          "backToLoginA11y": "Tlhelela eka ku nghena"
+          "backToLoginA11y": "Tlhelela eka ku nghena",
+          "codeA11y": "phasiwedi Veka leswi khodi",
+          "invalidCodeTitle": "khodi not accepted",
+          "invalidCodeBody": "Nghenisa the {{digits}}-digit khodi from the imeyili.",
+          "resend": "Rerhumela imeyili",
+          "resendA11y": "Rerhumela the Veka leswi imeyili",
+          "signedInIntro": "We'll rhumela a khodi and a Veka leswi xihlanganisi to your akhawunti imeyili.",
+          "back": "Endzhaku",
+          "stepCode": "1. Enter the {{digits}}-digit khodi",
+          "stepPassword": "2. hlawula a lexintshwa phasiwedi",
+          "codeVerified": "khodi yi tiyisisiwile",
+          "submit": "Veka phasiwedi leswi",
+          "submittingA11y": "Veka leswiting phasiwedi",
+          "linkAlternative": "Hlawula hlanganiso? Yi pfula ku suka eka imeyili leswaku u veka phasiwedi yintshwa eka xikomba."
         },
         "authSafetyAndAge": {
           "linkLabel": "vuhlayiseki & parental controls",
@@ -16091,7 +16104,14 @@
           "lifecyclePartialRefundDescription": "Ku tsariwile ku tlheriseriwa ka xiphemu eka vuhlanganisi lebyi.",
           "lifecycleRefundedDescription": "This ku buka xihakelo has been yi tlheriseriwile.",
           "lifecyclePaymentFailedDescription": "Hakelo a yi nghenanga. Ringeta nakambe kumbe tihlanganise na nseketelo hi nomboro ya vuhlanganisi lebyi.",
-          "lifecyclePaymentNotConfirmedDescription": "xihakelo has not been tiyisisaed yet."
+          "lifecyclePaymentNotConfirmedDescription": "xihakelo has not been tiyisisaed yet.",
+          "refundProcessingTitle": "Mbuyiselo wu le ku endliweni",
+          "refundProcessingBody": "Ku buku loku ku khanseliwile. Hi heta mbuyiselo wa wena naswona wu ta humelela ku nga ri khale eka xikhwama xa wena. A wu fanelanga ku endla nchumu.",
+          "rescheduleInProgressTitle": "Ku cinca nkarhi ku le ku endliweni",
+          "rescheduleInProgressBody": "Ku buku loku ku yisiwa eka nkarhi wuntshwa. Hetisa ndhawu yintshwa yo hakela naswona mali leyi u yi hakeleke yi hundzisiwa hi ku tiendlela. Loko u siye ndhawu yoleyo, ku buku loku ku nga khanseliwa nakambe loko ku hela, ku nga ri khale ka timinete ta kwalomu ka 30.",
+          "cancelGroupPreviewTitle": "Leswi swi khansela nhlengeletano hinkwayo ya ntlawa {{ref}}, ku katsa vaendzi va {{count}}.",
+          "cancelGroupPreviewOtherBookings": "Tibuku tin'wana ta wena eka ntlawa lowu: {{currency}} {{refund}} yi vuya eka xikhwama xa wena, {{currency}} {{fee}} hakelo yo khansela.",
+          "cancelGroupPreviewGuestShares": "Tihakelo ta xiphemu xa vaendzi ({{currency}} {{amount}}) ti vuyiseriwa hi ku helela eka makhadi lawa va hakeleke hi wona."
         },
         "groupBookingDetail": {
           "back": "Endzhaku",
@@ -16170,7 +16190,11 @@
           "cancelMySpotConfirm": "Tshika ndhawu ya wena eka nhlangano lowu? Vukorhokeri bya susiwa naswona mali leyi u yi rhumeleke yi tlheriseriwa eka khadi.",
           "spotCancelled": "spot has been yi khanseriwile. ya wena.",
           "guestRemoved": "Muendzi susad.",
-          "guestCancelFailed": "A swi koteki ku pfuxa the ku buka ka ntlawa."
+          "guestCancelFailed": "A swi koteki ku pfuxa the ku buka ka ntlawa.",
+          "resendPayLink": "Rhumela nakambe hlanganiso yo hakela",
+          "cancelGroupSession": "Khansela nhlengeletano ya ntlawa",
+          "cancelGroupSessionHint": "Yi pfula buku ya wena, laha u vonaka mbuyiselo wa ntlawa hinkwawo u nga si tiyisisa.",
+          "askOrganizerToReschedule": "Vutisa muhleli loko nhlengeletano leyi yi lava nkarhi wuntshwa."
         },
         "announcements": {
           "retry": "Ringa nakambe",
@@ -16579,13 +16603,13 @@
           "interestsSubtitle": "Engetela things you're into (hlawula or Muxaka)",
           "interestsPlaceholder": "e.g. Miri, Titinyele, Skincare...",
           "interestsA11y": "interests ya wena",
-          "beautySection": "Beauty preferences",
+          "beautySection": "Switlakelo swa vukhetshe",
           "beautySubtitle": "Pfuna vapfuni va endlela ntokoto wa wena u va wa wena",
           "hairType": "Miri Muxaka",
           "skinType": "Skin Muxaka",
-          "thingsToAvoid": "Things to avoid",
+          "thingsToAvoid": "Swin'wana leswi faneleke ku papalatiwa",
           "thingsToAvoidPlaceholder": "Hlawula or Muxaka (e.g. fragrances, sulfates)",
-          "thingsToAvoidA11y": "Things to avoid",
+          "thingsToAvoidA11y": "Swin'wana leswi faneleke ku papalatiwa",
           "appointmentStyle": "nkarhi style",
           "productPreferences": "xitirhisiwa preferences",
           "productPreferencesPlaceholder": "Hlawula or Muxaka (e.g. Vegan, Cruelty-mahala)",
@@ -16596,11 +16620,11 @@
           "saveAll": "Hlayisa all",
           "saveAllA11y": "Hlayisa all phurofayili vuxokoxoko",
           "placeholderShort": "...",
-          "qSchool": "School / education",
-          "qWork": "Work / profession",
+          "qSchool": "Xikolo / dyondzo",
+          "qWork": "Ntirho / ntirho wa vutivi",
           "qLocation": "Wlaha you're based",
           "qDecadeBorn": "Makete laha u velekeke kona",
-          "qFavoriteSong": "Favourite song",
+          "qFavoriteSong": "Risimu leri u ri randzaka",
           "qObsessedWith": "Nchumu lowu u tsakelaka swinene",
           "qFunFact": "Fun fact Hi you",
           "qUselessSkill": "Useswitsongo skill you have",
@@ -16614,7 +16638,7 @@
           "decade1990s": "1990s",
           "decade2000s": "2000s",
           "decade2010s": "2010s",
-          "decadePreferNot": "Prefer not to say",
+          "decadePreferNot": "Prefer e-et to say",
           "hairStraight": "Lolovele",
           "hairWavy": "Magagasi",
           "hairCurly": "Magagasi",
@@ -16628,36 +16652,36 @@
           "skinOily": "E na mafuta",
           "skinDry": "Komile",
           "skinCombination": "Umdibaniso",
-          "skinSensitive": "Sensitive",
+          "skinSensitive": "sensitief",
           "skinMature": "Xa khale",
-          "avoidStrongFragrances": "Strong fragrances",
+          "avoidStrongFragrances": "Misiha ya matimba",
           "avoidAlcohol": "Alcohol-based switirhisiwa",
-          "avoidSulfates": "Sulfates",
+          "avoidSulfates": "Sulfate",
           "avoidParabens": "Parabens",
           "avoidEssentialOils": "Esyi rhumeriwileial oils",
           "avoidLatex": "Latex",
           "avoidNickel": "Nickel",
           "avoidDyes": "Mimpfala",
-          "avoidFormaldehyde": "Formaldehyde",
-          "styleQuickEfficient": "Quick & efficient",
-          "styleRelaxed": "Relaxed & unhurried",
-          "styleSocial": "Social & chatty",
-          "styleQuiet": "Quiet & minimal",
+          "avoidFormaldehyde": "Formaldehied",
+          "styleQuickEfficient": "Hi ku hatlisa ni ku kota",
+          "styleRelaxed": "Ku wisa ntswaka ku nga hatlisiki",
+          "styleSocial": "Ku bula na vanhu",
+          "styleQuiet": "Ku miyela ni ku va kantsongo",
           "styleFlexible": "E cincaka",
           "prefVegan": "Vegan",
           "prefCrueltyFree": "Cruelty-mahala",
-          "prefNaturalOrganic": "Natural / organic",
+          "prefNaturalOrganic": "Swa ntumbuluko / swa manyoro",
           "prefFragranceFree": "Fragrance-mahala",
-          "prefHypoallergenic": "Hypoallergenic",
+          "prefHypoallergenic": "Leyingi vuvabyi",
           "prefLuxury": "Lexihundla",
-          "prefBudgetFriendly": "Budget-friendly",
+          "prefBudgetFriendly": "Leyi faneleke mali ya lehansinyana",
           "prefNoPreference": "A Ku Na Ku Rhandza",
           "interestHair": "Miri",
           "interestNails": "Titinyele",
           "interestSkincare": "Ndhlayo ya masaka",
           "interestMakeup": "Ku endla",
-          "interestPedicure": "Pedicure",
-          "interestManicure": "Manicure",
+          "interestPedicure": "Nhlayiso wa milenge",
+          "interestManicure": "Nhlayiso wa mavoko",
           "interestFacial": "Xikandza",
           "interestMassage": "Masa",
           "interestHairColour": "Miri colour",
@@ -16670,10 +16694,10 @@
           "interestCooking": "Ku pheka",
           "allergyFragrance": "Swinyunyeteri",
           "allergyParabens": "Parabens",
-          "allergySulfates": "Sulfates",
+          "allergySulfates": "Sulfate",
           "allergyAlcohol": "Wine",
           "allergyDyes": "Mimpfala",
-          "allergyFormaldehyde": "Formaldehyde",
+          "allergyFormaldehyde": "Formaldehied",
           "allergyLatex": "Latex",
           "allergyNickel": "Nickel"
         },
@@ -18143,6 +18167,9 @@
           "invalidBody": "Nghenisa a ya ntiyiso siku (YYYY-MM-DD) and nkarhi (HH:MM).",
           "failedTitle": "A swi koteki ku rexedulu",
           "noSlots": "No nkarhis ya kumeka on this siku. Try answin'wana siku."
+        },
+        "resetPassword": {
+          "policyMix": "Phasiwedi ya wena yi lava nhlanganiso wa tinhlamvu na tinomboro lowu fambelanaka na milawu ya akhawunti."
         }
       }
     },
@@ -18172,7 +18199,7 @@
       "accountNameLabel": "akhawunti holder vito",
       "save": "Hlayisa akhawunti ya bhangi",
       "screenTitle": "Akhawunti ya bhangis",
-      "selectBank": "Select your bank"
+      "selectBank": "Hlawula your Bhangi"
     },
     "walletBankRefund": {
       "addBank": "Engetela a akhawunti ya bhangi",
@@ -18425,7 +18452,11 @@
     "payForEveryone": "I'll hakela for everyone",
     "splitPayment": "Split xihakelo",
     "splitPaymentHint": "U hakela vukorhokeri bya wena na mali yo bukuta sweswi. Muyeni un’wana na un’wana u kuma link yo hakela xiphemu xa yena.",
-    "guestSharesPaidByInvite": "Muendzis hakela via xirhambo xihlanganisi"
+    "guestSharesPaidByInvite": "Muendzis hakela via xirhambo xihlanganisi",
+    "rescheduleReplacesPreviousBody": "Nhlangano wa wena wo sungula wu khanseriwa hi ku tiendlela, mahala, loko hakelo ya buku leri yi hela. Leswi u swi hakeleke swi tirhisiwa laha, naswona leswi saleke swi tshama eka xikhwama xa wena.",
+    "rescheduleCreditNote": "Mali yihi na yihi leyi u yi hakeleke hi inthanete eka buku yo sungula yi tirhisiwa laha. U hakela ku hambana ntsena.",
+    "rescheduleCreditApplied": "Yi hakeriwe eka buku ya wena yo sungula",
+    "rescheduleCreditSurplus": "Leswi saleke swa {{amount}} swi tshama eka xikhwama xa wena tanihi xikweleti."
   },
   "payments": {
     "pay": "Hakela",
@@ -19472,7 +19503,11 @@
         "pickNextAvailable": "Find lexi landzelaka ya kumeka nkarhi",
         "splitPayment": "Split xihakelo",
         "guestSharesPaidByInvite": "Muendzis hakela via xirhambo xihlanganisi",
-        "splitPaymentHint": "U hakela vukorhokeri bya wena na mali yo bukuta sweswi. Muyeni un’wana na un’wana u kuma link yo hakela xiphemu xa yena."
+        "splitPaymentHint": "U hakela vukorhokeri bya wena na mali yo bukuta sweswi. Muyeni un’wana na un’wana u kuma link yo hakela xiphemu xa yena.",
+        "rescheduleCreditPaid": "Hakelo ya wena yo sungula yi katsa buku leri.",
+        "rescheduleCreditIntro": "Mali yihi na yihi leyi u yi hakeleke hi inthanete eka buku yo sungula yi tirhisiwa laha. U hakela ku hambana ntsena.",
+        "rescheduleCreditApplied": "Yi hakeriwe eka buku ya wena yo sungula",
+        "rescheduleCreditSurplus": "Leswi saleke swa {{amount}} swi tshama eka xikhwama xa wena tanihi xikweleti."
       },
       "addToWaitlist": {
         "enterName": "Enter your vito",
@@ -21128,7 +21163,13 @@
           "cancelled": "Yi khanseriwile",
           "cantFind": "Can't find your reservation laha?",
           "visitHelpCenter": "Visit the mpfuno Center"
-        }
+        },
+        "cancelledRefundProcessing": "Buku yi khanseliwile. Mbuyiselo wa wena wu le ku endliweni naswona wu ta fika ku nga ri khale.",
+        "refundProcessingTitle": "Mbuyiselo wu le ku endliweni",
+        "refundProcessingBody": "Ku buku loku ku khanseliwile. Hi heta mbuyiselo wa wena naswona wu ta humelela ku nga ri khale eka xikhwama xa wena. A wu fanelanga ku endla nchumu.",
+        "cancelGroupPreviewTitle": "Leswi swi khansela nhlengeletano hinkwayo ya ntlawa {{ref}}, ku katsa vaendzi va {{count}}.",
+        "cancelGroupPreviewOtherBookings": "Tibuku tin'wana ta wena eka ntlawa lowu: {{currency}} {{refund}} yi vuya eka xikhwama xa wena, {{currency}} {{fee}} hakelo yo khansela.",
+        "cancelGroupPreviewGuestShares": "Tihakelo ta xiphemu xa vaendzi ({{currency}} {{amount}}) ti vuyiseriwa hi ku helela eka makhadi lawa va hakeleke hi wona."
       },
       "payAdditionalCharge": {
         "notFound": "Additional hakelisa a xi kumiwi",
@@ -21375,7 +21416,13 @@
           "subtitle": "Hlawula a strong phasiwedi for your akhawunti.",
           "atLeastChars": "Ku ringana tinhlamu ta {{min}}",
           "strength": "Sterkte: {{label}}",
-          "confirmPlaceholder": "Re-enter your phasiwedi"
+          "confirmPlaceholder": "Re-enter your phasiwedi",
+          "passwordsMatch": "Phasiwedis match",
+          "showPassword": "Kombisa phasiwedi",
+          "hidePassword": "fihla phasiwedi",
+          "policyHintLettersDigits": "Include letters and nomboros",
+          "policyHintMixed": "Katsa tinhlamvu letikulu, letintsongo ni nomboro.",
+          "strengthTip": "lehaleha, hi tinomboro ni swikombiso, xi tiyile"
         }
       },
       "membership": {
@@ -22324,6 +22371,49 @@
         "statusContacted": "Hlanganaed",
         "statusBooked": "Yi bukiwile",
         "statusCancelled": "Yi khanseriwile"
+      },
+      "safety": {
+        "emergencyNumber": "Emergency nomboro: 112",
+        "managed": "Managed",
+        "deviceAuthWebNote": "Applies the lexi landzelaka nkarhi you pfula the Beautonomi Foni app.",
+        "updated": "Setting pfuxad",
+        "updateFailed": "A swi koteki ku pfuxa setting. ringa nakambe.",
+        "loadFailed": "A swi koteki ku loyida your vuhlayiseki swilunghiselelo.",
+        "retry": "Ringa nakambe",
+        "reportValidation": "Nghenisa kwalomu ka tinhlamvu ta 2 ta munhu loyi u n'wi byelaka ni kwalomu ka tinhlamvu ta 10 hi leswi humeleleke.",
+        "unblocked": "Mutirhisi unblocked",
+        "unblockFailed": "A swi koteki ku unblock this Mutirhisi.",
+        "blockedLoadFailed": "A swi koteki ku loyida blocked users.",
+        "blockedOn": "Siviwiwe {{date}}",
+        "currentBand": "xa sweswi band: {{band}}",
+        "noResults": "Ku hava vatirhisi lava siviwiweke lava fambelanaka na ku lava ka wena.",
+        "profileCompletionCta": "herisa phurofayili",
+        "bankRefundCta": "xikombelo a Bhangi nxavo",
+        "bankRefundOpenCta": "Vona your Bhangi nxavo xikombelo",
+        "bankRefundHistory": "xikombelo Matimu",
+        "bankRefundNote": "Note for our finance ntlawa (swo tihlawulela)",
+        "bankRefundMin": "Minimum mpimo: {{amount}}",
+        "bankRefundMax": "Maximum per xikombelo: {{amount}}",
+        "bankRefundSla": "Mbuyiselo lowu pfumeleriweke wu hakeriwa ku nga si hela masiku ya ntirho ya {{days}}.",
+        "bankRefundNoAccounts": "Engetela a akhawunti ya bhangi before xikombeloing a Bhangi nxavo.",
+        "bankRefundStatus": "Xiyimo",
+        "bankRefundAmount": "mpimo",
+        "bankRefundDate": "Ku kombisiwe",
+        "bankRefundReceive": "U amukela",
+        "bankRefundCancelled": "xikombelo yi khanseriwile",
+        "bankAccountsManage": "Lawula akhawunti ya bhangis",
+        "bankAccountsMax": "You can hlayisa up to 3 akhawunti ya bhangis.",
+        "bankAccountSaved": "Bhangi Akhawunti yi hlayisiwile",
+        "bankAccountRemoved": "akhawunti ya bhangi susad",
+        "bankAccountPrimary": "xo sungula akhawunti pfuxad",
+        "cancel": "Khansela"
+      },
+      "profileDetailsPage": {
+        "aboutSection": "Hi you",
+        "aboutHint": "A short bio vapfuneti see when you buka.",
+        "aboutPlaceholder": "Byela vanyiki switsongo hi wena",
+        "noChanges": "No cincas to hlayisa",
+        "clearChoice": "Sula"
       }
     },
     "auth": {
@@ -36370,7 +36460,9 @@
       "cancelConfirm": "Tshika ndhawu ya wena eka nhlangano lowu? Vukorhokeri bya susiwa naswona mali leyi u yi rhumeleke yi tlheriseriwa eka khadi.",
       "cancelled": "spot has been yi khanseriwile. ya wena.",
       "cancelledRefunded": "Xivandla xa wena xi khanseliwile. {{amount}} yi tlheriseriwa eka khadi ra wena.",
-      "cancelFailed": "A swi koteki ku khansela your spot."
+      "cancelFailed": "A swi koteki ku khansela your spot.",
+      "sessionCancelled": "Nhlengeletano leyi ya ntlawa yi khanseliwile.",
+      "sessionCancelledPaid": "Nhlengeletano leyi ya ntlawa yi khanseliwile. Mali yihi na yihi leyi u yi hakeleke eka xiphemu xa wena yi vuyiseriwa hi ku helela eka khadi leyi u hakeleke hi yona."
     }
   },
   "errors": {

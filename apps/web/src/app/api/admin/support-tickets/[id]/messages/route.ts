@@ -90,6 +90,7 @@ export async function POST(
         user_id: user.id,
         message: messageBody,
         is_internal: isInternal,
+        author_kind: isAdmin ? "staff" : "customer",
         attachments,
       })
       .select()

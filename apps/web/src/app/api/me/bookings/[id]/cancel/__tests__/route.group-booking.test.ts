@@ -20,6 +20,26 @@ const mockTryRecalculateGroupBookingTotal = vi.fn();
 const mockSyncGroupBookingStatusFromChildren = vi.fn();
 const mockSettleBookingCancellation = vi.fn();
 const mockSendCancellationNotification = vi.fn();
+const mockHasPendingRescheduleReplacement = vi.fn();
+const mockNotifyGuestsWithoutAccounts = vi.fn();
+
+vi.mock("@/lib/bookings/reschedule-carry-over", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/bookings/reschedule-carry-over")>();
+  return {
+    ...actual,
+    hasPendingRescheduleReplacement: (...args: unknown[]) =>
+      mockHasPendingRescheduleReplacement(...args),
+  };
+});
+
+vi.mock("@/lib/bookings/group-booking-notifications", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/bookings/group-booking-notifications")>();
+  return {
+    ...actual,
+    notifyGroupGuestsWithoutAccountsOfCancellation: (...args: unknown[]) =>
+      mockNotifyGuestsWithoutAccounts(...args),
+  };
+});
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
@@ -245,6 +265,8 @@ describe("POST /api/me/bookings/[id]/cancel — group bookings", () => {
     mockGetCancellationPolicy.mockResolvedValue({ id: "pol-1", grace_window_minutes: 60 });
     mockCanCancelBooking.mockReturnValue({ allowed: true, isLateCancellation: false });
     mockSendCancellationNotification.mockResolvedValue(undefined);
+    mockHasPendingRescheduleReplacement.mockResolvedValue(false);
+    mockNotifyGuestsWithoutAccounts.mockResolvedValue({ notified: 0 });
     mockSettleBookingCancellation.mockResolvedValue({
       refundResult: { success: true, amount: 0 },
     });
@@ -318,4 +340,50 @@ describe("POST /api/me/bookings/[id]/cancel — group bookings", () => {
     expect(mockSyncGroupBookingStatusFromChildren).toHaveBeenCalledWith(adminClient, GROUP_ID);
     expect(mockCancelGroupBooking).not.toHaveBeenCalled();
   });
+
+  it("blocks cancelling a booking whose reschedule checkout is still open", async () => {
+    const { serverClient, adminClient } = buildSupabaseMocks({ booking: bookingRow() });
+    mockGetSupabaseServer.mockResolvedValue(serverClient);
+    mockGetSupabaseAdmin.mockReturnValue(adminClient);
+    mockHasPendingRescheduleReplacement.mockResolvedValue(true);
+
+    const { POST } = await import("../route");
+    const res = await POST(
+      new NextRequest(`http://localhost/api/me/bookings/${BOOKING_ID}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: BOOKING_ID }) }
+    );
+
+    expect(res.status).toBe(409);
+    expect(JSON.stringify(await res.json())).toMatch(/RESCHEDULE_IN_PROGRESS/);
+    expect(mockSettleBookingCancellation).not.toHaveBeenCalled();
+    expect(mockCancelGroupBooking).not.toHaveBeenCalled();
+  }, ROUTE_TEST_TIMEOUT_MS);
+
+  it("sends the guest cancellation notice for guests without accounts", async () => {
+    const { serverClient, adminClient } = buildSupabaseMocks({
+      booking: bookingRow(),
+      primaryGroup: { id: GROUP_ID },
+    });
+    mockGetSupabaseServer.mockResolvedValue(serverClient);
+    mockGetSupabaseAdmin.mockReturnValue(adminClient);
+    mockCancelGroupBooking.mockResolvedValue([]);
+
+    const { POST } = await import("../route");
+    const res = await POST(
+      new NextRequest(`http://localhost/api/me/bookings/${BOOKING_ID}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: BOOKING_ID }) }
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockNotifyGuestsWithoutAccounts).toHaveBeenCalledWith(
+      adminClient,
+      expect.objectContaining({ providerId: PROVIDER_ID, bookingRef: "1001", cancelledBy: "customer" }),
+    );
+  }, ROUTE_TEST_TIMEOUT_MS);
 });

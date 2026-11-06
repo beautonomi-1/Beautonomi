@@ -36,6 +36,7 @@ import {
   isCustomerSkewedPostLoginPath,
   sanitizeRelativeRedirect,
 } from "@/lib/auth/post-login-return-path";
+import { buildForgotPasswordHref } from "@/lib/auth/forgot-password-href";
 import { completeCustomerOnboardingQuietly } from "@/lib/booking/complete-customer-onboarding";
 import { resolveBookingReturnContext } from "@/lib/booking/booking-return-context";
 import { BookingAuthReturnBanner } from "@/components/auth/BookingAuthReturnBanner";
@@ -1025,7 +1026,7 @@ export default function LoginPage() {
                   {t("auth.password")}
                 </Label>
                 <Link
-                  href={nextUrl ? `/forgot-password?next=${encodeURIComponent(nextUrl)}` : "/forgot-password"}
+                  href={buildForgotPasswordHref({ email, next: nextUrl || undefined })}
                   className="text-xs font-semibold text-primary hover:underline"
                 >
                   {t("auth.forgotPassword")}

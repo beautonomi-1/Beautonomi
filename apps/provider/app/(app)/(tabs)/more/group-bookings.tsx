@@ -157,6 +157,10 @@ interface Participant {
   tip_amount?: number | null;
   is_primary_contact?: boolean;
   booking_status?: string | null;
+  /** Split-payment share; null when the guest has no share of their own. */
+  share_amount_due?: number | null;
+  share_amount_paid?: number | null;
+  share_status?: string | null;
   addons?:
     | {
         id?: string;
@@ -370,6 +374,16 @@ function groupStatusLabel(status: string, gb: (key: string) => string): string {
       return status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, " ");
   }
 }
+
+/** Mirrors resendGroupGuestInvite: any open split share with money still owed. */
+function canResendGuestPayLink(p: Participant): boolean {
+  if (p.is_primary_contact || p.share_amount_due == null) return false;
+  const status = String(p.share_status ?? "").toLowerCase();
+  if (status === "paid" || status === "cancelled" || status === "waived") return false;
+  return Number(p.share_amount_due) - Number(p.share_amount_paid ?? 0) > 0.005;
+}
+
+const GROUP_PRE_START_STATUSES = ["confirmed", "booked", "waiting", "pending"];
 
 function isInactiveParticipantBooking(status?: string | null): boolean {
   const s = String(status ?? "").toLowerCase();
@@ -3611,17 +3625,13 @@ export default function GroupBookingsScreen() {
     );
     setPendingParticipantId(participant.id);
 
-    const { error, errorCode } = await checkInParticipant(
+    const { error } = await checkInParticipant(
       `/api/provider/group-bookings/${encodeURIComponent(selectedGroup.id)}/participants/${encodeURIComponent(participant.id)}/check-in`,
       {}
     );
     setPendingParticipantId(null);
     if (error) {
       rollbackGroupPatch();
-      if (errorCode === "GROUP_NOT_STARTED") {
-        Alert.alert(gb("groupNotStartedTitle"), gb("groupNotStartedBody"));
-        return;
-      }
       Alert.alert(gb("checkInFailed"), error);
       return;
     }
@@ -4353,6 +4363,131 @@ export default function GroupBookingsScreen() {
               );
             })()}
 
+            {(() => {
+              const status = String(selectedGroup.status ?? "").toLowerCase();
+              if (status === "cancelled") return null;
+              const done = status === "completed";
+              const started = done || status === "started" || status === "in_progress";
+              const active = (selectedGroup.participants ?? []).filter(
+                (p) => !isInactiveParticipantBooking(p.booking_status ?? p.status),
+              );
+              const checkedIn = active.filter((p) => isGroupParticipantCheckedIn(p)).length;
+              const due = Math.max(0, Number(selectedGroup.balance_due ?? 0));
+              const paidUp = groupIsFullyPaid(selectedGroup) || due <= 0.01;
+              const steps = [
+                { id: "start", done: started, detail: gb("stepStartDetail") },
+                {
+                  id: "checkIn",
+                  done: done || (active.length > 0 && checkedIn === active.length),
+                  detail: gb("stepCheckInDetail", { checkedIn, total: active.length }),
+                },
+                {
+                  id: "collect",
+                  done: paidUp,
+                  detail: paidUp
+                    ? gb("stepCollectDone")
+                    : gb("stepCollectDetail", { amount: formatCurrency(due) }),
+                },
+                { id: "complete", done, detail: gb("stepCompleteDetail") },
+                { id: "receipt", done: false, detail: gb("stepReceiptDetail") },
+              ] as const;
+              const currentId = steps.find((s) => !s.done)?.id ?? "receipt";
+              const action =
+                currentId === "start" && canEditGroups
+                  ? { label: gb("stepStartAction"), onPress: () => void handleStatusChange(selectedGroup, "started") }
+                  : currentId === "complete" && canEditGroups && started
+                    ? { label: gb("stepCompleteAction"), onPress: () => void handleStatusChange(selectedGroup, "completed") }
+                    : currentId === "receipt" && done
+                      ? { label: gb("stepReceiptAction"), onPress: () => void openGroupReceipt(selectedGroup) }
+                      : null;
+              return (
+                <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white p-3")}>
+                  <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{gb("stepsTitle")}</Text>
+                  {steps.map((step, index) => {
+                    const isCurrent = step.id === currentId;
+                    return (
+                      <View key={step.id} style={twStyle("mb-2 flex-row items-start")}>
+                        <Ionicons
+                          name={step.done ? "checkmark-circle" : "ellipse-outline"}
+                          size={18}
+                          color={step.done ? "#15803d" : isCurrent ? "#111827" : "#d1d5db"}
+                          style={{ marginEnd: 8, marginTop: 1 }}
+                        />
+                        <View style={twStyle("flex-1")}>
+                          <Text
+                            style={twStyle(
+                              `text-sm ${isCurrent ? "font-semibold text-gray-900" : step.done ? "text-gray-700" : "text-gray-400"}`,
+                            )}
+                          >
+                            {index + 1}. {gb(`step_${step.id}`)}
+                          </Text>
+                          {isCurrent || step.done ? (
+                            <Text style={twStyle("text-[11px] text-gray-500")}>{step.detail}</Text>
+                          ) : null}
+                          {isCurrent && action ? (
+                            <TouchableOpacity
+                              onPress={action.onPress}
+                              disabled={groupActionLoading}
+                              accessibilityRole="button"
+                              style={[
+                                twStyle("mt-1.5 self-start rounded-md bg-gray-900 px-3 py-1.5"),
+                                { opacity: groupActionLoading ? 0.5 : 1 },
+                              ]}
+                            >
+                              <Text style={twStyle("text-xs font-semibold text-white")}>{action.label}</Text>
+                            </TouchableOpacity>
+                          ) : null}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              );
+            })()}
+
+            {canIssueRefunds
+              ? (() => {
+                  const refundable = (selectedGroup.participants ?? [])
+                    .filter((p) => !!p.booking_id)
+                    .map((p) => ({
+                      p,
+                      amount: participantMaxRefundable({
+                        total_paid: p.total_paid,
+                        total_refunded: p.total_refunded,
+                        wallet_gift_coverage: p.wallet_gift_coverage,
+                      }),
+                    }))
+                    .filter((r) => r.amount > 0.01);
+                  if (refundable.length === 0) return null;
+                  const total = refundable.reduce((s, r) => s + r.amount, 0);
+                  return (
+                    <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white p-3")}>
+                      <Text style={twStyle("text-sm font-medium text-gray-700")}>{gb("refundPreviewTitle")}</Text>
+                      <Text style={twStyle("mb-2 text-[11px] text-gray-500")}>
+                        {gb("refundPreviewBody", { amount: formatCurrency(total) })}
+                      </Text>
+                      {refundable.map(({ p, amount }) => (
+                        <View key={p.id} style={twStyle("mb-1.5 flex-row items-center justify-between")}>
+                          <Text style={twStyle("flex-1 text-sm text-gray-800")} numberOfLines={1}>
+                            {p.customer_name || p.client_name || p.participant_name || gb("guest")}
+                          </Text>
+                          <Text style={[twStyle("text-sm font-medium text-gray-900"), { marginEnd: 12 }]}>
+                            {formatCurrency(amount)}
+                          </Text>
+                          <TouchableOpacity
+                            onPress={() => openParticipantRefund(p)}
+                            accessibilityRole="button"
+                            hitSlop={8}
+                          >
+                            <Text style={twStyle("text-xs font-semibold text-amber-700")}>{gb("refundPreviewAction")}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  );
+                })()
+              : null}
+
             {/* Participants */}
             <View style={twStyle("mb-3")}>
               <View style={twStyle("flex-row items-center justify-between mb-2")}>
@@ -4415,6 +4550,9 @@ export default function GroupBookingsScreen() {
                   const inactiveChild =
                     isInactiveParticipantBooking(p.booking_status ?? p.status) || participantRefunded;
                   const canCheckInOutParticipant = canCheckInOut && !inactiveChild;
+                  const canCheckInBeforeStart =
+                    GROUP_PRE_START_STATUSES.includes(String(selectedGroup.status ?? "").toLowerCase()) &&
+                    !inactiveChild;
                   return (
                     <View key={p.id} style={twStyle("mb-1.5 rounded-lg bg-gray-50 p-3")}>
                       <View style={twStyle("flex-row items-center")}>
@@ -4494,7 +4632,10 @@ export default function GroupBookingsScreen() {
                                       ? gb("shareStatusCancelled")
                                       : gb("shareStatusPending", { amount: formatCurrency(owed) })}
                                 </Text>
-                                {share.share_status === "pending" && canCheckInOut ? (
+                                {canEditGroups &&
+                                selectedGroup.status !== "completed" &&
+                                selectedGroup.status !== "cancelled" &&
+                                canResendGuestPayLink(p) ? (
                                   <TouchableOpacity
                                     onPress={() => void handleResendInvite(p)}
                                     accessibilityRole="button"
@@ -4502,13 +4643,23 @@ export default function GroupBookingsScreen() {
                                     style={{ marginStart: 8 }}
                                   >
                                     <Text style={twStyle("text-[11px] font-semibold text-primary")}>
-                                      {gb("resendInvite")}
+                                      {gb("resendPayLink")}
                                     </Text>
                                   </TouchableOpacity>
                                 ) : null}
                               </View>
                             );
                           })()}
+                          {Number(p.total_paid ?? 0) > 0.009 || Number(p.total_refunded ?? 0) > 0.009 ? (
+                            <Text style={twStyle("mt-0.5 text-[11px] text-gray-500")}>
+                              {gb("participantPaidLine", { amount: formatCurrency(Number(p.total_paid ?? 0)) })}
+                              {Number(p.total_refunded ?? 0) > 0.009
+                                ? ` · ${gb("participantRefundedLine", {
+                                    amount: formatCurrency(Number(p.total_refunded ?? 0)),
+                                  })}`
+                                : ""}
+                            </Text>
+                          ) : null}
                         </View>
                         <View style={twStyle("flex-row items-center")}>
                           <View
@@ -4575,7 +4726,7 @@ export default function GroupBookingsScreen() {
                           )}
                         </View>
                       </View>
-                      {canCheckInOutParticipant && (
+                      {(canCheckInOutParticipant || canCheckInBeforeStart) && (
                         <View style={twStyle("mt-2 flex-row")}>
                           {!isCheckedIn && !isCheckedOut ? (
                             <TouchableOpacity

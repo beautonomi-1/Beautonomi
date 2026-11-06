@@ -246,6 +246,29 @@ export function slackNotifyVerificationReviewed(params: {
  *
  * §custom-requests-lifecycle-2026-05
  */
+export function slackNotifyCancellationSettlementStuck(params: {
+  tenantId?: string | null;
+  bookingId: string;
+  reason?: string | null;
+}) {
+  void tryNotifySlackEvent({
+    tenantId: params.tenantId ?? null,
+    environment: eventEnv(),
+    eventKey: SLACK_EVENT_KEYS.FINANCE_RECONCILIATION_WARNING,
+    dedupeKey: `cancel_settlement:${params.bookingId}`,
+    entityType: "booking",
+    entityId: params.bookingId,
+    title: "Cancellation refund still pending",
+    detailLines: [
+      `Booking: ${params.bookingId}`,
+      params.reason ? `Reason: ${params.reason}` : null,
+    ].filter(Boolean) as string[],
+    actionUrl: `/bookings/${params.bookingId}`,
+  }).catch((err) => {
+    console.error("[slack] cancellation settlement notify error", err);
+  });
+}
+
 export function slackNotifyCustomOfferFinalizeFailed(params: {
   tenantId?: string | null;
   offerId: string;

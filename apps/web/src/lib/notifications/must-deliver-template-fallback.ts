@@ -3,6 +3,7 @@
  * Ensures transactional pushes still reach devices (same transport as broadcasts).
  */
 import { finalizeServiceStartedNotificationBody } from "@/lib/bookings/resolve-booking-service-duration";
+import { SECURITY_NOTIFICATION_FALLBACKS } from "@/lib/notifications/security-notification-copy";
 
 const FALLBACK_BY_KEY: Record<string, { title: string; body: string; url?: string }> = {
   booking_confirmed: {
@@ -100,6 +101,7 @@ const FALLBACK_BY_KEY: Record<string, { title: string; body: string; url?: strin
     body: "Your service with {{provider_name}} has been completed. Thank you for choosing Beautonomi!",
     url: "/bookings/{{booking_id}}/review",
   },
+  ...SECURITY_NOTIFICATION_FALLBACKS,
 };
 
 function substituteAll(template: string, variables: Record<string, string>): string {

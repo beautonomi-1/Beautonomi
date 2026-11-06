@@ -30,6 +30,10 @@ jest.mock("@/lib/legal-web", () => ({
 
 jest.mock("@/components/ui/BeautonomiLogo", () => ({ BeautonomiLogo: () => null }));
 
+jest.mock("expo-router", () => ({
+  router: { push: jest.fn(), replace: jest.fn() },
+}));
+
 import { LegalAcceptanceGate } from "@/components/legal/LegalAcceptanceGate";
 import { hasAcceptedCurrentCustomerEula } from "@/lib/legal-acceptance";
 

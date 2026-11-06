@@ -29,6 +29,7 @@
     "@babel/plugin-transform-react-jsx": "^7.28.6",
     "@beautonomi/analytics": "workspace:*",
     "@beautonomi/api": "workspace:*",
+    "@beautonomi/auth-security": "workspace:*",
     "@beautonomi/expo-sms-user-consent": "workspace:*",
     "@beautonomi/i18n": "workspace:*",
     "@beautonomi/paycloud-same-terminal": "workspace:*",

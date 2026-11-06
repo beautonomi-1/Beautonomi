@@ -14,6 +14,8 @@ export async function POST(
 ) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const { requireStepUp } = await import("@/lib/auth/provider-security");
+    await requireStepUp(request, user.id, String(user.role), { action: "team_change" });
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
 

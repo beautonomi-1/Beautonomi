@@ -163,3 +163,83 @@ describe("getAvailablePayoutBalance — product order ledger rows", () => {
   });
 });
 
+describe("getAvailablePayoutBalance — membership refunds", () => {
+  const providerId = "provider-1";
+
+  function balance(rows: Row[]) {
+    return getAvailablePayoutBalance(
+      mockSupabase({
+        finance_transactions: rows,
+        bookings: [],
+        booking_payments: [],
+        payouts: [],
+      }),
+      providerId,
+    );
+  }
+
+  it("claws back exactly the provider net on a full membership refund and ignores the sale liability", async () => {
+    const result = await balance([
+      {
+        provider_id: providerId,
+        booking_id: null,
+        transaction_type: "membership_provider_earnings",
+        amount: 97,
+        net: 97,
+        created_at: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        provider_id: providerId,
+        booking_id: null,
+        transaction_type: "refund",
+        refund_component: "membership_provider_earnings",
+        amount: 97,
+        net: -97,
+        created_at: "2026-01-02T00:00:00.000Z",
+      },
+      {
+        provider_id: providerId,
+        booking_id: null,
+        transaction_type: "refund",
+        refund_component: "membership_sale",
+        amount: 100,
+        net: -100,
+        created_at: "2026-01-02T00:00:00.000Z",
+      },
+    ]);
+    expect(result.availableBalance).toBe(0);
+  });
+
+  it("claws back the pro-rated provider net on a partial membership refund", async () => {
+    const result = await balance([
+      {
+        provider_id: providerId,
+        booking_id: null,
+        transaction_type: "membership_provider_earnings",
+        amount: 97,
+        net: 97,
+        created_at: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        provider_id: providerId,
+        booking_id: null,
+        transaction_type: "refund",
+        refund_component: "membership_provider_earnings",
+        amount: 48.5,
+        net: -48.5,
+        created_at: "2026-01-02T00:00:00.000Z",
+      },
+      {
+        provider_id: providerId,
+        booking_id: null,
+        transaction_type: "refund",
+        refund_component: "membership_sale",
+        amount: 50,
+        net: -50,
+        created_at: "2026-01-02T00:00:00.000Z",
+      },
+    ]);
+    expect(result.availableBalance).toBe(48.5);
+  });
+});
+

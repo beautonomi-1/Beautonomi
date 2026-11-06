@@ -237,4 +237,69 @@ describe("GET /auth/callback", () => {
       "https://app.example.com/admin/login?next=%2Fadmin%2Ffinance%3Ftab%3Dledger"
     );
   });
+
+  it("sends a PKCE recovery code to reset-password instead of the role home", async () => {
+    const mockExchangeCodeForSession = vi.fn().mockResolvedValue({
+      data: { session: { access_token: "token" }, user: { id: "user-r", user_metadata: {} } },
+      error: null,
+    });
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: { exchangeCodeForSession: mockExchangeCodeForSession },
+    });
+
+    const { GET } = await import("../route");
+    const res = await GET(
+      new NextRequest("https://app.example.com/auth/callback?type=recovery&code=pkce-1"),
+    );
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe(
+      "https://app.example.com/account-settings/login-and-security/reset-password",
+    );
+    expect(mockExchangeCodeForSession).toHaveBeenCalledWith("pkce-1");
+    expect(mockGetUserRoleServer).not.toHaveBeenCalled();
+  });
+
+  it("keeps a safe next on a PKCE recovery code so settings resets return to settings", async () => {
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: {
+        exchangeCodeForSession: vi.fn().mockResolvedValue({
+          data: { session: { access_token: "token" }, user: { id: "user-r", user_metadata: {} } },
+          error: null,
+        }),
+      },
+    });
+
+    const { GET } = await import("../route");
+    const res = await GET(
+      new NextRequest(
+        "https://app.example.com/auth/callback?type=recovery&next=%2Faccount-settings%2Flogin-and-security&code=pkce-3",
+      ),
+    );
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe(
+      "https://app.example.com/account-settings/login-and-security/reset-password?next=%2Faccount-settings%2Flogin-and-security",
+    );
+  });
+
+  it("sends a failed PKCE recovery exchange to login with the error", async () => {
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: {
+        exchangeCodeForSession: vi.fn().mockResolvedValue({
+          data: { session: null, user: null },
+          error: { message: "code verifier missing" },
+        }),
+      },
+    });
+
+    const { GET } = await import("../route");
+    const res = await GET(
+      new NextRequest("https://app.example.com/auth/callback?type=recovery&code=pkce-2"),
+    );
+
+    const location = res.headers.get("location") ?? "";
+    expect(location).toContain("/login?error=");
+    expect(new URL(location).searchParams.get("error")).toBe("code verifier missing");
+  });
 });

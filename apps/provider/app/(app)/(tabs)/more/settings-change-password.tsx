@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { View, Text, TextInput, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Platform } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { useRouter } from "expo-router";
@@ -12,6 +12,9 @@ import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/client";
+import { getNewPasswordIssue } from "@/lib/auth/password-recovery";
+import type { PublicAuthPolicy } from "@/lib/config-bundle";
+import { NewPasswordFields } from "@/components/auth/NewPasswordFields";
 
 type AuthSecurityState = {
   has_password: boolean;
@@ -19,7 +22,7 @@ type AuthSecurityState = {
   has_phone: boolean;
   email_is_placeholder: boolean;
   password_changed_at: string | null;
-  policy: { minimum_password_length: number };
+  policy: Pick<PublicAuthPolicy, "minimum_password_length"> & Partial<Pick<PublicAuthPolicy, "password_requirements">>;
 };
 
 export default function SettingsChangePasswordScreen() {
@@ -40,6 +43,11 @@ export default function SettingsChangePasswordScreen() {
   const { execute: putPassword, loading: saving } = useApiMutation("put");
   const isSettingFirstPassword = authSecurity?.has_password === false;
   const minimumPasswordLength = authSecurity?.policy?.minimum_password_length ?? 8;
+  const passwordRequirements = authSecurity?.policy?.password_requirements ?? "none";
+  const passwordPolicy = useMemo(
+    () => ({ minimum_password_length: minimumPasswordLength, password_requirements: passwordRequirements }),
+    [minimumPasswordLength, passwordRequirements],
+  );
   const canVerifyPasswordAction = Boolean(
     authSecurity == null ||
       authSecurity.has_password ||
@@ -77,11 +85,16 @@ export default function SettingsChangePasswordScreen() {
       Alert.alert(cp("validationTitle"), cp("newRequired"));
       return;
     }
-    if (newP.length < minimumPasswordLength) {
+    const passwordIssue = getNewPasswordIssue(newP, conf, passwordPolicy);
+    if (passwordIssue === "minLength") {
       Alert.alert(cp("validationTitle"), cp("minLength", { count: minimumPasswordLength }));
       return;
     }
-    if (newP !== conf) {
+    if (passwordIssue === "policy") {
+      Alert.alert(cp("validationTitle"), t("provider.mobile.screens.resetPassword.policyMix"));
+      return;
+    }
+    if (passwordIssue === "mismatch") {
       Alert.alert(cp("validationTitle"), cp("mismatch"));
       return;
     }
@@ -100,7 +113,7 @@ export default function SettingsChangePasswordScreen() {
         { text: cp("ok"), onPress: () => router.back() },
       ]);
     }
-  }, [currentPassword, newPassword, confirmPassword, passwordNonce, isSettingFirstPassword, minimumPasswordLength, putPassword, router, cp]);
+  }, [currentPassword, newPassword, confirmPassword, passwordNonce, isSettingFirstPassword, minimumPasswordLength, passwordPolicy, putPassword, router, cp, t]);
 
   const requestPasswordNonce = useCallback(async () => {
     if (!canVerifyPasswordAction) {
@@ -201,40 +214,27 @@ export default function SettingsChangePasswordScreen() {
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
-                <TouchableOpacity
-                  onPress={() => router.push("/(auth)/forgot-password" as never)}
-                  style={{ marginTop: 8 }}
-                  accessibilityRole="link"
-                  accessibilityLabel={cp("forgotA11y")}
-                >
-                  <Text style={{ color: "#4f46e5", fontWeight: "600" }}>{cp("forgot")}</Text>
-                </TouchableOpacity>
+                {authSecurity?.has_mailable_email !== false ? (
+                  <TouchableOpacity
+                    onPress={() => router.push("/(auth)/forgot-password" as never)}
+                    style={{ marginTop: 8 }}
+                    accessibilityRole="link"
+                    accessibilityLabel={cp("forgotA11y")}
+                  >
+                    <Text style={{ color: "#4f46e5", fontWeight: "600" }}>{cp("forgot")}</Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             )}
             <View style={{ marginBottom: 12 }}>
-              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{cp("newPassword")}</Text>
-              <TextInput
-                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-                placeholder={cp("minLengthPlaceholder", { count: minimumPasswordLength })}
-                placeholderTextColor="#9ca3af"
-                value={newPassword}
-                onChangeText={setNewPassword}
-                secureTextEntry
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-            <View style={{ marginBottom: 12 }}>
-              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{cp("confirmPassword")}</Text>
-              <TextInput
-                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-                placeholder={cp("confirmPlaceholder")}
-                placeholderTextColor="#9ca3af"
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                secureTextEntry
-                autoCapitalize="none"
-                autoCorrect={false}
+              <NewPasswordFields
+                ns="provider.mobile.screens.resetPassword"
+                password={newPassword}
+                onPasswordChange={setNewPassword}
+                confirm={confirmPassword}
+                onConfirmChange={setConfirmPassword}
+                policy={passwordPolicy}
+                disabled={saving}
               />
             </View>
             <View style={{ marginTop: 16 }}>

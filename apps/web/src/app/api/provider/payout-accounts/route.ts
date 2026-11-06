@@ -26,7 +26,7 @@ import { applyPayoutNameMatchForAccount } from "@/lib/verification/apply-payout-
 import { resolvePayoutRailForTenant } from "@/lib/payments/payout-rail";
 import { resolveFlutterwaveBankAccount } from "@/lib/payments/flutterwave-banks";
 
-// §payout-account-fix 2026-05: Paystack `/transferrecipient` accepts `nuban`,
+// Â§payout-account-fix 2026-05: Paystack `/transferrecipient` accepts `nuban`,
 // `ghipss`, `mobile_money`, and `basa`. For South African providers (the
 // primary market today), Paystack uses the `basa` type. We accept any of the
 // documented values so the client can pick the correct one per country, and
@@ -122,7 +122,7 @@ async function findActivePayoutAccountByRecipientCode(
  *
  * List provider's payout accounts (bank accounts).
  *
- * §payout-account-fix 2026-05: read with the service-role admin client so the
+ * Â§payout-account-fix 2026-05: read with the service-role admin client so the
  * RLS gap on `provider_payout_accounts` (only SELECT for providers, INSERT/UPDATE/DELETE
  * superadmin-only) never causes empty lists for legitimate provider users. The
  * route still enforces auth via `requireRoleInApi` + provider/tenant ownership.
@@ -190,7 +190,7 @@ export async function GET(request: NextRequest) {
  * Add a new bank account for payouts.
  * Creates a Paystack transfer recipient and stores it in `provider_payout_accounts`.
  *
- * §payout-account-fix 2026-05: previously failed with a generic "Failed to add
+ * Â§payout-account-fix 2026-05: previously failed with a generic "Failed to add
  * payout account" because the user-scoped Supabase client could not INSERT into
  * `provider_payout_accounts` (RLS only grants providers SELECT). Now we use the
  * admin client for the INSERT after enforcing auth + provider ownership + tenant
@@ -200,6 +200,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const { requireStepUp } = await import("@/lib/auth/provider-security");
+    await requireStepUp(request, user.id, String(user.role), { action: "payout_account" });
     const sessionSupabase = await getSupabaseServer(request);
 
     const canManageBanking =
@@ -321,6 +323,14 @@ export async function POST(request: NextRequest) {
         return successResponse(existingByRecipientCode);
       }
 
+      const { resolveCoolingOffUntilForNewAccount } = await import(
+        "@/lib/auth/resolve-new-account-cooling-off"
+      );
+      const { providerHasAnyPayoutAccount } = await import("@/lib/auth/payout-cooling-off");
+      const cooling_off_until = await resolveCoolingOffUntilForNewAccount(
+        !(await providerHasAnyPayoutAccount(providerId)),
+      );
+
       const { data: savedAccount, error: saveError } = await admin
         .from("provider_payout_accounts")
         .insert({
@@ -335,6 +345,7 @@ export async function POST(request: NextRequest) {
           currency: resolvedCurrency,
           active: true,
           is_primary: isFirstAccount,
+          cooling_off_until,
           metadata: {
             payout_rail: "flutterwave",
             added_by: user.id,
@@ -363,6 +374,14 @@ export async function POST(request: NextRequest) {
 
       if (savedAccount?.id) {
         await applyPayoutNameMatchForAccount(providerId, savedAccount.id, resolvedName);
+        const { notifyPayoutAccountChange } = await import("@/lib/auth/payout-cooling-off");
+        await notifyPayoutAccountChange({
+          providerId,
+          actorUserId: user.id,
+          kind: "added",
+          accountId: String(savedAccount.id),
+          accountLast4: accountNumberLast4,
+        });
       }
       return successResponse(savedAccount);
     }
@@ -453,6 +472,14 @@ export async function POST(request: NextRequest) {
       return successResponse(existingByRecipientCode);
     }
 
+    const { resolveCoolingOffUntilForNewAccount } = await import(
+      "@/lib/auth/resolve-new-account-cooling-off"
+    );
+    const { providerHasAnyPayoutAccount } = await import("@/lib/auth/payout-cooling-off");
+      const cooling_off_until = await resolveCoolingOffUntilForNewAccount(
+        !(await providerHasAnyPayoutAccount(providerId)),
+      );
+
     const { data: savedAccount, error: saveError } = await admin
       .from("provider_payout_accounts")
       .insert({
@@ -467,6 +494,7 @@ export async function POST(request: NextRequest) {
         currency: paystackRecipient.data.currency || resolvedCurrency,
         active: paystackRecipient.data.active !== false,
         is_primary: isFirstAccount,
+        cooling_off_until,
         metadata: {
           paystack_response: paystackRecipient.data,
           added_by: user.id,
@@ -529,6 +557,18 @@ export async function POST(request: NextRequest) {
       } catch (matchErr) {
         console.warn("[payout-accounts] name match check failed:", matchErr);
       }
+    }
+
+    if (savedAccount?.id) {
+      const { notifyPayoutAccountChange } = await import("@/lib/auth/payout-cooling-off");
+      await notifyPayoutAccountChange({
+        providerId,
+        actorUserId: user.id,
+        kind: "added",
+        accountId: String(savedAccount.id),
+        accountLast4: accountNumberLast4,
+        bankName: (savedAccount as { bank_name?: string | null }).bank_name ?? null,
+      });
     }
 
     return successResponse(savedAccount);

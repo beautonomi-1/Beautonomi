@@ -25,6 +25,12 @@ import {
   ShoppingBag,
   Undo2,
   BadgePercent,
+  Shield,
+  CalendarCheck,
+  EyeOff,
+  Ban,
+  Sparkles,
+  LifeBuoy,
 } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useTranslation } from "@beautonomi/i18n";
@@ -57,6 +63,12 @@ export const ACCOUNT_HUB_CARDS: AccountHubCard[] = [
   { icon: Bell, titleKey: "customer.notifications", descriptionKey: "web.accountSettings.hub.notificationsDesc", link: "/account-settings/notifications" },
   { icon: Globe, titleKey: "web.accountSettings.hub.globalPrefsTitle", descriptionKey: "web.accountSettings.hub.globalPrefsDesc", link: "/account-settings/preferences" },
   { icon: Eye, titleKey: "customer.accountSettings.privacySharingTitle", descriptionKey: "web.accountSettings.hub.privacyDesc", link: "/account-settings/privacy-and-sharing" },
+  { icon: Shield, titleKey: "customer.mobile.screens.safetyHub.title", descriptionKey: "customer.mobile.screens.safetyHub.helpCardBody", link: "/account-settings/safety" },
+  { icon: CalendarCheck, titleKey: "customer.mobile.screens.ageAssurance.title", descriptionKey: "customer.mobile.screens.ageAssurance.formHint", link: "/account-settings/age-assurance" },
+  { icon: EyeOff, titleKey: "customer.accountSettings.contentSafetyTitle", descriptionKey: "customer.accountSettings.contentSafetyDesc", link: "/account-settings/content-and-safety" },
+  { icon: Ban, titleKey: "customer.mobile.screens.blockedUsers.title", descriptionKey: "customer.mobile.screens.blockedUsers.settingsDesc", link: "/account-settings/blocked-users" },
+  { icon: Sparkles, titleKey: "customer.accountSettings.profileDetailsTitle", descriptionKey: "customer.accountSettings.profileDetailsDesc", link: "/account-settings/profile-details" },
+  { icon: LifeBuoy, titleKey: "customer.accountSettings.helpTitle", descriptionKey: "customer.accountSettings.helpDesc", link: "/help" },
   { icon: Gift, titleKey: "web.accountSettings.hub.referralTitle", descriptionKey: "web.accountSettings.hub.referralDesc", link: "/account-settings/referrals" },
   { icon: Star, titleKey: "web.accountSettings.hub.reviewsTitle", descriptionKey: "web.accountSettings.hub.reviewsDesc", link: "/account-settings/reviews" },
   { icon: Heart, titleKey: "web.accountSettings.hub.wishlistsTitle", descriptionKey: "web.accountSettings.hub.wishlistsDesc", link: "/account-settings/wishlists" },

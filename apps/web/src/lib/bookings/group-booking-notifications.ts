@@ -262,7 +262,7 @@ function messageToHtml(body: string): string {
   return `<p>${body.replace(/\n+/g, '</p><p>')}</p>`;
 }
 
-async function sendWalkInEmail(
+export async function sendGroupGuestEmail(
   supabase: SupabaseClient,
   to: string,
   subject: string,
@@ -282,6 +282,75 @@ async function sendWalkInEmail(
       err instanceof Error ? err.message : err,
     );
   }
+}
+
+/**
+ * Cancellation notice for group participants without a Beautonomi account:
+ * they cannot receive push or in-app messages, so email and SMS are the only
+ * channels. Participants with an account are skipped (the caller notifies them).
+ */
+export async function notifyGroupGuestsWithoutAccountsOfCancellation(
+  supabase: SupabaseClient,
+  input: {
+    participants: Array<{
+      participant_name?: string | null;
+      participant_email?: string | null;
+      participant_phone?: string | null;
+    }>;
+    providerId?: string | null;
+    bookingRef: string;
+    cancelledBy: 'customer' | 'provider';
+  },
+): Promise<{ notified: number }> {
+  let smsCreds: Awaited<ReturnType<typeof resolveTwilioCredentials>> | null | undefined;
+  const loadSmsCreds = async () => {
+    if (smsCreds !== undefined) return smsCreds;
+    smsCreds = null;
+    if (!input.providerId) return smsCreds;
+    const { data: providerRow } = await supabase
+      .from('providers')
+      .select('tenant_id')
+      .eq('id', input.providerId)
+      .maybeSingle();
+    const tenantId = (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+    if (tenantId) smsCreds = await resolveTwilioCredentials(supabase, tenantId);
+    return smsCreds;
+  };
+  let notified = 0;
+
+  for (const participant of input.participants) {
+    const email = participant.participant_email?.trim() || null;
+    const phone = participant.participant_phone?.trim() || null;
+    if (!email && !phone) continue;
+    if (email) {
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', email)
+        .maybeSingle();
+      if ((existingUser as { id?: string } | null)?.id) continue;
+    }
+
+    const name = participant.participant_name?.trim() || 'there';
+    const who = input.cancelledBy === 'provider' ? 'the provider has cancelled' : 'the organiser has cancelled';
+    const message =
+      `Hi ${name}, ${who} group booking ${input.bookingRef}. ` +
+      'Any amount you paid online toward your share is refunded in full to the card you paid with.';
+
+    if (email) {
+      await sendGroupGuestEmail(supabase, email, `Group booking ${input.bookingRef} cancelled`, message);
+    }
+    if (phone) {
+      try {
+        const creds = await loadSmsCreds();
+        if (creds?.smsFrom) await sendTwilioSMS(creds, phone, message);
+      } catch (error) {
+        console.warn('[group booking notifications] guest cancel SMS error:', error);
+      }
+    }
+    notified += 1;
+  }
+  return { notified };
 }
 
 async function sendWalkInGroupBookingConfirmation(
@@ -310,7 +379,7 @@ async function sendWalkInGroupBookingConfirmation(
 
   if (channels.email && participant.participant_email) {
     try {
-      await sendWalkInEmail(supabase, participant.participant_email, title, message);
+      await sendGroupGuestEmail(supabase, participant.participant_email, title, message);
     } catch (error) {
       console.warn('[group booking notifications] walk-in email error:', error);
     }

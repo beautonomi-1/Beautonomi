@@ -5,7 +5,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import { GateLoadingScreen } from "@/components/GateLoadingScreen";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
-import { getHttpErrorStatus, isTransientApiFailure } from "@/lib/api-error";
+import { getApiErrorCode, getHttpErrorStatus, isTransientApiFailure } from "@/lib/api-error";
 import { WrongAppScreen } from "@/components/WrongAppScreen";
 import { Colors } from "@/constants/colors";
 import { APP_URL, isScreenshotMode } from "@/config/public-env";
@@ -43,6 +43,17 @@ const ROLE_FALLBACK_RETRY_MAX = 3;
  */
 type PortalErrorKind = "timeout" | "unauthorized" | "no_portal" | "network" | "config_missing";
 
+const PROVIDER_SECURITY_GATE_CODES = new Set([
+  "STEP_UP_REQUIRED",
+  "PROVIDER_MFA_REQUIRED",
+  "DEVICE_VERIFICATION_REQUIRED",
+]);
+
+function isProviderSecurityGateCode(err: unknown): boolean {
+  const code = getApiErrorCode(err);
+  return typeof code === "string" && PROVIDER_SECURITY_GATE_CODES.has(code);
+}
+
 /**
  * §Release-audit 2026-04: mirrors `portalFromRole` in the customer app. When
  * `/api/me/portal` keeps failing we hit `/api/me/role` once and derive the
@@ -75,6 +86,7 @@ export default function Index() {
    * `pending_approval` resolves to the `provider` portal (dashboard banner).
    */
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [needsSecurityVerify, setNeedsSecurityVerify] = useState(false);
   const [setupIncomplete, setSetupIncomplete] = useState<boolean | null>(null);
   const [checkingProfile, setCheckingProfile] = useState(false);
   const [hasProfile, setHasProfile] = useState<boolean | null>(null);
@@ -300,6 +312,12 @@ export default function Index() {
             // Deliberate background abort — ignore; the foreground restart re-probes.
             if ((res.error as { code?: string }).code === "CANCELLED") return;
             const status = getHttpErrorStatus(res.error);
+            if (status === 403 && isProviderSecurityGateCode(res.error)) {
+              setNeedsSecurityVerify(true);
+              setPortalState("ok");
+              setNeedsOnboarding(false);
+              return;
+            }
             if ((status === 401 || status === 403) && authAttempt < 4) {
               setTimeout(
                 () => fetchPortal(authAttempt + 1, 0),
@@ -802,6 +820,10 @@ export default function Index() {
         ) : null}
       </View>
     );
+  }
+
+  if (needsSecurityVerify && session) {
+    return <Redirect href={"/(app)/security-verify" as never} />;
   }
 
   if (portalState === "ok" && session && isScreenshotMode()) {

@@ -278,7 +278,7 @@ recomputedTotalAmount = taxInclusive
 
 ### 3.17 Group Bookings
 
-**Status: Functional with limitations.** Group bookings use `group_booking_ref` to link bookings. Each participant has a separate booking row with independent pricing, payment, and refund handling. Travel fee for group at_home: each booking can have its own travel_fee (not split). Cancellation is per-booking, not group-wide.
+**Status: Functional.** Group bookings use `group_bookings` plus child `bookings.group_booking_id`. Travel fee is attached once, to the primary participant. Cancellation of the primary contact cancels and settles the group. The first check-in starts the group once the provider access check passes. `action=refund` on the group returns `GROUP_REFUND_UNSUPPORTED`; refunds are issued on each participant booking so wallet credit stays capped to what that guest paid online. Checkout reschedule of a group is rejected; groups move in place.
 
 ### 3.18 Subscriptions
 

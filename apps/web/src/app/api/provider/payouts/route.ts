@@ -192,7 +192,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { availableBalance, rawBalance, hasNegativeBalance, breakdown, openDisputeReserve } =
+    const {
+      availableBalance,
+      rawBalance,
+      hasNegativeBalance,
+      breakdown,
+      openDisputeReserve,
+      guardReservedPayoutsSum,
+    } =
       await getAvailablePayoutBalance(
       getSupabaseAdmin(),
       providerId,
@@ -283,7 +290,7 @@ export async function POST(request: NextRequest) {
       // Resolve payout account: use bank_account_id from body if valid, else primary (is_primary then latest)
       const { data: accounts } = await supabase
         .from("provider_payout_accounts")
-        .select("id, recipient_code, account_name, account_number_last4, bank_name, currency")
+        .select("id, recipient_code, account_name, account_number_last4, bank_name, currency, cooling_off_until")
         .eq("provider_id", providerId)
         .eq("active", true)
         .is("deleted_at", null)
@@ -299,11 +306,22 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      const { isAccountInCoolingOff } = await import("@/lib/auth/payout-cooling-off");
+      const isCooling = (a: { cooling_off_until?: string | null }) =>
+        isAccountInCoolingOff(a.cooling_off_until);
       const chosenAccount = bank_account_id
         ? accountList.find((a: { id: string }) => a.id === bank_account_id)
-        : accountList[0];
+        : accountList.find((a) => !isCooling(a)) ?? accountList[0];
       if (bank_account_id && !chosenAccount) {
         return errorResponse("Selected bank account not found or inactive.", "INVALID_ACCOUNT", 400);
+      }
+      if (chosenAccount && isCooling(chosenAccount)) {
+        return errorResponse(
+          "This bank account was added recently. For your security it can receive payouts once the hold ends.",
+          "PAYOUT_ACCOUNT_COOLING_OFF",
+          409,
+          { available_at: (chosenAccount as { cooling_off_until?: string | null }).cooling_off_until ?? null },
+        );
       }
       const accountCurrency = (chosenAccount as { currency?: string | null } | undefined)?.currency
         ?.trim()
@@ -330,7 +348,7 @@ export async function POST(request: NextRequest) {
     const payoutNumber = `PAY-${dateStamp}-${randomSuffix}`;
 
     const maxAvailableBeforeReserve = roundMoney2(
-      availableBalance + breakdown.pendingPayouts + openDisputeReserve,
+      availableBalance + (guardReservedPayoutsSum ?? breakdown.pendingPayouts) + openDisputeReserve,
     );
 
     const payoutPayload = {

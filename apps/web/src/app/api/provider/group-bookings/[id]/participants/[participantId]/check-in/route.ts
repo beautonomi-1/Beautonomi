@@ -47,18 +47,11 @@ export async function POST(
       return notFoundResponse("Group booking not found");
     }
     const groupStatus = String((group as { status?: string }).status ?? "").toLowerCase();
-    if (
+    const groupNotStarted =
       groupStatus === "booked" ||
       groupStatus === "confirmed" ||
       groupStatus === "waiting" ||
-      groupStatus === "pending"
-    ) {
-      return errorResponse(
-        "Start the group session before checking in participants.",
-        "GROUP_NOT_STARTED",
-        400,
-      );
-    }
+      groupStatus === "pending";
     if (
       user.role !== "superadmin" &&
       !(await userHasProviderAccessAdmin(admin, user.id, group.provider_id))
@@ -106,6 +99,25 @@ export async function POST(
     }
 
     const now = new Date().toISOString();
+    // The first check-in starts the group session.
+    if (groupNotStarted) {
+      await admin
+        .from("bookings")
+        .update({
+          status: "in_progress",
+          current_stage: "service_started",
+          updated_at: now,
+        })
+        .eq("group_booking_id", id)
+        .eq("provider_id", group.provider_id)
+        .in("status", ["confirmed", "waiting", "checked_in"]);
+      await admin
+        .from("group_bookings")
+        .update({ status: "started", updated_at: now })
+        .eq("id", id)
+        .in("status", ["booked", "confirmed", "waiting", "pending"]);
+    }
+
     const { data: participant, error } = await admin
       .from("booking_participants")
       .update({

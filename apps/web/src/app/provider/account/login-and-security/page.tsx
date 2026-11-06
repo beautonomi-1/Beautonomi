@@ -14,6 +14,7 @@ export default async function Page() {
       initial={initial}
       accountHomeHref="/provider/settings"
       accountHomeLabel={t("web.layout.providerNav.settingsDesc")}
+      showProviderSecurity
     />
   );
 }

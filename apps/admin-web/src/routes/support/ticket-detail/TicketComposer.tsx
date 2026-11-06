@@ -1,7 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { BookOpen, ChevronDown, FileText, Paperclip, Send, X } from "lucide-react";
 import { ADMIN_SECTION_SUPPORT } from "@beautonomi/admin-access";
 import { DomainCopilotDock } from "@/components/agent-assist/DomainCopilotDock";
+import { AnchoredPopover } from "@/components/ui/AnchoredPopover";
 import { LearningArticlePicker } from "@/components/learning/LearningArticlePicker";
 import type { KbArticleResult, KbAudience } from "@/lib/learning";
 import { SUPPORT_TICKET_CANNED_RESPONSES } from "@/lib/supportTicketCannedResponses";
@@ -66,31 +67,6 @@ export function TicketComposer({
   const [articlesOpen, setArticlesOpen] = useState(false);
   const sendMenuRef = useRef<HTMLDivElement>(null);
   const articlesRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!articlesOpen) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (!articlesRef.current?.contains(e.target as Node)) setArticlesOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [articlesOpen]);
-
-  useEffect(() => {
-    if (!sendMenuOpen) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (!sendMenuRef.current?.contains(e.target as Node)) setSendMenuOpen(false);
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSendMenuOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [sendMenuOpen]);
 
   const hasContent = reply.trim().length > 0 || replyAttachments.length > 0;
   const disabled = !hasContent || sendPending || patchPending;
@@ -268,20 +244,26 @@ export function TicketComposer({
             <BookOpen className="h-3.5 w-3.5 text-purple-600" aria-hidden />
             Help articles
           </button>
-          {articlesOpen ? (
-            <div className="absolute bottom-full left-0 z-50 mb-1 max-h-64 w-[min(100vw-2rem,20rem)] overflow-y-auto rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
-              <LearningArticlePicker
-                audience={replyAudience}
-                includeInternal={replyInternal}
-                onInsert={(article) => {
-                  onInsertArticle(article);
-                  setArticlesOpen(false);
-                }}
-                initialQuery={str(ticket.subject)}
-                placeholder="Search guides…"
-              />
-            </div>
-          ) : null}
+          <AnchoredPopover
+            open={articlesOpen}
+            anchorRef={articlesRef}
+            onClose={() => setArticlesOpen(false)}
+            width={360}
+            maxHeight={440}
+            className="p-2"
+            ariaLabel="Help articles"
+          >
+            <LearningArticlePicker
+              audience={replyAudience}
+              includeInternal={replyInternal}
+              onInsert={(article) => {
+                onInsertArticle(article);
+                setArticlesOpen(false);
+              }}
+              initialQuery={str(ticket.subject)}
+              placeholder="Search guides…"
+            />
+          </AnchoredPopover>
         </div>
         <DomainCopilotDock
           section={ADMIN_SECTION_SUPPORT}
@@ -339,11 +321,16 @@ export function TicketComposer({
             >
               <ChevronDown className="h-4 w-4" />
             </button>
-            {sendMenuOpen ? (
-              <div
-                className="absolute bottom-full left-0 z-50 mb-1 min-w-[14rem] rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
-                role="menu"
-              >
+            <AnchoredPopover
+              open={sendMenuOpen}
+              anchorRef={sendMenuRef}
+              onClose={() => setSendMenuOpen(false)}
+              width={240}
+              maxHeight={160}
+              className="py-1"
+              role="menu"
+              ariaLabel="More send options"
+            >
                 <button
                   type="button"
                   role="menuitem"
@@ -366,8 +353,7 @@ export function TicketComposer({
                 >
                   Send and wait for customer
                 </button>
-              </div>
-            ) : null}
+            </AnchoredPopover>
           </div>
         )}
         <p className="text-xs text-gray-500">Cmd/Ctrl+Enter to send · Esc to clear draft</p>

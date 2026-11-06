@@ -15012,7 +15012,20 @@
           "emailInputA11y": "E-mail input",
           "sendResetLink": "Envoyer le lien de réinitialisation",
           "sendResetLinkA11y": "Envoyer le lien de réinitialisation",
-          "backToLoginA11y": "Retour to login"
+          "backToLoginA11y": "Retour to login",
+          "codeA11y": "पासवर्ड रीसेट कोड",
+          "invalidCodeTitle": "कोड स्वीकार नहीं हुआ",
+          "invalidCodeBody": "ईमेल में आया {{digits}} अंकों का कोड भरें।",
+          "resend": "ईमेल दोबारा भेजें",
+          "resendA11y": "रीसेट ईमेल दोबारा भेजें",
+          "signedInIntro": "हम खाते के ईमेल पर एक कोड और रीसेट लिंक भेजेंगे।",
+          "back": "Retour",
+          "stepCode": "1. {{digits}} अंकों का कोड भरें",
+          "stepPassword": "2. नया पासवर्ड चुनें",
+          "codeVerified": "कोड जाँच लिया गया",
+          "submit": "Réinitialiser le mot de passe",
+          "submittingA11y": "पासवर्ड रीसेट हो रहा है",
+          "linkAlternative": "कड़ी बेहतर है? ईमेल से खोलकर ब्राउज़र में नया पासवर्ड सेट करें।"
         },
         "authSafetyAndAge": {
           "linkLabel": "Sécurité et contrôles parentaux",
@@ -16091,7 +16104,14 @@
           "lifecyclePartialRefundDescription": "Un remboursement partiel a été enregistré pour cette réservation.",
           "lifecycleRefundedDescription": "Le paiement de cette réservation a été remboursé.",
           "lifecyclePaymentFailedDescription": "Le paiement n’a pas abouti. Réessayez ou contactez l’assistance avec ce numéro de réservation.",
-          "lifecyclePaymentNotConfirmedDescription": "Paiement has not been confirmé yet."
+          "lifecyclePaymentNotConfirmedDescription": "Paiement has not been confirmé yet.",
+          "refundProcessingTitle": "रिफंड प्रक्रिया में है",
+          "refundProcessingBody": "यह बुकिंग रद्द हो चुकी है। हम आपका रिफंड पूरा कर रहे हैं और यह जल्द ही आपके वॉलेट में दिखेगा। आपको कुछ करने की जरूरत नहीं।",
+          "rescheduleInProgressTitle": "समय बदलना जारी है",
+          "rescheduleInProgressBody": "यह बुकिंग नए समय पर जा रही है। नया भुगतान पूरा करें और जो राशि चुका चुके हैं वह अपने आप लग जाएगी। यदि आप वह भुगतान छोड़ आए, तो समय समाप्त होने पर यह बुकिंग फिर रद्द हो सकती है, लगभग 30 मिनट में।",
+          "cancelGroupPreviewTitle": "यह पूरे समूह सत्र {{ref}} को रद्द करता है, जिसमें {{count}} अतिथि शामिल हैं।",
+          "cancelGroupPreviewOtherBookings": "इस समूह में आपकी अन्य बुकिंग: {{currency}} {{refund}} वॉलेट में वापस, {{currency}} {{fee}} रद्दीकरण शुल्क।",
+          "cancelGroupPreviewGuestShares": "अतिथियों के अपने हिस्से के भुगतान ({{currency}} {{amount}}) उन्हीं कार्डों पर पूरे लौटाए जाते हैं जिनसे उन्होंने चुकाया था।"
         },
         "groupBookingDetail": {
           "back": "Retour",
@@ -16170,7 +16190,11 @@
           "cancelMySpotConfirm": "इस समूह बुकिंग में अपना स्थान रद्द करें? आपकी सेवाएँ हटा दी जाती हैं और आपके द्वारा किया गया कोई भी भुगतान आपके कार्ड पर वापस कर दिया जाता है।",
           "spotCancelled": "Your spot has been annulé.",
           "guestRemoved": "अतिथि को हटा दिया गया.",
-          "guestCancelFailed": "Impossible de mettre à jour the réservation de groupe."
+          "guestCancelFailed": "Impossible de mettre à jour the réservation de groupe.",
+          "resendPayLink": "भुगतान लिंक दोबारा भेजें",
+          "cancelGroupSession": "समूह सत्र रद्द करें",
+          "cancelGroupSessionHint": "आपकी बुकिंग खोलता है, जहाँ पुष्टि से पहले पूरे समूह का रिफंड दिखता है।",
+          "askOrganizerToReschedule": "आयोजक से पूछें कि क्या इस सत्र को नया समय चाहिए।"
         },
         "announcements": {
           "retry": "Réessayer",
@@ -16574,21 +16598,21 @@
           "saveErrorBeauty": "Préférences beauté : {{message}}",
           "saveFailedGeneric": "échec",
           "profileQuestionsSection": "Profil questions",
-          "profileQuestionsHint": "Answer at least 3 to complete your profile. ({{answered}}/3 done)",
+          "profileQuestionsHint": "प्रोफ़ाइल पूरी करने के लिए कम से कम 3 के उत्तर दें। ({{answered}}/3 पूरे)",
           "interestsSection": "Centres d’intérêt",
           "interestsSubtitle": "Ajouter things you're into (select or type)",
           "interestsPlaceholder": "ex. Cheveux, ongles, soins…",
           "interestsA11y": "Vos centres d’intérêt",
           "beautySection": "Préférences beauté",
-          "beautySubtitle": "Help prestataires personalise your experience",
+          "beautySubtitle": "प्रदाताओं को आपका अनुभव निजी बनाने में मदद करें",
           "hairType": "Type de cheveux",
           "skinType": "Type de peau",
           "thingsToAvoid": "À éviter",
-          "thingsToAvoidPlaceholder": "Sélectionner or type (e.g. fragrances, sulfates)",
+          "thingsToAvoidPlaceholder": "चुनें या लिखें (जैसे सुगंध, सल्फेट)",
           "thingsToAvoidA11y": "À éviter",
           "appointmentStyle": "Rendez-vous style",
           "productPreferences": "Produit preferences",
-          "productPreferencesPlaceholder": "Sélectionner or type (e.g. Vegan, Cruelty-free)",
+          "productPreferencesPlaceholder": "चुनें या लिखें (जैसे शाकाहारी, क्रूरता-मुक्त)",
           "productPreferencesA11y": "Produit preferences",
           "allergies": "Allergies et sensibilités",
           "allergiesPlaceholder": "ex. Nickel, latex…",
@@ -16632,7 +16656,7 @@
           "skinMature": "Mature",
           "avoidStrongFragrances": "Parfums forts",
           "avoidAlcohol": "Alcohol-based produits",
-          "avoidSulfates": "Sulfates",
+          "avoidSulfates": "Salfati",
           "avoidParabens": "Parabènes",
           "avoidEssentialOils": "Huiles essentielles",
           "avoidLatex": "Latex",
@@ -16643,7 +16667,7 @@
           "styleRelaxed": "Détendu et sans précipitation",
           "styleSocial": "Sociable et bavard",
           "styleQuiet": "Calme et minimal",
-          "styleFlexible": "Flexible",
+          "styleFlexible": "Rahisi",
           "prefVegan": "Végane",
           "prefCrueltyFree": "Sans cruauté",
           "prefNaturalOrganic": "Naturel / bio",
@@ -16670,7 +16694,7 @@
           "interestCooking": "Cuisine",
           "allergyFragrance": "Parfum",
           "allergyParabens": "Parabènes",
-          "allergySulfates": "Sulfates",
+          "allergySulfates": "Salfati",
           "allergyAlcohol": "Alcool",
           "allergyDyes": "Colorations",
           "allergyFormaldehyde": "Formaldéhyde",
@@ -18143,6 +18167,9 @@
           "invalidBody": "मान्य दिनांक (YYYY-MM-DD) और समय (HH:MM) दर्ज करें।",
           "failedTitle": "Impossible de reschedule",
           "noSlots": "इस दिन कोई समय उपलब्ध नहीं है. किसी अन्य तिथि का प्रयास करें."
+        },
+        "resetPassword": {
+          "policyMix": "आपके पासवर्ड में अक्षरों और अंकों का ऐसा मिश्रण होना चाहिए जो खाते के नियमों पर खरा उतरे।"
         }
       }
     },
@@ -18172,7 +18199,7 @@
       "accountNameLabel": "खाता धारक का नाम",
       "save": "बैंक खाता सहेजें",
       "screenTitle": "बैंक खाते",
-      "selectBank": "Select your bank"
+      "selectBank": "अपना बैंक चुनें"
     },
     "walletBankRefund": {
       "addBank": "एक बैंक खाता जोड़ें",
@@ -18425,7 +18452,11 @@
     "payForEveryone": "मैं सबके लिए भुगतान करूंगा",
     "splitPayment": "Split paiement",
     "splitPaymentHint": "अब आप अपनी सेवाओं और बुकिंग शुल्क का भुगतान स्वयं करें। प्रत्येक अतिथि को अपने हिस्से का भुगतान करने के लिए एक लिंक मिलता है।",
-    "guestSharesPaidByInvite": "मेहमान आमंत्रण लिंक के माध्यम से भुगतान करते हैं"
+    "guestSharesPaidByInvite": "मेहमान आमंत्रण लिंक के माध्यम से भुगतान करते हैं",
+    "rescheduleReplacesPreviousBody": "इस बुकिंग का भुगतान पूरा होते ही आपकी मूल अपॉइंटमेंट अपने आप और बिना शुल्क रद्द हो जाती है। जो आप पहले चुका चुके हैं वह यहाँ लगता है, और बचा हुआ वॉलेट में रहता है।",
+    "rescheduleCreditNote": "मूल बुकिंग के लिए ऑनलाइन चुकाई गई कोई भी राशि यहाँ लगती है। आप केवल अंतर चुकाते हैं।",
+    "rescheduleCreditApplied": "मूल बुकिंग पर चुकाया गया",
+    "rescheduleCreditSurplus": "बचा हुआ {{amount}} क्रेडिट के रूप में आपके वॉलेट में रहता है।"
   },
   "payments": {
     "pay": "Pay",
@@ -19472,7 +19503,11 @@
         "pickNextAvailable": "Find suivant disponible heure",
         "splitPayment": "Split paiement",
         "guestSharesPaidByInvite": "मेहमान आमंत्रण लिंक के माध्यम से भुगतान करते हैं",
-        "splitPaymentHint": "अब आप अपनी सेवाओं और बुकिंग शुल्क का भुगतान स्वयं करें। प्रत्येक अतिथि को अपने हिस्से का भुगतान करने के लिए एक लिंक मिलता है।"
+        "splitPaymentHint": "अब आप अपनी सेवाओं और बुकिंग शुल्क का भुगतान स्वयं करें। प्रत्येक अतिथि को अपने हिस्से का भुगतान करने के लिए एक लिंक मिलता है।",
+        "rescheduleCreditPaid": "आपका मूल भुगतान इस बुकिंग को कवर करता है।",
+        "rescheduleCreditIntro": "मूल बुकिंग के लिए ऑनलाइन चुकाई गई कोई भी राशि यहाँ लगती है। आप केवल अंतर चुकाते हैं।",
+        "rescheduleCreditApplied": "मूल बुकिंग पर चुकाया गया",
+        "rescheduleCreditSurplus": "बचा हुआ {{amount}} क्रेडिट के रूप में आपके वॉलेट में रहता है।"
       },
       "addToWaitlist": {
         "enterName": "Veuillez saisir your nom",
@@ -21128,7 +21163,13 @@
           "cancelled": "Annulé",
           "cantFind": "Can't find your reservation aquí?",
           "visitHelpCenter": "Visit the Centre d’aide"
-        }
+        },
+        "cancelledRefundProcessing": "बुकिंग रद्द। आपका रिफंड प्रक्रिया में है और जल्द पहुँचेगा।",
+        "refundProcessingTitle": "रिफंड प्रक्रिया में है",
+        "refundProcessingBody": "यह बुकिंग रद्द हो चुकी है। हम आपका रिफंड पूरा कर रहे हैं और यह जल्द ही आपके वॉलेट में दिखेगा। आपको कुछ करने की जरूरत नहीं।",
+        "cancelGroupPreviewTitle": "यह पूरे समूह सत्र {{ref}} को रद्द करता है, जिसमें {{count}} अतिथि शामिल हैं।",
+        "cancelGroupPreviewOtherBookings": "इस समूह में आपकी अन्य बुकिंग: {{currency}} {{refund}} वॉलेट में वापस, {{currency}} {{fee}} रद्दीकरण शुल्क।",
+        "cancelGroupPreviewGuestShares": "अतिथियों के अपने हिस्से के भुगतान ({{currency}} {{amount}}) उन्हीं कार्डों पर पूरे लौटाए जाते हैं जिनसे उन्होंने चुकाया था।"
       },
       "payAdditionalCharge": {
         "notFound": "Additional charge introuvable",
@@ -21375,7 +21416,13 @@
           "subtitle": "Elegir a strong contraseña for your cuenta.",
           "atLeastChars": "Au moins {{min}} caractères",
           "strength": "Robustesse : {{label}}",
-          "confirmPlaceholder": "Re-enter your mot de passe"
+          "confirmPlaceholder": "Re-enter your mot de passe",
+          "passwordsMatch": "पासवर्ड मेल खाते हैं",
+          "showPassword": "Show mot de passe",
+          "hidePassword": "Hide mot de passe",
+          "policyHintLettersDigits": "अक्षर और अंक शामिल करें",
+          "policyHintMixed": "बड़े और छोटे अक्षर तथा एक अंक शामिल करें।",
+          "strengthTip": "लंबा, अंकों और चिह्नों के साथ, अधिक मज़बूत होता है"
         }
       },
       "membership": {
@@ -22324,6 +22371,49 @@
         "statusContacted": "Contacté",
         "statusBooked": "Réservé",
         "statusCancelled": "Annulé"
+      },
+      "safety": {
+        "emergencyNumber": "आपातकालीन नंबर: 112",
+        "managed": "प्रबंधित",
+        "deviceAuthWebNote": "अगली बार Beautonomi ऐप खोलने पर लागू होगा।",
+        "updated": "सेटिंग अपडेट हो गई",
+        "updateFailed": "Impossible de mettre à jour setting. Veuillez réessayer.",
+        "loadFailed": "सुरक्षा सेटिंग लोड नहीं हो सकीं।",
+        "retry": "Retry",
+        "reportValidation": "जिसके बारे में शिकायत है उसके लिए कम से कम 2 अक्षर और हुई घटना के लिए कम से कम 10 अक्षर लिखें।",
+        "unblocked": "उपयोगकर्ता अनब्लॉक हुआ",
+        "unblockFailed": "इस उपयोगकर्ता को अनब्लॉक नहीं किया जा सका।",
+        "blockedLoadFailed": "ब्लॉक किए उपयोगकर्ता लोड नहीं हो सके।",
+        "blockedOn": "{{date}} को ब्लॉक",
+        "currentBand": "वर्तमान बैंड: {{band}}",
+        "noResults": "कोई ब्लॉक किया उपयोगकर्ता खोज से मेल नहीं खाता।",
+        "profileCompletionCta": "Terminer profil",
+        "bankRefundCta": "बैंक रिफंड का अनुरोध करें",
+        "bankRefundOpenCta": "अपना बैंक रिफंड अनुरोध देखें",
+        "bankRefundHistory": "अनुरोध इतिहास",
+        "bankRefundNote": "वित्त टीम के लिए नोट (वैकल्पिक)",
+        "bankRefundMin": "न्यूनतम राशि: {{amount}}",
+        "bankRefundMax": "प्रति अनुरोध अधिकतम: {{amount}}",
+        "bankRefundSla": "स्वीकृत रिफंड आमतौर पर {{days}} कार्यदिवसों में चुकाए जाते हैं।",
+        "bankRefundNoAccounts": "बैंक रिफंड माँगने से पहले बैंक खाता जोड़ें।",
+        "bankRefundStatus": "Status",
+        "bankRefundAmount": "Amount",
+        "bankRefundDate": "अनुरोधित",
+        "bankRefundReceive": "आपको मिलता है",
+        "bankRefundCancelled": "Request annulé",
+        "bankAccountsManage": "बैंक खाते प्रबंधित करें",
+        "bankAccountsMax": "आप अधिकतम 3 बैंक खाते सहेज सकते हैं।",
+        "bankAccountSaved": "बैंक खाता सहेजा गया",
+        "bankAccountRemoved": "बैंक खाता हटाया गया",
+        "bankAccountPrimary": "प्राथमिक खाता अपडेट हुआ",
+        "cancel": "Annuler"
+      },
+      "profileDetailsPage": {
+        "aboutSection": "आपके बारे में",
+        "aboutHint": "एक छोटा परिचय जो बुकिंग पर प्रदाता देखते हैं।",
+        "aboutPlaceholder": "प्रदाताओं को अपने बारे में थोड़ा बताएं",
+        "noChanges": "सहेजने के लिए कोई बदलाव नहीं",
+        "clearChoice": "Effacer"
       }
     },
     "auth": {
@@ -36370,7 +36460,9 @@
       "cancelConfirm": "इस समूह बुकिंग में अपना स्थान रद्द करें? आपकी सेवाएँ हटा दी जाती हैं और आपके द्वारा किया गया कोई भी भुगतान आपके कार्ड पर वापस कर दिया जाता है।",
       "cancelled": "Your spot has been annulé.",
       "cancelledRefunded": "आपका स्थान रद्द कर दिया गया है. {{amount}} आपके कार्ड पर वापस किया जा रहा है।",
-      "cancelFailed": "Impossible de annuler your spot."
+      "cancelFailed": "Impossible de annuler your spot.",
+      "sessionCancelled": "यह समूह सत्र रद्द हो गया है।",
+      "sessionCancelledPaid": "यह समूह सत्र रद्द हो गया है। अपने हिस्से के लिए चुकाई गई कोई भी राशि उसी कार्ड पर पूरी लौटा दी जाती है।"
     }
   },
   "errors": {

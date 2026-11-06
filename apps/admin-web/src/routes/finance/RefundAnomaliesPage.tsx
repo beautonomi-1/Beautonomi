@@ -1,7 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { adminToast } from "@/lib/adminToast";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
@@ -19,6 +21,7 @@ import {
   AdminTd,
 } from "@/components/admin/AdminDataTable";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { AdminConfirmDialog } from "@/components/admin/AdminConfirmDialog";
 
 type WalletRefundRow = {
   id: string;
@@ -49,11 +52,29 @@ type EventRow = {
   created_by?: string | null;
 };
 
+type FinalizeFailedOfferRow = {
+  id: string;
+  status: string;
+  payment_reference: string | null;
+  updated_at: string;
+  provider_id: string | null;
+};
+
+type RecoverResult = {
+  ok?: boolean;
+  reason?: string;
+  bookingId?: string | null;
+  refunded?: boolean;
+  card_refunded?: number;
+  wallet_credited?: number;
+};
+
 type AnomaliesPayload = {
   wallet_refund_on_in_person: WalletRefundRow[];
   group_yoco_mark_paid_without_ref: GroupYocoRow[];
   terminal_capture_on_paid_booking: EventRow[];
   refund_issued_by_staff: EventRow[];
+  custom_offer_finalize_failed?: FinalizeFailedOfferRow[];
   limit: number;
 };
 
@@ -67,6 +88,26 @@ const eventField = (row: EventRow, key: string) => {
 export function RefundAnomaliesPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_FINANCE, "Finance access is required.");
   useAdminDocumentTitle("Refund Anomalies");
+
+  const qc = useQueryClient();
+  const [refundOfferId, setRefundOfferId] = useState<string | null>(null);
+  const recoverMut = useMutation({
+    mutationFn: ({ id, action }: { id: string; action: "retry" | "refund" }) =>
+      adminApi.postJson<RecoverResult>(`/api/admin/custom-offers/${id}/recover`, { action }),
+    onSuccess: (res, vars) => {
+      if (vars.action === "refund") {
+        adminToast.success(
+          `Refunded ${fmtMoney(res?.card_refunded)} to the card and ${fmtMoney(res?.wallet_credited)} to the wallet`,
+        );
+      } else if (res?.ok) {
+        adminToast.success("Booking created for the paid offer");
+      } else {
+        adminToast.error(`Booking still could not be created (${res?.reason ?? "unknown"})`);
+      }
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.finance.refundAnomalies() });
+    },
+    onError: (e: Error) => adminToast.error(e.message),
+  });
 
   const q = useQuery({
     queryKey: adminQueryKeys.finance.refundAnomalies(),
@@ -97,12 +138,13 @@ export function RefundAnomaliesPage() {
   const yocoRows = data?.group_yoco_mark_paid_without_ref ?? [];
   const lateCaptureRows = data?.terminal_capture_on_paid_booking ?? [];
   const staffRefundRows = data?.refund_issued_by_staff ?? [];
+  const finalizeFailedRows = data?.custom_offer_finalize_failed ?? [];
 
   return (
     <div className="space-y-6">
       <AdminPageHeader
         title="Refund Anomalies"
-        description={`Read-only signals for provider refund and in-person payment abuse. Each list shows the latest ${data?.limit ?? 200} rows.`}
+        description={`Signals for provider refund and in-person payment abuse, plus paid custom offers to recover. Each list shows the latest ${data?.limit ?? 200} rows.`}
         actions={
           <button
             type="button"
@@ -221,6 +263,59 @@ export function RefundAnomaliesPage() {
       </AdminPanel>
 
       <AdminPanel>
+        <h2 className="mb-1 text-base font-semibold text-gray-900">Paid custom offers without a booking</h2>
+        <p className="mb-4 text-xs text-gray-500">
+          The customer paid but the booking was not created. Retry creates the booking from the verified charge. Refund
+          returns the card charge to the card and the wallet portion to the wallet.
+        </p>
+        {finalizeFailedRows.length === 0 ? (
+          <EmptyState title="Nothing flagged" description="Every paid custom offer has a booking." />
+        ) : (
+          <AdminDataTable>
+            <AdminTableHead>
+              <tr>
+                <AdminTh>Updated</AdminTh>
+                <AdminTh>Offer</AdminTh>
+                <AdminTh>Payment ref</AdminTh>
+                <AdminTh>Provider</AdminTh>
+                <AdminTh>Actions</AdminTh>
+              </tr>
+            </AdminTableHead>
+            <AdminTableBody>
+              {finalizeFailedRows.map((r) => (
+                <tr key={r.id}>
+                  <AdminTd>{fmtDate(r.updated_at)}</AdminTd>
+                  <AdminTd className="font-mono text-xs">{r.id}</AdminTd>
+                  <AdminTd className="font-mono text-xs">{r.payment_reference ?? "—"}</AdminTd>
+                  <AdminTd className="font-mono text-xs">{r.provider_id ?? "—"}</AdminTd>
+                  <AdminTd>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className={adminToolbarButtonClass(recoverMut.isPending)}
+                        disabled={recoverMut.isPending}
+                        onClick={() => recoverMut.mutate({ id: r.id, action: "retry" })}
+                      >
+                        Retry booking
+                      </button>
+                      <button
+                        type="button"
+                        className={adminToolbarButtonClass(recoverMut.isPending)}
+                        disabled={recoverMut.isPending}
+                        onClick={() => setRefundOfferId(r.id)}
+                      >
+                        Refund
+                      </button>
+                    </div>
+                  </AdminTd>
+                </tr>
+              ))}
+            </AdminTableBody>
+          </AdminDataTable>
+        )}
+      </AdminPanel>
+
+      <AdminPanel>
         <h2 className="mb-1 text-base font-semibold text-gray-900">Refunds issued by staff</h2>
         <p className="mb-4 text-xs text-gray-500">Audit trail of provider-side refunds (owner and team).</p>
         {staffRefundRows.length === 0 ? (
@@ -252,6 +347,25 @@ export function RefundAnomaliesPage() {
           </AdminDataTable>
         )}
       </AdminPanel>
+
+      <AdminConfirmDialog
+        open={refundOfferId != null}
+        onClose={() => {
+          if (!recoverMut.isPending) setRefundOfferId(null);
+        }}
+        title="Refund this payment"
+        consequence="The card charge goes back to the card, the wallet portion goes back to the wallet, and the offer is withdrawn."
+        confirmLabel="Refund and withdraw offer"
+        variant="danger"
+        busy={recoverMut.isPending}
+        onConfirm={() => {
+          if (!refundOfferId) return;
+          recoverMut.mutate(
+            { id: refundOfferId, action: "refund" },
+            { onSettled: () => setRefundOfferId(null) },
+          );
+        }}
+      />
     </div>
   );
 }

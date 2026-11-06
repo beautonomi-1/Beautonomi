@@ -11,8 +11,15 @@ import {
   parseLegalDobIso,
   validateLegalDobParts,
 } from "@beautonomi/utils";
+import { refreshViewerSafetySettings } from "@/lib/safety/safety-settings-client";
 
-export function DateOfBirthSection({ initialIso }: { initialIso: string | null }) {
+export function DateOfBirthSection({
+  initialIso,
+  onSaved,
+}: {
+  initialIso: string | null;
+  onSaved?: (iso: string) => void;
+}) {
   const { t } = useTranslation();
   const dobPrefix = "web.accountSettings.identityVerification.legalDob";
   const piPrefix = "web.accountSettings.personalInfo";
@@ -66,23 +73,25 @@ export function DateOfBirthSection({ initialIso }: { initialIso: string | null }
       }
       setIso(draftIso);
       toast.success(t(`${piPrefix}.dateOfBirthSaved`));
+      await refreshViewerSafetySettings();
+      onSaved?.(draftIso);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t(`${piPrefix}.dateOfBirthSaveFailed`));
     } finally {
       setSaving(false);
     }
-  }, [day, draftIso, month, piPrefix, t, year]);
+  }, [day, draftIso, month, onSaved, piPrefix, t, year]);
 
   return (
-    <section id="date-of-birth-section" className="rounded-xl border border-gray-100 bg-white p-6">
+    <section id="date-of-birth-section" className="rounded-xl border border-gray-100 bg-white p-4 sm:p-6">
       <h2 className="text-lg font-semibold text-gray-900">{t(`${dobPrefix}.dateOfBirth`)}</h2>
       <p className="mt-1 text-sm text-gray-600">{t(`${piPrefix}.dateOfBirthSafetyHint`)}</p>
       {iso ? (
         <p className="mt-3 text-sm font-medium text-gray-800">{formatLegalDobDisplay(iso)}</p>
       ) : null}
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-4 grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
         <select
-          className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
+          className="min-h-11 w-full sm:w-auto rounded-lg border border-gray-200 px-3 py-2 text-sm"
           value={day ?? ""}
           onChange={(e) => setDay(e.target.value ? Number(e.target.value) : null)}
           aria-label={t(`${dobPrefix}.day`)}
@@ -95,7 +104,7 @@ export function DateOfBirthSection({ initialIso }: { initialIso: string | null }
           ))}
         </select>
         <select
-          className="rounded-lg border border-gray-200 px-3 py-2 text-sm min-w-[8rem]"
+          className="min-h-11 w-full sm:w-auto rounded-lg border border-gray-200 px-3 py-2 text-sm sm:min-w-[8rem]"
           value={month ?? ""}
           onChange={(e) => setMonth(e.target.value ? Number(e.target.value) : null)}
           aria-label={t(`${dobPrefix}.month`)}
@@ -108,7 +117,7 @@ export function DateOfBirthSection({ initialIso }: { initialIso: string | null }
           ))}
         </select>
         <select
-          className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
+          className="min-h-11 w-full sm:w-auto rounded-lg border border-gray-200 px-3 py-2 text-sm"
           value={year ?? ""}
           onChange={(e) => setYear(e.target.value ? Number(e.target.value) : null)}
           aria-label={t(`${dobPrefix}.year`)}
@@ -124,7 +133,7 @@ export function DateOfBirthSection({ initialIso }: { initialIso: string | null }
           type="button"
           onClick={() => void save()}
           disabled={saving}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          className="min-h-11 w-full sm:w-auto rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
         >
           {saving ? t(`${piPrefix}.saving`) : t(`${piPrefix}.save`)}
         </button>

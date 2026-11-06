@@ -84,6 +84,9 @@ export async function POST(request: NextRequest) {
         await markStaffInvitationAccepted(admin, parsed.data.token);
       }
 
+      const { trustCurrentDevice } = await import("@/lib/auth/trust-device");
+      await trustCurrentDevice(request, user.id, "staff_join");
+
       const response = successResponse({
         staff_id: result.staff_id,
         provider_id: result.provider_id,

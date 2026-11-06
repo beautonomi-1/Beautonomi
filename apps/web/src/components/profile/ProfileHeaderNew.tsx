@@ -178,7 +178,7 @@ export default function ProfileHeaderNew({
     >
       <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
         {/* Avatar — id used for /account-settings#photo deep links */}
-        <div id="photo" className="relative group">
+        <div id="photo" className="relative group scroll-mt-32">
           <motion.div
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}

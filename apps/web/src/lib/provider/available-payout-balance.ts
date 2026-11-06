@@ -146,6 +146,8 @@ export async function getAvailablePayoutBalance(
 ): Promise<{
   availableBalance: number;
   pendingPayoutsSum: number;
+  /** All pending + processing payouts, as reserved by insert_payout_request_guarded. */
+  guardReservedPayoutsSum?: number;
   rawBalance: number;
   hasNegativeBalance: boolean;
   openDisputeReserve: number;
@@ -481,15 +483,41 @@ export async function getAvailablePayoutBalance(
 
   const { data: pendingRows, error: pendingError } = await supabase
     .from("payouts")
-    .select("amount, net_amount")
+    .select("id, amount, net_amount")
     .eq("provider_id", providerId)
     .in("status", ["pending", "processing"]);
   if (pendingError) {
     if (!isPostgrestRangeUnsatisfiable(pendingError)) throw pendingError;
   }
 
-  // Match insert_payout_request_guarded, which reserves SUM(net_amount).
-  const pendingPayoutsSum = (pendingRows ?? []).reduce(
+  const pendingIds = (pendingRows ?? []).map((p) => String((p as { id: string }).id));
+  let ledgerCovered = new Set<string>();
+  if (pendingIds.length > 0) {
+    const { data: payoutLedger } = await supabase
+      .from("finance_transactions")
+      .select("payout_id, metadata")
+      .eq("transaction_type", "payout")
+      .in("payout_id", pendingIds);
+    ledgerCovered = new Set(
+      (payoutLedger ?? [])
+        .filter((row) => {
+          const meta = (row as { metadata?: { reversed_at?: string } | null }).metadata;
+          return !meta?.reversed_at;
+        })
+        .map((row) => String((row as { payout_id?: string }).payout_id ?? "")),
+    );
+  }
+
+  // A processing payout that already has a ledger row is subtracted via that row.
+  // Counting it here as well would reserve the same money twice.
+  const pendingPayoutsSum = (pendingRows ?? []).reduce((s, p) => {
+    const id = String((p as { id: string }).id);
+    if (ledgerCovered.has(id)) return s;
+    return s + Number(p.net_amount ?? p.amount ?? 0);
+  }, 0);
+  // insert_payout_request_guarded subtracts every pending/processing payout,
+  // so callers add this full sum back when building its ceiling.
+  const guardReservedPayoutsSum = (pendingRows ?? []).reduce(
     (s, p) => s + Number(p.net_amount ?? p.amount ?? 0),
     0,
   );
@@ -531,6 +559,7 @@ export async function getAvailablePayoutBalance(
   return {
     availableBalance,
     pendingPayoutsSum: roundedPending,
+    guardReservedPayoutsSum: roundMoney2(guardReservedPayoutsSum),
     rawBalance,
     hasNegativeBalance,
     openDisputeReserve: roundMoney2(openDisputeReserve),

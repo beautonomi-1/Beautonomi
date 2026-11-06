@@ -15012,7 +15012,20 @@
           "emailInputA11y": "E-mail input",
           "sendResetLink": "Envoyer le lien de réinitialisation",
           "sendResetLinkA11y": "Envoyer le lien de réinitialisation",
-          "backToLoginA11y": "Retour to login"
+          "backToLoginA11y": "Retour to login",
+          "codeA11y": "Parola sıfırlama kodu",
+          "invalidCodeTitle": "Kod kabul edilmedi",
+          "invalidCodeBody": "İletideki {{digits}} haneli kodu girin.",
+          "resend": "İletiyi yeniden gönder",
+          "resendA11y": "Sıfırlama iletisini yeniden gönder",
+          "signedInIntro": "Hesap iletisine bir kod ve sıfırlama bağlantısı göndereceğiz.",
+          "back": "Retour",
+          "stepCode": "1. {{digits}} haneli kodu girin",
+          "stepPassword": "2. Yeni bir parola seçin",
+          "codeVerified": "Kod doğrulandı",
+          "submit": "Réinitialiser le mot de passe",
+          "submittingA11y": "Parola sıfırlanıyor",
+          "linkAlternative": "Bağlantıyı mı yeğlersiniz? Yeni parolayı tarayıcıda ayarlamak için iletiden açın."
         },
         "authSafetyAndAge": {
           "linkLabel": "Sécurité et contrôles parentaux",
@@ -16091,7 +16104,14 @@
           "lifecyclePartialRefundDescription": "Un remboursement partiel a été enregistré pour cette réservation.",
           "lifecycleRefundedDescription": "Le paiement de cette réservation a été remboursé.",
           "lifecyclePaymentFailedDescription": "Le paiement n’a pas abouti. Réessayez ou contactez l’assistance avec ce numéro de réservation.",
-          "lifecyclePaymentNotConfirmedDescription": "Paiement has not been confirmé yet."
+          "lifecyclePaymentNotConfirmedDescription": "Paiement has not been confirmé yet.",
+          "refundProcessingTitle": "İade işleniyor",
+          "refundProcessingBody": "Bu rezervasyon iptal edildi. İadenizi tamamlıyoruz ve kısa süre içinde cüzdanınızda görünecek. Sizin bir şey yapmanız gerekmez.",
+          "rescheduleInProgressTitle": "Yeniden planlama sürüyor",
+          "rescheduleInProgressBody": "Bu rezervasyon başka bir saate taşınıyor. Yeni ödemeyi bitirin; ödediğiniz tutar kendiliğinden aktarılır. O ödemeden çıktıysanız, süre dolunca rezervasyon yeniden iptal edilebilir, yaklaşık 30 dakika içinde.",
+          "cancelGroupPreviewTitle": "Bu, {{count}} konuk dahil tüm grup oturumunu {{ref}} iptal eder.",
+          "cancelGroupPreviewOtherBookings": "Bu gruptaki diğer rezervasyonlarınız: {{currency}} {{refund}} cüzdana geri, {{currency}} {{fee}} iptal ücreti.",
+          "cancelGroupPreviewGuestShares": "Konukların kendi pay ödemeleri ({{currency}} {{amount}}) ödedikleri kartlara tam olarak iade edilir."
         },
         "groupBookingDetail": {
           "back": "Retour",
@@ -16170,7 +16190,11 @@
           "cancelMySpotConfirm": "Bu grup rezervasyonundaki yeriniz iptal edilsin mi? Hizmetleriniz kaldırılır ve yaptığınız ödemeler kartınıza iade edilir.",
           "spotCancelled": "Your spot has been annulé.",
           "guestRemoved": "Invitado quitard.",
-          "guestCancelFailed": "Impossible de mettre à jour the réservation de groupe."
+          "guestCancelFailed": "Impossible de mettre à jour the réservation de groupe.",
+          "resendPayLink": "Ödeme bağlantısını yeniden gönder",
+          "cancelGroupSession": "Grup oturumunu iptal et",
+          "cancelGroupSessionHint": "Onaylamadan önce tüm grubun iadesini gördüğünüz rezervasyonunuzu açar.",
+          "askOrganizerToReschedule": "Bu oturumun başka bir saate gerek duyup duymadığını düzenleyiciye sorun."
         },
         "announcements": {
           "retry": "Réessayer",
@@ -16574,21 +16598,21 @@
           "saveErrorBeauty": "Préférences beauté : {{message}}",
           "saveFailedGeneric": "échec",
           "profileQuestionsSection": "Profil questions",
-          "profileQuestionsHint": "Answer at least 3 to complete your profile. ({{answered}}/3 done)",
+          "profileQuestionsHint": "Profilini tamamlamak için en az 3 yanıtla. ({{answered}}/3 bitti)",
           "interestsSection": "Centres d’intérêt",
           "interestsSubtitle": "Ajouter things you're into (select or type)",
           "interestsPlaceholder": "ex. Cheveux, ongles, soins…",
           "interestsA11y": "Vos centres d’intérêt",
           "beautySection": "Préférences beauté",
-          "beautySubtitle": "Help prestataires personalise your experience",
+          "beautySubtitle": "Sağlayıcıların deneyiminizi kişiselleştirmesine yardım edin",
           "hairType": "Type de cheveux",
           "skinType": "Type de peau",
           "thingsToAvoid": "À éviter",
-          "thingsToAvoidPlaceholder": "Sélectionner or type (e.g. fragrances, sulfates)",
+          "thingsToAvoidPlaceholder": "Seçin veya yazın (ör. kokular, sülfatlar)",
           "thingsToAvoidA11y": "À éviter",
           "appointmentStyle": "Rendez-vous style",
           "productPreferences": "Produit preferences",
-          "productPreferencesPlaceholder": "Sélectionner or type (e.g. Vegan, Cruelty-free)",
+          "productPreferencesPlaceholder": "Seçin veya yazın (ör. vegan, zulümsüz)",
           "productPreferencesA11y": "Produit preferences",
           "allergies": "Allergies et sensibilités",
           "allergiesPlaceholder": "ex. Nickel, latex…",
@@ -16632,7 +16656,7 @@
           "skinMature": "Mature",
           "avoidStrongFragrances": "Parfums forts",
           "avoidAlcohol": "Alcohol-based produits",
-          "avoidSulfates": "Sulfates",
+          "avoidSulfates": "Salfati",
           "avoidParabens": "Parabènes",
           "avoidEssentialOils": "Huiles essentielles",
           "avoidLatex": "Latex",
@@ -16643,7 +16667,7 @@
           "styleRelaxed": "Détendu et sans précipitation",
           "styleSocial": "Sociable et bavard",
           "styleQuiet": "Calme et minimal",
-          "styleFlexible": "Flexible",
+          "styleFlexible": "Rahisi",
           "prefVegan": "Végane",
           "prefCrueltyFree": "Sans cruauté",
           "prefNaturalOrganic": "Naturel / bio",
@@ -16670,7 +16694,7 @@
           "interestCooking": "Cuisine",
           "allergyFragrance": "Parfum",
           "allergyParabens": "Parabènes",
-          "allergySulfates": "Sulfates",
+          "allergySulfates": "Salfati",
           "allergyAlcohol": "Alcool",
           "allergyDyes": "Colorations",
           "allergyFormaldehyde": "Formaldéhyde",
@@ -18143,6 +18167,9 @@
           "invalidBody": "Introduce a válido fecha (YYYY-MM-DD) and hora (HH:MM).",
           "failedTitle": "Impossible de reschedule",
           "noSlots": "No horas disponible on this día. Try anotro fecha."
+        },
+        "resetPassword": {
+          "policyMix": "Parolanız, hesap kurallarına uyan harf ve rakam karışımı içermelidir."
         }
       }
     },
@@ -18172,7 +18199,7 @@
       "accountNameLabel": "Hesap sahibinin adı",
       "save": "Banka hesabını kaydet",
       "screenTitle": "Banka hesapları",
-      "selectBank": "Select your bank"
+      "selectBank": "Bankanızı seçin"
     },
     "walletBankRefund": {
       "addBank": "Banka hesabı ekleyin",
@@ -18425,7 +18452,11 @@
     "payForEveryone": "I'll pagar for everyone",
     "splitPayment": "Split paiement",
     "splitPaymentHint": "Artık kendi hizmetlerinizi ve rezervasyon ücretlerini ödersiniz. Her misafir kendi payına düşeni ödemek için bir bağlantı alır.",
-    "guestSharesPaidByInvite": "Invitados pagar via invitación enlace"
+    "guestSharesPaidByInvite": "Invitados pagar via invitación enlace",
+    "rescheduleReplacesPreviousBody": "Bu rezervasyonun ödemesi bitince özgün randevunuz kendiliğinden ve ücretsiz iptal edilir. Daha önce ödediğiniz buraya yazılır, artan tutar cüzdanınızda kalır.",
+    "rescheduleCreditNote": "Özgün rezervasyon için çevrimiçi ödediğiniz tutar burada kullanılır. Yalnızca farkı ödersiniz.",
+    "rescheduleCreditApplied": "Özgün rezervasyonda ödendi",
+    "rescheduleCreditSurplus": "Kalan {{amount}} cüzdanınızda bakiye olarak durur."
   },
   "payments": {
     "pay": "Pay",
@@ -19472,7 +19503,11 @@
         "pickNextAvailable": "Find suivant disponible heure",
         "splitPayment": "Split paiement",
         "guestSharesPaidByInvite": "Invitados pagar via invitación enlace",
-        "splitPaymentHint": "Artık kendi hizmetlerinizi ve rezervasyon ücretlerini ödersiniz. Her misafir kendi payına düşeni ödemek için bir bağlantı alır."
+        "splitPaymentHint": "Artık kendi hizmetlerinizi ve rezervasyon ücretlerini ödersiniz. Her misafir kendi payına düşeni ödemek için bir bağlantı alır.",
+        "rescheduleCreditPaid": "Özgün ödemeniz bu rezervasyonu karşılar.",
+        "rescheduleCreditIntro": "Özgün rezervasyon için çevrimiçi ödediğiniz tutar burada kullanılır. Yalnızca farkı ödersiniz.",
+        "rescheduleCreditApplied": "Özgün rezervasyonda ödendi",
+        "rescheduleCreditSurplus": "Kalan {{amount}} cüzdanınızda bakiye olarak durur."
       },
       "addToWaitlist": {
         "enterName": "Veuillez saisir your nom",
@@ -21128,7 +21163,13 @@
           "cancelled": "Annulé",
           "cantFind": "Can't find your reservation aquí?",
           "visitHelpCenter": "Visit the Centre d’aide"
-        }
+        },
+        "cancelledRefundProcessing": "Rezervasyon iptal edildi. İadeniz işleniyor ve kısa süre içinde gelecek.",
+        "refundProcessingTitle": "İade işleniyor",
+        "refundProcessingBody": "Bu rezervasyon iptal edildi. İadenizi tamamlıyoruz ve kısa süre içinde cüzdanınızda görünecek. Sizin bir şey yapmanız gerekmez.",
+        "cancelGroupPreviewTitle": "Bu, {{count}} konuk dahil tüm grup oturumunu {{ref}} iptal eder.",
+        "cancelGroupPreviewOtherBookings": "Bu gruptaki diğer rezervasyonlarınız: {{currency}} {{refund}} cüzdana geri, {{currency}} {{fee}} iptal ücreti.",
+        "cancelGroupPreviewGuestShares": "Konukların kendi pay ödemeleri ({{currency}} {{amount}}) ödedikleri kartlara tam olarak iade edilir."
       },
       "payAdditionalCharge": {
         "notFound": "Additional charge introuvable",
@@ -21375,7 +21416,13 @@
           "subtitle": "Elegir a strong contraseña for your cuenta.",
           "atLeastChars": "Au moins {{min}} caractères",
           "strength": "Robustesse : {{label}}",
-          "confirmPlaceholder": "Re-enter your mot de passe"
+          "confirmPlaceholder": "Re-enter your mot de passe",
+          "passwordsMatch": "Parolalar eşleşiyor",
+          "showPassword": "Show mot de passe",
+          "hidePassword": "Hide mot de passe",
+          "policyHintLettersDigits": "Harf ve rakam ekleyin",
+          "policyHintMixed": "Büyük harf, küçük harf ve bir rakam ekleyin.",
+          "strengthTip": "daha uzun, rakam ve simgelerle, daha güçlüdür"
         }
       },
       "membership": {
@@ -22324,6 +22371,49 @@
         "statusContacted": "Contacté",
         "statusBooked": "Réservé",
         "statusCancelled": "Annulé"
+      },
+      "safety": {
+        "emergencyNumber": "Acil numara: 112",
+        "managed": "Yönetilen",
+        "deviceAuthWebNote": "Beautonomi uygulamasını bir sonraki açışınızda geçerli olur.",
+        "updated": "Ayar güncellendi",
+        "updateFailed": "Impossible de mettre à jour setting. Veuillez réessayer.",
+        "loadFailed": "Güvenlik ayarları yüklenemedi.",
+        "retry": "Retry",
+        "reportValidation": "Bildirdiğiniz kişi için en az 2 karakter ve olanlar için en az 10 karakter girin.",
+        "unblocked": "Kullanıcının engeli kalktı",
+        "unblockFailed": "Bu kullanıcının engeli kaldırılamadı.",
+        "blockedLoadFailed": "Engellenen kullanıcılar yüklenemedi.",
+        "blockedOn": "{{date}} tarihinde engellendi",
+        "currentBand": "Geçerli bant: {{band}}",
+        "noResults": "Aramayla eşleşen engelli kullanıcı yok.",
+        "profileCompletionCta": "Terminer profil",
+        "bankRefundCta": "Banka iadesi iste",
+        "bankRefundOpenCta": "Banka iadesi isteğini görüntüle",
+        "bankRefundHistory": "İstek geçmişi",
+        "bankRefundNote": "Finans ekibi için not (isteğe bağlı)",
+        "bankRefundMin": "Asgari tutar: {{amount}}",
+        "bankRefundMax": "İstek başına azami: {{amount}}",
+        "bankRefundSla": "Onaylanan iadeler genellikle {{days}} iş günü içinde ödenir.",
+        "bankRefundNoAccounts": "Banka iadesi istemeden önce bir banka hesabı ekleyin.",
+        "bankRefundStatus": "Status",
+        "bankRefundAmount": "Amount",
+        "bankRefundDate": "İstendi",
+        "bankRefundReceive": "Alırsınız",
+        "bankRefundCancelled": "Request annulé",
+        "bankAccountsManage": "Banka hesaplarını yönet",
+        "bankAccountsMax": "En fazla 3 banka hesabı kaydedebilirsiniz.",
+        "bankAccountSaved": "Banka hesabı kaydedildi",
+        "bankAccountRemoved": "Banka hesabı kaldırıldı",
+        "bankAccountPrimary": "Birincil hesap güncellendi",
+        "cancel": "Annuler"
+      },
+      "profileDetailsPage": {
+        "aboutSection": "Hakkınızda",
+        "aboutHint": "Rezervasyon sırasında sağlayıcıların gördüğü kısa bir tanıtım.",
+        "aboutPlaceholder": "Sağlayıcılara kendiniz hakkında biraz anlatın",
+        "noChanges": "Kaydedilecek değişiklik yok",
+        "clearChoice": "Effacer"
       }
     },
     "auth": {
@@ -36370,7 +36460,9 @@
       "cancelConfirm": "Bu grup rezervasyonundaki yeriniz iptal edilsin mi? Hizmetleriniz kaldırılır ve yaptığınız ödemeler kartınıza iade edilir.",
       "cancelled": "Your spot has been annulé.",
       "cancelledRefunded": "Yeriniz iptal edildi. {{amount}} kartınıza iade ediliyor.",
-      "cancelFailed": "Impossible de annuler your spot."
+      "cancelFailed": "Impossible de annuler your spot.",
+      "sessionCancelled": "Bu grup oturumu iptal edildi.",
+      "sessionCancelledPaid": "Bu grup oturumu iptal edildi. Payınız için ödediğiniz tutar, kullandığınız karta tam olarak iade edilir."
     }
   },
   "errors": {

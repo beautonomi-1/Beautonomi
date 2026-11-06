@@ -23,7 +23,7 @@ import { formatBookingLiveStageLabel } from "@/lib/booking-live-stage";
 import { SafetyPanicButton } from "@/components/SafetyPanicButton";
 import { Skeleton } from "@/components/Skeleton";
 import { haptic } from "@/lib/haptics";
-import { getApiErrorMessage } from "@/lib/api-error";
+import { getApiErrorCode, getApiErrorMessage } from "@/lib/api-error";
 import { hasSupabaseAccessToken, pushLoginWithReturnTo, redirectLoginIfAuthRequired } from "@/lib/customer-auth-routing";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
@@ -317,6 +317,15 @@ export default function BookingDetailScreen() {
     penalty_waived_reason?: string;
     is_late_cancellation?: boolean;
     refund_capped_by_paid_amount?: boolean;
+    guest_shares_refunded?: number;
+    group?: {
+      ref_number: string | null;
+      guest_count: number;
+      other_bookings_cancelled: number;
+      other_bookings_wallet_refund: number;
+      other_bookings_cancellation_fee: number;
+      other_bookings_in_person_refund_due: number;
+    } | null;
   } | null>(null);
   const [cancelReasonText, setCancelReasonText] = useState("");
   const cancelPendingRef = useRef<{ version?: number } | null>(null);
@@ -985,6 +994,15 @@ export default function BookingDetailScreen() {
         penalty_waived_reason?: string;
         is_late_cancellation?: boolean;
         refund_capped_by_paid_amount?: boolean;
+        guest_shares_refunded?: number;
+        group?: {
+          ref_number: string | null;
+          guest_count: number;
+          other_bookings_cancelled: number;
+          other_bookings_wallet_refund: number;
+          other_bookings_cancellation_fee: number;
+          other_bookings_in_person_refund_due: number;
+        } | null;
       }>(`/api/me/bookings/${id}/cancel-preview`);
       const p = preview.data;
       if (preview.error || !p?.allowed) {
@@ -1028,7 +1046,7 @@ export default function BookingDetailScreen() {
         return;
       }
       const pending = cancelPendingRef.current;
-      const res = await api.post<{ booking?: unknown }>(
+      const res = await api.post<{ booking?: unknown; refund_status?: string }>(
         `/api/me/bookings/${encodeURIComponent(cancelBookingId)}/cancel`,
         {
         reason: reason.trim() || bd("cancelReasonDefault"),
@@ -1037,7 +1055,9 @@ export default function BookingDetailScreen() {
       );
       if (res.error) {
         const st = (res.error as { status?: number }).status;
-        if (st === 409) {
+        if (st === 409 && getApiErrorCode(res.error) === "RESCHEDULE_IN_PROGRESS") {
+          Alert.alert(bd("rescheduleInProgressTitle"), bd("rescheduleInProgressBody"));
+        } else if (st === 409) {
           Alert.alert(bd("cancelConflictTitle"), bd("cancelConflictBody"));
           load();
         } else {
@@ -1046,6 +1066,9 @@ export default function BookingDetailScreen() {
       } else {
         haptic.success();
         trackBookingCancelled(cancelBookingId, reason.trim() || undefined);
+        if (res.data?.refund_status === "pending") {
+          Alert.alert(bd("refundProcessingTitle"), bd("refundProcessingBody"));
+        }
         load();
       }
     } catch (e) {
@@ -1064,8 +1087,12 @@ export default function BookingDetailScreen() {
     if (!booking) return;
     haptic.light();
     const lines = (booking.services ?? []) as Array<{ staff_id?: string | null }>;
+    if (booking.group_booking_id) {
+      router.push({ pathname: "/(app)/group-booking-detail", params: { id: booking.group_booking_id } });
+      return;
+    }
     const canRescheduleInPlace =
-      !booking.group_booking_id && lines.length > 0 && lines.every((s) => Boolean(s.staff_id));
+      lines.length > 0 && lines.every((s) => Boolean(s.staff_id));
     if (canRescheduleInPlace) {
       router.push({ pathname: "/(app)/booking-reschedule", params: { id: booking.id } });
       return;
@@ -4013,6 +4040,24 @@ export default function BookingDetailScreen() {
           </View>
         )}
 
+        {booking.status === "cancelled" &&
+        !(booking as { cancellation_settled_at?: string | null }).cancellation_settled_at &&
+        (booking as { cancellation_settlement_error?: string | null }).cancellation_settlement_error ? (
+          <View
+            style={{
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: "#FDE68A",
+              backgroundColor: "#FFFBEB",
+              padding: 16,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ fontWeight: "600", color: "#92400E" }}>{bd("refundProcessingTitle")}</Text>
+            <Text style={{ fontSize: 14, color: "#92400E", marginTop: 4 }}>{bd("refundProcessingBody")}</Text>
+          </View>
+        ) : null}
+
         {isExpiredPending && provider?.slug ? (
           <View style={{ marginBottom: 12 }}>
             <View
@@ -4307,6 +4352,51 @@ export default function BookingDetailScreen() {
                   ) : null}
                   {waived ? (
                     <Text style={{ fontSize: 14, color: "#059669" }}>{waived}</Text>
+                  ) : null}
+                  {cancelPreview.group ? (
+                    <View
+                      style={{
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: "#FDE68A",
+                        backgroundColor: "#FFFBEB",
+                        padding: 12,
+                        gap: 4,
+                      }}
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: "#92400E" }}>
+                        {bd("cancelGroupPreviewTitle", {
+                          ref: cancelPreview.group.ref_number ?? "",
+                          count: cancelPreview.group.guest_count,
+                        })}
+                      </Text>
+                      {cancelPreview.group.other_bookings_wallet_refund > 0.009 ||
+                      cancelPreview.group.other_bookings_cancellation_fee > 0.009 ? (
+                        <Text style={{ fontSize: 13, color: "#92400E" }}>
+                          {bd("cancelGroupPreviewOtherBookings", {
+                            currency: cur,
+                            refund: cancelPreview.group.other_bookings_wallet_refund.toFixed(2),
+                            fee: cancelPreview.group.other_bookings_cancellation_fee.toFixed(2),
+                          })}
+                        </Text>
+                      ) : null}
+                      {cancelPreview.group.other_bookings_in_person_refund_due > 0.009 ? (
+                        <Text style={{ fontSize: 13, color: "#92400E" }}>
+                          {bd("cancelPreviewInPersonRefund", {
+                            currency: cur,
+                            amount: cancelPreview.group.other_bookings_in_person_refund_due.toFixed(2),
+                          })}
+                        </Text>
+                      ) : null}
+                      {Number(cancelPreview.guest_shares_refunded ?? 0) > 0.009 ? (
+                        <Text style={{ fontSize: 13, color: "#92400E" }}>
+                          {bd("cancelGroupPreviewGuestShares", {
+                            currency: cur,
+                            amount: Number(cancelPreview.guest_shares_refunded).toFixed(2),
+                          })}
+                        </Text>
+                      ) : null}
+                    </View>
                   ) : null}
                 </>
               );

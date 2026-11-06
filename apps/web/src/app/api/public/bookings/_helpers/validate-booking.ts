@@ -1367,6 +1367,7 @@ export async function validateBooking(
       locationType: draft.location_type === "at_home" ? "at_home" : "at_salon",
       locationId: draft.location_id ?? null,
       customerId,
+      excludeBookingId: validatedDraft.reschedule_booking_id ?? null,
     });
     if (promoResolved.blockedReason) {
       return handleApiError(
@@ -2036,7 +2037,8 @@ export async function validateBooking(
             firstLine.staff_id,
             selectedDatetimeForConflict,
             holdReservedEndAt,
-            0
+            0,
+            (draft as any).reschedule_booking_id ?? null
           );
           conflictResult = lockRes;
           if (lockRes.hasConflict) {
@@ -2060,7 +2062,8 @@ export async function validateBooking(
             firstLine.staff_id,
             selectedDatetimeForConflict,
             lockEndAt,
-            0
+            0,
+            (draft as any).reschedule_booking_id ?? null
           );
           conflictResult = lockRes;
           if (lockRes.hasConflict) {

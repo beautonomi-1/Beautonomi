@@ -1267,6 +1267,23 @@ export async function DELETE(
       const cancelledIds = childSettlements.map((c) => c.bookingId);
       after(async () => {
         try {
+          const { getGroupBookingParticipantsForCancellation } = await import("@/lib/bookings/group-booking-cancellation");
+          const { notifyGroupGuestsWithoutAccountsOfCancellation } = await import("@/lib/bookings/group-booking-notifications");
+          const { data: groupRef } = await admin
+            .from("group_bookings")
+            .select("ref_number")
+            .eq("id", id)
+            .maybeSingle();
+          await notifyGroupGuestsWithoutAccountsOfCancellation(admin, {
+            participants: await getGroupBookingParticipantsForCancellation(admin, id),
+            providerId,
+            bookingRef: (groupRef as { ref_number?: string | null } | null)?.ref_number || id,
+            cancelledBy: "provider",
+          });
+        } catch (guestNotifyErr) {
+          console.warn("[provider group cancel] guest notice failed:", guestNotifyErr);
+        }
+        try {
           const { sendCancellationNotification } = await import("@/lib/bookings/notifications");
           const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
           await Promise.allSettled(

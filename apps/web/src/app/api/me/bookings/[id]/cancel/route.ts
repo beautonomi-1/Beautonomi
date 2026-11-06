@@ -15,6 +15,10 @@ import {
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { trackServer } from "@/lib/analytics/amplitude/server";
+import {
+  hasPendingRescheduleReplacement,
+  RESCHEDULE_IN_PROGRESS_MESSAGE,
+} from "@/lib/bookings/reschedule-carry-over";
 import { EVENT_BOOKING_CANCELLED } from "@/lib/analytics/amplitude/types";
 
 /**
@@ -60,6 +64,15 @@ export async function POST(
         "You can only cancel your own bookings",
         "UNAUTHORIZED",
         403
+      );
+    }
+
+    if (await hasPendingRescheduleReplacement(adminSupabase, bookingId)) {
+      return handleApiError(
+        new Error("Reschedule in progress"),
+        RESCHEDULE_IN_PROGRESS_MESSAGE,
+        "RESCHEDULE_IN_PROGRESS",
+        409
       );
     }
 
@@ -333,6 +346,13 @@ export async function POST(
         // Route Handler (relative URL has no origin) and required an admin role.
         const { sendToUser } = await import('@/lib/notifications/onesignal');
         const participants = await getGroupBookingParticipantsForCancellation(supabase, groupBookingData.id);
+        const { notifyGroupGuestsWithoutAccountsOfCancellation } = await import("@/lib/bookings/group-booking-notifications");
+        await notifyGroupGuestsWithoutAccountsOfCancellation(adminSupabase, {
+          participants,
+          providerId: booking.provider_id,
+          bookingRef: booking.booking_number || bookingId,
+          cancelledBy: "customer",
+        });
         for (const participant of participants) {
           if (!participant.participant_email) continue;
           const { data: participantUser } = await adminSupabase
@@ -340,10 +360,7 @@ export async function POST(
             .select('id')
             .eq('email', participant.participant_email)
             .maybeSingle();
-          if (!participantUser?.id) {
-            console.warn(`[cancel] group participant ${participant.participant_email} has no user record — skipping notification`);
-            continue;
-          }
+          if (!participantUser?.id) continue;
           try {
             await sendToUser(
               participantUser.id,
@@ -402,6 +419,7 @@ export async function POST(
     // Skip for group primaries: cancelGroupBooking(settleFinance: true) above already settled
     // every participant booking (including this one); settling again would re-run
     // processBookingRefund against a stale snapshot and double-credit the wallet.
+    let refundStatus: "settled" | "pending" | "none" = isGroupBooking ? "settled" : "none";
     if (!isGroupBooking) {
       try {
         const settlement = await settleBookingCancellation(
@@ -411,19 +429,26 @@ export async function POST(
             refundBookingTotal: bookingTotal,
           }),
         );
+        const owesWalletRefund = (settlement.walletRefundAmount ?? 0) > 0.009;
+        refundStatus = !owesWalletRefund
+          ? "none"
+          : settlement.refundResult.success === false
+            ? "pending"
+            : "settled";
         if (settlement.cancellationFeeApplied != null) {
           await adminSupabase
             .from("bookings")
             .update({ cancellation_fee: settlement.cancellationFeeApplied })
             .eq("id", bookingId);
         }
-        if (settlement.refundResult.success && settlement.refundResult.amount) {
-          console.log(
-            `Refund processed: ${settlement.refundResult.amount} ${bFin.currency}`,
-          );
-        }
       } catch (settleErr) {
+        const message = settleErr instanceof Error ? settleErr.message : "settlement_failed";
         console.error("Error processing cancellation settlement:", settleErr);
+        await adminSupabase
+          .from("bookings")
+          .update({ cancellation_settlement_error: message.slice(0, 500) })
+          .eq("id", bookingId);
+        refundStatus = "pending";
       }
     }
 
@@ -442,7 +467,11 @@ export async function POST(
     return successResponse({
       booking: updatedBooking,
       policy_applied: policy,
-      message: "Booking cancelled successfully",
+      refund_status: refundStatus,
+      message:
+        refundStatus === "pending"
+          ? "Booking cancelled. Your refund is still processing."
+          : "Booking cancelled successfully",
     });
   } catch (error) {
     return handleApiError(error, "Failed to cancel booking");

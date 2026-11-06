@@ -860,6 +860,12 @@ export interface GroupBookingParticipant {
   total_paid?: number | null;
   total_refunded?: number | null;
   wallet_gift_coverage?: number | null;
+  balance_due?: number | null;
+  payment_status?: string | null;
+  /** Split-payment share; null when the guest has no share of their own. */
+  share_amount_due?: number | null;
+  share_amount_paid?: number | null;
+  share_status?: string | null;
 }
 
 /**

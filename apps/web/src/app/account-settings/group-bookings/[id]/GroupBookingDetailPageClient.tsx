@@ -83,8 +83,17 @@ type GroupBookingDetail = {
   balance_due?: number;
   amount_paid?: number;
   is_primary_payer?: boolean;
+  lead_booking_id?: string | null;
   package_name?: string | null;
 };
+
+/** Mirrors resendGroupGuestInvite: any open split share with money still owed. */
+function shareIsOpen(p: GroupParticipant): boolean {
+  if (p.share_amount_due == null) return false;
+  const status = String(p.share_status ?? "").toLowerCase();
+  if (status === "paid" || status === "cancelled" || status === "waived") return false;
+  return Number(p.share_amount_due) - Number(p.share_amount_paid ?? 0) > 0.005;
+}
 
 export default function GroupBookingDetailPageClient() {
   const { t } = useTranslation();
@@ -261,9 +270,21 @@ export default function GroupBookingDetailPageClient() {
         </div>
 
         {canRescheduleGroup ? (
-          <Button type="button" variant="outline" onClick={() => setRescheduleOpen(true)}>
-            {gbd("rescheduleSession")}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={() => setRescheduleOpen(true)}>
+              {gbd("rescheduleSession")}
+            </Button>
+            {detail.lead_booking_id ? (
+              <Button type="button" variant="outline" asChild>
+                <Link href={`/account-settings/bookings/${detail.lead_booking_id}`}>
+                  {gbd("cancelGroupSession")}
+                </Link>
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+        {canRescheduleGroup && detail.lead_booking_id ? (
+          <p className="text-xs text-gray-500 -mt-3">{gbd("cancelGroupSessionHint")}</p>
         ) : null}
 
         <div className="rounded-2xl border bg-white p-5 shadow-sm">
@@ -310,7 +331,7 @@ export default function GroupBookingDetailPageClient() {
                   ) : null}
                   {groupOpen && !p.is_primary_contact && !p.booking_id && p.share_status !== "cancelled" ? (
                     <div className="flex flex-wrap gap-2 mt-2">
-                      {detail.is_primary_payer && p.share_status === "pending" ? (
+                      {detail.is_primary_payer && shareIsOpen(p) ? (
                         <Button
                           type="button"
                           size="sm"
@@ -318,7 +339,7 @@ export default function GroupBookingDetailPageClient() {
                           disabled={guestActionId === p.id}
                           onClick={() => void resendInvite(p.id)}
                         >
-                          {gbd("resendInvite")}
+                          {gbd("resendPayLink")}
                         </Button>
                       ) : null}
                       {detail.is_primary_payer || p.is_current_user ? (

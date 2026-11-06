@@ -756,6 +756,7 @@ async function handlePost(
       wallet_amount_applied: bookingData?.data?.wallet_amount_applied ?? 0,
       gift_card_amount_applied: bookingData?.data?.gift_card_amount_applied ?? 0,
       paystack_amount: bookingData?.data?.paystack_amount ?? 0,
+      reschedule_credit: bookingData?.data?.reschedule_credit ?? 0,
       ...(recurring_subscription ? { recurring_subscription } : {}),
     });
   } catch (error) {

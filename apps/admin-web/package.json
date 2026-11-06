@@ -14,6 +14,7 @@
     "test:e2e:install": "playwright install chromium"
   },
   "dependencies": {
+    "@beautonomi/auth-security": "workspace:*",
     "@beautonomi/admin-access": "workspace:*",
     "@beautonomi/admin-api-client": "workspace:*",
     "@beautonomi/learning-mockups": "workspace:*",

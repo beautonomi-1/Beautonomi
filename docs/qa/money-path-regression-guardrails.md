@@ -18,7 +18,7 @@ Use this checklist before merging any money-path change. All items must hold unl
 From `apps/web`:
 
 ```text
-npx vitest run src/lib/money-flow/__tests__/money-path-golden-invariants.test.ts
+npx vitest run src/lib/money-flow/__tests__/money-path-golden-invariants.test.ts src/lib/bookings/__tests__/reschedule-carry-over.test.ts
 ```
 
 ## Bundles by change type

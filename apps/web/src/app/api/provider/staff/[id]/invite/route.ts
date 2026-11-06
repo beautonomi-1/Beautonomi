@@ -33,6 +33,8 @@ export async function POST(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const { requireStepUp } = await import("@/lib/auth/provider-security");
+    await requireStepUp(request, user.id, String(user.role ?? ""), { action: "team_change" });
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = await request.json();

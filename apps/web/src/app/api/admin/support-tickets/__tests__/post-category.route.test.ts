@@ -25,6 +25,14 @@ vi.mock("@/lib/audit/audit", () => ({
   extractRequestMeta: vi.fn().mockReturnValue({}),
 }));
 
+vi.mock("@/lib/tenant/admin-request-tenant", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/tenant/admin-request-tenant")>();
+  return {
+    ...actual,
+    resolveAdminApiTenantId: vi.fn().mockResolvedValue("44444444-4444-4444-8444-444444444444"),
+  };
+});
+
 vi.mock("@/lib/fraud/maybe-open-fraud-from-support-ticket", () => ({
   maybeOpenFraudCaseFromSafetyTicket: vi.fn().mockResolvedValue(undefined),
 }));
@@ -101,6 +109,7 @@ describe("POST /api/admin/support-tickets category", () => {
     expect(res.status).toBe(200);
     expect(captured.ticketInsert?.category).toBe("provider_payouts");
     expect(captured.ticketInsert?.support_context_type).toBe("payment");
+    expect(captured.ticketInsert?.tenant_id).toBe("44444444-4444-4444-8444-444444444444");
   });
 
   it("rejects unknown category slug", async () => {

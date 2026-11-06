@@ -69,6 +69,7 @@ type PublicBookingCreateResult = {
   wallet_amount_applied?: number;
   gift_card_amount_applied?: number;
   paystack_amount?: number;
+  reschedule_credit?: number;
   recurring_subscription?: { created: boolean; pending?: boolean; message?: string };
 };
 
@@ -346,6 +347,7 @@ export default function StepPayment({
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [rescheduleCredit, setRescheduleCredit] = useState<number>(0);
   const [walletCurrency, setWalletCurrency] = useState<string>(tenantCurrency);
   const [walletLoading, setWalletLoading] = useState(false);
   const [depositPercentage, setDepositPercentage] = useState<number>(30);
@@ -781,6 +783,28 @@ export default function StepPayment({
     loadCards();
   }, [user]);
 
+  useEffect(() => {
+    const rescheduleId = bookingState.rescheduleBookingId;
+    if (!user || !rescheduleId) {
+      setRescheduleCredit(0);
+      return;
+    }
+    let cancelled = false;
+    fetcher
+      .get<{ data: { credit: number } }>(`/api/me/bookings/${rescheduleId}/reschedule-credit`, {
+        cache: "no-store",
+      })
+      .then((res) => {
+        if (!cancelled) setRescheduleCredit(Math.max(0, Number(res?.data?.credit) || 0));
+      })
+      .catch(() => {
+        if (!cancelled) setRescheduleCredit(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, bookingState.rescheduleBookingId]);
+
   // Fetch wallet balance when user is logged in (for "Use wallet" option)
   useEffect(() => {
     if (!user) return;
@@ -887,6 +911,12 @@ export default function StepPayment({
         )
     : 0;
   const checkoutBaseTotal = Math.max(0, totals.total - groupGuestShareTotal);
+  // Matches processPayment: the reschedule credit is applied to the amount due
+  // now before gift card and wallet; anything above it stays in the wallet.
+  const rescheduleCreditFor = (dueBeforeCredit: number) =>
+    Math.round(Math.min(rescheduleCredit, Math.max(0, dueBeforeCredit)) * 100) / 100;
+  const afterRescheduleCredit = (dueBeforeCredit: number) =>
+    Math.max(0, dueBeforeCredit - rescheduleCreditFor(dueBeforeCredit));
 
   const createBookingDraft = async () => {
     if (!bookingState.providerId || !bookingState.selectedDate || !bookingState.selectedTimeSlot) {
@@ -1266,7 +1296,7 @@ export default function StepPayment({
     }
     if (paymentMethod === "giftcard") {
       const depositAmount = percentOf(checkoutBaseTotal, depositPercentage);
-      const amountDueNow = paymentOption === "deposit" ? depositAmount : checkoutBaseTotal;
+      const amountDueNow = afterRescheduleCredit(paymentOption === "deposit" ? depositAmount : checkoutBaseTotal);
       if ((bookingState.promotions.giftCardAmount || 0) + 0.005 < amountDueNow) {
         toast.error(
           t("web.booking.stepPayment.giftCardDoesNotCover")
@@ -1452,9 +1482,14 @@ export default function StepPayment({
         draftWithUrl.payment_url == null ||
         draftWithUrl.payment_url === "" ||
         (Number.isFinite(paystackRemainder) && paystackRemainder <= 0);
-      // Wallet/gift covered full amount — server returned no Paystack URL
-      if ((bookingState.useWallet ?? false) && noCardLeg) {
-        toast.success(t("web.booking.stepPayment.walletGiftPaid"));
+      // Wallet/gift or reschedule credit covered the full amount — server returned no Paystack URL
+      const rescheduleCreditUsed = Number(draftWithUrl.reschedule_credit ?? 0) > 0;
+      if (((bookingState.useWallet ?? false) || rescheduleCreditUsed) && noCardLeg) {
+        toast.success(
+          rescheduleCreditUsed && !(bookingState.useWallet ?? false)
+            ? t("web.booking.stepPayment.rescheduleCreditPaid")
+            : t("web.booking.stepPayment.walletGiftPaid"),
+        );
         notifyRecurringFromResult(bookingResult.recurring_subscription);
         router.push(
           `/checkout/success?booking_id=${encodeURIComponent(bookingResult.booking_id)}${bookingResult.booking_number ? `&booking_number=${encodeURIComponent(bookingResult.booking_number)}` : ""}`,
@@ -1488,7 +1523,7 @@ export default function StepPayment({
 
       // Fallback: initialize payment client-side if API did not return payment_url
       const depositAmount = percentOf(checkoutBaseTotal, depositPercentage);
-      const amountDueNow = paymentOption === "deposit" ? depositAmount : checkoutBaseTotal;
+      const amountDueNow = afterRescheduleCredit(paymentOption === "deposit" ? depositAmount : checkoutBaseTotal);
       const giftCardApplied = Math.min(bookingState.promotions.giftCardAmount || 0, amountDueNow);
       const walletApplied =
         paymentMethod === "card" && useWallet
@@ -1562,6 +1597,11 @@ export default function StepPayment({
       {/* Booking Summary */}
       <div className="space-y-4">
         <h2 className="text-2xl font-semibold text-gray-900">{t("booking.reviewBooking")}</h2>
+        {bookingState.rescheduleBookingId ? (
+          <p className="text-sm text-gray-600">
+            {t("web.booking.stepPayment.rescheduleCreditIntro")}
+          </p>
+        ) : null}
         {holdExpiresAt ? (
           <HoldCountdown
             expiresAt={holdExpiresAt}
@@ -2040,10 +2080,33 @@ export default function StepPayment({
             </div>
           )}
 
+          {rescheduleCredit > 0 &&
+            (() => {
+              const dueBeforeCredit =
+                paymentOption === "deposit" ? percentOf(checkoutBaseTotal, depositPercentage) : checkoutBaseTotal;
+              const creditApplied = rescheduleCreditFor(dueBeforeCredit);
+              const creditLeftInWallet = Math.max(0, Math.round((rescheduleCredit - creditApplied) * 100) / 100);
+              return (
+                <div className="space-y-1">
+                  <div className="flex justify-between text-sm text-green-700">
+                    <span>{t("web.booking.stepPayment.rescheduleCreditApplied")}</span>
+                    <span>−{formatCurrency(creditApplied, totals.currency)}</span>
+                  </div>
+                  {creditLeftInWallet > 0 && (
+                    <p className="text-xs text-gray-600">
+                      {t("web.booking.stepPayment.rescheduleCreditSurplus", {
+                        amount: formatCurrency(creditLeftInWallet, totals.currency),
+                      })}
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
+
           {bookingState.promotions.giftCardAmount > 0 &&
             (() => {
               const depositAmount = percentOf(checkoutBaseTotal, depositPercentage);
-              const amountDueNow = paymentOption === "deposit" ? depositAmount : checkoutBaseTotal;
+              const amountDueNow = afterRescheduleCredit(paymentOption === "deposit" ? depositAmount : checkoutBaseTotal);
               const giftCardApplied = Math.min(
                 bookingState.promotions.giftCardAmount || 0,
                 amountDueNow
@@ -2062,7 +2125,7 @@ export default function StepPayment({
             walletBalance > 0 &&
             (() => {
               const depositAmount = percentOf(checkoutBaseTotal, depositPercentage);
-              const amountDueNow = paymentOption === "deposit" ? depositAmount : checkoutBaseTotal;
+              const amountDueNow = afterRescheduleCredit(paymentOption === "deposit" ? depositAmount : checkoutBaseTotal);
               const giftCardApplied = Math.min(
                 bookingState.promotions.giftCardAmount || 0,
                 amountDueNow
@@ -2705,7 +2768,7 @@ export default function StepPayment({
             ? savedCards.find((c) => c.id === selectedCardId)
             : null;
           const depositAmount = percentOf(checkoutBaseTotal, depositPercentage);
-          const amountDueNow = paymentOption === "deposit" ? depositAmount : checkoutBaseTotal;
+          const amountDueNow = afterRescheduleCredit(paymentOption === "deposit" ? depositAmount : checkoutBaseTotal);
           const giftCardApplied = Math.min(
             bookingState.promotions.giftCardAmount || 0,
             amountDueNow

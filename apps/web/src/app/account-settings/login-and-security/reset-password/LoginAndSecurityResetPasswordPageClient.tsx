@@ -2,19 +2,18 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Lock, CheckCircle2, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { Lock, CheckCircle2, AlertCircle } from "lucide-react";
 import { updatePassword } from "@/lib/supabase/auth";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import {
-  DEFAULT_PUBLIC_AUTH,
-  passwordMeetsPolicyRequirements,
-  type PublicAuthPolicy,
-} from "@/lib/config/auth-policy-public";
+import { DEFAULT_PUBLIC_AUTH, type PublicAuthPolicy } from "@/lib/config/auth-policy-public";
+import { getNewPasswordIssue } from "@/lib/auth/password-strength";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { NewPasswordFields } from "@/components/auth/NewPasswordFields";
 import { useTranslation } from "@beautonomi/i18n";
+import { buildForgotPasswordHref } from "@/lib/auth/forgot-password-href";
+import { sanitizeRelativeRedirect } from "@/lib/auth/post-login-return-path";
 
 export default function ResetPasswordPage() {
   const { t } = useTranslation();
@@ -22,7 +21,6 @@ export default function ResetPasswordPage() {
   const searchParams = useSearchParams();
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [verifyError, setVerifyError] = useState<string | null>(null);
@@ -87,36 +85,22 @@ export default function ResetPasswordPage() {
       .catch(() => {});
   }, [isReady]);
 
-  const passwordStrength = (pwd: string): { label: string; color: string; score: number } => {
-    let score = 0;
-    if (pwd.length >= 8) score++;
-    if (pwd.length >= 12) score++;
-    if (/[A-Z]/.test(pwd)) score++;
-    if (/[0-9]/.test(pwd)) score++;
-    if (/[^A-Za-z0-9]/.test(pwd)) score++;
-
-    if (score <= 1) return { label: t("auth.passwordWeak"), color: "bg-red-500", score };
-    if (score <= 3) return { label: t("auth.passwordFair"), color: "bg-yellow-500", score };
-    return { label: t("auth.passwordStrong"), color: "bg-green-500", score };
-  };
-
-  const strength = passwordStrength(newPassword);
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
-    if (newPassword.length < policy.minimum_password_length) {
+    const issue = getNewPasswordIssue(newPassword, confirmPassword, policy);
+    if (issue === "minLength") {
       setError(t("web.accountSettings.loginAndSecurity.resetPassword.minLength", {
         min: policy.minimum_password_length,
       }));
       return;
     }
-    if (!passwordMeetsPolicyRequirements(newPassword, policy.password_requirements)) {
+    if (issue === "policy") {
       setError(t("web.accountSettings.loginAndSecurity.resetPassword.policyMix"));
       return;
     }
-    if (newPassword !== confirmPassword) {
+    if (issue === "mismatch") {
       setError(t("web.accountSettings.loginAndSecurity.resetPassword.passwordsMismatch"));
       return;
     }
@@ -171,7 +155,13 @@ export default function ResetPasswordPage() {
             {t("web.accountSettings.loginAndSecurity.resetPassword.invalidLink")}
           </h2>
           <p className="mb-6 text-sm text-gray-500">{verifyError}</p>
-          <Button onClick={() => router.push("/forgot-password")} className="w-full mb-2">
+          <Button
+            onClick={() => {
+              const next = sanitizeRelativeRedirect(searchParams.get("next"));
+              router.push(buildForgotPasswordHref({ next }));
+            }}
+            className="w-full mb-2"
+          >
             {t("web.accountSettings.loginAndSecurity.resetPassword.requestNewLink")}
           </Button>
           <button type="button" onClick={() => router.push("/")} className="text-sm text-gray-500 hover:text-gray-700">
@@ -213,67 +203,23 @@ export default function ResetPasswordPage() {
           {t("web.accountSettings.loginAndSecurity.resetPassword.subtitle")}
         </p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              {t("web.accountSettings.loginAndSecurity.newPassword")}
-            </label>
-            <div className="relative">
-              <Input
-                type={showPassword ? "text" : "password"}
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder={t("web.accountSettings.loginAndSecurity.resetPassword.atLeastChars", {
-                  min: policy.minimum_password_length,
-                })}
-                className="pe-10"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                {showPassword ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
-              </button>
-            </div>
-            {newPassword.length > 0 && (
-              <div className="mt-2">
-                <div className="flex gap-1">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <div
-                      key={i}
-                      className={`h-1 flex-1 rounded-full ${
-                        i <= strength.score ? strength.color : "bg-gray-200"
-                      }`}
-                    />
-                  ))}
-                </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  {t("web.accountSettings.loginAndSecurity.resetPassword.strength", {
-                    label: strength.label,
-                  })}
-                </p>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              {t("web.accountSettings.loginAndSecurity.confirmPassword")}
-            </label>
-            <Input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder={t("web.accountSettings.loginAndSecurity.resetPassword.confirmPlaceholder")}
-              required
-            />
-          </div>
+        <form onSubmit={handleSubmit} noValidate className="space-y-4">
+          <NewPasswordFields
+            idPrefix="reset"
+            password={newPassword}
+            onPasswordChange={(v) => {
+              setNewPassword(v);
+              if (error) setError(null);
+            }}
+            confirm={confirmPassword}
+            onConfirmChange={(v) => {
+              setConfirmPassword(v);
+              if (error) setError(null);
+            }}
+            policy={policy}
+            disabled={isSubmitting}
+            autoFocus
+          />
 
           {error && (
             <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">

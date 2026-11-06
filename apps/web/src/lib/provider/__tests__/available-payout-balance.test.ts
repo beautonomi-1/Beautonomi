@@ -110,6 +110,7 @@ describe("getAvailablePayoutBalance", () => {
     expect(result).toEqual({
       availableBalance: 85,
       pendingPayoutsSum: 15,
+      guardReservedPayoutsSum: 15,
       rawBalance: 85,
       hasNegativeBalance: false,
       openDisputeReserve: 0,

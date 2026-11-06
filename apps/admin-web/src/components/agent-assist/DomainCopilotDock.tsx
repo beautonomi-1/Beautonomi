@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Bot } from "lucide-react";
 import { Link } from "react-router";
 import type { AdminSection } from "@beautonomi/admin-access";
 import { AdminPanel } from "@/components/ui/AdminPanel";
+import { AnchoredPopover } from "@/components/ui/AnchoredPopover";
 import { useAdminCopilot, type CopilotPageContext } from "@/hooks/useAdminCopilot";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { NAV_REVEAL_STATE } from "@/lib/navReveal";
@@ -21,6 +22,7 @@ export function DomainCopilotDock({
 }) {
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
+  const anchorRef = useRef<HTMLDivElement>(null);
   const { ask, messages, busy, disambiguation, proposedAction, pickDisambiguation, resetConversation } =
     useAdminCopilot(pageContext);
 
@@ -39,6 +41,7 @@ export function DomainCopilotDock({
           ? "inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-2.5 text-xs font-medium text-primary"
           : "inline-flex min-h-11 touch-manipulation items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 text-sm font-medium text-primary"
       }
+      aria-expanded={open}
       onClick={() => setOpen((v) => !v)}
     >
       <Bot className="h-4 w-4" aria-hidden />
@@ -46,10 +49,10 @@ export function DomainCopilotDock({
     </button>
   );
 
-  if (!open) return trigger;
+  if (!open && !compact) return trigger;
 
-  const panel = (
-    <AdminPanel title="Copilot (read-only)" className="border-primary/20">
+  const body = (
+    <>
       {pageContext?.label ? (
         <p className="mb-3 text-sm text-gray-600">Context: {pageContext.label}</p>
       ) : null}
@@ -141,19 +144,33 @@ export function DomainCopilotDock({
           Close
         </button>
       </div>
-    </AdminPanel>
+    </>
   );
 
   if (compact) {
     return (
-      <div className="relative">
+      <div ref={anchorRef} className="relative">
         {trigger}
-        <div className="absolute bottom-full left-0 z-30 mb-2 w-[min(22rem,calc(100vw-2rem))] shadow-xl">
-          {panel}
-        </div>
+        <AnchoredPopover
+          open={open}
+          anchorRef={anchorRef}
+          onClose={() => setOpen(false)}
+          width={360}
+          maxHeight={520}
+          className="border-primary/20 p-4"
+          role="dialog"
+          ariaLabel="Copilot"
+        >
+          <h2 className="mb-3 text-sm font-semibold text-gray-900">Copilot (read-only)</h2>
+          {body}
+        </AnchoredPopover>
       </div>
     );
   }
 
-  return panel;
+  return (
+    <AdminPanel title="Copilot (read-only)" className="border-primary/20">
+      {body}
+    </AdminPanel>
+  );
 }

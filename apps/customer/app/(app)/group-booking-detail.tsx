@@ -85,8 +85,17 @@ type GroupBookingDetail = {
   is_invoiced?: boolean;
   paid_by?: string | null;
   is_primary_payer?: boolean;
+  lead_booking_id?: string | null;
   notes?: string | null;
 };
+
+/** Mirrors resendGroupGuestInvite: any open split share with money still owed. */
+function shareIsOpen(p: Participant): boolean {
+  if (p.share_amount_due == null) return false;
+  const status = String(p.share_status ?? "").toLowerCase();
+  if (status === "paid" || status === "cancelled" || status === "waived") return false;
+  return Number(p.share_amount_due) - Number(p.share_amount_paid ?? 0) > 0.005;
+}
 
 function formatDate(value: string | null | undefined, translate: (key: string) => string) {
   if (!value) return translate("notScheduled");
@@ -352,6 +361,11 @@ export default function GroupBookingDetailScreen() {
                     {gbd("yourBookingNoShow")}
                   </Text>
                 ) : null}
+                {groupOpen && !isPrimaryContact ? (
+                  <Text style={{ color: Colors.gray[600], fontSize: 13, marginTop: 10 }}>
+                    {gbd("askOrganizerToReschedule")}
+                  </Text>
+                ) : null}
                 {canRescheduleGroup ? (
                   <TouchableOpacity
                     onPress={() => {
@@ -366,6 +380,20 @@ export default function GroupBookingDetailScreen() {
                   >
                     <Text style={{ color: Colors.white, fontWeight: "700", fontSize: 13 }}>{gbd("rescheduleSession")}</Text>
                   </TouchableOpacity>
+                ) : null}
+                {canRescheduleGroup && data.lead_booking_id ? (
+                  <>
+                    <TouchableOpacity
+                      onPress={() =>
+                        router.push({ pathname: "/(app)/booking-detail", params: { id: data.lead_booking_id! } })
+                      }
+                      accessibilityRole="button"
+                      style={{ marginTop: 10, alignSelf: "flex-start", borderWidth: 1, borderColor: Colors.gray[300], borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 }}
+                    >
+                      <Text style={{ color: Colors.gray[800], fontWeight: "700", fontSize: 13 }}>{gbd("cancelGroupSession")}</Text>
+                    </TouchableOpacity>
+                    <Text style={{ color: Colors.gray[500], fontSize: 12, marginTop: 6 }}>{gbd("cancelGroupSessionHint")}</Text>
+                  </>
                 ) : null}
               </View>
               <View style={{ alignItems: "flex-end", gap: 4 }}>
@@ -576,14 +604,14 @@ export default function GroupBookingDetailScreen() {
                       ) : null}
                       {groupOpen && !p.is_primary_contact && !p.booking_id && p.share_status !== "cancelled" ? (
                         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-                          {data.is_primary_payer && p.share_status === "pending" ? (
+                          {data.is_primary_payer && shareIsOpen(p) ? (
                             <TouchableOpacity
                               accessibilityRole="button"
                               disabled={guestActionId === p.id}
                               onPress={() => void resendInvite(p.id)}
                               style={{ borderWidth: 1, borderColor: Colors.gray[300], borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 }}
                             >
-                              <Text style={{ fontSize: 12, fontWeight: "700", color: Colors.gray[800] }}>{gbd("resendInvite")}</Text>
+                              <Text style={{ fontSize: 12, fontWeight: "700", color: Colors.gray[800] }}>{gbd("resendPayLink")}</Text>
                             </TouchableOpacity>
                           ) : null}
                           {data.is_primary_payer || p.is_current_user ? (
