@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const syncExplorePostGalleryOnHide = vi.fn(async () => undefined);
+
 vi.mock("@/lib/safety/explore-post-gallery", () => ({
-  removeExplorePostUrlsFromProviderGallery: vi.fn(async () => undefined),
+  syncExplorePostGalleryOnHide: (...args: unknown[]) => syncExplorePostGalleryOnHide(...args),
 }));
 
 const mockUpdate = vi.fn();
@@ -25,14 +27,29 @@ describe("moderation-actions", () => {
     vi.clearAllMocks();
   });
 
-  it("applyContentModerationTakedown hides explore posts", async () => {
+  it("applyContentModerationTakedown hides explore posts and strips gallery", async () => {
     const captured: Record<string, unknown>[] = [];
     const supabase = {
-      from: vi.fn(() => ({
+      from: vi.fn((table: string) => ({
         update: vi.fn((payload: Record<string, unknown>) => {
           captured.push(payload);
           return { eq: vi.fn(async () => ({ error: null })) };
         }),
+        select:
+          table === "explore_posts"
+            ? vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({
+                    data: {
+                      provider_id: "prov-1",
+                      display_path: "explore/a.jpg",
+                      media_urls: [],
+                      media_meta: [],
+                    },
+                  })),
+                })),
+              }))
+            : undefined,
       })),
     } as never;
     const { applyContentModerationTakedown } = await import("../moderation-actions");
@@ -45,6 +62,7 @@ describe("moderation-actions", () => {
     expect(result.applied).toBe(true);
     expect(result.action).toBe("hide");
     expect(captured[0]?.moderated_by).toBe("admin-1");
+    expect(syncExplorePostGalleryOnHide).toHaveBeenCalledTimes(1);
   });
 
   it("system auto-hide omits moderated_by when adminUserId is null", async () => {
@@ -82,6 +100,7 @@ describe("moderation-actions", () => {
     });
     expect(captured[0]?.is_hidden).toBe(true);
     expect(captured[0]).not.toHaveProperty("moderated_by");
+    expect(syncExplorePostGalleryOnHide).toHaveBeenCalledTimes(1);
   });
 
   it("maybeAutoHideReportedContent returns null below threshold", async () => {

@@ -23,7 +23,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 /** Service-role lookup that maps message user_ids to display names. */
 function createAdminUsersClient(rows: { id: string; full_name: string | null }[] = [
-  { id: "support-1", full_name: "Support Agent" },
+  { id: "support-1", full_name: "Nolo Sehlolo" },
 ]) {
   return {
     from: vi.fn((table: string) => {
@@ -55,6 +55,7 @@ function createSupabase(options?: { messages?: unknown[]; description?: string }
       is_internal: false,
       created_at: "2026-05-01T10:05:00.000Z",
       user_id: "support-1",
+      author_kind: "staff",
       attachments: [],
     },
   ];
@@ -135,7 +136,7 @@ describe("GET /api/me/support-tickets/[id]", () => {
     expect(body.data.messages[0]).toMatchObject({ message: "Need help with payouts", is_mine: true });
     expect(body.data.messages[1]).toMatchObject({
       message: "We are looking into this",
-      author_name: "Support Agent",
+      author_name: "Nolo",
       is_mine: false,
     });
   });
@@ -182,7 +183,7 @@ describe("GET /api/me/support-tickets/[id]", () => {
   it("resolves staff author names through the service-role client", async () => {
     mockGetSupabaseServer.mockResolvedValue(createSupabase());
     mockGetSupabaseAdmin.mockReturnValue(
-      createAdminUsersClient([{ id: "support-1", full_name: "Nadia from Support" }]),
+      createAdminUsersClient([{ id: "support-1", full_name: "Nadia Stone" }]),
     );
 
     const { GET } = await import("../route");
@@ -192,7 +193,7 @@ describe("GET /api/me/support-tickets/[id]", () => {
 
     expect(res.status).toBe(200);
     expect(body.data.messages[1]).toMatchObject({
-      author_name: "Nadia from Support",
+      author_name: "Nadia",
       is_mine: false,
     });
   });

@@ -600,11 +600,14 @@ export default function SupportTicketDetailScreen() {
             {messages.map((m) => {
               const isOwn = m.is_mine ?? (m.user_id === user?.id);
               const isAssistant = m.author_kind === "assistant";
+              const isStaffReply = !isOwn && !isAssistant && m.author_kind === "staff";
               const authorLabel = isOwn
                 ? st("you")
                 : isAssistant
                   ? st("assistantName")
                   : (m.author_name ?? st("supportTeam"));
+              const showSupportChip =
+                isStaffReply && authorLabel !== "Support Team" && authorLabel !== st("supportTeam");
               const initials = isOwn ? st("youInitials") : authorLabel.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
               const attachments = Array.isArray(m.attachments) ? m.attachments : [];
               return (
@@ -621,6 +624,11 @@ export default function SupportTicketDetailScreen() {
                         <Text style={{ color: "#fff", fontSize: 9, fontWeight: "700" }}>{initials}</Text>
                       </View>
                       <Text style={{ fontSize: 11, color: Colors.gray[500], fontWeight: "600" }}>{authorLabel}</Text>
+                      {showSupportChip ? (
+                        <Text style={{ marginStart: 6, overflow: "hidden", borderRadius: 9999, backgroundColor: "#EFF6FF", paddingHorizontal: 6, paddingVertical: 1, fontSize: 10, fontWeight: "600", color: "#1D4ED8" }}>
+                          {st("supportTeam")}
+                        </Text>
+                      ) : null}
                     </View>
                   )}
                   <View

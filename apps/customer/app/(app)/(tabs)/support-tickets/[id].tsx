@@ -614,11 +614,14 @@ export default function SupportTicketDetailScreen() {
           {messages.map((m) => {
             const isOwn = m.is_mine ?? m.user_id === user?.id;
             const isAssistant = m.author_kind === "assistant";
+            const isStaffReply = !isOwn && !isAssistant && m.author_kind === "staff";
             const authorLabel = isOwn
               ? sd("you")
               : isAssistant
                 ? sd("assistantName")
                 : m.author_name ?? sd("supportTeam");
+            const showSupportChip =
+              isStaffReply && authorLabel !== "Support Team" && authorLabel !== sd("supportTeam");
             const initials = isOwn
               ? sd("youInitials")
               : authorLabel
@@ -635,6 +638,9 @@ export default function SupportTicketDetailScreen() {
                       <Text style={styles.avatarText}>{initials}</Text>
                     </View>
                     <Text style={[styles.authorName, styles.authorNameSpacing]}>{authorLabel}</Text>
+                    {showSupportChip ? (
+                      <Text style={styles.supportChip}>{sd("supportTeam")}</Text>
+                    ) : null}
                   </View>
                 )}
                 <View
@@ -883,6 +889,17 @@ const styles = StyleSheet.create({
   },
   avatarText: { color: "#fff", fontSize: 9, fontWeight: "700" },
   authorName: { fontSize: 11, color: Colors.gray[500], fontWeight: "600" },
+  supportChip: {
+    marginStart: 6,
+    overflow: "hidden",
+    borderRadius: 9999,
+    backgroundColor: "#EFF6FF",
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#1D4ED8",
+  },
   bubble: { maxWidth: "80%", paddingHorizontal: 14, paddingVertical: 10 },
   bubbleOwn: { backgroundColor: Colors.primary },
   bubbleOther: { backgroundColor: "#F3F4F6" },
