@@ -10,6 +10,11 @@ import {
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import {
+  syncExplorePostGalleryOnHide,
+  syncExplorePostGalleryOnUnhide,
+} from "@/lib/safety/explore-post-gallery";
+import type { ExploreMediaSlideMeta } from "@/lib/explore/media-types";
 
 type ProviderJoin = { tenant_id: string; business_name: string; slug: string; id: string };
 const DETAIL_SELECT_WITH_SAVE_COUNT: string = `
@@ -213,6 +218,33 @@ export async function PATCH(
       .single();
 
     if (error) return handleApiError(error, "Failed to update post");
+
+    const scopedPost = scoped.post as Record<string, unknown>;
+    const mediaSync = {
+      id,
+      provider_id: String(scopedPost.provider_id ?? ""),
+      display_path: (scopedPost.display_path as string | null) ?? null,
+      media_urls: ((scopedPost.media_urls as string[] | undefined) ?? []) as string[],
+      media_meta: ((scopedPost.media_meta as ExploreMediaSlideMeta[] | undefined) ??
+        []) as ExploreMediaSlideMeta[],
+    };
+    if (is_hidden && mediaSync.provider_id) {
+      await syncExplorePostGalleryOnHide(supabaseAdmin, mediaSync);
+    } else if (!is_hidden && mediaSync.provider_id) {
+      const { data: galleryRow, error: galleryErr } = await supabaseAdmin
+        .from("explore_posts")
+        .select("added_to_gallery")
+        .eq("id", id)
+        .maybeSingle();
+      if (galleryErr) {
+        console.warn("[admin/explore/posts] gallery unhide flag:", galleryErr);
+      } else {
+        await syncExplorePostGalleryOnUnhide({
+          ...mediaSync,
+          added_to_gallery: Boolean((galleryRow as { added_to_gallery?: boolean } | null)?.added_to_gallery),
+        });
+      }
+    }
 
     if (!is_hidden) {
       try {

@@ -13,20 +13,6 @@ import { formatProviderDescriptionForProfilePreview } from "@beautonomi/utils";
 import { ProviderGalleryImage } from "@beautonomi/ui/web";
 import { usePartnerProfileT } from "@/lib/i18n/use-partner-profile-t";
 
-import Image1 from "./../../../../public/images/pexels-steinportraits-1898555.jpg";
-import Image2 from "./../../../../public/images/pexels-rdne-7035446.jpg";
-import Image4 from "./../../../../public/images/pexels-alipazani-2878375 - Copy (1).jpg";
-import Image5 from "./../../../../public/images/pexels-olly-774909 (1).jpg";
-import Image6 from "./../../../../public/images/pexels-rdne-6724431.jpg";
-
-const images = [
-  { src: Image1, alt: "Main Image" },
-  { src: Image2, alt: "Image 1" },
-  { src: Image6, alt: "Image 2" },
-  { src: Image4, alt: "Image 3" },
-  { src: Image5, alt: "Image 4" },
-];
-
 interface PartnerHeroProps {
   id?: string;
   slug?: string;
@@ -92,16 +78,16 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
   const resolveGallerySrc = (src: string | import("next/image").StaticImageData) =>
     typeof src === "string" ? src : src.src;
 
-  // Use gallery images if available, otherwise fallback to default images
   const displayImages = React.useMemo(() => {
-    if (gallery && gallery.length > 0) {
-      return gallery.map((url, idx) => ({ 
-        src: url, 
-        alt: `${businessName || 'Provider'} image ${idx + 1}` 
-      }));
-    }
-    return images;
-  }, [gallery, businessName]);
+    const fromGallery = (gallery ?? [])
+      .map((url) => (typeof url === "string" ? url.trim() : ""))
+      .filter((url) => url.length > 0);
+    const urls = fromGallery.length > 0 ? fromGallery : thumbnail_url?.trim() ? [thumbnail_url.trim()] : [];
+    return urls.map((url, idx) => ({
+      src: url,
+      alt: `${businessName || "Provider"} image ${idx + 1}`,
+    }));
+  }, [gallery, thumbnail_url, businessName]);
   
   const _displayLocation = location || (city && country ? `${city}, ${country}` : city || country || "");
   const displayVoteCount = voteCount || review_count || 0;
@@ -249,10 +235,12 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
   };
 
   const nextImage = () => {
+    if (displayImages.length === 0) return;
     setCurrentImageIndex((prev) => (prev + 1) % displayImages.length);
   };
 
   const prevImage = () => {
+    if (displayImages.length === 0) return;
     setCurrentImageIndex((prev) => (prev - 1 + displayImages.length) % displayImages.length);
   };
 
@@ -309,6 +297,7 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
       {/* Image Gallery */}
       <div className="relative z-0">
         {/* Desktop Gallery - Enhanced Grid with Squircle */}
+        {displayImages.length > 0 && (
         <div className="hidden md:grid grid-cols-2 gap-2 px-4 md:px-10">
           <div className="row-span-2">
             <Link
@@ -316,8 +305,8 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
               className="relative block group overflow-hidden rounded-t-[28px] md:rounded-t-[32px] cursor-pointer group-hover:opacity-90 transition-opacity"
             >
               <ProviderGalleryImage
-                src={resolveGallerySrc(displayImages[0]?.src ?? images[0].src)}
-                alt={displayImages[0]?.alt ?? images[0].alt}
+                src={resolveGallerySrc(displayImages[0].src)}
+                alt={displayImages[0].alt}
                 priority
                 loading="eager"
                 sizes="(min-width: 768px) 50vw, 100vw"
@@ -386,8 +375,10 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
             })}
           </div>
         </div>
+        )}
 
-        {/* Mobile Gallery */}
+        {/* Mobile Gallery — this component is desktop-only on the profile; keep in sync if reused. */}
+        {displayImages.length > 0 && (
         <div className="relative md:hidden">
           <div
             ref={sliderRef}
@@ -422,6 +413,7 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
             {currentImageIndex + 1}/{displayImages.length}
           </div>
         </div>
+        )}
       </div>
 
       {/* Provider information — avatar straddles the gallery/card seam */}

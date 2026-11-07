@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ExploreMediaSlideMeta } from "@/lib/explore/media-types";
-import { removeExplorePostUrlsFromProviderGallery } from "@/lib/safety/explore-post-gallery";
+import { syncExplorePostGalleryOnHide } from "@/lib/safety/explore-post-gallery";
 
 export type ContentReportTargetType =
   | "explore_post"
@@ -181,22 +181,19 @@ export async function applyContentModerationTakedown(
       if (adminUserId) update.moderated_by = adminUserId;
       const { error } = await supabase.from("explore_posts").update(update).eq("id", targetId);
       if (error) throw error;
-      if (!adminUserId) {
-        const { data: postRow } = await supabase
-          .from("explore_posts")
-          .select("provider_id, display_path, media_urls, media_meta")
-          .eq("id", targetId)
-          .maybeSingle();
-        if (postRow?.provider_id) {
-          await removeExplorePostUrlsFromProviderGallery(
-            supabase,
-            String(postRow.provider_id),
-            (postRow as { display_path?: string | null }).display_path ?? null,
-            ((postRow as { media_urls?: string[] }).media_urls ?? []) as string[],
-            ((postRow as { media_meta?: ExploreMediaSlideMeta[] }).media_meta ??
-              []) as ExploreMediaSlideMeta[],
-          );
-        }
+      const { data: postRow } = await supabase
+        .from("explore_posts")
+        .select("provider_id, display_path, media_urls, media_meta")
+        .eq("id", targetId)
+        .maybeSingle();
+      if (postRow?.provider_id) {
+        await syncExplorePostGalleryOnHide(supabase, {
+          provider_id: String(postRow.provider_id),
+          display_path: (postRow as { display_path?: string | null }).display_path ?? null,
+          media_urls: ((postRow as { media_urls?: string[] }).media_urls ?? []) as string[],
+          media_meta: ((postRow as { media_meta?: ExploreMediaSlideMeta[] }).media_meta ??
+            []) as ExploreMediaSlideMeta[],
+        });
       }
       return { applied: true, action: "hide" };
     }

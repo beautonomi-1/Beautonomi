@@ -56,7 +56,13 @@ export async function runExplorePublishSideEffects(params: {
   }
 
   if (params.alsoAddToGallery) {
-    await appendGalleryDisplayImage(params.providerId, post.display_path, post.media_urls as string[], mediaMeta);
+    await appendGalleryDisplayImage(
+      params.providerId,
+      post.display_path,
+      post.media_urls as string[],
+      mediaMeta,
+      params.postId,
+    );
   }
 
   enqueueExplorePostSafetyScan(params.postId);
@@ -79,25 +85,51 @@ export async function appendGalleryDisplayImage(
   displayPath: string | null,
   mediaUrls: string[],
   mediaMeta: ExploreMediaSlideMeta[],
-) {
+  postId?: string,
+): Promise<boolean> {
   const supabase = getSupabaseAdmin();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const path =
     displayPath ??
     mediaMeta[0]?.display_path ??
     (mediaMeta[0]?.kind === "image" ? mediaUrls[0] : null);
-  if (!path) return;
+  if (!path) return false;
   if (firstSlideIsVideo(mediaUrls, mediaMeta) && !displayPath && !mediaMeta[0]?.display_path) {
-    return;
+    return false;
   }
   const publicUrl = toPublicMediaUrl(path, supabaseUrl);
   try {
-    await supabase.rpc("append_provider_gallery", {
-      p_provider_id: providerId,
-      p_url: publicUrl,
-    });
+    const { data: prov } = await supabase
+      .from("providers")
+      .select("gallery")
+      .eq("id", providerId)
+      .maybeSingle();
+    const gallery = (prov?.gallery ?? []) as string[];
+    const alreadyThere = gallery.includes(publicUrl);
+    if (!alreadyThere) {
+      const { error } = await supabase.rpc("append_provider_gallery", {
+        p_provider_id: providerId,
+        p_url: publicUrl,
+      });
+      if (error) {
+        console.warn("[explore] gallery append:", error);
+        return false;
+      }
+    }
+    if (postId) {
+      const { error: flagError } = await supabase
+        .from("explore_posts")
+        .update({ added_to_gallery: true })
+        .eq("id", postId);
+      if (flagError) {
+        console.warn("[explore] added_to_gallery flag:", flagError);
+        return false;
+      }
+    }
+    return true;
   } catch (err) {
     console.warn("[explore] gallery append:", err);
+    return false;
   }
 }
 
@@ -124,10 +156,19 @@ export async function deferredVideoPublishRewards(params: {
       }
     }
     if (!gallery.includes(newUrl)) {
-      await supabase.rpc("append_provider_gallery", {
+      const { error } = await supabase.rpc("append_provider_gallery", {
         p_provider_id: params.providerId,
         p_url: newUrl,
       });
+      if (error) {
+        console.warn("[explore] deferred gallery append:", error);
+        return;
+      }
     }
+    const { error: flagError } = await supabase
+      .from("explore_posts")
+      .update({ added_to_gallery: true })
+      .eq("id", params.postId);
+    if (flagError) console.warn("[explore] added_to_gallery flag:", flagError);
   }
 }

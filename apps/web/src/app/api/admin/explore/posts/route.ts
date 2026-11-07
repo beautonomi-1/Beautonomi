@@ -6,6 +6,11 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { moderationNotesForMedicalClaims } from "@/lib/safety/medical-claims-keywords";
+import {
+  syncExplorePostGalleryOnHide,
+  syncExplorePostGalleryOnUnhide,
+} from "@/lib/safety/explore-post-gallery";
+import type { ExploreMediaSlideMeta } from "@/lib/explore/media-types";
 
 const _SORT_OPTIONS = [
   "published_at_desc",
@@ -236,6 +241,39 @@ export async function POST(request: NextRequest) {
       .select("id");
 
     if (error) return handleApiError(error, "Failed to update posts");
+
+    let gallerySelect = await supabaseAdmin
+      .from("explore_posts")
+      .select("id, provider_id, display_path, media_urls, media_meta, added_to_gallery")
+      .in("id", allowedIds);
+    if (gallerySelect.error) {
+      console.warn("[admin/explore/posts] gallery sync select:", gallerySelect.error);
+      gallerySelect = await supabaseAdmin
+        .from("explore_posts")
+        .select("id, provider_id, display_path, media_urls, media_meta")
+        .in("id", allowedIds);
+      if (gallerySelect.error) {
+        console.warn("[admin/explore/posts] gallery sync fallback:", gallerySelect.error);
+      }
+    }
+    const galleryRows = gallerySelect.data ?? [];
+    for (const row of galleryRows) {
+      if (!row.provider_id) continue;
+      const syncRow = {
+        id: row.id as string,
+        provider_id: String(row.provider_id),
+        display_path: (row as { display_path?: string | null }).display_path ?? null,
+        media_urls: ((row as { media_urls?: string[] }).media_urls ?? []) as string[],
+        media_meta: ((row as { media_meta?: ExploreMediaSlideMeta[] }).media_meta ??
+          []) as ExploreMediaSlideMeta[],
+        added_to_gallery: Boolean((row as { added_to_gallery?: boolean }).added_to_gallery),
+      };
+      if (isHidden) {
+        await syncExplorePostGalleryOnHide(supabaseAdmin, syncRow);
+      } else {
+        await syncExplorePostGalleryOnUnhide(syncRow);
+      }
+    }
 
     const reqMeta = extractRequestMeta(request);
     await writeAuditLog({

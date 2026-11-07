@@ -375,7 +375,7 @@ function VideoFeedItem({
   paused,
   muted,
   onToggleMute,
-  onTogglePlayPause,
+  onSetPaused,
   onLike,
   onSave,
   onOpenComments,
@@ -388,7 +388,7 @@ function VideoFeedItem({
   paused: boolean;
   muted: boolean;
   onToggleMute: () => void;
-  onTogglePlayPause: () => void;
+  onSetPaused: (paused: boolean) => void;
   onLike: () => void;
   onSave: () => void;
   onOpenComments: () => void;
@@ -399,18 +399,14 @@ function VideoFeedItem({
   const insets = useSafeAreaInsets();
   const heartAnim = useRef(new Animated.Value(0)).current;
   const lastTap = useRef(0);
-  const singleTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const useNativeDriver = Platform.OS !== "web";
   const [clipPlaying, setClipPlaying] = useState(false);
 
   const handlePress = useCallback(() => {
     const now = Date.now();
     if (now - lastTap.current < 280) {
-      if (singleTapTimer.current) {
-        clearTimeout(singleTapTimer.current);
-        singleTapTimer.current = null;
-      }
       onLike();
+      onSetPaused(false);
       Animated.sequence([
         Animated.spring(heartAnim, { toValue: 1, useNativeDriver, speed: 20, bounciness: 12 }),
         Animated.timing(heartAnim, { toValue: 0, duration: 600, useNativeDriver, delay: 400 }),
@@ -419,19 +415,9 @@ function VideoFeedItem({
       return;
     }
     lastTap.current = now;
-    if (singleTapTimer.current) clearTimeout(singleTapTimer.current);
-    singleTapTimer.current = setTimeout(() => {
-      singleTapTimer.current = null;
-      if (!active) return;
-      onTogglePlayPause();
-    }, 260);
-  }, [active, heartAnim, onLike, onTogglePlayPause, useNativeDriver]);
-
-  useEffect(() => {
-    return () => {
-      if (singleTapTimer.current) clearTimeout(singleTapTimer.current);
-    };
-  }, []);
+    if (!active) return;
+    onSetPaused(!paused);
+  }, [active, heartAnim, onLike, onSetPaused, paused, useNativeDriver]);
 
   const providerName = post.provider?.business_name || t("customer.explorePost.providerFallback");
 
@@ -487,6 +473,21 @@ function VideoFeedItem({
           gap: 8,
         }}
       >
+        <TouchableOpacity
+          onPress={() => onSetPaused(!paused)}
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 20,
+            backgroundColor: "rgba(0,0,0,0.45)",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={paused ? "Play" : "Pause"}
+        >
+          <Ionicons name={paused ? "play" : "pause"} size={20} color="#fff" />
+        </TouchableOpacity>
         <TouchableOpacity
           onPress={onMorePress}
           style={{
@@ -1092,7 +1093,7 @@ export default function ExploreVideoScreen() {
         paused={index === activeIndex ? userPaused : false}
         muted={muted}
         onToggleMute={() => setMuted((m) => !m)}
-        onTogglePlayPause={() => setUserPaused((p) => !p)}
+        onSetPaused={(paused) => setUserPaused(paused)}
         onLike={toggleLike}
         onSave={toggleSave}
         onOpenComments={openComments}

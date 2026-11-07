@@ -506,6 +506,15 @@ export async function DELETE(
       return errorResponse("Post not found", "NOT_FOUND", 404);
     }
 
+    const mediaMeta = (existing.media_meta ?? []) as import("@/lib/explore/media-types").ExploreMediaSlideMeta[];
+    const { syncExplorePostGalleryOnHide } = await import("@/lib/safety/explore-post-gallery");
+    await syncExplorePostGalleryOnHide(supabaseAdmin, {
+      provider_id: providerId,
+      display_path: existing.display_path ?? null,
+      media_urls: (existing.media_urls ?? []) as string[],
+      media_meta: mediaMeta,
+    });
+
     const paths = collectExplorePostStoragePaths(existing);
     await removeExplorePostsStoragePaths(supabaseAdmin.storage, paths);
 
