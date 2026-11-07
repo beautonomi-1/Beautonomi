@@ -13780,7 +13780,15 @@
       "shareMediaFailedTitle": "Couldn't compartir media",
       "shareMediaFailedBody": "No pudimos preparar este archivo para compartirlo. Intente compartir el enlace en su lugar.",
       "loadingComments": "Cargando…",
-      "loadMoreComments": "Cargar más comentarios"
+      "loadMoreComments": "Cargar más comentarios",
+      "errorDeleteComment": "No se pudo eliminar este comentario. Inténtalo de nuevo.",
+      "deleteCommentTitle": "¿Eliminar este comentario?",
+      "deleteCommentBody": "Esto elimina el comentario para todos.",
+      "deleteComment": "Eliminar",
+      "commentsLoadFailed": "No se pudieron cargar los comentarios.",
+      "signInToComment": "Inicia sesión para comentar",
+      "replyingTo": "Respondiendo a {{name}}",
+      "commentTooLong": "{{count}} / 200"
     },
     "searchScreen": {
       "title": "Buscar",
@@ -14406,6 +14414,13 @@
           "shopContinueCta": "Ver pedido",
           "shopPendingSubtext": "Actualizaremos su pedido en unos minutos. Puedes seguir usando la aplicación mientras confirmamos con tu banco.",
           "shopFailedSubtext": "Si se le cobró, su pedido aún se confirmará una vez que se realice el pago. Por favor revisa tu pestaña de Pedidos."
+        },
+        "payableOrdersBanner": {
+          "titleCart": "En espera de pago",
+          "titleOrders": "En espera de pago",
+          "retry": "No se pudieron cargar todos los pedidos impagados. Inténtalo de nuevo.",
+          "showLess": "Mostrar menos",
+          "viewAll": "Ver todo"
         }
       },
       "tabs": {
@@ -14836,7 +14851,9 @@
           "total": "Total",
           "alsoCheckoutOnWeb": "Also pago on web",
           "pickupLocationsMore": "{{count}} Recogida ubicaciones — elegir at pago",
-          "deliveryEtaDays": "Estimated Entrega within {{days}} Negocio día(s)"
+          "deliveryEtaDays": "Estimated Entrega within {{days}} Negocio día(s)",
+          "paymentDueHeading": "En espera de pago",
+          "paymentDueRetry": "No se pudieron cargar todos los pedidos impagados. Inténtalo de nuevo."
         },
         "productCheckout": {
           "title": "Pago",
@@ -18176,7 +18193,8 @@
     "cart": "Carrito",
     "exploreVideo": {
       "unmute": "Activar sonido",
-      "mute": "Silenciar"
+      "mute": "Silenciar",
+      "replay": "Repetir"
     },
     "bankAccounts": {
       "failedLoadBanks": "No se pudo cargar banks. intentarlo de nuevo.",
@@ -18456,7 +18474,8 @@
     "rescheduleReplacesPreviousBody": "Tu cita original se anula sola, sin coste, cuando termina el pago de esta reserva. Lo que ya pagaste se aplica aquí, y lo que sobra queda en tu monedero.",
     "rescheduleCreditNote": "Cualquier importe ya pagado en línea por la reserva original se aplica aquí. Solo pagas la diferencia.",
     "rescheduleCreditApplied": "Pagado en la reserva original",
-    "rescheduleCreditSurplus": "El resto {{amount}} queda en tu monedero como saldo."
+    "rescheduleCreditSurplus": "El resto {{amount}} queda en tu monedero como saldo.",
+    "stylistReceives": "{{name}} recibe"
   },
   "payments": {
     "pay": "Pay",
@@ -19105,7 +19124,9 @@
         "continueWithCount": "continuar with {{count}} servicios",
         "changeService": "cambiar",
         "selectedServiceMore": " (+{{count}})",
-        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} minutos"
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} minutos",
+        "stylistReceivesFallback": "Tu estilista",
+        "stylistReceives": "{{name}} recibe"
       },
       "confirmation": {
         "loadingMessage": "Cargando Confirmación de la reserva...",
@@ -36463,6 +36484,15 @@
       "cancelFailed": "No se pudo cancelar your spot.",
       "sessionCancelled": "Esta sesión de grupo fue anulada.",
       "sessionCancelledPaid": "Esta sesión de grupo fue anulada. Cualquier importe pagado por tu parte se reembolsa por completo a la tarjeta usada."
+    },
+    "components": {
+      "payableOrdersBanner": {
+        "titleCart": "En espera de pago",
+        "titleOrders": "En espera de pago",
+        "retry": "No se pudieron cargar todos los pedidos impagados. Inténtalo de nuevo.",
+        "showLess": "Mostrar menos",
+        "viewAll": "Ver todo"
+      }
     }
   },
   "errors": {

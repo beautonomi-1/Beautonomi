@@ -15,9 +15,11 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Colors, Shadows } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useProductOrders, type ProductOrder } from "@/features/shop/useProductOrders";
+import { usePayableProductOrders } from "@/features/shop/usePayableProductOrders";
+import { PayableOrdersBanner } from "@/components/shop/PayableOrdersBanner";
 import { getTenantLocaleTag } from "@/lib/locale";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { formatMoney, isUnpaidOnlinePaystackHold } from "@beautonomi/utils";
+import { formatMoney, isUnpaidOnlinePaystackHold, pinPayableProductOrders } from "@beautonomi/utils";
 import { horizontalFlatListPerf, verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { useTranslation } from "@beautonomi/i18n";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
@@ -205,6 +207,8 @@ export default function ProductOrdersScreen() {
   const router = useRouter();
   const { contentMaxWidth, isTablet, contentPadding } = useResponsive();
   const { orders, loading, error: loadError, fetchOrders } = useProductOrders();
+  const payableOrders = usePayableProductOrders(true);
+  const pinnedOrders = useMemo(() => pinPayableProductOrders(orders), [orders]);
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
@@ -281,6 +285,17 @@ export default function ProductOrdersScreen() {
         </Text>
       </View>
 
+      {payableOrders.orders.length > 0 || !payableOrders.complete ? (
+        <View style={{ paddingHorizontal: contentPadding, paddingTop: 12 }}>
+          <PayableOrdersBanner
+            orders={payableOrders.orders}
+            complete={payableOrders.complete}
+            onRetry={() => void payableOrders.retry()}
+            context="orders"
+          />
+        </View>
+      ) : null}
+
       {/* Filter tabs */}
       <View style={{ backgroundColor: "#fff", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" }}>
         <FlatList
@@ -348,7 +363,7 @@ export default function ProductOrdersScreen() {
       ) : (
         <FlatList
           {...verticalFlatListPerf}
-          data={orders}
+          data={pinnedOrders}
           keyExtractor={(o) => o.id}
           contentContainerStyle={{
             paddingTop: 12,

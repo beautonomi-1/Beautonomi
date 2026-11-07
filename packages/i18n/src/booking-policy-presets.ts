@@ -76,6 +76,18 @@ export const BOOKING_POLICY_PRESETS: Record<
 
 export const DEFAULT_BOOKING_POLICY_PRESET: Exclude<BookingPolicyPresetId, "custom"> = "standard";
 
+/** Primary onboarding / settings choice cards (identity, not category-driven). */
+export const ONBOARDING_POLICY_PRIMARY_PRESETS: Exclude<BookingPolicyPresetId, "custom">[] = [
+  "standard",
+  "strict",
+];
+
+/** Collapsed "more options" presets in onboarding. */
+export const ONBOARDING_POLICY_MORE_PRESETS: Exclude<BookingPolicyPresetId, "custom">[] = [
+  "no_penalty",
+  "flexible",
+];
+
 export function getPresetValues(
   preset: BookingPolicyPresetId,
   overrides?: Partial<BookingPolicyPresetValues>,

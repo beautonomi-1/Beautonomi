@@ -39,6 +39,10 @@ interface ClientInfo {
   total_visits?: number;
   total_spent?: number;
   last_visit?: string;
+  last_offering_name?: string | null;
+  last_staff_name?: string | null;
+  service_note?: string | null;
+  explore_post_id?: string | null;
   membership_status?: "active" | "expired" | "none";
   loyalty_points?: number;
   outstanding_balance?: number;
@@ -235,8 +239,22 @@ export function ClientQuickView({
                 <p className="font-medium">
                   {client.last_visit ? formatDate(client.last_visit) : t(`${qv}.noVisitsYet`)}
                 </p>
+                {(client.last_offering_name || client.last_staff_name) && (
+                  <p className="text-xs text-gray-600 mt-1">
+                    {client.last_offering_name}
+                    {client.last_staff_name ? ` · ${client.last_staff_name}` : ""}
+                  </p>
+                )}
               </div>
             </div>
+            {client.service_note ? (
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-gray-500">{t(`${qv}.serviceNote`)}</p>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{client.service_note}</p>
+                </div>
+              </div>
+            ) : null}
 
             {client.created_at && (
               <div className="flex items-center gap-3 p-3 rounded-lg">

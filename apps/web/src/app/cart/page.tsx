@@ -12,6 +12,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { PickupStoreCard } from "@/components/shop/PickupStoreCard";
 import { useTranslation } from "@beautonomi/i18n";
 import { useAuth } from "@/providers/AuthProvider";
+import { PayableOrdersBanner } from "@/components/shop/PayableOrdersBanner";
 
 function csrfHeaders(): HeadersInit {
   const h: Record<string, string> = {};
@@ -238,14 +239,23 @@ export default function CartPage() {
     <div className="min-h-screen bg-gray-50 pb-20 md:pb-0 w-full max-w-full">
       <BeautonomiHeader />
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
-        <div className="mb-6 flex items-center justify-between">
+        <div className="mb-6 flex items-center justify-between gap-3">
           <h1 className="text-2xl font-bold text-gray-900">Cart ({totalCount})</h1>
-          {items.length > 0 && (
-            <button onClick={clearAll} className="text-sm text-red-500 hover:text-red-700">
-              Clear All
-            </button>
-          )}
+          <div className="flex items-center gap-4">
+            {user && items.length > 0 ? (
+              <Link href="/account-settings/orders" className="text-sm font-semibold text-pink-600 hover:text-pink-700">
+                {cartT("viewMyOrders")}
+              </Link>
+            ) : null}
+            {items.length > 0 && (
+              <button onClick={clearAll} className="text-sm text-red-500 hover:text-red-700">
+                Clear All
+              </button>
+            )}
+          </div>
         </div>
+
+        <PayableOrdersBanner enabled={!!user && !authLoading} currencyFallback={currency} context="cart" />
 
         {authLoading || fetchState === "loading" ? (
           <div className="flex items-center justify-center py-24">
@@ -272,6 +282,9 @@ export default function CartPage() {
             <p className="text-lg font-medium">{cartT("emptyTitle")}</p>
             <Link href="/shop" className="mt-4 rounded-xl bg-pink-600 px-6 py-3 text-sm font-semibold text-white hover:bg-pink-700">
               {cartT("browseProducts")}
+            </Link>
+            <Link href="/account-settings/orders" className="mt-3 text-sm font-semibold text-pink-600 hover:text-pink-700">
+              {cartT("viewMyOrders")}
             </Link>
           </div>
         ) : (

@@ -31,6 +31,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ServiceCreateEditDialog } from "./components/ServiceCreateEditDialog";
+import { ServiceRebookEnable } from "@/components/provider/catalogue/ServiceRebookEnable";
 import { toast } from "sonner";
 
 export default function ProviderServices() {
@@ -473,6 +474,16 @@ export default function ProviderServices() {
                                       <span className="font-medium text-gray-900"><Money amount={service.price} /></span>
                                     </div>
                                   </div>
+                                  {service.online_booking_enabled !== false ? (
+                                    <ServiceRebookEnable
+                                      serviceId={service.id}
+                                      title={service.name}
+                                      categorySlug={category.slug}
+                                      categoryName={category.name}
+                                      enabled={Boolean(service.reminder_to_rebook_enabled)}
+                                      onEnabled={() => loadServicesFresh()}
+                                    />
+                                  ) : null}
                                   {/* Show variants if present */}
                                   {(service as any).variants && (service as any).variants.length > 0 && (
                                     <div className="mt-2 ms-6 space-y-1">

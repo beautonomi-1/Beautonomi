@@ -47,19 +47,19 @@ import {
 } from "@/lib/auth/app-review-demo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { coerceMobileUiLanguage, normalizeLanguageCode, useTranslation } from "@beautonomi/i18n";
+import * as Localization from "expo-localization";
 import { ReviewedLanguageField } from "@/components/auth/ReviewedLanguageField";
 
 const PRIMARY = Colors.primary;
 
-/** Wait for session storage so root `/` portal + profile checks see a valid Bearer token on iOS. */
-async function goToAppRoot(
-  router: { replace: (href: string) => void },
-  method: string,
-  redirectPath?: string,
-) {
+/**
+ * Wait until the session is readable, then let `(auth)/_layout` redirect once.
+ * Calling `router.replace` here as well races that redirect and throws
+ * `TypeError: undefined is not a function` from the navigation queue.
+ */
+async function goToAppRoot(method: string) {
   await supabase.auth.getSession();
   logLoginSuccessBreadcrumb(method);
-  router.replace(redirectPath ?? "/");
 }
 
 const PRIMARY_LIGHT = "rgba(255,0,119,0.06)";
@@ -75,10 +75,6 @@ export default function LoginScreen() {
     joinToken?: string;
     email?: string;
   }>();
-  const postLoginPath = useMemo(() => {
-    const token = typeof params.joinToken === "string" ? params.joinToken.trim() : "";
-    return token ? `/join?token=${encodeURIComponent(token)}` : undefined;
-  }, [params.joinToken]);
   const { contentMaxWidth, isTablet, screenPadding } = useResponsive();
   const { t } = useTranslation();
   const al = useCallback(
@@ -162,7 +158,10 @@ export default function LoginScreen() {
     google: true,
     apple: true,
   });
-  const [preferredLanguage, setPreferredLanguage] = useState("en");
+  const [preferredLanguage, setPreferredLanguage] = useState(() => {
+    const locale = Localization.getLocales()[0];
+    return coerceMobileUiLanguage(locale?.languageTag || locale?.languageCode || "en");
+  });
 
   useEffect(() => {
     if (smsResendCooldown <= 0) return;
@@ -379,7 +378,7 @@ export default function LoginScreen() {
         await completeAppReviewDemoSignIn({ phone: e164, otp: otpToken });
         await writeSignupPhoneHandoff(e164);
         await applyPendingSignupPreferences();
-        await goToAppRoot(router, "phone_otp_app_review", postLoginPath);
+        await goToAppRoot("phone_otp_app_review");
         return;
       }
       const { error } = await verifyOtp(e164, otpToken);
@@ -389,7 +388,7 @@ export default function LoginScreen() {
       }
       await writeSignupPhoneHandoff(e164);
       await applyPendingSignupPreferences();
-      await goToAppRoot(router, "phone_otp", postLoginPath);
+      await goToAppRoot("phone_otp");
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : al("verificationFailed"));
     } finally {
@@ -414,7 +413,7 @@ export default function LoginScreen() {
         return;
       }
       await applyPendingSignupPreferences();
-      await goToAppRoot(router, `oauth_${provider}`, postLoginPath);
+      await goToAppRoot(`oauth_${provider}`);
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : al("oauthFailed"));
     } finally {
@@ -467,7 +466,7 @@ export default function LoginScreen() {
         trackLogin("email");
       }
       await applyPendingSignupPreferences();
-      await goToAppRoot(router, isSignup ? "email_signup" : "email_password", postLoginPath);
+      await goToAppRoot(isSignup ? "email_signup" : "email_password");
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : al("genericError"));
     } finally {
@@ -488,7 +487,7 @@ export default function LoginScreen() {
       }
       trackSignUp("email");
       await applyPendingSignupPreferences();
-      await goToAppRoot(router, "email_signup", postLoginPath);
+      await goToAppRoot("email_signup");
     } catch (e: unknown) {
       setSignupOtpError(e instanceof Error ? e.message : al("verificationFailedShort"));
     } finally {
@@ -570,7 +569,7 @@ export default function LoginScreen() {
         await completeAppReviewDemoSignIn({ email: addr, otp: otpToken });
         trackLogin("email");
         await applyPendingSignupPreferences();
-        await goToAppRoot(router, "email_otp_app_review", postLoginPath);
+        await goToAppRoot("email_otp_app_review");
         return;
       }
       const { error } = await verifyOtpEmail(addr, otpToken);
@@ -580,7 +579,7 @@ export default function LoginScreen() {
       }
       trackLogin("email");
       await applyPendingSignupPreferences();
-      await goToAppRoot(router, "email_otp", postLoginPath);
+      await goToAppRoot("email_otp");
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : al("verificationFailedShort"));
     } finally {

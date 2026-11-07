@@ -33,4 +33,12 @@ describe("resolveIncludedMonthlyCreditZar", () => {
     });
     expect(grant).toBe(0);
   });
+
+  it("returns 0 for Starter with ads enabled and zero included credit", () => {
+    const grant = resolveIncludedMonthlyCreditZar({
+      platform_ads: { enabled: true, included_credit_zar_per_month: 0 },
+      marketing_campaigns: { enabled: false },
+    });
+    expect(grant).toBe(0);
+  });
 });

@@ -89,6 +89,8 @@ The body field is a raw HTML textarea. Paste the marker snippet directly:
 
 Use idempotent `UPDATE ... WHERE body NOT LIKE '%data-learn-mockup="..."%'` when injecting markers in SQL migrations. See `698_learning_center_mockups_and_accuracy.sql`, `699_learning_center_mockup_coverage.sql` (platform guides), `700_learning_center_full_content_refresh.sql` (conceptual overviews + gap articles), and `701_learning_center_internal_training_and_admin_search.sql` (internal runbooks + admin search RPC).
 
+Note: `3111_learning_center_overview_content.sql` overwrote the structured overview bodies from `700`/`888`; `10126_learning_center_accuracy_fixes.sql` restores them with corrected facts. Coverage migrations `10127`-`10131` add customer, provider, and internal articles and homepage wiring.
+
 ## Internal section runbook template
 
 All internal platform-training runbooks follow this standard structure. Use it when writing a new section runbook or updating an existing one.
@@ -210,11 +212,19 @@ Managed via **Learning homepage** in admin (`learning_homepage_sections`):
 
 ## Content accuracy checklist
 
-When writing mobile guides, verify against live apps:
+Every claim must trace to a row in [`docs/learning/FACT_LEDGER.md`](learning/FACT_LEDGER.md). Add a row when you introduce a new fact. Verify against live code:
 
 - **Customer app tabs:** Home, Search, Bookings, Cart, Chats, Profile (Saved/wishlists via Profile or Home header — not a bottom tab).
-- **Provider app tabs:** Dashboard, Clients, Chats, Bookings, More.
+- **Provider app tabs:** Dashboard, Clients, Chats, Bookings, More. Clients is its own tab; messaging is the Chats tab.
 - **Customer checkout:** Paystack for online card payments (wallet, gift card, pay-at-venue when enabled).
-- **Provider in-person POS:** Yoco under More → Yoco payments (web: Settings → Yoco).
+- **Refunds:** cancellation and admin refunds of online payments are **Beautonomi wallet credit**; a bank refund is a customer request from the wallet (`/account-settings/wallet/bank-refund`). Never write "back to your card" or "original payment method" for these.
+- **Payout balance:** includes online Paystack payments and walk-ins paid via Paystack; excludes cash, Yoco, and card-machine payments (they settle directly to the provider).
+- **Provider in-person payments:** app More → Payment setup → Yoco payments / Card machines / Paystack Terminal; web sidebar Yoco (`/provider/settings/sales/yoco-integration`), Card machines, Paystack Terminal. Each is feature-flagged (`payment_yoco`, `payment_paycloud`, `payment_paystack_virtual_terminal`) — say "where enabled for your account".
+- **Configurable values** (commission, payout minimum and hold, plan prices, referral rewards, loyalty caps, travel fees) are set in the database — describe them, never state a number.
 - **Web booking URLs:** `/book/[provider]` often continues into canonical `/booking` checkout.
 - **Terminology:** Use "House call" for at-home appointments; nav labels say "Bookings" not "Appointments".
+- **Updates:** use `UPDATE ... WHERE slug = '...' AND tenant_id IS NULL` (never omit the tenant guard) and `INSERT ... ON CONFLICT (slug) WHERE tenant_id IS NULL DO UPDATE` for new articles.
+
+### Lint
+
+Run `node scripts/verify-learning-content.mjs --static` before committing a learning migration, and `SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/verify-learning-content.mjs` against a database with migrations applied. It checks article and knowledge-base links, training paths, homepage sections, quizzes, mockup ids, admin routes in runbooks, nav coverage, banned stale phrases, and summaries.

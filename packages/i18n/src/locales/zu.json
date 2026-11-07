@@ -476,7 +476,17 @@
             "moreActionsA11y": "okuningi ukubhuka actions",
             "bookingForA11y": "ukubhuka for {{name}}",
             "actionSaved": "{{action}} gcinad",
-            "minDuration": "{{count}} Okuncane"
+            "minDuration": "{{count}} Okuncane",
+            "tillPayment": {
+              "online": "Ku-inthanethi",
+              "yoco": "Yoco",
+              "cardMachine": "Umshini wekhadi",
+              "paystackTerminal": "Ithemina ye-Paystack",
+              "wallet": "I-wallet",
+              "giftCard": "Ikhadi lesipho",
+              "cash": "Ukheshi",
+              "manualCard": "Ikhadi ngesandla"
+            }
           },
           "etaPicker": {
             "estimatedArrival": "Ukufika okulinganisiwe",
@@ -5863,7 +5873,8 @@
           "activityDefaultHint": "Izibuyekezo zakamuva kukho konke ukubhukha, izinkokhelo, nezibuyekezo — azihlungiwe ngesikhathi esingenhla.",
           "noRecentActivity": "Ayikho imisebenzi yakamuva",
           "giftCardLedgerIssuance": "ikhadi lesipho ledger issuance (Sonke isikhathi)",
-          "membershipSalesAllTime": "ubulungu sales (Sonke isikhathi)"
+          "membershipSalesAllTime": "ubulungu sales (Sonke isikhathi)",
+          "channelMixNudge": "Ukuvakasha okuningi kulesi sikhathi akubhukhwanga online — ukwabelana ngesixhumanisi sakho sokubhukha kusiza amakhasimende abambe isikhathi sawo esilandelayo ku-app."
         },
         "staffSchedule": {
           "title": "abasebenzi Ishedulis",
@@ -13780,11 +13791,20 @@
       "shareMediaFailedTitle": "Couldn't yabelana media",
       "shareMediaFailedBody": "Asikwazanga ukulungiselela leli fayela ukuze labiwe. Zama ukwabelana ngesixhumanisi esikhundleni salokho.",
       "loadingComments": "Iyalayisha...",
-      "loadMoreComments": "Layisha amazwana amaningi"
+      "loadMoreComments": "Layisha amazwana amaningi",
+      "errorDeleteComment": "Ayikwazanga ukususa lawa mazwana. Sicela uzame futhi.",
+      "deleteCommentTitle": "Sula lawa mazwana?",
+      "deleteCommentBody": "Lokhu kususa amazwana kuwo wonke umuntu.",
+      "deleteComment": "Sula",
+      "commentsLoadFailed": "Ayikwazanga ukulayisha amazwana.",
+      "signInToComment": "Ngena ukuze uphawule",
+      "replyingTo": "Uphendula ku-{{name}}",
+      "commentTooLong": "{{count}} / 200"
     },
     "exploreVideo": {
       "mute": "Thulisa",
-      "unmute": "Vula umsindo"
+      "unmute": "Vula umsindo",
+      "replay": "Dlala futhi"
     },
     "searchScreen": {
       "title": "Search",
@@ -14410,6 +14430,13 @@
           "shopContinueCta": "Buka i-oda",
           "shopPendingSubtext": "Sizobuyekeza i-oda lakho emizuzwini embalwa. Ungaqhubeka nokusebenzisa uhlelo lokusebenza ngenkathi siqinisekisa nebhange lakho.",
           "shopFailedSubtext": "Uma ukhokhisiwe, i-oda lakho lisazoqinisekiswa uma inkokhelo isifikile. Sicela uhlole ithebhu yakho yama-oda."
+        },
+        "payableOrdersBanner": {
+          "titleCart": "Kulindelwe inkokhelo",
+          "titleOrders": "Kulindelwe inkokhelo",
+          "retry": "Ayikwazanga ukulayisha wonke ama-oda angakhokhelwe. Zama futhi.",
+          "showLess": "Bonisa okuncane",
+          "viewAll": "Buka konke"
         }
       },
       "tabs": {
@@ -14840,7 +14867,9 @@
           "total": "Isamba",
           "alsoCheckoutOnWeb": "Also ukukhokha on web",
           "pickupLocationsMore": "{{count}} Ukulanda izindawo — khetha at ukukhokha",
-          "deliveryEtaDays": "Estimated Ukulethwa within {{days}} Ibhizinisi usuku(s)"
+          "deliveryEtaDays": "Estimated Ukulethwa within {{days}} Ibhizinisi usuku(s)",
+          "paymentDueHeading": "Kulindelwe inkokhelo",
+          "paymentDueRetry": "Ayikwazanga ukulayisha wonke ama-oda angakhokhelwe. Zama futhi."
         },
         "productCheckout": {
           "title": "Ukukhokha",
@@ -18095,7 +18124,8 @@
           "customShareVision": "Yabelana ngezithombe ezikhuthazayo ezingafika kweziyisi-6 ukuze usisize siqonde umbono wakho",
           "customCancel": "Khansela",
           "customSending": "Ithumela isicelo...",
-          "customSend": "Thumela isicelo"
+          "customSend": "Thumela isicelo",
+          "bookingProtectionCheckoutLine": "Ukukhokha online kungase kufake ukuvikelwa kwebhukhingi; umlungisi wakho usathola inani lesevisi elibhaliwe."
         },
         "reviews": {
           "loadFailed": "Kwehlulekile uku-ulayisha",
@@ -18364,7 +18394,7 @@
     "afterDiscounts": "After isaphulelos",
     "taxLineInclusive": "Tax ({{percent}}%) — included in intengos",
     "taxLineAdditive": "Intela ({{percent}}%)",
-    "platformFee": "Inkundla imali",
+    "platformFee": "Ukuvikelwa kwebhukhingi",
     "walletCreditApplied": "isikhwama crhlela applied",
     "walletCoversCardAmount": "Covered by isikhwama",
     "walletCardPayAmount": "You khokha via Ikhadi",
@@ -18456,7 +18486,8 @@
     "rescheduleReplacesPreviousBody": "Isikhathi sakho sokuqala sikhanselwa ngokuzenzakalelayo, mahhala, uma inkokhelo yale bhukisho iqeda. Okukhokhile seku setshenziswa lapha, futhi okusele kuhlala esikhwameni sakho.",
     "rescheduleCreditNote": "Noma yiliphi inani oselikhokhe ku-inthanethi ngebhuko lokuqala lisetshenziswa lapha. Ukhokha umehluko kuphela.",
     "rescheduleCreditApplied": "Kukhokhwe ebhukweni lakho lokuqala",
-    "rescheduleCreditSurplus": "Okusele okungu-{{amount}} kuhlala esikhwameni sakho njengesikweletu."
+    "rescheduleCreditSurplus": "Okusele okungu-{{amount}} kuhlala esikhwameni sakho njengesikweletu.",
+    "stylistReceives": "{{name}} uyathola"
   },
   "payments": {
     "pay": "Khokha",
@@ -19105,7 +19136,9 @@
         "continueWithCount": "qhubeka with {{count}} izinsizakalo",
         "changeService": "Shintsha",
         "selectedServiceMore": " (+{{count}})",
-        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} imizuzu"
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} imizuzu",
+        "stylistReceivesFallback": "Istylist yakho",
+        "stylistReceives": "{{name}} uyathola"
       },
       "confirmation": {
         "loadingMessage": "Iyalayisha Ukuqinisekisa ukubhuka...",
@@ -23749,7 +23782,8 @@
           "notes": "Amanothi",
           "message": "umlayezo",
           "book": "bhuka",
-          "viewFullProfile": "Buka kugcwele iphrofayela"
+          "viewFullProfile": "Buka kugcwele iphrofayela",
+          "serviceNote": "Look / service note"
         },
         "dragDropCalendar": {
           "cannotPlace": "Cannot place isikhathi lapha",
@@ -24624,6 +24658,17 @@
             "yocoRecordCta": "Ibuyiselwe emshinini — qopha imbuyiselo",
             "pendingCashTitle": "{{amount}} to return in person",
             "pendingCashBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending."
+          },
+          "clientMemory": {
+            "title": "Last visit",
+            "serviceNote": "Look / service note",
+            "viewLook": "View look",
+            "noNote": "No note yet",
+            "edit": "Edit",
+            "save": "Save",
+            "cancel": "Cancel",
+            "noteSaved": "Note saved",
+            "noteSaveFailed": "Could not save note"
           }
         },
         "createPayment": {
@@ -24781,6 +24826,16 @@
             "booking_intake": "iklayenti forms",
             "booking_recurring": "Repeating series"
           }
+        },
+        "tillPayment": {
+          "online": "Online",
+          "yoco": "Yoco",
+          "cardMachine": "Umshini wekhadi",
+          "paystackTerminal": "Ithemina ye-Paystack",
+          "wallet": "I-wallet",
+          "giftCard": "Ikhadi lesipho",
+          "cash": "Ukheshi",
+          "manualCard": "Ikhadi ngesandla"
         }
       },
       "finance": {
@@ -25288,7 +25343,12 @@
           "bookingProtectionTitle": "Booking protection",
           "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings.",
           "pricesIncludeTax": "My service prices include VAT",
-          "pricesIncludeTaxDesc": "Most South African salons show VAT-inclusive prices (recommended)."
+          "pricesIncludeTaxDesc": "Most South African salons show VAT-inclusive prices (recommended).",
+          "bookingProtectionMoneyLine1": "Uthola inani lesevisi elibhaliwe. Amakhasimende akhokhela u-Beautonomi imali yokuvikela ehlukile.",
+          "bookingProtectionMoneyLine2": "Imali yokheshi neyomshini wekhadi ihlala ethilini lakho.",
+          "policyEverydayVisits": "Ukuvakasha kwansuku zonke",
+          "policyLongJobs": "Imisebenzi emide nokuvakasha emakhaya",
+          "policyMoreOptions": "Ezinye izinketho"
         },
         "software": {
           "selectPlaceholder": "Khetha or Uhlobo software igama...",
@@ -25709,7 +25769,8 @@
           "truncatedBookings": "Ukubala kwesimo sokubhukha kungase kungaphelele kuma-akhawunti anomthamo omkhulu kakhulu.",
           "truncatedLedger": "Izinzuzo zesikhathi zingase zingaphelele kuma-akhawunti anevolumu ephezulu kakhulu.",
           "bookingsCount": "ukubhuka ({{count}})",
-          "saleCount": "Ukudayisa ({{count}})"
+          "saleCount": "Ukudayisa ({{count}})",
+          "channelMixNudge": "Ukuvakasha okuningi kulesi sikhathi akubhukhwanga online — ukwabelana ngesixhumanisi sakho sokubhukha kusiza amakhasimende abambe isikhathi sawo esilandelayo ku-app."
         },
         "giftCardLedgerIssuance": "Gift card ledger issuance (all time)",
         "membershipSalesAllTime": "Membership sales (all time)"
@@ -31891,7 +31952,13 @@
           "descriptionOptional": "incazelo (okukhethekayo)",
           "descriptionPlaceholder": "Add a short summary that helps clients understand what types of services are included in this category",
           "descriptionHint": "Help clients understand what types of services are included in this category",
-          "homePriceAdjustmentHint": "Kwengezwe entengo yaleli nsizakalo yokuvakashela ekhaya. Imali yokuhamba ikhokhiswa ngokuhlukile."
+          "homePriceAdjustmentHint": "Kwengezwe entengo yaleli nsizakalo yokuvakashela ekhaya. Imali yokuhamba ikhokhiswa ngokuhlukile.",
+          "rebookOptIn": {
+            "hint": "Rebook reminders are off for this service.",
+            "enable": "Enable",
+            "enabled": "Rebook reminders enabled",
+            "failed": "Could not enable reminders"
+          }
         },
         "serviceDialog": {
           "shortHair": "Short Izinwele",
@@ -36463,6 +36530,15 @@
       "cancelFailed": "Ayikwazanga uku-khansela your spot.",
       "sessionCancelled": "Le seshini yeqembu ikhanseliwe.",
       "sessionCancelledPaid": "Le seshini yeqembu ikhanseliwe. Noma yiliphi inani olikhokhele ingxenye yakho libuyiselwa ngokuphelele ekhadini owakhokha ngalo."
+    },
+    "components": {
+      "payableOrdersBanner": {
+        "titleCart": "Kulindelwe inkokhelo",
+        "titleOrders": "Kulindelwe inkokhelo",
+        "retry": "Ayikwazanga ukulayisha wonke ama-oda angakhokhelwe. Zama futhi.",
+        "showLess": "Bonisa okuncane",
+        "viewAll": "Buka konke"
+      }
     }
   },
   "errors": {

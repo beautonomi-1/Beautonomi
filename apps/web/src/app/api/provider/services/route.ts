@@ -11,6 +11,7 @@ import {
   isMissingColumnError,
   normalizeAdvancedPricingRules,
 } from "./_helpers/advanced-pricing-rules";
+import { defaultRebookReminderForNewOffering } from "@beautonomi/utils";
 
 /**
  * GET /api/provider/services
@@ -297,6 +298,22 @@ export async function POST(request: Request) {
 
     const normalizedAdvancedRules = normalizeAdvancedPricingRules(advanced_pricing_rules);
 
+    let categorySlug: string | null = null;
+    if (finalCategoryId) {
+      const { data: catRow } = await supabase
+        .from("provider_categories")
+        .select("slug")
+        .eq("id", finalCategoryId)
+        .maybeSingle();
+      categorySlug = (catRow as { slug?: string | null } | null)?.slug ?? null;
+    }
+    const rebookDefaults = defaultRebookReminderForNewOffering({
+      categorySlug,
+      title: serviceTitle,
+      reminder_to_rebook_enabled,
+      reminder_to_rebook_weeks,
+    });
+
     const insertPayload: Record<string, unknown> = {
         provider_id: providerId,
         title: serviceTitle,
@@ -323,8 +340,8 @@ export async function POST(request: Request) {
         pricing_name: pricing_name || null,
         extra_time_enabled: extra_time_enabled ?? false,
         extra_time_duration: extra_time_duration || 0,
-        reminder_to_rebook_enabled: reminder_to_rebook_enabled ?? false,
-        reminder_to_rebook_weeks: reminder_to_rebook_weeks || 4,
+        reminder_to_rebook_enabled: rebookDefaults.reminder_to_rebook_enabled,
+        reminder_to_rebook_weeks: rebookDefaults.reminder_to_rebook_weeks,
         service_cost_percentage: service_cost_percentage || 0,
         tax_rate: tax_rate || 0,
         included_services: included_services || [],

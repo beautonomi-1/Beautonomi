@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { reviewedUiLanguageOptions, useTranslation } from "@beautonomi/i18n";
+import { formatLanguageOptionLabel, reviewedUiLanguageOptions, useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 
 type Props = {
@@ -14,8 +14,8 @@ export function ReviewedLanguageField({ value, onChange, marginBottom = 16 }: Pr
   const { t } = useTranslation();
   const options = useMemo(() => reviewedUiLanguageOptions(), []);
   const [open, setOpen] = useState(false);
-  const label =
-    options.find((l) => l.code === value)?.nativeName ?? options[0]?.nativeName ?? "English";
+  const currentOption = options.find((l) => l.code === value) ?? options[0];
+  const label = currentOption ? formatLanguageOptionLabel(currentOption) : "English";
 
   return (
     <>
@@ -97,7 +97,7 @@ export function ReviewedLanguageField({ value, onChange, marginBottom = 16 }: Pr
                         fontWeight: selected ? "700" : "400",
                       }}
                     >
-                      {lang.nativeName}
+                      {formatLanguageOptionLabel(lang)}
                     </Text>
                     {selected ? (
                       <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />

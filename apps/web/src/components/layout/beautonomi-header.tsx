@@ -94,6 +94,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
     name: string;
     url: string;
     category?: string;
+    place_label?: string;
   }>>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
@@ -261,6 +262,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
               name: string;
               url: string;
               category?: string;
+              place_label?: string;
             }>;
           } 
         }>(`/api/public/search/suggestions?q=${encodeURIComponent(searchQuery.trim())}&limit=10`);
@@ -1282,6 +1284,11 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                         <div className="font-medium text-gray-900 truncate">
                           {suggestion.name}
                         </div>
+                        {suggestion.type === 'provider' && suggestion.place_label && (
+                          <div className="text-xs text-gray-500 mt-0.5 truncate">
+                            {suggestion.place_label}
+                          </div>
+                        )}
                         {suggestion.category && (
                           <div className="text-xs text-gray-500 mt-0.5">
                             {suggestion.category}

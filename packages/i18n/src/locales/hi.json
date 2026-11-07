@@ -13780,7 +13780,15 @@
       "shareMediaFailedTitle": "मीडिया साझा नहीं किया जा सका",
       "shareMediaFailedBody": "हम इस फ़ाइल को साझा करने के लिए तैयार नहीं कर सके. इसके बजाय लिंक साझा करने का प्रयास करें.",
       "loadingComments": "लोड हो रहा है…",
-      "loadMoreComments": "और टिप्पणियाँ लोड करें"
+      "loadMoreComments": "और टिप्पणियाँ लोड करें",
+      "errorDeleteComment": "यह टिप्पणी हटाई नहीं जा सकी. कृपया फिर कोशिश करें.",
+      "deleteCommentTitle": "यह टिप्पणी हटाएँ?",
+      "deleteComment": "हटाएँ",
+      "signInToComment": "टिप्पणी करने के लिए साइन इन करें",
+      "deleteCommentBody": "इससे टिप्पणी सभी के लिए हट जाती है.",
+      "commentsLoadFailed": "टिप्पणियाँ लोड नहीं हो सकीं.",
+      "replyingTo": "{{name}} को जवाब",
+      "commentTooLong": "{{count}} / 200"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -14406,6 +14414,13 @@
           "shopContinueCta": "Voir commande",
           "shopPendingSubtext": "Nous mettrons à jour votre commande dans quelques minutes. Vous pouvez continuer à utiliser l'application pendant que nous confirmons auprès de votre banque.",
           "shopFailedSubtext": "Si vous avez été facturé, votre commande sera toujours confirmée une fois le paiement effectué. Veuillez vérifier votre onglet Commandes."
+        },
+        "payableOrdersBanner": {
+          "titleCart": "भुगतान की प्रतीक्षा",
+          "titleOrders": "भुगतान की प्रतीक्षा",
+          "retry": "हर अवैतनिक ऑर्डर लोड नहीं हो सका. फिर कोशिश करें.",
+          "showLess": "कम दिखाएँ",
+          "viewAll": "सभी देखें"
         }
       },
       "tabs": {
@@ -14836,7 +14851,9 @@
           "total": "Total",
           "alsoCheckoutOnWeb": "Payer aussi sur le web",
           "pickupLocationsMore": "{{count}} points de retrait — choisissez à la caisse",
-          "deliveryEtaDays": "Livraison estimée sous {{days}} jour(s) ouvré(s)"
+          "deliveryEtaDays": "Livraison estimée sous {{days}} jour(s) ouvré(s)",
+          "paymentDueHeading": "भुगतान की प्रतीक्षा",
+          "paymentDueRetry": "हर अवैतनिक ऑर्डर लोड नहीं हो सका. फिर कोशिश करें."
         },
         "productCheckout": {
           "title": "Paiement",
@@ -18176,7 +18193,8 @@
     "cart": "Panier",
     "exploreVideo": {
       "unmute": "आवाज़ चालू करें",
-      "mute": "आवाज़ बंद करें"
+      "mute": "आवाज़ बंद करें",
+      "replay": "फिर चलाएँ"
     },
     "bankAccounts": {
       "failedLoadBanks": "बैंक लोड नहीं कर सके. पुनः प्रयास करें।",
@@ -18456,7 +18474,8 @@
     "rescheduleReplacesPreviousBody": "इस बुकिंग का भुगतान पूरा होते ही आपकी मूल अपॉइंटमेंट अपने आप और बिना शुल्क रद्द हो जाती है। जो आप पहले चुका चुके हैं वह यहाँ लगता है, और बचा हुआ वॉलेट में रहता है।",
     "rescheduleCreditNote": "मूल बुकिंग के लिए ऑनलाइन चुकाई गई कोई भी राशि यहाँ लगती है। आप केवल अंतर चुकाते हैं।",
     "rescheduleCreditApplied": "मूल बुकिंग पर चुकाया गया",
-    "rescheduleCreditSurplus": "बचा हुआ {{amount}} क्रेडिट के रूप में आपके वॉलेट में रहता है।"
+    "rescheduleCreditSurplus": "बचा हुआ {{amount}} क्रेडिट के रूप में आपके वॉलेट में रहता है।",
+    "stylistReceives": "{{name}} को मिलता है"
   },
   "payments": {
     "pay": "Pay",
@@ -19105,7 +19124,9 @@
         "changeService": "Modifier",
         "selectedServiceMore": " (+{{count}})",
         "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} मिनट",
-        "continueWithName": "{{name}} के साथ जारी रखें"
+        "continueWithName": "{{name}} के साथ जारी रखें",
+        "stylistReceives": "{{name}} को मिलता है",
+        "stylistReceivesFallback": "आपके स्टाइलिस्ट"
       },
       "confirmation": {
         "loadingMessage": "Chargement de réservation confirmation...",
@@ -36463,6 +36484,15 @@
       "cancelFailed": "Impossible de annuler your spot.",
       "sessionCancelled": "यह समूह सत्र रद्द हो गया है।",
       "sessionCancelledPaid": "यह समूह सत्र रद्द हो गया है। अपने हिस्से के लिए चुकाई गई कोई भी राशि उसी कार्ड पर पूरी लौटा दी जाती है।"
+    },
+    "components": {
+      "payableOrdersBanner": {
+        "titleCart": "भुगतान की प्रतीक्षा",
+        "titleOrders": "भुगतान की प्रतीक्षा",
+        "retry": "हर अवैतनिक ऑर्डर लोड नहीं हो सका. फिर कोशिश करें.",
+        "showLess": "कम दिखाएँ",
+        "viewAll": "सभी देखें"
+      }
     }
   },
   "errors": {

@@ -54,6 +54,8 @@ export default function AddLocationScreen() {
     }
   }, [bundle?.meta?.tenant_region?.name]);
   const [phoneE164, setPhoneE164] = useState("");
+  const [neighborhood, setNeighborhood] = useState("");
+  const [metro, setMetro] = useState("");
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [locating, setLocating] = useState(false);
@@ -122,6 +124,8 @@ export default function AddLocationScreen() {
       postal_code: postal_code.trim() || undefined,
       country: trimmedCountry,
       phone: phoneE164.trim() || undefined,
+      neighborhood: neighborhood.trim() || undefined,
+      metro: metro.trim() || undefined,
       latitude: latitude ?? undefined,
       longitude: longitude ?? undefined,
     });
@@ -141,7 +145,7 @@ export default function AddLocationScreen() {
       { text: al("ok"), onPress: () => router.back() },
     ]);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- FIELD_LABELS is static
-  }, [name, address_line1, address_line2, city, state, postal_code, country, phoneE164, latitude, longitude, router, t, al]);
+  }, [name, address_line1, address_line2, neighborhood, metro, city, state, postal_code, country, phoneE164, latitude, longitude, router, t, al]);
 
   const handleUseCurrentLocationPin = useCallback(async () => {
     if (locating) return;
@@ -162,6 +166,8 @@ export default function AddLocationScreen() {
         setState(mapped.state || "");
         setPostalCode(mapped.postal_code || "");
         setCountry(mapped.country || defaultCountry);
+        setNeighborhood(mapped.neighborhood || "");
+        setMetro(mapped.metro || "");
         setLatitude(mapped.latitude);
         setLongitude(mapped.longitude);
       } else {
@@ -189,6 +195,8 @@ export default function AddLocationScreen() {
         setState(mapped.state);
         setPostalCode(mapped.postal_code);
         setCountry(mapped.country);
+        setNeighborhood(mapped.neighborhood || "");
+        setMetro(mapped.metro || "");
         setLatitude(mapped.latitude);
         setLongitude(mapped.longitude);
       } else {
@@ -258,6 +266,8 @@ export default function AddLocationScreen() {
                 value={address_line1}
                 onSelect={(addr) => {
                   setAddressLine1(addr.address_line1);
+                  setNeighborhood(addr.neighborhood || "");
+                  setMetro(addr.metro || "");
                   setCity(addr.city);
                   setState(addr.state);
                   setPostalCode(addr.postal_code);

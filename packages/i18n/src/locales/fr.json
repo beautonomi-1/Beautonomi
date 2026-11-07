@@ -13780,7 +13780,15 @@
       "shareMediaFailedTitle": "Impossible de partager des médias",
       "shareMediaFailedBody": "Nous n'avons pas pu préparer ce fichier pour le partage. Essayez plutôt de partager le lien.",
       "loadingComments": "Chargement…",
-      "loadMoreComments": "Charger plus de commentaires"
+      "loadMoreComments": "Charger plus de commentaires",
+      "errorDeleteComment": "Impossible de supprimer ce commentaire. Veuillez réessayer.",
+      "deleteCommentTitle": "Supprimer ce commentaire ?",
+      "deleteComment": "Supprimer",
+      "signInToComment": "Connectez-vous pour commenter",
+      "deleteCommentBody": "Cela supprime le commentaire pour tout le monde.",
+      "commentsLoadFailed": "Impossible de charger les commentaires.",
+      "replyingTo": "Réponse à {{name}}",
+      "commentTooLong": "{{count}} / 200"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -14406,6 +14414,13 @@
           "shopContinueCta": "Voir commande",
           "shopPendingSubtext": "Nous mettrons à jour votre commande dans quelques minutes. Vous pouvez continuer à utiliser l'application pendant que nous confirmons auprès de votre banque.",
           "shopFailedSubtext": "Si vous avez été facturé, votre commande sera toujours confirmée une fois le paiement effectué. Veuillez vérifier votre onglet Commandes."
+        },
+        "payableOrdersBanner": {
+          "titleCart": "En attente de paiement",
+          "titleOrders": "En attente de paiement",
+          "showLess": "Afficher moins",
+          "viewAll": "Tout voir",
+          "retry": "Impossible de charger toutes les commandes impayées. Réessayez."
         }
       },
       "tabs": {
@@ -14836,7 +14851,9 @@
           "total": "Total",
           "alsoCheckoutOnWeb": "Payer aussi sur le web",
           "pickupLocationsMore": "{{count}} points de retrait — choisissez à la caisse",
-          "deliveryEtaDays": "Livraison estimée sous {{days}} jour(s) ouvré(s)"
+          "deliveryEtaDays": "Livraison estimée sous {{days}} jour(s) ouvré(s)",
+          "paymentDueHeading": "En attente de paiement",
+          "paymentDueRetry": "Impossible de charger toutes les commandes impayées. Réessayez."
         },
         "productCheckout": {
           "title": "Paiement",
@@ -18176,7 +18193,8 @@
     "cart": "Panier",
     "exploreVideo": {
       "unmute": "Activer le son",
-      "mute": "Muet"
+      "mute": "Muet",
+      "replay": "Rejouer"
     },
     "bankAccounts": {
       "failedLoadBanks": "Impossible de load banks. Réessayer.",
@@ -18456,7 +18474,8 @@
     "rescheduleReplacesPreviousBody": "Votre rendez-vous d'origine est annulé tout seul, sans frais, dès que le paiement de cette réservation est terminé. Ce que vous avez déjà réglé est utilisé ici, et le surplus reste dans votre portefeuille.",
     "rescheduleCreditNote": "Toute somme déjà réglée en ligne pour la réservation d'origine est utilisée ici. Vous ne payez que l'écart.",
     "rescheduleCreditApplied": "Réglé sur la réservation d'origine",
-    "rescheduleCreditSurplus": "Le reste de {{amount}} reste dans votre portefeuille comme avoir."
+    "rescheduleCreditSurplus": "Le reste de {{amount}} reste dans votre portefeuille comme avoir.",
+    "stylistReceives": "{{name}} reçoit"
   },
   "payments": {
     "pay": "Payer",
@@ -19105,7 +19124,9 @@
         "selectedServiceMore": " (+{{count}})",
         "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} minutes",
         "continueWithName": "Continuer avec {{name}}",
-        "continueWithCount": "Continuer avec {{count}} prestations"
+        "continueWithCount": "Continuer avec {{count}} prestations",
+        "stylistReceives": "{{name}} reçoit",
+        "stylistReceivesFallback": "Votre styliste"
       },
       "confirmation": {
         "loadingMessage": "Chargement de réservation confirmation...",
@@ -36463,6 +36484,15 @@
       "cancelFailed": "Impossible de annuler your spot.",
       "sessionCancelled": "Cette séance de groupe a été annulée.",
       "sessionCancelledPaid": "Cette séance de groupe a été annulée. Toute somme versée pour votre part est remboursée en totalité sur la carte utilisée."
+    },
+    "components": {
+      "payableOrdersBanner": {
+        "titleCart": "En attente de paiement",
+        "titleOrders": "En attente de paiement",
+        "showLess": "Afficher moins",
+        "viewAll": "Tout voir",
+        "retry": "Impossible de charger toutes les commandes impayées. Réessayez."
+      }
     }
   },
   "errors": {

@@ -26,6 +26,8 @@ const DEFAULT_CENTER: [number, number] = [28.0473, -26.2041];
 
 export type PickedMapLocation = {
   address_line1: string;
+  neighborhood?: string;
+  metro?: string;
   city: string;
   state?: string;
   postal_code?: string;
@@ -164,6 +166,8 @@ export function LocationMapPickerDialog({
       const parsed = mapGeocodeFeatureToAddressParts(feature, { defaultCountryName });
       onLocationPicked({
         address_line1: parsed.address_line1,
+        neighborhood: parsed.neighborhood,
+        metro: parsed.metro,
         city: parsed.city,
         state: parsed.state || undefined,
         postal_code: parsed.postal_code || undefined,

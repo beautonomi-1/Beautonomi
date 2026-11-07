@@ -42,6 +42,8 @@ export type TerminalInterestLevel = "yes" | "maybe_later" | "no";
 export interface OnboardingAddress {
   line1: string;
   line2?: string;
+  neighborhood?: string;
+  metro?: string;
   city: string;
   state: string;
   postal_code: string;

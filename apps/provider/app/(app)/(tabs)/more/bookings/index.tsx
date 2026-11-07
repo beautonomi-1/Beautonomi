@@ -118,6 +118,8 @@ interface Booking {
   total_paid?: number | null;
   total_refunded?: number | null;
   payment_status?: string | null;
+  till_payment_kind?: string | null;
+  till_payment_label?: string | null;
   location_type?: "at_salon" | "at_home" | null;
   is_group_booking?: boolean;
   group_booking_id?: string | null;

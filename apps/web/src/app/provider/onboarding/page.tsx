@@ -4,6 +4,8 @@ import {
   useTranslation,
   BOOKING_POLICY_PRESETS,
   DEFAULT_BOOKING_POLICY_PRESET,
+  ONBOARDING_POLICY_MORE_PRESETS,
+  ONBOARDING_POLICY_PRIMARY_PRESETS,
   type BookingPolicyPresetId,
 } from "@beautonomi/i18n";
 
@@ -209,6 +211,8 @@ interface OnboardingData {
   address: {
     line1: string;
     line2?: string;
+    neighborhood?: string;
+    metro?: string;
     city: string;
     state: string;
     postal_code: string;
@@ -1069,6 +1073,8 @@ export default function ProviderOnboarding() {
         address: {
           line1: formData.address?.line1 || "",
           line2: formData.address?.line2 || null,
+          neighborhood: formData.address?.neighborhood?.trim() || null,
+          metro: formData.address?.metro?.trim() || null,
           city: formData.address?.city || "",
           state: formData.address?.state || null,
           postal_code: formData.address?.postal_code || null,
@@ -2980,12 +2986,9 @@ function Step4PaymentSetup({
 }) {
   const { t } = useTranslation();
   const selectedPreset = data.booking_policy?.preset ?? DEFAULT_BOOKING_POLICY_PRESET;
-  const bookingPolicyPresetOrder: Exclude<BookingPolicyPresetId, "custom">[] = [
-    "no_penalty",
-    "flexible",
-    "standard",
-    "strict",
-  ];
+  const [showMorePolicies, setShowMorePolicies] = useState(
+    (ONBOARDING_POLICY_MORE_PRESETS as readonly string[]).includes(selectedPreset),
+  );
   const isZaBusiness =
     countryFilterIso2FromStorage(data.address?.country?.trim() || "South Africa") === "ZA";
   const TERMINAL_OWNERSHIP_OPTIONS = [
@@ -3333,14 +3336,23 @@ function Step4PaymentSetup({
         <h3 className="text-lg font-semibold text-gray-900">
           {t("web.provider.onboarding.payment.bookingProtectionTitle")}
         </h3>
+        <p className="text-sm text-gray-700">
+          {t("web.provider.onboarding.payment.bookingProtectionMoneyLine1")}
+        </p>
+        <p className="text-sm text-gray-600">
+          {t("web.provider.onboarding.payment.bookingProtectionMoneyLine2")}
+        </p>
         <p className="text-sm text-gray-600">
           {t("web.provider.onboarding.payment.bookingProtectionHint")}
         </p>
         <div className="space-y-3">
-          {bookingPolicyPresetOrder.map((presetId) => {
+          {ONBOARDING_POLICY_PRIMARY_PRESETS.map((presetId) => {
             const preset = BOOKING_POLICY_PRESETS[presetId];
             const isSelected = selectedPreset === presetId;
-            const title = t(preset.labelKey);
+            const title =
+              presetId === "standard"
+                ? t("web.provider.onboarding.payment.policyEverydayVisits")
+                : t("web.provider.onboarding.payment.policyLongJobs");
             const description = t(`provider.bookingPolicy.${presetId}Desc`);
             return (
               <button
@@ -3358,6 +3370,36 @@ function Step4PaymentSetup({
               </button>
             );
           })}
+          <button
+            type="button"
+            onClick={() => setShowMorePolicies((v) => !v)}
+            className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
+          >
+            {t("web.provider.onboarding.payment.policyMoreOptions")}
+          </button>
+          {showMorePolicies
+            ? ONBOARDING_POLICY_MORE_PRESETS.map((presetId) => {
+                const preset = BOOKING_POLICY_PRESETS[presetId];
+                const isSelected = selectedPreset === presetId;
+                const title = t(preset.labelKey);
+                const description = t(`provider.bookingPolicy.${presetId}Desc`);
+                return (
+                  <button
+                    key={presetId}
+                    type="button"
+                    onClick={() => updateData({ booking_policy: { preset: presetId } })}
+                    className={`w-full rounded-[1.5rem] border p-5 text-start transition-all duration-200 ${
+                      isSelected
+                        ? "border-slate-900 bg-slate-900/5 shadow-sm"
+                        : "border-slate-100 bg-white hover:border-slate-200 hover:shadow-sm"
+                    }`}
+                  >
+                    <p className="font-semibold text-slate-900">{title}</p>
+                    <p className="mt-1 text-sm text-slate-600">{description}</p>
+                  </button>
+                );
+              })
+            : null}
         </div>
       </div>
 
@@ -3678,6 +3720,8 @@ function Step7Location({
   const handleAddressSelect = useCallback(
     (addressData: {
       address_line1: string;
+      neighborhood?: string;
+      metro?: string;
       city: string;
       state?: string;
       postal_code?: string;
@@ -3710,6 +3754,8 @@ function Step7Location({
         address: {
           line1,
           line2: prev?.line2 || undefined,
+          neighborhood: addressData.neighborhood?.trim() || prev?.neighborhood || undefined,
+          metro: addressData.metro?.trim() || prev?.metro || undefined,
           city: addressData.city ?? prev?.city ?? "",
           state: addressData.state ?? prev?.state ?? "",
           postal_code: addressData.postal_code ?? prev?.postal_code ?? "",
@@ -3745,6 +3791,8 @@ function Step7Location({
     (picked: PickedMapLocation) => {
       handleAddressSelect({
         address_line1: picked.address_line1,
+        neighborhood: picked.neighborhood,
+        metro: picked.metro,
         city: picked.city,
         state: picked.state,
         postal_code: picked.postal_code,
@@ -4280,19 +4328,23 @@ function Step10TravelFees({
 }) {
   const tf = data.travel_fees ?? DEFAULT_ONBOARDING_TRAVEL_FEES;
   const tenantCurrency = LAST_RESORT_CURRENCY;
+  const { t } = useTranslation();
   return (
-    <TravelFeesOnboardingForm
-      travelFees={tf}
-      platformLimits={data.platform_travel_limits}
-      tenantCurrency={tenantCurrency}
-      validationErrors={stepErrors}
-      onChange={(patch) =>
-        updateData({
-          travel_fees: { ...tf, ...patch },
-        })
-      }
-      onPlatformLimitsLoaded={(limits) => updateData({ platform_travel_limits: limits })}
-    />
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">{t("web.provider.onboarding.travelFees.houseCallDepositHint")}</p>
+      <TravelFeesOnboardingForm
+        travelFees={tf}
+        platformLimits={data.platform_travel_limits}
+        tenantCurrency={tenantCurrency}
+        validationErrors={stepErrors}
+        onChange={(patch) =>
+          updateData({
+            travel_fees: { ...tf, ...patch },
+          })
+        }
+        onPlatformLimitsLoaded={(limits) => updateData({ platform_travel_limits: limits })}
+      />
+    </div>
   );
 }
 

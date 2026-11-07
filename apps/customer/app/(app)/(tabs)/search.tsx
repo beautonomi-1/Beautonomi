@@ -31,6 +31,7 @@ type Suggestion = {
   /** Service category name returned alongside service suggestions. */
   category?: string;
   distance_km?: number;
+  place_label?: string;
 };
 
 const SearchResultRow = memo(function SearchResultRow({ provider }: { provider: PublicProviderCard }) {
@@ -383,7 +384,11 @@ export default function SearchScreen() {
                       borderBottomColor: Colors.gray[100],
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel={`${s.name}, ${s.type}`}
+                    accessibilityLabel={
+                      s.type === "provider" && s.place_label
+                        ? `${s.name}, ${s.place_label}, ${s.type}`
+                        : `${s.name}, ${s.type}`
+                    }
                   >
                     {/* §UI-audit 2026-05: providers now show their thumbnail
                         in suggestions so users recognise the right business
@@ -449,6 +454,11 @@ export default function SearchScreen() {
                       {s.type === "service" && s.category ? (
                         <Text style={{ color: Colors.gray[500], fontSize: 12 }} numberOfLines={1}>
                           {translatePublicCategoryLabel(t, s.category, s.category, { language: i18n.language })}
+                        </Text>
+                      ) : null}
+                      {s.type === "provider" && s.place_label ? (
+                        <Text style={{ color: Colors.gray[500], fontSize: 12 }} numberOfLines={1}>
+                          {s.place_label}
                         </Text>
                       ) : null}
                       {s.type === "provider" && s.distance_km != null ? (

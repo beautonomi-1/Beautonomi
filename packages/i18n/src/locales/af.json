@@ -476,7 +476,17 @@
             "moreActionsA11y": "meer bespreking actions",
             "bookingForA11y": "bespreking for {{name}}",
             "actionSaved": "{{action}} stoord",
-            "minDuration": "{{count}} Min"
+            "minDuration": "{{count}} Min",
+            "tillPayment": {
+              "online": "Aanlyn",
+              "yoco": "Yoco",
+              "cardMachine": "Kaartmasjien",
+              "paystackTerminal": "Paystack-terminaal",
+              "wallet": "Beursie",
+              "giftCard": "Geskenkkaart",
+              "cash": "Kontant",
+              "manualCard": "Handmatige kaart"
+            }
           },
           "etaPicker": {
             "estimatedArrival": "Geskatte aankoms",
@@ -5863,7 +5873,8 @@
           "activityDefaultHint": "Jongste opdaterings oor besprekings, betalings en resensies – nie volgens die tydperk hierbo gefiltreer nie.",
           "noRecentActivity": "Geen onlangse aktiwiteit nie",
           "giftCardLedgerIssuance": "geskenkkaart ledger issuance (Van alle tye)",
-          "membershipSalesAllTime": "lidmaatskap sales (Van alle tye)"
+          "membershipSalesAllTime": "lidmaatskap sales (Van alle tye)",
+          "channelMixNudge": "Die meeste besoeke hierdie tydperk is nie aanlyn bespreek nie — as jy jou besprekingskakel deel, kan kliënte hul volgende tyd in die app vashou."
         },
         "staffSchedule": {
           "title": "personeel Skedules",
@@ -13780,11 +13791,20 @@
       "shareMediaFailedTitle": "Couldn't deel media",
       "shareMediaFailedBody": "Ons kon nie hierdie lêer voorberei vir deling nie. Probeer eerder die skakel deel.",
       "loadingComments": "Laai tans...",
-      "loadMoreComments": "Laai meer opmerkings"
+      "loadMoreComments": "Laai meer opmerkings",
+      "errorDeleteComment": "Kon nie hierdie opmerking uitvee nie. Probeer asseblief weer.",
+      "deleteCommentTitle": "Hierdie opmerking uitvee?",
+      "deleteCommentBody": "Dit verwyder die opmerking vir almal.",
+      "deleteComment": "Vee uit",
+      "commentsLoadFailed": "Kon nie opmerkings laai nie.",
+      "signInToComment": "Meld aan om kommentaar te lewer",
+      "replyingTo": "Antwoord op {{name}}",
+      "commentTooLong": "{{count}} / 200"
     },
     "exploreVideo": {
       "mute": "Stil",
-      "unmute": "Klank aan"
+      "unmute": "Klank aan",
+      "replay": "Herspeel"
     },
     "searchScreen": {
       "title": "Soek",
@@ -14410,6 +14430,13 @@
           "shopContinueCta": "Sien bestelling",
           "shopPendingSubtext": "Ons sal jou bestelling binne 'n paar minute opdateer. Jy kan aanhou om die toepassing te gebruik terwyl ons met jou bank bevestig.",
           "shopFailedSubtext": "As u gehef is, sal u bestelling steeds bevestig word sodra die betaling land. Gaan asseblief jou Bestellings-oortjie na."
+        },
+        "payableOrdersBanner": {
+          "titleCart": "Wag op betaling",
+          "titleOrders": "Wag op betaling",
+          "retry": "Kon nie elke onbetaalde bestelling laai nie. Probeer weer.",
+          "showLess": "Wys minder",
+          "viewAll": "Sien alles"
         }
       },
       "tabs": {
@@ -14840,7 +14867,9 @@
           "total": "Totaal",
           "alsoCheckoutOnWeb": "Also afhandeling on web",
           "pickupLocationsMore": "{{count}} afhaal-liggings — kies by betaal",
-          "deliveryEtaDays": "Geskatte aflewering binne {{days}} werksdag(e)"
+          "deliveryEtaDays": "Geskatte aflewering binne {{days}} werksdag(e)",
+          "paymentDueHeading": "Wag op betaling",
+          "paymentDueRetry": "Kon nie elke onbetaalde bestelling laai nie. Probeer weer."
         },
         "productCheckout": {
           "title": "Afhandeling",
@@ -18095,7 +18124,8 @@
           "customShareVision": "Deel tot 6 inspirasiebeelde om ons te help om jou visie te verstaan",
           "customCancel": "Kanselleer",
           "customSending": "Stuuring versoek...",
-          "customSend": "Stuur versoek"
+          "customSend": "Stuur versoek",
+          "bookingProtectionCheckoutLine": "Aanlyn afrekening kan besprekingsbeskerming insluit; jou stilis ontvang steeds die gelyste diensprys."
         },
         "reviews": {
           "loadFailed": "Kon nie laai nie",
@@ -18364,7 +18394,7 @@
     "afterDiscounts": "After afslags",
     "taxLineInclusive": "Tax ({{percent}}%) — included in pryss",
     "taxLineAdditive": "Belasting ({{percent}}%)",
-    "platformFee": "Platform fooi",
+    "platformFee": "Besprekingsbeskerming",
     "walletCreditApplied": "beursie crwysig applied",
     "walletCoversCardAmount": "Covered by beursie",
     "walletCardPayAmount": "You betaal via Kaart",
@@ -18456,7 +18486,8 @@
     "rescheduleReplacesPreviousBody": "Jou oorspronklike afspraak word outomaties gekanselleer, sonder koste, sodra hierdie bespreking se betaling klaar is. Wat jy reeds betaal het word hier toegepas, en wat oorbly bly in jou beursie.",
     "rescheduleCreditNote": "Enige bedrag wat jy reeds aanlyn vir die oorspronklike bespreking betaal het word hier toegepas. Jy betaal net die verskil.",
     "rescheduleCreditApplied": "Betaal op jou oorspronklike bespreking",
-    "rescheduleCreditSurplus": "Die oorblywende {{amount}} bly in jou beursie as krediet."
+    "rescheduleCreditSurplus": "Die oorblywende {{amount}} bly in jou beursie as krediet.",
+    "stylistReceives": "{{name}} ontvang"
   },
   "payments": {
     "pay": "Betaal",
@@ -19105,7 +19136,9 @@
         "continueWithCount": "gaan voort with {{count}} dienste",
         "changeService": "Verander",
         "selectedServiceMore": " (+{{count}})",
-        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} minute"
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} minute",
+        "stylistReceivesFallback": "Jou stilist",
+        "stylistReceives": "{{name}} ontvang"
       },
       "confirmation": {
         "loadingMessage": "Laai tans Besprekingsbevestiging...",
@@ -23749,7 +23782,8 @@
           "notes": "Notas",
           "message": "boodskap",
           "book": "bespreek",
-          "viewFullProfile": "Sien vol profiel"
+          "viewFullProfile": "Sien vol profiel",
+          "serviceNote": "Look / service note"
         },
         "dragDropCalendar": {
           "cannotPlace": "Cannot place afspraak hier",
@@ -24624,6 +24658,17 @@
             "yocoRecordCta": "Op die masjien terugbetaal — teken die terugbetaling aan",
             "pendingCashTitle": "{{amount}} to return in person",
             "pendingCashBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending."
+          },
+          "clientMemory": {
+            "title": "Last visit",
+            "serviceNote": "Look / service note",
+            "viewLook": "View look",
+            "noNote": "No note yet",
+            "edit": "Edit",
+            "save": "Save",
+            "cancel": "Cancel",
+            "noteSaved": "Note saved",
+            "noteSaveFailed": "Could not save note"
           }
         },
         "createPayment": {
@@ -24781,6 +24826,16 @@
             "booking_intake": "kliënt forms",
             "booking_recurring": "Repeating series"
           }
+        },
+        "tillPayment": {
+          "online": "Aanlyn",
+          "yoco": "Yoco",
+          "cardMachine": "Kaartmasjien",
+          "paystackTerminal": "Paystack-terminaal",
+          "wallet": "Beursie",
+          "giftCard": "Geskenkkaart",
+          "cash": "Kontant",
+          "manualCard": "Handmatige kaart"
         }
       },
       "finance": {
@@ -25288,7 +25343,12 @@
           "bookingProtectionTitle": "Booking protection",
           "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings.",
           "pricesIncludeTax": "My service prices include VAT",
-          "pricesIncludeTaxDesc": "Most South African salons show VAT-inclusive prices (recommended)."
+          "pricesIncludeTaxDesc": "Most South African salons show VAT-inclusive prices (recommended).",
+          "bookingProtectionMoneyLine1": "Jy ontvang jou gelyste diensprys. Kliënte betaal 'n aparte beskermingsbedrag aan Beautonomi.",
+          "bookingProtectionMoneyLine2": "Kontant- en kaartmasjienbetalings bly in jou kasregister.",
+          "policyEverydayVisits": "Alledaagse besoeke",
+          "policyLongJobs": "Lang werk en huisbesoeke",
+          "policyMoreOptions": "Meer opsies"
         },
         "software": {
           "selectPlaceholder": "Kies or Tipe software naam...",
@@ -25709,7 +25769,8 @@
           "truncatedBookings": "Besprekingstatus-tellings kan onvolledig wees vir rekeninge met baie hoë volume.",
           "truncatedLedger": "Tydperkverdienste kan onvolledig wees vir baie hoëvolume rekeninge.",
           "bookingsCount": "besprekings ({{count}})",
-          "saleCount": "Verkoop ({{count}})"
+          "saleCount": "Verkoop ({{count}})",
+          "channelMixNudge": "Die meeste besoeke hierdie tydperk is nie aanlyn bespreek nie — as jy jou besprekingskakel deel, kan kliënte hul volgende tyd in die app vashou."
         },
         "giftCardLedgerIssuance": "Gift card ledger issuance (all time)",
         "membershipSalesAllTime": "Membership sales (all time)"
@@ -31891,7 +31952,13 @@
           "descriptionOptional": "beskrywing (opsioneel)",
           "descriptionPlaceholder": "Add a short summary that helps clients understand what types of services are included in this category",
           "descriptionHint": "Help clients understand what types of services are included in this category",
-          "homePriceAdjustmentHint": "Bygevoeg tot hierdie diens se prys vir huisbesoeke. Die reisfooi word apart gehef."
+          "homePriceAdjustmentHint": "Bygevoeg tot hierdie diens se prys vir huisbesoeke. Die reisfooi word apart gehef.",
+          "rebookOptIn": {
+            "hint": "Rebook reminders are off for this service.",
+            "enable": "Enable",
+            "enabled": "Rebook reminders enabled",
+            "failed": "Could not enable reminders"
+          }
         },
         "serviceDialog": {
           "shortHair": "Short Haar",
@@ -36463,6 +36530,15 @@
       "cancelFailed": "Kon nie kanselleer your spot nie.",
       "sessionCancelled": "Hierdie groepsessie is gekanselleer.",
       "sessionCancelledPaid": "Hierdie groepsessie is gekanselleer. Enige bedrag wat jy vir jou aandeel betaal het word volledig terugbetaal na die kaart waarmee jy betaal het."
+    },
+    "components": {
+      "payableOrdersBanner": {
+        "titleCart": "Wag op betaling",
+        "titleOrders": "Wag op betaling",
+        "retry": "Kon nie elke onbetaalde bestelling laai nie. Probeer weer.",
+        "showLess": "Wys minder",
+        "viewAll": "Sien alles"
+      }
     }
   },
   "errors": {

@@ -3,6 +3,8 @@ import {
   useTranslation,
   BOOKING_POLICY_PRESETS,
   DEFAULT_BOOKING_POLICY_PRESET,
+  ONBOARDING_POLICY_MORE_PRESETS,
+  ONBOARDING_POLICY_PRIMARY_PRESETS,
   type BookingPolicyPresetId,
 } from "@beautonomi/i18n";
 import * as Location from "expo-location";
@@ -1210,13 +1212,6 @@ placeholder={ow("business.descriptionPlaceholder")}
   );
 }
 
-const BOOKING_POLICY_PRESET_ORDER: Exclude<BookingPolicyPresetId, "custom">[] = [
-  "no_penalty",
-  "flexible",
-  "standard",
-  "strict",
-];
-
 // ─── Step 4: Payments & policies (terminal capture + booking protection) ─────
 
 type TerminalOpt = {
@@ -1304,6 +1299,9 @@ function Step4Payment() {
   const { formData, updateFormData } = useOnboardingWizard();
   const selectedPreset =
     formData.booking_policy?.preset ?? DEFAULT_BOOKING_POLICY_PRESET;
+  const [showMorePolicies, setShowMorePolicies] = useState(
+    (ONBOARDING_POLICY_MORE_PRESETS as readonly string[]).includes(selectedPreset),
+  );
   const vendorOtherRef = useRef<TextInput>(null);
   const vatNumberRef = useRef<TextInput>(null);
   useAutoFocus(vendorOtherRef, formData.terminal_provider === "other");
@@ -1495,16 +1493,20 @@ placeholder={ow("payment.vatPlaceholder")}
 
       <View style={twStyle("gap-3")}>
         <Text style={twStyle(labelCls)}>{ow("payment.bookingProtectionTitle")}</Text>
+        <Text style={twStyle("text-[14px] text-slate-600")}>{ow("payment.bookingProtectionMoneyLine1")}</Text>
+        <Text style={twStyle("text-[14px] text-slate-500")}>{ow("payment.bookingProtectionMoneyLine2")}</Text>
         <Text style={twStyle("text-[14px] text-slate-500")}>
           {ow("payment.bookingProtectionHint")}
         </Text>
         <View style={twStyle("gap-3")}>
-          {BOOKING_POLICY_PRESET_ORDER.map((presetId) => {
+          {ONBOARDING_POLICY_PRIMARY_PRESETS.map((presetId) => {
             const preset = BOOKING_POLICY_PRESETS[presetId];
             const sel = selectedPreset === presetId;
-            const title = t(preset.labelKey);
-            const descKey = `provider.bookingPolicy.${presetId}Desc`;
-            const description = t(descKey);
+            const title =
+              presetId === "standard"
+                ? ow("payment.policyEverydayVisits")
+                : ow("payment.policyLongJobs");
+            const description = t(`provider.bookingPolicy.${presetId}Desc`);
             return (
               <TouchableOpacity
                 key={presetId}
@@ -1532,6 +1534,45 @@ placeholder={ow("payment.vatPlaceholder")}
               </TouchableOpacity>
             );
           })}
+          <TouchableOpacity onPress={() => setShowMorePolicies((v) => !v)} accessibilityRole="button">
+            <Text style={twStyle("text-[14px] font-medium text-slate-700")}>
+              {ow("payment.policyMoreOptions")}
+            </Text>
+          </TouchableOpacity>
+          {showMorePolicies
+            ? ONBOARDING_POLICY_MORE_PRESETS.map((presetId) => {
+                const preset = BOOKING_POLICY_PRESETS[presetId];
+                const sel = selectedPreset === presetId;
+                const title = t(preset.labelKey);
+                const description = t(`provider.bookingPolicy.${presetId}Desc`);
+                return (
+                  <TouchableOpacity
+                    key={presetId}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      updateFormData({ booking_policy: { preset: presetId } });
+                    }}
+                    style={twStyle(
+                      `rounded-[1.5rem] border p-5 ${sel ? "border-primary bg-primary/10 shadow-sm" : "border-slate-100 bg-white shadow-sm"}`,
+                    )}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: sel }}
+                    accessibilityLabel={title}
+                  >
+                    <Text
+                      style={twStyle(
+                        `text-[15px] font-semibold ${sel ? "text-slate-900" : "text-slate-800"}`,
+                      )}
+                    >
+                      {title}
+                    </Text>
+                    <Text style={twStyle("mt-1 text-[13px] leading-5 text-slate-500")}>
+                      {description}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })
+            : null}
         </View>
       </View>
     </View>
@@ -1911,6 +1952,8 @@ function Step7Location() {
     applyAddressUpdate({
       ...addr,
       line1: p.address_line1,
+      neighborhood: p.neighborhood,
+      metro: p.metro,
       city: p.city,
       state: p.state,
       postal_code: p.postal_code,
@@ -1937,6 +1980,8 @@ function Step7Location() {
         applyAddressUpdate({
           ...addr,
           line1: mapped.address_line1 || addr.line1 || ow("location.currentLocationFallback"),
+          neighborhood: mapped.neighborhood,
+          metro: mapped.metro,
           city: mapped.city || addr.city || "",
           state: mapped.state || addr.state || "",
           postal_code: mapped.postal_code || addr.postal_code || "",
@@ -1961,6 +2006,8 @@ function Step7Location() {
       applyAddressUpdate({
         ...addr,
         line1: mapped.address_line1 || addr.line1,
+        neighborhood: mapped.neighborhood,
+        metro: mapped.metro,
         city: mapped.city || addr.city,
         state: mapped.state || addr.state,
         postal_code: mapped.postal_code || addr.postal_code,
@@ -4439,7 +4486,10 @@ function StepTravelFees() {
         mode="onboarding"
         onFieldFocus={(ref) => onboardingScroll?.scrollToFocusedInput(ref)}
       />
-      <Text style={twStyle("text-center text-xs text-gray-500")}>
+      <Text style={twStyle("text-center text-sm text-gray-600 mt-3 px-2")}>
+        {ow("travelFees.houseCallDepositHint")}
+      </Text>
+      <Text style={twStyle("text-center text-xs text-gray-500 mt-2")}>
 {ow("travelFees.skipHint")}
       </Text>
     </View>

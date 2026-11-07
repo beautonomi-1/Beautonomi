@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import af from "../locales/af.json";
 import en from "../locales/en.json";
+import st from "../locales/st.json";
 import zu from "../locales/zu.json";
 
 describe("ZA booking translations", () => {
@@ -18,5 +19,26 @@ describe("ZA booking translations", () => {
     expect(zu.web.book.engine.visitSalon).toBe("Vakashela isaluni");
     expect(zu.web.book.engine.visitSalon).not.toBe(en.web.book.engine.visitSalon);
     expect(zu.common.continue).toBe("Qhubeka");
+  });
+
+  const retentionKeys = [
+    (j: typeof en) => j.checkout.platformFee,
+    (j: typeof en) => j.web.provider.onboarding.payment.bookingProtectionMoneyLine1,
+    (j: typeof en) => j.web.provider.dashboard.insights.channelMixNudge,
+    (j: typeof en) => j.customer.mobile.screens.partnerProfile.bookingProtectionCheckoutLine,
+  ] as const;
+
+  it("has retention UX strings in en/zu/af/st with real ZA locales", () => {
+    for (const pick of retentionKeys) {
+      const enVal = pick(en);
+      expect(typeof enVal).toBe("string");
+      expect(enVal.length).toBeGreaterThan(5);
+      expect(pick(zu)).not.toBe(enVal);
+      expect(pick(af)).not.toBe(enVal);
+      expect(pick(st)).not.toBe(enVal);
+      expect(pick(zu).length).toBeGreaterThan(5);
+      expect(pick(af).length).toBeGreaterThan(5);
+      expect(pick(st).length).toBeGreaterThan(5);
+    }
   });
 });

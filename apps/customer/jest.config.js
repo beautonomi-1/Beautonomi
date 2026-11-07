@@ -23,6 +23,7 @@ module.exports = {
   testMatch: ["<rootDir>/__tests__/**/*.test.{ts,tsx}"],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
+    "^@beautonomi/utils$": "<rootDir>/../../packages/utils/src/index.ts",
     "^expo-modules-core$": expoModulesCore,
   },
   // @sentry/core 10.76+ exposes an ESM build on the react-native export condition.

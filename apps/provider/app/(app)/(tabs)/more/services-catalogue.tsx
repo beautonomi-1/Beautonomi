@@ -23,6 +23,8 @@ import { twStyle } from "@/lib/twStyle";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { PROVIDER_SERVICES_CATALOG_CHANGED } from "@/lib/provider-services-catalog-events";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+import { defaultRebookReminderForNewOffering } from "@beautonomi/utils";
+import { useApiMutation } from "@/hooks/useApi";
 
 interface ServiceCategory {
   id: string;
@@ -40,6 +42,9 @@ interface ServiceItem {
   price?: number;
   service_type?: string;
   is_active?: boolean;
+  reminder_to_rebook_enabled?: boolean;
+  online_booking_enabled?: boolean;
+  provider_categories?: { slug?: string | null } | null;
 }
 
 interface CategoriesResponse {
@@ -56,6 +61,7 @@ export default function ServicesCatalogueScreen() {
   );
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  const { execute: patchService } = useApiMutation("patch");
 
   const { data: categoriesData, loading: loadingCat, error: errorCat, refresh: refreshCat } = useApi<CategoriesResponse>(
     "/api/provider/categories"
@@ -151,7 +157,26 @@ export default function ServicesCatalogueScreen() {
     });
   }
 
-  const renderServiceRow = (item: ServiceItem) => (
+  const enableRebook = useCallback(
+    async (item: ServiceItem, categoryName?: string | null) => {
+      const title = item.title ?? item.name ?? "";
+      const weeks = defaultRebookReminderForNewOffering({
+        title,
+        categorySlug: item.provider_categories?.slug ?? categoryName ?? null,
+      }).reminder_to_rebook_weeks;
+      const res = await patchService(`/api/provider/services/${item.id}`, {
+        reminder_to_rebook_enabled: true,
+        reminder_to_rebook_weeks: weeks,
+      });
+      if (!res?.error) {
+        void refreshSvc();
+        DeviceEventEmitter.emit(PROVIDER_SERVICES_CATALOG_CHANGED);
+      }
+    },
+    [patchService, refreshSvc],
+  );
+
+  const renderServiceRow = (item: ServiceItem, categoryName?: string | null) => (
     <TouchableOpacity
       key={item.id}
       style={twStyle("flex-row items-center border-b border-gray-100 py-3.5")}
@@ -175,6 +200,17 @@ export default function ServicesCatalogueScreen() {
           {item.service_type && item.service_type !== "basic" && (
             <Text style={twStyle("text-xs text-gray-500 capitalize")}>{item.service_type}</Text>
           )}
+          {item.online_booking_enabled !== false && !item.reminder_to_rebook_enabled ? (
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation?.();
+                void enableRebook(item, categoryName);
+              }}
+              style={twStyle("mt-2 self-start rounded-full border border-gray-200 px-2 py-1")}
+            >
+              <Text style={twStyle("text-[11px] font-semibold text-indigo-700")}>{sc("rebookOptIn.enable")}</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
       <DirectionalIcon name="chevron-forward" size={18} color="#d1d5db" />
@@ -261,7 +297,7 @@ export default function ServicesCatalogueScreen() {
                 </Text>
               </View>
               <View style={twStyle("rounded-xl border border-gray-100 bg-white overflow-hidden")}>
-                {section.services.map((svc: ServiceItem) => renderServiceRow(svc))}
+                {section.services.map((svc: ServiceItem) => renderServiceRow(svc, section.category?.name))}
               </View>
             </View>
           )}

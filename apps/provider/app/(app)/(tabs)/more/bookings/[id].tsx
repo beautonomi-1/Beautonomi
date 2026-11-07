@@ -77,6 +77,7 @@ import {
   PROVIDER_ON_PLATFORM_PAYMENT_NUDGE,
   PROVIDER_SALON_CHECKIN_EXCELLENCE_NUDGE,
   PROVIDER_SALON_VISIT_FLOW_EXPLAINER,
+  buildProviderPublicBookUrl,
 } from "@beautonomi/utils";
 import {
   ensureForegroundLocationPermission,
@@ -293,6 +294,13 @@ type BookingDetail = {
   /** Applied gift card toward this booking (GET detail). */
   gift_card_amount?: number | null;
   payment_status?: string;
+  client_memory?: {
+    last_booking_id?: string | null;
+    last_offering_name?: string | null;
+    last_staff_name?: string | null;
+    service_note?: string | null;
+    explore_post_id?: string | null;
+  } | null;
   /** Server-computed balance due (includes unpaid additional charges); prefer over local math. */
   outstanding_balance?: number | null;
   /** IANA TZ for customer-facing wall times when API sends it. */
@@ -3781,6 +3789,34 @@ export default function BookingDetailScreen() {
                 </TouchableOpacity>
               ) : null}
           </View>
+          {b.client_memory?.last_offering_name || b.client_memory?.last_staff_name || b.client_memory?.service_note ? (
+            <View style={twStyle("mb-3 w-full rounded-lg bg-slate-50 px-3 py-2")}>
+              <Text style={twStyle("text-xs font-semibold text-slate-500")}>{bk("lastVisitMemory")}</Text>
+              {b.client_memory.last_offering_name || b.client_memory.last_staff_name ? (
+                <Text style={twStyle("text-sm text-slate-800 mt-1")}>
+                  {[b.client_memory.last_offering_name, b.client_memory.last_staff_name].filter(Boolean).join(" · ")}
+                </Text>
+              ) : null}
+              {b.client_memory.service_note ? (
+                <Text style={twStyle("text-xs text-slate-600 mt-1")}>{b.client_memory.service_note}</Text>
+              ) : null}
+              {b.client_memory.explore_post_id ? (
+                <TouchableOpacity
+                  onPress={() =>
+                    router.push(
+                      `/(app)/(tabs)/more/explore-posts?openPostId=${encodeURIComponent(
+                        b.client_memory?.explore_post_id ?? "",
+                      )}&openPostMode=view` as never,
+                    )
+                  }
+                  style={twStyle("mt-2 self-start")}
+                  accessibilityRole="link"
+                >
+                  <Text style={twStyle("text-xs font-semibold text-indigo-700")}>{bk("viewLook")}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : null}
           <BookingLiveSyncIndicator lastUpdatedAt={lastLiveUpdateAt} />
           {isEnRoute || isArrived ? (
             <View style={twStyle("mb-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2")}>
@@ -5926,12 +5962,14 @@ export default function BookingDetailScreen() {
         primaryServiceName={primaryServiceName}
         primaryOfferingId={services[0]?.offering_id ?? services[0]?.service_id ?? undefined}
         hasExistingRating={hasProviderClientRating === true}
-        showShareBookingLink={
+        walkInOrUnpaidComplete={
           b?.status === "completed" && Number(b?.total_paid ?? 0) <= 0.009
         }
         providerPublicBookUrl={
-          providerProfile?.id
-            ? `${APP_URL.replace(/\/$/, "")}/booking?provider_id=${encodeURIComponent(providerProfile.id)}`
+          providerProfile?.slug
+            ? buildProviderPublicBookUrl(APP_URL, providerProfile.slug, {
+                serviceId: services[0]?.offering_id ?? services[0]?.service_id ?? undefined,
+              })
             : null
         }
         clientDisplayName={b?.customers?.full_name ?? null}

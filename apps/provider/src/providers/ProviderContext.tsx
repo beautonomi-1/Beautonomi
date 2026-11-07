@@ -39,6 +39,7 @@ interface Location {
 
 interface ProviderProfile {
   id: string;
+  slug?: string | null;
   business_name: string;
   business_type: "freelancer" | "salon";
   email: string;

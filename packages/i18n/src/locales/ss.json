@@ -13780,7 +13780,15 @@
       "shareMediaFailedTitle": "Couldn't yabelana media",
       "shareMediaFailedBody": "Asikwatanga kulungiselela lelifayela kutsi sabelane ngalo. Yetama kwabelana ngesixhumanisi esikhundleni saloko.",
       "loadingComments": "Iyalayisha...",
-      "loadMoreComments": "Layisha leminye imibono"
+      "loadMoreComments": "Layisha leminye imibono",
+      "errorDeleteComment": "Ayikwazanga kususa lemibono. Sicela uphindze wetame.",
+      "deleteCommentTitle": "Sula lemibono?",
+      "deleteCommentBody": "Loku kususa umbono kubo bonkhe.",
+      "deleteComment": "Sula",
+      "commentsLoadFailed": "Ayikwazanga kulayisha imibono.",
+      "signInToComment": "Ngena kutsi uphawule",
+      "replyingTo": "Uphendvula ku-{{name}}",
+      "commentTooLong": "{{count}} / 200"
     },
     "searchScreen": {
       "title": "Sesha",
@@ -14406,6 +14414,13 @@
           "shopContinueCta": "Buka i-oda",
           "shopPendingSubtext": "Sitawubuyeketa i-oda lakho kungakapheli imizuzu lembalwa. Ungachubeka usebentisa le-app ngesikhatsi sicinisekisa nebhange lakho.",
           "shopFailedSubtext": "Uma ngabe ukhokhiswe, i-oda lakho lisatawucinisekiswa uma sekufike inkhokhelo. Sicela uhlole ithebhu yakho yema-Oda."
+        },
+        "payableOrdersBanner": {
+          "titleCart": "Ilindzele inkokhelo",
+          "titleOrders": "Ilindzele inkokhelo",
+          "retry": "Ayikwazanga kulayisha wonkhe ema-oda langakhokhelwanga. Phindze wetame.",
+          "showLess": "Khombisa lokuncane",
+          "viewAll": "Buka konkhe"
         }
       },
       "tabs": {
@@ -14836,7 +14851,9 @@
           "total": "Siphelele",
           "alsoCheckoutOnWeb": "Also kukhokha on web",
           "pickupLocationsMore": "{{count}} tindzawo tekutsatfwa — khetsa ekuphumeni",
-          "deliveryEtaDays": "Kuletfwa okulinganisiwe ngaphakatsi kwemalanga emsebenti langu-{{days}}"
+          "deliveryEtaDays": "Kuletfwa okulinganisiwe ngaphakatsi kwemalanga emsebenti langu-{{days}}",
+          "paymentDueHeading": "Ilindzele inkokhelo",
+          "paymentDueRetry": "Ayikwazanga kulayisha wonkhe ema-oda langakhokhelwanga. Phindze wetame."
         },
         "productCheckout": {
           "title": "Kukhokha",
@@ -18176,7 +18193,8 @@
     "cart": "Inqola",
     "exploreVideo": {
       "unmute": "Vula umsindvo",
-      "mute": "Thulisa"
+      "mute": "Thulisa",
+      "replay": "Dlala futsi"
     },
     "bankAccounts": {
       "failedLoadBanks": "Ayikhonanga ku-layisha banks. zama futsi.",
@@ -18456,7 +18474,8 @@
     "rescheduleReplacesPreviousBody": "Sikhatsi sakho sekucala sikhanselwa ngekwenteka, mahhala, uma inkokhelo yalebhuku iphela. Lokukhokhile kusetjentiswa lapha, futsi lokusele kuhlala esikhwameni sakho.",
     "rescheduleCreditNote": "Imali lenkhulu losewuyikhokhe nge-inthanethi ngebhuku lekucala isetjentiswa lapha. Ukhokha umehluko kuphela.",
     "rescheduleCreditApplied": "Ikhokhwe ebhukwini lakho lekucala",
-    "rescheduleCreditSurplus": "Lokusele lokungu-{{amount}} kuhlala esikhwameni sakho njengesikweleti."
+    "rescheduleCreditSurplus": "Lokusele lokungu-{{amount}} kuhlala esikhwameni sakho njengesikweleti.",
+    "stylistReceives": "{{name}} utfola"
   },
   "payments": {
     "pay": "Khokha",
@@ -19105,7 +19124,9 @@
         "continueWithCount": "chubeka with {{count}} tinsita",
         "changeService": "Shintja",
         "selectedServiceMore": " (+{{count}})",
-        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} emizuzu"
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} emizuzu",
+        "stylistReceivesFallback": "Stylist yakho",
+        "stylistReceives": "{{name}} utfola"
       },
       "confirmation": {
         "loadingMessage": "Iyalayisha Kucinisekisa kubhuka...",
@@ -36463,6 +36484,15 @@
       "cancelFailed": "Ayikhonanga ku-khansela your spot.",
       "sessionCancelled": "Leliseshini lelicembu likhanseliwe.",
       "sessionCancelledPaid": "Leliseshini lelicembu likhanseliwe. Imali lenkhulu loyikhokhele ingxenye yakho ibuyiselwa ngakuphelele ekhadini lowakhokha ngalo."
+    },
+    "components": {
+      "payableOrdersBanner": {
+        "titleCart": "Ilindzele inkokhelo",
+        "titleOrders": "Ilindzele inkokhelo",
+        "retry": "Ayikwazanga kulayisha wonkhe ema-oda langakhokhelwanga. Phindze wetame.",
+        "showLess": "Khombisa lokuncane",
+        "viewAll": "Buka konkhe"
+      }
     }
   },
   "errors": {

@@ -86,20 +86,51 @@ export async function ensurePublicUserRowExists(authUser: AuthUser): Promise<boo
 export async function getUserRoleServer(
   supabase: Awaited<ReturnType<typeof import("@/lib/supabase/server").getSupabaseServer>>
 ): Promise<UserRoleResult | null> {
-  const {
-    data: { user: authUser },
-    error: authError,
-  } = await supabase.auth.getUser();
+  let authUser: Awaited<ReturnType<typeof supabase.auth.getUser>>["data"]["user"] = null;
+  try {
+    const { data, error: authError } = await supabase.auth.getUser();
+    if (authError || !data.user) return null;
+    authUser = data.user;
+  } catch {
+    // Bearer setSession can throw from a non-auth failure. That must not become
+    // a 500 — the mobile gate renders "Couldn't verify your account" for any
+    // non-401. No user means the route returns 401.
+    return null;
+  }
+  if (!authUser) return null;
 
-  if (authError || !authUser) return null;
+  // Cookie sessions read public.users through RLS. Bearer clients sometimes
+  // cannot: createSupabaseClientFromToken stores the access token as the
+  // refresh token, and a failed refresh makes PostgREST fall back to the anon
+  // key. The row still exists (web login proves it). Read it with the admin
+  // client after getUser() has already verified the JWT.
+  let userRow: { id: string; role: string } | null = null;
+  try {
+    const { data, error: userError } = await supabase
+      .from("users")
+      .select("id, role")
+      .eq("id", authUser.id)
+      .maybeSingle();
+    if (!userError && data?.role) userRow = data;
+  } catch {
+    userRow = null;
+  }
 
-  const { data: userRow, error: userError } = await supabase
-    .from("users")
-    .select("id, role")
-    .eq("id", authUser.id)
-    .single();
+  if (!userRow?.role) {
+    try {
+      const admin = getSupabaseAdmin();
+      const { data } = await admin
+        .from("users")
+        .select("id, role")
+        .eq("id", authUser.id)
+        .maybeSingle();
+      if (data?.role) userRow = data;
+    } catch {
+      userRow = null;
+    }
+  }
 
-  if (userError || !userRow?.role) return null;
+  if (!userRow?.role) return null;
 
   const rawRole = userRow.role as UsersRoleFromDb;
   const role = await resolveEffectiveProviderRole(userRow.id, rawRole, { persist: false });
@@ -109,13 +140,27 @@ export async function getUserRoleServer(
 
   if (role === "provider_owner" || role === "provider_staff" || role === "provider_onboarding") {
     provider_id = await getProviderIdForUser(authUser.id, supabase);
+    let statusClient: typeof supabase | ReturnType<typeof getSupabaseAdmin> = supabase;
+    if (!provider_id) {
+      try {
+        const admin = getSupabaseAdmin();
+        provider_id = await getProviderIdForUser(authUser.id, admin);
+        statusClient = admin;
+      } catch {
+        provider_id = null;
+      }
+    }
     if (provider_id) {
-      const { data: prov } = await supabase
-        .from("providers")
-        .select("status")
-        .eq("id", provider_id)
-        .single();
-      provider_status = (prov?.status as ProviderStatus) ?? null;
+      try {
+        const { data: prov } = await statusClient
+          .from("providers")
+          .select("status")
+          .eq("id", provider_id)
+          .maybeSingle();
+        provider_status = (prov?.status as ProviderStatus) ?? null;
+      } catch {
+        provider_status = null;
+      }
     }
   }
 

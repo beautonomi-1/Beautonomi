@@ -242,6 +242,8 @@ export function buildSubmitPayload(formData: Partial<OnboardingFormData>): Recor
     address: {
       line1: formData.address?.line1 || "",
       line2: formData.address?.line2 ?? null,
+      neighborhood: formData.address?.neighborhood?.trim() || null,
+      metro: formData.address?.metro?.trim() || null,
       city: formData.address?.city || "",
       state: formData.address?.state ?? null,
       postal_code: formData.address?.postal_code ?? null,

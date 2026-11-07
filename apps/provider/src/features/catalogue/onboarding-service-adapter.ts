@@ -3,12 +3,18 @@ import { buildServicePayload } from "./buildServicePayload";
 import { validateServiceForm } from "./validateServiceForm";
 import { pricingOptionsFromService } from "./types";
 import { DEFAULT_SERVICE_FORM_STATE, type ServiceFormState } from "./service-form-state";
+import { defaultRebookReminderForNewOffering } from "@beautonomi/utils";
 
 export function onboardingServiceToFormState(
   service: OnboardingService,
   categoryId?: string,
 ): ServiceFormState {
   const base = DEFAULT_SERVICE_FORM_STATE();
+  const rebookDefaults = defaultRebookReminderForNewOffering({
+    // Onboarding category hint is a name, not a slug — still enough for heuristics (e.g. "Hair").
+    categorySlug: categoryId ?? service.provider_category_name ?? null,
+    title: service.title ?? "",
+  });
   return {
     ...base,
     name: service.title || "",
@@ -26,6 +32,8 @@ export function onboardingServiceToFormState(
     taxRate: String(service.tax_rate ?? 0),
     extraTimeEnabled: service.extra_time_enabled ?? false,
     extraTimeDuration: String(service.extra_time_duration ?? 15),
+    reminderToRebookEnabled: rebookDefaults.reminder_to_rebook_enabled,
+    reminderToRebookWeeks: String(rebookDefaults.reminder_to_rebook_weeks),
     pricingOptions: pricingOptionsFromService(service),
   };
 }

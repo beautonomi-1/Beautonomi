@@ -19,6 +19,7 @@ export type SearchSuggestion = {
   slug?: string;
   image_url?: string | null;
   distance_km?: number;
+  place_label?: string;
 };
 
 type SearchQueryBarProps = {
@@ -189,6 +190,9 @@ export function SearchQueryBarWithSuggestions({
                   )}
                   <span className="min-w-0">
                     <span className="block truncate font-medium text-gray-900">{s.name}</span>
+                    {s.type === "provider" && s.place_label ? (
+                      <span className="block text-xs text-gray-500 mt-0.5 truncate">{s.place_label}</span>
+                    ) : null}
                     <span className="block text-xs text-gray-500 capitalize mt-0.5">
                       {s.type === "service" && s.category ? `${s.category} · ` : ""}
                       {s.type === "service" ? t("web.search.suggestion.service") : s.type === "provider" ? t("web.search.suggestion.provider") : t("web.search.suggestion.category")}

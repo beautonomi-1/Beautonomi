@@ -37,6 +37,8 @@ type LocationData = {
   name: string;
   address_line1?: string;
   address_line2?: string;
+  neighborhood?: string;
+  metro?: string;
   city?: string;
   state?: string;
   postal_code?: string;
@@ -68,6 +70,8 @@ export default function EditLocationScreen() {
   const [state, setState] = useState("");
   const [postal_code, setPostalCode] = useState("");
   const [country, setCountry] = useState("");
+  const [neighborhood, setNeighborhood] = useState("");
+  const [metro, setMetro] = useState("");
   const [phoneE164, setPhoneE164] = useState("");
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
@@ -110,6 +114,8 @@ export default function EditLocationScreen() {
     setState(d.state ?? "");
     setPostalCode(d.postal_code ?? "");
     setCountry(d.country ?? "");
+    setNeighborhood(d.neighborhood ?? "");
+    setMetro(d.metro ?? "");
     setPhoneE164(d.phone ?? "");
     setLatitude(d.latitude ?? null);
     setLongitude(d.longitude ?? null);
@@ -159,6 +165,8 @@ export default function EditLocationScreen() {
       state: state.trim() || null,
       postal_code: postal_code.trim() || null,
       country: trimmedCountry,
+      neighborhood: neighborhood.trim() || null,
+      metro: metro.trim() || null,
       phone: phoneE164.trim() || null,
       latitude: latitude ?? null,
       longitude: longitude ?? null,
@@ -173,7 +181,7 @@ export default function EditLocationScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     Alert.alert(ld("savedTitle"), ld("savedBody"));
     refresh();
-  }, [locationId, name, address_line1, address_line2, city, state, postal_code, country, phoneE164, latitude, longitude, is_primary, is_active, refresh, t, ld, FIELD_LABELS]);
+  }, [locationId, name, address_line1, address_line2, neighborhood, metro, city, state, postal_code, country, phoneE164, latitude, longitude, is_primary, is_active, refresh, t, ld, FIELD_LABELS]);
 
   const handleDelete = useCallback(() => {
     Alert.alert(
@@ -217,6 +225,8 @@ export default function EditLocationScreen() {
         setState(mapped.state || "");
         setPostalCode(mapped.postal_code || "");
         setCountry(mapped.country || defaultCountry);
+        setNeighborhood(mapped.neighborhood || "");
+        setMetro(mapped.metro || "");
         setLatitude(mapped.latitude);
         setLongitude(mapped.longitude);
       } else {
@@ -244,6 +254,8 @@ export default function EditLocationScreen() {
         setState(mapped.state);
         setPostalCode(mapped.postal_code);
         setCountry(mapped.country);
+        setNeighborhood(mapped.neighborhood || "");
+        setMetro(mapped.metro || "");
         setLatitude(mapped.latitude);
         setLongitude(mapped.longitude);
       } else {
@@ -337,6 +349,8 @@ export default function EditLocationScreen() {
                 value={address_line1}
                 onSelect={(addr) => {
                   setAddressLine1(addr.address_line1);
+                  setNeighborhood(addr.neighborhood || "");
+                  setMetro(addr.metro || "");
                   setCity(addr.city);
                   setState(addr.state);
                   setPostalCode(addr.postal_code);

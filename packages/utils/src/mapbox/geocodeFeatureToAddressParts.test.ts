@@ -62,6 +62,8 @@ describe("mapGeocodeFeatureToAddressParts", () => {
       address_line1: "12 Long Street",
       address_line2: "Gardens",
       city: "Cape Town",
+      metro: "Cape Town",
+      neighborhood: "Gardens",
     });
   });
 });

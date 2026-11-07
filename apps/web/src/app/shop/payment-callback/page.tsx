@@ -6,6 +6,8 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { CheckCircle, XCircle, Loader2, ShoppingBag, RotateCcw } from "lucide-react";
 import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
 import Link from "next/link";
+import { getAmplitudeInstance } from "@/lib/analytics/amplitude/client";
+import { EVENT_PRODUCT_ORDER_PAY_OUTCOME } from "@/lib/analytics/amplitude/types";
 
 function ProductPaymentCallbackInner() {
   const searchParams = useSearchParams();
@@ -83,6 +85,11 @@ function ProductPaymentCallbackInner() {
           setStatus("success");
           setOrderNumber(result.data?.orderNumber ?? "");
           setMessage("Payment successful! Your order has been confirmed.");
+          getAmplitudeInstance()?.track(EVENT_PRODUCT_ORDER_PAY_OUTCOME, {
+            portal: "web",
+            order_id: result.data?.productOrderId ?? undefined,
+            outcome: "verified_success",
+          });
 
           notifyWebView({
             type: "checkout_success",
@@ -96,6 +103,11 @@ function ProductPaymentCallbackInner() {
         } else if (result.status === "failed") {
           setStatus("error");
           setMessage(result.errorMessage || "Payment could not be confirmed.");
+          getAmplitudeInstance()?.track(EVENT_PRODUCT_ORDER_PAY_OUTCOME, {
+            portal: "web",
+            order_id: result.data?.productOrderId ?? undefined,
+            outcome: "verified_failed",
+          });
           notifyWebView({
             type: "checkout_failed",
             payment_type: "product_order",
@@ -112,6 +124,11 @@ function ProductPaymentCallbackInner() {
           setMessage(
             "We are still confirming your payment. Your order will appear in My Orders shortly.",
           );
+          getAmplitudeInstance()?.track(EVENT_PRODUCT_ORDER_PAY_OUTCOME, {
+            portal: "web",
+            order_id: result.data?.productOrderId ?? undefined,
+            outcome: "verified_pending",
+          });
           notifyWebView({
             type: "checkout_pending",
             payment_type: "product_order",
@@ -129,6 +146,10 @@ function ProductPaymentCallbackInner() {
             ? `We are still confirming your payment. ${error.message}`
             : "We are still confirming your payment. Please check My Orders in a few minutes.",
         );
+        getAmplitudeInstance()?.track(EVENT_PRODUCT_ORDER_PAY_OUTCOME, {
+          portal: "web",
+          outcome: "verified_pending",
+        });
         notifyWebView({
           type: "checkout_pending",
           payment_type: "product_order",

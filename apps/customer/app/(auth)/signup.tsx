@@ -18,12 +18,14 @@ import { navigateAfterNewCustomerSignup } from "@/lib/customer-auth-routing";
 import { trackSignUp, trackSignUpStart } from "@/lib/analytics";
 import {
   coerceMobileUiLanguage,
+  formatLanguageOptionLabel,
   normalizeLanguageCode,
   reviewedUiLanguageOptions,
   SIGNUP_SOURCE_OPTIONS,
   useTranslation,
 } from "@beautonomi/i18n";
 import { changeLanguage } from "@/lib/i18n";
+import * as Localization from "expo-localization";
 import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { getSocialAuthConfig } from "@/lib/third-party-config";
@@ -49,7 +51,8 @@ const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
 const PENDING_PREFERRED_LANGUAGE_KEY = "beautonomi_pending_preferred_language";
 
 function getDefaultLanguage(): string {
-  return "en";
+  const locale = Localization.getLocales()[0];
+  return coerceMobileUiLanguage(locale?.languageTag || locale?.languageCode || "en");
 }
 
 const PRIMARY = Colors.primary;
@@ -947,7 +950,10 @@ export default function SignupScreen() {
           accessibilityLabel={t("auth.preferredLanguage")}
         >
           <Text style={{ fontSize: 15, color: "#111827" }}>
-            {visibleLanguages.find((l) => l.code === preferredLanguage)?.nativeName ?? visibleLanguages[0]?.nativeName}
+            {formatLanguageOptionLabel(
+              visibleLanguages.find((l) => l.code === preferredLanguage) ??
+                visibleLanguages[0] ?? { nativeName: "English", name: "English" },
+            )}
           </Text>
           <Ionicons name="chevron-down" size={18} color="#6B7280" />
         </TouchableOpacity>
@@ -1403,7 +1409,7 @@ export default function SignupScreen() {
                       fontWeight: preferredLanguage === lang.code ? "700" : "400",
                     }}
                   >
-                    {lang.nativeName}
+                    {formatLanguageOptionLabel(lang)}
                   </Text>
                   {preferredLanguage === lang.code && <Ionicons name="checkmark-circle" size={20} color={PRIMARY} />}
                 </TouchableOpacity>

@@ -1484,6 +1484,16 @@ export default function DashboardScreen() {
           <Text style={{ marginTop: -6, marginBottom: 8, fontSize: 11, color: Colors.gray[500] }}>
             {db("channelFootnote")}
           </Text>
+          {(activePeriod?.channel_mix?.online ?? 0) +
+            (activePeriod?.channel_mix?.walk_in ?? 0) +
+            (activePeriod?.channel_mix?.provider ?? 0) >
+            0 &&
+          (activePeriod?.channel_mix?.walk_in ?? 0) + (activePeriod?.channel_mix?.provider ?? 0) >
+            (activePeriod?.channel_mix?.online ?? 0) ? (
+            <Text style={{ marginTop: -4, marginBottom: 8, fontSize: 11, color: Colors.gray[600] }}>
+              {db("channelMixNudge")}
+            </Text>
+          ) : null}
           <View style={{ flexDirection: "row", marginBottom: 12 }}>
             <View
               style={{

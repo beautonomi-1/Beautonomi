@@ -17,6 +17,7 @@ export interface ProductOrder {
   payment_method?: string | null;
   order_source?: string | null;
   amount_still_due?: number | null;
+  currency?: string | null;
   created_at: string;
   tracking_number: string | null;
   items: OrderItem[];

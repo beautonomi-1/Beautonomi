@@ -110,7 +110,7 @@ Examples:
 | `ads_budget_paid` | amount, currency, transaction_id, campaign_id, provider_id | Server |
 | `apple_iap_verified` | amount, currency, transaction_id, product_id | Server |
 
-### Client commerce funnel (12 events)
+### Client commerce funnel (15 events)
 | Event | Properties | Platforms |
 |-------|-----------|-----------|
 | `payment_method_selected` | method | Web, Customer |
@@ -121,6 +121,9 @@ Examples:
 | `product_checkout_started` | item_count, total | Web, Customer |
 | `product_order_placed` | order_id | Web, Customer |
 | `product_return_requested` | order_id | Web, Customer |
+| `payable_orders_banner_shown` | portal, context, count, complete | Web, Customer |
+| `payable_orders_pay_clicked` | portal, context, order_id, provider_id?, amount_due?, currency? | Web, Customer |
+| `product_order_pay_outcome` | portal, order_id?, outcome, amount_due?, currency? | Web, Customer |
 | `shop_browsed` | — | Web, Customer |
 | `gift_card_checkout_start` | amount | Web, Customer |
 | `custom_request_created` | provider_id | Web, Customer |

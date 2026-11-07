@@ -18,7 +18,7 @@ import {
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useVideoPlayer, VideoView } from "expo-video";
+import { useVideoPlayer, VideoView, type VideoPlayer } from "expo-video";
 import { ExploreTextOverlayLayer } from "@/components/explore/ExploreTextOverlayLayer";
 import {
   filterOverlaysForPlaybackTime,
@@ -48,26 +48,33 @@ import {
 } from "@/lib/share-explore-post";
 import { getExploreVideoPlaybackTrimWindow } from "@/lib/explore-video-playback-trim";
 import { useExploreTrimLoop } from "@/hooks/useExploreTrimLoop";
+import { runVideoPlayer, withVideoPlayer } from "@/lib/video-player-access";
 import {
   appendExploreCommentPage,
   nextOffsetAfterEmptyCommentPage,
   appendExploreReelVideos,
+  exploreClipPlayheadAtEnd,
+  exploreClipShowsReplay,
   exploreClipWatchedMs,
+  exploreCommentTotal,
   placeExploreComment,
+  removeExploreComment,
+  removedExploreCommentCount,
   preserveReelEngagement,
   reelHasAnotherPage,
-  pendingReelAdvanceStillApplies,
-  shouldAdvanceExploreReel,
-  shouldCompleteExploreReelClip,
 } from "@/lib/explore-reel-feed";
-import {
-  ExploreVideoReelEndMark,
-  ExploreVideoReelSideLogo,
-} from "@/components/explore/ExploreVideoReelBrand";
+import { ExploreVideoReelSideLogo } from "@/components/explore/ExploreVideoReelBrand";
 import { trackExploreView, trackExploreWatchProgress } from "@/lib/explore-analytics";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
 import { useUserBlocks } from "@/hooks/useUserBlocks";
+import { useSocialCapability } from "@/hooks/useSafetySettings";
+import {
+  ExploreCommentComposer,
+  ExploreCommentList,
+  exploreReplyTarget,
+  type ExploreReplyTarget,
+} from "@/components/explore/ExploreCommentThread";
 import {
   ContentReportSheet,
   type ContentReportTargetType,
@@ -123,15 +130,14 @@ function ExploreVideoPlayer({
   post,
   active,
   muted,
-  onReelEnd,
   onPlayingChange,
 }: {
   post: ExplorePost;
   active: boolean;
   muted: boolean;
-  onReelEnd?: () => void;
   onPlayingChange?: (playing: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const useSoundTrack = Boolean(post.sound_url);
   const effectiveMuted = muted || useSoundTrack;
   const slide0 = post.media_meta?.[0];
@@ -151,89 +157,97 @@ function ExploreVideoPlayer({
     }) ?? post.media_urls?.[0] ?? "";
   const [progress, setProgress] = useState(0);
   const [playbackTimeMs, setPlaybackTimeMs] = useState(0);
-  const [clipEnded, setClipEnded] = useState(false);
-  const reelEndFiredRef = useRef(false);
-  const playedIntoClipRef = useRef(false);
+  const [showReplay, setShowReplay] = useState(false);
   const playedActiveRef = useRef(false);
+  const watchedMsRef = useRef(0);
+  const finishedRef = useRef(false);
   const playingPostIdRef = useRef<string | null>(null);
-  const wasActiveRef = useRef(active);
+  const playerRef = useRef<VideoPlayer | null>(null);
+  const playbackSampleRef = useRef({ time: 0, duration: 0 });
+  // useVideoPlayer releases the native object in an earlier cleanup than the
+  // effects below. Pause first, and never read currentTime/duration after that.
+  useEffect(() => {
+    return () => {
+      const current = playerRef.current;
+      if (!current) return;
+      runVideoPlayer(() => {
+        current.pause();
+      });
+    };
+  }, []);
   const player = useVideoPlayer(uri, (p) => {
-    p.loop = onReelEnd ? false : trimStartMs == null;
+    p.loop = trimStartMs == null;
     p.muted = effectiveMuted;
     if (!active) p.pause();
     else p.play();
   });
+  playerRef.current = player;
 
   useEffect(() => {
-    reelEndFiredRef.current = false;
-    playedIntoClipRef.current = false;
-  }, [post.id, active]);
-
-  const handleReelEnd = useCallback(() => {
-    if (!onReelEnd) return;
-    if (
-      !shouldCompleteExploreReelClip({
-        active,
-        seeking: false,
-        playedInside: playedIntoClipRef.current,
-        alreadyCompleted: reelEndFiredRef.current,
-      })
-    ) {
-      return;
-    }
-    reelEndFiredRef.current = true;
-    setClipEnded(true);
-    const watched = exploreClipWatchedMs(player.currentTime || 0, trimStartMs, trimEndMs);
-    if (watched > 0) void trackExploreWatchProgress(post.id, watched);
-    onReelEnd?.();
-  }, [active, onReelEnd, player, post.id, trimEndMs, trimStartMs]);
-
-  useExploreTrimLoop(
-    player,
-    trimStartMs,
-    trimEndMs,
-    active,
-    onReelEnd
-      ? {
-          onTrimEnd: () => {
-            // The trim hook already required an interior sample. The 200ms progress
-            // sampler can miss that window and would otherwise drop the advance.
-            playedIntoClipRef.current = true;
-            handleReelEnd();
-          },
-        }
-      : undefined,
-  );
+    finishedRef.current = false;
+    setShowReplay(false);
+  }, [post.id]);
 
   useEffect(() => {
-    if (!active || !onReelEnd) return;
-    const sub = player.addListener("playToEnd", () => handleReelEnd());
-    return () => sub.remove();
-  }, [active, handleReelEnd, onReelEnd, player]);
+    if (!active) setShowReplay(false);
+  }, [active]);
+
+  const restartClip = useCallback(() => {
+    finishedRef.current = false;
+    setShowReplay(false);
+    setProgress(0);
+    setPlaybackTimeMs(0);
+    const start = (trimStartMs ?? 0) / 1000;
+    runVideoPlayer(() => {
+      player.currentTime = start;
+      player.play();
+    });
+  }, [player, trimStartMs]);
+
+  useExploreTrimLoop(player, trimStartMs, trimEndMs, active);
 
   useEffect(() => {
-    player.muted = !active || effectiveMuted;
+    if (!active) return;
+    const start = (trimStartMs ?? 0) / 1000;
+    const sub = player.addListener("playToEnd", () => {
+      finishedRef.current = true;
+      runVideoPlayer(() => {
+        player.currentTime = start;
+        player.play();
+      });
+    });
+    return () => {
+      runVideoPlayer(() => sub.remove());
+    };
+  }, [active, player, trimStartMs]);
+
+  useEffect(() => {
+    runVideoPlayer(() => {
+      player.muted = !active || effectiveMuted;
+    });
   }, [active, effectiveMuted, player]);
 
   useEffect(() => {
-    if (active && !wasActiveRef.current) setClipEnded(false);
-    wasActiveRef.current = active;
-  }, [active]);
-
-  useEffect(() => {
     if (!active) {
-      player.pause();
+      runVideoPlayer(() => player.pause());
       return;
     }
     playingPostIdRef.current = post.id;
     playedActiveRef.current = true;
-    if (trimStartMs != null) {
-      const target = trimStartMs / 1000;
-      if (Math.abs((player.currentTime || 0) - target) > 0.05) player.currentTime = target;
-    } else if ((player.duration || 0) > 0 && (player.currentTime || 0) >= player.duration - 0.1) {
-      player.currentTime = 0;
-    }
-    if (!reelEndFiredRef.current) player.play();
+    watchedMsRef.current = 0;
+    runVideoPlayer(() => {
+      const time = player.currentTime || 0;
+      const duration = player.duration || 0;
+      const start = (trimStartMs ?? 0) / 1000;
+      const atEnd =
+        finishedRef.current ||
+        exploreClipPlayheadAtEnd({ currentSec: time, durationSec: duration, trimEndMs });
+      if (atEnd || (trimStartMs != null && time < start - 0.05)) {
+        player.currentTime = start;
+      }
+      finishedRef.current = false;
+      player.play();
+    });
     void trackExploreView(post.id);
     return () => {
       const playedId = playingPostIdRef.current;
@@ -243,7 +257,12 @@ function ExploreVideoPlayer({
         return;
       }
       playedActiveRef.current = false;
-      const watched = exploreClipWatchedMs(player.currentTime || 0, trimStartMs, trimEndMs);
+      const live = exploreClipWatchedMs(
+        withVideoPlayer(() => player.currentTime || 0, playbackSampleRef.current.time),
+        trimStartMs,
+        trimEndMs,
+      );
+      const watched = Math.max(watchedMsRef.current, live);
       if (watched > 0 && playedId) void trackExploreWatchProgress(playedId, watched);
     };
   }, [active, player, post.id, trimEndMs, trimStartMs]);
@@ -251,14 +270,27 @@ function ExploreVideoPlayer({
   useEffect(() => {
     if (!active) return;
     const timer = setInterval(() => {
-      onPlayingChange?.(Boolean(player.playing));
-      const t = player.currentTime || 0;
-      if (trimStartMs == null && t > 0.25) playedIntoClipRef.current = true;
-      if (trimStartMs != null && trimEndMs != null) {
-        const rel = Math.max(0, t * 1000 - trimStartMs);
-        const len = trimEndMs - trimStartMs;
-        if (rel > 200 && rel < len - 80) playedIntoClipRef.current = true;
-      }
+      const sample = withVideoPlayer(() => {
+        return {
+          playing: Boolean(player.playing),
+          t: player.currentTime || 0,
+          duration: player.duration || 0,
+        };
+      }, null);
+      if (!sample) return;
+      playbackSampleRef.current = { time: sample.t, duration: sample.duration };
+      onPlayingChange?.(sample.playing);
+      const t = sample.t;
+      const atEnd = exploreClipPlayheadAtEnd({
+        currentSec: t,
+        durationSec: sample.duration,
+        trimEndMs,
+      });
+      if (atEnd) finishedRef.current = true;
+      else if (sample.playing) finishedRef.current = false;
+      const watched = exploreClipWatchedMs(t, trimStartMs, trimEndMs);
+      if (watched > watchedMsRef.current) watchedMsRef.current = watched;
+      setShowReplay(exploreClipShowsReplay(sample.playing, atEnd));
       if (trimStartMs != null && trimEndMs != null) {
         const lenMs = trimEndMs - trimStartMs;
         const relMs = Math.max(0, Math.floor(t * 1000) - trimStartMs);
@@ -267,8 +299,7 @@ function ExploreVideoPlayer({
         return;
       }
       setPlaybackTimeMs(Math.floor(t * 1000));
-      const duration = player.duration || 0;
-      if (duration > 0) setProgress(Math.min(1, t / duration));
+      if (sample.duration > 0) setProgress(Math.min(1, t / sample.duration));
     }, 200);
     return () => clearInterval(timer);
   }, [active, onPlayingChange, player, trimStartMs, trimEndMs]);
@@ -277,15 +308,10 @@ function ExploreVideoPlayer({
   const visibleOverlays = drawOverlays
     ? filterOverlaysForPlaybackTime(slide0?.text_overlays, playbackTimeMs)
     : [];
-  const clipDurationMs =
-    trimStartMs != null && trimEndMs != null
-      ? trimEndMs - trimStartMs
-      : Math.max(0, Math.floor((player.duration || 0) * 1000));
-
   return (
     <View style={{ flex: 1 }}>
       {post.sound_url ? (
-        <ExploreSoundBed soundUrl={post.sound_url} active={active} muted={muted || clipEnded} />
+        <ExploreSoundBed soundUrl={post.sound_url} active={active} muted={muted} />
       ) : null}
       <VideoView
         player={player}
@@ -294,7 +320,28 @@ function ExploreVideoPlayer({
         nativeControls={false}
       />
       {drawOverlays ? <ExploreTextOverlayLayer overlays={visibleOverlays} /> : null}
-      {onReelEnd ? <ExploreVideoReelEndMark progress={progress} durationMs={clipDurationMs} /> : null}
+      {showReplay ? (
+        <TouchableOpacity
+          onPress={restartClip}
+          accessibilityRole="button"
+          accessibilityLabel={t("customer.exploreVideo.replay")}
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            width: 72,
+            height: 72,
+            marginTop: -36,
+            marginLeft: -36,
+            borderRadius: 36,
+            backgroundColor: "rgba(0,0,0,0.55)",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons name="refresh" size={36} color="#fff" />
+        </TouchableOpacity>
+      ) : null}
       <View
         style={{
           position: "absolute",
@@ -322,7 +369,6 @@ function VideoFeedItem({
   onOpenComments,
   onShare,
   onMorePress,
-  onReelEnd,
 }: {
   post: ExplorePost;
   active: boolean;
@@ -334,7 +380,6 @@ function VideoFeedItem({
   onOpenComments: () => void;
   onShare: () => void;
   onMorePress: () => void;
-  onReelEnd?: () => void;
 }) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -363,7 +408,6 @@ function VideoFeedItem({
         post={post}
         active={active}
         muted={muted}
-        onReelEnd={onReelEnd}
         onPlayingChange={active ? setClipPlaying : undefined}
       />
       <Animated.View
@@ -477,6 +521,9 @@ export default function ExploreVideoScreen() {
   const { user } = useAuth();
   const { t } = useTranslation();
   const { confirmBlockUser } = useUserBlocks();
+  const socialInteractions = useSocialCapability("comment");
+  const canComment = socialInteractions.allowed;
+  const commentInputRef = useRef<TextInput>(null);
 
   const [posts, setPosts] = useState<ExplorePost[]>([]);
   const [reportTarget, setReportTarget] = useState<{
@@ -490,14 +537,14 @@ export default function ExploreVideoScreen() {
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [comments, setComments] = useState<ExploreComment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsError, setCommentsError] = useState(false);
   const [commentsOffset, setCommentsOffset] = useState(0);
   const [hasMoreComments, setHasMoreComments] = useState(false);
   const [commentInput, setCommentInput] = useState("");
   const [commentSending, setCommentSending] = useState(false);
-  const [replyToCommentId, setReplyToCommentId] = useState<string | null>(null);
+  const [replyTo, setReplyTo] = useState<ExploreReplyTarget | null>(null);
   const [nextCursor, setNextCursor] = useState<string | undefined>();
   const [hasMoreFeed, setHasMoreFeed] = useState(true);
-  const [listDragging, setListDragging] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const listRef = useRef<FlatList<ExplorePost>>(null);
@@ -506,8 +553,6 @@ export default function ExploreVideoScreen() {
   const commentsRequestRef = useRef(0);
   postsRef.current = posts;
   const appendInFlightRef = useRef(false);
-  const pendingEndRef = useRef(false);
-  const pendingEndPostIdRef = useRef<string | null>(null);
   const dragClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastOffsetRef = useRef(0);
 
@@ -542,8 +587,6 @@ export default function ExploreVideoScreen() {
     setShareOpen(false);
     setMenuOpen(false);
     setReportTarget(null);
-    pendingEndRef.current = false;
-    pendingEndPostIdRef.current = null;
     setPosts(next);
     if (next.length === 0) {
       router.back();
@@ -694,63 +737,6 @@ export default function ExploreVideoScreen() {
     }
   }, [activeIndex, appendFeedPage, hasMoreFeed, posts.length]);
 
-  const advanceToNextVideo = useCallback(() => {
-    const sheetOpen = commentsOpen || shareOpen || reportTarget != null || menuOpen;
-    if (
-      !shouldAdvanceExploreReel({
-        commentsOpen,
-        shareOpen,
-        reportOpen: reportTarget != null || menuOpen,
-        dragging: listDragging,
-        index: activeIndex,
-        length: posts.length,
-      })
-    ) {
-      const nowhereToGo = activeIndex >= posts.length - 1 && !reelHasAnotherPage(hasMoreFeed, nextCursor);
-      pendingEndRef.current = !nowhereToGo && (sheetOpen || listDragging || activeIndex >= posts.length - 1);
-      pendingEndPostIdRef.current = pendingEndRef.current ? (posts[activeIndex]?.id ?? null) : null;
-      return;
-    }
-    pendingEndRef.current = false;
-    pendingEndPostIdRef.current = null;
-    const next = activeIndex + 1;
-    setActiveIndex(next);
-    listRef.current?.scrollToIndex({ index: next, animated: true });
-  }, [
-    activeIndex,
-    commentsOpen,
-    hasMoreFeed,
-    listDragging,
-    menuOpen,
-    nextCursor,
-    posts,
-    reportTarget,
-    shareOpen,
-  ]);
-
-  useEffect(() => {
-    if (!pendingEndRef.current) return;
-    const activeId = posts[activeIndex]?.id ?? null;
-    if (!pendingReelAdvanceStillApplies(pendingEndPostIdRef.current, activeId)) {
-      pendingEndRef.current = false;
-      pendingEndPostIdRef.current = null;
-      return;
-    }
-    if (commentsOpen || shareOpen || reportTarget || menuOpen || listDragging) return;
-    pendingEndRef.current = false;
-    pendingEndPostIdRef.current = null;
-    advanceToNextVideo();
-  }, [
-    activeIndex,
-    advanceToNextVideo,
-    commentsOpen,
-    listDragging,
-    menuOpen,
-    posts,
-    reportTarget,
-    shareOpen,
-  ]);
-
   const finishListDrag = useCallback(
     (y: number) => {
       if (dragClearTimer.current) {
@@ -759,7 +745,6 @@ export default function ExploreVideoScreen() {
       }
       const next = Math.round(y / screenHeight);
       if (next !== activeIndex && next >= 0 && next < posts.length) setActiveIndex(next);
-      setListDragging(false);
     },
     [activeIndex, posts.length, screenHeight],
   );
@@ -849,18 +834,24 @@ export default function ExploreVideoScreen() {
 
   const closeComments = useCallback(() => {
     setCommentsOpen(false);
-    setReplyToCommentId(null);
+    setReplyTo(null);
     setCommentInput("");
   }, []);
 
-  const loadComments = useCallback(async (postId: string, offset: number, append: boolean) => {
+  const loadComments = useCallback(async (
+    postId: string,
+    offset: number,
+    append: boolean,
+    options?: { keepVisible?: boolean },
+  ) => {
     const requestId = ++commentsRequestRef.current;
-    if (!append) {
+    if (!append && !options?.keepVisible) {
       setComments([]);
       setCommentsOffset(0);
       setHasMoreComments(false);
     }
     setCommentsLoading(true);
+    setCommentsError(false);
     try {
       let cursor = offset;
       let pageAppend = append;
@@ -869,6 +860,10 @@ export default function ExploreVideoScreen() {
           `/api/explore/posts/${postId}/comments?limit=20&offset=${cursor}`,
         );
         if (requestId !== commentsRequestRef.current) return;
+        if (res.error) {
+          setCommentsError(true);
+          return;
+        }
         const raw = res.data as
           | ExploreComment[]
           | { data?: ExploreComment[]; next_offset?: number; has_more?: boolean }
@@ -900,7 +895,7 @@ export default function ExploreVideoScreen() {
   const openComments = useCallback(async () => {
     const post = posts[activeIndex];
     if (!post) return;
-    setReplyToCommentId(null);
+    setReplyTo(null);
     setCommentInput("");
     setCommentsOpen(true);
     await loadComments(post.id, 0, false);
@@ -911,8 +906,9 @@ export default function ExploreVideoScreen() {
     const text = commentInput.trim();
     if (!post || !text || !user || commentSending) return;
     setCommentSending(true);
-    const parentId = replyToCommentId;
+    const parentId = replyTo?.parentId;
     setCommentInput("");
+    haptic.light();
     try {
       const res = await api.post<ExploreComment>(`/api/explore/posts/${post.id}/comments`, {
         body: text,
@@ -927,12 +923,16 @@ export default function ExploreVideoScreen() {
       if (created) {
         const normalized = {
           ...created,
+          parent_id: created.parent_id ?? parentId ?? null,
           body: created.body ?? text,
-          author: created.author ?? { full_name: user.user_metadata?.full_name },
+          author: created.author ?? {
+            full_name: user.user_metadata?.full_name,
+            avatar_url: user.user_metadata?.avatar_url,
+          },
           replies: created.replies ?? [],
         };
         setComments((prev) => placeExploreComment(prev, normalized));
-        setReplyToCommentId(null);
+        setReplyTo(null);
         patchPost(post.id, { comment_count: (post.comment_count ?? 0) + 1 });
       }
     } catch {
@@ -941,7 +941,27 @@ export default function ExploreVideoScreen() {
     } finally {
       setCommentSending(false);
     }
-  }, [activeIndex, commentInput, commentSending, patchPost, posts, replyToCommentId, t, user]);
+  }, [activeIndex, commentInput, commentSending, patchPost, posts, replyTo, t, user]);
+
+  const deleteComment = useCallback(async (comment: ExploreComment) => {
+    const post = posts[activeIndex];
+    if (!post || !user) return;
+    const ids = comment.parent_id
+      ? [comment.id]
+      : [comment.id, ...(comment.replies ?? []).map((reply) => reply.id)];
+    const results = await Promise.all(
+      ids.map((commentId) => api.delete(`/api/explore/posts/${post.id}/comments/${commentId}`)),
+    );
+    if (results.some((res) => res.error)) {
+      Alert.alert(t("common.error"), t("customer.explorePost.errorDeleteComment"));
+      void loadComments(post.id, 0, false, { keepVisible: true });
+      return;
+    }
+    const removed = removedExploreCommentCount(comments, comment.id);
+    setComments((prev) => removeExploreComment(prev, comment.id));
+    patchPost(post.id, { comment_count: Math.max(0, (post.comment_count ?? removed) - removed) });
+    if (replyTo?.parentId === comment.id) setReplyTo(null);
+  }, [activeIndex, comments, loadComments, patchPost, posts, replyTo, t, user]);
 
   const shareFailureLabels = useMemo(
     () => ({
@@ -1017,12 +1037,10 @@ export default function ExploreVideoScreen() {
         onOpenComments={openComments}
         onShare={() => openShareSheet(item)}
         onMorePress={showMoreOptions}
-        onReelEnd={advanceToNextVideo}
       />
     ),
     [
       activeIndex,
-      advanceToNextVideo,
       muted,
       openComments,
       openShareSheet,
@@ -1055,7 +1073,6 @@ export default function ExploreVideoScreen() {
           showsVerticalScrollIndicator={false}
           snapToInterval={screenHeight}
           decelerationRate="fast"
-          onScrollBeginDrag={() => setListDragging(true)}
           onScroll={(e) => {
             lastOffsetRef.current = e.nativeEvent.contentOffset.y;
           }}
@@ -1089,125 +1106,77 @@ export default function ExploreVideoScreen() {
         </TouchableOpacity>
       </View>
 
-      <BottomSheet visible={commentsOpen} onClose={closeComments} title={t("customer.explorePost.commentsTitle")}>
-        {commentsLoading && comments.length === 0 ? (
-          <ActivityIndicator color={Colors.primary} style={{ marginVertical: 16 }} />
-        ) : (
-          comments.map((c) => (
-            <View key={c.id} style={{ paddingVertical: 8, borderBottomWidth: 1, borderColor: "#f3f4f6" }}>
-              <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontWeight: "600", fontSize: 13 }}>{c.author?.full_name || t("customer.explorePost.userFallback")}</Text>
-                  <Text style={{ fontSize: 14, color: "#374151", marginTop: 2 }}>{c.body}</Text>
-                  {user ? (
-                    <TouchableOpacity onPress={() => setReplyToCommentId(c.id)} style={{ marginTop: 4 }}>
-                      <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500] }}>
-                        {t("customer.explorePost.reply")}
-                      </Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-                {user ? (
-                  <TouchableOpacity
-                    onPress={() =>
-                      openContentReport("explore_comment", c.id, t("customer.contentReport.reportComment"))
-                    }
-                    accessibilityRole="button"
-                    accessibilityLabel={t("customer.contentReport.reportComment")}
-                    style={{ paddingStart: 8 }}
-                  >
-                    <Ionicons name="flag-outline" size={16} color="#9CA3AF" />
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-              {(c.replies ?? []).map((r) => (
-                <View
-                  key={r.id}
-                  style={{
-                    marginTop: 8,
-                    marginStart: 16,
-                    paddingStart: 8,
-                    borderStartWidth: 2,
-                    borderColor: "#e5e7eb",
-                    flexDirection: "row",
-                  }}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontWeight: "600", fontSize: 12 }}>{r.author?.full_name || t("customer.explorePost.userFallback")}</Text>
-                    <Text style={{ fontSize: 13, color: "#374151", marginTop: 2 }}>{r.body}</Text>
-                  </View>
-                  {user ? (
-                    <TouchableOpacity
-                      onPress={() =>
-                        openContentReport("explore_comment", r.id, t("customer.contentReport.reportComment"))
-                      }
-                      accessibilityRole="button"
-                      accessibilityLabel={t("customer.contentReport.reportComment")}
-                      style={{ paddingStart: 8 }}
-                    >
-                      <Ionicons name="flag-outline" size={14} color="#9CA3AF" />
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-              ))}
-            </View>
-          ))
-        )}
-        {hasMoreComments ? (
-          <TouchableOpacity
-            onPress={() => {
+      <BottomSheet
+        visible={commentsOpen}
+        onClose={closeComments}
+        title={t("customer.explorePost.commentsTitle")}
+        subtitle={(() => {
+          const total = exploreCommentTotal(comments, posts[activeIndex]?.comment_count);
+          return total > 0 ? String(total) : undefined;
+        })()}
+        footer={
+          <ExploreCommentComposer
+            value={commentInput}
+            onChangeText={setCommentInput}
+            onSend={() => void sendComment()}
+            sending={commentSending}
+            replyTo={replyTo}
+            onCancelReply={() => setReplyTo(null)}
+            canInteract={canComment}
+            signedIn={Boolean(user)}
+            onSignIn={() => {
               const post = posts[activeIndex];
-              if (!post || commentsLoading) return;
-              void loadComments(post.id, commentsOffset, true);
+              pushCustomerLogin(
+                post ? `/(app)/explore-video?id=${encodeURIComponent(post.id)}` : "/(app)/(tabs)/explore",
+              );
             }}
-            disabled={commentsLoading}
-            accessibilityRole="button"
-            style={{ paddingVertical: 12 }}
-          >
-            <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.primary }}>
-              {commentsLoading
-                ? t("customer.explorePost.loadingComments", "Loading...")
-                : t("customer.explorePost.loadMoreComments", "Load more comments")}
-            </Text>
-          </TouchableOpacity>
-        ) : null}
-        {user ? (
-          <View style={{ marginTop: 12 }}>
-            {replyToCommentId ? (
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                <Text style={{ fontSize: 12, color: Colors.gray[600] }}>{t("customer.explorePost.replying")}</Text>
-                <TouchableOpacity onPress={() => setReplyToCommentId(null)} accessibilityRole="button">
-                  <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.primary }}>{t("common.cancel")}</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <TextInput
-              style={{
-                flex: 1,
-                backgroundColor: "#F3F4F6",
-                borderRadius: 999,
-                paddingHorizontal: 14,
-                paddingVertical: 8,
-                fontSize: 14,
-              }}
-              placeholder={
-                replyToCommentId
-                  ? t("customer.explorePost.replyPlaceholder")
-                  : t("customer.explorePost.addComment")
-              }
-              value={commentInput}
-              onChangeText={setCommentInput}
-            />
-            <TouchableOpacity
-              onPress={sendComment}
-              disabled={!commentInput.trim() || commentSending}
-            >
-              <Ionicons name="send" size={22} color={Colors.primary} />
-            </TouchableOpacity>
-            </View>
-          </View>
-        ) : null}
+            onOpenSafety={() => router.push("/(app)/account-settings/content-and-safety-controls" as never)}
+            viewerInitial={(user?.user_metadata?.full_name || "Y").charAt(0).toUpperCase()}
+            viewerAvatarUrl={
+              typeof user?.user_metadata?.avatar_url === "string" ? user.user_metadata.avatar_url : null
+            }
+            inputRef={commentInputRef}
+          />
+        }
+      >
+        <ExploreCommentList
+          comments={comments}
+          loading={commentsLoading}
+          hasMore={hasMoreComments}
+          loadError={commentsError}
+          onRetry={() => {
+            const post = posts[activeIndex];
+            if (!post) return;
+            void loadComments(post.id, comments.length ? commentsOffset : 0, comments.length > 0);
+          }}
+          onLoadMore={() => {
+            const post = posts[activeIndex];
+            if (!post || commentsLoading) return;
+            void loadComments(post.id, commentsOffset, true);
+          }}
+          viewerUserId={user?.id}
+          canInteract={canComment}
+          onReply={
+            canComment
+              ? (comment) => {
+                  if (!user) {
+                    pushCustomerLogin(
+                      `/(app)/explore-video?id=${encodeURIComponent(posts[activeIndex]?.id ?? "")}`,
+                    );
+                    return;
+                  }
+                  setReplyTo(exploreReplyTarget(comment, t("customer.explorePost.userFallback")));
+                }
+              : undefined
+          }
+          onDelete={user && canComment ? (comment) => void deleteComment(comment) : undefined}
+          onReport={
+            user
+              ? (comment) =>
+                  openContentReport("explore_comment", comment.id, t("customer.contentReport.reportComment"))
+              : undefined
+          }
+        />
       </BottomSheet>
 
       {reportTarget ? (

@@ -24,6 +24,8 @@ interface BottomSheetProps {
   title?: string;
   subtitle?: string;
   children: React.ReactNode;
+  /** Stays pinned under the scrolling body (comment composer). */
+  footer?: React.ReactNode;
   snapHeight?: "auto" | "half" | "full";
   showHandle?: boolean;
 }
@@ -38,6 +40,7 @@ export function BottomSheet({
   title,
   subtitle,
   children,
+  footer,
   snapHeight = "auto",
   showHandle = true,
 }: BottomSheetProps) {
@@ -176,7 +179,7 @@ export function BottomSheet({
                 style={{ flexShrink: 1, backgroundColor: "#ffffff" }}
                 contentContainerStyle={{
                   padding: 20,
-                  paddingBottom: 40 + insets.bottom,
+                  paddingBottom: footer ? 12 : 40 + insets.bottom,
                   backgroundColor: "#ffffff",
                 }}
                 keyboardShouldPersistTaps="handled"
@@ -186,6 +189,21 @@ export function BottomSheet({
               >
                 {children}
               </ScrollView>
+
+              {footer ? (
+                <View
+                  style={{
+                    borderTopWidth: 1,
+                    borderTopColor: "#F3F4F6",
+                    backgroundColor: "#ffffff",
+                    paddingHorizontal: 16,
+                    paddingTop: 10,
+                    paddingBottom: 8,
+                  }}
+                >
+                  {footer}
+                </View>
+              ) : null}
 
               <SafeAreaView edges={["bottom"]} />
             </Animated.View>

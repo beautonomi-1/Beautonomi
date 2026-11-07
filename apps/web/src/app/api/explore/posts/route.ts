@@ -1058,6 +1058,24 @@ export async function POST(request: NextRequest) {
 
     const publishedAt = explorePostPublishedAtForWrite(status, new Date().toISOString());
 
+    const publishStatus = status === "published" ? "published" : "draft";
+    const { explorePostRequiresOfferingForPublish, explorePostPublishOfferingError } = await import(
+      "@/lib/explore/explore-post-booking-offering-guard"
+    );
+    if (
+      explorePostRequiresOfferingForPublish({
+        nextStatus: publishStatus,
+        sourceBookingId: bookingId,
+        offeringId: offering_id,
+        wasAlreadyPublished: false,
+        isPublishTransition: publishStatus === "published",
+        offeringClearedOnPublished: false,
+      })
+    ) {
+      const err = explorePostPublishOfferingError();
+      return errorResponse(err.message, err.code, 400);
+    }
+
     const soundCatalogEnabled = await isExploreSoundCatalogEnabled(null);
     const hasVideoMedia = firstSlideIsVideo(media_urls, mediaMetaForRow);
     const soundCheck = await resolveExplorePostSoundIdForWrite(

@@ -55,7 +55,7 @@ interface AppointmentViewSheetProps {
 
 export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
   const { t } = useTranslation();
-  const prefix = "web.provider.portal.appointmentViewSheet";
+  const prefix = "web.provider.appointmentViewSheet";
   const {
     isOpen,
     mode,

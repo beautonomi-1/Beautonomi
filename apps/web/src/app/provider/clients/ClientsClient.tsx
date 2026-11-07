@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { DataTableShell } from "@/components/provider/DataTableShell";
 import { SectionCard } from "@/components/provider/SectionCard";
+import { ClientMemoryPanel } from "@/components/provider/booking/ClientMemoryPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1421,6 +1422,13 @@ toast.error(error instanceof Error ? error.message : t("web.provider.clientsPage
                 <p className="text-sm text-gray-600 mb-1">{t("web.provider.common.notes")}</p>
                 <p className="text-sm bg-gray-50 rounded-lg p-3">{client.notes}</p>
               </div>
+            )}
+            {clientDetails?.customer_id && (
+              <ClientMemoryPanel
+                key={clientDetails.customer_id}
+                customerId={clientDetails.customer_id}
+                memory={clientDetails.client_memory ?? null}
+              />
             )}
             <div className="mt-4">
 <p className="text-sm text-gray-600 mb-2">{t("web.provider.clientsPage.communication")}</p>

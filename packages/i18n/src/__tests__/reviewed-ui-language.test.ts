@@ -2,29 +2,36 @@ import { describe, expect, it } from "vitest";
 import {
   coerceMobileUiLanguage,
   isReviewedUiLanguage,
+  LANGUAGE_REGISTRY,
+  reviewedUiLanguageOptions,
 } from "../language-registry";
 
 describe("isReviewedUiLanguage", () => {
-  it("rejects glossary-mash locales", () => {
-    expect(isReviewedUiLanguage("zu")).toBe(false);
-    expect(isReviewedUiLanguage("af")).toBe(false);
-  });
-
-  it("accepts English family catalogs", () => {
-    expect(isReviewedUiLanguage("en")).toBe(true);
+  it("accepts every bundled catalog", () => {
+    for (const lang of LANGUAGE_REGISTRY) {
+      expect(isReviewedUiLanguage(lang.code)).toBe(true);
+    }
+    expect(isReviewedUiLanguage("zu")).toBe(true);
+    expect(isReviewedUiLanguage("af")).toBe(true);
     expect(isReviewedUiLanguage("en-GB")).toBe(true);
-    expect(isReviewedUiLanguage("en-US")).toBe(true);
-    expect(isReviewedUiLanguage("en-AU")).toBe(true);
   });
 });
 
 describe("coerceMobileUiLanguage", () => {
-  it("maps unreviewed saved or device codes to English", () => {
-    expect(coerceMobileUiLanguage("zu")).toBe("en");
-    expect(coerceMobileUiLanguage("af")).toBe("en");
-  });
-
-  it("preserves reviewed codes", () => {
+  it("keeps bundled codes and maps unknown tags to English", () => {
+    expect(coerceMobileUiLanguage("zu")).toBe("zu");
+    expect(coerceMobileUiLanguage("af")).toBe("af");
+    expect(coerceMobileUiLanguage("pt-br")).toBe("pt-BR");
+    expect(coerceMobileUiLanguage("de-DE")).toBe("de");
     expect(coerceMobileUiLanguage("en-GB")).toBe("en-GB");
+    expect(coerceMobileUiLanguage("xx")).toBe("en");
+  });
+});
+
+describe("reviewedUiLanguageOptions", () => {
+  it("lists every registry language", () => {
+    expect(reviewedUiLanguageOptions().map((l) => l.code)).toEqual(
+      LANGUAGE_REGISTRY.map((l) => l.code),
+    );
   });
 });

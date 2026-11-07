@@ -53,7 +53,11 @@ import {
   invalidateProviderBookingsReadCache,
   setCachedProviderBookingsList,
 } from "@/lib/bookings/provider-bookings-read-cache";
-import { computeCatalogPackageServiceDiscount, getMissingRequiredProviderFormField } from "@beautonomi/utils";
+import {
+  computeCatalogPackageServiceDiscount,
+  getMissingRequiredProviderFormField,
+  TILL_PAYMENT_LABEL_EN,
+} from "@beautonomi/utils";
 import { validateProviderCatalogPackageMatch } from "@/lib/bookings/validate-provider-package-booking";
 import { resolveMembershipDiscount } from "@/lib/provider/salon-membership-entitlement";
 import { resolveCheckoutPromotionDiscount } from "@/lib/pricing/checkout-promotion-discount";
@@ -398,6 +402,12 @@ async function handleGetProviderBookings(request: NextRequest) {
       (bookings || []).map((row: { id?: string }) => String(row.id ?? "")),
     );
 
+    const { fetchTillPaymentKindsByBookingId } = await import("@/lib/payments/till-labels-for-bookings");
+    const tillKindsByBooking = await fetchTillPaymentKindsByBookingId(
+      supabaseAdmin,
+      (bookings || []).map((row: { id?: string }) => String(row.id ?? "")),
+    );
+
     // Transform to match Booking type
     const transformedBookings = (bookings || []).map((booking: any) => {
       // Transform booking_services to include staff info and guest_name for group bookings
@@ -539,6 +549,11 @@ async function handleGetProviderBookings(request: NextRequest) {
         currency: booking.currency || lastResortCurrency,
         payment_status: booking.payment_status,
         payment_method: null, // payment_method_id is the actual column
+        till_payment_kind: tillKindsByBooking.get(String(booking.id ?? "")) ?? null,
+        till_payment_label: (() => {
+          const kind = tillKindsByBooking.get(String(booking.id ?? ""));
+          return kind ? TILL_PAYMENT_LABEL_EN[kind] : null;
+        })(),
         outstanding_balance: outstandingBalance,
         pending_wallet_gift_amount: pendingWalletGift,
         additional_charges: booking.additional_charges || [],

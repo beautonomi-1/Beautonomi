@@ -106,6 +106,9 @@ export const EVENT_PRODUCT_ORDER_PAID = "product_order_paid";
 export const EVENT_PROVIDER_SUBSCRIPTION_PAID = "provider_subscription_paid";
 export const EVENT_ADS_BUDGET_PAID = "ads_budget_paid";
 export const EVENT_APPLE_IAP_VERIFIED = "apple_iap_verified";
+export const EVENT_PAYABLE_ORDERS_BANNER_SHOWN = "payable_orders_banner_shown";
+export const EVENT_PAYABLE_ORDERS_PAY_CLICKED = "payable_orders_pay_clicked";
+export const EVENT_PRODUCT_ORDER_PAY_OUTCOME = "product_order_pay_outcome";
 
 // At-home journey (B3)
 export const EVENT_PROVIDER_JOURNEY_STARTED = "provider_journey_started";

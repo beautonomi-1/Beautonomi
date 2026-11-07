@@ -1,8 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { StyleProp, ViewStyle } from "react-native";
-import { useVideoPlayer, VideoView } from "expo-video";
+import { useVideoPlayer, VideoView, type VideoPlayer } from "expo-video";
 import type { ExplorePlaybackTrimWindow } from "@/lib/explore-video-playback-trim";
 import { useExploreTrimLoop } from "@/hooks/useExploreTrimLoop";
+import { runVideoPlayer, withVideoPlayer } from "@/lib/video-player-access";
 
 type ContentFit = "cover" | "contain" | "fill";
 
@@ -37,6 +38,16 @@ export function ExpoVideoPreview({
   const trimStartMs = playbackTrim?.trim_start_ms ?? null;
   const trimEndMs = playbackTrim?.trim_end_ms ?? null;
   const hasTrim = trimStartMs != null && trimEndMs != null;
+  const playerRef = useRef<VideoPlayer | null>(null);
+  useEffect(() => {
+    return () => {
+      const current = playerRef.current;
+      if (!current) return;
+      runVideoPlayer(() => {
+        current.pause();
+      });
+    };
+  }, []);
 
   const player = useVideoPlayer(uri, (p) => {
     p.loop = hasTrim ? false : loop;
@@ -47,28 +58,34 @@ export function ExpoVideoPreview({
       p.play();
     }
   });
+  playerRef.current = player;
 
   useExploreTrimLoop(player, trimStartMs, trimEndMs, !paused);
 
   useEffect(() => {
     if (!onPlayingChange) return;
     const sub = player.addListener("playingChange", ({ isPlaying }) => onPlayingChange(isPlaying));
-    return () => sub.remove();
+    return () => {
+      runVideoPlayer(() => sub.remove());
+    };
   }, [onPlayingChange, player]);
 
   useEffect(() => {
-    player.muted = muted;
-    if (paused) {
-      player.pause();
-    } else {
-      player.play();
-    }
+    runVideoPlayer(() => {
+      player.muted = muted;
+      if (paused) {
+        player.pause();
+      } else {
+        player.play();
+      }
+    });
   }, [paused, muted, player]);
 
   useEffect(() => {
     if (paused || !onPlaybackTimeUpdate) return;
     const timer = setInterval(() => {
-      const ms = Math.floor((player.currentTime || 0) * 1000);
+      const ms = withVideoPlayer(() => Math.floor((player.currentTime || 0) * 1000), null);
+      if (ms == null) return;
       onPlaybackTimeUpdate(trimStartMs != null ? Math.max(0, ms - trimStartMs) : ms);
     }, 200);
     return () => clearInterval(timer);

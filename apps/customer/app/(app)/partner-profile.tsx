@@ -3255,8 +3255,16 @@ export default function PartnerProfileScreen() {
 
         {/* ═══════════ STICKY BOTTOM: Message + Book ═══════════ */}
         <View style={{
-          flexDirection: "row", paddingHorizontal: contentPadding, paddingTop: 12,
+          paddingHorizontal: contentPadding, paddingTop: 8, paddingBottom: 4,
           borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",
+        }}>
+          <Text style={{ fontSize: 11, color: "#6B7280", textAlign: "center", marginBottom: 8 }}>
+            {pp("bookingProtectionCheckoutLine")}
+          </Text>
+        </View>
+        <View style={{
+          flexDirection: "row", paddingHorizontal: contentPadding, paddingTop: 0,
+          borderTopWidth: 0, backgroundColor: "#fff",
           paddingBottom: stickyBarPaddingBottom,
         }}>
           <TouchableOpacity

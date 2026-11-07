@@ -13780,7 +13780,15 @@
       "shareMediaFailedTitle": "Couldn't yabelana media",
       "shareMediaFailedBody": "Asikwazanga ukulungiselela le fayile ukuze kwabelwane ngayo. Zama ukwabelana ngekhonkco endaweni yoko.",
       "loadingComments": "Iyalayisha...",
-      "loadMoreComments": "Layisha ezinye izimvo"
+      "loadMoreComments": "Layisha ezinye izimvo",
+      "errorDeleteComment": "Ayikwazanga ukucima eli nqaku. Nceda uzame kwakhona.",
+      "deleteCommentTitle": "Cima eli nqaku?",
+      "deleteCommentBody": "Oku kususa inqaku kumntu wonke.",
+      "deleteComment": "Cima",
+      "commentsLoadFailed": "Ayikwazanga ukulayisha izimvo.",
+      "signInToComment": "Ngena ukuze uhlomle",
+      "replyingTo": "Uphendula ku-{{name}}",
+      "commentTooLong": "{{count}} / 200"
     },
     "searchScreen": {
       "title": "Khangela",
@@ -14406,6 +14414,13 @@
           "shopContinueCta": "Jonga iodolo",
           "shopPendingSubtext": "Siza kuhlaziya iodolo yakho kwimizuzu embalwa. Ungaqhubeka usebenzisa i-app ngelixa siqinisekisa ngebhanki yakho.",
           "shopFailedSubtext": "Ukuba ubuhlawuliwe, iodolo yakho isaza kuqinisekiswa xa intlawulo ifikile. Nceda ujonge ithebhu yakho yeeOdolo."
+        },
+        "payableOrdersBanner": {
+          "titleCart": "Ilindwe intlawulo",
+          "titleOrders": "Ilindwe intlawulo",
+          "retry": "Ayikwazanga ukulayisha zonke iiodolo ezingakhokhelwanga. Zama kwakhona.",
+          "showLess": "Bonisa okuncinci",
+          "viewAll": "Jonga konke"
         }
       },
       "tabs": {
@@ -14836,7 +14851,9 @@
           "total": "Iyonke",
           "alsoCheckoutOnWeb": "Also ukuhlawula on web",
           "pickupLocationsMore": "{{count}} iindawo zokuthatha — khetha ekuphumeni",
-          "deliveryEtaDays": "Ukunikezelwa okulinganisekileyo ngaphakathi kweentsuku zomsebenzi ezi-{{days}}"
+          "deliveryEtaDays": "Ukunikezelwa okulinganisekileyo ngaphakathi kweentsuku zomsebenzi ezi-{{days}}",
+          "paymentDueHeading": "Ilindwe intlawulo",
+          "paymentDueRetry": "Ayikwazanga ukulayisha zonke iiodolo ezingakhokhelwanga. Zama kwakhona."
         },
         "productCheckout": {
           "title": "Ukuhlawula",
@@ -18176,7 +18193,8 @@
     "cart": "Inqwelo",
     "exploreVideo": {
       "unmute": "Vula isandi",
-      "mute": "Thulisa"
+      "mute": "Thulisa",
+      "replay": "Dlala kwakhona"
     },
     "bankAccounts": {
       "failedLoadBanks": "Ayikwazanga uku-ulayisha banks. zama kwakhona.",
@@ -18456,7 +18474,8 @@
     "rescheduleReplacesPreviousBody": "Idinga yakho yokuqala irhoxiswa ngokuzenzekelayo, simahla, xa intlawulo yale bhukisho igqiba. Into oyihlawulileyo isetyenziswa apha, kwaye intsalela ihlala esipajini sakho.",
     "rescheduleCreditNote": "Nayiphi na imali oyihlawule ngedijithali ngebhuko yokuqala isetyenziswa apha. Uhlawula umahluko kuphela.",
     "rescheduleCreditApplied": "Ihlawulwe kwibhuko yakho yokuqala",
-    "rescheduleCreditSurplus": "Intsalela engu-{{amount}} ihlala esipajini sakho njengesikweletu."
+    "rescheduleCreditSurplus": "Intsalela engu-{{amount}} ihlala esipajini sakho njengesikweletu.",
+    "stylistReceives": "{{name}} ufumana"
   },
   "payments": {
     "pay": "Hlawula",
@@ -19105,7 +19124,9 @@
         "continueWithCount": "qhubeka with {{count}} iinkonzo",
         "changeService": "Tshintsha",
         "selectedServiceMore": " (+{{count}})",
-        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} imizuzu"
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} imizuzu",
+        "stylistReceivesFallback": "Istylist yakho",
+        "stylistReceives": "{{name}} ufumana"
       },
       "confirmation": {
         "loadingMessage": "Iyalayisha Ukuqinisekisa ukubhukisha...",
@@ -36463,6 +36484,15 @@
       "cancelFailed": "Ayikwazanga uku-rhoxisa your spot.",
       "sessionCancelled": "Le seshoni yeqela irhoxisiwe.",
       "sessionCancelledPaid": "Le seshoni yeqela irhoxisiwe. Nayiphi na imali oyihlawulele isabelo sakho ibuyiselwa ngokupheleleyo kwikhadi owahlawula ngalo."
+    },
+    "components": {
+      "payableOrdersBanner": {
+        "titleCart": "Ilindwe intlawulo",
+        "titleOrders": "Ilindwe intlawulo",
+        "retry": "Ayikwazanga ukulayisha zonke iiodolo ezingakhokhelwanga. Zama kwakhona.",
+        "showLess": "Bonisa okuncinci",
+        "viewAll": "Jonga konke"
+      }
     }
   },
   "errors": {

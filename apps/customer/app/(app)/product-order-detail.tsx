@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
 import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
+import { trackProductOrderPayOutcome } from "@/lib/analytics";
 import {
   getCustomerPaystackAuthReturnUrl,
   getNativePaystackReturnUrl,
@@ -181,6 +182,28 @@ function getTimelineIndex(status: string, fulfillmentType?: string): number {
   return idx;
 }
 
+function clearProductOrderStartPay(router: { setParams: (params: { startPay?: string }) => void }) {
+  router.setParams({ startPay: undefined });
+  if (Platform.OS !== "web" || typeof window === "undefined" || !window.history?.replaceState) return;
+  const url = new URL(window.location.href);
+  url.searchParams.delete("startPay");
+  window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function AutoStartProductOrderPay({
+  enabled,
+  onStart,
+}: {
+  enabled: boolean;
+  onStart: () => void;
+}) {
+  useEffect(() => {
+    if (!enabled) return;
+    onStart();
+  }, [enabled, onStart]);
+  return null;
+}
+
 export default function ProductOrderDetailScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -197,8 +220,16 @@ export default function ProductOrderDetailScreen() {
       t(`customer.mobile.tabs.shop.${key}`, opts ?? {}) as string,
     [t],
   );
-  const rawId = useLocalSearchParams<{ id?: string | string[] }>().id;
+  const params = useLocalSearchParams<{ id?: string | string[]; startPay?: string | string[] }>();
+  const rawId = params.id;
   const id = Array.isArray(rawId) ? rawId[0] : rawId;
+  const rawStartPay = params.startPay;
+  const startPay = Array.isArray(rawStartPay) ? rawStartPay[0] : rawStartPay;
+  const payStartedRef = useRef(false);
+  const startOnceRef = useRef<() => void>(() => {});
+  const onAutoStart = useCallback(() => {
+    startOnceRef.current();
+  }, []);
   const { contentMaxWidth, isTablet, contentPadding } = useResponsive();
   const { fetchOrderDetail } = useProductOrders();
   const [order, setOrder] = useState<ProductOrder | null>(null);
@@ -349,6 +380,12 @@ export default function ProductOrderDetailScreen() {
     }
 
     setPaying(true);
+    trackProductOrderPayOutcome({
+      order_id: order.id,
+      outcome: "initiated",
+      amount_due: onlineAmountDue,
+      currency: order.currency ?? fb,
+    });
     try {
       const paystackReturnPath =
         Platform.OS === "web" ? undefined : getNativePaystackReturnUrl(CUSTOMER_NATIVE_PAYSTACK_PATHS.shop);
@@ -370,6 +407,12 @@ export default function ProductOrderDetailScreen() {
       );
 
       if (paystackRes.error || !paystackRes.data?.authorization_url) {
+        trackProductOrderPayOutcome({
+          order_id: order.id,
+          outcome: "start_failed",
+          amount_due: onlineAmountDue,
+          currency: order.currency ?? fb,
+        });
         Alert.alert(
           pod("paymentUnavailableTitle"),
           (paystackRes.error as { message?: string } | null)?.message ?? pod("paymentUnavailableBody"),
@@ -395,12 +438,32 @@ export default function ProductOrderDetailScreen() {
       });
 
       if (pr.outcome === "start_failed") {
+        trackProductOrderPayOutcome({
+          order_id: order.id,
+          outcome: "start_failed",
+          amount_due: onlineAmountDue,
+          currency: order.currency ?? fb,
+        });
         Alert.alert(pod("paymentUnavailableTitle"), pod("paymentStartFailed"));
         return;
       }
       if (pr.outcome === "cancel") {
+        trackProductOrderPayOutcome({
+          order_id: order.id,
+          outcome: "cancelled",
+          amount_due: onlineAmountDue,
+          currency: order.currency ?? fb,
+        });
         Alert.alert(pod("paymentCancelledTitle"), pod("paymentCancelledBody"));
         return;
+      }
+      if (pr.outcome === "closed") {
+        trackProductOrderPayOutcome({
+          order_id: order.id,
+          outcome: "closed",
+          amount_due: onlineAmountDue,
+          currency: order.currency ?? fb,
+        });
       }
 
       let reference = paystackRes.data.reference;
@@ -409,6 +472,12 @@ export default function ProductOrderDetailScreen() {
       if (pr.outcome === "success" && pr.url && !isCancelledPaystackUrl(pr.url)) {
         const parsed = parseOnlineCheckoutReturnUrl(pr.url);
         if (parsed.status === "failed" || parsed.status === "cancelled") {
+          trackProductOrderPayOutcome({
+            order_id: order.id,
+            outcome: "cancelled",
+            amount_due: onlineAmountDue,
+            currency: order.currency ?? fb,
+          });
           Alert.alert(pod("paymentCancelledTitle"), pod("paymentCancelledBody"));
           return;
         }
@@ -438,19 +507,45 @@ export default function ProductOrderDetailScreen() {
       }
 
       if (paid) {
+        trackProductOrderPayOutcome({
+          order_id: order.id,
+          outcome: "verified_success",
+          amount_due: onlineAmountDue,
+          currency: order.currency ?? fb,
+        });
         Alert.alert(pod("paymentSuccessTitle"), pod("paymentSuccessBody", { orderNumber: order.order_number }));
       } else {
+        trackProductOrderPayOutcome({
+          order_id: order.id,
+          outcome: "verified_pending",
+          amount_due: onlineAmountDue,
+          currency: order.currency ?? fb,
+        });
         Alert.alert(pod("paymentPendingTitle"), pod("paymentPendingBody"));
       }
     } catch (e) {
+      trackProductOrderPayOutcome({
+        order_id: order.id,
+        outcome: "verified_failed",
+        amount_due: onlineAmountDue,
+        currency: order.currency ?? fb,
+      });
       Alert.alert(pod("paymentFailedTitle"), e instanceof Error ? e.message : pod("paymentFailedBody"));
     } finally {
       setPaying(false);
     }
   };
 
+  startOnceRef.current = () => {
+    if (payStartedRef.current || startPay !== "1") return;
+    payStartedRef.current = true;
+    clearProductOrderStartPay(router);
+    if (canPayOnline) void handlePayOnline();
+  };
+
   return (
     <>
+    <AutoStartProductOrderPay enabled={startPay === "1"} onStart={onAutoStart} />
     <SafeAreaView style={{ flex: 1, backgroundColor: "#F9FAFB" }} edges={["top"]}>
       {/* Header */}
       <View

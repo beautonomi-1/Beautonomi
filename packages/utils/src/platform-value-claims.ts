@@ -6,21 +6,29 @@
 export const PLATFORM_ON_APP_PAYMENT_CLAIMS = {
   /** Dashboard / booking-detail nudge (one sentence). */
   onPlatformSettlement:
-    "When clients pay here, deposits, late fees, and your bank payout stay on one ledger. Cash is yours in the till — you just cannot keep a cancellation fee from it.",
+    "When clients book here, you receive the service price; booking protection is a separate customer-paid amount kept by Beautonomi.",
   /** Shorter variant for tight UI rows. */
   onPlatformSettlementShort:
-    "Online payments land in your withdrawable payout. Cash and card-machine takings stay with you.",
+    "You receive the service price. Booking protection is customer-paid and retained by Beautonomi.",
 } as const;
 
 /** SMS when sharing a public booking link after a walk-in visit. */
 export function providerShareBookingLinkSms(link: string): string {
-  return `Book your next visit with me here so your slot is held: ${link}`;
+  return `Here’s my booking link to hold your next slot: ${link}`;
+}
+
+/** After prepaid/online visit — same HTTPS link, different courtesy line. */
+export function providerLockNextShareSms(link: string, prepaidVisit: boolean): string {
+  if (prepaidVisit) {
+    return `When you're ready to rebook, use this link so your time is held: ${link}`;
+  }
+  return providerShareBookingLinkSms(link);
 }
 
 /** Post cash/walk-in complete — peak-end nudge (one screen, dismissible). */
 export function providerPostCashCompleteShareLine(clientName: string): string {
   const who = clientName.trim() || "your client";
-  return `Book ${who}'s next visit on Beautonomi — they earn loyalty and can review today's visit.`;
+  return `Lock ${who}'s next visit by sending your booking link.`;
 }
 
 /** After cash no-show / late cancel with no platform payment. */

@@ -3,7 +3,7 @@ import {
   getPresetValues,
   type BookingPolicyPresetId,
 } from "@beautonomi/i18n";
-import { deriveEnforcementFields } from "@/app/api/provider/cancellation-policies/route";
+import { deriveEnforcementFields } from "@/lib/provider/cancellation-policy-enforcement";
 
 const PRESET_POLICY_NAMES: Record<Exclude<BookingPolicyPresetId, "custom">, string> = {
   no_penalty: "No penalty",

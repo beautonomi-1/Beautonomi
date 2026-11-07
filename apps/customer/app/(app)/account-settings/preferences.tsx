@@ -45,10 +45,9 @@ import { currencySelectLabel, LAST_RESORT_CURRENCY } from "@beautonomi/utils";
 import {
   coerceMobileUiLanguage,
   getLanguageMeta,
-  isReviewedUiLanguage,
-  mergeLanguagePickerOptions,
   normalizeLanguageCode,
   resolveLanguage,
+  formatLanguageOptionLabel,
   reviewedUiLanguageOptions,
   useTranslation,
 } from "@beautonomi/i18n";
@@ -88,22 +87,11 @@ interface PreferenceOptionRow {
 /*  Fallback lists (used when API empty or unavailable — mirrors web resilience) */
 /* ------------------------------------------------------------------ */
 
-function buildI18nAlignedLanguageOptions(apiRows: PickerOption[]): PickerOption[] {
-  const merged = mergeLanguagePickerOptions(
-    apiRows
-      .map((o) => ({
-        code: normalizeLanguageCode(o.value),
-        name: o.label,
-      }))
-      .filter((o) => isReviewedUiLanguage(o.code)),
-  );
-  const fallback = reviewedUiLanguageOptions().map((l) => ({
-    value: l.code,
-    label: l.nativeName,
-  }));
-  const mapped = merged.map((m) => ({ value: m.code, label: m.name }));
-  return mapped.length > 0 ? mapped : fallback;
-}
+/** Every bundled catalog. Saving uses the same code the picker shows. */
+const LANGUAGE_OPTIONS: PickerOption[] = reviewedUiLanguageOptions().map((lang) => ({
+  value: lang.code,
+  label: formatLanguageOptionLabel(lang),
+}));
 
 /** Only when the API is unreachable — single tenant default code (no invented ISO list). */
 function buildMinimalCurrencyFallback(tenantDefault: string | null | undefined): PickerOption[] {
@@ -146,14 +134,6 @@ function mapPreferenceRowsToPicker(rows: PreferenceOptionRow[] | null | undefine
 
 function preferApiOrFallback(api: PickerOption[], fallback: PickerOption[]): PickerOption[] {
   return api.length > 0 ? api : fallback;
-}
-
-/** Keep every bundled locale (Wave A + international Wave B) for tourists. */
-function allLanguagePickerOptions(): PickerOption[] {
-  return reviewedUiLanguageOptions().map(({ code, nativeName, name }) => ({
-    value: code,
-    label: `${nativeName} (${name})`,
-  }));
 }
 
 /* ------------------------------------------------------------------ */
@@ -275,9 +255,6 @@ export default function PreferencesScreen() {
   const { bundle, refresh: refreshConfigBundle } = useConfigBundle();
   const { t } = useTranslation();
 
-  const [languageOptions, setLanguageOptions] = useState<PickerOption[]>(() =>
-    allLanguagePickerOptions(),
-  );
   const [currencyOptions, setCurrencyOptions] = useState<PickerOption[]>(() =>
     buildMinimalCurrencyFallback(getTenantDefaultCurrency()),
   );
@@ -292,7 +269,7 @@ export default function PreferencesScreen() {
       {
         field: "preferred_language" as const,
         label: t("customer.preferencesScreen.languageLabel"),
-        options: languageOptions,
+        options: LANGUAGE_OPTIONS,
         defaultValue: "en",
         modalTitle: t("customer.preferencesScreen.languageModal"),
       },
@@ -314,7 +291,6 @@ export default function PreferencesScreen() {
   }, [
     bundle?.meta?.tenant_region?.default_currency,
     bundle?.meta?.tenant_region?.timezone,
-    languageOptions,
     currencyOptions,
     timezoneOptions,
     t,
@@ -340,15 +316,11 @@ export default function PreferencesScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [langsRes, curRes, tzRes, profileRes] = await Promise.all([
-        api.get<PreferenceOptionRow[]>("/api/public/preference-options?type=language"),
+      const [curRes, tzRes, profileRes] = await Promise.all([
         api.get<PreferenceOptionRow[]>("/api/public/preference-options?type=currency"),
         api.get<PreferenceOptionRow[]>("/api/public/preference-options?type=timezone"),
         api.get<UserProfile>("/api/me/profile"),
       ]);
-
-      const langsFromApi = mapPreferenceRowsToPicker(coercePreferenceOptionRows(langsRes.data));
-      setLanguageOptions(buildI18nAlignedLanguageOptions(langsFromApi));
 
       const curFromApi = mapPreferenceRowsToPicker(coercePreferenceOptionRows(curRes.data));
       const tenantDefault =
@@ -376,7 +348,9 @@ export default function PreferencesScreen() {
           : rawProfile;
       if (profilePayload && typeof profilePayload === "object" && "preferred_language" in profilePayload) {
         setProfile({
-          preferred_language: profilePayload.preferred_language ?? null,
+          preferred_language: profilePayload.preferred_language
+            ? coerceMobileUiLanguage(profilePayload.preferred_language)
+            : null,
           preferred_currency: profilePayload.preferred_currency ?? null,
           timezone: profilePayload.timezone ?? null,
         });
@@ -488,11 +462,11 @@ export default function PreferencesScreen() {
     }
 
     const previousLanguageLabel =
-      displayLabel(languageOptions, previousLanguage, previousLanguage ?? "") ||
+      displayLabel(LANGUAGE_OPTIONS, previousLanguage, previousLanguage ?? "") ||
       previousLanguage ||
       "";
     const resolvedLanguageLabel =
-      displayLabel(languageOptions, resolvedLanguage, resolvedLanguage) || resolvedLanguage;
+      displayLabel(LANGUAGE_OPTIONS, resolvedLanguage, resolvedLanguage) || resolvedLanguage;
 
     const bodyLines = [
       t("customer.preferencesScreen.marketUpdatedBody", { host: normalized }),
@@ -510,7 +484,6 @@ export default function PreferencesScreen() {
   }, [
     bundle,
     currentMarketHost,
-    languageOptions,
     profile.preferred_language,
     refreshConfigBundle,
     t,

@@ -4,6 +4,7 @@
  */
 
 import { normalizePaymentReturnSearch } from "@/lib/payments/customerNativeIntentPaymentReturn";
+import { mapBookingQueryToNativeBookPath } from "@beautonomi/utils";
 
 type RedirectSystemPathParams = {
   path: string;
@@ -127,12 +128,8 @@ export function redirectSystemPath({ path }: RedirectSystemPathParams): string {
     }
 
     if (pathname === "/booking" || pathname.startsWith("/booking/")) {
-      const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-      const slug = params.get("slug");
-      if (slug) {
-        const embedSuffix = search.includes("embed=1") ? "&embed=1" : "";
-        return `/(app)/book?slug=${encodeURIComponent(slug)}${embedSuffix}`;
-      }
+      const nativePath = mapBookingQueryToNativeBookPath(search);
+      if (nativePath) return nativePath;
     }
 
     const bookMatch = pathname.match(/^\/book\/([^/]+)\/?$/);

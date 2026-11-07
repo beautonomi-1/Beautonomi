@@ -4629,6 +4629,18 @@ export default function BookCheckoutScreen() {
                   {formatCurrency(subtotalAfterLoyalty, currency)}
                 </Text>
               </View>
+              {serviceFeeAmount > 0 && sfConfig?.show ? (
+                <View
+                  style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}
+                >
+                  <Text style={{ fontSize: 13, color: "#6B7280" }}>
+                    {t("checkout.stylistReceives", { name: hold?.provider_name || t("checkout.provider") })}
+                  </Text>
+                  <Text style={{ fontSize: 13, color: "#111827", fontWeight: "600" }}>
+                    {formatCurrency(subtotalAfterLoyalty, currency)}
+                  </Text>
+                </View>
+              ) : null}
               {taxRatePercent > 0 && (
                 <View
                   style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}

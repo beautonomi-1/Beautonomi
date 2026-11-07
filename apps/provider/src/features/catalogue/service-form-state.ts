@@ -51,7 +51,7 @@ export const DEFAULT_SERVICE_FORM_STATE = (): ServiceFormState => ({
   isActive: true,
   extraTimeEnabled: false,
   extraTimeDuration: "15",
-  reminderToRebookEnabled: false,
+  reminderToRebookEnabled: true,
   reminderToRebookWeeks: "4",
   serviceCostPercentage: "0",
   includedServices: [],

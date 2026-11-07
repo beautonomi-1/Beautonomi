@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Trophy } from "lucide-react";
+import { Camera, Share2, Trophy } from "lucide-react";
+import {
+  buildProviderPublicBookUrl,
+  providerLockNextShareSms,
+  providerPostCashCompleteShareLine,
+} from "@beautonomi/utils";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,6 +31,8 @@ type PostCompletionSheetProps = {
   primaryServiceName: string;
   primaryOfferingId?: string;
   customerName: string;
+  /** When false, client already paid online — share copy only nudges rebook. */
+  walkInOrUnpaidComplete?: boolean;
   onDismiss: (markSeen: boolean) => void;
   onRated?: () => void;
 };
@@ -39,11 +46,13 @@ export function PostCompletionSheet({
   primaryServiceName,
   primaryOfferingId,
   customerName,
+  walkInOrUnpaidComplete = true,
   onDismiss,
   onRated,
 }: PostCompletionSheetProps) {
   const { t } = useTranslation();
   const router = useRouter();
+  const [providerSlug, setProviderSlug] = useState<string | null>(null);
   const [step, setStep] = useState<PostCompletionStep>("choose");
   const [hasExistingRating, setHasExistingRating] = useState(false);
   const [rateStars, setRateStars] = useState(0);
@@ -64,7 +73,37 @@ export function PostCompletionSheet({
       )
       .then((res) => setHasExistingRating(Boolean(res.data?.has_rating ?? res.has_rating)))
       .catch(() => setHasExistingRating(false));
+    void fetcher
+      .get<{ data?: { slug?: string | null }; slug?: string | null }>("/api/provider/profile")
+      .then((res) => setProviderSlug(res.data?.slug ?? res.slug ?? null))
+      .catch(() => setProviderSlug(null));
   }, [open, bookingId]);
+
+  const appBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+  const providerPublicBookUrl =
+    providerSlug && appBase
+      ? buildProviderPublicBookUrl(appBase, providerSlug, { serviceId: primaryOfferingId ?? undefined })
+      : null;
+
+  const shareLockNext = async () => {
+    if (!providerPublicBookUrl) return;
+    const msg = providerLockNextShareSms(providerPublicBookUrl, !walkInOrUnpaidComplete);
+    try {
+      if (typeof navigator !== "undefined" && navigator.share) {
+        await navigator.share({ text: msg, url: providerPublicBookUrl });
+        return;
+      }
+      await navigator.clipboard.writeText(msg);
+      toast.success(t("web.provider.postCompletion.linkCopied"));
+    } catch {
+      try {
+        await navigator.clipboard.writeText(msg);
+        toast.success(t("web.provider.postCompletion.linkCopied"));
+      } catch {
+        toast.error(t("web.provider.postCompletion.shareFailed"));
+      }
+    }
+  };
 
   const markSeen = useCallback(() => {
     seenRef.current = true;
@@ -137,6 +176,19 @@ export function PostCompletionSheet({
                 )}
               </DialogDescription>
             </DialogHeader>
+            {providerPublicBookUrl ? (
+              <div className="space-y-3 text-center">
+                <p className="text-xs leading-5 text-muted-foreground">
+                  {walkInOrUnpaidComplete
+                    ? providerPostCashCompleteShareLine(customerName)
+                    : t("web.provider.postCompletion.lockNextHintPrepaid")}
+                </p>
+                <Button onClick={() => void shareLockNext()} className="w-full">
+                  <Share2 className="me-2 h-4 w-4" aria-hidden />
+                  {t("web.provider.postCompletion.lockNextVisit")}
+                </Button>
+              </div>
+            ) : null}
             <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-start">
               <div className="mb-1 flex items-center gap-2">
                 <Camera className="h-4 w-4 text-primary" aria-hidden />
@@ -145,7 +197,7 @@ export function PostCompletionSheet({
               <p className="mb-3 text-xs leading-5 text-gray-600">
                 {t("web.provider.postCompletion.showWorkHint")}
               </p>
-              <Button onClick={() => setStep("photo")} className="w-full">
+              <Button variant="outline" onClick={() => setStep("photo")} className="w-full">
                 <Camera className="me-2 h-4 w-4" aria-hidden />
                 {t("web.provider.postCompletion.addPhoto")}
               </Button>

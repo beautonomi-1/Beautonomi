@@ -103,6 +103,11 @@ export const EVENT_GIFT_CARD_CHECKOUT_START = "gift_card_checkout_start";
 export const EVENT_CUSTOM_REQUEST_CREATED = "custom_request_created";
 export const EVENT_SHARE_PROVIDER = "share_provider";
 
+// Recovery funnels (cross-platform)
+export const EVENT_PAYABLE_ORDERS_BANNER_SHOWN = "payable_orders_banner_shown";
+export const EVENT_PAYABLE_ORDERS_PAY_CLICKED = "payable_orders_pay_clicked";
+export const EVENT_PRODUCT_ORDER_PAY_OUTCOME = "product_order_pay_outcome";
+
 // Provider growth funnel
 export const EVENT_PROVIDER_ONBOARDING_STEP_COMPLETED = "provider_onboarding_step_completed";
 
@@ -270,6 +275,9 @@ export type AnalyticsEventProperties = {
   [EVENT_PROVIDER_SUBSCRIPTION_PAID]: MoneyEventProperties & { subscription_id: string; plan_id?: string; provider_id: string };
   [EVENT_ADS_BUDGET_PAID]: MoneyEventProperties & { campaign_id: string; provider_id: string };
   [EVENT_APPLE_IAP_VERIFIED]: MoneyEventProperties & { product_id: string; original_transaction_id?: string };
+  [EVENT_PAYABLE_ORDERS_BANNER_SHOWN]: { portal: "client" | "web"; context: "cart" | "orders"; count: number; complete: boolean };
+  [EVENT_PAYABLE_ORDERS_PAY_CLICKED]: { portal: "client" | "web"; context: "cart" | "orders"; order_id: string; provider_id?: string; amount_due?: number; currency?: string };
+  [EVENT_PRODUCT_ORDER_PAY_OUTCOME]: { portal: "client" | "web"; order_id?: string; outcome: "initiated" | "cancelled" | "closed" | "start_failed" | "verified_success" | "verified_failed" | "verified_pending"; amount_due?: number; currency?: string };
   [EVENT_PROVIDER_ONBOARDING_STEP_COMPLETED]: { step: string; step_index?: number; portal: "provider" };
   [EVENT_CARD_MACHINE_SETUP_STEP]: { step: string; provider?: "yoco" | "paycloud"; portal?: "provider" | "web" };
   [EVENT_CARD_MACHINE_COLLECT_STARTED]: { provider: "yoco" | "paycloud"; entity_type?: string; portal?: "provider" | "web" };

@@ -13780,7 +13780,15 @@
       "shareMediaFailedTitle": "Couldn't abelana media",
       "shareMediaFailedBody": "Re be re sa kgone go lokišetša faele ye gore e abelane. Leka go abelana kgokagano go e na le moo.",
       "loadingComments": "E a laiša...",
-      "loadMoreComments": "Laiša ditlhagišo tše dingwe"
+      "loadMoreComments": "Laiša ditlhagišo tše dingwe",
+      "errorDeleteComment": "Ga se e kgone go phumula tshwayo ye. Hle leka gape.",
+      "deleteCommentTitle": "Phumula tshwayo ye?",
+      "deleteCommentBody": "Se se tloša tshwayo go batho bohle.",
+      "deleteComment": "Phumula",
+      "commentsLoadFailed": "Ga se e kgone go laiša ditshwayo.",
+      "signInToComment": "Tsena gore o tshwaye",
+      "replyingTo": "O araba go {{name}}",
+      "commentTooLong": "{{count}} / 200"
     },
     "searchScreen": {
       "title": "Nyaka",
@@ -14406,6 +14414,13 @@
           "shopContinueCta": "Bona odara",
           "shopPendingSubtext": "Re tla mpshafatša otara ya gago mo metsotsong e sego kae. O ka dula o šomiša tirišo ge re dutše re tiišetša le panka ya gago.",
           "shopFailedSubtext": "Ge e ba o ile wa lefišwa, taelo ya gago e sa tla tiišetšwa ge tefo e šetše e kotame. Hle hlahloba thepo ya gago ya Ditaelo."
+        },
+        "payableOrdersBanner": {
+          "titleCart": "E emetše tefo",
+          "titleOrders": "E emetše tefo",
+          "retry": "Ga se e kgone go laiša diotara tšohle tše sa lefelwego. Leka gape.",
+          "showLess": "Bontšha tše nnyane",
+          "viewAll": "Lebelela tšohle"
         }
       },
       "tabs": {
@@ -14836,7 +14851,9 @@
           "total": "Palomoka",
           "alsoCheckoutOnWeb": "Also go lefa on web",
           "pickupLocationsMore": "{{count}} mafelo a go tšea — kgetha ge o lefa",
-          "deliveryEtaDays": "Go romela go akanyetšwa mo matšatšing a {{days}} a mošomo"
+          "deliveryEtaDays": "Go romela go akanyetšwa mo matšatšing a {{days}} a mošomo",
+          "paymentDueHeading": "E emetše tefo",
+          "paymentDueRetry": "Ga se e kgone go laiša diotara tšohle tše sa lefelwego. Leka gape."
         },
         "productCheckout": {
           "title": "Go lefa",
@@ -18176,7 +18193,8 @@
     "cart": "Koloi",
     "exploreVideo": {
       "unmute": "Bula modumo",
-      "mute": "Homotša"
+      "mute": "Homotša",
+      "replay": "Bapala gape"
     },
     "bankAccounts": {
       "failedLoadBanks": "Ga e kgona go laiša banks. leka gape.",
@@ -18456,7 +18474,8 @@
     "rescheduleReplacesPreviousBody": "Kopano ya gago ya mathomo e phumolwa ka go itirela, mahala, ge tefo ya peakanyo ye e fetša. Seo o se lefilego se dirišwa mo, gomme se se šetšego se dula sepacheng sa gago.",
     "rescheduleCreditNote": "Tšhelete efe goba efe ye o e lefilego ka inthanete bakeng sa peakanyo ya mathomo e dirišwa mo. O lefa phapano fela.",
     "rescheduleCreditApplied": "E lefilwe peakanyong ya gago ya mathomo",
-    "rescheduleCreditSurplus": "Se se šetšego sa {{amount}} se dula sepacheng sa gago bjalo ka sekoloto sa go amogelwa."
+    "rescheduleCreditSurplus": "Se se šetšego sa {{amount}} se dula sepacheng sa gago bjalo ka sekoloto sa go amogelwa.",
+    "stylistReceives": "{{name}} o amogela"
   },
   "payments": {
     "pay": "Lefa",
@@ -19105,7 +19124,9 @@
         "continueWithCount": "tšwela pele with {{count}} ditirelo",
         "changeService": "Fetola",
         "selectedServiceMore": " (+{{count}})",
-        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} metsotso"
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} metsotso",
+        "stylistReceivesFallback": "Setayele sa gago",
+        "stylistReceives": "{{name}} o amogela"
       },
       "confirmation": {
         "loadingMessage": "E laiša Netefatšo ya bukingo...",
@@ -36463,6 +36484,15 @@
       "cancelFailed": "Ga e kgona go khansela your spot.",
       "sessionCancelled": "Kopano ye ya sehlopha e phumotšwe.",
       "sessionCancelledPaid": "Kopano ye ya sehlopha e phumotšwe. Tšhelete efe goba efe ye o e lefilego bakeng sa karolo ya gago e bušetšwa ka botlalo go karata yeo o lefilego ka yona."
+    },
+    "components": {
+      "payableOrdersBanner": {
+        "titleCart": "E emetše tefo",
+        "titleOrders": "E emetše tefo",
+        "retry": "Ga se e kgone go laiša diotara tšohle tše sa lefelwego. Leka gape.",
+        "showLess": "Bontšha tše nnyane",
+        "viewAll": "Lebelela tšohle"
+      }
     }
   },
   "errors": {

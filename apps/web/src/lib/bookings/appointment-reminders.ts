@@ -324,6 +324,7 @@ export async function sendRebookReminders() {
           reminder_key: reminderKey,
           booking_id: booking.id,
           offering_id: off.id,
+          provider_slug: providerSlug,
           weeks: weeks,
         },
         action_url: bookingUrlPath,

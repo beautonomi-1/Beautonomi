@@ -42,7 +42,7 @@ export function BookingSendPaymentLinkDialog({
   onSuccess,
 }: BookingSendPaymentLinkDialogProps) {
   const { t } = useTranslation();
-  const prefix = "web.provider.portal.sendPaymentLinkDialog";
+  const prefix = "web.provider.sendPaymentLinkDialog";
   const [method, setMethod] = useState<SendLinkDelivery>("email");
   const [sending, setSending] = useState(false);
 
