@@ -4,6 +4,9 @@ import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 
+// Public browse endpoint used by both mobile apps; allow extra time before platform 504.
+export const maxDuration = 30;
+
 /**
  * GET /api/public/providers/[slug]/reviews
  * 

@@ -10,6 +10,9 @@ import {
   unauthorizedResponse,
 } from "@/lib/supabase/api-helpers";
 
+// This endpoint blocks mobile app boot (provider/customer). Give it headroom on slow DB/edge.
+export const maxDuration = 30;
+
 /**
  * GET /api/me/portal
  * Returns role, portal, provider_id, provider_status for the authenticated user.

@@ -703,7 +703,8 @@ function AutoYocoCollectGate({ shouldRun, onTrigger }: { shouldRun: boolean; onT
         cbRef.current();
       }, 450);
     });
-    return () => task.cancel();
+    // InteractionManager is deprecated; some runtimes return a non-cancelable handle.
+    return () => (task as unknown as { cancel?: () => void } | undefined)?.cancel?.();
   }, [shouldRun]);
   return null;
 }
@@ -1904,7 +1905,8 @@ export default function BookingDetailScreen() {
         mainScrollRef.current?.scrollToEnd({ animated: true });
       }, 400);
     });
-    return () => task.cancel();
+    // InteractionManager is deprecated; some runtimes return a non-cancelable handle.
+    return () => (task as unknown as { cancel?: () => void } | undefined)?.cancel?.();
   }, [focusPayment, data]);
 
   const unpaidAdditionalChargesTotal = useMemo(

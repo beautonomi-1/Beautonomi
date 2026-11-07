@@ -39,7 +39,7 @@ flowchart LR
 
 - **Login** (`/(auth)/login`): primary path is phone OTP; email supports login and signup via an `isSignup` toggle. Footer CTA **"Don't have an account? Sign up"** navigates to `/(auth)/signup` (with optional `return_to`).
 - **Signup** (`/(auth)/signup`): real screen (not a redirect). Supports phone OTP, email/password + terms, and Google/Apple OAuth. Before verify, persists `PENDING_SIGNUP_SOURCE_KEY = "provider_mobile"` so post-auth profile patch can record signup source.
-- **After auth**: both login and signup call `router.replace("/")`. Root `index` resolves portal via `/api/me/portal`; new users without a provider profile land on **`/(app)/onboarding`** (hub), then **`/(app)/onboarding/wizard`** for full setup.
+- **After auth**: login/signup do **not** navigate. They wait for the Supabase session to be readable, then **`(auth)/_layout`** performs the single post-auth redirect to `/`. Root `index` resolves portal via `/api/me/portal`; new users without a provider profile land on **`/(app)/onboarding`** (hub), then **`/(app)/onboarding/wizard`** for full setup.
 - **Unified OTP on login**: Supabase may auto-create accounts on first OTP verify; explicit signup is still offered for users who prefer email/password or marketing deep links to `/(auth)/signup`.
 - **Error paths**: when login OTP fails with no-account / signups-disabled errors, Alert may offer navigation to signup with prefilled phone/email (customer parity).
 
@@ -52,7 +52,7 @@ flowchart LR
 
 ## OAuth callback
 
-- `auth/callback` receives the OAuth redirect, calls `exchangeCodeForSession` or `setSession`, then (on native) waits 50ms before `router.replace("/(app)/(tabs)")` so `AuthProvider`’s `onAuthStateChange` can run and the app layout sees the new session.
+- `auth/callback` receives the OAuth redirect, calls `exchangeCodeForSession` or `setSession`, then routes to `/` (root index gate). On native, it prefers `router.back()` when a back stack exists (to avoid replace races), otherwise it `router.replace("/")`.
 
 ## Singular smart links & deep links
 

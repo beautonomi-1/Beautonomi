@@ -129,11 +129,13 @@ function ExploreSoundBed({
 function ExploreVideoPlayer({
   post,
   active,
+  paused,
   muted,
   onPlayingChange,
 }: {
   post: ExplorePost;
   active: boolean;
+  paused?: boolean;
   muted: boolean;
   onPlayingChange?: (playing: boolean) => void;
 }) {
@@ -178,7 +180,7 @@ function ExploreVideoPlayer({
   const player = useVideoPlayer(uri, (p) => {
     p.loop = trimStartMs == null;
     p.muted = effectiveMuted;
-    if (!active) p.pause();
+    if (!active || paused) p.pause();
     else p.play();
   });
   playerRef.current = player;
@@ -204,7 +206,7 @@ function ExploreVideoPlayer({
     });
   }, [player, trimStartMs]);
 
-  useExploreTrimLoop(player, trimStartMs, trimEndMs, active);
+  useExploreTrimLoop(player, trimStartMs, trimEndMs, active && !paused);
 
   useEffect(() => {
     if (!active) return;
@@ -223,9 +225,9 @@ function ExploreVideoPlayer({
 
   useEffect(() => {
     runVideoPlayer(() => {
-      player.muted = !active || effectiveMuted;
+      player.muted = !active || Boolean(paused) || effectiveMuted;
     });
-  }, [active, effectiveMuted, player]);
+  }, [active, effectiveMuted, paused, player]);
 
   useEffect(() => {
     if (!active) {
@@ -269,6 +271,14 @@ function ExploreVideoPlayer({
 
   useEffect(() => {
     if (!active) return;
+    runVideoPlayer(() => {
+      if (paused) player.pause();
+      else player.play();
+    });
+  }, [active, paused, player]);
+
+  useEffect(() => {
+    if (!active || paused) return;
     const timer = setInterval(() => {
       const sample = withVideoPlayer(() => {
         return {
@@ -302,7 +312,7 @@ function ExploreVideoPlayer({
       if (sample.duration > 0) setProgress(Math.min(1, t / sample.duration));
     }, 200);
     return () => clearInterval(timer);
-  }, [active, onPlayingChange, player, trimStartMs, trimEndMs]);
+  }, [active, paused, onPlayingChange, player, trimStartMs, trimEndMs]);
 
   const drawOverlays = shouldDrawVideoTextOverlays(slide0);
   const visibleOverlays = drawOverlays
@@ -362,8 +372,10 @@ function VideoFeedItem({
   post,
   active,
   screenHeight,
+  paused,
   muted,
   onToggleMute,
+  onTogglePlayPause,
   onLike,
   onSave,
   onOpenComments,
@@ -373,8 +385,10 @@ function VideoFeedItem({
   post: ExplorePost;
   active: boolean;
   screenHeight: number;
+  paused: boolean;
   muted: boolean;
   onToggleMute: () => void;
+  onTogglePlayPause: () => void;
   onLike: () => void;
   onSave: () => void;
   onOpenComments: () => void;
@@ -385,20 +399,39 @@ function VideoFeedItem({
   const insets = useSafeAreaInsets();
   const heartAnim = useRef(new Animated.Value(0)).current;
   const lastTap = useRef(0);
+  const singleTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const useNativeDriver = Platform.OS !== "web";
   const [clipPlaying, setClipPlaying] = useState(false);
 
   const handlePress = useCallback(() => {
     const now = Date.now();
     if (now - lastTap.current < 280) {
+      if (singleTapTimer.current) {
+        clearTimeout(singleTapTimer.current);
+        singleTapTimer.current = null;
+      }
       onLike();
       Animated.sequence([
         Animated.spring(heartAnim, { toValue: 1, useNativeDriver, speed: 20, bounciness: 12 }),
         Animated.timing(heartAnim, { toValue: 0, duration: 600, useNativeDriver, delay: 400 }),
       ]).start();
+      lastTap.current = 0;
+      return;
     }
     lastTap.current = now;
-  }, [heartAnim, onLike, useNativeDriver]);
+    if (singleTapTimer.current) clearTimeout(singleTapTimer.current);
+    singleTapTimer.current = setTimeout(() => {
+      singleTapTimer.current = null;
+      if (!active) return;
+      onTogglePlayPause();
+    }, 260);
+  }, [active, heartAnim, onLike, onTogglePlayPause, useNativeDriver]);
+
+  useEffect(() => {
+    return () => {
+      if (singleTapTimer.current) clearTimeout(singleTapTimer.current);
+    };
+  }, []);
 
   const providerName = post.provider?.business_name || t("customer.explorePost.providerFallback");
 
@@ -407,9 +440,30 @@ function VideoFeedItem({
       <ExploreVideoPlayer
         post={post}
         active={active}
+        paused={paused}
         muted={muted}
         onPlayingChange={active ? setClipPlaying : undefined}
       />
+      {active && paused ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            width: 76,
+            height: 76,
+            marginTop: -38,
+            marginLeft: -38,
+            borderRadius: 38,
+            backgroundColor: "rgba(0,0,0,0.45)",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons name="play" size={34} color="#fff" />
+        </View>
+      ) : null}
       <Animated.View
         pointerEvents="none"
         style={{
@@ -534,6 +588,7 @@ export default function ExploreVideoScreen() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [muted, setMuted] = useState(true);
+  const [userPaused, setUserPaused] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [comments, setComments] = useState<ExploreComment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
@@ -736,6 +791,10 @@ export default function ExploreVideoScreen() {
       void appendFeedPage();
     }
   }, [activeIndex, appendFeedPage, hasMoreFeed, posts.length]);
+
+  useEffect(() => {
+    setUserPaused(false);
+  }, [activeIndex]);
 
   const finishListDrag = useCallback(
     (y: number) => {
@@ -1030,8 +1089,10 @@ export default function ExploreVideoScreen() {
         post={item}
         active={index === activeIndex}
         screenHeight={screenHeight}
+        paused={index === activeIndex ? userPaused : false}
         muted={muted}
         onToggleMute={() => setMuted((m) => !m)}
+        onTogglePlayPause={() => setUserPaused((p) => !p)}
         onLike={toggleLike}
         onSave={toggleSave}
         onOpenComments={openComments}
@@ -1070,6 +1131,7 @@ export default function ExploreVideoScreen() {
           keyExtractor={(p) => p.id}
           renderItem={renderItem}
           pagingEnabled
+          scrollEnabled={!commentsOpen}
           showsVerticalScrollIndicator={false}
           snapToInterval={screenHeight}
           decelerationRate="fast"

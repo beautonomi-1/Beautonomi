@@ -11,6 +11,9 @@ import {
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 
+// Provider mobile boot blocks on this (post-portal). Give it headroom to avoid 504s.
+export const maxDuration = 30;
+
 /**
  * GET /api/provider/profile
  * Get provider profile information
