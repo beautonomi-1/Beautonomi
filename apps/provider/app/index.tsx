@@ -8,7 +8,7 @@ import { api } from "@/lib/api-client";
 import { getApiErrorCode, getHttpErrorStatus, isTransientApiFailure } from "@/lib/api-error";
 import { WrongAppScreen } from "@/components/WrongAppScreen";
 import { Colors } from "@/constants/colors";
-import { APP_URL, isScreenshotMode } from "@/config/public-env";
+import { APP_URL, getBackendUrl, isScreenshotMode } from "@/config/public-env";
 import { getCachedPortal, getPersistedPortal, setCachedPortal, clearPortalCache } from "@/lib/portal-cache";
 import { persistActiveProviderOrgHint } from "@/lib/active-provider-api-hint";
 import {
@@ -248,15 +248,15 @@ export default function Index() {
     // provider access" screen on fresh Bearer sessions where public.users hadn't
     // been materialised yet — the server-side self-heal in /api/me/portal should
     // cover the common case, but this is defence-in-depth for older deploys.
-    const sessionAuthHeaders = session.access_token
-      ? { Authorization: `Bearer ${session.access_token}` }
-      : undefined;
+    //
+    // IMPORTANT (parity with customer app): do NOT override Authorization headers
+    // here. Let `api-client` inject and refresh tokens. If we pass a stale
+    // `session.access_token`, retries inside session recovery will keep reusing
+    // the stale header and can trap users in a "verification failed" loop.
 
     const fetchRoleFallback = (reason: PortalErrorKind, roleAttempt = 0) => {
       api
-        .get<{ role?: string; portal?: string }>("/api/me/role", {
-          headers: sessionAuthHeaders,
-        })
+        .get<{ role?: string; portal?: string }>("/api/me/role")
         .then((res) => {
           if (cancelled || portalTimedOut) return;
           // Deliberate background abort — the foreground restart re-probes; never
@@ -264,6 +264,17 @@ export default function Index() {
           if ((res.error as { code?: string } | undefined)?.code === "CANCELLED") return;
           if (res.error || !res.data?.role) {
             const status = getHttpErrorStatus(res.error);
+            if (isSentryEnabled()) {
+              // Emit structured details so we can distinguish "no base url", HTML/WAF pages, 5xx, etc.
+              authFlowBreadcrumb("provider_index.portal_fallback_role_error", {
+                reason,
+                attempt: roleAttempt + 1,
+                status: status ?? null,
+                code: getApiErrorCode(res.error) ?? null,
+                message: res.error ? String((res.error as any).message ?? res.error) : null,
+                baseUrl: getBackendUrl() || APP_URL || null,
+              });
+            }
             if (
               res.error &&
               isTransientApiFailure(res.error) &&
@@ -317,9 +328,7 @@ export default function Index() {
 
     const fetchPortal = (authAttempt: number, transientAttempt = 0) => {
       api
-        .get<{ portal?: string; role?: string }>("/api/me/portal", {
-          headers: sessionAuthHeaders,
-        })
+        .get<{ portal?: string; role?: string }>("/api/me/portal")
         .then((res) => {
           if (cancelled || portalTimedOut) return;
           // Critical: on 401/empty data, do NOT default to "customer" — iOS often fires this
@@ -328,6 +337,16 @@ export default function Index() {
             // Deliberate background abort — ignore; the foreground restart re-probes.
             if ((res.error as { code?: string }).code === "CANCELLED") return;
             const status = getHttpErrorStatus(res.error);
+            if (isSentryEnabled()) {
+              authFlowBreadcrumb("provider_index.portal_fetch_error", {
+                status: status ?? null,
+                code: getApiErrorCode(res.error) ?? null,
+                message: String((res.error as any)?.message ?? res.error),
+                auth_attempt: authAttempt + 1,
+                transient_round: transientAttempt + 1,
+                baseUrl: getBackendUrl() || APP_URL || null,
+              });
+            }
             if (status === 403 && isProviderSecurityGateCode(res.error)) {
               setNeedsSecurityVerify(true);
               setPortalState("ok");
@@ -430,24 +449,28 @@ export default function Index() {
     // watchdog when we background, then restart resolution from scratch on the
     // next foreground if we hadn't resolved yet. The in-flight reads were
     // already aborted (CANCELLED) by AuthProvider on background.
+    // Defensive: some runtimes/shims can lack addEventListener (or return a handle without .remove()).
     let appWasBackgrounded = false;
-    const portalAppStateSub = AppState.addEventListener("change", (state) => {
-      if (state === "background") {
-        appWasBackgrounded = true;
-        clearPortalDeadline();
-      } else if (state === "active" && appWasBackgrounded) {
-        appWasBackgrounded = false;
-        if (!cancelled && !resolved && !portalTimedOut) {
-          setPortalRetryKey((k) => k + 1);
-        }
-      }
-    });
+    const portalAppStateSub =
+      typeof (AppState as any)?.addEventListener === "function"
+        ? AppState.addEventListener("change", (state) => {
+            if (state === "background") {
+              appWasBackgrounded = true;
+              clearPortalDeadline();
+            } else if (state === "active" && appWasBackgrounded) {
+              appWasBackgrounded = false;
+              if (!cancelled && !resolved && !portalTimedOut) {
+                setPortalRetryKey((k) => k + 1);
+              }
+            }
+          })
+        : null;
 
     return () => {
       cancelled = true;
       clearTimeout(t);
       clearPortalDeadline();
-      portalAppStateSub.remove();
+      (portalAppStateSub as any)?.remove?.();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, session?.user?.id, portalRetryKey]);
@@ -587,28 +610,31 @@ export default function Index() {
         profileDeadlineRef.current = null;
       }, PROFILE_TIMEOUT_MS);
     };
-    const profileAppStateSub = AppState.addEventListener("change", (state) => {
-      if (state === "background") {
-        appWasBackgrounded = true;
-        clearProfileDeadline();
-        if (profileRetryTimeoutRef.current) {
-          clearTimeout(profileRetryTimeoutRef.current);
-          profileRetryTimeoutRef.current = null;
-        }
-      } else if (state === "active" && appWasBackgrounded) {
-        appWasBackgrounded = false;
-        if (!cancelled && hasProfileRef.current === null) {
-          armProfileDeadline();
-          runProfileCheck(0);
-        }
-      }
-    });
+    const profileAppStateSub =
+      typeof (AppState as any)?.addEventListener === "function"
+        ? AppState.addEventListener("change", (state) => {
+            if (state === "background") {
+              appWasBackgrounded = true;
+              clearProfileDeadline();
+              if (profileRetryTimeoutRef.current) {
+                clearTimeout(profileRetryTimeoutRef.current);
+                profileRetryTimeoutRef.current = null;
+              }
+            } else if (state === "active" && appWasBackgrounded) {
+              appWasBackgrounded = false;
+              if (!cancelled && hasProfileRef.current === null) {
+                armProfileDeadline();
+                runProfileCheck(0);
+              }
+            }
+          })
+        : null;
 
     return () => {
       cancelled = true;
       clearTimeout(t);
       clearProfileDeadline();
-      profileAppStateSub.remove();
+      (profileAppStateSub as any)?.remove?.();
       if (profileRetryTimeoutRef.current) {
         clearTimeout(profileRetryTimeoutRef.current);
         profileRetryTimeoutRef.current = null;
@@ -657,15 +683,18 @@ export default function Index() {
       }
     };
 
-    const focusSub = DeviceEventEmitter.addListener("beautonomi:app:focus", retry);
-    const netSub = DeviceEventEmitter.addListener("beautonomi:network:recover", retry);
-    const appStateSub = AppState.addEventListener("change", (s) => {
-      if (s === "active") retry();
-    });
+    const focusSub = (DeviceEventEmitter as any)?.addListener?.("beautonomi:app:focus", retry) ?? null;
+    const netSub = (DeviceEventEmitter as any)?.addListener?.("beautonomi:network:recover", retry) ?? null;
+    const appStateSub =
+      typeof (AppState as any)?.addEventListener === "function"
+        ? AppState.addEventListener("change", (s) => {
+            if (s === "active") retry();
+          })
+        : null;
     return () => {
-      focusSub.remove();
-      netSub.remove();
-      appStateSub.remove();
+      (focusSub as any)?.remove?.();
+      (netSub as any)?.remove?.();
+      (appStateSub as any)?.remove?.();
     };
     // runProfileCheck intentionally omitted (stable within a render pass).
     // eslint-disable-next-line react-hooks/exhaustive-deps

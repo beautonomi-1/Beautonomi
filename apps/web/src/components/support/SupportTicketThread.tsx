@@ -2,6 +2,7 @@
 
 import { Loader2 } from "lucide-react";
 import { LinkifiedMessageText } from "@/lib/support/linkify-message";
+import { SUPPORT_TEAM_AUTHOR_LABEL } from "@/lib/support/support-ticket-thread";
 
 export type SupportThreadMessage = {
   id: string;
@@ -25,7 +26,8 @@ export function SupportTicketThread({ messages, assistantPending, className }: S
       {messages.map((m) => {
         const isOwn = m.is_mine === true;
         const isAssistant = m.author_kind === "assistant" || (!isOwn && m.author_name?.includes("Assistant"));
-        const authorLabel = m.author_name ?? (isOwn ? "You" : isAssistant ? "Beautonomi Assistant" : "Support Team");
+        const isStaffReply = !isOwn && !isAssistant && m.author_kind === "staff";
+        const authorLabel = m.author_name ?? (isOwn ? "You" : isAssistant ? "Beautonomi Assistant" : SUPPORT_TEAM_AUTHOR_LABEL);
         return (
           <div key={m.id} className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>
             <div
@@ -43,7 +45,7 @@ export function SupportTicketThread({ messages, assistantPending, className }: S
                 }`}
               >
                 <span>{authorLabel}</span>
-                {!isOwn && !isAssistant ? (
+                {isStaffReply && authorLabel !== SUPPORT_TEAM_AUTHOR_LABEL ? (
                   <span className="rounded-full bg-white px-2 py-0.5 text-[10px] text-blue-700">Support team</span>
                 ) : null}
                 {isAssistant ? (

@@ -54,7 +54,8 @@ function createSupabase() {
                       created_at: "2026-05-01T10:00:00.000Z",
                       user_id: "creator-1",
                       attachments: [],
-                      author: { display_name: "Provider Owner" },
+                      author_kind: "customer",
+                      author: { full_name: "Provider Owner" },
                     },
                     {
                       id: "message-2",
@@ -63,7 +64,8 @@ function createSupabase() {
                       created_at: "2026-05-01T10:05:00.000Z",
                       user_id: "support-1",
                       attachments: [],
-                      author: { display_name: "Support Agent" },
+                      author_kind: "staff",
+                      author: { full_name: "Nolo Sehlolo" },
                     },
                   ],
                   error: null,
@@ -101,8 +103,12 @@ describe("GET /api/provider/support-tickets/[id]", () => {
       "Original issue",
       "Support response",
     ]);
+    expect(body.data.messages[0]).toMatchObject({
+      author_name: "Provider Owner",
+      is_mine: false,
+    });
     expect(body.data.messages[1]).toMatchObject({
-      author_name: "Support Agent",
+      author_name: "Nolo",
       is_mine: false,
     });
   });

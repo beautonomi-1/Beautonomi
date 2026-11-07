@@ -96,6 +96,7 @@ export async function createProviderSupportTicket(
       user_id: params.actorUserId,
       message: params.message,
       is_internal: false,
+      author_kind: messageFrom === "staff" ? "staff" : "customer",
     })
     .select()
     .single();

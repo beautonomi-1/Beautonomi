@@ -194,6 +194,7 @@ export async function executeApprovedAgentAction(
         user_id: actorUserId,
         message: draft,
         is_internal: false,
+        author_kind: "staff",
       })
       .select("id, created_at")
       .maybeSingle();
