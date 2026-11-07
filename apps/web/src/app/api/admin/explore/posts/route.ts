@@ -242,21 +242,33 @@ export async function POST(request: NextRequest) {
 
     if (error) return handleApiError(error, "Failed to update posts");
 
-    let gallerySelect = await supabaseAdmin
+    type GallerySyncSelectRow = {
+      id: string;
+      provider_id: string | null;
+      display_path?: string | null;
+      media_urls?: string[];
+      media_meta?: ExploreMediaSlideMeta[];
+      added_to_gallery?: boolean | null;
+    };
+    let galleryRows: GallerySyncSelectRow[] = [];
+    const gallerySelect = await supabaseAdmin
       .from("explore_posts")
       .select("id, provider_id, display_path, media_urls, media_meta, added_to_gallery")
       .in("id", allowedIds);
     if (gallerySelect.error) {
       console.warn("[admin/explore/posts] gallery sync select:", gallerySelect.error);
-      gallerySelect = await supabaseAdmin
+      const galleryFallback = await supabaseAdmin
         .from("explore_posts")
         .select("id, provider_id, display_path, media_urls, media_meta")
         .in("id", allowedIds);
-      if (gallerySelect.error) {
-        console.warn("[admin/explore/posts] gallery sync fallback:", gallerySelect.error);
+      if (galleryFallback.error) {
+        console.warn("[admin/explore/posts] gallery sync fallback:", galleryFallback.error);
+      } else {
+        galleryRows = (galleryFallback.data ?? []) as GallerySyncSelectRow[];
       }
+    } else {
+      galleryRows = (gallerySelect.data ?? []) as GallerySyncSelectRow[];
     }
-    const galleryRows = gallerySelect.data ?? [];
     for (const row of galleryRows) {
       if (!row.provider_id) continue;
       const syncRow = {

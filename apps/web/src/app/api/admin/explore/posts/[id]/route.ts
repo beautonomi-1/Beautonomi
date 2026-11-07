@@ -219,7 +219,7 @@ export async function PATCH(
 
     if (error) return handleApiError(error, "Failed to update post");
 
-    const scopedPost = scoped.post as Record<string, unknown>;
+    const scopedPost = scoped.post as unknown as Record<string, unknown>;
     const mediaSync = {
       id,
       provider_id: String(scopedPost.provider_id ?? ""),
