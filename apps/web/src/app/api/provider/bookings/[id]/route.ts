@@ -7,6 +7,7 @@ import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError
 import { requireAnyPermission, requirePermission } from "@/lib/auth/requirePermission";
 import { assertCalendarScopeAllowsBooking } from "@/lib/auth/calendar-scope";
 import type { Booking } from "@/types/beautonomi";
+import type { ProviderClientMemory } from "@/lib/provider/provider-client-memory";
 import {
   mapStatusToProvider,
   mapStatusFromProvider,
@@ -177,6 +178,7 @@ type BookingDbRow = Record<string, unknown> & {
 /** Booking response with optional provider-only fields */
 type BookingResponse = Booking & {
   custom_field_values?: Record<string, string | number | boolean | null>;
+  client_memory?: ProviderClientMemory | null;
   provider_points_earned?: number | null;
   awaiting_machine_refunds?: Array<{
     id: string;
@@ -752,6 +754,18 @@ export async function GET(
           typeof points === "number" && Number.isFinite(points) && points >= 0 ? points : null;
       } catch {
         transformedBooking.provider_points_earned = null;
+      }
+    }
+
+    if (bookingData.customer_id) {
+      const { fetchProviderClientMemory } = await import("@/lib/provider/provider-client-memory");
+      const memory = await fetchProviderClientMemory(
+        supabaseAdmin,
+        providerId,
+        bookingData.customer_id,
+      );
+      if (memory) {
+        transformedBooking.client_memory = memory;
       }
     }
 

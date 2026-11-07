@@ -112,6 +112,26 @@ describe("useExploreTrimLoop", () => {
     expect(player.play).not.toHaveBeenCalled();
   });
 
+  it("does not throw when the native player was already released", () => {
+    const player = makePlayer("readyToPlay");
+    const released = new Error(
+      "FunctionCallException: Calling the 'get' function has failed → Unable to find the native shared object associated with given JavaScript object",
+    );
+    (released as Error & { code: string }).code = "ERR_NATIVE_SHARED_OBJECT_NOT_FOUND";
+    Object.defineProperty(player, "status", { get: () => { throw released; } });
+    Object.defineProperty(player, "currentTime", {
+      get: () => { throw released; },
+      set: () => { throw released; },
+    });
+    Object.defineProperty(player, "playing", { get: () => { throw released; } });
+    expect(() => {
+      renderHook(() => useExploreTrimLoop(player as unknown as VideoPlayer, 2000, 5000, true));
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
+    }).not.toThrow();
+  });
+
   it("does nothing without a trim window", () => {
     const player = makePlayer("readyToPlay");
     player.currentTime = 7;

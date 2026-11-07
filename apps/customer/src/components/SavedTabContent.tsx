@@ -31,7 +31,8 @@ import { Colors, Shadows } from "@/constants/colors";
 import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
-import { explorePostGridImageUrl } from "@/lib/explore-media";
+import { explorePostCoverVideoUrl, explorePostGridImageUrl } from "@/lib/explore-media";
+import { ExploreVideoFrameCover } from "@/components/explore/ExploreVideoFrameCover";
 
 type Tab = "providers" | "products" | "posts";
 
@@ -1248,6 +1249,7 @@ function SavedPostTile({
     setProviderSaved(isProviderInWishlist);
   }, [isProviderInWishlist]);
   const mediaUrl = explorePostGridImageUrl(post);
+  const coverVideo = mediaUrl ? null : explorePostCoverVideoUrl(post);
   const tileAspect =
     post.media_width && post.media_height && post.media_height > 0
       ? Math.min(1.5, Math.max(0.6, post.media_width / post.media_height))
@@ -1293,6 +1295,12 @@ function SavedPostTile({
               contentFit="cover"
               cachePolicy="memory-disk"
               transition={200}
+            />
+          ) : coverVideo ? (
+            <ExploreVideoFrameCover
+              uri={coverVideo}
+              width={tileWidth}
+              height={tileWidth * tileAspect}
             />
           ) : (
             <View

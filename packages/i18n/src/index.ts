@@ -20,6 +20,7 @@ import {
   isReviewedUiLanguage,
   coerceMobileUiLanguage,
   reviewedUiLanguageOptions,
+  formatLanguageOptionLabel,
 } from "./language-registry";
 
 export { defaultNS };
@@ -45,6 +46,7 @@ export {
   isReviewedUiLanguage,
   coerceMobileUiLanguage,
   reviewedUiLanguageOptions,
+  formatLanguageOptionLabel,
 };
 export type {
   SupportedLanguage,
@@ -158,6 +160,8 @@ export {
 export {
   BOOKING_POLICY_PRESETS,
   DEFAULT_BOOKING_POLICY_PRESET,
+  ONBOARDING_POLICY_MORE_PRESETS,
+  ONBOARDING_POLICY_PRIMARY_PRESETS,
   buildPolicySnapshotJson,
   getPresetValues,
   standardPresetFallbackPolicy,

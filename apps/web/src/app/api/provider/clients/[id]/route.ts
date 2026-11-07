@@ -25,6 +25,7 @@ import {
   buildSalonMembershipMap,
 } from "@/lib/provider/attach-salon-membership-to-clients";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fetchProviderClientMemory } from "@/lib/provider/provider-client-memory";
 
 /**
  * PATCH accepts `provider_clients.id` or `customer_id` (same as GET). If the
@@ -146,6 +147,7 @@ export async function GET(
     if (!canViewClient) {
       return notFoundResponse("Client not found");
     }
+    const clientMemory = await fetchProviderClientMemory(supabase, providerId, customerId);
     const hasActivityRelationship = await hasProviderCustomerActivityRelationship(
       supabaseAdmin,
       providerId,
@@ -209,6 +211,11 @@ export async function GET(
         tags: client?.tags || [],
         is_favorite: client?.is_favorite || false,
         last_service_date: client?.last_service_date || null,
+        last_booking_id: clientMemory?.last_booking_id ?? null,
+        last_offering_name: clientMemory?.last_offering_name ?? null,
+        last_staff_name: clientMemory?.last_staff_name ?? null,
+        service_note: clientMemory?.service_note ?? null,
+        client_memory: clientMemory,
         total_bookings: client?.total_bookings || appointments?.length || 0,
         total_spent: client?.total_spent || 0,
         created_at: client?.created_at || null,
@@ -586,6 +593,11 @@ export async function GET(
       tags: client?.tags || [],
       is_favorite: client?.is_favorite || false,
       last_service_date: client?.last_service_date || null,
+      last_booking_id: clientMemory?.last_booking_id ?? null,
+      last_offering_name: clientMemory?.last_offering_name ?? null,
+      last_staff_name: clientMemory?.last_staff_name ?? null,
+      service_note: clientMemory?.service_note ?? null,
+      client_memory: clientMemory,
       total_bookings: client?.total_bookings || appointments?.length || 0,
       total_spent: client?.total_spent || computedTotalSpent,
       created_at: client?.created_at || customer.created_at,
@@ -635,6 +647,7 @@ export async function PATCH(
     if (body.notes !== undefined) updateData.notes = body.notes || null;
     if (body.tags !== undefined) updateData.tags = body.tags && body.tags.length > 0 ? body.tags : null;
     if (body.is_favorite !== undefined) updateData.is_favorite = body.is_favorite;
+    if (body.service_note !== undefined) updateData.service_note = body.service_note || null;
 
     let data: any = null;
     if (Object.keys(updateData).length > 0) {

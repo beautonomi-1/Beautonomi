@@ -9,6 +9,7 @@ import {
   fuzzyTextRelevanceScore,
 } from '@/lib/search/fuzzy-rank';
 import { haversineDistanceKmFromCoords } from "@/lib/geo/distance";
+import { publicSuggestionPlaceLabel } from "@beautonomi/utils";
 import { withStorageListThumbnail } from "@/lib/supabase/storage-list-thumbnail";
 import { z } from 'zod';
 
@@ -141,32 +142,62 @@ export async function GET(request: NextRequest) {
     console.log(`[Search Suggestions] Query: "${searchTerm}", Found: ${services?.length || 0} services, ${providers?.length || 0} providers, ${categories?.length || 0} categories`);
 
     const distanceMap = new Map<string, number>();
-    if (providers.length > 0 && data.lat != null && data.lng != null && Number.isFinite(data.lat) && Number.isFinite(data.lng)) {
+    const placeLabelMap = new Map<string, string>();
+    const hasUserCoords =
+      data.lat != null && data.lng != null && Number.isFinite(data.lat) && Number.isFinite(data.lng);
+
+    if (providers.length > 0) {
       const providerIds = providers.map((p: any) => p.id);
-      const { data: locations } = await supabase
+      const { data: locations, error: locationsError } = await supabase
         .from("provider_locations")
-        .select("provider_id, latitude, longitude, address_lat, address_lng")
+        .select(
+          "provider_id, city, neighborhood, metro, is_primary, latitude, longitude, address_lat, address_lng",
+        )
         .in("provider_id", providerIds)
         .eq("is_active", true);
 
-      if (locations) {
+      if (!locationsError && locations) {
         const byProvider = new Map<string, any[]>();
         locations.forEach((loc: any) => {
           if (!byProvider.has(loc.provider_id)) byProvider.set(loc.provider_id, []);
           byProvider.get(loc.provider_id)!.push(loc);
         });
 
+        const labelForLoc = (loc: any): string | undefined => {
+          const label = publicSuggestionPlaceLabel(loc.city, loc.neighborhood, loc.metro);
+          return label || undefined;
+        };
+
         byProvider.forEach((locs, providerId) => {
-          let minKm = Infinity;
-          for (const loc of locs) {
-            const lat = loc.latitude ?? loc.address_lat;
-            const lng = loc.longitude ?? loc.address_lng;
-            if (lat != null && lng != null) {
-              const km = haversineDistanceKmFromCoords(data.lat!, data.lng!, Number(lat), Number(lng));
-              if (km < minKm) minKm = km;
+          const primaryLoc = locs.find((l) => l.is_primary) ?? locs[0];
+
+          if (hasUserCoords) {
+            let minKm = Infinity;
+            let nearestLoc: (typeof locs)[number] | undefined;
+            for (const loc of locs) {
+              const lat = loc.latitude ?? loc.address_lat;
+              const lng = loc.longitude ?? loc.address_lng;
+              if (lat != null && lng != null) {
+                const km = haversineDistanceKmFromCoords(data.lat!, data.lng!, Number(lat), Number(lng));
+                if (km < minKm) {
+                  minKm = km;
+                  nearestLoc = loc;
+                }
+              }
             }
+            if (Number.isFinite(minKm)) {
+              distanceMap.set(providerId, Math.round(minKm * 10) / 10);
+            }
+
+            let placeLabel = nearestLoc ? labelForLoc(nearestLoc) : undefined;
+            if (!placeLabel && primaryLoc) {
+              placeLabel = labelForLoc(primaryLoc);
+            }
+            if (placeLabel) placeLabelMap.set(providerId, placeLabel);
+          } else if (primaryLoc) {
+            const placeLabel = labelForLoc(primaryLoc);
+            if (placeLabel) placeLabelMap.set(providerId, placeLabel);
           }
-          if (Number.isFinite(minKm)) distanceMap.set(providerId, Math.round(minKm * 10) / 10);
         });
       }
     }
@@ -181,6 +212,7 @@ export async function GET(request: NextRequest) {
       slug?: string;
       image_url?: string | null;
       distance_km?: number;
+      place_label?: string;
     }> = [];
 
     // Add service suggestions
@@ -206,6 +238,7 @@ export async function GET(request: NextRequest) {
         slug: provider.slug || undefined,
         image_url: withStorageListThumbnail(provider.avatar_url || provider.thumbnail_url || null),
         distance_km: distanceMap.get(provider.id),
+        place_label: placeLabelMap.get(provider.id),
       });
     });
 

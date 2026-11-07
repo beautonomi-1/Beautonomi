@@ -13780,7 +13780,15 @@
       "shareMediaFailedTitle": "Couldn't compartir media",
       "shareMediaFailedBody": "Kami tidak dapat menyiapkan file ini untuk dibagikan. Coba bagikan tautannya.",
       "loadingComments": "Memuat…",
-      "loadMoreComments": "Muat komentar lainnya"
+      "loadMoreComments": "Muat komentar lainnya",
+      "errorDeleteComment": "Tidak dapat menghapus komentar ini. Silakan coba lagi.",
+      "deleteCommentTitle": "Hapus komentar ini?",
+      "deleteCommentBody": "Ini menghapus komentar untuk semua orang.",
+      "deleteComment": "Hapus",
+      "commentsLoadFailed": "Tidak dapat memuat komentar.",
+      "signInToComment": "Masuk untuk berkomentar",
+      "replyingTo": "Membalas {{name}}",
+      "commentTooLong": "{{count}} / 200"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -14406,6 +14414,13 @@
           "shopContinueCta": "Voir commande",
           "shopPendingSubtext": "Nous mettrons à jour votre commande dans quelques minutes. Vous pouvez continuer à utiliser l'application pendant que nous confirmons auprès de votre banque.",
           "shopFailedSubtext": "Si vous avez été facturé, votre commande sera toujours confirmée une fois le paiement effectué. Veuillez vérifier votre onglet Commandes."
+        },
+        "payableOrdersBanner": {
+          "titleCart": "Menunggu pembayaran",
+          "titleOrders": "Menunggu pembayaran",
+          "retry": "Tidak dapat memuat semua pesanan yang belum dibayar. Coba lagi.",
+          "showLess": "Tampilkan lebih sedikit",
+          "viewAll": "Lihat semua"
         }
       },
       "tabs": {
@@ -14836,7 +14851,9 @@
           "total": "Total",
           "alsoCheckoutOnWeb": "Payer aussi sur le web",
           "pickupLocationsMore": "{{count}} points de retrait — choisissez à la caisse",
-          "deliveryEtaDays": "Livraison estimée sous {{days}} jour(s) ouvré(s)"
+          "deliveryEtaDays": "Livraison estimée sous {{days}} jour(s) ouvré(s)",
+          "paymentDueHeading": "Menunggu pembayaran",
+          "paymentDueRetry": "Tidak dapat memuat semua pesanan yang belum dibayar. Coba lagi."
         },
         "productCheckout": {
           "title": "Paiement",
@@ -18176,7 +18193,8 @@
     "cart": "Panier",
     "exploreVideo": {
       "unmute": "Nyalakan suara",
-      "mute": "Bisukan"
+      "mute": "Bisukan",
+      "replay": "Putar ulang"
     },
     "bankAccounts": {
       "failedLoadBanks": "Tidak dapat memuat bank. Coba lagi.",
@@ -18456,7 +18474,8 @@
     "rescheduleReplacesPreviousBody": "Janji asli Anda dibatalkan sendiri, tanpa biaya, saat pembayaran pemesanan ini selesai. Yang sudah Anda bayar dipakai di sini, dan sisanya tetap di dompet.",
     "rescheduleCreditNote": "Jumlah apa pun yang sudah Anda bayar daring untuk pemesanan asli dipakai di sini. Anda hanya membayar selisihnya.",
     "rescheduleCreditApplied": "Dibayar pada pemesanan asli",
-    "rescheduleCreditSurplus": "Sisa {{amount}} tetap di dompet Anda sebagai saldo."
+    "rescheduleCreditSurplus": "Sisa {{amount}} tetap di dompet Anda sebagai saldo.",
+    "stylistReceives": "{{name}} menerima"
   },
   "payments": {
     "pay": "Pay",
@@ -19105,7 +19124,9 @@
         "continueWithCount": "continuar with {{count}} servicios",
         "changeService": "Modifier",
         "selectedServiceMore": " (+{{count}})",
-        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} mnt"
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} mnt",
+        "stylistReceivesFallback": "Stylist Anda",
+        "stylistReceives": "{{name}} menerima"
       },
       "confirmation": {
         "loadingMessage": "Chargement de réservation confirmation...",
@@ -36463,6 +36484,15 @@
       "cancelFailed": "Impossible de annuler your spot.",
       "sessionCancelled": "Sesi kelompok ini telah dibatalkan.",
       "sessionCancelledPaid": "Sesi kelompok ini telah dibatalkan. Jumlah apa pun yang Anda bayar untuk bagian Anda dikembalikan penuh ke kartu yang dipakai."
+    },
+    "components": {
+      "payableOrdersBanner": {
+        "titleCart": "Menunggu pembayaran",
+        "titleOrders": "Menunggu pembayaran",
+        "retry": "Tidak dapat memuat semua pesanan yang belum dibayar. Coba lagi.",
+        "showLess": "Tampilkan lebih sedikit",
+        "viewAll": "Lihat semua"
+      }
     }
   },
   "errors": {

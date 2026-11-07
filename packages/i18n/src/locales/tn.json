@@ -13780,7 +13780,15 @@
       "shareMediaFailedTitle": "Couldn't abelana media",
       "shareMediaFailedBody": "Ga re a kgona go baakanyetsa faele eno gore re e abelanwe. Leka go abelana kgokagano boemong jwa seo.",
       "loadingComments": "E a laiša...",
-      "loadMoreComments": "Laiša ditlhaloso tse dingwe"
+      "loadMoreComments": "Laiša ditlhaloso tse dingwe",
+      "errorDeleteComment": "Ga e a kgona go phimola tshwaelo eno. Tsweetswee leka gape.",
+      "deleteCommentTitle": "Phimola tshwaelo eno?",
+      "deleteCommentBody": "Se se tlosa tshwaelo go botlhe.",
+      "deleteComment": "Phimola",
+      "commentsLoadFailed": "Ga e a kgona go laisa ditshwaelo.",
+      "signInToComment": "Tsena gore o tshwaele",
+      "replyingTo": "O araba go {{name}}",
+      "commentTooLong": "{{count}} / 200"
     },
     "searchScreen": {
       "title": "Batla",
@@ -14406,6 +14414,13 @@
           "shopContinueCta": "Bona odara",
           "shopPendingSubtext": "Re tla tlhabolola otara ya gago mo metsotsong e se kae fela. O ka nna wa dirisa app fa re ntse re tlhomamisa le banka ya gago.",
           "shopFailedSubtext": "Fa e le gore o duedisitswe, otara ya gago e santse e tla tlhomamisiwa fa tuelo e sena go goroga. Tsweetswee tlhola thebo ya gago ya Diotara."
+        },
+        "payableOrdersBanner": {
+          "titleCart": "E emetse tuelo",
+          "titleOrders": "E emetse tuelo",
+          "retry": "Ga e a kgona go laisa diotara tsotlhe tse di sa duelelwang. Leka gape.",
+          "showLess": "Bontsha tse dinnye",
+          "viewAll": "Bona tsotlhe"
         }
       },
       "tabs": {
@@ -14836,7 +14851,9 @@
           "total": "Palogotlhe",
           "alsoCheckoutOnWeb": "Also go duela on web",
           "pickupLocationsMore": "{{count}} mafelo a go tseela — tlhopha fa o lefa",
-          "deliveryEtaDays": "Go romela go akanyetsegile mo dikgweding tsa {{days}} tsa tiro"
+          "deliveryEtaDays": "Go romela go akanyetsegile mo dikgweding tsa {{days}} tsa tiro",
+          "paymentDueHeading": "E emetse tuelo",
+          "paymentDueRetry": "Ga e a kgona go laisa diotara tsotlhe tse di sa duelelwang. Leka gape."
         },
         "productCheckout": {
           "title": "Go duela",
@@ -18176,7 +18193,8 @@
     "cart": "Koloi",
     "exploreVideo": {
       "unmute": "Bula modumo",
-      "mute": "Didimatsa"
+      "mute": "Didimatsa",
+      "replay": "Bapala gape"
     },
     "bankAccounts": {
       "failedLoadBanks": "Ga e kgona go laiša banks. leka gape.",
@@ -18456,7 +18474,8 @@
     "rescheduleReplacesPreviousBody": "Kopano ya gago ya ntlha e phimolwa ka go itirela, mahala, fa tuelo ya thulaganyo e e fetsa. Se o se duetseng se dirisiwa fano, mme se se setseng se nna mo sepatšheng sa gago.",
     "rescheduleCreditNote": "Madi ape fela a o a duetseng mo inthaneteng ka thulaganyo ya ntlha a dirisiwa fano. O duela pharologanyo fela.",
     "rescheduleCreditApplied": "E dueditswe mo thulaganyong ya gago ya ntlha",
-    "rescheduleCreditSurplus": "Se se setseng sa {{amount}} se nna mo sepatšheng sa gago jaaka mokitlane."
+    "rescheduleCreditSurplus": "Se se setseng sa {{amount}} se nna mo sepatšheng sa gago jaaka mokitlane.",
+    "stylistReceives": "{{name}} o amogela"
   },
   "payments": {
     "pay": "Duela",
@@ -19105,7 +19124,9 @@
         "continueWithCount": "tswelela with {{count}} ditirelo",
         "changeService": "Fetola",
         "selectedServiceMore": " (+{{count}})",
-        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} metsotso"
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} metsotso",
+        "stylistReceivesFallback": "Setayele sa gago",
+        "stylistReceives": "{{name}} o amogela"
       },
       "confirmation": {
         "loadingMessage": "E laiša Netefatso ya bukingo...",
@@ -36463,6 +36484,15 @@
       "cancelFailed": "Ga e kgona go khansela your spot.",
       "sessionCancelled": "Kopano e ya setlhopha e phimotswe.",
       "sessionCancelledPaid": "Kopano e ya setlhopha e phimotswe. Madi ape fela a o a duetseng ka karolo ya gago a busediwa ka botlalo mo karateng e o duetseng ka yona."
+    },
+    "components": {
+      "payableOrdersBanner": {
+        "titleCart": "E emetse tuelo",
+        "titleOrders": "E emetse tuelo",
+        "retry": "Ga e a kgona go laisa diotara tsotlhe tse di sa duelelwang. Leka gape.",
+        "showLess": "Bontsha tse dinnye",
+        "viewAll": "Bona tsotlhe"
+      }
     }
   },
   "errors": {

@@ -298,7 +298,7 @@ export const FEATURE_REGISTRY: FeatureCategoryDef[] = [
         key: "included_credit_zar_per_month",
         label: "Included ads credit (ZAR / month)",
         type: "limit",
-        freePlanDefault: 100,
+        freePlanDefault: 0,
         generousDefault: 100,
       },
       { key: "note", label: "Internal note", type: "text", freePlanDefault: "" },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -20,6 +20,8 @@ import { getProductOrderSupportPrompt, isUnpaidOnlinePaystackHold, supportTicket
 import { displayedProductOrderAmountStillDue } from "@/lib/orders/product-order-tender";
 import { useTranslation, type TFunction } from "@beautonomi/i18n";
 import { PickupStoreCard } from "@/components/shop/PickupStoreCard";
+import { getAmplitudeInstance } from "@/lib/analytics/amplitude/client";
+import { EVENT_PRODUCT_ORDER_PAY_OUTCOME } from "@/lib/analytics/amplitude/types";
 
 interface ProductOrder {
   id: string;
@@ -202,6 +204,26 @@ function paymentStatusLabel(status: string, t: TFunction): string {
   }
 }
 
+function orderDetailPathWithoutStartPay(): string {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("startPay");
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+function AutoStartProductOrderPay({
+  enabled,
+  onStart,
+}: {
+  enabled: boolean;
+  onStart: () => void;
+}) {
+  useEffect(() => {
+    if (!enabled) return;
+    onStart();
+  }, [enabled, onStart]);
+  return null;
+}
+
 function timelineIndex(status: string) {
   if (status === "cancelled" || status === "refunded") return -1;
   if (status === "ready_for_collection") return 3;
@@ -231,6 +253,12 @@ export default function OrderDetailPage() {
   const [messagingProvider, setMessagingProvider] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const payStartedRef = useRef(false);
+  const startOnceRef = useRef<() => void>(() => {});
+  const onAutoStart = useCallback(() => {
+    startOnceRef.current();
+  }, []);
+  const startPay = searchParams.get("startPay");
 
   useEffect(() => {
     if (!params.id) return;
@@ -416,6 +444,14 @@ export default function OrderDetailPage() {
       return;
     }
 
+    getAmplitudeInstance()?.track(EVENT_PRODUCT_ORDER_PAY_OUTCOME, {
+      portal: "web",
+      order_id: order.id,
+      outcome: "initiated",
+      amount_due: onlineAmountDue,
+      currency: sym,
+    });
+
     setPaying(true);
     setErrorMsg(null);
     try {
@@ -454,8 +490,24 @@ export default function OrderDetailPage() {
     }
   };
 
+  startOnceRef.current = () => {
+    if (payStartedRef.current || startPay !== "1") return;
+    payStartedRef.current = true;
+    const stripped = orderDetailPathWithoutStartPay();
+    window.history.replaceState(window.history.state, "", stripped);
+    if (!canPayOnline) {
+      router.replace(stripped);
+      return;
+    }
+    const hrefBefore = window.location.href;
+    void handlePayOnline().finally(() => {
+      if (window.location.href === hrefBefore) router.replace(stripped);
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
+      <AutoStartProductOrderPay enabled={startPay === "1"} onStart={onAutoStart} />
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
         <button onClick={() => router.back()} className="mb-6 flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700">
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -133,7 +133,7 @@ export function evaluateBookingAllowance(input: {
 
 /**
  * Dashboard banner payload.
- * canProceed true hides the banner (under the cap, or booking_limits not enforced).
+ * canProceed true hides the banner (under the cap, or booking_limits.enabled is false on the plan — e.g. Starter after retention entitlements).
  * A failed lookup stays a failed lookup: the message says the allowance could not
  * be verified. It is not reported as "bookings allowed" or as a plan cap.
  */

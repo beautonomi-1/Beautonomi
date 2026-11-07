@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { VideoPlayer } from "expo-video";
+import { runVideoPlayer, withVideoPlayer } from "@/lib/video-player-access";
 
 const TRIM_TICK_MS = 100;
 const END_SLACK_SEC = 0.05;
@@ -35,18 +36,22 @@ export function useExploreTrimLoop(
     if (!active || startMs == null || endMs == null) return;
     const startSec = startMs / 1000;
     const seekToStart = () => {
-      player.currentTime = startSec;
+      runVideoPlayer(() => {
+        player.currentTime = startSec;
+      });
     };
-    if (player.status === "readyToPlay") {
+    if (withVideoPlayer(() => player.status, "") === "readyToPlay") {
       seekToStart();
       return;
     }
     const sub = player.addListener("statusChange", ({ status }) => {
       if (status !== "readyToPlay") return;
       seekToStart();
-      sub.remove();
+      runVideoPlayer(() => sub.remove());
     });
-    return () => sub.remove();
+    return () => {
+      runVideoPlayer(() => sub.remove());
+    };
   }, [active, player, startMs, endMs]);
 
   useEffect(() => {
@@ -54,28 +59,36 @@ export function useExploreTrimLoop(
     const startSec = startMs / 1000;
     const endSec = endMs / 1000;
     const timer = setInterval(() => {
-      if (player.status !== "readyToPlay") return;
-      const t = player.currentTime || 0;
+      const snapshot = withVideoPlayer(() => {
+        if (player.status !== "readyToPlay") return null;
+        return { t: player.currentTime || 0, playing: Boolean(player.playing) };
+      }, null);
+      if (!snapshot) return;
+      const { t, playing } = snapshot;
       if (t > startSec + 0.2 && t < endSec - END_SLACK_SEC) {
         playedInsideRef.current = true;
       }
       if (t >= endSec - END_SLACK_SEC) {
         const onTrimEnd = onTrimEndRef.current;
         if (onTrimEnd) {
-          if (player.playing) player.pause();
+          if (playing) runVideoPlayer(() => player.pause());
           if (playedInsideRef.current && !trimEndFiredRef.current) {
             trimEndFiredRef.current = true;
             onTrimEnd();
           }
           return;
         }
-        player.currentTime = startSec;
-        if (!player.playing) player.play();
+        runVideoPlayer(() => {
+          player.currentTime = startSec;
+          if (!player.playing) player.play();
+        });
         return;
       }
       if (t < startSec - BEFORE_START_SLACK_SEC) {
-        player.currentTime = startSec;
-        if (!player.playing) player.play();
+        runVideoPlayer(() => {
+          player.currentTime = startSec;
+          if (!player.playing) player.play();
+        });
       }
     }, TRIM_TICK_MS);
     return () => clearInterval(timer);

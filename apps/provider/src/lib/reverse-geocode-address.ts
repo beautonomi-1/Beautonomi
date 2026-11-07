@@ -7,6 +7,8 @@ import { mapGeocodeFeatureToAddressParts, type MapboxGeocodeFeatureLike } from "
 export type ReverseGeocodedAddressParts = {
   address_line1: string;
   address_line2?: string;
+  neighborhood?: string;
+  metro?: string;
   city: string;
   state: string;
   postal_code: string;
@@ -29,6 +31,8 @@ export async function reverseGeocodeCoordinates(
   return {
     address_line1: mapped.address_line1,
     ...(mapped.address_line2 ? { address_line2: mapped.address_line2 } : {}),
+    ...(mapped.neighborhood ? { neighborhood: mapped.neighborhood } : {}),
+    ...(mapped.metro ? { metro: mapped.metro } : {}),
     city: mapped.city,
     state: mapped.state,
     postal_code: mapped.postal_code,

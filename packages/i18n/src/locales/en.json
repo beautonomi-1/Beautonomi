@@ -75,7 +75,10 @@
     "hints": {
       "gotIt": "Got it",
       "dismissA11y": "Dismiss tip"
-    }
+    },
+    "copyLink": "Copy link",
+    "linkCopied": "Link copied",
+    "copyLinkFailed": "Could not copy link."
   },
   "authGate": {
     "checkingAccess": "Checking your account…",
@@ -486,7 +489,17 @@
             "moreActionsA11y": "More booking actions",
             "bookingForA11y": "Booking for {{name}}",
             "actionSaved": "{{action}} saved",
-            "minDuration": "{{count}} min"
+            "minDuration": "{{count}} min",
+            "tillPayment": {
+              "online": "Online",
+              "yoco": "Yoco",
+              "cardMachine": "Card machine",
+              "paystackTerminal": "Paystack terminal",
+              "wallet": "Wallet",
+              "giftCard": "Gift card",
+              "cash": "Cash",
+              "manualCard": "Manual card"
+            }
           },
           "etaPicker": {
             "estimatedArrival": "Estimated arrival",
@@ -3270,7 +3283,9 @@
           "recommendChargeCard": "Charge card on file (customer approves first)",
           "recommendCustomerPay": "Send to customer — they pay in-app",
           "recommendCollectInPerson": "Collect in person (cash, card, or terminal)",
-          "removeCta": "Remove"
+          "removeCta": "Remove",
+          "lastVisitMemory": "Last visit",
+          "viewLook": "View look"
         },
         "operatingHoursSettings": {
           "title": "Operating Hours",
@@ -4867,7 +4882,12 @@
               "no": "No"
             },
             "bookingProtectionTitle": "Booking protection",
-            "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings."
+            "bookingProtectionHint": "Pick how cancellations and no-shows are handled. You can change this anytime in Settings.",
+            "bookingProtectionMoneyLine1": "You receive your listed service price. Clients pay a separate protection amount to Beautonomi.",
+            "bookingProtectionMoneyLine2": "Cash and card-machine takings stay in your till.",
+            "policyEverydayVisits": "Everyday visits",
+            "policyLongJobs": "Long jobs and house calls",
+            "policyMoreOptions": "More options"
           },
           "software": {
             "intro": "Optional — helps us understand where you're coming from. We'll tailor import tips and onboarding hints.",
@@ -5108,7 +5128,8 @@
             "periodAvailableOnWeb": "{{period}} billing is available on web only for this plan."
           },
           "travelFees": {
-            "skipHint": "You can skip this step — we'll apply the platform standard and you can adjust it later."
+            "skipHint": "You can skip this step — we'll apply the platform standard and you can adjust it later.",
+            "houseCallDepositHint": "For house calls, the “Long jobs and house calls” booking protection option takes a 50% deposit."
           }
         },
         "newBooking": {
@@ -5902,7 +5923,8 @@
           "viewAllLower": "View all",
           "activityWindow": "Last 14 days ({{window}}) · not filtered by the period above.",
           "activityDefaultHint": "Latest updates across bookings, payments, and reviews — not filtered by the period above.",
-          "noRecentActivity": "No recent activity"
+          "noRecentActivity": "No recent activity",
+          "channelMixNudge": "Most visits this period were not booked online — sharing your booking link helps clients hold their next slot in the app."
         },
         "staffSchedule": {
           "title": "Staff Schedules",
@@ -8318,7 +8340,9 @@
           "shareBookingLink": "Share booking link",
           "continueDraftTitle": "Finish your Explore draft",
           "continueDraftBody": "You already started a post for this booking. Pick up where you left off or rate your client.",
-          "continueDraftCta": "Continue draft"
+          "continueDraftCta": "Continue draft",
+          "lockNextVisit": "Lock next visit",
+          "lockNextHintPrepaid": "Share your booking link when they're ready for the next visit."
         },
         "advancedPricing": {
           "title": "Advanced pricing",
@@ -10947,7 +10971,10 @@
           "emptyDesc": "Add your first service to appear in bookings and on your profile",
           "addService": "Add service",
           "serviceCount_one": "{{count}} service",
-          "serviceCount_other": "{{count}} services"
+          "serviceCount_other": "{{count}} services",
+          "rebookOptIn": {
+            "enable": "Enable rebook"
+          }
         },
         "settingsAccountHub": {
           "title": "Settings & account",
@@ -13931,11 +13958,20 @@
       "providerFallback": "Provider",
       "openProviderProfile": "Open {{name}} profile",
       "userFallback": "User",
-      "postByProvider": "Post by {{name}}"
+      "postByProvider": "Post by {{name}}",
+      "replyingTo": "Replying to {{name}}",
+      "deleteComment": "Delete",
+      "deleteCommentTitle": "Delete this comment?",
+      "deleteCommentBody": "This removes the comment for everyone.",
+      "commentTooLong": "{{count}} / 200",
+      "signInToComment": "Sign in to comment",
+      "errorDeleteComment": "Could not delete this comment. Please try again.",
+      "commentsLoadFailed": "Couldn't load comments."
     },
     "exploreVideo": {
       "mute": "Mute",
-      "unmute": "Unmute"
+      "unmute": "Unmute",
+      "replay": "Replay"
     },
     "searchScreen": {
       "title": "Search",
@@ -14605,6 +14641,15 @@
           "shopContinueCta": "View order",
           "shopPendingSubtext": "We'll update your order within a few minutes. You can keep using the app while we confirm with your bank.",
           "shopFailedSubtext": "If you were charged, your order will still be confirmed once the payment lands. Please check your Orders tab."
+        },
+        "payableOrdersBanner": {
+          "titleCart": "Awaiting payment",
+          "titleOrders": "Awaiting payment",
+          "summary_one": "1 order awaiting payment",
+          "summary_other": "{{count}} orders awaiting payment",
+          "viewAll": "View all",
+          "showLess": "Show less",
+          "retry": "Could not load every unpaid order. Try again."
         }
       },
       "tabs": {
@@ -15035,7 +15080,9 @@
           "total": "Total",
           "alsoCheckoutOnWeb": "Also checkout on web",
           "pickupLocationsMore": "{{count}} pickup locations — choose at checkout",
-          "deliveryEtaDays": "Estimated delivery within {{days}} business day(s)"
+          "deliveryEtaDays": "Estimated delivery within {{days}} business day(s)",
+          "paymentDueHeading": "Awaiting payment",
+          "paymentDueRetry": "Could not load every unpaid order. Try again."
         },
         "productCheckout": {
           "title": "Checkout",
@@ -16170,8 +16217,8 @@
           "paymentMembership": "Membership",
           "paymentPromotion": "Promotion",
           "paymentTravelFee": "Travel fee",
-          "paymentPlatformFee": "Platform fee",
-          "paymentPlatformFeePct": "Platform fee ({{rate}}%)",
+          "paymentPlatformFee": "Booking protection",
+          "paymentPlatformFeePct": "Booking protection ({{rate}}%)",
           "paymentTip": "Tip",
           "paymentCancellationFee": "Cancellation fee",
           "paymentTotal": "Total",
@@ -17665,7 +17712,11 @@
           "couldNotSaveAvatar": "Could not save avatar",
           "couldNotSaveDob": "Could not save date of birth",
           "couldNotSaveAddress": "Could not save address",
-          "couldNotSavePreferences": "Could not save preferences"
+          "couldNotSavePreferences": "Could not save preferences",
+          "saveStylistTitle": "Already have a stylist?",
+          "saveStylistHint": "Optional — search and save them so they are easy to find later.",
+          "saveStylistPlaceholder": "Search by salon or stylist name",
+          "saveStylistSkip": "You can skip this."
         },
         "customRequestCreate": {
           "briefPlaceholder": "E.g. I need a bridal makeup look for my wedding in 2 weeks. I'd like a natural glow with soft pink tones...",
@@ -17817,7 +17868,7 @@
           "ptsRatio": "{{earned}} / {{required}} pts",
           "howToEarnTitle": "How to Earn Points",
           "earnCompleteBookingLabel": "Complete a booking",
-          "earnCompleteBookingDesc": "Earn points on every visit",
+          "earnCompleteBookingDesc": "Earn points when your visit is marked complete (including at the till).",
           "earnReviewLabel": "Leave a review",
           "earnReviewDesc": "Share your experience",
           "earnReferLabel": "Refer a friend",
@@ -18314,7 +18365,8 @@
           "customShareVision": "Share up to 6 inspiration images to help us understand your vision",
           "customCancel": "Cancel",
           "customSending": "Sending request...",
-          "customSend": "Send request"
+          "customSend": "Send request",
+          "bookingProtectionCheckoutLine": "Online checkout may include booking protection; your stylist still receives their listed service price."
         },
         "reviews": {
           "loadFailed": "Failed to load",
@@ -18547,7 +18599,7 @@
     "afterDiscounts": "After discounts",
     "taxLineInclusive": "Tax ({{percent}}%) — included in prices",
     "taxLineAdditive": "Tax ({{percent}}%)",
-    "platformFee": "Platform fee",
+    "platformFee": "Booking protection",
     "walletCreditApplied": "Wallet credit applied",
     "walletCoversCardAmount": "Covered by wallet",
     "walletCardPayAmount": "You pay via card",
@@ -18593,7 +18645,7 @@
     "bookingSuccessPendingBody": "Awaiting provider confirmation — usually within 8 hours",
     "bookingSuccessFooter": "Taking you to your booking…",
     "totalPaidPrefix": "Total paid",
-    "platformFeeInclusive": " (incl. platform fee {{amount}})",
+    "platformFeeInclusive": " (incl. booking protection {{amount}})",
     "securePaymentTitle": "Secure payment",
     "paymentUnavailableTitle": "Payment unavailable",
     "paymentBrowserFailed": "We couldn't open the secure payment window. Please try again.",
@@ -18628,7 +18680,8 @@
     "rescheduleCreditNote": "Any amount you already paid online for the original booking is applied here. You only pay the difference.",
     "rescheduleCreditApplied": "Paid on your original booking",
     "rescheduleCreditSurplus": "The remaining {{amount}} stays in your wallet as credit.",
-    "rescheduleReplacesPreviousBody": "Your original appointment is cancelled automatically, free of charge, once this booking's payment completes. What you already paid is applied to this booking, and anything left over stays in your wallet."
+    "rescheduleReplacesPreviousBody": "Your original appointment is cancelled automatically, free of charge, once this booking's payment completes. What you already paid is applied to this booking, and anything left over stays in your wallet.",
+    "stylistReceives": "{{name}} receives"
   },
   "payments": {
     "pay": "Pay",
@@ -19050,8 +19103,8 @@
         "taxIncl": "Tax ({{rate}}%) (incl.)",
         "taxExcl": "Tax ({{rate}}%)",
         "taxGeneric": "Tax",
-        "platformFee": "Platform fee",
-        "platformFeePct": "Platform fee ({{pct}}%)",
+        "platformFee": "Booking protection",
+        "platformFeePct": "Booking protection ({{pct}}%)",
         "tip": "Tip",
         "total": "Total",
         "bookingDetails": "Booking details",
@@ -19118,7 +19171,9 @@
         "productFallback": "Product",
         "guestFallback": "Guest",
         "userFallback": "User",
-        "loadingEllipsis": "Loading…"
+        "loadingEllipsis": "Loading…",
+        "stylistReceives": "Your stylist receives",
+        "stylistReceivesFallback": "Your stylist"
       },
       "gate": {
         "title": "Secure your slot",
@@ -19299,8 +19354,8 @@
         "subtotal": "Subtotal",
         "taxWithRate": "Tax {{rate}}%",
         "tax": "Tax",
-        "platformFeeWithPct": "Platform Fee ({{pct}}%)",
-        "platformFee": "Platform Fee",
+        "platformFeeWithPct": "Booking protection ({{pct}}%)",
+        "platformFee": "Booking protection",
         "tip": "Tip",
         "total": "Total",
         "continue": "Continue",
@@ -19309,7 +19364,9 @@
         "continueWithCount": "Continue with {{count}} services",
         "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} min",
         "selectedServiceMore": " +{{count}}",
-        "changeService": "Change"
+        "changeService": "Change",
+        "stylistReceives": "{{name}} receives",
+        "stylistReceivesFallback": "Your stylist"
       },
       "confirmation": {
         "loadingMessage": "Loading booking confirmation...",
@@ -22039,8 +22096,8 @@
         "travelFee": "Travel fee",
         "tax": "Tax",
         "taxWithRate": "Tax ({{rate}}%)",
-        "platformFee": "Platform fee",
-        "platformFeeWithPct": "Platform fee ({{pct}}%)",
+        "platformFee": "Booking protection",
+        "platformFeeWithPct": "Booking protection ({{pct}}%)",
         "tip": "Tip",
         "cancellationFeeRetained": "Cancellation fee (retained)",
         "discount": "Discount",
@@ -22061,7 +22118,8 @@
         "footerNote": "This receipt is generated from Beautonomi booking and payment records. Keep it for your personal payment history.",
         "chargePaid": "paid",
         "chargePending": "pending",
-        "chargeUnpaid": "unpaid"
+        "chargeUnpaid": "unpaid",
+        "stylistReceives": "{{name}} receives"
       },
       "payments": {
         "breadcrumbAccount": "Account",
@@ -22599,7 +22657,9 @@
         "returnStatus": "Return {{status}}",
         "tracking": "Tracking: {{number}}",
         "paymentDueBadge": "Payment due",
-        "finishPaymentOnDetail": "Open this order to finish payment online."
+        "finishPaymentOnDetail": "Open this order to finish payment online.",
+        "paymentDueHeading": "Awaiting payment",
+        "paymentDueRetry": "Could not load every unpaid order. Try again."
       },
       "waitlist": {
         "loadFailed": "Failed to load waitlist",
@@ -23970,7 +24030,8 @@
           "notes": "Notes",
           "message": "Message",
           "book": "Book",
-          "viewFullProfile": "View Full Profile"
+          "viewFullProfile": "View Full Profile",
+          "serviceNote": "Look / service note"
         },
         "dragDropCalendar": {
           "cannotPlace": "Cannot place appointment here",
@@ -24860,6 +24921,17 @@
             "inPersonCash": "In person (cash)",
             "netPaidMaxRefund": "Net paid after refunds: {{net}} · Max refundable: {{max}}",
             "processing": "Processing…"
+          },
+          "clientMemory": {
+            "title": "Last visit",
+            "serviceNote": "Look / service note",
+            "viewLook": "View look",
+            "noNote": "No note yet",
+            "edit": "Edit",
+            "save": "Save",
+            "cancel": "Cancel",
+            "noteSaved": "Note saved",
+            "noteSaveFailed": "Could not save note"
           }
         },
         "createPayment": {
@@ -25017,6 +25089,16 @@
             "booking_intake": "Client forms",
             "booking_recurring": "Repeating series"
           }
+        },
+        "tillPayment": {
+          "online": "Online",
+          "yoco": "Yoco",
+          "cardMachine": "Card machine",
+          "paystackTerminal": "Paystack terminal",
+          "wallet": "Wallet",
+          "giftCard": "Gift card",
+          "cash": "Cash",
+          "manualCard": "Manual card"
         }
       },
       "finance": {
@@ -25110,8 +25192,8 @@
         "serviceEarningsHint": "From provider_earnings ledger rows (bookings, products, etc.)",
         "productSales": "Product Sales",
         "productSalesHint": "Online product orders (incl. tax & shipping)",
-        "platformFeesDeducted": "Platform Fees Deducted",
-        "platformFeesHint": "Customer-paid booking & shop platform fees (ledger), not your % commission line",
+        "platformFeesDeducted": "Client protection (retained)",
+        "platformFeesHint": "Customer-paid booking & shop protection kept at checkout (ledger), not your commission line",
         "discountsHint": "Already included in what the customer paid — informational only, not added on top of earnings.",
         "travelFees": "Travel Fees",
         "travelFeesHint": "Travel fee ledger rows (separate from service earnings)",
@@ -25282,7 +25364,8 @@
           "minimumFeeInput": "Minimum fee ({{currency}})",
           "tierMaxKm": "Up to km",
           "tierFee": "Fee ({{currency}})",
-          "addTier": "Add tier"
+          "addTier": "Add tier",
+          "houseCallDepositHint": "For house calls, the “Long jobs and house calls” booking protection option takes a 50% deposit. You can change it anytime under Settings → Payments."
         },
         "toast": {
           "resumedDraft": "Resumed from saved draft",
@@ -25550,7 +25633,12 @@
           "paymentHint": "This helps us understand how you accept in-person card payments and whether we can offer better terminal options in future.",
           "vatSarsHint": "Are you VAT registered with SARS? VAT registration is mandatory if your annual turnover is R1 million or more. If you make less than R1 million per year, you don't need to be VAT registered.",
           "bookingProtectionTitle": "Booking protection",
-          "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings."
+          "bookingProtectionHint": "Pick how cancellations and no-shows are handled. You can change this anytime in Settings.",
+          "bookingProtectionMoneyLine1": "You receive your listed service price. Clients pay a separate protection amount to Beautonomi.",
+          "bookingProtectionMoneyLine2": "Cash and card-machine takings stay in your till.",
+          "policyEverydayVisits": "Everyday visits",
+          "policyLongJobs": "Long jobs and house calls",
+          "policyMoreOptions": "More options"
         },
         "software": {
           "selectPlaceholder": "Select or type software name...",
@@ -25836,7 +25924,7 @@
         "refunds": "Refunds",
         "yourExpenses": "Your Expenses",
         "platformCommission": "Platform commission (%)",
-        "customerPaidPlatformFees": "Customer-paid platform fees (retained)",
+        "customerPaidPlatformFees": "Customer-paid protection (retained)",
         "subscriptionsAndAds": "Subscriptions & Ads",
         "thisMonth": "This Month",
         "expensesFootnote": "Includes subscription fees, ad campaign costs, and other platform charges. Staff pay and other external expenses are managed outside the platform.",
@@ -25947,7 +26035,8 @@
           "truncatedBookings": "Booking status counts may be incomplete for very high-volume accounts.",
           "truncatedLedger": "Period earnings may be incomplete for very high-volume accounts.",
           "bookingsCount": "Bookings ({{count}})",
-          "saleCount": "Sale ({{count}})"
+          "saleCount": "Sale ({{count}})",
+          "channelMixNudge": "Most visits this period were not booked online — sharing your booking link helps clients hold their next slot in the app."
         }
       },
       "settings": {
@@ -32131,7 +32220,13 @@
           "descriptionOptional": "Description (Optional)",
           "descriptionPlaceholder": "Add a short summary that helps clients understand what types of services are included in this category",
           "descriptionHint": "Help clients understand what types of services are included in this category",
-          "homePriceAdjustmentHint": "Added to this service's price for home visits. The travel fee is charged separately."
+          "homePriceAdjustmentHint": "Added to this service's price for home visits. The travel fee is charged separately.",
+          "rebookOptIn": {
+            "hint": "Rebook reminders are off for this service.",
+            "enable": "Enable",
+            "enabled": "Rebook reminders enabled",
+            "failed": "Could not enable reminders"
+          }
         },
         "serviceDialog": {
           "shortHair": "Short Hair",
@@ -33537,7 +33632,11 @@
         "thanks": "Thanks!",
         "ratingSavedBody": "Your rating was saved.",
         "freshCaption": "Fresh {{service}} ✨",
-        "starA11y": "Star A11y"
+        "starA11y": "Star A11y",
+        "lockNextVisit": "Lock next visit",
+        "lockNextHintPrepaid": "Share your booking link when they're ready for the next visit.",
+        "linkCopied": "Booking link copied",
+        "shareFailed": "Could not share the booking link"
       },
       "qrCodeDisplay": {
         "defaultTitle": "Verification QR Code",
@@ -34443,7 +34542,9 @@
         "boostProfile": "Boost your profile",
         "completeLater": "Complete later",
         "setUp": "Set up",
-        "stepsToGo": "Steps To Go"
+        "stepsToGo": "Steps To Go",
+        "bookingLinkTitle": "Your booking link",
+        "bookingLinkBody": "Share this link so clients can hold their next slot in the app."
       },
       "shiftsPage": {
         "failedToLoad": "Failed to load shifts",
@@ -36680,6 +36781,17 @@
       "cancelFailed": "Could not cancel your spot.",
       "sessionCancelled": "This group session has been cancelled.",
       "sessionCancelledPaid": "This group session has been cancelled. Any amount you paid toward your share is refunded in full to the card you paid with."
+    },
+    "components": {
+      "payableOrdersBanner": {
+        "titleCart": "Awaiting payment",
+        "titleOrders": "Awaiting payment",
+        "summary_one": "1 order awaiting payment",
+        "summary_other": "{{count}} orders awaiting payment",
+        "viewAll": "View all",
+        "showLess": "Show less",
+        "retry": "Could not load every unpaid order. Try again."
+      }
     }
   },
   "errors": {

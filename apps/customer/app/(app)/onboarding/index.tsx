@@ -324,6 +324,63 @@ export default function CustomerOnboarding() {
   /* Step 5 — beauty prefs */
   const [hairTypes, setHairTypes] = useState<string[]>([]);
   const [skinType, setSkinType] = useState("");
+  const [hideSaveStylist, setHideSaveStylist] = useState(false);
+  const [saveStylistQuery, setSaveStylistQuery] = useState("");
+  const [saveStylistLoading, setSaveStylistLoading] = useState(false);
+  const [saveStylistResults, setSaveStylistResults] = useState<
+    { id: string; business_name?: string; slug?: string }[]
+  >([]);
+  const [savedProviderIds, setSavedProviderIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (step !== 5 || !user?.id) return;
+    void api
+      .get<{ signup_source?: string; data?: { signup_source?: string } }>("/api/me/profile")
+      .then((r) => {
+        const src = r.data?.signup_source ?? (r.data as { data?: { signup_source?: string } })?.data?.signup_source;
+        setHideSaveStylist(src === "provider_referral");
+      })
+      .catch(() => setHideSaveStylist(false));
+  }, [step, user?.id]);
+
+  useEffect(() => {
+    if (step !== 5 || hideSaveStylist || saveStylistQuery.trim().length < 2) {
+      setSaveStylistResults([]);
+      return;
+    }
+    const q = saveStylistQuery.trim();
+    const timer = setTimeout(() => {
+      setSaveStylistLoading(true);
+      void api
+        .get<{ providers?: { id: string; business_name?: string; slug?: string }[]; data?: { providers?: { id: string; business_name?: string; slug?: string }[] } }>(
+          `/api/public/search?q=${encodeURIComponent(q)}&limit=6`,
+        )
+        .then((res) => {
+          const payload = (res.data as { data?: { providers?: { id: string; business_name?: string; slug?: string }[] } } | null)?.data;
+          const list = payload?.providers ?? [];
+          setSaveStylistResults(Array.isArray(list) ? list.slice(0, 6) : []);
+        })
+        .catch(() => setSaveStylistResults([]))
+        .finally(() => setSaveStylistLoading(false));
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [saveStylistQuery, step, hideSaveStylist]);
+
+  const toggleSaveProvider = useCallback(async (providerId: string) => {
+    if (!user?.id) return;
+    const r = await api.post<{ action?: "added" | "removed" }>("/api/me/wishlists/toggle", {
+      item_type: "provider",
+      item_id: providerId,
+    });
+    if (r.error) return;
+    const action = r.data?.action;
+    setSavedProviderIds((prev) => {
+      const next = new Set(prev);
+      if (action === "added") next.add(providerId);
+      else next.delete(providerId);
+      return next;
+    });
+  }, [user?.id]);
 
   /* Step 6 — email + phone verification */
   const [email, setEmail] = useState("");
@@ -1740,6 +1797,60 @@ export default function CustomerOnboarding() {
                   );
                 })}
               </View>
+
+              {!hideSaveStylist ? (
+                <View style={{ marginTop: 28 }}>
+                  <SectionLabel>{ob("saveStylistTitle")}</SectionLabel>
+                  <Text style={{ fontSize: 13, color: "#64748B", marginBottom: 10 }}>{ob("saveStylistHint")}</Text>
+                  <TextInput
+                    value={saveStylistQuery}
+                    onChangeText={setSaveStylistQuery}
+                    placeholder={ob("saveStylistPlaceholder")}
+                    placeholderTextColor="#94A3B8"
+                    style={{
+                      borderWidth: 1,
+                      borderColor: "#E2E8F0",
+                      borderRadius: RADIUS_INPUT,
+                      paddingHorizontal: 14,
+                      paddingVertical: 12,
+                      fontSize: 15,
+                      color: "#0F172A",
+                      marginBottom: 8,
+                    }}
+                  />
+                  {saveStylistLoading ? (
+                    <ActivityIndicator color={PRIMARY} style={{ marginVertical: 8 }} />
+                  ) : null}
+                  {saveStylistResults.map((p) => {
+                    const saved = savedProviderIds.has(p.id);
+                    return (
+                      <View
+                        key={p.id}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          paddingVertical: 10,
+                          borderBottomWidth: 1,
+                          borderColor: "#F1F5F9",
+                        }}
+                      >
+                        <Text style={{ flex: 1, fontSize: 14, color: "#0F172A", marginEnd: 8 }}>
+                          {p.business_name || p.slug || ""}
+                        </Text>
+                        <TouchableOpacity onPress={() => void toggleSaveProvider(p.id)} accessibilityRole="button">
+                          <Ionicons
+                            name={saved ? "heart" : "heart-outline"}
+                            size={22}
+                            color={saved ? PRIMARY : "#94A3B8"}
+                          />
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                  <Text style={{ fontSize: 12, color: "#94A3B8", marginTop: 8 }}>{ob("saveStylistSkip")}</Text>
+                </View>
+              ) : null}
             </View>
           )}
 

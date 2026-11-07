@@ -8,7 +8,10 @@ import Link from "next/link";
 import Image from "next/image";
 import type { ProductOrder } from "./order-list-types";
 import { formatCurrency } from "@/lib/utils";
-import { isUnpaidOnlinePaystackHold } from "@beautonomi/utils";
+import { isUnpaidOnlinePaystackHold, pinPayableProductOrders } from "@beautonomi/utils";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { PayableOrdersBanner } from "@/components/shop/PayableOrdersBanner";
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-50 text-yellow-700",
@@ -39,6 +42,8 @@ export default function OrderHistoryPage({
 }) {
   const locale = useTenantLocaleTag();
   const { t } = useTranslation();
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const initialSnapshot = useRef(initialAllTabOrders);
   const [orders, setOrders] = useState<ProductOrder[]>(() => initialAllTabOrders);
   const [loading, setLoading] = useState(false);
@@ -88,6 +93,8 @@ export default function OrderHistoryPage({
       <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
         <h1 className="mb-6 text-2xl font-bold text-gray-900">{t("web.accountSettings.orders.title")}</h1>
 
+        <PayableOrdersBanner enabled currencyFallback={tenantCurrency} context="orders" />
+
         <div className="mb-6 flex gap-2">
           {TABS.map((t) => (
             <button
@@ -118,7 +125,7 @@ export default function OrderHistoryPage({
           </div>
         ) : (
           <div className="space-y-4">
-            {orders.map((order) => {
+            {pinPayableProductOrders(orders).map((order) => {
               const itemCount = order.items?.reduce((s, i) => s + i.quantity, 0) ?? 0;
               const firstImage = order.items?.[0]?.product_image_url;
               const date = new Date(order.created_at).toLocaleDateString(locale, {
@@ -162,11 +169,6 @@ export default function OrderHistoryPage({
                         </div>
                       </div>
                       <p className="mt-1 text-sm text-gray-500">{order.provider?.business_name}</p>
-                      {paymentDue ? (
-                        <p className="mt-1 text-xs font-medium text-amber-800">
-                          {t("web.accountSettings.orders.finishPaymentOnDetail")}
-                        </p>
-                      ) : null}
                       <div className="mt-2 flex items-center justify-between">
                         <span className="text-xs text-gray-400">
                           {t("web.accountSettings.orders.itemCount", { count: itemCount, date })}

@@ -41,6 +41,8 @@ export interface BookingScheduleCardBooking {
   gift_card_amount?: number | null;
   outstanding_balance?: number | null;
   payment_status?: string | null;
+  till_payment_kind?: string | null;
+  till_payment_label?: string | null;
   additional_charges?: { amount?: number | string | null; status?: string | null }[] | null;
   location_type?: "at_salon" | "at_home" | null;
   is_group_booking?: boolean;
@@ -377,6 +379,15 @@ export function BookingScheduleCard({
                 {payment && paymentStyle ? (
                   <View style={[twStyle("rounded-full px-2 py-1"), { backgroundColor: paymentStyle.bg }]}>
                     <Text style={[twStyle("text-[11px] font-bold"), { color: paymentStyle.text }]}>{payment.label}</Text>
+                  </View>
+                ) : null}
+                {booking.till_payment_kind || booking.till_payment_label ? (
+                  <View style={twStyle("rounded-full bg-slate-100 px-2 py-1")}>
+                    <Text style={twStyle("text-[11px] font-bold text-slate-600")}>
+                      {booking.till_payment_kind
+                        ? sc(`tillPayment.${booking.till_payment_kind}`)
+                        : booking.till_payment_label}
+                    </Text>
                   </View>
                 ) : null}
                 {visibleTraits.map((trait) => (

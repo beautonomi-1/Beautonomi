@@ -9,8 +9,17 @@ import { Label } from "@/components/ui/label";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import type { BookingPolicyPresetId } from "@beautonomi/i18n";
+import {
+  BookingProtectionPresetPicker,
+  depositPatchFromPreset,
+} from "@/components/provider/settings/BookingProtectionPresetPicker";
 
 type PaymentSettingsResponse = {
+  requiresDeposit?: boolean;
+  depositPercentage?: number;
+  noShowFeeEnabled?: boolean;
+  noShowFeeAmount?: number;
   acceptCash: boolean;
   acceptCard: boolean;
   acceptOnline: boolean;
@@ -39,6 +48,11 @@ export default function ProviderPaymentMethodsPage() {
   const [paystackTerminalPlatformEnabled, setPaystackTerminalPlatformEnabled] = useState(false);
   const [paystackTerminalActiveCount, setPaystackTerminalActiveCount] = useState(0);
   const [giftCardsEnabled, setGiftCardsEnabled] = useState(false);
+  const [requiresDeposit, setRequiresDeposit] = useState(false);
+  const [depositPercentage, setDepositPercentage] = useState(0);
+  const [noShowFeeEnabled, setNoShowFeeEnabled] = useState(false);
+  const [noShowFeeAmount, setNoShowFeeAmount] = useState(0);
+  const [bookingProtectionDirty, setBookingProtectionDirty] = useState(false);
 
   useEffect(() => {
     if (isConfigLoading) return;
@@ -63,6 +77,11 @@ export default function ProviderPaymentMethodsPage() {
         "/api/provider/settings/sales/gift-cards"
       );
       setGiftCardsEnabled(Boolean(giftCardResponse.data?.enabled));
+      setRequiresDeposit(Boolean(data?.requiresDeposit));
+      setDepositPercentage(Number(data?.depositPercentage ?? 0));
+      setNoShowFeeEnabled(Boolean(data?.noShowFeeEnabled));
+      setNoShowFeeAmount(Number(data?.noShowFeeAmount ?? 0));
+      setBookingProtectionDirty(false);
     } catch (error: any) {
 toast.error(error?.message || t("web.provider.settings.pages.payments.loadFailed"));
     } finally {
@@ -84,6 +103,14 @@ toast.error(error?.message || t("web.provider.settings.pages.payments.loadFailed
           acceptCard: yocoEnabled ? acceptCard : false,
           acceptOnline,
           acceptPaystackTerminal: paystackTerminalPlatformEnabled ? acceptPaystackTerminal : false,
+          ...(bookingProtectionDirty
+            ? {
+                requiresDeposit,
+                depositPercentage,
+                noShowFeeEnabled,
+                noShowFeeAmount,
+              }
+            : {}),
         }),
         fetcher.patch("/api/provider/settings/sales/gift-cards", {
           gift_cards_enabled: giftCardsEnabled,
@@ -111,6 +138,23 @@ toast.error(error?.message || t("web.provider.settings.pages.payments.saveFailed
         { label: t("web.provider.settings.pages.payments.paymentMethods") },
       ]}
     >
+      <SectionCard title={t("web.provider.onboarding.payment.bookingProtectionTitle")}>
+        {isLoading || isConfigLoading ? null : (
+          <BookingProtectionPresetPicker
+            requiresDeposit={requiresDeposit}
+            depositPercentage={depositPercentage}
+            noShowFeeEnabled={noShowFeeEnabled}
+            onPresetChange={(preset: Exclude<BookingPolicyPresetId, "custom">) => {
+              const patch = depositPatchFromPreset(preset);
+              setRequiresDeposit(patch.requiresDeposit);
+              setDepositPercentage(patch.depositPercentage);
+              setNoShowFeeEnabled(patch.noShowFeeEnabled);
+              setNoShowFeeAmount(patch.noShowFeeAmount);
+              setBookingProtectionDirty(true);
+            }}
+          />
+        )}
+      </SectionCard>
       <SectionCard>
         {isLoading || isConfigLoading ? (
 <div className="py-8 text-center text-sm text-gray-500">{t("web.provider.settings.common.loading")}</div>

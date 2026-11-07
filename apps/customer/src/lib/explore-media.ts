@@ -56,7 +56,7 @@ export function resolveExploreVideoSrc(params: {
 
 /** Still image for grid tiles; "" when the post only has video (expo-image can't decode it). */
 export function explorePostGridImageUrl(
-  post: Pick<ExplorePost, "display_url" | "media_urls" | "media_meta">,
+  post: Pick<ExplorePost, "display_url" | "media_urls" | "media_meta" | "playback_path">,
 ): string {
   const candidates = [
     post.display_url,
@@ -67,6 +67,22 @@ export function explorePostGridImageUrl(
     if (candidate?.trim() && !isExploreVideoPathOrUrl(candidate)) return candidate;
   }
   return "";
+}
+
+/**
+ * Video file to show as a cover when there is no poster JPEG.
+ * The web feed uses the same file (`#t=0.1`) so the first frame is the cover.
+ */
+export function explorePostCoverVideoUrl(
+  post: Pick<ExplorePost, "display_url" | "media_urls" | "media_meta" | "playback_path">,
+): string | null {
+  if (explorePostGridImageUrl(post)) return null;
+  if (!firstSlideIsVideo(post.media_urls, post.media_meta)) return null;
+  return resolveExploreVideoSrc({
+    mediaUrls: post.media_urls ?? [],
+    playbackPath: post.playback_path,
+    mediaMeta: post.media_meta,
+  });
 }
 
 export function clampExploreAspectRatio(width?: number | null, height?: number | null): number {

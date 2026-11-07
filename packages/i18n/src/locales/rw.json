@@ -13780,7 +13780,15 @@
       "shareMediaFailedTitle": "Ntushobora gusangira itangazamakuru",
       "shareMediaFailedBody": "Ntabwo twashoboraga gutegura iyi dosiye kugirango dusangire. Gerageza gusangira aho.",
       "loadingComments": "Birimo gutangira…",
-      "loadMoreComments": "Fungura ibisobanuro byinshi"
+      "loadMoreComments": "Fungura ibisobanuro byinshi",
+      "errorDeleteComment": "Ntibishobotse gusiba iki cyemezo. Ongera ugerageze.",
+      "deleteCommentTitle": "Siba iki cyemezo?",
+      "deleteComment": "Siba",
+      "signInToComment": "Injira kugira ngo utange icyemezo",
+      "deleteCommentBody": "Ibi bikuraho icyemezo kuri bose.",
+      "commentsLoadFailed": "Ntibishobotse gupakira ibyemezo.",
+      "replyingTo": "Usibye {{name}}",
+      "commentTooLong": "{{count}} / 200"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -14406,6 +14414,13 @@
           "shopContinueCta": "Voir commande",
           "shopPendingSubtext": "Nous mettrons à jour votre commande dans quelques minutes. Vous pouvez continuer à utiliser l'application pendant que nous confirmons auprès de votre banque.",
           "shopFailedSubtext": "Si vous avez été facturé, votre commande sera toujours confirmée une fois le paiement effectué. Veuillez vérifier votre onglet Commandes."
+        },
+        "payableOrdersBanner": {
+          "titleCart": "Gutegereza kwishyura",
+          "titleOrders": "Gutegereza kwishyura",
+          "retry": "Ntibishobotse gupakira buri oda itishyuwe. Ongera ugerageze.",
+          "showLess": "Erekana bike",
+          "viewAll": "Reba byose"
         }
       },
       "tabs": {
@@ -14836,7 +14851,9 @@
           "total": "Total",
           "alsoCheckoutOnWeb": "Payer aussi sur le web",
           "pickupLocationsMore": "{{count}} points de retrait — choisissez à la caisse",
-          "deliveryEtaDays": "Livraison estimée sous {{days}} jour(s) ouvré(s)"
+          "deliveryEtaDays": "Livraison estimée sous {{days}} jour(s) ouvré(s)",
+          "paymentDueHeading": "Gutegereza kwishyura",
+          "paymentDueRetry": "Ntibishobotse gupakira buri oda itishyuwe. Ongera ugerageze."
         },
         "productCheckout": {
           "title": "Paiement",
@@ -18176,7 +18193,8 @@
     "cart": "Panier",
     "exploreVideo": {
       "unmute": "Fungura ijwi",
-      "mute": "Hisha ijwi"
+      "mute": "Hisha ijwi",
+      "replay": "Ongera ukine"
     },
     "bankAccounts": {
       "failedLoadBanks": "Impossible de load banks. Réessayer.",
@@ -18456,7 +18474,8 @@
     "rescheduleReplacesPreviousBody": "Igihe cy'umubonano wawe wa mbere gihagarikwa ubwacyo, ubuntu, kwishyura kwa iyi gahunda nibimara. Ibyo washyuye bimaze gukoreshwa hano, ibisigaye biguma mu gisabo cyawe.",
     "rescheduleCreditNote": "Umubare wose washyuye kuri interineti ku gahunda ya mbere ukoreshwa hano. Wishyura itandukaniro gusa.",
     "rescheduleCreditApplied": "Byishyuwe ku gahunda ya mbere",
-    "rescheduleCreditSurplus": "Ibisigaye {{amount}} biguma mu gisabo cyawe nk'inguzanyo."
+    "rescheduleCreditSurplus": "Ibisigaye {{amount}} biguma mu gisabo cyawe nk'inguzanyo.",
+    "stylistReceives": "{{name}} arakira"
   },
   "payments": {
     "pay": "Pay",
@@ -19105,7 +19124,9 @@
         "changeService": "Modifier",
         "selectedServiceMore": " (+{{count}})",
         "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} miniti",
-        "continueWithName": "Komeza na {{name}}"
+        "continueWithName": "Komeza na {{name}}",
+        "stylistReceives": "{{name}} arakira",
+        "stylistReceivesFallback": "Stylist wawe"
       },
       "confirmation": {
         "loadingMessage": "Chargement de réservation confirmation...",
@@ -36463,6 +36484,15 @@
       "cancelFailed": "Impossible de annuler your spot.",
       "sessionCancelled": "Iki kiganiro cy'itsinda cyahagaritswe.",
       "sessionCancelledPaid": "Iki kiganiro cy'itsinda cyahagaritswe. Umubare wose washyuye ku gice cyawe usubizwa wose ku ikarita wakoresheje."
+    },
+    "components": {
+      "payableOrdersBanner": {
+        "titleCart": "Gutegereza kwishyura",
+        "titleOrders": "Gutegereza kwishyura",
+        "retry": "Ntibishobotse gupakira buri oda itishyuwe. Ongera ugerageze.",
+        "showLess": "Erekana bike",
+        "viewAll": "Reba byose"
+      }
     }
   },
   "errors": {

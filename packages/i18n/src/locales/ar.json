@@ -13780,7 +13780,15 @@
       "shareMediaFailedTitle": "تعذرت مشاركة الوسائط",
       "shareMediaFailedBody": "لم نتمكن من إعداد هذا الملف للمشاركة. حاول مشاركة الرابط بدلاً من ذلك.",
       "loadingComments": "جاري التحميل…",
-      "loadMoreComments": "تحميل المزيد من التعليقات"
+      "loadMoreComments": "تحميل المزيد من التعليقات",
+      "errorDeleteComment": "تعذر حذف هذا التعليق. يرجى المحاولة مرة أخرى.",
+      "deleteCommentTitle": "حذف هذا التعليق؟",
+      "deleteComment": "حذف",
+      "signInToComment": "سجّل الدخول للتعليق",
+      "deleteCommentBody": "سيؤدي هذا إلى إزالة التعليق للجميع.",
+      "commentsLoadFailed": "تعذر تحميل التعليقات.",
+      "replyingTo": "الرد على {{name}}",
+      "commentTooLong": "{{count}} / 200"
     },
     "searchScreen": {
       "title": "بحث",
@@ -14406,6 +14414,13 @@
           "shopContinueCta": "عرض طلب",
           "shopPendingSubtext": "سنقوم بتحديث طلبك في غضون دقائق قليلة. يمكنك الاستمرار في استخدام التطبيق بينما نقوم بالتأكيد مع البنك الذي تتعامل معه.",
           "shopFailedSubtext": "إذا تم تحصيل الرسوم منك، فسيتم تأكيد طلبك بمجرد وصول الدفعة. يرجى التحقق من علامة تبويب الطلبات الخاصة بك."
+        },
+        "payableOrdersBanner": {
+          "titleCart": "في انتظار الدفع",
+          "titleOrders": "في انتظار الدفع",
+          "showLess": "عرض أقل",
+          "viewAll": "عرض الكل",
+          "retry": "تعذر تحميل كل الطلبات غير المدفوعة. حاول مرة أخرى."
         }
       },
       "tabs": {
@@ -14836,7 +14851,9 @@
           "total": "الإجمالي",
           "alsoCheckoutOnWeb": "الدفع أيضًا عبر الويب",
           "pickupLocationsMore": "{{count}} مواقع استلام — اختر عند الدفع",
-          "deliveryEtaDays": "توصيل مقدّر خلال {{days}} يوم/أيام عمل"
+          "deliveryEtaDays": "توصيل مقدّر خلال {{days}} يوم/أيام عمل",
+          "paymentDueHeading": "في انتظار الدفع",
+          "paymentDueRetry": "تعذر تحميل كل الطلبات غير المدفوعة. حاول مرة أخرى."
         },
         "productCheckout": {
           "title": "إتمام الشراء",
@@ -18176,7 +18193,8 @@
     "cart": "السلة",
     "exploreVideo": {
       "unmute": "إلغاء كتم الصوت",
-      "mute": "كتم الصوت"
+      "mute": "كتم الصوت",
+      "replay": "إعادة التشغيل"
     },
     "bankAccounts": {
       "failedLoadBanks": "تعذر load banks. حاول مرة أخرى.",
@@ -18456,7 +18474,8 @@
     "rescheduleReplacesPreviousBody": "يُلغى موعدك الأصلي تلقائيًا ومن دون رسوم عند اكتمال دفع هذا الحجز. ما دفعته مسبقًا يُخصم هنا، وما يتبقى يبقى في محفظتك.",
     "rescheduleCreditNote": "أي مبلغ دفعته عبر الإنترنت للحجز الأصلي يُخصم هنا. تدفع الفرق فقط.",
     "rescheduleCreditApplied": "دُفع على الحجز الأصلي",
-    "rescheduleCreditSurplus": "المتبقي {{amount}} يبقى في محفظتك كرصيد."
+    "rescheduleCreditSurplus": "المتبقي {{amount}} يبقى في محفظتك كرصيد.",
+    "stylistReceives": "يتلقى {{name}}"
   },
   "payments": {
     "pay": "دفع",
@@ -19105,7 +19124,9 @@
         "changeService": "تغيير",
         "selectedServiceMore": " (+{{count}})",
         "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} د",
-        "continueWithName": "المتابعة مع {{name}}"
+        "continueWithName": "المتابعة مع {{name}}",
+        "stylistReceives": "يتلقى {{name}}",
+        "stylistReceivesFallback": "مصففك"
       },
       "confirmation": {
         "loadingMessage": "جاري تحميل حجز confirmation...",
@@ -36463,6 +36484,15 @@
       "cancelFailed": "تعذر إلغاء your spot.",
       "sessionCancelled": "أُلغيت جلسة المجموعة هذه.",
       "sessionCancelledPaid": "أُلغيت جلسة المجموعة هذه. أي مبلغ دفعته مقابل حصتك يُرد كاملًا إلى البطاقة التي دفعت بها."
+    },
+    "components": {
+      "payableOrdersBanner": {
+        "titleCart": "في انتظار الدفع",
+        "titleOrders": "في انتظار الدفع",
+        "showLess": "عرض أقل",
+        "viewAll": "عرض الكل",
+        "retry": "تعذر تحميل كل الطلبات غير المدفوعة. حاول مرة أخرى."
+      }
     }
   },
   "errors": {

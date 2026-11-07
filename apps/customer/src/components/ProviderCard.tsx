@@ -1,5 +1,5 @@
-import React from "react";
-import { View, Text } from "react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import { View, Text, TouchableOpacity, Alert } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -8,6 +8,9 @@ import type { PublicProviderCard } from "@/types/api";
 import { Colors, Shadows } from "@/constants/colors";
 import { api } from "@/lib/api-client";
 import { formatProviderDescriptionForCard } from "@beautonomi/utils";
+import { useAuth } from "@/providers/AuthProvider";
+import { pushCustomerLogin } from "@/lib/guest-browse-policy";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface ProviderCardProps {
   provider: PublicProviderCard;
@@ -36,6 +39,69 @@ export const ProviderCard = React.memo(function ProviderCard({
   feedOriginLat,
   feedOriginLng,
 }: ProviderCardProps) {
+  const { user } = useAuth();
+  const { t } = useTranslation();
+  const [isSaved, setIsSaved] = useState(false);
+  const [toggling, setToggling] = useState(false);
+
+  useEffect(() => {
+    if (!user?.id || !provider.id) {
+      setIsSaved(false);
+      return;
+    }
+    let cancelled = false;
+    void api
+      .get<{ saved?: boolean; data?: { saved?: boolean } }>(
+        `/api/me/wishlists/check?item_type=provider&item_id=${encodeURIComponent(provider.id)}`,
+      )
+      .then((r) => {
+        if (cancelled) return;
+        const saved = Boolean(r.data?.saved ?? (r.data as { data?: { saved?: boolean } })?.data?.saved);
+        setIsSaved(saved);
+      })
+      .catch(() => {
+        if (!cancelled) setIsSaved(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, provider.id]);
+
+  const toggleWishlist = useCallback(
+    async (e?: { stopPropagation?: () => void }) => {
+      e?.stopPropagation?.();
+      if (!user?.id) {
+        pushCustomerLogin("/(app)/(tabs)/home");
+        return;
+      }
+      if (toggling || !provider.id) return;
+      setToggling(true);
+      try {
+        const r = await api.post<{ action?: "added" | "removed"; data?: { action?: string } }>(
+          "/api/me/wishlists/toggle",
+          { item_type: "provider", item_id: provider.id },
+        );
+        if (r.error) {
+          Alert.alert(
+            t("customer.mobile.screens.authLogin.errorTitle"),
+            r.error.message || t("customer.mobile.screens.productDetail.wishlistError"),
+          );
+          return;
+        }
+        const action = r.data?.action ?? r.data?.data?.action;
+        setIsSaved(action === "added");
+      } catch {
+        Alert.alert(
+          t("customer.mobile.screens.authLogin.errorTitle"),
+          t("customer.mobile.screens.productDetail.wishlistRetry"),
+        );
+      } finally {
+        setToggling(false);
+      }
+    },
+    [provider.id, toggling, t, user?.id],
+  );
+
   const thumbnailUrl = provider.thumbnail_url || PLACEHOLDER;
   const avatarUrl = provider.avatar_url || provider.thumbnail_url || PLACEHOLDER;
   const formatCount = (c: number) => (c >= 1000 ? `${(c / 1000).toFixed(1)}k` : String(c));
@@ -163,9 +229,15 @@ export const ProviderCard = React.memo(function ProviderCard({
             </View>
           )}
         </View>
-        <View style={[{ position: "absolute", top: 8, right: 8, backgroundColor: Colors.white, borderRadius: 9999, padding: 6 }, Shadows.cardSubtle]}>
-          <Ionicons name="heart" size={14} color={Colors.primary} />
-        </View>
+        <TouchableOpacity
+          onPress={(e) => void toggleWishlist(e)}
+          disabled={toggling}
+          style={[{ position: "absolute", top: 8, right: 8, backgroundColor: Colors.white, borderRadius: 9999, padding: 6 }, Shadows.cardSubtle]}
+          accessibilityRole="button"
+          accessibilityLabel={isSaved ? "Remove from saved" : "Save provider"}
+        >
+          <Ionicons name={isSaved ? "heart" : "heart-outline"} size={14} color={Colors.primary} />
+        </TouchableOpacity>
         <View style={{ position: "absolute", bottom: 8, left: 8 }} accessibilityElementsHidden>
           <View style={{ width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: Colors.white, overflow: "hidden", backgroundColor: Colors.gray[200] }}>
             {avatarUrl ? (

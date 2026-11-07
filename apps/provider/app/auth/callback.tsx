@@ -129,7 +129,18 @@ export default function AuthCallbackScreen() {
             setTimeout(() => {
               if (cancelled) return;
               void supabase.auth.getSession().finally(() => {
-                if (!cancelled) router.replace("/" as never);
+                if (cancelled) return;
+                // If this callback screen was opened on top of an existing in-app OAuth/login
+                // surface, navigate back to avoid racing another replace from that flow.
+                // Cold-start deep link has no back stack, so we still replace to app root.
+                const canGoBack =
+                  typeof (router as unknown as { canGoBack?: () => boolean }).canGoBack === "function" &&
+                  (router as unknown as { canGoBack: () => boolean }).canGoBack();
+                if (canGoBack) {
+                  (router as unknown as { back: () => void }).back();
+                } else {
+                  router.replace("/" as never);
+                }
               });
             }, 50);
           }

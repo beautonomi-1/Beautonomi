@@ -707,7 +707,12 @@ async function requireRoleInApiImpl(
             )
             .select("id, role, full_name")
             .single();
-          if (!upserted || !upserted.role) throw new Error("User profile not found. Please contact support.");
+          if (!upserted || !upserted.role) {
+            const missing = new Error("User profile not found. Please contact support.");
+            (missing as { status?: number; code?: string }).status = 401;
+            (missing as { status?: number; code?: string }).code = "UNAUTHORIZED";
+            throw missing;
+          }
           resolvedUserData = upserted;
           // Also ensure the wallet exists for this newly-created row.
           await admin

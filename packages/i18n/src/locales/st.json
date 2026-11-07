@@ -476,7 +476,17 @@
             "moreActionsA11y": "tse ding buking actions",
             "bookingForA11y": "buking for {{name}}",
             "actionSaved": "{{action}} bolokad",
-            "minDuration": "{{count}} Nyane"
+            "minDuration": "{{count}} Nyane",
+            "tillPayment": {
+              "online": "Inthaneteng",
+              "yoco": "Yoco",
+              "cardMachine": "Mochine oa karete",
+              "paystackTerminal": "Terminal ea Paystack",
+              "wallet": "Sepache",
+              "giftCard": "Karete ea mpho",
+              "cash": "Kheshe",
+              "manualCard": "Karete ka letsoho"
+            }
           },
           "etaPicker": {
             "estimatedArrival": "Khakanyo ea ho fihla",
@@ -5863,7 +5873,8 @@
           "activityDefaultHint": "Lintlafatso tsa morao-rao mabapi le lipehelo, litefo, le maikutlo - ha lia hlophisoa ho latela nako e kaholimo.",
           "noRecentActivity": "Ha ho ts'ebetso ea morao-rao",
           "giftCardLedgerIssuance": "karete ya mpho ledger issuance (Nako eohle)",
-          "membershipSalesAllTime": "boleloko sales (Nako eohle)"
+          "membershipSalesAllTime": "boleloko sales (Nako eohle)",
+          "channelMixNudge": "Boholo ba diketelo nakong ena ha boa bukoa inthaneteng — ho arolelana sehokelo sa hau sa booking ho thusa bareki ho tšoara nako ea bona e latelang ho app."
         },
         "staffSchedule": {
           "title": "basebetsi Kemisos",
@@ -13780,7 +13791,15 @@
       "shareMediaFailedTitle": "Couldn't arolelana media",
       "shareMediaFailedBody": "Ha rea ​​khona ho lokisa faele ena hore e ka arolelanoa. Leka ho arolelana sehokelo.",
       "loadingComments": "E a jaefa...",
-      "loadMoreComments": "Jaefa maikutlo a mang"
+      "loadMoreComments": "Jaefa maikutlo a mang",
+      "errorDeleteComment": "Ha e a kgona ho hlakola maikutlo ana. Ka kopo leka hape.",
+      "deleteCommentTitle": "Hlakola maikutlo ana?",
+      "deleteCommentBody": "Sena se tlosa maikutlo ho bohle.",
+      "deleteComment": "Hlakola",
+      "commentsLoadFailed": "Ha e a kgona ho kenya maikutlo.",
+      "signInToComment": "Kena ho fana ka maikutlo",
+      "replyingTo": "O araba ho {{name}}",
+      "commentTooLong": "{{count}} / 200"
     },
     "searchScreen": {
       "title": "Batla",
@@ -14406,6 +14425,13 @@
           "shopContinueCta": "Sheba odara",
           "shopPendingSubtext": "Re tla ntlafatsa odara ea hau ka mor'a metsotso e seng mekae. U ka lula u sebelisa sesebelisoa ha re ntse re netefatsa le banka ea hau.",
           "shopFailedSubtext": "Haeba u lefisitsoe, odara ea hau e ntse e tla netefatsoa hang ha tefo e fihla. Ka kopo, sheba li-Order tsa hau."
+        },
+        "payableOrdersBanner": {
+          "titleCart": "E emetse tefo",
+          "titleOrders": "E emetse tefo",
+          "retry": "Ha e a kgona ho kenya liodara tsohle tse sa lefuoang. Leka hape.",
+          "showLess": "Bontsha hanyane",
+          "viewAll": "Sheba tsohle"
         }
       },
       "tabs": {
@@ -14836,7 +14862,9 @@
           "total": "Kakaretso",
           "alsoCheckoutOnWeb": "Also ho lefa on web",
           "pickupLocationsMore": "{{count}} libaka tsa ho nka — khetha ha ho lefa",
-          "deliveryEtaDays": "Ho isa ho lebelo ka har'a matsatsi a mesebetsi a {{days}}"
+          "deliveryEtaDays": "Ho isa ho lebelo ka har'a matsatsi a mesebetsi a {{days}}",
+          "paymentDueHeading": "E emetse tefo",
+          "paymentDueRetry": "Ha e a kgona ho kenya liodara tsohle tse sa lefuoang. Leka hape."
         },
         "productCheckout": {
           "title": "Ho lefa",
@@ -18091,7 +18119,8 @@
           "customShareVision": "Arolelana litšoantšo tse fihlang ho tse 6 ho re thusa ho utloisisa pono ea hau",
           "customCancel": "Hlakola",
           "customSending": "Romelaing kopo...",
-          "customSend": "Romela kopo"
+          "customSend": "Romela kopo",
+          "bookingProtectionCheckoutLine": "Ho lefa inthaneteng ho ka kenyelletsa tšireletso ea booking; stylist oa hau o ntse a fumana theko ea tšebeletso e ngolisitsoeng."
         },
         "reviews": {
           "loadFailed": "E hlolehile ho jaefa",
@@ -18176,7 +18205,8 @@
     "cart": "Kariki",
     "exploreVideo": {
       "unmute": "Bula modumo",
-      "mute": "Thulisa"
+      "mute": "Thulisa",
+      "replay": "Bapala hape"
     },
     "bankAccounts": {
       "failedLoadBanks": "Ha e a khona ho jaefa banks. leka hape.",
@@ -18363,7 +18393,7 @@
     "afterDiscounts": "After theolelos",
     "taxLineInclusive": "Tax ({{percent}}%) — included in thekos",
     "taxLineAdditive": "Belasting ({{percent}}%)",
-    "platformFee": "Sethala tefo",
+    "platformFee": "Tšireletso ea booking",
     "walletCreditApplied": "sepache crlokisa applied",
     "walletCoversCardAmount": "Covered by sepache",
     "walletCardPayAmount": "You lefa via Karete",
@@ -18456,7 +18486,8 @@
     "rescheduleReplacesPreviousBody": "Kopano ya hao ya pele e hlakolwa ka boiketsetso, mahala, ha tefo ya tlhophiso ena e phethela. Seo o se lefileng se sebediswa mona, mme se setseng se sala sepacheng sa hao.",
     "rescheduleCreditNote": "Chelete efe kapa efe eo o e lefileng ka inthanete bakeng sa tlhophiso ya pele e sebediswa mona. O lefa phapang feela.",
     "rescheduleCreditApplied": "E lefuwe tlhophisong ya hao ya pele",
-    "rescheduleCreditSurplus": "Se setseng sa {{amount}} se sala sepacheng sa hao e le mokitlane."
+    "rescheduleCreditSurplus": "Se setseng sa {{amount}} se sala sepacheng sa hao e le mokitlane.",
+    "stylistReceives": "{{name}} o fumana"
   },
   "payments": {
     "pay": "Lefa",
@@ -19105,7 +19136,9 @@
         "continueWithCount": "tsoela pele with {{count}} litšebeletso",
         "changeService": "Fetola",
         "selectedServiceMore": " (+{{count}})",
-        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} metsotso"
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} metsotso",
+        "stylistReceivesFallback": "Setayele sa hao",
+        "stylistReceives": "{{name}} o fumana"
       },
       "confirmation": {
         "loadingMessage": "E jaefa Netefatso ya buking...",
@@ -23749,7 +23782,8 @@
           "notes": "Lintlha",
           "message": "molaetsa",
           "book": "buka",
-          "viewFullProfile": "Sheba e tletse profaele"
+          "viewFullProfile": "Sheba e tletse profaele",
+          "serviceNote": "Look / service note"
         },
         "dragDropCalendar": {
           "cannotPlace": "Cannot place kopano mona",
@@ -24624,6 +24658,17 @@
             "yocoRecordCta": "Refunded ka mochine — rekota puseletso",
             "pendingCashTitle": "{{amount}} to return in person",
             "pendingCashBody": "The customer must confirm they received this refund in the app. Do not record another cash refund while this is pending."
+          },
+          "clientMemory": {
+            "title": "Last visit",
+            "serviceNote": "Look / service note",
+            "viewLook": "View look",
+            "noNote": "No note yet",
+            "edit": "Edit",
+            "save": "Save",
+            "cancel": "Cancel",
+            "noteSaved": "Note saved",
+            "noteSaveFailed": "Could not save note"
           }
         },
         "createPayment": {
@@ -24781,6 +24826,16 @@
             "booking_intake": "moreki forms",
             "booking_recurring": "Repeating series"
           }
+        },
+        "tillPayment": {
+          "online": "Inthaneteng",
+          "yoco": "Yoco",
+          "cardMachine": "Mochine oa karete",
+          "paystackTerminal": "Terminal ea Paystack",
+          "wallet": "Wallet",
+          "giftCard": "Karete ea mpho",
+          "cash": "Kheshe",
+          "manualCard": "Karete ka letsoho"
         }
       },
       "finance": {
@@ -25288,7 +25343,12 @@
           "bookingProtectionTitle": "Booking protection",
           "bookingProtectionHint": "Choose how cancellations and no-shows are handled. You can fine-tune this later in Settings.",
           "pricesIncludeTax": "My service prices include VAT",
-          "pricesIncludeTaxDesc": "Most South African salons show VAT-inclusive prices (recommended)."
+          "pricesIncludeTaxDesc": "Most South African salons show VAT-inclusive prices (recommended).",
+          "bookingProtectionMoneyLine1": "U fumana theko ea tšebeletso e ngolisitsoeng. Bareki ba lefa Beautonomi chelete e arohaneng ea tšireletso.",
+          "bookingProtectionMoneyLine2": "Chelete ea kheshe le ea mochine oa karete e sala ho till ea hau.",
+          "policyEverydayVisits": "Ketelo tsa letsatsi le letsatsi",
+          "policyLongJobs": "Mesebetsi e melelele le ketelo tsa malapeng",
+          "policyMoreOptions": "Dikgetho tse ding"
         },
         "software": {
           "selectPlaceholder": "Khetha or Mofuta software lebitso...",
@@ -25709,7 +25769,8 @@
           "truncatedBookings": "Palo ea maemo a ho beha e ka 'na e se na botlalo bakeng sa liakhaonte tse nang le molumo o phahameng haholo.",
           "truncatedLedger": "Meputso ea nako e kanna ea ba e sa fellang bakeng sa li-account tse phahameng haholo.",
           "bookingsCount": "dibuking ({{count}})",
-          "saleCount": "Thekiso ({{count}})"
+          "saleCount": "Thekiso ({{count}})",
+          "channelMixNudge": "Boholo ba diketelo nakong ena ha boa bukoa inthaneteng — ho arolelana sehokelo sa hau sa booking ho thusa bareki ho tšoara nako ea bona e latelang ho app."
         },
         "giftCardLedgerIssuance": "Gift card ledger issuance (all time)",
         "membershipSalesAllTime": "Membership sales (all time)"
@@ -31891,7 +31952,13 @@
           "descriptionOptional": "tlhaloso (boikhethelo)",
           "descriptionPlaceholder": "Add a short summary that helps clients understand what types of services are included in this category",
           "descriptionHint": "Help clients understand what types of services are included in this category",
-          "homePriceAdjustmentHint": "E kentsoe theko ea tšebeletso ena bakeng sa ho etela lapeng. Tefo ea leeto e lefisoa ka thoko."
+          "homePriceAdjustmentHint": "E kentsoe theko ea tšebeletso ena bakeng sa ho etela lapeng. Tefo ea leeto e lefisoa ka thoko.",
+          "rebookOptIn": {
+            "hint": "Rebook reminders are off for this service.",
+            "enable": "Enable",
+            "enabled": "Rebook reminders enabled",
+            "failed": "Could not enable reminders"
+          }
         },
         "serviceDialog": {
           "shortHair": "Short Moriri",
@@ -36463,6 +36530,15 @@
       "cancelFailed": "Ha e a khona ho hlakola your spot.",
       "sessionCancelled": "Kopano ena ya sehlopha e hlakotswe.",
       "sessionCancelledPaid": "Kopano ena ya sehlopha e hlakotswe. Chelete efe kapa efe eo o e lefileng bakeng sa karolo ya hao e kgutliswa ka botlalo ho karete eo o lefileng ka yona."
+    },
+    "components": {
+      "payableOrdersBanner": {
+        "titleCart": "E emetse tefo",
+        "titleOrders": "E emetse tefo",
+        "retry": "Ha e a kgona ho kenya liodara tsohle tse sa lefuoang. Leka hape.",
+        "showLess": "Bontsha hanyane",
+        "viewAll": "Sheba tsohle"
+      }
     }
   },
   "errors": {

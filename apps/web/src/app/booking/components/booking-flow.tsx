@@ -2021,6 +2021,7 @@ export default function BookingFlow() {
               ) : currentStep === "payment" ? (
                 <StepPayment
                   bookingState={bookingState}
+                  providerBusinessName={providerContext.provider?.business_name}
                   updateBookingState={updateBookingState}
                   onRequireAuth={() => {
                     if (bookingState.holdId) {

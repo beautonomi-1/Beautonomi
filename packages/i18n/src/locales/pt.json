@@ -13780,7 +13780,15 @@
       "shareMediaFailedTitle": "Couldn't partilhar media",
       "shareMediaFailedBody": "Não foi possível preparar este arquivo para compartilhamento. Tente compartilhar o link.",
       "loadingComments": "A carregar…",
-      "loadMoreComments": "Carregar mais comentários"
+      "loadMoreComments": "Carregar mais comentários",
+      "errorDeleteComment": "Não foi possível excluir este comentário. Tente novamente.",
+      "deleteCommentTitle": "Excluir este comentário?",
+      "deleteCommentBody": "Isto remove o comentário para todos.",
+      "deleteComment": "Excluir",
+      "commentsLoadFailed": "Não foi possível carregar os comentários.",
+      "signInToComment": "Entre para comentar",
+      "replyingTo": "Respondendo a {{name}}",
+      "commentTooLong": "{{count}} / 200"
     },
     "searchScreen": {
       "title": "Pesquisar",
@@ -14406,6 +14414,13 @@
           "shopContinueCta": "Ver encomenda",
           "shopPendingSubtext": "Atualizaremos seu pedido em alguns minutos. Você pode continuar usando o aplicativo enquanto confirmamos com seu banco.",
           "shopFailedSubtext": "Se você foi cobrado, seu pedido ainda será confirmado assim que o pagamento for efetuado. Por favor, verifique sua guia Pedidos."
+        },
+        "payableOrdersBanner": {
+          "titleCart": "Aguardando pagamento",
+          "titleOrders": "Aguardando pagamento",
+          "retry": "Não foi possível carregar todos os pedidos não pagos. Tente novamente.",
+          "showLess": "Mostrar menos",
+          "viewAll": "Ver tudo"
         }
       },
       "tabs": {
@@ -14836,7 +14851,9 @@
           "total": "Total",
           "alsoCheckoutOnWeb": "Also finalizar compra on web",
           "pickupLocationsMore": "{{count}} Levantamento localizações — escolher at finalizar compra",
-          "deliveryEtaDays": "Estimated Entrega within {{days}} Empresa dia(s)"
+          "deliveryEtaDays": "Estimated Entrega within {{days}} Empresa dia(s)",
+          "paymentDueHeading": "Aguardando pagamento",
+          "paymentDueRetry": "Não foi possível carregar todos os pedidos não pagos. Tente novamente."
         },
         "productCheckout": {
           "title": "Finalizar compra",
@@ -18176,7 +18193,8 @@
     "cart": "Carrinho",
     "exploreVideo": {
       "unmute": "Ativar som",
-      "mute": "Silenciar"
+      "mute": "Silenciar",
+      "replay": "Repetir"
     },
     "bankAccounts": {
       "failedLoadBanks": "Não foi possível carregar banks. tentar novamente.",
@@ -18456,7 +18474,8 @@
     "rescheduleReplacesPreviousBody": "A sua marcação original é cancelada sozinha, sem custo, quando o pagamento desta reserva termina. O que já pagou é usado aqui, e o que sobra fica na carteira.",
     "rescheduleCreditNote": "Qualquer valor já pago online pela reserva original é usado aqui. Só paga a diferença.",
     "rescheduleCreditApplied": "Pago na reserva original",
-    "rescheduleCreditSurplus": "O restante {{amount}} fica na carteira como crédito."
+    "rescheduleCreditSurplus": "O restante {{amount}} fica na carteira como crédito.",
+    "stylistReceives": "{{name}} recebe"
   },
   "payments": {
     "pay": "Pay",
@@ -19105,7 +19124,9 @@
         "continueWithCount": "continuar with {{count}} serviços",
         "changeService": "alterar",
         "selectedServiceMore": " (+{{count}})",
-        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} minutos"
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} minutos",
+        "stylistReceivesFallback": "Seu estilista",
+        "stylistReceives": "{{name}} recebe"
       },
       "confirmation": {
         "loadingMessage": "A carregar Confirmação da marcação...",
@@ -36463,6 +36484,15 @@
       "cancelFailed": "Não foi possível cancelar your spot.",
       "sessionCancelled": "Esta sessão de grupo foi cancelada.",
       "sessionCancelledPaid": "Esta sessão de grupo foi cancelada. Qualquer valor pago pela sua parte é reembolsado na totalidade para o cartão usado."
+    },
+    "components": {
+      "payableOrdersBanner": {
+        "titleCart": "Aguardando pagamento",
+        "titleOrders": "Aguardando pagamento",
+        "retry": "Não foi possível carregar todos os pedidos não pagos. Tente novamente.",
+        "showLess": "Mostrar menos",
+        "viewAll": "Ver tudo"
+      }
     }
   },
   "errors": {

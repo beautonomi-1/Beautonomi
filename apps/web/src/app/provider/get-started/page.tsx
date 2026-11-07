@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import LoadingTimeout from "@/components/ui/loading-timeout";
+import { buildProviderPublicBookUrl, providerShareBookingLinkSms } from "@beautonomi/utils";
 
 interface SetupStep {
   id: string;
@@ -31,6 +32,7 @@ export default function GetStartedPage() {
   const { t } = useTranslation();
   const router = useRouter();
   const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
+  const [providerSlug, setProviderSlug] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +41,14 @@ export default function GetStartedPage() {
   useEffect(() => {
     loadSetupStatus();
   }, []);
+
+  useEffect(() => {
+    if (!setupStatus) return;
+    void fetcher
+      .get<{ data?: { slug?: string | null }; slug?: string | null }>("/api/provider/profile")
+      .then((res) => setProviderSlug(res.data?.slug ?? res.slug ?? null))
+      .catch(() => setProviderSlug(null));
+  }, [setupStatus]);
 
   useEffect(() => {
     const MIN_MS = 2000;
@@ -188,6 +198,50 @@ export default function GetStartedPage() {
   const remaining = requiredSteps.length - completedRequired;
   const nextIncomplete = sortedRequiredSteps.find((s) => !s.completed);
 
+  const appBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+  const bookingUrl = providerSlug && appBase ? buildProviderPublicBookUrl(appBase, providerSlug) : null;
+
+  const handleCopyBookingLink = async () => {
+    if (!bookingUrl) return;
+    try {
+      await navigator.clipboard.writeText(bookingUrl);
+      toast.success(t("common.linkCopied"));
+    } catch {
+      toast.error(t("common.copyLinkFailed"));
+    }
+  };
+
+  const handleShareBookingLink = async () => {
+    if (!bookingUrl) return;
+    const message = providerShareBookingLinkSms(bookingUrl);
+    try {
+      if (navigator.share) {
+        await navigator.share({ text: message, url: bookingUrl });
+        return;
+      }
+      await navigator.clipboard.writeText(message);
+      toast.success(t("common.linkCopied"));
+    } catch {
+      toast.error(t("web.provider.postCompletion.shareFailed"));
+    }
+  };
+
+  const BookingLinkCard = bookingUrl ? (
+    <div className="rounded-2xl border border-primary/15 bg-primary/[0.04] p-5 sm:p-6 text-start">
+      <h2 className="text-base font-semibold text-gray-900">{t("web.provider.getStartedPage.bookingLinkTitle")}</h2>
+      <p className="mt-1 text-sm text-gray-600">{t("web.provider.getStartedPage.bookingLinkBody")}</p>
+      <div className="mt-4 flex flex-col sm:flex-row gap-2">
+        <Button variant="outline" onClick={() => void handleCopyBookingLink()} className="w-full sm:w-auto">
+          {t("common.copyLink")}
+        </Button>
+        <Button onClick={() => void handleShareBookingLink()} className="w-full sm:w-auto">
+          {t("common.share")}
+        </Button>
+      </div>
+      <p className="mt-3 break-all text-xs text-gray-500">{bookingUrl}</p>
+    </div>
+  ) : null;
+
   // ── All done ──────────────────────────────────────────────────────────────
   if (setupStatus.isComplete) {
     const isPendingApproval = setupStatus.providerStatus === "pending_approval";
@@ -201,7 +255,9 @@ export default function GetStartedPage() {
           { label: t("web.provider.getStartedPage.title") },
         ]}
       >
-        <div className="max-w-lg mx-auto text-center py-16 px-4">
+        <div className="max-w-lg mx-auto py-16 px-4 space-y-4">
+          {BookingLinkCard}
+          <div className="text-center">
           <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-green-100 mb-5">
             <Check className="h-8 w-8 text-green-600" />
           </div>
@@ -231,6 +287,7 @@ export default function GetStartedPage() {
               {t("web.provider.getStartedPage.manageServices")}
             </Button>
           </div>
+          </div>
         </div>
       </SettingsDetailLayout>
     );
@@ -246,6 +303,7 @@ export default function GetStartedPage() {
       ]}
     >
       <div className="max-w-2xl mx-auto px-1 sm:px-0">
+        {BookingLinkCard ? <div className="mb-6">{BookingLinkCard}</div> : null}
         {/* Header */}
         <div className="mb-6 sm:mb-8">
           <div className="flex items-start justify-between gap-3 mb-2">

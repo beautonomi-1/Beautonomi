@@ -13780,7 +13780,15 @@
       "shareMediaFailedTitle": "Couldn't avelana media",
       "shareMediaFailedBody": "A hi swi kotanga ku lunghiselela fayili leyi leswaku yi ta avelana. Ringeta ku avelana xihlanganisi ematshan’wini ya sweswo.",
       "loadingComments": "Yi loyida...",
-      "loadMoreComments": "Loyida swin'wana swivonelo"
+      "loadMoreComments": "Loyida swin'wana swivonelo",
+      "errorDeleteComment": "A yi kotanga ku sula mavonelo lawa. Kombela u ringeta nakambe.",
+      "deleteCommentTitle": "Sula mavonelo lawa?",
+      "deleteCommentBody": "Leswi swi susa mavonelo eka un'wana na un'wana.",
+      "deleteComment": "Sula",
+      "commentsLoadFailed": "A yi kotanga ku layicha mavonelo.",
+      "signInToComment": "Nghena leswaku u nyika mavonelo",
+      "replyingTo": "U hlamula eka {{name}}",
+      "commentTooLong": "{{count}} / 200"
     },
     "searchScreen": {
       "title": "Lavisisa",
@@ -14406,6 +14414,13 @@
           "shopContinueCta": "Vona odara",
           "shopPendingSubtext": "Hi ta pfuxeta oda ya wena ku nga si hela timinete ti nga ri tingani. U nga tshama u ri karhi u tirhisa app loko hi ri karhi hi tiyisisa na bangi ya wena.",
           "shopFailedSubtext": "Loko u hakeriwile, oda ya wena ya ha ta tiyisisiwa loko hakelo yi fika emisaveni. Hi kombela u languta thebhu ya wena ya Tioda."
+        },
+        "payableOrdersBanner": {
+          "titleCart": "Yi rindzele hakelo",
+          "titleOrders": "Yi rindzele hakelo",
+          "retry": "A yi kotanga ku layicha maodara hinkwawo lawa ya nga hakeliwangiki. Ringeta nakambe.",
+          "showLess": "Kombisa ku tsongo",
+          "viewAll": "Languta hinkwaswo"
         }
       },
       "tabs": {
@@ -14836,7 +14851,9 @@
           "total": "Hinkwaswo",
           "alsoCheckoutOnWeb": "Also ku hakela on web",
           "pickupLocationsMore": "{{count}} tindhawu ta ku teka — hlawula loko u hlaya",
-          "deliveryEtaDays": "Ku rhumeriwa loku ringanisiweke ku nga {{days}} masiku ya msebeni"
+          "deliveryEtaDays": "Ku rhumeriwa loku ringanisiweke ku nga {{days}} masiku ya msebeni",
+          "paymentDueHeading": "Yi rindzele hakelo",
+          "paymentDueRetry": "A yi kotanga ku layicha maodara hinkwawo lawa ya nga hakeliwangiki. Ringeta nakambe."
         },
         "productCheckout": {
           "title": "Ku hakela",
@@ -18176,7 +18193,8 @@
     "cart": "Ngola",
     "exploreVideo": {
       "unmute": "Pfula mpfumawulo",
-      "mute": "Tshula"
+      "mute": "Tshula",
+      "replay": "Tlanga nakambe"
     },
     "bankAccounts": {
       "failedLoadBanks": "A swi koteki ku loyida banks. ringa nakambe.",
@@ -18456,7 +18474,8 @@
     "rescheduleReplacesPreviousBody": "Nhlangano wa wena wo sungula wu khanseriwa hi ku tiendlela, mahala, loko hakelo ya buku leri yi hela. Leswi u swi hakeleke swi tirhisiwa laha, naswona leswi saleke swi tshama eka xikhwama xa wena.",
     "rescheduleCreditNote": "Mali yihi na yihi leyi u yi hakeleke hi inthanete eka buku yo sungula yi tirhisiwa laha. U hakela ku hambana ntsena.",
     "rescheduleCreditApplied": "Yi hakeriwe eka buku ya wena yo sungula",
-    "rescheduleCreditSurplus": "Leswi saleke swa {{amount}} swi tshama eka xikhwama xa wena tanihi xikweleti."
+    "rescheduleCreditSurplus": "Leswi saleke swa {{amount}} swi tshama eka xikhwama xa wena tanihi xikweleti.",
+    "stylistReceives": "{{name}} u amukela"
   },
   "payments": {
     "pay": "Hakela",
@@ -19105,7 +19124,9 @@
         "continueWithCount": "yana emahlweni with {{count}} vukorhokeri",
         "changeService": "Cinca",
         "selectedServiceMore": " (+{{count}})",
-        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} timinete"
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} timinete",
+        "stylistReceivesFallback": "Stylist wa wena",
+        "stylistReceives": "{{name}} u amukela"
       },
       "confirmation": {
         "loadingMessage": "Yi loyida Ntiyiso wa ku buka...",
@@ -36463,6 +36484,15 @@
       "cancelFailed": "A swi koteki ku khansela your spot.",
       "sessionCancelled": "Nhlengeletano leyi ya ntlawa yi khanseliwile.",
       "sessionCancelledPaid": "Nhlengeletano leyi ya ntlawa yi khanseliwile. Mali yihi na yihi leyi u yi hakeleke eka xiphemu xa wena yi vuyiseriwa hi ku helela eka khadi leyi u hakeleke hi yona."
+    },
+    "components": {
+      "payableOrdersBanner": {
+        "titleCart": "Yi rindzele hakelo",
+        "titleOrders": "Yi rindzele hakelo",
+        "retry": "A yi kotanga ku layicha maodara hinkwawo lawa ya nga hakeliwangiki. Ringeta nakambe.",
+        "showLess": "Kombisa ku tsongo",
+        "viewAll": "Languta hinkwaswo"
+      }
     }
   },
   "errors": {

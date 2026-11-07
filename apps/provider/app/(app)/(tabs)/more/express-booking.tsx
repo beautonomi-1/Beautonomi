@@ -19,6 +19,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { Colors } from "@/constants/colors";
 import { isPlanGateErrorCode, showPlanGateAlert } from "@/lib/plan-gate";
+import { buildShareBookingLinkPayload } from "@beautonomi/utils";
 
 interface BookingLink {
   id: string;
@@ -106,11 +107,8 @@ function parseProductCartJson(raw: string): { ok: true; lines: NonNullable<Expre
   return { ok: true, lines };
 }
 
-/** Single message with URL — reliable for WhatsApp, Instagram DMs, SMS (Android avoids duplicate URL). */
 function shareBookingPayload(url: string, message: string) {
-  return Platform.OS === "ios"
-    ? { message, url }
-    : { message };
+  return buildShareBookingLinkPayload(Platform.OS, url, message);
 }
 
 function normalizeArray<T>(raw: unknown): T[] {

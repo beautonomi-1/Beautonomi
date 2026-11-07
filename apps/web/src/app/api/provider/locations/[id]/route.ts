@@ -5,6 +5,8 @@ import { requirePermission } from "@/lib/auth/requirePermission";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
 import { ensureProviderHasPrimaryLocation } from "@/lib/provider/location-maintenance";
 import { normalizeWorkingHours } from "@/lib/availability/normalize-working-hours";
+import { applyPlaceFieldsOnPatch, normCompare } from "@/lib/provider/resolve-location-place-fields";
+import type { MapboxGeocodeFeatureLike } from "@beautonomi/utils";
 
 /**
  * GET /api/provider/locations/[id]
@@ -132,14 +134,31 @@ export async function PATCH(
           : null
         : (existingLocationData as any)?.longitude;
 
-    // Re-geocode when address changed but client did not send new coordinates (avoid stale pins)
-    const addressChanged =
-      body.address_line1 !== undefined ||
-      body.address_line2 !== undefined ||
-      body.city !== undefined ||
-      body.state !== undefined ||
-      body.postal_code !== undefined ||
-      body.country !== undefined;
+    const existingRow = existingLocationData as any;
+
+    const streetChanged =
+      body.address_line1 !== undefined &&
+      normCompare(body.address_line1) !== normCompare(existingRow?.address_line1);
+    const cityChanged =
+      body.city !== undefined && normCompare(body.city) !== normCompare(existingRow?.city);
+    const stateChanged =
+      body.state !== undefined && normCompare(body.state) !== normCompare(existingRow?.state);
+    const postalChanged =
+      body.postal_code !== undefined &&
+      normCompare(body.postal_code) !== normCompare(existingRow?.postal_code);
+    const countryChanged =
+      body.country !== undefined && normCompare(body.country) !== normCompare(existingRow?.country);
+    const line2Changed =
+      body.address_line2 !== undefined &&
+      normCompare(body.address_line2) !== normCompare(existingRow?.address_line2);
+
+    const physicalAddressChanged =
+      streetChanged || cityChanged || stateChanged || postalChanged || countryChanged || line2Changed;
+
+    const addressChanged = physicalAddressChanged;
+
+    let geocodeFeature: MapboxGeocodeFeatureLike | null = null;
+    let didRegeocode = false;
 
     if (addressChanged && !coordsInBody) {
       try {
@@ -162,6 +181,8 @@ export async function PATCH(
 
         if (geocodeResults.length > 0) {
           const result = geocodeResults[0];
+          geocodeFeature = result as MapboxGeocodeFeatureLike;
+          didRegeocode = true;
           finalLongitude = result.center[0];
           finalLatitude = result.center[1];
         }
@@ -172,6 +193,13 @@ export async function PATCH(
 
     updateData.latitude = finalLatitude;
     updateData.longitude = finalLongitude;
+
+    applyPlaceFieldsOnPatch(updateData, body, existingRow ?? {}, {
+      geocodeFeature,
+      didRegeocode,
+      finalLatitude: finalLatitude ?? null,
+      finalLongitude: finalLongitude ?? null,
+    });
 
     if (body.is_primary === true) {
       await supabase

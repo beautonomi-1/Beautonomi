@@ -38,6 +38,8 @@ import {
 } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import { BookingReferencePanel } from "@/components/bookings/BookingReferencePanel";
+import { ClientMemoryPanel } from "@/components/provider/booking/ClientMemoryPanel";
+import type { ProviderClientMemory } from "@/lib/provider/provider-client-memory";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import type { Booking, AdditionalCharge } from "@/types/beautonomi";
@@ -63,6 +65,7 @@ type ProviderBookingDetail = Booking & {
   qr_arrival_pending?: boolean;
   display_time_zone?: string | null;
   db_status?: string | null;
+  client_memory?: ProviderClientMemory | null;
 };
 import { toast } from "sonner";
 import Link from "next/link";
@@ -2025,6 +2028,13 @@ export default function ProviderBookingDetail() {
                   </a>
                 </div>
               )}
+              {booking.customer_id && booking.client_memory ? (
+                <ClientMemoryPanel
+                  customerId={booking.customer_id}
+                  memory={booking.client_memory}
+                  onUpdated={() => loadBooking()}
+                />
+              ) : null}
               {(booking.status === "completed" || booking.status === "no_show") && bookingId && (
                 <div className="pt-2 border-t">
                   <CustomerRatingButton
@@ -3870,6 +3880,7 @@ export default function ProviderBookingDetail() {
             primaryServiceName={booking.services?.[0]?.offering_name || t("web.provider.bookings.detail.fallbacks.appointment")}
             primaryOfferingId={booking.services?.[0]?.offering_id}
             customerName={typeof booking.customers?.full_name === "string" ? booking.customers.full_name : t("web.provider.bookings.detail.fallbacks.client")}
+            walkInOrUnpaidComplete={Number(booking.total_paid ?? 0) <= 0.009}
             onDismiss={dismissProviderCompletionModal}
           />
         ) : null}

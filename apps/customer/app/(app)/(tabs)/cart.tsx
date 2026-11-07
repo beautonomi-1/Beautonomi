@@ -23,6 +23,8 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
 import type { CartItem } from "@/types/api";
 import { useCart } from "@/features/shop/useCart";
+import { usePayableProductOrders } from "@/features/shop/usePayableProductOrders";
+import { PayableOrdersBanner } from "@/components/shop/PayableOrdersBanner";
 import { useTranslation } from "@beautonomi/i18n";
 import { useAuth } from "@/providers/AuthProvider";
 import { pushCustomerLogin } from "@/lib/guest-browse-policy";
@@ -150,6 +152,7 @@ export default function CartScreen() {
   );
 
   const [clearingCart, setClearingCart] = useState(false);
+  const payableOrders = usePayableProductOrders(!!user);
 
   const handleClearCart = useCallback(() => {
     if (items.length === 0) return;
@@ -330,6 +333,16 @@ export default function CartScreen() {
             </View>
           </View>
         ) : null}
+        {payableOrders.orders.length > 0 || !payableOrders.complete ? (
+          <View style={{ paddingHorizontal: contentPadding, paddingTop: contentPadding }}>
+            <PayableOrdersBanner
+              orders={payableOrders.orders}
+              complete={payableOrders.complete}
+              onRetry={() => void payableOrders.retry()}
+              context="cart"
+            />
+          </View>
+        ) : null}
         {items.length === 0 ? (
           <View style={{ padding: contentPadding * 2, alignItems: "center" }}>
             <Ionicons name="cart-outline" size={56} color="#D1D5DB" />
@@ -352,6 +365,12 @@ export default function CartScreen() {
           </View>
         ) : (
           <View style={{ padding: contentPadding }}>
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/product-orders" as never)}
+              style={{ marginBottom: 12 }}
+            >
+              <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "600" }}>{tc("viewMyOrders")}</Text>
+            </TouchableOpacity>
             {Object.values(groups).filter((g) => g.provider?.id).map((g) => {
               const sc = shippingConfigs[g.provider.id];
               const isPickupOnly = sc ? (sc.offers_collection && !sc.offers_delivery) : false;

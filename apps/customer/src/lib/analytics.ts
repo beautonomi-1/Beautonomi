@@ -45,6 +45,9 @@ import {
   EVENT_PRODUCT_CHECKOUT_STARTED,
   EVENT_PRODUCT_ORDER_PAID,
   EVENT_PRODUCT_ORDER_PLACED,
+  EVENT_PAYABLE_ORDERS_BANNER_SHOWN,
+  EVENT_PAYABLE_ORDERS_PAY_CLICKED,
+  EVENT_PRODUCT_ORDER_PAY_OUTCOME,
   EVENT_PRODUCT_RETURN_REQUESTED,
   EVENT_PRODUCT_VIEWED,
   EVENT_PROVIDER_PROFILE_VIEW,
@@ -201,6 +204,42 @@ export function trackLogin(method: "phone" | "email" | "google" | "apple") {
 
 export function trackLogout() {
   track(EVENT_LOGOUT, { portal: "client" });
+}
+
+// ── Payable orders recovery (banner) ─────────────────────────────────────────
+
+export function trackPayableOrdersBannerShown(input: {
+  context: "cart" | "orders";
+  count: number;
+  complete: boolean;
+}) {
+  track(EVENT_PAYABLE_ORDERS_BANNER_SHOWN, { portal: "client", ...input });
+}
+
+export function trackPayableOrdersPayClicked(input: {
+  context: "cart" | "orders";
+  order_id: string;
+  provider_id?: string;
+  amount_due?: number;
+  currency?: string;
+}) {
+  track(EVENT_PAYABLE_ORDERS_PAY_CLICKED, { portal: "client", ...input });
+}
+
+export function trackProductOrderPayOutcome(input: {
+  order_id?: string;
+  outcome:
+    | "initiated"
+    | "cancelled"
+    | "closed"
+    | "start_failed"
+    | "verified_success"
+    | "verified_failed"
+    | "verified_pending";
+  amount_due?: number;
+  currency?: string;
+}) {
+  track(EVENT_PRODUCT_ORDER_PAY_OUTCOME, { portal: "client", ...input });
 }
 
 // ── Booking Events ───────────────────────────────────────────────────────────

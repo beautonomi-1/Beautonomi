@@ -940,7 +940,7 @@ export default function CustomOfferCheckoutScreen() {
                     }}
                   >
                     <Text style={{ color: "#6B7280" }}>
-                      {coc("platformFee", undefined, "Platform fee")}
+                      {coc("platformFee", undefined, "Booking protection")}
                     </Text>
                     <Text style={{ fontWeight: "600", color: "#111827" }}>
                       {fmt(Number(quote.pricing.serviceFeeAmount))}

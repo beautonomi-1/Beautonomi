@@ -53,9 +53,14 @@ export type SupportedLanguage = (typeof LANGUAGE_REGISTRY)[number]["code"];
 
 export const DEFAULT_LANGUAGE: SupportedLanguage = "en";
 
-/** Mobile apps may activate these catalogs; others stay on English until professionally reviewed. */
-export const REVIEWED_UI_LANGUAGE_CODES = ["en", "en-GB", "en-US", "en-AU"] as const;
-export type ReviewedUiLanguage = (typeof REVIEWED_UI_LANGUAGE_CODES)[number];
+/**
+ * Every bundled catalog. Customer and provider pickers, signup, and
+ * `changeLanguage` use this list. Unknown tags still resolve to English.
+ */
+export const REVIEWED_UI_LANGUAGE_CODES: readonly SupportedLanguage[] = LANGUAGE_REGISTRY.map(
+  (l) => l.code,
+);
+export type ReviewedUiLanguage = SupportedLanguage;
 
 const reviewedUiSet = new Set<string>(
   REVIEWED_UI_LANGUAGE_CODES.map((c) => c.toLowerCase()),
@@ -66,16 +71,20 @@ export function isReviewedUiLanguage(raw: string | null | undefined): boolean {
   return reviewedUiSet.has(normalized.toLowerCase());
 }
 
-/** Mobile UI language: reviewed registry code or English (never glossary-mash locales). */
+/** Mobile UI language: a bundled registry code, or English when the tag is unknown. */
 export function coerceMobileUiLanguage(raw: string | null | undefined): ReviewedUiLanguage {
   const normalized = normalizeLanguageCode(raw ?? "en");
   if (isReviewedUiLanguage(normalized)) return normalized as ReviewedUiLanguage;
   return "en";
 }
 
-/** Language picker rows for native apps (English family only until catalogs are reviewed). */
+/** Language picker rows for native apps — the same catalogs the web can activate. */
 export function reviewedUiLanguageOptions(): typeof supportedLanguages {
   return supportedLanguages.filter((l) => isReviewedUiLanguage(l.code));
+}
+
+export function formatLanguageOptionLabel(lang: { nativeName: string; name: string }): string {
+  return lang.nativeName === lang.name ? lang.nativeName : `${lang.nativeName} (${lang.name})`;
 }
 
 const registryByCode = new Map<string, LanguageMeta>(

@@ -196,9 +196,11 @@ export async function apiFetch<T>(
 
   const headers: Record<string, string> = {
     Accept: "application/json",
-    "Content-Type": "application/json",
     ...(init.headers as Record<string, string>),
   };
+  // GET/HEAD have no body. A JSON Content-Type on those requests is what the
+  // working public fetches omit; sending it makes some gateways answer with an
+  // HTML page, which the provider gate treats as "Couldn't verify your account".
 
   const fetchInit: RequestInit = {
     ...init,
@@ -209,9 +211,10 @@ export async function apiFetch<T>(
 
   if (body !== undefined && body !== null) {
     if (body instanceof FormData) {
-      delete (headers as Record<string, string>)["Content-Type"];
+      delete headers["Content-Type"];
       fetchInit.body = body;
     } else {
+      headers["Content-Type"] = "application/json";
       fetchInit.body = JSON.stringify(body);
     }
   }

@@ -93,6 +93,8 @@ const onboardingSchema = z.object({
   address: z.object({
     line1: z.string().min(1, "Address line 1 is required"),
     line2: z.string().optional().nullable(),
+    neighborhood: z.string().optional().nullable(),
+    metro: z.string().optional().nullable(),
     city: z.string().min(1, "City is required"),
     state: z.string().optional().nullable(), // Optional to match UI
     postal_code: z.string().optional().nullable(), // Optional to match UI
@@ -880,6 +882,8 @@ export async function POST(request: NextRequest) {
         name: locationName,
         address_line1: address.line1,
         address_line2: address.line2 || null,
+        neighborhood: address.neighborhood?.trim() || null,
+        metro: address.metro?.trim() || null,
         city: address.city,
         state: address.state || null,
         postal_code: address.postal_code || null,

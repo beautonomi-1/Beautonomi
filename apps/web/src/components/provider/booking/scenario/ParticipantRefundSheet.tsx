@@ -56,7 +56,7 @@ export function ParticipantRefundSheet({
   onSuccess,
 }: ParticipantRefundSheetProps) {
   const { t } = useTranslation();
-  const prefix = "web.provider.portal.participantRefund";
+  const prefix = "web.provider.participantRefund";
   const refundPrefix = "web.provider.bookings.detail.refund";
   const gb = (key: string, opts?: Record<string, unknown>) =>
     String(t(`provider.mobile.screens.groupBookings.${key}`, opts as never));

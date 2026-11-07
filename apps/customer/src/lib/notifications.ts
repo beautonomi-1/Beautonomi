@@ -1,5 +1,6 @@
 import { router } from "expo-router";
 import * as Linking from "expo-linking";
+import { mapBookingQueryToNativeBookPath } from "@beautonomi/utils";
 
 export interface Notification {
   id: string;
@@ -167,6 +168,48 @@ export function navigateFromNotification(n: Notification): void {
   const dataType = data.type != null ? String(data.type).toLowerCase() : "";
   const templateKeyEarly =
     typeof data.template_key === "string" ? data.template_key.toLowerCase().trim() : "";
+
+  const isRebookReminder =
+    nType === "rebook_reminder" || dataType === "rebook_reminder" || templateKeyEarly === "rebook_reminder";
+  if (isRebookReminder) {
+    const slug =
+      typeof data.provider_slug === "string"
+        ? data.provider_slug.trim()
+        : typeof (data as { providerSlug?: unknown }).providerSlug === "string"
+          ? String((data as { providerSlug?: string }).providerSlug).trim()
+          : "";
+    const offeringId =
+      typeof data.offering_id === "string"
+        ? data.offering_id.trim()
+        : typeof (data as { offeringId?: unknown }).offeringId === "string"
+          ? String((data as { offeringId?: string }).offeringId).trim()
+          : "";
+    if (slug) {
+      router.push({
+        pathname: "/(app)/book",
+        params: {
+          slug,
+          ...(offeringId ? { service_id: offeringId } : {}),
+        },
+      } as never);
+      return;
+    }
+    const bookLink = link && link.includes("/booking") ? link : "";
+    if (bookLink) {
+      try {
+        const u = new URL(
+          bookLink.startsWith("http") ? bookLink : `https://beautonomi.com${bookLink.startsWith("/") ? bookLink : `/${bookLink}`}`,
+        );
+        const native = mapBookingQueryToNativeBookPath(u.search);
+        if (native) {
+          router.push(native as never);
+          return;
+        }
+      } catch {
+        // fall through
+      }
+    }
+  }
 
   // OneSignal template pushes often include only `booking_id` in additional data (no type);
   // send users to the booking, not a generic fallthrough screen.

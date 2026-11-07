@@ -13780,7 +13780,15 @@
       "shareMediaFailedTitle": "Couldn't compartir media",
       "shareMediaFailedBody": "We kunnen dit bestand niet voorbereiden voor delen. Probeer in plaats daarvan de link te delen.",
       "loadingComments": "Laden…",
-      "loadMoreComments": "Meer reacties laden"
+      "loadMoreComments": "Meer reacties laden",
+      "errorDeleteComment": "Deze reactie kon niet worden verwijderd. Probeer het opnieuw.",
+      "deleteCommentTitle": "Deze reactie verwijderen?",
+      "deleteCommentBody": "Hiermee verwijder je de reactie voor iedereen.",
+      "deleteComment": "Verwijderen",
+      "commentsLoadFailed": "Reacties konden niet worden geladen.",
+      "signInToComment": "Log in om te reageren",
+      "replyingTo": "Antwoord aan {{name}}",
+      "commentTooLong": "{{count}} / 200"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -14406,6 +14414,13 @@
           "shopContinueCta": "Voir commande",
           "shopPendingSubtext": "Nous mettrons à jour votre commande dans quelques minutes. Vous pouvez continuer à utiliser l'application pendant que nous confirmons auprès de votre banque.",
           "shopFailedSubtext": "Si vous avez été facturé, votre commande sera toujours confirmée une fois le paiement effectué. Veuillez vérifier votre onglet Commandes."
+        },
+        "payableOrdersBanner": {
+          "titleCart": "In afwachting van betaling",
+          "titleOrders": "In afwachting van betaling",
+          "retry": "Niet alle onbetaalde bestellingen konden worden geladen. Probeer het opnieuw.",
+          "showLess": "Minder tonen",
+          "viewAll": "Alles bekijken"
         }
       },
       "tabs": {
@@ -14836,7 +14851,9 @@
           "total": "Total",
           "alsoCheckoutOnWeb": "Payer aussi sur le web",
           "pickupLocationsMore": "{{count}} points de retrait — choisissez à la caisse",
-          "deliveryEtaDays": "Livraison estimée sous {{days}} jour(s) ouvré(s)"
+          "deliveryEtaDays": "Livraison estimée sous {{days}} jour(s) ouvré(s)",
+          "paymentDueHeading": "In afwachting van betaling",
+          "paymentDueRetry": "Niet alle onbetaalde bestellingen konden worden geladen. Probeer het opnieuw."
         },
         "productCheckout": {
           "title": "Paiement",
@@ -18176,7 +18193,8 @@
     "cart": "Panier",
     "exploreVideo": {
       "unmute": "Geluid aan",
-      "mute": "Dempen"
+      "mute": "Dempen",
+      "replay": "Opnieuw afspelen"
     },
     "bankAccounts": {
       "failedLoadBanks": "Die Banken konnten nicht geladen werden. Versuchen Sie es erneut.",
@@ -18456,7 +18474,8 @@
     "rescheduleReplacesPreviousBody": "Je oorspronkelijke afspraak wordt vanzelf en gratis geannuleerd zodra de betaling van deze boeking klaar is. Wat je al betaalde wordt hier verrekend, en wat overblijft blijft in je portemonnee.",
     "rescheduleCreditNote": "Elk bedrag dat je al online voor de oorspronkelijke boeking betaalde, wordt hier verrekend. Je betaalt alleen het verschil.",
     "rescheduleCreditApplied": "Betaald op je oorspronkelijke boeking",
-    "rescheduleCreditSurplus": "De resterende {{amount}} blijft als tegoed in je portemonnee."
+    "rescheduleCreditSurplus": "De resterende {{amount}} blijft als tegoed in je portemonnee.",
+    "stylistReceives": "{{name}} ontvangt"
   },
   "payments": {
     "pay": "Pay",
@@ -19105,7 +19124,9 @@
         "continueWithCount": "continuar with {{count}} servicios",
         "changeService": "Modifier",
         "selectedServiceMore": " (+{{count}})",
-        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} minuten"
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} minuten",
+        "stylistReceivesFallback": "Je stylist",
+        "stylistReceives": "{{name}} ontvangt"
       },
       "confirmation": {
         "loadingMessage": "Chargement de réservation confirmation...",
@@ -36463,6 +36484,15 @@
       "cancelFailed": "Impossible de annuler your spot.",
       "sessionCancelled": "Deze groepssessie is geannuleerd.",
       "sessionCancelledPaid": "Deze groepssessie is geannuleerd. Elk bedrag dat je voor jouw deel betaalde, gaat volledig terug naar de gebruikte kaart."
+    },
+    "components": {
+      "payableOrdersBanner": {
+        "titleCart": "In afwachting van betaling",
+        "titleOrders": "In afwachting van betaling",
+        "retry": "Niet alle onbetaalde bestellingen konden worden geladen. Probeer het opnieuw.",
+        "showLess": "Minder tonen",
+        "viewAll": "Alles bekijken"
+      }
     }
   },
   "errors": {

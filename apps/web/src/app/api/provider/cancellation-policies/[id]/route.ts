@@ -2,7 +2,10 @@ import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { successResponse, handleApiError, getProviderIdForUser, notFoundResponse, errorResponse } from '@/lib/supabase/api-helpers';
 import { requirePermission } from "@/lib/auth/requirePermission";
-import { deriveEnforcementFields, normalizePolicyLocationType } from '../route';
+import {
+  deriveEnforcementFields,
+  normalizePolicyLocationType,
+} from "@/lib/provider/cancellation-policy-enforcement";
 import { z } from "zod";
 
 const updatePolicySchema = z.object({

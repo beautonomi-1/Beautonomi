@@ -61,7 +61,8 @@ syncMoneyLocale(BOOT_LOCALE);
 
 AsyncStorage.getItem(LANGUAGE_STORAGE_KEY)
   .then(async (saved) => {
-    const deviceRaw = Localization.getLocales()[0]?.languageCode || "en";
+    const locale = Localization.getLocales()[0];
+    const deviceRaw = locale?.languageTag || locale?.languageCode || "en";
     const deviceLocale = normalizeLanguageCode(deviceRaw);
 
     if (saved?.trim()) {

@@ -36,7 +36,7 @@ export function RescheduleDialog({
   onSuccess,
 }: RescheduleDialogProps) {
   const { t } = useTranslation();
-  const prefix = "web.provider.portal.rescheduleDialog";
+  const prefix = "web.provider.rescheduleDialog";
   const [isLoading, setIsLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(
     new Date(appointment.scheduled_date)

@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   Pressable,
   Share,
   Text,
@@ -13,7 +14,11 @@ import {
   View,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { providerPostCashCompleteShareLine, providerShareBookingLinkSms } from "@beautonomi/utils";
+import {
+  buildShareBookingLinkPayload,
+  providerLockNextShareSms,
+  providerPostCashCompleteShareLine,
+} from "@beautonomi/utils";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -40,8 +45,8 @@ type PostCompletionSheetProps = {
   primaryServiceName: string;
   primaryOfferingId?: string;
   hasExistingRating: boolean;
-  /** Walk-in / cash complete — show share booking link on choose step. */
-  showShareBookingLink?: boolean;
+  /** When false, client already paid online — share copy only nudges rebook. */
+  walkInOrUnpaidComplete?: boolean;
   providerPublicBookUrl?: string | null;
   clientDisplayName?: string | null;
   initialStep?: PostCompletionStep;
@@ -62,7 +67,7 @@ export function PostCompletionSheet({
   primaryServiceName,
   primaryOfferingId,
   hasExistingRating,
-  showShareBookingLink = false,
+  walkInOrUnpaidComplete = true,
   providerPublicBookUrl,
   clientDisplayName,
   initialStep = "choose",
@@ -211,48 +216,46 @@ export function PostCompletionSheet({
                   {pc("pointsEarned", { count: providerPointsEarned })}
                 </Text>
               ) : null}
+              {providerPublicBookUrl ? (
+                <>
+                  <Text style={{ color: Colors.gray[600], fontSize: 13, marginBottom: 10, textAlign: "center" }}>
+                    {walkInOrUnpaidComplete
+                      ? providerPostCashCompleteShareLine(clientDisplayName ?? "")
+                      : pc("lockNextHintPrepaid")}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      const msg = providerLockNextShareSms(providerPublicBookUrl, !walkInOrUnpaidComplete);
+                      const payload = buildShareBookingLinkPayload(Platform.OS, providerPublicBookUrl, msg);
+                      void Share.share(payload).catch(() => void Clipboard.setStringAsync(msg));
+                    }}
+                    style={{
+                      backgroundColor: Colors.primary,
+                      paddingVertical: 14,
+                      borderRadius: 14,
+                      alignItems: "center",
+                      marginBottom: 10,
+                    }}
+                  >
+                    <Text style={{ color: "#fff", fontWeight: "700" }}>{pc("lockNextVisit")}</Text>
+                  </TouchableOpacity>
+                </>
+              ) : null}
               {!hideAddPhoto ? (
                 <TouchableOpacity
                   onPress={() => setStep("photo")}
-                  style={{ backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 14, alignItems: "center", marginBottom: 10 }}
+                  style={{ borderWidth: 1.5, borderColor: Colors.primary, paddingVertical: 13, borderRadius: 12, alignItems: "center", marginBottom: 10 }}
                 >
-                  <Text style={{ color: "#fff", fontWeight: "700" }}>{pc("addPhoto")}</Text>
+                  <Text style={{ color: Colors.primary, fontWeight: "600" }}>{pc("addPhoto")}</Text>
                 </TouchableOpacity>
               ) : null}
               {!hasExistingRating ? (
                 <TouchableOpacity
                   onPress={() => setStep("rate")}
-                  style={{ borderWidth: 1.5, borderColor: Colors.primary, paddingVertical: 13, borderRadius: 12, alignItems: "center", marginBottom: 10 }}
+                  style={{ borderWidth: 1.5, borderColor: Colors.gray[300], paddingVertical: 13, borderRadius: 12, alignItems: "center", marginBottom: 10 }}
                 >
-                  <Text style={{ color: Colors.primary, fontWeight: "600" }}>{pc("rateClient")}</Text>
+                  <Text style={{ color: Colors.gray[700], fontWeight: "600" }}>{pc("rateClient")}</Text>
                 </TouchableOpacity>
-              ) : null}
-              {showShareBookingLink && providerPublicBookUrl ? (
-                <>
-                  <Text style={{ color: Colors.gray[600], fontSize: 13, marginBottom: 10, textAlign: "center" }}>
-                    {providerPostCashCompleteShareLine(clientDisplayName ?? "")}
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => {
-                      const msg = providerShareBookingLinkSms(providerPublicBookUrl);
-                      void Share.share({ message: msg, url: providerPublicBookUrl }).catch(() =>
-                        void Clipboard.setStringAsync(msg),
-                      );
-                    }}
-                    style={{
-                      borderWidth: 1.5,
-                      borderColor: Colors.primary,
-                      paddingVertical: 13,
-                      borderRadius: 12,
-                      alignItems: "center",
-                      marginBottom: 10,
-                    }}
-                  >
-                    <Text style={{ color: Colors.primary, fontWeight: "600" }}>
-                      {pc("shareBookingLink")}
-                    </Text>
-                  </TouchableOpacity>
-                </>
               ) : null}
               <TouchableOpacity onPress={markSeen} style={{ paddingVertical: 12, alignItems: "center" }}>
                 <Text style={{ color: Colors.gray[500] }}>{pc("doneForNow")}</Text>

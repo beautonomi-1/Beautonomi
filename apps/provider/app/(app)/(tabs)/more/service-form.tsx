@@ -27,6 +27,7 @@ import type {
 import { pricingOptionsFromService } from "@/features/catalogue/types";
 import { listChildVariantsToTurnOff } from "@/features/catalogue/bookingTierSyncPreview";
 import { useTranslation } from "@beautonomi/i18n";
+import { defaultRebookReminderForNewOffering } from "@beautonomi/utils";
 
 function formatTurnOffNames(names: string[], andMoreLabel: string): string {
   if (names.length <= 5) return names.join(", ");
@@ -37,6 +38,7 @@ interface ServiceCategory {
   id: string;
   name: string;
   color?: string | null;
+  slug?: string | null;
 }
 
 interface StaffMember {
@@ -318,6 +320,16 @@ export default function ServiceFormScreen() {
   }, [serviceId, form.name, deleteService, router, handleDeactivate, t]);
 
   const performServiceSave = useCallback(async () => {
+    const rebookDefaults = !isEdit
+      ? defaultRebookReminderForNewOffering({
+          categorySlug: categories.find((c) => c.id === form.categoryId)?.slug ?? categories.find((c) => c.id === form.categoryId)?.name,
+          title: form.name,
+        })
+      : {
+          reminder_to_rebook_enabled: form.reminderToRebookEnabled,
+          reminder_to_rebook_weeks: parseInt(form.reminderToRebookWeeks, 10) || 4,
+        };
+
     const payload = buildServicePayload({
       name: form.name,
       categoryId: form.categoryId,
@@ -332,8 +344,8 @@ export default function ServiceFormScreen() {
       advancedPricingRules: form.advancedPricingRules,
       extraTimeEnabled: form.extraTimeEnabled,
       extraTimeDuration: parseInt(form.extraTimeDuration, 10) || 0,
-      reminderToRebookEnabled: form.reminderToRebookEnabled,
-      reminderToRebookWeeks: parseInt(form.reminderToRebookWeeks, 10) || 4,
+      reminderToRebookEnabled: rebookDefaults.reminder_to_rebook_enabled,
+      reminderToRebookWeeks: rebookDefaults.reminder_to_rebook_weeks,
       serviceCostPercentage: parseFloat(form.serviceCostPercentage) || 0,
       taxRate: parseFloat(form.taxRate) || 0,
       includedServices: form.includedServices,

@@ -28,6 +28,7 @@ import { toast } from "sonner";
 import { useReferenceData } from "@/hooks/useReferenceData";
 import { AdvancedPricingModal } from "./AdvancedPricingModal";
 import { handleError } from "@/lib/provider-portal/error-handler";
+import { defaultRebookReminderForNewOffering } from "@beautonomi/utils";
 import { invalidateSetupStatusCache } from "@/lib/provider-portal/setup-status-utils";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isCompleteE164 } from "@/lib/phone";
@@ -417,6 +418,11 @@ export function ServiceCreateEditDialog({
         setFormData((prev) => ({ ...prev, offeringResources: [] }));
       });
     } else {
+      const cat = categories.find((c) => c.id === (categoryId || ""));
+      const rebook = defaultRebookReminderForNewOffering({
+        categorySlug: cat?.slug ?? null,
+        title: "",
+      });
       setFormData({
         name: "",
         serviceType: "basic",
@@ -430,8 +436,8 @@ export function ServiceCreateEditDialog({
         teamMemberCommissionEnabled: false,
         extraTimeEnabled: false,
         extraTimeDuration: 0,
-        reminderToRebookEnabled: false,
-        reminderToRebookWeeks: 4,
+        reminderToRebookEnabled: rebook.reminder_to_rebook_enabled,
+        reminderToRebookWeeks: rebook.reminder_to_rebook_weeks,
         serviceCostPercentage: 0,
         taxRate: 0,
         isActive: true,

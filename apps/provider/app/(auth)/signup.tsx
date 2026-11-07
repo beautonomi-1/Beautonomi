@@ -35,6 +35,7 @@ import { webPartnerEulaUrl, webPrivacyPolicyUrl } from "@/lib/legal-web";
 import { getSocialAuthConfig } from "@/lib/third-party-config";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { coerceMobileUiLanguage, normalizeLanguageCode } from "@beautonomi/i18n";
+import * as Localization from "expo-localization";
 import { ReviewedLanguageField } from "@/components/auth/ReviewedLanguageField";
 import {
   applyPendingSignupPreferences,
@@ -48,12 +49,12 @@ import { api } from "@/lib/api-client";
 const PRIMARY = Colors.primary;
 const PRIMARY_LIGHT = "rgba(255,0,119,0.06)";
 
-async function goToAppRoot(
-  router: { replace: (href: string) => void },
-  method: string,
-  redirectPath?: string,
-  marketingConsent?: boolean,
-) {
+/**
+ * Wait until the session is readable, then let `(auth)/_layout` redirect once.
+ * Calling `router.replace` here as well races that redirect and throws
+ * `TypeError: undefined is not a function` from the navigation queue.
+ */
+async function goToAppRoot(method: string, marketingConsent?: boolean) {
   await applyPendingSignupPreferences();
   try {
     await api.post("/api/auth/consent", { marketing_consent: marketingConsent === true });
@@ -62,7 +63,6 @@ async function goToAppRoot(
   }
   await supabase.auth.getSession();
   logLoginSuccessBreadcrumb(method);
-  router.replace(redirectPath ?? "/");
 }
 
 function prefillPhoneFromE164(value: string | undefined) {
@@ -96,10 +96,6 @@ function getPasswordStrength(pw: string): { score: number; labelKey: string; col
 export default function SignupScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ email?: string; phone?: string; joinToken?: string }>();
-  const postLoginPath = useMemo(() => {
-    const token = typeof params.joinToken === "string" ? params.joinToken.trim() : "";
-    return token ? `/join?token=${encodeURIComponent(token)}` : undefined;
-  }, [params.joinToken]);
   const { contentMaxWidth, isTablet, screenPadding } = useResponsive();
   const {
     signInWithOtp,
@@ -150,7 +146,10 @@ export default function SignupScreen() {
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
-  const [preferredLanguage, setPreferredLanguage] = useState("en");
+  const [preferredLanguage, setPreferredLanguage] = useState(() => {
+    const locale = Localization.getLocales()[0];
+    return coerceMobileUiLanguage(locale?.languageTag || locale?.languageCode || "en");
+  });
   const [marketingConsent, setMarketingConsent] = useState(false);
   const { t } = useTranslation();
   const su = useCallback(
@@ -324,7 +323,7 @@ export default function SignupScreen() {
       }
       trackSignUp("phone");
       await writeSignupPhoneHandoff(e164);
-      await goToAppRoot(router, "phone_otp_signup", postLoginPath, marketingConsent);
+      await goToAppRoot("phone_otp_signup", marketingConsent);
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : su("verificationFailed"));
     } finally {
@@ -381,7 +380,7 @@ export default function SignupScreen() {
         return;
       }
       trackSignUp("email");
-      await goToAppRoot(router, "email_signup", postLoginPath, marketingConsent);
+      await goToAppRoot("email_signup", marketingConsent);
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : su("signUpFailed"));
     } finally {
@@ -401,7 +400,7 @@ export default function SignupScreen() {
         return;
       }
       trackSignUp("email");
-      await goToAppRoot(router, "email_signup", postLoginPath, marketingConsent);
+      await goToAppRoot("email_signup", marketingConsent);
     } catch (e: unknown) {
       setSignupOtpError(e instanceof Error ? e.message : su("verificationFailedShort"));
     } finally {
@@ -446,7 +445,7 @@ export default function SignupScreen() {
         return;
       }
       trackSignUp(provider === "google" ? "email" : "email");
-      await goToAppRoot(router, `oauth_${provider}`, postLoginPath, marketingConsent);
+      await goToAppRoot(`oauth_${provider}`, marketingConsent);
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : su("oauthSignupFailed"));
     } finally {

@@ -673,6 +673,7 @@ export default function ExplorePostsScreen() {
     returnTo?: string;
     step?: string;
     openPostId?: string;
+    openPostMode?: string;
   }>();
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -1054,15 +1055,16 @@ export default function ExplorePostsScreen() {
     if (!postId || !canCreateExplorePosts || !categoriesLoaded) return;
     if (handledOpenPostIdRef.current === postId) return;
     handledOpenPostIdRef.current = postId;
-    router.setParams({ openPostId: undefined } as never);
+    const viewOnly = params.openPostMode === "view";
+    router.setParams({ openPostId: undefined, openPostMode: undefined } as never);
     void api
       .get<ExplorePost>(`/api/explore/posts/mine?id=${encodeURIComponent(postId)}`)
       .then((res) => {
         if (!screenMountedRef.current || res.error || !res.data) return;
         openView(res.data);
-        enterEditMode(res.data);
+        if (!viewOnly) enterEditMode(res.data);
       });
-  }, [params.openPostId, canCreateExplorePosts, categoriesLoaded, openView, enterEditMode, router]);
+  }, [params.openPostId, params.openPostMode, canCreateExplorePosts, categoriesLoaded, openView, enterEditMode, router]);
 
   const handleDelete = useCallback(
     (post: ExplorePost) => {

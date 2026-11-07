@@ -14,17 +14,23 @@ describe("Provider login signup CTA", () => {
     expect(src).toContain('accessibilityRole="link"');
   });
 
-  it("signup screen preserves joinToken through postLoginPath", () => {
+  it("auth layout is the only post-login redirect and keeps joinToken", () => {
     const signupPath = path.join(__dirname, "../../app/(auth)/signup.tsx");
-    const src = fs.readFileSync(signupPath, "utf8");
+    const loginPath = path.join(__dirname, "../../app/(auth)/login.tsx");
+    const layoutPath = path.join(__dirname, "../../app/(auth)/_layout.tsx");
+    const signup = fs.readFileSync(signupPath, "utf8");
+    const login = fs.readFileSync(loginPath, "utf8");
+    const layout = fs.readFileSync(layoutPath, "utf8");
 
-    expect(src).toContain("joinToken");
-    expect(src).toContain("postLoginPath");
-    expect(src).toContain("redirectPath ?? \"/\"");
-    expect(src).toContain("goToLogin");
-    expect(src).toContain('qs.set("joinToken", token)');
-    expect(src).toContain("/(auth)/login");
-    expect(src).not.toContain('router.replace("/")');
+    expect(signup).toContain("joinToken");
+    expect(signup).toContain("goToLogin");
+    expect(signup).toContain('qs.set("joinToken", token)');
+    expect(signup).toContain("/(auth)/login");
+    expect(signup).not.toContain('router.replace("/")');
+    expect(login).not.toContain('router.replace("/")');
+    expect(layout).toContain("signedInHref");
+    expect(layout).toContain("/join?token=");
+    expect(layout).toContain("<Redirect href={signedInHref(joinToken)} />");
   });
 
   it("join screen persists invited salon as active org after accept", () => {

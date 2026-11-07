@@ -13780,7 +13780,15 @@
       "shareMediaFailedTitle": "Couldn't compartir media",
       "shareMediaFailedBody": "Wir konnten diese Datei nicht zum Teilen vorbereiten. Versuchen Sie stattdessen, den Link zu teilen.",
       "loadingComments": "Wird geladen…",
-      "loadMoreComments": "Weitere Kommentare laden"
+      "loadMoreComments": "Weitere Kommentare laden",
+      "errorDeleteComment": "Dieser Kommentar konnte nicht gelöscht werden. Bitte versuche es erneut.",
+      "deleteCommentTitle": "Diesen Kommentar löschen?",
+      "deleteCommentBody": "Dadurch wird der Kommentar für alle entfernt.",
+      "deleteComment": "Löschen",
+      "commentsLoadFailed": "Kommentare konnten nicht geladen werden.",
+      "signInToComment": "Melde dich an, um zu kommentieren",
+      "replyingTo": "Antwort an {{name}}",
+      "commentTooLong": "{{count}} / 200"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -14406,6 +14414,13 @@
           "shopContinueCta": "Voir commande",
           "shopPendingSubtext": "Nous mettrons à jour votre commande dans quelques minutes. Vous pouvez continuer à utiliser l'application pendant que nous confirmons auprès de votre banque.",
           "shopFailedSubtext": "Si vous avez été facturé, votre commande sera toujours confirmée une fois le paiement effectué. Veuillez vérifier votre onglet Commandes."
+        },
+        "payableOrdersBanner": {
+          "titleCart": "Zahlung ausstehend",
+          "titleOrders": "Zahlung ausstehend",
+          "retry": "Nicht alle unbezahlten Bestellungen konnten geladen werden. Versuche es erneut.",
+          "showLess": "Weniger anzeigen",
+          "viewAll": "Alle anzeigen"
         }
       },
       "tabs": {
@@ -14836,7 +14851,9 @@
           "total": "Total",
           "alsoCheckoutOnWeb": "Payer aussi sur le web",
           "pickupLocationsMore": "{{count}} points de retrait — choisissez à la caisse",
-          "deliveryEtaDays": "Livraison estimée sous {{days}} jour(s) ouvré(s)"
+          "deliveryEtaDays": "Livraison estimée sous {{days}} jour(s) ouvré(s)",
+          "paymentDueHeading": "Zahlung ausstehend",
+          "paymentDueRetry": "Nicht alle unbezahlten Bestellungen konnten geladen werden. Versuche es erneut."
         },
         "productCheckout": {
           "title": "Paiement",
@@ -18176,7 +18193,8 @@
     "cart": "Panier",
     "exploreVideo": {
       "unmute": "Ton einschalten",
-      "mute": "Stumm"
+      "mute": "Stumm",
+      "replay": "Erneut abspielen"
     },
     "bankAccounts": {
       "failedLoadBanks": "Die Banken konnten nicht geladen werden. Versuchen Sie es erneut.",
@@ -18456,7 +18474,8 @@
     "rescheduleReplacesPreviousBody": "Dein ursprünglicher Termin wird von selbst und kostenlos storniert, sobald die Zahlung dieser Buchung fertig ist. Was du schon gezahlt hast, wird hier verrechnet, und der Rest bleibt in der Geldbörse.",
     "rescheduleCreditNote": "Jeder Betrag, den du schon online für die ursprüngliche Buchung gezahlt hast, wird hier verrechnet. Du zahlst nur den Unterschied.",
     "rescheduleCreditApplied": "Auf der ursprünglichen Buchung gezahlt",
-    "rescheduleCreditSurplus": "Die übrigen {{amount}} bleiben als Guthaben in deiner Geldbörse."
+    "rescheduleCreditSurplus": "Die übrigen {{amount}} bleiben als Guthaben in deiner Geldbörse.",
+    "stylistReceives": "{{name}} erhält"
   },
   "payments": {
     "pay": "Pay",
@@ -19105,7 +19124,9 @@
         "continueWithCount": "continuar with {{count}} servicios",
         "changeService": "Modifier",
         "selectedServiceMore": " (+{{count}})",
-        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} Min."
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} Min.",
+        "stylistReceivesFallback": "Dein Stylist",
+        "stylistReceives": "{{name}} erhält"
       },
       "confirmation": {
         "loadingMessage": "Chargement de réservation confirmation...",
@@ -36463,6 +36484,15 @@
       "cancelFailed": "Impossible de annuler your spot.",
       "sessionCancelled": "Diese Gruppensitzung wurde storniert.",
       "sessionCancelledPaid": "Diese Gruppensitzung wurde storniert. Jeder Betrag für deinen Anteil wird vollständig auf die genutzte Karte erstattet."
+    },
+    "components": {
+      "payableOrdersBanner": {
+        "titleCart": "Zahlung ausstehend",
+        "titleOrders": "Zahlung ausstehend",
+        "retry": "Nicht alle unbezahlten Bestellungen konnten geladen werden. Versuche es erneut.",
+        "showLess": "Weniger anzeigen",
+        "viewAll": "Alle anzeigen"
+      }
     }
   },
   "errors": {

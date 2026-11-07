@@ -112,6 +112,7 @@ interface SavedCard {
 
 interface StepPaymentProps {
   bookingState: BookingState;
+  providerBusinessName?: string | null;
   updateBookingState: (updates: Partial<BookingState>) => void;
   /** Navigate by step id (works when `?package=` reorders steps). */
   onNavigateToStep: (step: BookingStep) => void | Promise<void>;
@@ -224,6 +225,7 @@ function HoldCountdown({
 
 export default function StepPayment({
   bookingState,
+  providerBusinessName,
   updateBookingState,
   onNavigateToStep,
   onRequireAuth,
@@ -2044,14 +2046,24 @@ export default function StepPayment({
             </div>
           )}
           {totals.serviceFeeAmount > 0 && (
-            <div className="flex justify-between text-sm text-gray-600">
-              <span>
-                {totals.serviceFeePercentage > 0
-                  ? t("web.booking.actionBar.platformFeeWithPct", { pct: totals.serviceFeePercentage })
-                  : t("web.booking.actionBar.platformFee")}
-              </span>
-              <span>{formatCurrency(totals.serviceFeeAmount, totals.currency)}</span>
-            </div>
+            <>
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>
+                  {t("web.booking.actionBar.stylistReceives", {
+                    name: providerBusinessName?.trim() || t("web.booking.actionBar.stylistReceivesFallback"),
+                  })}
+                </span>
+                <span>{formatCurrency(totals.subtotalAfterDiscounts, totals.currency)}</span>
+              </div>
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>
+                  {totals.serviceFeePercentage > 0
+                    ? t("web.booking.actionBar.platformFeeWithPct", { pct: totals.serviceFeePercentage })
+                    : t("web.booking.actionBar.platformFee")}
+                </span>
+                <span>{formatCurrency(totals.serviceFeeAmount, totals.currency)}</span>
+              </div>
+            </>
           )}
           {totals.taxAmount > 0 && (
             <div className="flex justify-between text-sm text-gray-600">

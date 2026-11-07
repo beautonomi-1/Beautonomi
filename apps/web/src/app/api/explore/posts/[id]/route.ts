@@ -189,7 +189,7 @@ export async function PATCH(
     const { data: existing } = await supabaseAdmin
       .from("explore_posts")
       .select(
-        "provider_id, status, media_urls, display_path, playback_path, media_meta",
+        "provider_id, status, media_urls, display_path, playback_path, media_meta, source_booking_id, offering_id",
       )
       .eq("id", id)
       .single();
@@ -373,6 +373,37 @@ export async function PATCH(
 
     if (Object.keys(updates).length === 0) {
       return errorResponse("No valid fields to update", "VALIDATION_ERROR", 400);
+    }
+
+    const nextStatus =
+      (updates.status as string | undefined) ?? (existing.status as string) ?? "draft";
+    const isPublishTransition =
+      existing.status !== "published" && nextStatus === "published";
+    const offeringAfter =
+      body.offering_id !== undefined
+        ? body.offering_id === null || body.offering_id === ""
+          ? null
+          : (updates.offering_id as string | null | undefined) ?? existing.offering_id
+        : (existing.offering_id as string | null);
+    const offeringClearedOnPublished =
+      existing.status === "published" &&
+      Boolean(existing.offering_id) &&
+      !offeringAfter;
+    const { explorePostRequiresOfferingForPublish, explorePostPublishOfferingError } = await import(
+      "@/lib/explore/explore-post-booking-offering-guard"
+    );
+    if (
+      explorePostRequiresOfferingForPublish({
+        nextStatus: nextStatus === "published" ? "published" : "draft",
+        sourceBookingId: (existing.source_booking_id as string | null) ?? null,
+        offeringId: (offeringAfter as string | null) ?? null,
+        wasAlreadyPublished: existing.status === "published",
+        isPublishTransition,
+        offeringClearedOnPublished,
+      })
+    ) {
+      const err = explorePostPublishOfferingError();
+      return errorResponse(err.message, err.code, 400);
     }
 
     const { data: post, error } = await supabaseAdmin

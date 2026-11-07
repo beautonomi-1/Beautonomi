@@ -100,6 +100,7 @@ export {
   type MapboxGeocodeFeatureLike,
   type ParsedAddressFromMapboxFeature,
 } from "./mapbox/geocodeFeatureToAddressParts";
+export { publicSuggestionPlaceLabel } from "./mapbox/publicSuggestionPlaceLabel";
 export { countryFilterIso2FromStorage } from "./geo/countryFilterIso2";
 export { distanceKmBetween, type GeoPointLike } from "./geo/distanceKm";
 export {
@@ -232,6 +233,19 @@ export {
   type RebookContext,
   type RebookServiceLine,
 } from "./booking/rebook-from-booking";
+export { defaultRebookReminderForNewOffering } from "./booking/rebook-offering-defaults";
+export {
+  TILL_PAYMENT_LABEL_EN,
+  tillPaymentKindForBooking,
+  tillPaymentKindFromRow,
+  tillPaymentLabelForBooking,
+  tillPaymentLabelFromRow,
+  type TillPaymentKind,
+  type TillPaymentRow,
+} from "./booking/till-payment-label";
+export { buildProviderPublicBookUrl } from "./booking/build-provider-public-book-url";
+export { buildShareBookingLinkPayload } from "./booking/share-booking-link-payload";
+export { mapBookingQueryToNativeBookPath } from "./booking/map-booking-url-to-native-book";
 export { buildWebBookingHref } from "./booking/web-booking-href";
 export {
   BOOKING_EMBED_DEFAULT_HEIGHT,
@@ -275,9 +289,17 @@ export {
   type SupportTicketPrefill,
 } from "./booking/bookingSupportContext";
 export {
+  customerCanPayProductOrderOnline,
   isProductOrderFulfillmentQueueRow,
   isUnpaidOnlinePaystackHold,
+  PAYABLE_PRODUCT_ORDER_MISSING_COUNT_PAGE_GUARD,
+  PAYABLE_PRODUCT_ORDER_PAGE_LIMIT,
+  pinPayableProductOrders,
+  scanPayableProductOrders,
+  type PayableProductOrderPage,
+  type PayableProductOrderScan,
   type ProductOrderHoldFields,
+  type ProductOrderPayFields,
 } from "./orders/product-order-hold";
 export {
   SUPPORT_TICKET_ALL_ITEMS,
@@ -328,6 +350,7 @@ export {
   PLATFORM_ON_APP_PAYMENT_CLAIMS,
   providerNoFeeCashLossLine,
   providerOnPlatformPaymentNudgeText,
+  providerLockNextShareSms,
   providerPostCashCompleteShareLine,
   providerShareBookingLinkSms,
 } from "./platform-value-claims";

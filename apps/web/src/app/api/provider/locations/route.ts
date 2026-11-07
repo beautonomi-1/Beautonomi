@@ -11,6 +11,11 @@ import {
   setPrimaryLocation,
 } from "@/lib/provider/location-maintenance";
 import { normalizeWorkingHours } from "@/lib/availability/normalize-working-hours";
+import {
+  normCompare,
+  placeFieldsForCreate,
+} from "@/lib/provider/resolve-location-place-fields";
+import type { MapboxGeocodeFeatureLike } from "@beautonomi/utils";
 
 interface Location {
   id: string;
@@ -106,6 +111,8 @@ export async function POST(request: NextRequest) {
       longitude,
       phone,
       location_type: locationType,
+      neighborhood,
+      metro,
     } = body;
 
     if (!name || !address_line1 || !city || !country) {
@@ -152,6 +159,7 @@ export async function POST(request: NextRequest) {
 
     let finalLatitude = latitude ? parseFloat(latitude.toString()) : null;
     let finalLongitude = longitude ? parseFloat(longitude.toString()) : null;
+    let geocodeFeature: MapboxGeocodeFeatureLike | null = null;
 
     // Geocode address if coordinates not provided (use null checks so 0 is valid)
     if (finalLatitude == null || finalLongitude == null) {
@@ -175,6 +183,7 @@ export async function POST(request: NextRequest) {
 
         if (geocodeResults.length > 0) {
           const result = geocodeResults[0];
+          geocodeFeature = result as MapboxGeocodeFeatureLike;
           finalLongitude = result.center[0];
           finalLatitude = result.center[1];
         }
@@ -183,6 +192,12 @@ export async function POST(request: NextRequest) {
         // Continue without coordinates - they can be added later
       }
     }
+
+    const placeFields = placeFieldsForCreate(
+      { neighborhood, metro },
+      geocodeFeature,
+      normCompare(country) || undefined,
+    );
 
     const workingHours = normalizeWorkingHours(body.operating_hours) ?? (body.operating_hours || null);
 
@@ -201,6 +216,8 @@ export async function POST(request: NextRequest) {
         country,
         latitude: finalLatitude,
         longitude: finalLongitude,
+        neighborhood: placeFields.neighborhood,
+        metro: placeFields.metro,
         phone: phone || null,
         working_hours: workingHours,
         is_active: true,

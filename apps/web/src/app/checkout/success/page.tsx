@@ -1096,7 +1096,7 @@ function CheckoutSuccessContent() {
                 )}
                 {platformFee > 0 && (
                   <div className="flex justify-between" style={{ color: TEXT_SECONDARY }}>
-                    <span>Platform fee</span>
+                    <span>{t("checkout.platformFee")}</span>
                     <span>{formatMoney(platformFee, cur)}</span>
                   </div>
                 )}

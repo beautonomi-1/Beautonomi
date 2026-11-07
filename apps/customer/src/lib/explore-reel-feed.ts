@@ -34,6 +34,23 @@ export function exploreClipWatchedMs(
   return Math.max(0, Math.min(trimEndMs - trimStartMs, ms - trimStartMs));
 }
 
+const CLIP_END_SLACK_SEC = 0.12;
+
+/** True when the playhead is sitting on the end of the clip the viewer actually sees. */
+export function exploreClipPlayheadAtEnd(input: {
+  currentSec: number;
+  durationSec: number;
+  trimEndMs: number | null;
+}): boolean {
+  const end = input.trimEndMs != null ? input.trimEndMs / 1000 : input.durationSec;
+  return end > 0 && input.currentSec >= end - CLIP_END_SLACK_SEC;
+}
+
+/** A finished clip that is not playing needs an explicit replay. A looping clip stays hidden. */
+export function exploreClipShowsReplay(playing: boolean, atEnd: boolean): boolean {
+  return !playing && atEnd;
+}
+
 /** File end and trim end both complete the clip. A seek or a clip that has not played yet does not. */
 export function shouldCompleteExploreReelClip(input: {
   active: boolean;
@@ -109,6 +126,15 @@ export function appendExploreCommentPage<T extends ThreadComment>(prev: T[], pag
   return [...older, ...page, ...newer];
 }
 
+/** Visible rows, or the server total when later pages are not loaded yet. */
+export function exploreCommentTotal(
+  comments: { replies?: unknown[] }[],
+  serverCount?: number | null,
+): number {
+  const loaded = comments.reduce((total, comment) => total + 1 + (comment.replies?.length ?? 0), 0);
+  return Math.max(loaded, serverCount ?? 0);
+}
+
 /** Deleting a comment also deletes its replies. The count has to drop by all of those rows. */
 export function removedExploreCommentCount<T extends { id: string; replies?: { id: string }[] }>(
   comments: T[],
@@ -119,6 +145,19 @@ export function removedExploreCommentCount<T extends { id: string; replies?: { i
     if (comment.replies?.some((reply) => reply.id === commentId)) return 1;
   }
   return 1;
+}
+
+/** Drop a comment, or a reply under its parent, after it is deleted. */
+export function removeExploreComment<T extends { id: string; replies?: T[] }>(
+  comments: T[],
+  commentId: string,
+): T[] {
+  return comments
+    .filter((comment) => comment.id !== commentId)
+    .map((comment) => ({
+      ...comment,
+      replies: (comment.replies ?? []).filter((reply) => reply.id !== commentId),
+    }));
 }
 
 /** Add a comment the viewer just posted, or a reply under its parent. */

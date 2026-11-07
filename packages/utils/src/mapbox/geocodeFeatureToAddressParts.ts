@@ -19,6 +19,10 @@ export type ParsedAddressFromMapboxFeature = {
   /** Suburb/neighborhood when Mapbox provides it separately from the metro `city`. */
   address_line2?: string;
   city: string;
+  /** Mapbox `place` / `city` context (metro), kept when a locality overwrites `city`. */
+  metro?: string;
+  /** Mapbox `neighborhood` / `suburb` when distinct from final `city`. */
+  neighborhood?: string;
   state: string;
   postal_code: string;
   country: string;
@@ -46,9 +50,13 @@ export function mapGeocodeFeatureToAddressParts(
   // Keep a secondary "suburb/neighborhood" value as city fallback for dense urban areas
   // (common in SA where Mapbox emits neighborhood.* but omits place.*).
   let neighborhoodOrLocality = "";
+  let metroFromContext = "";
 
   for (const item of context) {
     if (item.id.startsWith("place.") || item.id.startsWith("city.")) {
+      if (!metroFromContext) {
+        metroFromContext = item.text;
+      }
       if (!addressParts.city) {
         addressParts.city = item.text;
       }
@@ -127,6 +135,23 @@ export function mapGeocodeFeatureToAddressParts(
     neighborhoodOrLocality.trim().toLowerCase() !== addressParts.city.trim().toLowerCase()
   ) {
     addressParts.address_line2 = neighborhoodOrLocality.trim();
+  }
+
+  if (metroFromContext.trim()) {
+    addressParts.metro = metroFromContext.trim();
+  }
+  if (
+    neighborhoodOrLocality.trim() &&
+    addressParts.city &&
+    neighborhoodOrLocality.trim().toLowerCase() !== addressParts.city.trim().toLowerCase()
+  ) {
+    addressParts.neighborhood = neighborhoodOrLocality.trim();
+  } else if (
+    neighborhoodOrLocality.trim() &&
+    metroFromContext.trim() &&
+    neighborhoodOrLocality.trim().toLowerCase() !== metroFromContext.trim().toLowerCase()
+  ) {
+    addressParts.neighborhood = neighborhoodOrLocality.trim();
   }
 
   return addressParts;

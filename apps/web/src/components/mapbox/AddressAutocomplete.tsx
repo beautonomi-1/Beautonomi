@@ -26,6 +26,8 @@ interface AddressAutocompleteProps {
     address_line1: string;
     /** Mapbox suburb/neighborhood when distinct from city (stored in DB line2). */
     address_line2?: string;
+    neighborhood?: string;
+    metro?: string;
     city: string;
     state?: string;
     postal_code?: string;

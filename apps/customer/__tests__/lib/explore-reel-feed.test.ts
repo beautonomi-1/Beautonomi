@@ -1,10 +1,14 @@
 import {
   appendExploreCommentPage,
   nextOffsetAfterEmptyCommentPage,
+  exploreCommentTotal,
   placeExploreComment,
+  removeExploreComment,
   appendExploreReelVideos,
   reelHasAnotherPage,
   exploreClipWatchedMs,
+  exploreClipPlayheadAtEnd,
+  exploreClipShowsReplay,
   preserveReelEngagement,
   pendingReelAdvanceStillApplies,
   shouldAdvanceExploreReel,
@@ -52,6 +56,11 @@ describe("explore reel feed", () => {
     expect(exploreClipWatchedMs(1, 5000, 8000)).toBe(0);
     expect(exploreClipWatchedMs(9, 5000, 8000)).toBe(3000);
     expect(exploreClipWatchedMs(2.5, null, null)).toBe(2500);
+    expect(exploreClipPlayheadAtEnd({ currentSec: 4.9, durationSec: 5, trimEndMs: null })).toBe(true);
+    expect(exploreClipPlayheadAtEnd({ currentSec: 2, durationSec: 5, trimEndMs: null })).toBe(false);
+    expect(exploreClipPlayheadAtEnd({ currentSec: 7.95, durationSec: 12, trimEndMs: 8000 })).toBe(true);
+    expect(exploreClipShowsReplay(false, true)).toBe(true);
+    expect(exploreClipShowsReplay(true, true)).toBe(false);
   });
 
   it("keeps a like made while the feed request was in flight", () => {
@@ -75,6 +84,10 @@ describe("explore reel feed", () => {
       created_at: "2026-03-02T00:00:00.000Z",
     });
     expect(withReply[0]?.replies?.map((reply) => reply.id)).toEqual(["reply"]);
+    expect(removeExploreComment(withReply, "reply")[0]?.replies).toEqual([]);
+    expect(removeExploreComment(withReply, "old")).toEqual([{ ...prev[1], replies: [] }]);
+    expect(exploreCommentTotal(withReply, 1)).toBe(3);
+    expect(exploreCommentTotal([], 4)).toBe(4);
     expect(
       nextOffsetAfterEmptyCommentPage({ offset: 0, visibleCount: 0, hasMore: true, nextOffset: 20 }),
     ).toBe(20);

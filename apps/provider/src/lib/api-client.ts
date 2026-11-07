@@ -249,7 +249,15 @@ async function withSessionRecovery<T>(
   }
 
   clearCachedToken();
-  const { error: refreshError } = await supabase.auth.refreshSession();
+  let refreshError: { message?: string } | null = null;
+  try {
+    const refreshed = await supabase.auth.refreshSession();
+    refreshError = refreshed.error;
+  } catch (err) {
+    // A thrown refresh used to reject the whole portal request. The gate then
+    // shows "Couldn't verify your account" even when the server returned 401.
+    refreshError = { message: err instanceof Error ? err.message : String(err) };
+  }
   if (refreshError) {
     // Only sign out when Supabase explicitly invalidates the session (expired/revoked),
     // not for network failures, wrong APP_URL, or transient infra errors.

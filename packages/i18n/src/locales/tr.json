@@ -13780,7 +13780,15 @@
       "shareMediaFailedTitle": "Couldn't compartir media",
       "shareMediaFailedBody": "Bu dosyayı paylaşıma hazırlayamadık. Bunun yerine bağlantıyı paylaşmayı deneyin.",
       "loadingComments": "Yükleniyor…",
-      "loadMoreComments": "Daha fazla yorum yükle"
+      "loadMoreComments": "Daha fazla yorum yükle",
+      "errorDeleteComment": "Bu yorum silinemedi. Lütfen tekrar deneyin.",
+      "deleteCommentTitle": "Bu yorum silinsin mi?",
+      "deleteCommentBody": "Bu, yorumu herkes için kaldırır.",
+      "deleteComment": "Sil",
+      "commentsLoadFailed": "Yorumlar yüklenemedi.",
+      "signInToComment": "Yorum yapmak için giriş yapın",
+      "replyingTo": "{{name}} adlı kişiye yanıt",
+      "commentTooLong": "{{count}} / 200"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -14406,6 +14414,13 @@
           "shopContinueCta": "Voir commande",
           "shopPendingSubtext": "Nous mettrons à jour votre commande dans quelques minutes. Vous pouvez continuer à utiliser l'application pendant que nous confirmons auprès de votre banque.",
           "shopFailedSubtext": "Si vous avez été facturé, votre commande sera toujours confirmée une fois le paiement effectué. Veuillez vérifier votre onglet Commandes."
+        },
+        "payableOrdersBanner": {
+          "titleCart": "Ödeme bekleniyor",
+          "titleOrders": "Ödeme bekleniyor",
+          "retry": "Ödenmemiş siparişlerin tümü yüklenemedi. Tekrar deneyin.",
+          "showLess": "Daha az göster",
+          "viewAll": "Tümünü gör"
         }
       },
       "tabs": {
@@ -14836,7 +14851,9 @@
           "total": "Total",
           "alsoCheckoutOnWeb": "Payer aussi sur le web",
           "pickupLocationsMore": "{{count}} points de retrait — choisissez à la caisse",
-          "deliveryEtaDays": "Livraison estimée sous {{days}} jour(s) ouvré(s)"
+          "deliveryEtaDays": "Livraison estimée sous {{days}} jour(s) ouvré(s)",
+          "paymentDueHeading": "Ödeme bekleniyor",
+          "paymentDueRetry": "Ödenmemiş siparişlerin tümü yüklenemedi. Tekrar deneyin."
         },
         "productCheckout": {
           "title": "Paiement",
@@ -18176,7 +18193,8 @@
     "cart": "Panier",
     "exploreVideo": {
       "unmute": "Sesi aç",
-      "mute": "Sessize al"
+      "mute": "Sessize al",
+      "replay": "Yeniden oynat"
     },
     "bankAccounts": {
       "failedLoadBanks": "Bankalar yüklenemedi. Tekrar deneyin.",
@@ -18456,7 +18474,8 @@
     "rescheduleReplacesPreviousBody": "Bu rezervasyonun ödemesi bitince özgün randevunuz kendiliğinden ve ücretsiz iptal edilir. Daha önce ödediğiniz buraya yazılır, artan tutar cüzdanınızda kalır.",
     "rescheduleCreditNote": "Özgün rezervasyon için çevrimiçi ödediğiniz tutar burada kullanılır. Yalnızca farkı ödersiniz.",
     "rescheduleCreditApplied": "Özgün rezervasyonda ödendi",
-    "rescheduleCreditSurplus": "Kalan {{amount}} cüzdanınızda bakiye olarak durur."
+    "rescheduleCreditSurplus": "Kalan {{amount}} cüzdanınızda bakiye olarak durur.",
+    "stylistReceives": "{{name}} alır"
   },
   "payments": {
     "pay": "Pay",
@@ -19105,7 +19124,9 @@
         "continueWithCount": "continuar with {{count}} servicios",
         "changeService": "Modifier",
         "selectedServiceMore": " (+{{count}})",
-        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} dk"
+        "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} dk",
+        "stylistReceivesFallback": "Stilistiniz",
+        "stylistReceives": "{{name}} alır"
       },
       "confirmation": {
         "loadingMessage": "Chargement de réservation confirmation...",
@@ -36463,6 +36484,15 @@
       "cancelFailed": "Impossible de annuler your spot.",
       "sessionCancelled": "Bu grup oturumu iptal edildi.",
       "sessionCancelledPaid": "Bu grup oturumu iptal edildi. Payınız için ödediğiniz tutar, kullandığınız karta tam olarak iade edilir."
+    },
+    "components": {
+      "payableOrdersBanner": {
+        "titleCart": "Ödeme bekleniyor",
+        "titleOrders": "Ödeme bekleniyor",
+        "retry": "Ödenmemiş siparişlerin tümü yüklenemedi. Tekrar deneyin.",
+        "showLess": "Daha az göster",
+        "viewAll": "Tümünü gör"
+      }
     }
   },
   "errors": {

@@ -13780,7 +13780,15 @@
       "shareMediaFailedTitle": "ሚዲያ ማጋራት አልተቻለም",
       "shareMediaFailedBody": "ይህን ፋይል ለማጋራት ማዘጋጀት አልቻልንም። በምትኩ አገናኙን ለማጋራት ይሞክሩ።",
       "loadingComments": "በመጫን ላይ…",
-      "loadMoreComments": "ተጨማሪ አስተያየቶችን ጫን"
+      "loadMoreComments": "ተጨማሪ አስተያየቶችን ጫን",
+      "errorDeleteComment": "ይህን አስተያየት መሰረዝ አልተቻለም። እባክዎ እንደገና ይሞክሩ።",
+      "deleteCommentTitle": "ይህ አስተያየት ይሰረዝ?",
+      "deleteComment": "ሰርዝ",
+      "signInToComment": "አስተያየት ለመስጠት ይግቡ",
+      "deleteCommentBody": "ይህ አስተያየቱን ለሁሉም ያስወግዳል።",
+      "commentsLoadFailed": "አስተያየቶችን መጫን አልተቻለም።",
+      "replyingTo": "ለ{{name}} ምላሽ",
+      "commentTooLong": "{{count}} / 200"
     },
     "searchScreen": {
       "title": "Rechercher",
@@ -14406,6 +14414,13 @@
           "shopContinueCta": "Voir commande",
           "shopPendingSubtext": "Nous mettrons à jour votre commande dans quelques minutes. Vous pouvez continuer à utiliser l'application pendant que nous confirmons auprès de votre banque.",
           "shopFailedSubtext": "Si vous avez été facturé, votre commande sera toujours confirmée une fois le paiement effectué. Veuillez vérifier votre onglet Commandes."
+        },
+        "payableOrdersBanner": {
+          "titleCart": "ክፍያ በመጠባበቅ ላይ",
+          "titleOrders": "ክፍያ በመጠባበቅ ላይ",
+          "retry": "ያልተከፈሉ ትዕዛዞችን ሁሉ መጫን አልተቻለም። እንደገና ይሞክሩ።",
+          "showLess": "ያነሰ አሳይ",
+          "viewAll": "ሁሉንም ይመልከቱ"
         }
       },
       "tabs": {
@@ -14836,7 +14851,9 @@
           "total": "Total",
           "alsoCheckoutOnWeb": "Payer aussi sur le web",
           "pickupLocationsMore": "{{count}} points de retrait — choisissez à la caisse",
-          "deliveryEtaDays": "Livraison estimée sous {{days}} jour(s) ouvré(s)"
+          "deliveryEtaDays": "Livraison estimée sous {{days}} jour(s) ouvré(s)",
+          "paymentDueHeading": "ክፍያ በመጠባበቅ ላይ",
+          "paymentDueRetry": "ያልተከፈሉ ትዕዛዞችን ሁሉ መጫን አልተቻለም። እንደገና ይሞክሩ።"
         },
         "productCheckout": {
           "title": "Paiement",
@@ -18176,7 +18193,8 @@
     "cart": "Panier",
     "exploreVideo": {
       "unmute": "ድምፅ ክፈት",
-      "mute": "ድምፅ ዝጋ"
+      "mute": "ድምፅ ዝጋ",
+      "replay": "እንደገና አጫውት"
     },
     "bankAccounts": {
       "failedLoadBanks": "Impossible de load banks. Réessayer.",
@@ -18456,7 +18474,8 @@
     "rescheduleReplacesPreviousBody": "የዚህ ቀጠሮ ክፍያ ሲጠናቀቅ የመጀመሪያ ቀጠሮዎ በራሱ እና ያለክፍያ ይሰረዛል። ቀድሞ የከፈሉት እዚህ ይተገበራል፣ የቀረውም በቦርሳዎ ይቆያል።",
     "rescheduleCreditNote": "ለመጀመሪያው ቀጠሮ በመስመር ላይ የከፈሉት ማንኛውም መጠን እዚህ ይተገበራል። ልዩነቱን ብቻ ይከፍላሉ።",
     "rescheduleCreditApplied": "በመጀመሪያው ቀጠሮ ተከፍሏል",
-    "rescheduleCreditSurplus": "የቀረው {{amount}} በቦርሳዎ እንደ ክሬዲት ይቆያል።"
+    "rescheduleCreditSurplus": "የቀረው {{amount}} በቦርሳዎ እንደ ክሬዲት ይቆያል።",
+    "stylistReceives": "{{name}} ይቀበላል"
   },
   "payments": {
     "pay": "Pay",
@@ -19105,7 +19124,9 @@
         "changeService": "Modifier",
         "selectedServiceMore": " (+{{count}})",
         "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} ደቂቃ",
-        "continueWithName": "በ{{name}} ይቀጥሉ"
+        "continueWithName": "በ{{name}} ይቀጥሉ",
+        "stylistReceives": "{{name}} ይቀበላል",
+        "stylistReceivesFallback": "የእርስዎ ስታይሊስት"
       },
       "confirmation": {
         "loadingMessage": "Chargement de réservation confirmation...",
@@ -36463,6 +36484,15 @@
       "cancelFailed": "Impossible de annuler your spot.",
       "sessionCancelled": "ይህ የቡድን ክፍለ ጊዜ ተሰርዟል።",
       "sessionCancelledPaid": "ይህ የቡድን ክፍለ ጊዜ ተሰርዟል። ለድርሻዎ የከፈሉት ማንኛውም መጠን ወደ ተጠቀሙበት ካርድ ሙሉ በሙሉ ይመለሳል።"
+    },
+    "components": {
+      "payableOrdersBanner": {
+        "titleCart": "ክፍያ በመጠባበቅ ላይ",
+        "titleOrders": "ክፍያ በመጠባበቅ ላይ",
+        "retry": "ያልተከፈሉ ትዕዛዞችን ሁሉ መጫን አልተቻለም። እንደገና ይሞክሩ።",
+        "showLess": "ያነሰ አሳይ",
+        "viewAll": "ሁሉንም ይመልከቱ"
+      }
     }
   },
   "errors": {

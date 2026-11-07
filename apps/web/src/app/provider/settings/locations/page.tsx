@@ -338,6 +338,8 @@ function LocationDialog({
     label: location?.name ?? "",
     address_line1: location?.address_line1 ?? "",
     address_line2: location?.address_line2 ?? "",
+    neighborhood: (location as { neighborhood?: string })?.neighborhood ?? "",
+    metro: (location as { metro?: string })?.metro ?? "",
     city: location?.city ?? "",
     state: location?.state ?? "",
     postal_code: location?.postal_code ?? "",
@@ -357,6 +359,8 @@ function LocationDialog({
       label: location?.name ?? "",
       address_line1: location?.address_line1 ?? "",
       address_line2: location?.address_line2 ?? "",
+      neighborhood: (location as { neighborhood?: string })?.neighborhood ?? "",
+      metro: (location as { metro?: string })?.metro ?? "",
       city: location?.city ?? "",
       state: location?.state ?? "",
       postal_code: location?.postal_code ?? "",
@@ -374,6 +378,8 @@ function LocationDialog({
   const handleAddressSelect = (address: {
     address_line1: string;
     address_line2?: string;
+    neighborhood?: string;
+    metro?: string;
     city: string;
     state?: string;
     postal_code?: string;
@@ -387,6 +393,8 @@ function LocationDialog({
       address_line2: formData.address_line2?.trim()
         ? formData.address_line2
         : (address.address_line2 ?? formData.address_line2),
+      neighborhood: address.neighborhood?.trim() || formData.neighborhood || "",
+      metro: address.metro?.trim() || formData.metro || "",
       city: address.city,
       state: address.state || "",
       postal_code: address.postal_code || "",
@@ -405,6 +413,8 @@ function LocationDialog({
     onSave({
       name: formData.label,
       ...formData,
+      neighborhood: formData.neighborhood?.trim() || null,
+      metro: formData.metro?.trim() || null,
       phone: formData.phone?.trim() || null,
       operating_hours: formData.operating_hours,
       location_type: formData.location_type,

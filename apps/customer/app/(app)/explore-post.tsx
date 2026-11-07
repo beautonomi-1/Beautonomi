@@ -38,6 +38,20 @@ import {
 import { getExploreVideoPlaybackTrimWindow } from "@/lib/explore-video-playback-trim";
 import { ExplorePhotoZoomModal } from "@/components/explore/ExplorePhotoZoomModal";
 import { ExplorePostGridMedia } from "@/components/explore/ExplorePostGridMedia";
+import {
+  ExploreCommentComposer,
+  ExploreCommentList,
+  exploreReplyTarget,
+  type ExploreReplyTarget,
+} from "@/components/explore/ExploreCommentThread";
+import {
+  appendExploreCommentPage,
+  exploreCommentTotal,
+  nextOffsetAfterEmptyCommentPage,
+  placeExploreComment,
+  removeExploreComment,
+  removedExploreCommentCount,
+} from "@/lib/explore-reel-feed";
 import { ExploreVideoReelSideLogo } from "@/components/explore/ExploreVideoReelBrand";
 import { ExploreTextOverlayLayer } from "@/components/explore/ExploreTextOverlayLayer";
 import {
@@ -77,7 +91,11 @@ export default function ExplorePostScreen() {
   const [relatedPosts, setRelatedPosts] = useState<ExplorePost[]>([]);
   const [captionExpanded, setCaptionExpanded] = useState(false);
   const [input, setInput] = useState("");
-  const [replyToCommentId, setReplyToCommentId] = useState<string | null>(null);
+  const [replyTo, setReplyTo] = useState<ExploreReplyTarget | null>(null);
+  const [hasMoreComments, setHasMoreComments] = useState(false);
+  const [commentsOffset, setCommentsOffset] = useState(0);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsError, setCommentsError] = useState(false);
   const [zoomPhotoUri, setZoomPhotoUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -134,9 +152,16 @@ export default function ExplorePostScreen() {
       const postData = postRes.data as any;
       const loadedPost = postData?.data ?? postData ?? null;
       setPost(loadedPost);
-      const commentsData = commentsRes.error ? [] : commentsRes.data as any;
+      const commentsData = commentsRes.error ? null : (commentsRes.data as any);
       const list = Array.isArray(commentsData) ? commentsData : commentsData?.data ?? [];
+      setCommentsError(Boolean(commentsRes.error));
       setComments(list);
+      setHasMoreComments(!Array.isArray(commentsData) && Boolean(commentsData?.has_more));
+      setCommentsOffset(
+        !Array.isArray(commentsData) && typeof commentsData?.next_offset === "number"
+          ? commentsData.next_offset
+          : list.length,
+      );
       const rawList = listRes.error ? [] : listRes.data as ExplorePost[] | { data?: ExplorePost[] } | undefined;
       const items = Array.isArray(rawList) ? rawList : rawList?.data ?? [];
       const related = items.filter((p) => p.id !== id).slice(0, 12);
@@ -251,36 +276,36 @@ export default function ExplorePostScreen() {
     const text = input.trim();
     if (!text || !id || sending || !user) return;
     setSending(true);
+    const parentId = replyTo?.parentId;
     setInput("");
     haptic.light();
     try {
       const res = await api.post<ExploreComment>(`/api/explore/posts/${id}/comments`, {
         body: text,
-        ...(replyToCommentId ? { parent_id: replyToCommentId } : {}),
+        ...(parentId ? { parent_id: parentId } : {}),
       });
       if (res.error) {
         setInput(text);
         Alert.alert(t("common.error"), t("customer.explorePost.errorPostComment"));
         return;
       }
-      const newComment = (res.data as any)?.data ?? res.data;
+      const newComment = (res.data as { data?: ExploreComment })?.data ?? (res.data as ExploreComment);
       if (newComment) {
         const normalized = {
           ...newComment,
+          parent_id: newComment.parent_id ?? parentId ?? null,
           body: newComment.body ?? text,
-          author: newComment.author ?? { full_name: user.user_metadata?.full_name },
+          author: newComment.author ?? {
+            full_name: user.user_metadata?.full_name,
+            avatar_url: user.user_metadata?.avatar_url,
+          },
           replies: newComment.replies ?? [],
         };
-        if (replyToCommentId) {
-          setComments((prev) =>
-            prev.map((c) =>
-              c.id === replyToCommentId ? { ...c, replies: [...(c.replies ?? []), normalized] } : c,
-            ),
-          );
-        } else {
-          setComments((prev) => [...prev, normalized]);
-        }
-        setReplyToCommentId(null);
+        setComments((prev) => placeExploreComment(prev, normalized));
+        setPost((current) =>
+          current ? { ...current, comment_count: (current.comment_count ?? 0) + 1 } : current,
+        );
+        setReplyTo(null);
       }
     } catch {
       setInput(text);
@@ -288,7 +313,71 @@ export default function ExplorePostScreen() {
     } finally {
       setSending(false);
     }
-  }, [input, id, sending, user, t]);
+  }, [input, id, sending, user, t, replyTo]);
+
+  const loadMoreComments = useCallback(async () => {
+    if (!id || commentsLoading || !hasMoreComments) return;
+    setCommentsLoading(true);
+    setCommentsError(false);
+    try {
+      let cursor = commentsOffset;
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const res = await api.get<ExploreComment[]>(
+          `/api/explore/posts/${id}/comments?limit=20&offset=${cursor}`,
+        );
+        if (res.error) {
+          setCommentsError(true);
+          return;
+        }
+        const raw = res.data as
+          | ExploreComment[]
+          | { data?: ExploreComment[]; next_offset?: number; has_more?: boolean }
+          | undefined;
+        const page = Array.isArray(raw) ? { data: raw } : raw;
+        const list = page?.data ?? [];
+        const nextOffset = !Array.isArray(raw) ? raw?.next_offset : undefined;
+        const hasMore = !Array.isArray(raw) && Boolean(raw?.has_more ?? nextOffset != null);
+        const skipTo = nextOffsetAfterEmptyCommentPage({
+          offset: cursor,
+          visibleCount: list.length,
+          hasMore,
+          nextOffset,
+        });
+        if (skipTo == null || attempt === 4) {
+          setComments((prev) => appendExploreCommentPage(prev, list));
+          setHasMoreComments(hasMore);
+          setCommentsOffset(typeof nextOffset === "number" ? nextOffset : cursor + list.length);
+          return;
+        }
+        cursor = skipTo;
+      }
+    } finally {
+      setCommentsLoading(false);
+    }
+  }, [commentsLoading, commentsOffset, hasMoreComments, id]);
+
+  const deleteComment = useCallback(async (comment: ExploreComment) => {
+    if (!id || !user) return;
+    const ids = comment.parent_id
+      ? [comment.id]
+      : [comment.id, ...(comment.replies ?? []).map((reply) => reply.id)];
+    const results = await Promise.all(
+      ids.map((commentId) => api.delete(`/api/explore/posts/${id}/comments/${commentId}`)),
+    );
+    if (results.some((res) => res.error)) {
+      Alert.alert(t("common.error"), t("customer.explorePost.errorDeleteComment"));
+      void load();
+      return;
+    }
+    const removed = removedExploreCommentCount(comments, comment.id);
+    setComments((prev) => removeExploreComment(prev, comment.id));
+    setPost((current) =>
+      current
+        ? { ...current, comment_count: Math.max(0, (current.comment_count ?? removed) - removed) }
+        : current,
+    );
+    if (replyTo?.parentId === comment.id) setReplyTo(null);
+  }, [comments, id, load, replyTo, t, user]);
 
   const postUrl = post?.id ? `${APP_URL}/explore/${post.id}` : "";
 
@@ -441,72 +530,7 @@ export default function ExplorePostScreen() {
   const mediaItems = mediaSlides.length ? mediaSlides : [];
   const providerName = post.provider?.business_name || t("customer.explorePost.providerFallback");
   const providerInitial = providerName.charAt(0).toUpperCase();
-  const commentTotal = comments.reduce((n, c) => n + 1 + (c.replies?.length ?? 0), 0);
-
-  const renderCommentRow = (c: ExploreComment, isReply: boolean) => {
-    const authorName = c.author?.full_name || t("customer.explorePost.userFallback");
-    const initial = authorName.charAt(0).toUpperCase();
-    return (
-      <Pressable
-        key={c.id}
-        onLongPress={() => openContentReport("explore_comment", c.id, t("customer.contentReport.reportComment"))}
-        delayLongPress={400}
-        style={{
-          flexDirection: "row",
-          paddingVertical: 10,
-          paddingStart: isReply ? 42 : 0,
-          borderBottomWidth: isReply ? 0 : 1,
-          borderColor: "#F9FAFB",
-        }}
-      >
-        {c.author?.avatar_url ? (
-          <Image
-            source={{ uri: c.author.avatar_url }}
-            style={{ width: isReply ? 28 : 32, height: isReply ? 28 : 32, borderRadius: isReply ? 14 : 16, marginEnd: 10 }}
-            contentFit="cover"
-          />
-        ) : (
-          <View
-            style={{
-              width: isReply ? 28 : 32,
-              height: isReply ? 28 : 32,
-              borderRadius: isReply ? 14 : 16,
-              backgroundColor: "#F3F4F6",
-              alignItems: "center",
-              justifyContent: "center",
-              marginEnd: 10,
-            }}
-          >
-            <Text style={{ color: "#6B7280", fontWeight: "600", fontSize: isReply ? 12 : 13 }}>{initial}</Text>
-          </View>
-        )}
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Text style={{ fontSize: 13, fontWeight: "600", color: "#111827", marginEnd: 6 }}>{authorName}</Text>
-            <Text style={{ fontSize: 11, color: "#9CA3AF" }}>{formatTime(c.created_at, t, dateLocale)}</Text>
-          </View>
-          <Text style={{ fontSize: 14, color: "#374151", marginTop: 2, lineHeight: 20 }}>{c.body}</Text>
-          {user && canInteract && !isReply ? (
-            <TouchableOpacity onPress={() => setReplyToCommentId(c.id)} style={{ marginTop: 4 }}>
-              <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500] }}>
-                {t("customer.explorePost.reply", "Reply")}
-              </Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-        {user ? (
-          <TouchableOpacity
-            onPress={() => openContentReport("explore_comment", c.id, t("customer.contentReport.reportComment"))}
-            style={{ paddingStart: 8, paddingVertical: 4 }}
-            accessibilityRole="button"
-            accessibilityLabel={t("customer.contentReport.reportComment")}
-          >
-            <Ionicons name="flag-outline" size={16} color="#9CA3AF" />
-          </TouchableOpacity>
-        ) : null}
-      </Pressable>
-    );
-  };
+  const commentTotal = exploreCommentTotal(comments, post?.comment_count);
 
   return (
     <>
@@ -849,7 +873,7 @@ export default function ExplorePostScreen() {
                   style={{ fontSize: 14, fontWeight: "600", color: "#374151" }}
                   numberOfLines={1}
                 >
-                  {comments.length > 0 ? comments.length : t("customer.explorePost.comment")}
+                  {commentTotal > 0 ? commentTotal : t("customer.explorePost.comment")}
                 </Text>
               </TouchableOpacity>
               ) : null}
@@ -924,38 +948,35 @@ export default function ExplorePostScreen() {
             <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 4 }}>
               {t("customer.explorePost.commentsTitle")} {commentTotal > 0 ? `(${commentTotal})` : ""}
             </Text>
-            {user && comments.length > 0 ? (
-              <Text style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 12 }}>
-                {t("customer.explorePost.reportCommentHint")}
-              </Text>
-            ) : null}
-
-            {comments.length === 0 ? (
-              <View style={{ paddingVertical: 20, alignItems: "center" }}>
-                <Ionicons name="chatbubbles-outline" size={28} color="#D1D5DB" />
-                <Text style={{ fontSize: 13, color: "#9CA3AF", marginTop: 8, textAlign: "center" }}>
-                  {canInteract ? t("customer.explorePost.noCommentsYet") : t("customer.explorePost.safetyInteractionsOff")}
-                </Text>
-                {!canInteract ? (
-                  <TouchableOpacity
-                    onPress={() => router.push("/(app)/account-settings/content-and-safety-controls")}
-                    style={{ marginTop: 10 }}
-                    accessibilityRole="button"
-                  >
-                    <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 14 }}>
-                      {t("customer.safety.socialRestricted.openControls")}
-                    </Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            ) : (
-              comments.map((c) => (
-                <View key={c.id}>
-                  {renderCommentRow(c, false)}
-                  {(c.replies ?? []).map((r) => renderCommentRow(r, true))}
-                </View>
-              ))
-            )}
+            <ExploreCommentList
+              comments={comments}
+              loading={commentsLoading}
+              hasMore={hasMoreComments}
+              loadError={commentsError}
+              onRetry={() => void load()}
+              onLoadMore={() => void loadMoreComments()}
+              viewerUserId={user?.id}
+              canInteract={canInteract}
+              onReply={
+                canInteract
+                  ? (comment) => {
+                      if (!user) {
+                        pushCustomerLogin(explorePostReturnTo);
+                        return;
+                      }
+                      setReplyTo(exploreReplyTarget(comment, t("customer.explorePost.userFallback")));
+                      scrollRef.current?.scrollToEnd({ animated: true });
+                    }
+                  : undefined
+              }
+              onDelete={user && canInteract ? (comment) => void deleteComment(comment) : undefined}
+              onReport={
+                user
+                  ? (comment) =>
+                      openContentReport("explore_comment", comment.id, t("customer.contentReport.reportComment"))
+                  : undefined
+              }
+            />
 
             {/* More like this */}
             {relatedPosts.length > 0 ? (
@@ -1012,125 +1033,32 @@ export default function ExplorePostScreen() {
             iPhone SE wasted space. Use `insets.bottom` so the bar hugs
             the keyboard / indicator on every device, and pad
             non-iOS bottoms by 10dp to keep tap targets accessible. */}
-        {/* Comment input bar */}
-        {user && canInteract ? (
-          <View
-            style={{
-              paddingHorizontal: contentPadding,
-              paddingVertical: 10,
-              paddingBottom: 10 + (Platform.OS === "ios" ? insets.bottom : 0),
-              borderTopWidth: 1,
-              borderColor: "#F3F4F6",
-              backgroundColor: "#fff",
-            }}
-          >
-            {replyToCommentId ? (
-              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
-                <Text style={{ flex: 1, fontSize: 12, color: "#6B7280" }}>
-                  {t("customer.explorePost.replying", "Replying to a comment")}
-                </Text>
-                <TouchableOpacity onPress={() => setReplyToCommentId(null)}>
-                  <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.primary }}>
-                    {t("common.cancel", "Cancel")}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <View
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 16,
-                backgroundColor: Colors.primaryLight,
-                alignItems: "center",
-                justifyContent: "center",
-                marginEnd: 10,
-              }}
-            >
-              <Text style={{ color: Colors.primary, fontWeight: "700", fontSize: 13 }}>
-                {(user.user_metadata?.full_name || "Y").charAt(0).toUpperCase()}
-              </Text>
-            </View>
-            <TextInput
-              ref={commentInputRef}
-              style={{
-                flex: 1,
-                backgroundColor: "#F3F4F6",
-                borderRadius: 999,
-                paddingHorizontal: contentPadding,
-                paddingVertical: Platform.OS === "ios" ? 10 : 8,
-                fontSize: 14,
-                color: "#111827",
-              }}
-              placeholder={
-                replyToCommentId
-                  ? t("customer.explorePost.replyPlaceholder", "Write a reply…")
-                  : t("customer.explorePost.addComment")
-              }
-              placeholderTextColor="#9CA3AF"
-              value={input}
-              onChangeText={setInput}
-              onSubmitEditing={sendComment}
-              returnKeyType="send"
-              blurOnSubmit={false}
-            />
-            <TouchableOpacity
-              onPress={sendComment}
-              disabled={!input.trim() || sending}
-              style={{ opacity: !input.trim() || sending ? 0.4 : 1 }}
-            >
-              {sending ? (
-                <ActivityIndicator size="small" color={Colors.primary} />
-              ) : (
-                <Ionicons name="send" size={24} color={Colors.primary} />
-              )}
-            </TouchableOpacity>
-            </View>
-          </View>
-        ) : user && !canInteract ? (
-          <View
-            style={{
-              paddingHorizontal: contentPadding,
-              paddingVertical: 14,
-              paddingBottom: 14 + (Platform.OS === "ios" ? insets.bottom : 0),
-              borderTopWidth: 1,
-              borderColor: "#F3F4F6",
-              backgroundColor: "#F9FAFB",
-              alignItems: "center",
-            }}
-          >
-            <Text style={{ color: "#6B7280", fontWeight: "500", fontSize: 14, textAlign: "center", lineHeight: 20 }}>
-              {t("customer.explorePost.safetyInteractionsOff")}
-            </Text>
-            <TouchableOpacity
-              onPress={() => router.push("/(app)/account-settings/content-and-safety-controls")}
-              style={{ marginTop: 10 }}
-              accessibilityRole="button"
-            >
-              <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 14 }}>
-                {t("customer.safety.socialRestricted.openControls")}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <Pressable
-            onPress={() => pushCustomerLogin(explorePostReturnTo)}
-            style={{
-              paddingHorizontal: contentPadding,
-              paddingVertical: 14,
-              paddingBottom: 14 + (Platform.OS === "ios" ? insets.bottom : 0),
-              borderTopWidth: 1,
-              borderColor: "#F3F4F6",
-              backgroundColor: "#fff",
-              alignItems: "center",
-            }}
-          >
-            <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 14 }}>
-              {t("customer.explorePost.signInPromptTitle")}
-            </Text>
-          </Pressable>
-        )}
+        <View
+          style={{
+            paddingHorizontal: contentPadding,
+            paddingTop: 10,
+            paddingBottom: 10 + (Platform.OS === "ios" ? insets.bottom : 0),
+            borderTopWidth: 1,
+            borderColor: "#F3F4F6",
+            backgroundColor: "#fff",
+          }}
+        >
+          <ExploreCommentComposer
+            value={input}
+            onChangeText={setInput}
+            onSend={() => void sendComment()}
+            sending={sending}
+            replyTo={replyTo}
+            onCancelReply={() => setReplyTo(null)}
+            canInteract={canInteract}
+            signedIn={Boolean(user)}
+            onSignIn={() => pushCustomerLogin(explorePostReturnTo)}
+            onOpenSafety={() => router.push("/(app)/account-settings/content-and-safety-controls" as never)}
+            viewerInitial={(user?.user_metadata?.full_name || "Y").charAt(0).toUpperCase()}
+            viewerAvatarUrl={typeof user?.user_metadata?.avatar_url === "string" ? user.user_metadata.avatar_url : null}
+            inputRef={commentInputRef}
+          />
+        </View>
       </KeyboardAvoidingView>
 
       <ExplorePhotoZoomModal

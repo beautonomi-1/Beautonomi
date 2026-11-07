@@ -112,7 +112,7 @@ Migration `883_subscription_truth_alignment.sql` aligns **subscription_plans.fea
 
 | Tier | Slug | Key limits | Marketing campaigns | Reports (`report_types`) | Included monthly credit |
 |------|------|------------|---------------------|--------------------------|-------------------------|
-| **Starter** | `free-tier-default` | 50 bookings/mo, 4 staff, 3 locations, 5 express links | Off (email/SMS/WhatsApp blocked) | `sales`, `bookings`, `clients` | R0 |
+| **Starter** | `free-tier-default` | Unlimited online bookings; 4 staff, 3 locations, 5 express links | Off (email/SMS/WhatsApp blocked) | `sales`, `bookings`, `clients` | R0 (pay-as-you-go ads) |
 | **Growth** | `beautonomi-growth` | Unlimited bookings; 25 staff; 8 locations; 20 express links; 8,000 chat messages; 40 automations; 8 Yoco devices | Email + SMS via platform credentials | Above + `staff`, `products`, `payments`, `memberships` | R50/mo (see credit semantics below) |
 | **Scale** | `beautonomi-scale` | Unlimited | Email + SMS + WhatsApp (own Twilio for WhatsApp) | Full suite incl. `gift_cards`, `packages` | R0 (pay-as-you-go top-ups only) |
 
@@ -166,7 +166,7 @@ Cron: `POST /api/cron/grant-marketing-credits` (Vercel schedule). Grants only **
 
 ## Platform ads module dependency
 
-Subscription `platform_ads.enabled` on Growth/Scale allows a provider to **participate** in promoted placement when the platform has ads turned on. Actual ad serving, bidding, and spend still depend on **admin control-plane** config:
+Subscription `platform_ads.enabled` on Starter/Growth/Scale allows a provider to **participate** in promoted placement when the platform has ads turned on (Starter: pay-as-you-go, R0 included credit). Actual ad serving, bidding, and spend still depend on **admin control-plane** config:
 
 - Table: `ads_module_config` (per environment).
 - Superadmin must enable the ads module for the environment before providers see promoted-placement UI or impressions are charged.

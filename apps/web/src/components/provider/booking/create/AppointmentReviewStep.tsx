@@ -78,7 +78,7 @@ export function AppointmentReviewStep({
   products = [],
 }: AppointmentReviewStepProps) {
   const { t } = useTranslation();
-  const prefix = "web.provider.portal.appointmentReview";
+  const prefix = "web.provider.appointmentReview";
   const { format: formatMoney } = useProviderMoneyFormat();
   const staffName = teamMembers.find((m) => m.id === staffId)?.name ?? t(`${prefix}.unassigned`);
   const locationName = locations.find((l) => l.id === locationId)?.name;

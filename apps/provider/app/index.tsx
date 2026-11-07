@@ -54,6 +54,14 @@ function isProviderSecurityGateCode(err: unknown): boolean {
   return typeof code === "string" && PROVIDER_SECURITY_GATE_CODES.has(code);
 }
 
+/** 401/403, including when the numeric status was dropped and only the API code remains. */
+function isAuthPortalFailure(err: unknown): boolean {
+  const status = getHttpErrorStatus(err);
+  if (status === 401 || status === 403) return true;
+  const code = getApiErrorCode(err);
+  return code === "UNAUTHORIZED" || code === "FORBIDDEN";
+}
+
 /**
  * §Release-audit 2026-04: mirrors `portalFromRole` in the customer app. When
  * `/api/me/portal` keeps failing we hit `/api/me/role` once and derive the
@@ -240,9 +248,15 @@ export default function Index() {
     // provider access" screen on fresh Bearer sessions where public.users hadn't
     // been materialised yet — the server-side self-heal in /api/me/portal should
     // cover the common case, but this is defence-in-depth for older deploys.
+    const sessionAuthHeaders = session.access_token
+      ? { Authorization: `Bearer ${session.access_token}` }
+      : undefined;
+
     const fetchRoleFallback = (reason: PortalErrorKind, roleAttempt = 0) => {
       api
-        .get<{ role?: string; portal?: string }>("/api/me/role")
+        .get<{ role?: string; portal?: string }>("/api/me/role", {
+          headers: sessionAuthHeaders,
+        })
         .then((res) => {
           if (cancelled || portalTimedOut) return;
           // Deliberate background abort — the foreground restart re-probes; never
@@ -261,7 +275,7 @@ export default function Index() {
               );
               return;
             }
-            if (status === 401 || status === 403) {
+            if (isAuthPortalFailure(res.error)) {
               enterError("unauthorized");
               return;
             }
@@ -303,7 +317,9 @@ export default function Index() {
 
     const fetchPortal = (authAttempt: number, transientAttempt = 0) => {
       api
-        .get<{ portal?: string; role?: string }>("/api/me/portal")
+        .get<{ portal?: string; role?: string }>("/api/me/portal", {
+          headers: sessionAuthHeaders,
+        })
         .then((res) => {
           if (cancelled || portalTimedOut) return;
           // Critical: on 401/empty data, do NOT default to "customer" — iOS often fires this
@@ -318,7 +334,7 @@ export default function Index() {
               setNeedsOnboarding(false);
               return;
             }
-            if ((status === 401 || status === 403) && authAttempt < 4) {
+            if (isAuthPortalFailure(res.error) && authAttempt < 4) {
               setTimeout(
                 () => fetchPortal(authAttempt + 1, 0),
                 350 * (authAttempt + 1),
@@ -352,7 +368,7 @@ export default function Index() {
                 });
               }
             }
-            fetchRoleFallback(status === 401 || status === 403 ? "unauthorized" : "network");
+            fetchRoleFallback(isAuthPortalFailure(res.error) ? "unauthorized" : "network");
             return;
           }
           const portal = res.data?.portal;

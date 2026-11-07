@@ -13780,7 +13780,15 @@
       "shareMediaFailedTitle": "Haikuweza kushiriki maudhui",
       "shareMediaFailedBody": "Hatukuweza kuandaa faili hii kwa ajili ya kushirikiwa. Jaribu kushiriki kiungo badala yake.",
       "loadingComments": "Inapakia…",
-      "loadMoreComments": "Pakia maoni zaidi"
+      "loadMoreComments": "Pakia maoni zaidi",
+      "errorDeleteComment": "Imeshindwa kufuta maoni haya. Tafadhali jaribu tena.",
+      "deleteCommentTitle": "Futa maoni haya?",
+      "deleteComment": "Futa",
+      "signInToComment": "Ingia ili kutoa maoni",
+      "deleteCommentBody": "Hii inaondoa maoni kwa kila mtu.",
+      "commentsLoadFailed": "Imeshindwa kupakia maoni.",
+      "replyingTo": "Unajibu {{name}}",
+      "commentTooLong": "{{count}} / 200"
     },
     "searchScreen": {
       "title": "Tafuta",
@@ -14406,6 +14414,13 @@
           "shopContinueCta": "Angalia agizo",
           "shopPendingSubtext": "Tutasasisha agizo lako baada ya dakika chache. Unaweza kuendelea kutumia programu huku tukithibitisha na benki yako.",
           "shopFailedSubtext": "Ikiwa ulitozwa, agizo lako bado litathibitishwa mara tu malipo yatakapowasili. Tafadhali angalia kichupo chako cha Maagizo."
+        },
+        "payableOrdersBanner": {
+          "titleCart": "Inasubiri malipo",
+          "titleOrders": "Inasubiri malipo",
+          "retry": "Imeshindwa kupakia kila oda ambayo haijalipwa. Jaribu tena.",
+          "showLess": "Onyesha chache",
+          "viewAll": "Tazama zote"
         }
       },
       "tabs": {
@@ -14836,7 +14851,9 @@
           "total": "Jumla",
           "alsoCheckoutOnWeb": "Maliza ununuzi pia mtandaoni",
           "pickupLocationsMore": "{{count}} points de retrait — choisissez à la caisse",
-          "deliveryEtaDays": "Livraison estimée sous {{days}} jour(s) ouvré(s)"
+          "deliveryEtaDays": "Livraison estimée sous {{days}} jour(s) ouvré(s)",
+          "paymentDueHeading": "Inasubiri malipo",
+          "paymentDueRetry": "Imeshindwa kupakia kila oda ambayo haijalipwa. Jaribu tena."
         },
         "productCheckout": {
           "title": "Maliza ununuzi",
@@ -18176,7 +18193,8 @@
     "cart": "Kikapu",
     "exploreVideo": {
       "unmute": "Washa sauti",
-      "mute": "Zima sauti"
+      "mute": "Zima sauti",
+      "replay": "Cheza tena"
     },
     "bankAccounts": {
       "failedLoadBanks": "Imeshindwa load banks. Jaribu tena.",
@@ -18456,7 +18474,8 @@
     "rescheduleReplacesPreviousBody": "Miadi yako ya awali inaghairiwa yenyewe, bila ada, malipo ya uhifadhi huu yakikamilika. Ulicholipa tayari kinatumika hapa, na kilichobaki kinabaki kwenye pochi yako.",
     "rescheduleCreditNote": "Kiasi chochote ulicholipa mtandaoni kwa uhifadhi wa awali kinatumika hapa. Unalipa tofauti pekee.",
     "rescheduleCreditApplied": "Imelipwa kwenye uhifadhi wa awali",
-    "rescheduleCreditSurplus": "Kilichobaki {{amount}} kinabaki kwenye pochi yako kama salio."
+    "rescheduleCreditSurplus": "Kilichobaki {{amount}} kinabaki kwenye pochi yako kama salio.",
+    "stylistReceives": "{{name}} anapokea"
   },
   "payments": {
     "pay": "Pay",
@@ -19105,7 +19124,9 @@
         "changeService": "Badilisha",
         "selectedServiceMore": " (+{{count}})",
         "selectedServiceSummary": "{{name}}{{more}} · {{minutes}} dakika",
-        "continueWithName": "Endelea na {{name}}"
+        "continueWithName": "Endelea na {{name}}",
+        "stylistReceives": "{{name}} anapokea",
+        "stylistReceivesFallback": "Stylist wako"
       },
       "confirmation": {
         "loadingMessage": "Inapakia uhifadhi confirmation...",
@@ -36463,6 +36484,15 @@
       "cancelFailed": "Imeshindwa ghairi your spot.",
       "sessionCancelled": "Kipindi hiki cha kikundi kimeghairiwa.",
       "sessionCancelledPaid": "Kipindi hiki cha kikundi kimeghairiwa. Kiasi chochote ulicholipa kwa sehemu yako kinarudishwa chote kwenye kadi uliyotumia."
+    },
+    "components": {
+      "payableOrdersBanner": {
+        "titleCart": "Inasubiri malipo",
+        "titleOrders": "Inasubiri malipo",
+        "retry": "Imeshindwa kupakia kila oda ambayo haijalipwa. Jaribu tena.",
+        "showLess": "Onyesha chache",
+        "viewAll": "Tazama zote"
+      }
     }
   },
   "errors": {

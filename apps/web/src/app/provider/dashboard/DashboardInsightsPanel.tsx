@@ -137,6 +137,10 @@ export function DashboardInsightsPanel({
     (activePeriod.channel_mix?.online ?? 0) +
     (activePeriod.channel_mix?.walk_in ?? 0) +
     (activePeriod.channel_mix?.provider ?? 0);
+  const offlineHeavy =
+    channelTotal > 0 &&
+    (activePeriod.channel_mix?.walk_in ?? 0) + (activePeriod.channel_mix?.provider ?? 0) >
+      (activePeriod.channel_mix?.online ?? 0);
 
   const maxChartRevenue = Math.max(
     ...(insights?.weekly_revenue ?? []).map((d) => d.revenue),
@@ -229,6 +233,11 @@ t("web.provider.dashboard.insights.onlinePausedDefault")}
               </div>
             ))}
           </div>
+          {offlineHeavy ? (
+            <p className="mt-3 text-xs leading-5 text-gray-600">
+              {t("web.provider.dashboard.insights.channelMixNudge")}
+            </p>
+          ) : null}
         </div>
       ) : null}
 

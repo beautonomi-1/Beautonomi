@@ -127,6 +127,12 @@ export function BookingsClient({
   initialError: string | null;
 }) {
   const { t } = useTranslation();
+  const tillPaymentText = (b: unknown) => {
+    const row = b as { till_payment_kind?: string | null; till_payment_label?: string | null };
+    return row.till_payment_kind
+      ? t(`web.provider.bookings.tillPayment.${row.till_payment_kind}`)
+      : row.till_payment_label;
+  };
   const router = useRouter();
   const searchParams = useSearchParams();
   const { selectedLocationId, provider } = useProviderPortal();
@@ -218,6 +224,7 @@ export function BookingsClient({
     customer_name: string;
     service_name: string;
     offering_id?: string;
+    walk_in_or_unpaid?: boolean;
   } | null>(null);
   const [journeyDialog, setJourneyDialog] = useState<{ id: string; version?: number } | null>(null);
   const [journeyEtaMinutes, setJourneyEtaMinutes] = useState<number | null>(15);
@@ -411,11 +418,13 @@ export function BookingsClient({
         loadBookings();
         if (booking) {
           const firstService = (booking.services as { offering_name?: string; service_name?: string; offering_id?: string }[] | undefined)?.[0];
+          const totalPaid = Number(booking.total_paid ?? 0);
           setPendingCompletion({
             id: booking.id,
             customer_name: booking.customer_name ?? t("web.provider.common.customer"),
             service_name: firstService?.offering_name || firstService?.service_name || t("web.provider.common.appointment"),
             offering_id: firstService?.offering_id,
+            walk_in_or_unpaid: totalPaid <= 0.009,
           });
         }
         return;
@@ -1078,6 +1087,11 @@ export function BookingsClient({
                         </TableCell>
                         <TableCell className="py-3 text-end">
                           <Money amount={b.total_amount || 0} className="font-semibold text-gray-900 tabular-nums" />
+                          {(b as { till_payment_label?: string | null }).till_payment_label ? (
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              {tillPaymentText(b)}
+                            </p>
+                          ) : null}
                         </TableCell>
                         <TableCell className="py-3">
                           <AppointmentStatusBadge status={b.status} />
@@ -1207,6 +1221,11 @@ export function BookingsClient({
                   <div>
                     <span className="text-xs text-gray-500">{t("web.provider.bookings.groupFinancials.total")}</span>
                     <p className="font-bold text-lg"><Money amount={b.total_amount || 0} /></p>
+                    {(b as { till_payment_label?: string | null }).till_payment_label ? (
+                      <p className="text-[11px] text-slate-500">
+                        {tillPaymentText(b)}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex gap-1.5">
                     {primaryAction && (
@@ -1608,6 +1627,7 @@ export function BookingsClient({
             primaryServiceName={pendingCompletion.service_name}
             primaryOfferingId={pendingCompletion.offering_id}
             customerName={pendingCompletion.customer_name}
+            walkInOrUnpaidComplete={pendingCompletion.walk_in_or_unpaid ?? true}
             onDismiss={() => setPendingCompletion(null)}
           />
         ) : null}
