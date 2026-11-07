@@ -2,6 +2,9 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, getOffsetPaginationParams } from "@/lib/supabase/api-helpers";
 
+// Polled by mobile (badges) and can run 2 DB queries; allow headroom to avoid 504s.
+export const maxDuration = 30;
+
 /**
  * GET /api/me/notifications
  *

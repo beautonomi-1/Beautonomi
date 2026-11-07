@@ -8,6 +8,9 @@ import { optionalAuthInApi } from "@/lib/supabase/api-helpers";
 import { checkMapboxRateLimit } from "@/lib/rate-limit/mapbox";
 import { z } from "zod";
 
+// Calls an external service; allow headroom to avoid platform-level 504s on slow responses.
+export const maxDuration = 30;
+
 const geocodeSchema = z.object({
   query: z.string().min(1, "Query is required"),
   proximity: z

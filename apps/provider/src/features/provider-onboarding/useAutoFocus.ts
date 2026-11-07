@@ -40,7 +40,8 @@ export function useAutoFocus(
 
     return () => {
       cancelled = true;
-      task.cancel();
+      // InteractionManager is deprecated; some runtimes return a non-cancelable handle.
+      (task as unknown as { cancel?: () => void } | undefined)?.cancel?.();
     };
   }, [ref, enabled, scroll, options?.resetScrollFirst]);
 }

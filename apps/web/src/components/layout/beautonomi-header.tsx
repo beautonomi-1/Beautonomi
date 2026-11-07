@@ -2,7 +2,8 @@
 
 import React, { useState, useRef, useEffect, useTransition, useCallback } from "react";
 import Link from "next/link";
-import { MapPin, ChevronDown, ChevronLeft, ChevronRight, Search, Menu, User, Home, Briefcase, History, CheckCircle2, AlertCircle, Loader2, Globe } from "lucide-react";
+import Image from "next/image";
+import { MapPin, ChevronDown, ChevronLeft, ChevronRight, Search, Menu, User, Home, Briefcase, History, CheckCircle2, AlertCircle, Loader2, Globe, Tag, Scissors } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import PlatformLogo from "@/components/platform/PlatformLogo";
 import { useAuth } from "@/providers/AuthProvider";
@@ -95,6 +96,9 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
     url: string;
     category?: string;
     place_label?: string;
+    slug?: string;
+    image_url?: string | null;
+    distance_km?: number;
   }>>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
@@ -243,7 +247,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
     }
 
     // Don't search if query is too short
-    if (searchQuery.trim().length < 2) {
+    if (searchQuery.trim().length < 1) {
       setSuggestions([]);
       setIsLoadingSuggestions(false);
       return;
@@ -254,34 +258,36 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
     // Debounce API call
     searchTimeoutRef.current = setTimeout(async () => {
       try {
-        const response = await fetcher.get<{ 
-          data: { 
-            suggestions: Array<{
-              type: 'service' | 'provider' | 'category';
-              id: string;
-              name: string;
-              url: string;
-              category?: string;
-              place_label?: string;
-            }>;
-          } 
-        }>(`/api/public/search/suggestions?q=${encodeURIComponent(searchQuery.trim())}&limit=10`);
-        
-        setSuggestions(response.data?.suggestions || []);
+        const sp = new URLSearchParams();
+        sp.set("q", searchQuery.trim());
+        sp.set("limit", "10");
+        if (selectedLocation?.latitude != null && selectedLocation?.longitude != null) {
+          sp.set("lat", String(selectedLocation.latitude));
+          sp.set("lng", String(selectedLocation.longitude));
+        }
+
+        const response = await fetcher.get<{
+          data?: { suggestions?: any[] };
+          suggestions?: any[];
+        }>(`/api/public/search/suggestions?${sp.toString()}`);
+
+        const raw = response as { data?: { suggestions?: any[] }; suggestions?: any[] };
+        const list = raw?.data?.suggestions ?? raw?.suggestions ?? [];
+        setSuggestions(Array.isArray(list) ? (list as any[]) : []);
       } catch (error) {
         console.error('Error fetching suggestions:', error);
         setSuggestions([]);
       } finally {
         setIsLoadingSuggestions(false);
       }
-    }, 300); // 300ms debounce
+    }, 220); // align with customer app /search suggestions debounce
 
     return () => {
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [searchQuery]);
+  }, [searchQuery, selectedLocation?.latitude, selectedLocation?.longitude]);
 
   const toggleSearch = () => {
     setIsSearchOpen(!isSearchOpen);
@@ -1255,7 +1261,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
           </button>
 
           {/* Autocomplete Suggestions */}
-          {isSearchOpen && searchQuery.trim().length >= 2 && (
+          {isSearchOpen && searchQuery.trim().length >= 1 && (
             <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50 max-h-96 overflow-y-auto">
               {isLoadingSuggestions ? (
                 <div className="px-6 py-4 text-sm text-gray-500 text-center">
@@ -1279,31 +1285,59 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                         setSelectedSuggestionIndex(-1);
                       }}
                     >
-                      <Search className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                      {suggestion.type === "provider" ? (
+                        <span className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-pink-50 text-sm font-semibold text-[#FF007F] ring-1 ring-pink-100">
+                          {suggestion.image_url ? (
+                            <Image src={suggestion.image_url} alt="" fill sizes="40px" className="object-cover" />
+                          ) : (
+                            String(suggestion.name || "").slice(0, 1).toUpperCase()
+                          )}
+                        </span>
+                      ) : (
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 ring-1 ring-gray-200">
+                          {suggestion.type === "category" ? (
+                            <Tag className="h-4 w-4 text-gray-500" />
+                          ) : suggestion.type === "service" ? (
+                            <Scissors className="h-4 w-4 text-gray-500" />
+                          ) : (
+                            <Search className="h-4 w-4 text-gray-500" />
+                          )}
+                        </span>
+                      )}
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-gray-900 truncate">
-                          {suggestion.name}
+                          {suggestion.type === "category"
+                            ? translatePublicCategory(t, suggestion.slug ?? suggestion.name, suggestion.name, {
+                                language: i18n.language,
+                              })
+                            : suggestion.name}
                         </div>
                         {suggestion.type === 'provider' && suggestion.place_label && (
                           <div className="text-xs text-gray-500 mt-0.5 truncate">
                             {suggestion.place_label}
                           </div>
                         )}
-                        {suggestion.category && (
-                          <div className="text-xs text-gray-500 mt-0.5">
-                            {suggestion.category}
+                        {suggestion.type === "service" && suggestion.category ? (
+                          <div className="text-xs text-gray-500 mt-0.5 truncate">
+                            {translatePublicCategory(t, suggestion.category, suggestion.category, {
+                              language: i18n.language,
+                            })}
                           </div>
-                        )}
-                        {suggestion.type === 'provider' && (
+                        ) : null}
+                        {suggestion.type === "provider" && suggestion.distance_km != null ? (
                           <div className="text-xs text-gray-500 mt-0.5">
-                            {t("web.layout.header.suggestionProvider")}
+                            {suggestion.distance_km < 1
+                              ? t("web.search.distanceUnder1km")
+                              : t("web.search.distanceAway", { km: Number(suggestion.distance_km).toFixed(1) })}
                           </div>
-                        )}
-                        {suggestion.type === 'category' && (
-                          <div className="text-xs text-gray-500 mt-0.5">
-                            {t("web.layout.header.suggestionCategory")}
-                          </div>
-                        )}
+                        ) : null}
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          {suggestion.type === "service"
+                            ? t("web.search.suggestion.service")
+                            : suggestion.type === "provider"
+                              ? t("web.search.suggestion.provider")
+                              : t("web.search.suggestion.category")}
+                        </div>
                       </div>
                     </Link>
                   ))}

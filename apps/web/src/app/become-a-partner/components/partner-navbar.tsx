@@ -11,21 +11,27 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import LoginModal from "@/components/global/login-modal";
-import SolutionsDropdown from "./solutions-dropdown";
-import FeaturesDropdown from "./features-dropdown";
 import { usePageContent } from "@/hooks/usePageContent";
 import logo from "../../../../public/images/logo.svg";
 
 const TOP_BANNER_ENABLED_VALUES = new Set(["true", "1", "yes"]);
+
+const PARTNER_NAV_LINKS = [
+  { label: "Features", href: "/become-a-partner#platform" },
+  { label: "Pricing", href: "/pricing" },
+  { label: "Why Beautonomi", href: "/why-beautonomi" },
+  { label: "Learn", href: "/learn" },
+] as const;
 
 export default function PartnerNavbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginModalMode, setLoginModalMode] = useState<"login" | "signup">("login");
   const router = useRouter();
+  const pathname = usePathname();
   const { user, role } = useAuth();
   const { getSectionContent } = usePageContent("become-a-partner");
   const topBannerEnabledRaw = getSectionContent("top_banner_enabled")?.trim().toLowerCase();
@@ -57,6 +63,13 @@ export default function PartnerNavbar() {
       return;
     }
     router.push("/provider/signup");
+  };
+
+  const handleFeaturesClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    setIsMenuOpen(false);
+    if (pathname !== "/become-a-partner") return;
+    event.preventDefault();
+    document.getElementById("platform")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   return (
@@ -99,21 +112,17 @@ export default function PartnerNavbar() {
             </Link>
 
             {/* Center Navigation */}
-            <div className="flex-1 flex items-center justify-center gap-4 lg:gap-8 mx-4 lg:mx-8">
-              <SolutionsDropdown />
-              <FeaturesDropdown />
-              <Link
-                href="/pricing"
-                className="text-sm font-medium text-gray-700 hover:text-primary transition-colors whitespace-nowrap"
-              >
-                Pricing
-              </Link>
-              <Link
-                href="/why-beautonomi"
-                className="text-sm font-medium text-gray-700 hover:text-primary transition-colors whitespace-nowrap hidden lg:block"
-              >
-                Why Beautonomi
-              </Link>
+            <div className="flex-1 flex items-center justify-center gap-3 lg:gap-6 xl:gap-8 mx-2 lg:mx-6">
+              {PARTNER_NAV_LINKS.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={item.href.includes("#platform") ? handleFeaturesClick : undefined}
+                  className="text-sm font-medium text-gray-700 hover:text-primary transition-colors whitespace-nowrap"
+                >
+                  {item.label}
+                </Link>
+              ))}
             </div>
 
             {/* Right Actions: Login as Partner + Sign up (no "Book a demo" / "Try it now") */}
@@ -146,27 +155,16 @@ export default function PartnerNavbar() {
                 <p className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-2">
                   Navigation
                 </p>
-                <Link
-                  href="/become-a-partner"
-                  className="block text-base font-normal text-gray-700 hover:text-primary py-2"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  Become service provider
-                </Link>
-                <Link
-                  href="/pricing"
-                  className="block text-base font-normal text-gray-700 hover:text-primary py-2"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  Pricing
-                </Link>
-                <Link
-                  href="/why-beautonomi"
-                  className="block text-base font-normal text-gray-700 hover:text-primary py-2"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  Why Beautonomi
-                </Link>
+                {PARTNER_NAV_LINKS.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="block text-base font-normal text-gray-700 hover:text-primary py-2"
+                    onClick={item.href.includes("#platform") ? handleFeaturesClick : () => setIsMenuOpen(false)}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
               </div>
               <div className="pt-4 border-t space-y-2">
                 <p className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-2">

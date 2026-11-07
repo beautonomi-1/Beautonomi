@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Ban, Bookmark, Flag, Heart, Loader2, MessageCircle, Share2, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowLeft, Ban, Bookmark, Flag, Heart, Loader2, MessageCircle, Play, Share2, Volume2, VolumeX, X } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
@@ -60,14 +60,18 @@ function parseFeedPage(raw: unknown): { items: ExplorePost[]; next?: string; mor
 function ReelVideoSlide({
   post,
   active,
+  paused,
   muted,
   onEnded,
+  onTogglePaused,
   onPlayingChange,
 }: {
   post: ExplorePost;
   active: boolean;
+  paused: boolean;
   muted: boolean;
   onEnded: () => void;
+  onTogglePaused: () => void;
   onPlayingChange?: (playing: boolean) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -75,6 +79,8 @@ function ReelVideoSlide({
   const playedInsideRef = useRef(false);
   const watchedRef = useRef(0);
   const audibleRef = useRef(false);
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
   const trim = getExploreVideoPlaybackTrimWindow({
     slide: post.media_meta?.[0],
     mediaUrl: post.media_urls?.[0],
@@ -116,8 +122,8 @@ function ReelVideoSlide({
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    v.muted = !active || muted || soundtrack;
-  }, [active, muted, soundtrack]);
+    v.muted = !active || paused || muted || soundtrack;
+  }, [active, paused, muted, soundtrack]);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -150,6 +156,10 @@ function ReelVideoSlide({
         }
       }
       if (cancelled) return;
+      if (pausedRef.current) {
+        v.pause();
+        return;
+      }
       const hearVideo = audibleRef.current;
       v.muted = !hearVideo;
       if (hearVideo && v.paused) {
@@ -166,6 +176,29 @@ function ReelVideoSlide({
     };
   }, [active, post.id, trim?.trim_start_ms, trim?.trim_end_ms]);
 
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !active) return;
+    if (paused) {
+      v.pause();
+      return;
+    }
+    if (!v.paused) return;
+    // Resume playback after a user pause. Keep the browser-friendly muted-first flow.
+    v.muted = true;
+    void v
+      .play()
+      .then(() => {
+        if (!active) return;
+        if (pausedRef.current) {
+          v.pause();
+          return;
+        }
+        v.muted = !audibleRef.current;
+      })
+      .catch(() => undefined);
+  }, [active, paused]);
+
   return (
     <div className="relative h-full w-full bg-black">
       <video
@@ -178,6 +211,10 @@ function ReelVideoSlide({
         loop={false}
         preload={active ? "auto" : "none"}
         className="h-full w-full object-cover"
+        onClick={() => {
+          if (!active) return;
+          onTogglePaused();
+        }}
         onPlay={() => {
           if (active) onPlayingChange?.(true);
         }}
@@ -249,6 +286,13 @@ function ReelVideoSlide({
           onEnded();
         }}
       />
+      {active && paused ? (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div className="flex h-[76px] w-[76px] items-center justify-center rounded-full bg-black/45 text-white">
+            <Play className="ms-1 h-9 w-9" />
+          </div>
+        </div>
+      ) : null}
       <ExploreTextOverlayLayer overlays={overlays} />
       <ReelEndMark progress={progress} durationMs={durationMs} />
     </div>
@@ -293,6 +337,7 @@ export function ExploreSingleVideoReelView({
   const [nextCursor, setNextCursor] = useState<string | undefined>();
   const [hasMore, setHasMore] = useState(true);
   const [muted, setMuted] = useState(true);
+  const [userPaused, setUserPaused] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [comments, setComments] = useState<ExploreComment[]>([]);
@@ -401,6 +446,7 @@ export function ExploreSingleVideoReelView({
     setMoreOpen(false);
     setClipEnded(false);
     setClipPlaying(false);
+    setUserPaused(false);
     setCommentInput("");
     setReplyTo(null);
     void loadInitialFeed(requestId);
@@ -539,6 +585,7 @@ export function ExploreSingleVideoReelView({
     if (sameClip) return;
     setClipEnded(false);
     setClipPlaying(false);
+    setUserPaused(false);
     setCommentsOpen(false);
     setMoreOpen(false);
     setCommentInput("");
@@ -769,8 +816,13 @@ export function ExploreSingleVideoReelView({
             <ReelVideoSlide
               post={p}
               active={i === activeIndex && !clipEnded}
+              paused={i === activeIndex ? userPaused : false}
               muted={muted}
               onEnded={advance}
+              onTogglePaused={() => {
+                if (i !== activeIndex || clipEnded) return;
+                setUserPaused((current) => !current);
+              }}
               onPlayingChange={i === activeIndex ? setClipPlaying : undefined}
             />
           </div>

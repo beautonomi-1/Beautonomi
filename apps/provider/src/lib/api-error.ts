@@ -20,17 +20,27 @@ export function getApiErrorMessage(
  */
 export function getHttpErrorStatus(err: unknown): number | undefined {
   if (err == null || typeof err !== "object") return undefined;
-  const o = err as { status?: unknown; statusCode?: unknown };
+  const o = err as { status?: unknown; statusCode?: unknown; status_code?: unknown; error?: { status?: unknown; statusCode?: unknown; status_code?: unknown } };
   if (typeof o.status === "number" && Number.isFinite(o.status)) return o.status;
   if (typeof o.statusCode === "number" && Number.isFinite(o.statusCode)) return o.statusCode;
+  if (typeof o.status_code === "number" && Number.isFinite(o.status_code)) return o.status_code;
+  const nested = o.error;
+  if (nested) {
+    if (typeof nested.status === "number" && Number.isFinite(nested.status)) return nested.status;
+    if (typeof nested.statusCode === "number" && Number.isFinite(nested.statusCode)) return nested.statusCode;
+    if (typeof nested.status_code === "number" && Number.isFinite(nested.status_code)) return nested.status_code;
+  }
   return undefined;
 }
 
 /** Api client sets `code` on synthetic errors (NETWORK_ERROR, TIMEOUT, etc.). */
 export function getApiErrorCode(err: unknown): string | undefined {
   if (err == null || typeof err !== "object") return undefined;
-  const c = (err as { code?: unknown }).code;
-  return typeof c === "string" && c.trim() ? c.trim() : undefined;
+  const o = err as { code?: unknown; error?: { code?: unknown } };
+  const direct = o.code;
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+  const nested = o.error?.code;
+  return typeof nested === "string" && nested.trim() ? nested.trim() : undefined;
 }
 
 /**
@@ -44,6 +54,8 @@ export function isTransientApiFailure(err: unknown): boolean {
   // CANCELLED = deliberate background abort of an idempotent read; treat as
   // transient so callers stay silent and refetch on resume.
   if (code === "NETWORK_ERROR" || code === "TIMEOUT" || code === "CANCELLED") return true;
+  // Rate limits are actionable, not transient noise (caller may show a specific UI).
+  if (code === "RATE_LIMIT_EXCEEDED") return false;
   // Vercel Bot Protection / WAF can return HTML 429 pages; retry briefly like other transients.
   if (code === "HTML_ERROR" || status === 429) return true;
   if (typeof status === "number" && status >= 500) return true;
@@ -53,6 +65,8 @@ export function isTransientApiFailure(err: unknown): boolean {
     msg.includes("failed to fetch") ||
     msg.includes("network error") ||
     msg.includes("timed out") ||
+    msg.includes("timeout") ||
+    msg.includes("gateway timeout") ||
     msg.includes("check your internet connection")
   ) {
     return true;

@@ -8,6 +8,9 @@ import { isPubliclyBookableStaff } from "@/lib/provider/staff-public-bookable";
 import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
 
+// Public browse endpoint used by both mobile apps; allow extra time before platform 504.
+export const maxDuration = 30;
+
 /**
  * GET /api/public/providers/[slug]/staff
  *
