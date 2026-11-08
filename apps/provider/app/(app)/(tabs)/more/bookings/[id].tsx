@@ -2266,7 +2266,9 @@ export default function BookingDetailScreen() {
     if (!id) return;
     // Card payment chains several authenticated POSTs; refresh session first to avoid stale-token "sign in again" races after backgrounding.
     try {
-      await supabase.auth.refreshSession();
+      const refreshed = await supabase.auth.refreshSession();
+      // `refresh_token_not_found` (or other auth noise) is non-fatal here; API client still retries on 401.
+      void refreshed;
     } catch {
       /* non-fatal; api client still retries on 401 */
     }

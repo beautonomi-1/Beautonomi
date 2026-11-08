@@ -203,13 +203,16 @@ export function BookingAlertListener() {
       )
       .subscribe();
 
-    const appStateSub = AppState.addEventListener("change", (next) => {
-      appState.current = next;
-      if (next === "active") {
-        void refreshAlertSoundPrefs();
-        flushPending();
-      }
-    });
+    const appStateSub =
+      typeof (AppState as unknown as { addEventListener?: unknown }).addEventListener === "function"
+        ? AppState.addEventListener("change", (next) => {
+            appState.current = next;
+            if (next === "active") {
+              void refreshAlertSoundPrefs();
+              flushPending();
+            }
+          })
+        : undefined;
 
     return () => {
       try {
@@ -217,7 +220,11 @@ export function BookingAlertListener() {
       } catch {
         // ignore
       }
-      appStateSub.remove();
+      try {
+        (appStateSub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
       alertSoundRef.current?.stop();
     };
   }, [provider?.id, onRealtimeRow, flushPending]);

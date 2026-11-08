@@ -3,6 +3,7 @@ export type {
   ReauthOtpChannel,
   ReauthOtpDestination,
 } from "./auth/sensitive-action-ui";
+export { runAfterInteractions, type CancelableHandle } from "./scheduling/runAfterInteractions";
 export {
   canVerifySensitiveActionWithCode,
   describeReauthOtpDestination,

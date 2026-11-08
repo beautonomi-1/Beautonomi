@@ -109,13 +109,16 @@ export function OrderAlertListener() {
       )
       .subscribe();
 
-    const appStateSub = AppState.addEventListener("change", (next) => {
-      appState.current = next;
-      if (next === "active") {
-        void refreshAlertSoundPrefs();
-        flushPending();
-      }
-    });
+    const appStateSub =
+      typeof (AppState as unknown as { addEventListener?: unknown }).addEventListener === "function"
+        ? AppState.addEventListener("change", (next) => {
+            appState.current = next;
+            if (next === "active") {
+              void refreshAlertSoundPrefs();
+              flushPending();
+            }
+          })
+        : undefined;
 
     return () => {
       try {
@@ -123,7 +126,11 @@ export function OrderAlertListener() {
       } catch {
         // ignore
       }
-      appStateSub.remove();
+      try {
+        (appStateSub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
       cueRef.current?.stop();
     };
   }, [provider?.id, onRow, flushPending]);

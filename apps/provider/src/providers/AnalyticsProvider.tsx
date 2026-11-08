@@ -195,26 +195,39 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
     });
     return () => {
       cancelled = true;
-      subscription.remove();
+      try {
+        (subscription as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
     };
   }, []);
 
   // Reliability: flush the queue when the app backgrounds and emit a warm `app_open` on resume.
   useEffect(() => {
     let previous = AppState.currentState;
-    const sub = AppState.addEventListener("change", (next) => {
-      if (next === "background" || next === "inactive") {
-        try {
-          clientRef.current?.flush?.();
-        } catch {
-          /* ignore */
-        }
-      } else if (next === "active" && previous !== "active" && clientRef.current) {
-        trackAppOpen(false, "direct");
+    const sub =
+      typeof (AppState as unknown as { addEventListener?: unknown }).addEventListener === "function"
+        ? AppState.addEventListener("change", (next) => {
+            if (next === "background" || next === "inactive") {
+              try {
+                clientRef.current?.flush?.();
+              } catch {
+                /* ignore */
+              }
+            } else if (next === "active" && previous !== "active" && clientRef.current) {
+              trackAppOpen(false, "direct");
+            }
+            previous = next;
+          })
+        : undefined;
+    return () => {
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
       }
-      previous = next;
-    });
-    return () => sub.remove();
+    };
   }, []);
 
   return <>{children}</>;

@@ -137,7 +137,13 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
         setOrgHint(payload?.providerId ?? getActiveProviderApiHint());
       },
     );
-    return () => sub.remove();
+    return () => {
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
+    };
   }, []);
 
   const cacheKey = buildApiCacheKey(session?.user?.id, path, orgHint);

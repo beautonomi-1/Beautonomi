@@ -125,9 +125,12 @@ export function TerminalPaymentAlertListener() {
       )
       .subscribe();
 
-    const appStateSub = AppState.addEventListener("change", (next) => {
-      appState.current = next;
-    });
+    const appStateSub =
+      typeof (AppState as unknown as { addEventListener?: unknown }).addEventListener === "function"
+        ? AppState.addEventListener("change", (next) => {
+            appState.current = next;
+          })
+        : undefined;
 
     return () => {
       try {
@@ -135,7 +138,11 @@ export function TerminalPaymentAlertListener() {
       } catch {
         /* ignore */
       }
-      appStateSub.remove();
+      try {
+        (appStateSub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
     };
   }, [provider?.id, paystackTerminalEnabled]);
 

@@ -92,12 +92,15 @@ export function MessageAlertListener() {
       )
       .subscribe();
 
-    const appStateSub = AppState.addEventListener("change", (next) => {
-      appState.current = next;
-      if (next === "active") {
-        void refreshAlertSoundPrefs();
-      }
-    });
+    const appStateSub =
+      typeof (AppState as unknown as { addEventListener?: unknown }).addEventListener === "function"
+        ? AppState.addEventListener("change", (next) => {
+            appState.current = next;
+            if (next === "active") {
+              void refreshAlertSoundPrefs();
+            }
+          })
+        : undefined;
 
     return () => {
       try {
@@ -105,7 +108,11 @@ export function MessageAlertListener() {
       } catch {
         // ignore
       }
-      appStateSub.remove();
+      try {
+        (appStateSub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
       cueRef.current?.stop();
     };
   }, [provider?.id, onConversationUpdate]);
