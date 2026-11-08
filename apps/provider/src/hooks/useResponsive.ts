@@ -50,7 +50,13 @@ export function useResponsive(): ResponsiveInfo {
     const sub = Dimensions.addEventListener("change", ({ window }) => {
       setInfo(calculate(window));
     });
-    return () => sub.remove();
+    return () => {
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
+    };
   }, []);
 
   return info;

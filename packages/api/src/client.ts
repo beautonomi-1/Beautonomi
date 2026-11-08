@@ -396,8 +396,20 @@ export function createApiClient(config: ApiClientConfig) {
     securityRetried = false,
   ): Promise<ApiResponse<T>> => {
     const method = String(options.method ?? "GET").toUpperCase();
-    const dynamic = getDefaultHeaders?.({ path, method }) ?? {};
-    const asyncHeaders = (await getAsyncHeaders?.()) ?? {};
+    // Optional headers must never reject the request: a throw here escapes
+    // apiFetch's error envelope and callers see a rejected promise instead of { error }.
+    let dynamic: Record<string, string> = {};
+    try {
+      dynamic = getDefaultHeaders?.({ path, method }) ?? {};
+    } catch {
+      dynamic = {};
+    }
+    let asyncHeaders: Record<string, string> = {};
+    try {
+      asyncHeaders = (await getAsyncHeaders?.()) ?? {};
+    } catch {
+      asyncHeaders = {};
+    }
     const resolvedBase = getBaseUrl ? getBaseUrl() : baseUrl;
     const onSecurityChallenge = options.onSecurityChallenge ?? configOnSecurityChallenge;
     const res = await apiFetch<T>(path, {

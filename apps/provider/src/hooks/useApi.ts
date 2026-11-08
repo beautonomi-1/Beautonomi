@@ -342,8 +342,17 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
     const subFocus = DeviceEventEmitter.addListener("beautonomi:app:focus", onFocusOrRecover);
     const subRecover = DeviceEventEmitter.addListener("beautonomi:network:recover", onFocusOrRecover);
     return () => {
-      subFocus.remove();
-      subRecover.remove();
+      // Defensive: some RN runtimes return subscriptions without `remove()`.
+      try {
+        (subFocus as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
+      try {
+        (subRecover as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
     };
   }, [enabled, cacheKey, fetchData]);
 
@@ -354,7 +363,13 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
       void fetchData(true);
     };
     const sub = DeviceEventEmitter.addListener("beautonomi:app:focus", onScreenFocus);
-    return () => sub.remove();
+    return () => {
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
+    };
   }, [enabled, revalidateOnFocus, fetchData]);
 
   useEffect(() => {

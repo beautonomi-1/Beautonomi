@@ -126,7 +126,13 @@ export function useProviderStackBack(explicitReturnHref?: string) {
         handleBack();
         return true;
       });
-      return () => sub.remove();
+      return () => {
+        try {
+          (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+        } catch {
+          // ignore
+        }
+      };
     }, [handleBack]),
   );
 

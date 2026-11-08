@@ -54,7 +54,11 @@ function useReduceMotion(): boolean {
 
     return () => {
       mounted = false;
-      subscription.remove();
+      try {
+        (subscription as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
     };
   }, []);
 

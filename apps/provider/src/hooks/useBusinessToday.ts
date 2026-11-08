@@ -46,7 +46,13 @@ export function useBusinessToday(providerTimezone?: string | null): {
 
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener("beautonomi:app:focus", refreshAnchor);
-    return () => sub.remove();
+    return () => {
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
+    };
   }, [refreshAnchor]);
 
   return anchor;

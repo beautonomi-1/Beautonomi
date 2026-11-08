@@ -96,7 +96,13 @@ export function WizardChrome() {
         goBack();
         return true;
       });
-      return () => sub.remove();
+      return () => {
+        try {
+          (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+        } catch {
+          // ignore
+        }
+      };
     }, [loadingDraft, currentStep, goBack]),
   );
 

@@ -73,7 +73,13 @@ export function ArrivalQrScannerModal({
         void getPermission();
       }
     });
-    return () => sub.remove();
+    return () => {
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
+    };
   }, [clearCooldown, getPermission, permission?.canAskAgain, permission?.granted, releaseScanLock, requestPermission, visible]);
 
   /** After a failed verify, wait before accepting another scan (camera keeps seeing the same QR). */

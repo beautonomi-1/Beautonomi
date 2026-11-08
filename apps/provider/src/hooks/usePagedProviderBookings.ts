@@ -164,9 +164,21 @@ export function usePagedProviderBookings<T extends { id?: string }>(
     const subRecover = DeviceEventEmitter.addListener("beautonomi:network:recover", onFocusOrRefresh);
     const subBookings = DeviceEventEmitter.addListener(PROVIDER_BOOKINGS_REFRESH_EVENT, onFocusOrRefresh);
     return () => {
-      subFocus.remove();
-      subRecover.remove();
-      subBookings.remove();
+      try {
+        (subFocus as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
+      try {
+        (subRecover as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
+      try {
+        (subBookings as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
     };
   }, [enabled, path]);
 

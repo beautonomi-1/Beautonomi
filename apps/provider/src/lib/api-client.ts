@@ -181,9 +181,14 @@ const baseApi = createApiClient({
     return ok;
   },
   getAsyncHeaders: async (): Promise<Record<string, string>> => {
-    const key = await getDeviceKeyHeaderValue();
-    if (!key) return {};
-    return { "X-Device-Key": key };
+    try {
+      const key = await getDeviceKeyHeaderValue();
+      if (!key) return {};
+      return { "X-Device-Key": key };
+    } catch (e) {
+      captureError(e, { area: "api-client.getAsyncHeaders" });
+      return {};
+    }
   },
 });
 

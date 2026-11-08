@@ -22,3 +22,8 @@ export async function clearStoredDeviceKey(): Promise<void> {
     // no-op
   }
 }
+
+/** Header value for authenticated API requests (null when unset). */
+export async function getDeviceKeyHeaderValue(): Promise<string | null> {
+  return getStoredDeviceKey();
+}
