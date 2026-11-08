@@ -59,7 +59,11 @@ function useReduceMotion(): boolean {
 
     return () => {
       mounted = false;
-      subscription.remove();
+      try {
+        (subscription as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
     };
   }, []);
 
@@ -384,7 +388,13 @@ export function NativePermissionsOnboarding() {
       handleModalBack();
       return true;
     });
-    return () => sub.remove();
+    return () => {
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
+    };
   }, [visible, handleModalBack]);
 
   useEffect(() => {

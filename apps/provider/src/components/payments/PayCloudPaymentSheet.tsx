@@ -366,7 +366,13 @@ export function PayCloudPaymentSheet({
         }
       })();
     });
-    return () => sub.remove();
+    return () => {
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
+    };
   }, [
     visible,
     inFlightPaymentId,

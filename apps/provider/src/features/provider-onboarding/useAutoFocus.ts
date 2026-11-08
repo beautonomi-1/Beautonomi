@@ -41,7 +41,7 @@ export function useAutoFocus(
 
     return () => {
       cancelled = true;
-      task.cancel();
+      task.cancel?.();
     };
   }, [ref, enabled, scroll, options?.resetScrollFirst]);
 }

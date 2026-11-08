@@ -92,5 +92,11 @@ export function startActiveMarketHostLinkListener(): () => void {
       void setActiveMarketHost(linkedHost);
     }
   });
-  return () => subscription.remove();
+  return () => {
+    try {
+      (subscription as unknown as { remove?: () => void } | undefined)?.remove?.();
+    } catch {
+      // ignore
+    }
+  };
 }

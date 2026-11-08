@@ -231,7 +231,13 @@ export function ExploreCameraCaptureSheet({
         void finishRecordingRef.current();
       }
     });
-    return () => sub.remove();
+    return () => {
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
+    };
   }, [visible, getCameraPermission, recording]);
 
   useEffect(() => {

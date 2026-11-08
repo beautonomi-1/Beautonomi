@@ -67,7 +67,13 @@ export const OnboardingTextField = forwardRef<TextInput, OnboardingTextFieldProp
           scrollFocused();
         }
       });
-      return () => sub.remove();
+      return () => {
+        try {
+          (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+        } catch {
+          // ignore
+        }
+      };
     }, [multiline, scrollFocused]);
 
     return (

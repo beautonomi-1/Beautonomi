@@ -52,7 +52,13 @@ export async function refreshAlertSoundPrefs(): Promise<AlertSoundPrefs> {
 
 export function subscribeAlertSoundPrefs(onChange: () => void): () => void {
   const sub = DeviceEventEmitter.addListener(ALERT_PREFS_CHANGED_EVENT, onChange);
-  return () => sub.remove();
+  return () => {
+    try {
+      (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+    } catch {
+      // ignore
+    }
+  };
 }
 
 subscribeProviderApiReady((ready) => {

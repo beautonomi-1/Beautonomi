@@ -149,7 +149,13 @@ export default function TabsLayout() {
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") refreshNavCountsDebounced.current();
     });
-    return () => sub.remove();
+    return () => {
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
+    };
   }, []);
 
   // Realtime badge updates across dashboard/bookings/chats/more counters.
