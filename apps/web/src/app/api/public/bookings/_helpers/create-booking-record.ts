@@ -119,6 +119,10 @@ export async function createBookingRecord(
   // Booking rows are inserted inside `create_booking_with_locking` (SECURITY DEFINER;
   // migration 136+), not via user-JWT `.from("bookings").insert`.
   const entitlementId = validatedDraft.customer_package_entitlement_id ?? null;
+  // Resources are capacity-checked and inserted inside the same transaction as the
+  // booking (same path as provider-created bookings), so two customers cannot both
+  // take the last unit between the pre-check and the insert.
+  const resourceIds = v.allResourceIds.length > 0 ? v.allResourceIds : null;
   const { data: bookingId, error: bookingError } = await adminSupabase.rpc(
     "create_booking_with_locking",
     {
@@ -129,6 +133,9 @@ export async function createBookingRecord(
       p_end_at: v.bookingEnd.toISOString(),
       p_entitlement_id: entitlementId,
       p_entitlement_customer_id: entitlementId ? v.customerId : null,
+      p_resource_ids: resourceIds,
+      p_resource_start_at: resourceIds ? v.selectedDatetime.toISOString() : null,
+      p_resource_end_at: resourceIds ? v.bookingEnd.toISOString() : null,
     }
   );
 
@@ -139,6 +146,14 @@ export async function createBookingRecord(
         new Error("This time slot is no longer available. Please select another time."),
         "This time slot is no longer available. Please select another time.",
         "CONFLICT",
+        409
+      );
+    }
+    if (msg.includes("RESOURCE_CONFLICT") || msg.includes("RESOURCE_NOT_FOUND")) {
+      return handleApiError(
+        new Error("Required resources are not available"),
+        "A room or piece of equipment needed for this booking is no longer available at this time. Please select another time.",
+        "RESOURCE_UNAVAILABLE",
         409
       );
     }
@@ -532,51 +547,6 @@ export async function createBookingRecord(
       "BOOKING_SERVICES_FETCH_ERROR",
       500,
     );
-  }
-
-  // ── Resource assignments ─────────────────────────────────────────────────
-  const draftResourceIds = draft.resource_ids;
-  if (v.allResourceIds.length > 0 && createdBookingServices) {
-    const { assignResourcesToBooking, getRequiredResourcesForOffering } = await import(
-      "@/lib/resources/assignment"
-    );
-    const resourceAssignments: any[] = [];
-    let resourceCursor = 0;
-
-    for (const service of createdBookingServices) {
-      const requiredResources = await getRequiredResourcesForOffering(
-        supabase,
-        service.offering_id
-      );
-      const count = requiredResources.length;
-      if (count === 0) continue;
-
-      if (Array.isArray(draftResourceIds) && resourceCursor < draftResourceIds.length) {
-        for (let i = 0; i < count && resourceCursor < draftResourceIds.length; i++) {
-          resourceAssignments.push({
-            booking_id: booking.id,
-            booking_service_id: service.id,
-            resource_id: draftResourceIds[resourceCursor++],
-            scheduled_start_at: service.scheduled_start_at,
-            scheduled_end_at: service.scheduled_end_at,
-          });
-        }
-      } else {
-        for (const resourceId of requiredResources) {
-          resourceAssignments.push({
-            booking_id: booking.id,
-            booking_service_id: service.id,
-            resource_id: resourceId,
-            scheduled_start_at: service.scheduled_start_at,
-            scheduled_end_at: service.scheduled_end_at,
-          });
-        }
-      }
-    }
-
-    if (resourceAssignments.length > 0) {
-      await assignResourcesToBooking(adminSupabase, resourceAssignments);
-    }
   }
 
   // ── Double-booking override event ────────────────────────────────────────

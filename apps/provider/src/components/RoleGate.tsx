@@ -90,8 +90,16 @@ export function RoleGate({ children }: RoleGateProps) {
     const subFocus = DeviceEventEmitter.addListener("beautonomi:app:focus", handler);
     const subRecover = DeviceEventEmitter.addListener("beautonomi:network:recover", handler);
     return () => {
-      subFocus.remove();
-      subRecover.remove();
+      try {
+        (subFocus as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
+      try {
+        (subRecover as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
     };
   }, [shouldAutoRetryOnResume, loading, refresh]);
 

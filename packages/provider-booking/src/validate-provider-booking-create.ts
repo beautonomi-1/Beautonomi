@@ -28,6 +28,8 @@ export type ProviderIntakeFormField = {
 export type ProviderIntakeForm = {
   id: string;
   title: string;
+  /** When true every field on the form is required (same rule as the bookings API). */
+  is_required?: boolean;
   fields?: ProviderIntakeFormField[];
 };
 
@@ -134,7 +136,7 @@ export function collectProviderBookingCreateValidationErrors(
 
   for (const form of input.intakeForms) {
     for (const field of form.fields ?? []) {
-      if (!field.is_required) continue;
+      if (!(field.is_required || form.is_required)) continue;
       const val = input.intakeResponses[form.id]?.[field.id];
       if (field.field_type === "checkbox") {
         if (val !== true) {

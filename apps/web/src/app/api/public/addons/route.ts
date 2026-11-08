@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import type { AddonTargetIds } from "@/lib/offerings/addon-applicability";
 import {
   filterAddonsByLocation,
@@ -44,17 +45,30 @@ export async function GET(request: Request) {
       .order("title", { ascending: true });
 
     if (error) {
-      console.error("Error fetching addons:", error);
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Failed to fetch addons",
-            code: "FETCH_ERROR",
-          },
-        },
-        { status: 500 },
-      );
+      // Common causes:
+      // - Missing DB migrations (e.g. offerings.service_type / offerings.online_booking_enabled / offerings.is_recommended)
+      // - PostgREST schema cache out of date after a migration
+      // - Supabase outage / permission/config issue
+      console.error("Error fetching addons:", {
+        message: (error as any)?.message,
+        code: (error as any)?.code,
+        details: (error as any)?.details,
+        hint: (error as any)?.hint,
+      });
+
+      const devDetails =
+        process.env.NODE_ENV === "development"
+          ? {
+              supabase: {
+                message: (error as any)?.message,
+                code: (error as any)?.code,
+                details: (error as any)?.details,
+                hint: (error as any)?.hint,
+              },
+            }
+          : undefined;
+
+      return errorResponse("Failed to fetch addons", "FETCH_ERROR", 500, devDetails);
     }
 
     let filteredAddons = (addons ?? []) as OfferingAddonRow[];
@@ -106,15 +120,6 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     console.error("Unexpected error in /api/public/addons:", error);
-    return NextResponse.json(
-      {
-        data: null,
-        error: {
-          message: "Failed to fetch addons",
-          code: "INTERNAL_ERROR",
-        },
-      },
-      { status: 500 },
-    );
+    return handleApiError(error, "Failed to fetch addons");
   }
 }

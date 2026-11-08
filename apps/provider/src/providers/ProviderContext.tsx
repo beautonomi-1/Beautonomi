@@ -483,8 +483,18 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
     const subFocus = DeviceEventEmitter.addListener("beautonomi:app:focus", onFocusOrRecover);
     const subRecover = DeviceEventEmitter.addListener("beautonomi:network:recover", onFocusOrRecover);
     return () => {
-      subFocus.remove();
-      subRecover.remove();
+      // Some RN/Expo runtimes return subscriptions without a `remove()` method.
+      // Cleanup must never be able to crash the app during auth/bootstrap re-renders.
+      try {
+        (subFocus as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
+      try {
+        (subRecover as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
     };
   }, [userId, loading, fetchProfile]);
 

@@ -1676,26 +1676,21 @@ export async function validateBooking(
   // holdReservedEndAt is set early when validatedDraft.hold_id is present (see authoritative hold snapshot).
 
   // ── Resource availability ────────────────────────────────────────────────
-  const { getRequiredResourcesForOffering, checkResourceAvailability } = await import(
-    "@/lib/resources/assignment"
+  const {
+    getActiveOfferingResourceLinks,
+    resolveBookingResourceIds,
+    checkResourceAvailability,
+  } = await import("@/lib/resources/assignment");
+  // Service-role reads: customer RLS hides other customers' booking_resources,
+  // which would make capacity look free.
+  const resourceLinks = await getActiveOfferingResourceLinks(
+    supabaseAdmin,
+    draft.services.map((s: any) => s.offering_id),
   );
-  let allResourceIds: string[] = [];
-
-  const draftResourceIds = draft.resource_ids;
-  if (Array.isArray(draftResourceIds) && draftResourceIds.length > 0) {
-    allResourceIds = draftResourceIds;
-  } else {
-    const resourceResults = await Promise.all(
-      draft.services.map((s: any) => getRequiredResourcesForOffering(supabase, s.offering_id))
-    );
-    const resourceIdSet = new Set<string>();
-    for (const requiredResources of resourceResults) {
-      for (const rid of requiredResources) {
-        resourceIdSet.add(rid);
-      }
-    }
-    allResourceIds = [...resourceIdSet];
-  }
+  const allResourceIds = resolveBookingResourceIds(
+    resourceLinks,
+    Array.isArray(draft.resource_ids) ? draft.resource_ids : null,
+  );
 
   if (allResourceIds.length > 0) {
     const selectedDatetime = new Date(draft.selected_datetime);
@@ -1707,8 +1702,8 @@ export async function validateBooking(
     const resEnd = new Date(selectedDatetime.getTime() + resMinutes * 60000);
 
     const resourceCheck = await checkResourceAvailability(
-      supabase,
-      [...new Set(allResourceIds)],
+      supabaseAdmin,
+      allResourceIds,
       selectedDatetime,
       resEnd
     );

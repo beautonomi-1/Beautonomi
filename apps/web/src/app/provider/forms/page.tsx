@@ -30,6 +30,14 @@ import {
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface FormField {
   id: string;
@@ -51,6 +59,32 @@ interface Form {
   fields?: FormField[];
 }
 
+const FORM_TYPES = ["intake", "consent", "waiver"] as const;
+type FormType = (typeof FORM_TYPES)[number];
+
+function isFormType(value: unknown): value is FormType {
+  return typeof value === "string" && (FORM_TYPES as readonly string[]).includes(value);
+}
+
+function FormStatusBadges({
+  form,
+  t,
+}: {
+  form: Form;
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  return (
+    <>
+      {form.is_required && <Badge variant="outline">{t("web.provider.formsPage.requiredBadge")}</Badge>}
+      {form.is_active === false && (
+        <Badge variant="outline" className="text-gray-500">
+          {t("web.provider.formsPage.inactiveBadge")}
+        </Badge>
+      )}
+    </>
+  );
+}
+
 export default function ProviderFormsPage() {
   const { t } = useTranslation();
   const [forms, setForms] = useState<Form[]>([]);
@@ -59,6 +93,9 @@ export default function ProviderFormsPage() {
   const [editingForm, setEditingForm] = useState<Form | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [formType, setFormType] = useState<FormType>("intake");
+  const [isRequired, setIsRequired] = useState(false);
+  const [isActive, setIsActive] = useState(true);
 
   const loadForms = useCallback(async () => {
     try {
@@ -82,6 +119,9 @@ export default function ProviderFormsPage() {
     setEditingForm(null);
     setTitle("");
     setDescription("");
+    setFormType("intake");
+    setIsRequired(false);
+    setIsActive(true);
     setIsDialogOpen(true);
   };
 
@@ -89,6 +129,9 @@ export default function ProviderFormsPage() {
     setEditingForm(form);
     setTitle(form.title);
     setDescription(form.description ?? "");
+    setFormType(isFormType(form.form_type) ? form.form_type : "intake");
+    setIsRequired(form.is_required === true);
+    setIsActive(form.is_active !== false);
     setIsDialogOpen(true);
   };
 
@@ -102,12 +145,17 @@ export default function ProviderFormsPage() {
         await fetcher.put(`/api/provider/forms/${editingForm.id}`, {
           title: title.trim(),
           description: description.trim() || undefined,
+          form_type: formType,
+          is_required: isRequired,
+          is_active: isActive,
         });
         toast.success(t("web.provider.formsPage.updated"));
       } else {
         await fetcher.post(`/api/provider/forms`, {
           title: title.trim(),
           description: description.trim() || undefined,
+          form_type: formType,
+          is_required: isRequired,
         });
         toast.success(t("web.provider.formsPage.created"));
       }
@@ -180,7 +228,10 @@ export default function ProviderFormsPage() {
                         <p className="text-sm text-gray-500 line-clamp-2 mt-0.5">{form.description}</p>
                       )}
                     </div>
-                    <Badge variant="secondary" className="shrink-0">{form.form_type ?? t("web.provider.formsPage.intake")}</Badge>
+                    <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                      <Badge variant="secondary">{form.form_type ?? t("web.provider.formsPage.intake")}</Badge>
+                      <FormStatusBadges form={form} t={t} />
+                    </div>
                   </div>
 
                   <div className="text-sm text-gray-600">
@@ -250,7 +301,10 @@ export default function ProviderFormsPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary">{form.form_type ?? t("web.provider.formsPage.intake")}</Badge>
+                        <div className="flex flex-wrap gap-1">
+                          <Badge variant="secondary">{form.form_type ?? t("web.provider.formsPage.intake")}</Badge>
+                          <FormStatusBadges form={form} t={t} />
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Link
@@ -320,6 +374,35 @@ export default function ProviderFormsPage() {
                 rows={2}
               />
             </div>
+            <div>
+              <Label htmlFor="form-type">{t("web.provider.formsPage.typeLabel")}</Label>
+              <Select value={formType} onValueChange={(v) => isFormType(v) && setFormType(v)}>
+                <SelectTrigger id="form-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="intake">{t("web.provider.formsPage.typeIntake")}</SelectItem>
+                  <SelectItem value="consent">{t("web.provider.formsPage.typeConsent")}</SelectItem>
+                  <SelectItem value="waiver">{t("web.provider.formsPage.typeWaiver")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
+              <div>
+                <Label htmlFor="form-required">{t("web.provider.formsPage.requiredLabel")}</Label>
+                <p className="text-xs text-gray-500 mt-0.5">{t("web.provider.formsPage.requiredHint")}</p>
+              </div>
+              <Switch id="form-required" checked={isRequired} onCheckedChange={setIsRequired} />
+            </div>
+            {editingForm && (
+              <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
+                <div>
+                  <Label htmlFor="form-active">{t("web.provider.formsPage.activeLabel")}</Label>
+                  <p className="text-xs text-gray-500 mt-0.5">{t("web.provider.formsPage.activeHint")}</p>
+                </div>
+                <Switch id="form-active" checked={isActive} onCheckedChange={setIsActive} />
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>

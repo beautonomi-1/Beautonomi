@@ -18,13 +18,10 @@ import {
   assistantTurnFailureResponse,
   precheckSupportAssistantTurn,
 } from "@/lib/support/support-assistant/turn-precheck";
-
-const attachmentSchema = z.object({
-  url: z.string().url(),
-  name: z.string(),
-  type: z.string(),
-  size: z.number().optional(),
-});
+import {
+  normalizeSupportTicketMessageAttachments,
+  supportTicketMessageAttachmentSchema as attachmentSchema,
+} from "@/lib/support/support-ticket-attachment-upload";
 
 /**
  * POST /api/me/support-tickets/[id]/messages
@@ -51,7 +48,7 @@ export async function POST(
       if (!parsed.success) {
         return errorResponse("Invalid attachments payload", "VALIDATION_ERROR", 400);
       }
-      attachments = parsed.data.slice(0, 10);
+      attachments = normalizeSupportTicketMessageAttachments(parsed.data.slice(0, 10), id);
     }
 
     if (!message && attachments.length === 0) {

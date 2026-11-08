@@ -175,7 +175,13 @@ function SecurityDeviceApprovalPushHandler() {
         },
       });
     });
-    return () => sub.remove();
+    return () => {
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
+    };
   }, [show]);
 
   return null;
@@ -239,7 +245,11 @@ function PushPermissionMonitor() {
     });
     void check();
     return () => {
-      sub.remove();
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
       removePermissionObserver?.();
     };
   }, [user, gate.phase, show]);

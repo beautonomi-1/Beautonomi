@@ -9,6 +9,7 @@ import {
   enrichSupportTicketMessageForViewer,
   prependSupportTicketDescriptionIfNeeded,
 } from "@/lib/support/support-ticket-thread";
+import { withFreshSupportAttachmentUrls } from "@/lib/support/support-ticket-attachment-upload";
 
 type SupportMessageRow = {
   id: string;
@@ -46,7 +47,8 @@ export async function GET(
 
     if (messagesError) throw messagesError;
 
-    const enrichedMessages = (messages || []).map((m) =>
+    const messagesWithUrls = await withFreshSupportAttachmentUrls(messages || [], admin, id);
+    const enrichedMessages = messagesWithUrls.map((m) =>
       enrichSupportTicketMessageForViewer(m as SupportMessageRow, user.id),
     );
 

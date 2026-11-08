@@ -6,6 +6,7 @@
  * @see MESSAGE_ATTACHMENTS_BUCKET in `@/lib/messaging/message-attachments`
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import { MESSAGE_ATTACHMENTS_BUCKET, createMessageAttachmentSignedUrl } from "@/lib/messaging/message-attachments";
 import {
   getStorageServiceClientOrUser,
@@ -271,4 +272,129 @@ export async function uploadSupportTicketBuffers(
     if (meta) uploaded.push(meta);
   }
   return uploaded;
+}
+
+const SIGNED_OBJECT_MARKERS = [
+  `/storage/v1/object/sign/${MESSAGE_ATTACHMENTS_BUCKET}/`,
+  `/storage/v1/object/public/${MESSAGE_ATTACHMENTS_BUCKET}/`,
+  `/storage/v1/object/authenticated/${MESSAGE_ATTACHMENTS_BUCKET}/`,
+];
+
+/** Storage path for a support attachment, including one saved only as an expired signed URL. */
+export function supportTicketAttachmentStoragePath(att: Record<string, unknown>): string | null {
+  const explicit = typeof att.storage_path === "string" ? att.storage_path.trim() : "";
+  if (explicit.startsWith(`${SUPPORT_TICKET_ATTACHMENTS_PATH_PREFIX}/`)) return explicit;
+
+  const url = typeof att.url === "string" ? att.url : "";
+  for (const marker of SIGNED_OBJECT_MARKERS) {
+    const idx = url.indexOf(marker);
+    if (idx === -1) continue;
+    let path = url.slice(idx + marker.length);
+    const query = path.indexOf("?");
+    if (query !== -1) path = path.slice(0, query);
+    try {
+      path = decodeURIComponent(path);
+    } catch {
+      /* keep the raw path */
+    }
+    if (path.startsWith(`${SUPPORT_TICKET_ATTACHMENTS_PATH_PREFIX}/`)) return path;
+  }
+  return null;
+}
+
+/**
+ * Storage path for an attachment, only when it lives under this ticket's folder.
+ * Attachment JSON comes from the client, so a path for another ticket must not be signed.
+ */
+export function supportTicketAttachmentStoragePathForTicket(
+  att: Record<string, unknown>,
+  ticketId: string,
+): string | null {
+  const path = supportTicketAttachmentStoragePath(att);
+  if (!path || !ticketId) return null;
+  const segments = path.split("/");
+  if (segments.includes("..") || segments.includes(".")) return null;
+  return path.startsWith(`${SUPPORT_TICKET_ATTACHMENTS_PATH_PREFIX}/${ticketId}/`) ? path : null;
+}
+
+type AttachmentSignClient = Parameters<typeof createMessageAttachmentSignedUrl>[0];
+
+/**
+ * Replace the signed URL saved at upload time. That token expires, and Supabase
+ * then rejects the image with an `exp` claim error.
+ */
+export async function signSupportTicketAttachments(
+  attachments: unknown,
+  storageClient: AttachmentSignClient,
+  ticketId: string,
+): Promise<unknown> {
+  if (!Array.isArray(attachments) || attachments.length === 0) return attachments ?? [];
+  return Promise.all(
+    attachments.map(async (item) => {
+      if (!item || typeof item !== "object") return item;
+      const row = item as Record<string, unknown>;
+      const storagePath = supportTicketAttachmentStoragePathForTicket(row, ticketId);
+      if (!storagePath) return item;
+      const signedUrl = await createMessageAttachmentSignedUrl(storageClient, storagePath);
+      if (!signedUrl) return item;
+      return { ...row, url: signedUrl, storage_path: storagePath };
+    }),
+  );
+}
+
+export async function withFreshSupportAttachmentUrls<T extends { attachments?: unknown }>(
+  messages: T[],
+  supabase: SupabaseClient,
+  ticketId: string,
+): Promise<T[]> {
+  const needsSign = messages.some((message) => {
+    const attachments = message.attachments;
+    if (!Array.isArray(attachments)) return false;
+    return attachments.some(
+      (item) =>
+        Boolean(item) &&
+        typeof item === "object" &&
+        supportTicketAttachmentStoragePathForTicket(item as Record<string, unknown>, ticketId),
+    );
+  });
+  if (!needsSign) return messages;
+
+  const storage = getStorageServiceClientOrUser(supabase);
+  return Promise.all(
+    messages.map(async (message) => ({
+      ...message,
+      attachments: await signSupportTicketAttachments(message.attachments, storage, ticketId),
+    })),
+  );
+}
+
+/** Attachment payload accepted on support ticket message POST routes. */
+export const supportTicketMessageAttachmentSchema = z
+  .object({
+    url: z.union([z.string().url(), z.literal("")]),
+    storage_path: z.string().max(512).optional(),
+    name: z.string(),
+    type: z.string(),
+    size: z.number().optional(),
+  })
+  .refine((att) => att.url !== "" || Boolean(att.storage_path), {
+    message: "Attachment needs a url or storage_path",
+  });
+
+export type SupportTicketMessageAttachment = z.infer<typeof supportTicketMessageAttachmentSchema>;
+
+/**
+ * Keep `storage_path` only when it belongs to this ticket, so later reads can sign a
+ * fresh URL instead of relying on the upload-time signed URL that expires.
+ */
+export function normalizeSupportTicketMessageAttachments(
+  attachments: SupportTicketMessageAttachment[],
+  ticketId: string,
+): SupportTicketMessageAttachment[] {
+  return attachments.map((att) => {
+    const storagePath = supportTicketAttachmentStoragePathForTicket(att, ticketId);
+    const out: SupportTicketMessageAttachment = { ...att };
+    delete out.storage_path;
+    return storagePath ? { ...out, storage_path: storagePath } : out;
+  });
 }

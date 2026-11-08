@@ -131,6 +131,8 @@ export default function ResourceSelection({
 
   const handleResourceToggle = (resourceId: string) => {
     if (selectedResources.includes(resourceId)) {
+      // Required resources are always reserved by the server; keep them selected.
+      if (resources.find((r) => r.id === resourceId)?.is_required) return;
       onResourceChange(selectedResources.filter((id) => id !== resourceId));
     } else {
       // Check if resource is required
