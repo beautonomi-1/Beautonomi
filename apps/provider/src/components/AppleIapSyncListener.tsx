@@ -25,22 +25,34 @@ export function AppleIapSyncListener() {
     let stopListener: (() => void) | undefined;
     void startApplePurchaseListener(providerId).then((stop) => {
       if (cancelled) {
-        stop();
+        // Be defensive: native IAP listener startup should never crash the JS thread.
+        try {
+          (stop as unknown as (() => void) | undefined)?.();
+        } catch {
+          // ignore
+        }
         return;
       }
       stopListener = stop;
     });
 
-    const appState = AppState.addEventListener("change", (next) => {
+    const appState =
+      typeof (AppState as unknown as { addEventListener?: unknown }).addEventListener === "function"
+        ? AppState.addEventListener("change", (next) => {
       if (next === "active") {
         void syncUnfinishedApplePurchases(providerId);
       }
-    });
+        })
+        : undefined;
 
     return () => {
       cancelled = true;
       stopListener?.();
-      appState.remove();
+      try {
+        (appState as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
     };
   }, [providerId]);
 

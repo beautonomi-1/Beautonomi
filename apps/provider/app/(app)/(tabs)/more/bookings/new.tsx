@@ -4200,7 +4200,7 @@ export default function NewBookingScreen() {
                           <View key={field.id} style={twStyle("mt-3")}>
                             <Text style={twStyle("mb-1 text-xs font-medium text-gray-700")}>
                               {field.name}
-                              {field.is_required ? <Text style={twStyle("text-red-500")}> *</Text> : null}
+                              {field.is_required || form.is_required ? <Text style={twStyle("text-red-500")}> *</Text> : null}
                             </Text>
                             {isCheckbox ? (
                               <View style={twStyle("flex-row items-center justify-between")}>

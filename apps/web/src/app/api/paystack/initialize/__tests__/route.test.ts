@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockRequireRoleInApi = vi.fn();
@@ -93,8 +93,12 @@ vi.mock("@/lib/payments/online-payment", () => ({
 }));
 
 describe("POST /api/paystack/initialize", () => {
+  const prevAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    // Paystack rejects non-HTTPS callback_url; isolate from local .env http://localhost.
+    process.env.NEXT_PUBLIC_APP_URL = "https://beautonomi.com";
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "user-1", email: "u@test.com" } });
     mockIsPaystackEnabledForTenant.mockResolvedValue(true);
     mockAssertReportingCurrencyReady.mockResolvedValue({ ok: true });
@@ -108,6 +112,11 @@ describe("POST /api/paystack/initialize", () => {
       reference: "ref_123",
       accessCode: "code_1",
     });
+  });
+
+  afterEach(() => {
+    if (prevAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+    else process.env.NEXT_PUBLIC_APP_URL = prevAppUrl;
   });
 
   it("sends currency, HTTPS callback, and no channels for product order", async () => {

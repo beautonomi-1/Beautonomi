@@ -5155,7 +5155,7 @@ export default function BookCheckoutScreen() {
                       <View key={field.id} style={{ marginBottom: 10 }}>
                         <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 4 }}>
                           {field.name}
-                          {field.is_required ? " *" : ""}
+                          {field.is_required || form.is_required ? " *" : ""}
                         </Text>
                         {field.field_type === "checkbox" ? (
                           <Pressable

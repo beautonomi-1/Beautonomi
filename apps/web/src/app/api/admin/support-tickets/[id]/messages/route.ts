@@ -6,13 +6,10 @@ import { SUPPORT_TICKET_STAFF_ROLES } from "@/lib/support/support-ticket-staff";
 import { notifySupportTicketUpdated } from "@/lib/notifications/notification-service";
 import { slackNotifySupportTicketReply } from "@/lib/integrations/slack/triggers";
 import { z } from "zod";
-
-const attachmentSchema = z.object({
-  url: z.string().url(),
-  name: z.string(),
-  type: z.string(),
-  size: z.number().optional(),
-});
+import {
+  normalizeSupportTicketMessageAttachments,
+  supportTicketMessageAttachmentSchema as attachmentSchema,
+} from "@/lib/support/support-ticket-attachment-upload";
 
 export async function POST(
   request: NextRequest,
@@ -34,7 +31,7 @@ export async function POST(
       if (!parsed.success) {
         return NextResponse.json({ error: "Invalid attachments" }, { status: 400 });
       }
-      attachments = parsed.data.slice(0, 10);
+      attachments = normalizeSupportTicketMessageAttachments(parsed.data.slice(0, 10), id);
     }
 
     if (!message && attachments.length === 0) {

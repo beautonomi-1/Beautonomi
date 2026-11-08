@@ -46,6 +46,7 @@ import { AppointmentReviewStep } from "./AppointmentReviewStep";
 import { AppointmentKindSelector, type AppointmentKindValue } from "./AppointmentKindSelector";
 import {
   CreateFormIntakeSection,
+  sanitizeIntakeResponses,
   type IntakeFormResponses,
   type ProviderIntakeForm,
 } from "./CreateFormIntakeSection";
@@ -84,6 +85,7 @@ function mapWebIntakeForPackageReadiness(
   const intakeForms = forms.map((form) => ({
     id: form.id,
     title: form.title,
+    is_required: Boolean(form.is_required),
     fields: (form.fields ?? []).map((field) => ({
       id: field.id,
       name: field.name,
@@ -97,7 +99,7 @@ function mapWebIntakeForPackageReadiness(
     if (!src) continue;
     intakeResponses[form.id] = {};
     for (const field of form.fields ?? []) {
-      const raw = src[field.name] ?? src[field.id];
+      const raw = src[field.id];
       if (raw === undefined || raw === null) continue;
       if (typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean") {
         intakeResponses[form.id][field.id] = raw;
@@ -688,7 +690,7 @@ export function AppointmentCreateFlow({
         sendNotification,
         collectDeposit,
         depositPercentage,
-        intakeResponses,
+        intakeResponses: sanitizeIntakeResponses(intakeResponses),
         subtotal: totals.subtotal,
         travelFee: totals.travelFee,
         taxAmount: totals.taxAmount,

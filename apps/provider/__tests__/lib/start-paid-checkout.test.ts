@@ -11,6 +11,11 @@ jest.mock("@/lib/api-client", () => ({
   },
 }));
 
+/** Paystack callback_url must be HTTPS; isolate from local EXPO_PUBLIC_APP_URL=http://localhost. */
+jest.mock("@/lib/web-url", () => ({
+  getWebProviderBaseUrl: () => "https://app.beautonomi.com",
+}));
+
 const { api } = jest.requireMock<{ api: { get: jest.Mock; post: jest.Mock } }>("@/lib/api-client");
 
 describe("defaultBillingPeriod", () => {

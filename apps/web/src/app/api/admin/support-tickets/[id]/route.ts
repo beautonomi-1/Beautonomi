@@ -8,6 +8,7 @@ import { computeSlaResolutionDueIso, computeFirstResponseDueIso } from "@/lib/su
 import { computeTicketAttentionFields } from "@/lib/support/support-ticket-attention";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { slackNotifySupportTicketUpdated } from "@/lib/integrations/slack/triggers";
+import { withFreshSupportAttachmentUrls } from "@/lib/support/support-ticket-attachment-upload";
 
 export async function GET(
   request: NextRequest,
@@ -96,6 +97,8 @@ export async function GET(
       };
     }
 
+    const visibleMessages = await withFreshSupportAttachmentUrls(messages || [], supabase, id);
+
     return NextResponse.json({
       ticket: {
         ...ticketOut,
@@ -103,7 +106,7 @@ export async function GET(
         sla_state: attention.sla_state,
         agent_unread: attention.agent_unread,
       },
-      messages: messages || [],
+      messages: visibleMessages,
       notes: notes || [],
     });
   } catch (error: unknown) {

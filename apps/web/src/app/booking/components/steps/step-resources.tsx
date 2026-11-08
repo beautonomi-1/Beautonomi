@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ResourceSelection from "@/components/booking/ResourceSelection";
 import { BookingState } from "../booking-flow";
 import { coerceSelectedDate } from "@beautonomi/utils";
@@ -27,6 +27,15 @@ export default function StepResources({
   const [loadedResources, setLoadedResources] = useState<
     Array<{ id: string; is_required: boolean }>
   >([]);
+
+  const serviceIdsKey = bookingState.selectedServices
+    .map((s) => s.id)
+    .filter(Boolean)
+    .join(",");
+  const serviceIds = useMemo(
+    () => (serviceIdsKey ? serviceIdsKey.split(",") : []),
+    [serviceIdsKey],
+  );
 
   const totalDuration =
     bookingState.selectedServices.reduce((sum, s) => sum + (s.duration || 0), 0) || 60;
@@ -69,7 +78,7 @@ export default function StepResources({
       </div>
       <ResourceSelection
         providerId={providerSlug}
-        serviceIds={bookingState.selectedServices.map((s) => s.id).filter(Boolean)}
+        serviceIds={serviceIds}
         selectedDate={selectedDay}
         selectedTimeSlot={bookingState.selectedTimeSlot}
         selectedResources={bookingState.selectedResourceIds ?? []}
@@ -87,6 +96,17 @@ export default function StepResources({
           setLoadedResources(
             resources.map((r) => ({ id: r.id, is_required: r.is_required })),
           );
+          const current = bookingState.selectedResourceIds ?? [];
+          const offered = new Set(resources.map((r) => r.id));
+          const next = [
+            ...new Set([
+              ...current.filter((id) => offered.has(id)),
+              ...resources.filter((r) => r.is_required).map((r) => r.id),
+            ]),
+          ];
+          if (next.length !== current.length || next.some((id, i) => id !== current[i])) {
+            updateBookingState({ selectedResourceIds: next });
+          }
         }}
       />
     </div>

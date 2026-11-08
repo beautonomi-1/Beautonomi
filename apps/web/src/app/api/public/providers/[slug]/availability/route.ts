@@ -275,14 +275,12 @@ export async function GET(
         .in("id", resourceCheckOfferingIds);
       const validOfferingIds = (ownedOfferings || []).map((o: { id: string }) => o.id);
       if (validOfferingIds.length > 0) {
-        const { data: offeringRes } = await supabase
-          .from("offering_resources")
-          .select("resource_id")
-          .in("offering_id", validOfferingIds)
-          .eq("required", true);
-        const resourceIds = [...new Set((offeringRes || []).map((r: { resource_id: string }) => r.resource_id))];
+        const { getActiveOfferingResourceLinks, resolveBookingResourceIds, checkResourceAvailability } =
+          await import("@/lib/resources/assignment");
+        const resourceIds = resolveBookingResourceIds(
+          await getActiveOfferingResourceLinks(supabase, validOfferingIds),
+        );
         if (resourceIds.length > 0) {
-          const { checkResourceAvailability } = await import("@/lib/resources/assignment");
           const availableSlots: AvailabilitySlot[] = [];
           for (const slot of slots) {
             const startAt = new Date(slot.start);

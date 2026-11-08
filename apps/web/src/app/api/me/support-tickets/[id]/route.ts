@@ -11,6 +11,7 @@ import {
   enrichSupportTicketMessageForViewer,
   prependSupportTicketDescriptionIfNeeded,
 } from "@/lib/support/support-ticket-thread";
+import { withFreshSupportAttachmentUrls } from "@/lib/support/support-ticket-attachment-upload";
 
 /**
  * GET /api/me/support-tickets/[id]
@@ -55,6 +56,8 @@ export async function GET(
 
     if (messagesError) throw messagesError;
 
+    const messagesWithUrls = await withFreshSupportAttachmentUrls(messages || [], getSupabaseAdmin(), id);
+
     const authorIds = Array.from(
       new Set(
         (messages || [])
@@ -78,7 +81,7 @@ export async function GET(
       }
     }
 
-    const enrichedMessages = (messages || []).map((m) => {
+    const enrichedMessages = messagesWithUrls.map((m) => {
       const userId = (m as { user_id?: string | null }).user_id ?? "";
       return enrichSupportTicketMessageForViewer(
         { ...(m as Record<string, unknown>), user_id: userId, author: { full_name: authorNameById.get(userId) ?? null } },

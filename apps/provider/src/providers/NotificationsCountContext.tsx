@@ -167,7 +167,11 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
       }, REALTIME_REFETCH_DEBOUNCE_MS);
     });
     return () => {
-      sub.remove();
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
       if (debounce) clearTimeout(debounce);
     };
   }, []);
@@ -183,7 +187,11 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
       }, REALTIME_REFETCH_DEBOUNCE_MS);
     });
     return () => {
-      sub.remove();
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
       if (debounce) clearTimeout(debounce);
     };
   }, []);
@@ -201,7 +209,11 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
       }, FOREGROUND_REFETCH_DELAY_MS);
     });
     return () => {
-      sub.remove();
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
       if (foregroundTimerRef.current) {
         clearTimeout(foregroundTimerRef.current);
         foregroundTimerRef.current = null;
