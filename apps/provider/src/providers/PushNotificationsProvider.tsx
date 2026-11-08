@@ -361,7 +361,13 @@ function usePushRegistration() {
         setRole(next);
       },
     );
-    return () => sub.remove();
+    return () => {
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -598,7 +604,9 @@ function usePushRegistration() {
     if (gate.phase === "loading") return;
     const uid = user.id;
 
-    const sub = AppState.addEventListener("change", (state) => {
+    const sub =
+      typeof (AppState as unknown as { addEventListener?: unknown }).addEventListener === "function"
+        ? AppState.addEventListener("change", (state) => {
       if (state !== "active") return;
       void (async () => {
         try {
@@ -620,8 +628,15 @@ function usePushRegistration() {
           captureError(err, { scope: "push_notifications:foreground_reregister" });
         }
       })();
-    });
-    return () => sub.remove();
+        })
+        : undefined;
+    return () => {
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
+    };
   }, [appId, user, gate, registerDevice]);
 
   // Registration was rejected for the previous role — re-arm it now that the

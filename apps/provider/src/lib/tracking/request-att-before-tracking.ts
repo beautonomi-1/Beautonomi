@@ -4,13 +4,14 @@
  * Request iOS App Tracking Transparency before any SDK that may read IDFA (Singular).
  * No-op on Android/web. Only prompts when status is undetermined.
  */
-import { AppState, InteractionManager, Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import {
   getTrackingPermissionsAsync,
   PermissionStatus,
   requestTrackingPermissionsAsync,
 } from "expo-tracking-transparency";
 import { authFlowBreadcrumb, isSentryEnabled } from "@/lib/sentry";
+import { runAfterInteractions } from "@beautonomi/utils";
 
 export type AttRequestResult = PermissionStatus | "unavailable";
 
@@ -31,18 +32,27 @@ export function markAttBootstrapComplete(): void {
 function waitForAppStateActive(): Promise<void> {
   if (AppState.currentState === "active") return Promise.resolve();
   return new Promise((resolve) => {
-    const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") {
-        sub.remove();
-        resolve();
-      }
-    });
+    const sub =
+      typeof (AppState as unknown as { addEventListener?: unknown }).addEventListener === "function"
+        ? AppState.addEventListener("change", (state) => {
+            if (state === "active") {
+              try {
+                (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+              } catch {
+                // ignore
+              }
+              resolve();
+            }
+          })
+        : undefined;
+    // Extremely old runtimes may not support addEventListener; don't deadlock ATT.
+    if (!sub) resolve();
   });
 }
 
 function afterInteractionsAndFrames(): Promise<void> {
   return new Promise((resolve) => {
-    InteractionManager.runAfterInteractions(() => {
+    runAfterInteractions(() => {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => resolve());
       });

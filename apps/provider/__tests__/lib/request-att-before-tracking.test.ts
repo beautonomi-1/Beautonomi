@@ -1,4 +1,4 @@
-import { InteractionManager, Platform, AppState } from "react-native";
+import { Platform, AppState } from "react-native";
 import {
   getTrackingPermissionsAsync,
   PermissionStatus,
@@ -32,10 +32,6 @@ describe("requestAttBeforeTracking (provider)", () => {
     jest.useFakeTimers();
     Object.defineProperty(Platform, "OS", { configurable: true, value: "ios" });
     Object.defineProperty(AppState, "currentState", { configurable: true, value: "active" });
-    jest.spyOn(InteractionManager, "runAfterInteractions").mockImplementation((cb: () => void) => {
-      cb();
-      return { cancel: jest.fn() } as never;
-    });
     global.requestAnimationFrame = (cb: FrameRequestCallback) => {
       cb(0);
       return 0;

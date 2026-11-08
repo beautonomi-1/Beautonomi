@@ -1,5 +1,6 @@
 import { useEffect, type RefObject } from "react";
-import { InteractionManager, type TextInput } from "react-native";
+import { type TextInput } from "react-native";
+import { runAfterInteractions } from "@beautonomi/utils";
 import { useOnboardingScroll } from "./OnboardingScrollContext";
 
 const FOCUS_RETRY_DELAYS_MS = [0, 120, 350] as const;
@@ -25,7 +26,7 @@ export function useAutoFocus(
       ref.current?.focus();
     };
 
-    const task = InteractionManager.runAfterInteractions(() => {
+    const task = runAfterInteractions(() => {
       if (options?.resetScrollFirst) {
         scroll?.scrollToTop();
       }
@@ -40,8 +41,7 @@ export function useAutoFocus(
 
     return () => {
       cancelled = true;
-      // InteractionManager is deprecated; some runtimes return a non-cancelable handle.
-      (task as unknown as { cancel?: () => void } | undefined)?.cancel?.();
+      task.cancel();
     };
   }, [ref, enabled, scroll, options?.resetScrollFirst]);
 }

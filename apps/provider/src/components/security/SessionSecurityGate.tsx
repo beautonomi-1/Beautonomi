@@ -60,12 +60,19 @@ export function SessionSecurityGate({ children }: { children: React.ReactNode })
     };
 
     void check(lastCheckRef.current?.userId !== userId);
-    const sub = AppState.addEventListener("change", (s) => {
-      if (s === "active") void check(false);
-    });
+    const sub =
+      typeof (AppState as unknown as { addEventListener?: unknown }).addEventListener === "function"
+        ? AppState.addEventListener("change", (s) => {
+            if (s === "active") void check(false);
+          })
+        : undefined;
     return () => {
       cancelled = true;
-      sub.remove();
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
     };
   }, [userId, router]);
 

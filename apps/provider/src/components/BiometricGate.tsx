@@ -105,7 +105,9 @@ export function BiometricGate({ children }: { children: React.ReactNode }) {
     // thread with the other AppState "active" handlers (auth refresh, nav
     // count fetches, etc.) that all fire in the same tick — which was
     // causing the ANR on Android when screen+locale changed simultaneously.
-    const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
+    const sub =
+      typeof (AppState as unknown as { addEventListener?: unknown }).addEventListener === "function"
+        ? AppState.addEventListener("change", (next: AppStateStatus) => {
       const prev = appStateRef.current;
       appStateRef.current = next;
 
@@ -136,11 +138,16 @@ export function BiometricGate({ children }: { children: React.ReactNode }) {
           }, 150);
         });
       }
-    });
+        })
+        : undefined;
 
     return () => {
       cancelled = true;
-      sub.remove();
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
     };
   }, [promptUnlock]);
 

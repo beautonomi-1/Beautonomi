@@ -105,14 +105,23 @@ export function ConfigBundleProvider({ children }: { children: React.ReactNode }
   }, [refresh]);
 
   useEffect(() => {
-    const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
-      if (state !== "active") return;
-      const current = bundleRef.current;
-      if (isConfigBundleStub(current) || !isConfigBundleCacheFresh(userId)) {
-        void refresh();
+    const sub =
+      typeof (AppState as unknown as { addEventListener?: unknown }).addEventListener === "function"
+        ? AppState.addEventListener("change", (state: AppStateStatus) => {
+            if (state !== "active") return;
+            const current = bundleRef.current;
+            if (isConfigBundleStub(current) || !isConfigBundleCacheFresh(userId)) {
+              void refresh();
+            }
+          })
+        : undefined;
+    return () => {
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
       }
-    });
-    return () => sub.remove();
+    };
   }, [refresh, userId]);
 
   return (

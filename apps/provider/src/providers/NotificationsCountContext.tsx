@@ -3,7 +3,8 @@
  * Unified WhatsApp-style total = in-app notifications + unread chat messages.
  */
 import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AppState, DeviceEventEmitter, InteractionManager, Platform } from "react-native";
+import { AppState, DeviceEventEmitter, Platform } from "react-native";
+import { runAfterInteractions } from "@beautonomi/utils";
 import {
   CHAT_BADGE_REFRESH_EVENT,
   NOTIFICATION_BADGE_REFRESH_EVENT,
@@ -203,7 +204,7 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
       if (foregroundTimerRef.current) clearTimeout(foregroundTimerRef.current);
       foregroundTimerRef.current = setTimeout(() => {
         foregroundTimerRef.current = null;
-        InteractionManager.runAfterInteractions(() => {
+        runAfterInteractions(() => {
           void refreshAll();
         });
       }, FOREGROUND_REFETCH_DELAY_MS);

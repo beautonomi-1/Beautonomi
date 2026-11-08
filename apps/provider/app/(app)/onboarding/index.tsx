@@ -179,7 +179,13 @@ export default function OnboardingHubScreen() {
     const sub = DeviceEventEmitter.addListener(PROVIDER_SETUP_STATUS_CHANGED, () => {
       void refresh();
     });
-    return () => sub.remove();
+    return () => {
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
+    };
   }, [refresh]);
 
   if (loading && !data) {

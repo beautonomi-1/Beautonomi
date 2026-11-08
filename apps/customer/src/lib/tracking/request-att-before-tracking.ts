@@ -4,13 +4,14 @@
  * Request iOS App Tracking Transparency before any SDK that may read IDFA (Singular).
  * No-op on Android/web. Only prompts when status is undetermined.
  */
-import { AppState, InteractionManager, Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import {
   getTrackingPermissionsAsync,
   PermissionStatus,
   requestTrackingPermissionsAsync,
 } from "expo-tracking-transparency";
 import { authFlowBreadcrumb, isSentryEnabled } from "@/lib/sentry";
+import { runAfterInteractions } from "@beautonomi/utils";
 
 export type AttRequestResult = PermissionStatus | "unavailable";
 
@@ -42,7 +43,7 @@ function waitForAppStateActive(): Promise<void> {
 
 function afterInteractionsAndFrames(): Promise<void> {
   return new Promise((resolve) => {
-    InteractionManager.runAfterInteractions(() => {
+    runAfterInteractions(() => {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => resolve());
       });

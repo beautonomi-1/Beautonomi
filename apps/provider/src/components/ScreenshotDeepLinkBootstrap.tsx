@@ -78,7 +78,13 @@ export function ScreenshotDeepLinkBootstrap() {
 
     void Linking.getInitialURL().then(handle);
     const sub = Linking.addEventListener("url", ({ url }) => handle(url));
-    return () => sub.remove();
+    return () => {
+      try {
+        (sub as unknown as { remove?: () => void } | undefined)?.remove?.();
+      } catch {
+        // ignore
+      }
+    };
   }, [router]);
 
   return null;

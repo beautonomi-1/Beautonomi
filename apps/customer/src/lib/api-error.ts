@@ -84,9 +84,21 @@ export function getApiErrorMessage(
  */
 export function getHttpErrorStatus(err: unknown): number | undefined {
   if (err == null || typeof err !== "object") return undefined;
-  const o = err as { status?: unknown; statusCode?: unknown };
+  const o = err as {
+    status?: unknown;
+    statusCode?: unknown;
+    status_code?: unknown;
+    error?: { status?: unknown; statusCode?: unknown; status_code?: unknown };
+  };
   if (typeof o.status === "number" && Number.isFinite(o.status)) return o.status;
   if (typeof o.statusCode === "number" && Number.isFinite(o.statusCode)) return o.statusCode;
+  if (typeof o.status_code === "number" && Number.isFinite(o.status_code)) return o.status_code;
+  const nested = o.error;
+  if (nested) {
+    if (typeof nested.status === "number" && Number.isFinite(nested.status)) return nested.status;
+    if (typeof nested.statusCode === "number" && Number.isFinite(nested.statusCode)) return nested.statusCode;
+    if (typeof nested.status_code === "number" && Number.isFinite(nested.status_code)) return nested.status_code;
+  }
   return undefined;
 }
 
@@ -146,6 +158,8 @@ export function isTransientApiFailure(err: unknown): boolean {
     msg.includes("failed to fetch") ||
     msg.includes("network error") ||
     msg.includes("timed out") ||
+    msg.includes("timeout") ||
+    msg.includes("gateway timeout") ||
     msg.includes("check your internet connection")
   ) {
     return true;
