@@ -50,6 +50,32 @@ describe("bookingDraftSchema – validation", () => {
     expect(result.success).toBe(true);
   });
 
+  it("accepts staging seed ids that Postgres stores but RFC 4122 rejects", () => {
+    const result = bookingDraftSchema.safeParse(
+      validBookingDraft({
+        provider_id: "00000000-e2e0-4000-f000-000000000001",
+        services: [
+          {
+            offering_id: "00000000-e2e0-4000-d000-000000000001",
+            staff_id: null,
+          },
+        ],
+        location_id: "00000000-e2e0-4000-c000-000000000001",
+      })
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it("treats a blank location_id as null", () => {
+    const result = bookingDraftSchema.safeParse(
+      validBookingDraft({ location_id: "  " as unknown as null })
+    );
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.location_id).toBeNull();
+    }
+  });
+
   it("accepts a draft with optional fields populated", () => {
     const result = bookingDraftSchema.safeParse(
       validBookingDraft({
